@@ -2,6 +2,7 @@
 	import { addFileOrFolder, getFiles } from '$lib/api/system/file-explorer';
 	import { createUser, editUser, getNextUID, getUserCapabilities } from '$lib/api/auth/local';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -329,9 +330,15 @@
 			open = false;
 		}}
 		class="lg:max-w-2xl w-[92%] gap-4 p-5"
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={() => {
+			reset();
+			open = false;
+		}}
+		onReset={reset}
 	>
 		{#if dirPicker.open}
-			<!-- ── Dir picker view (inline — no second dialog) ── -->
 			<div class="relative" data-picker-container>
 				<Dialog.Header class="p-0">
 					<Dialog.Title class="flex items-center gap-2 text-left text-sm font-medium">
@@ -347,7 +354,6 @@
 					</Dialog.Title>
 				</Dialog.Header>
 
-				<!-- Breadcrumb nav -->
 				<div class="flex items-center gap-1 border-b pb-2">
 					<Breadcrumb.Root>
 						<Breadcrumb.List>
@@ -384,7 +390,6 @@
 					</Button>
 				</div>
 
-				<!-- Folder list — plain div, custom right-click menu avoids bits-ui portal interference -->
 				<div
 					role="tree"
 					tabindex="-1"
@@ -532,36 +537,13 @@
 		{:else}
 			<!-- ── Normal create/edit view ── -->
 			<Dialog.Header class="p-0">
-				<Dialog.Title class="flex justify-between text-left">
-					<div class="flex items-center gap-2">
-						{#if !edit}
-							<span class="icon-[mdi--user-plus] h-5 w-5"></span>
-							<span>Create User</span>
-						{:else}
-							<span class="icon-[mdi--user-edit] h-5 w-5"></span>
-							<span>Edit User - {user?.username}</span>
-						{/if}
-					</div>
-					<div class="flex items-center gap-0.5">
-						<Button size="sm" variant="link" class="h-4" title="Reset" onclick={reset}>
-							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-							<span class="sr-only">Reset</span>
-						</Button>
-						<Button
-							size="sm"
-							variant="link"
-							class="h-4"
-							title="Close"
-							onclick={() => {
-								reset();
-								open = false;
-							}}
-						>
-							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
-							></span>
-							<span class="sr-only">Close</span>
-						</Button>
-					</div>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon={!edit ? 'icon-[mdi--user-plus]' : 'icon-[mdi--user-edit]'}
+						size="h-5 w-5"
+						gap="gap-2"
+						title={!edit ? 'Create User' : `Edit User - ${user?.username}`}
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
@@ -664,8 +646,12 @@
 							}}
 						/>
 						<Button variant="outline" size="sm" class="shrink-0" onclick={openDirPicker}>
-							<span class="icon-[mdi--folder-open-outline] mr-1 h-4 w-4"></span>
-							Browse
+							<SpanWithIcon
+								icon="icon-[mdi--folder-open-outline]"
+								size="h-4 w-4"
+								gap="gap-2"
+								title="Browse"
+							/>
 						</Button>
 					</div>
 					<div class="space-y-2">

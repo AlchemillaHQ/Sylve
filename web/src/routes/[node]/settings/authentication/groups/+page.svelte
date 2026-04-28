@@ -2,6 +2,7 @@
 	import { createGroup, deleteGroup, listGroups, updateGroupMembers } from '$lib/api/auth/groups';
 	import { listUsers } from '$lib/api/auth/local';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -24,9 +25,10 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const users = resource(
 		() => 'users',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await listUsers();
 			updateCache(key, res);
 			return res;
@@ -34,9 +36,10 @@
 		{ initialValue: data.users }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let groups = resource(
 		() => 'groups',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await listGroups();
 			updateCache(key, res);
 			return res;
@@ -224,10 +227,7 @@
 					variant="outline"
 					class="h-6.5"
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						<span>Delete</span>
-					</div>
+					<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 				</Button>
 			{/if}
 		{/if}
@@ -245,11 +245,12 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[material-symbols--edit] mr-1 h-4 w-4"></span>
-
-					<span>Edit Users</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[material-symbols--edit]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Edit Users"
+				/>
 			</Button>
 		{/if}
 	{/if}
@@ -263,10 +264,7 @@
 			size="sm"
 			class="h-6"
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{@render button('modify-users')}
@@ -275,7 +273,7 @@
 
 	<TreeTable
 		data={tableData}
-		name={'tt-groups'}
+		name="tt-groups"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
 		bind:query
@@ -288,47 +286,31 @@
 			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
+			showCloseButton={true}
+			showResetButton={true}
+			onClose={() => {
+				properties = options;
+				properties.create.open = false;
+			}}
+			onReset={() => {
+				properties.create.name = '';
+				properties.create.users.value = [];
+				properties.create.users.open = false;
+			}}
 		>
 			<Dialog.Header>
-				<Dialog.Title class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--account-group] h-5 w-5"></span>
-
-						<span>New Group</span>
-					</div>
-					<div class="flex items-center gap-0.5">
-						<Button
-							size="sm"
-							variant="link"
-							title={'Reset'}
-							class="h-4"
-							onclick={() => {
-								properties = options;
-							}}
-						>
-							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-							<span class="sr-only">{'Reset'}</span>
-						</Button>
-						<Button
-							size="sm"
-							variant="link"
-							class="h-4"
-							title={'Close'}
-							onclick={() => {
-								properties = options;
-								properties.create.open = false;
-							}}
-						>
-							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
-							></span>
-							<span class="sr-only">{'Close'}</span>
-						</Button>
-					</div>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[mdi--account-group]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="New Group"
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
 			<CustomValueInput
-				label={'Name'}
+				label="Name"
 				placeholder="c-level"
 				bind:value={properties.create.name}
 				classes="flex-1 space-y-1.5"
@@ -341,14 +323,14 @@
 				onValueChange={(v) => {
 					properties.create.users.value = v as string[];
 				}}
-				placeholder={'Select users'}
+				placeholder="Select Users"
 				multiple={true}
 				width="w-full"
 			/>
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={() => onCreate()} type="submit" size="sm">{'Create'}</Button>
+					<Button onclick={() => onCreate()} type="submit" size="sm">Create</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>
@@ -361,41 +343,26 @@
 			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
+			showCloseButton={true}
+			showResetButton={true}
+			onClose={() => {
+				properties = options;
+				properties.modifyUsers.open = false;
+			}}
+			onReset={() => {
+				properties.modifyUsers.combobox.value =
+					activeRows?.[0]?.children?.map((user) => user.name) || [];
+				properties.modifyUsers.combobox.open = false;
+			}}
 		>
 			<Dialog.Header>
-				<Dialog.Title class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class="icon-[material-symbols--edit] h-5 w-5"></span>
-						<span>Edit Users</span>
-					</div>
-					<div class="flex items-center gap-0.5">
-						<Button
-							size="sm"
-							variant="link"
-							title={'Reset'}
-							class="h-4"
-							onclick={() => {
-								properties = options;
-							}}
-						>
-							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-							<span class="sr-only">{'Reset'}</span>
-						</Button>
-						<Button
-							size="sm"
-							variant="link"
-							class="h-4"
-							title={'Close'}
-							onclick={() => {
-								properties = options;
-								properties.modifyUsers.open = false;
-							}}
-						>
-							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
-							></span>
-							<span class="sr-only">{'Close'}</span>
-						</Button>
-					</div>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[material-symbols--edit]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Edit Users"
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
@@ -406,14 +373,14 @@
 				onValueChange={(v) => {
 					properties.modifyUsers.combobox.value = v as string[];
 				}}
-				placeholder={'Select users'}
+				placeholder="Select Users"
 				multiple={true}
 				width="w-full"
 			/>
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={() => onModifyUsers()} type="submit" size="sm">{'Modify Users'}</Button>
+					<Button onclick={() => onModifyUsers()} type="submit" size="sm">Modify Users</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -118,19 +119,15 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex flex-col p-5" onInteractOutside={() => (open = false)}>
+	<Dialog.Content
+		class="flex flex-col p-5"
+		onInteractOutside={() => (open = false)}
+		showCloseButton={true}
+		onClose={() => (open = false)}
+	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class={`icon-[${icon}]`} style="width: 24px; height: 24px;"></span>
-					<span>{title}</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon={`icon-[${icon}]`} size="h-5 w-5" gap="gap-2" {title} />
 			</Dialog.Title>
 		</Dialog.Header>
 

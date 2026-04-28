@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { updateNotificationTransports } from '$lib/api/notifications';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -195,6 +196,29 @@
 		};
 	}
 
+	function resetForm() {
+		if (editingTransport) {
+			form = {
+				id: editingTransport.id,
+				name: editingTransport.name,
+				type: editingTransport.type,
+				enabled: editingTransport.enabled,
+				ntfyBaseUrl: editingTransport.ntfy?.baseUrl ?? 'https://ntfy.sh',
+				ntfyTopic: editingTransport.ntfy?.topic ?? '',
+				ntfyToken: '',
+				ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
+				smtpHost: editingTransport.email?.smtpHost ?? '',
+				smtpPort: editingTransport.email?.smtpPort ?? 587,
+				smtpUsername: editingTransport.email?.smtpUsername ?? '',
+				smtpFrom: editingTransport.email?.smtpFrom ?? '',
+				smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
+				smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
+				smtpPassword: '',
+				smtpHasPassword: editingTransport.email?.hasPassword ?? false
+			};
+		}
+	}
+
 	async function save() {
 		if (form.name.trim().length === 0) {
 			toast.error('Transport name is required', {
@@ -237,52 +261,21 @@
 <input type="password" style="display:none;" name="dummy_password" />
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-140">
+	<Dialog.Content
+		class="max-h-[90vh] overflow-y-auto sm:max-w-140"
+		showCloseButton={true}
+		showResetButton={edit && !!editingTransport}
+		onClose={() => (open = false)}
+		onReset={resetForm}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mingcute--mail-ai-line] h-5 w-5"></span>
-					<span>{edit ? 'Edit Transport' : 'New Transport'}</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					{#if edit && editingTransport}
-						<Button
-							size="sm"
-							variant="link"
-							title="Reset"
-							class="h-4"
-							onclick={() => {
-								if (editingTransport) {
-									form = {
-										id: editingTransport.id,
-										name: editingTransport.name,
-										type: editingTransport.type,
-										enabled: editingTransport.enabled,
-										ntfyBaseUrl: editingTransport.ntfy?.baseUrl ?? 'https://ntfy.sh',
-										ntfyTopic: editingTransport.ntfy?.topic ?? '',
-										ntfyToken: '',
-										ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
-										smtpHost: editingTransport.email?.smtpHost ?? '',
-										smtpPort: editingTransport.email?.smtpPort ?? 587,
-										smtpUsername: editingTransport.email?.smtpUsername ?? '',
-										smtpFrom: editingTransport.email?.smtpFrom ?? '',
-										smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
-										smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
-										smtpPassword: '',
-										smtpHasPassword: editingTransport.email?.hasPassword ?? false
-									};
-								}
-							}}
-						>
-							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-							<span class="sr-only">Reset</span>
-						</Button>
-					{/if}
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mingcute--mail-ai-line]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={edit ? 'Edit Transport' : 'New Transport'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -303,7 +296,7 @@
 					onChange={(v) => (form.type = v as 'ntfy' | 'smtp')}
 					classes={{
 						parent: 'flex-1 min-w-0 space-y-1.5',
-						label: 'h-7 flex items-center text-sm whitespace-nowrap',
+						label: 'text-sm font-medium whitespace-nowrap',
 						trigger:
 							'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
 					}}
@@ -386,8 +379,8 @@
 						}}
 					/>
 					<div class="grid grid-cols-2 gap-x-4">
-						<CustomCheckbox label="Use TLS/STARTTLS" bind:checked={form.smtpUseTls} />
 						<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
+						<CustomCheckbox label="Use TLS/STARTTLS" bind:checked={form.smtpUseTls} />
 					</div>
 				</div>
 			{/if}

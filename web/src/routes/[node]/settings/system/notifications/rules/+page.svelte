@@ -7,6 +7,7 @@
 	} from '$lib/api/notifications';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -226,6 +227,8 @@
 		}
 	});
 
+	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true });
+
 	let createTemplateOptions = $derived.by(() => {
 		return (currentConfig.templates || []).map((template) => ({
 			key: template.key,
@@ -308,6 +311,12 @@
 			templateLabel: selectedRule.templateLabel,
 			targetLabel: selectedRule.targetLabel,
 			active: selectedRule.active,
+			uiEnabled: selectedRule.uiEnabled,
+			ntfyEnabled: selectedRule.ntfyEnabled,
+			emailEnabled: selectedRule.emailEnabled
+		};
+
+		editOriginal = {
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
 			emailEnabled: selectedRule.emailEnabled
@@ -417,23 +426,14 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 		<Button size="sm" class="h-6" onclick={openCreateModal}>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{#if selectedRule}
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openEditModal}>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openDeleteModal}>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 		<Button
@@ -443,10 +443,12 @@
 			onclick={refreshRules}
 			disabled={busy.refresh}
 		>
-			{#if busy.refresh}
-				<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
-			{/if}
-			<span>Refresh</span>
+			<SpanWithIcon
+				icon={busy.refresh ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--refresh]'}
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Refresh"
+			/>
 		</Button>
 	</div>
 
@@ -463,23 +465,20 @@
 
 {#if modals.create.open}
 	<Dialog.Root bind:open={modals.create.open}>
-		<Dialog.Content class="sm:max-w-106.25" onInteractOutside={(e) => e.preventDefault()}>
+		<Dialog.Content
+			class="sm:max-w-106.25"
+			onInteractOutside={(e) => e.preventDefault()}
+			showCloseButton={true}
+			onClose={() => (modals.create.open = false)}
+		>
 			<Dialog.Header>
-				<Dialog.Title class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class="icon-[gg--add] h-4 w-4"></span>
-						<span>New Notification Rule</span>
-					</div>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => (modals.create.open = false)}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[gg--add]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="New Notification Rule"
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
@@ -544,23 +543,26 @@
 
 {#if modals.edit.open}
 	<Dialog.Root bind:open={modals.edit.open}>
-		<Dialog.Content class="sm:max-w-106.25" onInteractOutside={(e) => e.preventDefault()}>
+		<Dialog.Content
+			class="sm:max-w-106.25"
+			onInteractOutside={(e) => e.preventDefault()}
+			showCloseButton={true}
+			showResetButton={true}
+			onClose={() => (modals.edit.open = false)}
+			onReset={() => {
+				modals.edit.uiEnabled = editOriginal.uiEnabled;
+				modals.edit.ntfyEnabled = editOriginal.ntfyEnabled;
+				modals.edit.emailEnabled = editOriginal.emailEnabled;
+			}}
+		>
 			<Dialog.Header>
-				<Dialog.Title class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--pencil] h-4 w-4"></span>
-						<span>Edit Notification Rule</span>
-					</div>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => (modals.edit.open = false)}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[mdi--pencil]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Edit Notification Rule"
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 

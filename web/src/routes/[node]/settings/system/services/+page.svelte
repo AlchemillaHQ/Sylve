@@ -7,7 +7,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { type AvailableService, type BasicSettings } from '$lib/types/system/settings';
 	import type { Zpool } from '$lib/types/zfs/pool';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
@@ -30,7 +30,7 @@
 	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'zfs-pools-full',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getPools(true);
 			updateCache(key, results);
 			return results;
@@ -43,8 +43,13 @@
 	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'system-basic-settings',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getBasicSettings();
+			if (isAPIResponse(results)) {
+				handleAPIError(results);
+				return data.basicSettings;
+			}
+
 			setEnabledServicesForHostname(storage.hostname, results.services);
 			updateCache(key, results);
 			return results;

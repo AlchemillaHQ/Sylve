@@ -4,6 +4,7 @@
 	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
 	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -63,11 +64,12 @@
 		return { rows, columns };
 	}
 
+	// svelte-ignore state_referenced_locally
 	const users = resource(
 		() => 'users',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await listUsers();
-			updateCache('users', results);
+			updateCache(key, results);
 			return results;
 		},
 		{
@@ -75,11 +77,12 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const groups = resource(
 		() => 'groups',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await listGroups();
-			updateCache('groups', results);
+			updateCache(key, results);
 			return results;
 		},
 		{
@@ -126,11 +129,7 @@
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot delete admin user' : ''}
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 
@@ -145,10 +144,7 @@
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot edit admin user' : ''}
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
@@ -161,10 +157,7 @@
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--fingerprint] mr-1 h-4 w-4"></span>
-					<span>Passkeys</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--fingerprint]" size="h-4 w-4" gap="gap-2" title="Passkeys" />
 			</Button>
 		{/if}
 	{/if}
@@ -175,10 +168,7 @@
 		<Search bind:query />
 
 		<Button onclick={() => (modals.create.open = !modals.create.open)} size="sm" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{@render button('edit')}

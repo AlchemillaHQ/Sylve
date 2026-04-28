@@ -1030,8 +1030,6 @@ msgstr "नया"
 #~ msgid "Note"
 #~ msgstr "नोट"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
@@ -1058,8 +1056,6 @@ msgstr "नया"
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
@@ -1103,21 +1099,12 @@ msgstr "नया"
 #: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Reset"
 msgstr "रीसेट करें"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
-#: src/lib/components/custom/Dialog/SingleValue.svelte
-#: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
@@ -1152,8 +1139,6 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -1210,14 +1195,6 @@ msgstr "रीसेट करें"
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -6101,7 +6078,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -7103,8 +7080,6 @@ msgstr "नया समूह"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Select users"
 msgstr "उपयोगकर्ता चुनें"
 
@@ -12810,9 +12785,8 @@ msgstr ""
 msgid "Primary group cannot also be an auxiliary group"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "<0/> Browse"
-msgstr ""
+#~ msgid "<0/> Browse"
+#~ msgstr ""
 
 #~ msgid "Select Directory"
 #~ msgstr ""
@@ -13513,4 +13487,13 @@ msgstr ""
 
 #: src/lib/components/custom/Samba/Config.svelte
 msgid "Select interfaces"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Browse"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Select Users"
 msgstr ""

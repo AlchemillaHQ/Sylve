@@ -7,6 +7,7 @@
 		listUserPasskeys
 	} from '$lib/api/auth/passkeys';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Passkey } from '$lib/types/auth';
@@ -139,24 +140,21 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full min-w-2xl gap-4 p-5">
+	<Dialog.Content
+		class="w-full min-w-2xl gap-4 p-5"
+		showCloseButton={true}
+		onClose={() => {
+			open = false;
+		}}
+	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--fingerprint] h-5 w-5"></span>
-					<span>Passkeys - {username}</span>
-				</div>
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title={'Close'}
-					onclick={() => {
-						open = false;
-					}}
-				>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-				</Button>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--fingerprint]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={`Passkeys - ${username}`}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -194,7 +192,7 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each passkeys as passkey}
+						{#each passkeys as passkey, index (index)}
 							<tr class="border-b last:border-b-0">
 								<td class="px-3 py-2">{passkey.label || '-'}</td>
 								<td class="px-3 py-2 font-mono text-xs">{passkey.credentialId}</td>
@@ -207,8 +205,12 @@
 											void removePasskey(passkey.credentialId);
 										}}
 									>
-										<span class="icon-[material-symbols--delete-outline] h-4 w-4"></span>
-										<span class="sr-only">Delete</span>
+										<SpanWithIcon
+											icon="icon-[mdi--delete]"
+											size="h-4 w-4"
+											gap="gap-2"
+											title="Delete"
+										/>
 									</Button>
 								</td>
 							</tr>
