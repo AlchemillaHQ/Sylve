@@ -127,8 +127,8 @@
 		if (!modals.data) return '';
 		const status = wireGuardClientStatus(modals.data);
 		return status === 'disabled'
-			? `Enable WireGuard client "${modals.data.name}"?`
-			: `Disable WireGuard client "${modals.data.name}"?`;
+			? `Enable outbound WireGuard client <b>${modals.data.name}</b> ?`
+			: `Disable outbound WireGuard client <b>${modals.data.name}</b> ?`;
 	});
 </script>
 
@@ -141,7 +141,7 @@
 
 	<div class="flex items-start justify-between">
 		<div>
-			<h1 class="text-lg font-semibold tracking-tight">
+			<h1 class="flex items-center gap-2 text-lg font-semibold tracking-tight">
 				<span class="icon icon-[boxicons--network-chart] size-5 text-primary"></span>
 				<span>Outbound Clients</span>
 			</h1>
@@ -308,7 +308,7 @@
 
 <AlertDialog
 	bind:open={modals.delete}
-	customTitle="This action removes the selected WireGuard client. Continue?"
+	customTitle={`This will permanently delete WireGuard client <b>${modals.data?.name ?? ''}</b>, are you absolutely sure?`}
 	actions={{
 		onConfirm: confirmDelete,
 		onCancel: () => {

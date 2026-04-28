@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { getDHCPConfig } from '$lib/api/network/dhcp';
-	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
 	import Config from '$lib/components/custom/Network/DHCP/Config.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { DHCPConfig } from '$lib/types/network/dhcp';
-	import type { Iface } from '$lib/types/network/iface';
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
@@ -16,26 +15,16 @@
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
-		interfaces: Iface[];
 		switches: SwitchList;
 		dhcpConfig: DHCPConfig;
 	}
 
 	let { data }: { data: Data } = $props();
 
-	let networkInterfaces = resource(
-		() => 'network-interfaces',
-		async (key, prevKey, { signal }) => {
-			const res = await getInterfaces();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.interfaces }
-	);
-
+	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getSwitches();
 			updateCache(key, res);
 			return res;
@@ -43,9 +32,10 @@
 		{ initialValue: data.switches }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let dhcpConfig = resource(
 		() => 'dhcp-config',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getDHCPConfig();
 			updateCache(key, res);
 			return res;
@@ -59,7 +49,6 @@
 		() => reload,
 		(current) => {
 			if (current) {
-				networkInterfaces.refetch();
 				networkSwitches.refetch();
 				dhcpConfig.refetch();
 				reload = false;
@@ -142,7 +131,6 @@
 	});
 
 	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let modalOpen = $state(false);
 </script>
 
@@ -150,9 +138,13 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
-		<Button size="sm" variant="default" class="h-6.5" onclick={() => (modalOpen = true)}>
-			<span class="icon-[hugeicons--system-update-01] h-4 w-4"></span>
-			{'Update'}
+		<Button size="sm" variant="default" class="h-6" onclick={() => (modalOpen = true)}>
+			<SpanWithIcon
+				icon="icon-[hugeicons--system-update-01]"
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Update"
+			/>
 		</Button>
 	</div>
 
@@ -167,7 +159,6 @@
 <Config
 	bind:open={modalOpen}
 	bind:reload
-	networkInterfaces={networkInterfaces.current}
 	networkSwitches={networkSwitches.current}
 	dhcpConfig={dhcpConfig.current}
 />

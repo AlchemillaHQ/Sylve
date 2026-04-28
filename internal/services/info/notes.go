@@ -50,17 +50,14 @@ func (s *Service) BulkDeleteNotes(ids []int) error {
 		return err
 	}
 
-	if err := tx.Delete(&infoModels.Note{}, ids).Error; err != nil {
+	result := tx.Delete(&infoModels.Note{}, ids)
+	if result.Error != nil {
 		tx.Rollback()
-		return err
+		return result.Error
 	}
 
 	if err := tx.Commit().Error; err != nil {
 		return err
-	}
-
-	if tx.RowsAffected == 0 {
-		return errors.New("no records found")
 	}
 
 	return nil

@@ -4,7 +4,6 @@ import type { Disk } from '$lib/types/disk/disk';
 import type { Dataset } from '$lib/types/zfs/dataset';
 import type {
     ScanSentenceResult,
-    ScanStatsRaw,
     Zpool,
     ZpoolStatusPool,
     ZpoolVdev
@@ -68,6 +67,20 @@ function getPoolRedundancy(pool: Zpool): 'Stripe' | 'Mirror' | 'RAIDZ' | 'RAIDZ2
     }
 
     return 'Stripe';
+}
+
+function buildVdevRow(vdev: ZpoolVdev, poolGuid: string): Row {
+    return {
+        id: generateNumberFromString(vdev.name + poolGuid),
+        name: vdev.name,
+        size: vdev.size,
+        used: vdev.allocated,
+        health: vdev.state,
+        redundancy: '-',
+        children: vdev.vdevs && Object.keys(vdev.vdevs).length > 0
+            ? Object.values(vdev.vdevs).map((child) => buildVdevRow(child, poolGuid))
+            : []
+    };
 }
 
 export function generateTableData(
@@ -176,15 +189,7 @@ export function generateTableData(
 
                     for (const child in current.vdevs) {
                         const childVdev = current.vdevs[child];
-                        vdevRow.children!.push({
-                            id: generateNumberFromString(childVdev.name + pool.guid),
-                            name: childVdev.name,
-                            size: childVdev.size,
-                            used: childVdev.allocated,
-                            health: childVdev.state,
-                            redundancy: '-',
-                            children: []
-                        });
+                        vdevRow.children!.push(buildVdevRow(childVdev, pool.guid));
                     }
 
                     poolRow.children!.push(vdevRow);
@@ -419,7 +424,7 @@ export function getDatasetCompressionHist(
 
     for (const dataset of related) {
         const used = dataset.used;
-        const logicalUsed = dataset.logicalused;
+        const logicalUsed = dataset.properties?.logicalused;
 
         if (typeof used === 'number' && typeof logicalUsed === 'number' && logicalUsed > 0) {
             if (dataset.name.includes('/')) {
@@ -447,39 +452,6 @@ export function getDatasetCompressionHist(
 }
 
 export type StatType = 'allocated' | 'free' | 'size' | 'dedupRatio';
-
-export function getPoolStatsCombined(poolStats: Record<string, any[]>, statType: StatType) {
-    if (!poolStats) {
-        return {
-            poolStatsData: [],
-            poolStatsKeys: []
-        };
-    }
-
-    const poolStatsData = Object.entries(poolStats)
-        .map(([poolName, stats]) => {
-            if (!Array.isArray(stats)) return [];
-
-            return stats.map((entry) => ({
-                date: new Date(entry.time),
-                [poolName]: entry[statType] ?? 0
-            }));
-        })
-        .filter((array) => array.length > 0)
-        // Sort each pool's data points by time
-        .map((dataPoints) => dataPoints.sort((a, b) => a.date.getTime() - b.date.getTime()));
-
-    const poolStatsKeys = Object.keys(poolStats).map((poolName, index) => {
-        const colorId = `chart-${(index % 5) + 1}`; // cycle through chart1 → chart5
-        return {
-            key: poolName,
-            title: poolName.charAt(0).toUpperCase() + poolName.slice(1),
-            color: colorId
-        };
-    });
-
-    return { poolStatsData, poolStatsKeys };
-}
 
 export const getDateFormatByInterval = (intervalValue: number, includeTime: boolean): string => {
     if (intervalValue <= 1) return includeTime ? 'hh:mm:ss a' : 'hh:mm a';
@@ -555,7 +527,9 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
     const handlers: Record<string, ScanHandler> = {
         scrub: (s) => {
             const progress =
-                toExamine > 0 ? Math.min(100, Math.round((examined / toExamine) * 100)) : null;
+                toExamine > 0 && issued > 0
+                    ? Math.min(99, Math.round((issued / toExamine) * 100))
+                    : null;
 
             if (s?.state === 'SCANNING') {
                 let timeRemaining = '';
@@ -583,7 +557,7 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
             })();
 
             const text = `Scrub finished (${epochToLocal(end || start)}). ${h(examined)} / ${h(toExamine)} scanned, ${h(errors)} repaired, took ${durationText}`;
-            return { title: 'Pool Scrub', text, progressPercent: progress ?? 100 };
+            return { title: 'Pool Scrub', text, progressPercent: 100 };
         },
         resilver: (s) => {
             const progress =

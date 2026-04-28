@@ -3,6 +3,7 @@
 	import { getJails } from '$lib/api/jail/jail';
 	import { getVMs } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -207,7 +208,7 @@
 		form.name = '';
 		form.targetId = targets[0]?.id ? String(targets[0].id) : '';
 		form.runnerNodeId = standaloneMode
-			? (localNodeId || nodes[0]?.nodeUUID || '')
+			? localNodeId || nodes[0]?.nodeUUID || ''
 			: (nodes[0]?.nodeUUID ?? '');
 		form.mode = 'dataset';
 		form.sourceDataset = '';
@@ -225,10 +226,7 @@
 		form.name = job.name;
 		form.targetId = String(job.targetId);
 		form.runnerNodeId =
-			job.runnerNodeId ||
-			(standaloneMode ? localNodeId : '') ||
-			nodes[0]?.nodeUUID ||
-			'';
+			job.runnerNodeId || (standaloneMode ? localNodeId : '') || nodes[0]?.nodeUUID || '';
 		form.mode = (job.mode as BackupJobMode) || 'dataset';
 		form.sourceDataset = job.sourceDataset || '';
 		form.selectedJailId = '';
@@ -438,35 +436,23 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] min-w-1/2 overflow-y-auto p-5">
+	<Dialog.Content
+		class="max-h-[90vh] min-w-1/2 overflow-y-auto p-5"
+		showCloseButton={true}
+		showResetButton={edit}
+		onReset={handleReset}
+		onClose={handleClose}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span
-						class="{edit
-							? 'icon-[ic--outline-edit-calendar]'
-							: 'icon-[material-symbols--calendar-add-on-outline-rounded]'} h-5 w-5"
-					></span>
-					<span>{edit ? 'Edit Backup Job' : 'New Backup Job'}</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 {edit ? '' : 'hidden'}"
-						onclick={handleReset}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-
-					<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={handleClose}>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon={edit
+						? 'icon-[ic--outline-edit-calendar]'
+						: 'icon-[material-symbols--calendar-add-on-outline-rounded]'}
+					size="h-5 w-5"
+					gap="gap-2"
+					title={edit ? 'Edit Backup Job' : 'New Backup Job'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

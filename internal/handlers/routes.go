@@ -599,6 +599,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
 		clusterNotes.PUT("/:id", clusterHandlers.UpdateNote(clusterService))
 		clusterNotes.DELETE("/:id", clusterHandlers.DeleteNote(clusterService))
+		clusterNotes.POST("/bulk-delete", clusterHandlers.BulkDeleteNotes(clusterService))
 	}
 
 	clusterBackups := cluster.Group("/backups")
@@ -614,6 +615,7 @@ func RegisterRoutes(r *gin.Engine,
 			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
 			targets.GET("/:id/datasets/jail-metadata", clusterHandlers.BackupTargetDatasetJailMetadata(zeltaService))
 			targets.GET("/:id/datasets/vm-metadata", clusterHandlers.BackupTargetDatasetVMMetadata(zeltaService))
+			targets.GET("/:id/running-jobs", clusterHandlers.BackupTargetRunningJobIDs(clusterService))
 			targets.POST("/:id/restore", clusterHandlers.RestoreBackupTargetDataset(clusterService, zeltaService))
 		}
 

@@ -9,11 +9,10 @@
 package clusterHandlers
 
 import (
-	"strconv"
-
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/raft"
 )
@@ -21,6 +20,10 @@ import (
 type NoteRequest struct {
 	Title   string `json:"title" binding:"required,min=3"`
 	Content string `json:"content" binding:"required,min=3"`
+}
+
+type BulkDeleteRequest struct {
+	IDs []int `json:"ids" binding:"required"`
 }
 
 // @Summary Get All Cluster Notes
@@ -122,9 +125,8 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil || id <= 0 {
+		id, err := utils.GetIdFromParam(c)
+		if err != nil || id == 0 {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_id",
@@ -178,8 +180,7 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 // @Router /info/notes/{id} [delete]
 func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
+		id, err := utils.GetIdFromParam(c)
 		if err != nil || id <= 0 {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -229,6 +230,55 @@ func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "note_deleted",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
+// @Summary Bulk Delete Cluster Notes
+// @Description Bulk delete notes from the cluster by IDs
+// @Tags Cluster
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body BulkDeleteRequest true "Bulk Delete Notes Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /info/notes/bulk-delete [post]
+func BulkDeleteNotes(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
+		var req BulkDeleteRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		err := cS.ProposeNoteBulkDelete(req.IDs, cS.Raft == nil)
+		if err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "bulk_note_delete_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "notes_deleted",
 			Error:   "",
 			Data:    nil,
 		})

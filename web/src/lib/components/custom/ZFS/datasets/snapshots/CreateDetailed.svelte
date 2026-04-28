@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createPeriodicSnapshot, createSnapshot, getDatasets } from '$lib/api/zfs/datasets';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -99,10 +100,9 @@
 		recursive: false
 	};
 
-	// svelte-ignore state_referenced_locally
 	let properties = $state(options);
 
-	watch([() => properties.pool.value, () => datasets.current], ([poolValue, datasetsValue]) => {
+	watch([() => properties.pool.value, () => datasets.current], ([poolValue]) => {
 		if (poolValue) {
 			const sets = datasets.current
 				.filter((dataset) => dataset.pool === poolValue)
@@ -151,7 +151,7 @@
 
 			if (intervalType === 'none' || intervalType === '') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
-				retentionType === 'none';
+				retentionType = 'none';
 
 				let message = '';
 				if (prefill?.dataset && prefill?.pool) {
@@ -245,40 +245,21 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="p-5">
+	<Dialog.Content
+		class="p-5"
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between">
-				<div class="flex items-center">
-					<span class="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots] mr-2 h-6 w-6"></span>
-					<span>Create Snapshot</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Reset'}
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]" size="h-5 w-5" gap="gap-2" title="Create Snapshot" />
 			</Dialog.Title>
 		</Dialog.Header>
 

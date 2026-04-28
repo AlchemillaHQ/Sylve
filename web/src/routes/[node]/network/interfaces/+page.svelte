@@ -1,17 +1,16 @@
 <script lang="ts">
 	import { getInterfaces } from '$lib/api/network/iface';
 	import KvTableModal from '$lib/components/custom/KVTableModal.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { type Iface } from '$lib/types/network/iface';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, getCleanIfaceData } from '$lib/utils/network/iface';
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CellComponent } from 'tabulator-tables';
-	import { getNetworkObjects } from '$lib/api/network/object';
-	import type { NetworkObject } from '$lib/types/network/object';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { getJails } from '$lib/api/jail/jail';
 	import { isMACNearOrEqual } from '$lib/utils/mac';
@@ -25,7 +24,6 @@
 
 	interface Data {
 		interfaces: Iface[];
-		objects: NetworkObject[];
 		jails: Jail[];
 		vms: VM[];
 		switches: SwitchList;
@@ -34,50 +32,70 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getSwitches();
+			if (isAPIResponse(res)) {
+				return data.switches;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.switches }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let wgClients = resource(
 		() => 'network-vpn-wireguard-clients',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getWireGuardClients();
+			if (isAPIResponse(res)) {
+				return data.wgClients;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.wgClients }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getInterfaces();
+			if (isAPIResponse(res)) {
+				return data.interfaces;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.interfaces }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let jails = resource(
 		() => 'jail-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getJails();
+			if (isAPIResponse(res)) {
+				return data.jails;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.jails }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let vms = resource(
 		() => 'vm-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getVMs();
+			if (isAPIResponse(res)) {
+				return data.vms;
+			}
 			updateCache(key, res);
 			return res;
 		},
@@ -265,9 +283,7 @@
 			variant="outline"
 			class="h-6.5"
 		>
-			<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
-
-			{'View'}
+			<SpanWithIcon icon="icon-[mdi--eye]" size="h-4 w-4" gap="gap-2" title="View" />
 		</Button>
 	{/if}
 {/snippet}

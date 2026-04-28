@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -31,14 +32,24 @@
 <AlertDialog.Root bind:open>
 	<AlertDialog.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
 		<AlertDialog.Header>
-			<AlertDialog.Title>Are you sure?</AlertDialog.Title>
+			<AlertDialog.Title>
+				<SpanWithIcon
+					icon="icon-[lucide--alert-triangle]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Are you sure?"
+				/>
+			</AlertDialog.Title>
 			<AlertDialog.Description>
 				{#if customTitle}
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 					{@html customTitle}
 				{:else if names && names.parent && names.element}
-					{'This action cannot be undone. This will permanently delete '}
-					<span>{names.parent}</span>
-					<span class="font-semibold">{names.element}</span>.
+					<!-- eslint-disable-next-line svelte/no-useless-mustaches -->
+					<span>This action cannot be undone. This will permanently delete {''}</span><span
+						class="break-all"
+						>{names.parent} <span class="font-semibold">{names.element}</span></span
+					>.
 				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>

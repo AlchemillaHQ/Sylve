@@ -9,11 +9,12 @@
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
 	import CreateOrEdit from '$lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import type { DHCPConfig, DHCPRange, Leases } from '$lib/types/network/dhcp';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SwitchList } from '$lib/types/network/switch';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { getNetworkObjects } from '$lib/api/network/object';
@@ -41,7 +42,7 @@
 	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getInterfaces();
 			updateCache(key, res);
 			return res;
@@ -52,7 +53,7 @@
 	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getSwitches();
 			updateCache(key, res);
 			return res;
@@ -63,7 +64,7 @@
 	// svelte-ignore state_referenced_locally
 	let dhcpConfig = resource(
 		() => 'dhcp-config',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getDHCPConfig();
 			updateCache(key, res);
 			return res;
@@ -74,7 +75,7 @@
 	// svelte-ignore state_referenced_locally
 	let dhcpRanges = resource(
 		() => 'dhcp-ranges',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getDHCPRanges();
 			updateCache(key, res);
 			return res;
@@ -85,7 +86,7 @@
 	// svelte-ignore state_referenced_locally
 	let dhcpLeases = resource(
 		() => 'dhcp-leases',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getLeases();
 			updateCache(key, res);
 			return res;
@@ -96,7 +97,7 @@
 	// svelte-ignore state_referenced_locally
 	let networkObjects = resource(
 		() => 'network-objects',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getNetworkObjects();
 			updateCache(key, res);
 			return res;
@@ -301,10 +302,7 @@
 					variant="outline"
 					class="h-6.5"
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						<span>Delete</span>
-					</div>
+					<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 				</Button>
 			{:else if type === 'edit'}
 				<Button
@@ -316,10 +314,7 @@
 					variant="outline"
 					class="h-6.5"
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-						<span>Edit</span>
-					</div>
+					<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 				</Button>
 			{/if}
 		{/if}
@@ -336,10 +331,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 	{/if}
@@ -350,11 +342,7 @@
 		<Search bind:query />
 
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{@render button('edit')}
@@ -370,11 +358,8 @@
 	/>
 </div>
 
-{#if modals.create.open}
+{#if modals.create.open && !isAPIResponse(networkObjects.current)}
 	<CreateOrEdit
-		networkInterfaces={networkInterfaces.current}
-		networkSwitches={networkSwitches.current}
-		dhcpConfig={dhcpConfig.current}
 		dhcpRanges={dhcpRanges.current}
 		dhcpLeases={dhcpLeases.current}
 		bind:reload
@@ -384,11 +369,8 @@
 	/>
 {/if}
 
-{#if modals.edit.open}
+{#if modals.edit.open && !isAPIResponse(networkObjects.current)}
 	<CreateOrEdit
-		networkInterfaces={networkInterfaces.current}
-		networkSwitches={networkSwitches.current}
-		dhcpConfig={dhcpConfig.current}
 		dhcpRanges={dhcpRanges.current}
 		dhcpLeases={dhcpLeases.current}
 		bind:reload

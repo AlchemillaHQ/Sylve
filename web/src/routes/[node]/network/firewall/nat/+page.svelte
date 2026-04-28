@@ -14,6 +14,7 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import NATForm from '$lib/components/custom/Network/Firewall/NAT/Form.svelte';
 	import RouteForm from '$lib/components/custom/Network/Routes/Form.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -523,28 +524,24 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
 		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
 			<Button onclick={() => (modals.delete.open = true)} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 		{#if type === 'suggest-route'}
 			{#if ['snat', 'binat'].includes(String(activeRow[0]?.natType ?? '').toLowerCase()) && Boolean(activeRow[0]?.policyRouting)}
 				<Button onclick={openRouteSuggestionHelper} size="sm" variant="outline" class="h-6.5">
-					<div class="flex items-center">
-						<span class="icon-[mdi--routes-clock] mr-1 h-4 w-4"></span>
-						<span>Route Helper</span>
-					</div>
+					<SpanWithIcon
+						icon="icon-[mdi--routes-clock]"
+						size="h-4 w-4"
+						gap="gap-2"
+						title="Route Helper"
+					/>
 				</Button>
 			{/if}
 		{/if}
@@ -555,10 +552,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{@render button('edit-rule')}
 		{@render button('delete-rule')}
@@ -568,11 +562,10 @@
 			onclick={() => refreshCounters('manual')}
 			size="sm"
 			variant="outline"
-			class="h-6 ml-auto"
+			class="ml-auto h-6"
+			title="Refresh Counters"
 		>
-			<div class="flex items-center" title="Refresh Counters">
-				<span class="icon-[mdi--refresh] h-4 w-4"></span>
-			</div>
+			<span class="icon-[mdi--refresh] h-4 w-4"></span>
 		</Button>
 	</div>
 

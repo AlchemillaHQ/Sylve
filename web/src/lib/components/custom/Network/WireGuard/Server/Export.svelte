@@ -1,5 +1,6 @@
 <script lang="ts">
 	import QRCode from '$lib/components/custom/QRCode.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Combobox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -107,20 +108,19 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="gap-0 border-border/50 bg-card sm:max-w-137.5">
+	<Dialog.Content
+		class="gap-0 border-border/50 bg-card sm:max-w-137.5"
+		showCloseButton={true}
+		onClose={() => (open = false)}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="text-xl">
-				<div class="flex items-center justify-between">
-					<span class="flex items-center gap-2">
-						<span class="icon icon-[mdi--user-star-outline] size-5 text-primary"></span>
-						<span>Export Peer - {peer.name}</span>
-					</span>
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
-						<span class="icon pointer-events-none icon-[material-symbols--close-rounded] size-5"
-						></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--user-star-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Export Peer - {peer.name}"
+				/>
 			</Dialog.Title>
 			<Dialog.Description class="text-xs text-muted-foreground">
 				Review, edit, and export the peer configuration for distribution.

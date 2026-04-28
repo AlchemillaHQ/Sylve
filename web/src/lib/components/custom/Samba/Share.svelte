@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createSambaShare, updateSambaShare } from '$lib/api/samba/share';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -269,54 +270,28 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="flex flex-col p-5"
-		onInteractOutside={() => {
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
 			properties = options;
 			open = false;
 		}}
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--folder-network] h-6 w-6"></span>
-
-					{#if edit}
-						<span>Edit Samba Share</span>
-					{:else}
-						<span>Create Samba Share</span>
-					{/if}
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Reset"
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							open = false;
-							properties = options;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--folder-network]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={edit ? 'Edit Samba Share' : 'Create Samba Share'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-end">
 			<CustomValueInput
 				label="Name"
 				placeholder="share"
@@ -330,7 +305,8 @@
 				bind:open={properties.dataset.combobox.open}
 				bind:value={properties.dataset.combobox.value}
 				data={properties.dataset.combobox.options}
-				width="w-2/5"
+				classes="flex-1 space-y-1.5"
+				width="w-full"
 			/>
 
 			<div class="flex items-center justify-between gap-2 rounded border p-2 md:col-span-2">
@@ -355,7 +331,8 @@
 						multiple={true}
 						showCount={true}
 						showCountLabel=" users"
-						width="w-2/5"
+						classes="flex-1 space-y-1.5"
+						width="w-full"
 					/>
 
 					<CustomComboBox
@@ -367,7 +344,8 @@
 						multiple={true}
 						showCount={true}
 						showCountLabel=" users"
-						width="w-2/5"
+						classes="flex-1 space-y-1.5"
+						width="w-full"
 					/>
 
 					<CustomComboBox
@@ -379,7 +357,8 @@
 						multiple={true}
 						showCount={true}
 						showCountLabel=" groups"
-						width="w-2/5"
+						classes="flex-1 space-y-1.5"
+						width="w-full"
 					/>
 
 					<CustomComboBox
@@ -391,7 +370,8 @@
 						multiple={true}
 						showCount={true}
 						showCountLabel=" groups"
-						width="w-2/5"
+						classes="flex-1 space-y-1.5"
+						width="w-full"
 					/>
 				</div>
 			{:else}

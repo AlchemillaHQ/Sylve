@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -35,35 +36,29 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="flex max-h-[80vh] w-[90%] flex-col gap-0 overflow-hidden p-5 lg:max-w-4xl"
+		showCloseButton={true}
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
 	>
-		<div class="flex items-center justify-between">
-			<div class="flex items-center">
-				{#if titles.icon}
-					<span class="icon-[{titles.icon}] h-6 w-6"></span>
-				{/if}
-				<h2 class="ml-2 text-lg font-semibold">{titles.main}</h2>
-			</div>
-
-			<Dialog.Close
-				class="flex h-6 w-6 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				onclick={() => {
-					open = false;
-				}}
-			>
-				<span class="icon-[material-symbols--close-rounded] h-6 w-6"></span>
-			</Dialog.Close>
-		</div>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon={titles.icon ? `icon-[${titles.icon}]` : ''}
+					size="h-6 w-6"
+					gap="gap-2"
+					title={titles.main}
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<div class="mt-2 max-h-[60vh] overflow-y-auto">
 			<Table.Root
 				class="w-full border-collapse {tableHeaders.length > 0 ? 'table-auto' : 'table-fixed'}"
 			>
-				<Table.Header class="bg-background sticky top-0 z-[50]">
+				<Table.Header class="bg-background sticky top-0 z-50">
 					<Table.Row>
 						{#if tableHeaders.length > 0}
-							{#each tableHeaders as header}
+							{#each tableHeaders as header (header)}
 								<Table.Head class="h-10 px-3 py-2">{header}</Table.Head>
 							{/each}
 						{:else}
@@ -75,15 +70,15 @@
 
 				<Table.Body>
 					{#if tableHeaders.length > 0}
-						{#each KV as Array<Record<string, string | number>> as row}
+						{#each KV as Array<Record<string, string | number>> as row (row)}
 							<Table.Row>
-								{#each tableHeaders as header}
+								{#each tableHeaders as header (header)}
 									<Table.Cell class="h-10 px-3 py-2 whitespace-pre-line">{row[header]}</Table.Cell>
 								{/each}
 							</Table.Row>
 						{/each}
 					{:else}
-						{#each Object.entries(KV) as [key, value]}
+						{#each Object.entries(KV) as [key, value] (key)}
 							{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
 								<Table.Row>
 									<Table.Cell class="h-10 w-1/2 px-1 py-2 font-medium whitespace-nowrap">
@@ -104,12 +99,12 @@
 									</Table.Cell>
 								</Table.Row>
 								{#if expandedObjects[key]}
-									{#each Object.entries(value) as [nestedKey, nestedValue]}
+									{#each Object.entries(value) as [nestedKey, nestedValue] (nestedKey)}
 										<Table.Row>
 											<Table.Cell class="py-2 pr-3 pl-8 opacity-90">
 												{nestedKey}
 											</Table.Cell>
-											<Table.Cell class="px-3 py-2 break-words whitespace-pre-line">
+											<Table.Cell class="px-3 py-2 wrap-break-word whitespace-pre-line">
 												{nestedValue}
 											</Table.Cell>
 										</Table.Row>
@@ -118,7 +113,9 @@
 							{:else}
 								<Table.Row>
 									<Table.Cell class="px-3 py-2">{key}</Table.Cell>
-									<Table.Cell class="px-3 py-2 break-words whitespace-pre-line">{value}</Table.Cell>
+									<Table.Cell class="px-3 py-2 wrap-break-word whitespace-pre-line"
+										>{value}</Table.Cell
+									>
 								</Table.Row>
 							{/if}
 						{/each}

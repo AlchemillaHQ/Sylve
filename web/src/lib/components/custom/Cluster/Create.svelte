@@ -9,6 +9,7 @@
 	import { toast } from 'svelte-sonner';
 	import { logOut } from '$lib/api/auth';
 	import { watch } from 'runed';
+	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -22,8 +23,9 @@
 
 	let properties = $state(options);
 	let loading = $state(false);
+	let resetIP = $state(false);
 
-	watch([() => open, () => window?.location?.hostname], ([open, hostname]) => {
+	watch([() => open, () => window?.location?.hostname, () => resetIP], ([open, hostname]) => {
 		if (open && hostname) {
 			if (isValidIPv4(hostname) || isValidIPv6(hostname)) {
 				properties.ip = hostname;
@@ -64,6 +66,7 @@
 			toast.success('Cluster created', {
 				position: 'bottom-center'
 			});
+
 			open = false;
 			properties = options;
 
@@ -73,50 +76,28 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex  justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[oui--ml-create-population-job] h-6 w-6"></span>
-					<span>Create Cluster</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Reset'}
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-
-						<span class="sr-only">Reset</span>
-					</Button>
-
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => {
+			resetIP = !resetIP;
+		}}
+		onClose={() => (properties = options)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[oui--ml-create-population-job]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title="Create Cluster"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<CustomValueInput
-			bind:value={properties.ip}
-			placeholder="Node IP"
-			classes="flex-1 space-y-1.5"
-		/>
+		<div class="grid gap-4">
+			<CustomValueInput bind:value={properties.ip} placeholder="Node IP" classes="w-full" />
+		</div>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">

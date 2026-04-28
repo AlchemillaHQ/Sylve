@@ -295,13 +295,13 @@ func main() {
 	}
 
 	httpsServer := &http.Server{
-		Addr:      fmt.Sprintf(":%d", cfg.Port),
+		Addr:      fmt.Sprintf("%s:%d", cfg.IP, cfg.Port),
 		Handler:   r,
 		TLSConfig: tlsConfig,
 	}
 
 	httpServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
+		Addr:    fmt.Sprintf("%s:%d", cfg.IP, cfg.HTTPPort),
 		Handler: r,
 	}
 

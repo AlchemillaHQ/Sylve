@@ -8,6 +8,7 @@
 	} from '$lib/api/utilities/downloader';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import DownloaderUploadModal from '$lib/components/custom/Utilities/Downloader/UploadModal.svelte';
@@ -160,6 +161,13 @@
 			}
 		}
 		return !hasParent;
+	});
+
+	let deleteTitle = $derived.by(() => {
+		if (activeRows && Array.isArray(activeRows) && activeRows.length > 1) {
+			return 'Bulk Delete';
+		}
+		return 'Delete';
 	});
 
 	let httpDownloadSelected: boolean = $derived.by(() => {
@@ -335,10 +343,7 @@
 	{#if type === 'download' && onlyChildSelected && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--download] mr-1 h-4 w-4"></span>
-					<span>Download</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--download]" size="h-4 w-4" gap="gap-2" title="Download" />
 			</Button>
 		{/if}
 	{/if}
@@ -346,10 +351,7 @@
 	{#if type === 'download' && (httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--download] mr-1 h-4 w-4"></span>
-					<span>Download</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--download]" size="h-4 w-4" gap="gap-2" title="Download" />
 			</Button>
 		{/if}
 	{/if}
@@ -357,10 +359,7 @@
 	{#if type === 'copy' && (((httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleCopyURL} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--content-copy] mr-1 h-4 w-4"></span>
-					<span>Copy URL</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--content-copy]" size="h-4 w-4" gap="gap-2" title="Copy URL" />
 			</Button>
 		{/if}
 	{/if}
@@ -368,11 +367,7 @@
 	{#if type === 'delete' && onlyParentsSelected}
 		{#if activeRows && activeRows.length >= 1}
 			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-					<span>{activeRows.length > 1 ? 'Bulk Delete' : 'Delete'}</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title={deleteTitle} />
 			</Button>
 		{/if}
 	{/if}
@@ -383,11 +378,8 @@
 		<div class="flex items-center gap-2">
 			<Search bind:query />
 
-			<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6">
-				<div class="flex items-center">
-					<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-					<span>New</span>
-				</div>
+			<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6.5">
+				<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 			</Button>
 
 			<div class="flex items-center gap-2">
@@ -403,60 +395,39 @@
 			variant="outline"
 			class="h-6.5"
 		>
-			<div class="flex items-center">
-				<span class="icon-[lucide--upload] mr-1 h-4 w-4"></span>
-				<span>Upload</span>
-			</div>
+			<SpanWithIcon icon="icon-[lucide--upload]" size="h-4 w-4" gap="gap-2" title="Upload" />
 		</Button>
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
-		<Dialog.Content class="gap-0 p-3 max-w-xl">
-			<div class="flex items-center justify-between py-1 pb-2">
-				<Dialog.Header class="flex-1">
-					<Dialog.Title>
-						<div class="flex items-center gap-2">
-							<span class="icon-[mdi--download] text-primary h-5 w-5"></span>
-							<span>Download</span>
-						</div>
-					</Dialog.Title>
-				</Dialog.Header>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="ghost"
-						class="h-8"
-						title="Reset"
-						onclick={() => {
-							modalState.isOpen = true;
-							modalState.url = '';
-						}}
-					>
-						<span class="icon-[radix-icons--reset] h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="ghost"
-						class="h-8"
-						title="Close"
-						onclick={() => {
-							modalState.isOpen = false;
-							modalState.url = '';
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
-			</div>
+		<Dialog.Content
+			class="gap-0 pt-6 px-6 pb-3 max-w-xl"
+			showCloseButton={true}
+			showResetButton={true}
+			onClose={() => {
+				modalState.isOpen = false;
+				modalState.url = '';
+			}}
+			onReset={() => {
+				modalState.url = '';
+			}}
+		>
+			<Dialog.Header class="pr-14">
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[mdi--download] text-primary"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Download"
+					/>
+				</Dialog.Title>
+			</Dialog.Header>
 
 			<CustomValueInput
 				label="Magnet / HTTP URL / Path"
 				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60"
 				bind:value={modalState.url}
-				classes="flex-1 space-y-1"
+				classes="flex-1 space-y-1 mt-4"
 				type="textarea"
 				textAreaClasses="h-24 w-full break-all"
 			/>
@@ -481,7 +452,7 @@
 							]}
 							classes={{
 								parent: 'mt-2 flex-1 space-y-1 w-full',
-								label: 'flex h-7 items-center text-sm',
+								label: 'whitespace-nowrap text-sm',
 								trigger: 'w-full'
 							}}
 							bind:value={modalState.downloadType}

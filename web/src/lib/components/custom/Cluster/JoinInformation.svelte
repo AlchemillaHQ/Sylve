@@ -5,6 +5,7 @@
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
+	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -24,27 +25,15 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex  justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[ant-design--cluster-outlined] h-6 w-6"></span>
-					<span>Cluster Information</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+	<Dialog.Content showCloseButton={true}>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[ant-design--cluster-outlined]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title="Cluster Information"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 		<Table.Root>

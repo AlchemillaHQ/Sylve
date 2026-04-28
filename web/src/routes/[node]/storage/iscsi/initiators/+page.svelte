@@ -7,6 +7,7 @@
 		updateInitiator
 	} from '$lib/api/iscsi/initiator';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -235,27 +236,11 @@
 	title: string,
 	onSubmit: () => void,
 	submitLabel: string,
-	onClose: () => void,
-	onReset: (() => void) | null
+	onClose: () => void
 )}
 	<Dialog.Header>
-		<Dialog.Title class="flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<span class="icon-[mdi--server-network] h-5 w-5"></span>
-				<span>{title}</span>
-			</div>
-			<div class="flex items-center gap-0.5">
-				{#if onReset}
-					<Button size="sm" variant="link" title="Reset" class="h-4" onclick={onReset}>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-				{/if}
-				<Button size="sm" variant="link" class="h-4" title="Close" onclick={onClose}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
-			</div>
+		<Dialog.Title>
+			<SpanWithIcon icon="icon-[mdi--server-network]" size="h-5 w-5" gap="gap-2" {title} />
 		</Dialog.Title>
 	</Dialog.Header>
 	<form
@@ -264,6 +249,9 @@
 			onSubmit();
 		}}
 	>
+		<input type="text" style="display:none" autocomplete="username" />
+		<input type="password" style="display:none" autocomplete="new-password" />
+
 		<div class="max-h-[62vh] overflow-y-auto pr-1">
 			<div class="grid grid-cols-2 gap-x-4 gap-y-3 py-1">
 				<CustomValueInput
@@ -323,7 +311,6 @@
 								type="password"
 								bind:value={form.chapSecret}
 								classes="grid gap-1.5"
-								hint="Must be 12-16 characters (RFC 3720)"
 								revealOnFocus={true}
 							/>
 						</div>
@@ -345,7 +332,6 @@
 								type="password"
 								bind:value={form.tgtChapSecret}
 								classes="grid gap-1.5"
-								hint="Must be 12-16 characters (RFC 3720)"
 								revealOnFocus={true}
 							/>
 						</div>
@@ -366,18 +352,12 @@
 		<Search bind:query />
 
 		<Button onclick={openCreate} size="sm" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{#if activeRows !== null && activeRows.length === 1}
 			<Button onclick={openEdit} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit Initiator</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit Initiator" />
 			</Button>
 
 			<Button
@@ -386,10 +366,12 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete Initiator</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[mdi--delete]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Delete Initiator"
+				/>
 			</Button>
 		{/if}
 	</div>
@@ -404,25 +386,33 @@
 </div>
 
 <Dialog.Root bind:open={properties.create.open}>
-	<Dialog.Content class="sm:max-w-145" showCloseButton={false}>
+	<Dialog.Content
+		class="sm:max-w-145"
+		showCloseButton={true}
+		onClose={() => (properties.create.open = false)}
+	>
 		{@render initiatorForm(
 			'New iSCSI Initiator',
 			submitCreate,
 			'Create',
-			() => (properties.create.open = false),
-			null
+			() => (properties.create.open = false)
 		)}
 	</Dialog.Content>
 </Dialog.Root>
 
 <Dialog.Root bind:open={properties.edit.open}>
-	<Dialog.Content class="sm:max-w-145" showCloseButton={false}>
+	<Dialog.Content
+		class="sm:max-w-145"
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={() => (properties.edit.open = false)}
+		onReset={openEdit}
+	>
 		{@render initiatorForm(
 			'Edit iSCSI Initiator',
 			submitEdit,
 			'Save',
-			() => (properties.edit.open = false),
-			openEdit
+			() => (properties.edit.open = false)
 		)}
 	</Dialog.Content>
 </Dialog.Root>

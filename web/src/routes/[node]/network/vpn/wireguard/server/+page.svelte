@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { storage } from '$lib';
 	import {
 		deinitWireGuardServer,
 		editWireGuardServer,
@@ -88,6 +89,19 @@
 		return (
 			isAPIResponse(serverResource.current) &&
 			serverResource.current.message === 'wireguard_server_not_initialized'
+		);
+	});
+
+	let firewallDisabled = $derived.by(() => {
+		return !(storage.enabledServices ?? []).includes('firewall');
+	});
+
+	let firewallWarning = $derived.by(() => {
+		if (!firewallDisabled) return false;
+		return (
+			serverForm.allowWireGuardPort ||
+			serverForm.masqueradeIPv4Interface !== '' ||
+			serverForm.masqueradeIPv6Interface !== ''
 		);
 	});
 
@@ -280,6 +294,23 @@
 	{#if serviceDisabled}
 		<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
 			WireGuard service is disabled. Enable it from System Settings to manage runtime configuration.
+		</div>
+	{/if}
+
+	{#if firewallWarning}
+		<div in:fade={{ duration: 200 }}>
+			<Card.Root class="border-yellow-500/30 bg-yellow-500/10 p-0!">
+				<Card.Content
+					class="flex items-start gap-2 p-3 text-sm text-yellow-600 dark:text-yellow-400"
+				>
+					<span class="icon-[material-symbols--warning] mt-0.5 h-4 w-4 shrink-0"></span>
+					<span>
+						The firewall service is disabled. The "Allow WireGuard Port" rule and masquerade (NAT)
+						rules require an active firewall (PF) to take effect. The WireGuard tunnel itself still
+						works, but routed traffic will not be masqueraded.
+					</span>
+				</Card.Content>
+			</Card.Root>
 		</div>
 	{/if}
 

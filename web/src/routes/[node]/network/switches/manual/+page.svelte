@@ -3,6 +3,7 @@
 	import { deleteManualSwitch, getSwitches } from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import Create from '$lib/components/custom/Network/Switch/Manual/Create.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -21,20 +22,28 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getInterfaces();
+			if (isAPIResponse(res)) {
+				return data.interfaces;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.interfaces }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getSwitches();
+			if (isAPIResponse(res)) {
+				return data.switches;
+			}
 			updateCache(key, res);
 			return res;
 		},
@@ -115,20 +124,12 @@
 			size="sm"
 			class="h-6"
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{#if activeRow && Object.keys(activeRow).length > 0}
 			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 	</div>

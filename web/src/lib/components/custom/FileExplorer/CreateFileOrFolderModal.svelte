@@ -2,6 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		isOpen: boolean;
@@ -25,25 +26,20 @@
 <Dialog.Root bind:open={isOpen}>
 	<Dialog.Content
 		onInteractOutside={onClose}
-		class="fixed flex transform flex-col gap-4 overflow-auto p-5 transition-all duration-300 ease-in-out lg:max-w-md"
+		class="fixed flex transform flex-col gap-4 overflow-auto p-6 transition-all duration-300 ease-in-out lg:max-w-md"
+		showCloseButton={true}
+		showResetButton={true}
+		{onClose}
+		{onReset}
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[bi--hdd-stack-fill] h-5 w-5"></span>
-					Create {isFolder ? 'Folder' : 'File'}
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button onclick={onReset} size="sm" variant="link" class="h-4" title="Reset">
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={onClose}>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[bi--hdd-stack-fill]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create {isFolder ? 'Folder' : 'File'}"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 		<div class="mt-2">

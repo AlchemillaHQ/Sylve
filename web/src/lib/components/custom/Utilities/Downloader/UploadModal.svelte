@@ -2,6 +2,7 @@
 	import { storage } from '$lib';
 	import FilePond from '$lib/components/custom/FilePond.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -178,24 +179,14 @@
 	<Dialog.Content
 		onInteractOutside={handleClose}
 		class="fixed flex max-h-[90vh] transform flex-col gap-2 overflow-auto p-5 transition-all duration-300 ease-in-out lg:max-w-md"
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={handleClose}
+		onReset={handleReset}
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--upload] h-6 w-6"></span>
-					Upload File
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" title="Reset" onclick={handleReset}>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={handleClose}>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[material-symbols--upload]" size="h-6 w-6" gap="gap-2" title="Upload File" />
 			</Dialog.Title>
 		</Dialog.Header>
 

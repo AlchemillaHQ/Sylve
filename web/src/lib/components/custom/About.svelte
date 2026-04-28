@@ -36,13 +36,6 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-w-md sm:max-w-lg p-0 overflow-hidden">
 		<div class="relative flex items-center justify-center border-b bg-muted/10 p-5">
-			<Dialog.Close
-				class="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full opacity-60 transition-all hover:bg-muted hover:opacity-100"
-				onclick={() => (open = false)}
-			>
-				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
-			</Dialog.Close>
-
 			<div class="flex items-center space-x-2.5">
 				<img
 					src={mode.current === 'dark' ? '/logo/white.svg' : '/logo/black.svg'}
@@ -56,7 +49,7 @@
 		<div class="max-h-[80vh] overflow-y-auto px-5 pt-0 pb-6 space-y-5">
 			<p class="text-sm leading-relaxed text-foreground/80 text-justify">
 				Sylve is a lightweight control plane for the <strong>FreeBSD ecosystem</strong>, unifying
-				Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a
+				Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a
 				high-performance Go backend and a responsive SvelteKit frontend, it makes complex
 				infrastructure simple.
 			</p>

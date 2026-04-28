@@ -1,11 +1,10 @@
 <script lang="ts">
-	import type { DHCPConfig, DHCPRange, DHCPStaticLease, Leases } from '$lib/types/network/dhcp';
-	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import type { DHCPRange, Leases } from '$lib/types/network/dhcp';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
 		generateDUIDOptions,
@@ -20,9 +19,6 @@
 	interface Props {
 		open: boolean;
 		reload: boolean;
-		networkInterfaces: Iface[];
-		networkSwitches: SwitchList;
-		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
 		dhcpLeases: Leases;
 		selectedLease: string | null | number;
@@ -32,10 +28,7 @@
 	let {
 		open = $bindable(),
 		reload = $bindable(),
-		networkInterfaces,
-		networkSwitches,
 		dhcpRanges,
-		dhcpConfig,
 		dhcpLeases,
 		selectedLease = null,
 		networkObjects
@@ -89,6 +82,7 @@
 		comments: selectedLease ? editing.lease?.comments || '' : ''
 	});
 
+	// svelte-ignore state_referenced_locally
 	let properties = $state(options);
 
 	$effect(() => {
@@ -269,37 +263,24 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<div class="flex items-center justify-between">
-			<Dialog.Header>
-				<Dialog.Title>
-					<div class="flex items-center">
-						<span class="icon-[memory--range] mr-2 h-6 w-6"></span>
+	<Dialog.Content
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => (properties = options)}
+		onClose={() => (open = false)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--lan-connect]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title={selectedLease ? 'Edit DHCP Lease' : 'Create DHCP Lease'}
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
-						<span>{selectedLease ? 'Edit' : 'Create'} DHCP Lease</span>
-					</div>
-				</Dialog.Title>
-			</Dialog.Header>
-
-			<div class="flex items-center gap-0.5">
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title={'Reset'}
-					onclick={() => (properties = options)}
-				>
-					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Reset'}</span>
-				</Button>
-				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
-			</div>
-		</div>
-
-		<div class="flex flex-row gap-2">
+		<div class="flex flex-row items-end gap-2">
 			<CustomValueInput
 				label="Hostname"
 				bind:value={properties.hostname}

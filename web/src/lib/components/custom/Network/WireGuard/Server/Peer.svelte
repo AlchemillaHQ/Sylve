@@ -6,9 +6,11 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { WireGuardServer, WireGuardServerPeer } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
 	import {
+		clientAddressesPlaceHolder,
 		generateKeypair,
 		generateNextClientIPs,
 		generatePresharedKey
@@ -128,29 +130,30 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="gap-0 border-border/50 bg-card sm:max-w-137.5">
+	<Dialog.Content
+		class="gap-0 border-border/50 bg-card sm:max-w-137.5"
+		showCloseButton={true}
+		showResetButton={id !== null}
+		onClose={close}
+		onReset={reset}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between text-xl">
-				<div class="flex items-center gap-2">
-					{#if id !== null}
-						<span>Edit Peer - {peer?.name ?? ''}</span>
-					{:else}
-						<span>Add New Peer</span>
-					{/if}
-				</div>
-				<div class="flex items-center gap-0.5">
-					{#if id !== null}
-						<Button size="sm" variant="link" title="Reset" class="h-4" onclick={reset}>
-							<span class="icon pointer-events-none icon-[radix-icons--reset] size-4"></span>
-							<span class="sr-only">Reset</span>
-						</Button>
-					{/if}
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={close}>
-						<span class="icon pointer-events-none icon-[material-symbols--close-rounded] size-5"
-						></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				{#if id !== null}
+					<SpanWithIcon
+						icon="icon-[mdi--account-edit-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Edit Peer - {peer?.name ?? ''}"
+					/>
+				{:else}
+					<SpanWithIcon
+						icon="icon-[mdi--account-plus-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Add New Peer"
+					/>
+				{/if}
 			</Dialog.Title>
 			<Dialog.Description class="text-xs text-muted-foreground">
 				Configure identity and routing for a WireGuard peer connection.
@@ -242,11 +245,11 @@
 			<Tabs.Content value="routing" class="flex-1 overflow-y-auto space-y-4">
 				<CustomValueInput
 					label="Client IPs"
-					placeholder="10.210.0.2/32"
+					placeholder={clientAddressesPlaceHolder}
 					bind:value={form.clientIPs}
 					type="textarea"
 					classes="flex-1 space-y-1"
-					textAreaClasses="min-h-20 max-h-20"
+					textAreaClasses="min-h-18 max-h-18"
 					topRightButton={{
 						icon: 'icon-[ix--ai]',
 						tooltip: 'Auto-generate next available IPs from server subnet',
@@ -259,7 +262,7 @@
 					bind:value={form.routableIPs}
 					type="textarea"
 					classes="flex-1 space-y-1"
-					textAreaClasses="min-h-20 max-h-24"
+					textAreaClasses="min-h-18 max-h-18"
 					hint="Optional, one CIDR per line"
 				/>
 				<CustomCheckbox label="Route above IPs" bind:checked={form.routeIPs} />

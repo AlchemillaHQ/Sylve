@@ -5,6 +5,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
 	import { watch } from 'runed';
@@ -207,6 +208,7 @@
 	const MAX_FIBS = 8;
 
 	function usedFibs(): Set<number> {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const used = new Set<number>();
 		for (const c of clients) {
 			if (c.id === client?.id) continue;
@@ -249,27 +251,28 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="max-h-[90vh] gap-0 overflow-y-auto border-border/50 bg-card sm:max-w-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-		showCloseButton={false}
+		showCloseButton={true}
+		showResetButton={client !== null}
+		onClose={close}
+		onReset={reset}
 	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between text-xl">
-				<div class="flex items-center gap-2">
-					<span class="icon icon-[mdi--network-outline] size-5 text-primary"></span>
-					{client ? `Edit Client - ${client.name}` : 'New Outbound Client'}
-				</div>
-				<div class="flex items-center gap-0.5">
-					{#if client}
-						<Button size="sm" variant="link" title="Reset" class="h-4" onclick={reset}>
-							<span class="icon pointer-events-none icon-[radix-icons--reset] size-4"></span>
-							<span class="sr-only">Reset</span>
-						</Button>
-					{/if}
-					<Button size="sm" variant="link" title="Close" class="h-4" onclick={close}>
-						<span class="icon pointer-events-none icon-[material-symbols--close-rounded] size-5"
-						></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				{#if client}
+					<SpanWithIcon
+						icon="icon-[mdi--network-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Edit Client - {client.name}"
+					/>
+				{:else}
+					<SpanWithIcon
+						icon="icon-[mdi--network-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="New Outbound Client"
+					/>
+				{/if}
 			</Dialog.Title>
 			<Dialog.Description class="text-xs text-muted-foreground">
 				Configure an independent connection to a remote WireGuard endpoint.
@@ -457,7 +460,7 @@
 					</Accordion.Trigger>
 					<Accordion.Content class="pt-2">
 						<div class="space-y-3">
-							<div class="grid grid-cols-3 gap-3">
+							<div class="grid grid-cols-3 items-start gap-3">
 								<div class="space-y-1">
 									<CustomValueInput
 										label="Listen Port"
@@ -465,7 +468,6 @@
 										type="number"
 										bind:value={form.listenPort}
 										classes="space-y-1"
-										hint="Set a specific local port to listen on. Leave as 0 to auto-assign."
 									/>
 								</div>
 								<div class="space-y-1">

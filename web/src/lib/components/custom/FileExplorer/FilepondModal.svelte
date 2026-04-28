@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { sha256 } from '$lib/utils/string';
 	import type { FilePond as FilePondType } from 'filepond';
 	import { registerPlugin } from 'filepond';
@@ -44,11 +44,11 @@
 		}
 	}
 
-	function handleAddFile(err: any, fileItem: any) {
+	function handleAddFile(_err: unknown, fileItem: unknown) {
 		console.log('A file has been added', fileItem);
 	}
 
-	function handleProcessFile(error: any, file: any) {
+	function handleProcessFile(error: unknown, _file: unknown) {
 		if (error) {
 			console.error('Upload failed:', error);
 			return;
@@ -78,20 +78,18 @@
 <Dialog.Root bind:open={isOpen}>
 	<Dialog.Content
 		onInteractOutside={onClose}
-		class="fixed flex transform flex-col gap-2 overflow-auto p-5 transition-all duration-300 ease-in-out lg:max-w-md"
+		class="fixed flex transform flex-col gap-2 overflow-auto p-6 transition-all duration-300 ease-in-out lg:max-w-md"
+		showCloseButton={true}
+		{onClose}
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--upload] h-6 w-6"></span>
-					Upload File
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" title="Close" onclick={onClose}>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[material-symbols--upload]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Upload File"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 		<div class="app mt-4">

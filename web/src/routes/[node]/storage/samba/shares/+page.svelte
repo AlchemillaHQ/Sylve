@@ -5,6 +5,7 @@
 	import { deleteSambaShare, getSambaShares } from '$lib/api/samba/share';
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Share from '$lib/components/custom/Samba/Share.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -129,7 +130,10 @@
 	let properties = $state(options);
 	let query = $state('');
 
-	function generateTableData(shares: SambaShare[], datasets: Dataset[]): {
+	function generateTableData(
+		shares: SambaShare[],
+		datasets: Dataset[]
+	): {
 		rows: Row[];
 		columns: Column[];
 	} {
@@ -221,11 +225,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-
-					<span>Edit Share</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit Share" />
 			</Button>
 		{/if}
 
@@ -238,11 +238,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-					<span>Delete Share</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete Share" />
 			</Button>
 		{/if}
 	{/if}

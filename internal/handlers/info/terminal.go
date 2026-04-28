@@ -97,7 +97,7 @@ type hostWindowSize struct {
 	Y    uint16 `json:"y"`
 }
 
-func (sm *hostSessionManager) GetOrCreateSession(sessionID string) (*hostTerminalSession, error) {
+func (sm *hostSessionManager) GetOrCreateSession(sessionID string, username string) (*hostTerminalSession, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -105,7 +105,12 @@ func (sm *hostSessionManager) GetOrCreateSession(sessionID string) (*hostTermina
 		return session, nil
 	}
 
-	cmd := exec.Command("login", "-f", "root")
+	var cmd *exec.Cmd
+	if username == "root" {
+		cmd = exec.Command("login", "-f", "root")
+	} else {
+		cmd = exec.Command("login")
+	}
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	ptymx, err := pty.Start(cmd)
@@ -273,8 +278,23 @@ func HandleHostTerminal(c *gin.Context) {
 		return conn.SetReadDeadline(time.Now().Add(hostWSPongWait))
 	})
 
-	const sessionID = "host-terminal"
-	session, err := hostTerminalSessionManager.GetOrCreateSession(sessionID)
+	username, _ := c.Get("Username")
+	usernameStr, _ := username.(string)
+	if usernameStr == "" {
+		usernameStr = "root"
+	}
+
+	var sessionID string
+	if usernameStr == "root" {
+		sessionID = "host-terminal"
+	} else {
+		sessionID = "host-terminal-" + usernameStr
+		banner := "\r\n\x1b[33mNote: Direct root login is disabled on this terminal.\x1b[0m\r\n" +
+			"\x1b[33mLog in as a regular user, then use 'su -' to switch to root.\x1b[0m\r\n\r\n"
+		_ = conn.WriteMessage(websocket.BinaryMessage, []byte(banner))
+	}
+
+	session, err := hostTerminalSessionManager.GetOrCreateSession(sessionID, usernameStr)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte("Error starting session: "+err.Error()))
 		_ = conn.Close()

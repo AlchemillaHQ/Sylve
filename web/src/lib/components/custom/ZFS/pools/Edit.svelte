@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { editPool } from '$lib/api/zfs/pool';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -35,6 +36,7 @@
 		return names.some((name) => name.startsWith('raidz') || name.startsWith('mirror'));
 	});
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		autoexpand: pool.properties.autoexpand?.value || 'off',
 		autotrim: pool.properties.autotrim?.value || 'off',
@@ -91,41 +93,24 @@
 			properties = options;
 			open = false;
 		}}
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+		onReset={() => {
+			properties = options;
+		}}
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between gap-2 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--database-edit] h-5 w-5"></span>
-
-					<span>Edit ZFS Pool - {pool.name}</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Reset'}
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							open = false;
-							properties = options;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[mdi--database-edit]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={`Edit ZFS Pool - ${pool.name}`}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

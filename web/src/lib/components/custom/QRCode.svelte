@@ -20,7 +20,7 @@
 
 		await QRCode.toCanvas(canvas, value, {
 			width: size,
-			errorCorrectionLevel: 'H'
+			errorCorrectionLevel: 'M'
 		});
 
 		const ctx = canvas ? canvas.getContext('2d') : null;

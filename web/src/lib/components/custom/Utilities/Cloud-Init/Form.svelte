@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { cloudInitPlaceholders, generateTemplate } from '$lib/utils/utilities/cloud-init';
@@ -86,45 +87,21 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex max-h-[90vh] flex-col p-5 overflow-hidden">
+	<Dialog.Content
+		class="flex max-h-[90vh] flex-col p-5 overflow-hidden"
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+		onReset={() => {
+			properties = options;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--cloud-upload-outline] h-5 w-5"></span>
-					{#if isEdit}
-						<span>Edit Template - {template?.name}</span>
-					{:else}
-						<span>Create Template</span>
-					{/if}
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title={isEdit ? `Edit Template - ${template?.name}` : 'Create Template'} />
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -182,26 +159,17 @@
 
 {#if templateSelector.open}
 	<Dialog.Root bind:open={templateSelector.open}>
-		<Dialog.Content class="overflow-hidden p-5 max-w-[320px]!">
+		<Dialog.Content
+			class="overflow-hidden p-5 max-w-[320px]!"
+			showCloseButton={true}
+			onClose={() => {
+				templateSelector.open = false;
+			}}
+		>
 			<Dialog.Header>
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--cloud-upload-outline] h-5 w-5"></span>
-						<span>Select a Template</span>
-					</div>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							templateSelector.open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+				<Dialog.Title>
+					<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title="Select a Template" />
+				</Dialog.Title>
 			</Dialog.Header>
 
 			<SimpleSelect

@@ -11,7 +11,7 @@
 	import { storage } from '$lib';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -27,8 +27,12 @@
 	// svelte-ignore state_referenced_locally
 	const datacenter = resource(
 		() => 'cluster-info',
-		async (key, prevKey, { signal }) => {
+		async () => {
 			const res = await getDetails();
+			if (isAPIResponse(res)) {
+				return data.cluster;
+			}
+
 			updateCache('cluster-info', res);
 			return res;
 		},
@@ -73,7 +77,6 @@
 
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
 	let table = $derived.by(() => {
 		const rows: Row[] = [];
@@ -202,12 +205,14 @@
 </div>
 
 <Create bind:open={modals.create.open} bind:reload />
+
 <JoinInformation bind:open={modals.view.open} cluster={datacenter.current} />
+
 <Join bind:open={modals.join.open} bind:reload />
 
 <AlertDialog
 	open={modals.reset.open}
-	customTitle={`This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone.`}
+	customTitle="This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
 	actions={{
 		onConfirm: async () => {
 			const response = await resetCluster();

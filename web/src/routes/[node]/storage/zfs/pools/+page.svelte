@@ -9,6 +9,7 @@
 	import Edit from '$lib/components/custom/ZFS/pools/Edit.svelte';
 	import Replace from '$lib/components/custom/ZFS/pools/Replace.svelte';
 	import Status from '$lib/components/custom/ZFS/pools/Status.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Disk } from '$lib/types/disk/disk';
@@ -167,11 +168,7 @@
 					variant="outline"
 					class="h-6.5"
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
-
-						<span>Status</span>
-					</div>
+					<SpanWithIcon icon="icon-[mdi--eye]" size="h-4 w-4" gap="gap-1" title="Status" />
 				</Button>
 			{/if}
 
@@ -196,11 +193,7 @@
 						disabled={scrubbing}
 						title={scrubbing ? 'A scrub is already in progress' : ''}
 					>
-						<div class="flex items-center">
-							<span class="icon-[cil--scrubber] mr-1 h-4 w-4"></span>
-
-							<span>Scrub</span>
-						</div>
+						<SpanWithIcon icon="icon-[cil--scrubber]" size="h-4 w-4" gap="gap-1" title="Scrub" />
 					</Button>
 				{/if}
 			{/if}
@@ -218,11 +211,7 @@
 						? 'Please wait for the scrub/replace operation to finish'
 						: ''}
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-
-						<span>Edit</span>
-					</div>
+					<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit" />
 				</Button>
 			{/if}
 
@@ -237,10 +226,7 @@
 					disabled={replacing}
 					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						<span>Delete</span>
-					</div>
+					<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 				</Button>
 			{/if}
 		{/if}
@@ -263,11 +249,12 @@
 					disabled={replacing}
 					title={replacing ? 'Replace already in progress' : ''}
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
-
-						<span>Replace Device</span>
-					</div>
+					<SpanWithIcon
+						icon="icon-[mdi--swap-horizontal]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Replace Device"
+					/>
 				</Button>
 			{/if}
 		{/if}
@@ -284,11 +271,7 @@
 			disabled={replacing}
 			title={replacing ? 'Please wait for the current replace operation to finish' : ''}
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-1" title="New" />
 		</Button>
 
 		{@render button('pool-status')}

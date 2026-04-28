@@ -10,7 +10,7 @@ import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
-export async function getDetails(): Promise<ClusterDetails> {
+export async function getDetails(): Promise<ClusterDetails | APIResponse> {
     return await apiRequest('/cluster', ClusterDetailsSchema, 'GET');
 }
 

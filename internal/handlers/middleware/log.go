@@ -51,7 +51,7 @@ func shouldRedactAuditPayload(path string) bool {
 
 	// These endpoints can carry credentials, cluster keys, or signed download URLs.
 	return strings.HasPrefix(path, "/api/auth/") ||
-		strings.HasPrefix(path, "/api/cluster/") ||
+		(strings.HasPrefix(path, "/api/cluster/") && !strings.HasPrefix(path, "/api/cluster/backups/")) ||
 		path == "/api/utilities/downloads/signed-url"
 }
 

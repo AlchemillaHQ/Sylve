@@ -4,15 +4,15 @@
 	import { getSwitches } from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import CreateOrEdit from '$lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { DHCPConfig, DHCPRange } from '$lib/types/network/dhcp';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { secondsToDnsmasq } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource, watch } from 'runed';
@@ -23,45 +23,60 @@
 		switches: SwitchList;
 		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
-		networkObjects: NetworkObject[];
 	}
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getInterfaces();
+			if (isAPIResponse(res)) {
+				return data.interfaces;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.interfaces }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getSwitches();
+			if (isAPIResponse(res)) {
+				return data.switches;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.switches }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let dhcpConfig = resource(
 		() => 'dhcp-config',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getDHCPConfig();
+			if (isAPIResponse(res)) {
+				return data.dhcpConfig;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.dhcpConfig }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let dhcpRanges = resource(
 		() => 'dhcp-ranges',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getDHCPRanges();
+			if (isAPIResponse(res)) {
+				return data.dhcpRanges;
+			}
 			updateCache(key, res);
 			return res;
 		},
@@ -108,7 +123,7 @@
 			{
 				field: 'type',
 				title: 'Type',
-				formatter(cell, formatterParams, onRendered) {
+				formatter(cell) {
 					if (cell.getValue() === 'ipv4') {
 						return 'IPv4';
 					} else if (cell.getValue() === 'ipv6') {
@@ -123,7 +138,7 @@
 			{
 				field: 'startIP',
 				title: 'Start IP',
-				formatter(cell, formatterParams, onRendered) {
+				formatter(cell) {
 					if (cell.getValue() === '') {
 						return '-';
 					} else {
@@ -134,7 +149,7 @@
 			{
 				field: 'endIP',
 				title: 'End IP',
-				formatter(cell, formatterParams, onRendered) {
+				formatter(cell) {
 					if (cell.getValue() === '') {
 						return '-';
 					} else {
@@ -145,7 +160,7 @@
 			{
 				field: 'expiry',
 				title: 'Expiry',
-				formatter(cell, formatterParams, onRendered) {
+				formatter(cell) {
 					if (cell.getValue() === 0) {
 						return renderWithIcon('mdi:forever', 'Never');
 					} else {
@@ -205,14 +220,11 @@
 		variant="outline"
 		class="h-6.5"
 	>
-		<div class="flex items-center">
-			{#if type === 'delete'}
-				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-			{:else if type === 'edit'}
-				<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-			{/if}
-			<span>{type === 'delete' ? 'Delete' : 'Edit'}</span>
-		</div>
+		{#if type === 'delete'}
+			<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+		{:else if type === 'edit'}
+			<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
+		{/if}
 	</Button>
 {/snippet}
 
@@ -221,10 +233,7 @@
 		<Search bind:query />
 
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{#if activeRows && activeRows.length === 1}

@@ -5,6 +5,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
 	import type { FirewallTrafficRule } from '$lib/types/network/firewall';
@@ -217,6 +218,31 @@
 	const isInbound = $derived(form.direction === 'in');
 	const isOutbound = $derived(form.direction === 'out');
 
+	function resetForm() {
+		if (editingRule) {
+			form = {
+				name: editingRule.name,
+				description: editingRule.description ?? '',
+				enabled: editingRule.enabled ?? true,
+				log: editingRule.log ?? false,
+				quick: editingRule.quick ?? false,
+				priority: editingRule.priority,
+				action: editingRule.action,
+				direction: editingRule.direction,
+				protocol: editingRule.protocol,
+				family: editingRule.family ?? 'any',
+				ingressInterfaces: editingRule.ingressInterfaces ?? [],
+				egressInterfaces: editingRule.egressInterfaces ?? [],
+				source: addrToForm(editingRule.sourceRaw, editingRule.sourceObjId),
+				dest: addrToForm(editingRule.destRaw, editingRule.destObjId),
+				srcPort: addrToForm(editingRule.srcPortsRaw, editingRule.srcPortObjId),
+				dstPort: addrToForm(editingRule.dstPortsRaw, editingRule.dstPortObjId)
+			};
+		} else {
+			form = defaultForm();
+		}
+	}
+
 	async function save() {
 		if (!form.name.trim()) {
 			toast.error('Rule name is required', { position: 'bottom-center' });
@@ -277,38 +303,23 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[96%] overflow-hidden p-5 lg:max-w-3xl md:max-w-2xl">
-		<div class="flex items-center justify-between">
-			<Dialog.Header>
-				<Dialog.Title>
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--shield-check-outline] h-5 w-5"></span>
-						{#if editingRule}
-							<span>Edit Rule — {editingRule.name}</span>
-						{:else}
-							<span>Create Traffic Rule</span>
-						{/if}
-					</div>
-				</Dialog.Title>
-			</Dialog.Header>
-
-			<div class="flex items-center gap-0.5">
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title="Reset"
-					onclick={() => (form = defaultForm())}
-				>
-					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Reset</span>
-				</Button>
-				<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
-			</div>
-		</div>
+	<Dialog.Content
+		class="w-[96%] overflow-hidden p-5 lg:max-w-3xl md:max-w-2xl"
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={resetForm}
+		onClose={() => (open = false)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--shield-check-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={editingRule ? `Edit Rule — ${editingRule.name}` : 'Create Traffic Rule'}
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<ScrollArea orientation="vertical" class="h-[68vh] pr-2">
 			<div class="space-y-5">

@@ -6,6 +6,7 @@
 		runBackupJob
 	} from '$lib/api/cluster/backups';
 	import Form from '$lib/components/custom/DataCenter/Backups/Jobs/Form.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import OOBRestore from '$lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte';
 	import Restore from '$lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -303,40 +304,35 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'edit' && activeRows.length === 1}
-		<Button onclick={openEditJob} size="sm" variant="outline" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
-				<span>Edit</span>
-			</div>
-		</Button>
-	{/if}
+	{#if activeRows.length === 1}
+		{#if type === 'edit'}
+			<Button onclick={openEditJob} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon icon="icon-[mdi--note-edit]" size="h-4 w-4" gap="gap-2" title="Edit" />
+			</Button>
+		{/if}
 
-	{#if type === 'delete' && activeRows.length === 1}
-		<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-				<span>Delete</span>
-			</div>
-		</Button>
-	{/if}
+		{#if type === 'delete'}
+			<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+			</Button>
+		{/if}
 
-	{#if type === 'run' && activeRows.length === 1}
-		<Button onclick={triggerJob} size="sm" variant="outline" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-				<span>Run Now</span>
-			</div>
-		</Button>
-	{/if}
+		{#if type === 'run'}
+			<Button onclick={triggerJob} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-2" title="Run Now" />
+			</Button>
+		{/if}
 
-	{#if type === 'restore' && activeRows.length === 1}
-		<Button onclick={openRestoreModal} size="sm" variant="outline" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[mdi--backup-restore] mr-1 h-4 w-4"></span>
-				<span>Restore</span>
-			</div>
-		</Button>
+		{#if type === 'restore'}
+			<Button onclick={openRestoreModal} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon
+					icon="icon-[mdi--backup-restore]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Restore"
+				/>
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 

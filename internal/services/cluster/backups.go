@@ -244,14 +244,34 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 	})
 }
 
-func (s *Service) ListBackupJobs() ([]clusterModels.BackupJob, error) {
+func (s *Service) ListBackupJobs(targetID uint) ([]clusterModels.BackupJob, error) {
 	var jobs []clusterModels.BackupJob
-	err := s.DB.
+	query := s.DB.
 		Preload("Target").
 		Order("target_id ASC").
-		Order("name ASC").
-		Find(&jobs).Error
+		Order("name ASC")
+	if targetID > 0 {
+		query = query.Where("target_id = ?", targetID)
+	}
+	err := query.Find(&jobs).Error
 	return jobs, err
+}
+
+// RunningJobIDsForTarget returns the IDs of jobs belonging to targetID that
+// currently have an active (non-completed) running event.
+func (s *Service) RunningJobIDsForTarget(targetID uint) ([]uint, error) {
+	if targetID == 0 {
+		return nil, fmt.Errorf("invalid_target_id")
+	}
+
+	var jobIDs []uint
+	err := s.DB.
+		Table("backup_events").
+		Select("DISTINCT backup_events.job_id").
+		Joins("JOIN backup_jobs ON backup_jobs.id = backup_events.job_id").
+		Where("backup_jobs.target_id = ? AND backup_events.status = ? AND backup_events.completed_at IS NULL", targetID, "running").
+		Pluck("backup_events.job_id", &jobIDs).Error
+	return jobIDs, err
 }
 
 func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {

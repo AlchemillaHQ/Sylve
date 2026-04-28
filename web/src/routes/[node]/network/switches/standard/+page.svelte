@@ -3,6 +3,7 @@
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { createSwitch, deleteSwitch, getSwitches, updateSwitch } from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -31,30 +32,42 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const networkInterfaces = resource(
 		() => 'network-interfaces',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getInterfaces();
+			if (isAPIResponse(res)) {
+				return data.interfaces;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.interfaces }
 	);
 
+	// svelte-ignore state_referenced_locally
 	const switches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getSwitches();
+			if (isAPIResponse(res)) {
+				return data.switches;
+			}
 			updateCache(key, res);
 			return res;
 		},
 		{ initialValue: data.switches }
 	);
 
+	// svelte-ignore state_referenced_locally
 	const networkObjects = resource(
 		() => 'network-objects',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const res = await getNetworkObjects();
+			if (isAPIResponse(res)) {
+				return data.objects;
+			}
 			updateCache(key, res);
 			return res;
 		},
@@ -363,76 +376,73 @@
 
 		comboBoxes.ports.value = [];
 
-		activeRows = null;
+		if (close) {
+			activeRows = null;
+		}
 	}
 
-	$effect(() => {
-		if (confirmModals.newSwitch.slaac) {
-			confirmModals.newSwitch.disableIPv6 = false;
-		}
+	watch(
+		[() => confirmModals.newSwitch.slaac, () => confirmModals.editSwitch.slaac],
+		(nwSLAAC, editSLAAC) => {
+			if (nwSLAAC) {
+				confirmModals.newSwitch.disableIPv6 = false;
+			}
 
-		if (confirmModals.editSwitch.slaac) {
-			confirmModals.editSwitch.disableIPv6 = false;
+			if (editSLAAC) {
+				confirmModals.editSwitch.disableIPv6 = false;
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (confirmModals.newSwitch.disableIPv6) {
-			confirmModals.newSwitch.slaac = false;
-		}
+	watch(
+		[() => confirmModals.newSwitch.disableIPv6, () => confirmModals.editSwitch.disableIPv6],
+		(nwDisableIPv6, editDisableIPv6) => {
+			if (nwDisableIPv6) {
+				confirmModals.newSwitch.slaac = false;
+			}
 
-		if (confirmModals.editSwitch.disableIPv6) {
-			confirmModals.editSwitch.slaac = false;
+			if (editDisableIPv6) {
+				confirmModals.editSwitch.slaac = false;
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (confirmModals.newSwitch.dhcp) {
-			comboBoxes.ipv4.value = '';
-			comboBoxes.ipv4Gw.value = '';
-			confirmModals.newSwitch.defaultRoute = false;
-		}
-	});
+	watch(
+		[() => confirmModals.newSwitch.dhcp, () => confirmModals.editSwitch.dhcp],
+		(nwDHCP, editDHCP) => {
+			if (nwDHCP || editDHCP) {
+				comboBoxes.ipv4.value = '';
+				comboBoxes.ipv4Gw.value = '';
 
-	$effect(() => {
-		if (confirmModals.newSwitch.slaac) {
-			comboBoxes.ipv6.value = '';
-			comboBoxes.ipv6Gw.value = '';
+				if (nwDHCP) {
+					confirmModals.newSwitch.defaultRoute = false;
+				} else if (editDHCP) {
+					confirmModals.editSwitch.defaultRoute = false;
+				}
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (confirmModals.editSwitch.dhcp) {
-			comboBoxes.ipv4.value = '';
-			comboBoxes.ipv4Gw.value = '';
-			confirmModals.editSwitch.defaultRoute = false;
+	watch(
+		[() => confirmModals.newSwitch.slaac, () => confirmModals.editSwitch.slaac],
+		(nwSLAAC, editSLAAC) => {
+			if (nwSLAAC || editSLAAC) {
+				comboBoxes.ipv6.value = '';
+				comboBoxes.ipv6Gw.value = '';
+			}
 		}
-	});
-
-	$effect(() => {
-		if (confirmModals.editSwitch.slaac) {
-			comboBoxes.ipv6.value = '';
-			comboBoxes.ipv6Gw.value = '';
-		}
-	});
+	);
 </script>
 
 {#snippet button(type: string)}
 	{#if activeRow && Object.keys(activeRow).length > 0}
 		{#if type === 'edit'}
 			<Button onclick={handleEdit} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{:else if type === 'delete'}
 			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 	{/if}
@@ -449,10 +459,7 @@
 			size="sm"
 			class="h-6"
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{@render button('edit')}
@@ -471,50 +478,29 @@
 	<Dialog.Root bind:open={confirmModals[confirmModals.active].open}>
 		<Dialog.Content
 			class="w-[90%] gap-4 p-5 lg:max-w-2xl"
+			showCloseButton={true}
+			showResetButton={true}
+			onReset={() => resetModal(false)}
+			onClose={() => resetModal(false)}
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
 		>
-			<div class="flex items-center justify-between">
-				<Dialog.Header>
-					<Dialog.Title>
-						<div class="flex items-center">
-							<span class="icon-[clarity--network-switch-line] mr-2 h-6 w-6"></span>
-							{#if confirmModals.active === 'editSwitch'}
-								{`Edit Standard Switch - ${confirmModals.editSwitch.oldName}`}
-							{:else}
-								{'Create Standard Switch'}
-							{/if}
-						</div>
-					</Dialog.Title>
-				</Dialog.Header>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Reset'}
-						onclick={() => resetModal(false)}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => resetModal(true)}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
-			</div>
+			<Dialog.Header>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[clarity--network-switch-line]"
+						size="h-6 w-6"
+						gap="gap-2"
+						title={confirmModals.active === 'editSwitch'
+							? `Edit Standard Switch - ${confirmModals.editSwitch.oldName}`
+							: 'Create Standard Switch'}
+					/>
+				</Dialog.Title>
+			</Dialog.Header>
 
 			{#if confirmModals.active === 'newSwitch'}
 				<CustomValueInput
-					label={'Name'}
+					label="Name"
 					placeholder="public"
 					bind:value={confirmModals[confirmModals.active].name}
 					classes="flex-1 space-y-1.5"
@@ -523,7 +509,7 @@
 
 			<div class="flex gap-4">
 				<CustomValueInput
-					label={'MTU'}
+					label="MTU"
 					placeholder="1280"
 					bind:value={confirmModals[confirmModals.active].mtu}
 					classes="flex-1 space-y-1.5"
@@ -531,7 +517,7 @@
 				/>
 
 				<CustomValueInput
-					label={'VLAN'}
+					label="VLAN"
 					placeholder="0"
 					bind:value={confirmModals[confirmModals.active].vlan}
 					classes="flex-1 space-y-1.5"
@@ -542,7 +528,7 @@
 			<div class="flex gap-4">
 				<CustomComboBox
 					bind:open={comboBoxes.ipv4.open}
-					label={'IPv4 Network'}
+					label="IPv4 Network"
 					bind:value={comboBoxes.ipv4.value}
 					data={generateNetworkOptions(networkObjects.current, 'IPv4')}
 					classes="flex-1 space-y-1"
@@ -554,7 +540,7 @@
 
 				<CustomComboBox
 					bind:open={comboBoxes.ipv4Gw.open}
-					label={'IPv4 Gateway'}
+					label="IPv4 Gateway"
 					bind:value={comboBoxes.ipv4Gw.value}
 					data={generateIPOptions(networkObjects.current, 'IPv4')}
 					classes="flex-1 space-y-1"
@@ -568,7 +554,7 @@
 			<div class="flex gap-4">
 				<CustomComboBox
 					bind:open={comboBoxes.ipv6.open}
-					label={'IPv6 Network'}
+					label="IPv6 Network"
 					bind:value={comboBoxes.ipv6.value}
 					data={generateNetworkOptions(networkObjects.current, 'IPv6')}
 					classes="flex-1 space-y-1"
@@ -583,7 +569,7 @@
 
 				<CustomComboBox
 					bind:open={comboBoxes.ipv6Gw.open}
-					label={'IPv6 Gateway'}
+					label="IPv6 Gateway"
 					bind:value={comboBoxes.ipv6Gw.value}
 					data={generateIPOptions(networkObjects.current, 'IPv6')}
 					classes="flex-1 space-y-1"
@@ -600,7 +586,7 @@
 			{#if confirmModals.active === 'newSwitch'}
 				<CustomComboBox
 					bind:open={comboBoxes.ports.open}
-					label={'Ports'}
+					label="Ports"
 					bind:value={comboBoxes.ports.value}
 					data={generateComboboxOptions(useablePorts)}
 					classes="flex-1 space-y-1"
@@ -611,7 +597,7 @@
 			{:else}
 				<CustomComboBox
 					bind:open={comboBoxes.ports.open}
-					label={'Ports'}
+					label="Ports"
 					bind:value={comboBoxes.ports.value}
 					data={generateComboboxOptions(useablePorts, activeRow?.portsOnly)}
 					classes="flex-1 space-y-1"
@@ -623,32 +609,32 @@
 
 			<div class="flex items-center gap-2">
 				<CustomCheckbox
-					label={'Private'}
+					label="Private"
 					bind:checked={confirmModals[confirmModals.active].private}
 					classes="flex items-center gap-2 mt-1"
 				></CustomCheckbox>
 
 				<CustomCheckbox
-					label={'DHCP'}
+					label="DHCP"
 					bind:checked={confirmModals[confirmModals.active].dhcp}
 					classes="flex items-center gap-2 mt-1"
 				></CustomCheckbox>
 
 				<CustomCheckbox
-					label={'SLAAC'}
+					label="SLAAC"
 					bind:checked={confirmModals[confirmModals.active].slaac}
 					classes="flex items-center gap-2 mt-1"
 				></CustomCheckbox>
 
 				<CustomCheckbox
-					label={'Disable IPV6'}
+					label="Disable IPV6"
 					bind:checked={confirmModals[confirmModals.active].disableIPv6}
 					classes="flex items-center gap-2 mt-1"
 				></CustomCheckbox>
 
 				{#if !confirmModals[confirmModals.active].dhcp}
 					<CustomCheckbox
-						label={'Default Route'}
+						label="Default Route"
 						bind:checked={confirmModals[confirmModals.active].defaultRoute}
 						classes="flex items-center gap-2 mt-1"
 					></CustomCheckbox>
@@ -659,11 +645,11 @@
 				<div class="flex gap-2">
 					{#if confirmModals.active === 'editSwitch'}
 						<Button onclick={confirmAction} type="submit" size="sm" class="w-full lg:w-28"
-							>{'Save'}</Button
+							>Save</Button
 						>
 					{:else}
 						<Button onclick={confirmAction} type="submit" size="sm" class="w-full lg:w-28"
-							>{'Create'}</Button
+							>Create</Button
 						>
 					{/if}
 				</div>

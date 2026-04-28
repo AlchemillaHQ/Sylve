@@ -4,6 +4,7 @@
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
 	import { toast } from 'svelte-sonner';
@@ -16,6 +17,7 @@
 
 	let { open = $bindable(), bridges, reload = $bindable() }: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		name: '',
 		bridge: {
@@ -54,51 +56,38 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<div class="flex items-center justify-between">
-			<Dialog.Header>
-				<Dialog.Title>
-					<div class="flex items-center">
-						<span class="icon-[streamline-sharp--router-wifi-network-solid] mr-2 h-6 w-6"></span>
-
-						<span class="text-lg font-semibold">Create Manual Switch</span>
-					</div>
-				</Dialog.Title>
-			</Dialog.Header>
-
-			<div class="flex items-center gap-0.5">
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title={'Reset'}
-					onclick={() => (properties = options)}
-				>
-					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Reset'}</span>
-				</Button>
-				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
-			</div>
-		</div>
+	<Dialog.Content
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => (properties = options)}
+		onClose={() => (open = false)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[streamline-sharp--router-wifi-network-solid]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title="Create Manual Switch"
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<div class="flex flex-col gap-4">
 			<CustomValueInput
-				label={'Name'}
+				label="Name"
 				placeholder="WAN"
 				bind:value={properties.name}
-				classes="flex-1 space-y-1.5"
+				classes="space-y-1"
 				type="text"
 			/>
 
 			<ComboBox
 				bind:open={properties.bridge.open}
-				label={'Bridge'}
+				label="Bridge"
 				bind:value={properties.bridge.selected}
 				data={properties.bridge.options}
-				classes="flex-1 space-y-1"
+				classes="space-y-1"
 				placeholder="Select bridge"
 				width="w-3/4"
 			></ComboBox>

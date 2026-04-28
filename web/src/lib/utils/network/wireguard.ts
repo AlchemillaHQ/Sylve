@@ -1,3 +1,5 @@
+export const clientAddressesPlaceHolder = `10.210.0.2/32\nfdc7:8a97:6114::2/128`
+
 export interface WireGuardKeypair {
     privateKey: string;
     publicKey: string;
@@ -171,6 +173,8 @@ export function generatePeerConfig(
     if (persistentKeepalive) {
         lines.push('PersistentKeepalive = 25');
     }
+
+    console.log(lines.join('\n'));
 
     return lines.join('\n');
 }

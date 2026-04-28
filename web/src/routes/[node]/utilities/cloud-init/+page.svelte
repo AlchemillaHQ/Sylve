@@ -10,6 +10,7 @@
 	import { generateTableData } from '$lib/utils/utilities/cloud-init';
 	import { resource, watch } from 'runed';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -70,10 +71,7 @@
 					modal.edit = true;
 				}}
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{:else if type === 'delete'}
 			<Button
@@ -88,10 +86,7 @@
 					modal.delete = true;
 				}}
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 	{/if}
@@ -101,10 +96,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 		<Button onclick={() => (modal.new = true)} size="sm" class="h-6  ">
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 
 		{@render button('edit')}

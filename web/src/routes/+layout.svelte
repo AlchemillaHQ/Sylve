@@ -91,7 +91,10 @@
 			loading.throbber = false;
 
 			const basicSettings = await getLocalBasicSettings();
-			setEnabledServicesForHostname(storage.localHostname || storage.hostname, basicSettings.services);
+			setEnabledServicesForHostname(
+				storage.localHostname || storage.hostname,
+				basicSettings.services
+			);
 			syncActiveEnabledServices(page.url.pathname);
 		} else {
 			stopSSEEvents();
@@ -249,6 +252,7 @@
 	watch(
 		() => visible.current,
 		(current) => {
+			console.log(storage.visible, 'FFF');
 			storage.visible = current;
 		}
 	);

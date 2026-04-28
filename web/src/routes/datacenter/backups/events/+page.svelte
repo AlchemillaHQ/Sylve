@@ -21,6 +21,7 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { getJails } from '$lib/api/jail/jail';
+	import type { Jail, JailStorage } from '$lib/types/jail/jail';
 
 	let filterJobId = $state('');
 	let reload = $state(false);
@@ -89,7 +90,7 @@
 		reload = true;
 	}
 
-	let jails = $state<any[]>([]);
+	let jails = $state<Jail[]>([]);
 	let jailsLoading = $state(false);
 	let progressEventId = $state(0);
 	let progressNodeId = $state('');
@@ -213,9 +214,9 @@
 		return segments.slice(-2).join('/');
 	}
 
-	function resolveJailName(dataset: string, currentJails: any[]): string {
+	function resolveJailName(dataset: string, currentJails: Jail[]): string {
 		for (const jail of currentJails) {
-			const baseStorage = jail.storages?.find((storage: any) => storage.isBase);
+			const baseStorage = jail.storages?.find((storage: JailStorage) => storage.isBase);
 			if (!baseStorage) continue;
 
 			const jailDataset = `${baseStorage.pool}/sylve/jails/${jail.ctId}`;
@@ -228,7 +229,7 @@
 
 	function compactEventEndpoint(
 		raw: string,
-		currentJails: any[],
+		currentJails: Jail[],
 		includeSnapshot: boolean
 	): { icon: string; label: string } {
 		const endpoint = parseEndpoint(raw);
@@ -311,7 +312,6 @@
 		return parsed;
 	});
 
-	// svelte-ignore state_referenced_locally
 	const progressEvent = resource(
 		[() => progressEventId, () => progressNodeId, () => progressModal.open],
 		async ([eventId, nodeId, open]) => {
@@ -321,8 +321,9 @@
 				const res = await getBackupEventProgress(eventId, nodeId);
 				progressModal.error = '';
 				return res;
-			} catch (e: any) {
-				progressModal.error = e?.message || 'Failed to load event progress';
+			} catch (e: unknown) {
+				progressModal.error =
+					(e as { message?: string })?.message || 'Failed to load event progress';
 				return null;
 			}
 		},
@@ -569,22 +570,24 @@
 		<div class="flex items-center gap-2 flex-1">
 			<Search bind:query />
 
+			{#if nodeOptions.length > 0}
+				<SimpleSelect
+					placeholder="Select node"
+					options={nodeOptions}
+					bind:value={selectedNodeId}
+					onChange={handleNodeSelection}
+					disabled={nodeOptions.length === 0}
+					classes={{
+						trigger: '!h-6 text-sm'
+					}}
+				/>
+			{/if}
+
 			<SimpleSelect
 				placeholder="Filter by job"
 				options={jobOptions}
 				bind:value={filterJobId}
 				onChange={() => (reload = true)}
-				classes={{
-					trigger: '!h-6 text-sm' /* Adjusted to h-6 to match your buttons */
-				}}
-			/>
-
-			<SimpleSelect
-				placeholder="Select node"
-				options={nodeOptions}
-				bind:value={selectedNodeId}
-				onChange={handleNodeSelection}
-				disabled={nodeOptions.length === 0}
 				classes={{
 					trigger: '!h-6 text-sm'
 				}}
@@ -632,36 +635,18 @@
 </div>
 
 <Dialog.Root bind:open={progressModal.open}>
-	<Dialog.Content class="w-[min(640px,95vw)] p-5">
+	<Dialog.Content class="w-[min(640px,95vw)] p-5" showCloseButton={true}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--chart-line] h-5 w-5"></span>
-						<span>
-							Event Progress
-							{#if progressEvent.current?.event}
-								#{progressEvent.current.event.id}
-							{:else if progressEventId > 0}
-								#{progressEventId}
-							{/if}
-						</span>
-					</div>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							progressModal.open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] h-4 w-4 pointer-events-none"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title class="flex items-center gap-2">
+				<span class="icon-[mdi--chart-line] h-5 w-5"></span>
+				<span>
+					Event Progress
+					{#if progressEvent.current?.event}
+						#{progressEvent.current.event.id}
+					{:else if progressEventId > 0}
+						#{progressEventId}
+					{/if}
+				</span>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -761,32 +746,16 @@
 </Dialog.Root>
 
 <Dialog.Root bind:open={errorModal.open}>
-	<Dialog.Content class="w-[min(760px,95vw)] h-[min(60vh,95vh)] p-5">
+	<Dialog.Content class="w-[min(760px,95vw)] h-[min(60vh,95vh)] p-5" showCloseButton={true}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--alert-circle-outline] h-5 w-5 text-red-500"></span>
-					<span>#{errorModal.id} Event - Error Details</span>
-				</div>
-				<div class="flex items-center gap-2">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							errorModal.open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] h-4 w-4 pointer-events-none"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title class="flex items-center gap-2">
+				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 text-red-500"></span>
+				<span>#{errorModal.id} Event - Error Details</span>
 			</Dialog.Title>
 		</Dialog.Header>
 
 		<div class="mt-3 max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
-			<pre class="whitespace-pre-wrap break-words text-sm">{errorModal.error || '-'}</pre>
+			<pre class="whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
 		</div>
 
 		<Dialog.Footer>

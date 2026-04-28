@@ -3,6 +3,7 @@
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { bulkDelete, deleteVolume, getDatasets } from '$lib/api/zfs/datasets';
 	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import CreateVolume from '$lib/components/custom/ZFS/datasets/volumes/Create.svelte';
@@ -14,10 +15,10 @@
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import { GZFSDatasetTypeSchema, type Dataset, type GroupedByPool } from '$lib/types/zfs/dataset';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { groupByPoolNames } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/volume';
-	import { resource } from 'runed';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -60,6 +61,9 @@
 		() => 'basic-settings',
 		async () => {
 			const settings = await getBasicSettings();
+			if (isAPIResponse(settings)) {
+				return data.settings.pools;
+			}
 			updateCache('basic-settings', settings);
 			return settings.pools;
 		},
@@ -69,15 +73,19 @@
 	);
 
 	let reload = $state(false);
-	$effect(() => {
-		if (reload) {
-			datasets.refetch();
-			downloads.refetch();
-			pools.refetch();
 
-			reload = false;
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				datasets.refetch();
+				downloads.refetch();
+				pools.refetch();
+
+				reload = false;
+			}
 		}
-	});
+	);
 
 	let grouped: GroupedByPool[] = $derived(groupByPoolNames(pools.current, datasets.current));
 	let table: {
@@ -191,10 +199,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--camera] mr-1 h-4 w-4"></span>
-					<span>Snapshot</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--camera]" size="h-4 w-4" gap="gap-2" title="Snapshot" />
 			</Button>
 		{/if}
 
@@ -209,11 +214,12 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--usb-flash-drive-outline] mr-1 h-4 w-4"></span>
-
-					<span>Flash File</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[mdi--usb-flash-drive-outline]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Flash File"
+				/>
 			</Button>
 		{/if}
 
@@ -228,10 +234,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 
@@ -246,10 +249,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 	{:else if activeRows && activeRows.length > 1}
@@ -266,11 +266,12 @@
 					variant="outline"
 					class="h-6.5"
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-						<span>Delete Volumes</span>
-					</div>
+					<SpanWithIcon
+						icon="icon-[mdi--delete]"
+						size="h-4 w-4"
+						gap="gap-2"
+						title="Delete Volumes"
+					/>
 				</Button>
 			{/if}
 		{/if}

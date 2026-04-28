@@ -13,10 +13,11 @@
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { fade } from 'svelte/transition';
 
 	interface Props {
@@ -44,7 +45,7 @@
 	);
 
 	const hostnameOptions = $derived.by(() => {
-		const names = new Set<string>();
+		const names = new SvelteSet<string>();
 
 		if (storage.hostname) {
 			names.add(storage.hostname);
@@ -66,7 +67,7 @@
 
 	const auditRecords = resource(
 		() => `audit-record-${effectiveHostname || 'default'}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getAuditRecords(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
@@ -75,7 +76,7 @@
 
 	const simpleVmList = resource(
 		() => `simple-vm-list-${effectiveHostname || 'default'}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getSimpleVMs(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
@@ -84,7 +85,7 @@
 
 	const simpleJails = resource(
 		() => `simple-jail-list-${effectiveHostname || 'default'}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getSimpleJails(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
@@ -96,7 +97,7 @@
 
 	const simpleJailTemplates = resource(
 		() => `simple-jail-template-list-${effectiveHostname || 'default'}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getSimpleJailTemplates(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
@@ -108,7 +109,7 @@
 
 	const simpleVMTemplates = resource(
 		() => `simple-vm-template-list-${effectiveHostname || 'default'}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const results = await getSimpleVMTemplates(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
@@ -161,6 +162,7 @@
 		'/api/auth/passkeys/register/finish': 'Passkey - Register - Finish',
 		'/api/auth/passkeys/users': 'Passkey',
 		'/api/auth/login': 'Login',
+		'/api/info/notes/bulk-delete': 'Notes - Bulk Delete',
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
@@ -232,6 +234,7 @@
 		'/api/network/wireguard/server/peer': 'WireGuard - Server Peer',
 		'/api/network/wireguard/clients': 'WireGuard - Client',
 		'/api/network/wireguard/clients/toggle': 'WireGuard - Client Toggle',
+		'/api/cluster/notes/bulk-delete': 'DC Notes - Bulk Delete',
 		'/api/cluster/notes': 'DC Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
 		'/api/cluster/backups/targets/validate': 'DC Backup Target - Validate',
@@ -301,7 +304,15 @@
 		});
 	});
 
-	let activeLifecycleCount = $derived(activeLifecycleTasks.current.length);
+	let activeLifecycleCount = $derived.by(() => {
+		if (!activeLifecycleTasks.current) return 0;
+		if (Array.isArray(activeLifecycleTasks.current)) {
+			return activeLifecycleTasks.current.length;
+		}
+
+		return 0;
+	});
+
 	let lifecycleActive = $derived(activeLifecycleCount > 0);
 	let vmNameById = $derived.by(() => {
 		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
@@ -445,11 +456,13 @@
 							active lifecycle task{activeLifecycleCount === 1 ? '' : 's'}
 						</span>
 
-						{#each activeLifecycleTasks.current as task (task.id)}
-							<span class="bg-background rounded border px-2 py-0.5">
-								{lifecycleTaskLabel(task)} ({lifecycleStatusLabel(task.status)})
-							</span>
-						{/each}
+						{#if !isAPIResponse(activeLifecycleTasks.current) && Array.isArray(activeLifecycleTasks.current)}
+							{#each activeLifecycleTasks.current as task (task.id)}
+								<span class="bg-background rounded border px-2 py-0.5">
+									{lifecycleTaskLabel(task)} ({lifecycleStatusLabel(task.status)})
+								</span>
+							{/each}
+						{/if}
 					</div>
 				</div>
 			{/if}

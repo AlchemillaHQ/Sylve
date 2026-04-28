@@ -16,6 +16,7 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
 	import Form from '$lib/components/custom/DataCenter/Backups/Targets/Form.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -155,51 +156,51 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'validate' && activeRows !== null && activeRows.length === 1}
-		<Button onclick={validateTarget} size="sm" variant="outline" class="h-6" disabled={validating}>
-			<div class="flex items-center">
-				<span
-					class="mr-1 h-4 w-4 {validating
-						? 'icon-[mdi--loading] animate-spin'
-						: 'icon-[mdi--connection]'}"
-				></span>
-				<span>{validating ? 'Validating' : 'Validate'}</span>
-			</div>
-		</Button>
-	{/if}
+	{#if activeRows !== null && activeRows.length === 1}
+		{#if type === 'validate'}
+			<Button
+				onclick={validateTarget}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={validating}
+			>
+				<SpanWithIcon
+					icon={validating ? 'icon-[mdi--loading]' : 'icon-[mdi--connection]'}
+					size="h-4 w-4 {validating ? 'animate-spin' : ''}"
+					gap="gap-2"
+					title={validating ? 'Validating' : 'Validate'}
+				/>
+			</Button>
+		{/if}
 
-	{#if type === 'edit' && activeRows !== null && activeRows.length === 1}
-		<Button
-			onclick={() => {
-				targetModal.edit = true;
-				targetModal.open = true;
-			}}
-			size="sm"
-			variant="outline"
-			class="h-6"
-		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
-				<span>Edit</span>
-			</div>
-		</Button>
-	{/if}
+		{#if type === 'edit'}
+			<Button
+				onclick={() => {
+					targetModal.edit = true;
+					targetModal.open = true;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<SpanWithIcon icon="icon-[mdi--note-edit]" size="h-4 w-4" gap="gap-2" title="Edit" />
+			</Button>
+		{/if}
 
-	{#if type === 'delete' && activeRows !== null && activeRows.length === 1}
-		<Button
-			onclick={() => {
-				targetModal.name = targets.current.find((t) => t.id === selectedTargetId)?.name || '';
-				deleteModalOpen = true;
-			}}
-			size="sm"
-			variant="outline"
-			class="h-6"
-		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-				<span>Delete</span>
-			</div>
-		</Button>
+		{#if type === 'delete'}
+			<Button
+				onclick={() => {
+					targetModal.name = targets.current.find((t) => t.id === selectedTargetId)?.name || '';
+					deleteModalOpen = true;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 

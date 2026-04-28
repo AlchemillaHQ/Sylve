@@ -81,7 +81,7 @@
 
 	let breadcrumbItems = $derived(generateBreadcrumbItems(currentPath));
 
-	async function handleItemClick(item: any) {
+	async function handleItemClick(item: FileNode) {
 		if (item.type === 'folder') {
 			searchQuery = '';
 			currentPath = item.id;
@@ -447,8 +447,8 @@
 				<span>{sortedItems.length} items</span>
 			</div>
 			<div class="text-muted-foreground text-sm">
-				{sortedItems.filter((item: any) => item.type === 'folder').length} folders,
-				{sortedItems.filter((item: any) => item.type === 'file').length} files
+				{sortedItems.filter((item: FileNode) => item.type === 'folder').length} folders,
+				{sortedItems.filter((item: FileNode) => item.type === 'file').length} files
 			</div>
 		</div>
 	</div>

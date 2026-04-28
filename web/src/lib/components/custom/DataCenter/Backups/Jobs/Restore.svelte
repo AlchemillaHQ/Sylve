@@ -1,20 +1,29 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
-	import { listBackupJobSnapshots, restoreBackupJob } from '$lib/api/cluster/backups';
+	import {
+		getBackupEvents,
+		listBackupJobSnapshots,
+		restoreBackupJob
+	} from '$lib/api/cluster/backups';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
-	import type {
-		BackupGuestRef,
-		BackupJob,
-		BackupRestoreGenerationOption,
-		BackupSnapshotLineageMarker,
-		SnapshotInfo
-	} from '$lib/types/cluster/backups';
+	import type { BackupGuestRef, BackupJob, SnapshotInfo } from '$lib/types/cluster/backups';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { handleAPIError } from '$lib/utils/http';
-	import { snapshotLineageLabel, formatRestoreSnapshotDate } from '$lib/utils/zfs';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import {
+		buildGenerationAliasMap,
+		buildGenerationOptions,
+		filterSnapshotsByGeneration,
+		formatRestoreSnapshotDate,
+		generationLabelFromKey,
+		snapshotGenerationKey,
+		snapshotGenerationTag,
+		snapshotLineageLabel,
+		snapshotLineageMarker
+	} from '$lib/utils/zfs';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -29,6 +38,7 @@
 
 	let loading = $state(false);
 	let restoring = $state(false);
+	let jobRunning = $state(false);
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let selectedGeneration = $state('');
 	let selectedSnapshot = $state('');
@@ -47,27 +57,14 @@
 		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
 		if (jailMatch) {
 			const parsed = Number.parseInt(jailMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'jail', id: parsed };
-			}
+			if (!Number.isNaN(parsed) && parsed > 0) return { kind: 'jail', id: parsed };
 		}
-
 		const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/);
 		if (vmMatch) {
 			const parsed = Number.parseInt(vmMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'vm', id: parsed };
-			}
+			if (!Number.isNaN(parsed) && parsed > 0) return { kind: 'vm', id: parsed };
 		}
-
 		return { kind: 'dataset', id: 0 };
-	}
-
-	function snapshotLineageMarker(snapshot: SnapshotInfo): BackupSnapshotLineageMarker {
-		const lineage = snapshot.lineage || 'active';
-		if (lineage === 'preserved') return 'INT';
-		if (lineage === 'active' && !snapshot.outOfBand) return 'CURR';
-		return 'OOB';
 	}
 
 	function snapshotLineageIcon(snapshot: SnapshotInfo): {
@@ -97,139 +94,6 @@
 		};
 	}
 
-	function snapshotGenerationTag(snapshot: SnapshotInfo): string {
-		const dataset =
-			(snapshot.dataset && snapshot.dataset.trim()) ||
-			(snapshot.name.includes('@') ? snapshot.name.slice(0, snapshot.name.lastIndexOf('@')) : '');
-		if (!dataset) return '';
-		const leaf = dataset.slice(dataset.lastIndexOf('/') + 1);
-		if (!leaf) return '';
-		if (leaf === 'active') return 'active';
-
-		const marker = leaf.match(/(?:^|_)((?:bk|zelta)_[0-9a-z._-]+|gen-[0-9a-z._-]+)$/i);
-		if (marker) return marker[1];
-		return leaf;
-	}
-
-	function parseGenerationTimestampMs(tag: string): number | null {
-		const trimmed = (tag || '').trim().toLowerCase();
-		if (!trimmed || trimmed === 'active') return null;
-
-		const token = trimmed.startsWith('gen-')
-			? trimmed.slice(4)
-			: trimmed.startsWith('bk_')
-				? trimmed.slice(3)
-				: trimmed.startsWith('zelta_')
-					? trimmed.slice(6)
-					: '';
-		if (!token) return null;
-
-		const parts = token.split('_');
-		const candidate = parts.length > 1 ? parts[parts.length - 1] : token;
-		if (!candidate) return null;
-
-		const parsed = Number.parseInt(candidate, 36);
-		if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed <= 0) return null;
-		return parsed;
-	}
-
-	function parseSnapshotTimeMs(snapshot: SnapshotInfo): number | null {
-		const raw = (snapshot.creation || '').trim();
-		if (!raw) return null;
-		const ms = Date.parse(raw);
-		if (!Number.isFinite(ms) || Number.isNaN(ms)) return null;
-		return ms;
-	}
-
-	function buildGenerationAliasMap(items: SnapshotInfo[]): Map<string, string> {
-		const generationTime = new Map<string, number>();
-		for (const snapshot of items) {
-			const generation = snapshotGenerationTag(snapshot);
-			if (!generation || generation === 'active') continue;
-
-			const generationMs = parseGenerationTimestampMs(generation);
-			const snapshotMs = parseSnapshotTimeMs(snapshot);
-			const inferredMs = generationMs ?? snapshotMs ?? Number.MAX_SAFE_INTEGER;
-
-			const existing = generationTime.get(generation);
-			if (existing === undefined || inferredMs < existing) {
-				generationTime.set(generation, inferredMs);
-			}
-		}
-
-		const ordered = [...generationTime.entries()].sort((left, right) => {
-			if (left[1] !== right[1]) return left[1] - right[1];
-			return left[0].localeCompare(right[0]);
-		});
-
-		const aliases = new Map<string, string>();
-		for (let index = 0; index < ordered.length; index++) {
-			aliases.set(ordered[index][0], `gen-${index + 1}`);
-		}
-
-		return aliases;
-	}
-
-	function snapshotGenerationKey(snapshot: SnapshotInfo): string {
-		const lineage = snapshot.lineage || 'active';
-		if (lineage === 'active' && !snapshot.outOfBand) {
-			return 'active';
-		}
-		const generation = snapshotGenerationTag(snapshot);
-		return generation && generation.trim() !== '' ? generation : 'active';
-	}
-
-	function generationLabelFromKey(key: string, aliasByTag: Map<string, string>): string {
-		if ((key || '').trim() === '' || key === 'active') return 'Current';
-		return aliasByTag.get(key) || key;
-	}
-
-	function filterSnapshotsByGeneration(items: SnapshotInfo[], generation: string): SnapshotInfo[] {
-		const target = (generation || '').trim();
-		if (!target) return items;
-		return items.filter((snapshot) => snapshotGenerationKey(snapshot) === target);
-	}
-
-	function buildGenerationOptions(
-		items: SnapshotInfo[],
-		aliasByTag: Map<string, string>
-	): BackupRestoreGenerationOption[] {
-		if (items.length === 0) return [];
-
-		const groups = new Map<string, { count: number; sortMs: number }>();
-		for (const snapshot of items) {
-			const key = snapshotGenerationKey(snapshot);
-			const generationMs = parseGenerationTimestampMs(key);
-			const snapshotMs = parseSnapshotTimeMs(snapshot);
-			const inferredMs = generationMs ?? snapshotMs ?? Number.MAX_SAFE_INTEGER;
-
-			const existing = groups.get(key);
-			if (!existing) {
-				groups.set(key, { count: 1, sortMs: inferredMs });
-				continue;
-			}
-
-			existing.count += 1;
-			if (inferredMs < existing.sortMs) {
-				existing.sortMs = inferredMs;
-			}
-		}
-
-		const ordered = [...groups.entries()].sort((left, right) => {
-			const leftKey = left[0];
-			const rightKey = right[0];
-			if (leftKey === 'active' && rightKey !== 'active') return -1;
-			if (rightKey === 'active' && leftKey !== 'active') return 1;
-			if (left[1].sortMs !== right[1].sortMs) return left[1].sortMs - right[1].sortMs;
-			return leftKey.localeCompare(rightKey);
-		});
-
-		return ordered.map(([key, meta]) => ({
-			value: key,
-			label: `${generationLabelFromKey(key, aliasByTag)} (${meta.count})`
-		}));
-	}
-
 	function nodeLabelByID(nodeId: string): string {
 		return nodeNameById[nodeId] || nodeId;
 	}
@@ -237,10 +101,16 @@
 	async function loadClusterDetails(): Promise<ClusterDetails | null> {
 		try {
 			const details = await getDetails();
+			if (isAPIResponse(details)) {
+				return null;
+			}
+
 			clusterDetails = details;
 			return details;
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to load cluster details', { position: 'bottom-center' });
+		} catch (e: unknown) {
+			toast.error((e as { message?: string })?.message || 'Failed to load cluster details', {
+				position: 'bottom-center'
+			});
 			return null;
 		}
 	}
@@ -279,6 +149,7 @@
 		if (!selectedJob) return;
 
 		loading = true;
+		jobRunning = false;
 		snapshots = [];
 		selectedGeneration = '';
 		selectedSnapshot = '';
@@ -287,15 +158,23 @@
 		clusterDetails = null;
 
 		try {
-			const items = await listBackupJobSnapshots(selectedJob.id);
-			snapshots = items;
-			if (items.length > 0) {
-				const latest = items[items.length - 1];
-				selectedGeneration = snapshotGenerationKey(latest);
-				selectedSnapshot = latest.name;
+			const [items, events] = await Promise.all([
+				listBackupJobSnapshots(selectedJob.id),
+				getBackupEvents(5, selectedJob.id)
+			]);
+			jobRunning =
+				events.some((e) => e.status === 'running' && !e.completedAt) ||
+				selectedJob.lastStatus === 'running';
+			if (!jobRunning) {
+				snapshots = items;
+				if (items.length > 0) {
+					const latest = items[items.length - 1];
+					selectedGeneration = snapshotGenerationKey(latest);
+					selectedSnapshot = latest.name;
+				}
 			}
-		} catch (e: any) {
-			error = e?.message || 'Failed to load snapshots';
+		} catch (e: unknown) {
+			error = (e as { message?: string })?.message || 'Failed to load snapshots';
 		} finally {
 			loading = false;
 		}
@@ -356,8 +235,10 @@
 			}
 			handleAPIError(response);
 			toast.error('Failed to start restore', { position: 'bottom-center' });
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to start restore', { position: 'bottom-center' });
+		} catch (e: unknown) {
+			toast.error((e as { message?: string })?.message || 'Failed to start restore', {
+				position: 'bottom-center'
+			});
 		} finally {
 			restoring = false;
 		}
@@ -395,23 +276,26 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-5">
+	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-5" showCloseButton={true}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--backup-restore] h-5 w-5"></span>
-					<span>Restore from Backup</span>
-				</div>
-
-				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--backup-restore]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Restore from Backup"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
-			{#if loading}
+			{#if jobRunning}
+				<div
+					class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-4 text-center text-sm text-yellow-700 dark:text-yellow-400"
+				>
+					A backup is currently in progress. Restore is unavailable until it completes.
+				</div>
+			{:else if loading}
 				<div class="flex items-center justify-center py-8">
 					<span class="icon-[mdi--loading] h-6 w-6 animate-spin text-muted-foreground"></span>
 					<span class="ml-2 text-muted-foreground">Loading snapshots from remote target...</span>
@@ -460,7 +344,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each [...visibleSnapshots].reverse() as snapshot}
+								{#each [...visibleSnapshots].reverse() as snapshot (snapshot.name)}
 									{@const generation = snapshotGenerationTag(snapshot)}
 									{@const generationAlias = generationLabelFromKey(
 										generation,
@@ -541,7 +425,7 @@
 			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button
 				onclick={triggerRestore}
-				disabled={!selectedSnapshot || restoring || loading}
+				disabled={!selectedSnapshot || restoring || loading || jobRunning}
 				variant="destructive"
 			>
 				{#if restoring}

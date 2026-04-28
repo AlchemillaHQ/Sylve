@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { dismissNotification, getNotificationsCount, listNotifications } from '$lib/api/notifications';
+	import {
+		dismissNotification,
+		getNotificationsCount,
+		listNotifications
+	} from '$lib/api/notifications';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
@@ -9,6 +13,8 @@
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	let open = $state(false);
 	let showDismissed = $state(false);
@@ -112,7 +118,13 @@
 	}
 </script>
 
-<Button size="sm" class="relative h-6" variant="outline" onclick={() => (open = true)} title="Notifications">
+<Button
+	size="sm"
+	class="relative h-6"
+	variant="outline"
+	onclick={() => (open = true)}
+	title="Notifications"
+>
 	<div class="flex items-center gap-1.5">
 		<span class="icon-[mdi--bell-outline] h-4 w-4"></span>
 		<span>Notifications</span>
@@ -127,14 +139,16 @@
 </Button>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[95%] max-w-5xl p-5">
+	<Dialog.Content class="w-[95%] max-w-5xl p-5" showCloseButton={false}>
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between gap-4">
-				<span>Notifications</span>
-				<label class="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-					<input type="checkbox" bind:checked={showDismissed} class="h-3.5 w-3.5" />
-					Show dismissed
-				</label>
+				<SpanWithIcon
+					icon="icon-[mdi--bell-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Notifications"
+				/>
+				<CustomCheckbox label="Show Dismissed" bind:checked={showDismissed} />
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -197,8 +211,12 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" class="h-7" onclick={() => notificationCount.refetch()}>Refresh Count</Button>
-			<Button variant="outline" class="h-7" onclick={() => notifications.refetch()}>Refresh List</Button>
+			<Button variant="outline" class="h-7" onclick={() => notificationCount.refetch()}
+				>Refresh Count</Button
+			>
+			<Button variant="outline" class="h-7" onclick={() => notifications.refetch()}
+				>Refresh List</Button
+			>
 			<Button variant="outline" class="h-7" onclick={() => (open = false)}>Close</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

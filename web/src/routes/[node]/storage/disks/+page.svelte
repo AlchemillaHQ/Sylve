@@ -8,7 +8,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Row } from '$lib/types/components/tree-table';
 	import { type Disk, type Partition } from '$lib/types/disk/disk';
-	import type { Zpool } from '$lib/types/zfs/pool';
 	import { diskSpaceAvailable, generateTableData, parseSMART } from '$lib/utils/disk';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { resource, watch } from 'runed';
@@ -17,17 +16,16 @@
 
 	interface Data {
 		disks: Disk[];
-		pools: Zpool[];
 	}
 
 	let { data }: { data: Data } = $props();
 
 	// svelte-ignore state_referenced_locally
 	const disks = resource(
-		() => 'disks',
-		async (key, prevKey, { signal }) => {
+		() => 'disk-list',
+		async (key) => {
 			const result = await listDisks();
-			updateCache('disk-list', result);
+			updateCache(key, result);
 			return result;
 		},
 		{
@@ -203,7 +201,6 @@
 		<Button onclick={() => diskAction('smart')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
 				<span class="icon-[icon-park-outline--hdd] mr-1 h-4 w-4"></span>
-
 				<span>S.M.A.R.T Values</span>
 			</div>
 		</Button>
@@ -259,6 +256,7 @@
 
 	<KvTableModal
 		titles={{
+			icon: 'icon-park-outline--hdd',
 			main: smartModal.title,
 			key: 'Attribute',
 			value: 'Value'
@@ -272,7 +270,7 @@
 			rows: rows,
 			columns: columns
 		}}
-		name={'tt-disks'}
+		name="tt-disks"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
 		bind:query
@@ -328,7 +326,7 @@
 ></AlertDialog>
 
 <CreatePartition
-	open={partitionModal.open}
+	bind:open={partitionModal.open}
 	disk={partitionModal.disk}
 	onCancel={() => {
 		partitionModal.open = false;

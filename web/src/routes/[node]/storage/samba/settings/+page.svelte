@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { getInterfaces } from '$lib/api/network/iface';
-	import { getSambaConfig, updateSambaConfig } from '$lib/api/samba/config';
-	import SingleValueDialog from '$lib/components/custom/Dialog/SingleValue.svelte';
+	import { getSambaConfig } from '$lib/api/samba/config';
+	import Config from '$lib/components/custom/Samba/Config.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
+	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SambaConfig } from '$lib/types/samba/config';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
-	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -76,34 +76,6 @@
 		return filtered;
 	});
 
-	let options = {
-		unixCharset: {
-			value: (() => $state.snapshot(sambaConfig.current.unixCharset))(),
-			open: false
-		},
-		workgroup: {
-			value: (() => $state.snapshot(sambaConfig.current.workgroup))(),
-			open: false
-		},
-		serverString: {
-			value: (() => $state.snapshot(sambaConfig.current.serverString))(),
-			open: false
-		},
-		interfaces: {
-			value: (() => $state.snapshot(sambaConfig.current.interfaces))(),
-			open: false
-		},
-		bindInterfaces: {
-			value: (() => ($state.snapshot(sambaConfig.current.bindInterfacesOnly) ? 'Yes' : 'No'))(),
-			open: false
-		},
-		appleExtensions: {
-			value: (() => ($state.snapshot(sambaConfig.current.appleExtensions) ? 'Yes' : 'No'))(),
-			open: false
-		}
-	};
-
-	let properties = $state(options);
 	let table = $derived({
 		columns: [
 			{ title: 'Property', field: 'property' },
@@ -172,170 +144,32 @@
 		]
 	});
 
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let query = $state('');
-
-	async function save() {
-		const updatedConfig: Partial<SambaConfig> = {
-			unixCharset: properties.unixCharset.value,
-			workgroup: properties.workgroup.value,
-			serverString: properties.serverString.value,
-			interfaces: properties.interfaces.value,
-			bindInterfacesOnly: properties.bindInterfaces.value === 'Yes',
-			appleExtensions: properties.appleExtensions.value === 'Yes'
-		};
-
-		const response = await updateSambaConfig(updatedConfig);
-
-		reload = true;
-
-		if (response.error) {
-			properties = options;
-
-			handleAPIError(response);
-			toast.error('Failed to update Samba configuration', {
-				position: 'bottom-center'
-			});
-		} else {
-			toast.success('Samba configuration updated', {
-				position: 'bottom-center'
-			});
-		}
-	}
+	let modalOpen = $state(false);
 </script>
 
 <div class="flex h-full w-full flex-col">
-	{#if activeRows && activeRows?.length !== 0}
-		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-			{#if activeRow && activeRow.property !== ''}
-				<Button
-					onclick={() => {
-						switch (activeRow.property) {
-							case 'Unix Charset':
-								properties.unixCharset.open = true;
-								break;
-							case 'Workgroup':
-								properties.workgroup.open = true;
-								break;
-							case 'Server String':
-								properties.serverString.open = true;
-								break;
-							case 'Interfaces':
-								properties.interfaces.open = true;
-								break;
-							case 'Bind Interfaces Only':
-								properties.bindInterfaces.open = true;
-								break;
-							case 'Apple Extensions':
-								properties.appleExtensions.open = true;
-								break;
-						}
-					}}
-					size="sm"
-					variant="outline"
-					class="h-6.5"
-				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
+		<Search bind:query />
 
-						<span>Edit {activeRow.property}</span>
-					</div>
-				</Button>
-			{/if}
-		</div>
-	{/if}
+		<Button size="sm" variant="default" class="h-6" onclick={() => (modalOpen = true)}>
+			<SpanWithIcon
+				icon="icon-[hugeicons--system-update-01]"
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Update"
+			/>
+		</Button>
+	</div>
+
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable
-			data={table}
-			name="samba-config-tt"
-			bind:parentActiveRow={activeRows}
-			multipleSelect={false}
-			bind:query
-		/>
+		<TreeTable data={table} name="samba-config-tt" multipleSelect={false} bind:query />
 	</div>
 </div>
 
-<SingleValueDialog
-	bind:open={properties.workgroup.open}
-	title="Workgroup"
-	type="text"
-	placeholder="Enter Workgroup"
-	bind:value={properties.workgroup.value}
-	onSave={() => {
-		save();
-		properties.workgroup.open = false;
-	}}
-/>
-
-<SingleValueDialog
-	bind:open={properties.unixCharset.open}
-	title="Unix Charset"
-	type="text"
-	placeholder="Enter Unix Charset"
-	bind:value={properties.unixCharset.value}
-	onSave={() => {
-		save();
-		properties.unixCharset.open = false;
-	}}
-/>
-
-<SingleValueDialog
-	bind:open={properties.serverString.open}
-	title="Server String"
-	type="text"
-	placeholder="Enter Server String"
-	bind:value={properties.serverString.value}
-	onSave={() => {
-		save();
-		properties.serverString.open = false;
-	}}
-/>
-
-<SingleValueDialog
-	bind:open={properties.bindInterfaces.open}
-	title="Bind Interfaces Only"
-	type="select"
-	placeholder=""
-	bind:value={properties.bindInterfaces.value}
-	options={[
-		{ label: 'Yes', value: 'Yes' },
-		{ label: 'No', value: 'No' }
-	]}
-	onSave={() => {
-		save();
-		properties.bindInterfaces.open = false;
-	}}
-/>
-
-<SingleValueDialog
-	bind:open={properties.appleExtensions.open}
-	title="Apple Extensions"
-	type="select"
-	placeholder=""
-	bind:value={properties.appleExtensions.value}
-	options={[
-		{ label: 'Yes', value: 'Yes' },
-		{ label: 'No', value: 'No' }
-	]}
-	onSave={() => {
-		save();
-		properties.appleExtensions.open = false;
-	}}
-/>
-
-<SingleValueDialog
-	bind:open={properties.interfaces.open}
-	title="Interfaces"
-	type="combobox"
-	placeholder="Select Interfaces"
-	bind:value={properties.interfaces.value}
-	options={usableIfaces.map((iface) => ({
-		label: iface.description !== '' ? iface.description : iface.name,
-		value: iface.name
-	}))}
-	onSave={() => {
-		save();
-		properties.interfaces.open = false;
-	}}
+<Config
+	bind:open={modalOpen}
+	bind:reload
+	sambaConfig={sambaConfig.current}
+	networkInterfaces={usableIfaces}
 />

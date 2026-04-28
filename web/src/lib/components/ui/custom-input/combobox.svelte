@@ -124,12 +124,11 @@
 
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
-		<div class="flex h-7 items-center justify-between w-full">
-			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
-				{label}
-			</Label>
-
-			{#if topRightButton}
+		{#if topRightButton}
+			<div class="flex h-7 items-center justify-between w-full">
+				<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
+					{label}
+				</Label>
 				<Button
 					variant="outline"
 					size="icon"
@@ -142,8 +141,12 @@
 				>
 					<span class={`icon ${topRightButton.icon} w-4`}></span>
 				</Button>
-			{/if}
-		</div>
+			</div>
+		{:else}
+			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
+				{label}
+			</Label>
+		{/if}
 	{/if}
 	<Popover.Root bind:open>
 		<Popover.Trigger class="{triggerWidth} min-w-0" {disabled}>

@@ -3,11 +3,14 @@
 	import {
 		getBackupTargetJailMetadata,
 		getBackupTargetVMMetadata,
+		getTargetRunningJobIds,
+		listBackupJobs,
 		listBackupTargetDatasets,
 		listBackupTargetDatasetSnapshots,
 		restoreBackupFromTarget
 	} from '$lib/api/cluster/backups';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -16,24 +19,31 @@
 	import type {
 		BackupGuestRef,
 		BackupJailMetadataInfo,
-		BackupRestoreGenerationOption,
-		BackupSnapshotLineageMarker,
+		BackupJob,
 		BackupTarget,
 		BackupTargetDatasetInfo,
 		BackupVMMetadataInfo,
 		RestoreTargetDatasetGroup,
 		SnapshotInfo
 	} from '$lib/types/cluster/backups';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import {
+		buildGenerationAliasMap,
+		buildGenerationOptions,
+		filterSnapshotsByGeneration,
 		formatRestoreSnapshotDate,
+		generationLabelFromKey,
 		inferJailDestinationDataset,
 		inferVMDestinationDataset,
 		pickRepresentativeDataset,
-		snapshotLineageLabel
+		snapshotGenerationKey,
+		snapshotGenerationTag,
+		snapshotLineageLabel,
+		snapshotLineageMarker
 	} from '$lib/utils/zfs';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	interface Props {
 		open: boolean;
@@ -46,9 +56,10 @@
 
 	let loadingDatasets = $state(false);
 	let loadingSnapshots = $state(false);
-	let loadingMetadata = $state(false);
 	let loadingCluster = $state(false);
 	let restoring = $state(false);
+	let runningJobIds = new SvelteSet<number>();
+	let allTargetJobs = $state<BackupJob[]>([]);
 
 	let targetId = $state('');
 	let restoreNodeId = $state('');
@@ -69,27 +80,14 @@
 		const jailMatch = datasetPath.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
 		if (jailMatch) {
 			const parsed = Number.parseInt(jailMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'jail', id: parsed };
-			}
+			if (!Number.isNaN(parsed) && parsed > 0) return { kind: 'jail', id: parsed };
 		}
-
 		const vmMatch = datasetPath.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/);
 		if (vmMatch) {
 			const parsed = Number.parseInt(vmMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'vm', id: parsed };
-			}
+			if (!Number.isNaN(parsed) && parsed > 0) return { kind: 'vm', id: parsed };
 		}
-
 		return { kind: 'dataset', id: 0 };
-	}
-
-	function snapshotLineageMarker(item: SnapshotInfo): BackupSnapshotLineageMarker {
-		const lineage = item.lineage || 'active';
-		if (lineage === 'preserved') return 'INT';
-		if (lineage === 'active' && !item.outOfBand) return 'CURR';
-		return 'OOB';
 	}
 
 	function formatSnapshotCount(count: number): string {
@@ -100,138 +98,6 @@
 		const match = baseSuffix.match(/(?:^|\/)(job-[0-9]+|j-[0-9a-z]+)(?:\/|$)/i);
 		if (!match) return '';
 		return match[1];
-	}
-
-	function snapshotGenerationTag(item: SnapshotInfo): string {
-		const datasetName =
-			(item.dataset && item.dataset.trim()) ||
-			(item.name.includes('@') ? item.name.slice(0, item.name.lastIndexOf('@')) : '');
-		if (!datasetName) return '';
-		const leaf = datasetName.slice(datasetName.lastIndexOf('/') + 1);
-		if (!leaf) return '';
-		if (leaf === 'active') return 'active';
-
-		const marker = leaf.match(/(?:^|_)((?:bk|zelta)_[0-9a-z._-]+|gen-[0-9a-z._-]+)$/i);
-		if (marker) return marker[1];
-		return leaf;
-	}
-
-	function parseGenerationTimestampMs(tag: string): number | null {
-		const trimmed = (tag || '').trim().toLowerCase();
-		if (!trimmed || trimmed === 'active') return null;
-
-		const token = trimmed.startsWith('gen-')
-			? trimmed.slice(4)
-			: trimmed.startsWith('bk_')
-				? trimmed.slice(3)
-				: trimmed.startsWith('zelta_')
-					? trimmed.slice(6)
-					: '';
-		if (!token) return null;
-
-		const parts = token.split('_');
-		const candidate = parts.length > 1 ? parts[parts.length - 1] : token;
-		if (!candidate) return null;
-
-		const parsed = Number.parseInt(candidate, 36);
-		if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed <= 0) return null;
-		return parsed;
-	}
-
-	function parseSnapshotTimeMs(item: SnapshotInfo): number | null {
-		const raw = (item.creation || '').trim();
-		if (!raw) return null;
-		const ms = Date.parse(raw);
-		if (!Number.isFinite(ms) || Number.isNaN(ms)) return null;
-		return ms;
-	}
-
-	function buildGenerationAliasMap(items: SnapshotInfo[]): Map<string, string> {
-		const generationTime = new Map<string, number>();
-		for (const item of items) {
-			const generation = snapshotGenerationTag(item);
-			if (!generation || generation === 'active') continue;
-
-			const generationMs = parseGenerationTimestampMs(generation);
-			const snapshotMs = parseSnapshotTimeMs(item);
-			const inferredMs = generationMs ?? snapshotMs ?? Number.MAX_SAFE_INTEGER;
-
-			const existing = generationTime.get(generation);
-			if (existing === undefined || inferredMs < existing) {
-				generationTime.set(generation, inferredMs);
-			}
-		}
-
-		const ordered = [...generationTime.entries()].sort((left, right) => {
-			if (left[1] !== right[1]) return left[1] - right[1];
-			return left[0].localeCompare(right[0]);
-		});
-
-		const aliases = new Map<string, string>();
-		for (let index = 0; index < ordered.length; index++) {
-			aliases.set(ordered[index][0], `gen-${index + 1}`);
-		}
-		return aliases;
-	}
-
-	function snapshotGenerationKey(item: SnapshotInfo): string {
-		const lineage = item.lineage || 'active';
-		if (lineage === 'active' && !item.outOfBand) {
-			return 'active';
-		}
-		const generation = snapshotGenerationTag(item);
-		return generation && generation.trim() !== '' ? generation : 'active';
-	}
-
-	function generationLabelFromKey(key: string, aliasByTag: Map<string, string>): string {
-		if ((key || '').trim() === '' || key === 'active') return 'Current';
-		return aliasByTag.get(key) || key;
-	}
-
-	function filterSnapshotsByGeneration(items: SnapshotInfo[], generation: string): SnapshotInfo[] {
-		const targetGeneration = (generation || '').trim();
-		if (!targetGeneration) return items;
-		return items.filter((item) => snapshotGenerationKey(item) === targetGeneration);
-	}
-
-	function buildGenerationOptions(
-		items: SnapshotInfo[],
-		aliasByTag: Map<string, string>
-	): BackupRestoreGenerationOption[] {
-		if (items.length === 0) return [];
-
-		const groups = new Map<string, { count: number; sortMs: number }>();
-		for (const item of items) {
-			const key = snapshotGenerationKey(item);
-			const generationMs = parseGenerationTimestampMs(key);
-			const snapshotMs = parseSnapshotTimeMs(item);
-			const inferredMs = generationMs ?? snapshotMs ?? Number.MAX_SAFE_INTEGER;
-
-			const existing = groups.get(key);
-			if (!existing) {
-				groups.set(key, { count: 1, sortMs: inferredMs });
-				continue;
-			}
-
-			existing.count += 1;
-			if (inferredMs < existing.sortMs) {
-				existing.sortMs = inferredMs;
-			}
-		}
-
-		const ordered = [...groups.entries()].sort((left, right) => {
-			const leftKey = left[0];
-			const rightKey = right[0];
-			if (leftKey === 'active' && rightKey !== 'active') return -1;
-			if (rightKey === 'active' && leftKey !== 'active') return 1;
-			if (left[1].sortMs !== right[1].sortMs) return left[1].sortMs - right[1].sortMs;
-			return leftKey.localeCompare(rightKey);
-		});
-
-		return ordered.map(([key, meta]) => ({
-			value: key,
-			label: `${generationLabelFromKey(key, aliasByTag)} (${meta.count})`
-		}));
 	}
 
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
@@ -248,9 +114,7 @@
 
 	let nodeNameById = $derived.by(() => {
 		const out: Record<string, string> = {};
-		for (const node of nodes) {
-			out[node.nodeUUID] = node.hostname;
-		}
+		for (const node of nodes) out[node.nodeUUID] = node.hostname;
 		return out;
 	});
 
@@ -265,15 +129,11 @@
 				};
 			});
 		}
-
-		return nodes.map((node) => ({
-			value: node.nodeUUID,
-			label: node.hostname
-		}));
+		return nodes.map((node) => ({ value: node.nodeUUID, label: node.hostname }));
 	});
 
 	let restoreTargetDatasetGroups = $derived.by(() => {
-		const grouped = new Map<
+		const grouped = new SvelteMap<
 			string,
 			{
 				baseSuffix: string;
@@ -286,8 +146,7 @@
 		>();
 
 		for (const item of datasets) {
-			const baseSuffix = item.baseSuffix || item.suffix || item.name;
-			const key = baseSuffix || item.name;
+			const key = item.baseSuffix || item.suffix || item.name;
 			const existing = grouped.get(key);
 			if (!existing) {
 				grouped.set(key, {
@@ -300,21 +159,12 @@
 				});
 				continue;
 			}
-
 			existing.datasets.push(item);
 			existing.totalSnapshots += item.snapshotCount || 0;
-			if (existing.kind !== 'jail' && item.kind === 'jail') {
-				existing.kind = 'jail';
-			}
-			if (!existing.jailCtId && item.jailCtId) {
-				existing.jailCtId = item.jailCtId;
-			}
-			if (existing.kind !== 'vm' && item.kind === 'vm') {
-				existing.kind = 'vm';
-			}
-			if (!existing.vmRid && item.vmRid) {
-				existing.vmRid = item.vmRid;
-			}
+			if (existing.kind !== 'jail' && item.kind === 'jail') existing.kind = 'jail';
+			if (!existing.jailCtId && item.jailCtId) existing.jailCtId = item.jailCtId;
+			if (existing.kind !== 'vm' && item.kind === 'vm') existing.kind = 'vm';
+			if (!existing.vmRid && item.vmRid) existing.vmRid = item.vmRid;
 		}
 
 		const out: RestoreTargetDatasetGroup[] = [];
@@ -331,7 +181,7 @@
 
 			const totalSnapshots =
 				entry.kind === 'vm'
-					? Math.max(...entry.datasets.map((datasetEntry) => datasetEntry.snapshotCount || 0), 0)
+					? Math.max(...entry.datasets.map((d) => d.snapshotCount || 0), 0)
 					: entry.totalSnapshots;
 
 			out.push({
@@ -349,9 +199,8 @@
 		return out.sort((left, right) => left.baseSuffix.localeCompare(right.baseSuffix));
 	});
 
-	let visibleRestoreTargetDatasets = $derived.by(() => restoreTargetDatasetGroups);
 	let restoreTargetDatasetOptions = $derived(
-		visibleRestoreTargetDatasets.map((entry) => ({
+		restoreTargetDatasetGroups.map((entry) => ({
 			value: entry.representativeDataset,
 			label: formatRestoreTargetDatasetLabel(entry)
 		}))
@@ -359,24 +208,30 @@
 
 	let selectedRestoreTargetDatasetGroup = $derived.by(
 		() =>
-			visibleRestoreTargetDatasets.find((entry) => entry.representativeDataset === dataset) || null
+			restoreTargetDatasetGroups.find((entry) => entry.representativeDataset === dataset) || null
 	);
 
-	let selectedRestoreTargetDatasetKind = $derived.by(
-		() => selectedRestoreTargetDatasetGroup?.kind || 'dataset'
+	let selectedRestoreTargetDatasetKind = $derived(
+		selectedRestoreTargetDatasetGroup?.kind || 'dataset'
 	);
 
-	let restoreTargetSupportsNetworkRestore = $derived.by(
-		() => selectedRestoreTargetDatasetKind === 'jail' || selectedRestoreTargetDatasetKind === 'vm'
+	let restoreTargetSupportsNetworkRestore = $derived(
+		selectedRestoreTargetDatasetKind === 'jail' || selectedRestoreTargetDatasetKind === 'vm'
 	);
 
-	let generationAliasByTag = $derived.by(() => buildGenerationAliasMap(snapshots));
-	let generationOptions = $derived.by(() =>
-		buildGenerationOptions(snapshots, generationAliasByTag)
-	);
-	let visibleSnapshots = $derived.by(() =>
-		filterSnapshotsByGeneration(snapshots, selectedGeneration)
-	);
+	let jobRunning = $derived.by(() => {
+		if (runningJobIds.size === 0) return false;
+		const group = selectedRestoreTargetDatasetGroup;
+		if (!group || !group.jobLabel) return false;
+		const matchingJob = allTargetJobs.find(
+			(j) => extractJobLabel(j.destSuffix || '') === group.jobLabel
+		);
+		return matchingJob ? runningJobIds.has(matchingJob.id) : false;
+	});
+
+	let generationAliasByTag = $derived(buildGenerationAliasMap(snapshots));
+	let generationOptions = $derived(buildGenerationOptions(snapshots, generationAliasByTag));
+	let visibleSnapshots = $derived(filterSnapshotsByGeneration(snapshots, selectedGeneration));
 
 	let snapshotOptions = $derived(
 		[...visibleSnapshots].reverse().map((item) => {
@@ -392,11 +247,11 @@
 		})
 	);
 
-	let selectedSnapshotInfo = $derived.by(
-		() => snapshots.find((entry) => (entry.name || entry.shortName) === snapshot) || null
+	let selectedSnapshotInfo = $derived(
+		snapshots.find((entry) => (entry.name || entry.shortName) === snapshot) || null
 	);
 
-	let hasOutOfBandSnapshots = $derived.by(() =>
+	let hasOutOfBandSnapshots = $derived(
 		snapshots.some((entry) => !!entry.outOfBand || (entry.lineage || 'active') !== 'active')
 	);
 
@@ -408,10 +263,13 @@
 		loadingCluster = true;
 		try {
 			const details = await getDetails();
+			if (isAPIResponse(details)) return null;
 			clusterDetails = details;
 			return details;
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to load cluster details', { position: 'bottom-center' });
+		} catch (e: unknown) {
+			toast.error((e as { message?: string })?.message || 'Failed to load cluster details', {
+				position: 'bottom-center'
+			});
 			return null;
 		} finally {
 			loadingCluster = false;
@@ -424,15 +282,16 @@
 		kind: 'jail' | 'vm'
 	): Promise<boolean> {
 		if (guestID <= 0) return true;
-
 		let details: ClusterDetails;
 		try {
-			details = clusterDetails || (await getDetails());
-			clusterDetails = details;
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to validate cluster guest placement', {
-				position: 'bottom-center'
-			});
+			const loaded = await loadRestoreClusterDetails();
+			if (!loaded) throw new Error('Failed to load cluster details');
+			details = loaded;
+		} catch (e: unknown) {
+			toast.error(
+				(e as { message?: string })?.message || 'Failed to validate cluster guest placement',
+				{ position: 'bottom-center' }
+			);
 			return false;
 		}
 
@@ -440,31 +299,29 @@
 		if (registeredOn.length === 0) return true;
 
 		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
-		if (conflicts.length === 0 && registeredOn.length === 1) {
-			return true;
-		}
+		if (conflicts.length === 0 && registeredOn.length === 1) return true;
 
 		const conflictLabels =
 			conflicts.length > 0
 				? conflicts.map((node) => nodeLabelByID(node.id)).join(', ')
 				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
 
-		const guestLabel = kind === 'vm' ? 'VM' : 'Jail';
-		toast.error(`${guestLabel} ${guestID} already exists on ${conflictLabels}.`, {
-			position: 'bottom-center'
-		});
+		toast.error(
+			`${kind === 'vm' ? 'VM' : 'Jail'} ${guestID} already exists on ${conflictLabels}.`,
+			{
+				position: 'bottom-center'
+			}
+		);
 		return false;
 	}
 
 	function resetState(close: boolean = true) {
-		if (close) {
-			open = false;
-		}
 		loadingDatasets = false;
 		loadingSnapshots = false;
-		loadingMetadata = false;
 		loadingCluster = false;
 		restoring = false;
+		runningJobIds.clear();
+		allTargetJobs = [];
 		targetId = '';
 		restoreNodeId = '';
 		dataset = '';
@@ -478,10 +335,13 @@
 		vmMetadata = null;
 		error = '';
 		clusterDetails = null;
+		if (close) open = false;
 	}
 
 	async function initializeModal() {
 		error = '';
+		runningJobIds.clear();
+		allTargetJobs = [];
 		targetId = targetOptions[0]?.value || '';
 		restoreNodeId = '';
 		dataset = '';
@@ -496,11 +356,7 @@
 		clusterDetails = null;
 
 		const details = await loadRestoreClusterDetails();
-		if (details?.nodeId) {
-			restoreNodeId = details.nodeId;
-		} else {
-			restoreNodeId = nodes[0]?.nodeUUID || '';
-		}
+		restoreNodeId = details?.nodeId || nodes[0]?.nodeUUID || '';
 
 		if (!targetId) {
 			error = 'No backup targets available';
@@ -515,6 +371,8 @@
 		if (!parsedTargetId) return;
 
 		loadingDatasets = true;
+		runningJobIds.clear();
+		allTargetJobs = [];
 		error = '';
 		dataset = '';
 		selectedGeneration = '';
@@ -526,37 +384,47 @@
 		vmMetadata = null;
 
 		try {
-			const items = await listBackupTargetDatasets(parsedTargetId);
-			datasets = items;
-			const groupedByBase = new Map<string, BackupTargetDatasetInfo[]>();
-			for (const entry of items) {
+			const [targetDatasets, targetJobs] = await Promise.all([
+				listBackupTargetDatasets(parsedTargetId),
+				listBackupJobs(parsedTargetId)
+			]);
+
+			allTargetJobs = targetJobs;
+			datasets = targetDatasets;
+
+			// Non-fatal: running-job detection is informational only; never block the UI
+			try {
+				const runningIds = await getTargetRunningJobIds(parsedTargetId);
+				for (const id of runningIds) runningJobIds.add(id);
+			} catch {
+				// ignore — restore remains fully available
+			}
+
+			const groupedByBase = new SvelteMap<string, BackupTargetDatasetInfo[]>();
+			for (const entry of targetDatasets) {
 				const key = entry.baseSuffix || entry.suffix || entry.name;
-				if (!groupedByBase.has(key)) {
-					groupedByBase.set(key, []);
-				}
+				if (!groupedByBase.has(key)) groupedByBase.set(key, []);
 				groupedByBase.get(key)?.push(entry);
 			}
 
 			const representatives: BackupTargetDatasetInfo[] = [];
 			for (const group of groupedByBase.values()) {
 				const representative = pickRepresentativeDataset(group);
-				if (representative) {
-					representatives.push(representative);
-				}
+				if (representative) representatives.push(representative);
 			}
 
 			representatives.sort((left, right) => {
-				const leftKey = left.baseSuffix || left.suffix || left.name;
-				const rightKey = right.baseSuffix || right.suffix || right.name;
-				return leftKey.localeCompare(rightKey);
+				const lk = left.baseSuffix || left.suffix || left.name;
+				const rk = right.baseSuffix || right.suffix || right.name;
+				return lk.localeCompare(rk);
 			});
 
 			if (representatives.length > 0) {
 				dataset = representatives[0].name;
 				await onDatasetChange();
 			}
-		} catch (e: any) {
-			error = e?.message || 'Failed to load target datasets';
+		} catch (e: unknown) {
+			error = (e as { message?: string })?.message || 'Failed to load target datasets';
 		} finally {
 			loadingDatasets = false;
 		}
@@ -567,7 +435,6 @@
 		if (!parsedTargetId || !dataset) return;
 
 		loadingSnapshots = true;
-		loadingMetadata = true;
 		error = '';
 		selectedGeneration = '';
 		snapshot = '';
@@ -600,24 +467,19 @@
 				selectedGeneration = '';
 				snapshot = '';
 			}
-
 			jailMetadata = jailMetadataInfo;
 			vmMetadata = vmMetadataInfo;
-
 			if (jailMetadataInfo?.basePool && jailMetadataInfo?.ctId) {
 				destinationDataset = `${jailMetadataInfo.basePool}/sylve/jails/${jailMetadataInfo.ctId}`;
 			}
 			if (vmMetadataInfo?.rid) {
 				const pool = vmMetadataInfo.pools?.[0] || selectedTarget?.backupRoot.split('/')[0] || '';
-				if (pool) {
-					destinationDataset = `${pool}/sylve/virtual-machines/${vmMetadataInfo.rid}`;
-				}
+				if (pool) destinationDataset = `${pool}/sylve/virtual-machines/${vmMetadataInfo.rid}`;
 			}
-		} catch (e: any) {
-			error = e?.message || 'Failed to load dataset details';
+		} catch (e: unknown) {
+			error = (e as { message?: string })?.message || 'Failed to load dataset details';
 		} finally {
 			loadingSnapshots = false;
-			loadingMetadata = false;
 		}
 	}
 
@@ -627,12 +489,10 @@
 			snapshot = '';
 			return;
 		}
-
 		const selectedStillVisible = visible.some(
 			(entry) => (entry.name || entry.shortName) === snapshot
 		);
 		if (selectedStillVisible) return;
-
 		const latest = visible[visible.length - 1];
 		snapshot = latest.name || latest.shortName;
 	}
@@ -696,8 +556,10 @@
 
 			handleAPIError(response);
 			toast.error('Failed to start restore', { position: 'bottom-center' });
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to start restore', { position: 'bottom-center' });
+		} catch (e: unknown) {
+			toast.error((e as { message?: string })?.message || 'Failed to start restore', {
+				position: 'bottom-center'
+			});
 		} finally {
 			restoring = false;
 		}
@@ -713,18 +575,15 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
+	<Dialog.Content class="w-full max-w-2xl! overflow-hidden p-5" showCloseButton={true}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--database-sync-outline] h-5 w-5"></span>
-					<span>Restore From Target Dataset</span>
-				</div>
-
-				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--database-sync-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Restore From Target Dataset"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -755,15 +614,24 @@
 					label="Dataset on Target"
 					placeholder={loadingDatasets
 						? 'Loading datasets...'
-						: visibleRestoreTargetDatasets.length === 0
+						: restoreTargetDatasetGroups.length === 0
 							? 'No restorable datasets found'
 							: 'Select dataset'}
 					options={restoreTargetDatasetOptions}
 					bind:value={dataset}
 					onChange={onDatasetChange}
-					disabled={loadingDatasets || visibleRestoreTargetDatasets.length === 0}
+					disabled={loadingDatasets || restoreTargetDatasetGroups.length === 0}
 				/>
 			</div>
+
+			{#if jobRunning}
+				<div
+					class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-center text-sm text-yellow-700 dark:text-yellow-400"
+				>
+					A backup for this target is currently in progress. Restore is unavailable until it
+					completes.
+				</div>
+			{/if}
 
 			{#if hasOutOfBandSnapshots}
 				<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
@@ -774,44 +642,54 @@
 				</div>
 			{/if}
 
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-				<SimpleSelect
-					label="Generation"
-					placeholder={loadingSnapshots
-						? 'Loading generations...'
-						: generationOptions.length === 0
-							? 'No generations found'
-							: 'Select generation'}
-					options={generationOptions}
-					bind:value={selectedGeneration}
-					onChange={onGenerationChange}
-					disabled={loadingSnapshots || generationOptions.length === 0}
-				/>
+			{#if !loadingSnapshots && snapshots.length === 0 && dataset}
+				<div
+					class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-center text-sm text-blue-700"
+				>
+					No snapshots found for this dataset. A backup may still be in progress.
+				</div>
+			{/if}
 
-				<SimpleSelect
-					label="Snapshot"
-					placeholder={loadingSnapshots
-						? 'Loading snapshots...'
-						: visibleSnapshots.length === 0
-							? 'No snapshots found'
-							: 'Select snapshot'}
-					options={snapshotOptions}
-					bind:value={snapshot}
-					onChange={() => {}}
-					disabled={loadingSnapshots || visibleSnapshots.length === 0}
-				/>
+			{#if loadingSnapshots || snapshots.length > 0}
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					<SimpleSelect
+						label="Generation"
+						placeholder={loadingSnapshots
+							? 'Loading generations...'
+							: generationOptions.length === 0
+								? 'No generations found'
+								: 'Select generation'}
+						options={generationOptions}
+						bind:value={selectedGeneration}
+						onChange={onGenerationChange}
+						disabled={loadingSnapshots || generationOptions.length === 0}
+					/>
 
-				<CustomValueInput
-					label="Destination Dataset"
-					placeholder={selectedRestoreTargetDatasetKind === 'vm'
-						? 'zroot/sylve/virtual-machines/104'
-						: selectedRestoreTargetDatasetKind === 'jail'
-							? 'zroot/sylve/jails/105'
-							: 'pool/path'}
-					bind:value={destinationDataset}
-					classes="space-y-1"
-				/>
-			</div>
+					<SimpleSelect
+						label="Snapshot"
+						placeholder={loadingSnapshots
+							? 'Loading snapshots...'
+							: visibleSnapshots.length === 0
+								? 'No snapshots found'
+								: 'Select snapshot'}
+						options={snapshotOptions}
+						bind:value={snapshot}
+						onChange={() => {}}
+						disabled={loadingSnapshots || visibleSnapshots.length === 0}
+					/>
+				</div>
+			{/if}
+
+			<CustomValueInput
+				label="Destination Dataset"
+				placeholder={selectedRestoreTargetDatasetKind === 'vm'
+					? 'zroot/sylve/virtual-machines/104'
+					: selectedRestoreTargetDatasetKind === 'jail'
+						? 'zroot/sylve/jails/105'
+						: 'pool/path'}
+				bind:value={destinationDataset}
+				classes="space-y-1"
+			/>
 
 			{#if restoreTargetSupportsNetworkRestore}
 				<CustomCheckbox
@@ -823,7 +701,7 @@
 				/>
 			{/if}
 
-			{#if jailMetadata}
+			{#if jailMetadata && jailMetadata.ctId > 0}
 				<div class="rounded-md border bg-muted/40 p-3 text-sm">
 					<p class="font-medium">Detected Jail Metadata</p>
 					<div class="mt-2 grid grid-cols-1 gap-1 text-muted-foreground md:grid-cols-3">
@@ -842,7 +720,7 @@
 				</div>
 			{/if}
 
-			{#if vmMetadata}
+			{#if vmMetadata && vmMetadata.rid > 0}
 				<div class="rounded-md border bg-muted/40 p-3 text-sm">
 					<p class="font-medium">Detected VM Metadata</p>
 					<div class="mt-2 grid grid-cols-1 gap-1 text-muted-foreground md:grid-cols-3">
@@ -903,6 +781,7 @@
 					loadingDatasets ||
 					loadingSnapshots ||
 					loadingCluster ||
+					jobRunning ||
 					!targetId ||
 					!restoreNodeId ||
 					!dataset ||

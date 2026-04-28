@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createNote, deleteNote, deleteNotes, getNotes, updateNote } from '$lib/api/info/notes';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -187,11 +188,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
-
-					<span>View</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--eye]" size="h-4 w-4" gap="gap-2" title="View" />
 			</Button>
 		{/if}
 
@@ -202,10 +199,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 
@@ -221,10 +215,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--note-edit]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 	{/if}
@@ -240,10 +231,12 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[material-symbols--delete-sweep] mr-1 h-4 w-4"></span>
-					<span>Bulk Delete</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[material-symbols--delete-sweep]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Bulk Delete"
+				/>
 			</Button>
 		{/if}
 	{/if}
@@ -267,66 +260,37 @@
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
-		<Dialog.Content class="w-[90%]  overflow-hidden p-5 lg:max-w-2xl">
-			<Dialog.Header class="">
-				<Dialog.Title class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class={`icon-[${modalState.isEditMode ? 'mdi--note-edit' : 'mdi--note'}] h-5 w-5`}
-						></span>
-						<span>
-							{#if modalState.isEditMode}
-								{#if selectedId}
-									Edit
-								{:else}
-									New
-								{/if}
-							{:else}
-								View
-							{/if}
-							Note
-						</span>
-					</div>
-					<div class="flex items-center gap-0.5">
-						<Button
-							size="sm"
-							variant="link"
-							title="Reset"
-							class="h-4 {modalState.isEditMode && selectedId ? '' : 'hidden'}"
-							onclick={() => {
-								if (
-									modalState.isEditMode &&
-									selectedId &&
-									notes.current &&
-									Array.isArray(notes.current)
-								) {
-									const originalNote = notes.current.find((note) => note.id === selectedId);
-									if (originalNote) {
-										modalState.title = originalNote.title;
-										modalState.content = originalNote.content;
-										return;
-									}
-								}
-							}}
-						>
-							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-							<span class="sr-only">Reset</span>
-						</Button>
-						<Button
-							size="sm"
-							variant="link"
-							class="h-4"
-							title="Close"
-							onclick={() => {
-								modalState.isOpen = false;
-								modalState.title = '';
-								modalState.content = '';
-							}}
-						>
-							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
-							></span>
-							<span class="sr-only">Close</span>
-						</Button>
-					</div>
+		<Dialog.Content
+			class="w-[90%] overflow-hidden p-5 lg:max-w-2xl"
+			showCloseButton={true}
+			showResetButton={modalState.isEditMode && selectedId !== null}
+			onReset={() => {
+				if (modalState.isEditMode && selectedId && notes.current && Array.isArray(notes.current)) {
+					const originalNote = notes.current.find((note) => note.id === selectedId);
+					if (originalNote) {
+						modalState.title = originalNote.title;
+						modalState.content = originalNote.content;
+					}
+				}
+			}}
+			onClose={() => {
+				modalState.isOpen = false;
+				modalState.title = '';
+				modalState.content = '';
+			}}
+		>
+			<Dialog.Header>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon={modalState.isEditMode
+							? selectedId
+								? 'icon-[mdi--note-edit]'
+								: 'icon-[mdi--note-add]'
+							: 'icon-[mdi--note]'}
+						size="h-5 w-5"
+						gap="gap-2"
+						title="{modalState.isEditMode ? (selectedId ? 'Edit' : 'New') : 'View'} Note"
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
@@ -357,6 +321,7 @@
 							Content
 						</p>
 						<article class="prose lg:prose-xl rounded-md border p-3">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							{@html markdownToTailwindHTML(modalState.content)}
 						</article>
 					</div>
@@ -402,7 +367,7 @@
 
 	<AlertDialog
 		open={modalState.isBulkDeleteOpen}
-		names={{ parent: '', element: modalState?.title || '' }}
+		names={{ parent: 'notes', element: modalState?.title || '' }}
 		actions={{
 			onConfirm: async () => {
 				const ids = activeRow

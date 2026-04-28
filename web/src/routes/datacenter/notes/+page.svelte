@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { createNote, deleteNote, editNote, getNotes } from '$lib/api/cluster/notes';
+	import { createNote, deleteNote, deleteNotes, editNote, getNotes } from '$lib/api/cluster/notes';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -28,11 +29,16 @@
 		() => 'cluster-notes',
 		async () => {
 			const notes = await getNotes();
+
+			if (isAPIResponse(notes)) {
+				return [] as Note[];
+			}
+
 			updateCache('cluster-notes', notes);
 			return notes;
 		},
 		{
-			initialValue: data.notes
+			initialValue: isAPIResponse(data) ? [] : data.notes
 		}
 	);
 
@@ -59,16 +65,24 @@
 
 	let selectedId: number | null = $state(null);
 
-	function handleNote(note?: Note, editMode: boolean = true, reset: boolean = false) {
+	function handleNote(
+		note?: Note,
+		editMode: boolean = true,
+		reset: boolean = false,
+		clearActiveRow: boolean = true
+	) {
 		if (reset) {
-			modalState.title = '';
-			modalState.content = '';
-			selectedId = null;
-			modalState.isEditMode = false;
 			modalState.isOpen = false;
 			modalState.isDeleteOpen = false;
 			modalState.isBulkDeleteOpen = false;
-			activeRow = null;
+			// Defer clearing state until after the close animation
+			setTimeout(() => {
+				selectedId = null;
+				modalState.isEditMode = false;
+				modalState.title = '';
+				modalState.content = '';
+				if (clearActiveRow) activeRow = null;
+			}, 200);
 		} else {
 			modalState.title = note?.title || '';
 			modalState.content = note?.content || '';
@@ -85,7 +99,7 @@
 			reload = true;
 			if (response.status === 'success') {
 				toast.success('Note updated', { position: 'bottom-center' });
-				handleNote(undefined, false, true);
+				handleNote(undefined, false, true, false);
 			} else {
 				handleAPIError(response);
 				toast.error('Failed to update note', {
@@ -97,7 +111,7 @@
 			reload = true;
 			if (response.status === 'success') {
 				toast.success('Note created', { position: 'bottom-center' });
-				handleNote(undefined, false, true);
+				handleNote(undefined, false, true, false);
 			}
 
 			if ((response as APIResponse).error) {
@@ -149,6 +163,14 @@
 			title: 'Name'
 		},
 		{
+			field: 'content',
+			title: 'Content',
+			formatter: (cell: CellComponent) => {
+				const value = cell.getValue();
+				return value.length > 64 ? value.substring(0, 64) + '...' : value;
+			}
+		},
+		{
 			field: 'createdAt',
 			title: 'Created',
 			formatter: (cell: CellComponent) => {
@@ -180,10 +202,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
-					<span>View</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--eye]" size="h-4 w-4" gap="gap-2" title="View" />
 			</Button>
 		{/if}
 
@@ -194,10 +213,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 
@@ -211,10 +227,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--note-edit]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 	{/if}
@@ -230,10 +243,12 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[material-symbols--delete-sweep] mr-1 h-4 w-4"></span>
-					<span>Bulk Delete</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[material-symbols--delete-sweep]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Bulk Delete"
+				/>
 			</Button>
 		{/if}
 	{/if}
@@ -257,75 +272,41 @@
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
-		<Dialog.Content class="w-[90%]  overflow-hidden p-5 lg:max-w-2xl">
-			<Dialog.Header class="">
-				<Dialog.Title class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span
-							class={modalState.isEditMode
-								? 'icon-[mdi--note-edit] h-5 w-5'
-								: 'icon-[mdi--note] h-5 w-5'}
-						></span>
-						<span>
-							{#if modalState.isEditMode}
-								{#if selectedId}
-									Edit
-								{:else}
-									New
-								{/if}
-							{:else}
-								View
-							{/if}
-
-							{'Note'}
-						</span>
-					</div>
-					<div class="flex items-center gap-0.5">
-						<Button
-							size="sm"
-							variant="link"
-							title={'Reset'}
-							class="h-4 {modalState.isEditMode && selectedId ? '' : 'hidden'}"
-							onclick={() => {
-								if (
-									modalState.isEditMode &&
-									selectedId &&
-									notes.current &&
-									Array.isArray(notes.current)
-								) {
-									const originalNote = notes.current.find((note) => note.id === selectedId);
-									if (originalNote) {
-										modalState.title = originalNote.title;
-										modalState.content = originalNote.content;
-										return;
-									}
-								}
-							}}
-						>
-							<span class="icon-[radix-icons--reset] h-4 w-4 pointer-events-none"></span>
-							<span class="sr-only">{'Reset'}</span>
-						</Button>
-						<Button
-							size="sm"
-							variant="link"
-							class="h-4"
-							title={'Close'}
-							onclick={() => {
-								modalState.isOpen = false;
-								modalState.title = '';
-								modalState.content = '';
-							}}
-						>
-							<span class="icon-[material-symbols--close-rounded] h-4 w-4 pointer-events-none"
-							></span>
-							<span class="sr-only">{'Close'}</span>
-						</Button>
-					</div>
+		<Dialog.Content
+			showCloseButton={true}
+			showResetButton={modalState.isEditMode && selectedId !== null}
+			onReset={() => {
+				if (
+					modalState.isEditMode &&
+					selectedId !== null &&
+					notes.current &&
+					Array.isArray(notes.current)
+				) {
+					const originalNote = notes.current.find((note) => note.id === selectedId);
+					if (originalNote) {
+						modalState.title = originalNote.title;
+						modalState.content = originalNote.content;
+					}
+				}
+			}}
+		>
+			<Dialog.Header>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon={modalState.isEditMode
+							? selectedId
+								? 'icon-[mdi--note-edit]'
+								: 'icon-[mdi--note-add]'
+							: 'icon-[mdi--note]'}
+						size="h-5 w-5"
+						gap="gap-2"
+						title={`${modalState.isEditMode ? (selectedId ? 'Edit' : 'New') : 'View'} Note`}
+					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
 			<CustomValueInput
-				label={'Name'}
+				label="Name"
 				placeholder="Post Upgrade Summary"
 				bind:value={modalState.title}
 				classes="flex-1 space-y-1"
@@ -336,32 +317,34 @@
 				{#if modalState.isEditMode}
 					<div>
 						<CustomValueInput
-							label={'Content'}
+							label="Content"
 							placeholder="This is a note"
 							bind:value={modalState.content}
-							classes="flex-1 space-y-1 "
+							classes="flex-1 space-y-1"
 							type="textarea"
 						/>
 					</div>
 				{:else}
-					<div class="mt-2">
+					<div class="mt-1">
 						<p
 							class="mb-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 						>
 							Content
 						</p>
 						<article class="prose lg:prose-xl rounded-md border p-3">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							{@html markdownToTailwindHTML(modalState.content)}
 						</article>
 					</div>
 				{/if}
 			</ScrollArea>
+
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
 					{#if modalState.isEditMode}
-						<Button onclick={saveNote} type="submit" size="sm" class="w-full lg:w-28"
-							>{'Save'}</Button
-						>
+						<Button onclick={saveNote} type="submit" size="sm">
+							{#if selectedId !== null}Save{:else}Create{/if}
+						</Button>
 					{/if}
 				</div>
 			</Dialog.Footer>
@@ -398,13 +381,13 @@
 
 	<AlertDialog
 		open={modalState.isBulkDeleteOpen}
-		names={{ parent: '', element: modalState?.title || '' }}
+		customTitle={`This will permanently delete <b>${activeRow?.length || 0}</b> of the selected notes.`}
 		actions={{
 			onConfirm: async () => {
 				const ids = activeRow
 					? activeRow.map((row) => (typeof row.id === 'number' ? row.id : parseInt(row.id)))
 					: [];
-				const result = await deleteNote(ids[0]);
+				const result = await deleteNotes(ids);
 				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Notes deleted', { position: 'bottom-center' });

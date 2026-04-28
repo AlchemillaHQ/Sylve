@@ -99,7 +99,7 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
 		}
 
-		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		if err := zS.ValidateTarget(validateCtx, testTarget); err != nil {
@@ -205,7 +205,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
 		}
 
-		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		if err := zS.ValidateTarget(validateCtx, testTarget); err != nil {
@@ -309,7 +309,7 @@ func ValidateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.Handler
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		if err := zS.ValidateTarget(ctx, target); err != nil {

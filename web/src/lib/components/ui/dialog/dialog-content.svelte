@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
-	// import XIcon from '@lucide/svelte/icons/x';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import type { Snippet } from 'svelte';
 	import * as Dialog from './index.js';
@@ -12,11 +11,17 @@
 		children,
 		overlayClass,
 		showCloseButton = true,
+		showResetButton = false,
+		onClose,
+		onReset,
 		...restProps
 	}: WithoutChildrenOrChild<DialogPrimitive.ContentProps> & {
 		portalProps?: DialogPrimitive.PortalProps;
 		children: Snippet;
 		showCloseButton?: boolean;
+		showResetButton?: boolean;
+		onClose?: () => void;
+		onReset?: () => void;
 		overlayClass?: string;
 	} = $props();
 </script>
@@ -33,13 +38,28 @@
 		{...restProps}
 	>
 		{@render children?.()}
-		{#if showCloseButton}
-			<DialogPrimitive.Close
-				class="ring-offset-background focus:ring-ring absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-			>
-				<!-- <XIcon /> -->
-				<span class="sr-only">Close</span>
-			</DialogPrimitive.Close>
+		{#if showCloseButton || showResetButton}
+			<div class="absolute top-6 right-6 flex items-center gap-2">
+				{#if showResetButton}
+					<button
+						onclick={onReset}
+						class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+					>
+						<span class="icon-[radix-icons--reset] h-5 w-5"></span>
+						<span class="sr-only">Reset</span>
+					</button>
+				{/if}
+				{#if showCloseButton}
+					<DialogPrimitive.Close
+						onclick={onClose}
+						class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+						data-slot="dialog-close"
+					>
+						<span class="icon-[lucide--x] h-5 w-5"></span>
+						<span class="sr-only">Close</span>
+					</DialogPrimitive.Close>
+				{/if}
+			</div>
 		{/if}
 	</DialogPrimitive.Content>
 </Dialog.Portal>

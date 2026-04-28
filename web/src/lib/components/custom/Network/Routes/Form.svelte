@@ -5,6 +5,7 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
 	import type { Iface } from '$lib/types/network/iface';
@@ -229,6 +230,25 @@
 		return trimmed;
 	}
 
+	function resetForm() {
+		if (editingRoute) {
+			form = {
+				name: editingRoute.name,
+				description: editingRoute.description ?? '',
+				enabled: editingRoute.enabled ?? true,
+				fib: editingRoute.fib ?? 0,
+				destinationType: editingRoute.destinationType,
+				destination: editingRoute.destination,
+				family: editingRoute.family,
+				nextHopMode: editingRoute.nextHopMode,
+				gateway: editingRoute.gateway ?? '',
+				interface: editingRoute.interface ?? ''
+			};
+		} else {
+			form = defaultForm();
+		}
+	}
+
 	async function save() {
 		const payload = {
 			name: form.name.trim(),
@@ -264,25 +284,23 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[96%] overflow-hidden p-5 lg:max-w-2xl md:max-w-xl">
-		<div class="flex items-center justify-between">
-			<Dialog.Header>
-				<Dialog.Title>
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--routes] h-5 w-5"></span>
-						{#if editingRoute}
-							<span>Edit Route — {editingRoute.name}</span>
-						{:else}
-							<span>Create Route</span>
-						{/if}
-					</div>
-				</Dialog.Title>
-			</Dialog.Header>
-			<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
-				<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-				<span class="sr-only">Close</span>
-			</Button>
-		</div>
+	<Dialog.Content
+		class="w-[96%] overflow-hidden p-5 lg:max-w-2xl md:max-w-xl"
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={resetForm}
+		onClose={() => (open = false)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--routes]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={editingRoute ? `Edit Route — ${editingRoute.name}` : 'Create Route'}
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<ScrollArea orientation="vertical" class="max-h-[70vh] pr-2">
 			<div class="space-y-5">
@@ -318,7 +336,7 @@
 				</section>
 
 				<section>
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+					<div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
 						<CustomValueInput
 							label="FIB"
 							type="number"
@@ -356,7 +374,7 @@
 				</section>
 
 				<section>
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
 						<SimpleSelect
 							label="Mode"
 							options={nextHopModeOptions}

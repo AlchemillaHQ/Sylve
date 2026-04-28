@@ -6,8 +6,8 @@
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { DHCPConfig } from '$lib/types/network/dhcp';
-	import type { Iface } from '$lib/types/network/iface';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateComboboxOptions, generateSwitchOptions } from '$lib/utils/input';
@@ -17,19 +17,13 @@
 	interface Props {
 		open: boolean;
 		reload: boolean;
-		networkInterfaces: Iface[];
 		networkSwitches: SwitchList;
 		dhcpConfig: DHCPConfig;
 	}
 
-	let {
-		open = $bindable(),
-		reload = $bindable(),
-		networkInterfaces,
-		networkSwitches,
-		dhcpConfig
-	}: Props = $props();
+	let { open = $bindable(), reload = $bindable(), networkSwitches, dhcpConfig }: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		expandHosts: dhcpConfig.expandHosts,
 		domain: dhcpConfig.domain,
@@ -117,38 +111,26 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<div class="flex items-center justify-between">
-			<Dialog.Header>
-				<Dialog.Title>
-					<div class="flex items-center">
-						<span class="icon-[mdi--dns] mr-2 h-6 w-6"></span>
-						<span class="text-lg font-semibold">Update DHCP Configuration</span>
-					</div>
-				</Dialog.Title>
-			</Dialog.Header>
-
-			<div class="flex items-center gap-0.5">
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title={'Reset'}
-					onclick={() => (properties = options)}
-				>
-					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Reset'}</span>
-				</Button>
-				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
-			</div>
-		</div>
+	<Dialog.Content
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => (properties = options)}
+		onClose={() => (open = false)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--dns]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title="Update DHCP Configuration"
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<div class="flex flex-col gap-4">
 			<CustomValueInput
-				label={'Domain'}
+				label="Domain"
 				placeholder="lan"
 				bind:value={properties.domain}
 				classes="flex-1 space-y-1.5"
@@ -157,7 +139,7 @@
 
 			<ComboBoxBindable
 				bind:open={properties.dnsServers.combobox.open}
-				label={'DNS Servers'}
+				label="DNS Servers"
 				bind:value={properties.dnsServers.combobox.values}
 				data={properties.dnsServers.combobox.options}
 				classes="flex-1 space-y-1"
@@ -169,7 +151,7 @@
 
 		<ComboBox
 			bind:open={properties.switches.combobox.open}
-			label={'Switches'}
+			label="Switches"
 			bind:value={properties.switches.combobox.values}
 			data={properties.switches.combobox.options}
 			classes="flex-1 space-y-1"
@@ -186,7 +168,7 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={saveConfig} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={saveConfig} type="submit" size="sm">Save</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

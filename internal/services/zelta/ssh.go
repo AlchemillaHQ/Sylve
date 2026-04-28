@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,7 +218,7 @@ func (s *Service) remoteDatasetExists(ctx context.Context, target *clusterModels
 
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		return false, output, err
+		return false, output, fmt.Errorf("%w (output: %q)", err, output)
 	}
 
 	return strings.TrimSpace(output) != "", output, nil
@@ -233,7 +234,7 @@ func (s *Service) remoteZFSPoolExists(ctx context.Context, target *clusterModels
 		if strings.Contains(combined, "no such pool") {
 			return false, output, nil
 		}
-		return false, output, err
+		return false, output, fmt.Errorf("%w (output: %q)", err, output)
 	}
 
 	return strings.TrimSpace(output) == pool, output, nil
@@ -245,7 +246,7 @@ func (s *Service) remoteCreateDataset(ctx context.Context, target *clusterModels
 
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		return fmt.Errorf("backup_root_create_failed: failed to create dataset '%s': %s", dataset, output)
+		return fmt.Errorf("backup_root_create_failed: failed to create dataset '%s': %w (output: %q)", dataset, err, output)
 	}
 
 	return nil
@@ -271,6 +272,12 @@ func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterMode
 	return nil
 }
 
+func sshControlPath(target *clusterModels.BackupTarget) string {
+	h := fnv.New32a()
+	fmt.Fprintf(h, "%s:%d:%s", target.SSHHost, target.SSHPort, target.SSHKeyPath)
+	return filepath.Join(os.TempDir(), fmt.Sprintf("sylve-ssh-%x.sock", h.Sum32()))
+}
+
 func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 	args := []string{
 		"-n",
@@ -279,6 +286,9 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 		"-o", "ConnectTimeout=3",
 		"-o", "ConnectionAttempts=1",
 		"-o", "UpdateHostKeys=no",
+		"-o", "ControlMaster=auto",
+		"-o", fmt.Sprintf("ControlPath=%s", sshControlPath(target)),
+		"-o", "ControlPersist=60",
 	}
 
 	if target.SSHPort != 0 && target.SSHPort != 22 {

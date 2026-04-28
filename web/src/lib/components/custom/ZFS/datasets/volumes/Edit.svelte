@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { editVolume } from '$lib/api/zfs/datasets';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -149,42 +150,24 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between text-left">
-				<div class="flex items-center">
-					<span class="icon-[carbon--volume-block-storage] mr-2 h-5 w-5"></span>
-
-					Edit Volume - {dataset.name}
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Reset"
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[carbon--volume-block-storage]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Edit Volume - {dataset.name}"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

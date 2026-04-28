@@ -6,6 +6,7 @@
 	import { parseScanStats } from '$lib/utils/zfs/pool';
 	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -133,23 +134,15 @@
 
 {#if pool !== null && status !== undefined && status.current !== undefined}
 	<Dialog.Root bind:open>
-		<Dialog.Content class="sm:w-full md:min-w-3xl">
-			<div class="flex items-center justify-between pb-3">
-				<Dialog.Header>
-					<Dialog.Title class="flex items-center">
-						<span class="text-primary font-semibold">Pool Status</span>
-						<span class="text-muted-foreground mx-2">•</span>
-						<span class="text-xl font-medium">{pool.name}</span>
-						<Badge class="mt-0.5 ml-2 {stateArr[1]} font-bold">{stateArr[0]}</Badge>
-					</Dialog.Title>
-				</Dialog.Header>
-
-				<Dialog.Close
-					class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				>
-					<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
-				</Dialog.Close>
-			</div>
+		<Dialog.Content class="sm:w-full md:min-w-3xl" showCloseButton={true}>
+			<Dialog.Header>
+				<Dialog.Title class="flex items-center gap-2">
+					<SpanWithIcon icon="icon-[mdi--eye]" size="h-5 w-5" gap="gap-2" title="Pool Status" />
+					<span class="text-muted-foreground mx-1">•</span>
+					<span class="text-xl font-medium">{pool.name}</span>
+					<Badge class="mt-0.5 ml-2 {stateArr[1]} font-bold">{stateArr[0]}</Badge>
+				</Dialog.Title>
+			</Dialog.Header>
 
 			<div class="space-y-5">
 				<!-- Warning -->
@@ -183,7 +176,7 @@
 									{scanActivity.text}
 								</div>
 
-								{#if scanActivity.progressPercent !== null && scanActivity.progressPercent >= 0 && scanActivity.progressPercent != 100}
+								{#if scanActivity.progressPercent !== null && scanActivity.progressPercent > 0 && scanActivity.progressPercent < 100}
 									<div class="mt-3">
 										<div class="bg-secondary h-2.5 w-full overflow-hidden rounded-full">
 											<div
@@ -194,6 +187,12 @@
 												aria-valuemax="100"
 												aria-valuenow={scanActivity.progressPercent}
 											></div>
+										</div>
+									</div>
+								{:else if status.current?.scan_stats?.state === 'SCANNING'}
+									<div class="mt-3">
+										<div class="bg-secondary h-2.5 w-full overflow-hidden rounded-full">
+											<div class="h-full w-full animate-pulse rounded-full bg-blue-500"></div>
 										</div>
 									</div>
 								{/if}
@@ -282,7 +281,7 @@
 					<div class="p-4">
 						<div
 							class="flex items-center gap-2 rounded-md border p-2
-				{!hasAnyErrors
+                                {!hasAnyErrors
 								? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'
 								: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'}"
 						>

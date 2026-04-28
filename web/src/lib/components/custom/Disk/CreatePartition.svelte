@@ -5,6 +5,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Slider } from '$lib/components/ui/slider/index.js';
 	import * as Table from '$lib/components/ui/table';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { Disk } from '$lib/types/disk/disk';
 	import {
 		formatBytesBinary,
@@ -23,7 +24,7 @@
 		reload?: boolean;
 	}
 
-	let { open, disk, onCancel, reload = $bindable() }: Data = $props();
+	let { open = $bindable(), disk, onCancel, reload = $bindable() }: Data = $props();
 
 	let newPartitions: { name: string; size: number }[] = $state([]);
 	let currentPartitionInput = $state('0 B');
@@ -95,6 +96,13 @@
 		onCancel();
 	}
 
+	function reset() {
+		newPartitions = [];
+		remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
+		currentTextPartition = 0;
+		currentPartitionInput = '0 B';
+	}
+
 	function calculateRemainingSpace(disk: Disk) {
 		if (!disk) return 0;
 		const usedSpace =
@@ -111,6 +119,7 @@
 		return actual;
 	}
 
+	// svelte-ignore state_referenced_locally
 	let remainingSpace = $state(disk ? calculateRemainingSpace(disk) : 0);
 
 	watch(
@@ -129,7 +138,7 @@
 			const parsed = parseSizeInputToBytes(value) ?? 0;
 			if (parsed > remainingSpace) {
 				currentTextPartition = remainingSpace;
-				currentPartitionInput = normalizeSizeInputExact(remainingSpace) ?? '0 B';
+				currentPartitionInput = formatBytesBinary(remainingSpace);
 				return;
 			}
 
@@ -152,47 +161,22 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-5 lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-6 lg:max-w-3xl"
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={close}
+		onReset={reset}
 	>
-		<div class="flex items-center justify-between">
-			<Dialog.Header class="p-0">
-				<Dialog.Title>
-					<span class="flex items-center gap-2">
-						<span class="icon icon-[ant-design--partition-outlined] h-6 w-6"></span>
-						<span>Create Partitions</span>
-					</span>
-				</Dialog.Title>
-				<Dialog.Description></Dialog.Description>
-			</Dialog.Header>
-
-			<div class="flex items-center gap-0.5">
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4 cursor-pointer"
-					title={'Reset'}
-					onclick={() => {
-						newPartitions = [];
-						remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
-						currentTextPartition = 0;
-						currentPartitionInput = '0 B';
-					}}
-				>
-					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Reset</span>
-				</Button>
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4 cursor-pointer"
-					title={'Close'}
-					onclick={() => close()}
-				>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
-			</div>
-		</div>
+		<Dialog.Header class="p-0">
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[ant-design--partition-outlined]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create Partitions"
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<div class="max-h-75 overflow-y-auto" id="table-body">
 			<Table.Root>
@@ -206,7 +190,7 @@
 				</Table.Header>
 				<Table.Body>
 					{#if disk && disk.partitions && disk.partitions.length > 0}
-						{#each disk.partitions as partition}
+						{#each disk.partitions as partition (partition.name + partition.size)}
 							<Table.Row>
 								<Table.Cell>{partition.name}</Table.Cell>
 								<Table.Cell class="text-right">{formatBytesBinary(partition.size)}</Table.Cell>
@@ -219,7 +203,7 @@
 					{/if}
 
 					{#if newPartitions.length > 0}
-						{#each newPartitions as partition, index}
+						{#each newPartitions as partition, index (partition.name + partition.size)}
 							<Table.Row>
 								<Table.Cell>{partition.name}</Table.Cell>
 								<Table.Cell class="text-right">{formatBytesBinary(partition.size)}</Table.Cell>
@@ -255,8 +239,7 @@
 							step={0.01}
 							onValueCommit={(value: number) => {
 								currentTextPartition = (remainingSpace * value) / 100;
-								currentPartitionInput =
-									normalizeSizeInputExact(currentTextPartition) ?? '0 B';
+								currentPartitionInput = formatBytesBinary(currentTextPartition);
 							}}
 						></Slider>
 					{/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { bulkDelete, deleteFileSystem, getDatasets } from '$lib/api/zfs/datasets';
 	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import CreateFS from '$lib/components/custom/ZFS/datasets/fs/Create.svelte';
@@ -8,11 +9,11 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { groupByPoolNames } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/fs';
 	import { toast } from 'svelte-sonner';
-	import { resource, IsDocumentVisible } from 'runed';
+	import { resource, IsDocumentVisible, watch } from 'runed';
 	import { untrack } from 'svelte';
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import { getBasicSettings } from '$lib/api/system/settings';
@@ -32,6 +33,10 @@
 		() => 'basic-settings',
 		async () => {
 			const settings = await getBasicSettings();
+			if (isAPIResponse(settings)) {
+				return data.settings.pools;
+			}
+
 			updateCache('basic-settings', settings);
 			return settings.pools;
 		},
@@ -43,8 +48,11 @@
 	// svelte-ignore state_referenced_locally
 	const datasets = resource(
 		() => 'zfs-filesystems',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
+			if (isAPIResponse(result)) {
+				return data.datasets;
+			}
 			updateCache(key, result);
 			return result;
 		},
@@ -59,23 +67,26 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			pools.refetch();
-			datasets.refetch();
-
-			reload = false;
-		}
-	});
-
-	$effect(() => {
-		if (visible.current) {
-			untrack(() => {
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
 				pools.refetch();
 				datasets.refetch();
-			});
+				reload = false;
+			}
 		}
-	});
+	);
+
+	watch(
+		() => visible.current,
+		(isVisible) => {
+			if (isVisible) {
+				pools.refetch();
+				datasets.refetch();
+			}
+		}
+	);
 
 	let activeDataset: Dataset | null = $derived.by(() => {
 		if (activeRow) {
@@ -166,10 +177,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
@@ -184,10 +192,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 
@@ -204,10 +209,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--camera] mr-1 h-4 w-4"></span>
-					<span>Snapshot</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--camera]" size="h-4 w-4" gap="gap-2" title="Snapshot" />
 			</Button>
 		{/if}
 	{:else if activeRows && activeRows.length > 1}
@@ -223,10 +225,12 @@
 					variant="outline"
 					class="h-6.5"
 				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						<span>Delete Datasets</span>
-					</div>
+					<SpanWithIcon
+						icon="icon-[mdi--delete]"
+						size="h-4 w-4"
+						gap="gap-2"
+						title="Delete Datasets"
+					/>
 				</Button>
 			{/if}
 		{/if}

@@ -19,6 +19,7 @@
 	import { raidTypeArr } from '$lib/utils/zfs/pool';
 	import { flip } from 'svelte/animate';
 	import { slide } from 'svelte/transition';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { createPool } from '$lib/api/zfs/pool';
 	import { isValidPoolName } from '$lib/utils/zfs';
 	import { onMount } from 'svelte';
@@ -699,45 +700,25 @@
 			properties = options;
 			open = false;
 		}}
+		showCloseButton={true}
+		showResetButton={true}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+		onReset={() => {
+			properties = options;
+		}}
 		class="fixed top-1/2 left-1/2 flex h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-4 overflow-auto p-5 transition-all duration-300 ease-in-out lg:max-w-[70%]"
 	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex  justify-between  text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[bi--hdd-stack-fill] h-5 w-5"></span>
-
-					Create ZFS Pool
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Reset"
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-
-						<span class="sr-only">Reset</span>
-					</Button>
-
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[bi--hdd-stack-fill]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create ZFS Pool"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

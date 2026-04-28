@@ -29,7 +29,14 @@ import (
 
 func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		jobs, err := cS.ListBackupJobs()
+		targetID := uint(0)
+		if q := c.Query("targetId"); q != "" {
+			if parsed, err := strconv.ParseUint(q, 10, 64); err == nil {
+				targetID = uint(parsed)
+			}
+		}
+
+		jobs, err := cS.ListBackupJobs(targetID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -44,6 +51,42 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 			Status:  "success",
 			Message: "backup_jobs_listed",
 			Data:    jobs,
+		})
+	}
+}
+
+func BackupTargetRunningJobIDs(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_id",
+				Error:   "invalid_target_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		ids, err := cS.RunningJobIDsForTarget(uint(id64))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "running_job_ids_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if ids == nil {
+			ids = []uint{}
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]uint]{
+			Status:  "success",
+			Message: "running_job_ids_listed",
+			Data:    ids,
 		})
 	}
 }

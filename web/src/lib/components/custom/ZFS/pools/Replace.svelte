@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { replaceDevice } from '$lib/api/zfs/pool';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -71,11 +72,11 @@
 				}),
 				{
 					loading: `Replacing ${snapshot.old} with ${snapshot.latest}`,
-					success: (response) => {
+					success: () => {
 						replacing = true;
 						return `Device replacement started for ${snapshot.old} in ${snapshot.name}`;
 					},
-					error: (error) => {
+					error: () => {
 						replacing = false;
 						return `Error replacing device`;
 					},
@@ -93,21 +94,21 @@
 	<Dialog.Content
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
+		showCloseButton={true}
+		onClose={() => {
+			open = false;
+		}}
 	>
-		<div class="flex items-center justify-between pb-3">
-			<Dialog.Header>
-				<Dialog.Title>{`Replace ${old} in ${pool.name}`}</Dialog.Title>
-			</Dialog.Header>
-
-			<Dialog.Close
-				class="flex h-5 w-5 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				onclick={() => {
-					open = false;
-				}}
-			>
-				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
-			</Dialog.Close>
-		</div>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--swap-horizontal]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={`Replace ${old} in ${pool.name}`}
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
 		<div class="space-y-1 py-1">
 			<Select.Root type="single" bind:value={latest}>
@@ -116,13 +117,13 @@
 				</Select.Trigger>
 				<Select.Content class="max-h-36 overflow-y-auto">
 					<Select.Group>
-						{#each usable.disks as disk}
+						{#each usable.disks as disk (disk.device)}
 							<Select.Item value={disk.device} label={disk.device}>
 								{disk.device}
 							</Select.Item>
 						{/each}
 
-						{#each usable.partitions as partition}
+						{#each usable.partitions as partition (partition.name)}
 							<Select.Item value={partition.name} label={partition.name}>
 								{partition.name}
 							</Select.Item>

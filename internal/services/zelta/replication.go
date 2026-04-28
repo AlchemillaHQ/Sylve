@@ -2776,7 +2776,7 @@ func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.R
 		return nil
 	}
 
-	jobs, err := s.Cluster.ListBackupJobs()
+	jobs, err := s.Cluster.ListBackupJobs(0)
 	if err != nil {
 		return fmt.Errorf("list_backup_jobs_failed: %w", err)
 	}

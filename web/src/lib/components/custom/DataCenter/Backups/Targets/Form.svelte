@@ -12,6 +12,7 @@
 	} from '$lib/api/cluster/backups';
 	import { handleAPIError } from '$lib/utils/http';
 	import { watch } from 'runed';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -133,41 +134,21 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-5">
+	<Dialog.Content
+		class="w-[90%] max-w-xl overflow-hidden p-5"
+		showCloseButton={true}
+		showResetButton={edit}
+		onReset={() => reset(true)}
+		onClose={() => reset(false)}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex justify-between text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[carbon--server-proxy] h-5 w-5"></span>
-					<span>{edit ? 'Edit Backup Target' : 'New Backup Target'}</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 {edit ? '' : 'hidden'}"
-						onclick={() => {
-							if (edit) {
-								reset(true);
-							}
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							reset(false);
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[carbon--server-proxy]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={edit ? 'Edit Backup Target' : 'New Backup Target'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

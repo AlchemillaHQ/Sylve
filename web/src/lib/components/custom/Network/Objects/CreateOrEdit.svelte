@@ -6,6 +6,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Label from '$lib/components/ui/label/label.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError } from '$lib/utils/http';
@@ -670,41 +671,24 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<div class="flex items-center justify-between">
-			<Dialog.Header>
-				<Dialog.Title>
-					<div class="flex items-center">
-						<span class="icon-[clarity--objects-solid] mr-2 h-6 w-6"></span>
+	<Dialog.Content
+		showCloseButton={true}
+		showResetButton={true}
+		onReset={() => (properties = options)}
+		onClose={() => (open = false)}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[clarity--objects-solid]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title={editingObject ? `Edit Object - ${editingObject.name}` : 'Create Object'}
+				/>
+			</Dialog.Title>
+		</Dialog.Header>
 
-						{#if editingObject}
-							<span class="text-lg font-semibold">Edit Object - {editingObject.name}</span>
-						{:else}
-							<span class="text-lg font-semibold">Create Object</span>
-						{/if}
-					</div>
-				</Dialog.Title>
-			</Dialog.Header>
-
-			<div class="flex items-center gap-0.5">
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title="Reset"
-					onclick={() => (properties = options)}
-				>
-					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Reset</span>
-				</Button>
-				<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
-			</div>
-		</div>
-
-		<div class="flex gap-4">
+		<div class="flex items-end gap-4">
 			<CustomValueInput
 				label="Name"
 				placeholder="Windows"

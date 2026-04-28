@@ -102,9 +102,9 @@
 									onclick={() => onToggle(peer.id)}
 								>
 									<span
-										class="icon size-4 {peer.enabled
+										class="icon size-6 {peer.enabled
 											? 'icon-[mdi--toggle-switch] text-green-500'
-											: 'icon-[mdi--toggle-switch-off-outline] text-muted-foreground'}"
+											: 'icon-[mdi--toggle-switch-off-outline] text-red-500'}"
 									></span>
 								</Button>
 								<Button

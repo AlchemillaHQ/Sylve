@@ -19,20 +19,16 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { toast } from 'svelte-sonner';
 
-	// Plain JS vars — none of this needs to drive Svelte reactivity on hot paths.
 	let cursor = 0;
 	let nextPollCursor = 0;
 	let updating = false;
 	let fetchIntent: 'auto' | 'manual' = 'auto';
 
-	// Only status fields drive UI re-renders.
 	let sourceStatus = $state<'ok' | 'unavailable'>('unavailable');
 	let stale = $state(false);
 	let paused = $state(false);
 
 	let logControl = $state<InfiniteTableControl | null>(null);
-
-	// Filter state
 	let filterType = $state<'traffic' | 'nat' | null>(null);
 	let filterAction = $state<string | null>(null);
 	let filterDirection = $state<'in' | 'out' | null>(null);
@@ -225,7 +221,6 @@
 
 			const items = result.items ?? [];
 			if (items.length > 0) {
-				// Push only the new rows — the table component deduplicates by cursor.
 				logControl?.push(items.map(hitToRow));
 			}
 
@@ -314,7 +309,7 @@
 								<Button
 									size="sm"
 									variant={filterType === type ? 'default' : 'secondary'}
-									class="h-6 px-2 text-xs !bg-muted dark:!bg-secondary"
+									class="h-6 px-2 text-xs bg-muted! dark:bg-secondary!"
 									onclick={() =>
 										(filterType = filterType === type ? null : (type as 'traffic' | 'nat'))}
 									>{type.toUpperCase()}</Button
@@ -334,7 +329,7 @@
 								<Button
 									size="sm"
 									variant={filterAction === action ? 'default' : 'secondary'}
-									class="h-6 px-2 text-xs !bg-muted dark:!bg-secondary"
+									class="h-6 px-2 text-xs bg-muted! dark:bg-secondary!"
 									onclick={() => (filterAction = filterAction === action ? null : action)}
 									>{action.toUpperCase()}</Button
 								>
@@ -353,7 +348,7 @@
 								<Button
 									size="sm"
 									variant={filterDirection === dir ? 'default' : 'secondary'}
-									class="h-6 px-2 text-xs !bg-muted dark:!bg-secondary"
+									class="h-6 px-2 text-xs bg-muted! dark:bg-secondary!"
 									onclick={() =>
 										(filterDirection = filterDirection === dir ? null : (dir as 'in' | 'out'))}
 									>{dir.toUpperCase()}</Button
@@ -371,7 +366,7 @@
 						<Input
 							bind:value={filterQuery}
 							placeholder="Rule, interface, raw log…"
-							class="h-7 text-xs !bg-muted dark:!bg-secondary"
+							class="h-7 text-xs bg-muted! dark:bg-secondary!"
 						/>
 					</div>
 				</div>
@@ -388,7 +383,6 @@
 			</Popover.Content>
 		</Popover.Root>
 
-		<!-- Active filter chips -->
 		{#if filterType}
 			<Badge
 				variant="secondary"
