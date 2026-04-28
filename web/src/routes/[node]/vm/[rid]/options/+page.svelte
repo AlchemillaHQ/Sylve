@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getVmById } from '$lib/api/vm/vm';
-	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import BootRom from '$lib/components/custom/VM/Options/BootRom.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
@@ -11,6 +10,7 @@
 	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
@@ -192,10 +192,7 @@
 			: ''}
 		disabled={requireShutoff ? !isDomainShutoff : false}
 	>
-		<div class="flex items-center">
-			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-			<span>Edit {title}</span>
-		</div>
+		<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit {title}" />
 	</Button>
 {/snippet}
 

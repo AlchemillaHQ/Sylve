@@ -2,6 +2,7 @@
 	import { getFiles } from '$lib/api/system/file-explorer';
 	import { storageImport, storageNew, storageUpdate } from '$lib/api/vm/storage';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -461,49 +462,31 @@
 		class={selectedStorage
 			? 'w-full overflow-hidden p-5 max-w-3xl min-w-xl'
 			: 'w-full overflow-hidden p-5 max-w-2xl min-w-xl'}
+		showResetButton={true}
+		onReset={() => {
+			if (selectedStorage) {
+				editProperties = editOptions;
+			} else {
+				properties = options;
+			}
+		}}
+		onClose={() => {
+			if (selectedStorage) {
+				editProperties = editOptions;
+			} else {
+				properties = options;
+			}
+			open = false;
+		}}
 	>
-		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[grommet-icons--storage] h-5 w-5"></span>
-					{selectedName ? `Edit - ${selectedName}` : 'New Storage'}
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title="Reset"
-						class="h-4"
-						onclick={() => {
-							if (selectedStorage) {
-								editProperties = editOptions;
-							} else {
-								properties = options;
-							}
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							if (selectedStorage) {
-								editProperties = editOptions;
-							} else {
-								properties = options;
-							}
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[grommet-icons--storage]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={selectedName ? `Edit - ${selectedName}` : 'New Storage'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -642,12 +625,6 @@
 						]}
 						bind:value={properties.emulation}
 						onChange={(value) => (properties.emulation = value as StorageEmulation)}
-						classes={{
-							parent: 'flex-1 min-w-0 space-y-1',
-							label: 'h-7 flex items-center whitespace-nowrap text-sm',
-							trigger:
-								'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
-						}}
 					/>
 				{/if}
 
@@ -725,12 +702,6 @@
 						]}
 						bind:value={editProperties.emulation}
 						onChange={(value) => (editProperties.emulation = value as StorageEmulation)}
-						classes={{
-							parent: 'flex-1 min-w-0 space-y-1',
-							label: 'h-7 flex items-center whitespace-nowrap text-sm',
-							trigger:
-								'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
-						}}
 					/>
 				{/if}
 

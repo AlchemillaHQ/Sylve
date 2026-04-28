@@ -1058,36 +1058,6 @@ msgstr "नया"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
-#: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
-#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
-#: src/lib/components/custom/VM/Hardware/RAM.svelte
-#: src/lib/components/custom/VM/Hardware/RAM.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
-#: src/lib/components/custom/VM/Options/BootRom.svelte
-#: src/lib/components/custom/VM/Options/BootRom.svelte
-#: src/lib/components/custom/VM/Options/Clock.svelte
-#: src/lib/components/custom/VM/Options/Clock.svelte
-#: src/lib/components/custom/VM/Options/CloudInit.svelte
-#: src/lib/components/custom/VM/Options/CloudInit.svelte
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
-#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
-#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
-#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
-#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
-#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
-#: src/lib/components/custom/VM/Options/StartOrder.svelte
-#: src/lib/components/custom/VM/Options/StartOrder.svelte
-#: src/lib/components/custom/VM/Options/WoL.svelte
-#: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -1143,42 +1113,6 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
-#: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
-#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
-#: src/lib/components/custom/VM/Hardware/RAM.svelte
-#: src/lib/components/custom/VM/Hardware/RAM.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/TPM.svelte
-#: src/lib/components/custom/VM/Hardware/TPM.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
-#: src/lib/components/custom/VM/Options/BootRom.svelte
-#: src/lib/components/custom/VM/Options/BootRom.svelte
-#: src/lib/components/custom/VM/Options/Clock.svelte
-#: src/lib/components/custom/VM/Options/Clock.svelte
-#: src/lib/components/custom/VM/Options/CloudInit.svelte
-#: src/lib/components/custom/VM/Options/CloudInit.svelte
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
-#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
-#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
-#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
-#: src/lib/components/custom/VM/Options/Serial.svelte
-#: src/lib/components/custom/VM/Options/Serial.svelte
-#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
-#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
-#: src/lib/components/custom/VM/Options/StartOrder.svelte
-#: src/lib/components/custom/VM/Options/StartOrder.svelte
-#: src/lib/components/custom/VM/Options/WoL.svelte
-#: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
@@ -1197,8 +1131,6 @@ msgstr "रीसेट करें"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -5074,7 +5006,6 @@ msgid "CPU cores updated"
 msgstr "सीपीयू कोर अपडेट हो गए"
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 msgid "CPU"
 msgstr "सीपीयू (CPU)"
@@ -5114,7 +5045,6 @@ msgid "Jail not found"
 msgstr "जेल नहीं मिला"
 
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 msgid "RAM"
 msgstr "RAM"
@@ -5995,7 +5925,6 @@ msgstr "VNC को संशोधित करने में विफल"
 msgid "VNC modified"
 msgstr "VNC संशोधित किया गया"
 
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 msgid "VNC"
 msgstr "VNC"
@@ -6019,6 +5948,7 @@ msgid "You can only select up to {0} cores."
 msgstr "आप अधिकतम {0} कोर ही चुन सकते हैं।"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Pinning"
 msgstr "CPU पिनिंग"
 
@@ -6031,9 +5961,8 @@ msgstr "CPU जानकारी अनुपलब्ध"
 msgid "Manage ({0} pinned)"
 msgstr "प्रबंधित करें ({0} पिन किए गए)"
 
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "<0/> CPU Pinning"
-msgstr "<0/> CPU पिनिंग"
+#~ msgid "<0/> CPU Pinning"
+#~ msgstr "<0/> CPU पिनिंग"
 
 #. 0: actualAvailable
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6078,7 +6007,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6921,11 +6850,9 @@ msgstr "बंद"
 #. 0: jail.current.name
 #. 0: jail.current.name
 #. 0: vm.current.name
-#. 0: vm.current.name
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "{0} Logs"
 msgstr "{0} लॉग्स"
 
@@ -7361,7 +7288,7 @@ msgid "The VM is currently powered off.<0/> Start the VM to access its console."
 msgstr "VM वर्तमान में बंद है।<0/> इसके कंसोल तक पहुँचने के लिए VM शुरू करें।"
 
 #. 0: vm.current?.name
-#. 0: vm.current?.name
+#. 0: vm.current?.name || ''
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Console settings - {0}"
@@ -8816,12 +8743,14 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM shutdown queued"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM reboot queued"
 msgstr ""
@@ -13493,7 +13422,8 @@ msgstr ""
 msgid "Browse"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Select Users"
-msgstr ""
+#~ msgid "Select Users"
+#~ msgstr ""
+
+#~ msgid "Console settings - {0} <0>Console settings - {0}</0>"
+#~ msgstr ""

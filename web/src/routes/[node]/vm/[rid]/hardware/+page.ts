@@ -18,7 +18,6 @@ export async function load({ params }) {
     const vm = vms.find((vm) => vm.rid === rid);
 
     return {
-        rid,
         vm,
         vms,
         ram,

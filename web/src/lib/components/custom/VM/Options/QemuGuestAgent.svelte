@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyQemuGuestAgent } from '$lib/api/vm/vm';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -14,6 +15,8 @@
 	}
 
 	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+
+	// svelte-ignore state_referenced_locally
 	let qemuGuestAgent: boolean = $state(vm.qemuGuestAgent);
 
 	async function modify() {
@@ -37,41 +40,25 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/3 overflow-hidden p-5 lg:max-w-2xl">
-		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--robot-outline] h-5 w-5"></span>
-					<span>QEMU Guest Agent</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							qemuGuestAgent = vm.qemuGuestAgent;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							qemuGuestAgent = vm.qemuGuestAgent;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		class="w-1/3 overflow-hidden p-5 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={() => {
+			qemuGuestAgent = vm.qemuGuestAgent;
+		}}
+		onClose={() => {
+			qemuGuestAgent = vm.qemuGuestAgent;
+			open = false;
+		}}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--robot-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="QEMU Guest Agent"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -88,7 +75,7 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm">Save</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

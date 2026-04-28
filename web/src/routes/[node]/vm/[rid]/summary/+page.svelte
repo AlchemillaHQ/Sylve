@@ -56,6 +56,7 @@
 	import { fade } from 'svelte/transition';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { resolve } from '$app/paths';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		node: string;
@@ -186,10 +187,12 @@
 		vmName = syncedVMName;
 		isEditingName = false;
 	}
+
+	const NON_RUNNING_ACTION_SUPPRESS_MS = 1800;
+
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
-	const NON_RUNNING_ACTION_SUPPRESS_MS = 1800;
 	let suppressNonRunningActions = $state(false);
 	let suppressNonRunningActionsTimer: ReturnType<typeof setTimeout> | null = null;
 	let isDeleteInFlight = $state(false);
@@ -418,23 +421,27 @@
 
 		reload.leftPanel = true;
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			clearNonRunningActionsSuppression();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'VM action already in progress'
-					: 'Error starting VM',
-				{
+		if (isAPIResponse(result)) {
+			if (result.status === 'error') {
+				clearPendingLifecycleAction();
+				clearNonRunningActionsSuppression();
+				toast.error(
+					result.message === 'lifecycle_task_in_progress'
+						? 'VM action already in progress'
+						: 'Error starting VM',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+			}
+		} else {
+			if (result.outcome === 'queued') {
+				toast.success('VM start queued', {
 					duration: 5000,
 					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
-			toast.success('VM start queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+				});
+			}
 		}
 
 		gaRefreshSignal += 1;
@@ -447,29 +454,32 @@
 
 		reload.leftPanel = true;
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'VM action already in progress'
-					: 'Error stopping VM',
-				{
-					duration: 5000,
-					position: 'bottom-center'
+		if (isAPIResponse(result)) {
+			if (result.status === 'error') {
+				clearPendingLifecycleAction();
+				clearNonRunningActionsSuppression();
+				toast.error(
+					result.message === 'lifecycle_task_in_progress'
+						? 'VM action already in progress'
+						: 'Error stopping VM',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+			} else if (result.status === 'success') {
+				if (result.message === 'vm_force_stop_requested') {
+					toast.warning('Force stop requested', {
+						duration: 5000,
+						position: 'bottom-center'
+					});
 				}
-			);
-		} else if (result.status === 'success') {
-			if (result.message === 'vm_force_stop_requested') {
-				toast.warning('Force stop requested', {
-					duration: 5000,
-					position: 'bottom-center'
-				});
-			} else {
-				toast.success('VM stop queued', {
-					duration: 5000,
-					position: 'bottom-center'
-				});
 			}
+		} else if (result.outcome === 'queued') {
+			toast.success('VM stop queued', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
 		}
 
 		await refreshLifecycleState();
@@ -480,7 +490,7 @@
 		const result = await actionVm(vm.current.rid, 'stop');
 		reload.leftPanel = true;
 
-		if (result.status === 'error') {
+		if (isAPIResponse(result) && result.status === 'error') {
 			clearPendingLifecycleAction();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
@@ -506,18 +516,25 @@
 		const result = await actionVm(vm.current.rid, 'shutdown');
 		reload.leftPanel = true;
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'VM action already in progress'
-					: 'Error shutting down VM',
-				{
+		if (isAPIResponse(result)) {
+			if (result.status === 'error') {
+				clearPendingLifecycleAction();
+				toast.error(
+					result.message === 'lifecycle_task_in_progress'
+						? 'VM action already in progress'
+						: 'Error shutting down VM',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+			} else if (result.status === 'success') {
+				toast.success('VM shutdown queued', {
 					duration: 5000,
 					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+				});
+			}
+		} else if (result.outcome === 'queued') {
 			toast.success('VM shutdown queued', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -532,19 +549,26 @@
 		const result = await actionVm(vm.current.rid, 'reboot');
 		reload.leftPanel = true;
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			clearNonRunningActionsSuppression();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'VM action already in progress'
-					: 'Error rebooting VM',
-				{
+		if (isAPIResponse(result)) {
+			if (result.status === 'error') {
+				clearPendingLifecycleAction();
+				clearNonRunningActionsSuppression();
+				toast.error(
+					result.message === 'lifecycle_task_in_progress'
+						? 'VM action already in progress'
+						: 'Error rebooting VM',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+			} else if (result.status === 'success') {
+				toast.success('VM reboot queued', {
 					duration: 5000,
 					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+				});
+			}
+		} else if (result.outcome === 'queued') {
 			toast.success('VM reboot queued', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -1057,27 +1081,20 @@
 		class="min-w-3xl overflow-hidden"
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
+		showCloseButton={true}
+		onClose={() => {
+			showLogs = false;
+		}}
 	>
 		<Dialog.Header class="flex w-full min-w-0 flex-col">
 			<Dialog.Title class="flex justify-between text-left">
 				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--terminal] h-6 w-6"></span>
-					<span>{vm.current.name} Logs</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							showLogs = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
+					<SpanWithIcon
+						icon="icon-[material-symbols--terminal]"
+						size="h-6 w-6"
+						gap="gap-2"
+						title={`${vm.current.name} Logs`}
+					/>
 				</div>
 			</Dialog.Title>
 		</Dialog.Header>

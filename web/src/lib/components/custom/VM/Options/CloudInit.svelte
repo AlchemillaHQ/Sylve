@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyCloudInitData } from '$lib/api/vm/vm';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -55,46 +56,29 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex max-h-[90vh] flex-col overflow-hidden p-5">
-		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[fluent--cloud-cube-24-regular] h-5 w-5"></span>
-
-					<span>Cloud Init</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							cloudInit.data = vm.cloudInitData ?? '';
-							cloudInit.metadata = vm.cloudInitMetaData ?? '';
-							cloudInit.networkConfig = vm.cloudInitNetworkConfig ?? '';
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							cloudInit.data = vm.cloudInitData ?? '';
-							cloudInit.metadata = vm.cloudInitMetaData ?? '';
-							cloudInit.networkConfig = vm.cloudInitNetworkConfig ?? '';
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		class="flex max-h-[90vh] flex-col overflow-hidden p-5"
+		showResetButton={true}
+		onReset={() => {
+			cloudInit.data = vm.cloudInitData ?? '';
+			cloudInit.metadata = vm.cloudInitMetaData ?? '';
+			cloudInit.networkConfig = vm.cloudInitNetworkConfig ?? '';
+		}}
+		onClose={() => {
+			cloudInit.data = vm.cloudInitData ?? '';
+			cloudInit.metadata = vm.cloudInitMetaData ?? '';
+			cloudInit.networkConfig = vm.cloudInitNetworkConfig ?? '';
+			open = false;
+		}}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[fluent--cloud-cube-24-regular]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Cloud Init"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

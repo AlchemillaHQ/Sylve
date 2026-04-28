@@ -2,6 +2,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { CPUPin, SimpleVm, VM } from '$lib/types/vm/vm';
 	import { toast } from 'svelte-sonner';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -308,19 +309,10 @@
 </div>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[iconoir--cpu] h-5 w-5"></span>
-					CPU Pinning
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" onclick={handleClose} title="Close">
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+	<Dialog.Content onClose={handleClose}>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[iconoir--cpu]" size="h-5 w-5" gap="gap-2" title="CPU Pinning" />
 			</Dialog.Title>
 		</Dialog.Header>
 

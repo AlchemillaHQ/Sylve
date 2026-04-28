@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyShutdownWaitTime } from '$lib/api/vm/vm';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -46,42 +47,25 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/3 overflow-hidden p-5 lg:max-w-2xl">
-		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[basil--power-button-solid] h-5 w-5"></span>
-
-					<span>Shutdown Wait Time</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							shutdownWaitTime = vm.shutdownWaitTime;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							shutdownWaitTime = vm.shutdownWaitTime;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		class="w-1/3 overflow-hidden p-5 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={() => {
+			shutdownWaitTime = vm.shutdownWaitTime;
+		}}
+		onClose={() => {
+			shutdownWaitTime = vm.shutdownWaitTime;
+			open = false;
+		}}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[basil--power-button-solid]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Shutdown Wait Time"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

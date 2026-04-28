@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyVNC } from '$lib/api/vm/hardware';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -99,42 +100,20 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="overflow-hidden p-5 sm:max-w-xl">
+	<Dialog.Content
+		class="overflow-hidden p-5 sm:max-w-xl"
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[arcticons--vncviewer] h-5 w-5"></span>
-
-					<span>VNC</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[arcticons--vncviewer]" size="h-5 w-5" gap="gap-2" title="VNC" />
 			</Dialog.Title>
 		</Dialog.Header>
 

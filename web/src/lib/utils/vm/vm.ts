@@ -465,7 +465,7 @@ export function shouldHideVMLifecycleButtons(
     hasActiveLifecycleTask: boolean,
     pendingAction: VMLifecycleAction | ''
 ): boolean {
-    return hasActiveLifecycleTask || isVMLifecycleTransitionPending(pendingAction, hasActiveLifecycleTask);
+    return pendingAction !== '' || hasActiveLifecycleTask;
 }
 
 export function getVMLifecycleBadgeStyle(action: string): VMLifecycleBadgeStyle {

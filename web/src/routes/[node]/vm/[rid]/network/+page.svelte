@@ -5,6 +5,7 @@
 	import { detachNetwork } from '$lib/api/vm/network';
 	import { getVmById } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Network from '$lib/components/custom/VM/Hardware/Network.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -155,21 +156,23 @@
 				}
 
 				if (sw) {
-					const macObj = networkObjects.current.find((obj) => obj.id === network.macId);
-					const mac =
-						macObj && macObj.entries && macObj.entries.length > 0
-							? macObj.entries[0].value
-							: undefined;
+					if (Array.isArray(networkObjects.current)) {
+						const macObj = networkObjects.current.find((obj) => obj.id === network.macId);
+						const mac =
+							macObj && macObj.entries && macObj.entries.length > 0
+								? macObj.entries[0].value
+								: undefined;
 
-					const row: Row = {
-						id: network.id,
-						name: sw.name || 'Unknown Switch',
-						mac: macObj ? `${macObj.name} (${mac})` : 'Unknown MAC',
-						macObject: macObj || null,
-						emulation: network.emulation || 'Unknown'
-					};
+						const row: Row = {
+							id: network.id,
+							name: sw.name || 'Unknown Switch',
+							mac: macObj ? `${macObj.name} (${mac})` : 'Unknown MAC',
+							macObject: macObj || null,
+							emulation: network.emulation || 'Unknown'
+						};
 
-					rows.push(row);
+						rows.push(row);
+					}
 				}
 			}
 		}
@@ -226,11 +229,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
-
-					<span>Detach</span>
-				</div>
+				<SpanWithIcon icon="icon-[gg--remove]" size="h-4 w-4" gap="gap-1" title="Detach" />
 			</Button>
 		{/if}
 
@@ -246,11 +245,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit" />
 			</Button>
 		{/if}
 	{/if}
@@ -277,11 +272,7 @@
 			title={!isDomainShutoff ? 'VM must be shut off to attach network' : ''}
 			disabled={!isDomainShutoff}
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-1" title="New" />
 		</Button>
 
 		{@render button('edit')}
@@ -326,7 +317,7 @@
 	}}
 />
 
-{#if properties.attach.open}
+{#if properties.attach.open && Array.isArray(networkObjects.current)}
 	<Network
 		bind:open={properties.attach.open}
 		switches={switches.current}
@@ -336,7 +327,7 @@
 	/>
 {/if}
 
-{#if properties.edit.open}
+{#if properties.edit.open && Array.isArray(networkObjects.current)}
 	<Network
 		bind:open={properties.edit.open}
 		switches={switches.current}

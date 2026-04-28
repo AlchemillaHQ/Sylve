@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyBootOrder } from '$lib/api/vm/vm';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -40,45 +41,27 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/3 overflow-hidden p-5 lg:max-w-2xl">
-		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[basil--power-button-solid] h-5 w-5"></span>
-
-					<span>Start Order</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							startAtBoot = vm.startAtBoot;
-							startOrder = vm.startOrder;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							startAtBoot = vm.startAtBoot;
-							startOrder = vm.startOrder;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		class="w-1/3 overflow-hidden p-5 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={() => {
+			startAtBoot = vm.startAtBoot;
+			startOrder = vm.startOrder;
+		}}
+		onClose={() => {
+			startAtBoot = vm.startAtBoot;
+			startOrder = vm.startOrder;
+			open = false;
+		}}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[basil--power-button-solid]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Start Order"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

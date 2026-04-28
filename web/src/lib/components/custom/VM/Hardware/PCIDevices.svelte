@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyPPT } from '$lib/api/vm/hardware';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -96,41 +97,25 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full min-w-0 p-5">
-		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--video-input-hdmi] h-5 w-5"></span>
-					<span>PCI Devices</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		class="w-full min-w-0 p-5"
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--video-input-hdmi]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="PCI Devices"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

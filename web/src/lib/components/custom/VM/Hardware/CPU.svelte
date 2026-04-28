@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyCPU } from '$lib/api/vm/hardware';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -109,42 +110,20 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/2 overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content
+		class="w-1/2 overflow-hidden p-5 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[solar--cpu-bold] h-5 w-5"></span>
-
-					<span>CPU</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4"
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[solar--cpu-bold]" size="h-5 w-5" gap="gap-2" title="CPU" />
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -184,7 +163,7 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm">Save</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

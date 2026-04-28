@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifySerialConsole } from '$lib/api/vm/vm';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { VM } from '$lib/types/vm/vm';
@@ -34,29 +35,19 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
-		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between text-left">
-				<div class="flex items-center">
-					<span class="icon-[mdi--console] mr-2 h-5 w-5"></span>
-
-					<span>Serial Console</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+	<Dialog.Content
+		onClose={() => {
+			open = false;
+		}}
+	>
+		<Dialog.Header>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--console]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Serial Console"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

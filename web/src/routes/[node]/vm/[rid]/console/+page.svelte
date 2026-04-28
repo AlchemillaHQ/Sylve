@@ -23,6 +23,7 @@
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
 	import { sleep } from '$lib/utils';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 
@@ -667,7 +668,14 @@
 	<Dialog.Content class="min-w-45">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
-				Console settings - {vm.current?.name}
+				<div class="flex items-center gap-2">
+					<SpanWithIcon
+						icon="icon-[tdesign--ai-terminal]"
+						size="w-6 h-6"
+						gap="gap-2"
+						title={`Console settings - ${vm.current?.name || ''}`}
+					/>
+				</div>
 			</Dialog.Title>
 		</Dialog.Header>
 

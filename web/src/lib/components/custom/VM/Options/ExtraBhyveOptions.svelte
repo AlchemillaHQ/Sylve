@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modifyExtraBhyveOptions } from '$lib/api/vm/vm';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -50,41 +51,25 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex max-h-[90vh] flex-col overflow-hidden p-5">
+	<Dialog.Content
+		class="flex max-h-[90vh] flex-col overflow-hidden p-5"
+		showResetButton={true}
+		onReset={() => {
+			extraBhyveOptionsText = currentAsText();
+		}}
+		onClose={() => {
+			extraBhyveOptionsText = currentAsText();
+			open = false;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--terminal-rounded] h-5 w-5"></span>
-					<span>Extra Bhyve Options</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title="Reset"
-						class="h-4 "
-						onclick={() => {
-							extraBhyveOptionsText = currentAsText();
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							extraBhyveOptionsText = currentAsText();
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[material-symbols--terminal-rounded]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Extra Bhyve Options"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

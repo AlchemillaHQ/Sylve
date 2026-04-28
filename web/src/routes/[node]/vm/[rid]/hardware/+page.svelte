@@ -8,6 +8,7 @@
 	import RAM from '$lib/components/custom/VM/Hardware/RAM.svelte';
 	import VNC from '$lib/components/custom/VM/Hardware/VNC.svelte';
 	import Serial from '$lib/components/custom/VM/Options/Serial.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
@@ -23,7 +24,6 @@
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 
 	interface Data {
-		rid: number;
 		vms: VM[];
 		vm: VM | undefined;
 		ram: RAMInfo;
@@ -299,10 +299,7 @@
 		title={isDomainShutoff ? '' : `${title} can only be edited when the VM is shut off`}
 		disabled={!isDomainShutoff}
 	>
-		<div class="flex items-center">
-			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-			<span>Edit {title}</span>
-		</div>
+		<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit {title}" />
 	</Button>
 {/snippet}
 
@@ -338,7 +335,7 @@
 	<div class="flex h-full flex-col overflow-hidden">
 		<TreeTable
 			data={table}
-			name={'hardware-tt'}
+			name="vm-hardware-tt"
 			bind:parentActiveRow={activeRows}
 			multipleSelect={false}
 			bind:query

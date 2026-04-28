@@ -5,6 +5,7 @@
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import { getPools } from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Storage from '$lib/components/custom/VM/Hardware/Storage.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -170,10 +171,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
-					<span>Detach</span>
-				</div>
+				<SpanWithIcon icon="icon-[gg--remove]" size="h-4 w-4" gap="gap-1" title="Detach" />
 			</Button>
 		{/if}
 
@@ -187,10 +185,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit" />
 			</Button>
 		{/if}
 	{/if}
@@ -207,10 +202,7 @@
 			title={!isDomainShutoff ? 'VM must be shut off to attach storage' : ''}
 			disabled={!isDomainShutoff}
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-1" title="New" />
 		</Button>
 
 		{@render button('edit')}
