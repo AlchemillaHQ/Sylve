@@ -22,6 +22,7 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { toast } from 'svelte-sonner';
 	import { SvelteMap } from 'svelte/reactivity';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		ctId: number;
@@ -226,10 +227,7 @@
 			size="sm"
 			class="h-6"
 		>
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
-			</div>
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-1" title="New" />
 		</Button>
 
 		{#if selectedSnapshot}
@@ -241,10 +239,12 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--backup-restore] mr-1 h-4 w-4"></span>
-					<span>Rollback</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[mdi--backup-restore]"
+					size="h-4 w-4"
+					gap="gap-1"
+					title="Rollback"
+				/>
 			</Button>
 
 			<Button
@@ -255,10 +255,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 			</Button>
 		{/if}
 	</div>
@@ -275,13 +272,20 @@
 </div>
 
 <Dialog.Root bind:open={createModal.open}>
-	<Dialog.Content class="max-h-[90vh] min-w-1/3 overflow-y-auto p-5">
+	<Dialog.Content
+		class="max-h-[90vh] min-w-1/3 overflow-y-auto p-6"
+		onClose={() => {
+			createModal.open = false;
+		}}
+	>
 		<Dialog.Header>
 			<Dialog.Title>
-				<div class="flex items-center gap-2">
-					<span class="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots] mr-1 h-4 w-4"></span>
-					<span>New Jail Snapshot</span>
-				</div>
+				<SpanWithIcon
+					icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="New Jail Snapshot"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

@@ -2,6 +2,7 @@
 	import type { Jail } from '$lib/types/jail/jail';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
@@ -66,6 +67,8 @@
 	};
 
 	let properties = $state(options);
+
+	// svelte-ignore state_referenced_locally
 	let comboBoxes = $state({
 		sw: {
 			open: false,
@@ -98,6 +101,7 @@
 		}
 	});
 
+	// svelte-ignore state_referenced_locally
 	let editOptions = {
 		name: selectedNetwork ? (selectedNetwork.name ?? '') : '',
 		ipv4:
@@ -122,6 +126,8 @@
 	};
 
 	let editProperties = $state(editOptions);
+
+	// svelte-ignore state_referenced_locally
 	let editComboBoxes = $state({
 		sw: {
 			open: false,
@@ -337,56 +343,40 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="min-w-150">
+	<Dialog.Content
+		class="min-w-150"
+		showResetButton={true}
+		onReset={() => {
+			if (selectedNetwork) {
+				editProperties = editOptions;
+				resetEditComboBoxes();
+			} else {
+				properties = options;
+				resetComboBoxes();
+			}
+		}}
+		onClose={() => {
+			open = false;
+			if (selectedNetwork) {
+				editProperties = editOptions;
+			} else {
+				properties = options;
+			}
+		}}
+	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between text-left">
-				<div class="flex items-center">
-					<span class="icon-[mdi--network] mr-2 h-5 w-5"></span>
-					<span>{selectedNetwork ? `Edit - ${selectedNetwork.name}` : 'New Network'}</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Reset'}
-						onclick={() => {
-							if (selectedNetwork) {
-								editProperties = editOptions;
-								resetEditComboBoxes();
-							} else {
-								properties = options;
-								resetComboBoxes();
-							}
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							open = false;
-							if (selectedNetwork) {
-								editProperties = editOptions;
-							} else {
-								properties = options;
-							}
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[mdi--network]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={selectedNetwork ? `Edit - ${selectedNetwork.name}` : 'New Network'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
 		{#if !selectedNetwork}
-			<div class="grid grid-cols-3 gap-4">
+			<div class="grid grid-cols-3 gap-4 items-end">
 				<CustomValueInput
 					label="Name"
 					placeholder="Primary Network"
@@ -499,7 +489,7 @@
 				</div>
 			{/if}
 		{:else}
-			<div class="grid grid-cols-3 gap-4">
+			<div class="grid grid-cols-3 gap-4 items-end">
 				<CustomValueInput
 					label="Name"
 					placeholder="Primary Network"

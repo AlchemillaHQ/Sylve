@@ -3,9 +3,11 @@
 	import CustomComboBoxBindable from '$lib/components/ui/custom-input/combobox-bindable.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -45,9 +47,12 @@
 	let comboOpen = $state(false);
 	let selectedOptions = $state<string[]>([]);
 
-	$effect(() => {
-		selectedOptions = [...(jail.allowedOptions || [])];
-	});
+	watch(
+		() => jail.allowedOptions,
+		(newVal) => {
+			selectedOptions = [...(newVal || [])];
+		}
+	);
 
 	async function save() {
 		const response = await modifyAllowedOptions(jail.ctId, selectedOptions);
@@ -68,34 +73,23 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/2 overflow-hidden p-5 lg:max-w-lg">
+	<Dialog.Content
+		class="w-1/2 overflow-hidden p-6 lg:max-w-lg"
+		showResetButton={true}
+		onReset={reset}
+		onClose={() => {
+			reset();
+			open = false;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--rule-settings] h-5 w-5"></span>
-					<span>Allowed Options</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" title="Reset" class="h-4" onclick={reset}>
-						<span class="icon-[radix-icons--reset] h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							reset();
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[material-symbols--rule-settings]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Allowed Options"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

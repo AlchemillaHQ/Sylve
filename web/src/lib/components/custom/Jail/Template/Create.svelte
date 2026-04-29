@@ -10,6 +10,7 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { isValidVMName } from '$lib/utils/string';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -130,10 +131,13 @@
 		const err = (error || '').toLowerCase();
 
 		if (err.includes('insufficient_pool_space')) return 'Not enough space in selected pool';
-		if (err.includes('ctid_range_contains_used_values')) return 'One or more CTIDs are already in use';
+		if (err.includes('ctid_range_contains_used_values'))
+			return 'One or more CTIDs are already in use';
 		if (err.includes('duplicate_ctids_requested')) return 'Duplicate CTIDs in request';
-		if (err.includes('invalid_ctid_range') || err.includes('invalid_ctid')) return 'Invalid CTID range';
-		if (err.includes('jail_name_already_in_use')) return 'One or more jail names are already in use';
+		if (err.includes('invalid_ctid_range') || err.includes('invalid_ctid'))
+			return 'Invalid CTID range';
+		if (err.includes('jail_name_already_in_use'))
+			return 'One or more jail names are already in use';
 		if (err.includes('duplicate_jail_names_requested')) return 'Duplicate jail names in request';
 		if (err.includes('invalid_name_prefix')) return 'Invalid jail name prefix';
 		if (err.includes('invalid_jail_name')) return 'Invalid jail name';
@@ -181,7 +185,13 @@
 						);
 
 			if (result.error) {
-				toast.error(templateCreateErrorMessage(result.error), { position: 'bottom-center' });
+				if (Array.isArray(result.error)) {
+					toast.error(result.error.map(templateCreateErrorMessage).join(', '), {
+						position: 'bottom-center'
+					});
+				} else {
+					toast.error(templateCreateErrorMessage(result.error), { position: 'bottom-center' });
+				}
 				return;
 			}
 
@@ -195,33 +205,23 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-lg">
+	<Dialog.Content
+		class="max-w-lg"
+		showResetButton={true}
+		onReset={() => resetForm()}
+		onClose={() => (open = false)}
+	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon icon-[hugeicons--prison]"></span>
-					<span>Create Jail - Template {templateName}</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" onclick={() => resetForm()} title={'Reset'}>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						onclick={() => (open = false)}
-						title={'Close'}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[hugeicons--prison]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create Jail - Template {templateName}"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
-		<div class="grid gap-4 py-2">
+		<div class="grid gap-4 py-0">
 			<CustomComboBox
 				bind:open={comboBoxes.pool.open}
 				label="Pool"
@@ -253,7 +253,7 @@
 						bind:value={singleCTID}
 						label="CTID"
 						placeholder="100"
-						classes="w-full"
+						classes="w-full space-y-1"
 					/>
 				</div>
 				<div class="grid gap-2">
@@ -262,7 +262,7 @@
 						bind:value={singleName}
 						label="Name"
 						placeholder="Name"
-						classes="w-full"
+						classes="w-full space-y-1"
 					/>
 				</div>
 			{:else}
@@ -272,7 +272,7 @@
 						bind:value={multipleStartCTID}
 						label="Starting CTID"
 						placeholder="100"
-						classes="w-full"
+						classes="w-full space-y-1"
 					/>
 
 					<CustomValueInput
@@ -280,7 +280,7 @@
 						bind:value={multipleCount}
 						label="Count"
 						placeholder="100"
-						classes="w-full"
+						classes="w-full space-y-1"
 					/>
 				</div>
 				<div class="grid gap-2">
@@ -289,7 +289,7 @@
 						bind:value={multipleNamePrefix}
 						label="Name Prefix"
 						placeholder="LB"
-						classes="w-full"
+						classes="w-full space-y-1"
 					/>
 				</div>
 			{/if}

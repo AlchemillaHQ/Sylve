@@ -15,6 +15,7 @@
 	import { resource, watch } from 'runed';
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CPUInfo } from '$lib/types/info/cpu';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { jailPowerSignal } from '$lib/stores/api.svelte';
 
 	interface Data {
@@ -122,15 +123,21 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<div class="flex items-center">
-					{#if jail.current.resourceLimits}
-						<span class="icon-[lsicon--disable-filled] mr-1 h-4 w-4"></span>
-						<span>Disable Resource Limits</span>
-					{:else}
-						<span class="icon-[clarity--resource-pool-line] mr-1 h-4 w-4"></span>
-						<span>Enable Resource Limits</span>
-					{/if}
-				</div>
+				{#if jail.current.resourceLimits}
+					<SpanWithIcon
+						icon="icon-[lsicon--disable-filled]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Disable Resource Limits"
+					/>
+				{:else}
+					<SpanWithIcon
+						icon="icon-[clarity--resource-pool-line]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Enable Resource Limits"
+					/>
+				{/if}
 			</Button>
 		{/if}
 	{:else}
@@ -144,11 +151,7 @@
 			title={!jail.current.resourceLimits ? 'Enable resource limits to edit' : ''}
 			disabled={!jail.current.resourceLimits}
 		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-
-				<span>Edit {title}</span>
-			</div>
+			<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit {title}" />
 		</Button>
 	{/if}
 {/snippet}

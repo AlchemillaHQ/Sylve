@@ -1853,6 +1853,12 @@ func buildPFMainConfig(preRules string, postRules string, objectTablesPath strin
 	b.WriteString(pfManagedHeader)
 	b.WriteString("\n\n")
 
+	if strings.TrimSpace(preRules) != "" {
+		b.WriteString("# --- sylve: pre rules ---\n")
+		b.WriteString(strings.TrimSpace(preRules))
+		b.WriteString("\n\n")
+	}
+
 	b.WriteString("nat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("rdr-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("binat-anchor \"sylve/nat-rules\" all\n")
@@ -1861,12 +1867,6 @@ func buildPFMainConfig(preRules string, postRules string, objectTablesPath strin
 
 	b.WriteString("anchor \"sylve/object-tables\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/object-tables\" from \"%s\"\n\n", objectTablesPath))
-
-	if strings.TrimSpace(preRules) != "" {
-		b.WriteString("# --- sylve: pre rules ---\n")
-		b.WriteString(strings.TrimSpace(preRules))
-		b.WriteString("\n\n")
-	}
 
 	b.WriteString("anchor \"sylve/traffic-rules\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/traffic-rules\" from \"%s\"\n", trafficPath))

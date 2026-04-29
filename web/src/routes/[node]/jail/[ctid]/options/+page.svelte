@@ -13,6 +13,7 @@
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		ctId: number;
@@ -188,10 +189,7 @@
 		variant="outline"
 		class="h-6.5"
 	>
-		<div class="flex items-center">
-			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-			<span>Edit {title}</span>
-		</div>
+		<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit {title}" />
 	</Button>
 {/snippet}
 

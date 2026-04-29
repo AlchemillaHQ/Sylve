@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getVMTemplateById } from '$lib/api/vm/vm';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
@@ -13,6 +12,7 @@
 	import { sleep } from '$lib/utils';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -36,8 +36,8 @@
 		}
 		return Boolean(
 			vmTemplate.cloudInitData?.trim() ||
-				vmTemplate.cloudInitMetaData?.trim() ||
-				vmTemplate.cloudInitNetworkConfig?.trim()
+			vmTemplate.cloudInitMetaData?.trim() ||
+			vmTemplate.cloudInitNetworkConfig?.trim()
 		);
 	}
 
@@ -74,18 +74,15 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-5xl">
+	<Dialog.Content class="max-w-5xl" onClose={() => (open = false)}>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--monitor-shimmer] h-5 w-5"></span>
-					<span>VM Template - {title}</span>
-				</div>
-
-				<Button size="sm" variant="link" class="h-4" onclick={() => (open = false)} title={'Close'}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[mdi--monitor-shimmer]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="VM Template - {title}"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -135,9 +132,11 @@
 
 						<Tabs.Content value="storage" class="m-0 space-y-3 outline-none">
 							{#if template.storages.length === 0}
-								<div class="text-muted-foreground py-4 text-sm italic">No cloneable storage in template</div>
+								<div class="text-muted-foreground py-4 text-sm italic">
+									No cloneable storage in template
+								</div>
 							{:else}
-								{#each template.storages as storage}
+								{#each template.storages as storage, index (`tmpl-storage-${index}`)}
 									<div class="border rounded-md p-3 text-sm">
 										<div class="font-medium">
 											Storage #{storage.sourceStorageId} ({storage.type.toUpperCase()})
@@ -152,9 +151,11 @@
 
 						<Tabs.Content value="network" class="m-0 space-y-3 outline-none">
 							{#if template.networks.length === 0}
-								<div class="text-muted-foreground py-4 text-sm italic">No network interfaces in template</div>
+								<div class="text-muted-foreground py-4 text-sm italic">
+									No network interfaces in template
+								</div>
 							{:else}
-								{#each template.networks as network, idx}
+								{#each template.networks as network, idx (`tmpl-network-${idx}`)}
 									<div class="border rounded-md p-3 text-sm">
 										<div class="font-medium">Network #{idx + 1}</div>
 										<div class="text-xs text-muted-foreground">
@@ -169,11 +170,19 @@
 							{#if hasCloudInitData(template)}
 								<div class="space-y-2">
 									<div class="text-xs text-muted-foreground">User Data</div>
-									<Textarea value={template.cloudInitData || ''} readonly class="min-h-32 font-mono text-xs" />
+									<Textarea
+										value={template.cloudInitData || ''}
+										readonly
+										class="min-h-32 font-mono text-xs"
+									/>
 								</div>
 								<div class="space-y-2">
 									<div class="text-xs text-muted-foreground">Meta Data</div>
-									<Textarea value={template.cloudInitMetaData || ''} readonly class="min-h-32 font-mono text-xs" />
+									<Textarea
+										value={template.cloudInitMetaData || ''}
+										readonly
+										class="min-h-32 font-mono text-xs"
+									/>
 								</div>
 								<div class="space-y-2">
 									<div class="text-xs text-muted-foreground">Network Config</div>
@@ -184,7 +193,9 @@
 									/>
 								</div>
 							{:else}
-								<div class="text-muted-foreground py-4 text-sm italic">Cloud-init data is not set on this template</div>
+								<div class="text-muted-foreground py-4 text-sm italic">
+									Cloud-init data is not set on this template
+								</div>
 							{/if}
 						</Tabs.Content>
 					</ScrollArea>

@@ -5,6 +5,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	import {
 		modifyAdditionalOptions,
@@ -117,34 +118,18 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/2 overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content
+		class="w-1/2 overflow-hidden p-6 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={reset}
+		onClose={() => {
+			reset();
+			open = false;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon {info.icon} h-5 w-5"></span>
-					<span>{info.title}</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" title="Reset" class="h-4" onclick={reset}>
-						<span class="icon-[radix-icons--reset] h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							reset();
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon={info.icon} size="h-5 w-5" gap="gap-2" title={info.title} />
 			</Dialog.Title>
 		</Dialog.Header>
 

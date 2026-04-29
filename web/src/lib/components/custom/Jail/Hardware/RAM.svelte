@@ -3,9 +3,14 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail } from '$lib/types/jail/jail';
-	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
+	import {
+		formatBytesBinary,
+		normalizeSizeInputExact,
+		parseSizeInputToBytes
+	} from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 
@@ -17,6 +22,8 @@
 	}
 
 	let { open = $bindable(), ram, jail, reload = $bindable() }: Props = $props();
+
+	// svelte-ignore state_referenced_locally
 	let options = {
 		ram: formatBytesBinary(jail?.memory || 1)
 	};
@@ -76,46 +83,24 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/4 overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content
+		class="w-1/4 overflow-hidden p-6 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+	>
 		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[ri--ram-fill] h-5 w-5"></span>
-					<span>RAM</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[ri--ram-fill]" size="h-5 w-5" gap="gap-2" title="RAM" />
 			</Dialog.Title>
 		</Dialog.Header>
 
 		<CustomValueInput
-			label={''}
 			placeholder="1.0 GiB"
 			bind:value={properties.ram}
 			classes="flex-1 space-y-1"
@@ -129,7 +114,7 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm">Save</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

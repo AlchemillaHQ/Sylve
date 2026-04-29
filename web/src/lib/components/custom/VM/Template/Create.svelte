@@ -15,6 +15,7 @@
 	import { toast } from 'svelte-sonner';
 	import SimpleSelect from '../../SimpleSelect.svelte';
 	import { handleAPIError } from '$lib/utils/http';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -33,9 +34,13 @@
 	let availablePools = $state<{ name: string }[]>([]);
 	let storagePoolBySourceId = $state<Record<number, string>>({});
 
+	// svelte-ignore state_referenced_locally
 	let singleRID = $state(nextGuestId || 0);
 	let singleName = $state('');
+
+	// svelte-ignore state_referenced_locally
 	let multipleStartRID = $state(nextGuestId || 0);
+
 	let multipleCount = $state(1);
 	let multipleNamePrefix = $state('');
 
@@ -244,30 +249,20 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-3xl">
+	<Dialog.Content
+		class="max-w-3xl"
+		showResetButton={true}
+		onReset={() => resetForm()}
+		onClose={() => (open = false)}
+	>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--monitor-outline]"></span>
-					<span>Create VM - {normalizedTemplateName(templateLabel)}</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" onclick={() => resetForm()} title={'Reset'}>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						onclick={() => (open = false)}
-						title={'Close'}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[material-symbols--monitor-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create VM - {normalizedTemplateName(templateLabel)}"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -338,7 +333,7 @@
 
 				<div class="border rounded-md p-3 space-y-2">
 					<div class="text-sm font-medium">Storage Pool Mapping</div>
-					{#each template.storages as storage}
+					{#each template.storages as storage, index (`tmpl-pool-${index}`)}
 						<div class="grid grid-cols-[1fr_180px] gap-2 items-center">
 							<div class="text-xs text-muted-foreground">
 								Storage #{storage.sourceStorageId} ({storage.type.toUpperCase()})

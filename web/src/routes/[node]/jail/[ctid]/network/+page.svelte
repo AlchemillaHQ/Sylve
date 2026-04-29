@@ -4,7 +4,7 @@
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { resource } from 'runed';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Inherit from '$lib/components/custom/Jail/Network/Inherit.svelte';
@@ -16,6 +16,7 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { toast } from 'svelte-sonner';
 	import Form from '$lib/components/custom/Jail/Network/Form.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		ctId: number;
@@ -158,7 +159,9 @@
 						ipv4 = 'DHCP';
 					} else {
 						if (network.ipv4Id && network.ipv4GwId) {
-							ipv4 = ipGatewayFormatter(networkObjects.current, network.ipv4Id, network.ipv4GwId);
+							if (!isAPIResponse(networkObjects.current)) {
+								ipv4 = ipGatewayFormatter(networkObjects.current, network.ipv4Id, network.ipv4GwId);
+							}
 						} else {
 							ipv4 = '-';
 						}
@@ -168,7 +171,9 @@
 						ipv6 = 'SLAAC';
 					} else {
 						if (network.ipv6Id && network.ipv6GwId) {
-							ipv6 = ipGatewayFormatter(networkObjects.current, network.ipv6Id, network.ipv6GwId);
+							if (!isAPIResponse(networkObjects.current)) {
+								ipv6 = ipGatewayFormatter(networkObjects.current, network.ipv6Id, network.ipv6GwId);
+							}
 						} else {
 							ipv6 = '-';
 						}
@@ -184,14 +189,16 @@
 							networkSwitches.current.manual?.find((sw) => sw.id === network.switchId)?.name || '';
 					}
 
-					rows.push({
-						name: network.name,
-						id: network.id,
-						switch: name,
-						mac: macFormtter(networkObjects.current, network.macId || 0),
-						ipv4,
-						ipv6
-					});
+					if (!isAPIResponse(networkObjects.current)) {
+						rows.push({
+							name: network.name,
+							id: network.id,
+							switch: name,
+							mac: macFormtter(networkObjects.current, network.macId || 0),
+							ipv4,
+							ipv6
+						});
+					}
 				}
 
 				return {
@@ -239,10 +246,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border p-2">
 		{#if !inherited}
 			<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
-				<div class="flex items-center">
-					<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-					<span>New</span>
-				</div>
+				<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-1" title="New" />
 			</Button>
 		{/if}
 
@@ -254,15 +258,21 @@
 			variant="outline"
 			class="h-6.5 {activeRows.length > 0 ? 'hidden' : ''}"
 		>
-			<div class="flex items-center">
-				{#if jail.current.inheritIPv4 || jail.current.inheritIPv6}
-					<span class="icon-[mdi--close-network] mr-1 h-4 w-4"></span>
-					<span>Disinherit Network</span>
-				{:else}
-					<span class="icon-[mdi--plus-network] mr-1 h-4 w-4"></span>
-					<span>Inherit Network</span>
-				{/if}
-			</div>
+			{#if jail.current.inheritIPv4 || jail.current.inheritIPv6}
+				<SpanWithIcon
+					icon="icon-[mdi--close-network]"
+					size="h-4 w-4"
+					gap="gap-1"
+					title="Disinherit Network"
+				/>
+			{:else}
+				<SpanWithIcon
+					icon="icon-[mdi--plus-network]"
+					size="h-4 w-4"
+					gap="gap-1"
+					title="Inherit Network"
+				/>
+			{/if}
 		</Button>
 
 		{#if activeRows.length > 0}
@@ -277,10 +287,7 @@
 					}
 				}}
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit" />
 			</Button>
 
 			<Button
@@ -293,10 +300,7 @@
 					}
 				}}
 			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</div>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 			</Button>
 		{/if}
 	</div>
@@ -331,7 +335,7 @@
 	></AlertDialog>
 {/if}
 
-{#if modals.create.open}
+{#if modals.create.open && !isAPIResponse(networkSwitches.current) && !isAPIResponse(networkObjects.current) && jail}
 	<Form
 		bind:open={modals.create.open}
 		jail={jail.current}
@@ -342,7 +346,7 @@
 	/>
 {/if}
 
-{#if modals.edit.open}
+{#if modals.edit.open && !isAPIResponse(networkSwitches.current) && !isAPIResponse(networkObjects.current) && jail}
 	<Form
 		bind:open={modals.edit.open}
 		jail={jail.current}

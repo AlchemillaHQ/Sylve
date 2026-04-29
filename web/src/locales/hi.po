@@ -901,7 +901,6 @@ msgstr "देखें"
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -1034,32 +1033,12 @@ msgstr "नया"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Hardware/CPU.svelte
-#: src/lib/components/custom/Jail/Hardware/CPU.svelte
-#: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
-#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
-#: src/lib/components/custom/Jail/Options/StartOrder.svelte
-#: src/lib/components/custom/Jail/Options/StartOrder.svelte
-#: src/lib/components/custom/Jail/Options/TextEdit.svelte
-#: src/lib/components/custom/Jail/Options/TextEdit.svelte
-#: src/lib/components/custom/Jail/Options/WoL.svelte
-#: src/lib/components/custom/Jail/Options/WoL.svelte
-#: src/lib/components/custom/Jail/Template/Create.svelte
-#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Template/Create.svelte
-#: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -1075,32 +1054,10 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
-#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
-#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Hardware/CPU.svelte
-#: src/lib/components/custom/Jail/Hardware/CPU.svelte
-#: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
-#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
-#: src/lib/components/custom/Jail/Options/StartOrder.svelte
-#: src/lib/components/custom/Jail/Options/StartOrder.svelte
-#: src/lib/components/custom/Jail/Options/TextEdit.svelte
-#: src/lib/components/custom/Jail/Options/TextEdit.svelte
-#: src/lib/components/custom/Jail/Options/WoL.svelte
-#: src/lib/components/custom/Jail/Options/WoL.svelte
-#: src/lib/components/custom/Jail/Template/Create.svelte
-#: src/lib/components/custom/Jail/Template/Create.svelte
-#: src/lib/components/custom/Jail/Template/View.svelte
-#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
@@ -1113,10 +1070,6 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Template/Create.svelte
-#: src/lib/components/custom/VM/Template/Create.svelte
-#: src/lib/components/custom/VM/Template/View.svelte
-#: src/lib/components/custom/VM/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -1125,8 +1078,6 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 #: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1770,7 +1721,6 @@ msgstr "लॉग आउट"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1791,7 +1741,6 @@ msgstr "प्रसंस्करण हो रहा है..."
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -1827,7 +1776,6 @@ msgstr "क्या आप निश्चित हैं?"
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -2298,7 +2246,6 @@ msgid "No data"
 msgstr "कोई डेटा नहीं"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Deleting Jail"
@@ -2307,23 +2254,19 @@ msgstr "जेल हटाई जा रही है"
 #. 0: jail.current.name; 1: jail.current.ctId
 #. 0: jail.current.name; 1: jail.current.ctId
 #. 0: jail.current.name; 1: jail.current.ctId
-#. 0: jail.current.name; 1: jail.current.ctId
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
 msgstr "कृपया प्रतीक्षा करें, जेल <b>{0} ({1})</b> हटाई जा रही है"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error deleting jail"
 msgstr "जेल हटाने में त्रुटि"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail deleted"
@@ -2336,7 +2279,6 @@ msgstr "जेल हटा दी गई"
 #~ msgstr "कृपया प्रतीक्षा करें, जेल <b>{0} ({1})</b> रोकी जा रही है"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error stopping jail"
@@ -2352,7 +2294,6 @@ msgstr "जेल रोकने में त्रुटि"
 #~ msgstr "कृपया प्रतीक्षा करें, जेल <b>{0} ({1})</b> शुरू की जा रही है"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error starting jail"
@@ -2363,7 +2304,6 @@ msgstr "जेल शुरू करने में त्रुटि"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2375,7 +2315,6 @@ msgstr "रोकें"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2385,15 +2324,12 @@ msgstr "रोकें"
 msgid "Start"
 msgstr "शुरू करें"
 
-#: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "This will permanently delete Jail"
 msgstr "इससे जेल स्थायी रूप से हट जाएगी"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2404,7 +2340,6 @@ msgid "Delete MAC Object(s)"
 msgstr "MAC ऑब्जेक्ट हटाएं"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Delete Root Filesystem"
@@ -5005,7 +4940,6 @@ msgstr "सीपीयू कोर अपडेट विफल रहा"
 msgid "CPU cores updated"
 msgstr "सीपीयू कोर अपडेट हो गए"
 
-#: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 msgid "CPU"
 msgstr "सीपीयू (CPU)"
@@ -5044,7 +4978,6 @@ msgstr "RAM संशोधित किया गया"
 msgid "Jail not found"
 msgstr "जेल नहीं मिला"
 
-#: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 msgid "RAM"
 msgstr "RAM"
@@ -6562,8 +6495,6 @@ msgid "Jail terminal"
 msgstr "जेल टर्मिनल"
 
 #. 0: jail.current?.name
-#. 0: jail.current?.name
-#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Console Settings - {0}"
 msgstr "कंसोल सेटिंग्स - {0}"
@@ -6798,42 +6729,42 @@ msgstr "{0} शुरू हुआ"
 msgid "Stopped {0}"
 msgstr "{0} बंद हुआ"
 
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "View Logs"
 msgstr "लॉग्स देखें"
 
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Hourly"
 msgstr "प्रति घंटा"
 
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Daily"
 msgstr "दैनिक"
 
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Weekly"
 msgstr "साप्ताहिक"
 
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Monthly"
 msgstr "मासिक"
 
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -6848,9 +6779,7 @@ msgid "Stopped"
 msgstr "बंद"
 
 #. 0: jail.current.name
-#. 0: jail.current.name
 #. 0: vm.current.name
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "{0} Logs"
@@ -7287,8 +7216,10 @@ msgstr "इस VM के लिए कोई कंसोल कॉन्फ़�
 msgid "The VM is currently powered off.<0/> Start the VM to access its console."
 msgstr "VM वर्तमान में बंद है।<0/> इसके कंसोल तक पहुँचने के लिए VM शुरू करें।"
 
+#. 0: jail.current?.name || ''
 #. 0: vm.current?.name
 #. 0: vm.current?.name || ''
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Console settings - {0}"
@@ -8767,8 +8698,6 @@ msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -8777,14 +8706,12 @@ msgid "Jail action already in progress"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail stop queued"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail start queued"
@@ -9226,10 +9153,8 @@ msgstr ""
 msgid "Failed to load template details"
 msgstr ""
 
-#. 0: title.replaceAll('Template', '')
-#: src/lib/components/custom/Jail/Template/View.svelte
-msgid "Template Details - {0}"
-msgstr ""
+#~ msgid "Template Details - {0}"
+#~ msgstr ""
 
 #~ msgid "Loading template details..."
 #~ msgstr ""
@@ -12199,9 +12124,8 @@ msgstr ""
 msgid "Bootstrap Jail Bases"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
-msgid "<0/> Loading..."
-msgstr ""
+#~ msgid "<0/> Loading..."
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "No supported versions available."
@@ -12211,9 +12135,8 @@ msgstr ""
 msgid "Unknown error"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
-msgid "<0/> Installed"
-msgstr ""
+#~ msgid "<0/> Installed"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Retry"
@@ -13427,3 +13350,16 @@ msgstr ""
 
 #~ msgid "Console settings - {0} <0>Console settings - {0}</0>"
 #~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Installed"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "This will permanently delete the jail <0/> <1/>"
+msgstr ""
+
+#. 0: title.replaceAll('Template', '')
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Jail Template - {0}"
+msgstr ""

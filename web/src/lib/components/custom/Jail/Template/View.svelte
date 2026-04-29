@@ -13,6 +13,7 @@
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { sleep } from '$lib/utils';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -87,18 +88,15 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-5xl">
+	<Dialog.Content class="max-w-5xl" onClose={() => (open = false)}>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex justify-between gap-1 text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--file-tree-outline] h-5 w-5"></span>
-					<span>Template Details - {title.replaceAll('Template', '')}</span>
-				</div>
-
-				<Button size="sm" variant="link" class="h-4" onclick={() => (open = false)} title={'Close'}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
-				</Button>
+			<Dialog.Title class="text-left">
+				<SpanWithIcon
+					icon="icon-[mdi--file-tree-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Jail Template - {title.replaceAll('Template', '')}"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -426,7 +424,7 @@
 </Dialog.Root>
 
 <Dialog.Root bind:open={hookModalOpen}>
-	<Dialog.Content class="max-w-2xl">
+	<Dialog.Content class="max-w-2xl" onClose={() => (hookModalOpen = false)}>
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center gap-2">
 				<span class="icon-[mdi--script-text-outline] h-5 w-5"></span>

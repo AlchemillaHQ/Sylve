@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { toast } from 'svelte-sonner';
@@ -50,50 +51,28 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/4 overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content
+		class="w-1/4 overflow-hidden p-6 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={() => {
+			cores = jail?.cores || 1;
+		}}
+		onClose={() => {
+			cores = jail?.cores || 1;
+			open = false;
+		}}
+	>
 		<Dialog.Header class="">
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[solar--cpu-bold] h-5 w-5"></span>
-
-					<span>CPU</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 "
-						onclick={() => {
-							cores = jail?.cores || 1;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							cores = jail?.cores || 1;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon icon="icon-[solar--cpu-bold]" size="h-5 w-5" gap="gap-2" title="CPU" />
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<CustomValueInput label={''} placeholder="1" bind:value={cores} classes="flex-1 space-y-1" />
+		<CustomValueInput placeholder="1" bind:value={cores} classes="flex-1 space-y-1" />
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm">Save</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

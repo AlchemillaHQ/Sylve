@@ -1,52 +1,41 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
-		deleteJail,
 		getJailById,
 		getJailLogs,
 		getStats,
-		jailAction,
 		updateDescription,
 		updateName
 	} from '$lib/api/jail/jail';
-	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
-	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
-	import type { Jail, JailLifecycleAction, JailStat, JailState } from '$lib/types/jail/jail';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
+	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
-	import {
-		getEffectiveJailLifecycleAction,
-		getJailLifecycleBadgeStyle,
-		getJailLifecyclePendingTimeoutMs,
-		isJailPendingLifecycleActionSettled,
-		isJailLifecycleTransitionPending,
-		shouldHideJailLifecycleButtons
-	} from '$lib/utils/jail/jail';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { dateToAgo } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
 	import { getContext } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
-	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
-	import { resolve } from '$app/paths';
-	import { fade } from 'svelte/transition';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+
+	interface SummaryBarExtras {
+		logsLength: number;
+		showLogsCallback: () => void;
+		gfsStep: GFSStep;
+		refetchStats: () => void;
+		active: boolean;
+	}
 
 	interface Data {
-		node: string;
 		ctId: number;
 		jail: Jail;
 		stats: JailStat[];
@@ -59,21 +48,8 @@
 	let { data }: { data: Data } = $props();
 
 	let ctId = $derived(data.ctId);
-	let gfsStep = $state<GFSStep>('hourly');
 
-	let modalState = $state({
-		isDeleteOpen: false,
-		deleteMacs: false,
-		deleteRootFS: false,
-		title: '',
-		loading: {
-			open: false,
-			title: '',
-			description: '',
-			iconColor: '',
-			showLogs: false
-		}
-	});
+	const barExtras = getContext<SummaryBarExtras>('jailSummaryBarExtras');
 
 	// svelte-ignore state_referenced_locally
 	const jail = resource(
@@ -90,10 +66,6 @@
 
 	const jState = getContext<{ current: JailState | null; refetch(): void }>('jailState');
 
-	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
-		'jailLifecycleTask'
-	);
-
 	const logs = resource(
 		() => `jail-${ctId}-logs`,
 		async (key) => {
@@ -108,7 +80,7 @@
 
 	// svelte-ignore state_referenced_locally
 	const stats = resource(
-		[() => gfsStep],
+		[() => barExtras.gfsStep],
 		async ([gfsStep]) => {
 			const result = await getStats(Number(data.jail.ctId), gfsStep);
 			const key = `jail-stats-${gfsStep}-${data.jail.ctId}`;
@@ -156,11 +128,11 @@
 			if (visible.current) {
 				jail.refetch();
 
-				if (gfsStep === 'hourly') {
+				if (barExtras.gfsStep === 'hourly') {
 					stats.refetch();
 				}
 
-				if (showLogs || modalState.loading.open) {
+				if (showLogs) {
 					logs.refetch();
 				}
 			}
@@ -174,7 +146,7 @@
 				jail.refetch();
 				stats.refetch();
 
-				if (showLogs || modalState.loading.open) {
+				if (showLogs) {
 					logs.refetch();
 				}
 			}
@@ -203,8 +175,6 @@
 		jailName = syncedJailName;
 		isEditingName = false;
 	}
-	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
-	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function isNearLogsBottom(element: HTMLDivElement): boolean {
 		return (
@@ -260,39 +230,6 @@
 		return '';
 	});
 
-	async function handleDelete() {
-		modalState.isDeleteOpen = false;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Deleting Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being deleted`;
-		modalState.loading.iconColor = 'text-red-500';
-
-		const result = await deleteJail(
-			jail.current.ctId,
-			modalState.deleteMacs,
-			modalState.deleteRootFS
-		);
-		reload.leftPanel = true;
-
-		if (result.status === 'error') {
-			modalState.loading.open = false;
-			toast.error('Error deleting jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} else if (result.status === 'success') {
-			toast.success('Jail deleted', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-			goto(
-				resolve(`/[node]/summary`, {
-					node: data.node
-				})
-			);
-		}
-	}
-
 	let isJailNameDirty = $derived.by(
 		() => jailName.trim() !== String(jail.current.name || '').trim()
 	);
@@ -340,80 +277,24 @@
 		isRenameInFlight = false;
 	}
 
-	function beginPendingLifecycleAction(action: JailLifecycleAction) {
-		pendingLifecycleAction = action;
+	// Register with the layout's toolbar bar on mount; clean up on unmount
+	$effect(() => {
+		barExtras.active = true;
+		barExtras.showLogsCallback = () => {
+			followLogs = true;
+			showLogs = true;
+		};
+		barExtras.refetchStats = () => stats.refetch();
+		return () => {
+			barExtras.active = false;
+			barExtras.logsLength = 0;
+		};
+	});
 
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-		}
-
-		pendingLifecycleTimer = setTimeout(() => {
-			pendingLifecycleAction = '';
-			pendingLifecycleTimer = null;
-		}, getJailLifecyclePendingTimeoutMs(action));
-	}
-
-	function clearPendingLifecycleAction() {
-		pendingLifecycleAction = '';
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-			pendingLifecycleTimer = null;
-		}
-	}
-
-	async function refreshLifecycleState() {
-		await Promise.all([jState.refetch(), jail.refetch(), lifecycleTask.refetch()]);
-	}
-
-	async function handleStop() {
-		beginPendingLifecycleAction('stop');
-		const result = await jailAction(jail.current.ctId, 'stop');
-		reload.leftPanel = true;
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'Jail action already in progress'
-					: 'Error stopping jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else {
-			toast.success('Jail stop queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		}
-
-		await refreshLifecycleState();
-	}
-
-	async function handleStart() {
-		beginPendingLifecycleAction('start');
-		const result = await jailAction(jail.current.ctId, 'start');
-		reload.leftPanel = true;
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'Jail action already in progress'
-					: 'Error starting jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else {
-			toast.success('Jail start queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		}
-
-		await refreshLifecycleState();
-	}
+	// Keep logsLength in the shared bar state in sync
+	$effect(() => {
+		barExtras.logsLength = logs.current.logs.length;
+	});
 
 	watch(
 		() => logs.current.logs,
@@ -441,124 +322,9 @@
 			}
 		}
 	);
-
-	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
-	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
-	let isActiveLifecycleActionSettled = $derived.by(() => {
-		if (activeLifecycleAction !== 'start' && activeLifecycleAction !== 'stop') {
-			return false;
-		}
-
-		return isJailPendingLifecycleActionSettled(activeLifecycleAction, jState.current?.state);
-	});
-	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
-	let effectiveLifecycleAction = $derived(
-		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
-	);
-	let isLifecycleTransitionPending = $derived(
-		isJailLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
-	);
-	let shouldHideActionButtons = $derived(
-		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
-	);
-	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
-
-	watch(
-		() => [pendingLifecycleAction, hasLifecycleTaskRecord, jState.current?.state] as const,
-		([pendingAction, hasTask]) => {
-			if (!pendingAction || hasTask) {
-				return;
-			}
-
-			if (isJailPendingLifecycleActionSettled(pendingAction, jState.current?.state)) {
-				clearPendingLifecycleAction();
-			}
-		}
-	);
 </script>
 
 <div>
-	<div class="flex h-10 w-full items-center gap-1 border p-4" transition:fade>
-		{#if jState.current}
-			{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
-				<Button
-					onclick={handleStop}
-					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-				>
-					<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-					<span>Stop</span>
-				</Button>
-			{:else if !shouldHideActionButtons}
-				<Button
-					onclick={handleStart}
-					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-				>
-					<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-					<span>Start</span>
-				</Button>
-
-				<Button
-					onclick={() => {
-						modalState.isDeleteOpen = true;
-					}}
-					size="sm"
-					class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-				>
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete</span>
-				</Button>
-			{/if}
-		{/if}
-
-		{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
-			<Badge
-				variant={lifecycleActionBadge.variant}
-				class={`ml-1 px-1.5 text-xs ${lifecycleActionBadge.className}`}
-			>
-				<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-				<span>{lifecycleActionBadge.label}</span>
-			</Badge>
-		{/if}
-
-		<div class="ml-auto flex h-full items-center gap-2">
-			{#if logs.current.logs.length > 0}
-				<div transition:fade>
-					<Button
-						size="sm"
-						onclick={() => {
-							followLogs = true;
-							showLogs = true;
-						}}
-						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
-					>
-						<div class="flex items-center">
-							<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
-							<span>View Logs</span>
-						</div>
-					</Button>
-				</div>
-			{/if}
-
-			<SimpleSelect
-				options={[
-					{ label: 'Hourly', value: 'hourly' },
-					{ label: 'Daily', value: 'daily' },
-					{ label: 'Weekly', value: 'weekly' },
-					{ label: 'Monthly', value: 'monthly' },
-					{ label: 'Yearly', value: 'yearly' }
-				]}
-				bind:value={gfsStep}
-				onChange={() => {
-					stats.refetch();
-				}}
-				classes={{ trigger: 'h-6!' }}
-				icon="icon-[mdi--calendar]"
-			/>
-		</div>
-	</div>
-
 	<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
@@ -708,73 +474,24 @@
 	</div>
 </div>
 
-<AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>
-	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
-		<AlertDialogRaw.Header>
-			<AlertDialogRaw.Title>Are you sure?</AlertDialogRaw.Title>
-			<AlertDialogRaw.Description>
-				<span>This will permanently delete Jail</span>
-				<span class="font-semibold">{jail.current.name} ({jail.current.ctId}).</span>
-				<div class="flex flex-row gap-2">
-					<CustomCheckbox
-						label="Delete MAC Object(s)"
-						bind:checked={modalState.deleteMacs}
-						classes="flex items-center gap-2 mt-4"
-					></CustomCheckbox>
-					<CustomCheckbox
-						label="Delete Root Filesystem"
-						bind:checked={modalState.deleteRootFS}
-						classes="flex items-center gap-2 mt-4"
-					></CustomCheckbox>
-				</div>
-			</AlertDialogRaw.Description>
-		</AlertDialogRaw.Header>
-		<AlertDialogRaw.Footer>
-			<AlertDialogRaw.Cancel
-				onclick={() => {
-					modalState.isDeleteOpen = false;
-				}}>Cancel</AlertDialogRaw.Cancel
-			>
-			<AlertDialogRaw.Action onclick={handleDelete}>Continue</AlertDialogRaw.Action>
-		</AlertDialogRaw.Footer>
-	</AlertDialogRaw.Content>
-</AlertDialogRaw.Root>
-
-<LoadingDialog
-	bind:open={modalState.loading.open}
-	title={modalState.loading.title}
-	description={modalState.loading.description}
-	iconColor={modalState.loading.iconColor}
-	logs={modalState.loading.showLogs ? logs.current.logs : undefined}
-/>
-
 <Dialog.Root bind:open={showLogs}>
 	<Dialog.Content
 		class="min-w-3xl overflow-hidden"
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
+		showCloseButton={true}
+		onClose={() => {
+			showLogs = false;
+		}}
 	>
 		<Dialog.Header class="flex w-full min-w-0 flex-col">
 			<Dialog.Title class="flex justify-between text-left">
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--terminal] h-6 w-6"></span>
-					<span>{jail.current.name} Logs</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							showLogs = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+				<SpanWithIcon
+					icon="icon-[material-symbols--terminal]"
+					size="h-6 w-6"
+					gap="gap-2"
+					title={`${jail.current.name} Logs`}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

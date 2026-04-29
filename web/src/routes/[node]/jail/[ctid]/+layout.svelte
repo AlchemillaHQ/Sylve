@@ -22,9 +22,12 @@
 		shouldHideJailLifecycleButtons
 	} from '$lib/utils/jail/jail';
 	import { sleep } from '$lib/utils';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import type { GFSStep } from '$lib/types/common';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -45,7 +48,6 @@
 		if (jailIndex === -1) return '';
 		return segments[jailIndex + 2] ?? '';
 	});
-	let isSummaryPage = $derived.by(() => jailChildRoute === '' || jailChildRoute === 'summary');
 	let isConsolePage = $derived.by(() => jailChildRoute === 'console');
 
 	const jail = resource(
@@ -74,13 +76,27 @@
 		() => `jail-lifecycle-task-${ctId}`,
 		async (): Promise<LifecycleTask | null> => {
 			if (!ctId) return null;
-			return await getActiveLifecycleTaskForGuest('jail', ctId);
+			const task = await getActiveLifecycleTaskForGuest('jail', ctId);
+			if (isAPIResponse(task) || task === null) return null;
+			return task;
 		},
 		{ initialValue: null as LifecycleTask | null }
 	);
 
 	setContext('jailState', jState);
 	setContext('jailLifecycleTask', lifecycleTask);
+
+	// Reactive state that the summary page writes into to inject toolbar extras
+	class SummaryBarExtras {
+		logsLength = $state(0);
+		showLogsCallback = $state<() => void>(() => {});
+		gfsStep = $state<GFSStep>('hourly');
+		refetchStats = $state<() => void>(() => {});
+		active = $state(false);
+	}
+
+	const summaryBarExtras = new SummaryBarExtras();
+	setContext('jailSummaryBarExtras', summaryBarExtras);
 
 	const visible = new IsDocumentVisible();
 
@@ -187,6 +203,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/${storage.hostname}/summary`);
 			toast.success('Jail deleted', {
 				duration: 5000,
@@ -293,8 +310,8 @@
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
-	{#if !isSummaryPage}
-		<div class="flex h-10 w-full shrink-0 items-center justify-between gap-1 border p-4">
+	<div class="flex h-10 w-full shrink-0 items-center justify-between gap-1 border p-4">
+		{#if !summaryBarExtras.active}
 			<div class="min-w-0 flex items-center gap-2">
 				{#if jail.current && jState.current}
 					<Badge
@@ -311,51 +328,80 @@
 					<p class="truncate text-sm font-semibold">{jail.current.name} ({jail.current.ctId})</p>
 				{/if}
 			</div>
+		{/if}
 
-			<div class="flex items-center gap-1">
-				{#if jail.current && jState.current}
-					{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
-						<Button
-							onclick={handleStop}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-							{'Stop'}
-						</Button>
-					{:else if !shouldHideActionButtons}
-						<Button
-							onclick={handleStart}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-							{'Start'}
-						</Button>
+		<div class="flex items-center gap-1">
+			{#if jail.current && jState.current}
+				{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
+					<Button
+						onclick={handleStop}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						<SpanWithIcon icon="icon-[mdi--stop]" size="h-4 w-4" gap="gap-1" title="Stop" />
+					</Button>
+				{:else if !shouldHideActionButtons}
+					<Button
+						onclick={handleStart}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-1" title="Start" />
+					</Button>
 
-						<Button
-							onclick={openDeleteModal}
-							size="sm"
-							class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-							{'Delete'}
-						</Button>
-					{/if}
-
-					{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
-						<Badge
-							variant={lifecycleActionBadge.variant}
-							class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
-						>
-							<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-							{lifecycleActionBadge.label}
-						</Badge>
-					{/if}
+					<Button
+						onclick={openDeleteModal}
+						size="sm"
+						class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
+					</Button>
 				{/if}
-			</div>
+
+				{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+					<Badge
+						variant={lifecycleActionBadge.variant}
+						class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
+					>
+						<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+						{lifecycleActionBadge.label}
+					</Badge>
+				{/if}
+			{/if}
 		</div>
-	{/if}
+
+		{#if summaryBarExtras.active}
+			<div class="ml-auto flex items-center gap-2">
+				{#if summaryBarExtras.logsLength > 0}
+					<Button
+						size="sm"
+						onclick={summaryBarExtras.showLogsCallback}
+						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+					>
+						<SpanWithIcon
+							icon="icon-[mdi--file-document-outline]"
+							size="h-4 w-4"
+							gap="gap-1"
+							title="View Logs"
+						/>
+					</Button>
+				{/if}
+				<SimpleSelect
+					options={[
+						{ label: 'Hourly', value: 'hourly' },
+						{ label: 'Daily', value: 'daily' },
+						{ label: 'Weekly', value: 'weekly' },
+						{ label: 'Monthly', value: 'monthly' },
+						{ label: 'Yearly', value: 'yearly' }
+					]}
+					bind:value={summaryBarExtras.gfsStep}
+					onChange={() => summaryBarExtras.refetchStats()}
+					classes={{ trigger: 'h-6!' }}
+					icon="icon-[mdi--calendar]"
+				/>
+			</div>
+		{/if}
+	</div>
 
 	<div
 		class="min-h-0 flex-1"
@@ -371,7 +417,7 @@
 		<AlertDialogRaw.Header>
 			<AlertDialogRaw.Title>Are you sure?</AlertDialogRaw.Title>
 			<AlertDialogRaw.Description>
-				{`This will permanently delete Jail`}
+				This will permanently delete the jail
 				<span class="font-semibold">{modalState?.title}.</span>
 				<div class="flex flex-row gap-2">
 					<CustomCheckbox

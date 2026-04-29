@@ -5,6 +5,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Label from '$lib/components/ui/label/label.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { Jail, ExecPhaseKey, ExecPhaseState } from '$lib/types/jail/jail';
 	import { ExecPhaseDefs } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
@@ -65,40 +66,30 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[90vw] overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content
+		class="w-[90vw] overflow-hidden p-6 lg:max-w-2xl"
+		showResetButton={true}
+		onReset={reset}
+		onClose={() => {
+			reset();
+			open = false;
+		}}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[iconoir--terminal-outline] h-5 w-5"></span>
-					<span>Lifecycle Hooks</span>
-				</div>
-
-				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" title={'Reset'} class="h-4" onclick={reset}>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							reset();
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[iconoir--terminal-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Lifecycle Hooks"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
 		<div class="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
 			<Label>Custom Jail Lifecycle Hooks (exec.* scripts)</Label>
 
-			{#each ExecPhaseDefs as phase}
+			{#each ExecPhaseDefs as phase (phase.key)}
 				<div class="space-y-2 rounded-xl border p-3 md:p-4">
 					<div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
 						<div>
@@ -119,7 +110,7 @@
 					{#if execScripts[phase.key].enabled}
 						<CustomValueInput
 							label=""
-							placeholder={`echo \"hello-world\"`}
+							placeholder="echo &quot;hello-world&quot;"
 							bind:value={execScripts[phase.key].script}
 							classes="flex-1 space-y-1.5"
 							textAreaClasses="h-24 text-xs font-mono"
