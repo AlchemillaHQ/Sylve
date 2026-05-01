@@ -470,6 +470,15 @@ func (s *Service) GlobalConfig() (string, error) {
 	config += "recycle:touch_mtime = yes\n"
 	config += "recycle:exclude = :*DATA,*.tmp,*.temp,*.o,*.obj,~$*,*.~??,*.part,*.partial,*.swp,*.swo,*.log\n"
 
+	config += "unix extensions = no\n"
+	config += "struct allocate = no\n"
+	config += "nfs4:mode = simple\n"
+	config += "nfs4:acedup = merge\n"
+	config += "nfs4:chown = yes\n"
+	config += "store dos attributes = yes\n"
+	config += "map archive = no\n"
+	config += "dos filemode = yes\n"
+	config += "map acl inherit = yes\n"
 	config += "inherit acls = yes\n"
 
 	return config, nil
