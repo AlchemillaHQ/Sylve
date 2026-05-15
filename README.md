@@ -54,7 +54,7 @@ Start it now:
 service sylve start
 ```
 
-Navigate to `https://localhost:8182`. Use `admin` as the username and leave the password field blank by default.
+Navigate to `https://localhost:8181`. Use `admin` as the username and leave the password field blank by default.
 
 For full installation instructions, dependency details, and configuration guides, see the documentation:
 
