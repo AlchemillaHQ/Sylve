@@ -5905,7 +5905,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -13403,19 +13403,17 @@ msgstr ""
 msgid "Terminal WebSocket disconnected for tab {0}"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
-msgid ""
-"This option will disinherit the network configuration from the host. Choose this if you want\n"
-"to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
-"take effect after restarting the jail."
-msgstr ""
+#~ msgid ""
+#~ "This option will disinherit the network configuration from the host. Choose this if you want\n"
+#~ "to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
+#~ "take effect after restarting the jail."
+#~ msgstr ""
 
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
-msgid ""
-"This option will inherit the network configuration from the host. Choose this if you want\n"
-"the jail to share the host's networking. You can select which protocols to inherit below.\n"
-"Changes will take effect after restarting the jail."
-msgstr ""
+#~ msgid ""
+#~ "This option will inherit the network configuration from the host. Choose this if you want\n"
+#~ "the jail to share the host's networking. You can select which protocols to inherit below.\n"
+#~ "Changes will take effect after restarting the jail."
+#~ msgstr ""
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools updated successfully"

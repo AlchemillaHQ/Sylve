@@ -224,6 +224,8 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 					fmt.Sprintf("\tdevfs_ruleset=%d;", ctId),
 				)
 				found = true
+			} else {
+				newLines = append(newLines, "\tdevfs_ruleset=61181;")
 			}
 			continue
 		}
@@ -235,7 +237,7 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 	}
 	if rules != "" {
 		entry := fmt.Sprintf(
-			"\n[devfsrules_jails_sylve_%d=%d]\n%s\n",
+			"\n[devfsrules_jails_sylve_%d=%d]\nadd include $devfsrules_jails\n%s\n",
 			ctId,
 			ctId,
 			strings.TrimSpace(rules),

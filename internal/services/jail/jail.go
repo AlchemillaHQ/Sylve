@@ -1095,6 +1095,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		}
 
 		rule := fmt.Sprintf("\n[devfsrules_jails_sylve_%d=%d]\n", ctid, ctid)
+		rule += "add include $devfsrules_jails\n"
 		rule += data.DevFSRuleset + "\n"
 		if _, err := f.WriteString(rule); err != nil {
 			f.Close()

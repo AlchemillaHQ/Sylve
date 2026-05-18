@@ -5905,7 +5905,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -13417,25 +13417,23 @@ msgstr "Terminálový WebSocket připojen pro panel {0}"
 msgid "Terminal WebSocket disconnected for tab {0}"
 msgstr "Terminálový WebSocket odpojen pro panel {0}"
 
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
-msgid ""
-"This option will disinherit the network configuration from the host. Choose this if you want\n"
-"to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
-"take effect after restarting the jail."
-msgstr ""
-"Tato předvolba zruší dědění nastavení sítě z hostitele. Toto zvolte pokud chcete tomuto jail\n"
-"připojit uživatelsky určený síťový přepínač nebo síťování zcela vypnout. Změny se projeví\n"
-"po restartu jail."
+#~ msgid ""
+#~ "This option will disinherit the network configuration from the host. Choose this if you want\n"
+#~ "to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
+#~ "take effect after restarting the jail."
+#~ msgstr ""
+#~ "Tato předvolba zruší dědění nastavení sítě z hostitele. Toto zvolte pokud chcete tomuto jail\n"
+#~ "připojit uživatelsky určený síťový přepínač nebo síťování zcela vypnout. Změny se projeví\n"
+#~ "po restartu jail."
 
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
-msgid ""
-"This option will inherit the network configuration from the host. Choose this if you want\n"
-"the jail to share the host's networking. You can select which protocols to inherit below.\n"
-"Changes will take effect after restarting the jail."
-msgstr ""
-"Tato předvolba zdědí nastavení sítě z hostitele. Toto zvolte pokud chcete, aby jail sdílel\n"
-"síťování s hostitelem. Níže je možné vybrat, které protokoly zdědit.\n"
-"Změny se projeví po restartování jail."
+#~ msgid ""
+#~ "This option will inherit the network configuration from the host. Choose this if you want\n"
+#~ "the jail to share the host's networking. You can select which protocols to inherit below.\n"
+#~ "Changes will take effect after restarting the jail."
+#~ msgstr ""
+#~ "Tato předvolba zdědí nastavení sítě z hostitele. Toto zvolte pokud chcete, aby jail sdílel\n"
+#~ "síťování s hostitelem. Níže je možné vybrat, které protokoly zdědit.\n"
+#~ "Změny se projeví po restartování jail."
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools updated successfully"
