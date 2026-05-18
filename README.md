@@ -42,6 +42,20 @@ pkg install sylve
 cd /usr/ports/sysutils/sylve && make install clean
 ```
 
+Run the following command to enable it:
+
+```bash
+service sylve enable
+```
+
+Start it now:
+
+```bash
+service sylve start
+```
+
+Navigate to `https://localhost:8181`. Use `admin` as the username and the password `admin` by default.
+
 For full installation instructions, dependency details, and configuration guides, see the documentation:
 
 [https://sylve.io/docs](https://sylve.io/docs)
