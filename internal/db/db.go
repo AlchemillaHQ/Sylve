@@ -230,6 +230,9 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 	const username = "admin"
 	adminCfg := cfg.Admin
 
+	// Import root user if it exists as a Unix user but not in the DB.
+	setupRootUser(db)
+
 	var user models.User
 	result := db.Where("username = ?", username).First(&user)
 
@@ -284,15 +287,12 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 
 		if !needsUpdate {
 			logger.L.Debug().Msg("Admin user up to date, no changes needed")
-			return nil
-		}
-
-		if err := db.Model(&user).Updates(updates).Error; err != nil {
+		} else if err := db.Model(&user).Updates(updates).Error; err != nil {
 			logger.L.Error().Msgf("Failed to update admin user: %v", err)
 			return err
+		} else {
+			logger.L.Info().Msg("Admin user updated")
 		}
-
-		logger.L.Info().Msg("Admin user updated")
 	}
 
 	exists, err := system.UnixUserExists(username)
@@ -309,6 +309,52 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 	}
 
 	return nil
+}
+
+func setupRootUser(db *gorm.DB) {
+	const username = "root"
+
+	var existing models.User
+	if err := db.Where("username = ?", username).First(&existing).Error; err == nil {
+		if !existing.Admin {
+			if err := db.Model(&existing).Update("admin", true).Error; err != nil {
+				logger.L.Warn().Msgf("Failed to grant admin to root user: %v", err)
+			} else {
+				logger.L.Info().Msg("Granted admin to root user")
+			}
+		}
+		return
+	}
+
+	exists, err := system.UnixUserExists(username)
+	if err != nil {
+		logger.L.Warn().Msgf("Error checking Unix user 'root': %v", err)
+		return
+	}
+	if !exists {
+		return
+	}
+
+	info, err := system.GetUnixUserInfoFull(username)
+	if err != nil {
+		logger.L.Warn().Msgf("Failed to get Unix info for root: %v", err)
+		return
+	}
+
+	rootUser := models.User{
+		Username:      username,
+		FullName:      info.FullName,
+		UID:           info.UID,
+		Shell:         info.Shell,
+		HomeDirectory: info.HomeDir,
+		HomeDirPerms:  493,
+		Admin:         true,
+	}
+	if err := db.Create(&rootUser).Error; err != nil {
+		logger.L.Warn().Msgf("Failed to import root user into DB: %v", err)
+		return
+	}
+	logger.L.Info().Msg("Root user imported into Sylve")
 }
 
 func initClusterRecord(db *gorm.DB) error {

@@ -15,6 +15,14 @@ var unixGroupExists = UnixGroupExists
 var isUserInGroup = IsUserInGroup
 var getEUID = os.Geteuid
 
+// SetRunCommand overrides the command runner for tests.
+// Returns a function that restores the original runner.
+func SetRunCommand(fn func(string, ...string) (string, error)) func() {
+	original := runCommand
+	runCommand = fn
+	return func() { runCommand = original }
+}
+
 func UnixUserExists(name string) (bool, error) {
 	output, err := runCommand("/usr/bin/id", name)
 
@@ -310,22 +318,102 @@ func GetNextUnixUID() (int, error) {
 	return 0, fmt.Errorf("no available UID found in range 1000-65533")
 }
 
+// UnixUserInfo holds the full metadata of an existing Unix user.
+type UnixUserInfo struct {
+	Username string
+	UID      int
+	GID      int
+	Shell    string
+	HomeDir  string
+	FullName string
+}
+
 // GetUnixUserInfo returns the UID and shell for an existing Unix user.
 func GetUnixUserInfo(username string) (uid int, shell string, err error) {
+	info, err := GetUnixUserInfoFull(username)
+	if err != nil {
+		return 0, "", err
+	}
+	return info.UID, info.Shell, nil
+}
+
+// GetUnixUserInfoFull returns all available metadata for a Unix user by name.
+// Output format (pw usershow): name:password:uid:gid:class:change:expire:gecos:home_dir:shell
+func GetUnixUserInfoFull(username string) (UnixUserInfo, error) {
 	output, cmdErr := runCommand("/usr/sbin/pw", "usershow", "-n", username)
 	if cmdErr != nil {
-		return 0, "", fmt.Errorf("failed to get user info for %s: %w", username, cmdErr)
+		return UnixUserInfo{}, fmt.Errorf("failed to get user info for %s: %w", username, cmdErr)
 	}
 	parts := strings.Split(strings.TrimSpace(output), ":")
-	if len(parts) < 7 {
-		return 0, "", fmt.Errorf("unexpected pw usershow output for %s", username)
+	if len(parts) < 10 {
+		return UnixUserInfo{}, fmt.Errorf("unexpected pw usershow output for %s", username)
 	}
-	uid, err = strconv.Atoi(parts[2])
+	uid, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to parse UID for %s: %w", username, err)
+		return UnixUserInfo{}, fmt.Errorf("failed to parse UID for %s: %w", username, err)
 	}
-	shell = parts[6]
-	return uid, shell, nil
+	gid, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return UnixUserInfo{}, fmt.Errorf("failed to parse GID for %s: %w", username, err)
+	}
+	return UnixUserInfo{
+		Username: parts[0],
+		UID:      uid,
+		GID:      gid,
+		Shell:    parts[9],
+		HomeDir:  parts[8],
+		FullName: parts[7],
+	}, nil
+}
+
+// GetUnixUserGroups returns the Unix group names the user belongs to.
+func GetUnixUserGroups(username string) ([]string, error) {
+	output, err := runCommand("/usr/bin/id", "-Gn", username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get groups for %s: %w", username, err)
+	}
+	groups := strings.Fields(output)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("no groups found for user %s", username)
+	}
+	return groups, nil
+}
+
+// ListAllUnixUsers returns all Unix users from the password database.
+// Each line matches pw(8) passwd format: name:password:uid:gid:class:change:expire:gecos:home_dir:shell
+func ListAllUnixUsers() ([]UnixUserInfo, error) {
+	output, err := runCommand("/usr/sbin/pw", "usershow", "-a")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list unix users: %w", err)
+	}
+	var users []UnixUserInfo
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) < 10 {
+			continue
+		}
+		uid, err := strconv.Atoi(parts[2])
+		if err != nil {
+			continue
+		}
+		gid, err := strconv.Atoi(parts[3])
+		if err != nil {
+			continue
+		}
+		users = append(users, UnixUserInfo{
+			Username: parts[0],
+			UID:      uid,
+			GID:      gid,
+			Shell:    parts[9],
+			HomeDir:  parts[8],
+			FullName: parts[7],
+		})
+	}
+	return users, nil
 }
 
 // SetUnixUserShell changes the login shell for a Unix user.

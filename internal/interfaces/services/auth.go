@@ -75,7 +75,10 @@ type AuthServiceInterface interface {
 
 	ListUsers() ([]models.User, error)
 	GetUserByID(id uint) (*models.User, error)
+	GetUserByUsername(username string) (*models.User, error)
 	CreateUser(user *models.User, opts CreateUserOpts) error
+	ImportUser(username string, password string, opts CreateUserOpts) (*models.User, error)
+	ListImportableUnixUsers() ([]models.User, error)
 	DeleteUser(userID uint) error
 	EditUser(userID uint, opts EditUserOpts) error
 	GetNextUID() (int, error)

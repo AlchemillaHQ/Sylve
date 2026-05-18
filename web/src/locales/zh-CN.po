@@ -1495,6 +1495,7 @@ msgid "Enter or generate password"
 msgstr "输入或生成密码"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Admin"
 msgstr "管理员"
 
@@ -1739,6 +1740,7 @@ msgstr "您确定吗？"
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
@@ -5727,7 +5729,9 @@ msgstr "新建存储"
 msgid "DB Storage"
 msgstr "数据库存储"
 
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Import"
 msgstr "导入"
 
@@ -6918,13 +6922,11 @@ msgstr "组已删除"
 msgid "Last Usage"
 msgstr "最后使用"
 
-#: src/routes/[node]/settings/authentication/users/+page.svelte
-msgid "Cannot delete admin user"
-msgstr "无法删除管理员用户"
+#~ msgid "Cannot delete admin user"
+#~ msgstr "无法删除管理员用户"
 
-#: src/routes/[node]/settings/authentication/users/+page.svelte
-msgid "Cannot edit admin user"
-msgstr "无法编辑管理员用户"
+#~ msgid "Cannot edit admin user"
+#~ msgstr "无法编辑管理员用户"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Failed to delete user"
@@ -12394,6 +12396,7 @@ msgid "Password is required"
 msgstr "密码为必填项"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Password must be at least 8 characters"
 msgstr "密码长度不能少于 8 个字符"
 
@@ -13441,3 +13444,79 @@ msgstr "发生意外错误"
 
 #~ msgid "We need to restart the system to apply changes"
 #~ msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Failed to load importable users"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Please select a user"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Failed to import user"
+msgstr ""
+
+#. 0: selectedUsername.value
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "User \"{0}\" imported"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Import Unix User"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Loading available users…"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "No importable Unix users found"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "All Unix users with UID ≥ 1000 are already registered in Sylve."
+msgstr ""
+
+#~ msgid "Unix User"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Select a Unix user to import…"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "UID:"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Shell:"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Home:"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Sylve Password (optional)"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Leave blank to use System Auth (PAM)"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Importing registers the existing Unix user in Sylve. The Unix user, its groups, and home directory are left untouched. If you set a password, the user can log in with Sylve credentials; otherwise they must use System Auth (PAM)."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Importing…"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Cannot delete this user"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Cannot edit this user"
+msgstr ""

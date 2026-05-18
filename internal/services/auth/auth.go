@@ -160,13 +160,13 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
-		pamIdentity, err := s.getOrCreatePAMIdentity(username)
-		if err != nil {
-			return 0, "", fmt.Errorf("pam_identity_error")
+		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
+			return 0, "", fmt.Errorf("user_not_registered_in_sylve")
 		}
 
-		user.ID = pamIdentity.ID
-		user.Username = pamIdentity.Username
+		if !user.Admin {
+			return 0, "", fmt.Errorf("only_admin_allowed")
+		}
 	} else {
 		return 0, "", fmt.Errorf("invalid_auth_type")
 	}
@@ -358,20 +358,12 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 		if !config.IsPAMEnabled() {
 			return false
 		}
+	}
 
-		var pamIdentity models.PAMIdentity
-
-		if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&pamIdentity).Error; err != nil {
-			logger.L.Error().Msgf("PAM identity not found: %v", err)
-			return false
-		}
-	} else {
-		var user models.User
-
-		if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&user).Error; err != nil {
-			logger.L.Error().Msgf("User not found: %v", err)
-			return false
-		}
+	var user models.User
+	if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&user).Error; err != nil {
+		logger.L.Error().Msgf("User not found: %v", err)
+		return false
 	}
 
 	return true

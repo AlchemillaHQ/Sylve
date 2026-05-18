@@ -2,6 +2,7 @@
 	import { listGroups } from '$lib/api/auth/groups';
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
 	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
+	import ImportUser from '$lib/components/custom/Authentication/ImportUser.svelte';
 	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -112,7 +113,8 @@
 		create: { open: false },
 		delete: { open: false },
 		edit: { open: false },
-		passkeys: { open: false }
+		passkeys: { open: false },
+		import: { open: false }
 	});
 </script>
 
@@ -126,8 +128,8 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
-				disabled={!activeRow || activeRow.name === 'admin'}
-				title={activeRow && activeRow.name === 'admin' ? 'Cannot delete admin user' : ''}
+				disabled={!activeRow || activeRow.name === 'admin' || activeRow.name === 'root'}
+				title={activeRow && (activeRow.name === 'admin' || activeRow.name === 'root') ? 'Cannot delete this user' : ''}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
@@ -141,8 +143,8 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
-				disabled={!activeRow || activeRow.name === 'admin'}
-				title={activeRow && activeRow.name === 'admin' ? 'Cannot edit admin user' : ''}
+				disabled={!activeRow || activeRow.name === 'admin' || activeRow.name === 'root'}
+				title={activeRow && (activeRow.name === 'admin' || activeRow.name === 'root') ? 'Cannot edit this user' : ''}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
@@ -174,6 +176,10 @@
 		{@render button('edit')}
 		{@render button('delete')}
 		{@render button('passkeys')}
+
+		<Button onclick={() => (modals.import.open = !modals.import.open)} size="sm" class="h-6 ml-auto">
+			<SpanWithIcon icon="icon-[mdi--import]" size="h-4 w-4" gap="gap-2" title="Import" />
+		</Button>
 	</div>
 
 	<TreeTable
@@ -212,6 +218,10 @@
 		username={String(activeRow.name || '')}
 		bind:reload
 	/>
+{/if}
+
+{#if modals.import.open}
+	<ImportUser bind:open={modals.import.open} bind:reload />
 {/if}
 
 <AlertDialog

@@ -57,3 +57,24 @@ export async function getUserCapabilities(): Promise<
         'GET'
     );
 }
+
+export interface ImportUserPayload {
+    username: string;
+    password?: string;
+    admin: boolean;
+    newPrimaryGroup?: boolean;
+    auxGroupIds?: number[];
+}
+
+export async function importUser(payload: ImportUserPayload): Promise<APIResponse<User>> {
+    return await apiRequest(
+        '/auth/users/import',
+        APIResponseSchema.extend({ data: UserSchema.nullable() }),
+        'POST',
+        payload
+    );
+}
+
+export async function listImportableUsers(): Promise<User[]> {
+    return await apiRequest('/auth/users/importable', z.array(UserSchema), 'GET');
+}

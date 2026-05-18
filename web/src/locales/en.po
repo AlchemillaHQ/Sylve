@@ -1495,6 +1495,7 @@ msgid "Enter or generate password"
 msgstr "Enter or generate password"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Admin"
 msgstr "Admin"
 
@@ -1739,6 +1740,7 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
@@ -5727,7 +5729,9 @@ msgstr "New Storage"
 msgid "DB Storage"
 msgstr "DB Storage"
 
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Import"
 msgstr "Import"
 
@@ -6920,13 +6924,11 @@ msgstr "Group deleted"
 msgid "Last Usage"
 msgstr "Last Usage"
 
-#: src/routes/[node]/settings/authentication/users/+page.svelte
-msgid "Cannot delete admin user"
-msgstr "Cannot delete admin user"
+#~ msgid "Cannot delete admin user"
+#~ msgstr "Cannot delete admin user"
 
-#: src/routes/[node]/settings/authentication/users/+page.svelte
-msgid "Cannot edit admin user"
-msgstr "Cannot edit admin user"
+#~ msgid "Cannot edit admin user"
+#~ msgstr "Cannot edit admin user"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Failed to delete user"
@@ -12397,6 +12399,7 @@ msgid "Password is required"
 msgstr "Password is required"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Password must be at least 8 characters"
 msgstr "Password must be at least 8 characters"
 
@@ -13465,3 +13468,79 @@ msgstr "Unexpected error occurred"
 
 #~ msgid "We need to restart the system to apply changes"
 #~ msgstr "We need to restart the system to apply changes"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Failed to load importable users"
+msgstr "Failed to load importable users"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Please select a user"
+msgstr "Please select a user"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Failed to import user"
+msgstr "Failed to import user"
+
+#. 0: selectedUsername.value
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "User \"{0}\" imported"
+msgstr "User \"{0}\" imported"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Import Unix User"
+msgstr "Import Unix User"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Loading available users…"
+msgstr "Loading available users…"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "No importable Unix users found"
+msgstr "No importable Unix users found"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "All Unix users with UID ≥ 1000 are already registered in Sylve."
+msgstr "All Unix users with UID ≥ 1000 are already registered in Sylve."
+
+#~ msgid "Unix User"
+#~ msgstr "Unix User"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Select a Unix user to import…"
+msgstr "Select a Unix user to import…"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "UID:"
+msgstr "UID:"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Shell:"
+msgstr "Shell:"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Home:"
+msgstr "Home:"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Sylve Password (optional)"
+msgstr "Sylve Password (optional)"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Leave blank to use System Auth (PAM)"
+msgstr "Leave blank to use System Auth (PAM)"
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Importing registers the existing Unix user in Sylve. The Unix user, its groups, and home directory are left untouched. If you set a password, the user can log in with Sylve credentials; otherwise they must use System Auth (PAM)."
+msgstr "Importing registers the existing Unix user in Sylve. The Unix user, its groups, and home directory are left untouched. If you set a password, the user can log in with Sylve credentials; otherwise they must use System Auth (PAM)."
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Importing…"
+msgstr "Importing…"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Cannot delete this user"
+msgstr "Cannot delete this user"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Cannot edit this user"
+msgstr "Cannot edit this user"

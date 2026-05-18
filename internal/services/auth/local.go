@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -26,6 +28,14 @@ import (
 // Re-export opts types so handlers can use auth.CreateUserOpts without importing the interface package.
 type CreateUserOpts = serviceInterfaces.CreateUserOpts
 type EditUserOpts = serviceInterfaces.EditUserOpts
+
+func (s *Service) GetUserByUsername(username string) (*models.User, error) {
+	var user models.User
+	if err := s.DB.Where("username = ?", username).Preload("Groups").First(&user).Error; err != nil {
+		return nil, fmt.Errorf("user_not_found: %s", username)
+	}
+	return &user, nil
+}
 
 func (s *Service) ListUsers() ([]models.User, error) {
 	var users []models.User
@@ -227,6 +237,205 @@ func (s *Service) GetNextUID() (int, error) {
 	return system.GetNextUnixUID()
 }
 
+func (s *Service) ImportUser(username string, password string, opts CreateUserOpts) (*models.User, error) {
+	if isProtectedSystemUser(username) {
+		return nil, fmt.Errorf("cannot_import_system_user: %s", username)
+	}
+
+	var basicSettings models.BasicSettings
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_get_basic_settings: %w", err)
+	}
+
+	// Verify the Unix user exists
+	info, err := system.GetUnixUserInfoFull(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_get_unix_user_info: %w", err)
+	}
+
+	// Verify no DB user exists with this username
+	var existing models.User
+	if err := s.DB.Where("username = ?", username).First(&existing).Error; err == nil {
+		return nil, fmt.Errorf("user_already_exists: %s", username)
+	}
+
+	// Build the user model from Unix metadata
+	user := &models.User{
+		Username:      username,
+		FullName:      info.FullName,
+		UID:           info.UID,
+		Shell:         info.Shell,
+		HomeDirectory: info.HomeDir,
+		HomeDirPerms:  493,
+		Admin:         false,
+	}
+
+	// Hash password if provided
+	var pwCopy string
+	if password != "" {
+		pwCopy = password
+		hashed, err := utils.HashPassword(password)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_hash_password: %w", err)
+		}
+		user.Password = hashed
+	}
+
+	// Resolve primary group by GID
+	primaryGroupName := "sylve_g"
+	if info.GID > 0 {
+		gidStr := strconv.Itoa(info.GID)
+		output, err := utils.RunCommand("/usr/bin/getent", "group", gidStr)
+		if err == nil {
+			parts := strings.Split(strings.TrimSpace(output), ":")
+			if len(parts) >= 1 && parts[0] != "" {
+				primaryGroupName = parts[0]
+			}
+		}
+		// Ensure primary group exists in DB
+		var pg models.Group
+		if err := s.DB.Where("name = ?", primaryGroupName).First(&pg).Error; err != nil {
+			pg = models.Group{Name: primaryGroupName}
+			if err := s.DB.Create(&pg).Error; err != nil {
+				logger.L.Warn().Msgf("failed to create primary group record: %v", err)
+			}
+		}
+		user.PrimaryGroupID = &pg.ID
+	}
+
+	// Create DB user record
+	if err := s.DB.Create(user).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_create_user_record: %w", err)
+	}
+
+	// Associate with primary group in many-to-many
+	if user.PrimaryGroupID != nil {
+		var pg models.Group
+		if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err == nil {
+			if err := s.DB.Model(&pg).Association("Users").Append(user); err != nil {
+				logger.L.Warn().Msgf("failed to associate user with primary group: %v", err)
+			}
+		}
+	}
+
+	// Read Unix group memberships
+	unixGroups, err := system.GetUnixUserGroups(username)
+	if err != nil {
+		logger.L.Warn().Msgf("failed to get unix groups for %s: %v", username, err)
+	} else {
+		for _, groupName := range unixGroups {
+			// Ensure group exists in DB
+			var ag models.Group
+			if err := s.DB.Where("name = ?", groupName).First(&ag).Error; err != nil {
+				ag = models.Group{Name: groupName}
+				if err := s.DB.Create(&ag).Error; err != nil {
+					logger.L.Warn().Msgf("failed to create group record for %s: %v", groupName, err)
+					continue
+				}
+			}
+			// Associate user with group
+			if err := s.DB.Model(&ag).Association("Users").Append(user); err != nil {
+				logger.L.Warn().Msgf("failed to associate user with group %s: %v", groupName, err)
+			}
+		}
+	}
+
+	// Add to sylve_g if not already associated
+	var sylveGroup models.Group
+	if err := s.DB.Where("name = ?", "sylve_g").First(&sylveGroup).Error; err == nil {
+		inSylveG := false
+		for _, g := range user.Groups {
+			if g.ID == sylveGroup.ID {
+				inSylveG = true
+				break
+			}
+		}
+		if !inSylveG {
+			if err := system.AddUserToGroup(user.Username, "sylve_g"); err != nil {
+				logger.L.Warn().Msgf("failed to add user to sylve_g unix group: %v", err)
+			}
+			if err := s.DB.Model(&sylveGroup).Association("Users").Append(user); err != nil {
+				logger.L.Warn().Msgf("failed to add user to sylve_g group association: %v", err)
+			}
+		}
+	}
+
+	// Post-import actions
+	if opts.NewPrimaryGroup {
+		if err := system.CreateUnixGroup(user.Username); err != nil {
+			logger.L.Warn().Msgf("failed to create new primary group: %v", err)
+		} else {
+			newGroup := models.Group{Name: user.Username}
+			if err := s.DB.Where("name = ?", user.Username).FirstOrCreate(&newGroup).Error; err != nil {
+				logger.L.Warn().Msgf("failed to create primary group record: %v", err)
+			} else {
+				if err := system.ChangeUnixUserPrimaryGroup(user.Username, user.Username); err != nil {
+					logger.L.Warn().Msgf("failed to change primary group: %v", err)
+				}
+				user.PrimaryGroupID = &newGroup.ID
+				if err := s.DB.Model(&newGroup).Association("Users").Append(user); err != nil {
+					logger.L.Warn().Msgf("failed to associate with new primary group: %v", err)
+				}
+				s.DB.Model(user).Update("primary_group_id", user.PrimaryGroupID)
+			}
+		}
+	}
+
+	if pwCopy != "" && slices.Contains(basicSettings.Services, models.SambaServer) {
+		if err := sambaUtils.CreateSambaUser(user.Username, pwCopy); err != nil {
+			logger.L.Warn().Msgf("failed to create samba user: %v", err)
+		}
+	}
+
+	return user, nil
+}
+
+func (s *Service) ListImportableUnixUsers() ([]models.User, error) {
+	allUnix, err := system.ListAllUnixUsers()
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_list_unix_users: %w", err)
+	}
+
+	var dbUsernames []string
+	if err := s.DB.Model(&models.User{}).Pluck("username", &dbUsernames).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_list_db_users: %w", err)
+	}
+	dbSet := make(map[string]bool)
+	for _, name := range dbUsernames {
+		dbSet[name] = true
+	}
+
+	var importable []models.User
+	for _, u := range allUnix {
+		if u.UID < 1000 {
+			continue
+		}
+		if dbSet[u.Username] {
+			continue
+		}
+		if isProtectedSystemUser(u.Username) {
+			continue
+		}
+		importable = append(importable, models.User{
+			Username:      u.Username,
+			FullName:      u.FullName,
+			UID:           u.UID,
+			Shell:         u.Shell,
+			HomeDirectory: u.HomeDir,
+		})
+	}
+
+	return importable, nil
+}
+
+func isProtectedSystemUser(username string) bool {
+	switch username {
+	case "nobody":
+		return true
+	}
+	return false
+}
+
 func (s *Service) DeleteUser(userID uint) error {
 	user, err := s.GetUserByID(userID)
 	if err != nil {
@@ -239,6 +448,10 @@ func (s *Service) DeleteUser(userID uint) error {
 
 	if user.Username == "admin" {
 		return fmt.Errorf("cannot_delete_admin_user")
+	}
+
+	if user.Username == "root" {
+		return fmt.Errorf("cannot_delete_root_user")
 	}
 
 	if err := samba.DeleteSambaUser(user.Username); err != nil {

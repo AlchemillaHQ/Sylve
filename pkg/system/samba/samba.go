@@ -58,6 +58,14 @@ func EditSambaUser(name, newPassword string) error {
 		return fmt.Errorf("user %s does not exist in the system", name)
 	}
 
+	sambaExists, err := SambaUserExists(name)
+	if err != nil {
+		return fmt.Errorf("failed to check samba user: %w", err)
+	}
+	if !sambaExists {
+		return CreateSambaUser(name, newPassword)
+	}
+
 	input := fmt.Sprintf("%[1]s\n%[1]s\n", newPassword)
 	out, err := runCommandWithInput("/usr/local/bin/smbpasswd", input, "-s", name)
 	if err != nil {

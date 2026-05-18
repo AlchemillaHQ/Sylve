@@ -316,3 +316,73 @@ func UserCapabilitiesHandler() gin.HandlerFunc {
 		})
 	}
 }
+
+type ImportUserRequest struct {
+	Username        string `json:"username" binding:"required,min=3,max=128"`
+	Password        string `json:"password"`
+	Admin           *bool  `json:"admin" binding:"required"`
+	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
+	AuxGroupIDs     []uint `json:"auxGroupIds"`
+}
+
+func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req ImportUserRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		opts := auth.CreateUserOpts{
+			NewPrimaryGroup: req.NewPrimaryGroup,
+			AuxGroupIDs:     req.AuxGroupIDs,
+		}
+
+		user, err := authService.ImportUser(req.Username, req.Password, opts)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_import_user",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusCreated, internal.APIResponse[models.User]{
+			Status:  "success",
+			Message: "user_imported_successfully",
+			Error:   "",
+			Data:    *user,
+		})
+	}
+}
+
+func ListImportableUsersHandler(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		users, err := authService.ListImportableUnixUsers()
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_list_importable_users",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]models.User]{
+			Status:  "success",
+			Message: "importable_users_listed",
+			Error:   "",
+			Data:    users,
+		})
+	}
+}

@@ -56,13 +56,17 @@ func TestGetOrCreatePAMIdentityReuse(t *testing.T) {
 func TestVerifyTokenInDbForPAMIdentity(t *testing.T) {
 	svc := newAuthTestService(t)
 
-	identity, err := svc.getOrCreatePAMIdentity("root")
-	if err != nil {
-		t.Fatalf("failed_to_create_pam_identity: %v", err)
+	user := models.User{
+		Username: "pamuser",
+		Password: "pw",
+		Admin:    true,
+	}
+	if err := svc.DB.Create(&user).Error; err != nil {
+		t.Fatalf("failed_to_create_user: %v", err)
 	}
 
 	token := models.Token{
-		UserID:   identity.ID,
+		UserID:   user.ID,
 		Token:    "pam-token",
 		AuthType: "pam",
 		Expiry:   time.Now().Add(time.Hour),
@@ -75,25 +79,29 @@ func TestVerifyTokenInDbForPAMIdentity(t *testing.T) {
 		t.Fatalf("expected_token_to_verify")
 	}
 
-	if err := svc.DB.Delete(&identity).Error; err != nil {
-		t.Fatalf("failed_to_delete_pam_identity: %v", err)
+	if err := svc.DB.Delete(&user).Error; err != nil {
+		t.Fatalf("failed_to_delete_user: %v", err)
 	}
 
 	if ok := svc.VerifyTokenInDb("pam-token"); ok {
-		t.Fatalf("expected_token_to_fail_verification_without_identity")
+		t.Fatalf("expected_token_to_fail_verification_without_user")
 	}
 }
 
 func TestVerifyTokenInDbForPAMIdentityWhenPAMDisabled(t *testing.T) {
 	svc := newAuthTestService(t)
 
-	identity, err := svc.getOrCreatePAMIdentity("root")
-	if err != nil {
-		t.Fatalf("failed_to_create_pam_identity: %v", err)
+	user := models.User{
+		Username: "pamuser2",
+		Password: "pw",
+		Admin:    true,
+	}
+	if err := svc.DB.Create(&user).Error; err != nil {
+		t.Fatalf("failed_to_create_user: %v", err)
 	}
 
 	token := models.Token{
-		UserID:   identity.ID,
+		UserID:   user.ID,
 		Token:    "pam-token-disabled",
 		AuthType: "pam",
 		Expiry:   time.Now().Add(time.Hour),

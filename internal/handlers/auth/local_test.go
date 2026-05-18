@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,6 +37,12 @@ func newTestAuthService(t *testing.T) *authService.Service {
 		&models.WebAuthnChallenge{},
 		&models.PAMIdentity{},
 	)
+
+	// Prevent real system command execution during tests.
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		return "", nil
+	}))
+
 	return &authService.Service{DB: db}
 }
 

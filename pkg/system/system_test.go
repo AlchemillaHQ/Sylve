@@ -1290,3 +1290,222 @@ func TestChownHome(t *testing.T) {
 		}
 	})
 }
+
+func TestGetUnixUserInfoFull(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usershow", "-n", "alice"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "alice:*:1001:1001:user:0:0:Alice User:/home/alice:/bin/sh", nil
+		}
+
+		info, err := GetUnixUserInfoFull("alice")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Username != "alice" {
+			t.Fatalf("expected username alice, got: %s", info.Username)
+		}
+		if info.UID != 1001 {
+			t.Fatalf("expected UID 1001, got: %d", info.UID)
+		}
+		if info.GID != 1001 {
+			t.Fatalf("expected GID 1001, got: %d", info.GID)
+		}
+		if info.Shell != "/bin/sh" {
+			t.Fatalf("expected shell /bin/sh, got: %s", info.Shell)
+		}
+		if info.HomeDir != "/home/alice" {
+			t.Fatalf("expected home /home/alice, got: %s", info.HomeDir)
+		}
+		if info.FullName != "Alice User" {
+			t.Fatalf("expected fullName 'Alice User', got: %s", info.FullName)
+		}
+	})
+
+	t.Run("pw failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("pw failed")
+		}
+
+		_, err := GetUnixUserInfoFull("nobody")
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("malformed output too few fields", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "alice:*:1001:1001:/home/alice", nil
+		}
+
+		_, err := GetUnixUserInfoFull("alice")
+		if err == nil {
+			t.Fatalf("expected error for malformed output")
+		}
+	})
+}
+
+func TestGetUnixUserInfo(t *testing.T) {
+	t.Run("success delegates to GetUnixUserInfoFull", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "bob:*:2000:2000:user:0:0:Bob:/home/bob:/bin/csh", nil
+		}
+
+		uid, shell, err := GetUnixUserInfo("bob")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if uid != 2000 {
+			t.Fatalf("expected UID 2000, got: %d", uid)
+		}
+		if shell != "/bin/csh" {
+			t.Fatalf("expected shell /bin/csh, got: %s", shell)
+		}
+	})
+}
+
+func TestGetUnixUserGroups(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			if command == "/usr/bin/id" && len(args) == 2 && args[0] == "-Gn" && args[1] == "alice" {
+				return "wheel staff video", nil
+			}
+			return "", errors.New("unexpected call")
+		}
+
+		groups, err := GetUnixUserGroups("alice")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(groups) != 3 {
+			t.Fatalf("expected 3 groups, got: %d", len(groups))
+		}
+		if groups[0] != "wheel" || groups[1] != "staff" || groups[2] != "video" {
+			t.Fatalf("unexpected groups: %#v", groups)
+		}
+	})
+
+	t.Run("empty groups", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", nil
+		}
+
+		_, err := GetUnixUserGroups("alice")
+		if err == nil {
+			t.Fatalf("expected error for empty groups")
+		}
+	})
+
+	t.Run("id failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("id failed")
+		}
+
+		_, err := GetUnixUserGroups("alice")
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+}
+
+func TestListAllUnixUsers(t *testing.T) {
+	t.Run("success with multiple users", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usershow", "-a"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "" +
+				"root:*:0:0::0:0:Charlie Root:/root:/bin/csh\n" +
+				"alice:*:1001:1001::0:0:Alice:/home/alice:/bin/sh\n" +
+				"bob:*:1002:1002::0:0:Bob:/home/bob:/bin/tcsh\n", nil
+		}
+
+		users, err := ListAllUnixUsers()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 3 {
+			t.Fatalf("expected 3 users, got: %d", len(users))
+		}
+		if users[0].Username != "root" {
+			t.Fatalf("expected root, got: %s", users[0].Username)
+		}
+		if users[1].Username != "alice" || users[1].UID != 1001 {
+			t.Fatalf("unexpected alice: %+v", users[1])
+		}
+		if users[2].Shell != "/bin/tcsh" {
+			t.Fatalf("expected /bin/tcsh for bob, got: %s", users[2].Shell)
+		}
+	})
+
+	t.Run("pw failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("pw failed")
+		}
+
+		_, err := ListAllUnixUsers()
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("empty output", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", nil
+		}
+
+		users, err := ListAllUnixUsers()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 0 {
+			t.Fatalf("expected 0 users, got: %d", len(users))
+		}
+	})
+
+	t.Run("skips malformed lines", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "" +
+				"badline:only:two\n" +
+				"alice:*:1001:1001::0:0:Alice:/home/alice:/bin/sh\n" +
+				"also_bad:::1\n", nil
+		}
+
+		users, err := ListAllUnixUsers()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 1 {
+			t.Fatalf("expected 1 user, got: %d", len(users))
+		}
+		if users[0].Username != "alice" {
+			t.Fatalf("expected alice, got: %s", users[0].Username)
+		}
+	})
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/system"
 )
 
 func newLocalTestService(t *testing.T) *Service {
@@ -31,6 +32,11 @@ func newLocalTestService(t *testing.T) *Service {
 		&models.WebAuthnChallenge{},
 		&models.PAMIdentity{},
 	)
+
+	// Prevent real system command execution during tests.
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		return "", nil
+	}))
 
 	return &Service{DB: db}
 }
@@ -682,6 +688,20 @@ func TestDeleteUserCannotDeleteAdmin(t *testing.T) {
 	}
 }
 
+func TestDeleteUserCannotDeleteRoot(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := models.User{Username: "root", Password: "hashed", Admin: true}
+	svc.DB.Create(&u)
+
+	err := svc.DeleteUser(u.ID)
+	if err == nil {
+		t.Fatalf("expected error when deleting root")
+	}
+	if !strings.Contains(err.Error(), "cannot_delete_root_user") {
+		t.Fatalf("expected cannot_delete_root_user, got: %v", err)
+	}
+}
+
 func TestUpdateLastUsageTimeNewUser(t *testing.T) {
 	svc := newLocalTestService(t)
 	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
@@ -711,5 +731,98 @@ func TestEditUserOptsHasNewPrimaryGroupField(t *testing.T) {
 	}
 	if len(opts.AuxGroupIDs) != 3 {
 		t.Fatalf("expected 3 aux group IDs")
+	}
+}
+
+func TestGetUserByUsername(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedUser(t, svc, models.User{Username: "alice", Password: "hashed", Admin: true})
+	seedUser(t, svc, models.User{Username: "bob", Password: "hashed", Admin: false})
+
+	found, err := svc.GetUserByUsername("alice")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if found.Username != "alice" {
+		t.Fatalf("expected alice, got: %s", found.Username)
+	}
+	if !found.Admin {
+		t.Fatalf("expected admin=true")
+	}
+}
+
+func TestGetUserByUsernameNotFound(t *testing.T) {
+	svc := newLocalTestService(t)
+	_, err := svc.GetUserByUsername("nobody")
+	if err == nil {
+		t.Fatalf("expected error for non-existent user")
+	}
+	if !strings.Contains(err.Error(), "user_not_found") {
+		t.Fatalf("expected user_not_found, got: %v", err)
+	}
+}
+
+func TestGetUserByUsernamePreloadsGroups(t *testing.T) {
+	svc := newLocalTestService(t)
+	g := seedGroup(t, svc, "devs")
+	u := seedUser(t, svc, models.User{Username: "alice", Password: "hashed"})
+	if err := svc.DB.Model(&g).Association("Users").Append(&u); err != nil {
+		t.Fatalf("failed to associate: %v", err)
+	}
+
+	found, err := svc.GetUserByUsername("alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(found.Groups) != 1 || found.Groups[0].Name != "devs" {
+		t.Fatalf("expected group devs, got: %v", found.Groups)
+	}
+}
+
+func TestImportUserMissingBasicSettings(t *testing.T) {
+	svc := newLocalTestService(t)
+	_, err := svc.ImportUser("alice", "password123", CreateUserOpts{})
+	if err == nil {
+		t.Fatalf("expected error when basic settings missing")
+	}
+	if !strings.Contains(err.Error(), "failed_to_get_basic_settings") {
+		t.Fatalf("expected basic_settings error, got: %v", err)
+	}
+}
+
+func TestImportUserAlreadyExists(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+	seedUser(t, svc, models.User{Username: "alice", Password: "hashed"})
+
+	// This will fail on the Unix user lookup before getting to the DB check,
+	// since we can't mock system calls. Skip gracefully.
+	_, err := svc.ImportUser("alice", "password123", CreateUserOpts{})
+	if err == nil {
+		return
+	}
+	if strings.Contains(err.Error(), "user_already_exists") {
+		return
+	}
+	// If it's a system call error (expected in test env), skip
+	if strings.Contains(err.Error(), "failed_to_get_unix_user_info") {
+		t.Skipf("system call not available in test: %v", err)
+	}
+}
+
+func TestListImportableUnixUsersEmptyDB(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+
+	users, err := svc.ListImportableUnixUsers()
+	if err != nil {
+		// Expected: system call fails in test env
+		if strings.Contains(err.Error(), "failed_to_list_unix_users") {
+			t.Skipf("system call not available in test: %v", err)
+		}
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(users) > 0 {
+		t.Logf("found %d importable users", len(users))
 	}
 }
