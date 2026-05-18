@@ -77,7 +77,7 @@ type AuthServiceInterface interface {
 	GetUserByID(id uint) (*models.User, error)
 	GetUserByUsername(username string) (*models.User, error)
 	CreateUser(user *models.User, opts CreateUserOpts) error
-	ImportUser(username string, password string, opts CreateUserOpts) (*models.User, error)
+	ImportUser(username string, password string, admin bool, opts CreateUserOpts) (*models.User, error)
 	ListImportableUnixUsers() ([]models.User, error)
 	DeleteUser(userID uint) error
 	EditUser(userID uint, opts EditUserOpts) error

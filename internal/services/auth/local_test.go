@@ -781,7 +781,7 @@ func TestGetUserByUsernamePreloadsGroups(t *testing.T) {
 
 func TestImportUserMissingBasicSettings(t *testing.T) {
 	svc := newLocalTestService(t)
-	_, err := svc.ImportUser("alice", "password123", CreateUserOpts{})
+	_, err := svc.ImportUser("alice", "password123", false, CreateUserOpts{})
 	if err == nil {
 		t.Fatalf("expected error when basic settings missing")
 	}
@@ -797,7 +797,7 @@ func TestImportUserAlreadyExists(t *testing.T) {
 
 	// This will fail on the Unix user lookup before getting to the DB check,
 	// since we can't mock system calls. Skip gracefully.
-	_, err := svc.ImportUser("alice", "password123", CreateUserOpts{})
+	_, err := svc.ImportUser("alice", "password123", false, CreateUserOpts{})
 	if err == nil {
 		return
 	}

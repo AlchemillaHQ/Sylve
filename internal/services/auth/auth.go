@@ -366,6 +366,14 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 		return false
 	}
 
+	if user.Locked {
+		return false
+	}
+
+	if user.DisablePassword && tokenRecord.AuthType == "sylve" {
+		return false
+	}
+
 	return true
 }
 

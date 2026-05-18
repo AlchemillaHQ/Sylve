@@ -217,19 +217,19 @@
 {#snippet button(type: string)}
 	{#if activeRows && activeRows.length === 1 && !activeRows[0].user}
 		{#if type === 'delete'}
-			{#if activeRow?.name !== 'sylve_g'}
-				<Button
-					onclick={() => {
-						properties.delete.open = !properties.delete.open;
-						properties.delete.id = activeRows ? (activeRows[0].id as number) : 0;
-					}}
-					size="sm"
-					variant="outline"
-					class="h-6.5"
-				>
-					<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
-				</Button>
-			{/if}
+			<Button
+				onclick={() => {
+					properties.delete.open = !properties.delete.open;
+					properties.delete.id = activeRows ? (activeRows[0].id as number) : 0;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5 pointer-events-auto!"
+				disabled={activeRow?.name === 'sylve_g' || activeRow?.name === 'wheel'}
+				title={activeRow?.name === 'sylve_g' ? 'Default system group, cannot be deleted' : activeRow?.name === 'wheel' ? 'System group, cannot be deleted' : 'Delete'}
+			>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+			</Button>
 		{/if}
 
 		{#if type === 'modify-users'}
@@ -377,6 +377,12 @@
 				multiple={true}
 				width="w-full"
 			/>
+
+			{#if activeRow?.name === 'wheel'}
+				<p class="text-muted-foreground text-xs">
+					root is a permanent member of the wheel group and cannot be removed.
+				</p>
+			{/if}
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">

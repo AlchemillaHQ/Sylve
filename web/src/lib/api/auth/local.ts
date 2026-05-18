@@ -62,8 +62,6 @@ export interface ImportUserPayload {
     username: string;
     password?: string;
     admin: boolean;
-    newPrimaryGroup?: boolean;
-    auxGroupIds?: number[];
 }
 
 export async function importUser(payload: ImportUserPayload): Promise<APIResponse<User>> {

@@ -57,7 +57,7 @@
 				data={hosts}
 				classes="flex-1 space-y-1"
 				placeholder="Select Node"
-				triggerWidth="w-full "
+				triggerWidth="w-full"
 				width="w-full lg:w-[75%]"
 			></CustomComboBox>
 		{/if}

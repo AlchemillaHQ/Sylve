@@ -162,7 +162,7 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 		}
 	}
 
-	if slices.Contains(basicSettings.Services, models.SambaServer) {
+	if slices.Contains(basicSettings.Services, models.SambaServer) && pwCopy != "" {
 		if err := samba.CreateSambaUser(user.Username, pwCopy); err != nil {
 			return fmt.Errorf("failed_to_create_samba_user: %w", err)
 		}
@@ -237,7 +237,7 @@ func (s *Service) GetNextUID() (int, error) {
 	return system.GetNextUnixUID()
 }
 
-func (s *Service) ImportUser(username string, password string, opts CreateUserOpts) (*models.User, error) {
+func (s *Service) ImportUser(username string, password string, admin bool, opts CreateUserOpts) (*models.User, error) {
 	if isProtectedSystemUser(username) {
 		return nil, fmt.Errorf("cannot_import_system_user: %s", username)
 	}
@@ -259,6 +259,11 @@ func (s *Service) ImportUser(username string, password string, opts CreateUserOp
 		return nil, fmt.Errorf("user_already_exists: %s", username)
 	}
 
+	// Validate password if provided
+	if password != "" && (len(password) < 8 || len(password) > 128) {
+		return nil, fmt.Errorf("invalid_password_length")
+	}
+
 	// Build the user model from Unix metadata
 	user := &models.User{
 		Username:      username,
@@ -267,7 +272,7 @@ func (s *Service) ImportUser(username string, password string, opts CreateUserOp
 		Shell:         info.Shell,
 		HomeDirectory: info.HomeDir,
 		HomeDirPerms:  493,
-		Admin:         false,
+		Admin:         admin,
 	}
 
 	// Hash password if provided
@@ -498,7 +503,9 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 	}
 
 	if user.Username != opts.Username {
-		system.ChangeUsername(user.Username, opts.Username)
+		if err := system.ChangeUsername(user.Username, opts.Username); err != nil {
+			return fmt.Errorf("failed_to_change_username: %w", err)
+		}
 		user.Username = opts.Username
 	}
 
@@ -531,6 +538,9 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 
 	// UID
 	if opts.UID > 0 && opts.UID != user.UID {
+		if user.Username == "root" {
+			return fmt.Errorf("cannot_change_root_uid")
+		}
 		var count int64
 		if err := s.DB.Model(&models.User{}).Where("uid = ? AND id != ?", opts.UID, userID).Count(&count).Error; err != nil {
 			return fmt.Errorf("failed_to_check_uid_uniqueness: %w", err)
@@ -684,6 +694,9 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 			if !desiredAux[gid] {
 				var ag models.Group
 				if err := s.DB.First(&ag, gid).Error; err != nil {
+					continue
+				}
+				if user.Username == "root" && ag.Name == "wheel" {
 					continue
 				}
 				if err := system.RemoveUserFromGroup(user.Username, ag.Name); err != nil {

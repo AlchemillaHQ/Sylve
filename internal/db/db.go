@@ -308,6 +308,7 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 		logger.L.Info().Msg("Unix user 'admin' created")
 	}
 
+	ensureUserInSylveG(db, username)
 	return nil
 }
 
@@ -323,6 +324,7 @@ func setupRootUser(db *gorm.DB) {
 				logger.L.Info().Msg("Granted admin to root user")
 			}
 		}
+		setupWheelGroup(db, &existing)
 		return
 	}
 
@@ -355,6 +357,70 @@ func setupRootUser(db *gorm.DB) {
 		return
 	}
 	logger.L.Info().Msg("Root user imported into Sylve")
+
+	setupWheelGroup(db, &rootUser)
+}
+
+func setupWheelGroup(db *gorm.DB, rootUser *models.User) {
+	const groupName = "wheel"
+
+	if !system.UnixGroupExists(groupName) {
+		return
+	}
+
+	var grp models.Group
+	if err := db.Where("name = ?", groupName).First(&grp).Error; err != nil {
+		grp = models.Group{Name: groupName}
+		if err := db.Create(&grp).Error; err != nil {
+			logger.L.Warn().Msgf("Failed to create wheel group record: %v", err)
+			return
+		}
+		logger.L.Info().Msg("Wheel group imported into Sylve")
+	}
+
+	inGroup, err := system.IsUserInGroup(rootUser.Username, groupName)
+	if err != nil {
+		logger.L.Warn().Msgf("Failed to check wheel membership: %v", err)
+		return
+	}
+	if !inGroup {
+		return
+	}
+
+	if err := db.Model(&grp).Association("Users").Append(rootUser); err != nil {
+		logger.L.Warn().Msgf("Failed to associate root with wheel: %v", err)
+	}
+}
+
+func ensureUserInSylveG(db *gorm.DB, username string) {
+	var grp models.Group
+	if err := db.Where("name = ?", "sylve_g").First(&grp).Error; err != nil {
+		return
+	}
+
+	var dbUser models.User
+	if err := db.Where("username = ?", username).First(&dbUser).Error; err != nil {
+		return
+	}
+
+	if err := system.AddUserToGroup(username, "sylve_g"); err != nil {
+		logger.L.Warn().Msgf("Failed to add %s to sylve_g unix group: %v", username, err)
+	}
+
+	var cnt int64
+	if err := db.Table("user_groups").
+		Where("user_id = ? AND group_id = ?", dbUser.ID, grp.ID).
+		Count(&cnt).Error; err != nil {
+		logger.L.Warn().Msgf("Failed to check sylve_g membership for %s: %v", username, err)
+		return
+	}
+	if cnt > 0 {
+		return
+	}
+
+	if err := db.Model(&grp).Association("Users").Append(&dbUser); err != nil {
+		logger.L.Warn().Msgf("Failed to associate %s with sylve_g: %v", username, err)
+	}
 }
 
 func initClusterRecord(db *gorm.DB) error {

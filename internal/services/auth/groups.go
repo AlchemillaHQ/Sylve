@@ -153,6 +153,20 @@ func (s *Service) SyncGroupMembers(usernames []string, groupName string) error {
 		return fmt.Errorf("failed_to_find_group: %w", err)
 	}
 
+	// Ensure root is never removed from the wheel group.
+	if groupName == "wheel" {
+		hasRoot := false
+		for _, u := range usernames {
+			if u == "root" {
+				hasRoot = true
+				break
+			}
+		}
+		if !hasRoot {
+			usernames = append(usernames, "root")
+		}
+	}
+
 	var targetUsers []models.User
 	if len(usernames) > 0 {
 		if err := s.DB.Where("username IN ?", usernames).Find(&targetUsers).Error; err != nil {

@@ -266,10 +266,15 @@
 		return '';
 	}
 
+	let loading = $state(false);
+
 	async function submit() {
+		loading = true;
+
 		const error = validate();
 		if (error) {
 			toast.error(error, { position: 'bottom-center' });
+			loading = false;
 			return;
 		}
 
@@ -307,6 +312,7 @@
 		}
 
 		reload = true;
+		loading = false;
 
 		if (response.error) {
 			handleAPIError(response);
@@ -577,13 +583,17 @@
 						placeholder="john@example.com"
 						bind:value={properties.email}
 					/>
-					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+					<div
+						class="grid grid-cols-1 gap-3 md:grid-cols-2"
+						class:opacity-50={properties.disablePassword && !edit}
+					>
 						<CustomValueInput
 							label="Password"
 							placeholder="••••••••"
 							type="password"
 							revealOnFocus={true}
 							bind:value={properties.password}
+							disabled={properties.disablePassword && !edit}
 						/>
 						<CustomValueInput
 							label="Confirm Password"
@@ -591,8 +601,24 @@
 							type="password"
 							revealOnFocus={true}
 							bind:value={properties.confirmPassword}
+							disabled={properties.disablePassword && !edit}
 						/>
 					</div>
+					<div class="flex items-center gap-2">
+						<Checkbox id="disable-password" bind:checked={properties.disablePassword} onCheckedChange={() => {
+							if (!edit && properties.disablePassword) {
+								properties.password = '';
+								properties.confirmPassword = '';
+							}
+						}} />
+						<Label for="disable-password" class="cursor-pointer text-sm">Disable Password</Label>
+					</div>
+					{#if properties.disablePassword && !edit}
+						<p class="text-muted-foreground text-xs">
+							Password authentication is disabled. The user will need an SSH key or other
+							authentication method to access the system.
+						</p>
+					{/if}
 				</Tabs.Content>
 
 				<!-- Tab 2: User ID & Groups -->
@@ -757,10 +783,6 @@
 					/>
 					<div class="grid grid-cols-2 gap-3">
 						<div class="flex items-center gap-2">
-							<Checkbox id="disable-password" bind:checked={properties.disablePassword} />
-							<Label for="disable-password" class="cursor-pointer text-sm">Disable Password</Label>
-						</div>
-						<div class="flex items-center gap-2">
 							<Checkbox id="lock-user" bind:checked={properties.locked} />
 							<Label for="lock-user" class="cursor-pointer text-sm">Lock User</Label>
 						</div>
@@ -786,7 +808,9 @@
 						open = false;
 					}}>Cancel</Button
 				>
-				<Button onclick={submit}>{edit ? 'Save' : 'Create'}</Button>
+				<Button onclick={submit} disabled={loading}
+					>{loading ? (edit ? 'Saving…' : 'Creating…') : edit ? 'Save' : 'Create'}</Button
+				>
 			</div>
 		{/if}
 	</Dialog.Content>

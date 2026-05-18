@@ -318,11 +318,9 @@ func UserCapabilitiesHandler() gin.HandlerFunc {
 }
 
 type ImportUserRequest struct {
-	Username        string `json:"username" binding:"required,min=3,max=128"`
-	Password        string `json:"password"`
-	Admin           *bool  `json:"admin" binding:"required"`
-	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
-	AuxGroupIDs     []uint `json:"auxGroupIds"`
+	Username string `json:"username" binding:"required,min=3,max=128"`
+	Password string `json:"password"`
+	Admin    *bool  `json:"admin" binding:"required"`
 }
 
 func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {
@@ -338,12 +336,14 @@ func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		opts := auth.CreateUserOpts{
-			NewPrimaryGroup: req.NewPrimaryGroup,
-			AuxGroupIDs:     req.AuxGroupIDs,
+		admin := false
+		if req.Admin != nil {
+			admin = *req.Admin
 		}
 
-		user, err := authService.ImportUser(req.Username, req.Password, opts)
+		opts := auth.CreateUserOpts{}
+
+		user, err := authService.ImportUser(req.Username, req.Password, admin, opts)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

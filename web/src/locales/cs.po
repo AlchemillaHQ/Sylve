@@ -907,6 +907,7 @@ msgstr "Zobrazit"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -5909,7 +5910,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -8824,6 +8825,7 @@ msgstr ""
 #~ msgid "Register - Passkey - Finish"
 #~ msgstr ""
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Passkey"
 msgstr ""
@@ -13499,9 +13501,8 @@ msgstr ""
 msgid "No importable Unix users found"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "All Unix users with UID ≥ 1000 are already registered in Sylve."
-msgstr ""
+#~ msgid "All Unix users with UID ≥ 1000 are already registered in Sylve."
+#~ msgstr ""
 
 #~ msgid "Unix User"
 #~ msgstr ""
@@ -13544,4 +13545,32 @@ msgstr ""
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Cannot edit this user"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Saving…"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Creating…"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Default system group, cannot be deleted"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "root is a permanent member of the wheel group and cannot be removed."
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "System group, cannot be deleted"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Password authentication is disabled. The user will need an SSH key or other authentication method to access the system."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "All Unix users are either already registered in Sylve or reserved by the system."
 msgstr ""

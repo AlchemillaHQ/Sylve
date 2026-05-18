@@ -24,7 +24,7 @@ export const UserSchema = z.object({
     id: z.number().int(),
     username: z.string(),
     fullName: z.string().optional().default(''),
-    email: z.string(),
+    email: z.string().optional().default(''),
     notes: z.string(),
     totp: z.string(),
     admin: z.boolean(),

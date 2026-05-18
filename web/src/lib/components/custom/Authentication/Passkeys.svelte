@@ -8,6 +8,7 @@
 	} from '$lib/api/auth/passkeys';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Passkey } from '$lib/types/auth';
@@ -32,6 +33,11 @@
 	let registering = $state(false);
 	let label = $state('');
 	let passkeys = $state<Passkey[]>([]);
+	let pendingDelete = $state<{ open: boolean; credentialId: string; label: string }>({
+		open: false,
+		credentialId: '',
+		label: ''
+	});
 
 	async function refreshPasskeys() {
 		loading = true;
@@ -141,7 +147,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="w-full min-w-2xl gap-4 p-5"
+		class="w-1/2 md:min-w-1/4 sm:min-w-1/2 gap-4 p-5"
 		showCloseButton={true}
 		onClose={() => {
 			open = false;
@@ -202,7 +208,11 @@
 										size="sm"
 										variant="outline"
 										onclick={() => {
-											void removePasskey(passkey.credentialId);
+											pendingDelete = {
+												open: true,
+												credentialId: passkey.credentialId,
+												label: passkey.label
+											};
 										}}
 									>
 										<SpanWithIcon
@@ -221,3 +231,20 @@
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog
+	open={pendingDelete.open}
+	names={{
+		parent: 'Passkey',
+		element: pendingDelete.label || pendingDelete.credentialId
+	}}
+	actions={{
+		onConfirm: async () => {
+			await removePasskey(pendingDelete.credentialId);
+			pendingDelete = { open: false, credentialId: '', label: '' };
+		},
+		onCancel: () => {
+			pendingDelete = { open: false, credentialId: '', label: '' };
+		}
+	}}
+></AlertDialog>

@@ -134,7 +134,7 @@
 			>
 				<span class="icon-[mdi--account-off] h-8 w-8"></span>
 				<p>No importable Unix users found</p>
-				<p class="text-xs">All Unix users with UID &ge; 1000 are already registered in Sylve.</p>
+				<p class="text-xs">All Unix users are either already registered in Sylve or reserved by the system.</p>
 			</div>
 		{:else}
 			<div class="space-y-4">
@@ -165,6 +165,9 @@
 							</div>
 						</div>
 					{/if}
+
+					<input type="text" style="display:none" autocomplete="username" />
+					<input type="password" style="display:none" autocomplete="new-password" />
 
 					<CustomValueInput
 						label="Sylve Password (optional)"

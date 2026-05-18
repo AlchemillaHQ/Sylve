@@ -20,7 +20,7 @@ import (
 func RequireLocalAdmin(service *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authType := strings.TrimSpace(c.GetString("AuthType"))
-		if authType != "sylve" && authType != authService.AuthTypeSylvePasskey {
+		if authType != "sylve" && authType != authService.AuthTypeSylvePasskey && authType != "pam" {
 			c.AbortWithStatusJSON(http.StatusForbidden, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "only_admin_allowed",
