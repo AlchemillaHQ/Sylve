@@ -191,12 +191,13 @@ export default defineConfig({
                             label: 'Deployments',
                             collapsed: false,
                             items: [
+                                'guides/deployments/technitium-dns-jail',
                                 'guides/deployments/jellyfin-jail',
-                                'guides/deployments/rocky-linux-jail'
+                                'guides/deployments/rocky-linux-jail',
                             ],
                         },
                         {
-                            label: 'Advanced Topics',
+                            label: 'Topics',
                             collapsed: true,
                             items: [
                                 'guides/advanced-topics/jailing-sylve',
