@@ -862,36 +862,6 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	old6Network, new6Network := oldSw.Network(6), newSw.Network(6)
 	old6Gateway, new6Gateway := oldSw.Gateway(6), newSw.Gateway(6)
 
-	if old6Network != new6Network {
-		if old6Network != "" {
-			if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", old6Network, "delete"); err != nil {
-				logger.L.Warn().Msgf("edit_standard_bridge: del old inet6 %s: %v", old6Network, err)
-			}
-		}
-
-		if new6Network != "" && !newSw.DisableIPv6 && utils.IsAssignableIPv6CIDR(new6Network) {
-			if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", new6Network); err != nil {
-				logger.L.Warn().Msgf("edit_standard_bridge: set inet6 %s: %v", new6Network, err)
-			}
-		}
-	}
-
-	if old6Gateway != new6Gateway {
-		if old6Gateway != "" && old6Network != "" {
-			oldRouteGateway := normalizeIPv6GatewayForRoute(old6Gateway, br)
-			if _, err := syncRunCommand("/sbin/route", "-6", "delete", "-net", old6Network, oldRouteGateway); err != nil {
-				logger.L.Warn().Msgf("edit_standard_bridge: del route %s via %s: %v", old6Network, old6Gateway, err)
-			}
-		}
-
-		if new6Gateway != "" && new6Network != "" {
-			newRouteGateway := normalizeIPv6GatewayForRoute(new6Gateway, br)
-			if _, err := syncRunCommand("/sbin/route", "-6", "add", "-net", new6Network, newRouteGateway); err != nil {
-				logger.L.Warn().Msgf("edit_standard_bridge: add route %s via %s: %v", new6Network, new6Gateway, err)
-			}
-		}
-	}
-
 	if newSw.DisableIPv6 {
 		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable IPv6: %v", err)
@@ -916,6 +886,34 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	} else if !newSw.DisableIPv6 {
 		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "-accept_rtadv"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable SLAAC: %v", err)
+		}
+	}
+
+	if old6Network != "" {
+		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", old6Network, "delete"); err != nil {
+			logger.L.Warn().Msgf("edit_standard_bridge: del old inet6 %s: %v", old6Network, err)
+		}
+	}
+
+	if old6Gateway != "" && old6Network != "" {
+		oldRouteGateway := normalizeIPv6GatewayForRoute(old6Gateway, br)
+		if _, err := syncRunCommand("/sbin/route", "-6", "delete", "-net", old6Network, oldRouteGateway); err != nil {
+			logger.L.Warn().Msgf("edit_standard_bridge: del route %s via %s: %v", old6Network, old6Gateway, err)
+		}
+	}
+
+	if new6Network != "" && !newSw.DisableIPv6 && utils.IsAssignableIPv6CIDR(new6Network) {
+		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", new6Network); err != nil {
+			logger.L.Warn().Msgf("edit_standard_bridge: set inet6 %s: %v", new6Network, err)
+		}
+	}
+
+	if new6Gateway != "" && new6Network != "" {
+		newRouteGateway := normalizeIPv6GatewayForRoute(new6Gateway, br)
+		if gwOut, err := syncRunCommand("/sbin/route", "-6", "add", "-net", new6Network, newRouteGateway); err != nil {
+			if !strings.Contains(gwOut, "route already in table") {
+				logger.L.Warn().Msgf("edit_standard_bridge: add route %s via %s: %v", new6Network, new6Gateway, err)
+			}
 		}
 	}
 

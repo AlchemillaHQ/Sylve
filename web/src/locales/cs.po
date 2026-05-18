@@ -13367,21 +13367,17 @@ msgstr "Základní reference"
 msgid "Jail console connected for jail {0}"
 msgstr "Konzole připojena pro Jail {0}"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "No users selected"
-msgstr "Nevybráni žádní uživatelé"
+#~ msgid "No users selected"
+#~ msgstr "Nevybráni žádní uživatelé"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to add users to group"
-msgstr "Uživatele se nepodařilo přidat do skupiny"
+#~ msgid "Failed to add users to group"
+#~ msgstr "Uživatele se nepodařilo přidat do skupiny"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Users added to group"
-msgstr "Uživatelé přidáni do skupiny"
+#~ msgid "Users added to group"
+#~ msgstr "Uživatelé přidáni do skupiny"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Add Users"
-msgstr "Přidat uživatele"
+#~ msgid "Add Users"
+#~ msgstr "Přidat uživatele"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Kill Serial Session"

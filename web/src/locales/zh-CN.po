@@ -13355,21 +13355,17 @@ msgstr "基线"
 msgid "Jail console connected for jail {0}"
 msgstr "Jail {0} 的控制台已连接"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "No users selected"
-msgstr "未选择用户"
+#~ msgid "No users selected"
+#~ msgstr "未选择用户"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to add users to group"
-msgstr "将用户添加到组失败"
+#~ msgid "Failed to add users to group"
+#~ msgstr "将用户添加到组失败"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Users added to group"
-msgstr "用户已添加到组"
+#~ msgid "Users added to group"
+#~ msgstr "用户已添加到组"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Add Users"
-msgstr "添加用户"
+#~ msgid "Add Users"
+#~ msgstr "添加用户"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Kill Serial Session"

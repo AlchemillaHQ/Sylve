@@ -1051,3 +1051,203 @@ func TestEditStandardBridgeSkipsSubnetBaseIPv4WithoutGateway(t *testing.T) {
 		}
 	}
 }
+
+func TestEditStandardBridgeAddsIPv6WhenDisableIPv6FlipsFalse(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "old-edit-ipv6-flip-on",
+		BridgeName:  "vm-edit-ipv6-flip-on",
+		DisableIPv6: true,
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:        "new-edit-ipv6-flip-on",
+		BridgeName:  "vm-edit-ipv6-flip-on",
+		DisableIPv6: false,
+		Network6Obj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:1::1/64"}},
+		},
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	var sawIfDisabledClear, sawAssign bool
+	var clearIdx, assignIdx int = -1, -1
+	for i, cmd := range commands {
+		if strings.Contains(cmd, "auto_linklocal") && strings.Contains(cmd, "-ifdisabled") {
+			sawIfDisabledClear = true
+			clearIdx = i
+		}
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-on inet6 2001:db8:1::1/64" {
+			sawAssign = true
+			assignIdx = i
+		}
+	}
+	if !sawIfDisabledClear {
+		t.Fatalf("expected -ifdisabled clear, got commands: %v", commands)
+	}
+	if !sawAssign {
+		t.Fatalf("expected IPv6 assignment, got commands: %v", commands)
+	}
+	if clearIdx >= assignIdx {
+		t.Fatalf("-ifdisabled must be cleared BEFORE IPv6 address assignment, got commands: %v", commands)
+	}
+}
+
+func TestEditStandardBridgeDisablesIPv6WhenFlagFlipsTrue(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "old-edit-ipv6-flip-off",
+		BridgeName:  "vm-edit-ipv6-flip-off",
+		DisableIPv6: false,
+		Network6Obj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:2::1/64"}},
+		},
+		Gateway6AddressObj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:2::ff"}},
+		},
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:        "new-edit-ipv6-flip-off",
+		BridgeName:  "vm-edit-ipv6-flip-off",
+		DisableIPv6: true,
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	var sawDelAddr, sawDelRoute, sawIfDisabled bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 2001:db8:2::1/64 delete" {
+			sawDelAddr = true
+		}
+		if cmd == "/sbin/route -6 delete -net 2001:db8:2::1/64 2001:db8:2::ff" {
+			sawDelRoute = true
+		}
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 -accept_rtadv ifdisabled" {
+			sawIfDisabled = true
+		}
+	}
+	if !sawDelAddr {
+		t.Fatalf("expected old IPv6 address deletion, got commands: %v", commands)
+	}
+	if !sawDelRoute {
+		t.Fatalf("expected old IPv6 route deletion, got commands: %v", commands)
+	}
+	if !sawIfDisabled {
+		t.Fatalf("expected ifdisabled flag set, got commands: %v", commands)
+	}
+}
+
+func TestEditStandardBridgeSkipsIPv6WhenStillDisabled(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "old-edit-ipv6-still-off",
+		BridgeName:  "vm-edit-ipv6-still-off",
+		DisableIPv6: true,
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:        "new-edit-ipv6-still-off",
+		BridgeName:  "vm-edit-ipv6-still-off",
+		DisableIPv6: true,
+		Network6Obj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:3::1/64"}},
+		},
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-still-off inet6 2001:db8:3::1/64" {
+			t.Fatalf("expected no IPv6 assignment when disabled, got commands: %v", commands)
+		}
+	}
+}
+
+func TestEditStandardBridgeReplacesIPv6WhenNetworkChanges(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "old-edit-ipv6-replace",
+		BridgeName:  "vm-edit-ipv6-replace",
+		DisableIPv6: false,
+		Network6Obj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:4::1/64"}},
+		},
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:        "new-edit-ipv6-replace",
+		BridgeName:  "vm-edit-ipv6-replace",
+		DisableIPv6: false,
+		Network6Obj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:5::1/64"}},
+		},
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	var sawDel, sawAdd bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-replace inet6 2001:db8:4::1/64 delete" {
+			sawDel = true
+		}
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-replace inet6 2001:db8:5::1/64" {
+			sawAdd = true
+		}
+	}
+	if !sawDel {
+		t.Fatalf("expected old IPv6 deletion, got commands: %v", commands)
+	}
+	if !sawAdd {
+		t.Fatalf("expected new IPv6 assignment, got commands: %v", commands)
+	}
+}
