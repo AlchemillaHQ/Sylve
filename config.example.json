@@ -24,5 +24,8 @@
             "enabled": false,
             "port": 7246
         }
+    },
+    "jails": {
+        "disableDevFS": false
     }
 }

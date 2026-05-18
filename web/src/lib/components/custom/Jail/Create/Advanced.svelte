@@ -17,6 +17,7 @@
 			env: string;
 			meta: string;
 		};
+		devFSDisabled?: boolean;
 	}
 
 	let {
@@ -25,7 +26,8 @@
 		cleanEnvironment = $bindable(),
 		execScripts = $bindable(),
 		allowedOptions = $bindable(),
-		metadata = $bindable()
+		metadata = $bindable(),
+		devFSDisabled = false
 	}: Props = $props();
 	let allowed = [
 		{
@@ -114,11 +116,19 @@
 		}
 	];
 
+	let filteredAllowed = $derived(
+		devFSDisabled ? allowed.filter((o) => o.value !== 'allow.mount.devfs') : allowed
+	);
+
 	let comboBoxes = $state({
 		allowed: {
 			open: false,
 			options: allowed
 		}
+	});
+
+	$effect(() => {
+		comboBoxes.allowed.options = filteredAllowed;
 	});
 
 	let checkBoxes = $state({
@@ -135,9 +145,12 @@
 				'allow.set_hostname',
 				'allow.raw_sockets',
 				'allow.socket_af',
-				'allow.reserved_ports',
-				'allow.mount.devfs'
+				'allow.reserved_ports'
 			];
+
+			if (!devFSDisabled) {
+				allowedOptions.push('allow.mount.devfs');
+			}
 
 			execScripts['start'].script = '/bin/sh /etc/rc';
 			execScripts['stop'].script = '/bin/sh /etc/rc.shutdown';
@@ -148,11 +161,14 @@
 				'allow.set_hostname',
 				'allow.raw_sockets',
 				'allow.socket_af',
-				'allow.mount.devfs',
 				'allow.mount.tmpfs',
 				'allow.mount.linprocfs',
 				'allow.mount.linsysfs'
 			];
+
+			if (!devFSDisabled) {
+				allowedOptions.push('allow.mount.devfs');
+			}
 
 			execScripts['start'].script = '';
 			execScripts['stop'].script = '';

@@ -18,9 +18,12 @@
 	interface Data {
 		ctId: number;
 		jail: Jail;
+		devFSDisabled: boolean;
 	}
 
 	let { data }: { data: Data } = $props();
+
+	let devFSDisabled = $derived(data.devFSDisabled ?? false);
 
 	// svelte-ignore state_referenced_locally
 	const jail = resource(
@@ -81,14 +84,18 @@
 						(jail.current.resolvConf.includes('\n') ? '…' : '')
 					: '—'
 			},
-			{
-				id: generateNanoId('devfsRules'),
-				property: 'DevFS Ruleset',
-				value: jail?.current.devfsRuleset
-					? jail.current.devfsRuleset.split('\n')[0] +
-						(jail.current.devfsRuleset.includes('\n') ? '…' : '')
-					: '—'
-			},
+			...(devFSDisabled
+				? []
+				: [
+						{
+							id: generateNanoId('devfsRules'),
+							property: 'DevFS Ruleset',
+							value: jail?.current.devfsRuleset
+								? jail.current.devfsRuleset.split('\n')[0] +
+									(jail.current.devfsRuleset.includes('\n') ? '…' : '')
+								: '—'
+						}
+					]),
 			{
 				id: generateNanoId('additionalOptions'),
 				property: 'Additional Options',
@@ -269,7 +276,7 @@
 {/if}
 
 {#if properties.allowedOptions.open && jail.current}
-	<AllowedOptions bind:open={properties.allowedOptions.open} jail={jail.current} bind:reload />
+	<AllowedOptions bind:open={properties.allowedOptions.open} jail={jail.current} bind:reload {devFSDisabled} />
 {/if}
 
 {#if properties.metadata.open && jail.current}

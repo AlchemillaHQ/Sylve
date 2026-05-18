@@ -29,9 +29,10 @@
 	interface Props {
 		open: boolean;
 		minimize: boolean;
+		devFSDisabled?: boolean;
 	}
 
-	let { open = $bindable(), minimize = $bindable() }: Props = $props();
+	let { open = $bindable(), minimize = $bindable(), devFSDisabled = false }: Props = $props();
 	const tabs = [
 		{ value: 'basic', label: 'Basic' },
 		{ value: 'storage', label: 'Storage' },
@@ -400,6 +401,7 @@
 										bind:bootOrder={modal.hardware.bootOrder}
 										bind:resourceLimits={modal.hardware.resourceLimits}
 										bind:devfsRuleset={modal.hardware.devfsRuleset}
+										{devFSDisabled}
 									/>
 								</div>
 							{:else if value === 'advanced'}
@@ -411,6 +413,7 @@
 										bind:execScripts={modal.advanced.execScripts}
 										bind:allowedOptions={modal.advanced.allowedOptions}
 										bind:metadata={modal.advanced.metadata}
+										{devFSDisabled}
 									/>
 								</div>
 							{/if}

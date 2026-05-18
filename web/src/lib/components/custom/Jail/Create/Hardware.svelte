@@ -12,6 +12,7 @@
 		bootOrder: number;
 		resourceLimits: boolean;
 		devfsRuleset: string;
+		devFSDisabled?: boolean;
 	}
 
 	let {
@@ -20,7 +21,8 @@
 		startAtBoot = $bindable(),
 		bootOrder = $bindable(),
 		resourceLimits = $bindable(),
-		devfsRuleset = $bindable()
+		devfsRuleset = $bindable(),
+		devFSDisabled = false
 	}: Props = $props();
 
 	let humanSize = $state(formatBytesBinary(ram || 1024 * 1024 * 1024));
@@ -93,14 +95,16 @@
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
-		<CustomCheckbox
-			label="Custom Devfs Ruleset"
-			bind:checked={customDevfsRuleset}
-			classes="flex items-center gap-2"
-		></CustomCheckbox>
+		{#if !devFSDisabled}
+			<CustomCheckbox
+				label="Custom Devfs Ruleset"
+				bind:checked={customDevfsRuleset}
+				classes="flex items-center gap-2"
+			></CustomCheckbox>
+		{/if}
 	</div>
 
-	{#if customDevfsRuleset}
+	{#if !devFSDisabled && customDevfsRuleset}
 		<CustomValueInput
 			label="Devfs Ruleset"
 			placeholder="Leave empty for default ruleset"

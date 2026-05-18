@@ -8,6 +8,8 @@
 
 package utils
 
+import "slices"
+
 func IsValidJailAllowedOpts(options []string) bool {
 	allowedOptions := []string{
 		"allow.set_hostname",
@@ -47,4 +49,10 @@ func IsValidJailAllowedOpts(options []string) bool {
 	}
 
 	return true
+}
+
+func FilterDevFSFromOptions(options []string) []string {
+	return slices.DeleteFunc(options, func(s string) bool {
+		return s == "allow.mount.devfs"
+	})
 }

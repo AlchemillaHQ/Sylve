@@ -6,7 +6,8 @@ export const BasicInfoSchema = z.object({
 	uptime: z.number().default(0),
 	loadAverage: z.string().default('Unknown'),
 	bootMode: z.string().default('Unknown'),
-	sylveVersion: z.string().default('Unknown')
+	sylveVersion: z.string().default('Unknown'),
+	devFSDisabled: z.boolean().default(false)
 });
 
 export type BasicInfo = z.infer<typeof BasicInfoSchema>;

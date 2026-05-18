@@ -21,6 +21,7 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
 func bootstrapName(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor int) string {
@@ -220,7 +221,7 @@ func (s *Service) runBootstrap(
 		s.updateBootstrapRecord(recordID, "failed", phase, err.Error())
 	}
 
-	arch, err := utils.RunCommandWithContext(bCtx, "sysctl", "-n", "hw.machine_arch")
+	arch, err := sysctl.GetString("hw.machine_arch")
 	if err != nil {
 		failStep("pre_check", fmt.Errorf("failed_to_get_arch: %w", err))
 		return

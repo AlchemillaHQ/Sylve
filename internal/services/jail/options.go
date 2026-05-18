@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -200,6 +201,10 @@ func (s *Service) ModifyResolvConf(ctId uint, resolvConf string) error {
 }
 
 func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
+	if config.IsDevFSDisabled() {
+		return fmt.Errorf("devfs_management_disabled")
+	}
+
 	allowed, leaseErr := s.canMutateProtectedJail(ctId)
 	if leaseErr != nil {
 		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
@@ -380,6 +385,10 @@ func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
 		return fmt.Errorf("invalid_jail_allowed_options")
 	}
 
+	if config.IsDevFSDisabled() && slices.Contains(normalizedOptions, "allow.mount.devfs") {
+		return fmt.Errorf("devfs_management_disabled")
+	}
+
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail_config: %w", err)
@@ -421,7 +430,7 @@ func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
 			blockLines = append(blockLines, fmt.Sprintf("\t%s;", opt))
 		}
 
-		if utils.StringInSlice("allow.mount.devfs", normalizedOptions) {
+		if !config.IsDevFSDisabled() && utils.StringInSlice("allow.mount.devfs", normalizedOptions) {
 			blockLines = append(blockLines, "\tmount.devfs;")
 			if strings.TrimSpace(jail.DevFSRuleset) != "" {
 				blockLines = append(blockLines, fmt.Sprintf("\tdevfs_ruleset=%d;", ctId))

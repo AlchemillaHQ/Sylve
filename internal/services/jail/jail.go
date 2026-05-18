@@ -522,6 +522,10 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		return fmt.Errorf("invalid_jail_allowed_options")
 	}
 
+	if config.IsDevFSDisabled() && slices.Contains(data.AllowedOptions, "allow.mount.devfs") {
+		return fmt.Errorf("devfs_management_disabled")
+	}
+
 	if data.StartOrder < 0 {
 		return fmt.Errorf("start_order_must_be_greater_than_or_equal_to_0")
 	}
@@ -1005,9 +1009,11 @@ func (s *Service) cleanupFailedJailCreate(ctid uint, fallbackPool string, autoCr
 	s.forceRemoveJailDBRecords(ctid, &warnings)
 	s.cleanupAutoCreatedJailCreateMACObjects(ctid, autoCreatedMACIDs, &warnings)
 
-	if _, statErr := os.Stat("/etc/devfs.rules"); statErr == nil {
-		if err := s.RemoveDevfsRulesForCTID(ctid); err != nil {
-			appendJailCreateCleanupWarning(&warnings, ctid, "failed_to_remove_devfs_rules_for_create_rollback", err)
+	if !config.IsDevFSDisabled() {
+		if _, statErr := os.Stat("/etc/devfs.rules"); statErr == nil {
+			if err := s.RemoveDevfsRulesForCTID(ctid); err != nil {
+				appendJailCreateCleanupWarning(&warnings, ctid, "failed_to_remove_devfs_rules_for_create_rollback", err)
+			}
 		}
 	}
 
@@ -1087,7 +1093,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 	}
 
 	// Append devfs rules if provided
-	if data.DevFSRuleset != "" {
+	if !config.IsDevFSDisabled() && data.DevFSRuleset != "" {
 		devFsRulesetPath := filepath.Join("/etc", "devfs.rules")
 		f, err := os.OpenFile(devFsRulesetPath, os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
@@ -1185,7 +1191,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 	}
 
 	// devfs mount and rules
-	if data.AllowedOptions != nil && utils.StringInSlice("allow.mount.devfs", data.AllowedOptions) {
+	if !config.IsDevFSDisabled() && data.AllowedOptions != nil && utils.StringInSlice("allow.mount.devfs", data.AllowedOptions) {
 		cfg += "\tmount.devfs;\n"
 
 		if data.DevFSRuleset != "" {
@@ -1524,7 +1530,7 @@ func (s *Service) rollbackJailCreation(ctx context.Context, state *jailServiceIn
 		}
 	}
 
-	if state.CTID != 0 {
+	if !config.IsDevFSDisabled() && state.CTID != 0 {
 		if err := s.RemoveDevfsRulesForCTID(state.CTID); err != nil {
 			logger.L.Error().Err(err).Uint("ctid", state.CTID).
 				Msg("rollback_jail_creation: failed to remove devfs rules block")

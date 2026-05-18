@@ -14,6 +14,8 @@
 		resolveNodeHostname
 	} from '$lib/utils/enabled-services';
 	import { loadLocale } from 'wuchale/load-utils';
+	import { getBasicInfo } from '$lib/api/info/basic';
+	import { resource } from 'runed';
 
 	let options = {
 		createVM: {
@@ -36,6 +38,16 @@
 	);
 	let virtualizationEnabled = $derived(activeServices.includes('virtualization'));
 	let jailEnabled = $derived(activeServices.includes('jails'));
+
+	let basicInfo = resource(
+		() => 'basic-info',
+		async () => {
+			const result = await getBasicInfo();
+			return result;
+		}
+	);
+
+	let devFSDisabled = $derived(basicInfo.current?.devFSDisabled ?? false);
 
 	function openCreateVM() {
 		properties.createVM.open = true;
@@ -205,6 +217,7 @@
 			<CreateJail
 				bind:open={properties.createJail.open}
 				bind:minimize={properties.createJail.minimize}
+				devFSDisabled={devFSDisabled}
 			/>
 		{/if}
 

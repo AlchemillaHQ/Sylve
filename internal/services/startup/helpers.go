@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/pkg"
@@ -209,23 +209,13 @@ func (s *Service) EnableLinux() error {
 	}
 
 	ensureFallbackBrand := func(name string) error {
-		out, err := utils.RunCommand("/sbin/sysctl", "-ni", name)
+		val, err := startupGetSysctlInt64(name)
 		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", name, err)
-		}
-
-		valStr := strings.TrimSpace(out)
-		if valStr == "" {
 			return nil
 		}
 
-		val, err := strconv.Atoi(valStr)
-		if err != nil {
-			return fmt.Errorf("failed to parse %s value %q: %w", name, valStr, err)
-		}
-
 		if val == -1 {
-			if _, err := utils.RunCommand("/sbin/sysctl", fmt.Sprintf("%s=3", name)); err != nil {
+			if err := startupSetSysctlInt32(name, 3); err != nil {
 				return fmt.Errorf("failed to set %s=3: %w", name, err)
 			}
 		}
@@ -298,11 +288,11 @@ func (s *Service) EnableLinux() error {
 		return err
 	}
 
-	emulPathRaw, err := utils.RunCommand("/sbin/sysctl", "-n", "compat.linux.emul_path")
+	emulPath, err := sysctl.GetString("compat.linux.emul_path")
 	if err != nil {
-		return fmt.Errorf("failed to get compat.linux.emul_path: %w", err)
+		emulPath = "/compat/linux"
 	}
-	emulPath := strings.TrimSpace(emulPathRaw)
+	emulPath = strings.TrimSpace(emulPath)
 	if emulPath == "" {
 		emulPath = "/compat/linux"
 	}
@@ -413,6 +403,10 @@ func (s *Service) CheckSambaSyslogConfig(basicSettings models.BasicSettings) err
 }
 
 func (s *Service) DevfsSync() error {
+	if config.IsDevFSDisabled() {
+		return nil
+	}
+
 	const devfsRulesPath = "/etc/devfs.rules"
 
 	requiredBlock := `[devfsrules_jails=61181]

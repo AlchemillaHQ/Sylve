@@ -9,10 +9,11 @@
 package infoServiceInterfaces
 
 type BasicInfo struct {
-	Hostname     string `json:"hostname"`
-	OS           string `json:"os"`
-	Uptime       int64  `json:"uptime"`
-	LoadAverage  string `json:"loadAverage"`
-	BootMode     string `json:"bootMode"`
-	SylveVersion string `json:"sylveVersion"`
+	Hostname      string `json:"hostname"`
+	OS            string `json:"os"`
+	Uptime        int64  `json:"uptime"`
+	LoadAverage   string `json:"loadAverage"`
+	BootMode      string `json:"bootMode"`
+	SylveVersion  string `json:"sylveVersion"`
+	DevFSDisabled bool   `json:"devFSDisabled"`
 }

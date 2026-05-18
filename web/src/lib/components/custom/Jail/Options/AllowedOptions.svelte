@@ -13,9 +13,10 @@
 		open: boolean;
 		jail: Jail;
 		reload: boolean;
+		devFSDisabled?: boolean;
 	}
 
-	let { open = $bindable(), jail, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), jail, reload = $bindable(), devFSDisabled = false }: Props = $props();
 
 	const allowed: { value: string; label: string }[] = [
 		{ value: 'allow.set_hostname', label: 'Set Hostname (allow.set_hostname)' },
@@ -43,6 +44,10 @@
 		{ value: 'allow.mount.zfs', label: 'Mount ZFS (allow.mount.zfs)' },
 		{ value: 'allow.vmm', label: 'Virtual Machines (allow.vmm)' }
 	];
+
+	let filteredAllowed = $derived(
+		devFSDisabled ? allowed.filter((o) => o.value !== 'allow.mount.devfs') : allowed
+	);
 
 	let comboOpen = $state(false);
 	let selectedOptions = $state<string[]>([]);
@@ -99,7 +104,7 @@
 				label=""
 				placeholder="Select Allowed Options"
 				bind:value={selectedOptions}
-				data={[...allowed]}
+				data={[...filteredAllowed]}
 				multiple={true}
 				classes="w-full"
 				width="w-full"

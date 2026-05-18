@@ -14,10 +14,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) RemoveDevfsRulesForCTID(ctid uint) error {
+	if config.IsDevFSDisabled() {
+		return nil
+	}
+
 	const devfsRulesPath = "/etc/devfs.rules"
 
 	data, err := os.ReadFile(devfsRulesPath)

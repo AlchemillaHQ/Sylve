@@ -18,6 +18,7 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +33,9 @@ const (
 
 var (
 	staticRouteRunCommand = utils.RunCommand
+	getNetFIBCountFunc    = func() (int64, error) {
+		return sysctl.GetInt64("net.fibs")
+	}
 )
 
 type staticRouteCandidate struct {
@@ -95,17 +99,12 @@ func staticRouteNetworkMatchesFamily(network *net.IPNet, family string) bool {
 }
 
 func getNetFIBCount() int {
-	output, err := staticRouteRunCommand("/sbin/sysctl", "-n", "net.fibs")
-	if err != nil {
+	val, err := getNetFIBCountFunc()
+	if err != nil || val <= 0 {
 		return 1
 	}
 
-	count, parseErr := strconv.Atoi(strings.TrimSpace(output))
-	if parseErr != nil || count <= 0 {
-		return 1
-	}
-
-	return count
+	return int(val)
 }
 
 func validateStaticRouteRequest(req *networkServiceInterfaces.UpsertStaticRouteRequest) (networkModels.StaticRoute, error) {

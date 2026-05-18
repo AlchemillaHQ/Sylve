@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
 var ParsedConfig *internal.SylveConfig
@@ -70,6 +71,27 @@ func IsPAMEnabled() bool {
 	}
 
 	return ParsedConfig.Auth.EnablePAM
+}
+
+func IsRunningInJail() bool {
+	val, err := sysctl.GetInt64("security.jail.jailed")
+	if err != nil {
+		return false
+	}
+
+	return val == 1
+}
+
+func IsDevFSDisabled() bool {
+	if ParsedConfig != nil && ParsedConfig.Jails.DisableDevFS {
+		return true
+	}
+
+	if IsRunningInJail() {
+		return true
+	}
+
+	return false
 }
 
 func GetDataPath() (string, error) {

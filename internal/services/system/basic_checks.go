@@ -15,6 +15,7 @@ import (
 
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
 func (s *Service) IsSupportedArch() bool {
@@ -76,21 +77,21 @@ func (s *Service) CheckVirtualization() error {
 }
 
 func (s *Service) CheckJails() error {
-	out, err := utils.RunCommand("/sbin/sysctl", "kern.racct.enable")
+	val, err := sysctl.GetInt64("kern.racct.enable")
 	if err != nil {
 		return fmt.Errorf("jails_failed_to_check_racct: %w", err)
 	}
 
-	if !strings.Contains(out, "kern.racct.enable: 1") {
+	if val != 1 {
 		return fmt.Errorf("jails_racct_not_enabled")
 	}
 
-	out, err = utils.RunCommand("/sbin/sysctl", "security.jail.enforce_statfs")
+	val, err = sysctl.GetInt64("security.jail.enforce_statfs")
 	if err != nil {
 		return fmt.Errorf("jails_failed_to_check_enforce_statfs: %w", err)
 	}
 
-	if !strings.Contains(out, "security.jail.enforce_statfs: 2") {
+	if val != 2 {
 		return fmt.Errorf("jails_enforce_statfs_not_enabled")
 	}
 

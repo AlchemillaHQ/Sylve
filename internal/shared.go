@@ -50,6 +50,10 @@ const (
 	Debug       Environment = "debug"
 )
 
+type JailsConfig struct {
+	DisableDevFS bool `json:"disableDevFS"`
+}
+
 type SylveConfig struct {
 	Environment   Environment     `json:"environment"`
 	ProxyToVite   bool            `json:"proxyToVite"`
@@ -65,6 +69,7 @@ type SylveConfig struct {
 	Raft          Raft            `json:"raft"`
 	BTT           BTT             `json:"btt"`
 	Auth          AuthConfig      `json:"auth"`
+	Jails         JailsConfig     `json:"jails"`
 }
 
 type APIResponse[T any] struct {

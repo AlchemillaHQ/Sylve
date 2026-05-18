@@ -10,6 +10,7 @@ package info
 
 import (
 	"github.com/alchemillahq/sylve/internal/cmd"
+	"github.com/alchemillahq/sylve/internal/config"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -31,11 +32,12 @@ func (s *Service) GetBasicInfo() (basicInfo infoServiceInterfaces.BasicInfo, err
 	}
 
 	return infoServiceInterfaces.BasicInfo{
-		Hostname:     hostname,
-		OS:           utils.GetOS(),
-		Uptime:       uptime,
-		LoadAverage:  loadAvg,
-		BootMode:     utils.BootMode(),
-		SylveVersion: cmd.Version,
+		Hostname:      hostname,
+		OS:            utils.GetOS(),
+		Uptime:        uptime,
+		LoadAverage:   loadAvg,
+		BootMode:      utils.BootMode(),
+		SylveVersion:  cmd.Version,
+		DevFSDisabled: config.IsDevFSDisabled(),
 	}, nil
 }

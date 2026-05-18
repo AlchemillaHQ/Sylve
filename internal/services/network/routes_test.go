@@ -28,11 +28,12 @@ func mockStaticRouteRunCommand(t *testing.T, fn func(command string, args ...str
 
 func mockStaticRouteFIBCount(t *testing.T, fibs int) {
 	t.Helper()
-	mockStaticRouteRunCommand(t, func(command string, args ...string) (string, error) {
-		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == "net.fibs" {
-			return fmt.Sprintf("%d\n", fibs), nil
-		}
-		return "", nil
+	previous := getNetFIBCountFunc
+	getNetFIBCountFunc = func() (int64, error) {
+		return int64(fibs), nil
+	}
+	t.Cleanup(func() {
+		getNetFIBCountFunc = previous
 	})
 }
 

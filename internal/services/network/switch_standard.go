@@ -709,6 +709,24 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 	network6 := sw.Network(6)
 	gateway6 := sw.Gateway(6)
 
+	if sw.DisableIPv6 {
+		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_disable_ipv6_flags: %v", err)
+		}
+	}
+
+	if !sw.DisableIPv6 {
+		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled"); err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_enable_linklocal: %v", err)
+		}
+	}
+
+	if !sw.DisableIPv6 && sw.SLAAC {
+		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_enable_slaac: %v", err)
+		}
+	}
+
 	if network6 != "" && !sw.DisableIPv6 && utils.IsAssignableIPv6CIDR(network6) {
 		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", network6, "-no_dad"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
@@ -732,24 +750,6 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 					return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
 				}
 			}
-		}
-	}
-
-	if !sw.DisableIPv6 {
-		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal"); err != nil {
-			return fmt.Errorf("create_standard_bridge: failed_to_enable_linklocal: %v", err)
-		}
-	}
-
-	if !sw.DisableIPv6 && sw.SLAAC {
-		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
-			return fmt.Errorf("create_standard_bridge: failed_to_enable_slaac: %v", err)
-		}
-	}
-
-	if sw.DisableIPv6 {
-		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
-			return fmt.Errorf("create_standard_bridge: failed_to_disable_ipv6_flags: %v", err)
 		}
 	}
 
