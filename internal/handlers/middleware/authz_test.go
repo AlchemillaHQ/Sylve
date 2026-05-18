@@ -82,8 +82,32 @@ func TestRequireLocalAdminAllowsPasskeyAdmin(t *testing.T) {
 	}
 }
 
-func TestRequireLocalAdminRejectsPamAuth(t *testing.T) {
+func TestRequireLocalAdminAllowsPamAdmin(t *testing.T) {
 	service := newAuthzTestService(t)
+	if err := service.DB.Create(&models.User{
+		ID:       1,
+		Username: "root",
+		Admin:    true,
+	}).Error; err != nil {
+		t.Fatalf("failed_to_seed_user: %v", err)
+	}
+
+	status := performAuthzRequest(t, service, "pam", 1)
+	if status != http.StatusOK {
+		t.Fatalf("expected_status_200_got: %d", status)
+	}
+}
+
+func TestRequireLocalAdminRejectsPamNonAdmin(t *testing.T) {
+	service := newAuthzTestService(t)
+	if err := service.DB.Create(&models.User{
+		ID:       1,
+		Username: "pamuser",
+		Admin:    false,
+	}).Error; err != nil {
+		t.Fatalf("failed_to_seed_user: %v", err)
+	}
+
 	status := performAuthzRequest(t, service, "pam", 1)
 	if status != http.StatusForbidden {
 		t.Fatalf("expected_status_403_got: %d", status)
