@@ -471,7 +471,6 @@ func (s *Service) GlobalConfig() (string, error) {
 	config += "recycle:exclude = :*DATA,*.tmp,*.temp,*.o,*.obj,~$*,*.~??,*.part,*.partial,*.swp,*.swo,*.log\n"
 
 	config += "unix extensions = no\n"
-	config += "struct allocate = no\n"
 	config += "nfs4:mode = simple\n"
 	config += "nfs4:acedup = merge\n"
 	config += "nfs4:chown = yes\n"
