@@ -52,19 +52,19 @@
 		</Dialog.Header>
 
 		{#if vm?.serial}
-			<span class="text-sm">
+			<span class="text-sm text-justify">
 				This VM currently has serial console access enabled. You can disable it using the button
 				below.
 			</span>
 		{:else}
-			<span class="text-sm">
+			<span class="text-sm text-justify">
 				This VM currently has serial console access disabled. You can enable it using the button
 				below.
 			</span>
 		{/if}
 
 		<Dialog.Footer class="flex justify-end">
-			<div class="flex w-full items-center justify-end gap-2">
+			<div class="flex w-full items-center justify-end gap-0">
 				{#if !vm?.serial}
 					<Button onclick={() => setSerial(true)} type="submit" size="sm">Enable</Button>
 				{:else}

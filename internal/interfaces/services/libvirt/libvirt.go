@@ -100,6 +100,7 @@ type LibvirtServiceInterface interface {
 
 	MigrateVNCToNativeFormat() error
 	MigrateIgnoreUMSRToNativeFormat() error
+	MigrateVirtio9PToNativeFormat() error
 }
 
 type LvDomain struct {
@@ -325,12 +326,28 @@ type Video struct {
 	Model VideoModel `xml:"model"`
 }
 
+type FilesystemSource struct {
+	Dir string `xml:"dir,attr"`
+}
+
+type FilesystemTarget struct {
+	Dir string `xml:"dir,attr"`
+}
+
+type Filesystem struct {
+	Type     string           `xml:"type,attr"`
+	Source   FilesystemSource `xml:"source"`
+	Target   FilesystemTarget `xml:"target"`
+	ReadOnly *struct{}        `xml:"readonly,omitempty"`
+}
+
 type Devices struct {
 	Disks       []Disk       `xml:"disk,omitempty"`
 	Interfaces  []Interface  `xml:"interface,omitempty"`
 	Controllers []Controller `xml:"controller,omitempty"`
 	Inputs      []Input      `xml:"input,omitempty"`
 	Serials     []Serial     `xml:"serial,omitempty"`
+	Filesystems []Filesystem `xml:"filesystem,omitempty"`
 	Graphics    *Graphics    `xml:"graphics,omitempty"`
 	Video       *Video       `xml:"video,omitempty"`
 }

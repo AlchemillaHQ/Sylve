@@ -34,15 +34,6 @@ func isValidFilesystemTargetName(target string) bool {
 	return filesystemTargetNameRegexp.MatchString(strings.TrimSpace(target))
 }
 
-func buildVirtio9PArg(index int, target string, sourcePath string, readOnly bool) string {
-	device := fmt.Sprintf("%s=%s", target, sourcePath)
-	if readOnly {
-		device += ",ro"
-	}
-
-	return fmt.Sprintf("-s %d:0,virtio-9p,%s", index, device)
-}
-
 func (s *Service) findFilesystemDatasetByGUID(
 	ctx context.Context,
 	datasetGUID string,
@@ -356,6 +347,16 @@ func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
 		}
 	}
 
+	root := doc.Root()
+	devicesEl := root.FindElement("devices")
+	if devicesEl == nil {
+		devicesEl = root.CreateElement("devices")
+	}
+
+	for _, el := range devicesEl.FindElements("filesystem") {
+		devicesEl.RemoveChild(el)
+	}
+
 	var vm vmModels.VM
 	if err := db.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
@@ -377,6 +378,28 @@ func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
 
 	for _, storage := range storages {
 		if !storage.Enable {
+			continue
+		}
+
+		if storage.Type == vmModels.VMStorageTypeFilesystem {
+			sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)
+			if err != nil {
+				return fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
+			}
+
+			fsEl := devicesEl.CreateElement("filesystem")
+			fsEl.CreateAttr("type", "mount")
+
+			srcEl := fsEl.CreateElement("source")
+			srcEl.CreateAttr("dir", sourcePath)
+
+			tgtEl := fsEl.CreateElement("target")
+			tgtEl.CreateAttr("dir", strings.TrimSpace(storage.FilesystemTarget))
+
+			if storage.ReadOnly {
+				fsEl.CreateElement("readonly")
+			}
+
 			continue
 		}
 
@@ -416,20 +439,6 @@ func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
 			}
 
 			diskValue = fmt.Sprintf("%s,ro", diskValue)
-		} else if storage.Type == vmModels.VMStorageTypeFilesystem {
-			sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)
-			if err != nil {
-				return fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
-			}
-
-			argValue = buildVirtio9PArg(
-				index,
-				strings.TrimSpace(storage.FilesystemTarget),
-				sourcePath,
-				storage.ReadOnly,
-			)
-			argValues = append(argValues, argValue)
-			continue
 		}
 
 		argValue = fmt.Sprintf("%s,%s", argCommon, diskValue)
@@ -567,6 +576,22 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 			strings.Contains(val, ",virtio-9p,") &&
 			strings.Contains(val, filePath) {
 			bhyveCommandline.RemoveChild(arg)
+		}
+	}
+
+	if storage.Type == vmModels.VMStorageTypeFilesystem {
+		root := doc.Root()
+		devicesEl := root.FindElement("devices")
+		if devicesEl != nil {
+			targetName := strings.TrimSpace(storage.FilesystemTarget)
+			for _, el := range devicesEl.FindElements("filesystem") {
+				tgtEl := el.FindElement("target")
+				if tgtEl != nil {
+					if tgtEl.SelectAttrValue("dir", "") == targetName {
+						devicesEl.RemoveChild(el)
+					}
+				}
+			}
 		}
 	}
 

@@ -5648,7 +5648,6 @@ msgstr "PCI डिवाइस संशोधित किए गए"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 msgid "PCI Devices"
 msgstr "PCI डिवाइस"
 
@@ -13850,3 +13849,13 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "This will delete <0>{0} snapshots</0>"
 msgstr ""
+
+#. 0: p.hostSocket; 1: (p.hostCpu ?? []).join(', ')
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+msgid "Socket {0}: [{1}]"
+msgstr ""
+
+#~ msgid ""
+#~ "\n"
+#~ "Pinned: {0}"
+#~ msgstr ""

@@ -105,6 +105,8 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		})
 	}
 
+	var filesystemEls []libvirtServiceInterfaces.Filesystem
+
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		sort.Slice(vm.Storages, func(i, j int) bool {
 			return vm.Storages[i].BootOrder < vm.Storages[j].BootOrder
@@ -133,18 +135,20 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 					return "", fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
 				}
 
-				bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-					{
-						Value: buildVirtio9PArg(
-							sIndex,
-							strings.TrimSpace(storage.FilesystemTarget),
-							sourcePath,
-							storage.ReadOnly,
-						),
+				fs := libvirtServiceInterfaces.Filesystem{
+					Type: "mount",
+					Source: libvirtServiceInterfaces.FilesystemSource{
+						Dir: sourcePath,
 					},
-				})
+					Target: libvirtServiceInterfaces.FilesystemTarget{
+						Dir: strings.TrimSpace(storage.FilesystemTarget),
+					},
+				}
+				if storage.ReadOnly {
+					fs.ReadOnly = &struct{}{}
+				}
 
-				sIndex++
+				filesystemEls = append(filesystemEls, fs)
 				continue
 			}
 
@@ -258,6 +262,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	devices.Interfaces = interfaces
+	devices.Filesystems = filesystemEls
 
 	var features libvirtServiceInterfaces.Features
 	if vm.APIC {
@@ -1281,6 +1286,83 @@ func (s *Service) MigrateIgnoreUMSRToNativeFormat() error {
 		}
 
 		logger.L.Info().Uint("rid", vm.RID).Msg("ignore_umsr_migration: migrated to native XML format")
+	}
+
+	return nil
+}
+
+func (s *Service) MigrateVirtio9PToNativeFormat() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vms, err := s.ListVMs()
+	if err != nil {
+		return fmt.Errorf("failed_to_list_vms_for_virtio9p_migration: %w", err)
+	}
+
+	for _, vm := range vms {
+		hasFilesystem := false
+		for _, storage := range vm.Storages {
+			if storage.Enable && storage.Type == vmModels.VMStorageTypeFilesystem {
+				hasFilesystem = true
+				break
+			}
+		}
+
+		if !hasFilesystem {
+			continue
+		}
+
+		migrationName := fmt.Sprintf("virtio9p_native_xml_format_1_%d", vm.RID)
+
+		var count int64
+		if err := s.DB.
+			Table("migrations").
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to check per-VM migration record")
+			continue
+		}
+
+		if count > 0 {
+			continue
+		}
+
+		shutoff, err := s.IsDomainShutOff(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to check domain state")
+			continue
+		}
+
+		if !shutoff {
+			continue
+		}
+
+		xml, err := s.GetVMXML(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to get VM XML")
+			continue
+		}
+
+		if !strings.Contains(xml, "virtio-9p") {
+			if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+				logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to record already-native VM")
+			}
+			continue
+		}
+
+		if err := s.syncVMDisksWithDB(s.DB, vm.RID); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to sync VM disks")
+			continue
+		}
+
+		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to record per-VM migration")
+			continue
+		}
+
+		logger.L.Info().Uint("rid", vm.RID).Msg("virtio9p_migration: migrated to native XML format")
 	}
 
 	return nil

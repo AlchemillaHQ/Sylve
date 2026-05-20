@@ -523,17 +523,18 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
-	err = s.DB.
+	if err := s.DB.
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
-		Update("ignore_umsr", ignore).Error
+		Update("ignore_umsr", ignore).Error; err != nil {
+		return fmt.Errorf("failed_to_update_ignore_umsr_in_db: %w", err)
+	}
 
-	err = s.WriteVMJson(rid)
-	if err != nil {
+	if err := s.WriteVMJson(rid); err != nil {
 		logger.L.Error().Err(err).Msg("Failed to write VM JSON after ignore MSR modification")
 	}
 
-	return err
+	return nil
 }
 
 func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {

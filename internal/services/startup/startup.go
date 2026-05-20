@@ -151,6 +151,10 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			logger.L.Warn().Err(err).Msg("IgnoreUMSR migration had issues")
 		}
 
+		if err := s.Libvirt.MigrateVirtio9PToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("Virtio-9P migration had issues")
+		}
+
 		go s.Libvirt.StoreVMUsage()
 	}
 

@@ -18,7 +18,7 @@
 	import { generateNanoId } from '$lib/utils/string';
 	import type { CellComponent, RowComponent } from 'tabulator-tables';
 	import { resource, watch } from 'runed';
-	import type { Row } from '$lib/types/components/tree-table';
+	import type { Column, Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
 	import { getContext } from 'svelte';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
@@ -141,6 +141,7 @@
 			port: data.vm?.vncPort,
 			bind: data.vm?.vncBind || '127.0.0.1',
 			password: data.vm?.vncPassword,
+			wait: data.vm?.vncWait || false,
 			open: false
 		},
 		pciDevices: {
@@ -157,6 +158,8 @@
 		() => vm,
 		() => {
 			if (vm) {
+				console.log(vm);
+
 				properties.cpu.sockets = vm.cpuSockets;
 				properties.cpu.cores = vm.cpuCores;
 				properties.cpu.threads = vm.cpuThreads;
@@ -168,6 +171,7 @@
 				properties.vnc.bind = vm.vncBind;
 				properties.vnc.password = vm.vncPassword;
 				properties.vnc.resolution = vm.vncResolution;
+				properties.vnc.wait = vm.vncWait || false;
 				properties.pciDevices.value = vm.pciDevices;
 			}
 		}
@@ -177,111 +181,190 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let query = $state('');
 
-	let table = $derived({
-		columns: [
-			{ title: 'Property', field: 'property' },
-			{
-				title: 'Value',
-				field: 'value',
-				formatter: (cell: CellComponent) => {
-					const row = cell.getRow();
-					const value = cell.getValue();
+	function getValue(
+		property: 'cpu' | 'ram' | 'vnc' | 'serial' | 'pci-devices' | 'tpm-emulation'
+	): string {
+		if (property === 'cpu') {
+			const s = properties.cpu.sockets || 0;
+			const c = properties.cpu.cores || 0;
+			const t = properties.cpu.threads || 0;
+			const total = s * c * t;
+			let label = `<span class="text-sm">${s} Socket × ${c} Core × ${t} Thread`;
+			if (total > 0) label += ` (${total} vCPU${total > 1 ? 's' : ''})`;
 
-					if (row.getData().property === 'PCI Devices') {
-						if (!Array.isArray(value) || value.length === 0) return '-';
+			const pinning = properties.cpu.pinning ?? [];
+			if (pinning.length > 0) {
+				const lines = pinning.map(
+					(p) => `Socket ${p.hostSocket}: [${(p.hostCpu ?? []).join(', ')}]`
+				);
+				label += `<br /><span class="text-muted-foreground text-xs">Pinned: ${lines.join(', ')}</span>`;
+			}
+			label += `</span>`;
 
-						const selected = pptDevices.current.filter((d) => value.includes(d.id));
-						const labels: string[] = [];
+			return label;
+		} else if (property === 'ram') {
+			return formatBytesBinary(properties.ram.value);
+		} else if (property === 'vnc') {
+			const enabled = properties.vnc.enabled;
 
-						for (const dev of selected) {
-							const [busStr, deviceStr, functionStr] = dev.deviceID.split('/');
-							const bus = Number(busStr);
-							const deviceC = Number(deviceStr);
-							const functionC = Number(functionStr);
+			const icon = enabled
+				? `icon-[mdi--check-circle] text-green-500`
+				: `icon-[mdi--close-circle] text-red-500`;
 
-							for (const pci of pciDevices.current) {
-								if (pci.bus === bus && pci.device === deviceC && pci['function'] === functionC) {
-									labels.push(`${pci.names.vendor} ${pci.names.device}`);
-								}
-							}
-						}
+			const wait = properties.vnc.wait
+				? `
+                    <span class="inline-flex items-center gap-1">
+                        <span class="icon-[mdi--timer-sand]"></span>
+                        <span>Wait</span>
+                    </span>
+                `
+				: '';
 
-						if (labels.length === 0) return '-';
+			return `
+            <span class="flex flex-col text-sm leading-tight gap-1">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1">
+                        <span class="${icon}"></span>
+                        <span>${enabled ? 'Enabled' : 'Disabled'}</span>
+                    </span>
 
-						return `<div class="flex flex-col gap-1">${labels
-							.map((t) => `<div>${t}</div>`)
-							.join('')}</div>`;
-					} else if (row.getData().property === 'VNC') {
-						return `
-                            <span class="flex flex-col text-sm leading-tight">
-                                <span>
-                                    ${properties.vnc.enabled ? 'Enabled' : 'Disabled'}
-                                </span>
-                                <span>
-                                    ${properties.vnc.resolution} / ${properties.vnc.port}
-                                </span>
-                                <span>
-                                    Bind: ${properties.vnc.bind || '127.0.0.1'}
-                                </span>
-                                <span >
-                                    ${properties.vnc.password || 'No Password'}
-                                </span>
-                            </span>
-                        `;
-					} else {
-						return value;
-					}
-				},
-				copyOnClick: (row: RowComponent) => {
-					try {
-						const property = row.getData().property;
-						if (property === 'VNC') {
-							return true;
-						}
+                    ${wait ? `<span class="text-muted-foreground">|</span>${wait}` : ''}
+                </div>
 
-						return false;
-					} catch (e) {
-						console.error(e);
-						return false;
+                <span>
+                    ${properties.vnc.resolution} / ${properties.vnc.port}
+                </span>
+
+                <span>
+                    Bind: ${properties.vnc.bind || '127.0.0.1'}
+                </span>
+
+                <span>
+                    ${properties.vnc.password || 'No Password'}
+                </span>
+            </span>
+        `;
+		} else if (property === 'serial') {
+			const enabled = vm?.serial;
+
+			const icon = enabled
+				? `icon-[mdi--check-circle] text-green-500`
+				: `icon-[mdi--close-circle] text-red-500`;
+
+			return `
+            <span class="inline-flex items-center gap-1">
+                <span class="${icon}"></span>
+                <span>${enabled ? 'Enabled' : 'Disabled'}</span>
+            </span>
+        `;
+		} else if (property === 'pci-devices') {
+			if (!Array.isArray(properties.pciDevices.value) || properties.pciDevices.value.length === 0)
+				return '-';
+
+			const selected = pptDevices.current.filter((d) =>
+				(properties.pciDevices.value as unknown as Array<string | number>)
+					.map(String)
+					.includes(String(d.id))
+			);
+			const labels: string[] = [];
+
+			for (const dev of selected) {
+				const [busStr, deviceStr, functionStr] = dev.deviceID.split('/');
+				const bus = Number(busStr);
+				const deviceC = Number(deviceStr);
+				const functionC = Number(functionStr);
+
+				for (const pci of pciDevices.current) {
+					if (pci.bus === bus && pci.device === deviceC && pci['function'] === functionC) {
+						labels.push(`${pci.names.vendor} ${pci.names.device}`);
 					}
 				}
 			}
-		],
-		rows: [
-			{
-				id: generateNanoId(`${properties.cpu.vCPUs}-vcpus`),
-				property: 'vCPUs',
-				value: properties.cpu.vCPUs
-			},
-			{
-				id: generateNanoId(`${properties.ram.value}-ram`),
-				property: 'RAM',
-				value: formatBytesBinary(properties.ram.value)
-			},
-			{
-				id: generateNanoId(`${properties.vnc.port}-vnc-port`),
-				property: 'VNC',
-				value: properties.vnc,
-				toCopy: properties.vnc.enabled
-					? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${properties.vnc.bind || window.location.hostname}:${properties.vnc.port}`
-					: ''
-			},
-			{
-				id: generateNanoId('serial'),
-				property: 'Serial Console',
-				value: vm?.serial ? 'Enabled' : 'Disabled'
-			},
-			{
-				id: generateNanoId(`${vm?.name}-pci-devices`),
-				property: 'PCI Devices',
-				value: properties.pciDevices.value || []
-			},
-			{
-				id: generateNanoId('tpm-emulation'),
-				property: 'TPM Emulation',
-				value: vm?.tpmEmulation ? 'Enabled' : 'Disabled'
-			}
-		]
+
+			if (labels.length === 0) return '-';
+
+			return `<div class="flex flex-col gap-1">${labels
+				.map((t) => `<div>${t}</div>`)
+				.join('')}</div>`;
+		} else if (property === 'tpm-emulation') {
+			const enabled = vm?.tpmEmulation;
+
+			const icon = enabled
+				? `icon-[mdi--check-circle] text-green-500`
+				: `icon-[mdi--close-circle] text-red-500`;
+
+			return `
+            <span class="inline-flex items-center gap-1">
+                <span class="${icon}"></span>
+                <span>${enabled ? 'Enabled' : 'Disabled'}</span>
+            </span>
+        `;
+		}
+
+		return '';
+	}
+
+	let table = $derived.by(() => {
+		return {
+			columns: [
+				{ title: 'Property', field: 'property' },
+				{
+					title: 'Value',
+					field: 'value',
+					copyOnClick: (row: RowComponent) => {
+						try {
+							const property = row.getData().property;
+							if (property === 'VNC') {
+								return true;
+							}
+
+							return false;
+						} catch (e) {
+							console.error(e);
+							return false;
+						}
+					},
+					formatter: (cell: CellComponent) => {
+						return cell.getValue();
+					}
+				}
+			] as Column[],
+			rows: [
+				{
+					id: generateNanoId(`${properties.cpu.vCPUs}-vcpus`),
+					property: 'vCPUs',
+					value: getValue('cpu')
+				},
+				{
+					id: generateNanoId(`${properties.ram.value}-ram`),
+					property: 'RAM',
+					value: getValue('ram')
+				},
+				{
+					id: generateNanoId(`${properties.vnc.port}-vnc-port`),
+					property: 'VNC',
+					value: getValue('vnc'),
+					toCopy: properties.vnc.enabled
+						? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${properties.vnc.bind || window.location.hostname}:${properties.vnc.port}`
+						: ''
+				},
+				{
+					id: generateNanoId('serial'),
+					property: 'Serial Console',
+					value: getValue('serial')
+				},
+				{
+					id: generateNanoId(`${vm?.name}-pci-devices`),
+					property: 'PCI Devices',
+					value: getValue('pci-devices')
+				},
+				{
+					id: generateNanoId('tpm-emulation'),
+					property: 'TPM Emulation',
+					value: getValue('tpm-emulation')
+				}
+			] as Row[]
+		};
 	});
 </script>
 

@@ -625,6 +625,12 @@
 						]}
 						bind:value={properties.emulation}
 						onChange={(value) => (properties.emulation = value as StorageEmulation)}
+						classes={{
+							parent: 'flex-1 space-y-1',
+							label: 'flex h-7 items-center whitespace-nowrap text-sm',
+							trigger:
+								'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+						}}
 					/>
 				{/if}
 
