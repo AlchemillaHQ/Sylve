@@ -51,9 +51,10 @@ type guestLifecycleExecPayload struct {
 }
 
 type Service struct {
-	DB      *gorm.DB
-	Libvirt *libvirt.Service
-	Jail    *jail.Service
+	DB          *gorm.DB
+	TelemetryDB *gorm.DB
+	Libvirt     *libvirt.Service
+	Jail        *jail.Service
 
 	createMu sync.Mutex
 
@@ -69,11 +70,12 @@ type Service struct {
 	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
 }
 
-func NewService(dbConn *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
+func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
 	s := &Service{
-		DB:      dbConn,
-		Libvirt: libvirtService,
-		Jail:    jailService,
+		DB:          dbConn,
+		TelemetryDB: telemetryDB,
+		Libvirt:     libvirtService,
+		Jail:        jailService,
 	}
 
 	if libvirtService != nil {
@@ -331,6 +333,22 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 
 	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).Updates(updates).Error; err != nil {
 		return err
+	}
+
+	if s.TelemetryDB != nil {
+		auditStatus := "success"
+		errMsg := ""
+		if runErr != nil {
+			auditStatus = "failed"
+			errMsg = runErr.Error()
+		}
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "", taskID, auditStatus, errMsg, map[string]any{
+			"guestType": task.GuestType,
+			"guestId":   task.GuestID,
+			"action":    task.Action,
+			"status":    auditStatus,
+			"error":     errMsg,
+		})
 	}
 
 	return runErr

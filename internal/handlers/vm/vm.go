@@ -738,7 +738,7 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 
 		username := strings.TrimSpace(c.GetString("Username"))
 
-		_, outcome, err := lifecycleService.RequestAction(
+		task, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeVM,
 			uint(ridInt),
@@ -775,6 +775,11 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 			})
 			return
+		}
+
+		if task != nil {
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "vm_"+action)
 		}
 
 		message := "vm_action_queued"

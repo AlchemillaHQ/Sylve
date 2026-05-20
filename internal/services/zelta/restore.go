@@ -390,6 +390,21 @@ func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err err
 	if saveErr := s.DB.Save(event).Error; saveErr != nil {
 		logger.L.Warn().Err(saveErr).Uint("event_id", event.ID).Msg("failed_to_finalize_restore_event")
 	}
+
+	if event.JobID != nil && s.TelemetryDB != nil {
+		auditStatus := "success"
+		errMsg := ""
+		if err != nil {
+			auditStatus = "failed"
+			errMsg = err.Error()
+		}
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_restore", *event.JobID, auditStatus, errMsg, map[string]any{
+			"eventId": event.ID,
+			"status":  auditStatus,
+			"error":   errMsg,
+		})
+	}
+
 	s.emitLeftPanelRefresh(fmt.Sprintf("restore_event_finalized_%d", event.ID))
 }
 

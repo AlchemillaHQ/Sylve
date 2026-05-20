@@ -281,6 +281,9 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 			return
 		}
 
+		c.Set("AuditAsyncJobID", job.ID)
+		c.Set("AuditAsyncJobType", "backup_job_run")
+
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "backup_job_run_started",
@@ -646,6 +649,9 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 			})
 			return
 		}
+
+		c.Set("AuditAsyncJobID", job.ID)
+		c.Set("AuditAsyncJobType", "backup_restore")
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",

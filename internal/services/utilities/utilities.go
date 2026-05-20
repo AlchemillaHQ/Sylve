@@ -34,6 +34,7 @@ var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
 
 type Service struct {
 	DB           *gorm.DB
+	TelemetryDB  *gorm.DB
 	BTTClient    *torrent.Session
 	GrabClient   *grab.Client
 	GrabInsecure *grab.Client
@@ -63,6 +64,7 @@ type Service struct {
 
 func NewUtilitiesService(
 	dbConn *gorm.DB,
+	telemetryDB *gorm.DB,
 	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
 	jailService jailServiceInterfaces.JailServiceInterface,
 ) utilitiesServiceInterfaces.UtilitiesServiceInterface {
@@ -98,6 +100,7 @@ func NewUtilitiesService(
 
 	return &Service{
 		DB:                 dbConn,
+		TelemetryDB:        telemetryDB,
 		BTTClient:          session,
 		GrabClient:         secureClient,
 		GrabInsecure:       insecureClient,

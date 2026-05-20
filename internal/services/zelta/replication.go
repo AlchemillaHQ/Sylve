@@ -1666,6 +1666,20 @@ func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent
 		"completed_at": event.CompletedAt,
 	}).Error
 
+	if event.PolicyID != nil && s.TelemetryDB != nil {
+		auditStatus := "success"
+		errMsg := ""
+		if runErr != nil {
+			auditStatus = "failed"
+			errMsg = runErr.Error()
+		}
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "replication_policy_run", *event.PolicyID, auditStatus, errMsg, map[string]any{
+			"eventId": event.ID,
+			"status":  auditStatus,
+			"error":   errMsg,
+		})
+	}
+
 	s.emitLeftPanelRefresh(fmt.Sprintf("replication_event_finalized_%d", event.ID))
 }
 
@@ -2331,6 +2345,20 @@ func (s *Service) runPolicyOwnershipTransition(
 		if completed {
 			completedAt := time.Now().UTC()
 			event.CompletedAt = &completedAt
+
+			if s.TelemetryDB != nil {
+				auditStatus := "success"
+				errMsg := ""
+				if transitionErr != nil {
+					auditStatus = "failed"
+					errMsg = transitionErr.Error()
+				}
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "replication_policy_failover", policy.ID, auditStatus, errMsg, map[string]any{
+					"eventId": eventID,
+					"status":  auditStatus,
+					"error":   errMsg,
+				})
+			}
 		}
 		_, _ = s.Cluster.CreateOrUpdateReplicationEvent(event, false)
 	}

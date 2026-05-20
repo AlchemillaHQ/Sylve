@@ -34,7 +34,7 @@ type DownloadPostProcPayload struct {
 }
 
 type UtilitiesServiceInterface interface {
-	DownloadFile(req DownloadFileRequest) error
+	DownloadFile(req DownloadFileRequest) (uint, error)
 	ListDownloads() ([]utilitiesModels.Downloads, error)
 	GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.Downloads, *utilitiesModels.DownloadedFile, error)
 	SyncDownloadProgress() error

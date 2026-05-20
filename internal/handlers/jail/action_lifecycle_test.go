@@ -57,7 +57,7 @@ func setupJailActionHandlerTest(
 		t.Fatalf("failed to setup test queue: %v", err)
 	}
 
-	lifecycleSvc := lifecycle.NewService(dbConn, nil, nil)
+	lifecycleSvc := lifecycle.NewService(dbConn, nil, nil, nil)
 	mutationChecker := stubProtectedJailMutationChecker{
 		allowed: allowed,
 		err:     mutationErr,

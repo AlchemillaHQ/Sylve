@@ -49,12 +49,13 @@ type backupJobPayload struct {
 const backupJobQueueName = "zelta-backup-run"
 
 type Service struct {
-	DB      *gorm.DB
-	Cluster *cluster.Service
-	Jail    jailServiceInterfaces.JailServiceInterface
-	Network networkServiceInterfaces.NetworkServiceInterface
-	VM      libvirtServiceInterfaces.LibvirtServiceInterface
-	GZFS    *gzfs.Client
+	DB          *gorm.DB
+	TelemetryDB *gorm.DB
+	Cluster     *cluster.Service
+	Jail        jailServiceInterfaces.JailServiceInterface
+	Network     networkServiceInterfaces.NetworkServiceInterface
+	VM          libvirtServiceInterfaces.LibvirtServiceInterface
+	GZFS        *gzfs.Client
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -85,6 +86,7 @@ type BackupEventsResponse struct {
 
 func NewService(
 	db *gorm.DB,
+	telemetryDB *gorm.DB,
 	clusterService *cluster.Service,
 	jailService jailServiceInterfaces.JailServiceInterface,
 	networkService networkServiceInterfaces.NetworkServiceInterface,
@@ -93,6 +95,7 @@ func NewService(
 ) *Service {
 	return &Service{
 		DB:                 db,
+		TelemetryDB:        telemetryDB,
 		Cluster:            clusterService,
 		Jail:               jailService,
 		Network:            networkService,
@@ -1665,6 +1668,20 @@ func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr e
 
 	if err := s.DB.Save(event).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("event_id", event.ID).Msg("failed_to_finalize_backup_event")
+	}
+
+	if event.JobID != nil && s.TelemetryDB != nil {
+		auditStatus := "success"
+		errMsg := ""
+		if runErr != nil {
+			auditStatus = "failed"
+			errMsg = runErr.Error()
+		}
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_job_run", *event.JobID, auditStatus, errMsg, map[string]any{
+			"eventId": event.ID,
+			"status":  auditStatus,
+			"error":   errMsg,
+		})
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("backup_event_finalized_%d", event.ID))

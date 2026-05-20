@@ -430,6 +430,20 @@ func (s *Service) runRestoreFromTargetVM(
 			output = current.Output
 		}
 		s.finalizeRestoreEvent(&event, retErr, output)
+
+		if s.TelemetryDB != nil {
+			auditStatus := "success"
+			errMsg := ""
+			if retErr != nil {
+				auditStatus = "failed"
+				errMsg = retErr.Error()
+			}
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_target_restore", target.ID, auditStatus, errMsg, map[string]any{
+				"eventId": event.ID,
+				"status":  auditStatus,
+				"error":   errMsg,
+			})
+		}
 	}()
 
 	restoreNetwork := true
@@ -853,6 +867,13 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 
 	if ownsEvent {
 		s.finalizeRestoreEvent(&event, nil, output)
+
+		if s.TelemetryDB != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_target_restore", target.ID, "success", "", map[string]any{
+				"eventId": event.ID,
+				"status":  "success",
+			})
+		}
 	} else {
 		appendEventOutput(fmt.Sprintf("vm_dataset_restore_complete: %s -> %s", remoteEndpoint, destinationDataset))
 	}

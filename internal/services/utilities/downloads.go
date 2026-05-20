@@ -190,7 +190,7 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 	return "", fmt.Errorf("unsupported_download_type")
 }
 
-func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileRequest) error {
+func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileRequest) (uint, error) {
 	var fileName string
 	if req.Filename != nil && *req.Filename != "" {
 		fileName = *req.Filename
@@ -222,11 +222,14 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 	url := req.URL
 	downloadType := req.DownloadType
 
-	var existing utilitiesModels.Downloads
+	exists, err := utils.Exists[utilitiesModels.Downloads](s.DB, "url = ?", url)
+	if err != nil {
+		return 0, err
+	}
 
-	if s.DB.Where("url = ?", url).First(&existing).RowsAffected > 0 {
+	if exists {
 		logger.L.Info().Msgf("Download already exists: %s", url)
-		return fmt.Errorf("url_already_exists")
+		return 0, fmt.Errorf("url_already_exists")
 	}
 
 	tmpUUID := utils.GenerateDeterministicUUID(url)
@@ -250,7 +253,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 
 		if err := s.DB.Create(&download).Error; err != nil {
 			logger.L.Error().Msgf("Failed to create download record: %v", err)
-			return err
+			return 0, err
 		}
 
 		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
@@ -260,10 +263,10 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		if err != nil {
 			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
 			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
-			return err
+			return 0, err
 		}
 
-		return nil
+		return download.ID, nil
 	} else if valid.IsURL(url) {
 		uuid := utils.GenerateDeterministicUUID(url)
 		destDir := config.GetDownloadsPath("http")
@@ -273,7 +276,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		if fileName != "" {
 			err := utils.IsValidFilename(fileName)
 			if err != nil {
-				return fmt.Errorf("invalid_filename: %w", err)
+				return 0, fmt.Errorf("invalid_filename: %w", err)
 			}
 
 			finalName = fileName
@@ -286,7 +289,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 
 			finalName = strings.ReplaceAll(finalName, " ", "_")
 			if finalName == "" {
-				return fmt.Errorf("invalid_filename")
+				return 0, fmt.Errorf("invalid_filename")
 			}
 		}
 
@@ -295,7 +298,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		if _, err := os.Stat(filePath); err == nil {
 			err := os.Remove(filePath)
 			if err != nil {
-				return fmt.Errorf("failed_to_remove_incomplete_file: %w", err)
+				return 0, fmt.Errorf("failed_to_remove_incomplete_file: %w", err)
 			}
 		}
 
@@ -316,8 +319,8 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
-			fmt.Printf("Failed to create download record: %+v\n", err)
-			return err
+			logger.L.Error().Msgf("Failed to create download record: %v", err)
+			return 0, err
 		}
 
 		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
@@ -327,13 +330,13 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		if err != nil {
 			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
 			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
-			return err
+			return 0, err
 		}
 
-		return nil
+		return download.ID, nil
 	} else if utils.IsAbsPath(url) {
 		if _, err := os.Stat(url); os.IsNotExist(err) {
-			return fmt.Errorf("file_not_found")
+			return 0, fmt.Errorf("file_not_found")
 		}
 
 		var finalName string
@@ -341,14 +344,14 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		if fileName != "" {
 			err := utils.IsValidFilename(fileName)
 			if err != nil {
-				return fmt.Errorf("invalid_filename: %w", err)
+				return 0, fmt.Errorf("invalid_filename: %w", err)
 			}
 
 			finalName = fileName
 		} else {
 			finalName = path.Base(url)
 			if finalName == "" {
-				return fmt.Errorf("invalid_filename")
+				return 0, fmt.Errorf("invalid_filename")
 			}
 		}
 
@@ -361,7 +364,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			if _, err := os.Stat(destPath); err == nil {
 				err := os.Remove(destPath)
 				if err != nil {
-					return fmt.Errorf("failed_to_remove_existing_file: %w", err)
+					return 0, fmt.Errorf("failed_to_remove_existing_file: %w", err)
 				}
 			}
 		}
@@ -383,7 +386,8 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
-			return fmt.Errorf("failed_to_create_download_record: %w", err)
+			logger.L.Error().Msgf("Failed to create download record: %v", err)
+			return 0, fmt.Errorf("failed_to_create_download_record: %w", err)
 		}
 
 		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
@@ -393,13 +397,13 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		if err != nil {
 			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
 			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
-			return err
+			return 0, err
 		}
 
-		return nil
+		return download.ID, nil
 	}
 
-	return fmt.Errorf("invalid_url")
+	return 0, fmt.Errorf("invalid_url")
 }
 
 func (s *Service) StartDownload(id *uint) error {
@@ -426,6 +430,13 @@ func (s *Service) StartDownload(id *uint) error {
 			download.Error = err.Error()
 			if saveErr := s.DB.Save(download).Error; saveErr != nil {
 				logger.L.Error().Uint("download_id", *id).Err(saveErr).Msg("Failed to persist failed status")
+			}
+			if s.TelemetryDB != nil {
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", err.Error(), map[string]any{
+					"downloadId": download.ID,
+					"status":     "failed",
+					"error":      err.Error(),
+				})
 			}
 			return err
 		}
@@ -469,6 +480,13 @@ func (s *Service) StartDownload(id *uint) error {
 					"status": download.Status,
 					"error":  download.Error,
 				})
+				if s.TelemetryDB != nil {
+					db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", err.Error(), map[string]any{
+						"downloadId": download.ID,
+						"status":     "failed",
+						"error":      err.Error(),
+					})
+				}
 				return fmt.Errorf("file_copy_failed: %w", err)
 			}
 		} else {
@@ -480,6 +498,13 @@ func (s *Service) StartDownload(id *uint) error {
 					"status": download.Status,
 					"error":  download.Error,
 				})
+				if s.TelemetryDB != nil {
+					db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", err.Error(), map[string]any{
+						"downloadId": download.ID,
+						"status":     "failed",
+						"error":      err.Error(),
+					})
+				}
 				return fmt.Errorf("path_source_missing: %w", err)
 			}
 		}
@@ -493,6 +518,13 @@ func (s *Service) StartDownload(id *uint) error {
 				"status": download.Status,
 				"error":  download.Error,
 			})
+			if s.TelemetryDB != nil {
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", err.Error(), map[string]any{
+					"downloadId": download.ID,
+					"status":     "failed",
+					"error":      err.Error(),
+				})
+			}
 			return fmt.Errorf("file_stat_failed: %w", err)
 		}
 
@@ -516,6 +548,13 @@ func (s *Service) StartDownload(id *uint) error {
 		}).Error; err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("failed_to_update_download_record")
 			return fmt.Errorf("failed_to_update_download_record: %w", err)
+		}
+
+		if download.Status == utilitiesModels.DownloadStatusDone && s.TelemetryDB != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
+				"downloadId": download.ID,
+				"status":     "success",
+			})
 		}
 
 		if needPostProc {
@@ -670,7 +709,7 @@ func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath str
 	d.Progress = 100
 	d.ExtractedPath = extractedPath
 
-	return s.DB.Model(d).Select("Status", "Progress", "ExtractedPath", "Name", "Path").
+	err := s.DB.Model(d).Select("Status", "Progress", "ExtractedPath", "Name", "Path").
 		Updates(map[string]any{
 			"name":           d.Name,
 			"path":           d.Path,
@@ -678,13 +717,32 @@ func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath str
 			"progress":       d.Progress,
 			"extracted_path": d.ExtractedPath,
 		}).Error
+
+	if err == nil && s.TelemetryDB != nil {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", d.ID, "success", "", map[string]any{
+			"downloadId": d.ID,
+			"status":     "success",
+		})
+	}
+
+	return err
 }
 
 func (s *Service) failDownload(d *utilitiesModels.Downloads, cause error) error {
 	d.Status = "failed"
 	d.Error = cause.Error()
-	return s.DB.Model(d).Select("Status", "Error").
+	err := s.DB.Model(d).Select("Status", "Error").
 		Updates(map[string]any{"status": d.Status, "error": d.Error}).Error
+
+	if err == nil && s.TelemetryDB != nil {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", d.ID, "failed", cause.Error(), map[string]any{
+			"downloadId": d.ID,
+			"status":     "failed",
+			"error":      cause.Error(),
+		})
+	}
+
+	return err
 }
 
 func (s *Service) SyncDownloadProgress() error {
@@ -752,6 +810,14 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 
 	if err != nil {
 		logger.L.Error().Err(err).Msgf("Failed to update database for download %s", download.UUID)
+		return
+	}
+
+	if isFinished && s.TelemetryDB != nil {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
+			"downloadId": download.ID,
+			"status":     "success",
+		})
 	}
 }
 
@@ -800,6 +866,13 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 
 		if failed {
 			s.DB.Model(download).Select("Progress", "Size", "Error", "Status").Updates(download)
+			if s.TelemetryDB != nil {
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
+					"downloadId": download.ID,
+					"status":     "failed",
+					"error":      download.Error,
+				})
+			}
 		} else {
 			s.DB.Model(download).Select("Progress", "Size", "Error").Updates(download)
 		}
@@ -829,6 +902,35 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 		download.Error = "no_active_http_response"
 		download.Status = "failed"
 		s.DB.Model(download).Select("Error", "Status").Updates(download)
+		if s.TelemetryDB != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
+				"downloadId": download.ID,
+				"status":     "failed",
+				"error":      download.Error,
+			})
+		}
+		return
+	}
+
+	// HTTP downloads that show progress but have no active grab response were
+	// interrupted (e.g. daemon restart); mark them as failed.
+	if download.Status == utilitiesModels.DownloadStatusPending &&
+		download.Progress > 0 &&
+		download.CreatedAt.Before(freshWindow) {
+		logger.L.Warn().Msgf(
+			"syncHTTP: interrupted HTTP download with no active response (ID=%d), marking failed",
+			download.ID,
+		)
+		download.Error = "download_interrupted"
+		download.Status = "failed"
+		s.DB.Model(download).Select("Error", "Status").Updates(download)
+		if s.TelemetryDB != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
+				"downloadId": download.ID,
+				"status":     "failed",
+				"error":      download.Error,
+			})
+		}
 		return
 	}
 
@@ -843,6 +945,12 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 			download.Status = utilitiesModels.DownloadStatusDone
 			if err := s.DB.Model(download).Select("Progress", "Size", "Status").Updates(download).Error; err != nil {
 				logger.L.Error().Msgf("syncHTTP: failed to finalize processing download ID=%d: %v", download.ID, err)
+			}
+			if s.TelemetryDB != nil {
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
+					"downloadId": download.ID,
+					"status":     "success",
+				})
 			}
 			return
 		}
@@ -874,6 +982,13 @@ func (s *Service) syncPath(download *utilitiesModels.Downloads) {
 				download.Error = "failed_to_enqueue_start_job"
 				download.Status = utilitiesModels.DownloadStatusFailed
 				s.DB.Model(download).Select("Error", "Status").Updates(download)
+				if s.TelemetryDB != nil {
+					db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
+						"downloadId": download.ID,
+						"status":     "failed",
+						"error":      download.Error,
+					})
+				}
 			}
 		}
 	}

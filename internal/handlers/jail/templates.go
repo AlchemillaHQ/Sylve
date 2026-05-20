@@ -178,7 +178,7 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		_, _, err = lifecycleService.RequestActionWithPayload(
+		task, _, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeJailTemplate,
 			uint(ctID),
@@ -206,6 +206,11 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 				Error:   err.Error(),
 			})
 			return
+		}
+
+		if task != nil {
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "jail_template_convert")
 		}
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
@@ -263,7 +268,7 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		_, _, err = lifecycleService.RequestActionWithPayload(
+		task, _, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeJailTemplate,
 			uint(templateID),
@@ -291,6 +296,11 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 				Error:   err.Error(),
 			})
 			return
+		}
+
+		if task != nil {
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "jail_template_create")
 		}
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{

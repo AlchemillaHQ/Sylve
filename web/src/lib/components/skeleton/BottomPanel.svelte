@@ -132,6 +132,9 @@
 	useInterval(() => 2000, {
 		callback: () => {
 			activeLifecycleTasks.refetch();
+			if (auditRecords.current?.some((r) => r.status === 'pending')) {
+				auditRecords.refetch();
+			}
 		}
 	});
 
@@ -168,20 +171,34 @@
 		'/api/vnc': 'VNC',
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
 		'/api/disk/wipe': 'Disk - Wipe',
+		'/api/network/object/bulk-delete': 'Network Object - Bulk Delete',
 		'/api/network/object': 'Network Object',
+		'/api/network/dhcp/config': 'DHCP Config',
 		'/api/network/dhcp/lease/dynamic': 'DHCP Lease - Delete Dynamic',
 		'/api/network/dhcp/range': 'DHCP Range',
 		'/api/network/dhcp/lease': 'DHCP Lease',
 		'/api/system/file-explorer/delete': 'File Explorer - Delete',
+		'/api/system/file-explorer/copy-or-move-batch': 'File Explorer - Batch Copy/Move',
+		'/api/system/file-explorer/copy-or-move': 'File Explorer - Copy/Move',
+		'/api/system/file-explorer/rename': 'File Explorer - Rename',
+		'/api/system/file-explorer/upload': 'File Explorer - Upload',
 		'/api/system/file-explorer': 'File Explorer',
+		'/api/system/ppt-devices/prepare': 'PCI Passthrough - Prepare',
+		'/api/system/ppt-devices/import': 'PCI Passthrough - Import',
 		'/api/system/ppt-devices': 'PCI Passthrough',
 		'/api/zfs/datasets/filesystem': 'ZFS Filesystem',
+		'/api/zfs/datasets/volume/flash': 'ZFS Volume - Flash',
 		'/api/zfs/datasets/volume': 'ZFS Volume',
 		'/api/samba/shares': 'Samba Share',
+		'/api/auth/groups/users': 'Auth Group - Members',
 		'/api/auth/groups': 'Auth Group',
+		'/api/auth/users/import': 'Auth User - Import',
 		'/api/auth/users': 'Auth User',
 		'/api/samba/config': 'Samba Config - Edit',
 		'/api/zfs/datasets/bulk-delete': 'ZFS Dataset - Bulk Delete',
+		'/api/zfs/datasets/bulk-delete-by-names': 'ZFS Dataset - Bulk Delete By Names',
+		'/api/zfs/datasets/snapshot/periodic': 'ZFS Periodic Snapshot',
+		'/api/zfs/datasets/snapshot/rollback': 'ZFS Snapshot - Rollback',
 		'/api/zfs/datasets/snapshot': 'ZFS Snapshot',
 		'/api/vm/start': 'VM - Start',
 		'/api/vm/stop': 'VM - Stop',
@@ -195,6 +212,7 @@
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
 		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
+		'/api/utilities/downloads/bulk-delete': 'Downloader - Bulk Delete',
 		'/api/utilities/download': 'Downloader',
 		'/api/vm/storage/detach': 'VM Storage - Detach',
 		'/api/vm/storage/attach': 'VM Storage - Attach',
@@ -202,10 +220,30 @@
 		'/api/vm/network/attach': 'VM Network - Attach',
 		'/api/vm/snapshots/rollback': 'VM Snapshot - Rollback',
 		'/api/vm/snapshots': 'VM Snapshot',
+		'/api/vm/storage/update': 'VM Storage - Update',
+		'/api/vm/network/update': 'VM Network - Update',
+		'/api/vm/hardware/cpu': 'VM Hardware - CPU',
+		'/api/vm/hardware/ram': 'VM Hardware - RAM',
+		'/api/vm/hardware/vnc': 'VM Hardware - VNC',
+		'/api/vm/hardware/ppt': 'VM Hardware - Passthrough',
+		'/api/vm/options/wol': 'VM Options - Wake-on-LAN',
+		'/api/vm/options/boot-order': 'VM Options - Boot Order',
+		'/api/vm/options/clock': 'VM Options - Clock',
+		'/api/vm/options/serial-console': 'VM Options - Serial Console',
+		'/api/vm/options/shutdown-wait-time': 'VM Options - Shutdown Wait Time',
+		'/api/vm/options/cloud-init': 'VM Options - Cloud-Init',
+		'/api/vm/options/boot-rom': 'VM Options - Boot ROM',
+		'/api/vm/options/extra-bhyve-options': 'VM Options - Extra Bhyve',
+		'/api/vm/options/ignore-umsrs': 'VM Options - Ignore UMSRs',
+		'/api/vm/options/qemu-guest-agent': 'VM Options - QEMU Guest Agent',
+		'/api/vm/options/tpm': 'VM Options - TPM',
 		'/api/vm': 'VM',
 		'/api/network/manual-switch': 'Manual Switch',
 		'/api/zfs/pools': 'ZFS Pool',
+		'/api/zfs/pools/:id/scrub': 'ZFS Pool - Scrub',
+		'/api/zfs/pools/:id/replace-device': 'ZFS Pool - Replace Device',
 		'/api/disk/create-partitions': 'Disk - Create Partitions',
+		'/api/disk/delete-partition': 'Disk - Delete Partition',
 		'/api/jail/snapshots/rollback': 'Jail Snapshot - Rollback',
 		'/api/jail/snapshots': 'Jail Snapshot',
 		'/api/jail/network/inheritance': 'Jail - Network Inherit',
@@ -216,6 +254,20 @@
 		'/api/jail/templates/convert': 'Create Jail Template - From Jail',
 		'/api/jail/templates/create': 'Create Jail - Template',
 		'/api/jail/templates': 'Jail Template',
+		'/api/jail/action/restart': 'Jail - Restart',
+		'/api/jail/bootstrap': 'Jail - Bootstrap',
+		'/api/jail/memory': 'Jail - Update Memory',
+		'/api/jail/cpu': 'Jail - Update CPU',
+		'/api/jail/resource-limits': 'Jail - Resource Limits',
+		'/api/jail/options/wol': 'Jail Options - Wake-on-LAN',
+		'/api/jail/options/boot-order': 'Jail Options - Boot Order',
+		'/api/jail/options/fstab': 'Jail Options - FSTab',
+		'/api/jail/options/resolv-conf': 'Jail Options - Resolv.conf',
+		'/api/jail/options/devfs-rules': 'Jail Options - DevFS Rules',
+		'/api/jail/options/additional-options': 'Jail Options - Additional',
+		'/api/jail/options/allowed-options': 'Jail Options - Allowed',
+		'/api/jail/options/metadata': 'Jail Options - Metadata',
+		'/api/jail/options/lifecycle-hooks': 'Jail Options - Lifecycle Hooks',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
@@ -226,22 +278,61 @@
 		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
 		'/api/system/basic-settings/services/firewall/toggle': 'Toggle - Firewall',
 		'/api/system/basic-settings/services/wireguard/toggle': 'Toggle - WireGuard',
+		'/api/network/firewall/traffic/reorder': 'Firewall - Traffic Reorder',
 		'/api/network/firewall/traffic': 'Firewall - Traffic Rule',
+		'/api/network/firewall/nat/reorder': 'Firewall - NAT Reorder',
 		'/api/network/firewall/nat': 'Firewall - NAT Rule',
 		'/api/network/firewall/advanced': 'Firewall - Advanced Rules',
-		'/api/network/wireguard/server': 'WireGuard - Server',
+		'/api/network/route/suggest-from-nat': 'Static Route - Suggest From NAT',
+		'/api/network/route': 'Static Route',
 		'/api/network/wireguard/server/toggle': 'WireGuard - Server Toggle',
+		'/api/network/wireguard/server/peer/toggle': 'WireGuard - Peer Toggle',
+		'/api/network/wireguard/server/peer/bulk-delete': 'WireGuard - Peer Bulk Delete',
 		'/api/network/wireguard/server/peer': 'WireGuard - Server Peer',
-		'/api/network/wireguard/clients': 'WireGuard - Client',
+		'/api/network/wireguard/server': 'WireGuard - Server',
 		'/api/network/wireguard/clients/toggle': 'WireGuard - Client Toggle',
+		'/api/network/wireguard/clients': 'WireGuard - Client',
 		'/api/cluster/notes/bulk-delete': 'DC Notes - Bulk Delete',
 		'/api/cluster/notes': 'DC Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
 		'/api/cluster/backups/targets/validate': 'DC Backup Target - Validate',
+		'/api/cluster/backups/targets/:id/restore': 'DC Backup Target - Restore',
 		'/api/cluster/backups/targets': 'DC Backup Target',
 		'/api/cluster/backups/jobs/run': 'DC Backup Job - Run',
+		'/api/cluster/backups/jobs/:id/restore': 'DC Backup Job - Restore',
 		'/api/cluster/backups/jobs': 'DC Backup Job',
-		'/api/cluster': 'Cluster'
+		'/api/cluster/replication/policies/run': 'DC Replication Policy - Run',
+		'/api/cluster/replication/policies/failover': 'DC Replication Policy - Failover',
+		'/api/cluster/replication/policies': 'DC Replication Policy',
+		'/api/cluster/join': 'Cluster - Join',
+		'/api/cluster/accept-join': 'Cluster - Accept Join',
+		'/api/cluster/resync-state': 'Cluster - Resync State',
+		'/api/cluster/remove-peer': 'Cluster - Remove Peer',
+		'/api/cluster': 'Cluster',
+		'/api/iscsi/targets/:id/portals': 'iSCSI Target - Add Portal',
+		'/api/iscsi/targets/portals/:id': 'iSCSI Target - Remove Portal',
+		'/api/iscsi/targets/:id/luns': 'iSCSI Target - Add LUN',
+		'/api/iscsi/targets/luns/:id': 'iSCSI Target - Remove LUN',
+		'/api/iscsi/targets': 'iSCSI Target',
+		'/api/iscsi/initiators': 'iSCSI Initiator',
+		'/api/iscsi': 'iSCSI',
+		'/api/notifications/transports/:id/test': 'Notification Transport - Test',
+		'/api/notifications/transports': 'Notification Transport',
+		'/api/notifications/rules': 'Notification Rule',
+		'/api/notifications/:id/dismiss': 'Notification - Dismiss',
+		'/api/notifications': 'Notification',
+		'/api/basic/system/reboot': 'System - Reboot',
+		'/api/basic/initialize': 'System - Initialize',
+		'/api/basic': 'Basic Settings',
+		'/api/health': 'Health Check'
+	});
+
+	let vmNameById = $derived.by(() => {
+		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
+	});
+
+	let jailNameByCtId = $derived.by(() => {
+		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
 	});
 
 	let records = $derived.by(() => {
@@ -254,8 +345,13 @@
 
 			let resolvedAction = method;
 
+			const normalizedPath = path
+				.split('/')
+				.map((s) => (/^\d+$/.test(s) ? ':id' : s))
+				.join('/');
+
 			const matchedEntry = Object.entries(pathToActionMap).find(([prefix]) =>
-				path.startsWith(prefix)
+				normalizedPath.startsWith(prefix)
 			);
 
 			if (matchedEntry) {
@@ -297,6 +393,22 @@
 				resolvedAction = 'Login';
 			}
 
+			if (path.startsWith('/api/vm/') && !path.startsWith('/api/vm/templates/')) {
+				const last = path.split('/').pop() || '';
+				const rid = Number(last);
+				if (Number.isFinite(rid) && rid > 0) {
+					const name = vmNameById.get(rid);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/jail/') && !path.startsWith('/api/jail/templates/') && !path.startsWith('/api/jail/bootstrap')) {
+				const last = path.split('/').pop() || '';
+				const ctId = Number(last);
+				if (Number.isFinite(ctId) && ctId > 0) {
+					const name = jailNameByCtId.get(ctId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			}
+
 			return {
 				...recordCopy,
 				resolvedAction
@@ -314,13 +426,6 @@
 	});
 
 	let lifecycleActive = $derived(activeLifecycleCount > 0);
-	let vmNameById = $derived.by(() => {
-		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
-	});
-
-	let jailNameByCtId = $derived.by(() => {
-		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
-	});
 
 	let templateNameById = $derived.by(() => {
 		return new Map(
@@ -435,6 +540,10 @@
 				return 'Bad Request';
 			case 'server_error':
 				return 'Error';
+			case 'pending':
+				return 'In Progress';
+			case 'failed':
+				return 'Failed';
 			default:
 				return status;
 		}
@@ -444,7 +553,7 @@
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
 		<div
-			class="relative flex h-full flex-col overflow-hidden"
+			class="relative flex h-full flex-col"
 			transition:fade|global={{ duration: 400 }}
 		>
 			{#if activeLifecycleCount > 0}
@@ -467,7 +576,8 @@
 				</div>
 			{/if}
 
-			<Table.Root class="w-full table-auto border-collapse">
+			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
+				<Table.Root class="w-full table-auto border-collapse">
 				<Table.Header class="bg-background sticky top-0 z-50">
 					<Table.Row class="dark:hover:bg-background ">
 						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
@@ -509,7 +619,7 @@
 					</Table.Row>
 				</Table.Header>
 
-				<Table.Body class="grow overflow-auto pb-32">
+				<Table.Body class="pb-32">
 					{#each records as record, i (i)}
 						<Table.Row>
 							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
@@ -558,12 +668,23 @@
 									}
 								}}
 							>
-								{formatStatus(record.status)}
+								<div class="flex items-center gap-1">
+									{#if record.status === 'pending'}
+										<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
+										></span>
+									{:else if record.status === 'failed'}
+										<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
+									{/if}
+									<span class={record.status === 'failed' ? 'text-destructive' : ''}>
+										{formatStatus(record.status)}
+									</span>
+								</div>
 							</Table.Cell>
 						</Table.Row>
 					{/each}
 				</Table.Body>
 			</Table.Root>
+			</div>
 		</div>
 	</Tabs.Content>
 </Tabs.Root>

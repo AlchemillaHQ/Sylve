@@ -10,7 +10,6 @@ package libvirt
 
 import (
 	"fmt"
-	"net"
 	"reflect"
 	"sort"
 	"strconv"
@@ -143,31 +142,26 @@ func updateVNC(xml string, vncPort int, vncBind string, vncResolution string, vn
 		return "", fmt.Errorf("failed to parse XML: %w", err)
 	}
 
-	bhyveCommandline := doc.FindElement("//bhyve:commandline")
-	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
-		root := doc.Root()
-		if root.SelectAttr("xmlns:bhyve") == nil {
-			root.CreateAttr("xmlns:bhyve", "http://libvirt.org/schemas/domain/bhyve/1.0")
-		}
-		bhyveCommandline = root.CreateElement("bhyve:commandline")
+	root := doc.Root()
+
+	devicesEl := root.FindElement("devices")
+	if devicesEl == nil {
+		devicesEl = root.CreateElement("devices")
 	}
 
-	index := 0
+	for _, el := range devicesEl.FindElements("graphics") {
+		if el.SelectAttrValue("type", "") == "vnc" {
+			devicesEl.RemoveChild(el)
+		}
+	}
+	for _, el := range devicesEl.FindElements("video") {
+		devicesEl.RemoveChild(el)
+	}
 
-	for _, arg := range bhyveCommandline.ChildElements() {
-		valueAttr := arg.SelectAttr("value")
-		if valueAttr != nil {
-			value := valueAttr.Value
-			if value != "" && strings.Contains(value, "fbuf,tcp") {
-				start := strings.Index(value, "-s")
-				end := strings.Index(value, ":")
-				if start != -1 && end != -1 && end > start {
-					indexStr := value[start+2 : end]
-					if idx, err := strconv.Atoi(indexStr); err == nil {
-						index = idx
-					}
-				}
-				bhyveCommandline.RemoveChild(arg)
+	if bhyveCL := doc.FindElement("//commandline"); bhyveCL != nil && bhyveCL.Space == "bhyve" {
+		for _, arg := range bhyveCL.ChildElements() {
+			if v := arg.SelectAttrValue("value", ""); v != "" && strings.Contains(v, "fbuf,tcp") {
+				bhyveCL.RemoveChild(arg)
 			}
 		}
 	}
@@ -188,22 +182,36 @@ func updateVNC(xml string, vncPort int, vncBind string, vncResolution string, vn
 			return "", fmt.Errorf("invalid_vnc_resolution_height: %s", resolutionParts[1])
 		}
 
-		wait := ""
+		waitAttr := ""
 		if vncWait {
-			wait = ",wait"
+			waitAttr = "yes"
 		}
 
-		if index == 0 {
-			index, err = findLowestIndex(xml)
-			if err != nil {
-				return "", fmt.Errorf("failed_to_find_lowest_index: %w", err)
-			}
+		vncBindNormalized := NormalizeVNCBindAddress(vncBind)
+
+		graphicsEl := devicesEl.CreateElement("graphics")
+		graphicsEl.CreateAttr("type", "vnc")
+		graphicsEl.CreateAttr("port", strconv.Itoa(vncPort))
+		if vncPassword != "" {
+			graphicsEl.CreateAttr("passwd", vncPassword)
+		}
+		if waitAttr != "" {
+			graphicsEl.CreateAttr("wait", waitAttr)
 		}
 
-		vncHostPort := net.JoinHostPort(NormalizeVNCBindAddress(vncBind), strconv.Itoa(vncPort))
-		vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=%s,w=%d,h=%d,password=%s%s", index, vncHostPort, width, height, vncPassword, wait)
-		arg := bhyveCommandline.CreateElement("bhyve:arg")
-		arg.CreateAttr("value", vnc)
+		listenEl := graphicsEl.CreateElement("listen")
+		listenEl.CreateAttr("type", "address")
+		listenEl.CreateAttr("address", vncBindNormalized)
+
+		videoEl := devicesEl.CreateElement("video")
+		modelEl := videoEl.CreateElement("model")
+		modelEl.CreateAttr("type", "gop")
+		modelEl.CreateAttr("heads", "1")
+		modelEl.CreateAttr("primary", "yes")
+
+		resEl := modelEl.CreateElement("resolution")
+		resEl.CreateAttr("x", strconv.Itoa(width))
+		resEl.CreateAttr("y", strconv.Itoa(height))
 	}
 
 	out, err := doc.WriteToString()

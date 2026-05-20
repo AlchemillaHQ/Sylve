@@ -562,7 +562,7 @@
 				</Tabs.List>
 
 				<!-- Tab 1: Identification -->
-				<Tabs.Content value="identification" class="space-y-3 pt-3">
+				<Tabs.Content value="identification" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
 					<input type="text" style="display:none" autocomplete="username" />
 					<input type="password" style="display:none" autocomplete="new-password" />
 
@@ -605,12 +605,16 @@
 						/>
 					</div>
 					<div class="flex items-center gap-2">
-						<Checkbox id="disable-password" bind:checked={properties.disablePassword} onCheckedChange={() => {
-							if (!edit && properties.disablePassword) {
-								properties.password = '';
-								properties.confirmPassword = '';
-							}
-						}} />
+						<Checkbox
+							id="disable-password"
+							bind:checked={properties.disablePassword}
+							onCheckedChange={() => {
+								if (!edit && properties.disablePassword) {
+									properties.password = '';
+									properties.confirmPassword = '';
+								}
+							}}
+						/>
 						<Label for="disable-password" class="cursor-pointer text-sm">Disable Password</Label>
 					</div>
 					{#if properties.disablePassword && !edit}
@@ -622,7 +626,7 @@
 				</Tabs.Content>
 
 				<!-- Tab 2: User ID & Groups -->
-				<Tabs.Content value="id-groups" class="space-y-3 pt-3">
+				<Tabs.Content value="id-groups" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
 					<CustomValueInput
 						label="User ID (UID)"
 						placeholder="1000"
@@ -654,7 +658,7 @@
 				</Tabs.Content>
 
 				<!-- Tab 3: Directories & Permissions -->
-				<Tabs.Content value="directories" class="space-y-3 pt-3">
+				<Tabs.Content value="directories" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
 					<div class="space-y-1.5">
 						<CustomValueInput
 							label="Home Directory"
@@ -767,7 +771,7 @@
 				</Tabs.Content>
 
 				<!-- Tab 4: Authentication -->
-				<Tabs.Content value="authentication" class="space-y-3 pt-3">
+				<Tabs.Content value="authentication" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
 					<CustomValueInput
 						label="SSH Public Key"
 						placeholder="ssh-rsa AAAAB3NzaC1yc2E..."

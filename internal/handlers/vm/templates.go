@@ -159,7 +159,7 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		_, _, err = lifecycleService.RequestActionWithPayload(
+		task, _, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeVMTemplate,
 			uint(rid),
@@ -186,6 +186,11 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 				Error:   err.Error(),
 			})
 			return
+		}
+
+		if task != nil {
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "vm_template_convert")
 		}
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
@@ -243,7 +248,7 @@ func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService *li
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		_, _, err = lifecycleService.RequestActionWithPayload(
+		task, _, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeVMTemplate,
 			uint(templateID),
@@ -271,6 +276,11 @@ func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService *li
 				Error:   err.Error(),
 			})
 			return
+		}
+
+		if task != nil {
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "vm_template_create")
 		}
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{

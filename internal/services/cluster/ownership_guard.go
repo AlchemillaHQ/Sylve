@@ -30,37 +30,50 @@ func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, lo
 	}
 
 	var policy clusterModels.ReplicationPolicy
-	err := db.Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).First(&policy).Error
-	if err == gorm.ErrRecordNotFound {
-		return true, nil
+	res := db.
+		Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).
+		Limit(1).
+		Find(&policy)
+
+	if res.Error != nil {
+		return false, res.Error
 	}
 
-	if err != nil {
-		return false, err
+	if res.RowsAffected == 0 {
+		return true, nil
 	}
 
 	expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
 	if expectedOwner == "" {
 		expectedOwner = strings.TrimSpace(policy.SourceNodeID)
 	}
+
 	if expectedOwner == "" || expectedOwner != localNodeID {
 		return false, nil
 	}
+
 	if policy.OwnerEpoch == 0 {
 		return false, fmt.Errorf("replication_policy_owner_epoch_missing")
 	}
 
 	var lease clusterModels.ReplicationLease
-	if err := db.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return false, nil
-		}
-		return false, err
+	res = db.
+		Where("policy_id = ?", policy.ID).
+		Limit(1).
+		Find(&lease)
+
+	if res.Error != nil {
+		return false, res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return false, nil
 	}
 
 	if lease.OwnerEpoch == 0 {
 		return false, fmt.Errorf("replication_lease_owner_epoch_missing")
 	}
+
 	if time.Now().UTC().After(lease.ExpiresAt) {
 		return false, nil
 	}

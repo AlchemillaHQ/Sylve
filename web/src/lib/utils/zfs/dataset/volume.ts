@@ -252,19 +252,24 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
     ];
 
     for (const group of grouped) {
+        const vols = group.volumes.filter((vol) => vol.name !== group.name);
+
+        const totalSize = vols.reduce((sum, vol) => sum + Number(vol.properties?.volsize ?? 0), 0);
+        const totalUsed = vols.reduce((sum, vol) => sum + vol.used, 0);
+        const totalReferenced = vols.reduce((sum, vol) => sum + vol.referenced, 0);
+
         const poolRow: Row = {
             id: generateNumberFromString(group.name),
             name: group.name,
-            size: '-',
-            used: '-',
-            referenced: '-',
+            size: totalSize,
+            used: totalUsed,
+            referenced: totalReferenced,
             guid: undefined,
             children: [],
             type: 'pool'
         };
 
-        const volumeChildren = group.volumes
-            .filter((vol) => vol.name !== group.name)
+        const volumeChildren = vols
             .map((vol) => ({
                 id: generateNumberFromString(vol.name),
                 name: vol.name,

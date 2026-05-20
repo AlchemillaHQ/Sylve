@@ -3221,6 +3221,7 @@ msgid "Success"
 msgstr "Success"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -8138,15 +8139,11 @@ msgstr "Failed to delete snapshots"
 msgid "Snapshot GUID not found"
 msgstr "Snapshot GUID not found"
 
-#. 0: datasets[0].name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "This will delete snapshot {0}"
-msgstr "This will delete snapshot {0}"
+#~ msgid "This will delete snapshot {0}"
+#~ msgstr "This will delete snapshot {0}"
 
-#. 0: datasets.length
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "This will delete {0} snapshots"
-msgstr "This will delete {0} snapshots"
+#~ msgid "This will delete {0} snapshots"
+#~ msgstr "This will delete {0} snapshots"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Failed to delete periodic snapshot"
@@ -12789,6 +12786,7 @@ msgid "Severity"
 msgstr "Severity"
 
 #: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Notification"
 msgstr "Notification"
 
@@ -13573,3 +13571,303 @@ msgstr "Password authentication is disabled. The user will need an SSH key or ot
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "All Unix users are either already registered in Sylve or reserved by the system."
 msgstr "All Unix users are either already registered in Sylve or reserved by the system."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "In Progress"
+msgstr "In Progress"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Storage - Update"
+msgstr "VM Storage - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Network - Update"
+msgstr "VM Network - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Hardware - CPU"
+msgstr "VM Hardware - CPU"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Hardware - RAM"
+msgstr "VM Hardware - RAM"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Hardware - VNC"
+msgstr "VM Hardware - VNC"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Hardware - Passthrough"
+msgstr "VM Hardware - Passthrough"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Wake-on-LAN"
+msgstr "VM Options - Wake-on-LAN"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Boot Order"
+msgstr "VM Options - Boot Order"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Clock"
+msgstr "VM Options - Clock"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Serial Console"
+msgstr "VM Options - Serial Console"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Shutdown Wait Time"
+msgstr "VM Options - Shutdown Wait Time"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Cloud-Init"
+msgstr "VM Options - Cloud-Init"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Boot ROM"
+msgstr "VM Options - Boot ROM"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Extra Bhyve"
+msgstr "VM Options - Extra Bhyve"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - Ignore UMSRs"
+msgstr "VM Options - Ignore UMSRs"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - QEMU Guest Agent"
+msgstr "VM Options - QEMU Guest Agent"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Options - TPM"
+msgstr "VM Options - TPM"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Restart"
+msgstr "Jail - Restart"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Bootstrap"
+msgstr "Jail - Bootstrap"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Update Memory"
+msgstr "Jail - Update Memory"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Update CPU"
+msgstr "Jail - Update CPU"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Resource Limits"
+msgstr "Jail - Resource Limits"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Wake-on-LAN"
+msgstr "Jail Options - Wake-on-LAN"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Boot Order"
+msgstr "Jail Options - Boot Order"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - FSTab"
+msgstr "Jail Options - FSTab"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Resolv.conf"
+msgstr "Jail Options - Resolv.conf"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - DevFS Rules"
+msgstr "Jail Options - DevFS Rules"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Additional"
+msgstr "Jail Options - Additional"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Allowed"
+msgstr "Jail Options - Allowed"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Metadata"
+msgstr "Jail Options - Metadata"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Lifecycle Hooks"
+msgstr "Jail Options - Lifecycle Hooks"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Object - Bulk Delete"
+msgstr "Network Object - Bulk Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Config"
+msgstr "DHCP Config"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall - Traffic Reorder"
+msgstr "Firewall - Traffic Reorder"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall - NAT Reorder"
+msgstr "Firewall - NAT Reorder"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Static Route - Suggest From NAT"
+msgstr "Static Route - Suggest From NAT"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Static Route"
+msgstr "Static Route"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Peer Toggle"
+msgstr "WireGuard - Peer Toggle"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Peer Bulk Delete"
+msgstr "WireGuard - Peer Bulk Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Replication Policy - Run"
+msgstr "DC Replication Policy - Run"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Replication Policy - Failover"
+msgstr "DC Replication Policy - Failover"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Replication Policy"
+msgstr "DC Replication Policy"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Join"
+msgstr "Cluster - Join"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Accept Join"
+msgstr "Cluster - Accept Join"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Resync State"
+msgstr "Cluster - Resync State"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Remove Peer"
+msgstr "Cluster - Remove Peer"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Job - Restore"
+msgstr "DC Backup Job - Restore"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Target - Restore"
+msgstr "DC Backup Target - Restore"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Batch Copy/Move"
+msgstr "File Explorer - Batch Copy/Move"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Copy/Move"
+msgstr "File Explorer - Copy/Move"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Rename"
+msgstr "File Explorer - Rename"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Upload"
+msgstr "File Explorer - Upload"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PCI Passthrough - Prepare"
+msgstr "PCI Passthrough - Prepare"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PCI Passthrough - Import"
+msgstr "PCI Passthrough - Import"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Volume - Flash"
+msgstr "ZFS Volume - Flash"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth Group - Members"
+msgstr "Auth Group - Members"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth User - Import"
+msgstr "Auth User - Import"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Dataset - Bulk Delete By Names"
+msgstr "ZFS Dataset - Bulk Delete By Names"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Periodic Snapshot"
+msgstr "ZFS Periodic Snapshot"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Snapshot - Rollback"
+msgstr "ZFS Snapshot - Rollback"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader - Bulk Delete"
+msgstr "Downloader - Bulk Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Scrub"
+msgstr "ZFS Pool - Scrub"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Replace Device"
+msgstr "ZFS Pool - Replace Device"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - Delete Partition"
+msgstr "Disk - Delete Partition"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification Transport - Test"
+msgstr "Notification Transport - Test"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification Transport"
+msgstr "Notification Transport"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification Rule"
+msgstr "Notification Rule"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification - Dismiss"
+msgstr "Notification - Dismiss"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "System - Reboot"
+msgstr "System - Reboot"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "System - Initialize"
+msgstr "System - Initialize"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Basic Settings"
+msgstr "Basic Settings"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Health Check"
+msgstr "Health Check"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete snapshot <0/>"
+msgstr "This will delete snapshot <0/>"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete <0>{0} snapshots</0>"
+msgstr "This will delete <0>{0} snapshots</0>"

@@ -44,7 +44,7 @@ func setupVMActionHandlerTest(t *testing.T) (*gin.Engine, *lifecycle.Service, *g
 		t.Fatalf("failed to setup test queue: %v", err)
 	}
 
-	lifecycleSvc := lifecycle.NewService(dbConn, nil, nil)
+	lifecycleSvc := lifecycle.NewService(dbConn, nil, nil, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

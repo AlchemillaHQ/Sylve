@@ -18,7 +18,7 @@ import (
 
 func TestCleanupStaleEventsSkipsActiveAndRecentlyHeartbeatingEvents(t *testing.T) {
 	db := newZeltaServiceTestDB(t, &clusterModels.BackupEvent{})
-	service := NewService(db, nil, nil, nil, nil, nil)
+	service := NewService(db, nil, nil, nil, nil, nil, nil)
 
 	now := time.Now().UTC()
 	staleTime := now.Add(-time.Hour)
@@ -119,7 +119,7 @@ func TestCleanupStaleEventsSkipsActiveAndRecentlyHeartbeatingEvents(t *testing.T
 
 func TestBackupEventHeartbeatUpdatesTimestamp(t *testing.T) {
 	db := newZeltaServiceTestDB(t, &clusterModels.BackupEvent{})
-	service := NewService(db, nil, nil, nil, nil, nil)
+	service := NewService(db, nil, nil, nil, nil, nil, nil)
 
 	event := clusterModels.BackupEvent{
 		Mode:           "backup",
@@ -166,7 +166,7 @@ func TestBackupEventHeartbeatUpdatesTimestamp(t *testing.T) {
 }
 
 func TestJobReservationPreventsDuplicateQueueing(t *testing.T) {
-	service := NewService(nil, nil, nil, nil, nil, nil)
+	service := NewService(nil, nil, nil, nil, nil, nil, nil)
 
 	if !service.reserveJob(42) {
 		t.Fatal("expected first reservation to succeed")

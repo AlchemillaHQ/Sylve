@@ -245,6 +245,9 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS *zelta.Service) gin.Handler
 			return
 		}
 
+		c.Set("AuditAsyncJobID", policy.ID)
+		c.Set("AuditAsyncJobType", "replication_policy_run")
+
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "replication_policy_run_started",
@@ -341,6 +344,9 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 			})
 			return
 		}
+
+		c.Set("AuditAsyncJobID", uint(id64))
+		c.Set("AuditAsyncJobType", "replication_policy_failover")
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",

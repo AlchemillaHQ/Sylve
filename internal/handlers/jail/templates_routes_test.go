@@ -97,7 +97,7 @@ func setupJailTemplateLifecycle(t *testing.T) *lifecycle.Service {
 		t.Fatalf("failed to setup queue: %v", err)
 	}
 
-	return lifecycle.NewService(dbConn, nil, nil)
+	return lifecycle.NewService(dbConn, nil, nil, nil)
 }
 
 func decodeAPIResponse(t *testing.T, rrCode int, expected int, rrBody string) {

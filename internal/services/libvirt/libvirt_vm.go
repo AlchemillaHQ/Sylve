@@ -14,7 +14,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,6 +33,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
 
 	"github.com/google/uuid"
@@ -268,6 +268,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		features.ACPI = struct{}{}
 	}
 
+	if vm.IgnoreUMSR {
+		features.MSRs = &libvirtServiceInterfaces.MSRs{Unknown: "ignore"}
+	}
+
 	domain := libvirtServiceInterfaces.Domain{
 		Type:       "bhyve",
 		XMLNSBhyve: "http://libvirt.org/schemas/domain/bhyve/1.0",
@@ -341,17 +345,19 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 		vncWait := ""
 		if vm.VNCWait {
-			vncWait = ",wait"
+			vncWait = "yes"
 		}
 
-		/* Libvirt doesn't allow wait yet, so we're going to resort to using bhyve args for now
+		vncBind := NormalizeVNCBindAddress(vm.VNCBind)
+
 		domain.Devices.Graphics = &libvirtServiceInterfaces.Graphics{
 			Type:     "vnc",
 			Port:     fmt.Sprintf("%d", vm.VNCPort),
 			Password: vm.VNCPassword,
+			Wait:     vncWait,
 			Listen: libvirtServiceInterfaces.GraphicsListen{
 				Type:    "address",
-				Address: "127.0.0.1",
+				Address: vncBind,
 			},
 		}
 
@@ -366,31 +372,6 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				},
 			},
 		}
-		*/
-
-		vncHostPort := net.JoinHostPort(NormalizeVNCBindAddress(vm.VNCBind), strconv.Itoa(vm.VNCPort))
-		vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=%s,w=%s,h=%s,password=%s%s",
-			sIndex,
-			vncHostPort,
-			width,
-			height,
-			vm.VNCPassword,
-			vncWait,
-		)
-
-		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-			{
-				Value: vncArg,
-			},
-		})
-	}
-
-	if vm.IgnoreUMSR {
-		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-			{
-				Value: "-w",
-			},
-		})
 	}
 
 	var flatBhyveArgs []libvirtServiceInterfaces.BhyveArg
@@ -1099,4 +1080,208 @@ func (s *Service) GetVMIDByRID(rid uint) (uint, error) {
 	}
 
 	return id, nil
+}
+
+func (s *Service) MigrateVNCToNativeFormat() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vms, err := s.ListVMs()
+	if err != nil {
+		return fmt.Errorf("failed_to_list_vms_for_vnc_migration: %w", err)
+	}
+
+	for _, vm := range vms {
+		if !vm.VNCEnabled {
+			continue
+		}
+
+		migrationName := fmt.Sprintf("vnc_native_xml_format_1_%d", vm.RID)
+
+		var count int64
+		if err := s.DB.
+			Table("migrations").
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to check per-VM migration record")
+			continue
+		}
+
+		if count > 0 {
+			continue
+		}
+
+		shutoff, err := s.IsDomainShutOff(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to check domain state")
+			continue
+		}
+
+		if !shutoff {
+			continue
+		}
+
+		xml, err := s.GetVMXML(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to get VM XML")
+			continue
+		}
+
+		if !strings.Contains(xml, "fbuf,tcp") {
+			if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+				logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to record already-native VM")
+			}
+			continue
+		}
+
+		newXML, err := updateVNC(xml, vm.VNCPort, vm.VNCBind, vm.VNCResolution, vm.VNCPassword, vm.VNCWait, true)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to update VNC XML")
+			continue
+		}
+
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to lookup domain")
+			continue
+		}
+
+		if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to undefine domain")
+			continue
+		}
+
+		if _, err := s.conn().DomainDefineXML(newXML); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to redefine domain")
+			continue
+		}
+
+		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to record per-VM migration")
+			continue
+		}
+
+		logger.L.Info().Uint("rid", vm.RID).Msg("vnc_migration: migrated to native XML format")
+	}
+
+	return nil
+}
+
+func (s *Service) MigrateIgnoreUMSRToNativeFormat() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vms, err := s.ListVMs()
+	if err != nil {
+		return fmt.Errorf("failed_to_list_vms_for_ignore_umsr_migration: %w", err)
+	}
+
+	for _, vm := range vms {
+		if !vm.IgnoreUMSR {
+			continue
+		}
+
+		migrationName := fmt.Sprintf("ignore_umsr_native_xml_format_1_%d", vm.RID)
+
+		var count int64
+		if err := s.DB.
+			Table("migrations").
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to check per-VM migration record")
+			continue
+		}
+
+		if count > 0 {
+			continue
+		}
+
+		shutoff, err := s.IsDomainShutOff(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to check domain state")
+			continue
+		}
+
+		if !shutoff {
+			continue
+		}
+
+		xml, err := s.GetVMXML(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to get VM XML")
+			continue
+		}
+
+		if !strings.Contains(xml, `value="-w"`) {
+			if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+				logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to record already-native VM")
+			}
+			continue
+		}
+
+		doc := etree.NewDocument()
+		if err := doc.ReadFromString(xml); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to parse XML")
+			continue
+		}
+
+		root := doc.Root()
+		if root == nil {
+			logger.L.Warn().Uint("rid", vm.RID).Msg("ignore_umsr_migration: XML has no root element")
+			continue
+		}
+
+		featuresEl := root.FindElement("features")
+		if featuresEl == nil {
+			featuresEl = root.CreateElement("features")
+		}
+
+		for _, el := range featuresEl.FindElements("msrs") {
+			featuresEl.RemoveChild(el)
+		}
+
+		if bhyveCL := doc.FindElement("//commandline"); bhyveCL != nil && bhyveCL.Space == "bhyve" {
+			for _, arg := range bhyveCL.ChildElements() {
+				if arg.SelectAttrValue("value", "") == "-w" {
+					bhyveCL.RemoveChild(arg)
+				}
+			}
+		}
+
+		msrsEl := featuresEl.CreateElement("msrs")
+		msrsEl.CreateAttr("unknown", "ignore")
+
+		newXML, err := doc.WriteToString()
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to serialize XML")
+			continue
+		}
+
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to lookup domain")
+			continue
+		}
+
+		if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to undefine domain")
+			continue
+		}
+
+		if _, err := s.conn().DomainDefineXML(newXML); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to redefine domain")
+			continue
+		}
+
+		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to record per-VM migration")
+			continue
+		}
+
+		logger.L.Info().Uint("rid", vm.RID).Msg("ignore_umsr_migration: migrated to native XML format")
+	}
+
+	return nil
 }

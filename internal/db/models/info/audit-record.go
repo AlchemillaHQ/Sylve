@@ -26,5 +26,9 @@ type AuditRecord struct {
 	CreatedAt time.Time     `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time     `json:"updatedAt" gorm:"autoUpdateTime"`
 
+	AsyncJobID   *uint  `json:"asyncJobId" gorm:"index"`
+	AsyncJobType string `json:"asyncJobType"`
+	Error        string `json:"error,omitempty" gorm:"type:text"`
+
 	Version int `json:"version"`
 }

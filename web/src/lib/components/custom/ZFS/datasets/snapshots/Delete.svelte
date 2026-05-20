@@ -51,9 +51,9 @@
 			<AlertDialog.Title>Are you sure?</AlertDialog.Title>
 			<AlertDialog.Description>
 				{#if datasets.length === 1}
-					<b>This will delete snapshot {datasets[0].name}</b>
+					This will delete snapshot <b>{datasets[0].name}</b>
 				{:else}
-					<b>This will delete {datasets.length} snapshots</b>
+					This will delete <b>{datasets.length} snapshots</b>
 				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>

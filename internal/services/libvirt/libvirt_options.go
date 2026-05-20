@@ -487,32 +487,27 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		return fmt.Errorf("invalid_domain_xml: root_missing")
 	}
 
-	bhyveCmdEl := doc.FindElement("//bhyve:commandline")
-	if bhyveCmdEl == nil {
-		bhyveCmdEl = root.CreateElement("bhyve:commandline")
+	featuresEl := doc.FindElement("//features")
+	if featuresEl != nil {
+		for _, el := range featuresEl.FindElements("msrs") {
+			featuresEl.RemoveChild(el)
+		}
 	}
 
-	for {
-		found := false
-		children := bhyveCmdEl.ChildElements()
-		for _, el := range children {
-			if el.Tag == "bhyve:arg" || el.Tag == "arg" {
-				if a := el.SelectAttr("value"); a != nil && a.Value == "-w" {
-					bhyveCmdEl.RemoveChild(el)
-					found = true
-					break
-				}
+	if bhyveCL := doc.FindElement("//commandline"); bhyveCL != nil && bhyveCL.Space == "bhyve" {
+		for _, arg := range bhyveCL.ChildElements() {
+			if arg.SelectAttrValue("value", "") == "-w" {
+				bhyveCL.RemoveChild(arg)
 			}
-		}
-		if !found {
-			break
 		}
 	}
 
 	if ignore {
-		argEl := etree.NewElement("bhyve:arg")
-		argEl.CreateAttr("value", "-w")
-		bhyveCmdEl.AddChild(argEl)
+		if featuresEl == nil {
+			featuresEl = root.CreateElement("features")
+		}
+		msrsEl := featuresEl.CreateElement("msrs")
+		msrsEl.CreateAttr("unknown", "ignore")
 	}
 
 	out, err := doc.WriteToString()

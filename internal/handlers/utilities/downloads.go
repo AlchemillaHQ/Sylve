@@ -147,7 +147,8 @@ func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := utilitiesService.DownloadFile(request); err != nil {
+		downloadID, err := utilitiesService.DownloadFile(request)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_download_file",
@@ -156,6 +157,9 @@ func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 			})
 			return
 		}
+
+		c.Set("AuditAsyncJobID", downloadID)
+		c.Set("AuditAsyncJobType", "file_download")
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",

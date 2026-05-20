@@ -94,7 +94,10 @@ export const renderWithIcon = (
 
 export function sizeFormatter(cell: CellComponent) {
     try {
-        return formatBytesBinary(Number(cell.getValue()), { maxDecimals: 1 });
+        const value = cell.getValue();
+        const num = Number(value);
+        if (isNaN(num)) return value;
+        return formatBytesBinary(num, { maxDecimals: 1 });
     } catch {
         return cell.getValue();
     }

@@ -97,6 +97,9 @@ type LibvirtServiceInterface interface {
 
 	CheckVersion() error
 	IsVirtualizationEnabled() bool
+
+	MigrateVNCToNativeFormat() error
+	MigrateIgnoreUMSRToNativeFormat() error
 }
 
 type LvDomain struct {
@@ -202,9 +205,14 @@ type OS struct {
 	Loader *Loader `xml:"loader,omitempty"`
 }
 
+type MSRs struct {
+	Unknown string `xml:"unknown,attr"`
+}
+
 type Features struct {
 	APIC struct{} `xml:"apic"`
 	ACPI struct{} `xml:"acpi"`
+	MSRs *MSRs    `xml:"msrs,omitempty"`
 }
 
 type Clock struct {
@@ -297,6 +305,7 @@ type Graphics struct {
 	Type     string         `xml:"type,attr"`
 	Port     string         `xml:"port,attr"`
 	Password string         `xml:"passwd,attr,omitempty"`
+	Wait     string         `xml:"wait,attr,omitempty"`
 	Listen   GraphicsListen `xml:"listen"`
 }
 

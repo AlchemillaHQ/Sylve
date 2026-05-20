@@ -39,7 +39,7 @@ func newLifecycleTestService(t *testing.T) (*Service, *gorm.DB) {
 		&jailModels.Jail{},
 	)
 
-	s := NewService(dbConn, nil, nil)
+	s := NewService(dbConn, nil, nil, nil)
 	s.vmActionFn = func(_ uint, _ string) error { return nil }
 	s.vmStateFn = func(_ uint) (int, error) { return 5, nil }
 	s.jailActionFn = func(_ int, _ string) error { return nil }

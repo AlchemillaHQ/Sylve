@@ -19,7 +19,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch, PersistedState } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
-	import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
+	import { renderWithIcon, sizeFormatter, deselectAllRows, getTable } from '$lib/utils/table';
 	import { plural } from '$lib/utils';
 	import { storage } from '$lib';
 
@@ -210,6 +210,7 @@
 		(value) => {
 			if (!value) {
 				activeRows = null;
+				deselectAllRows(getTable('snapshots-datasets-tt'));
 			}
 		}
 	);

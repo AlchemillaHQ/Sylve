@@ -640,6 +640,9 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			return
 		}
 
+		c.Set("AuditAsyncJobID", uint(id64))
+		c.Set("AuditAsyncJobType", "backup_target_restore")
+
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "restore_job_started",

@@ -143,6 +143,14 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			return err
 		}
 
+		if err := s.Libvirt.MigrateVNCToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("VNC migration had issues")
+		}
+
+		if err := s.Libvirt.MigrateIgnoreUMSRToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("IgnoreUMSR migration had issues")
+		}
+
 		go s.Libvirt.StoreVMUsage()
 	}
 

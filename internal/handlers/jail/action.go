@@ -84,7 +84,7 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 
 		username := strings.TrimSpace(c.GetString("Username"))
 
-		_, outcome, err := lifecycleService.RequestAction(
+		task, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeJail,
 			uint(ctId),
@@ -121,6 +121,11 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 				Data:    nil,
 			})
 			return
+		}
+
+		if task != nil {
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "jail_"+action)
 		}
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{

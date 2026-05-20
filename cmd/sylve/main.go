@@ -173,7 +173,7 @@ func main() {
 
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
-	lifecycleSvc := lifecycle.NewService(d, libvirtSvc, jailSvc)
+	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc)
 	refreshEmitter := func(reason string) {
 		clusterSvc.EmitLeftPanelRefreshClusterWide(reason)
 	}
