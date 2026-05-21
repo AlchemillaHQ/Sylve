@@ -86,6 +86,7 @@ type ClusterSnapshot struct {
 	ReplicationLeases   []ReplicationLease               `json:"replicationLeases"`
 	ReplicationEvents   []ReplicationEvent               `json:"replicationEvents"`
 	SSHIdentities       []ClusterSSHIdentity             `json:"sshIdentities"`
+	EncryptionKeys      []EncryptionKey                  `json:"encryptionKeys"`
 	// We can add more tables here as needed
 }
 
@@ -128,6 +129,9 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 		return nil, err
 	}
 	if err := f.DB.Order("id ASC").Find(&snap.SSHIdentities).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("id ASC").Find(&snap.EncryptionKeys).Error; err != nil {
 		return nil, err
 	}
 	return &snap, nil
@@ -181,6 +185,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			{"replication_policy_targets", replicationTargets, 500},
 			{"replication_policies", replicationPolicies, 500},
 			{"cluster_ssh_identities", snap.SSHIdentities, 200},
+			{"encryption_keys", snap.EncryptionKeys, 200},
 			{"backup_jobs", snap.BackupJobs, 500},
 			{"backup_targets", backupTargets, 200},
 			{"cluster_notes", snap.Notes, 500},
@@ -189,6 +194,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 
 		createSets := []restoreSet{
 			{"cluster_ssh_identities", snap.SSHIdentities, 200},
+			{"encryption_keys", snap.EncryptionKeys, 200},
 			{"replication_policies", replicationPolicies, 500},
 			{"replication_policy_targets", replicationTargets, 500},
 			{"replication_leases", snap.ReplicationLeases, 500},
@@ -557,6 +563,31 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 	})
 
+	fsm.Register("encryption_key", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "upsert":
+			var key EncryptionKey
+			if err := json.Unmarshal(raw, &key); err != nil {
+				return err
+			}
+			return upsertEncryptionKey(db, &key)
+		case "delete":
+			var payload struct {
+				UUID string `json:"uuid"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			payload.UUID = strings.TrimSpace(payload.UUID)
+			if payload.UUID == "" {
+				return nil
+			}
+			return db.Where("uuid = ?", payload.UUID).Delete(&EncryptionKey{}).Error
+		default:
+			return nil
+		}
+	})
+
 	fsm.Register("replication_event", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
 		case "create", "update":
@@ -593,4 +624,18 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 func validBackupJobMode(mode string) bool {
 	return mode == BackupJobModeDataset || mode == BackupJobModeJail || mode == BackupJobModeVM
+}
+
+func upsertEncryptionKey(db *gorm.DB, key *EncryptionKey) error {
+	if strings.TrimSpace(key.UUID) == "" {
+		return fmt.Errorf("encryption_key_uuid_required")
+	}
+	if strings.TrimSpace(key.KeyData) == "" {
+		return fmt.Errorf("encryption_key_data_required")
+	}
+
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "uuid"}},
+		DoUpdates: clause.AssignmentColumns([]string{"key_data", "key_format"}),
+	}).Create(key).Error
 }

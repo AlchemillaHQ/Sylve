@@ -249,7 +249,7 @@
 					<ContextMenu.Separator />
 					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
-						Convert to Template
+						Create Template
 					</ContextMenu.Item>
 				{:else if item.resourceType === 'vm'}
 					{#if item.state === 'active'}
@@ -274,7 +274,7 @@
 					<ContextMenu.Separator />
 					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
-						Convert to Template
+						Create Template
 					</ContextMenu.Item>
 				{:else if item.resourceType === 'jail-template'}
 					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
@@ -376,7 +376,7 @@
 				<Dialog.Title>
 					<div class="flex items-center gap-2">
 						<span class="icon icon-[tabler--template]"></span>
-						<span>Convert To Template</span>
+						<span>Create {item.resourceType === 'jail' ? 'Jail' : 'VM'} Template</span>
 					</div>
 				</Dialog.Title>
 			</Dialog.Header>

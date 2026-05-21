@@ -206,8 +206,8 @@
 		'/api/vm/reboot': 'VM - Reboot',
 		'/api/vm/description': 'VM - Update Description',
 		'/api/vm/name': 'VM - Update Name',
-		'/api/vm/templates/convert': 'Create VM Template - From VM',
-		'/api/vm/templates/create': 'Create VM - Template',
+		'/api/vm/templates/convert': 'VM Template - Convert',
+		'/api/vm/templates/create': 'VM Template - Create',
 		'/api/vm/templates': 'VM Template',
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
@@ -251,8 +251,8 @@
 		'/api/jail/network': 'Jail Network',
 		'/api/jail/description': 'Jail - Update Description',
 		'/api/jail/name': 'Jail - Update Name',
-		'/api/jail/templates/convert': 'Create Jail Template - From Jail',
-		'/api/jail/templates/create': 'Create Jail - Template',
+		'/api/jail/templates/convert': 'Jail Template - Convert',
+		'/api/jail/templates/create': 'Jail Template - Create',
 		'/api/jail/templates': 'Jail Template',
 		'/api/jail/action/restart': 'Jail - Restart',
 		'/api/jail/bootstrap': 'Jail - Bootstrap',
@@ -335,6 +335,18 @@
 		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
 	});
 
+	let templateNameById = $derived.by(() => {
+		return new Map(
+			(simpleJailTemplates.current || []).map((template) => [template.id, template.name])
+		);
+	});
+
+	let vmTemplateNameById = $derived.by(() => {
+		return new Map(
+			(simpleVMTemplates.current || []).map((template) => [template.id, template.name])
+		);
+	});
+
 	let records = $derived.by(() => {
 		if (!auditRecords.current) return [];
 
@@ -400,11 +412,57 @@
 					const name = vmNameById.get(rid);
 					if (name) resolvedAction += ` - ${name}`;
 				}
-			} else if (path.startsWith('/api/jail/') && !path.startsWith('/api/jail/templates/') && !path.startsWith('/api/jail/bootstrap')) {
+			} else if (path.startsWith('/api/vm/templates/convert/')) {
+				const last = path.split('/').pop() || '';
+				const rid = Number(last);
+				if (Number.isFinite(rid) && rid > 0) {
+					const name = vmNameById.get(rid);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/vm/templates/create/')) {
+				const last = path.split('/').pop() || '';
+				const templateId = Number(last);
+				if (Number.isFinite(templateId) && templateId > 0) {
+					const name = vmTemplateNameById.get(templateId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/vm/templates/')) {
+				const last = path.split('/').pop() || '';
+				const templateId = Number(last);
+				if (Number.isFinite(templateId) && templateId > 0) {
+					const name = vmTemplateNameById.get(templateId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (
+				path.startsWith('/api/jail/') &&
+				!path.startsWith('/api/jail/templates/') &&
+				!path.startsWith('/api/jail/bootstrap')
+			) {
 				const last = path.split('/').pop() || '';
 				const ctId = Number(last);
 				if (Number.isFinite(ctId) && ctId > 0) {
 					const name = jailNameByCtId.get(ctId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/jail/templates/convert/')) {
+				const last = path.split('/').pop() || '';
+				const ctId = Number(last);
+				if (Number.isFinite(ctId) && ctId > 0) {
+					const name = jailNameByCtId.get(ctId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/jail/templates/create/')) {
+				const last = path.split('/').pop() || '';
+				const templateId = Number(last);
+				if (Number.isFinite(templateId) && templateId > 0) {
+					const name = templateNameById.get(templateId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/jail/templates/')) {
+				const last = path.split('/').pop() || '';
+				const templateId = Number(last);
+				if (Number.isFinite(templateId) && templateId > 0) {
+					const name = templateNameById.get(templateId);
 					if (name) resolvedAction += ` - ${name}`;
 				}
 			}
@@ -426,18 +484,6 @@
 	});
 
 	let lifecycleActive = $derived(activeLifecycleCount > 0);
-
-	let templateNameById = $derived.by(() => {
-		return new Map(
-			(simpleJailTemplates.current || []).map((template) => [template.id, template.name])
-		);
-	});
-
-	let vmTemplateNameById = $derived.by(() => {
-		return new Map(
-			(simpleVMTemplates.current || []).map((template) => [template.id, template.name])
-		);
-	});
 
 	watch(
 		() => lifecycleActive,
@@ -552,10 +598,7 @@
 
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
-		<div
-			class="relative flex h-full flex-col"
-			transition:fade|global={{ duration: 400 }}
-		>
+		<div class="relative flex h-full flex-col" transition:fade|global={{ duration: 400 }}>
 			{#if activeLifecycleCount > 0}
 				<div class="bg-muted/35 border-b px-3 py-1.5 text-xs">
 					<div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
@@ -578,113 +621,120 @@
 
 			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
 				<Table.Root class="w-full table-auto border-collapse">
-				<Table.Header class="bg-background sticky top-0 z-50">
-					<Table.Row class="dark:hover:bg-background ">
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-							>Start Time</Table.Head
-						>
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-							>End Time</Table.Head
-						>
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white">
-							{#if clustered && hostnameOptions.length > 0}
-								<div class="w-44 max-w-full">
-									<SimpleSelect
-										placeholder="Node"
-										options={hostnameOptions}
-										value={effectiveHostname}
-										onChange={(value: string) => {
-											selectedHostname = value;
-										}}
-										classes={{
-											parent: 'min-w-0 space-y-0',
-											trigger:
-												'inline-flex h-6 w-full items-center overflow-hidden rounded-sm border-0 bg-transparent px-1.5 text-left text-xs font-medium text-muted-foreground shadow-none ring-0 hover:bg-muted/40 focus:bg-muted/50'
-										}}
-									/>
-								</div>
-							{:else}
-								Node
-							{/if}
-						</Table.Head>
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-							>User</Table.Head
-						>
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-							>Action</Table.Head
-						>
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-							>Status</Table.Head
-						>
-					</Table.Row>
-				</Table.Header>
+					<Table.Header class="bg-background sticky top-0 z-50">
+						<Table.Row class="dark:hover:bg-background ">
+							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+								>Start Time</Table.Head
+							>
+							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+								>End Time</Table.Head
+							>
+							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white">
+								{#if clustered && hostnameOptions.length > 0}
+									<div class="w-44 max-w-full">
+										<SimpleSelect
+											placeholder="Node"
+											options={hostnameOptions}
+											value={effectiveHostname}
+											onChange={(value: string) => {
+												selectedHostname = value;
+											}}
+											classes={{
+												parent: 'min-w-0 space-y-0',
+												trigger:
+													'inline-flex h-6 w-full items-center overflow-hidden rounded-sm border-0 bg-transparent px-1.5 text-left text-xs font-medium text-muted-foreground shadow-none ring-0 hover:bg-muted/40 focus:bg-muted/50'
+											}}
+										/>
+									</div>
+								{:else}
+									Node
+								{/if}
+							</Table.Head>
+							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+								>User</Table.Head
+							>
+							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+								>Action</Table.Head
+							>
+							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+								>Status</Table.Head
+							>
+						</Table.Row>
+					</Table.Header>
 
-				<Table.Body class="pb-32">
-					{#each records as record, i (i)}
-						<Table.Row>
-							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
-							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
-							<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
-							<Table.Cell class="text-wrap px-4 py-2"
-								>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
-							>
-							<Table.Cell
-								class="text-wrap px-4 py-2"
-								title={JSON.stringify(record.action.body)}
-								onclick={() => {
-									try {
-										navigator.clipboard.writeText(
-											record.action.body
-												? JSON.stringify(record.action.body)
-												: record.resolvedAction
-										);
-										toast.success('Copied action to clipboard', {
-											position: 'bottom-center'
-										});
-									} catch (e) {
-										console.log('Error copying action to clipboard', e);
-									}
-								}}>{record.resolvedAction}</Table.Cell
-							>
-							<Table.Cell
-								class="text-wrap px-4 py-2"
-								title={record.action?.response != null
-									? typeof record.action.response === 'string'
-										? record.action.response
-										: JSON.stringify(record.action.response)
-									: 'No response'}
-								onclick={() => {
-									if (record.action?.response != null && record.action.response) {
+					<Table.Body class="pb-32">
+						{#each records as record, i (i)}
+							<Table.Row>
+								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
+								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
+								<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
+								<Table.Cell class="text-wrap px-4 py-2"
+									>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
+								>
+								<Table.Cell
+									class="text-wrap px-4 py-2"
+									title={JSON.stringify(record.action.body)}
+									onclick={() => {
 										try {
-											const data = JSON.stringify(record.action.response);
-											navigator.clipboard.writeText(data || '');
-
-											toast.success('Copied response to clipboard', {
+											navigator.clipboard.writeText(
+												record.action.body
+													? JSON.stringify(record.action.body)
+													: record.resolvedAction
+											);
+											toast.success('Copied action to clipboard', {
 												position: 'bottom-center'
 											});
 										} catch (e) {
-											console.log('Error copying resposnse to clipboard', e);
+											console.log('Error copying action to clipboard', e);
 										}
-									}
-								}}
-							>
-								<div class="flex items-center gap-1">
-									{#if record.status === 'pending'}
-										<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
-										></span>
-									{:else if record.status === 'failed'}
-										<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
-									{/if}
-									<span class={record.status === 'failed' ? 'text-destructive' : ''}>
-										{formatStatus(record.status)}
-									</span>
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					{/each}
-				</Table.Body>
-			</Table.Root>
+									}}>{record.resolvedAction}</Table.Cell
+								>
+								<Table.Cell
+									class="text-wrap px-4 py-2"
+									title={record.action?.response != null
+										? typeof record.action.response === 'string'
+											? record.action.response
+											: JSON.stringify(record.action.response)
+										: 'No response'}
+									onclick={() => {
+										if (record.action?.response != null && record.action.response) {
+											try {
+												const data = JSON.stringify(record.action.response);
+												navigator.clipboard.writeText(data || '');
+
+												toast.success('Copied response to clipboard', {
+													position: 'bottom-center'
+												});
+											} catch (e) {
+												console.log('Error copying resposnse to clipboard', e);
+											}
+										}
+									}}
+								>
+									<div class="flex items-center gap-1">
+										{#if record.status === 'pending'}
+											<span
+												class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
+											></span>
+										{:else if record.status === 'failed'}
+											<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
+										{/if}
+										<span class={record.status === 'failed' ? 'text-destructive' : ''}>
+											{formatStatus(record.status)}
+										</span>
+									</div>
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				</Table.Root>
 			</div>
 		</div>
 	</Tabs.Content>
 </Tabs.Root>
+
+<style>
+	:global([data-slot='table-container']) {
+		overflow: visible;
+	}
+</style>

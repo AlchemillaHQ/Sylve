@@ -318,6 +318,21 @@ func (s *Service) backfillPreClusterState() error {
 	}
 
 	{
+		var keys []clusterModels.EncryptionKey
+		if err := s.DB.Order("id ASC").Find(&keys).Error; err != nil {
+			return fmt.Errorf("scan_existing_encryption_keys: %w", err)
+		}
+
+		for _, k := range keys {
+			data, _ := json.Marshal(k)
+			cmd := clusterModels.Command{Type: "encryption_key", Action: "upsert", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_upsert_encryption_key id=%d: %w", k.ID, err)
+			}
+		}
+	}
+
+	{
 		var events []clusterModels.ReplicationEvent
 		if err := s.DB.Order("id ASC").Find(&events).Error; err != nil {
 			return fmt.Errorf("scan_existing_replication_events: %w", err)

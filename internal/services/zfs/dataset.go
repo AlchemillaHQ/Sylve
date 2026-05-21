@@ -86,13 +86,22 @@ func (s *Service) BulkDeleteDatasetByNames(ctx context.Context, names []string) 
 		if err != nil {
 			return fmt.Errorf("failed to get dataset with name %s: %w", name, err)
 		}
+		if ds == nil {
+			return fmt.Errorf("dataset_not_found: %s", name)
+		}
 
 		datasets = append(datasets, ds)
 	}
 
 	for _, dataset := range datasets {
+		wasEncrypted := dataset.IsEncrypted()
+
 		if err := dataset.Destroy(ctx, true, false); err != nil {
 			return fmt.Errorf("failed_to_delete_dataset_with_name_%s:_%w", dataset.Name, err)
+		}
+
+		if wasEncrypted {
+			cleanupEncryptionKeyForDataset(dataset)
 		}
 	}
 
@@ -163,8 +172,15 @@ func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 	}
 
 	for _, guid := range guids {
-		if err := available[guid].Destroy(ctx, true, false); err != nil {
+		ds := available[guid]
+		wasEncrypted := ds.IsEncrypted()
+
+		if err := ds.Destroy(ctx, true, false); err != nil {
 			return fmt.Errorf("failed_to_delete_dataset_with_guid_%s:_%w", guid, err)
+		}
+
+		if wasEncrypted {
+			cleanupEncryptionKeyForDataset(ds)
 		}
 	}
 

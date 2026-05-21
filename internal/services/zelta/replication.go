@@ -3706,6 +3706,15 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 			continue
 		}
 
+		if ds.IsEncrypted() {
+			if err := s.ensureEncryptionKeyForDataset(ctx, ds); err != nil {
+				return fmt.Errorf("replication_encryption_key_missing_%s: %w", dataset, err)
+			}
+			if err := ds.LoadKey(ctx, false); err != nil {
+				return fmt.Errorf("replication_load_key_failed_%s: %w", dataset, err)
+			}
+		}
+
 		if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
 			return fmt.Errorf("failed_to_set_replication_dataset_properties_%s: %w", dataset, err)
 		}

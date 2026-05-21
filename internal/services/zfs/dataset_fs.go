@@ -11,10 +11,10 @@ package zfs
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[string]string) error {
@@ -48,6 +48,12 @@ func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[s
 	}
 
 	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "create")
+
+	if isEncryptionRequested(props) {
+		if err := registerEncryptionKey(ctx, dataset); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", dataset.Name).Msg("register_encryption_key_failed")
+		}
+	}
 
 	return nil
 }
@@ -113,19 +119,14 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
-	var keylocation string
-
-	if prop, err := foundFS.GetProperty(ctx, "keylocation"); err == nil {
-		keylocation = prop.Value
-	}
+	wasEncrypted := foundFS.IsEncrypted()
 
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err
 	}
 
-	if keylocation != "" && keylocation != "none" && strings.HasPrefix(keylocation, "file://") {
-		path := strings.TrimPrefix(keylocation, "file://")
-		_ = os.Remove(path)
+	if wasEncrypted {
+		cleanupEncryptionKeyForDataset(foundFS)
 	}
 
 	s.SignalDSChange(foundFS.Pool, foundFS.Name, "generic-dataset", "edit")

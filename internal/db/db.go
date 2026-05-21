@@ -168,6 +168,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ReplicationEvent{},
 		&clusterModels.ReplicationReceipt{},
 		&clusterModels.ClusterSSHIdentity{},
+		&clusterModels.EncryptionKey{},
 		&taskModels.GuestLifecycleTask{},
 
 		&models.Migrations{},

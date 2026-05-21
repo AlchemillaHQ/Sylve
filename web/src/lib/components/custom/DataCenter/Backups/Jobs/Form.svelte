@@ -2,6 +2,8 @@
 	import { createBackupJob, updateBackupJob, type BackupJobInput } from '$lib/api/cluster/backups';
 	import { getJails } from '$lib/api/jail/jail';
 	import { getVMs } from '$lib/api/vm/vm';
+	import { getDatasets } from '$lib/api/zfs/datasets';
+	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -69,6 +71,8 @@
 	let vmsLoading = $state(false);
 	let vmsLoadedForNode = $state('');
 	let lastRunnerNodeId = $state('');
+	let srcEncrypted = $state(false);
+	let srcEncryptionChecking = $state(false);
 
 	let form = $state<JobFormState>({
 		name: '',
@@ -159,6 +163,28 @@
 		}
 
 		return { kind: 'dataset', id: 0 };
+	}
+
+	async function checkSourceEncryption(dataset: string) {
+		if (!dataset) {
+			srcEncrypted = false;
+			return;
+		}
+
+		srcEncryptionChecking = true;
+		try {
+			const datasets = await getDatasets(GZFSDatasetTypeSchema.enum.ALL);
+			const match = datasets.find((d) => {
+				if (d.name !== dataset) return false;
+				const enc = d.properties?.encryption?.value;
+				return enc && enc !== 'off' && enc !== '-' && enc !== 'none';
+			});
+			srcEncrypted = !!match;
+		} catch {
+			srcEncrypted = false;
+		} finally {
+			srcEncryptionChecking = false;
+		}
 	}
 
 	function selectedRunnerHostname(): string {
@@ -433,6 +459,20 @@
 			void loadVMs(true);
 		}
 	});
+
+	watch([() => open, () => form.mode, () => form.sourceDataset, () => form.selectedJailId, () => form.selectedVmId], ([isOpen]) => {
+		if (!isOpen) return;
+		let dataset = '';
+		if (form.mode === 'dataset') {
+			dataset = form.sourceDataset;
+		} else if (form.mode === 'jail' && selectedJail) {
+			const base = selectedJail.storages?.find((s) => s.isBase);
+			if (base) dataset = `${base.pool}/sylve/jails/${selectedJail.ctId}`;
+		} else if (form.mode === 'vm' && selectedVM) {
+			dataset = vmBaseDataset(selectedVM) || '';
+		}
+		void checkSourceEncryption(dataset);
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -597,6 +637,19 @@
 							will be backed up
 						</li>
 					{/if}
+					<li>
+						Encryption:
+						<code class="rounded bg-background px-1">
+							{#if srcEncryptionChecking}
+								...
+							{:else if srcEncrypted}
+								<span class="icon-[material-symbols--lock] h-3.5 w-3.5 inline-block align-text-bottom"></span>
+								Enabled (keys auto-managed)
+							{:else}
+								None
+							{/if}
+						</code>
+					</li>
 					<li>
 						Schedule: <code class="rounded bg-background px-1"
 							>{cronToHuman(form.cronExpr) || '(not set)'}</code

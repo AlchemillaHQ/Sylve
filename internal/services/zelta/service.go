@@ -350,6 +350,12 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_ssh_keys")
 	}
 
+	if err := s.ReconcileEncryptionKeys(); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_encryption_keys")
+	}
+
+	s.AutoDiscoverAndRegisterKeys(ctx)
+
 	if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_backup_events")
 	}
@@ -370,6 +376,9 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 		case <-cleanupTicker.C:
 			if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
 				logger.L.Warn().Err(err).Msg("periodic_backup_target_ssh_key_reconcile_failed")
+			}
+			if err := s.ReconcileEncryptionKeys(); err != nil {
+				logger.L.Warn().Err(err).Msg("periodic_encryption_key_reconcile_failed")
 			}
 			if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 				logger.L.Warn().Err(err).Msg("periodic_stale_event_cleanup_failed")

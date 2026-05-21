@@ -434,6 +434,7 @@ msgstr "Jail - 更新描述"
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Jail"
 msgstr "Jail"
 
@@ -1044,7 +1045,6 @@ msgstr "重置"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
-#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
@@ -8893,8 +8893,9 @@ msgstr "Leader IP (192.168.1.1)"
 msgid "Templates"
 msgstr "模板"
 
-#~ msgid "Jail Template - Convert"
-#~ msgstr ""
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template - Convert"
+msgstr ""
 
 #~ msgid "Jail Template - Create Jail"
 #~ msgstr ""
@@ -8929,10 +8930,8 @@ msgstr "从模板创建 Jail 失败"
 #~ msgid "Template restore job queued"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "<0/> Convert to Template"
-msgstr "<0/> 转换为模板"
+#~ msgid "<0/> Convert to Template"
+#~ msgstr "<0/> 转换为模板"
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Create Jail"
@@ -8982,13 +8981,11 @@ msgstr "数量"
 msgid "Name Prefix"
 msgstr "名称前缀"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail Template - From Jail"
-msgstr "创建 Jail 模板 - 从 Jail"
+#~ msgid "Create Jail Template - From Jail"
+#~ msgstr "创建 Jail 模板 - 从 Jail"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail - Template"
-msgstr "创建 Jail - 模板"
+#~ msgid "Create Jail - Template"
+#~ msgstr "创建 Jail - 模板"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Queued"
@@ -9383,13 +9380,11 @@ msgstr "将 {0} 添加到最后一个 VDEV"
 msgid "Size (Read-only)"
 msgstr "大小（只读）"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM Template - From VM"
-msgstr "创建虚拟机模板 - 从虚拟机"
+#~ msgid "Create VM Template - From VM"
+#~ msgstr "创建虚拟机模板 - 从虚拟机"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM - Template"
-msgstr "创建虚拟机 - 模板"
+#~ msgid "Create VM - Template"
+#~ msgstr "创建虚拟机 - 模板"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Template"
@@ -9610,9 +9605,8 @@ msgstr "模板名称为必填项"
 msgid "Template name already in use"
 msgstr "模板名称已被使用"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Convert To Template"
-msgstr "转换为模板"
+#~ msgid "Convert To Template"
+#~ msgstr "转换为模板"
 
 #~ msgid "Provide a unique template name for this {0}."
 #~ msgstr ""
@@ -13872,4 +13866,32 @@ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Sync schedule (Cron)"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Create Template"
+msgstr ""
+
+#. 0: item.resourceType === 'jail' ? 'Jail' \\: 'VM'
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Create {0} Template"
+msgstr ""
+
+#~ msgid "Create VM Template"
+#~ msgstr ""
+
+#~ msgid "Create Jail Template"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Template - Convert"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Template - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template - Create"
 msgstr ""

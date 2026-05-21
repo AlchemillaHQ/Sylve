@@ -344,6 +344,8 @@ func (s *Service) runRestoreVMJob(
 
 // fixRestoredProperties corrects ZFS properties after a restore so the dataset
 // behaves like the original (not readonly, correct mountpoint, canmount=on).
+// For encrypted datasets, it ensures the key file is present and loads the key
+// before mounting.
 func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 	ds, err := s.getLocalDataset(ctx, dataset)
 	if err != nil {
@@ -353,6 +355,17 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 	if ds == nil {
 		logger.L.Warn().Str("dataset", dataset).Msg("fix_restored_property_failed_dataset_not_found")
 		return
+	}
+
+	if ds.IsEncrypted() {
+		if err := s.ensureEncryptionKeyForDataset(ctx, ds); err != nil {
+			logger.L.Error().Err(err).Str("dataset", dataset).Msg("fix_restored_property_key_missing")
+			return
+		}
+		if err := ds.LoadKey(ctx, false); err != nil {
+			logger.L.Error().Err(err).Str("dataset", dataset).Msg("fix_restored_property_load_key_failed")
+			return
+		}
 	}
 
 	if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {

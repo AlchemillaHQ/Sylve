@@ -200,7 +200,7 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
                 const row = cell.getRow();
                 const encryption = row.getData().encryption;
 
-                if (encryption && encryption !== 'off') {
+                if (encryption && encryption !== 'off' && encryption !== '-' && encryption !== 'none') {
                     return renderWithIcon(['material-symbols:lock', 'material-symbols:files'], value);
                 }
 

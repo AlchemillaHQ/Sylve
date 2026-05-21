@@ -185,6 +185,16 @@ func main() {
 	zeltaS.RegisterJobs()
 	lifecycleSvc.RegisterJobs()
 
+	zfs.EncryptionKeyCreatedHook = func(uuid, keyData, keyFormat string) {
+		if err := clusterSvc.ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat); err != nil {
+			logger.L.Warn().Err(err).Str("uuid", uuid).Msg("encryption_key_hook_register_failed")
+		}
+	}
+
+	zfs.EncryptionKeyDeletedHook = func(uuid string) {
+		clusterSvc.ForwardEncryptionKeyDeleteToLeader(uuid)
+	}
+
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
 

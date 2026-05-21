@@ -16,6 +16,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -63,6 +64,12 @@ func (s *Service) CreateVolume(ctx context.Context, name string, parent string, 
 
 	s.SignalDSChange(zvol.Pool, zvol.Name, "generic-dataset", "create")
 
+	if isEncryptionRequested(props) {
+		if err := registerEncryptionKey(ctx, zvol); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", zvol.Name).Msg("register_encryption_key_failed")
+		}
+	}
+
 	return nil
 }
 
@@ -107,13 +114,19 @@ func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
 	}
 
 	if volume != nil && volume.Type == gzfs.DatasetTypeVolume {
+		wasEncrypted := volume.IsEncrypted()
+
 		if err := volume.Destroy(ctx, true, false); err != nil {
 			return err
 		}
+
+		if wasEncrypted {
+			cleanupEncryptionKeyForDataset(volume)
+		}
+
+		s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "delete")
 		return nil
 	}
-
-	s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "delete")
 
 	return fmt.Errorf("volume_with_guid_%s_not_found", guid)
 }

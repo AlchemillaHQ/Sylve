@@ -577,6 +577,8 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
 		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
+		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
+		intraCluster.POST("/encryption-key/delete", clusterHandlers.DeleteEncryptionKeyInternal(clusterService))
 	}
 
 	cluster := api.Group("/cluster")

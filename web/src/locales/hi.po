@@ -434,6 +434,7 @@ msgstr "जेल - विवरण अपडेट करें"
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Jail"
 msgstr "जेल"
 
@@ -1044,7 +1045,6 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
-#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
@@ -8896,8 +8896,9 @@ msgstr ""
 msgid "Templates"
 msgstr ""
 
-#~ msgid "Jail Template - Convert"
-#~ msgstr ""
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template - Convert"
+msgstr ""
 
 #~ msgid "Jail Template - Create Jail"
 #~ msgstr ""
@@ -8932,10 +8933,8 @@ msgstr ""
 #~ msgid "Template restore job queued"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "<0/> Convert to Template"
-msgstr ""
+#~ msgid "<0/> Convert to Template"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Create Jail"
@@ -8985,13 +8984,11 @@ msgstr ""
 msgid "Name Prefix"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail Template - From Jail"
-msgstr ""
+#~ msgid "Create Jail Template - From Jail"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail - Template"
-msgstr ""
+#~ msgid "Create Jail - Template"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Queued"
@@ -9386,13 +9383,11 @@ msgstr ""
 msgid "Size (Read-only)"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM Template - From VM"
-msgstr ""
+#~ msgid "Create VM Template - From VM"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM - Template"
-msgstr ""
+#~ msgid "Create VM - Template"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Template"
@@ -9613,9 +9608,8 @@ msgstr ""
 msgid "Template name already in use"
 msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Convert To Template"
-msgstr ""
+#~ msgid "Convert To Template"
+#~ msgstr ""
 
 #~ msgid "Provide a unique template name for this {0}."
 #~ msgstr ""
@@ -13875,4 +13869,32 @@ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Sync schedule (Cron)"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Create Template"
+msgstr ""
+
+#. 0: item.resourceType === 'jail' ? 'Jail' \\: 'VM'
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Create {0} Template"
+msgstr ""
+
+#~ msgid "Create VM Template"
+#~ msgstr ""
+
+#~ msgid "Create Jail Template"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Template - Convert"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Template - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template - Create"
 msgstr ""

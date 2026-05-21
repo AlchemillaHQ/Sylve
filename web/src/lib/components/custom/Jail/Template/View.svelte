@@ -447,21 +447,18 @@
 		<div class="mt-4">
 			{#if selectedHook?.script}
 				<Textarea
-					class="font-mono text-xs h-[40vh] w-full resize-none p-4"
+					class="font-mono text-xs min-h-48 w-full resize-none p-4"
 					value={selectedHook.script}
 					readonly
 					spellcheck={false}
 				/>
 			{:else}
 				<div
-					class="flex h-[20vh] items-center justify-center rounded-md border border-dashed text-muted-foreground text-sm"
+					class="flex min-h-48 items-center justify-center rounded-md border border-dashed text-muted-foreground text-sm"
 				>
 					No script content found for this hook
 				</div>
 			{/if}
 		</div>
-		<Dialog.Footer>
-			<Button variant="secondary" onclick={() => (hookModalOpen = false)}>Close</Button>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

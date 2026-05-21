@@ -26,17 +26,12 @@ func FinalizeAsyncAuditRecord(telemetryDB *gorm.DB, jobType string, jobID uint, 
 		query = query.Where("async_job_type = ?", jobType)
 	}
 
-	var record infoModels.AuditRecord
-	res := query.
-		Order("created_at DESC").
-		Limit(1).
-		Find(&record)
-
-	if res.Error != nil {
+	var records []infoModels.AuditRecord
+	if err := query.Order("created_at DESC").Find(&records).Error; err != nil {
 		return
 	}
 
-	if res.RowsAffected == 0 {
+	if len(records) == 0 {
 		return
 	}
 
@@ -46,16 +41,18 @@ func FinalizeAsyncAuditRecord(telemetryDB *gorm.DB, jobType string, jobID uint, 
 		"ended":  time.Now(),
 	}
 
-	if err := telemetryDB.Model(&record).Updates(updates).Error; err != nil {
-		return
-	}
+	for i := range records {
+		if err := telemetryDB.Model(&records[i]).Updates(updates).Error; err != nil {
+			continue
+		}
 
-	if response != nil {
-		var action map[string]any
-		if err := json.Unmarshal([]byte(record.Action), &action); err == nil {
-			action["response"] = response
-			if updated, err := json.Marshal(action); err == nil {
-				telemetryDB.Model(&record).Update("action", string(updated))
+		if response != nil {
+			var action map[string]any
+			if err := json.Unmarshal([]byte(records[i].Action), &action); err == nil {
+				action["response"] = response
+				if updated, err := json.Marshal(action); err == nil {
+					telemetryDB.Model(&records[i]).Update("action", string(updated))
+				}
 			}
 		}
 	}
