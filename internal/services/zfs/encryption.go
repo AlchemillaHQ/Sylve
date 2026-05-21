@@ -23,10 +23,6 @@ import (
 // keyData is the passphrase content, and keyFormat is the encryption key format.
 var EncryptionKeyCreatedHook func(uuid, keyData, keyFormat string)
 
-// EncryptionKeyDeletedHook is called when an encrypted dataset is deleted.
-// The UUID identifies the key to remove from the cluster key store.
-var EncryptionKeyDeletedHook func(uuid string)
-
 func registerEncryptionKey(ctx context.Context, ds *gzfs.Dataset) error {
 	if EncryptionKeyCreatedHook == nil {
 		return nil
@@ -92,9 +88,8 @@ func cleanupEncryptionKeyForDataset(ds *gzfs.Dataset) {
 	keyPath := filepath.Join("/etc/zfs/keys", uuid)
 	_ = os.Remove(keyPath)
 
-	if EncryptionKeyDeletedHook != nil {
-		EncryptionKeyDeletedHook(uuid)
-	}
+	// Intentionally do NOT delete from the cluster key store.
+	// The key may still be needed for future restores from backups.
 }
 
 func isEncryptionRequested(props map[string]string) bool {

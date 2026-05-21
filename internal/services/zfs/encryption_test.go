@@ -92,42 +92,6 @@ func TestEncryptionKeyCreatedHook(t *testing.T) {
 	})
 }
 
-func TestEncryptionKeyDeletedHook(t *testing.T) {
-	var called bool
-	var deletedUUID string
-
-	origHook := EncryptionKeyDeletedHook
-	EncryptionKeyDeletedHook = func(uuid string) {
-		called = true
-		deletedUUID = uuid
-	}
-	t.Cleanup(func() { EncryptionKeyDeletedHook = origHook })
-
-	t.Run("hook nil is safe", func(t *testing.T) {
-		called = false
-		saved := EncryptionKeyDeletedHook
-		EncryptionKeyDeletedHook = nil
-		cleanupEncryptionKeyForDataset(&gzfs.Dataset{
-			Name: "tank/plain",
-			Properties: map[string]gzfs.ZFSProperty{
-				"keylocation": {Value: "none"},
-			},
-		})
-		EncryptionKeyDeletedHook = saved
-	})
-
-	t.Run("hook called", func(t *testing.T) {
-		called = false
-		EncryptionKeyDeletedHook("delete-me-uuid")
-		if !called {
-			t.Fatal("hook was not called")
-		}
-		if deletedUUID != "delete-me-uuid" {
-			t.Errorf("expected uuid 'delete-me-uuid', got %q", deletedUUID)
-		}
-	})
-}
-
 func TestExtractUUIDFromDataset(t *testing.T) {
 	t.Run("encrypted with file keylocation", func(t *testing.T) {
 		ds := &gzfs.Dataset{

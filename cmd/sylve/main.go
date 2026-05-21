@@ -191,10 +191,6 @@ func main() {
 		}
 	}
 
-	zfs.EncryptionKeyDeletedHook = func(uuid string) {
-		clusterSvc.ForwardEncryptionKeyDeleteToLeader(uuid)
-	}
-
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
 
