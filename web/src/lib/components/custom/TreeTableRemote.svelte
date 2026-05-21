@@ -27,7 +27,7 @@
 		parentActiveRow?: Row[] | null;
 		query?: string;
 		multipleSelect?: boolean;
-		extraParams?: Record<string, string | number>;
+		extraParams?: Record<string, string | number | undefined>;
 		customPlaceholder?: string;
 		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
 		reload: boolean;
@@ -127,8 +127,18 @@
 		}
 	});
 
+	// https://10.10.30.103/ares/storage/zfs/datasets/snapshots
+	let hostname = new URL(location.href).pathname.split('/').filter(Boolean)[0];
+
 	onMount(async () => {
 		hash = await sha256(storage.token || '', 1);
+
+		/*
+        export interface AjaxContentType {
+    headers: JSONRecord;
+    body: (url: string, config: any, params: any) => any;
+}
+        */
 
 		if (tableComponent) {
 			table = new Tabulator(tableComponent, {
@@ -139,6 +149,14 @@
 				ajaxParams: {
 					hash,
 					...extraParams
+				},
+				ajaxConfig: {
+					method: 'GET',
+					headers: {
+						...(hostname && {
+							'X-Current-Hostname': hostname
+						})
+					}
 				},
 				reactiveData: true,
 				columns: data.columns as ColumnDefinition[],

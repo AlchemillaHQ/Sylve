@@ -387,6 +387,31 @@ func (s *Service) ensureLocalFilesystemPath(ctx context.Context, dataset string)
 	return nil
 }
 
+func (s *Service) listLocalVolumeDatasets(ctx context.Context) ([]string, error) {
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return nil, fmt.Errorf("gzfs_not_initialized")
+	}
+
+	sets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]string, 0, len(sets))
+	for _, ds := range sets {
+		if ds == nil {
+			continue
+		}
+		name := normalizeDatasetPath(ds.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+
+	return out, nil
+}
+
 func (s *Service) listLocalFilesystemDatasets(ctx context.Context) ([]string, error) {
 	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
 		return nil, fmt.Errorf("gzfs_not_initialized")

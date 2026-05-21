@@ -16,7 +16,7 @@
 		type Dataset,
 		type PeriodicSnapshot
 	} from '$lib/types/zfs/dataset';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch, PersistedState } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon, sizeFormatter, deselectAllRows, getTable } from '$lib/utils/table';
@@ -65,7 +65,17 @@
 		}
 	});
 
-	let pools = $derived(basicSettings.current.pools || []);
+	let pools = $derived.by(() => {
+		if (
+			basicSettings.current &&
+			!isAPIResponse(basicSettings.current) &&
+			basicSettings.current.pools
+		) {
+			return basicSettings.current.pools;
+		}
+		return [];
+	});
+
 	let reload = $state(false);
 
 	watch(
@@ -336,7 +346,7 @@
 </div>
 
 <!-- Create Snapshot -->
-{#if modals.snapshot.create.open && basicSettings.current}
+{#if modals.snapshot.create.open && basicSettings.current && !isAPIResponse(basicSettings.current)}
 	<CreateDetailed
 		bind:open={modals.snapshot.create.open}
 		bind:reload

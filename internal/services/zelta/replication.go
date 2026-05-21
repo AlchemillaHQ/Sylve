@@ -3662,9 +3662,13 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		return nil
 	}
 
-	datasets, err := s.listLocalFilesystemDatasets(ctx)
+	filesystems, err := s.listLocalFilesystemDatasets(ctx)
 	if err != nil {
 		return err
+	}
+	volumes, volErr := s.listLocalVolumeDatasets(ctx)
+	if volErr != nil {
+		logger.L.Warn().Err(volErr).Msg("failed_to_list_volumes_for_replication_activation")
 	}
 
 	seen := map[string]struct{}{
@@ -3673,7 +3677,7 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 	subtree := []string{rootDataset}
 	prefix := rootDataset + "/"
 
-	for _, candidate := range datasets {
+	for _, candidate := range filesystems {
 		ds := normalizeDatasetPath(candidate)
 		if ds == "" || ds == rootDataset {
 			continue
@@ -3688,6 +3692,22 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		subtree = append(subtree, ds)
 	}
 
+	volSubtree := []string{}
+	for _, candidate := range volumes {
+		ds := normalizeDatasetPath(candidate)
+		if ds == "" || ds == rootDataset {
+			continue
+		}
+		if !strings.HasPrefix(ds, prefix) {
+			continue
+		}
+		if _, ok := seen[ds]; ok {
+			continue
+		}
+		seen[ds] = struct{}{}
+		volSubtree = append(volSubtree, ds)
+	}
+
 	sort.SliceStable(subtree, func(i, j int) bool {
 		di := strings.Count(subtree[i], "/")
 		dj := strings.Count(subtree[j], "/")
@@ -3696,6 +3716,7 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		}
 		return di < dj
 	})
+	sort.Strings(volSubtree)
 
 	for idx, dataset := range subtree {
 		ds, err := s.getLocalDataset(ctx, dataset)
@@ -3731,6 +3752,30 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 			if !strings.Contains(lower, "already mounted") {
 				return fmt.Errorf("failed_to_mount_replication_dataset_%s: %w", dataset, err)
 			}
+		}
+	}
+
+	for _, dataset := range volSubtree {
+		ds, err := s.getLocalDataset(ctx, dataset)
+		if err != nil {
+			return fmt.Errorf("failed_to_open_replication_volume_%s: %w", dataset, err)
+		}
+		if ds == nil {
+			continue
+		}
+
+		if ds.IsEncrypted() {
+			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+			if err != nil {
+				return fmt.Errorf("replication_encryption_key_failed_%s: %w", dataset, err)
+			}
+			if !keyLoaded {
+				logger.L.Warn().Str("dataset", dataset).Msg("replication_encryption_key_not_auto_loaded")
+			}
+		}
+
+		if err := ds.SetProperties(ctx, "readonly", "off"); err != nil {
+			return fmt.Errorf("failed_to_set_replication_volume_readonly_%s: %w", dataset, err)
 		}
 	}
 
@@ -3855,6 +3900,9 @@ func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 				Uint("guest_id", policy.GuestID).
 				Str("guest_type", strings.TrimSpace(policy.GuestType)).
 				Msg("replication_self_fence_invalid_guest_type")
+			continue
+		}
+		if !s.replicationGuestExistsLocally(policy.GuestType, policy.GuestID) {
 			continue
 		}
 		driver.selfFence(ctx, policy.ID, policy.GuestID, localNodeID, expectedOwner, fenceReason)

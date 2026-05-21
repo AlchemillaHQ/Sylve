@@ -381,8 +381,9 @@ func (s *Service) normalizeRestoredVMStorages(
 	out := make([]vmModels.Storage, 0, len(storages))
 
 	for _, storage := range storages {
+		originalID := storage.ID
 		cleaned := vmModels.Storage{
-			ID:           storage.ID,
+			ID:           0,
 			Type:         storage.Type,
 			Name:         strings.TrimSpace(storage.Name),
 			DownloadUUID: strings.TrimSpace(storage.DownloadUUID),
@@ -402,15 +403,15 @@ func (s *Service) normalizeRestoredVMStorages(
 		}
 
 		if cleaned.Pool == "" {
-			return nil, fmt.Errorf("restored_vm_storage_pool_missing_for_id_%d", cleaned.ID)
+			return nil, fmt.Errorf("restored_vm_storage_pool_missing_for_id_%d", originalID)
 		}
 
 		var datasetName string
 		switch cleaned.Type {
 		case vmModels.VMStorageTypeRaw:
-			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", cleaned.Pool, rid, cleaned.ID)
+			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", cleaned.Pool, rid, originalID)
 		case vmModels.VMStorageTypeZVol:
-			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", cleaned.Pool, rid, cleaned.ID)
+			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", cleaned.Pool, rid, originalID)
 		default:
 			return nil, fmt.Errorf("unsupported_restored_vm_storage_type: %s", cleaned.Type)
 		}

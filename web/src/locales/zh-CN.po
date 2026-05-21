@@ -13943,3 +13943,10 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Recursive backup: <0/>"
 msgstr ""
+
+#: src/lib/components/custom/TreeTableRemote.svelte
+msgid "X-Current-Hostname"
+msgstr ""
+
+#~ msgid "Content-Type"
+#~ msgstr ""

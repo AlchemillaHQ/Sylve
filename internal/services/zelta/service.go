@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -107,6 +108,29 @@ func NewService(
 		runningTransitions: make(map[uint]struct{}),
 		downMisses:         make(map[uint]int),
 		runningWorkloadOp:  make(map[string]string),
+	}
+}
+
+func (s *Service) replicationGuestExistsLocally(guestType string, guestID uint) bool {
+	if s == nil || s.DB == nil || guestID == 0 {
+		return false
+	}
+
+	switch strings.TrimSpace(guestType) {
+	case clusterModels.ReplicationGuestTypeVM:
+		var count int64
+		if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", guestID).Limit(1).Count(&count).Error; err != nil {
+			return false
+		}
+		return count > 0
+	case clusterModels.ReplicationGuestTypeJail:
+		var count int64
+		if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", guestID).Limit(1).Count(&count).Error; err != nil {
+			return false
+		}
+		return count > 0
+	default:
+		return false
 	}
 }
 
