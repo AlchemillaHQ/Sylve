@@ -746,7 +746,7 @@
 </Dialog.Root>
 
 <Dialog.Root bind:open={errorModal.open}>
-	<Dialog.Content class="w-[min(760px,95vw)] h-[min(60vh,95vh)] p-5" showCloseButton={true}>
+	<Dialog.Content class="p-5" showCloseButton={true}>
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center gap-2">
 				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 text-red-500"></span>
@@ -755,7 +755,7 @@
 		</Dialog.Header>
 
 		<div class="mt-3 max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
-			<pre class="whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
+			<pre class="m-0 whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
 		</div>
 
 		<Dialog.Footer>

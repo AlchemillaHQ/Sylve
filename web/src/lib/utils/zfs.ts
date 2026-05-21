@@ -221,7 +221,7 @@ export function buildGenerationAliasMap(items: SnapshotInfo[]): Map<string, stri
     });
     const aliases = new Map<string, string>();
     for (let index = 0; index < ordered.length; index++) {
-        aliases.set(ordered[index][0], `gen-${index + 1}`);
+        aliases.set(ordered[index][0], `Gen ${index + 1}`);
     }
     return aliases;
 }

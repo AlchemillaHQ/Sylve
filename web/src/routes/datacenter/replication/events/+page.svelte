@@ -382,9 +382,7 @@
 			value={filterPolicyId}
 			options={policyFilterOptions}
 			classes={{
-				parent: 'w-[320px] space-y-0',
-				trigger: 'h-6 w-full px-2',
-				label: 'hidden'
+				trigger: '!h-6 text-sm'
 			}}
 			onChange={(value) => {
 				filterPolicyId = value;

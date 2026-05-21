@@ -204,6 +204,8 @@ func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, desti
 	}
 
 	if destinationExists {
+		_ = s.unmountLocalDataset(ctx, destination)
+
 		token := compactNowToken()
 		for attempt := 0; attempt < 32; attempt++ {
 			candidate := restoreBackupDatasetCandidate(destination, token, attempt)
@@ -280,6 +282,18 @@ func (s *Service) cleanupRestoreBackupDataset(ctx context.Context, backupDataset
 	}
 
 	return s.destroyLocalDatasetWithRetry(ctx, backupDataset, true, 20, 500*time.Millisecond)
+}
+
+func (s *Service) unmountLocalDataset(ctx context.Context, name string) error {
+	ds, err := s.getLocalDataset(ctx, name)
+	if err != nil {
+		return err
+	}
+	if ds == nil {
+		return nil
+	}
+
+	return ds.Unmount(ctx, true)
 }
 
 func (s *Service) mountLocalDataset(ctx context.Context, name string) error {
