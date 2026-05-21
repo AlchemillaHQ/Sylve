@@ -13246,11 +13246,10 @@ msgstr ""
 msgid "Redirecting to Traffic Rules..."
 msgstr ""
 
-#: src/routes/inactive-node/+page.svelte
-msgid ""
-"This node can’t be reached right now. Check the network connection and confirm the node is\n"
-"powered on."
-msgstr ""
+#~ msgid ""
+#~ "This node can’t be reached right now. Check the network connection and confirm the node is\n"
+#~ "powered on."
+#~ msgstr ""
 
 #~ msgid "⌘⇧Q"
 #~ msgstr ""

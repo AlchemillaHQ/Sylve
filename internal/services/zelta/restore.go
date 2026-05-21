@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -345,43 +346,88 @@ func (s *Service) runRestoreVMJob(
 // fixRestoredProperties corrects ZFS properties after a restore so the dataset
 // behaves like the original (not readonly, correct mountpoint, canmount=on).
 // For encrypted datasets, it ensures the key file is present and loads the key
-// before mounting.
+// before mounting. Walks all child datasets under the root to handle
+// independent encryption roots.
 func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
-	ds, err := s.getLocalDataset(ctx, dataset)
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return
+	}
+
+	allDatasets, err := s.listLocalFilesystemDatasets(ctx)
 	if err != nil {
-		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_failed")
-		return
-	}
-	if ds == nil {
-		logger.L.Warn().Str("dataset", dataset).Msg("fix_restored_property_failed_dataset_not_found")
+		logger.L.Warn().Err(err).Msg("fix_restored_property_list_datasets_failed")
 		return
 	}
 
-	if ds.IsEncrypted() {
-		keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+	seen := map[string]struct{}{dataset: {}}
+	subtree := []string{dataset}
+	prefix := dataset + "/"
+
+	for _, candidate := range allDatasets {
+		ds := normalizeDatasetPath(candidate)
+		if ds == "" || ds == dataset {
+			continue
+		}
+		if !strings.HasPrefix(ds, prefix) {
+			continue
+		}
+		if _, ok := seen[ds]; ok {
+			continue
+		}
+		seen[ds] = struct{}{}
+		subtree = append(subtree, ds)
+	}
+
+	sort.SliceStable(subtree, func(i, j int) bool {
+		di := strings.Count(subtree[i], "/")
+		dj := strings.Count(subtree[j], "/")
+		if di == dj {
+			return subtree[i] < subtree[j]
+		}
+		return di < dj
+	})
+
+	for idx, dsName := range subtree {
+		ds, err := s.getLocalDataset(ctx, dsName)
 		if err != nil {
-			logger.L.Error().Err(err).Str("dataset", dataset).Msg("fix_restored_property_key_load_failed")
-			return
+			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_get_failed")
+			continue
 		}
-		if !keyLoaded {
-			logger.L.Warn().Str("dataset", dataset).Msg("fix_restored_property_key_not_auto_loaded")
+		if ds == nil {
+			logger.L.Warn().Str("dataset", dsName).Msg("fix_restored_property_dataset_not_found")
+			continue
 		}
-	}
 
-	if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
-		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_set_failed")
-	}
-
-	if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dataset); err != nil {
-		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_inherit_mountpoint_failed")
-	}
-
-	if err := ds.Mount(ctx, false); err != nil {
-		lowerErr := strings.ToLower(strings.TrimSpace(err.Error()))
-		if strings.Contains(lowerErr, "already mounted") {
-			return
+		if ds.IsEncrypted() {
+			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+			if err != nil {
+				logger.L.Error().Err(err).Str("dataset", dsName).Msg("fix_restored_property_key_load_failed")
+				continue
+			}
+			if !keyLoaded {
+				logger.L.Warn().Str("dataset", dsName).Msg("fix_restored_property_key_not_auto_loaded")
+				continue
+			}
 		}
-		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_mount_failed")
+
+		if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_set_failed")
+		}
+
+		if idx == 0 {
+			if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dsName); err != nil {
+				logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_inherit_mountpoint_failed")
+			}
+		}
+
+		if err := ds.Mount(ctx, false); err != nil {
+			lowerErr := strings.ToLower(strings.TrimSpace(err.Error()))
+			if strings.Contains(lowerErr, "already mounted") {
+				continue
+			}
+			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_mount_failed")
+		}
 	}
 }
 

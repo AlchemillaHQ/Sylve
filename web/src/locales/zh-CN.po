@@ -13243,11 +13243,10 @@ msgstr "Jail 模板 - {0}"
 msgid "Redirecting to Traffic Rules..."
 msgstr "正在重定向到流量规则..."
 
-#: src/routes/inactive-node/+page.svelte
-msgid ""
-"This node can’t be reached right now. Check the network connection and confirm the node is\n"
-"powered on."
-msgstr "目前无法连接到此节点。请检查网络连接并确认节点已开启电源。"
+#~ msgid ""
+#~ "This node can’t be reached right now. Check the network connection and confirm the node is\n"
+#~ "powered on."
+#~ msgstr "目前无法连接到此节点。请检查网络连接并确认节点已开启电源。"
 
 #~ msgid "⌘⇧Q"
 #~ msgstr ""
