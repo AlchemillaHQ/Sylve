@@ -18,7 +18,6 @@
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { getContext } from 'svelte';
 
 	interface Data {
@@ -34,9 +33,6 @@
 	let { data }: { data: Data } = $props();
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
-	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
-		'vmLifecycleTask'
-	);
 
 	// svelte-ignore state_referenced_locally
 	const vms = resource(
@@ -147,9 +143,7 @@
 		}
 	);
 
-	let isLifecycleActive = $derived(
-		!!lifecycleTask.current && !!(lifecycleTask.current as LifecycleTask).action
-	);
+	let isLifecycleActive = $derived(!!domain.current?.pendingAction);
 	let isDomainShutoff = $derived(
 		!isLifecycleActive &&
 			String(domain.current?.status || '')

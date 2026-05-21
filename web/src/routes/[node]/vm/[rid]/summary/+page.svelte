@@ -18,12 +18,10 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import {
 		VMStatSchema,
 		type QGAInfo,
 		type VM,
-		type VMLifecycleAction,
 		type VMDomain,
 		type VMStat
 	} from '$lib/types/vm/vm';
@@ -39,19 +37,7 @@
 	import type { APIResponse, GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
-	import {
-		createVMPendingLifecycleSnapshot,
-		getEffectiveVMLifecycleAction,
-		getVMIconByGaId,
-		getVMLifecyclePendingTimeoutMs,
-		getVMLifecycleBadgeStyle,
-		isVMPendingLifecycleActionSettled,
-		isVMLifecycleTransitionPending,
-		markVMPendingSnapshotNonRunning,
-		shouldHideVMLifecycleButtons,
-		removeStaleCacheByRID,
-		type VMPendingLifecycleSnapshot
-	} from '$lib/utils/vm/vm';
+	import { getVMIconByGaId, removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
 	import { fade } from 'svelte/transition';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
@@ -81,9 +67,6 @@
 	);
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
-	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
-		'vmLifecycleTask'
-	);
 
 	const logs = resource(
 		() => `vm-${data.rid}-logs`,
@@ -188,13 +171,26 @@
 		isEditingName = false;
 	}
 
-	const NON_RUNNING_ACTION_SUPPRESS_MS = 1800;
+	let normalizedDomainStatus = $derived.by(() =>
+		String(domain.current?.status || '').trim().toLowerCase()
+	);
+	let isDomainErrorState = $derived(normalizedDomainStatus === 'error');
+	let hasActiveLifecycleTask = $derived(!!domain.current?.pendingAction);
+	let lifecycleActionBadge = $derived(
+		getVMLifecycleBadgeStyle(domain.current?.pendingAction || '')
+	);
+	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
+	let isDomainRunningForActions = $derived.by(() => {
+		if (normalizedDomainStatus === 'running') return true;
+		if (isDomainErrorState) return false;
+		const pending = domain.current?.pendingAction;
+		if (pending === 'start' || pending === 'reboot') return true;
+		return false;
+	});
+	let isShutdownTaskActive = $derived(
+		domain.current?.pendingAction === 'shutdown' && !domain.current?.overrideRequested
+	);
 
-	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
-	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
-	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
-	let suppressNonRunningActions = $state(false);
-	let suppressNonRunningActionsTimer: ReturnType<typeof setTimeout> | null = null;
 	let isDeleteInFlight = $state(false);
 
 	watch(
@@ -262,61 +258,8 @@
 		followLogs = isNearLogsBottom(logsContainerElement);
 	}
 
-	function beginNonRunningActionsSuppression() {
-		suppressNonRunningActions = true;
-		if (suppressNonRunningActionsTimer) {
-			clearTimeout(suppressNonRunningActionsTimer);
-		}
-
-		suppressNonRunningActionsTimer = setTimeout(() => {
-			suppressNonRunningActions = false;
-			suppressNonRunningActionsTimer = null;
-		}, NON_RUNNING_ACTION_SUPPRESS_MS);
-	}
-
-	function clearNonRunningActionsSuppression() {
-		suppressNonRunningActions = false;
-		if (suppressNonRunningActionsTimer) {
-			clearTimeout(suppressNonRunningActionsTimer);
-			suppressNonRunningActionsTimer = null;
-		}
-	}
-
-	function beginPendingLifecycleAction(action: VMLifecycleAction) {
-		pendingLifecycleAction = action;
-		pendingLifecycleSnapshot = createVMPendingLifecycleSnapshot(
-			String(domain.current?.status || ''),
-			vm.current.startedAt ?? null
-		);
-		if (action === 'start' || action === 'reboot') {
-			beginNonRunningActionsSuppression();
-		} else {
-			clearNonRunningActionsSuppression();
-		}
-
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-		}
-
-		// Safety net: never keep UI locked indefinitely if lifecycle polling misses an update.
-		pendingLifecycleTimer = setTimeout(() => {
-			pendingLifecycleAction = '';
-			pendingLifecycleSnapshot = null;
-			pendingLifecycleTimer = null;
-		}, getVMLifecyclePendingTimeoutMs(action));
-	}
-
-	function clearPendingLifecycleAction() {
-		pendingLifecycleAction = '';
-		pendingLifecycleSnapshot = null;
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-			pendingLifecycleTimer = null;
-		}
-	}
-
 	async function refreshLifecycleState() {
-		await Promise.all([domain.refetch(), vm.refetch(), lifecycleTask.refetch()]);
+		await Promise.all([domain.refetch(), vm.refetch()]);
 	}
 
 	async function handleDelete() {
@@ -345,7 +288,7 @@
 
 		if (result.status === 'error') {
 			isDeleteInFlight = false;
-			await Promise.all([vm.refetch(), domain.refetch(), stats.refetch(), lifecycleTask.refetch()]);
+			await Promise.all([vm.refetch(), domain.refetch(), stats.refetch()]);
 			toast.error(wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -416,15 +359,12 @@
 	}
 
 	async function handleStart() {
-		beginPendingLifecycleAction('start');
 		const result = await actionVm(vm.current.rid, 'start');
-
+		domain.refetch();
 		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
-				clearPendingLifecycleAction();
-				clearNonRunningActionsSuppression();
 				toast.error(
 					result.message === 'lifecycle_task_in_progress'
 						? 'VM action already in progress'
@@ -449,15 +389,12 @@
 	}
 
 	async function handleStop() {
-		beginPendingLifecycleAction('stop');
 		const result = await actionVm(vm.current.rid, 'stop');
-
+		domain.refetch();
 		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
-				clearPendingLifecycleAction();
-				clearNonRunningActionsSuppression();
 				toast.error(
 					result.message === 'lifecycle_task_in_progress'
 						? 'VM action already in progress'
@@ -486,12 +423,11 @@
 	}
 
 	async function handleForceStop() {
-		beginPendingLifecycleAction('stop');
 		const result = await actionVm(vm.current.rid, 'stop');
+		domain.refetch();
 		reload.leftPanel = true;
 
 		if (isAPIResponse(result) && result.status === 'error') {
-			clearPendingLifecycleAction();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'VM action already in progress'
@@ -512,13 +448,12 @@
 	}
 
 	async function handleShutdown() {
-		beginPendingLifecycleAction('shutdown');
 		const result = await actionVm(vm.current.rid, 'shutdown');
+		domain.refetch();
 		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
-				clearPendingLifecycleAction();
 				toast.error(
 					result.message === 'lifecycle_task_in_progress'
 						? 'VM action already in progress'
@@ -545,14 +480,12 @@
 	}
 
 	async function handleReboot() {
-		beginPendingLifecycleAction('reboot');
 		const result = await actionVm(vm.current.rid, 'reboot');
+		domain.refetch();
 		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
-				clearPendingLifecycleAction();
-				clearNonRunningActionsSuppression();
 				toast.error(
 					result.message === 'lifecycle_task_in_progress'
 						? 'VM action already in progress'
@@ -616,120 +549,6 @@
 		}
 		return '';
 	});
-
-	let normalizedDomainStatus = $derived.by(() =>
-		String(domain.current?.status || '')
-			.trim()
-			.toLowerCase()
-	);
-	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
-	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
-	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
-	let isActiveLifecycleActionSettled = $derived.by(() => {
-		if (
-			activeLifecycleAction !== 'start' &&
-			activeLifecycleAction !== 'stop' &&
-			activeLifecycleAction !== 'shutdown' &&
-			activeLifecycleAction !== 'reboot'
-		) {
-			return false;
-		}
-
-		const snapshot =
-			activeLifecycleAction === pendingLifecycleAction && pendingLifecycleSnapshot
-				? pendingLifecycleSnapshot
-				: createVMPendingLifecycleSnapshot(
-						String(domain.current?.status || ''),
-						vm.current.startedAt ?? null
-					);
-
-		return isVMPendingLifecycleActionSettled(
-			activeLifecycleAction,
-			snapshot,
-			normalizedDomainStatus,
-			isDomainErrorState,
-			vm.current.startedAt ?? null
-		);
-	});
-	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
-	let effectiveLifecycleAction = $derived(
-		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
-	);
-	let isLifecycleTransitionPending = $derived(
-		isVMLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
-	);
-	let shouldHideActionButtons = $derived(
-		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
-	);
-	let isDomainRunningForActions = $derived.by(() => {
-		if (normalizedDomainStatus === 'running') {
-			return true;
-		}
-
-		if (!suppressNonRunningActions || isDomainErrorState) {
-			return false;
-		}
-
-		if (
-			pendingLifecycleAction === 'stop' ||
-			pendingLifecycleAction === 'shutdown' ||
-			activeLifecycleAction === 'stop' ||
-			activeLifecycleAction === 'shutdown'
-		) {
-			return false;
-		}
-
-		return true;
-	});
-	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
-	let isShutdownTaskActive = $derived.by(
-		() => lifecycleTask.current?.action === 'shutdown' && !lifecycleTask.current?.overrideRequested
-	);
-
-	watch(
-		() => [pendingLifecycleAction, normalizedDomainStatus] as const,
-		([pendingAction, currentStatus]) => {
-			if (pendingAction !== 'reboot' || !pendingLifecycleSnapshot) {
-				return;
-			}
-
-			const updatedSnapshot = markVMPendingSnapshotNonRunning(
-				pendingLifecycleSnapshot,
-				currentStatus,
-				isDomainErrorState
-			);
-			if (updatedSnapshot !== pendingLifecycleSnapshot) {
-				pendingLifecycleSnapshot = updatedSnapshot;
-			}
-		}
-	);
-
-	watch(
-		() =>
-			[
-				pendingLifecycleAction,
-				hasLifecycleTaskRecord,
-				normalizedDomainStatus,
-				vm.current.startedAt
-			] as const,
-		([pendingAction, hasTask]) => {
-			if (!pendingAction || hasTask) {
-				return;
-			}
-
-			if (
-				isVMPendingLifecycleActionSettled(
-					pendingAction,
-					pendingLifecycleSnapshot,
-					normalizedDomainStatus,
-					isDomainErrorState,
-					vm.current.startedAt ?? null
-				)
-			) {
-				clearPendingLifecycleAction();
-			}
-		}
-	);
 </script>
 
 {#snippet button(type: string)}
@@ -760,7 +579,7 @@
 			<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
 			<span>Force Delete</span>
 		</Button>
-	{:else if type === 'force-stop' && (domain.current?.id !== -1 || suppressNonRunningActions) && isDomainRunningForActions && isShutdownTaskActive}
+	{:else if type === 'force-stop' && (domain.current?.id !== -1 || (domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot')) && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
 			onclick={() => handleForceStop()}
 			size="sm"
@@ -771,7 +590,7 @@
 				<span>Force Stop</span>
 			</div>
 		</Button>
-	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || suppressNonRunningActions) && isDomainRunningForActions}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || (domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot')) && isDomainRunningForActions}
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
@@ -809,7 +628,7 @@
 				{@render button('shutdown')}
 				{@render button('stop')}
 
-				{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+				{#if hasActiveLifecycleTask}
 					<Badge
 						variant={lifecycleActionBadge.variant}
 						class={`mt-0.5 ml-2 ${lifecycleActionBadge.className}`}

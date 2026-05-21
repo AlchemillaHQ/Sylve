@@ -93,10 +93,12 @@ type SimpleTemplateList struct {
 }
 
 type State struct {
-	CTID   uint    `json:"ctId"`
-	State  string  `json:"state"`
-	PCPU   float64 `json:"pcpu"`
-	Memory int64   `json:"memory"`
+	CTID              uint    `json:"ctId"`
+	State             string  `json:"state"`
+	PCPU              float64 `json:"pcpu"`
+	Memory            int64   `json:"memory"`
+	PendingAction     string  `json:"pendingAction,omitempty"`
+	OverrideRequested bool    `json:"overrideRequested"`
 }
 
 type AddJailNetworkRequest struct {

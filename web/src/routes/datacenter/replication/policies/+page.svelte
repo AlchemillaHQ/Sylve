@@ -34,6 +34,7 @@
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		policies: ReplicationPolicy[];
@@ -942,6 +943,8 @@
 
 	function parseTargetsInput(targets: EditableTarget[]): ReplicationPolicyTargetInput[] | null {
 		const parsedTargets: ReplicationPolicyTargetInput[] = [];
+
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const seen = new Set<string>();
 
 		for (const target of targets) {
@@ -1293,22 +1296,33 @@
 
 <Dialog.Root bind:open={policyModal.open}>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[64vh] w-[88%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0 overflow-hidden p-4 transition-all duration-300 ease-in-out sm:w-[80%] lg:h-[56vh] lg:w-[64%] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[74vh] w-[88%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0 overflow-hidden p-6 transition-all duration-300 ease-in-out sm:w-[80%] lg:h-[74vh] lg:w-[64%] lg:max-w-2xl xl:h-[62vh] 2xl:h-[54vh]"
+		onClose={closePolicyModal}
 	>
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
-				<span>{policyModal.edit ? 'Edit Protection Policy' : 'New Protection Policy'}</span>
-				<Button size="sm" variant="link" class="h-4" title="Close" onclick={closePolicyModal}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
+				{#if policyModal.edit}
+					<SpanWithIcon
+						icon="icon-[carbon--ibm-data-replication]"
+						size="w-4 h-4"
+						gap="gap-2"
+						title="Edit Replication Policy"
+					/>
+				{:else}
+					<SpanWithIcon
+						icon="icon-[carbon--ibm-data-replication]"
+						size="w-4 h-4"
+						gap="gap-2"
+						title="New Replication Policy"
+					/>
+				{/if}
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="mt-3 min-h-0 flex-1 overflow-hidden">
+		<div class="mt-6 min-h-0 flex-1 overflow-hidden">
 			<Tabs.Root bind:value={policyStep} class="flex h-full flex-col overflow-hidden">
 				<Tabs.List class="grid w-full grid-cols-5 p-0">
-					{#each policySteps as step}
+					{#each policySteps as step (step.label)}
 						<Tabs.Trigger value={step.value} class="border-b text-xs md:text-sm">
 							{step.label}
 						</Tabs.Trigger>
@@ -1317,10 +1331,10 @@
 
 				<div class="min-h-0 h-full flex-1 overflow-y-auto pr-1">
 					<Tabs.Content value="workload">
-						<div class="space-y-4">
+						<div class="space-y-2">
 							<CustomValueInput
 								label="Policy name"
-								placeholder="critical-vm-ha"
+								placeholder="Highly Available Alpine VM"
 								bind:value={policyModal.name}
 								classes="space-y-1"
 							/>
@@ -1329,7 +1343,7 @@
 								label="Description"
 								placeholder="Optional description for this policy"
 								type="textarea"
-								textAreaClasses="min-h-24"
+								textAreaClasses="min-h-18 xl:min-h-24"
 								bind:value={policyModal.description}
 								classes="space-y-1"
 							/>
@@ -1374,6 +1388,17 @@
 									onChange={(value) => {
 										policyModal.guestId = value;
 									}}
+									title={policyModal.guestType === 'vm'
+										? vmsLoading
+											? 'Loading VMs...'
+											: guestOptions.length === 0
+												? 'No VMs available on the selected node.'
+												: ''
+										: jailsLoading
+											? 'Loading Jails...'
+											: guestOptions.length === 0
+												? 'No Jails available on the selected node.'
+												: ''}
 								/>
 							</div>
 						</div>
@@ -1546,17 +1571,12 @@
 								/>
 							</div>
 
-							<div class="mt-3 grid grid-cols-[1fr_auto] items-end gap-3">
+							<div class="mt-3">
 								<CustomValueInput
-									label="Sync schedule (cron)"
+									label="Sync schedule (Cron)"
 									placeholder="*/15 * * * *"
 									bind:value={policyModal.cronExpr}
 									classes="space-y-1"
-								/>
-								<CustomCheckbox
-									label="Policy enabled"
-									bind:checked={policyModal.enabled}
-									classes="mb-2 flex items-center gap-2"
 								/>
 							</div>
 							<p class="text-muted-foreground mt-2 text-xs">
@@ -1564,11 +1584,15 @@
 									? `Current schedule: ${humanCron}.`
 									: 'Enter a valid cron schedule, for example: */15 * * * *'}
 							</p>
+							<CustomCheckbox
+								label="Policy enabled"
+								bind:checked={policyModal.enabled}
+								classes="mt-3 flex items-center gap-2"
+							/>
 						</div>
 					</Tabs.Content>
 
 					<Tabs.Content value="review" class="space-y-3">
-						<p class="text-muted-foreground text-sm">Review your settings before saving.</p>
 						<div class="overflow-hidden rounded-md border">
 							<Table.Root>
 								<Table.Body>
@@ -1619,9 +1643,6 @@
 		<Dialog.Footer class="flex items-center justify-between">
 			<Button variant="outline" onclick={resetPolicyModal}>Cancel</Button>
 			<div class="flex items-center gap-2">
-				<Button variant="outline" onclick={goToPreviousPolicyStep} disabled={isFirstPolicyStep}>
-					Back
-				</Button>
 				{#if !isLastPolicyStep}
 					<Button onclick={goToNextPolicyStep}>Next</Button>
 				{:else}
@@ -1633,15 +1654,13 @@
 </Dialog.Root>
 
 <Dialog.Root bind:open={failoverModalOpen}>
-	<Dialog.Content class="flex max-h-[85vh] w-[90%] max-w-xl flex-col overflow-hidden p-5">
+	<Dialog.Content
+		class="flex max-h-[85vh] w-[90%] max-w-xl flex-col overflow-hidden p-5"
+		showCloseButton={true}
+		onClose={closeFailoverModal}
+	>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<span>Move Active Workload</span>
-				<Button size="sm" variant="link" class="h-4" title="Close" onclick={closeFailoverModal}>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
-			</Dialog.Title>
+			<Dialog.Title>Move Active Workload</Dialog.Title>
 		</Dialog.Header>
 
 		<div class="min-h-0 flex-1 overflow-y-auto pr-1">

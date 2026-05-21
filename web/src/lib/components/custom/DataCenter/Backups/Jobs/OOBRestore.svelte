@@ -774,7 +774,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button
 				onclick={triggerRestoreFromTarget}
 				disabled={restoring ||

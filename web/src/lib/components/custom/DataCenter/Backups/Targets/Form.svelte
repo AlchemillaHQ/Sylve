@@ -180,7 +180,7 @@
 
 			<div class="space-y-1">
 				<CustomValueInput
-					label="SSH Private Key {edit ? '(leave empty to keep existing)' : ''}"
+					label="SSH Private Key {edit ? '(Leave empty to keep existing)' : ''}"
 					placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
 					bind:value={sshKey}
 					type="textarea"
@@ -215,15 +215,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button
-				variant="outline"
-				onclick={() => {
-					reset(false);
-				}}
-				disabled={loading}
-			>
-				Cancel
-			</Button>
 			<Button onclick={saveTarget} disabled={loading}>
 				{#if loading}
 					<div class="flex items-center gap-1">

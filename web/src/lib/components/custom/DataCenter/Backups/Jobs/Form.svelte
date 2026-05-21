@@ -437,7 +437,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="max-h-[90vh] min-w-1/2 overflow-y-auto p-5"
+		class="max-h-[90vh] w-[90%] max-w-xl! overflow-y-auto p-5"
 		showCloseButton={true}
 		showResetButton={edit}
 		onReset={handleReset}
@@ -627,7 +627,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={handleClose}>Cancel</Button>
 			<Button onclick={saveJob} disabled={loading}>
 				{#if loading}
 					<div class="flex items-center gap-1">

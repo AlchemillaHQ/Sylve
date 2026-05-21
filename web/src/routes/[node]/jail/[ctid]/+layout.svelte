@@ -5,24 +5,15 @@
 	import { goto } from '$app/navigation';
 	import { setContext } from 'svelte';
 	import { page } from '$app/state';
-	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
-	import type { JailLifecycleAction, JailState, SimpleJail } from '$lib/types/jail/jail';
-	import {
-		getEffectiveJailLifecycleAction,
-		getJailLifecycleBadgeStyle,
-		getJailLifecyclePendingTimeoutMs,
-		isJailPendingLifecycleActionSettled,
-		isJailLifecycleTransitionPending,
-		shouldHideJailLifecycleButtons
-	} from '$lib/utils/jail/jail';
+	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
+	import { getJailLifecycleBadgeStyle } from '$lib/utils/jail/jail';
 	import { sleep } from '$lib/utils';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -34,8 +25,6 @@
 	}
 
 	let { children }: Props = $props();
-	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
-	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let ctId = $derived.by(() => {
 		const value = Number(page.url.pathname.split('/')[3]);
@@ -72,21 +61,14 @@
 		{ initialValue: (page.data as { state?: JailState | null }).state ?? null }
 	);
 
-	const lifecycleTask = resource(
-		() => `jail-lifecycle-task-${ctId}`,
-		async (): Promise<LifecycleTask | null> => {
-			if (!ctId) return null;
-			const task = await getActiveLifecycleTaskForGuest('jail', ctId);
-			if (isAPIResponse(task) || task === null) return null;
-			return task;
-		},
-		{ initialValue: null as LifecycleTask | null }
-	);
-
 	setContext('jailState', jState);
-	setContext('jailLifecycleTask', lifecycleTask);
 
-	// Reactive state that the summary page writes into to inject toolbar extras
+	let hasActiveLifecycleTask = $derived(!!jState.current?.pendingAction);
+	let lifecycleActionBadge = $derived(
+		getJailLifecycleBadgeStyle(jState.current?.pendingAction || '')
+	);
+	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
+
 	class SummaryBarExtras {
 		logsLength = $state(0);
 		showLogsCallback = $state<() => void>(() => {});
@@ -114,7 +96,7 @@
 	});
 
 	async function refreshJailState() {
-		await Promise.all([jail.refetch(), jState.refetch(), lifecycleTask.refetch()]);
+		await Promise.all([jail.refetch(), jState.refetch()]);
 	}
 
 	watch(
@@ -134,14 +116,6 @@
 		}
 	});
 
-	useInterval(() => 1500, {
-		callback: () => {
-			if (visible.current && ctId) {
-				lifecycleTask.refetch();
-			}
-		}
-	});
-
 	watch(
 		() => storage.idle,
 		(idle) => {
@@ -157,27 +131,6 @@
 		modalState.deleteRootFS = false;
 		modalState.title = `${jail.current.name} (${jail.current.ctId})`;
 		modalState.isDeleteOpen = true;
-	}
-
-	function beginPendingLifecycleAction(action: JailLifecycleAction) {
-		pendingLifecycleAction = action;
-
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-		}
-
-		pendingLifecycleTimer = setTimeout(() => {
-			pendingLifecycleAction = '';
-			pendingLifecycleTimer = null;
-		}, getJailLifecyclePendingTimeoutMs(action));
-	}
-
-	function clearPendingLifecycleAction() {
-		pendingLifecycleAction = '';
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-			pendingLifecycleTimer = null;
-		}
 	}
 
 	async function handleDelete() {
@@ -214,12 +167,11 @@
 
 	async function handleStop() {
 		if (!jail.current) return;
-		beginPendingLifecycleAction('stop');
 		const result = await jailAction(jail.current.ctId, 'stop');
+		jState.refetch();
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			clearPendingLifecycleAction();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'Jail action already in progress'
@@ -245,12 +197,11 @@
 
 	async function handleStart() {
 		if (!jail.current) return;
-		beginPendingLifecycleAction('start');
 		const result = await jailAction(jail.current.ctId, 'start');
+		jState.refetch();
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			clearPendingLifecycleAction();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'Jail action already in progress'
@@ -273,40 +224,6 @@
 
 		await refreshJailState();
 	}
-
-	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
-	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
-	let isActiveLifecycleActionSettled = $derived.by(() => {
-		if (activeLifecycleAction !== 'start' && activeLifecycleAction !== 'stop') {
-			return false;
-		}
-
-		return isJailPendingLifecycleActionSettled(activeLifecycleAction, jState.current?.state);
-	});
-	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
-	let effectiveLifecycleAction = $derived(
-		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
-	);
-	let isLifecycleTransitionPending = $derived(
-		isJailLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
-	);
-	let shouldHideActionButtons = $derived(
-		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
-	);
-	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
-
-	watch(
-		() => [pendingLifecycleAction, hasLifecycleTaskRecord, jState.current?.state] as const,
-		([pendingAction, hasTask]) => {
-			if (!pendingAction || hasTask) {
-				return;
-			}
-
-			if (isJailPendingLifecycleActionSettled(pendingAction, jState.current?.state)) {
-				clearPendingLifecycleAction();
-			}
-		}
-	);
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
@@ -358,7 +275,7 @@
 					</Button>
 				{/if}
 
-				{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+				{#if hasActiveLifecycleTask}
 					<Badge
 						variant={lifecycleActionBadge.variant}
 						class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}

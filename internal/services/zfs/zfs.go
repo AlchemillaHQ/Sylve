@@ -25,18 +25,20 @@ import (
 var _ zfsServiceInterfaces.ZfsServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB        *gorm.DB
-	GZFS      *gzfs.Client
-	Libvirt   libvirtServiceInterfaces.LibvirtServiceInterface
-	syncMutex *sync.Mutex
+	DB          *gorm.DB
+	TelemetryDB *gorm.DB
+	GZFS        *gzfs.Client
+	Libvirt     libvirtServiceInterfaces.LibvirtServiceInterface
+	syncMutex   *sync.Mutex
 }
 
-func NewZfsService(db *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
+func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
 	return &Service{
-		DB:        db,
-		GZFS:      gzfsClient,
-		Libvirt:   libvirt,
-		syncMutex: &sync.Mutex{},
+		DB:          db,
+		TelemetryDB: telemetryDB,
+		GZFS:        gzfsClient,
+		Libvirt:     libvirt,
+		syncMutex:   &sync.Mutex{},
 	}
 }
 

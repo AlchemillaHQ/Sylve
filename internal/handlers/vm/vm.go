@@ -390,7 +390,7 @@ func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm/domain/:rid [get]
-func GetLvDomain(libvirtService *libvirt.Service) gin.HandlerFunc {
+func GetLvDomain(libvirtService *libvirt.Service, lifecycleService *lifecycle.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Param("rid")
 		if rid == "" {
@@ -433,6 +433,12 @@ func GetLvDomain(libvirtService *libvirt.Service) gin.HandlerFunc {
 				Data:    nil,
 			})
 			return
+		}
+
+		activeTask, _ := lifecycleService.GetActiveTaskForGuest("vm", uint(ridInt))
+		if activeTask != nil {
+			domain.PendingAction = activeTask.Action
+			domain.OverrideRequested = activeTask.OverrideRequested
 		}
 
 		c.JSON(200, internal.APIResponse[*libvirtServiceInterfaces.LvDomain]{

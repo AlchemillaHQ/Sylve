@@ -14,6 +14,7 @@ type ZPoolHistorical struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	GUID          string    `json:"guid" gorm:"index"`
 	Name          string    `json:"name" gorm:"index"`
+	Health        string    `json:"health"`
 	Allocated     uint64    `json:"allocated"`
 	Size          uint64    `json:"size"`
 	Free          uint64    `json:"free"`

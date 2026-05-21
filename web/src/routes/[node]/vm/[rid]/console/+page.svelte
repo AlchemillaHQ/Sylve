@@ -665,7 +665,15 @@
 </div>
 
 <Dialog.Root bind:open={openSettings}>
-	<Dialog.Content class="min-w-45">
+	<Dialog.Content
+		class="min-w-45"
+		showResetButton={true}
+		onReset={() => {
+			fontSizeBindable = theme.current.fontSize || 14;
+			bgThemeBindable = '#282c34';
+			fgThemeBindable = '#FFFFFF';
+		}}
+	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center gap-2">

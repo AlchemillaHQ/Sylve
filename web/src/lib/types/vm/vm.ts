@@ -178,7 +178,9 @@ export const VMDomainSchema = z.object({
     id: z.number().int(),
     uuid: z.string(),
     name: z.string(),
-    status: z.string()
+    status: z.string(),
+    pendingAction: z.string().optional().default(''),
+    overrideRequested: z.boolean().optional().default(false)
 });
 
 export const SimpleVmSchema = z.object({

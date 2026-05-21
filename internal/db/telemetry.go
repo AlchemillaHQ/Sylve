@@ -24,12 +24,13 @@ import (
 )
 
 const (
-	sambaAuditLogsTelemetryMigrationName = "samba_audit_logs_to_telemetry_1"
-	cpuStatsTelemetryMigrationName       = "cpu_stats_to_telemetry_1"
-	auditRecordsTelemetryMigrationName   = "audit_records_to_telemetry_1"
-	ramStatsTelemetryMigrationName       = "ram_stats_to_telemetry_1"
-	swapStatsTelemetryMigrationName      = "swap_stats_to_telemetry_1"
-	networkStatsTelemetryMigrationName   = "network_interfaces_to_telemetry_1"
+	sambaAuditLogsTelemetryMigrationName  = "samba_audit_logs_to_telemetry_1"
+	cpuStatsTelemetryMigrationName        = "cpu_stats_to_telemetry_1"
+	auditRecordsTelemetryMigrationName    = "audit_records_to_telemetry_1"
+	ramStatsTelemetryMigrationName        = "ram_stats_to_telemetry_1"
+	swapStatsTelemetryMigrationName       = "swap_stats_to_telemetry_1"
+	networkStatsTelemetryMigrationName    = "network_interfaces_to_telemetry_1"
+	zPoolHistoricalTelemetryMigrationName = "z_pool_historical_to_telemetry_1"
 )
 
 func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest bool) *gorm.DB {
@@ -83,6 +84,7 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		&infoModels.Swap{},
 		&infoModels.NetworkInterface{},
 		&infoModels.FirewallRuleDelta{},
+		&infoModels.ZPoolHistorical{},
 	); err != nil {
 		logger.L.Fatal().Msgf("Error migrating telemetry database: %v", err)
 	}
@@ -117,12 +119,18 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		logger.L.Fatal().Msgf("Error migrating network interface stats to telemetry database: %v", err)
 	}
 
+	droppedZPoolHistoricalTable, err := migrateZPoolHistoricalToTelemetry(mainDB, mainDBPath)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error migrating zpool historical to telemetry database: %v", err)
+	}
+
 	if (droppedSambaAuditLogTable ||
 		droppedCPUTable ||
 		droppedAuditRecordTable ||
 		droppedRAMTable ||
 		droppedSwapTable ||
-		droppedNetworkInterfacesTable) && !isTest {
+		droppedNetworkInterfacesTable ||
+		droppedZPoolHistoricalTable) && !isTest {
 		if err := mainDB.Exec("VACUUM").Error; err != nil {
 			logger.L.Warn().Msgf("VACUUM failed after dropping legacy telemetry tables: %v", err)
 		}
@@ -858,6 +866,31 @@ func copyNetworkInterfacesInBatches(mainDB, telemetryDB *gorm.DB) error {
 	}
 
 	return nil
+}
+
+func migrateZPoolHistoricalToTelemetry(mainDB *gorm.DB, _ string) (bool, error) {
+	applied, err := migrationApplied(mainDB, zPoolHistoricalTelemetryMigrationName)
+	if err != nil {
+		return false, err
+	}
+
+	if applied {
+		return false, nil
+	}
+
+	dropped := false
+	if mainDB.Migrator().HasTable(&infoModels.ZPoolHistorical{}) {
+		if err := mainDB.Migrator().DropTable(&infoModels.ZPoolHistorical{}); err != nil {
+			return false, fmt.Errorf("failed to drop legacy z_pool_historicals table: %w", err)
+		}
+		dropped = true
+	}
+
+	if err := recordMigration(mainDB, zPoolHistoricalTelemetryMigrationName); err != nil {
+		return false, err
+	}
+
+	return dropped, nil
 }
 
 func migrationApplied(mainDB *gorm.DB, name string) (bool, error) {

@@ -318,7 +318,7 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 		return err
 	}
 
-	result := s.DB.Where("guid = ?", guid).Delete(&infoModels.ZPoolHistorical{})
+	result := s.TelemetryDB.Where("guid = ?", guid).Delete(&infoModels.ZPoolHistorical{})
 	if result.Error != nil {
 		return fmt.Errorf("failed_to_delete_historical_data: %v", result.Error)
 	}

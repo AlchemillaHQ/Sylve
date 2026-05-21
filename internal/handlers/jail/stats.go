@@ -16,6 +16,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
+	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -62,7 +63,7 @@ func ListJailStates(jailService *jail.Service) gin.HandlerFunc {
 // @Failure 404 {object} internal.APIResponse[any] "Jail Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail/state/:id [get]
-func GetJailState(jailService *jail.Service) gin.HandlerFunc {
+func GetJailState(jailService *jail.Service, lifecycleService *lifecycle.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 		if id == "" {
@@ -95,6 +96,12 @@ func GetJailState(jailService *jail.Service) gin.HandlerFunc {
 				Error:   "Internal Server Error",
 			})
 			return
+		}
+
+		activeTask, _ := lifecycleService.GetActiveTaskForGuest("jail", uint(idInt))
+		if activeTask != nil {
+			state.PendingAction = activeTask.Action
+			state.OverrideRequested = activeTask.OverrideRequested
 		}
 
 		c.JSON(200, internal.APIResponse[jailServiceInterfaces.State]{

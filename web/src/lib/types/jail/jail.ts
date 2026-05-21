@@ -171,7 +171,9 @@ export const JailStateSchema = z.object({
     ctId: z.number().int(),
     state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN']),
     pcpu: z.number(),
-    memory: z.number()
+    memory: z.number(),
+    pendingAction: z.string().optional().default(''),
+    overrideRequested: z.boolean().optional().default(false)
 });
 
 export const JailLogsSchema = z.object({

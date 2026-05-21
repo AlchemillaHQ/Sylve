@@ -853,6 +853,8 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 }
 
 func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	logger.L.Info().Uint("rid", vm.RID).Msg("force stopping VM via libvirt DomainDestroy")
+
 	if err := s.conn().DomainDestroy(*domain); err != nil {
 		return fmt.Errorf("failed_to_force_stop_domain: %w", err)
 	}
@@ -861,10 +863,61 @@ func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
 }
 
 func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if vm.QemuGuestAgent && s.qgaPing(vm.RID) {
+		logger.L.Debug().Uint("rid", vm.RID).Msg("QGA ping succeeded, attempting guest-shutdown")
+
+		sendErr := s.qgaGuestShutdown(vm.RID)
+		if sendErr != nil && isQGAProtocolError(sendErr) {
+			logger.L.Warn().Err(sendErr).Uint("rid", vm.RID).Msg("QGA guest-shutdown rejected, falling back to libvirt")
+		} else {
+			if sendErr != nil {
+				logger.L.Warn().Err(sendErr).Uint("rid", vm.RID).Msg("QGA guest-shutdown command error, polling for shutoff anyway (command may have been sent)")
+			} else {
+				logger.L.Debug().Uint("rid", vm.RID).Msg("QGA guest-shutdown command sent, waiting for shutoff")
+			}
+
+			shutoff, err := s.pollForShutoff(domain, vm)
+			if err != nil {
+				logger.L.Info().Uint("rid", vm.RID).Msg("shutdown overridden during QGA wait, force destroying")
+				return s.forceDestroy(domain, vm)
+			}
+			if shutoff {
+				logger.L.Info().Uint("rid", vm.RID).Msg("VM shut down via QGA guest-shutdown")
+				return s.cleanupResources(vm)
+			}
+			waitTime := vm.ShutdownWaitTime
+			if waitTime <= 0 {
+				waitTime = 30
+			}
+			logger.L.Warn().Uint("rid", vm.RID).Int("wait_time", waitTime).Msg("QGA guest-shutdown timed out, falling back to libvirt")
+		}
+	}
+
+	logger.L.Debug().Uint("rid", vm.RID).Msg("attempting libvirt ACPI shutdown")
+
 	if err := s.conn().DomainShutdown(*domain); err != nil {
 		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
 	}
 
+	shutoff, err := s.pollForShutoff(domain, vm)
+	if err != nil {
+		logger.L.Info().Uint("rid", vm.RID).Msg("shutdown overridden during libvirt wait, force destroying")
+		return s.forceDestroy(domain, vm)
+	}
+	if !shutoff {
+		waitTime := vm.ShutdownWaitTime
+		if waitTime <= 0 {
+			waitTime = 30
+		}
+		logger.L.Warn().Int("wait_time", waitTime).Msg("Shutdown timed out, forcing destroy")
+		return s.forceDestroy(domain, vm)
+	}
+
+	logger.L.Info().Uint("rid", vm.RID).Msg("VM shut down via libvirt ACPI shutdown")
+	return s.cleanupResources(vm)
+}
+
+func (s *Service) pollForShutoff(domain *libvirt.Domain, vm vmModels.VM) (bool, error) {
 	waitTime := vm.ShutdownWaitTime
 	if waitTime <= 0 {
 		waitTime = 30
@@ -877,8 +930,7 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	for {
 		select {
 		case <-timeout:
-			logger.L.Warn().Msgf("Shutdown timed out after %ds, forcing destroy", waitTime)
-			return s.forceDestroy(domain, vm)
+			return false, nil
 
 		case <-ticker.C:
 			overrideRequested, overrideErr := s.hasShutdownOverrideRequested(vm.RID)
@@ -886,16 +938,16 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 				logger.L.Warn().Err(overrideErr).Uint("rid", vm.RID).Msg("failed_to_check_vm_shutdown_override")
 			} else if overrideRequested {
 				logger.L.Warn().Uint("rid", vm.RID).Msg("vm_shutdown_override_requested_force_stopping")
-				return s.forceDestroy(domain, vm)
+				return false, fmt.Errorf("shutdown_overridden")
 			}
 
 			state, _, err := s.conn().DomainGetState(*domain, 0)
 			if err != nil {
-				return fmt.Errorf("failed_to_get_state: %w", err)
+				return false, fmt.Errorf("failed_to_get_state: %w", err)
 			}
 
 			if state == 5 {
-				return s.cleanupResources(vm)
+				return true, nil
 			}
 		}
 	}
@@ -923,6 +975,8 @@ func (s *Service) hasShutdownOverrideRequested(rid uint) (bool, error) {
 }
 
 func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
+	logger.L.Info().Uint("rid", vm.RID).Msg("force destroying VM via libvirt DomainDestroy")
+
 	if err := s.conn().DomainDestroy(*domain); err != nil {
 		state, _, _ := s.conn().DomainGetState(*domain, 0)
 		if state != 5 {
@@ -950,6 +1004,8 @@ func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	if state != 1 {
 		return fmt.Errorf("domain_not_running_for_reboot")
 	}
+
+	logger.L.Debug().Uint("rid", vm.RID).Msg("rebooting VM via shutdown + start (QGA shutdown preferred if available)")
 
 	if err := s.shutdownVM(domain, vm); err != nil {
 		return fmt.Errorf("reboot_failed_during_shutdown: %w", err)

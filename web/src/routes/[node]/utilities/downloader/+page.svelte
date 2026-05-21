@@ -434,7 +434,7 @@
 
 			{#if (modalState.url && isDownloadURL(modalState.url)) || isValidAbsPath(modalState.url)}
 				<div class="flex flex-col gap-4">
-					<div class="flex flex-row gap-4">
+					<div class="flex flex-row items-end gap-4">
 						<CustomValueInput
 							label="Optional File Name"
 							placeholder="freebsd-14.3-base-amd64.txz"

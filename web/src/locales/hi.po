@@ -1071,10 +1071,6 @@ msgstr "रीसेट करें"
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Close"
 msgstr "बंद करें"
 
@@ -1742,10 +1738,7 @@ msgstr "क्या आप निश्चित हैं?"
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/ImportUser.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -3968,13 +3961,11 @@ msgstr "सक्रिय को स्थानांतरित करें
 msgid "Sync Now"
 msgstr "अभी सिंक करें"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Edit Protection Policy"
-msgstr "सुरक्षा पॉलिसी संपादित करें"
+#~ msgid "Edit Protection Policy"
+#~ msgstr "सुरक्षा पॉलिसी संपादित करें"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "New Protection Policy"
-msgstr "नई सुरक्षा पॉलिसी"
+#~ msgid "New Protection Policy"
+#~ msgstr "नई सुरक्षा पॉलिसी"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy name"
@@ -4077,9 +4068,8 @@ msgstr "एडमिन द्वारा स्थानांतरित क
 msgid "Automatically move back to preferred primary node"
 msgstr "स्वचालित रूप से पसंदीदा प्राथमिक नोड पर वापस जाएं"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Sync schedule (cron)"
-msgstr "सिंक शेड्यूल (क्रोन)"
+#~ msgid "Sync schedule (cron)"
+#~ msgstr "सिंक शेड्यूल (क्रोन)"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy enabled"
@@ -4094,9 +4084,8 @@ msgstr "वर्तमान शेड्यूल: {0}।"
 msgid "Enter a valid cron schedule, for example: */15 * * * *"
 msgstr "एक मान्य क्रोन शेड्यूल दर्ज करें, उदाहरण के लिए: */15 * * * *"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Review your settings before saving."
-msgstr "सहेजने से पहले अपनी सेटिंग्स की समीक्षा करें।"
+#~ msgid "Review your settings before saving."
+#~ msgstr "सहेजने से पहले अपनी सेटिंग्स की समीक्षा करें।"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Source Mode"
@@ -4168,9 +4157,8 @@ msgstr "हाँ"
 msgid "No"
 msgstr "नहीं"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Back"
-msgstr "पीछे"
+#~ msgid "Back"
+#~ msgstr "पीछे"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Next"
@@ -7401,6 +7389,7 @@ msgid "Select jail"
 msgstr "जेल चुनें"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Loading VMs..."
 msgstr "VM लोड हो रहे हैं..."
 
@@ -7771,7 +7760,7 @@ msgstr "नया बैकअप लक्ष्य"
 msgid "SSH Port"
 msgstr "SSH पोर्ट"
 
-#. 0: edit ? '(leave empty to keep existing)' \\: ''
+#. 0: edit ? '(Leave empty to keep existing)' \\: ''
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH निजी कुंजी {0}"
@@ -13859,3 +13848,31 @@ msgstr ""
 #~ "\n"
 #~ "Pinned: {0}"
 #~ msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Edit Replication Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "New Replication Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Highly Available Alpine VM"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "No VMs available on the selected node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Loading Jails..."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "No Jails available on the selected node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Sync schedule (Cron)"
+msgstr ""

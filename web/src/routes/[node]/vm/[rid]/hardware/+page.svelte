@@ -21,7 +21,6 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
 	import { getContext } from 'svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 
 	interface Data {
 		vms: VM[];
@@ -34,9 +33,6 @@
 	let { data }: { data: Data } = $props();
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
-	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
-		'vmLifecycleTask'
-	);
 
 	// svelte-ignore state_referenced_locally
 	const vms = resource(
@@ -104,9 +100,7 @@
 		}
 	);
 
-	let isLifecycleActive = $derived(
-		!!lifecycleTask.current && !!(lifecycleTask.current as LifecycleTask).action
-	);
+	let isLifecycleActive = $derived(!!domain.current?.pendingAction);
 	let isDomainShutoff = $derived(
 		!isLifecycleActive &&
 			String(domain.current?.status || '')

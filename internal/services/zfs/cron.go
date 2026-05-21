@@ -44,7 +44,7 @@ func (s *Service) StoreStats() {
 			DedupRatio:    pool.DedupRatio,
 		}
 
-		if err := s.DB.Create(&newStat).Error; err != nil {
+		if err := s.TelemetryDB.Create(&newStat).Error; err != nil {
 			logger.L.Debug().Err(err).Msg("zfs_cron: Failed to insert zpool data")
 		}
 	}
@@ -52,7 +52,7 @@ func (s *Service) StoreStats() {
 	now := time.Now()
 
 	var rows []infoModels.ZPoolHistorical
-	if err := s.DB.
+	if err := s.TelemetryDB.
 		Select("id", "name", "created_at").
 		Order("created_at DESC").
 		Find(&rows).Error; err != nil {
@@ -87,7 +87,7 @@ func (s *Service) StoreStats() {
 		}
 		batch := allDeleteIDs[i:end]
 
-		if err := s.DB.Unscoped().Delete(&infoModels.ZPoolHistorical{}, batch).Error; err != nil {
+		if err := s.TelemetryDB.Unscoped().Delete(&infoModels.ZPoolHistorical{}, batch).Error; err != nil {
 			logger.L.Debug().Err(err).Msg("zfs_cron: Failed to prune zpool historical data (batch delete)")
 		}
 	}
@@ -109,7 +109,7 @@ func (s *Service) RemoveNonExistentPools() {
 	}
 
 	var storedNames []string
-	if err := s.DB.
+	if err := s.TelemetryDB.
 		Model(&infoModels.ZPoolHistorical{}).
 		Distinct("name").
 		Pluck("name", &storedNames).Error; err != nil {
@@ -129,7 +129,7 @@ func (s *Service) RemoveNonExistentPools() {
 		return
 	}
 
-	result := s.DB.Unscoped().
+	result := s.TelemetryDB.Unscoped().
 		Where("name IN ?", namesToDelete).
 		Delete(&infoModels.ZPoolHistorical{})
 
