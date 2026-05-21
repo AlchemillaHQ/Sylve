@@ -28,6 +28,7 @@ export const BackupJobSchema = z.object({
 	pruneKeepLast: z.number().int().nonnegative().default(0),
 	pruneTarget: z.boolean().default(false),
 	stopBeforeBackup: z.boolean().default(false),
+	recursive: z.boolean().default(false),
 	cronExpr: z.string(),
 	enabled: z.boolean().default(true),
 	lastRunAt: z.string().nullable().optional(),
@@ -67,7 +68,8 @@ export const SnapshotInfoSchema = z.object({
 	used: z.string(),
 	refer: z.string(),
 	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
-	outOfBand: z.boolean().optional().default(false)
+	outOfBand: z.boolean().optional().default(false),
+	hasChildren: z.boolean().optional().default(false)
 });
 
 export const BackupTargetDatasetInfoSchema = z.object({

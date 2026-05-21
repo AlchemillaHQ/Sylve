@@ -380,6 +380,7 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 			if err := s.ReconcileEncryptionKeys(); err != nil {
 				logger.L.Warn().Err(err).Msg("periodic_encryption_key_reconcile_failed")
 			}
+			s.AutoDiscoverAndRegisterKeys(ctx)
 			if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 				logger.L.Warn().Err(err).Msg("periodic_stale_event_cleanup_failed")
 			}

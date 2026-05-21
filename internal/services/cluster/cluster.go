@@ -230,35 +230,39 @@ func (s *Service) backfillPreClusterState() error {
 
 		for _, j := range jobs {
 			payloadStruct := struct {
-				ID              uint       `json:"id"`
-				Name            string     `json:"name"`
-				TargetID        uint       `json:"targetId"`
-				RunnerNodeID    string     `json:"runnerNodeId"`
-				Mode            string     `json:"mode"`
-				SourceDataset   string     `json:"sourceDataset"`
-				JailRootDataset string     `json:"jailRootDataset"`
-				FriendlySrc     string     `json:"friendlySrc"`
-				DestSuffix      string     `json:"destSuffix"`
-				PruneKeepLast   int        `json:"pruneKeepLast"`
-				PruneTarget     bool       `json:"pruneTarget"`
-				CronExpr        string     `json:"cronExpr"`
-				Enabled         bool       `json:"enabled"`
-				NextRunAt       *time.Time `json:"nextRunAt"`
+				ID               uint       `json:"id"`
+				Name             string     `json:"name"`
+				TargetID         uint       `json:"targetId"`
+				RunnerNodeID     string     `json:"runnerNodeId"`
+				Mode             string     `json:"mode"`
+				SourceDataset    string     `json:"sourceDataset"`
+				JailRootDataset  string     `json:"jailRootDataset"`
+				FriendlySrc      string     `json:"friendlySrc"`
+				DestSuffix       string     `json:"destSuffix"`
+				PruneKeepLast    int        `json:"pruneKeepLast"`
+				PruneTarget      bool       `json:"pruneTarget"`
+				StopBeforeBackup bool       `json:"stopBeforeBackup"`
+				Recursive        bool       `json:"recursive"`
+				CronExpr         string     `json:"cronExpr"`
+				Enabled          bool       `json:"enabled"`
+				NextRunAt        *time.Time `json:"nextRunAt"`
 			}{
-				ID:              j.ID,
-				Name:            j.Name,
-				TargetID:        j.TargetID,
-				RunnerNodeID:    j.RunnerNodeID,
-				Mode:            j.Mode,
-				SourceDataset:   j.SourceDataset,
-				JailRootDataset: j.JailRootDataset,
-				FriendlySrc:     j.FriendlySrc,
-				DestSuffix:      j.DestSuffix,
-				PruneKeepLast:   j.PruneKeepLast,
-				PruneTarget:     j.PruneTarget,
-				CronExpr:        j.CronExpr,
-				Enabled:         j.Enabled,
-				NextRunAt:       j.NextRunAt,
+				ID:               j.ID,
+				Name:             j.Name,
+				TargetID:         j.TargetID,
+				RunnerNodeID:     j.RunnerNodeID,
+				Mode:             j.Mode,
+				SourceDataset:    j.SourceDataset,
+				JailRootDataset:  j.JailRootDataset,
+				FriendlySrc:      j.FriendlySrc,
+				DestSuffix:       j.DestSuffix,
+				PruneKeepLast:    j.PruneKeepLast,
+				PruneTarget:      j.PruneTarget,
+				StopBeforeBackup: j.StopBeforeBackup,
+				Recursive:        j.Recursive,
+				CronExpr:         j.CronExpr,
+				Enabled:          j.Enabled,
+				NextRunAt:        j.NextRunAt,
 			}
 
 			data, _ := json.Marshal(payloadStruct)

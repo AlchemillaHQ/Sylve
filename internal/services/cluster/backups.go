@@ -51,6 +51,7 @@ type BackupJobInput struct {
 	PruneKeepLast    int    `json:"pruneKeepLast"`
 	PruneTarget      bool   `json:"pruneTarget"`
 	StopBeforeBackup bool   `json:"stopBeforeBackup"`
+	Recursive        bool   `json:"recursive"`
 	CronExpr         string `json:"cronExpr"`
 	Enabled          *bool  `json:"enabled"`
 }
@@ -619,6 +620,7 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input clusterServiceInterfaces
 			"prune_keep_last":    job.PruneKeepLast,
 			"prune_target":       job.PruneTarget,
 			"stop_before_backup": job.StopBeforeBackup,
+			"recursive":          job.Recursive,
 			"cron_expr":          job.CronExpr,
 			"enabled":            job.Enabled,
 			"next_run_at":        job.NextRunAt,
@@ -760,6 +762,7 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 		PruneKeepLast:    input.PruneKeepLast,
 		PruneTarget:      input.PruneTarget,
 		StopBeforeBackup: input.StopBeforeBackup,
+		Recursive:        input.Recursive,
 		CronExpr:         cronExpr,
 		Enabled:          enabled,
 	}

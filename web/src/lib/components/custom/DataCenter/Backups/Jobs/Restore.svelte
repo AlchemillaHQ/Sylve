@@ -415,6 +415,17 @@
 								> and may not be counted by active-lineage prune.
 							</li>
 						{/if}
+						{#if selectedSnapshotInfo?.hasChildren}
+							<li>
+								{#if selectedJob?.recursive}
+									Children on target will be restored recursively.
+								{:else}
+									The dataset has child datasets on the target. Only the selected dataset
+									will be restored. Enable "Recursive backup" in the job config or use
+									OOB Restore to recover children separately.
+								{/if}
+							</li>
+						{/if}
 						<li>No deletion on target, all snapshots remain available</li>
 					</ul>
 				</div>

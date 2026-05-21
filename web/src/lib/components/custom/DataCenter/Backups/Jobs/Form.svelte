@@ -50,6 +50,7 @@
 		cronExpr: string;
 		enabled: boolean;
 		stopBeforeBackup: boolean;
+		recursive: boolean;
 	};
 
 	let {
@@ -87,7 +88,8 @@
 		pruneTarget: false,
 		cronExpr: '0 * * * *',
 		enabled: true,
-		stopBeforeBackup: false
+		stopBeforeBackup: false,
+		recursive: false
 	});
 
 	let targetOptions = $derived(
@@ -251,6 +253,7 @@
 		form.pruneKeepLast = '0';
 		form.pruneTarget = false;
 		form.stopBeforeBackup = false;
+		form.recursive = false;
 		form.cronExpr = '0 * * * *';
 		form.enabled = true;
 		lastRunnerNodeId = form.runnerNodeId;
@@ -268,6 +271,7 @@
 		form.pruneKeepLast = String(job.pruneKeepLast ?? 0);
 		form.pruneTarget = !!job.pruneTarget;
 		form.stopBeforeBackup = !!job.stopBeforeBackup;
+		form.recursive = !!job.recursive;
 		form.cronExpr = job.cronExpr;
 		form.enabled = job.enabled;
 		lastRunnerNodeId = form.runnerNodeId;
@@ -404,9 +408,10 @@
 			jailRootDataset: form.mode === 'jail' ? jailDataset : '',
 			pruneKeepLast,
 			pruneTarget: form.pruneTarget,
+			stopBeforeBackup: form.stopBeforeBackup,
+			recursive: form.recursive,
 			cronExpr: form.cronExpr,
-			enabled: form.enabled,
-			stopBeforeBackup: form.stopBeforeBackup
+			enabled: form.enabled
 		};
 
 		loading = true;
@@ -623,6 +628,12 @@
 				/>
 
 				<CustomCheckbox
+					label="Recursive backup"
+					bind:checked={form.recursive}
+					classes="flex items-center gap-2"
+				/>
+
+				<CustomCheckbox
 					label="Prune on target"
 					bind:checked={form.pruneTarget}
 					classes="flex items-center gap-2"
@@ -700,6 +711,11 @@
 							>
 						</li>
 					{/if}
+					<li>
+						Recursive backup:
+						<code class="rounded bg-background px-1">{form.recursive ? 'Enabled' : 'Disabled'}</code
+						>
+					</li>
 
 					{#if form.mode !== 'jail' && form.mode !== 'vm'}
 						{#if srcEncryptionChecking}

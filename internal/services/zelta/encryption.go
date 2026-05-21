@@ -67,7 +67,14 @@ func (s *Service) AutoDiscoverAndRegisterKeys(ctx context.Context) {
 		}
 
 		keyloc := strings.TrimSpace(keylocProp.Value)
-		if keyloc == "" || keyloc == "none" || !strings.HasPrefix(keyloc, "file://") {
+
+		// Inherited encryption: child shares parent's key, which is already
+		// registered under the encryption root. Nothing to do.
+		if keyloc == "" || keyloc == "none" {
+			continue
+		}
+
+		if !strings.HasPrefix(keyloc, "file://") {
 			logger.L.Warn().Str("dataset", ds.Name).Str("keylocation", keyloc).
 				Msg("auto_discover_unexpected_keylocation")
 			continue
@@ -93,7 +100,11 @@ func (s *Service) AutoDiscoverAndRegisterKeys(ctx context.Context) {
 		}
 
 		if err := s.Cluster.ForwardEncryptionKeyToLeader(uuid, string(keyData), keyFormat); err != nil {
-			logger.L.Warn().Err(err).Str("uuid", uuid).Msg("auto_discover_forward_key_failed")
+			if strings.Contains(err.Error(), "leader_unknown") {
+				logger.L.Debug().Str("uuid", uuid).Msg("auto_discover_skip_no_leader")
+			} else {
+				logger.L.Warn().Err(err).Str("uuid", uuid).Msg("auto_discover_forward_key_failed")
+			}
 		}
 	}
 }

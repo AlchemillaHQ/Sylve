@@ -107,6 +107,7 @@ type BackupJob struct {
 	PruneKeepLast    int          `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
 	PruneTarget      bool         `gorm:"column:prune_target;default:false" json:"pruneTarget"`
 	StopBeforeBackup bool         `gorm:"column:stop_before_backup;default:false" json:"stopBeforeBackup"`
+	Recursive        bool         `gorm:"column:recursive;default:false" json:"recursive"`
 	CronExpr         string       `gorm:"not null" json:"cronExpr"`
 	Enabled          bool         `gorm:"index" json:"enabled"`
 	LastRunAt        *time.Time   `json:"lastRunAt"`

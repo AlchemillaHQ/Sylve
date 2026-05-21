@@ -41,6 +41,7 @@ export type BackupJobInput = {
     pruneKeepLast: number;
     pruneTarget: boolean;
     stopBeforeBackup: boolean;
+    recursive: boolean;
     cronExpr: string;
     enabled: boolean;
 };

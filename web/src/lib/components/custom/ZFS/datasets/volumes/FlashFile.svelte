@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { flashVolume } from '$lib/api/zfs/datasets';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -37,47 +38,30 @@
 		class="p-5"
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
+		onClose={() => {
+			properties = options;
+			open = false;
+		}}
+		showResetButton={true}
+		onReset={() => {
+			properties = options;
+		}}
 	>
-		<Dialog.Header class="p-0">
+		<Dialog.Header class="p-0 -mb-2">
 			<Dialog.Title class="flex justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--usb-flash-drive-outline] mr-2 h-6 w-6"></span>
-					<span>Flash File To Volume</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Reset'}
-						onclick={() => {
-							properties = options;
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Reset</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							properties = options;
-							open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
+				<SpanWithIcon
+					icon="icon-[mdi--usb-flash-drive-outline]"
+					size="w-6 h-6"
+					gap="gap-2"
+					title="Flash File To Volume"
+				/>
 			</Dialog.Title>
 			<Dialog.Description>
 				{dataset.name}
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<div class="min-w-0 flex-1 space-y-1 overflow-hidden">
+		<div class="min-w-0 flex-1 space-y-0 overflow-hidden">
 			<CustomComboBox
 				bind:open={properties.select.open}
 				label="Select File"

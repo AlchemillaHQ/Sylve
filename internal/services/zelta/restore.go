@@ -24,14 +24,15 @@ import (
 
 // SnapshotInfo represents a single ZFS snapshot on the backup target.
 type SnapshotInfo struct {
-	Name      string `json:"name"`                // full dataset@snap name
-	ShortName string `json:"shortName"`           // just the @snap portion
-	Dataset   string `json:"dataset"`             // dataset portion (without @snap)
-	Creation  string `json:"creation"`            // creation timestamp
-	Used      string `json:"used"`                // space used
-	Refer     string `json:"refer"`               // referenced size
-	Lineage   string `json:"lineage,omitempty"`   // "active" | "rotated" | "other"
-	OutOfBand bool   `json:"outOfBand,omitempty"` // true when snapshot is outside the active lineage
+	Name       string `json:"name"`                // full dataset@snap name
+	ShortName  string `json:"shortName"`           // just the @snap portion
+	Dataset    string `json:"dataset"`             // dataset portion (without @snap)
+	Creation   string `json:"creation"`            // creation timestamp
+	Used       string `json:"used"`                // space used
+	Refer      string `json:"refer"`               // referenced size
+	Lineage    string `json:"lineage,omitempty"`   // "active" | "rotated" | "other"
+	OutOfBand  bool   `json:"outOfBand,omitempty"` // true when snapshot is outside the active lineage
+	HasChildren bool  `json:"hasChildren"`         // true when the dataset has child datasets on the target
 }
 
 const restoreJobQueueName = "zelta-restore-run"
@@ -62,6 +63,12 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	filtered := filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots)
 	filtered = filterBackupSnapshots(filtered)
 	filtered = filterSnapshotsForBackupJob(filtered, job.ID)
+
+	hasChildren := s.remoteDatasetHasChildren(ctx, &target, remoteDataset)
+	for i := range filtered {
+		filtered[i].HasChildren = hasChildren
+	}
+
 	if job.Mode == clusterModels.BackupJobModeVM {
 		return collapseSnapshotsByShortName(filtered), nil
 	}
@@ -270,6 +277,13 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 
 	// Step 6: Fix ZFS properties for the restored dataset
 	s.fixRestoredProperties(ctx, sourceDataset)
+
+	// Step 6b: If the job has RestoreChildren enabled, restore child datasets
+	if job.Recursive {
+		if err := s.restoreChildDatasetsFromTarget(ctx, &job.Target, remoteDataset, sourceDataset); err != nil {
+			logger.L.Warn().Err(err).Str("parent", sourceDataset).Msg("restore_children_failed")
+		}
+	}
 
 	// Step 7: If this is a jail dataset, reconcile jail metadata/config from restored jail.json.
 	if err := s.reconcileRestoredJailFromDataset(ctx, sourceDataset); err != nil {

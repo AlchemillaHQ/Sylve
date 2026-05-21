@@ -353,6 +353,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				"prune_keep_last":    job.PruneKeepLast,
 				"prune_target":       job.PruneTarget,
 				"stop_before_backup": job.StopBeforeBackup,
+				"recursive":         job.Recursive,
 				"cron_expr":          job.CronExpr,
 				"enabled":            job.Enabled,
 				"next_run_at":        job.NextRunAt,

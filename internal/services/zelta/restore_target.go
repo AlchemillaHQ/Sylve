@@ -1066,10 +1066,112 @@ func canonicalVMDatasetRoot(dataset string, vmRID uint) string {
 	return normalizeDatasetPath(strings.Join(root, "/"))
 }
 
+func (s *Service) remoteDatasetHasChildren(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) bool {
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost,
+		"zfs", "list", "-t", "filesystem,volume", "-r", "-d", "1",
+		"-Hp", "-o", "name", remoteDataset,
+	)
+
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		return false
+	}
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	return len(lines) > 1
+}
+
+func (s *Service) listRemoteChildDatasets(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]string, error) {
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost,
+		"zfs", "list", "-t", "filesystem,volume", "-r",
+		"-Hp", "-o", "name", remoteDataset,
+	)
+
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("list_remote_children_failed: %w", err)
+	}
+
+	var children []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		ds := strings.TrimSpace(line)
+		if ds == "" || ds == remoteDataset {
+			continue
+		}
+		children = append(children, ds)
+	}
+
+	sort.SliceStable(children, func(i, j int) bool {
+		di := strings.Count(children[i], "/")
+		dj := strings.Count(children[j], "/")
+		if di == dj {
+			return children[i] < children[j]
+		}
+		return di < dj
+	})
+
+	return children, nil
+}
+
+func (s *Service) restoreChildDatasetsFromTarget(ctx context.Context, target *clusterModels.BackupTarget, remoteParent, localParent string) error {
+	children, err := s.listRemoteChildDatasets(ctx, target, remoteParent)
+	if err != nil {
+		return fmt.Errorf("list_remote_children_failed: %w", err)
+	}
+	if len(children) == 0 {
+		return nil
+	}
+
+	logger.L.Info().Str("parent", localParent).Int("count", len(children)).
+		Msg("restoring_child_datasets")
+
+	for _, remoteChild := range children {
+		relPath := strings.TrimPrefix(remoteChild, remoteParent+"/")
+		if relPath == "" || relPath == remoteChild {
+			continue
+		}
+
+		localChild := normalizeDatasetPath(localParent + "/" + relPath)
+		restorePath := localChild + ".restoring"
+
+		_ = s.destroyLocalDatasetWithRetry(ctx, restorePath, true, 5, 500*time.Millisecond)
+
+		extraEnv := s.buildZeltaEnv(target)
+		extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", "no")
+		extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+
+		remoteEndpoint := target.SSHHost + ":" + remoteChild
+
+		output, pullErr := runZeltaWithEnvStreaming(
+			ctx, extraEnv, nil,
+			"backup", "--json",
+			remoteEndpoint,
+			restorePath,
+		)
+		if pullErr != nil {
+			logger.L.Warn().Err(pullErr).Str("child", localChild).Str("output", output).
+				Msg("restore_child_pull_failed")
+			continue
+		}
+
+		if _, err := s.promoteRestoredDataset(ctx, restorePath, localChild); err != nil {
+			logger.L.Warn().Err(err).Str("child", localChild).
+				Msg("restore_child_promote_failed")
+			continue
+		}
+
+		logger.L.Info().Str("child", localChild).Msg("restored_child_dataset")
+	}
+
+	return nil
+}
+
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
 	sshArgs := s.buildSSHArgs(target)
 	sshArgs = append(sshArgs, target.SSHHost,
-		"zfs", "list", "-t", "snapshot", "-r", "-Hp",
+		"zfs", "list", "-t", "snapshot", "-Hp",
 		"-o", "name,creation,used,refer",
 		"-s", "creation",
 		remoteDataset,
