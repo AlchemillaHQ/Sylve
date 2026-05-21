@@ -358,13 +358,13 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 	}
 
 	if ds.IsEncrypted() {
-		if err := s.ensureEncryptionKeyForDataset(ctx, ds); err != nil {
-			logger.L.Error().Err(err).Str("dataset", dataset).Msg("fix_restored_property_key_missing")
+		keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+		if err != nil {
+			logger.L.Error().Err(err).Str("dataset", dataset).Msg("fix_restored_property_key_load_failed")
 			return
 		}
-		if err := ds.LoadKey(ctx, false); err != nil {
-			logger.L.Error().Err(err).Str("dataset", dataset).Msg("fix_restored_property_load_key_failed")
-			return
+		if !keyLoaded {
+			logger.L.Warn().Str("dataset", dataset).Msg("fix_restored_property_key_not_auto_loaded")
 		}
 	}
 

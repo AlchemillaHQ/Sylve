@@ -24,6 +24,7 @@
 	import { vmBaseDataset, vmStoragePools } from '$lib/utils/vm/vm';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { sleep } from '$lib/utils';
 
 	interface Props {
 		open: boolean;
@@ -172,11 +173,18 @@
 		}
 
 		srcEncryptionChecking = true;
+		await sleep(1000);
+
 		try {
-			const datasets = await getDatasets(GZFSDatasetTypeSchema.enum.ALL);
+			const datasets = await Promise.all([
+				getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
+				getDatasets(GZFSDatasetTypeSchema.enum.VOLUME)
+			]).then(([filesystems, volumes]) => [...filesystems, ...volumes]);
+
 			const match = datasets.find((d) => {
 				if (d.name !== dataset) return false;
-				const enc = d.properties?.encryption?.value;
+				console.log(d.properties);
+				const enc = d.properties?.encryption || '';
 				return enc && enc !== 'off' && enc !== '-' && enc !== 'none';
 			});
 			srcEncrypted = !!match;
@@ -460,19 +468,42 @@
 		}
 	});
 
-	watch([() => open, () => form.mode, () => form.sourceDataset, () => form.selectedJailId, () => form.selectedVmId], ([isOpen]) => {
-		if (!isOpen) return;
-		let dataset = '';
-		if (form.mode === 'dataset') {
-			dataset = form.sourceDataset;
-		} else if (form.mode === 'jail' && selectedJail) {
-			const base = selectedJail.storages?.find((s) => s.isBase);
-			if (base) dataset = `${base.pool}/sylve/jails/${selectedJail.ctId}`;
-		} else if (form.mode === 'vm' && selectedVM) {
-			dataset = vmBaseDataset(selectedVM) || '';
+	watch(
+		[
+			() => open,
+			() => form.mode,
+			() => form.sourceDataset,
+			() => form.selectedJailId,
+			() => form.selectedVmId
+		],
+		([isOpen]) => {
+			if (!isOpen) return;
+			let dataset = '';
+			if (form.mode === 'dataset') {
+				dataset = form.sourceDataset;
+			} else if (form.mode === 'jail' && selectedJail) {
+				const base = selectedJail.storages?.find((s) => s.isBase);
+				if (base) dataset = `${base.pool}/sylve/jails/${selectedJail.ctId}`;
+			} else if (form.mode === 'vm' && selectedVM) {
+				dataset = vmBaseDataset(selectedVM) || '';
+			}
+			void checkSourceEncryption(dataset);
 		}
-		void checkSourceEncryption(dataset);
-	});
+	);
+
+	let disableStopBeforeBackup = $state(false);
+
+	watch(
+		() => form.mode,
+		(mode) => {
+			if (mode === 'dataset') {
+				form.stopBeforeBackup = false;
+				disableStopBeforeBackup = true;
+			} else {
+				disableStopBeforeBackup = false;
+			}
+		}
+	);
 </script>
 
 <Dialog.Root bind:open>
@@ -601,6 +632,10 @@
 					label="Stop before backup"
 					bind:checked={form.stopBeforeBackup}
 					classes="flex items-center gap-2"
+					disabled={disableStopBeforeBackup}
+					title={form.mode === 'dataset'
+						? 'This option is only applicable for jail and VM backups'
+						: ''}
 				/>
 			</div>
 
@@ -638,19 +673,6 @@
 						</li>
 					{/if}
 					<li>
-						Encryption:
-						<code class="rounded bg-background px-1">
-							{#if srcEncryptionChecking}
-								...
-							{:else if srcEncrypted}
-								<span class="icon-[material-symbols--lock] h-3.5 w-3.5 inline-block align-text-bottom"></span>
-								Enabled (keys auto-managed)
-							{:else}
-								None
-							{/if}
-						</code>
-					</li>
-					<li>
 						Schedule: <code class="rounded bg-background px-1"
 							>{cronToHuman(form.cronExpr) || '(not set)'}</code
 						>
@@ -669,12 +691,43 @@
 							>{form.pruneTarget ? 'Enabled' : 'Disabled'}</code
 						>
 					</li>
-					<li>
-						Stop before backup:
-						<code class="rounded bg-background px-1"
-							>{form.stopBeforeBackup ? 'Enabled' : 'Disabled'}</code
-						>
-					</li>
+
+					{#if !disableStopBeforeBackup}
+						<li>
+							Stop before backup:
+							<code class="rounded bg-background px-1"
+								>{form.stopBeforeBackup ? 'Enabled' : 'Disabled'}</code
+							>
+						</li>
+					{/if}
+
+					{#if form.mode !== 'jail' && form.mode !== 'vm'}
+						{#if srcEncryptionChecking}
+							<li>
+								<span
+									class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin inline-block align-text-bottom mb-0.5"
+								></span>
+							</li>
+						{:else if form.sourceDataset === ''}
+							<li>
+								<span class="icon-[mdi--help] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
+								></span>
+								<span>Select a dataset to view encryption information</span>
+							</li>
+						{:else if srcEncrypted}
+							<li>
+								<span class="icon-[mdi--lock] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
+								></span>
+								<span>Source is encrypted</span>
+							</li>
+						{:else}
+							<li>
+								<span class="icon-[mdi--unlocked] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
+								></span>
+								<span>Source is not encrypted</span>
+							</li>
+						{/if}
+					{/if}
 				</ul>
 			</div>
 		</div>

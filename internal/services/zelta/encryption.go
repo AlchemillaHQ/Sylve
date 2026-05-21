@@ -121,17 +121,58 @@ func (s *Service) EnsureEncryptionKeyFile(uuid string) error {
 	return nil
 }
 
-func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Dataset) error {
+func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Dataset) (keyLoaded bool, err error) {
 	keylocProp, err := ds.GetProperty(ctx, "keylocation")
 	if err != nil {
-		return fmt.Errorf("get_keylocation_failed: %w", err)
+		return false, fmt.Errorf("get_keylocation_failed: %w", err)
 	}
 
 	keyloc := strings.TrimSpace(keylocProp.Value)
-	if keyloc == "" || keyloc == "none" || !strings.HasPrefix(keyloc, "file://") {
-		return fmt.Errorf("unexpected_keylocation: %s", keyloc)
+	if keyloc == "" || keyloc == "none" {
+		return false, nil
 	}
 
-	uuid := filepath.Base(strings.TrimPrefix(keyloc, "file://"))
-	return s.EnsureEncryptionKeyFile(uuid)
+	if strings.HasPrefix(keyloc, "file://") {
+		uuid := filepath.Base(strings.TrimPrefix(keyloc, "file://"))
+		if err := s.EnsureEncryptionKeyFile(uuid); err != nil {
+			return false, fmt.Errorf("encryption_key_not_found_in_cluster_store: %s", uuid)
+		}
+		if err := ds.LoadKey(ctx, false); err != nil {
+			return false, fmt.Errorf("load_key_failed: %w", err)
+		}
+		return true, nil
+	}
+
+	// keylocation is "prompt" — the original key file wasn't available on
+	// the server that received this dataset (e.g. a backup target). Try each
+	// key in the cluster store; match by attempting to load.
+	keys, listErr := s.Cluster.ListEncryptionKeys()
+	if listErr != nil {
+		logger.L.Warn().Err(listErr).Str("dataset", ds.Name).
+			Msg("encrypted_dataset_cannot_list_keys_for_prompt_keylocation")
+		return false, nil
+	}
+
+	for _, key := range keys {
+		if err := ds.LoadKeyWithPassphrase(ctx, key.KeyData); err != nil {
+			continue
+		}
+
+		// Key loaded — materialize the key file and fix keylocation
+		// so it auto-loads on next boot.
+		if writeErr := s.EnsureEncryptionKeyFile(key.UUID); writeErr != nil {
+			logger.L.Warn().Err(writeErr).Str("uuid", key.UUID).
+				Str("dataset", ds.Name).Msg("prompt_key_loaded_but_file_write_failed")
+		} else {
+			_ = ds.SetProperties(ctx, "keylocation", "file://"+filepath.Join(EncryptionKeyDirectory, key.UUID))
+		}
+
+		logger.L.Info().Str("dataset", ds.Name).Str("uuid", key.UUID).
+			Msg("encrypted_dataset_key_loaded_via_prompt_fallback")
+		return true, nil
+	}
+
+	logger.L.Warn().Str("dataset", ds.Name).
+		Msg("encrypted_dataset_requires_manual_key_load_run_zfs_load_key")
+	return false, nil
 }

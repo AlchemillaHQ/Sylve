@@ -13921,3 +13921,37 @@ msgstr "VM Template - Create"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail Template - Create"
 msgstr "Jail Template - Create"
+
+#~ msgid "Encryption: <0/>"
+#~ msgstr "Encryption: <0/>"
+
+#~ msgid "Enabled (keys auto-managed)"
+#~ msgstr "Enabled (keys auto-managed)"
+
+#~ msgid "Encryption: <0>Enabled (keys auto-managed)</0>"
+#~ msgstr "Encryption: <0>Enabled (keys auto-managed)</0>"
+
+#~ msgid "Checking source encryption..."
+#~ msgstr "Checking source encryption..."
+
+#~ msgid "Source is encrypted (keys auto-managed)"
+#~ msgstr "Source is encrypted (keys auto-managed)"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Source is not encrypted"
+msgstr "Source is not encrypted"
+
+#~ msgid "No encryption information available"
+#~ msgstr "No encryption information available"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Select a dataset to view encryption information"
+msgstr "Select a dataset to view encryption information"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "This option is only applicable for jail and VM backups"
+msgstr "This option is only applicable for jail and VM backups"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Source is encrypted"
+msgstr "Source is encrypted"

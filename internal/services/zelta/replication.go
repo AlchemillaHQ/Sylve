@@ -3707,11 +3707,12 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		}
 
 		if ds.IsEncrypted() {
-			if err := s.ensureEncryptionKeyForDataset(ctx, ds); err != nil {
-				return fmt.Errorf("replication_encryption_key_missing_%s: %w", dataset, err)
+			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+			if err != nil {
+				return fmt.Errorf("replication_encryption_key_failed_%s: %w", dataset, err)
 			}
-			if err := ds.LoadKey(ctx, false); err != nil {
-				return fmt.Errorf("replication_load_key_failed_%s: %w", dataset, err)
+			if !keyLoaded {
+				logger.L.Warn().Str("dataset", dataset).Msg("replication_encryption_key_not_auto_loaded")
 			}
 		}
 
