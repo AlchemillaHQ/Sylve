@@ -65,9 +65,11 @@
 		() => reload,
 		(value) => {
 			if (value) {
-				jobs.refetch();
-				targets.refetch();
-				reload = false;
+				setTimeout(() => {
+					jobs.refetch();
+					targets.refetch();
+					reload = false;
+				}, 500);
 			}
 		}
 	);

@@ -251,6 +251,7 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 			"prune_keep_last",
 			"prune_target",
 			"stop_before_backup",
+			"recursive",
 			"cron_expr",
 			"enabled",
 			"next_run_at",
