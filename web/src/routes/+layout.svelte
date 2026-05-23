@@ -84,7 +84,7 @@
 
 			if (initialized && rebooted && page.url.pathname === '/') {
 				await preloadData('/datacenter/summary');
-				await goto(resolve('/datacenter/summary'), { replaceState: true });
+				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
 			}
 
 			await sleep(1500);
@@ -135,7 +135,7 @@
 					rebooted = false;
 				}
 
-				await goto(resolve('/'));
+				await useSafeGoto(resolve('/'));
 
 				loading.initialization = false;
 
@@ -159,7 +159,7 @@
 				await preloadData(target);
 
 				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				await goto(target, { replaceState: true });
+				await useSafeGoto(target, { replaceState: true });
 
 				await sleep(1500);
 				loading.throbber = false;
@@ -201,7 +201,7 @@
 					rebooted = false;
 				}
 
-				await goto(resolve('/'));
+				await useSafeGoto(resolve('/'));
 
 				loading.initialization = false;
 
@@ -223,7 +223,7 @@
 				await preloadData(target);
 
 				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				await goto(target, { replaceState: true });
+				await useSafeGoto(target, { replaceState: true });
 
 				await sleep(1500);
 				loading.throbber = false;

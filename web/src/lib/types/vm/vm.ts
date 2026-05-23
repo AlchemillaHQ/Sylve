@@ -92,8 +92,8 @@ export const VMStorageSchema = z.object({
 export const VMNetworkSchema = z.object({
     id: z.number().int(),
     mac: z.string(),
-    macId: z.number().int().optional(),
-    macObj: NetworkObjectSchema.optional(),
+    macId: z.number().int().optional().nullable(),
+    macObj: NetworkObjectSchema.optional().nullable(),
     switchId: z.number().int(),
     switchType: z.enum(['standard', 'manual']),
     emulation: z.string(),

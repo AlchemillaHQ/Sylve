@@ -2,6 +2,7 @@
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { goto } from '$app/navigation';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import {
 		actionVm,
@@ -37,7 +38,11 @@
 	import type { APIResponse, GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
-	import { getVMIconByGaId, removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
+	import {
+		getVMIconByGaId,
+		removeStaleCacheByRID,
+		getVMLifecycleBadgeStyle
+	} from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
 	import { fade } from 'svelte/transition';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
@@ -71,7 +76,7 @@
 	const logs = resource(
 		() => `vm-${data.rid}-logs`,
 		async (key) => {
-			const result = await getVMLogs(vm.current.rid);
+			const result = await getVMLogs(Number(data.rid));
 			updateCache(key, result);
 			return result;
 		},
@@ -172,7 +177,9 @@
 	}
 
 	let normalizedDomainStatus = $derived.by(() =>
-		String(domain.current?.status || '').trim().toLowerCase()
+		String(domain.current?.status || '')
+			.trim()
+			.toLowerCase()
 	);
 	let isDomainErrorState = $derived(normalizedDomainStatus === 'error');
 	let hasActiveLifecycleTask = $derived(!!domain.current?.pendingAction);
@@ -203,7 +210,7 @@
 
 			if (curr !== undefined && prev !== undefined) {
 				if (curr !== prev) {
-					updateDescription(vm.current.rid, curr);
+					updateDescription(data.rid, curr);
 				}
 			}
 		}
@@ -294,7 +301,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			await goto(
+			await useSafeGoto(
 				resolve('/[node]/summary', {
 					node: data.node
 				})
@@ -579,7 +586,7 @@
 			<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
 			<span>Force Delete</span>
 		</Button>
-	{:else if type === 'force-stop' && (domain.current?.id !== -1 || (domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot')) && isDomainRunningForActions && isShutdownTaskActive}
+	{:else if type === 'force-stop' && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
 			onclick={() => handleForceStop()}
 			size="sm"
@@ -590,7 +597,7 @@
 				<span>Force Stop</span>
 			</div>
 		</Button>
-	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || (domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot')) && isDomainRunningForActions}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions}
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
@@ -619,26 +626,24 @@
 
 <div>
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
-		{#key data.vm.rid}
-			<div class="flex items-center gap-1" transition:fade>
-				{@render button('start')}
-				{@render button('force-delete')}
-				{@render button('force-stop')}
-				{@render button('reboot')}
-				{@render button('shutdown')}
-				{@render button('stop')}
+		<div class="flex items-center gap-1">
+			{@render button('start')}
+			{@render button('force-delete')}
+			{@render button('force-stop')}
+			{@render button('reboot')}
+			{@render button('shutdown')}
+			{@render button('stop')}
 
-				{#if hasActiveLifecycleTask}
-					<Badge
-						variant={lifecycleActionBadge.variant}
-						class={`mt-0.5 ml-2 ${lifecycleActionBadge.className}`}
-					>
-						<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-						{lifecycleActionBadge.label}
-					</Badge>
-				{/if}
-			</div>
-		{/key}
+			{#if hasActiveLifecycleTask}
+				<Badge
+					variant={lifecycleActionBadge.variant}
+					class={`mt-0.5 ml-2 ${lifecycleActionBadge.className}`}
+				>
+					<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+					{lifecycleActionBadge.label}
+				</Badge>
+			{/if}
+		</div>
 
 		<div class="ml-auto flex h-full items-center gap-2">
 			{#if vmLogs.length > 0}

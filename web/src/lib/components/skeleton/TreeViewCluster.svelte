@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
 	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
@@ -17,6 +16,7 @@
 	import SidebarElement from './TreeViewCluster.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { handleAPIError } from '$lib/utils/http';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface SidebarProps {
 		id: string;
@@ -44,7 +44,7 @@
 	const handleLabelClick = (e: MouseEvent) => {
 		e.preventDefault();
 		if (item.href) {
-			goto(item.href, { replaceState: false, noScroll: false });
+			useSafeGoto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
 

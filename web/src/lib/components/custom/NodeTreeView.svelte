@@ -4,6 +4,7 @@
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './NodeTreeView.svelte';
 	import { watch } from 'runed';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface SidebarProps {
 		label: string;
@@ -30,8 +31,7 @@
 		}
 
 		if (item.href) {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			goto(item.href, { replaceState: false, noScroll: false });
+			useSafeGoto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
 

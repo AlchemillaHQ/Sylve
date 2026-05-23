@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { onMount } from 'svelte';
 
 	onMount(() => {
-		goto(resolve('/datacenter/backups/targets'), { replaceState: true });
+		useSafeGoto(resolve('/datacenter/backups/targets'), { replaceState: true });
 	});
 </script>

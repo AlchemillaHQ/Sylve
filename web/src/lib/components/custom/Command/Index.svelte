@@ -5,6 +5,7 @@
 	import { mode, toggleMode } from 'mode-watcher';
 	import { logOut } from '$lib/api/auth';
 	import { goto } from '$app/navigation';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 </script>
 
 <Command.Dialog
@@ -20,7 +21,7 @@
 				value="host-terminal"
 				onSelect={() => {
 					storage.openCommands = false;
-					goto(`/${storage.hostname}/terminal`);
+					useSafeGoto(`/${storage.hostname}/terminal`);
 				}}
 			>
 				<span class="icon-[mdi--console] size-5"></span>

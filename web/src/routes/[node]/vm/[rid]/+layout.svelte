@@ -17,6 +17,7 @@
 	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -60,7 +61,9 @@
 	setContext('vmDomain', domain);
 
 	let normalizedDomainStatus = $derived.by(() =>
-		String(domain.current?.status || '').trim().toLowerCase()
+		String(domain.current?.status || '')
+			.trim()
+			.toLowerCase()
 	);
 	let isDomainErrorState = $derived(normalizedDomainStatus === 'error');
 	let hasActiveLifecycleTask = $derived(!!domain.current?.pendingAction);
@@ -181,8 +184,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			await goto(`/${storage.hostname}/summary`);
+			await useSafeGoto(`/${storage.hostname}/summary`);
 			if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
 					duration: 5000,
@@ -351,6 +353,8 @@
 
 		await refreshVmDomain();
 	}
+
+	let permaOpen = $state(true);
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
@@ -418,7 +422,7 @@
 							</Button>
 						{/if}
 
-						{#if (domain.current.id !== -1 || (domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot')) && isDomainRunningForActions}
+						{#if (domain.current.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions}
 							{#if isShutdownTaskActive}
 								<Button
 									onclick={() => handleForceStop()}

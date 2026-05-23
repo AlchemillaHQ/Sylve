@@ -19,6 +19,7 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import type { GFSStep } from '$lib/types/common';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -156,8 +157,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			await goto(`/${storage.hostname}/summary`);
+			await useSafeGoto(`/${storage.hostname}/summary`);
 			toast.success('Jail deleted', {
 				duration: 5000,
 				position: 'bottom-center'

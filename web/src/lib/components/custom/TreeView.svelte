@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './TreeView.svelte';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface SidebarProps {
 		label: string;
@@ -19,8 +20,6 @@
 
 	let { item, onToggle }: Props = $props();
 
-	let isOpen = $state(false);
-
 	const toggle = (e: MouseEvent) => {
 		e.preventDefault();
 
@@ -30,7 +29,7 @@
 		}
 
 		if (item.href) {
-			goto(item.href, { replaceState: false, noScroll: false });
+			useSafeGoto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
 
@@ -63,9 +62,7 @@
 		return false;
 	}
 
-	$effect(() => {
-		isOpen = isItemOpen(item, activeUrl);
-	});
+	let isOpen = $derived(isItemOpen(item, activeUrl));
 </script>
 
 <li class="w-full">

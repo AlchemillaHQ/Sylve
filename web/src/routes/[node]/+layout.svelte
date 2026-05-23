@@ -16,6 +16,7 @@
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
 	import { fade } from 'svelte/transition';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -356,7 +357,7 @@
 
 	watch([() => page.url.pathname], ([pathName]) => {
 		if (pathName === `/${node}`) {
-			goto(
+			useSafeGoto(
 				resolve('/[node]/summary', {
 					node: node
 				})
@@ -364,14 +365,12 @@
 		} else if (pathName.startsWith(`/${node}/vm`)) {
 			const rid = pathName.split('/')[3];
 			if (pathName === `/${node}/vm/${rid}`) {
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				goto(`/${node}/vm/${rid}/summary`, { replaceState: true });
+				useSafeGoto(`/${node}/vm/${rid}/summary`, { replaceState: true });
 			}
 		} else if (pathName.startsWith(`/${node}/jail`)) {
 			const ctId = pathName.split('/')[3];
 			if (pathName === `/${node}/jail/${ctId}`) {
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				goto(`/${node}/jail/${ctId}/summary`, { replaceState: true });
+				useSafeGoto(`/${node}/jail/${ctId}/summary`, { replaceState: true });
 			}
 		}
 	});

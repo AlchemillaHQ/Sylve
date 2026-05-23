@@ -9,8 +9,8 @@
  */
 
 import { browser } from '$app/environment';
-import { goto } from '$app/navigation';
 import { storage } from '$lib';
+import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { JWTClaims } from '$lib/types/auth';
 import type { APIResponse } from '$lib/types/common';
 import { kvStorage } from '$lib/types/db';
@@ -358,7 +358,7 @@ export async function logOut(message?: string) {
         });
     }
 
-    goto('/', {
+    useSafeGoto('/', {
         replaceState: true,
         state: {
             loggedOut: true

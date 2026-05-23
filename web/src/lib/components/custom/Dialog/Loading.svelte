@@ -57,8 +57,8 @@
 				</Card.Content>
 			</Card.Root>
 		{:else}
-			<div class="flex w-full items-center justify-center py-3">
-				<span class="icon-[mdi--loading] animate-spin text-4xl {iconColor}"></span>
+			<div class="flex w-full items-center justify-center py-3 animate-spin">
+				<span class="icon-[mdi--loading] text-4xl overflow-hidden {iconColor}"></span>
 			</div>
 		{/if}
 

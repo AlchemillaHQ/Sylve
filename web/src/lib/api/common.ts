@@ -11,6 +11,7 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { storage } from '$lib';
+import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
 
@@ -93,9 +94,9 @@ function applyRequestDefaults(config: APIRequestConfig): APIRequestConfig {
     const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
     const pathBasedHost =
         routeHost !== '' &&
-        routeHost !== 'datacenter' &&
-        routeHost !== 'login' &&
-        routeHost !== 'inactive-node'
+            routeHost !== 'datacenter' &&
+            routeHost !== 'login' &&
+            routeHost !== 'inactive-node'
             ? routeHost
             : '';
     const fallbackHost = pathBasedHost || storage.localHostname || storage.hostname || '';
@@ -216,7 +217,7 @@ class FetchAPIClient {
                     toast.error('Session expired, please login again', {
                         position: 'bottom-center'
                     });
-                    goto('/login');
+                    useSafeGoto('/login');
                 }
 
                 handleAxiosError(error);
