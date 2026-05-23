@@ -35,9 +35,10 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="overflow-hidden sm:max-w-[425px]"
+		class="overflow-hidden sm:max-w-106.25"
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
+		showCloseButton={false}
 	>
 		<Dialog.Header class="flex w-full min-w-0 flex-col items-center justify-center text-center">
 			<Dialog.Title class="mb-2 text-lg font-semibold">{title}</Dialog.Title>
@@ -63,6 +64,7 @@
 		{/if}
 
 		<div class="text-muted-foreground mt-1 justify-center text-center text-sm">
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			{@html description}
 		</div>
 	</Dialog.Content>

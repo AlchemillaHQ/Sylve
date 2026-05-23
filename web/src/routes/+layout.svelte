@@ -4,7 +4,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
-	import { goto, preloadData } from '$app/navigation';
+	import { preloadData } from '$app/navigation';
 	import {
 		isClusterTokenValid,
 		isTokenValid,
@@ -42,6 +42,8 @@
 		setEnabledServicesForHostname,
 		syncActiveEnabledServices
 	} from '$lib/utils/enabled-services';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import { isAPIResponse } from '$lib/utils/http.js';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -91,6 +93,12 @@
 			loading.throbber = false;
 
 			const basicSettings = await getLocalBasicSettings();
+
+			if (isAPIResponse(basicSettings)) {
+				console.error('Failed to fetch basic settings:', basicSettings);
+				return;
+			}
+
 			setEnabledServicesForHostname(
 				storage.localHostname || storage.hostname,
 				basicSettings.services
@@ -140,6 +148,11 @@
 				loading.initialization = false;
 
 				const basicSettings = await getLocalBasicSettings();
+				if (isAPIResponse(basicSettings)) {
+					console.error('Failed to fetch basic settings:', basicSettings);
+					return;
+				}
+
 				setEnabledServicesForHostname(
 					storage.localHostname || storage.hostname,
 					basicSettings.services
@@ -157,8 +170,6 @@
 				}
 
 				await preloadData(target);
-
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
 				await useSafeGoto(target, { replaceState: true });
 
 				await sleep(1500);
@@ -206,6 +217,11 @@
 				loading.initialization = false;
 
 				const basicSettings = await getLocalBasicSettings();
+				if (isAPIResponse(basicSettings)) {
+					console.error('Failed to fetch basic settings:', basicSettings);
+					return;
+				}
+
 				setEnabledServicesForHostname(
 					storage.localHostname || storage.hostname,
 					basicSettings.services
@@ -221,8 +237,6 @@
 				}
 
 				await preloadData(target);
-
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
 				await useSafeGoto(target, { replaceState: true });
 
 				await sleep(1500);
