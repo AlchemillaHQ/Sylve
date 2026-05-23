@@ -407,13 +407,17 @@ func (s *Service) normalizeRestoredVMStorages(
 		}
 
 		var datasetName string
-		switch cleaned.Type {
-		case vmModels.VMStorageTypeRaw:
-			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", cleaned.Pool, rid, originalID)
-		case vmModels.VMStorageTypeZVol:
-			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", cleaned.Pool, rid, originalID)
-		default:
-			return nil, fmt.Errorf("unsupported_restored_vm_storage_type: %s", cleaned.Type)
+		if strings.TrimSpace(storage.Dataset.Name) != "" {
+			datasetName = strings.TrimSpace(storage.Dataset.Name)
+		} else {
+			switch cleaned.Type {
+			case vmModels.VMStorageTypeRaw:
+				datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", cleaned.Pool, rid, originalID)
+			case vmModels.VMStorageTypeZVol:
+				datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", cleaned.Pool, rid, originalID)
+			default:
+				return nil, fmt.Errorf("unsupported_restored_vm_storage_type: %s", cleaned.Type)
+			}
 		}
 
 		exists, err := s.localDatasetExists(ctx, datasetName)

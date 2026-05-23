@@ -225,6 +225,22 @@ func (s *Service) WriteVMJson(rid uint) error {
 		return err
 	}
 
+	for i := range vm.Storages {
+		if vm.Storages[i].Dataset.Name == "" {
+			continue
+		}
+		switch vm.Storages[i].Type {
+		case vmModels.VMStorageTypeRaw:
+			if id := storageIDFromDataset(vm.Storages[i].Dataset.Name, "raw"); id != 0 {
+				vm.Storages[i].ID = uint(id)
+			}
+		case vmModels.VMStorageTypeZVol:
+			if id := storageIDFromDataset(vm.Storages[i].Dataset.Name, "zvol"); id != 0 {
+				vm.Storages[i].ID = uint(id)
+			}
+		}
+	}
+
 	vmJsonData, err := json.MarshalIndent(vm, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_vm_to_json: %w", err)
