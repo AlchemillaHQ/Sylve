@@ -13,6 +13,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -61,6 +63,48 @@ func TestIsSecureRequestAllowsDirectTLS(t *testing.T) {
 
 	if !isSecureRequest(c) {
 		t.Fatalf("expected_tls_request_to_be_secure")
+	}
+}
+
+func TestIsSecureRequestAllowsConfiguredTrustedProxy(t *testing.T) {
+	config.ParsedConfig = &internal.SylveConfig{
+		TrustedProxies: []string{"10.10.30.0/24"},
+	}
+	defer func() { config.ParsedConfig = nil }()
+
+	c, _ := newPasskeyTestContext("10.10.30.103:44321")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	if !isSecureRequest(c) {
+		t.Fatalf("expected_request_to_be_secure_via_trusted_proxy")
+	}
+}
+
+func TestIsSecureRequestRejectsNonConfiguredTrustedProxy(t *testing.T) {
+	config.ParsedConfig = &internal.SylveConfig{
+		TrustedProxies: []string{"10.10.30.0/24"},
+	}
+	defer func() { config.ParsedConfig = nil }()
+
+	c, _ := newPasskeyTestContext("192.168.1.1:44321")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	if isSecureRequest(c) {
+		t.Fatalf("expected_request_to_be_insecure_from_unknown_proxy")
+	}
+}
+
+func TestIsSecureRequestAllowsTrustedProxySingleIP(t *testing.T) {
+	config.ParsedConfig = &internal.SylveConfig{
+		TrustedProxies: []string{"10.10.30.103"},
+	}
+	defer func() { config.ParsedConfig = nil }()
+
+	c, _ := newPasskeyTestContext("10.10.30.103:44321")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	if !isSecureRequest(c) {
+		t.Fatalf("expected_request_to_be_secure_via_trusted_proxy_ip")
 	}
 }
 

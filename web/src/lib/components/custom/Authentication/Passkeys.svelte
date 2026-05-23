@@ -147,7 +147,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="w-1/2 md:min-w-1/4 sm:min-w-1/2 gap-4 p-5"
+		class="w-1/2 md:min-w-1/4 sm:min-w-1/2 gap-4 p-5 overflow-hidden"
 		showCloseButton={true}
 		onClose={() => {
 			open = false;
@@ -165,14 +165,14 @@
 		</Dialog.Header>
 
 		<div class="space-y-2">
-			<div class="flex items-center gap-2">
+			<div class="flex items-center gap-2 min-w-0">
 				<CustomValueInput
 					placeholder="Hayzam's Laptop"
 					bind:value={label}
-					classes="w-full"
+					classes="w-full min-w-0"
 					autocomplete="off"
 				/>
-				<Button onclick={registerPasskey} disabled={registering || label.trim() === ''}>
+				<Button onclick={registerPasskey} disabled={registering || label.trim() === ''} class="shrink-0">
 					{#if registering}
 						<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
 					{:else}
@@ -182,28 +182,28 @@
 			</div>
 		</div>
 
-		<div class="rounded-md border">
+		<div class="rounded-md border overflow-x-auto">
 			{#if loading}
 				<div class="p-3 text-sm text-muted-foreground">Loading passkeys...</div>
 			{:else if passkeys.length === 0}
 				<div class="p-3 text-sm text-muted-foreground">No passkeys registered.</div>
 			{:else}
-				<table class="w-full text-sm">
+				<table class="w-full text-sm min-w-[500px]">
 					<thead class="border-b">
 						<tr>
 							<th class="px-3 py-2 text-left">Label</th>
 							<th class="px-3 py-2 text-left">Credential ID</th>
-							<th class="px-3 py-2 text-left">Created</th>
+							<th class="px-3 py-2 text-left whitespace-nowrap">Created</th>
 							<th class="px-3 py-2 text-right">Action</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each passkeys as passkey, index (index)}
 							<tr class="border-b last:border-b-0">
-								<td class="px-3 py-2">{passkey.label || '-'}</td>
-								<td class="px-3 py-2 font-mono text-xs">{passkey.credentialId}</td>
-								<td class="px-3 py-2">{convertDbTime(passkey.createdAt)}</td>
-								<td class="px-3 py-2 text-right">
+								<td class="px-3 py-2 max-w-[120px] truncate">{passkey.label || '-'}</td>
+								<td class="px-3 py-2 font-mono text-xs max-w-[200px] truncate" title={passkey.credentialId}>{passkey.credentialId}</td>
+								<td class="px-3 py-2 whitespace-nowrap">{convertDbTime(passkey.createdAt)}</td>
+								<td class="px-3 py-2 text-right whitespace-nowrap">
 									<Button
 										size="sm"
 										variant="outline"

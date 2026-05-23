@@ -149,22 +149,32 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 	}
 
 	var datasets []*gzfs.Dataset
+	var datasetName string
 
 	if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
+		datasetName = storage.Dataset.Name
+		if datasetName == "" {
+			switch storage.Type {
+			case vmModels.VMStorageTypeRaw:
+				datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID)
+			case vmModels.VMStorageTypeZVol:
+				datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID)
+			}
+		}
 		switch storage.Type {
 		case vmModels.VMStorageTypeRaw:
 			datasets, err = s.GZFS.ZFS.ListByType(
 				ctx,
 				gzfs.DatasetTypeFilesystem,
 				false,
-				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
+				datasetName,
 			)
 		case vmModels.VMStorageTypeZVol:
 			datasets, err = s.GZFS.ZFS.ListByType(
 				ctx,
 				gzfs.DatasetTypeVolume,
 				false,
-				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID),
+				datasetName,
 			)
 		}
 
@@ -210,7 +220,7 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 
 			dataset, err = s.GZFS.ZFS.CreateFilesystem(
 				ctx,
-				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
+				datasetName,
 				utils.MergeMaps(props, map[string]string{
 					"recordsize": recordSize,
 				}),
@@ -218,7 +228,7 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 		case vmModels.VMStorageTypeZVol:
 			dataset, err = s.GZFS.ZFS.CreateVolume(
 				ctx,
-				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID),
+				datasetName,
 				uint64(storage.Size),
 				utils.MergeMaps(props, map[string]string{
 					"volblocksize": volblocksize,
@@ -235,7 +245,11 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 	}
 
 	if storage.Type == vmModels.VMStorageTypeRaw {
-		imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID))
+		imageID := storage.ID
+		if id := storageIDFromDataset(dataset.Name, "raw"); id != 0 {
+			imageID = uint(id)
+		}
+		imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", imageID))
 		if _, err := os.Stat(imagePath); err == nil {
 			logger.L.Info().Msgf("Disk image %s already exists, skipping creation", imagePath)
 		} else {
@@ -645,15 +659,27 @@ func (s *Service) destroyManagedStorageDataset(ctx context.Context, rid uint, st
 	var datasetType gzfs.DatasetType
 	var datasetPath string
 
-	switch storage.Type {
-	case vmModels.VMStorageTypeRaw:
-		datasetType = gzfs.DatasetTypeFilesystem
-		datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", storage.Pool, rid, storage.ID)
-	case vmModels.VMStorageTypeZVol:
-		datasetType = gzfs.DatasetTypeVolume
-		datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, rid, storage.ID)
-	default:
-		return nil
+	datasetPath = storage.Dataset.Name
+	if datasetPath == "" {
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw:
+			datasetType = gzfs.DatasetTypeFilesystem
+			datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", storage.Pool, rid, storage.ID)
+		case vmModels.VMStorageTypeZVol:
+			datasetType = gzfs.DatasetTypeVolume
+			datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, rid, storage.ID)
+		default:
+			return nil
+		}
+	} else {
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw:
+			datasetType = gzfs.DatasetTypeFilesystem
+		case vmModels.VMStorageTypeZVol:
+			datasetType = gzfs.DatasetTypeVolume
+		default:
+			return nil
+		}
 	}
 
 	datasets, err := s.GZFS.ZFS.ListByType(ctx, datasetType, false, datasetPath)

@@ -55,21 +55,22 @@ type JailsConfig struct {
 }
 
 type SylveConfig struct {
-	Environment   Environment     `json:"environment"`
-	ProxyToVite   bool            `json:"proxyToVite"`
-	Profile       bool            `json:"profile"`
-	IP            string          `json:"ip"`
-	Port          int             `json:"port"`
-	HTTPPort      int             `json:"httpPort"`
-	LogLevel      int8            `json:"logLevel"`
-	WANInterfaces []string        `json:"wanInterfaces"`
-	Admin         BaseConfigAdmin `json:"admin"`
-	DataPath      string          `json:"dataPath"`
-	TLS           TLSConfig       `json:"tlsConfig"`
-	Raft          Raft            `json:"raft"`
-	BTT           BTT             `json:"btt"`
-	Auth          AuthConfig      `json:"auth"`
-	Jails         JailsConfig     `json:"jails"`
+	Environment    Environment     `json:"environment"`
+	ProxyToVite    bool            `json:"proxyToVite"`
+	Profile        bool            `json:"profile"`
+	IP             string          `json:"ip"`
+	Port           int             `json:"port"`
+	HTTPPort       int             `json:"httpPort"`
+	LogLevel       int8            `json:"logLevel"`
+	WANInterfaces  []string        `json:"wanInterfaces"`
+	Admin          BaseConfigAdmin `json:"admin"`
+	DataPath       string          `json:"dataPath"`
+	TLS            TLSConfig       `json:"tlsConfig"`
+	Raft           Raft            `json:"raft"`
+	BTT            BTT             `json:"btt"`
+	Auth           AuthConfig      `json:"auth"`
+	Jails          JailsConfig     `json:"jails"`
+	TrustedProxies []string        `json:"trustedProxies"`
 }
 
 type APIResponse[T any] struct {

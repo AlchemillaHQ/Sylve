@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -63,8 +64,27 @@ func isTrustedForwardingSource(c *gin.Context) bool {
 		return false
 	}
 
-	// Only trust forwarded headers from a local reverse proxy.
-	return ip.IsLoopback()
+	if ip.IsLoopback() {
+		return true
+	}
+
+	if config.ParsedConfig != nil {
+		for _, proxy := range config.ParsedConfig.TrustedProxies {
+			trimmed := strings.TrimSpace(proxy)
+			if trimmed == "" {
+				continue
+			}
+			if _, cidr, err := net.ParseCIDR(trimmed); err == nil {
+				if cidr.Contains(ip) {
+					return true
+				}
+			} else if parsed := net.ParseIP(trimmed); parsed != nil && parsed.Equal(ip) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func firstForwardedHeaderValue(value string) string {

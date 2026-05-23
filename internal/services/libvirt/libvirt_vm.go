@@ -120,9 +120,18 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			var disk string
 
 			if storage.Type == vmModels.VMStorageTypeRaw {
-				disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.RID, storage.ID, storage.ID)
+				if storage.Dataset.Name != "" {
+					rawID := storageIDFromDataset(storage.Dataset.Name, "raw")
+					disk = fmt.Sprintf("/%s/%d.img", storage.Dataset.Name, rawID)
+				} else {
+					disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.RID, storage.ID, storage.ID)
+				}
 			} else if storage.Type == vmModels.VMStorageTypeZVol {
-				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.RID, storage.ID)
+				if storage.Dataset.Name != "" {
+					disk = "/dev/zvol/" + storage.Dataset.Name
+				} else {
+					disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.RID, storage.ID)
+				}
 			} else if storage.Type == vmModels.VMStorageTypeDiskImage {
 				var err error
 				disk, err = s.FindISOByUUID(storage.DownloadUUID, true)
@@ -745,6 +754,16 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 	}
 
 	return nil
+}
+
+func storageIDFromDataset(datasetName, prefix string) int {
+	base := filepath.Base(datasetName)
+	idStr := strings.TrimPrefix(base, prefix+"-")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0
+	}
+	return id
 }
 
 func (s *Service) LvVMAction(vm vmModels.VM, action string) error {

@@ -1199,28 +1199,36 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 		switch storage.Type {
 		case vmModels.VMStorageTypeRaw:
 			if deleteRawDisks {
+				datasetName := storage.Dataset.Name
+				if datasetName == "" {
+					datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d",
+						storage.Dataset.Pool,
+						vm.RID,
+						storage.ID,
+					)
+				}
 				cSets, err = s.GZFS.ZFS.ListByType(
 					ctx,
 					gzfs.DatasetTypeFilesystem,
 					false,
-					fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d",
-						storage.Dataset.Pool,
-						vm.RID,
-						storage.ID,
-					),
+					datasetName,
 				)
 			}
 		case vmModels.VMStorageTypeZVol:
 			if deleteVolumes {
+				datasetName := storage.Dataset.Name
+				if datasetName == "" {
+					datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
+						storage.Dataset.Pool,
+						vm.RID,
+						storage.ID,
+					)
+				}
 				cSets, err = s.GZFS.ZFS.ListByType(
 					ctx,
 					gzfs.DatasetTypeVolume,
 					false,
-					fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
-						storage.Dataset.Pool,
-						vm.RID,
-						storage.ID,
-					),
+					datasetName,
 				)
 			}
 		}

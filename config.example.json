@@ -27,5 +27,6 @@
     },
     "jails": {
         "disableDevFS": false
-    }
+    },
+    "trustedProxies": []
 }
