@@ -49,7 +49,7 @@ type CreateVMRequest struct {
 
 	Serial        *bool  `json:"serial"`
 	VNCEnabled    *bool  `json:"vncEnabled"`
-	VNCPort       int    `json:"vncPort" binding:"required"`
+	VNCPort       int    `json:"vncPort"`
 	VNCBind       string `json:"vncBind"`
 	VNCPassword   string `json:"vncPassword"`
 	VNCResolution string `json:"vncResolution"`
@@ -82,7 +82,7 @@ type ModifyCPURequest struct {
 
 type ModifyVNCRequest struct {
 	VNCEnabled    *bool  `json:"vncEnabled"`
-	VNCPort       int    `json:"vncPort" binding:"required"`
+	VNCPort       int    `json:"vncPort"`
 	VNCBind       string `json:"vncBind"`
 	VNCResolution string `json:"vncResolution" binding:"required"`
 	VNCPassword   string `json:"vncPassword" binding:"required"`

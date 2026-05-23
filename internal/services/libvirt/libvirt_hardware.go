@@ -564,6 +564,27 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		vncPort = 0
 	}
 
+	if vncEnabled {
+		if vncPort < 1 || vncPort > 65535 {
+			return fmt.Errorf("vnc_port_must_be_between_1_and_65535")
+		}
+
+		var count int64
+		if err := s.DB.Model(&vmModels.VM{}).
+			Where("vnc_port = ? AND rid != ?", vncPort, rid).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed_to_check_vnc_port_usage: %w", err)
+		}
+
+		if count > 0 {
+			return fmt.Errorf("vnc_port_already_in_use_by_another_vm")
+		}
+
+		if utils.IsPortInUse(vncPort) {
+			return fmt.Errorf("vnc_port_already_in_use_by_another_service")
+		}
+	}
+
 	if vm.VNCPort == vncPort &&
 		vm.VNCBind == vncBind &&
 		vm.VNCResolution == req.VNCResolution &&
