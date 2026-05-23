@@ -290,6 +290,7 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 		SwitchType: swType,
 		MacID:      &macObjId,
 		Emulation:  req.Emulation,
+		Enable:     true,
 	}
 
 	if err := s.DB.Create(&network).Error; err != nil {

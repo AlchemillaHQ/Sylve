@@ -1003,6 +1003,7 @@ func (s *Service) createVMFromTemplateTarget(
 				SwitchID:   switchID,
 				SwitchType: strings.ToLower(strings.TrimSpace(network.SwitchType)),
 				Emulation:  network.Emulation,
+				Enable:     true,
 			}
 			if err := tx.Create(&createdNetwork).Error; err != nil {
 				return fmt.Errorf("failed_to_create_vm_network_from_template: %w", err)

@@ -1058,6 +1058,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			SwitchID:   switchId,
 			SwitchType: swType,
 			Emulation:  data.SwitchEmulationType,
+			Enable:     true,
 		})
 	}
 
