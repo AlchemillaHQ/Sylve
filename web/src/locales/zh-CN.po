@@ -562,6 +562,7 @@ msgstr "操作"
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -2584,6 +2585,7 @@ msgstr "ZFS 存储池"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2626,6 +2628,7 @@ msgstr "已启用"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -5897,7 +5900,7 @@ msgstr "保存并返回插槽"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -9665,6 +9668,7 @@ msgstr "DHCP 租约 - 删除动态"
 #~ msgid "Enabled (Attached to VM)"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"

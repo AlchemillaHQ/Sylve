@@ -26,12 +26,14 @@ export async function updateNetwork(
 	networkId: number,
 	switchName: string,
 	emulation: string,
-	macId: number
+	macId: number,
+	enable?: boolean
 ): Promise<APIResponse> {
 	return await apiRequest(`/vm/network/update`, APIResponseSchema, 'PUT', {
 		networkId,
 		switchName,
 		emulation,
-		macId
+		macId,
+		...(enable !== undefined ? { enable } : {})
 	});
 }

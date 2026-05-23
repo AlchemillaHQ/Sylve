@@ -97,6 +97,7 @@ export const VMNetworkSchema = z.object({
     switchId: z.number().int(),
     switchType: z.enum(['standard', 'manual']),
     emulation: z.string(),
+    enable: z.boolean().optional().default(true),
     vmId: z.number().int().optional()
 });
 

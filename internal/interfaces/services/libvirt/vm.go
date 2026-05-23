@@ -141,6 +141,7 @@ type NetworkUpdateRequest struct {
 	SwitchName string `json:"switchName" binding:"required"`
 	Emulation  string `json:"emulation" binding:"required"`
 	MacId      *uint  `json:"macId"`
+	Enable     *bool  `json:"enable"`
 }
 
 type VMTemplateStoragePoolAssignment struct {

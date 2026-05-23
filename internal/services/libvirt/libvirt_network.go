@@ -568,6 +568,16 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 		}
 	}
 
+	if network.Enable && ifaceEl == nil {
+		root := doc.Root()
+		devicesEl := root.FindElement("devices")
+		if devicesEl == nil {
+			devicesEl = root.CreateElement("devices")
+		}
+		ifaceEl = devicesEl.CreateElement("interface")
+		ifaceEl.CreateAttr("type", "bridge")
+	}
+
 	if ifaceEl == nil {
 		return fmt.Errorf("network_interface_not_found_in_xml: %s", oldMac)
 	}
@@ -605,6 +615,14 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 		modelEl.CreateAttr("type", req.Emulation)
 	}
 
+	if !network.Enable && ifaceEl != nil {
+		devicesEl := doc.FindElement("//devices")
+		if devicesEl == nil {
+			devicesEl = doc.Root().CreateElement("devices")
+		}
+		devicesEl.RemoveChild(ifaceEl)
+	}
+
 	newXML, err := doc.WriteToString()
 	if err != nil {
 		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
@@ -626,10 +644,15 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 	network.SwitchID = switchID
 	network.SwitchType = switchType
 	network.Emulation = req.Emulation
+
 	updates := map[string]any{
 		"switch_id":   network.SwitchID,
 		"switch_type": network.SwitchType,
 		"emulation":   network.Emulation,
+	}
+	if req.Enable != nil {
+		network.Enable = *req.Enable
+		updates["enable"] = network.Enable
 	}
 	if macObjId != 0 {
 		updates["mac_id"] = macObjId

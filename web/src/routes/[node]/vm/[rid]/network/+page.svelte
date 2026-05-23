@@ -15,6 +15,7 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { renderWithIcon } from '$lib/utils/table';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { resource, useInterval, watch } from 'runed';
@@ -122,6 +123,16 @@
 		const rows: Row[] = [];
 		const columns: Column[] = [
 			{ field: 'id', title: 'ID', visible: false },
+			{
+				field: 'enabled',
+				title: 'Status',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+					return value
+						? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+						: renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500');
+				}
+			},
 			{ field: 'name', title: 'Name' },
 			{ field: 'mac', title: 'MAC Address' },
 			{
@@ -162,7 +173,8 @@
 							name: sw.name || 'Unknown Switch',
 							mac: macObj ? `${macObj.name} (${mac})` : 'Unknown MAC',
 							macObject: macObj || null,
-							emulation: network.emulation || 'Unknown'
+							emulation: network.emulation || 'Unknown',
+							enabled: network.enable
 						};
 
 						rows.push(row);

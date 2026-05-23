@@ -24,6 +24,7 @@ func Fixups(db *gorm.DB) error {
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
 	backfillVMStorageEnableDefaults(db)
+	backfillVMNetworkEnableDefaults(db)
 	backfillTemplateSourceGuestIDs(db)
 	createSylveUnixGroup(db)
 	cleanupInvalidTokenRows(db)
@@ -128,6 +129,37 @@ func backfillVMStorageEnableDefaults(db *gorm.DB) {
 
 	if err := db.Exec(`UPDATE vm_storages SET enable = 1`).Error; err != nil {
 		logger.L.Err(err).Msg("failed to backfill vm_storages.enable default values")
+		return
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func backfillVMNetworkEnableDefaults(db *gorm.DB) {
+	const name = "vm_network_enable_default_true_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for backfill_vm_network_enable_defaults")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("vm_networks") || !db.Migrator().HasColumn("vm_networks", "enable") {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	if err := db.Exec(`UPDATE vm_networks SET enable = 1`).Error; err != nil {
+		logger.L.Err(err).Msg("failed to backfill vm_networks.enable default values")
 		return
 	}
 

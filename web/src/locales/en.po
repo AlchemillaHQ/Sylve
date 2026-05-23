@@ -562,6 +562,7 @@ msgstr "Action"
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -2584,6 +2585,7 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2626,6 +2628,7 @@ msgstr "Enabled"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -5897,8 +5900,8 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -9668,6 +9671,7 @@ msgstr "DHCP Lease - Delete Dynamic"
 #~ msgid "Enabled (Attached to VM)"
 #~ msgstr "Enabled (Attached to VM)"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"

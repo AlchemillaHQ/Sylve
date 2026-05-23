@@ -211,6 +211,9 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 	if vm.Networks != nil && len(vm.Networks) > 0 {
 		for _, network := range vm.Networks {
+			if !network.Enable {
+				continue
+			}
 			if network.SwitchID != 0 {
 				nType := "bridge"
 				emulation := network.Emulation

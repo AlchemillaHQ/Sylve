@@ -11,6 +11,7 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateMACOptions } from '$lib/utils/network/object';
 	import { toast } from 'svelte-sonner';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 
 	interface Props {
 		open: boolean;
@@ -81,7 +82,8 @@
 			open: false,
 			value: selectedNetwork?.macId ? selectedNetwork.macId.toString() : '0'
 		},
-		switchId: selectedSwitchName || ''
+		switchId: selectedSwitchName || '',
+		enable: selectedNetwork ? (selectedNetwork.enable ?? true) : true
 	};
 
 	let editProperties = $state(editOptions);
@@ -148,7 +150,8 @@
 			selectedNetwork.id,
 			editProperties.switchId,
 			editProperties.emulation,
-			editProperties.mac.value !== '0' ? Number(editProperties.mac.value) : 0
+			editProperties.mac.value !== '0' ? Number(editProperties.mac.value) : 0,
+			editProperties.enable
 		);
 
 		if (response.error) {
@@ -208,6 +211,12 @@
 				})) || []}
 				bind:value={properties.switchId}
 				onChange={(value) => (properties.switchId = value)}
+				classes={{
+					parent: 'flex-1 space-y-1',
+					label: 'flex h-7 items-center whitespace-nowrap text-sm',
+					trigger:
+						'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+				}}
 			/>
 
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -220,6 +229,12 @@
 					]}
 					bind:value={properties.emulation}
 					onChange={(value) => (properties.emulation = value)}
+					classes={{
+						parent: 'flex-1 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<CustomComboBox
@@ -243,6 +258,12 @@
 				})) || []}
 				bind:value={editProperties.switchId}
 				onChange={(value) => (editProperties.switchId = value)}
+				classes={{
+					parent: 'flex-1 space-y-1',
+					label: 'flex h-7 items-center whitespace-nowrap text-sm',
+					trigger:
+						'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+				}}
 			/>
 
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -255,6 +276,12 @@
 					]}
 					bind:value={editProperties.emulation}
 					onChange={(value) => (editProperties.emulation = value)}
+					classes={{
+						parent: 'flex-1 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<CustomComboBox
@@ -267,6 +294,13 @@
 					width="w-3/4"
 					multiple={false}
 				></CustomComboBox>
+			</div>
+			<div class="mt-1">
+				<CustomCheckbox
+					label="Enabled (Available to VM)"
+					bind:checked={editProperties.enable}
+					classes="flex items-center gap-2"
+				/>
 			</div>
 		{/if}
 		<Dialog.Footer class="flex justify-end">

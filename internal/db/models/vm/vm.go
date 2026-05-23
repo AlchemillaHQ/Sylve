@@ -177,7 +177,30 @@ type Network struct {
 	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
 
 	Emulation string `json:"emulation"`
+	Enable    bool   `json:"enable"`
 	VMID      uint   `json:"vmId" gorm:"index"`
+}
+
+func (n *Network) UnmarshalJSON(data []byte) error {
+	type Alias Network
+
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	*n = Network(alias)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if _, ok := raw["enable"]; !ok {
+		n.Enable = true
+	}
+
+	return nil
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {
