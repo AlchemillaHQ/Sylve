@@ -100,6 +100,11 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 	user.DoasEnabled = false
 	user.PrimaryGroupID = nil
 
+	var existing models.User
+	if err := s.DB.Where("username = ?", user.Username).First(&existing).Error; err == nil {
+		return fmt.Errorf("username_already_exists: %s", user.Username)
+	}
+
 	if err := s.DB.Create(user).Error; err != nil {
 		return fmt.Errorf("failed_to_create_user: %w", err)
 	}
@@ -373,6 +378,11 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 			return fmt.Errorf("failed_to_hash_password: %w", err)
 		}
 		user.Password = hashed
+
+		// Password change clears any login rate limit.
+		s.loginMu.Lock()
+		delete(s.loginAttempts, user.Username)
+		s.loginMu.Unlock()
 
 		if isPam && opts.CreateSamba {
 			err = sambaUtils.EditSambaUser(user.Username, opts.Password)

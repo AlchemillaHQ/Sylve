@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -29,8 +30,20 @@ import (
 
 var _ serviceInterfaces.AuthServiceInterface = (*Service)(nil)
 
+const (
+	maxLoginAttempts  = 5
+	loginBlockDuration = 15 * time.Minute
+)
+
+type loginAttempt struct {
+	count        int
+	blockedUntil time.Time
+}
+
 type Service struct {
-	DB *gorm.DB
+	DB             *gorm.DB
+	loginMu        sync.Mutex
+	loginAttempts  map[string]*loginAttempt
 }
 type JWT struct {
 	jwt.RegisteredClaims
@@ -52,7 +65,8 @@ const (
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
 	return &Service{
-		DB: db,
+		DB:            db,
+		loginAttempts: make(map[string]*loginAttempt),
 	}
 }
 
@@ -131,18 +145,32 @@ func (s *Service) issueJWT(user models.User, authType string, remember bool) (st
 }
 
 func (s *Service) CreateJWT(username, password, authType string, remember bool) (uint, string, error) {
+	username = strings.TrimSpace(username)
+
+	// Rate-limit check
+	s.loginMu.Lock()
+	attempt, exists := s.loginAttempts[username]
+	if exists && time.Now().Before(attempt.blockedUntil) {
+		s.loginMu.Unlock()
+		return 0, "", fmt.Errorf("too_many_attempts: try again in %s", time.Until(attempt.blockedUntil).Round(time.Second))
+	}
+	s.loginMu.Unlock()
+
 	var user models.User
 
 	if authType == "sylve" {
 		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
 		if !utils.CheckPasswordHash(password, user.Password) {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
 		if !user.Admin {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("only_admin_allowed")
 		}
 	} else if authType == "pam" {
@@ -153,18 +181,22 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 		valid, err := s.AuthenticatePAM(username, password)
 
 		if err != nil {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("pam_auth_error")
 		}
 
 		if !valid {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
 		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("user_not_registered_in_sylve")
 		}
 
 		if !user.Admin {
+			s.recordFailedLogin(username)
 			return 0, "", fmt.Errorf("only_admin_allowed")
 		}
 	} else {
@@ -176,7 +208,28 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 		return 0, "", err
 	}
 
+	// Successful login — reset rate limit.
+	s.loginMu.Lock()
+	delete(s.loginAttempts, username)
+	s.loginMu.Unlock()
+
 	return user.ID, token, nil
+}
+
+// recordFailedLogin increments the rate-limit counter for username.
+func (s *Service) recordFailedLogin(username string) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+
+	attempt, exists := s.loginAttempts[username]
+	if !exists {
+		s.loginAttempts[username] = &loginAttempt{count: 1}
+		return
+	}
+	attempt.count++
+	if attempt.count >= maxLoginAttempts {
+		attempt.blockedUntil = time.Now().Add(loginBlockDuration)
+	}
 }
 
 func (s *Service) createClusterJWTWithUse(

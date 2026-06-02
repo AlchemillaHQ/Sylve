@@ -139,8 +139,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
-				disabled={!activeRow || activeRow.name === 'admin' || activeRow.name === 'root'}
-				title={activeRow && (activeRow.name === 'admin' || activeRow.name === 'root') ? 'Cannot edit this user' : ''}
+				disabled={!activeRow}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>

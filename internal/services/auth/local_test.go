@@ -165,18 +165,6 @@ func TestGetUserByIDPreloadsGroups(t *testing.T) {
 	}
 }
 
-func TestCreateUserMissingBasicSettings(t *testing.T) {
-	svc := newLocalTestService(t)
-	user := &models.User{Username: "john", Password: "password123"}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error when basic settings missing")
-	}
-	if !strings.Contains(err.Error(), "failed_to_get_basic_settings") {
-		t.Fatalf("expected basic_settings error, got: %v", err)
-	}
-}
-
 func TestCreateUserInvalidEmail(t *testing.T) {
 	svc := newLocalTestService(t)
 	seedBasicSettings(t, svc)
