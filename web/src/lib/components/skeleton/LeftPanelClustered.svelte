@@ -113,7 +113,7 @@
 			id: 'datacenter',
 			label: 'Data Center',
 			icon: 'ant-design--cluster-outlined',
-			href: '/datacenter/summary',
+			href: '/datacenter',
 			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
@@ -125,7 +125,7 @@
 						nodeHostname: n.hostname,
 						label: `${j.name} (${j.ctId})`,
 						icon: 'hugeicons--prison',
-						href: `/${nodeLabel}/jail/${j.ctId}/summary`,
+						href: `/${nodeLabel}/jail/${j.ctId}`,
 						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
 					})),
 					...(n.vms ?? []).map((vm) => ({
@@ -136,7 +136,7 @@
 						nodeHostname: n.hostname,
 						label: `${vm.name} (${vm.rid})`,
 						icon: 'material-symbols--monitor-outline',
-						href: `/${nodeLabel}/vm/${vm.rid}/summary`,
+						href: `/${nodeLabel}/vm/${vm.rid}`,
 						state: (vm.state === DomainState.DomainRunning ? 'active' : 'inactive') as
 							| 'active'
 							| 'inactive'
@@ -188,7 +188,7 @@
 					id: n.nodeUUID,
 					label: nodeLabel,
 					icon: isActive ? 'fluent--storage-20-filled' : 'mdi--server-off',
-					href: isActive ? `/${nodeLabel}/summary` : `/inactive-node`,
+					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
 					children: isActive ? nodeChildren : [],
 					nextGuestId: globalNextGuestId
 				};

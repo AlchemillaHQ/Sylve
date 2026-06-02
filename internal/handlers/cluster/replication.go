@@ -803,3 +803,40 @@ func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Servi
 		})
 	}
 }
+
+func EnqueueFailoverInternal(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			PolicyID         uint   `json:"policy_id"`
+			TargetNodeID     string `json:"target_node_id"`
+			Mode             string `json:"mode"`
+			ConfirmDataLoss  bool   `json:"confirm_data_loss"`
+			MovePinnedSource bool   `json:"move_pinned_source"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policy_id is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.EnqueueReplicationPolicyFailover(req.PolicyID, req.TargetNodeID, req.Mode, req.ConfirmDataLoss, req.MovePinnedSource); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "enqueue_failover_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "failover_enqueued",
+			Data:    nil,
+		})
+	}
+}

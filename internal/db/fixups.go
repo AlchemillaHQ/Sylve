@@ -33,6 +33,7 @@ func Fixups(db *gorm.DB) error {
 	dropSambaSharePathUniqueIndex(db)
 	normalizeSambaSharePermissionOverlaps(db)
 	backfillFirewallRuleVisibilityDefaults(db)
+	backfillUserSourceColumn(db)
 	backfillUserSystemData(db)
 
 	return nil
@@ -708,6 +709,10 @@ func backfillUserSystemData(db *gorm.DB) {
 	for i := range users {
 		updates := map[string]any{}
 
+		if users[i].Source == "local" {
+			continue
+		}
+
 		if users[i].UID == 0 {
 			uid, shell, err := system.GetUnixUserInfo(users[i].Username)
 			if err != nil {
@@ -736,4 +741,43 @@ func backfillUserSystemData(db *gorm.DB) {
 	db.Table("migrations").Create(map[string]any{
 		"name": name,
 	})
+}
+
+func backfillUserSourceColumn(db *gorm.DB) {
+	const name = "backfill_user_source_column_v1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for backfill_user_source_column")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	var users []authModels.User
+	if err := db.Find(&users).Error; err != nil {
+		logger.L.Err(err).Msg("failed to list users for backfill_user_source_column")
+		return
+	}
+
+	for i := range users {
+		source := "pam"
+		if users[i].Password != "" {
+			source = "local"
+		}
+		if err := db.Model(&users[i]).Update("source", source).Error; err != nil {
+			logger.L.Warn().Msgf("backfill_user_source_column: failed to update user %s: %v", users[i].Username, err)
+		}
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+
+	logger.L.Info().Msg("Backfilled user source column")
 }

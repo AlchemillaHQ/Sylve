@@ -37,6 +37,7 @@ export const UserSchema = z.object({
     locked: z.boolean().optional().default(false),
     doasEnabled: z.boolean().optional().default(false),
     primaryGroupId: z.number().nullable().optional(),
+    source: z.enum(['local', 'pam']).default('local'),
     createdAt: z.string(),
     updatedAt: z.string(),
     lastLoginTime: z.string(),

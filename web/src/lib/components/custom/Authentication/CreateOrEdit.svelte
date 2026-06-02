@@ -8,8 +8,6 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import type { Group, User } from '$lib/types/auth';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { handleAPIError } from '$lib/utils/http';
@@ -22,6 +20,7 @@
 		groups: Group[];
 		user?: User;
 		edit?: boolean;
+		pamMode?: boolean;
 		reload?: boolean;
 	}
 
@@ -31,6 +30,7 @@
 		groups,
 		user,
 		edit = false,
+		pamMode = false,
 		reload = $bindable()
 	}: Props = $props();
 
@@ -92,12 +92,12 @@
 			disablePassword: edit && user ? (user.disablePassword ?? false) : false,
 			locked: edit && user ? (user.locked ?? false) : false,
 			doasEnabled: edit && user ? (user.doasEnabled ?? false) : false,
-			admin: edit && user ? user.admin : false
+			admin: edit && user ? user.admin : false,
+			createSamba: false
 		};
 	}
 
 	let properties = $state(makeDefaults());
-	let activeTab = $state('identification');
 	let doasAvailable = $state(false);
 
 	// Directories that should be hidden in the directory picker (system/non-user directories)
@@ -229,7 +229,6 @@
 
 	function reset() {
 		properties = makeDefaults();
-		activeTab = 'identification';
 	}
 
 	function validate(): string {
@@ -240,28 +239,12 @@
 		if (edit && user && users.some((u) => u.id !== user!.id && u.username === properties.username))
 			return 'Username already exists';
 		if (properties.email && !isValidEmail(properties.email)) return 'Invalid email address';
-		if (!edit && !properties.disablePassword) {
+		if (!edit && !pamMode) {
 			if (!properties.password) return 'Password is required';
 			if (properties.password.length < 8) return 'Password must be at least 8 characters';
 		}
 		if (properties.password && properties.confirmPassword !== properties.password)
 			return 'Passwords do not match';
-		if (!properties.homeDirectory) return 'Home directory is required';
-
-		// UID collision
-		if (properties.uid > 0) {
-			const collision = users.find((u) => u.uid === properties.uid && (!edit || u.id !== user?.id));
-			if (collision) return `UID ${properties.uid} is already used by "${collision.username}"`;
-		}
-
-		// Primary group also selected as auxiliary
-		if (
-			!properties.newPrimaryGroup &&
-			properties.primaryGroup.value &&
-			properties.auxGroups.value.includes(properties.primaryGroup.value)
-		) {
-			return 'Primary group cannot also be an auxiliary group';
-		}
 
 		return '';
 	}
@@ -301,7 +284,8 @@
 			shell: properties.shell.value,
 			disablePassword: properties.disablePassword,
 			locked: properties.locked,
-			doasEnabled: properties.doasEnabled
+			doasEnabled: properties.doasEnabled,
+			createSamba: properties.createSamba
 		};
 
 		let response;
@@ -553,47 +537,36 @@
 				</Dialog.Title>
 			</Dialog.Header>
 
-			<Tabs.Root bind:value={activeTab}>
-				<Tabs.List class="w-full">
-					<Tabs.Trigger value="identification" class="flex-1 text-xs">Identification</Tabs.Trigger>
-					<Tabs.Trigger value="id-groups" class="flex-1 text-xs">ID & Groups</Tabs.Trigger>
-					<Tabs.Trigger value="directories" class="flex-1 text-xs">Directory</Tabs.Trigger>
-					<Tabs.Trigger value="authentication" class="flex-1 text-xs">Authentication</Tabs.Trigger>
-				</Tabs.List>
+			<div class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
+				<input type="text" style="display:none" autocomplete="username" />
+				<input type="password" style="display:none" autocomplete="new-password" />
 
-				<!-- Tab 1: Identification -->
-				<Tabs.Content value="identification" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
-					<input type="text" style="display:none" autocomplete="username" />
-					<input type="password" style="display:none" autocomplete="new-password" />
-
-					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-						<CustomValueInput
-							label="Full Name"
-							placeholder="John Doe"
-							bind:value={properties.fullName}
-						/>
-						<CustomValueInput
-							label="Username"
-							placeholder="johndoe"
-							bind:value={properties.username}
-						/>
-					</div>
+				<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 					<CustomValueInput
-						label="E-Mail"
-						placeholder="john@example.com"
-						bind:value={properties.email}
+						label="Full Name"
+						placeholder="John Doe"
+						bind:value={properties.fullName}
 					/>
-					<div
-						class="grid grid-cols-1 gap-3 md:grid-cols-2"
-						class:opacity-50={properties.disablePassword && !edit}
-					>
+					<CustomValueInput
+						label="Username"
+						placeholder="johndoe"
+						bind:value={properties.username}
+						disabled={edit}
+					/>
+				</div>
+				<CustomValueInput
+					label="E-Mail"
+					placeholder="john@example.com"
+					bind:value={properties.email}
+				/>
+				{#if !pamMode}
+					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 						<CustomValueInput
 							label="Password"
 							placeholder="••••••••"
 							type="password"
 							revealOnFocus={true}
 							bind:value={properties.password}
-							disabled={properties.disablePassword && !edit}
 						/>
 						<CustomValueInput
 							label="Confirm Password"
@@ -601,208 +574,37 @@
 							type="password"
 							revealOnFocus={true}
 							bind:value={properties.confirmPassword}
-							disabled={properties.disablePassword && !edit}
 						/>
 					</div>
-					<div class="flex items-center gap-2">
-						<Checkbox
-							id="disable-password"
-							bind:checked={properties.disablePassword}
-							onCheckedChange={() => {
-								if (!edit && properties.disablePassword) {
-									properties.password = '';
-									properties.confirmPassword = '';
-								}
-							}}
-						/>
-						<Label for="disable-password" class="cursor-pointer text-sm">Disable Password</Label>
-					</div>
-					{#if properties.disablePassword && !edit}
-						<p class="text-muted-foreground text-xs">
-							Password authentication is disabled. The user will need an SSH key or other
-							authentication method to access the system.
-						</p>
-					{/if}
-				</Tabs.Content>
-
-				<!-- Tab 2: User ID & Groups -->
-				<Tabs.Content value="id-groups" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
-					<CustomValueInput
-						label="User ID (UID)"
-						placeholder="1000"
-						type="number"
-						bind:value={properties.uid}
-					/>
-					<div class="flex items-center gap-2">
-						<Checkbox id="new-primary-group" bind:checked={properties.newPrimaryGroup} />
-						<Label for="new-primary-group" class="cursor-pointer text-sm"
-							>Create User Primary Group</Label
-						>
-					</div>
-					<CustomComboBox
-						label="Primary Group"
-						placeholder="Select primary group..."
-						bind:open={properties.primaryGroup.open}
-						bind:value={properties.primaryGroup.value}
-						data={groupOptions}
-						disabled={properties.newPrimaryGroup}
-					/>
-					<CustomComboBox
-						label="Auxiliary Groups"
-						placeholder="Select auxiliary groups..."
-						bind:open={properties.auxGroups.open}
-						bind:value={properties.auxGroups.value}
-						data={groupOptions}
-						multiple={true}
-					/>
-				</Tabs.Content>
-
-				<!-- Tab 3: Directories & Permissions -->
-				<Tabs.Content value="directories" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
-					<div class="space-y-1.5">
+				{:else}
+					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 						<CustomValueInput
-							label="Home Directory"
-							placeholder="/home/username"
-							bind:value={properties.homeDirectory}
-							topRightButton={{
-								icon: 'icon-[mdi--home]',
-								tooltip: 'Use /home/<username>',
-								function: async () => {
-									if (properties.username) {
-										properties.homeDirectory = `/home/${properties.username}`;
-									}
-									return properties.homeDirectory;
-								}
-							}}
+							label="Password"
+							placeholder="Leave blank to keep current"
+							type="password"
+							revealOnFocus={true}
+							bind:value={properties.password}
 						/>
-						<Button variant="outline" size="sm" class="shrink-0" onclick={openDirPicker}>
-							<SpanWithIcon
-								icon="icon-[mdi--folder-open-outline]"
-								size="h-4 w-4"
-								gap="gap-2"
-								title="Browse"
-							/>
-						</Button>
+						<CustomValueInput
+							label="Confirm Password"
+							placeholder="••••••••"
+							type="password"
+							revealOnFocus={true}
+							bind:value={properties.confirmPassword}
+						/>
 					</div>
-					<div class="space-y-2">
-						<Label class="text-sm">Home Directory Permissions</Label>
-						<div
-							class="rounded-md border text-sm"
-							class:opacity-50={properties.homeDirectory === '/nonexistent'}
-						>
-							<!-- header -->
-							<div class="grid grid-cols-4 border-b">
-								<div class="p-2"></div>
-								<div class="p-2 text-center font-medium">Read</div>
-								<div class="p-2 text-center font-medium">Write</div>
-								<div class="p-2 text-center font-medium">Execute</div>
-							</div>
-							<!-- User row -->
-							<div class="grid grid-cols-4 border-b">
-								<div class="p-2 font-medium">User</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.user.read}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.user.write}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.user.exec}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-							</div>
-							<!-- Group row -->
-							<div class="grid grid-cols-4 border-b">
-								<div class="p-2 font-medium">Group</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.group.read}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.group.write}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.group.exec}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-							</div>
-							<!-- Other row -->
-							<div class="grid grid-cols-4">
-								<div class="p-2 font-medium">Other</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.other.read}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.other.write}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-								<div class="flex items-center justify-center p-2">
-									<Checkbox
-										bind:checked={properties.perms.other.exec}
-										disabled={properties.homeDirectory === '/nonexistent'}
-									/>
-								</div>
-							</div>
-						</div>
-						<p class="text-muted-foreground text-xs">
-							Octal: 0{computedPerms.toString(8).padStart(3, '0')}
-						</p>
+				{/if}
+				<div class="flex items-center gap-2 pt-2">
+					<Checkbox id="admin" bind:checked={properties.admin} />
+					<Label for="admin" class="cursor-pointer text-sm">Admin</Label>
+				</div>
+				{#if pamMode}
+					<div class="flex items-center gap-2">
+						<Checkbox id="create-samba" bind:checked={properties.createSamba} />
+						<Label for="create-samba" class="cursor-pointer text-sm">Create Samba User</Label>
 					</div>
-				</Tabs.Content>
-
-				<!-- Tab 4: Authentication -->
-				<Tabs.Content value="authentication" class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
-					<CustomValueInput
-						label="SSH Public Key"
-						placeholder="ssh-rsa AAAAB3NzaC1yc2E..."
-						type="textarea"
-						bind:value={properties.sshPublicKey}
-					/>
-					<CustomComboBox
-						label="Shell"
-						placeholder="Select shell..."
-						bind:open={properties.shell.open}
-						bind:value={properties.shell.value}
-						data={shellOptions}
-					/>
-					<div class="grid grid-cols-2 gap-3">
-						<div class="flex items-center gap-2">
-							<Checkbox id="lock-user" bind:checked={properties.locked} />
-							<Label for="lock-user" class="cursor-pointer text-sm">Lock User</Label>
-						</div>
-						{#if doasAvailable}
-							<div class="flex items-center gap-2">
-								<Checkbox id="doas-enabled" bind:checked={properties.doasEnabled} />
-								<Label for="doas-enabled" class="cursor-pointer text-sm">Permit Doas</Label>
-							</div>
-						{/if}
-						<div class="flex items-center gap-2">
-							<Checkbox id="admin" bind:checked={properties.admin} />
-							<Label for="admin" class="cursor-pointer text-sm">Admin</Label>
-						</div>
-					</div>
-				</Tabs.Content>
-			</Tabs.Root>
+				{/if}
+			</div>
 
 			<div class="flex justify-end gap-2 pt-1">
 				<Button

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"regexp"
 	"sort"
 	"strconv"
@@ -47,7 +48,23 @@ type backupJobPayload struct {
 	JobID uint `json:"job_id"`
 }
 
-const backupJobQueueName = "zelta-backup-run"
+const (
+	backupJobQueueName = "zelta-backup-run"
+
+	// maxBackupStallAge is the maximum time since LastRunAt before
+	// the scheduler forces a run regardless of NextRunAt (clock-skew
+	// or stalled-job safety net).
+	maxBackupStallAge = 25 * time.Hour
+
+	// maxBackupCatchUpWindow is the maximum time a job can be past
+	// its NextRunAt before being skipped. Prevents thundering-herd
+	// on node restart after extended downtime.
+	maxBackupCatchUpWindow = 2 * time.Hour
+
+	// maxBackupEnqueueJitter is the maximum random delay before
+	// enqueuing a job to spread load across the tick window.
+	maxBackupEnqueueJitter = 30 * time.Second
+)
 
 type Service struct {
 	DB          *gorm.DB
@@ -67,6 +84,8 @@ type Service struct {
 	transitionMu       sync.Mutex
 	runningTransitions map[uint]struct{}
 	downMisses         map[uint]int
+	crashMisses        map[uint]int
+	poolDownMisses       map[string]int
 
 	workloadOpMu      sync.Mutex
 	runningWorkloadOp map[string]string
@@ -107,6 +126,8 @@ func NewService(
 		runningReplication: make(map[uint]struct{}),
 		runningTransitions: make(map[uint]struct{}),
 		downMisses:         make(map[uint]int),
+		crashMisses:        make(map[uint]int),
+		poolDownMisses:     make(map[string]int),
 		runningWorkloadOp:  make(map[string]string),
 	}
 }
@@ -316,14 +337,14 @@ func (s *Service) syncTargetBackupJobMetadata(
 	job *clusterModels.BackupJob,
 	sourceDataset string,
 	destSuffix string,
-) {
+) error {
 	if job == nil {
-		return
+		return nil
 	}
 
 	target := &job.Target
 	if target == nil || strings.TrimSpace(target.SSHHost) == "" {
-		return
+		return nil
 	}
 
 	remoteDataset := normalizeDatasetPath(strings.TrimSpace(target.BackupRoot))
@@ -332,7 +353,7 @@ func (s *Service) syncTargetBackupJobMetadata(
 		remoteDataset = normalizeDatasetPath(remoteDataset + "/" + suffix)
 	}
 	if remoteDataset == "" {
-		return
+		return nil
 	}
 
 	sourceDataset = normalizeDatasetPath(sourceDataset)
@@ -356,13 +377,9 @@ func (s *Service) syncTargetBackupJobMetadata(
 	sshArgs = append(sshArgs, remoteDataset)
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		logger.L.Warn().
-			Err(err).
-			Uint("job_id", job.ID).
-			Str("dataset", remoteDataset).
-			Str("output", strings.TrimSpace(output)).
-			Msg("sync_target_backup_job_metadata_failed")
+		return fmt.Errorf("sync_target_metadata_failed: %w (output: %s)", err, strings.TrimSpace(output))
 	}
+	return nil
 }
 
 func (s *Service) Run(ctx context.Context) {
@@ -379,6 +396,10 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 	}
 
 	s.AutoDiscoverAndRegisterKeys(ctx)
+
+	if err := s.CleanupOrphanRestoreDatasets(ctx); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_cleanup_orphan_restore_datasets")
+	}
 
 	if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_backup_events")
@@ -446,6 +467,29 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 		}
 
 		if now.Before(*job.NextRunAt) {
+			// Safety net: if the job hasn't run in over 25 hours
+			// despite NextRunAt being in the future, the clock likely
+			// jumped backward — force the run.
+			if job.LastRunAt != nil && now.Sub(*job.LastRunAt) > maxBackupStallAge {
+				logger.L.Warn().
+					Uint("job_id", job.ID).
+					Time("last_run", *job.LastRunAt).
+					Time("next_run", *job.NextRunAt).
+					Msg("scheduled_backup_stalled_forcing_run")
+			} else {
+				continue
+			}
+		}
+
+		// Catch-up guard: if the job is more than the catch-up window
+		// past due (node was down for hours/days), skip this run and
+		// just advance NextRunAt. Prevents thundering herd on restart.
+		if now.Sub(*job.NextRunAt) > maxBackupCatchUpWindow {
+			logger.L.Warn().
+				Uint("job_id", job.ID).
+				Time("next_run", *job.NextRunAt).
+				Msg("scheduled_backup_too_far_past_due_skipping")
+			_ = s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextAt).Error
 			continue
 		}
 
@@ -458,6 +502,17 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			s.releaseReservedJob(job.ID)
 			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_next_run_at")
 			continue
+		}
+
+		// Spread jobs across the tick window to avoid thundering herd.
+		if maxBackupEnqueueJitter > 0 {
+			jitter := time.Duration(rand.Int63n(int64(maxBackupEnqueueJitter)))
+			select {
+			case <-ctx.Done():
+				s.releaseReservedJob(job.ID)
+				return ctx.Err()
+			case <-time.After(jitter):
+			}
 		}
 
 		enqueueCtx, enqueueCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -504,12 +559,12 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, localNodeID)
 		if leaseErr != nil {
 			runErr := fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 		if !allowed {
 			runErr := fmt.Errorf("replication_lease_not_owned")
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 	}
@@ -520,24 +575,24 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			jobGuestType,
 			jobGuestID,
 		)
-		s.updateBackupJobResult(job, runErr)
+		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
 	defer s.releaseWorkloadOperation(jobGuestType, jobGuestID)
 
 	if job.StopBeforeBackup {
-		fmt.Println("StopBeforeBackup is checked for job", job.ID)
+		logger.L.Debug().Uint("job_id", job.ID).Msg("stop_before_backup_enabled")
 	}
 
 	if err := s.ensureBackupTargetSSHKeyMaterialized(&job.Target); err != nil {
 		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
-		s.updateBackupJobResult(job, runErr)
+		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
 
 	if !job.Target.Enabled {
 		runErr := fmt.Errorf("backup_target_disabled")
-		s.updateBackupJobResult(job, runErr)
+		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
 
@@ -554,26 +609,26 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		sourceDataset = strings.TrimSpace(job.SourceDataset)
 		if sourceDataset == "" {
 			runErr := fmt.Errorf("source_dataset_required")
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 	case clusterModels.BackupJobModeJail:
 		sourceDataset = strings.TrimSpace(job.JailRootDataset)
 		if sourceDataset == "" {
 			runErr := fmt.Errorf("jail_root_dataset_required")
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 	case clusterModels.BackupJobModeVM:
 		sourceDataset = strings.TrimSpace(job.SourceDataset)
 		if sourceDataset == "" {
 			runErr := fmt.Errorf("source_dataset_required")
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 	default:
 		runErr := fmt.Errorf("invalid_backup_job_mode")
-		s.updateBackupJobResult(job, runErr)
+		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
 
@@ -586,14 +641,14 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		vmRID = parsedRID
 		if vmRID == 0 {
 			runErr := fmt.Errorf("invalid_vm_source_dataset")
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 
 		sources, err := s.resolveVMBackupSourceDatasets(ctx, vmRID, sourceDataset)
 		if err != nil {
 			runErr := fmt.Errorf("resolve_vm_backup_sources_failed: %w", err)
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 		vmSourceDatasets = sources
@@ -609,7 +664,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			exists, err := s.localDatasetExists(ctx, vmSource)
 			if err != nil {
 				runErr := fmt.Errorf("failed_to_check_vm_backup_source_dataset_%s: %w", vmSource, err)
-				s.updateBackupJobResult(job, runErr)
+				s.updateBackupJobResult(job, runErr, false)
 				return runErr
 			}
 			if !exists {
@@ -623,7 +678,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				}
 
 				runErr := fmt.Errorf("vm_backup_source_dataset_not_found: %s", vmSource)
-				s.updateBackupJobResult(job, runErr)
+				s.updateBackupJobResult(job, runErr, false)
 				return runErr
 			}
 
@@ -632,7 +687,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 		if len(validatedSources) == 0 {
 			runErr := fmt.Errorf("vm_source_datasets_not_found")
-			s.updateBackupJobResult(job, runErr)
+			s.updateBackupJobResult(job, runErr, false)
 			return runErr
 		}
 
@@ -659,6 +714,62 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 	event.SourceDataset = sourceDataset
 
+	// Detect whether any source dataset is encrypted.
+	encrypted := false
+	if job.Mode == clusterModels.BackupJobModeVM {
+		for _, vmSource := range vmSourceDatasets {
+			ds, dsErr := s.getLocalDataset(ctx, vmSource)
+			if dsErr == nil && ds != nil && ds.IsEncrypted() {
+				encrypted = true
+				break
+			}
+		}
+	} else {
+		ds, dsErr := s.getLocalDataset(ctx, sourceDataset)
+		if dsErr == nil && ds != nil {
+			encrypted = ds.IsEncrypted()
+		}
+	}
+
+	// Verify encryption keys are loaded before starting the backup.
+	// Without this check the zelta send would fail with a cryptic ZFS error.
+	if encrypted {
+		if job.Mode == clusterModels.BackupJobModeVM {
+			for _, vmSource := range vmSourceDatasets {
+				ds, dsErr := s.getLocalDataset(ctx, vmSource)
+				if dsErr != nil || ds == nil || !ds.IsEncrypted() {
+					continue
+				}
+				keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, ds)
+				if keyErr != nil {
+					runErr := fmt.Errorf("encryption_key_load_failed_for_%s: %w", vmSource, keyErr)
+					s.updateBackupJobResult(job, runErr, encrypted)
+					return runErr
+				}
+				if !keyLoaded {
+					runErr := fmt.Errorf("encryption_key_not_available_for_%s: run 'zfs load-key %s' first", vmSource, vmSource)
+					s.updateBackupJobResult(job, runErr, encrypted)
+					return runErr
+				}
+			}
+		} else {
+			ds, dsErr := s.getLocalDataset(ctx, sourceDataset)
+			if dsErr == nil && ds != nil {
+				keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, ds)
+				if keyErr != nil {
+					runErr := fmt.Errorf("encryption_key_load_failed_for_%s: %w", sourceDataset, keyErr)
+					s.updateBackupJobResult(job, runErr, encrypted)
+					return runErr
+				}
+				if !keyLoaded {
+					runErr := fmt.Errorf("encryption_key_not_available_for_%s: run 'zfs load-key %s' first", sourceDataset, sourceDataset)
+					s.updateBackupJobResult(job, runErr, encrypted)
+					return runErr
+				}
+			}
+		}
+	}
+
 	destSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
 	if job.Mode == clusterModels.BackupJobModeVM {
 		destSuffix = s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), sourceDataset)
@@ -669,7 +780,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	event.TargetEndpoint = job.Target.ZeltaEndpoint(destSuffix)
 	if err := s.DB.Create(&event).Error; err != nil {
 		runErr := fmt.Errorf("create_backup_event_failed: %w", err)
-		s.updateBackupJobResult(job, runErr)
+		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
 	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
@@ -732,7 +843,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	defer func() {
 		stopHeartbeat()
 		s.finalizeBackupEvent(&event, runErr, output)
-		s.updateBackupJobResult(job, runErr)
+		s.updateBackupJobResult(job, runErr, encrypted)
 
 		logger.L.Info().
 			Uint("job_id", job.ID).
@@ -771,6 +882,23 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 					return runErr
 				}
 			}
+		}
+	}
+
+	// Re-verify the replication lease immediately before the
+	// transfer starts. The lease may have expired or been
+	// transferred to another node since the initial check.
+	if jobGuestType != "" && jobGuestID > 0 && s.Cluster != nil {
+		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, s.localNodeID())
+		if leaseErr != nil {
+			runErr = fmt.Errorf("pre_transfer_lease_check_failed: %w", leaseErr)
+			s.updateBackupJobResult(job, runErr, encrypted)
+			return runErr
+		}
+		if !allowed {
+			runErr = fmt.Errorf("lease_lost_before_transfer: ownership transferred to another node")
+			s.updateBackupJobResult(job, runErr, encrypted)
+			return runErr
 		}
 	}
 
@@ -903,7 +1031,9 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	if runErr == nil {
-		s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, destSuffix)
+		if metaErr := s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, destSuffix); metaErr != nil {
+			output = appendOutput(output, metaErr.Error())
+		}
 	}
 
 	if runErr == nil && job.PruneKeepLast > 0 {
@@ -1597,7 +1727,7 @@ func targetGenerationDatasetCandidate(activeDataset, generationToken string, att
 	return candidate
 }
 
-func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error) {
+func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error, encrypted bool) {
 	now := time.Now().UTC()
 	next := (*time.Time)(nil)
 
@@ -1620,6 +1750,7 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		LastStatus: status,
 		LastError:  lastError,
 		NextRunAt:  next,
+		Encrypted:  encrypted,
 	}
 
 	if s.syncBackupJobRuntimeState(update) {
@@ -1631,6 +1762,7 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		"last_status": update.LastStatus,
 		"last_error":  update.LastError,
 		"next_run_at": update.NextRunAt,
+		"encrypted":   update.Encrypted,
 	}
 
 	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {

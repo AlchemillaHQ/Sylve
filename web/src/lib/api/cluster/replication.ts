@@ -31,6 +31,10 @@ export type ReplicationPolicyInput = {
 	failoverMode: ReplicationFailoverMode;
 	sourceMode: ReplicationSourceMode;
 	sourceNodeId?: string;
+	crashRecovery?: boolean;
+	crashRestartMax?: number;
+	poolHealthCheck?: boolean;
+	poolCapacityPct?: number;
 };
 
 export type ReplicationPolicyFailoverInput = {

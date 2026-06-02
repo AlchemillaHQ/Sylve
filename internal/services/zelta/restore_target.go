@@ -415,7 +415,7 @@ func (s *Service) runRestoreFromTargetVM(
 		JobID:          jobID,
 		Mode:           "restore",
 		Status:         "running",
-		SourceDataset:  remoteEndpoint,
+		SourceDataset:  remoteDataset + snapshot,
 		TargetEndpoint: destinationDataset,
 		StartedAt:      time.Now().UTC(),
 	}
@@ -683,7 +683,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			JobID:          jobID,
 			Mode:           "restore",
 			Status:         "running",
-			SourceDataset:  remoteEndpoint,
+			SourceDataset:  remoteDataset + snapshot,
 			TargetEndpoint: destinationDataset,
 			StartedAt:      time.Now().UTC(),
 		}
@@ -828,21 +828,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			restoreNetwork = *payload.RestoreNetwork
 		}
 		if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, destinationDataset, restoreNetwork); err != nil {
-			restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
-			if rollbackErr := s.rollbackPromotedDataset(ctx, destinationDataset, backupDataset); rollbackErr != nil {
-				logger.L.Warn().
-					Err(rollbackErr).
-					Str("destination_dataset", destinationDataset).
-					Str("backup_dataset", backupDataset).
-					Msg("failed_to_rollback_jail_dataset_after_reconcile_failure")
-				restoreErr = fmt.Errorf("%w; rollback_failed: %v", restoreErr, rollbackErr)
-			}
-			if ownsEvent {
-				s.finalizeRestoreEvent(&event, restoreErr, output)
-			} else {
-				appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
-			}
-			return "", restoreErr
+			output += "\n" + fmt.Sprintf("jail_metadata_reconcile_failed: %v", err)
+			logger.L.Warn().
+				Err(err).
+				Str("destination_dataset", destinationDataset).
+				Msg("restore_jail_metadata_reconcile_failed_data_intact")
 		}
 	}
 
@@ -1066,7 +1056,7 @@ func canonicalVMDatasetRoot(dataset string, vmRID uint) string {
 	return normalizeDatasetPath(strings.Join(root, "/"))
 }
 
-func (s *Service) remoteDatasetHasChildren(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) bool {
+func (s *Service) remoteDatasetChildCount(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) int {
 	sshArgs := s.buildSSHArgs(target)
 	sshArgs = append(sshArgs, target.SSHHost,
 		"zfs", "list", "-t", "filesystem,volume", "-r", "-d", "1",
@@ -1075,11 +1065,15 @@ func (s *Service) remoteDatasetHasChildren(ctx context.Context, target *clusterM
 
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		return false
+		return 0
 	}
 
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	return len(lines) > 1
+	// First line is the parent dataset; remaining are direct children.
+	if len(lines) <= 1 {
+		return 0
+	}
+	return len(lines) - 1
 }
 
 func (s *Service) listRemoteChildDatasets(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]string, error) {

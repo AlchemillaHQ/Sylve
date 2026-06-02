@@ -290,21 +290,54 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		ownerEpoch = input.OwnerEpoch
 	}
 
+	crashRecovery := true
+	if existingByIDFound {
+		crashRecovery = existingByID.CrashRecovery
+	}
+	if input.CrashRecovery != nil {
+		crashRecovery = *input.CrashRecovery
+	}
+	crashRestartMax := 3
+	if existingByIDFound {
+		crashRestartMax = existingByID.CrashRestartMax
+	}
+	if input.CrashRestartMax != nil {
+		crashRestartMax = *input.CrashRestartMax
+	}
+	poolHealthCheck := true
+	if existingByIDFound {
+		poolHealthCheck = existingByID.PoolHealthCheck
+	}
+	if input.PoolHealthCheck != nil {
+		poolHealthCheck = *input.PoolHealthCheck
+	}
+	poolCapacityPct := 90
+	if existingByIDFound {
+		poolCapacityPct = existingByID.PoolCapacityPct
+	}
+	if input.PoolCapacityPct != nil {
+		poolCapacityPct = *input.PoolCapacityPct
+	}
+
 	policy := &clusterModels.ReplicationPolicy{
-		ID:           id,
-		Name:         name,
-		Description:  description,
-		GuestType:    guestType,
-		GuestID:      input.GuestID,
-		SourceNodeID: sourceNodeID,
-		ActiveNodeID: activeNodeID,
-		OwnerEpoch:   ownerEpoch,
-		SourceMode:   sourceMode,
-		FailbackMode: failbackMode,
-		FailoverMode: failoverMode,
-		CronExpr:     cronExpr,
-		Enabled:      enabled,
-		NextRunAt:    next,
+		ID:              id,
+		Name:            name,
+		Description:     description,
+		GuestType:       guestType,
+		GuestID:         input.GuestID,
+		SourceNodeID:    sourceNodeID,
+		ActiveNodeID:    activeNodeID,
+		OwnerEpoch:      ownerEpoch,
+		SourceMode:      sourceMode,
+		FailbackMode:    failbackMode,
+		FailoverMode:    failoverMode,
+		CronExpr:        cronExpr,
+		Enabled:         enabled,
+		CrashRecovery:   crashRecovery,
+		CrashRestartMax: crashRestartMax,
+		PoolHealthCheck: poolHealthCheck,
+		PoolCapacityPct: poolCapacityPct,
+		NextRunAt:       next,
 	}
 
 	var existing clusterModels.ReplicationPolicy
@@ -758,7 +791,17 @@ func replicationFreshnessWindowSeconds(cronExpr string) (int64, error) {
 	if window <= 0 {
 		return 0, fmt.Errorf("invalid_cron_interval")
 	}
-	return int64(window / time.Second), nil
+
+	windowSeconds := int64(window / time.Second)
+
+	// Enforce a minimum floor so frequent cron patterns (e.g. every
+	// minute) don't produce unreasonably tight freshness windows.
+	const minFreshnessSeconds = 600 // 10 minutes
+	if windowSeconds < minFreshnessSeconds {
+		windowSeconds = minFreshnessSeconds
+	}
+
+	return windowSeconds, nil
 }
 
 func (s *Service) cleanupOrphanReplicationRows() {

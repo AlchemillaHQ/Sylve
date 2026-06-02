@@ -26,9 +26,9 @@ type CustomClaims struct {
 type CreateUserOpts struct {
 	NewPrimaryGroup bool
 	AuxGroupIDs     []uint
+	CreateSamba     bool
 }
 
-// EditUserOpts contains all editable fields for an existing user.
 type EditUserOpts struct {
 	FullName        string
 	Username        string
@@ -46,6 +46,7 @@ type EditUserOpts struct {
 	NewPrimaryGroup bool
 	PrimaryGroupID  *uint
 	AuxGroupIDs     []uint
+	CreateSamba     bool
 }
 
 type AuthServiceInterface interface {
@@ -74,6 +75,7 @@ type AuthServiceInterface interface {
 	AddUsersToGroup(usernames []string, groupName string) error
 
 	ListUsers() ([]models.User, error)
+	ListUsersBySource(source string) ([]models.User, error)
 	GetUserByID(id uint) (*models.User, error)
 	GetUserByUsername(username string) (*models.User, error)
 	CreateUser(user *models.User, opts CreateUserOpts) error

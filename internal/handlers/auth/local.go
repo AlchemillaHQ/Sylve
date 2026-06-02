@@ -57,6 +57,7 @@ type EditUserRequest struct {
 	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
 	PrimaryGroupID  *uint  `json:"primaryGroupId"`
 	AuxGroupIDs     []uint `json:"auxGroupIds"`
+	CreateSamba     bool   `json:"createSamba"`
 }
 
 // @Summary List Users
@@ -71,7 +72,8 @@ type EditUserRequest struct {
 // @Router /auth/users [get]
 func ListUsersHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		users, err := authService.ListUsers()
+		source := c.Query("source")
+		users, err := authService.ListUsersBySource(source)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -257,6 +259,7 @@ func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 			NewPrimaryGroup: req.NewPrimaryGroup,
 			PrimaryGroupID:  req.PrimaryGroupID,
 			AuxGroupIDs:     req.AuxGroupIDs,
+			CreateSamba:     req.CreateSamba,
 		})
 
 		if err != nil {

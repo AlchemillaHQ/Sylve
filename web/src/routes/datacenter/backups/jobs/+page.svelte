@@ -133,9 +133,10 @@
 			field: 'status',
 			title: 'Status',
 			formatter: (cell: CellComponent) => {
-				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string };
+				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string; lastError: string };
 				const enabled = row.enabled;
 				const lastStatus = row.lastStatus;
+				const lastError = (row.lastError || '').trim();
 				const icons = [];
 
 				if (!enabled) {
@@ -147,7 +148,7 @@
 				if (lastStatus === 'success') {
 					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
 				} else if (lastStatus === 'failed') {
-					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
+					icons.push(renderWithIcon('mdi:close-circle', lastError || 'Failed', 'text-red-500'));
 				} else if (lastStatus === 'running') {
 					icons.push(renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500'));
 				}
@@ -163,26 +164,30 @@
 				const row = cell.getRow().getData() as {
 					mode?: 'dataset' | 'jail' | 'vm';
 					sourceGuestId?: number;
+					encrypted?: boolean;
 				};
 				const value = String(cell.getValue() || '');
+				const lockIcon = row.encrypted
+					? renderWithIcon('mdi:lock', 'Encrypted', 'text-green-500')
+					: renderWithIcon('mdi:lock-open-variant', '', 'text-muted-foreground');
 
 				if (row.mode === 'jail') {
 					const label =
 						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
-					return renderWithIcon('hugeicons:prison', label || '-');
+					return `${lockIcon} ${renderWithIcon('hugeicons:prison', label || '-')}`;
 				}
 
 				if (row.mode === 'vm') {
 					const label =
 						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
-					return renderWithIcon('material-symbols:monitor-outline', label || '-');
+					return `${lockIcon} ${renderWithIcon('material-symbols:monitor-outline', label || '-')}`;
 				}
 
 				if (row.mode === 'dataset') {
-					return renderWithIcon('material-symbols:files', value || '-');
+					return `${lockIcon} ${renderWithIcon('material-symbols:files', value || '-')}`;
 				}
 
-				return value || '-';
+				return `${lockIcon} ${value || '-'}`;
 			}
 		},
 		{
@@ -252,8 +257,10 @@
 				pruneTarget: job.pruneTarget || false,
 				cronExpr: job.cronExpr,
 				enabled: job.enabled,
+				encrypted: job.encrypted || false,
 				lastRunAt: job.lastRunAt,
-				lastStatus: job.lastStatus || ''
+				lastStatus: job.lastStatus || '',
+				lastError: job.lastError || ''
 			};
 		}),
 		columns: jobColumns

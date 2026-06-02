@@ -162,17 +162,6 @@ func parseUserIDParam(c *gin.Context) (uint, error) {
 }
 
 func requirePasskeyManagementAccess(c *gin.Context, authService *auth.Service) bool {
-	authType := strings.TrimSpace(c.GetString("AuthType"))
-	if authType != "sylve" && authType != auth.AuthTypeSylvePasskey {
-		c.JSON(http.StatusForbidden, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "passkey_management_for_sylve_only",
-			Error:   "passkey_management_for_sylve_only",
-			Data:    nil,
-		})
-		return false
-	}
-
 	currentUserID := c.GetUint("UserID")
 	if currentUserID == 0 {
 		c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
@@ -200,6 +189,35 @@ func requirePasskeyManagementAccess(c *gin.Context, authService *auth.Service) b
 			Status:  "error",
 			Message: "only_admin_allowed",
 			Error:   "only_admin_allowed",
+			Data:    nil,
+		})
+		return false
+	}
+
+	return true
+}
+
+func requireUserEligibleForPasskeys(c *gin.Context, authService *auth.Service, targetUserID uint) bool {
+	if targetUserID == 0 {
+		return true
+	}
+
+	user, err := authService.GetUserByID(targetUserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "user_not_found",
+			Error:   "user_not_found",
+			Data:    nil,
+		})
+		return false
+	}
+
+	if user.Password == "" {
+		c.JSON(http.StatusForbidden, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "passkey_management_requires_sylve_credentials",
+			Error:   "passkey_management_requires_sylve_credentials",
 			Data:    nil,
 		})
 		return false
@@ -350,6 +368,10 @@ func BeginPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc 
 			return
 		}
 
+		if !requireUserEligibleForPasskeys(c, authService, req.UserID) {
+			return
+		}
+
 		rpID, origin, err := getPasskeyRelyingParty(c)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -448,6 +470,10 @@ func ListUserPasskeysHandler(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
+		if !requireUserEligibleForPasskeys(c, authService, userID) {
+			return
+		}
+
 		passkeys, err := authService.ListUserPasskeys(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -482,6 +508,10 @@ func DeleteUserPasskeyHandler(authService *auth.Service) gin.HandlerFunc {
 				Error:   "invalid_user_id_format",
 				Data:    nil,
 			})
+			return
+		}
+
+		if !requireUserEligibleForPasskeys(c, authService, userID) {
 			return
 		}
 

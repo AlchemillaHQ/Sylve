@@ -246,9 +246,9 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 
 			newUser := models.User{
 				Username: username,
-				Email:    adminCfg.Email,
 				Password: hashed,
 				Admin:    true,
+				Source:   "local",
 			}
 			if err := db.Create(&newUser).Error; err != nil {
 				logger.L.Error().Msgf("Failed to create admin user: %v", err)
@@ -295,20 +295,6 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 		}
 	}
 
-	exists, err := system.UnixUserExists(username)
-	if err != nil {
-		logger.L.Error().Msgf("Error checking Unix user 'admin': %v", err)
-	}
-	if !exists {
-		err := system.CreateUnixUser(username, "/usr/sbin/nologin", "/nonexistent", "")
-		if err != nil {
-			logger.L.Error().Msgf("Failed to create Unix user 'admin': %v", err)
-			return err
-		}
-		logger.L.Info().Msg("Unix user 'admin' created")
-	}
-
-	ensureUserInSylveG(db, username)
 	return nil
 }
 
@@ -351,6 +337,7 @@ func setupRootUser(db *gorm.DB) {
 		HomeDirectory: info.HomeDir,
 		HomeDirPerms:  493,
 		Admin:         true,
+		Source:        "pam",
 	}
 	if err := db.Create(&rootUser).Error; err != nil {
 		logger.L.Warn().Msgf("Failed to import root user into DB: %v", err)

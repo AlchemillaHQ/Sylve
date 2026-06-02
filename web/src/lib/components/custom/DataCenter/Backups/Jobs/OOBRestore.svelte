@@ -68,6 +68,7 @@
 	let snapshot = $state('');
 	let destinationDataset = $state('');
 	let restoreNetwork = $state(true);
+	let showActiveOnly = $state(true);
 
 	let datasets = $state<BackupTargetDatasetInfo[]>([]);
 	let snapshots = $state<SnapshotInfo[]>([]);
@@ -199,8 +200,20 @@
 		return out.sort((left, right) => left.baseSuffix.localeCompare(right.baseSuffix));
 	});
 
+	let filteredDatasetGroups = $derived(
+		showActiveOnly
+			? restoreTargetDatasetGroups.filter((g) => {
+					// Include groups that contain at least one active-lineage dataset.
+					const groupDatasets = datasets.filter(
+						(d) => (d.baseSuffix || d.suffix || d.name) === g.baseSuffix
+					);
+					return groupDatasets.some((d) => d.lineage === 'active');
+				})
+			: restoreTargetDatasetGroups
+	);
+
 	let restoreTargetDatasetOptions = $derived(
-		restoreTargetDatasetGroups.map((entry) => ({
+		filteredDatasetGroups.map((entry) => ({
 			value: entry.representativeDataset,
 			label: formatRestoreTargetDatasetLabel(entry)
 		}))
@@ -208,7 +221,7 @@
 
 	let selectedRestoreTargetDatasetGroup = $derived.by(
 		() =>
-			restoreTargetDatasetGroups.find((entry) => entry.representativeDataset === dataset) || null
+			filteredDatasetGroups.find((entry) => entry.representativeDataset === dataset) || null
 	);
 
 	let selectedRestoreTargetDatasetKind = $derived(
@@ -329,6 +342,7 @@
 		snapshot = '';
 		destinationDataset = '';
 		restoreNetwork = true;
+		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
 		jailMetadata = null;
@@ -349,6 +363,7 @@
 		snapshot = '';
 		destinationDataset = '';
 		restoreNetwork = true;
+		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
 		jailMetadata = null;
@@ -614,15 +629,21 @@
 					label="Dataset on Target"
 					placeholder={loadingDatasets
 						? 'Loading datasets...'
-						: restoreTargetDatasetGroups.length === 0
+						: filteredDatasetGroups.length === 0
 							? 'No restorable datasets found'
 							: 'Select dataset'}
 					options={restoreTargetDatasetOptions}
 					bind:value={dataset}
 					onChange={onDatasetChange}
-					disabled={loadingDatasets || restoreTargetDatasetGroups.length === 0}
+					disabled={loadingDatasets || filteredDatasetGroups.length === 0}
 				/>
 			</div>
+
+			<CustomCheckbox
+				label="Show only active lineage"
+				bind:checked={showActiveOnly}
+				classes="flex items-center gap-2"
+			/>
 
 			{#if jobRunning}
 				<div

@@ -75,6 +75,18 @@ func (s *Service) AutoDiscoverAndRegisterKeys(ctx context.Context) {
 		}
 
 		if !strings.HasPrefix(keyloc, "file://") {
+			// "prompt" is expected for encrypted datasets received via
+			// zfs send -w (e.g. backup targets). Try the cluster key
+			// store — if a match is found the keylocation is upgraded
+			// to file:// automatically.
+			if keyloc == "prompt" {
+				if _, err := s.ensureEncryptionKeyForDataset(ctx, ds); err != nil {
+					logger.L.Debug().Str("dataset", ds.Name).Str("keylocation", keyloc).
+						Msg("auto_discover_prompt_key_not_in_cluster")
+				}
+				continue
+			}
+
 			logger.L.Warn().Str("dataset", ds.Name).Str("keylocation", keyloc).
 				Msg("auto_discover_unexpected_keylocation")
 			continue

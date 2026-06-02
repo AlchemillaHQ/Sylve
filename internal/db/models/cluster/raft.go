@@ -395,6 +395,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				LastStatus string     `json:"lastStatus"`
 				LastError  string     `json:"lastError"`
 				NextRunAt  *time.Time `json:"nextRunAt"`
+				Encrypted  bool       `json:"encrypted"`
 			}
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
@@ -416,6 +417,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				"last_status": status,
 				"last_error":  strings.TrimSpace(payload.LastError),
 				"next_run_at": payload.NextRunAt,
+				"encrypted":   payload.Encrypted,
 			}).Error
 		default:
 			return nil
@@ -470,6 +472,9 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			var payload ReplicationPolicyPayload
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
+			}
+			if !payload.Policy.Enabled {
+				_ = db.Where("policy_id = ?", payload.Policy.ID).Delete(&ReplicationLease{}).Error
 			}
 			return upsertReplicationPolicy(db, &payload.Policy, payload.Targets)
 		case "delete":

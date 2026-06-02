@@ -23,7 +23,7 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
 	import type { ReplicationPolicy, ReplicationReceipt } from '$lib/types/cluster/replication';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
@@ -40,6 +40,7 @@
 		policies: ReplicationPolicy[];
 		receipts: ReplicationReceipt[];
 		nodes: ClusterNode[];
+		resources: NodeResource[];
 		jails: SimpleJail[];
 		vms: SimpleVm[];
 	}
@@ -364,6 +365,10 @@
 		confirmAutoForce: false,
 		cronExpr: '*/15 * * * *',
 		enabled: true,
+		crashRecovery: true,
+		crashRestartMax: 3,
+		poolHealthCheck: true,
+		poolCapacityPct: 90,
 		targets: [{ nodeId: '', weight: '100' }] as EditableTarget[]
 	});
 
@@ -490,7 +495,7 @@
 		);
 
 		if (targetNodeIDs.length === 0) {
-			return { state: 'never', label: 'Never' };
+			return { state: 'never', label: 'Pending' };
 		}
 
 		const receiptsForPolicy = receiptsByPolicyID[policy.id] || [];
@@ -553,7 +558,7 @@
 
 		if (hasFailed) return { state: 'failed', label: 'Failed' };
 		if (hasStale) return { state: 'stale', label: 'Stale' };
-		if (hasNever) return { state: 'never', label: 'Never' };
+		if (hasNever) return { state: 'never', label: 'Pending' };
 		return { state: 'ok', label: 'OK' };
 	}
 
@@ -625,12 +630,37 @@
 		jails.map((jail) => ({ value: String(jail.ctId), label: `${jail.name} (CTID ${jail.ctId})` }))
 	);
 
-	let guestOptions = $derived.by(() => {
-		if (!String(policyModal.workloadNodeId || '').trim()) {
-			return [];
+	let vmByNode = $derived.by(() => {
+		const out: Record<string, Array<{ value: string; label: string }>> = {};
+		for (const res of data.resources) {
+			if (!res.vms) continue;
+			const nodeVms = res.vms.map((vm) => ({
+				value: String(vm.rid),
+				label: `${vm.name} (RID ${vm.rid})`
+			}));
+			if (nodeVms.length > 0) out[res.nodeUUID] = nodeVms;
 		}
+		return out;
+	});
 
-		return policyModal.guestType === 'vm' ? [...vmOptions] : [...jailOptions];
+	let jailByNode = $derived.by(() => {
+		const out: Record<string, Array<{ value: string; label: string }>> = {};
+		for (const res of data.resources) {
+			if (!res.jails) continue;
+			const nodeJails = res.jails.map((jail) => ({
+				value: String(jail.ctId),
+				label: `${jail.name} (CTID ${jail.ctId})`
+			}));
+			if (nodeJails.length > 0) out[res.nodeUUID] = nodeJails;
+		}
+		return out;
+	});
+
+	let guestOptions = $derived.by(() => {
+		const nodeId = String(policyModal.workloadNodeId || '').trim();
+		if (!nodeId) return [];
+		if (policyModal.guestType === 'vm') return vmByNode[nodeId] || [];
+		return jailByNode[nodeId] || [];
 	});
 
 	const policyColumns: Column[] = [
@@ -730,7 +760,7 @@
 				}
 				return renderWithIcon(
 					'mdi:progress-question',
-					row.targetSyncLabel || 'Never',
+					row.targetSyncLabel || 'Pending',
 					'text-muted-foreground'
 				);
 			}
@@ -815,6 +845,10 @@
 		policyModal.confirmAutoForce = false;
 		policyModal.cronExpr = '*/15 * * * *';
 		policyModal.enabled = true;
+		policyModal.crashRecovery = true;
+		policyModal.crashRestartMax = 3;
+		policyModal.poolHealthCheck = true;
+		policyModal.poolCapacityPct = 90;
 		policyModal.targets = [{ nodeId: '', weight: '100' }];
 	}
 
@@ -845,6 +879,10 @@
 		policyModal.confirmAutoForce = (policy.failoverMode || 'manual') === 'auto_force';
 		policyModal.cronExpr = policy.cronExpr || '';
 		policyModal.enabled = policy.enabled;
+		policyModal.crashRecovery = policy.crashRecovery ?? true;
+		policyModal.crashRestartMax = policy.crashRestartMax ?? 3;
+		policyModal.poolHealthCheck = policy.poolHealthCheck ?? true;
+		policyModal.poolCapacityPct = policy.poolCapacityPct ?? 90;
 		policyModal.targets =
 			policy.targets.length > 0
 				? policy.targets.map((target) => ({
@@ -1043,6 +1081,10 @@
 			failoverMode: policyModal.failoverMode,
 			cronExpr: policyModal.cronExpr.trim(),
 			enabled: policyModal.enabled,
+			crashRecovery: policyModal.crashRecovery,
+			crashRestartMax: Number.parseInt(String(policyModal.crashRestartMax || '3'), 10) || 3,
+			poolHealthCheck: policyModal.poolHealthCheck,
+			poolCapacityPct: Number.parseInt(String(policyModal.poolCapacityPct || '90'), 10) || 90,
 			targets
 		};
 	}
@@ -1590,6 +1632,52 @@
 								classes="mt-3 flex items-center gap-2"
 							/>
 						</div>
+
+						<div class="rounded-md border p-2.5 space-y-2">
+							<div class="mb-2">
+								<p class="text-sm font-medium">Crash recovery</p>
+								<p class="text-muted-foreground text-xs">
+									Detect crashed guests and restart locally. After repeated failures, initiate failover.
+								</p>
+							</div>
+							<CustomCheckbox
+								label="Auto-detect and restart crashed guests"
+								bind:checked={policyModal.crashRecovery}
+								classes="flex items-center gap-2"
+							/>
+							<div class="ml-6">
+								<CustomValueInput
+									label="Max local restart attempts before failover"
+									type="number"
+									bind:value={policyModal.crashRestartMax}
+									placeholder="3"
+									classes="space-y-1"
+								/>
+							</div>
+						</div>
+
+						<div class="rounded-md border p-2.5 space-y-2">
+							<div class="mb-2">
+								<p class="text-sm font-medium">Pool health monitoring</p>
+								<p class="text-muted-foreground text-xs">
+									Monitor ZFS pool health and capacity. Trigger failover if the pool becomes unhealthy or full.
+								</p>
+							</div>
+							<CustomCheckbox
+								label="Monitor ZFS pool health"
+								bind:checked={policyModal.poolHealthCheck}
+								classes="flex items-center gap-2"
+							/>
+							<div class="ml-6">
+								<CustomValueInput
+									label="Capacity threshold (%)"
+									type="number"
+									bind:value={policyModal.poolCapacityPct}
+									placeholder="90"
+									classes="space-y-1"
+								/>
+							</div>
+						</div>
 					</Tabs.Content>
 
 					<Tabs.Content value="review" class="space-y-3">
@@ -1631,6 +1719,22 @@
 									<Table.Row>
 										<Table.Cell class="text-muted-foreground">Enabled</Table.Cell>
 										<Table.Cell>{policyModal.enabled ? 'Yes' : 'No'}</Table.Cell>
+									</Table.Row>
+									<Table.Row>
+										<Table.Cell class="text-muted-foreground">Crash Recovery</Table.Cell>
+										<Table.Cell>
+											{policyModal.crashRecovery
+												? `Yes (max ${String(policyModal.crashRestartMax || 3)} restarts)`
+												: 'No'}
+										</Table.Cell>
+									</Table.Row>
+									<Table.Row>
+										<Table.Cell class="text-muted-foreground">Pool Health Check</Table.Cell>
+										<Table.Cell>
+											{policyModal.poolHealthCheck
+												? `Yes (alert at ${String(policyModal.poolCapacityPct || 90)}%)`
+												: 'No'}
+										</Table.Cell>
 									</Table.Row>
 								</Table.Body>
 							</Table.Root>

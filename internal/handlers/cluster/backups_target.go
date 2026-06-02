@@ -89,6 +89,7 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 				return
 			}
 			sshKeyPath = path
+			defer zS.RemoveSSHKey(tmpID)
 		}
 
 		testTarget := &clusterModels.BackupTarget{
@@ -109,8 +110,6 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 				Error:   err.Error(),
 				Data:    nil,
 			})
-
-			zS.RemoveSSHKey(tmpID)
 
 			return
 		}

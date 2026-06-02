@@ -327,6 +327,16 @@ func (s *Service) readJIDsByName() (map[string]int, error) {
 	return jidByName, nil
 }
 
+func (s *Service) IsJailRunning(ctid uint) (bool, error) {
+	jidByName, err := s.readJIDsByName()
+	if err != nil {
+		return false, err
+	}
+	jailName := s.GetCTIDHash(ctid)
+	_, ok := jidByName[jailName]
+	return ok, nil
+}
+
 func (s *Service) readPSUsageByJID() (map[int]psUsage, error) {
 	cmd := exec.Command("ps", "-axo", "jid,pcpu,rss", "--libxo", "json")
 	out, err := cmd.Output()

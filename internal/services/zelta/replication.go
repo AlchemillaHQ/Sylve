@@ -20,9 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
@@ -42,6 +44,8 @@ const (
 	replicationOrphanCleanupInterval  = 5 * time.Minute
 	replicationReceiptCleanupInterval = 5 * time.Minute
 	replicationFailoverDownMissLimit  = 3
+	replicationCrashRestartLimit      = 3
+	replicationLowPoolCapacityPercent = 90
 
 	replicationEventStatusRunning   = "running"
 	replicationEventStatusDemoting  = "demoting"
@@ -205,6 +209,10 @@ func (s *Service) StartReplicationScheduler(ctx context.Context) {
 
 			if err := s.selfFenceExpiredLeases(ctx); err != nil {
 				logger.L.Warn().Err(err).Msg("replication_self_fence_check_failed")
+			}
+
+			if err := s.recoverCrashedReplicationGuests(ctx); err != nil {
+				logger.L.Warn().Err(err).Msg("replication_crash_recovery_failed")
 			}
 
 			if err := s.runReplicationSchedulerTick(ctx); err != nil {
@@ -1023,6 +1031,18 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	skippedOffline := 0
 	skippedNoIdentity := 0
 	attemptedTransfers := 0
+	failedTargets := make([]string, 0)
+
+	// Re-verify the lease immediately before starting transfers.
+	// The lease may have expired or been transferred since the
+	// initial check at the top of runReplicationPolicy.
+	if ownershipErr := s.validateLocalReplicationPolicyLease(policy); ownershipErr != nil {
+		runErr = fmt.Errorf("pre_transfer_lease_check_failed: %w", ownershipErr)
+		s.finalizeReplicationEvent(&event, runErr)
+		s.updateReplicationPolicyResult(policy, runErr)
+		return runErr
+	}
+
 	for _, target := range targets {
 		targetNodeID := strings.TrimSpace(target.NodeID)
 		if targetNodeID == "" || targetNodeID == localNodeID {
@@ -1175,7 +1195,15 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		}
 
 		if runErr != nil {
-			break
+			// Track this target as failed but continue to remaining
+			// targets. One bad target shouldn't block healthy ones.
+			logger.L.Warn().
+				Err(runErr).
+				Uint("policy_id", policy.ID).
+				Str("target_node_id", targetNodeID).
+				Msg("replication_target_failed_continuing")
+			failedTargets = append(failedTargets, targetNodeID)
+			runErr = nil
 		}
 	}
 
@@ -1185,6 +1213,18 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		} else if attemptedTransfers == 0 {
 			runErr = fmt.Errorf("no_replication_transfers_executed")
 		}
+	}
+
+	// If some targets succeeded and some failed, clear the error
+	// (the replication run succeeded partially). The per-target
+	// receipts already track individual status.
+	if runErr != nil && len(failedTargets) > 0 && eligibleTargets > len(failedTargets) {
+		logger.L.Warn().
+			Uint("policy_id", policy.ID).
+			Strs("failed_targets", failedTargets).
+			Int("attempted", attemptedTransfers).
+			Msg("replication_partial_success")
+		runErr = nil
 	}
 
 	s.finalizeReplicationEvent(&event, runErr)
@@ -1825,7 +1865,13 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				LastActor:   s.Cluster.LocalNodeID(),
 			}
 			if err := s.Cluster.UpsertReplicationLease(lease, false); err != nil {
-				logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("replication_lease_renew_failed")
+				// Lease renewal is critical — retry once before logging failure.
+				// The lease TTL is 10s, tick interval is 5s, so a single 1s
+				// retry is safe and covers transient Raft hiccups.
+				time.Sleep(1 * time.Second)
+				if retryErr := s.Cluster.UpsertReplicationLease(lease, false); retryErr != nil {
+					logger.L.Warn().Err(retryErr).Uint("policy_id", policy.ID).Msg("replication_lease_renew_failed")
+				}
 			}
 
 			if policy.FailbackMode == clusterModels.ReplicationFailbackAuto &&
@@ -3733,7 +3779,7 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 				return fmt.Errorf("replication_encryption_key_failed_%s: %w", dataset, err)
 			}
 			if !keyLoaded {
-				logger.L.Warn().Str("dataset", dataset).Msg("replication_encryption_key_not_auto_loaded")
+				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", dataset, dataset)
 			}
 		}
 
@@ -3770,7 +3816,7 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 				return fmt.Errorf("replication_encryption_key_failed_%s: %w", dataset, err)
 			}
 			if !keyLoaded {
-				logger.L.Warn().Str("dataset", dataset).Msg("replication_encryption_key_not_auto_loaded")
+				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", dataset, dataset)
 			}
 		}
 
@@ -3843,7 +3889,7 @@ func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 	}
 
 	var policies []clusterModels.ReplicationPolicy
-	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
+	if err := s.DB.Find(&policies).Error; err != nil {
 		return err
 	}
 
@@ -3918,4 +3964,393 @@ func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *Service) isReplicationGuestRunning(guestType string, guestID uint) (bool, error) {
+	switch strings.TrimSpace(guestType) {
+	case clusterModels.ReplicationGuestTypeVM:
+		if s.VM == nil {
+			return false, nil
+		}
+		shutoff, err := s.VM.IsDomainShutOff(guestID)
+		if err != nil {
+			if isVMDomainNotFoundError(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		return !shutoff, nil
+	case clusterModels.ReplicationGuestTypeJail:
+		if s.Jail == nil {
+			return false, nil
+		}
+		return s.Jail.IsJailRunning(guestID)
+	default:
+		return false, nil
+	}
+}
+
+func (s *Service) isReplicationGuestIntentionallyStopped(guestType string, guestID uint) (bool, error) {
+	switch strings.TrimSpace(guestType) {
+	case clusterModels.ReplicationGuestTypeVM:
+		var vm vmModels.VM
+		if err := s.DB.Where("rid = ?", guestID).First(&vm).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return false, nil
+			}
+			return false, err
+		}
+		return vm.StoppedAt != nil && (vm.StartedAt == nil || vm.StoppedAt.After(*vm.StartedAt)), nil
+	case clusterModels.ReplicationGuestTypeJail:
+		var jail jailModels.Jail
+		if err := s.DB.Where("ct_id = ?", guestID).First(&jail).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return false, nil
+			}
+			return false, err
+		}
+		return jail.StoppedAt != nil && (jail.StartedAt == nil || jail.StoppedAt.After(*jail.StartedAt)), nil
+	default:
+		return false, nil
+	}
+}
+
+func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
+	if s.Cluster == nil {
+		return nil
+	}
+
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID == "" {
+		return nil
+	}
+
+	var policies []clusterModels.ReplicationPolicy
+	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
+		return err
+	}
+
+	for _, policy := range policies {
+		expectedOwner := replicationPolicyOwnerNode(&policy)
+		if expectedOwner == "" || expectedOwner != localNodeID {
+			continue
+		}
+
+		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
+		if expectedEpoch == 0 {
+			continue
+		}
+
+		lease, err := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
+		if err != nil || lease == nil {
+			continue
+		}
+		if lease.OwnerNodeID != localNodeID || lease.OwnerEpoch != expectedEpoch ||
+			time.Now().UTC().After(lease.ExpiresAt) {
+			continue
+		}
+
+		if !policy.CrashRecovery {
+			s.crashMisses[policy.ID] = 0
+			continue
+		}
+
+		intentionallyStopped, err := s.isReplicationGuestIntentionallyStopped(policy.GuestType, policy.GuestID)
+		if err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Msg("replication_crash_recovery_intentional_stop_check_failed")
+			continue
+		}
+		if intentionallyStopped {
+			s.crashMisses[policy.ID] = 0
+			continue
+		}
+
+		running, err := s.isReplicationGuestRunning(policy.GuestType, policy.GuestID)
+		if err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Uint("guest_id", policy.GuestID).
+				Msg("replication_crash_recovery_guest_check_failed")
+			running = false
+		}
+
+		if running {
+			s.crashMisses[policy.ID] = 0
+			continue
+		}
+
+		s.crashMisses[policy.ID]++
+		crashLimit := policy.CrashRestartMax
+		if crashLimit < 1 {
+			crashLimit = replicationCrashRestartLimit
+		}
+		if s.crashMisses[policy.ID] < crashLimit {
+			logger.L.Warn().
+				Uint("policy_id", policy.ID).
+				Uint("guest_id", policy.GuestID).
+				Int("crash_miss", s.crashMisses[policy.ID]).
+				Msg("replication_guest_crashed_attempting_local_restart")
+
+			if err := s.restartReplicationGuestLocally(policy.GuestType, policy.GuestID); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("policy_id", policy.ID).
+					Uint("guest_id", policy.GuestID).
+					Msg("replication_crash_recovery_local_restart_failed")
+			}
+			continue
+		}
+
+		if s.crashMisses[policy.ID] != crashLimit {
+			continue
+		}
+
+		logger.L.Warn().
+			Uint("policy_id", policy.ID).
+			Uint("guest_id", policy.GuestID).
+			Msg("replication_guest_crash_restart_exhausted_initiating_failover")
+
+		requestMode := replicationFailoverRequestSafe
+		var confirmDataLoss bool
+		switch policy.FailoverMode {
+		case clusterModels.ReplicationFailoverAutoForce:
+			requestMode = replicationFailoverRequestForce
+			confirmDataLoss = true
+		case clusterModels.ReplicationFailoverManual:
+			logger.L.Warn().
+				Uint("policy_id", policy.ID).
+				Msg("replication_guest_crashed_manual_failover_mode_no_auto_action")
+			continue
+		}
+
+		targetNodeID, err := s.selectCrashRecoveryFailoverTarget(&policy, localNodeID)
+		if err != nil || targetNodeID == "" {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Msg("replication_crash_recovery_no_failover_target")
+			continue
+		}
+
+		if err := s.enqueueFailoverToLeader(policy.ID, targetNodeID,
+			requestMode, confirmDataLoss, false); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Msg("replication_crash_recovery_failover_enqueue_failed")
+			continue
+		}
+
+		s.crashMisses[policy.ID] = 0
+	}
+
+	s.checkLocalPoolHealth(ctx, localNodeID)
+
+	return nil
+}
+
+func (s *Service) restartReplicationGuestLocally(guestType string, guestID uint) error {
+	switch strings.TrimSpace(guestType) {
+	case clusterModels.ReplicationGuestTypeVM:
+		if s.VM == nil {
+			return fmt.Errorf("vm_service_unavailable")
+		}
+		vm, err := s.findVMByRID(guestID)
+		if err != nil {
+			return err
+		}
+		if vm == nil {
+			return fmt.Errorf("vm_not_found")
+		}
+		return s.VM.LvVMAction(*vm, "start")
+	case clusterModels.ReplicationGuestTypeJail:
+		if s.Jail == nil {
+			return fmt.Errorf("jail_service_unavailable")
+		}
+		return s.Jail.JailAction(int(guestID), "start")
+	default:
+		return fmt.Errorf("unknown_guest_type")
+	}
+}
+
+func (s *Service) selectCrashRecoveryFailoverTarget(policy *clusterModels.ReplicationPolicy, localNodeID string) (string, error) {
+	nodes, err := s.Cluster.Nodes()
+	if err != nil {
+		return "", err
+	}
+	nodeByID := make(map[string]clusterModels.ClusterNode, len(nodes))
+	for _, node := range nodes {
+		nodeByID[strings.TrimSpace(node.NodeUUID)] = node
+	}
+	return s.selectFailoverTarget(policy, localNodeID, nodeByID)
+}
+
+func (s *Service) enqueueFailoverToLeader(policyID uint, targetNodeID string, mode string, confirmDataLoss bool, movePinnedSource bool) error {
+	if s.Cluster == nil || s.Cluster.Raft == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft.State() == raft.Leader {
+		return s.EnqueueReplicationPolicyFailover(policyID, targetNodeID, mode, confirmDataLoss, movePinnedSource)
+	}
+	_, leaderID := s.Cluster.Raft.LeaderWithID()
+	leaderNodeID := strings.TrimSpace(string(leaderID))
+	if leaderNodeID == "" {
+		return fmt.Errorf("leader_not_available")
+	}
+	return s.forwardReplicationPolicyControl(leaderNodeID, "replication-failover-enqueue", map[string]any{
+		"policy_id":          policyID,
+		"target_node_id":     targetNodeID,
+		"mode":               mode,
+		"confirm_data_loss":  confirmDataLoss,
+		"move_pinned_source": movePinnedSource,
+	}, replicationControlDefaultTimeout)
+}
+
+func (s *Service) checkLocalPoolHealth(ctx context.Context, localNodeID string) {
+	if s.GZFS == nil || s.GZFS.Zpool == nil {
+		return
+	}
+
+	var policies []clusterModels.ReplicationPolicy
+	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
+		logger.L.Warn().Err(err).Msg("replication_pool_health_policy_query_failed")
+		return
+	}
+
+	poolCache := make(map[string]*gzfs.ZPool)
+	for _, policy := range policies {
+		expectedOwner := replicationPolicyOwnerNode(&policy)
+		if expectedOwner == "" || expectedOwner != localNodeID {
+			continue
+		}
+
+		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
+		if expectedEpoch == 0 {
+			continue
+		}
+
+		lease, err := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
+		if err != nil || lease == nil {
+			continue
+		}
+		if lease.OwnerNodeID != localNodeID || lease.OwnerEpoch != expectedEpoch ||
+			time.Now().UTC().After(lease.ExpiresAt) {
+			continue
+		}
+
+		if !policy.PoolHealthCheck {
+			continue
+		}
+
+		var pools []string
+		switch strings.TrimSpace(policy.GuestType) {
+		case clusterModels.ReplicationGuestTypeVM:
+			seen := make(map[string]struct{})
+			var rawPools []string
+			_ = s.DB.Model(&vmModels.Storage{}).
+				Select("DISTINCT vm_storages.pool").
+				Joins("JOIN vms ON vms.id = vm_storages.vm_id").
+				Where("vms.rid = ? AND vm_storages.pool != ''", policy.GuestID).
+				Pluck("pool", &rawPools)
+			for _, p := range rawPools {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				if _, ok := seen[p]; ok {
+					continue
+				}
+				seen[p] = struct{}{}
+				pools = append(pools, p)
+			}
+			var datasetPools []string
+			_ = s.DB.Model(&vmModels.VMStorageDataset{}).
+				Select("DISTINCT vm_storage_datasets.pool").
+				Joins("JOIN vm_storages ON vm_storages.dataset_id = vm_storage_datasets.id").
+				Joins("JOIN vms ON vms.id = vm_storages.vm_id").
+				Where("vms.rid = ? AND vm_storage_datasets.pool != ''", policy.GuestID).
+				Pluck("pool", &datasetPools)
+			for _, p := range datasetPools {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				if _, ok := seen[p]; ok {
+					continue
+				}
+				seen[p] = struct{}{}
+				pools = append(pools, p)
+			}
+		case clusterModels.ReplicationGuestTypeJail:
+			var jail jailModels.Jail
+			if err := s.DB.Where("ct_id = ?", policy.GuestID).First(&jail).Error; err != nil {
+				continue
+			}
+			for _, storage := range jail.Storages {
+				pool := strings.TrimSpace(storage.Pool)
+				if pool == "" {
+					continue
+				}
+				pools = append(pools, pool)
+			}
+		}
+
+		for _, pool := range pools {
+			p, ok := poolCache[pool]
+			if !ok {
+				var err error
+				p, err = s.GZFS.Zpool.Get(ctx, pool)
+				if err != nil {
+					logger.L.Warn().Err(err).Str("pool", pool).Msg("replication_pool_health_get_failed")
+					continue
+				}
+				if p == nil {
+					continue
+				}
+				poolCache[pool] = p
+
+				state := p.State
+				healthy := state == gzfs.ZPoolStateOnline || state == ""
+				if healthy {
+					s.poolDownMisses[pool] = 0
+				} else {
+					s.poolDownMisses[pool]++
+					if s.poolDownMisses[pool] == 3 {
+						logger.L.Warn().
+							Str("pool", pool).
+							Str("state", string(state)).
+							Uint("policy_id", policy.ID).
+							Msg("replication_pool_unhealthy_initiating_failover")
+
+						if err := s.enqueueFailoverToLeader(policy.ID, "", clusterModels.ReplicationFailoverAutoForce, true, false); err != nil {
+							logger.L.Warn().Err(err).Str("pool", pool).Msg("replication_pool_unhealthy_failover_enqueue_failed")
+						} else {
+							s.poolDownMisses[pool] = 0
+						}
+					}
+				}
+			}
+
+			if p.Size > 0 && p.Alloc < (1<<64)/100 {
+				capacityPct := policy.PoolCapacityPct
+				if capacityPct <= 0 {
+					capacityPct = replicationLowPoolCapacityPercent
+				}
+				usedPercent := int(uint64(p.Alloc) * 100 / uint64(p.Size))
+				if usedPercent > capacityPct {
+					logger.L.Warn().
+						Str("pool", pool).
+						Int("used_pct", usedPercent).
+						Uint("policy_id", policy.ID).
+						Msg("replication_pool_capacity_high_initiating_failover")
+
+					_ = s.enqueueFailoverToLeader(policy.ID, "", clusterModels.ReplicationFailoverAutoSafe, false, false)
+				}
+			}
+		}
+	}
 }

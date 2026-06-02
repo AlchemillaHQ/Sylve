@@ -29,6 +29,14 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return fmt.Errorf("invalid_action: %s", action)
 	}
 
+	allowed, err := s.canMutateProtectedJail(uint(ctId))
+	if err != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", err)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
 		return fmt.Errorf("failed to get jails path: %w", err)
@@ -78,14 +86,6 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	switch action {
 	case "start":
-		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
-		if leaseErr != nil {
-			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
-		}
-		if !allowed {
-			return fmt.Errorf("replication_lease_not_owned")
-		}
-
 		active, err := s.IsJailActive(uint(ctId))
 		if err != nil {
 			return fmt.Errorf("failed to check if jail is active: %w", err)
@@ -124,14 +124,6 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return nil
 
 	case "restart":
-		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
-		if leaseErr != nil {
-			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
-		}
-		if !allowed {
-			return fmt.Errorf("replication_lease_not_owned")
-		}
-
 		if out, err := run("-f", jailConf, "-r", jailName); err != nil {
 			if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)

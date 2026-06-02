@@ -271,34 +271,15 @@ func TestCreateUserInvalidUsernameFormat(t *testing.T) {
 	}
 }
 
-func TestCreateUserUIDAlreadyInUse(t *testing.T) {
+func TestCreateUserUIDIgnored(t *testing.T) {
 	svc := newLocalTestService(t)
 	seedBasicSettings(t, svc)
 	seedUser(t, svc, models.User{Username: "existinguser", Password: "hashed", UID: 1001})
 
 	user := &models.User{Username: "john", Password: "password123", UID: 1001}
 	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for duplicate UID")
-	}
-	if !strings.Contains(err.Error(), "uid_already_in_use") {
-		t.Fatalf("expected uid_already_in_use, got: %v", err)
-	}
-}
-
-func TestCreateUserUIDZeroSkipsUniquenessCheck(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	seedUser(t, svc, models.User{Username: "existinguser", Password: "hashed", UID: 0})
-
-	user := &models.User{Username: "john", Password: "password123", UID: 0}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		return
-	}
-
-	if strings.Contains(err.Error(), "uid_already_in_use") {
-		t.Fatalf("UID 0 should skip uniqueness check, got: %v", err)
+	if err != nil {
+		t.Fatalf("CreateUser should ignore UID for local users, got error: %v", err)
 	}
 }
 
@@ -384,8 +365,8 @@ func TestEditUserInvalidEmail(t *testing.T) {
 
 func TestEditUserUIDAlreadyInUse(t *testing.T) {
 	svc := newLocalTestService(t)
-	seedUser(t, svc, models.User{Username: "user_a", Password: "hashed", UID: 1001})
-	u2 := seedUser(t, svc, models.User{Username: "user_b", Password: "hashed", UID: 1002})
+	seedUser(t, svc, models.User{Username: "user_a", Password: "hashed", UID: 1001, Source: "pam"})
+	u2 := seedUser(t, svc, models.User{Username: "user_b", Password: "hashed", UID: 1002, Source: "pam"})
 
 	err := svc.EditUser(u2.ID, EditUserOpts{Username: "user_b", UID: 1001})
 	if err == nil {
@@ -398,7 +379,7 @@ func TestEditUserUIDAlreadyInUse(t *testing.T) {
 
 func TestEditUserUIDSameAsCurrentNoError(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", UID: 1001})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", UID: 1001, Source: "pam"})
 
 	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", UID: 1001})
 	if err != nil && strings.Contains(err.Error(), "uid_already_in_use") {
@@ -408,7 +389,7 @@ func TestEditUserUIDSameAsCurrentNoError(t *testing.T) {
 
 func TestEditUserPrimaryGroupNotFound(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", Source: "pam"})
 
 	badGroupID := uint(999)
 	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", PrimaryGroupID: &badGroupID})
@@ -422,7 +403,7 @@ func TestEditUserPrimaryGroupNotFound(t *testing.T) {
 
 func TestEditUserNewPrimaryGroupCreatesGroupInDB(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", Source: "pam"})
 
 	err := svc.EditUser(u.ID, EditUserOpts{
 		Username:        "testuser",
@@ -439,7 +420,7 @@ func TestEditUserNewPrimaryGroupCreatesGroupInDB(t *testing.T) {
 
 func TestEditUserAuxGroupsAddsNewGroups(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", Source: "pam"})
 	g := seedGroup(t, svc, "dev_group")
 
 	err := svc.EditUser(u.ID, EditUserOpts{
@@ -459,7 +440,7 @@ func TestEditUserAuxGroupsAddsNewGroups(t *testing.T) {
 func TestEditUserAuxGroupsRemovesOldGroups(t *testing.T) {
 	svc := newLocalTestService(t)
 	g := seedGroup(t, svc, "old_group")
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", Source: "pam"})
 
 	if err := svc.DB.Model(&g).Association("Users").Append(&u); err != nil {
 		t.Fatalf("failed to associate: %v", err)
@@ -488,7 +469,7 @@ func TestEditUserAuxGroupPrimaryOverlap(t *testing.T) {
 	svc := newLocalTestService(t)
 	g := seedGroup(t, svc, "primary_g")
 	pgID := g.ID
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", PrimaryGroupID: &pgID})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", PrimaryGroupID: &pgID, Source: "pam"})
 
 	err := svc.EditUser(u.ID, EditUserOpts{
 		Username:       "testuser",
@@ -507,7 +488,7 @@ func TestEditUserClearsPrimaryGroupWhenNilSent(t *testing.T) {
 	svc := newLocalTestService(t)
 	g := seedGroup(t, svc, "old_primary")
 	pgID := g.ID
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", PrimaryGroupID: &pgID})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", PrimaryGroupID: &pgID, Source: "pam"})
 
 	found, _ := svc.GetUserByID(u.ID)
 	if found.PrimaryGroupID == nil || *found.PrimaryGroupID != pgID {
@@ -539,7 +520,7 @@ func TestEditUserClearPrimaryGroupDoesNotLeakToAux(t *testing.T) {
 	primary := seedGroup(t, svc, "john")
 	pgID := primary.ID
 
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", PrimaryGroupID: &pgID})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", PrimaryGroupID: &pgID, Source: "pam"})
 
 	svc.DB.Model(&sylveG).Association("Users").Append(&u)
 	svc.DB.Model(&primary).Association("Users").Append(&u)
@@ -605,7 +586,7 @@ func TestEditUserUpdatesFullNameAndAdmin(t *testing.T) {
 
 func TestEditUserChangesHomeDirectory(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", HomeDirectory: "/nonexistent"})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", HomeDirectory: "/nonexistent", Source: "pam"})
 
 	err := svc.EditUser(u.ID, EditUserOpts{
 		Username:      "testuser",
@@ -628,7 +609,7 @@ func TestEditUserChangesHomeDirectory(t *testing.T) {
 
 func TestEditUserHomeDirectoryNoChangeWhenSame(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", HomeDirectory: "/nonexistent"})
+	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", HomeDirectory: "/nonexistent", Source: "pam"})
 
 	err := svc.EditUser(u.ID, EditUserOpts{
 		Username:      "testuser",
@@ -779,14 +760,14 @@ func TestGetUserByUsernamePreloadsGroups(t *testing.T) {
 	}
 }
 
-func TestImportUserMissingBasicSettings(t *testing.T) {
+func TestImportUserProtectedSystemUser(t *testing.T) {
 	svc := newLocalTestService(t)
-	_, err := svc.ImportUser("alice", "password123", false, CreateUserOpts{})
+	_, err := svc.ImportUser("nobody", "", false, CreateUserOpts{})
 	if err == nil {
-		t.Fatalf("expected error when basic settings missing")
+		t.Fatalf("expected error for protected system user")
 	}
-	if !strings.Contains(err.Error(), "failed_to_get_basic_settings") {
-		t.Fatalf("expected basic_settings error, got: %v", err)
+	if !strings.Contains(err.Error(), "cannot_import_system_user") {
+		t.Fatalf("expected cannot_import_system_user, got: %v", err)
 	}
 }
 
@@ -795,8 +776,6 @@ func TestImportUserAlreadyExists(t *testing.T) {
 	seedBasicSettings(t, svc)
 	seedUser(t, svc, models.User{Username: "alice", Password: "hashed"})
 
-	// This will fail on the Unix user lookup before getting to the DB check,
-	// since we can't mock system calls. Skip gracefully.
 	_, err := svc.ImportUser("alice", "password123", false, CreateUserOpts{})
 	if err == nil {
 		return
@@ -804,7 +783,6 @@ func TestImportUserAlreadyExists(t *testing.T) {
 	if strings.Contains(err.Error(), "user_already_exists") {
 		return
 	}
-	// If it's a system call error (expected in test env), skip
 	if strings.Contains(err.Error(), "failed_to_get_unix_user_info") {
 		t.Skipf("system call not available in test: %v", err)
 	}

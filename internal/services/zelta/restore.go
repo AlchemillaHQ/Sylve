@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -32,7 +33,7 @@ type SnapshotInfo struct {
 	Refer      string `json:"refer"`               // referenced size
 	Lineage    string `json:"lineage,omitempty"`   // "active" | "rotated" | "other"
 	OutOfBand  bool   `json:"outOfBand,omitempty"` // true when snapshot is outside the active lineage
-	HasChildren bool  `json:"hasChildren"`         // true when the dataset has child datasets on the target
+	ChildCount int    `json:"childCount"`          // number of child datasets on the target
 }
 
 const restoreJobQueueName = "zelta-restore-run"
@@ -64,9 +65,9 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	filtered = filterBackupSnapshots(filtered)
 	filtered = filterSnapshotsForBackupJob(filtered, job.ID)
 
-	hasChildren := s.remoteDatasetHasChildren(ctx, &target, remoteDataset)
+	childCount := s.remoteDatasetChildCount(ctx, &target, remoteDataset)
 	for i := range filtered {
-		filtered[i].HasChildren = hasChildren
+		filtered[i].ChildCount = childCount
 	}
 
 	if job.Mode == clusterModels.BackupJobModeVM {
@@ -163,11 +164,20 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	// e.g. zroot/sylve/jails/105 → zroot/sylve/jails/105.restoring
 	restorePath := sourceDataset + ".restoring"
 
+	// Pre-flight: ensure the destination pool exists before pulling data.
+	destinationRoot := sourceDataset
+	if idx := strings.Index(destinationRoot, "/"); idx > 0 {
+		destinationRoot = destinationRoot[:idx]
+	}
+	if err := s.ensureLocalPoolExists(ctx, destinationRoot); err != nil {
+		return fmt.Errorf("restore_preflight_pool_check_failed: %w", err)
+	}
+
 	event := clusterModels.BackupEvent{
 		JobID:          &job.ID,
 		Mode:           "restore",
 		Status:         "running",
-		SourceDataset:  remoteEndpoint,
+		SourceDataset:  job.Name + snapshot,
 		TargetEndpoint: sourceDataset,
 		StartedAt:      time.Now().UTC(),
 	}
@@ -202,6 +212,22 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 					Err(err).
 					Msg("failed_to_stop_jail_before_restore_continuing_anyway")
 			}
+		}
+	}
+
+	// Verify the replication lease before pulling data.
+	// The restore replaces the guest's dataset — must hold the lease.
+	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 && s.Cluster != nil {
+		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
+		if leaseErr != nil {
+			restoreErr = fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+			return restoreErr
+		}
+		if !allowed {
+			restoreErr = fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+			return restoreErr
 		}
 	}
 
@@ -286,18 +312,14 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	}
 
 	// Step 7: If this is a jail dataset, reconcile jail metadata/config from restored jail.json.
+	// The ZFS restore succeeded — metadata reconciliation failure does not
+	// roll back the data. The error is surfaced in the event output.
 	if err := s.reconcileRestoredJailFromDataset(ctx, sourceDataset); err != nil {
-		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
-		if rollbackErr := s.rollbackPromotedDataset(ctx, sourceDataset, backupDataset); rollbackErr != nil {
-			logger.L.Warn().
-				Err(rollbackErr).
-				Str("dataset", sourceDataset).
-				Str("backup_dataset", backupDataset).
-				Msg("failed_to_rollback_dataset_after_restore_reconcile_failure")
-			restoreErr = fmt.Errorf("%w; rollback_failed: %v", restoreErr, rollbackErr)
-		}
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
+		output += "\n" + fmt.Sprintf("jail_metadata_reconcile_failed: %v", err)
+		logger.L.Warn().
+			Err(err).
+			Str("dataset", sourceDataset).
+			Msg("restore_jail_metadata_reconcile_failed_data_intact")
 	}
 
 	if strings.TrimSpace(backupDataset) != "" {
@@ -316,7 +338,9 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		return restoreErr
 	}
 	activeDestSuffix := relativeDatasetSuffix(job.Target.BackupRoot, activeRemoteDataset)
-	s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, activeDestSuffix)
+	if metaErr := s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, activeDestSuffix); metaErr != nil {
+		output += "\n" + metaErr.Error()
+	}
 
 	s.finalizeRestoreEvent(&event, nil, output)
 
@@ -420,7 +444,7 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 				continue
 			}
 			if !keyLoaded {
-				logger.L.Warn().Str("dataset", dsName).Msg("fix_restored_property_key_not_auto_loaded")
+				logger.L.Error().Str("dataset", dsName).Msg("fix_restored_property_key_not_auto_loaded")
 				continue
 			}
 		}

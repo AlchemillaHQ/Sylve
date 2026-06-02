@@ -1,17 +1,6 @@
-import { listGroups } from '$lib/api/auth/groups';
-import { listUsers } from '$lib/api/auth/local';
-import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { redirect } from '@sveltejs/kit';
 
-export async function load() {
-    const cacheDuration = SEVEN_DAYS;
-    const [users, groups] = await Promise.all([
-        cachedFetch('users', async () => await listUsers(), cacheDuration),
-        cachedFetch('groups', async () => await listGroups(), cacheDuration)
-    ]);
-
-    return {
-        users: users || [],
-        groups: groups || []
-    };
+export function load({ url }: { url: URL }) {
+    const basePath = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+    throw redirect(307, `${basePath}/local`);
 }

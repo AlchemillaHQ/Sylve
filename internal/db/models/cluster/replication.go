@@ -53,6 +53,10 @@ type ReplicationPolicy struct {
 	FailbackMode           string                    `gorm:"not null;default:manual" json:"failbackMode"`
 	FailoverMode           string                    `gorm:"not null;default:manual" json:"failoverMode"`
 	CronExpr               string                    `gorm:"not null" json:"cronExpr"`
+	CrashRecovery          bool                      `gorm:"not null;default:true" json:"crashRecovery"`
+	CrashRestartMax        int                       `gorm:"not null;default:3" json:"crashRestartMax"`
+	PoolHealthCheck        bool                      `gorm:"not null;default:true" json:"poolHealthCheck"`
+	PoolCapacityPct        int                       `gorm:"not null;default:90" json:"poolCapacityPct"`
 	Enabled                bool                      `gorm:"index" json:"enabled"`
 	LastRunAt              *time.Time                `json:"lastRunAt"`
 	NextRunAt              *time.Time                `gorm:"index" json:"nextRunAt"`
@@ -282,6 +286,10 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 				"failback_mode",
 				"failover_mode",
 				"cron_expr",
+				"crash_recovery",
+				"crash_restart_max",
+				"pool_health_check",
+				"pool_capacity_pct",
 				"enabled",
 				"last_run_at",
 				"next_run_at",

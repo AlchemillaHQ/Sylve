@@ -1,0 +1,246 @@
+<script lang="ts">
+	import { listGroups } from '$lib/api/auth/groups';
+	import { deleteUser, listUsers } from '$lib/api/auth/local';
+	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
+	import ImportUser from '$lib/components/custom/Authentication/ImportUser.svelte';
+	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import TreeTable from '$lib/components/custom/TreeTable.svelte';
+	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import type { Group, User } from '$lib/types/auth';
+	import type { Column, Row } from '$lib/types/components/tree-table';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { convertDbTime, getLastUsage } from '$lib/utils/time';
+	import { resource, watch } from 'runed';
+	import { toast } from 'svelte-sonner';
+	import type { CellComponent } from 'tabulator-tables';
+
+	interface Data {
+		users: User[];
+		groups: Group[];
+	}
+
+	let { data }: { data: Data } = $props();
+
+	function generateTableData(users: User[]): { rows: Row[]; columns: Column[] } {
+		const columns: Column[] = [
+			{ field: 'id', title: 'ID', visible: false },
+			{ field: 'name', title: 'Name' },
+			{
+				field: 'email',
+				title: 'E-Mail',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+					return value ? value : '-';
+				}
+			},
+			{
+				field: 'uid',
+				title: 'UID',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+					return value ? String(value) : '-';
+				}
+			},
+			{
+				field: 'lastUsage',
+				title: 'Last Usage',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+					return getLastUsage(value);
+				}
+			},
+			{
+				field: 'createdAt',
+				title: 'Created At',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+					return convertDbTime(value);
+				}
+			}
+		];
+
+		const rows: Row[] = users.map((user) => ({
+			id: user.id,
+			name: user.username,
+			email: user.email,
+			uid: user.uid,
+			lastUsage: user.lastLoginTime ? convertDbTime(user.lastLoginTime) : 'Never',
+			createdAt: user.createdAt ? convertDbTime(user.createdAt) : 'Never'
+		}));
+
+		return { rows, columns };
+	}
+
+	const users = resource(
+		() => 'users_imported',
+		async (key) => {
+			const results = await listUsers('pam');
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: data.users
+		}
+	);
+
+	const groups = resource(
+		() => 'groups',
+		async (key) => {
+			const results = await listGroups();
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: data.groups
+		}
+	);
+
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				users.refetch();
+				groups.refetch();
+				reload = false;
+			}
+		}
+	);
+
+	let tableData = $derived(generateTableData(users.current));
+	let query: string = $state('');
+	let activeRows: Row[] | null = $state(null);
+	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+
+	let modals = $state({
+		delete: { open: false },
+		edit: { open: false },
+		passkeys: { open: false },
+		import: { open: false }
+	});
+</script>
+
+{#snippet button(type: string)}
+	{#if activeRows && activeRows.length === 1}
+		{#if type === 'delete'}
+			<Button
+				onclick={() => {
+					modals.delete.open = !modals.delete.open;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5 pointer-events-auto!"
+				disabled={!activeRow || activeRow.name === 'root'}
+				title={activeRow && activeRow.name === 'root' ? 'Cannot delete this user' : ''}
+			>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+			</Button>
+		{/if}
+
+		{#if type === 'edit'}
+			<Button
+				onclick={() => {
+					modals.edit.open = !modals.edit.open;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5 pointer-events-auto!"
+			>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
+			</Button>
+		{/if}
+
+		{#if type === 'passkeys'}
+			<Button
+				onclick={() => {
+					modals.passkeys.open = !modals.passkeys.open;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5 pointer-events-auto!"
+			>
+				<SpanWithIcon icon="icon-[mdi--fingerprint]" size="h-4 w-4" gap="gap-2" title="Passkeys" />
+			</Button>
+		{/if}
+	{/if}
+{/snippet}
+
+<div class="flex h-full flex-col overflow-hidden">
+	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
+		<Search bind:query />
+
+		{@render button('delete')}
+		{@render button('edit')}
+		{@render button('passkeys')}
+
+		<Button onclick={() => (modals.import.open = !modals.import.open)} size="sm" class="h-6 ml-auto">
+			<SpanWithIcon icon="icon-[mdi--import]" size="h-4 w-4" gap="gap-2" title="Import" />
+		</Button>
+	</div>
+
+	<TreeTable
+		data={tableData}
+		name="tt-users-imported"
+		bind:parentActiveRow={activeRows}
+		multipleSelect={false}
+		bind:query
+	/>
+</div>
+
+{#if modals.edit.open}
+	<CreateOrEdit
+		bind:open={modals.edit.open}
+		users={users.current}
+		groups={[]}
+		edit={true}
+		pamMode={true}
+		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
+		bind:reload
+	/>
+{/if}
+
+{#if modals.passkeys.open && activeRow}
+	<Passkeys
+		bind:open={modals.passkeys.open}
+		userId={activeRow.id as number}
+		username={String(activeRow.name || '')}
+		bind:reload
+	/>
+{/if}
+
+{#if modals.import.open}
+	<ImportUser bind:open={modals.import.open} bind:reload />
+{/if}
+
+<AlertDialog
+	bind:open={modals.delete.open}
+	names={{
+		parent: 'User',
+		element: activeRow ? (activeRow.name as string) : ''
+	}}
+	actions={{
+		onConfirm: async () => {
+			const response = await deleteUser(activeRow.id as string);
+			reload = true;
+			if (response.error) {
+				handleAPIError(response);
+				toast.error('Failed to delete user', {
+					position: 'bottom-center'
+				});
+			} else {
+				toast.success('User deleted', {
+					position: 'bottom-center'
+				});
+			}
+
+			modals.delete.open = false;
+		},
+		onCancel: () => {
+			modals.delete.open = false;
+		}
+	}}
+/>

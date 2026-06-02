@@ -30,6 +30,7 @@ type User struct {
 	Locked          bool      `json:"locked"`
 	DoasEnabled     bool      `json:"doasEnabled"`
 	PrimaryGroupID  *uint     `json:"primaryGroupId" gorm:"index"`
+	Source          string    `json:"source" gorm:"default:'local';index"`
 	CreatedAt       time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 	LastLoginTime   time.Time `json:"lastLoginTime"`

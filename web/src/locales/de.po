@@ -196,7 +196,6 @@ msgstr "System"
 msgid "PCI Passthrough"
 msgstr "PCI-Passthrough"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Authentication"
 msgstr "Authentifizierung"
@@ -532,9 +531,10 @@ msgstr "Endzeit"
 msgid "Node"
 msgstr "Knoten"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "User"
 msgstr "Benutzer"
 
@@ -720,6 +720,7 @@ msgid "Enter your username"
 msgstr "Geben Sie Ihren Benutzernamen ein"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password"
@@ -843,6 +844,8 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -911,6 +914,8 @@ msgstr "Anzeigen"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -948,6 +953,8 @@ msgstr "Löschen"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -990,6 +997,7 @@ msgstr "Sammellöschung"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -1481,6 +1489,8 @@ msgstr "Benutzer bearbeiten - {0}"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "E-Mail"
 msgstr "E-Mail"
 
@@ -3826,6 +3836,10 @@ msgstr "Manuell zurückwechseln"
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -4235,7 +4249,6 @@ msgstr "Bitte wählen Sie einen Speichertyp aus"
 msgid "Create Storage"
 msgstr "Speicher erstellen"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Directory"
 msgstr "Verzeichnis"
@@ -5723,6 +5736,7 @@ msgstr "DB-Speicher"
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 msgid "Import"
 msgstr "Importieren"
 
@@ -5900,7 +5914,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6879,6 +6893,8 @@ msgstr "Standard-Sylve-Gruppe (sylve_g)"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -6912,6 +6928,8 @@ msgid "Group deleted"
 msgstr "Gruppe gelöscht"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "Last Usage"
 msgstr "Letzte Verwendung"
 
@@ -6922,10 +6940,14 @@ msgstr "Letzte Verwendung"
 #~ msgstr "Admin-Benutzer kann nicht bearbeitet werden"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "Failed to delete user"
 msgstr "Benutzer konnte nicht gelöscht werden"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "User deleted"
 msgstr "Benutzer gelöscht"
 
@@ -8710,6 +8732,8 @@ msgid "<0/> Passkey"
 msgstr "<0/> Passkey"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "Passkeys"
 msgstr "Passkeys"
 
@@ -12391,20 +12415,17 @@ msgstr "Das Passwort muss mindestens 8 Zeichen lang sein"
 msgid "Passwords do not match"
 msgstr "Passwörter stimmen nicht überein"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Home directory is required"
-msgstr "Home-Verzeichnis ist erforderlich"
+#~ msgid "Home directory is required"
+#~ msgstr "Home-Verzeichnis ist erforderlich"
 
 #~ msgid "Edit User — {0}"
 #~ msgstr "Edit User — {0}"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Identification"
-msgstr "Identifikation"
+#~ msgid "Identification"
+#~ msgstr "Identifikation"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "ID & Groups"
-msgstr "ID & Gruppen"
+#~ msgid "ID & Groups"
+#~ msgstr "ID & Gruppen"
 
 #~ msgid "Directories"
 #~ msgstr "Directories"
@@ -12423,97 +12444,75 @@ msgid "Generate Password"
 msgstr "Passwort generieren"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Confirm Password"
 msgstr "Passwort bestätigen"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "User ID (UID)"
-msgstr "Benutzer-ID (UID)"
+#~ msgid "User ID (UID)"
+#~ msgstr "Benutzer-ID (UID)"
 
 #~ msgid "New Primary Group (create group named after username)"
 #~ msgstr "New Primary Group (create group named after username)"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Primary Group"
-msgstr "Primäre Gruppe"
+#~ msgid "Primary Group"
+#~ msgstr "Primäre Gruppe"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Select primary group..."
-msgstr "Primäre Gruppe auswählen..."
+#~ msgid "Select primary group..."
+#~ msgstr "Primäre Gruppe auswählen..."
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Auxiliary Groups"
-msgstr "Zusätzliche Gruppen"
+#~ msgid "Auxiliary Groups"
+#~ msgstr "Zusätzliche Gruppen"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Select auxiliary groups..."
-msgstr "Zusätzliche Gruppen auswählen..."
+#~ msgid "Select auxiliary groups..."
+#~ msgstr "Zusätzliche Gruppen auswählen..."
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Home Directory"
-msgstr "Home-Verzeichnis"
+#~ msgid "Home Directory"
+#~ msgstr "Home-Verzeichnis"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Home Directory Permissions"
-msgstr "Berechtigungen für das Home-Verzeichnis"
+#~ msgid "Home Directory Permissions"
+#~ msgstr "Berechtigungen für das Home-Verzeichnis"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Read"
-msgstr "Lesen"
+#~ msgid "Read"
+#~ msgstr "Lesen"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Write"
-msgstr "Schreiben"
+#~ msgid "Write"
+#~ msgstr "Schreiben"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Execute"
-msgstr "Ausführen"
+#~ msgid "Execute"
+#~ msgstr "Ausführen"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Group"
-msgstr "Gruppe"
+#~ msgid "Group"
+#~ msgstr "Gruppe"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Other"
-msgstr "Andere"
+#~ msgid "Other"
+#~ msgstr "Andere"
 
-#. 0: computedPerms.toString(8).padStart(3, '0')
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Octal: 0{0}"
-msgstr "Oktal: 0{0}"
+#~ msgid "Octal: 0{0}"
+#~ msgstr "Oktal: 0{0}"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "SSH Public Key"
-msgstr "Öffentlicher SSH-Schlüssel"
+#~ msgid "SSH Public Key"
+#~ msgstr "Öffentlicher SSH-Schlüssel"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Shell"
-msgstr "Shell"
+#~ msgid "Shell"
+#~ msgstr "Shell"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Select shell..."
-msgstr "Shell auswählen..."
+#~ msgid "Select shell..."
+#~ msgstr "Shell auswählen..."
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Disable Password"
-msgstr "Passwort deaktivieren"
+#~ msgid "Disable Password"
+#~ msgstr "Passwort deaktivieren"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Lock User"
-msgstr "Benutzer sperren"
+#~ msgid "Lock User"
+#~ msgstr "Benutzer sperren"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Permit Doas"
-msgstr "Doas erlauben"
+#~ msgid "Permit Doas"
+#~ msgstr "Doas erlauben"
 
-#. 0: properties.uid; 1: collision.username
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "UID {0} is already used by \"{1}\""
-msgstr "UID {0} wird bereits von \"{1}\" verwendet"
+#~ msgid "UID {0} is already used by \"{1}\""
+#~ msgstr "UID {0} wird bereits von \"{1}\" verwendet"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Primary group cannot also be an auxiliary group"
-msgstr "Die primäre Gruppe kann nicht zugleich eine zusätzliche Gruppe sein"
+#~ msgid "Primary group cannot also be an auxiliary group"
+#~ msgstr "Die primäre Gruppe kann nicht zugleich eine zusätzliche Gruppe sein"
 
 #~ msgid "<0/> Browse"
 #~ msgstr "<0/> Durchsuchen"
@@ -12572,13 +12571,11 @@ msgstr "Wird geladen…"
 #~ msgid "New User Primary Group"
 #~ msgstr "New User Primary Group"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Create User Primary Group"
-msgstr "Primäre Benutzergruppe erstellen"
+#~ msgid "Create User Primary Group"
+#~ msgstr "Primäre Benutzergruppe erstellen"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Use /home/<username>"
-msgstr "/home/<username> verwenden"
+#~ msgid "Use /home/<username>"
+#~ msgstr "/home/<username> verwenden"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "VNC Bind IP"
@@ -13220,9 +13217,8 @@ msgstr ""
 msgid "Select interfaces"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Browse"
-msgstr ""
+#~ msgid "Browse"
+#~ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
@@ -13500,10 +13496,13 @@ msgid "Importing…"
 msgstr ""
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "Cannot delete this user"
 msgstr ""
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "Cannot edit this user"
 msgstr ""
 
@@ -13527,9 +13526,8 @@ msgstr ""
 msgid "System group, cannot be deleted"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Password authentication is disabled. The user will need an SSH key or other authentication method to access the system."
-msgstr ""
+#~ msgid "Password authentication is disabled. The user will need an SSH key or other authentication method to access the system."
+#~ msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "All Unix users are either already registered in Sylve or reserved by the system."
@@ -13957,3 +13955,49 @@ msgstr ""
 
 #~ msgid "Content-Type"
 #~ msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Crash recovery"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Detect crashed guests and restart locally. After repeated failures, initiate failover."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto-detect and restart crashed guests"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Max local restart attempts before failover"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Pool health monitoring"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Monitor ZFS pool health and capacity. Trigger failover if the pool becomes unhealthy or full."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Monitor ZFS pool health"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Capacity threshold (%)"
+msgstr ""
+
+#~ msgid "Local"
+#~ msgstr ""
+
+#~ msgid "Imported"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Leave blank to keep current"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Create Samba User"
+msgstr ""

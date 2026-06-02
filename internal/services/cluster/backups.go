@@ -64,6 +64,7 @@ type BackupJobRuntimeStateUpdate struct {
 	LastStatus string     `json:"lastStatus"`
 	LastError  string     `json:"lastError"`
 	NextRunAt  *time.Time `json:"nextRunAt"`
+	Encrypted  bool       `json:"encrypted"`
 }
 
 type BackupJobFriendlySourceUpdate struct {
@@ -100,7 +101,10 @@ func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.Backu
 		return err
 	}
 
-	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+	if err != nil {
+		return err
+	}
 
 	target := clusterModels.BackupTarget{
 		Name:             strings.TrimSpace(input.Name),
@@ -153,7 +157,10 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 		return err
 	}
 
-	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+	if err != nil {
+		return err
+	}
 	enabled := boolPtrDefaultTrue(input.Enabled)
 	if input.Enabled == nil {
 		existing, err := s.GetBackupTargetByID(input.ID)
@@ -307,6 +314,7 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 			"last_status": update.LastStatus,
 			"last_error":  strings.TrimSpace(update.LastError),
 			"next_run_at": update.NextRunAt,
+			"encrypted":   update.Encrypted,
 		}).Error
 	}
 
@@ -792,7 +800,24 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 		job.JailRootDataset = ""
 	}
 
+	if job.StopBeforeBackup && mode == clusterModels.BackupJobModeDataset {
+		return nil, fmt.Errorf("stop_before_backup_not_supported_for_dataset_mode")
+	}
+
 	job.DestSuffix = autoBackupJobDestSuffix(job.ID, job.Mode, job.SourceDataset, job.JailRootDataset)
+
+	// Ensure no other job writes to the same target path.
+	if job.DestSuffix != "" {
+		var conflictCount int64
+		if err := s.DB.Model(&clusterModels.BackupJob{}).
+			Where("target_id = ? AND dest_suffix = ? AND id != ?", job.TargetID, job.DestSuffix, job.ID).
+			Count(&conflictCount).Error; err != nil {
+			return nil, fmt.Errorf("dest_suffix_uniqueness_check_failed: %w", err)
+		}
+		if conflictCount > 0 {
+			return nil, fmt.Errorf("dest_suffix_already_in_use: target_id=%d dest_suffix=%s", job.TargetID, job.DestSuffix)
+		}
+	}
 
 	job.FriendlySrc = s.resolveBackupJobFriendlySource(job.Mode, job.SourceDataset, job.JailRootDataset)
 
@@ -1051,21 +1076,21 @@ func raftObjectIDRangeForTable(table string) *big.Int {
 	}
 }
 
-func resolveSSHKeyMaterial(sshKey, sshKeyPath string) string {
+func resolveSSHKeyMaterial(sshKey, sshKeyPath string) (string, error) {
 	trimmedKey := strings.TrimSpace(sshKey)
 	if trimmedKey != "" {
-		return trimmedKey
+		return trimmedKey, nil
 	}
 
 	trimmedPath := strings.TrimSpace(sshKeyPath)
 	if trimmedPath == "" {
-		return ""
+		return "", nil
 	}
 
 	raw, err := os.ReadFile(trimmedPath)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("ssh_key_file_not_found: %s: %w", trimmedPath, err)
 	}
 
-	return strings.TrimSpace(string(raw))
+	return strings.TrimSpace(string(raw)), nil
 }

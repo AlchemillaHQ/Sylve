@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -477,4 +478,38 @@ func isLocalDatasetHasDependentClonesError(err error) bool {
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "dependent clones") ||
 		strings.Contains(lower, "filesystem has dependent clones")
+}
+
+// CleanupOrphanRestoreDatasets removes .restoring and _restore-backup-*
+// datasets left behind by interrupted restore operations.
+func (s *Service) CleanupOrphanRestoreDatasets(ctx context.Context) error {
+	datasets, err := s.listLocalFilesystemDatasets(ctx)
+	if err != nil {
+		return fmt.Errorf("list_datasets_for_orphan_cleanup_failed: %w", err)
+	}
+
+	var cleaned int
+	for _, ds := range datasets {
+		ds = normalizeDatasetPath(ds)
+		if ds == "" {
+			continue
+		}
+
+		if !strings.HasSuffix(ds, ".restoring") && !strings.Contains(ds, "_restore-backup-") {
+			continue
+		}
+
+		logger.L.Info().Str("dataset", ds).Msg("cleaning_up_orphan_restore_dataset")
+		if err := s.destroyLocalDatasetIncludingDependentsWithRetry(ctx, ds, 5, 500*time.Millisecond); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", ds).Msg("failed_to_cleanup_orphan_restore_dataset")
+			continue
+		}
+		cleaned++
+	}
+
+	if cleaned > 0 {
+		logger.L.Info().Int("count", cleaned).Msg("cleaned_up_orphan_restore_datasets")
+	}
+
+	return nil
 }

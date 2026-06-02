@@ -128,20 +128,28 @@ func TestGetPasskeyRelyingPartyIgnoresForwardedHostFromUntrustedRemote(t *testin
 	}
 }
 
-func TestRequirePasskeyManagementAccessRejectsPamRealm(t *testing.T) {
+func TestRequirePasskeyManagementAccessAllowsPamAdmin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	authService := newPasskeyHandlerTestAuthService(t)
+	if err := authService.DB.Create(&models.User{
+		ID:       1,
+		Username: "admin",
+		Admin:    true,
+	}).Error; err != nil {
+		t.Fatalf("failed_to_seed_user: %v", err)
+	}
+
 	c, rec := newPasskeyTestContext("127.0.0.1:12345")
 	c.Set("AuthType", "pam")
 	c.Set("UserID", uint(1))
 
 	allowed := requirePasskeyManagementAccess(c, authService)
-	if allowed {
-		t.Fatalf("expected_access_denied")
+	if !allowed {
+		t.Fatalf("expected_access_allowed")
 	}
 
-	if rec.Code != 403 {
-		t.Fatalf("expected_403_got: %d", rec.Code)
+	if rec.Code != 200 {
+		t.Fatalf("expected_200_got: %d", rec.Code)
 	}
 }
 

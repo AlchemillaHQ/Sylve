@@ -14,6 +14,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -137,6 +138,58 @@ func (s *Service) ReconcileBackupTargetSSHKeys() error {
 		if err := s.ensureBackupTargetSSHKeyMaterialized(&targets[i]); err != nil {
 			return err
 		}
+	}
+
+	if err := s.cleanupOrphanTargetSSHKeys(targets); err != nil {
+		logger.L.Warn().Err(err).Msg("cleanup_orphan_ssh_keys_failed")
+	}
+
+	return nil
+}
+
+func (s *Service) cleanupOrphanTargetSSHKeys(targets []clusterModels.BackupTarget) error {
+	sshDir, err := GetSSHKeyDir()
+	if err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(sshDir)
+	if err != nil {
+		return fmt.Errorf("read_ssh_key_dir: %w", err)
+	}
+
+	knownIDs := make(map[uint]struct{}, len(targets))
+	for _, t := range targets {
+		knownIDs[t.ID] = struct{}{}
+	}
+
+	var cleaned int
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "target-") || !strings.HasSuffix(name, "_id") {
+			continue
+		}
+		idStr := strings.TrimSuffix(strings.TrimPrefix(name, "target-"), "_id")
+		id, parseErr := strconv.ParseUint(idStr, 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		if _, exists := knownIDs[uint(id)]; exists {
+			continue
+		}
+		keyPath := filepath.Join(sshDir, name)
+		if err := os.Remove(keyPath); err != nil {
+			logger.L.Warn().Err(err).Str("path", keyPath).Msg("failed_to_remove_orphan_ssh_key")
+			continue
+		}
+		cleaned++
+	}
+
+	if cleaned > 0 {
+		logger.L.Info().Int("count", cleaned).Msg("removed_orphan_ssh_keys")
 	}
 
 	return nil

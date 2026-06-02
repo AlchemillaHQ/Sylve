@@ -774,7 +774,7 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 		return err
 	}
 
-	if action == "start" {
+	if action == "start" || action == "stop" || action == "shutdown" || action == "reboot" {
 		allowed, err := s.canMutateProtectedVM(vm.RID)
 		if err != nil {
 			return fmt.Errorf("replication_lease_check_failed: %w", err)
