@@ -28,7 +28,7 @@ import (
 )
 
 var hostname string
-var importantGetPaths = []string{"/api/vnc"}
+var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/jail/console"}
 
 type claim struct {
 	UserID   *uint
@@ -39,6 +39,7 @@ type claim struct {
 type action struct {
 	Method   string      `json:"method"`
 	Path     string      `json:"path"`
+	Query    string      `json:"query,omitempty"`
 	Body     interface{} `json:"body,omitempty"`
 	Response interface{} `json:"response,omitempty"`
 }
@@ -49,8 +50,8 @@ func shouldRedactAuditPayload(path string) bool {
 		return false
 	}
 
-	// These endpoints can carry credentials, cluster keys, or signed download URLs.
-	return strings.HasPrefix(path, "/api/auth/") ||
+	return strings.HasPrefix(path, "/api/auth/login") ||
+		strings.HasPrefix(path, "/api/auth/passkeys/") ||
 		(strings.HasPrefix(path, "/api/cluster/") && !strings.HasPrefix(path, "/api/cluster/backups/")) ||
 		path == "/api/utilities/downloads/signed-url"
 }
@@ -320,6 +321,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		var act action
 		act.Method = c.Request.Method
 		act.Path = c.Request.URL.Path
+		act.Query = c.Request.URL.RawQuery
 
 		if c.Request.Body != nil && c.Request.ContentLength > 0 {
 			buf := new(bytes.Buffer)

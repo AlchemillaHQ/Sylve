@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { addFileOrFolder, getFiles } from '$lib/api/system/file-explorer';
-	import { createUser, editUser, getNextUID, getUserCapabilities } from '$lib/api/auth/local';
+	import { editUser, createPamUser, getUserCapabilities, getNextUID } from '$lib/api/auth/local';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -8,6 +8,9 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { Group, User } from '$lib/types/auth';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { handleAPIError } from '$lib/utils/http';
@@ -20,7 +23,6 @@
 		groups: Group[];
 		user?: User;
 		edit?: boolean;
-		pamMode?: boolean;
 		reload?: boolean;
 	}
 
@@ -29,8 +31,7 @@
 		users,
 		groups,
 		user,
-		edit = false,
-		pamMode = false,
+		edit = true,
 		reload = $bindable()
 	}: Props = $props();
 
@@ -57,14 +58,14 @@
 	}
 
 	function getInitialPrimaryGroup(): string {
-		if (edit && user?.primaryGroupId) {
+		if (user?.primaryGroupId) {
 			return String(user.primaryGroupId);
 		}
 		return '';
 	}
 
 	function getInitialAuxGroups(): string[] {
-		if (edit && user?.groups) {
+		if (user?.groups) {
 			return user.groups.filter((g) => g.id !== user?.primaryGroupId).map((g) => String(g.id));
 		}
 		return [];
@@ -72,54 +73,73 @@
 
 	function makeDefaults() {
 		return {
-			// Tab 1
-			fullName: edit && user ? (user.fullName ?? '') : '',
-			username: edit && user ? user.username : '',
-			email: edit && user ? (user.email ?? '') : '',
+			fullName: user?.fullName ?? '',
+			username: user?.username ?? '',
+			email: user?.email ?? '',
 			password: '',
 			confirmPassword: '',
-			// Tab 2
-			uid: edit && user ? (user.uid ?? 0) : 0,
+			admin: user?.admin ?? false,
+			uid: user?.uid ?? 0,
 			newPrimaryGroup: false,
 			primaryGroup: { open: false, value: getInitialPrimaryGroup() },
 			auxGroups: { open: false, value: getInitialAuxGroups() },
-			// Tab 3
-			homeDirectory: edit && user ? (user.homeDirectory ?? '/nonexistent') : '/nonexistent',
-			perms: decomposePerms(edit && user ? (user.homeDirPerms ?? 493) : 493),
-			// Tab 4
-			sshPublicKey: edit && user ? (user.sshPublicKey ?? '') : '',
-			shell: { open: false, value: edit && user ? (user.shell ?? '/bin/sh') : '/bin/sh' },
-			disablePassword: edit && user ? (user.disablePassword ?? false) : false,
-			locked: edit && user ? (user.locked ?? false) : false,
-			doasEnabled: edit && user ? (user.doasEnabled ?? false) : false,
-			admin: edit && user ? user.admin : false,
+			homeDirectory: user?.homeDirectory ?? '/nonexistent',
+			perms: decomposePerms(user?.homeDirPerms ?? 493),
+			sshPublicKey: user?.sshPublicKey ?? '',
+			shell: { open: false, value: user?.shell ?? '/bin/sh' },
+			disablePassword: user?.disablePassword ?? false,
+			locked: user?.locked ?? false,
+			doasEnabled: user?.doasEnabled ?? false,
 			createSamba: false
 		};
 	}
 
 	let properties = $state(makeDefaults());
+	let activeTab = $state('identity');
 	let doasAvailable = $state(false);
+	let loading = $state(false);
 
-	// Directories that should be hidden in the directory picker (system/non-user directories)
+	$effect(() => {
+		if (open) {
+			getUserCapabilities().then((res) => {
+				if (res && !res.error && res.data) {
+					doasAvailable = res.data.doasAvailable;
+				}
+			});
+		}
+	});
+
+	$effect(() => {
+		if (open && !edit) {
+			getNextUID().then((res) => {
+				if (res && !res.error && res.data) {
+					properties.uid = res.data.nextUID;
+				}
+			});
+		}
+	});
+
+	const tabs = [
+		{ value: 'identity', label: 'Identity' },
+		{ value: 'groups', label: 'Groups' },
+		{ value: 'filesystem', label: 'Filesystem' },
+		{ value: 'security', label: 'Security' }
+	];
+
+	let computedPerms = $derived.by(() => {
+		const p = properties.perms;
+		const u = (p.user.read ? 4 : 0) + (p.user.write ? 2 : 0) + (p.user.exec ? 1 : 0);
+		const g = (p.group.read ? 4 : 0) + (p.group.write ? 2 : 0) + (p.group.exec ? 1 : 0);
+		const o = (p.other.read ? 4 : 0) + (p.other.write ? 2 : 0) + (p.other.exec ? 1 : 0);
+		return u * 64 + g * 8 + o;
+	});
+
 	const hiddenRootDirs = new Set([
-		'/bin',
-		'/boot',
-		'/dev',
-		'/entropy',
-		'/lib',
-		'/libexec',
-		'/net',
-		'/proc',
-		'/rescue',
-		'/sbin',
-		'/sys',
-		'/usr',
-		'/var',
-		'/etc',
-		'/compat'
+		'/bin', '/boot', '/dev', '/entropy', '/lib', '/libexec',
+		'/net', '/proc', '/rescue', '/sbin', '/sys', '/usr', '/var',
+		'/etc', '/compat'
 	]);
 
-	// --- Mini directory picker state ---
 	let dirPicker = $state({
 		open: false,
 		currentPath: '/',
@@ -197,59 +217,44 @@
 		}
 	}
 
-	// --- end dir picker ---
-
-	let computedPerms = $derived.by(() => {
-		const p = properties.perms;
-		const u = (p.user.read ? 4 : 0) + (p.user.write ? 2 : 0) + (p.user.exec ? 1 : 0);
-		const g = (p.group.read ? 4 : 0) + (p.group.write ? 2 : 0) + (p.group.exec ? 1 : 0);
-		const o = (p.other.read ? 4 : 0) + (p.other.write ? 2 : 0) + (p.other.exec ? 1 : 0);
-		return u * 64 + g * 8 + o;
-	});
-
-	$effect(() => {
-		if (open && !edit) {
-			getNextUID().then((res) => {
-				if (res && !res.error && res.data) {
-					properties.uid = res.data.nextUID;
-				}
-			});
-		}
-	});
-
-	$effect(() => {
-		if (open) {
-			getUserCapabilities().then((res) => {
-				if (res && !res.error && res.data) {
-					doasAvailable = res.data.doasAvailable;
-				}
-			});
-		}
-	});
-
 	function reset() {
 		properties = makeDefaults();
+		activeTab = 'identity';
 	}
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
 		if (!isValidUsername(properties.username)) return 'Invalid username format';
-		if (!edit && users.some((u) => u.username === properties.username))
-			return 'Username already exists';
 		if (edit && user && users.some((u) => u.id !== user!.id && u.username === properties.username))
 			return 'Username already exists';
+		if (!edit && users.some((u) => u.username === properties.username))
+			return 'Username already exists';
 		if (properties.email && !isValidEmail(properties.email)) return 'Invalid email address';
-		if (!edit && !pamMode) {
+		if (!edit) {
 			if (!properties.password) return 'Password is required';
 			if (properties.password.length < 8) return 'Password must be at least 8 characters';
 		}
+		if (edit && properties.password && properties.password.length < 8)
+			return 'Password must be at least 8 characters';
 		if (properties.password && properties.confirmPassword !== properties.password)
 			return 'Passwords do not match';
+		if (properties.uid < 1000) return 'UID must be 1000 or higher';
+		if (
+			properties.homeDirectory !== '/nonexistent' &&
+			edit &&
+			user &&
+			users.some((u) => u.id !== user.id && u.homeDirectory === properties.homeDirectory)
+		)
+			return 'Home directory is already in use by another user';
+		if (
+			properties.homeDirectory !== '/nonexistent' &&
+			!edit &&
+			users.some((u) => u.homeDirectory === properties.homeDirectory)
+		)
+			return 'Home directory is already in use by another user';
 
 		return '';
 	}
-
-	let loading = $state(false);
 
 	async function submit() {
 		loading = true;
@@ -288,12 +293,7 @@
 			createSamba: properties.createSamba
 		};
 
-		let response;
-		if (edit && user) {
-			response = await editUser(user.id, payload);
-		} else {
-			response = await createUser(payload);
-		}
+		const response = edit ? await editUser(user!.id, payload) : await createPamUser(payload);
 
 		reload = true;
 		loading = false;
@@ -319,7 +319,7 @@
 			reset();
 			open = false;
 		}}
-		class="lg:max-w-2xl w-[92%] gap-4 p-5"
+		class="lg:max-w-2xl w-[92%] gap-4 p-6"
 		showCloseButton={true}
 		showResetButton={true}
 		onClose={() => {
@@ -330,7 +330,7 @@
 	>
 		{#if dirPicker.open}
 			<div class="relative" data-picker-container>
-				<Dialog.Header class="p-0">
+				<Dialog.Header>
 					<Dialog.Title class="flex items-center gap-2 text-left text-sm font-medium">
 						<Button
 							size="icon"
@@ -464,18 +464,11 @@
 					{/if}
 				</div>
 
-				<!-- Current path + actions -->
 				<div class="flex items-center justify-between gap-3 pt-1">
 					<span class="text-muted-foreground truncate text-xs">{dirPicker.currentPath}</span>
-					<div class="flex shrink-0 gap-2">
-						<Button variant="outline" size="sm" onclick={() => (dirPicker.open = false)}>
-							Cancel
-						</Button>
-						<Button size="sm" onclick={selectDir}>Select</Button>
-					</div>
+					<Button size="sm" onclick={selectDir}>Select</Button>
 				</div>
 
-				<!-- Context menu, absolute inside picker container so coords are correct -->
 				{#if ctxMenu.show}
 					<div
 						role="menu"
@@ -523,101 +516,222 @@
 					</div>
 				{/if}
 			</div>
-			<!-- end picker container -->
 		{:else}
-			<!-- ── Normal create/edit view ── -->
-			<Dialog.Header class="p-0">
+			<Dialog.Header>
 				<Dialog.Title>
 					<SpanWithIcon
-						icon={!edit ? 'icon-[mdi--user-plus]' : 'icon-[mdi--user-edit]'}
+						icon="icon-[mdi--user-edit]"
 						size="h-5 w-5"
 						gap="gap-2"
-						title={!edit ? 'Create User' : `Edit User - ${user?.username}`}
+						title={edit ? `Edit PAM User - ${user?.username}` : 'Create PAM User'}
 					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
-			<div class="min-h-[380px] space-y-3 overflow-y-auto pt-3">
-				<input type="text" style="display:none" autocomplete="username" />
-				<input type="password" style="display:none" autocomplete="new-password" />
+			<ScrollArea orientation="vertical" class="h-[40vh] pt-3">
+				<Tabs.Root bind:value={activeTab} class="w-full overflow-hidden">
+					<Tabs.List class="grid w-full grid-cols-4 p-0">
+						{#each tabs as { value, label } (value)}
+							<Tabs.Trigger class="border-b" {value}>{label}</Tabs.Trigger>
+						{/each}
+					</Tabs.List>
 
-				<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-					<CustomValueInput
-						label="Full Name"
-						placeholder="John Doe"
-						bind:value={properties.fullName}
-					/>
-					<CustomValueInput
-						label="Username"
-						placeholder="johndoe"
-						bind:value={properties.username}
-						disabled={edit}
-					/>
-				</div>
-				<CustomValueInput
-					label="E-Mail"
-					placeholder="john@example.com"
-					bind:value={properties.email}
-				/>
-				{#if !pamMode}
-					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-						<CustomValueInput
-							label="Password"
-							placeholder="••••••••"
-							type="password"
-							revealOnFocus={true}
-							bind:value={properties.password}
-						/>
-						<CustomValueInput
-							label="Confirm Password"
-							placeholder="••••••••"
-							type="password"
-							revealOnFocus={true}
-							bind:value={properties.confirmPassword}
-						/>
-					</div>
-				{:else}
-					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-						<CustomValueInput
-							label="Password"
-							placeholder="Leave blank to keep current"
-							type="password"
-							revealOnFocus={true}
-							bind:value={properties.password}
-						/>
-						<CustomValueInput
-							label="Confirm Password"
-							placeholder="••••••••"
-							type="password"
-							revealOnFocus={true}
-							bind:value={properties.confirmPassword}
-						/>
-					</div>
-				{/if}
-				<div class="flex items-center gap-2 pt-2">
-					<Checkbox id="admin" bind:checked={properties.admin} />
-					<Label for="admin" class="cursor-pointer text-sm">Admin</Label>
-				</div>
-				{#if pamMode}
-					<div class="flex items-center gap-2">
-						<Checkbox id="create-samba" bind:checked={properties.createSamba} />
-						<Label for="create-samba" class="cursor-pointer text-sm">Create Samba User</Label>
-					</div>
-				{/if}
-			</div>
+					<Tabs.Content value="identity">
+						<div class="space-y-3 pt-2 pb-1">
+							<input type="text" style="display:none" autocomplete="username" />
+							<input type="password" style="display:none" autocomplete="new-password" />
 
-			<div class="flex justify-end gap-2 pt-1">
-				<Button
-					variant="outline"
-					onclick={() => {
-						reset();
-						open = false;
-					}}>Cancel</Button
-				>
-				<Button onclick={submit} disabled={loading}
-					>{loading ? (edit ? 'Saving…' : 'Creating…') : edit ? 'Save' : 'Create'}</Button
-				>
-			</div>
+							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+								<CustomValueInput
+									label="Full Name"
+									placeholder="John Doe"
+									bind:value={properties.fullName}
+								/>
+								<CustomValueInput
+									label="Username"
+									placeholder="johndoe"
+									bind:value={properties.username}
+									disabled={edit}
+								/>
+							</div>
+							<CustomValueInput
+								label="E-Mail"
+								placeholder="john@example.com"
+								bind:value={properties.email}
+							/>
+							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+								<CustomValueInput
+									label="Password"
+									placeholder={edit ? 'Leave blank to keep current' : '••••••••'}
+									type="password"
+									revealOnFocus={true}
+									bind:value={properties.password}
+								/>
+								<CustomValueInput
+									label="Confirm Password"
+									placeholder="••••••••"
+									type="password"
+									revealOnFocus={true}
+									bind:value={properties.confirmPassword}
+								/>
+							</div>
+							<div class="flex items-center gap-6">
+								<div class="flex items-center gap-2">
+									<Checkbox id="pam-admin" bind:checked={properties.admin} />
+									<Label for="pam-admin" class="cursor-pointer text-sm">Admin</Label>
+								</div>
+								<div class="flex items-center gap-2">
+									<Checkbox id="create-samba" bind:checked={properties.createSamba} />
+									<Label for="create-samba" class="cursor-pointer text-sm">Samba User</Label>
+								</div>
+							</div>
+						</div>
+					</Tabs.Content>
+
+					<Tabs.Content value="groups">
+						<div class="space-y-3 pt-2 pb-1">
+							{#if !properties.newPrimaryGroup}
+								<CustomComboBox
+									label="Primary Group"
+									placeholder="Select primary group"
+									bind:open={properties.primaryGroup.open}
+									bind:value={properties.primaryGroup.value}
+									data={groupOptions}
+									width="w-full"
+								/>
+							{/if}
+
+							<CustomComboBox
+								label="Auxiliary Groups"
+								placeholder="Select groups"
+								bind:open={properties.auxGroups.open}
+								bind:value={properties.auxGroups.value}
+								onValueChange={(v) => {
+									properties.auxGroups.value = v as string[];
+								}}
+								data={groupOptions}
+								multiple={true}
+								width="w-full"
+							/>
+
+							<div class="flex items-center gap-2">
+								<Checkbox id="new-primary-group" bind:checked={properties.newPrimaryGroup} />
+								<Label for="new-primary-group" class="cursor-pointer text-sm">
+									Create new primary group
+								</Label>
+							</div>
+						</div>
+					</Tabs.Content>
+
+					<Tabs.Content value="filesystem">
+						<div class="space-y-3 pt-2 pb-1">
+							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+								<CustomValueInput
+									label="UID"
+									placeholder="1000"
+									disabled={edit}
+									value={properties.uid}
+									onChange={(v) => {
+										properties.uid = typeof v === 'string' ? parseInt(v) || 0 : v;
+									}}
+								/>
+								<CustomValueInput
+									label="Home Directory"
+									placeholder="/home/john"
+									bind:value={properties.homeDirectory}
+									topRightButton={{
+										icon: 'icon-[mdi--folder-open]',
+										tooltip: 'Browse',
+										function: async () => {
+											openDirPicker();
+											return '';
+										}
+									}}
+								/>
+							</div>
+
+							<div class="space-y-1.5">
+								<Label class="text-sm">Home Directory Permissions</Label>
+								<div class="bg-muted rounded-md p-3 space-y-2">
+									{#each ['user', 'group', 'other'] as entity}
+										<div class="flex items-center gap-4">
+											<span class="w-12 text-sm capitalize">{entity}</span>
+											<div class="flex flex-1 items-center justify-evenly">
+												<div class="flex items-center gap-2">
+													<Checkbox
+														id={`perm-${entity}-read`}
+														bind:checked={properties.perms[entity as keyof typeof properties.perms].read}
+													/>
+													<Label for={`perm-${entity}-read`} class="cursor-pointer text-xs">Read</Label>
+												</div>
+												<div class="flex items-center gap-2">
+													<Checkbox
+														id={`perm-${entity}-write`}
+														bind:checked={properties.perms[entity as keyof typeof properties.perms].write}
+													/>
+													<Label for={`perm-${entity}-write`} class="cursor-pointer text-xs">Write</Label>
+												</div>
+												<div class="flex items-center gap-2">
+													<Checkbox
+														id={`perm-${entity}-exec`}
+														bind:checked={properties.perms[entity as keyof typeof properties.perms].exec}
+													/>
+													<Label for={`perm-${entity}-exec`} class="cursor-pointer text-xs">Exec</Label>
+												</div>
+											</div>
+										</div>
+									{/each}
+									<div class="text-muted-foreground text-xs pt-1">
+										{computedPerms} (octal)
+									</div>
+								</div>
+							</div>
+
+							<CustomComboBox
+								label="Shell"
+								placeholder="Select shell"
+								bind:open={properties.shell.open}
+								bind:value={properties.shell.value}
+								data={shellOptions}
+								width="w-full"
+							/>
+						</div>
+					</Tabs.Content>
+
+					<Tabs.Content value="security">
+						<div class="space-y-3 pt-2 pb-1">
+							<CustomValueInput
+								label="SSH Public Key"
+								placeholder="ssh-rsa AAAAB3..."
+								bind:value={properties.sshPublicKey}
+							/>
+
+							<div class="flex flex-wrap items-center gap-4 pt-2">
+								<div class="flex items-center gap-2">
+									<Checkbox id="disable-password" bind:checked={properties.disablePassword} />
+									<Label for="disable-password" class="cursor-pointer text-sm">Disable Password</Label>
+								</div>
+								<div class="flex items-center gap-2">
+									<Checkbox id="locked" bind:checked={properties.locked} />
+									<Label for="locked" class="cursor-pointer text-sm">Locked</Label>
+								</div>
+								{#if doasAvailable}
+									<div class="flex items-center gap-2">
+										<Checkbox id="doas" bind:checked={properties.doasEnabled} />
+										<Label for="doas" class="cursor-pointer text-sm">Doas Enabled</Label>
+									</div>
+								{/if}
+							</div>
+						</div>
+					</Tabs.Content>
+				</Tabs.Root>
+			</ScrollArea>
 		{/if}
+
+		<div class="flex justify-end pt-1">
+			<Button onclick={submit} disabled={loading}
+				>{loading ? (edit ? 'Saving…' : 'Creating…') : edit ? 'Save' : 'Create'}</Button
+			>
+		</div>
 	</Dialog.Content>
 </Dialog.Root>

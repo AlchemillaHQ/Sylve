@@ -6,7 +6,7 @@ import { cachedFetch } from '$lib/utils/http';
 export async function load() {
     const cacheDuration = SEVEN_DAYS;
     const [users, groups] = await Promise.all([
-        cachedFetch('users_imported', async () => await listUsers('pam'), cacheDuration),
+        cachedFetch('users_pam', async () => await listUsers('pam'), cacheDuration),
         cachedFetch('groups', async () => await listGroups(), cacheDuration)
     ]);
 

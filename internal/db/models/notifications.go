@@ -49,6 +49,7 @@ type NotificationKindRule struct {
 	UIEnabled    bool      `json:"uiEnabled" gorm:"not null;default:true"`
 	NtfyEnabled  bool      `json:"ntfyEnabled" gorm:"not null;default:true"`
 	EmailEnabled bool      `json:"emailEnabled" gorm:"not null;default:true"`
+	Config       string    `json:"config" gorm:"type:json;default:'{}'"`
 	CreatedAt    time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }

@@ -165,6 +165,78 @@ func CreateUserHandler(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Create PAM User
+// @Description Create a new PAM user with full Unix system integration
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreatePamUserRequest true "Create PAM User Request"
+// @Success 201 {object} internal.APIResponse[models.User] "PAM User Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /auth/users/pam [post]
+func CreatePamUserHandler(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req CreatePamUserRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		admin := false
+		if req.Admin != nil {
+			admin = *req.Admin
+		}
+
+		user := &models.User{
+			Username:        req.Username,
+			FullName:        req.FullName,
+			Password:        req.Password,
+			Email:           req.Email,
+			Admin:           admin,
+			UID:             req.UID,
+			Shell:           req.Shell,
+			HomeDirectory:   req.HomeDirectory,
+			HomeDirPerms:    req.HomeDirPerms,
+			SSHPublicKey:    req.SSHPublicKey,
+			DisablePassword: req.DisablePassword,
+			Locked:          req.Locked,
+			DoasEnabled:     req.DoasEnabled,
+			PrimaryGroupID:  req.PrimaryGroupID,
+		}
+
+		opts := auth.CreateUserOpts{
+			NewPrimaryGroup: req.NewPrimaryGroup,
+			AuxGroupIDs:     req.AuxGroupIDs,
+			CreateSamba:     req.CreateSamba,
+		}
+
+		err := authService.CreatePamUser(user, opts)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_create_pam_user",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusCreated, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "pam_user_created_successfully",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Delete User
 // @Description Delete a local (sylve) user from the system
 // @Tags Users
@@ -324,6 +396,26 @@ type ImportUserRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=128"`
 	Password string `json:"password"`
 	Admin    *bool  `json:"admin" binding:"required"`
+}
+
+type CreatePamUserRequest struct {
+	Username        string `json:"username" binding:"required,min=3,max=128"`
+	FullName        string `json:"fullName"`
+	Password        string `json:"password"`
+	Email           string `json:"email"`
+	Admin           *bool  `json:"admin" binding:"required"`
+	UID             int    `json:"uid"`
+	Shell           string `json:"shell"`
+	HomeDirectory   string `json:"homeDirectory"`
+	HomeDirPerms    uint   `json:"homeDirPerms"`
+	SSHPublicKey    string `json:"sshPublicKey"`
+	DisablePassword bool   `json:"disablePassword"`
+	Locked          bool   `json:"locked"`
+	DoasEnabled     bool   `json:"doasEnabled"`
+	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
+	PrimaryGroupID  *uint  `json:"primaryGroupId"`
+	AuxGroupIDs     []uint `json:"auxGroupIds"`
+	CreateSamba     bool   `json:"createSamba"`
 }
 
 func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {

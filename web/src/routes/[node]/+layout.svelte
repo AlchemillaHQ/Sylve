@@ -303,7 +303,18 @@
 							{
 								label: 'Users',
 								icon: 'mdi--account',
-								href: `/${node}/settings/authentication/users`
+								children: [
+									{
+										label: 'Local',
+										icon: 'mdi--account-box',
+										href: `/${node}/settings/authentication/users/local`
+									},
+									{
+										label: 'PAM',
+										icon: 'mdi--account-arrow-right',
+										href: `/${node}/settings/authentication/users/pam`
+									}
+								]
 							},
 							{
 								label: 'Groups',

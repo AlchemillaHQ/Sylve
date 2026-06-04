@@ -37,6 +37,7 @@
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
 		emailEnabled: boolean;
+		config?: string;
 		isTemplateRow: boolean;
 	}
 
@@ -141,6 +142,7 @@
 				uiEnabled: rule.uiEnabled,
 				ntfyEnabled: rule.ntfyEnabled,
 				emailEnabled: rule.emailEnabled,
+				config: rule.config,
 				isTemplateRow: false
 			};
 
@@ -213,12 +215,14 @@
 		edit: {
 			open: false,
 			id: 0,
+			templateKey: '',
 			templateLabel: '',
 			targetLabel: '',
 			active: true,
 			uiEnabled: true,
 			ntfyEnabled: true,
-			emailEnabled: true
+			emailEnabled: true,
+			config: ''
 		},
 		delete: {
 			open: false,
@@ -227,7 +231,57 @@
 		}
 	});
 
-	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true });
+	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true, config: '' });
+
+	function configNumber(key: string, fallback: number): number {
+		try {
+			const v = JSON.parse(modals.edit.config || '{}')[key];
+			return typeof v === 'number' ? v : fallback;
+		} catch {
+			return fallback;
+		}
+	}
+
+	function setConfigNumber(key: string, value: number) {
+		let cfg: Record<string, number> = {};
+		try {
+			cfg = JSON.parse(modals.edit.config || '{}');
+		} catch {
+			/* empty */
+		}
+		cfg[key] = value;
+		modals.edit.config = JSON.stringify(cfg);
+	}
+
+	let editTemplateHasConfig = $derived(
+		modals.edit.templateKey === 'system.disk.smart.temperature' ||
+			modals.edit.templateKey === 'system.disk.smart.wearout'
+	);
+
+	let editConfigDefaults = $derived.by(() => {
+		if (!editTemplateHasConfig) return {};
+		const template = (currentConfig.templates || []).find(
+			(t) => t.key === modals.edit.templateKey
+		);
+		try {
+			return JSON.parse(template?.defaultConfig || '{}');
+		} catch {
+			return {};
+		}
+	});
+
+	let editConfigInvalid = $derived.by(() => {
+		if (!editTemplateHasConfig) return false;
+		if (modals.edit.templateKey === 'system.disk.smart.temperature') {
+			return configNumber('warningCelsius', 55) >= configNumber('criticalCelsius', 65);
+		}
+		if (modals.edit.templateKey === 'system.disk.smart.wearout') {
+			return configNumber('warningPercent', 80) >= configNumber('criticalPercent', 90);
+		}
+		return false;
+	});
+
+	let editConfigInvalidMessage = 'Warning threshold must be lower than critical';
 
 	let createTemplateOptions = $derived.by(() => {
 		return (currentConfig.templates || []).map((template) => ({
@@ -305,21 +359,29 @@
 			return;
 		}
 
+		const template = (currentConfig.templates || []).find(
+			(t) => t.key === selectedRule.templateKey
+		);
+		const config = selectedRule.config || template?.defaultConfig || '';
+
 		modals.edit = {
 			open: true,
 			id: selectedRule.ruleId as number,
+			templateKey: selectedRule.templateKey,
 			templateLabel: selectedRule.templateLabel,
 			targetLabel: selectedRule.targetLabel,
 			active: selectedRule.active,
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
-			emailEnabled: selectedRule.emailEnabled
+			emailEnabled: selectedRule.emailEnabled,
+			config
 		};
 
 		editOriginal = {
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
-			emailEnabled: selectedRule.emailEnabled
+			emailEnabled: selectedRule.emailEnabled,
+			config
 		};
 	}
 
@@ -377,7 +439,8 @@
 		const response = await updateNotificationRule(modals.edit.id, {
 			uiEnabled: modals.edit.uiEnabled,
 			ntfyEnabled: modals.edit.ntfyEnabled,
-			emailEnabled: modals.edit.emailEnabled
+			emailEnabled: modals.edit.emailEnabled,
+			config: modals.edit.config
 		});
 		busy.edit = false;
 
@@ -544,7 +607,7 @@
 {#if modals.edit.open}
 	<Dialog.Root bind:open={modals.edit.open}>
 		<Dialog.Content
-			class="sm:max-w-106.25"
+			class="sm:max-w-150"
 			onInteractOutside={(e) => e.preventDefault()}
 			showCloseButton={true}
 			showResetButton={true}
@@ -553,6 +616,7 @@
 				modals.edit.uiEnabled = editOriginal.uiEnabled;
 				modals.edit.ntfyEnabled = editOriginal.ntfyEnabled;
 				modals.edit.emailEnabled = editOriginal.emailEnabled;
+				modals.edit.config = editOriginal.config;
 			}}
 		>
 			<Dialog.Header>
@@ -566,7 +630,7 @@
 				</Dialog.Title>
 			</Dialog.Header>
 
-			<div class="rounded-md border">
+			<div class="min-w-0 rounded-md border">
 				<Table.Root>
 					<Table.Header class="bg-muted/50">
 						<Table.Row>
@@ -578,7 +642,7 @@
 					<Table.Body>
 						<Table.Row>
 							<Table.Cell>{modals.edit.templateLabel}</Table.Cell>
-							<Table.Cell>{modals.edit.targetLabel}</Table.Cell>
+							<Table.Cell class="truncate max-w-0" title={modals.edit.targetLabel}>{modals.edit.targetLabel}</Table.Cell>
 							<Table.Cell>
 								{#if modals.edit.active}
 									<span class="text-green-500">Active</span>
@@ -590,6 +654,83 @@
 					</Table.Body>
 				</Table.Root>
 			</div>
+
+			{#if editTemplateHasConfig}
+				<div class="space-y-2 pt-1">
+					<p class="text-sm font-medium">
+						{modals.edit.templateKey === 'system.disk.smart.temperature'
+							? 'Temperature Thresholds'
+							: 'Wear-Out Thresholds'}
+					</p>
+					<div class="flex min-w-0 items-start gap-3">
+						<div class="flex min-w-0 flex-1 flex-col gap-1">
+							<label class="text-muted-foreground text-xs">
+								Warning{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}
+							</label>
+							<input
+								type="number"
+								min="0"
+								max={modals.edit.templateKey === 'system.disk.smart.temperature' ? '125' : '100'}
+								class="border-input bg-background ring-offset-background flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								value={configNumber(
+									modals.edit.templateKey === 'system.disk.smart.temperature'
+										? 'warningCelsius'
+										: 'warningPercent',
+									modals.edit.templateKey === 'system.disk.smart.temperature'
+										? editConfigDefaults['warningCelsius'] ?? 55
+										: editConfigDefaults['warningPercent'] ?? 80
+								)}
+								oninput={(e) =>
+									setConfigNumber(
+										modals.edit.templateKey === 'system.disk.smart.temperature'
+											? 'warningCelsius'
+											: 'warningPercent',
+										parseInt(e.currentTarget.value) || 0
+									)}
+							/>
+							<span class="text-muted-foreground text-[10px]"
+								>Default: {modals.edit.templateKey === 'system.disk.smart.temperature'
+									? editConfigDefaults['warningCelsius'] ?? 55
+									: editConfigDefaults['warningPercent'] ?? 80}{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}</span
+							>
+						</div>
+						<div class="flex min-w-0 flex-1 flex-col gap-1">
+							<label class="text-muted-foreground text-xs">
+								Critical{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}
+							</label>
+							<input
+								type="number"
+								min="0"
+								max={modals.edit.templateKey === 'system.disk.smart.temperature' ? '125' : '100'}
+								class="border-input bg-background ring-offset-background flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								value={configNumber(
+									modals.edit.templateKey === 'system.disk.smart.temperature'
+										? 'criticalCelsius'
+										: 'criticalPercent',
+									modals.edit.templateKey === 'system.disk.smart.temperature'
+										? editConfigDefaults['criticalCelsius'] ?? 65
+										: editConfigDefaults['criticalPercent'] ?? 90
+								)}
+								oninput={(e) =>
+									setConfigNumber(
+										modals.edit.templateKey === 'system.disk.smart.temperature'
+											? 'criticalCelsius'
+											: 'criticalPercent',
+										parseInt(e.currentTarget.value) || 0
+									)}
+							/>
+							<span class="text-muted-foreground text-[10px]"
+								>Default: {modals.edit.templateKey === 'system.disk.smart.temperature'
+									? editConfigDefaults['criticalCelsius'] ?? 65
+									: editConfigDefaults['criticalPercent'] ?? 90}{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}</span
+							>
+						</div>
+					</div>
+					{#if editConfigInvalid}
+						<p class="text-destructive text-xs">{editConfigInvalidMessage}</p>
+					{/if}
+				</div>
+			{/if}
 
 			<div class="space-y-2 pt-1">
 				<p class="text-sm font-medium">Channels</p>

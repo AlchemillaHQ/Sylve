@@ -766,6 +766,9 @@ func TestImportUserAlreadyExists(t *testing.T) {
 
 	_, err := svc.ImportUser("alice", "password123", false, CreateUserOpts{})
 	if err == nil {
+		t.Fatalf("expected error for already-existing user")
+	}
+	if strings.Contains(err.Error(), "a_local_user_with_this_username_already_exists") {
 		return
 	}
 	if strings.Contains(err.Error(), "user_already_exists") {
@@ -774,6 +777,7 @@ func TestImportUserAlreadyExists(t *testing.T) {
 	if strings.Contains(err.Error(), "failed_to_get_unix_user_info") {
 		t.Skipf("system call not available in test: %v", err)
 	}
+	t.Fatalf("unexpected error: %v", err)
 }
 
 func TestListImportableUnixUsersEmptyDB(t *testing.T) {
@@ -790,5 +794,193 @@ func TestListImportableUnixUsersEmptyDB(t *testing.T) {
 	}
 	if len(users) > 0 {
 		t.Logf("found %d importable users", len(users))
+	}
+}
+
+func TestCreateUserDuplicateLocal(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+	seedUser(t, svc, models.User{Username: "john", Password: "hashed", Source: "local"})
+
+	user := &models.User{Username: "john", Password: "password123"}
+	err := svc.CreateUser(user, CreateUserOpts{})
+	if err == nil {
+		t.Fatalf("expected error for duplicate local username")
+	}
+	if !strings.Contains(err.Error(), "username_already_exists") {
+		t.Fatalf("expected username_already_exists, got: %v", err)
+	}
+}
+
+func TestCreateUserDuplicateWhenPAMExists(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+	seedUser(t, svc, models.User{Username: "pamjohn", Password: "hashed", Source: "pam"})
+
+	user := &models.User{Username: "pamjohn", Password: "password123"}
+	err := svc.CreateUser(user, CreateUserOpts{})
+	if err == nil {
+		t.Fatalf("expected error when PAM user with same name exists")
+	}
+	if !strings.Contains(err.Error(), "a_pam_user_with_this_username_already_exists") {
+		t.Fatalf("expected a_pam_user_with_this_username_already_exists, got: %v", err)
+	}
+}
+
+func TestImportUserDuplicateWhenLocalExists(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+	seedUser(t, svc, models.User{Username: "localjohn", Password: "hashed", Source: "local"})
+
+	_, err := svc.ImportUser("localjohn", "password123", false, CreateUserOpts{})
+	if err == nil {
+		t.Fatalf("expected error when local user with same name exists")
+	}
+	if !strings.Contains(err.Error(), "a_local_user_with_this_username_already_exists") {
+		t.Fatalf("expected a_local_user_with_this_username_already_exists, got: %v", err)
+	}
+}
+
+func TestListUsersBySourceFilter(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedUser(t, svc, models.User{Username: "local1", Password: "hashed", Source: "local"})
+	seedUser(t, svc, models.User{Username: "local2", Password: "hashed", Source: "local"})
+	seedUser(t, svc, models.User{Username: "pam1", Password: "hashed", Source: "pam"})
+
+	locals, err := svc.ListUsersBySource("local")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if len(locals) != 2 {
+		t.Fatalf("expected 2 local users, got: %d", len(locals))
+	}
+	for _, u := range locals {
+		if u.Source != "local" {
+			t.Fatalf("expected source 'local', got: %s", u.Source)
+		}
+	}
+
+	pams, err := svc.ListUsersBySource("pam")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if len(pams) != 1 {
+		t.Fatalf("expected 1 PAM user, got: %d", len(pams))
+	}
+	if pams[0].Source != "pam" {
+		t.Fatalf("expected source 'pam', got: %s", pams[0].Source)
+	}
+}
+
+func TestListUsersBySourceAll(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedUser(t, svc, models.User{Username: "local1", Password: "hashed", Source: "local"})
+	seedUser(t, svc, models.User{Username: "pam1", Password: "hashed", Source: "pam"})
+
+	all, err := svc.ListUsersBySource("")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 users (all sources), got: %d", len(all))
+	}
+}
+
+func TestListUsersBySourceUnknown(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedUser(t, svc, models.User{Username: "local1", Password: "hashed", Source: "local"})
+
+	results, err := svc.ListUsersBySource("bogus")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 users for unknown source, got: %d", len(results))
+	}
+}
+
+func TestEditUserPAMFieldsIgnoredForLocal(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := seedUser(t, svc, models.User{Username: "localtest", Password: "hashed", Source: "local", UID: 0, Shell: "", HomeDirectory: ""})
+
+	err := svc.EditUser(u.ID, EditUserOpts{
+		Username:      "localtest",
+		UID:           5000,
+		Shell:         "/bin/zsh",
+		HomeDirectory: "/home/local",
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "failed_to_get_user") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	found, _ := svc.GetUserByID(u.ID)
+	if found.UID != 0 {
+		t.Fatalf("UID should not have changed for local user, got: %d", found.UID)
+	}
+	if found.Shell != "" {
+		t.Fatalf("Shell should not have changed for local user, got: %s", found.Shell)
+	}
+	if found.HomeDirectory != "" {
+		t.Fatalf("HomeDirectory should not have changed for local user, got: %s", found.HomeDirectory)
+	}
+}
+
+func TestEditUserLocalSourceNotMutated(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := seedUser(t, svc, models.User{Username: "localuser", Password: "hashed", Source: "local", FullName: "Old"})
+
+	err := svc.EditUser(u.ID, EditUserOpts{
+		Username: "localuser",
+		FullName: "New",
+		Admin:    false,
+	})
+	if err == nil {
+		found, _ := svc.GetUserByID(u.ID)
+		if found.Source != "local" {
+			t.Fatalf("source should remain 'local', got: %s", found.Source)
+		}
+	}
+}
+
+func TestEditUserPAMSourceNotMutated(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := seedUser(t, svc, models.User{Username: "pamuser", Password: "hashed", Source: "pam", FullName: "Old"})
+
+	err := svc.EditUser(u.ID, EditUserOpts{
+		Username: "pamuser",
+		FullName: "New",
+		Admin:    false,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "failed_to_get_user") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if err == nil {
+		found, _ := svc.GetUserByID(u.ID)
+		if found.Source != "pam" {
+			t.Fatalf("source should remain 'pam', got: %s", found.Source)
+		}
+	}
+}
+
+func TestCreateUserSetsSourceToLocal(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+
+	user := &models.User{Username: "newuser", Password: "password123"}
+	err := svc.CreateUser(user, CreateUserOpts{})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	var found models.User
+	if err := svc.DB.First(&found, user.ID).Error; err != nil {
+		t.Fatalf("failed to find created user: %v", err)
+	}
+	if found.Source != "local" {
+		t.Fatalf("expected Source='local', got: %s", found.Source)
 	}
 }

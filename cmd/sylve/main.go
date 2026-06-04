@@ -166,6 +166,9 @@ func main() {
 	notificationService := notificationsService.NewService(d)
 	notificationFacade.SetEmitter(notificationService)
 
+	notificationService.SetDiskService(dS)
+	sysS.(*system.Service).SetDiskService(dS)
+
 	clusterSvc := cS.(*cluster.Service)
 	if err := clusterSvc.MigrateLegacyPorts(); err != nil {
 		logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_cluster_ports")
@@ -224,6 +227,7 @@ func main() {
 	if startAdvancedStartupWorkers {
 		logger.L.Info().Msg("Starting background watchers and queues")
 		go sysS.StartNetlinkWatcher(qCtx)
+		go sysS.StartDiskSmartMonitor(qCtx)
 		go sysS.NetlinkEventsCleaner(qCtx)
 
 		if libvirtSvc.IsVirtualizationEnabled() {

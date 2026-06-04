@@ -53,6 +53,20 @@ func EnforceNotificationRetention(db *gorm.DB, now time.Time) error {
 			Error; err != nil {
 			return fmt.Errorf("failed_to_prune_zfs_notification_suppressions: %w", err)
 		}
+
+		for _, prefix := range []string{
+			notifier.DiskSmartTemperatureKindPrefix,
+			notifier.DiskSmartWearoutKindPrefix,
+			notifier.DiskSmartHealthKindPrefix,
+			notifier.DiskSmartNvmeKindPrefix,
+		} {
+			if err := db.
+				Where("kind LIKE ?", prefix+"%").
+				Delete(&models.NotificationSuppression{}).
+				Error; err != nil {
+				return fmt.Errorf("failed_to_prune_disk_smart_notification_suppressions: %w", err)
+			}
+		}
 	}
 
 	return nil

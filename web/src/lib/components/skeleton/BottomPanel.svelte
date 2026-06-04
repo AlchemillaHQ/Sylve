@@ -169,6 +169,7 @@
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
+		'/api/info/terminal': 'Host Terminal - Session',
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
 		'/api/disk/wipe': 'Disk - Wipe',
 		'/api/network/object/bulk-delete': 'Network Object - Bulk Delete',
@@ -193,6 +194,7 @@
 		'/api/auth/groups/users': 'Auth Group - Members',
 		'/api/auth/groups': 'Auth Group',
 		'/api/auth/users/import': 'Auth User - Import',
+		'/api/auth/users/pam': 'Auth User - PAM',
 		'/api/auth/users': 'Auth User',
 		'/api/samba/config': 'Samba Config - Edit',
 		'/api/zfs/datasets/bulk-delete': 'ZFS Dataset - Bulk Delete',
@@ -206,6 +208,7 @@
 		'/api/vm/reboot': 'VM - Reboot',
 		'/api/vm/description': 'VM - Update Description',
 		'/api/vm/name': 'VM - Update Name',
+		'/api/vm/console': 'VM Console - Session',
 		'/api/vm/templates/convert': 'VM Template - Convert',
 		'/api/vm/templates/create': 'VM Template - Create',
 		'/api/vm/templates': 'VM Template',
@@ -259,6 +262,7 @@
 		'/api/jail/memory': 'Jail - Update Memory',
 		'/api/jail/cpu': 'Jail - Update CPU',
 		'/api/jail/resource-limits': 'Jail - Resource Limits',
+		'/api/jail/console': 'Jail Console - Session',
 		'/api/jail/options/wol': 'Jail Options - Wake-on-LAN',
 		'/api/jail/options/boot-order': 'Jail Options - Boot Order',
 		'/api/jail/options/fstab': 'Jail Options - FSTab',
@@ -405,7 +409,21 @@
 				resolvedAction = 'Login';
 			}
 
-			if (path.startsWith('/api/vm/') && !path.startsWith('/api/vm/templates/')) {
+			if (path === '/api/vm/console') {
+				const params = new URLSearchParams(recordCopy.action?.query || '');
+				const rid = Number(params.get('rid'));
+				if (Number.isFinite(rid) && rid > 0) {
+					const name = vmNameById.get(rid);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path === '/api/jail/console') {
+				const params = new URLSearchParams(recordCopy.action?.query || '');
+				const ctId = Number(params.get('ctid'));
+				if (Number.isFinite(ctId) && ctId > 0) {
+					const name = jailNameByCtId.get(ctId);
+					if (name) resolvedAction += ` - ${name}`;
+				}
+			} else if (path.startsWith('/api/vm/') && !path.startsWith('/api/vm/templates/')) {
 				const last = path.split('/').pop() || '';
 				const rid = Number(last);
 				if (Number.isFinite(rid) && rid > 0) {

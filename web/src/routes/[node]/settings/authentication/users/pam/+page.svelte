@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { listGroups } from '$lib/api/auth/groups';
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
-	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
+	import PamUserForm from '$lib/components/custom/Authentication/PamUserForm.svelte';
 	import ImportUser from '$lib/components/custom/Authentication/ImportUser.svelte';
 	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -75,7 +75,7 @@
 	}
 
 	const users = resource(
-		() => 'users_imported',
+		() => 'users_pam',
 		async (key) => {
 			const results = await listUsers('pam');
 			updateCache(key, results);
@@ -117,6 +117,7 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
 	let modals = $state({
+		create: { open: false },
 		delete: { open: false },
 		edit: { open: false },
 		passkeys: { open: false },
@@ -173,6 +174,10 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
+		<Button onclick={() => (modals.create.open = !modals.create.open)} size="sm" class="h-6">
+			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
+		</Button>
+
 		{@render button('delete')}
 		{@render button('edit')}
 		{@render button('passkeys')}
@@ -184,20 +189,28 @@
 
 	<TreeTable
 		data={tableData}
-		name="tt-users-imported"
+		name="tt-users-pam"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
 		bind:query
 	/>
 </div>
 
+{#if modals.create.open}
+	<PamUserForm
+		bind:open={modals.create.open}
+		users={users.current}
+		groups={groups.current}
+		edit={false}
+		bind:reload
+	/>
+{/if}
+
 {#if modals.edit.open}
-	<CreateOrEdit
+	<PamUserForm
 		bind:open={modals.edit.open}
 		users={users.current}
-		groups={[]}
-		edit={true}
-		pamMode={true}
+		groups={groups.current}
 		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
 		bind:reload
 	/>

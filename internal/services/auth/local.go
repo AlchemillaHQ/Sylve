@@ -102,6 +102,9 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 
 	var existing models.User
 	if err := s.DB.Where("username = ?", user.Username).First(&existing).Error; err == nil {
+		if existing.Source == "pam" {
+			return fmt.Errorf("a_pam_user_with_this_username_already_exists: %s", user.Username)
+		}
 		return fmt.Errorf("username_already_exists: %s", user.Username)
 	}
 
@@ -116,19 +119,205 @@ func (s *Service) GetNextUID() (int, error) {
 	return system.GetNextUnixUID()
 }
 
+func (s *Service) CreatePamUser(user *models.User, opts CreateUserOpts) error {
+	if user.Email != "" && !utils.IsValidEmail(user.Email) {
+		return fmt.Errorf("invalid_email_format: %s", user.Email)
+	}
+
+	if user.Username == "" || len(user.Username) < 3 || len(user.Username) > 128 {
+		return fmt.Errorf("invalid_username_length: %s", user.Username)
+	}
+
+	if !utils.IsValidUsername(user.Username) {
+		return fmt.Errorf("invalid_username_format: %s", user.Username)
+	}
+
+	var existing models.User
+	if err := s.DB.Where("username = ?", user.Username).First(&existing).Error; err == nil {
+		if existing.Source == "local" {
+			return fmt.Errorf("a_local_user_with_this_username_already_exists: %s", user.Username)
+		}
+		return fmt.Errorf("username_already_exists: %s", user.Username)
+	}
+
+	if isProtectedSystemUser(user.Username) {
+		return fmt.Errorf("cannot_create_protected_system_user: %s", user.Username)
+	}
+
+	if user.HomeDirectory != "" && user.HomeDirectory != "/nonexistent" {
+		var homeConflict models.User
+		if err := s.DB.Where("home_directory = ?", user.HomeDirectory).First(&homeConflict).Error; err == nil {
+			return fmt.Errorf("home_directory_already_in_use: %s", user.HomeDirectory)
+		}
+		if entries, err := os.ReadDir(user.HomeDirectory); err == nil && len(entries) > 0 {
+			return fmt.Errorf("home_directory_is_not_empty: %s", user.HomeDirectory)
+		}
+	}
+
+	if user.Password != "" {
+		if len(user.Password) < 8 || len(user.Password) > 128 {
+			return fmt.Errorf("invalid_password_length")
+		}
+		hashed, err := utils.HashPassword(user.Password)
+		if err != nil {
+			return fmt.Errorf("failed_to_hash_password: %w", err)
+		}
+		user.Password = hashed
+	}
+
+	user.Source = "pam"
+
+	primaryGroupName := "sylve_g"
+	if user.PrimaryGroupID != nil {
+		var pg models.Group
+		if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err != nil {
+			return fmt.Errorf("primary_group_not_found: %d", *user.PrimaryGroupID)
+		}
+		if !system.UnixGroupExists(pg.Name) {
+			return fmt.Errorf("unix_group_does_not_exist: %s", pg.Name)
+		}
+		primaryGroupName = pg.Name
+	}
+
+	createHome := user.HomeDirectory != "" && user.HomeDirectory != "/nonexistent"
+	if err := system.CreateUnixUserFull(system.UnixUserCreateOpts{
+		Name:       user.Username,
+		UID:        user.UID,
+		Shell:      user.Shell,
+		Dir:        user.HomeDirectory,
+		Group:      primaryGroupName,
+		CreateHome: createHome,
+	}); err != nil {
+		return fmt.Errorf("failed_to_create_unix_user: %w", err)
+	}
+
+	if opts.NewPrimaryGroup {
+		groupName := user.Username
+		if !system.UnixGroupExists(groupName) {
+			if err := system.CreateUnixGroup(groupName); err != nil {
+				logger.L.Error().Msgf("failed to create new primary group %s: %v", groupName, err)
+				defer func() { _ = system.DeleteUnixUser(user.Username, true) }()
+				return fmt.Errorf("failed_to_create_primary_group: %w", err)
+			}
+		}
+		newGroup := models.Group{Name: groupName}
+		if err := s.DB.Where("name = ?", groupName).FirstOrCreate(&newGroup).Error; err != nil {
+			logger.L.Warn().Msgf("failed to create primary group record: %v", err)
+		}
+		if err := system.ChangeUnixUserPrimaryGroup(user.Username, groupName); err != nil {
+			defer func() { _ = system.DeleteUnixUser(user.Username, true) }()
+			return fmt.Errorf("failed_to_change_primary_group: %w", err)
+		}
+		user.PrimaryGroupID = &newGroup.ID
+	}
+
+	if user.HomeDirPerms > 0 && createHome {
+		if err := os.Chmod(user.HomeDirectory, os.FileMode(user.HomeDirPerms)); err != nil {
+			logger.L.Warn().Msgf("failed to chmod home directory %s: %v", user.HomeDirectory, err)
+		}
+		uid := user.UID
+		if uid == 0 {
+			uid = user.UID
+		}
+		if err := system.ChownHome(user.HomeDirectory, uid, primaryGroupName); err != nil {
+			logger.L.Warn().Msgf("failed to chown home directory: %v", err)
+		}
+	}
+
+	if user.SSHPublicKey != "" && createHome {
+		if err := system.WriteSSHAuthorizedKey(user.HomeDirectory, user.SSHPublicKey); err != nil {
+			logger.L.Warn().Msgf("failed to write SSH key: %v", err)
+		}
+	}
+
+	if err := s.DB.Create(user).Error; err != nil {
+		defer func() { _ = system.DeleteUnixUser(user.Username, true) }()
+		return fmt.Errorf("failed_to_create_user_record: %w", err)
+	}
+
+	if user.PrimaryGroupID != nil {
+		var pg models.Group
+		if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err == nil {
+			if err := s.DB.Model(&pg).Association("Users").Append(user); err != nil {
+				logger.L.Warn().Msgf("failed to associate user with primary group: %v", err)
+			}
+		}
+	}
+
+	if len(opts.AuxGroupIDs) > 0 {
+		for _, gid := range opts.AuxGroupIDs {
+			if user.PrimaryGroupID != nil && gid == *user.PrimaryGroupID {
+				continue
+			}
+			var ag models.Group
+			if err := s.DB.First(&ag, gid).Error; err != nil {
+				logger.L.Warn().Msgf("auxiliary group %d not found, skipping", gid)
+				continue
+			}
+			if err := system.AddUserToGroup(user.Username, ag.Name); err != nil {
+				logger.L.Warn().Msgf("failed to add user to aux group %s: %v", ag.Name, err)
+			}
+			if err := s.DB.Model(&ag).Association("Users").Append(user); err != nil {
+				logger.L.Warn().Msgf("failed to add aux group association for %s: %v", ag.Name, err)
+			}
+		}
+	}
+
+	if user.DisablePassword {
+		if err := system.DisableUnixUserPassword(user.Username); err != nil {
+			logger.L.Warn().Msgf("failed to disable unix password: %v", err)
+		}
+	}
+
+	if user.Locked {
+		if err := system.LockUnixUser(user.Username); err != nil {
+			logger.L.Warn().Msgf("failed to lock user: %v", err)
+		}
+	}
+
+	if user.DoasEnabled {
+		if err := system.AddDoasPerm(user.Username); err != nil {
+			logger.L.Warn().Msgf("failed to add doas perm: %v", err)
+		}
+	}
+
+	if opts.CreateSamba {
+		if err := sambaUtils.CreateSambaUser(user.Username, user.Password); err != nil {
+			logger.L.Warn().Msgf("failed to create samba user: %v", err)
+		}
+	}
+
+	var sylveGroup models.Group
+	if err := s.DB.Where("name = ?", "sylve_g").First(&sylveGroup).Error; err == nil {
+		if user.PrimaryGroupID == nil || *user.PrimaryGroupID != sylveGroup.ID {
+			if err := system.AddUserToGroup(user.Username, "sylve_g"); err != nil {
+				logger.L.Warn().Msgf("failed to add user to sylve_g unix group: %v", err)
+			}
+			if err := s.DB.Model(&sylveGroup).Association("Users").Append(user); err != nil {
+				logger.L.Warn().Msgf("failed to add user to sylve_g group association: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) ImportUser(username string, password string, admin bool, opts CreateUserOpts) (*models.User, error) {
 	if isProtectedSystemUser(username) {
 		return nil, fmt.Errorf("cannot_import_system_user: %s", username)
 	}
 
+	var existing models.User
+	if err := s.DB.Where("username = ?", username).First(&existing).Error; err == nil {
+		if existing.Source == "local" {
+			return nil, fmt.Errorf("a_local_user_with_this_username_already_exists: %s", username)
+		}
+		return nil, fmt.Errorf("user_already_exists: %s", username)
+	}
+
 	info, err := system.GetUnixUserInfoFull(username)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_unix_user_info: %w", err)
-	}
-
-	var existing models.User
-	if err := s.DB.Where("username = ?", username).First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("user_already_exists: %s", username)
 	}
 
 	if password != "" && (len(password) < 8 || len(password) > 128) {
@@ -434,6 +623,15 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 		}
 
 		if opts.HomeDirectory != "" && opts.HomeDirectory != user.HomeDirectory {
+			if opts.HomeDirectory != "/nonexistent" {
+				var homeConflict models.User
+				if err := s.DB.Where("home_directory = ? AND id != ?", opts.HomeDirectory, userID).First(&homeConflict).Error; err == nil {
+					return fmt.Errorf("home_directory_already_in_use: %s", opts.HomeDirectory)
+				}
+				if entries, err := os.ReadDir(opts.HomeDirectory); err == nil && len(entries) > 0 {
+					return fmt.Errorf("home_directory_is_not_empty: %s", opts.HomeDirectory)
+				}
+			}
 			createHome := opts.HomeDirectory != "/nonexistent"
 			if err := system.ChangeUnixUserHomeDir(user.Username, opts.HomeDirectory, createHome); err != nil {
 				return fmt.Errorf("failed_to_change_home_directory: %w", err)

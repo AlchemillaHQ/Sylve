@@ -67,7 +67,8 @@ export const NotificationRuleSchema = z.object({
 	active: z.boolean(),
 	uiEnabled: z.boolean(),
 	ntfyEnabled: z.boolean(),
-	emailEnabled: z.boolean()
+	emailEnabled: z.boolean(),
+	config: z.string()
 });
 
 export const NotificationRuleTemplateTargetSchema = z.object({
@@ -80,7 +81,8 @@ export const NotificationRuleTemplateSchema = z.object({
 	label: z.string(),
 	description: z.string(),
 	targetType: z.string(),
-	targets: z.array(NotificationRuleTemplateTargetSchema)
+	targets: z.array(NotificationRuleTemplateTargetSchema),
+	defaultConfig: z.string().optional()
 });
 
 export const NotificationRulesConfigSchema = z.object({
@@ -145,4 +147,5 @@ export type UpdateNotificationRuleInput = {
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
 	emailEnabled: boolean;
+	config?: string;
 };

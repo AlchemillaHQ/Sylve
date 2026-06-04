@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { listGroups } from '$lib/api/auth/groups';
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
-	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
+	import LocalUserForm from '$lib/components/custom/Authentication/LocalUserForm.svelte';
 	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -183,19 +183,17 @@
 </div>
 
 {#if modals.create.open}
-	<CreateOrEdit
+	<LocalUserForm
 		bind:open={modals.create.open}
 		users={users.current}
-		groups={groups.current}
 		bind:reload
 	/>
 {/if}
 
 {#if modals.edit.open}
-	<CreateOrEdit
+	<LocalUserForm
 		bind:open={modals.edit.open}
 		users={users.current}
-		groups={groups.current}
 		edit={true}
 		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
 		bind:reload

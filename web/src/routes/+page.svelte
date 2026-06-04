@@ -1,4 +1,7 @@
-<!-- <span class="icon-[mdi--palette]"></span>
+<!-- 
+<span class="icon-[mdi--palette]"></span>
+<span class="icon-[mdi--account-box]"></span>
+<span class="icon-[mdi--account-arrow-right]"></span>
 <span class="icon-[material-symbols--design-services-outline-rounded]"></span>
 <span class="icon-[mdi--format-list-checks]"></span>
 <span class="icon-[material-symbols--lock]"></span>

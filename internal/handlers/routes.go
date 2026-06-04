@@ -536,6 +536,7 @@ func RegisterRoutes(r *gin.Engine,
 		users.GET("/importable", authHandlers.ListImportableUsersHandler(authService))
 		users.POST("", authHandlers.CreateUserHandler(authService))
 		users.POST("/import", authHandlers.ImportUserHandler(authService))
+		users.POST("/pam", authHandlers.CreatePamUserHandler(authService))
 		users.DELETE("/:id", authHandlers.DeleteUserHandler(authService))
 		users.PUT("", authHandlers.EditUserHandler(authService))
 	}

@@ -19,6 +19,13 @@ var ErrEmitterNotConfigured = errors.New("notifications_emitter_not_configured")
 
 const ZFSPoolStateKindPrefix = "system.zfs.pool_state."
 
+const (
+	DiskSmartTemperatureKindPrefix = "system.disk.smart.temperature."
+	DiskSmartWearoutKindPrefix     = "system.disk.smart.wearout."
+	DiskSmartHealthKindPrefix      = "system.disk.smart.health."
+	DiskSmartNvmeKindPrefix        = "system.disk.smart.nvme."
+)
+
 type EventInput struct {
 	Kind        string            `json:"kind"`
 	Title       string            `json:"title"`
@@ -86,6 +93,54 @@ func PoolFromZFSPoolStateKind(kind string) (string, bool) {
 	return pool, true
 }
 
+func KindForDiskSmart(prefix, diskName string) string {
+	diskName = strings.TrimSpace(strings.ToLower(diskName))
+	if diskName == "" {
+		return prefix
+	}
+
+	return prefix + diskName
+}
+
+func DiskNameFromSmartKind(kind string) (prefix string, diskName string, ok bool) {
+	normalized := strings.TrimSpace(strings.ToLower(kind))
+	for _, prefix := range []string{
+		DiskSmartTemperatureKindPrefix,
+		DiskSmartWearoutKindPrefix,
+		DiskSmartHealthKindPrefix,
+		DiskSmartNvmeKindPrefix,
+	} {
+		if strings.HasPrefix(normalized, prefix) {
+			disk := strings.TrimSpace(normalized[len(prefix):])
+			if disk == "" {
+				return prefix, "", false
+			}
+
+			return prefix, disk, true
+		}
+	}
+
+	return "", "", false
+}
+
 func normalizePoolName(pool string) string {
 	return strings.TrimSpace(strings.ToLower(pool))
+}
+
+var diskSmartKindPrefixes = []string{
+	DiskSmartTemperatureKindPrefix,
+	DiskSmartWearoutKindPrefix,
+	DiskSmartHealthKindPrefix,
+	DiskSmartNvmeKindPrefix,
+}
+
+func IsDiskSmartKind(kind string) bool {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+	for _, prefix := range diskSmartKindPrefixes {
+		if strings.HasPrefix(kind, prefix) {
+			return true
+		}
+	}
+
+	return false
 }

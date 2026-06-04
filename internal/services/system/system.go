@@ -11,6 +11,7 @@ package system
 import (
 	"sync"
 
+	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 
 	"github.com/alchemillahq/gzfs"
@@ -20,10 +21,11 @@ import (
 var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB        *gorm.DB
-	syncMutex sync.Mutex
-	achMutex  sync.Mutex
-	GZFS      *gzfs.Client
+	DB          *gorm.DB
+	syncMutex   sync.Mutex
+	achMutex    sync.Mutex
+	GZFS        *gzfs.Client
+	DiskService diskServiceInterfaces.DiskServiceInterface
 }
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {
@@ -31,4 +33,8 @@ func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.Sy
 		DB:   db,
 		GZFS: gzfs,
 	}
+}
+
+func (s *Service) SetDiskService(ds diskServiceInterfaces.DiskServiceInterface) {
+	s.DiskService = ds
 }

@@ -25,6 +25,7 @@ export interface UserPayload {
     newPrimaryGroup?: boolean;
     primaryGroupId?: number;
     auxGroupIds?: number[];
+    createSamba?: boolean;
 }
 
 export async function createUser(payload: UserPayload): Promise<APIResponse> {
@@ -72,6 +73,10 @@ export async function importUser(payload: ImportUserPayload): Promise<APIRespons
         'POST',
         payload
     );
+}
+
+export async function createPamUser(payload: UserPayload): Promise<APIResponse> {
+    return await apiRequest('/auth/users/pam', APIResponseSchema, 'POST', payload);
 }
 
 export async function listImportableUsers(): Promise<User[]> {

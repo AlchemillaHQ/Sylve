@@ -75,9 +75,10 @@ type notificationRuleCreateRequest struct {
 }
 
 type notificationRuleUpdateRequest struct {
-	UIEnabled    bool `json:"uiEnabled"`
-	NtfyEnabled  bool `json:"ntfyEnabled"`
-	EmailEnabled bool `json:"emailEnabled"`
+	UIEnabled    bool   `json:"uiEnabled"`
+	NtfyEnabled  bool   `json:"ntfyEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+	Config       string `json:"config"`
 }
 
 func List(service *notifications.Service) gin.HandlerFunc {
@@ -406,6 +407,7 @@ func UpdateRule(service *notifications.Service) gin.HandlerFunc {
 			UIEnabled:    req.UIEnabled,
 			NtfyEnabled:  req.NtfyEnabled,
 			EmailEnabled: req.EmailEnabled,
+			Config:       req.Config,
 		})
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

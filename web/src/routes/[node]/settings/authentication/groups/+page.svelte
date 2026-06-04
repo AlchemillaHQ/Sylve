@@ -226,7 +226,11 @@
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
 				disabled={activeRow?.name === 'sylve_g' || activeRow?.name === 'wheel'}
-				title={activeRow?.name === 'sylve_g' ? 'Default system group, cannot be deleted' : activeRow?.name === 'wheel' ? 'System group, cannot be deleted' : 'Delete'}
+				title={activeRow?.name === 'sylve_g'
+					? 'Default system group, cannot be deleted'
+					: activeRow?.name === 'wheel'
+						? 'System group, cannot be deleted'
+						: 'Delete'}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
@@ -379,8 +383,9 @@
 			/>
 
 			{#if activeRow?.name === 'wheel'}
-				<p class="text-muted-foreground text-xs">
-					root is a permanent member of the wheel group and cannot be removed.
+				<p class="text-muted-foreground text-xs text-justify">
+					root is a permanent member of the wheel group and cannot be removed. This restriction is
+					enforced by the system.
 				</p>
 			{/if}
 

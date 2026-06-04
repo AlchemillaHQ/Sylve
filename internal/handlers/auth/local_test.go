@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -55,6 +56,8 @@ func setupRouter(svc *authService.Service) *gin.Engine {
 	r.DELETE("/auth/users/:id", DeleteUserHandler(svc))
 	r.GET("/auth/users/uid/next", GetNextUIDHandler(svc))
 	r.GET("/auth/users/capabilities", UserCapabilitiesHandler())
+	r.POST("/auth/users/import", ImportUserHandler(svc))
+	r.GET("/auth/users/importable", ListImportableUsersHandler(svc))
 	return r
 }
 
@@ -374,5 +377,118 @@ func TestEditUserRequestFields(t *testing.T) {
 	}
 	if req.PrimaryGroupID == nil || *req.PrimaryGroupID != 1 {
 		t.Fatalf("expected PrimaryGroupID=1")
+	}
+}
+
+func TestCreateUserHandlerSuccess(t *testing.T) {
+	svc := newTestAuthService(t)
+	router := setupRouter(svc)
+
+	body := map[string]any{
+		"username": "newuser",
+		"password": "password123",
+		"admin":    false,
+	}
+	w := performJSON(t, router, "POST", "/auth/users", body)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp.Status != "success" {
+		t.Fatalf("expected status 'success', got: %s", resp.Status)
+	}
+}
+
+func TestCreateUserHandlerDuplicateWithPAM(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "pamuser", Password: "hashed", Source: "pam"})
+	router := setupRouter(svc)
+
+	body := map[string]any{
+		"username": "pamuser",
+		"password": "password123",
+		"admin":    false,
+	}
+	w := performJSON(t, router, "POST", "/auth/users", body)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if !strings.Contains(resp.Error, "a_pam_user_with_this_username_already_exists") {
+		t.Fatalf("expected a_pam_user_... error, got: %s", resp.Error)
+	}
+}
+
+func TestEditUserHandlerSuccess(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "editme", Password: "hashed", Source: "local"})
+	router := setupRouter(svc)
+
+	body := map[string]any{
+		"id":       1,
+		"username": "editme",
+		"fullName": "New Name",
+		"admin":    false,
+	}
+	w := performJSON(t, router, "PUT", "/auth/users", body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp.Status != "success" {
+		t.Fatalf("expected status 'success', got: %s", resp.Status)
+	}
+}
+
+func TestListUsersHandlerFilterBySource(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "local1", Password: "hashed", Source: "local"})
+	svc.DB.Create(&models.User{Username: "local2", Password: "hashed", Source: "local"})
+	svc.DB.Create(&models.User{Username: "pam1", Password: "hashed", Source: "pam"})
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, "GET", "/auth/users?source=local", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp1 internal.APIResponse[[]models.User]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp1); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(resp1.Data) != 2 {
+		t.Fatalf("expected 2 local users, got: %d", len(resp1.Data))
+	}
+
+	w = performJSON(t, router, "GET", "/auth/users?source=pam", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp2 internal.APIResponse[[]models.User]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(resp2.Data) != 1 {
+		t.Fatalf("expected 1 PAM user, got: %d", len(resp2.Data))
+	}
+}
+
+func TestDeleteUserHandlerSuccess(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "delete_me", Password: "hashed", Source: "local"})
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, "DELETE", "/auth/users/1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp.Status != "success" {
+		t.Fatalf("expected status 'success', got: %s", resp.Status)
+	}
+
+	var count int64
+	svc.DB.Model(&models.User{}).Where("username = ?", "delete_me").Count(&count)
+	if count != 0 {
+		t.Fatalf("expected user to be deleted, got: %d rows", count)
 	}
 }

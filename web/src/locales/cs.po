@@ -204,6 +204,7 @@ msgstr "Ověřování"
 msgid "Users"
 msgstr "Uživatelé"
 
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Groups"
 msgstr "Skupiny"
@@ -535,6 +536,7 @@ msgstr "Uzel"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "User"
 msgstr "Uživatel"
 
@@ -586,6 +588,7 @@ msgid "Copied response to clipboard"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -711,6 +714,8 @@ msgid "Object ({0} properties)"
 msgstr "Objekt ({0} vlastností)"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Username"
 msgstr "Uživatelské jméno"
@@ -721,6 +726,8 @@ msgstr "Zadejte své uživatelské jméno"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password"
@@ -846,6 +853,7 @@ msgstr "Poznámku se nepodařilo vytvořit"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -916,6 +924,7 @@ msgstr "Zobrazit"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -955,6 +964,7 @@ msgstr "Smazat"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -998,6 +1008,7 @@ msgstr "Dávkové smazání"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -1098,6 +1109,8 @@ msgid "This is a note"
 msgstr "Toto je poznámka"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
@@ -1449,10 +1462,16 @@ msgstr "Poslední ping"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Username already exists"
 msgstr "Takové uživatelské jméno už v systému existuje"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Invalid email address"
 msgstr "Neplatná e-mailová adresa"
 
@@ -1460,10 +1479,14 @@ msgstr "Neplatná e-mailová adresa"
 #~ msgstr "Je třeba, aby heslo bylo alespoň 8 znaků dlouhé"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Failed to create user"
 msgstr "Uživatele se nepodařilo vytvořit"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "User created"
 msgstr "Uživatel vytvořen"
 
@@ -1471,26 +1494,36 @@ msgstr "Uživatel vytvořen"
 #~ msgstr "Nevybrán žádný uživatel k upravení"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Failed to edit user"
 msgstr "Uživatele se nepodařilo upravit"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "User edited"
 msgstr "Uživatel upraven"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
 msgid "Create User"
 msgstr "Vytvořit uživatele"
 
 #. 0: user?.username
+#. 0: user?.username
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
 msgid "Edit User - {0}"
 msgstr "Upravit uživatele – {0}"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "E-Mail"
 msgstr "E-mail"
 
@@ -1500,10 +1533,14 @@ msgstr "Zadejte nebo nechejte vytvořit heslo"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Admin"
 msgstr "Správce"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
@@ -1745,6 +1782,7 @@ msgstr "Opravdu to chcete?"
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
@@ -2159,6 +2197,7 @@ msgstr "Vyberte datovou sadu"
 #~ msgid "Read-Only Groups"
 #~ msgstr "Skupiny pouze pro čtení"
 
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select groups"
@@ -2192,6 +2231,7 @@ msgid "Search..."
 msgstr "Hledat…"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/TreeTable/Search.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2840,6 +2880,7 @@ msgid "<0/> New File"
 msgstr "<0/> Nový soubor"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New Folder"
 msgstr "<0/> Nová složka"
@@ -3840,9 +3881,8 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Never"
 msgstr "Nikdy"
 
@@ -4168,6 +4208,8 @@ msgstr "Ano"
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "No"
 msgstr "Ne"
@@ -5737,6 +5779,7 @@ msgstr "Úložiště databáze"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Import"
 msgstr "Naimportovat"
 
@@ -5914,7 +5957,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6897,6 +6940,7 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -6932,6 +6976,7 @@ msgstr "Skupina smazána"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Last Usage"
 msgstr "Naposledy využito"
 
@@ -6944,12 +6989,14 @@ msgstr "Naposledy využito"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Failed to delete user"
 msgstr "Uživatele se nepodařilo smazat"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "User deleted"
 msgstr "Uživatel smazán"
 
@@ -8737,6 +8784,7 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Passkeys"
 msgstr ""
 
@@ -10262,6 +10310,9 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Pending"
 msgstr ""
 
@@ -10382,6 +10433,7 @@ msgid "Rule Settings"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Select"
 msgstr ""
 
@@ -12398,23 +12450,34 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Username is required"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Invalid username format"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Password is required"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Password must be at least 8 characters"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Passwords do not match"
 msgstr ""
 
@@ -12434,10 +12497,14 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Full Name"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "John Doe"
 msgstr ""
 
@@ -12448,6 +12515,8 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Confirm Password"
 msgstr ""
 
@@ -12457,29 +12526,35 @@ msgstr ""
 #~ msgid "New Primary Group (create group named after username)"
 #~ msgstr ""
 
-#~ msgid "Primary Group"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Primary Group"
+msgstr ""
 
 #~ msgid "Select primary group..."
 #~ msgstr ""
 
-#~ msgid "Auxiliary Groups"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Auxiliary Groups"
+msgstr ""
 
 #~ msgid "Select auxiliary groups..."
 #~ msgstr ""
 
-#~ msgid "Home Directory"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Home Directory"
+msgstr ""
 
-#~ msgid "Home Directory Permissions"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Home Directory Permissions"
+msgstr ""
 
-#~ msgid "Read"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Read"
+msgstr ""
 
-#~ msgid "Write"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Write"
+msgstr ""
 
 #~ msgid "Execute"
 #~ msgstr ""
@@ -12493,17 +12568,20 @@ msgstr ""
 #~ msgid "Octal: 0{0}"
 #~ msgstr ""
 
-#~ msgid "SSH Public Key"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "SSH Public Key"
+msgstr ""
 
-#~ msgid "Shell"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Shell"
+msgstr ""
 
 #~ msgid "Select shell..."
 #~ msgstr ""
 
-#~ msgid "Disable Password"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Disable Password"
+msgstr ""
 
 #~ msgid "Lock User"
 #~ msgstr ""
@@ -12530,6 +12608,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Failed to create folder"
 msgstr ""
 
@@ -12537,34 +12616,42 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "New folder name"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Confirm"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "No subdirectories — right-click to create one"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "<0/> New Folder inside"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "<0/> New Folder here"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "<0/> Select Directory"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Go up"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Loading…"
 msgstr ""
 
@@ -13220,8 +13307,9 @@ msgstr ""
 msgid "Select interfaces"
 msgstr ""
 
-#~ msgid "Browse"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Browse"
+msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
@@ -13520,19 +13608,23 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Cannot delete this user"
 msgstr ""
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
 msgid "Cannot edit this user"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Saving…"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Creating…"
 msgstr ""
 
@@ -13540,9 +13632,8 @@ msgstr ""
 msgid "Default system group, cannot be deleted"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "root is a permanent member of the wheel group and cannot be removed."
-msgstr ""
+#~ msgid "root is a permanent member of the wheel group and cannot be removed."
+#~ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "System group, cannot be deleted"
@@ -13955,13 +14046,11 @@ msgstr ""
 msgid "Source is encrypted"
 msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Children on target will be restored recursively."
-msgstr ""
+#~ msgid "Children on target will be restored recursively."
+#~ msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "The dataset has child datasets on the target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config or use OOB Restore to recover children separately."
-msgstr ""
+#~ msgid "The dataset has child datasets on the target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config or use OOB Restore to recover children separately."
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Recursive backup"
@@ -14010,16 +14099,176 @@ msgstr ""
 msgid "Capacity threshold (%)"
 msgstr ""
 
-#~ msgid "Local"
-#~ msgstr ""
+#: src/routes/[node]/+layout.svelte
+msgid "Local"
+msgstr ""
 
 #~ msgid "Imported"
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Leave blank to keep current"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Create Samba User"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "root is a permanent member of the wheel group and cannot be removed. This restriction is enforced by the system."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Encrypted"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Show only active lineage"
+msgstr ""
+
+#. 0: selectedSnapshotInfo.childCount
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "{0} child dataset(s) on target will be restored recursively."
+msgstr ""
+
+#. 0: selectedSnapshotInfo.childCount
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config or use OOB Restore to recover children separately."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Crash Recovery"
+msgstr ""
+
+#. 0: String(policyModal.crashRestartMax || 3)
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Yes (max {0} restarts)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Pool Health Check"
+msgstr ""
+
+#. 0: String(policyModal.poolCapacityPct || 90)
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Yes (alert at {0}%)"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Identity"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Filesystem"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Security"
+msgstr ""
+
+#. 0: user?.username
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Edit PAM User - {0}"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Create new primary group"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Select primary group"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Exec"
+msgstr ""
+
+#. 0: computedPerms
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "{0} (octal)"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Select shell"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Locked"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Doas Enabled"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth User - PAM"
+msgstr ""
+
+#~ msgid "May lose the newest writes"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "Failed to detach"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Create PAM User"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Samba User"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Terminal - Session"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Console - Session"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Console - Session"
+msgstr ""
+
+#~ msgid "UID"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "UID must be 1000 or higher"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Home directory is already in use by another user"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Warning threshold must be lower than critical"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Temperature Thresholds"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Wear-Out Thresholds"
+msgstr ""
+
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Warning{0}"
+msgstr ""
+
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Critical{0}"
+msgstr ""
+
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['warningCelsius'] ?? 55 \\: editConfigDefaults['warningPercent'] ?? 80; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['criticalCelsius'] ?? 65 \\: editConfigDefaults['criticalPercent'] ?? 90; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Default: {0}{1}"
 msgstr ""

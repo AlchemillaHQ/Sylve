@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -21,10 +22,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	hub "github.com/alchemillahq/sylve/internal/events"
+	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -46,12 +49,29 @@ const (
 const (
 	RuleTemplateZFSPoolState   = "system.zfs.pool_state"
 	ruleTemplateTargetTypePool = "pool"
+
+	RuleTemplateDiskSmartTemperature = "system.disk.smart.temperature"
+	RuleTemplateDiskSmartWearout     = "system.disk.smart.wearout"
+	RuleTemplateDiskSmartHealth      = "system.disk.smart.health"
+	RuleTemplateDiskSmartNvme        = "system.disk.smart.nvme"
+	ruleTemplateTargetTypeDisk       = "disk"
+
+	diskSmartConfigTemperatureWarningCelsius  = "warningCelsius"
+	diskSmartConfigTemperatureCriticalCelsius = "criticalCelsius"
+	diskSmartConfigWearoutWarningPercent      = "warningPercent"
+	diskSmartConfigWearoutCriticalPercent     = "criticalPercent"
+
+	defaultTemperatureWarningCelsius  = 55.0
+	defaultTemperatureCriticalCelsius = 65.0
+	defaultWearoutWarningPercent      = 80.0
+	defaultWearoutCriticalPercent     = 90.0
 )
 
 type ruleTemplateDefinition struct {
 	View            RuleTemplateView
 	AutoCreateRules bool
 	ActiveTargets   map[string]struct{}
+	DefaultConfig   string
 }
 
 type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error
@@ -59,12 +79,16 @@ type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig
 type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error
 
 type Service struct {
-	DB         *gorm.DB
-	httpClient *http.Client
-	now        func() time.Time
+	DB          *gorm.DB
+	DiskService diskServiceInterfaces.DiskServiceInterface
+	httpClient  *http.Client
+	now         func() time.Time
 
 	ntfySender  NtfySender
 	emailSender EmailSender
+
+	deletedKinds   map[string]bool
+	deletedKindsMu sync.Mutex
 }
 
 type ListScope string
@@ -148,14 +172,16 @@ type RuleConfigEntryView struct {
 	UIEnabled     bool   `json:"uiEnabled"`
 	NtfyEnabled   bool   `json:"ntfyEnabled"`
 	EmailEnabled  bool   `json:"emailEnabled"`
+	Config        string `json:"config"`
 }
 
 type RuleTemplateView struct {
-	Key         string                   `json:"key"`
-	Label       string                   `json:"label"`
-	Description string                   `json:"description"`
-	TargetType  string                   `json:"targetType"`
-	Targets     []RuleTemplateTargetView `json:"targets"`
+	Key           string                   `json:"key"`
+	Label         string                   `json:"label"`
+	Description   string                   `json:"description"`
+	TargetType    string                   `json:"targetType"`
+	Targets       []RuleTemplateTargetView `json:"targets"`
+	DefaultConfig string                   `json:"defaultConfig,omitempty"`
 }
 
 type RuleTemplateTargetView struct {
@@ -187,9 +213,10 @@ type RuleCreateInput struct {
 }
 
 type RuleUpdateInput struct {
-	UIEnabled    bool `json:"uiEnabled"`
-	NtfyEnabled  bool `json:"ntfyEnabled"`
-	EmailEnabled bool `json:"emailEnabled"`
+	UIEnabled    bool   `json:"uiEnabled"`
+	NtfyEnabled  bool   `json:"ntfyEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+	Config       string `json:"config"`
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -203,8 +230,19 @@ func NewService(db *gorm.DB) *Service {
 
 	s.ntfySender = s.sendNtfy
 	s.emailSender = s.sendEmail
+	s.deletedKinds = make(map[string]bool)
 
 	return s
+}
+
+func (s *Service) SetDiskService(ds diskServiceInterfaces.DiskServiceInterface) {
+	s.DiskService = ds
+}
+
+func (s *Service) recordDeletedKind(kind string) {
+	s.deletedKindsMu.Lock()
+	s.deletedKinds[strings.TrimSpace(strings.ToLower(kind))] = true
+	s.deletedKindsMu.Unlock()
 }
 
 func (s *Service) SetNtfySender(sender NtfySender) {
@@ -250,7 +288,7 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
 
-		kindRule, err = s.ensureKindRule(tx, normalized.Kind)
+		kindRule, err = s.ensureKindRule(tx, normalized.Kind, "")
 		if err != nil {
 			return err
 		}
@@ -650,7 +688,7 @@ func (s *Service) GetRuleConfig(ctx context.Context) (RuleConfigView, error) {
 
 	var view RuleConfigView
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -682,7 +720,7 @@ func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) 
 	var view RuleConfigView
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -774,7 +812,7 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 	}
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -828,7 +866,7 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 	}
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -848,6 +886,12 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 		rule.UIEnabled = input.UIEnabled
 		rule.NtfyEnabled = input.NtfyEnabled
 		rule.EmailEnabled = input.EmailEnabled
+		if input.Config != "" {
+			if !json.Valid([]byte(input.Config)) {
+				return fmt.Errorf("invalid_notification_rule_config_json")
+			}
+			rule.Config = input.Config
+		}
 		return tx.Save(&rule).Error
 	})
 	if err != nil {
@@ -866,7 +910,7 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 	}
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -879,7 +923,12 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 			return err
 		}
 
-		return tx.Delete(&rule).Error
+		if err := tx.Delete(&rule).Error; err != nil {
+			return err
+		}
+
+		s.recordDeletedKind(rule.Kind)
+		return nil
 	})
 	if err != nil {
 		return RuleConfigView{}, err
@@ -888,11 +937,17 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 	return s.GetRuleConfig(ctx)
 }
 
-func (s *Service) ensureKindRule(tx *gorm.DB, kind string) (models.NotificationKindRule, error) {
+func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string) (models.NotificationKindRule, error) {
 	kind = strings.TrimSpace(kind)
 	var rule models.NotificationKindRule
 	err := tx.Where("kind = ?", kind).First(&rule).Error
 	if err == nil {
+		if rule.Config == "" && defaultConfig != "" {
+			rule.Config = defaultConfig
+			if saveErr := tx.Save(&rule).Error; saveErr != nil {
+				return models.NotificationKindRule{}, saveErr
+			}
+		}
 		return rule, nil
 	}
 
@@ -905,6 +960,7 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string) (models.NotificationK
 		UIEnabled:    true,
 		NtfyEnabled:  true,
 		EmailEnabled: true,
+		Config:       defaultConfig,
 	}
 	if err := tx.Create(&rule).Error; err != nil {
 		return models.NotificationKindRule{}, err
@@ -926,7 +982,7 @@ func (s *Service) listActivePools(tx *gorm.DB) ([]string, error) {
 	return normalizePoolNames(settings.Pools), nil
 }
 
-func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
+func (s *Service) loadRuleTemplateDefinitions(ctx context.Context, tx *gorm.DB) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
 	pools, err := s.listActivePools(tx)
 	if err != nil {
 		return nil, nil, err
@@ -956,12 +1012,127 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB) ([]*ruleTemplateDefin
 		},
 	}
 
+	diskDefs := s.buildDiskSmartTemplateDefinitions(ctx)
+	definitions = append(definitions, diskDefs...)
+
 	definitionsByKey := make(map[string]*ruleTemplateDefinition, len(definitions))
 	for _, definition := range definitions {
 		definitionsByKey[definition.View.Key] = definition
 	}
 
 	return definitions, definitionsByKey, nil
+}
+
+func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*ruleTemplateDefinition {
+	if s.DiskService == nil {
+		return nil
+	}
+
+	disks, err := s.DiskService.GetDiskDevices(ctx)
+	if err != nil {
+		return nil
+	}
+
+	type deviceInfo struct{ key, label string }
+	allDisks := make([]deviceInfo, 0)
+	ssdDisks := make([]deviceInfo, 0)
+	nvmeDisks := make([]deviceInfo, 0)
+	for _, disk := range disks {
+		if disk.SmartData == nil {
+			continue
+		}
+		label := disk.Device
+		if disk.Model != "" {
+			label = fmt.Sprintf("%s (%s)", disk.Device, disk.Model)
+		}
+		info := deviceInfo{key: disk.Device, label: label}
+		allDisks = append(allDisks, info)
+		if disk.Type == "SSD" || disk.Type == "NVMe" {
+			ssdDisks = append(ssdDisks, info)
+		}
+		if disk.Type == "NVMe" {
+			nvmeDisks = append(nvmeDisks, info)
+		}
+	}
+
+	targetViews := func(devs []deviceInfo) ([]RuleTemplateTargetView, map[string]struct{}) {
+		views := make([]RuleTemplateTargetView, 0, len(devs))
+		active := make(map[string]struct{}, len(devs))
+		for _, dev := range devs {
+			views = append(views, RuleTemplateTargetView{
+				Key:   dev.key,
+				Label: dev.label,
+			})
+			active[dev.key] = struct{}{}
+		}
+		return views, active
+	}
+
+	tempViews, tempActive := targetViews(allDisks)
+	healthViews, healthActive := targetViews(allDisks)
+	wearViews, wearActive := targetViews(ssdDisks)
+	nvmeViews, nvmeActive := targetViews(nvmeDisks)
+
+	tempCfg, _ := json.Marshal(map[string]float64{
+		diskSmartConfigTemperatureWarningCelsius:  defaultTemperatureWarningCelsius,
+		diskSmartConfigTemperatureCriticalCelsius: defaultTemperatureCriticalCelsius,
+	})
+
+	wearCfg, _ := json.Marshal(map[string]float64{
+		diskSmartConfigWearoutWarningPercent:  defaultWearoutWarningPercent,
+		diskSmartConfigWearoutCriticalPercent: defaultWearoutCriticalPercent,
+	})
+
+	return []*ruleTemplateDefinition{
+		{
+			View: RuleTemplateView{
+				Key:           RuleTemplateDiskSmartTemperature,
+				Label:         "Disk Temperature",
+				Description:   "Disk S.M.A.R.T temperature threshold alerts.",
+				TargetType:    ruleTemplateTargetTypeDisk,
+				Targets:       tempViews,
+				DefaultConfig: string(tempCfg),
+			},
+			AutoCreateRules: true,
+			ActiveTargets:   tempActive,
+			DefaultConfig:   string(tempCfg),
+		},
+		{
+			View: RuleTemplateView{
+				Key:           RuleTemplateDiskSmartWearout,
+				Label:         "Disk Wear-Out",
+				Description:   "Disk S.M.A.R.T wear-out threshold alerts (SSD/NVMe).",
+				TargetType:    ruleTemplateTargetTypeDisk,
+				Targets:       wearViews,
+				DefaultConfig: string(wearCfg),
+			},
+			AutoCreateRules: true,
+			ActiveTargets:   wearActive,
+			DefaultConfig:   string(wearCfg),
+		},
+		{
+			View: RuleTemplateView{
+				Key:         RuleTemplateDiskSmartHealth,
+				Label:       "Disk Health",
+				Description: "Disk S.M.A.R.T health status and reallocated/pending sector alerts.",
+				TargetType:  ruleTemplateTargetTypeDisk,
+				Targets:     healthViews,
+			},
+			AutoCreateRules: true,
+			ActiveTargets:   healthActive,
+		},
+		{
+			View: RuleTemplateView{
+				Key:         RuleTemplateDiskSmartNvme,
+				Label:       "NVMe S.M.A.R.T",
+				Description: "NVMe-specific critical warnings, available spare, and media error alerts.",
+				TargetType:  ruleTemplateTargetTypeDisk,
+				Targets:     nvmeViews,
+			},
+			AutoCreateRules: true,
+			ActiveTargets:   nvmeActive,
+		},
+	}
 }
 
 func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateDefinition) error {
@@ -975,7 +1146,15 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 			if err != nil {
 				return err
 			}
-			if _, err := s.ensureKindRule(tx, kind); err != nil {
+
+			s.deletedKindsMu.Lock()
+			deleted := s.deletedKinds[kind]
+			s.deletedKindsMu.Unlock()
+			if deleted {
+				continue
+			}
+
+			if _, err := s.ensureKindRule(tx, kind, definition.DefaultConfig); err != nil {
 				return err
 			}
 		}
@@ -1045,6 +1224,7 @@ func (s *Service) buildRuleConfigView(definitions []*ruleTemplateDefinition, def
 			UIEnabled:     rule.UIEnabled,
 			NtfyEnabled:   rule.NtfyEnabled,
 			EmailEnabled:  rule.EmailEnabled,
+			Config:        rule.Config,
 		})
 	}
 
@@ -1534,6 +1714,19 @@ func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
 		return RuleTemplateZFSPoolState, normalizeRuleTargetKey(pool), true
 	}
 
+	if prefix, diskName, ok := notifier.DiskNameFromSmartKind(kind); ok {
+		switch prefix {
+		case notifier.DiskSmartTemperatureKindPrefix:
+			return RuleTemplateDiskSmartTemperature, normalizeRuleTargetKey(diskName), true
+		case notifier.DiskSmartWearoutKindPrefix:
+			return RuleTemplateDiskSmartWearout, normalizeRuleTargetKey(diskName), true
+		case notifier.DiskSmartHealthKindPrefix:
+			return RuleTemplateDiskSmartHealth, normalizeRuleTargetKey(diskName), true
+		case notifier.DiskSmartNvmeKindPrefix:
+			return RuleTemplateDiskSmartNvme, normalizeRuleTargetKey(diskName), true
+		}
+	}
+
 	return "", "", false
 }
 
@@ -1551,6 +1744,14 @@ func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
 	switch templateKey {
 	case RuleTemplateZFSPoolState:
 		return notifier.KindForZFSPoolState(targetKey), nil
+	case RuleTemplateDiskSmartTemperature:
+		return notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, targetKey), nil
+	case RuleTemplateDiskSmartWearout:
+		return notifier.KindForDiskSmart(notifier.DiskSmartWearoutKindPrefix, targetKey), nil
+	case RuleTemplateDiskSmartHealth:
+		return notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, targetKey), nil
+	case RuleTemplateDiskSmartNvme:
+		return notifier.KindForDiskSmart(notifier.DiskSmartNvmeKindPrefix, targetKey), nil
 	default:
 		return "", fmt.Errorf("notification_rule_template_not_found")
 	}
@@ -1581,7 +1782,7 @@ func suppressionKey(kind, fingerprint string) string {
 
 func shouldPersistSuppressionForKind(kind string) bool {
 	kind = strings.TrimSpace(strings.ToLower(kind))
-	return !strings.HasPrefix(kind, notifier.ZFSPoolStateKindPrefix)
+	return !strings.HasPrefix(kind, notifier.ZFSPoolStateKindPrefix) && !notifier.IsDiskSmartKind(kind)
 }
 
 func ntfyTagForSeverity(severity string) string {
