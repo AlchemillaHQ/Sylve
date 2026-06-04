@@ -123,11 +123,10 @@ func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvm
 			smart.CriticalWarningState.ReadOnly = getInt(valStr)
 		case inCriticalSection && key == "volatile memory backup":
 			smart.CriticalWarningState.VolatileMemoryBackup = getInt(valStr)
+			inCriticalSection = false
 
 		case key == "temperature":
-			if strings.Contains(valStr, "K") {
-				smart.Temperature = getInt(valStr)
-			}
+			smart.Temperature = getInt(valStr)
 
 		case key == "available spare":
 			smart.AvailableSpare = getInt(valStr)
