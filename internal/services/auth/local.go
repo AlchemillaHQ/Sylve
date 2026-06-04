@@ -797,7 +797,12 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 		}
 	}
 
-	if err := s.DB.Omit("Groups").Save(user).Error; err != nil {
+	omitFields := []string{"Groups"}
+	if !isPam {
+		omitFields = append(omitFields, "Shell", "HomeDirectory", "UID", "HomeDirPerms",
+			"SSHPublicKey", "DisablePassword", "Locked", "DoasEnabled", "PrimaryGroupID")
+	}
+	if err := s.DB.Omit(omitFields...).Save(user).Error; err != nil {
 		return fmt.Errorf("failed_to_edit_user: %w", err)
 	}
 

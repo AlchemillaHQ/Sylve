@@ -615,6 +615,39 @@ func isRuleRequestBad(err error) bool {
 	}
 }
 
+func TestRule(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req notifications.TestRuleInput
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_body",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		err := service.TestRule(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_test_notification_rule",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "test_notification_rule_sent",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 func isTestTransportBadRequest(err error) bool {
 	if err == nil {
 		return false

@@ -901,7 +901,7 @@ func TestListUsersBySourceUnknown(t *testing.T) {
 
 func TestEditUserPAMFieldsIgnoredForLocal(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "localtest", Password: "hashed", Source: "local", UID: 0, Shell: "", HomeDirectory: ""})
+	u := seedUser(t, svc, models.User{Username: "localtest", Password: "hashed", Source: "local", UID: 1001, Shell: "/bin/sh", HomeDirectory: "/home/localtest"})
 
 	err := svc.EditUser(u.ID, EditUserOpts{
 		Username:      "localtest",
@@ -916,13 +916,13 @@ func TestEditUserPAMFieldsIgnoredForLocal(t *testing.T) {
 	}
 
 	found, _ := svc.GetUserByID(u.ID)
-	if found.UID != 0 {
+	if found.UID != 1001 {
 		t.Fatalf("UID should not have changed for local user, got: %d", found.UID)
 	}
-	if found.Shell != "" {
+	if found.Shell != "/bin/sh" {
 		t.Fatalf("Shell should not have changed for local user, got: %s", found.Shell)
 	}
-	if found.HomeDirectory != "" {
+	if found.HomeDirectory != "/home/localtest" {
 		t.Fatalf("HomeDirectory should not have changed for local user, got: %s", found.HomeDirectory)
 	}
 }

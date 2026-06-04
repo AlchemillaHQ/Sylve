@@ -38,7 +38,9 @@ func newHandlerTestService(t *testing.T) *notifications.Service {
 		&models.SystemSecrets{},
 	)
 
-	return notifications.NewService(db)
+	svc := notifications.NewService(db)
+	notifier.SetEmitter(svc)
+	return svc
 }
 
 func TestNotificationsCountRequiresAuth(t *testing.T) {
@@ -449,5 +451,69 @@ func TestDeleteRuleHandlerDeletesAndResyncsActiveRule(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected_rule_resynced_after_delete got: %d", count)
+	}
+}
+
+func TestTestRuleHandlerReturns200(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("seed_rule_config_failed: %v", err)
+	}
+
+	r := gin.New()
+	r.POST("/api/notifications/rules/test", TestRule(svc))
+
+	body := []byte(`{"templateKey":"system.zfs.pool_state","targetKey":"zroot","condition":"pool_degraded"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/notifications/rules/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTestRuleHandlerRejectsMissingTemplate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	r := gin.New()
+	r.POST("/api/notifications/rules/test", TestRule(svc))
+
+	body := []byte(`{}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/notifications/rules/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTestRuleHandlerRejectsUnknownTemplate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	r := gin.New()
+	r.POST("/api/notifications/rules/test", TestRule(svc))
+
+	body := []byte(`{"templateKey":"system.nonexistent"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/notifications/rules/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
 	}
 }

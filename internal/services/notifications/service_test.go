@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -30,7 +31,44 @@ func newTestService(t *testing.T) *Service {
 		&models.SystemSecrets{},
 	)
 
-	return NewService(db)
+	svc := NewService(db)
+	notifier.SetEmitter(svc)
+	return svc
+}
+
+type mockDiskService struct {
+	disks []diskServiceInterfaces.Disk
+}
+
+func (m *mockDiskService) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	return m.disks, nil
+}
+
+func (m *mockDiskService) GetSmartData(disk diskServiceInterfaces.DiskInfo) (any, error) {
+	return nil, nil
+}
+
+func (m *mockDiskService) GetWearOut(disk any) (float64, error) {
+	return 0, nil
+}
+
+func (m *mockDiskService) GetDiskSize(device string) (uint64, error) {
+	return 0, nil
+}
+
+func (m *mockDiskService) DestroyPartitionTable(device string) error {
+	return nil
+}
+
+func (m *mockDiskService) IsDiskGPT(device string) bool {
+	return false
+}
+
+func newTestServiceWithDisks(t *testing.T, disks []diskServiceInterfaces.Disk) *Service {
+	t.Helper()
+	svc := newTestService(t)
+	svc.SetDiskService(&mockDiskService{disks: disks})
+	return svc
 }
 
 func TestEmitCreatesAndIncrementsByFingerprint(t *testing.T) {
@@ -967,5 +1005,490 @@ func TestDismissDoesNotPersistSuppressionForZFSPoolState(t *testing.T) {
 	}
 	if suppressions != 0 {
 		t.Fatalf("expected_no_suppression_rows_for_zfs_kind got: %d", suppressions)
+	}
+}
+
+func TestTestRuleEmitsThroughPipeline(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("seed_rule_config_failed: %v", err)
+	}
+
+	err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: RuleTemplateDiskSmartTemperature,
+		TargetKey:   "ada0",
+		Condition:   "temperature_warning",
+	})
+	if err != nil {
+		t.Fatalf("test_rule_failed: %v", err)
+	}
+
+	var count int64
+	if err := svc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatalf("failed_to_count_notifications: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected_1_notification_in_db got: %d", count)
+	}
+}
+
+func TestTestRuleSendsThroughTransports(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	ntfyCalls := 0
+	emailCalls := 0
+	svc.SetNtfySender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error {
+		ntfyCalls++
+		return nil
+	})
+	svc.SetEmailSender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error {
+		emailCalls++
+		return nil
+	})
+
+	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{
+				Name:    "ntfy",
+				Type:    TransportTypeNtfy,
+				Enabled: true,
+				Ntfy:    &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "test"},
+			},
+			{
+				Name:    "smtp",
+				Type:    TransportTypeSMTP,
+				Enabled: true,
+				Email:   &EmailTransportConfigUpdate{SMTPHost: "localhost", SMTPPort: 1025, SMTPFrom: "t@t.com", Recipients: []string{"t@t.com"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_transport_config_failed: %v", err)
+	}
+
+	if err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: RuleTemplateDiskSmartWearout,
+		TargetKey:   "ada0",
+		Condition:   "wearout_critical",
+	}); err != nil {
+		t.Fatalf("test_rule_failed: %v", err)
+	}
+
+	if ntfyCalls != 1 {
+		t.Fatalf("expected_ntfy_called_once got: %d", ntfyCalls)
+	}
+	if emailCalls != 1 {
+		t.Fatalf("expected_email_called_once got: %d", emailCalls)
+	}
+}
+
+func TestTestRuleRejectsUnknownTemplate(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: "system.nonexistent",
+		TargetKey:   "ada0",
+	})
+	if err == nil {
+		t.Fatalf("expected_error_for_unknown_template")
+	}
+	if err.Error() != "notification_rule_template_not_found" {
+		t.Fatalf("expected_template_not_found got: %v", err)
+	}
+}
+
+func TestTestRuleFallsBackToFirstTarget(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	if err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: RuleTemplateDiskSmartTemperature,
+	}); err != nil {
+		t.Fatalf("test_rule_without_target_failed: %v", err)
+	}
+}
+
+func TestTestRuleRejectsTargetNotInTemplate(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: RuleTemplateDiskSmartTemperature,
+		TargetKey:   "nonexistent",
+	})
+	if err == nil {
+		t.Fatalf("expected_error_for_unknown_target")
+	}
+	if err.Error() != "notification_rule_target_not_found" {
+		t.Fatalf("expected_target_not_found got: %v", err)
+	}
+}
+
+func TestDiskSmartTemplatesAppearWhenDiskServiceSet(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	if len(view.Templates) < 5 {
+		t.Fatalf("expected_at_least_5_templates got: %d", len(view.Templates))
+	}
+
+	templateKeys := map[string]bool{}
+	for _, tpl := range view.Templates {
+		templateKeys[tpl.Key] = true
+	}
+	for _, key := range []string{
+		RuleTemplateDiskSmartTemperature,
+		RuleTemplateDiskSmartWearout,
+		RuleTemplateDiskSmartHealth,
+		RuleTemplateDiskSmartNvme,
+		RuleTemplateZFSPoolState,
+	} {
+		if !templateKeys[key] {
+			t.Fatalf("expected_template_%s", key)
+		}
+	}
+}
+
+func TestDiskSmartTemplatesHaveOnlySmartDisks(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada1", Model: "Test NoSMART", Type: "HDD", SmartData: nil},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	for _, tpl := range view.Templates {
+		for _, target := range tpl.Targets {
+			if target.Key == "ada1" {
+				t.Fatalf("disk_without_smart_should_not_be_a_target got: %s in template %s", target.Key, tpl.Key)
+			}
+		}
+	}
+}
+
+func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	var wearTpl *RuleTemplateView
+	for idx := range view.Templates {
+		if view.Templates[idx].Key == RuleTemplateDiskSmartWearout {
+			wearTpl = &view.Templates[idx]
+			break
+		}
+	}
+	if wearTpl == nil {
+		t.Fatalf("expected_wearout_template")
+	}
+
+	hasSSD := false
+	hasNVMe := false
+	hasHDD := false
+	for _, target := range wearTpl.Targets {
+		switch target.Key {
+		case "ada0":
+			hasSSD = true
+		case "nda0":
+			hasNVMe = true
+		case "ada1":
+			hasHDD = true
+		}
+	}
+	if !hasSSD {
+		t.Fatalf("expected_ssd_in_wearout_targets")
+	}
+	if !hasNVMe {
+		t.Fatalf("expected_nvme_in_wearout_targets")
+	}
+	if hasHDD {
+		t.Fatalf("hdd_should_not_be_in_wearout_targets")
+	}
+}
+
+func TestNvmeTemplateTargetsOnlyNVMe(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	var nvmeTpl *RuleTemplateView
+	for idx := range view.Templates {
+		if view.Templates[idx].Key == RuleTemplateDiskSmartNvme {
+			nvmeTpl = &view.Templates[idx]
+			break
+		}
+	}
+	if nvmeTpl == nil {
+		t.Fatalf("expected_nvme_template")
+	}
+	if len(nvmeTpl.Targets) != 1 || nvmeTpl.Targets[0].Key != "nda0" {
+		t.Fatalf("expected_only_nvme_target got: %+v", nvmeTpl.Targets)
+	}
+}
+
+func TestDiskSmartConfigDefaultsWritten(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	tempKind := notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0")
+	wearKind := notifier.KindForDiskSmart(notifier.DiskSmartWearoutKindPrefix, "ada0")
+	healthKind := notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "ada0")
+
+	for _, tc := range []struct {
+		kind           string
+		expectNonEmpty bool
+	}{
+		{tempKind, true},
+		{wearKind, true},
+		{healthKind, false},
+	} {
+		var rule models.NotificationKindRule
+		if err := svc.DB.Where("kind = ?", tc.kind).First(&rule).Error; err != nil {
+			t.Fatalf("failed_to_load_rule kind=%s: %v", tc.kind, err)
+		}
+		if tc.expectNonEmpty && rule.Config == "" {
+			t.Fatalf("expected_non_empty_config_for_%s got empty", tc.kind)
+		}
+		if !tc.expectNonEmpty && rule.Config != "" && rule.Config != "{}" {
+			t.Fatalf("expected_empty_config_for_%s got: %s", tc.kind, rule.Config)
+		}
+	}
+}
+
+func TestDiskSmartTargetLabelsIncludeModel(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "CONSISTENT SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	for _, tpl := range view.Templates {
+		if tpl.Key == RuleTemplateDiskSmartTemperature {
+			if len(tpl.Targets) < 1 {
+				t.Fatalf("expected_targets")
+			}
+			if tpl.Targets[0].Label != "ada0 (CONSISTENT SSD)" {
+				t.Fatalf("expected_label_with_model got: %s", tpl.Targets[0].Label)
+			}
+		}
+	}
+}
+
+func TestUpdateRulePersistsConfig(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	var tempRuleID uint
+	for _, rule := range view.Rules {
+		if rule.TemplateKey == RuleTemplateDiskSmartTemperature && rule.TargetKey == "ada0" {
+			tempRuleID = rule.ID
+			break
+		}
+	}
+	if tempRuleID == 0 {
+		t.Fatalf("expected_temperature_rule")
+	}
+
+	_, err = svc.UpdateRule(context.Background(), tempRuleID, RuleUpdateInput{
+		UIEnabled:    true,
+		NtfyEnabled:  true,
+		EmailEnabled: true,
+		Config:       `{"warningCelsius":45,"criticalCelsius":60}`,
+	})
+	if err != nil {
+		t.Fatalf("update_rule_failed: %v", err)
+	}
+
+	var stored models.NotificationKindRule
+	if err := svc.DB.Where("id = ?", tempRuleID).First(&stored).Error; err != nil {
+		t.Fatalf("failed_to_load_updated_rule: %v", err)
+	}
+	if stored.Config != `{"warningCelsius":45,"criticalCelsius":60}` {
+		t.Fatalf("expected_updated_config got: %s", stored.Config)
+	}
+}
+
+func TestDeleteDiskRuleStaysDeleted(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	var healthRuleID uint
+	for _, rule := range view.Rules {
+		if rule.TemplateKey == RuleTemplateDiskSmartHealth && rule.TargetKey == "ada0" {
+			healthRuleID = rule.ID
+			break
+		}
+	}
+	if healthRuleID == 0 {
+		t.Fatalf("expected_health_rule")
+	}
+
+	if _, err := svc.DeleteRule(context.Background(), healthRuleID); err != nil {
+		t.Fatalf("delete_rule_failed: %v", err)
+	}
+
+	after, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_after_delete_failed: %v", err)
+	}
+
+	for _, rule := range after.Rules {
+		if rule.TemplateKey == RuleTemplateDiskSmartHealth && rule.TargetKey == "ada0" {
+			t.Fatalf("deleted_rule_should_not_reappear")
+		}
+	}
+}
+
+func TestGetRuleConfigWithoutDiskServiceShowsOnlyZFS(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	if len(view.Templates) != 1 {
+		t.Fatalf("expected_1_template_without_disk_service got: %d", len(view.Templates))
+	}
+	if view.Templates[0].Key != RuleTemplateZFSPoolState {
+		t.Fatalf("expected_only_zfs_template got: %s", view.Templates[0].Key)
+	}
+}
+
+func TestTestRuleWithZFSPoolStateTemplate(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("seed_rule_config_failed: %v", err)
+	}
+
+	err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: RuleTemplateZFSPoolState,
+		Condition:   "pool_degraded",
+	})
+	if err != nil {
+		t.Fatalf("test_rule_zfs_failed: %v", err)
+	}
+
+	var notif models.Notification
+	if err := svc.DB.Where("kind = ?", notifier.KindForZFSPoolState("zroot")).First(&notif).Error; err != nil {
+		t.Fatalf("expected_zfs_test_notification: %v", err)
+	}
+	if notif.Severity != models.NotificationSeverityWarning {
+		t.Fatalf("expected_warning_severity_for_degraded got: %s", notif.Severity)
+	}
+}
+
+func TestTestRuleWithNVMeTemplate(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
+	})
+
+	err := svc.TestRule(context.Background(), TestRuleInput{
+		TemplateKey: RuleTemplateDiskSmartNvme,
+		Condition:   "nvme_warning",
+	})
+	if err != nil {
+		t.Fatalf("test_rule_nvme_failed: %v", err)
+	}
+
+	nvmeKind := notifier.KindForDiskSmart(notifier.DiskSmartNvmeKindPrefix, "nda0")
+	var notif models.Notification
+	if err := svc.DB.Where("kind = ?", nvmeKind).First(&notif).Error; err != nil {
+		t.Fatalf("expected_nvme_test_notification: %v", err)
+	}
+}
+
+func TestTestRuleDefaultConditionPerTemplate(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+	})
+
+	tests := []struct {
+		templateKey     string
+		expectedTitle   string
+	}{
+		{RuleTemplateDiskSmartTemperature, "Disk ada0 temperature high: 60 C"},
+		{RuleTemplateDiskSmartWearout, "Disk ada0 wear-out high: 85.0%"},
+		{RuleTemplateDiskSmartHealth, "Disk ada0 S.M.A.R.T health check FAILED"},
+	}
+
+	for _, tc := range tests {
+		if err := svc.TestRule(context.Background(), TestRuleInput{
+			TemplateKey: tc.templateKey,
+			TargetKey:   "ada0",
+		}); err != nil {
+			t.Fatalf("test_rule_failed_for_%s: %v", tc.templateKey, err)
+		}
+
+		kind, _ := ruleKindForTemplateTarget(tc.templateKey, "ada0")
+		var notif models.Notification
+		if err := svc.DB.Where("kind = ?", kind).First(&notif).Error; err != nil {
+			t.Fatalf("expected_notification_for_%s: %v", tc.templateKey, err)
+		}
+		if notif.Title != tc.expectedTitle {
+			t.Fatalf("unexpected_title_for_%s got=%q want=%q", tc.templateKey, notif.Title, tc.expectedTitle)
+		}
 	}
 }

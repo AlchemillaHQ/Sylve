@@ -3,6 +3,7 @@
 		createNotificationRule,
 		deleteNotificationRule,
 		getNotificationRules,
+		testNotificationRule,
 		updateNotificationRule
 	} from '$lib/api/notifications';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -200,7 +201,8 @@
 		refresh: false,
 		create: false,
 		edit: false,
-		delete: false
+		delete: false,
+		test: false
 	});
 
 	let modals = $state({
@@ -228,6 +230,12 @@
 			open: false,
 			id: 0,
 			name: ''
+		},
+		test: {
+			open: false,
+			templateKey: '',
+			targetKey: '',
+			condition: ''
 		}
 	});
 
@@ -483,6 +491,93 @@
 		activeRows = null;
 		await rulesResource.refetch();
 	}
+
+	function openTestModal() {
+		const firstTemplate = createTemplateOptions[0]?.key || '';
+		modals.test = {
+			open: true,
+			templateKey: firstTemplate,
+			targetKey: '',
+			condition: ''
+		};
+	}
+
+	let testTargetOptions = $derived.by(() => {
+		const template = (currentConfig.templates || []).find(
+			(t) => t.key === modals.test.templateKey
+		);
+		return (template?.targets || []).map((t) => ({ key: t.key, label: t.label }));
+	});
+
+	let testConditionOptions = $derived.by(() => {
+		switch (modals.test.templateKey) {
+			case 'system.disk.smart.temperature':
+				return [
+					{ key: 'temperature_warning', label: 'Warning (60 °C)' },
+					{ key: 'temperature_critical', label: 'Critical (70 °C)' }
+				];
+			case 'system.disk.smart.wearout':
+				return [
+					{ key: 'wearout_warning', label: 'Warning (85.0%)' },
+					{ key: 'wearout_critical', label: 'Critical (95.0%)' }
+				];
+			case 'system.disk.smart.health':
+				return [
+					{ key: 'health_failed', label: 'SMART Health Failed' },
+					{ key: 'sector_issues', label: 'Sector Issues' }
+				];
+			case 'system.disk.smart.nvme':
+				return [{ key: 'nvme_warning', label: 'NVMe Warning' }];
+			case 'system.zfs.pool_state':
+				return [
+					{ key: 'pool_degraded', label: 'Degraded' },
+					{ key: 'pool_faulted', label: 'Faulted' }
+				];
+			default:
+				return [];
+		}
+	});
+
+	$effect(() => {
+		if (!modals.test.open) return;
+		if (testTargetOptions.length > 0 && !testTargetOptions.some((t) => t.key === modals.test.targetKey)) {
+			modals.test.targetKey = testTargetOptions[0].key;
+		}
+		if (
+			modals.test.condition &&
+			!testConditionOptions.some((c) => c.key === modals.test.condition)
+		) {
+			modals.test.condition = testConditionOptions[0]?.key || '';
+		} else if (!modals.test.condition) {
+			modals.test.condition = testConditionOptions[0]?.key || '';
+		}
+	});
+
+	async function sendTest() {
+		if (busy.test) return;
+		if (!modals.test.templateKey) {
+			toast.error('Select a template', { position: 'bottom-center' });
+			return;
+		}
+
+		busy.test = true;
+		const response = await testNotificationRule({
+			templateKey: modals.test.templateKey,
+			targetKey: modals.test.targetKey || undefined,
+			condition: modals.test.condition || undefined
+		});
+		busy.test = false;
+
+		if (isAPIResponse(response) && response.status === 'error') {
+			handleAPIError(response);
+			toast.error('Failed to send test notification', { position: 'bottom-center' });
+			return;
+		}
+
+		toast.success('Test notification sent', { position: 'bottom-center' });
+		modals.test.open = false;
+		await rulesResource.refetch();
+	}
 </script>
 
 <div class="flex h-full w-full flex-col overflow-hidden">
@@ -490,6 +585,9 @@
 		<Search bind:query />
 		<Button size="sm" class="h-6" onclick={openCreateModal}>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
+		</Button>
+		<Button size="sm" variant="outline" class="h-6.5" onclick={openTestModal}>
+			<SpanWithIcon icon="icon-[mdi--flask-outline]" size="h-4 w-4" gap="gap-2" title="Test" />
 		</Button>
 		{#if selectedRule}
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openEditModal}>
@@ -747,6 +845,82 @@
 						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
 					{/if}
 					Save
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}
+
+{#if modals.test.open}
+	<Dialog.Root bind:open={modals.test.open}>
+		<Dialog.Content
+			class="sm:max-w-106.25"
+			onInteractOutside={(e) => e.preventDefault()}
+			showCloseButton={true}
+			onClose={() => (modals.test.open = false)}
+		>
+			<Dialog.Header>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[mdi--flask-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Test Notification Rule"
+					/>
+				</Dialog.Title>
+			</Dialog.Header>
+
+			<div class="space-y-3">
+				<SimpleSelect
+					label="Template"
+					options={createTemplateOptions.map((t) => ({ value: t.key, label: t.label }))}
+					bind:value={modals.test.templateKey}
+					onChange={(v) => (modals.test.templateKey = v)}
+					classes={{
+						parent: 'space-y-1',
+						label: 'text-sm font-medium',
+						trigger: 'inline-flex h-9 w-full items-center overflow-hidden px-3 text-left'
+					}}
+				/>
+
+				<SimpleSelect
+					label="Target"
+					options={testTargetOptions.map((t) => ({ value: t.key, label: t.label }))}
+					bind:value={modals.test.targetKey}
+					onChange={(v) => (modals.test.targetKey = v)}
+					disabled={testTargetOptions.length === 0}
+					classes={{
+						parent: 'space-y-1',
+						label: 'text-sm font-medium',
+						trigger: 'inline-flex h-9 w-full items-center overflow-hidden px-3 text-left'
+					}}
+				/>
+
+				{#if testConditionOptions.length > 0}
+					<SimpleSelect
+						label="Condition"
+						options={testConditionOptions.map((c) => ({ value: c.key, label: c.label }))}
+						bind:value={modals.test.condition}
+						onChange={(v) => (modals.test.condition = v)}
+						classes={{
+							parent: 'space-y-1',
+							label: 'text-sm font-medium',
+							trigger: 'inline-flex h-9 w-full items-center overflow-hidden px-3 text-left'
+						}}
+					/>
+				{/if}
+			</div>
+
+			<Dialog.Footer>
+				<Button
+					onclick={sendTest}
+					size="sm"
+					disabled={busy.test || !modals.test.templateKey}
+				>
+					{#if busy.test}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					{/if}
+					Send Test
 				</Button>
 			</Dialog.Footer>
 		</Dialog.Content>

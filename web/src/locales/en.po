@@ -3302,6 +3302,7 @@ msgstr "Source"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -3918,6 +3919,7 @@ msgstr "Behavior"
 msgid "HA State"
 msgstr "HA State"
 
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
@@ -9297,6 +9299,7 @@ msgstr "Template dataset not found"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Template"
 msgstr "Template"
 
@@ -12299,6 +12302,7 @@ msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 msgstr "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Test"
 msgstr "Test"
@@ -13015,11 +13019,13 @@ msgid "Use TLS/STARTTLS"
 msgstr "Use TLS/STARTTLS"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Test notification sent"
 msgstr "Test notification sent"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Failed to send test notification"
 msgstr "Failed to send test notification"
@@ -14273,3 +14279,51 @@ msgstr "Critical{0}"
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Default: {0}{1}"
 msgstr "Default: {0}{1}"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Warning (60 °C)"
+msgstr "Warning (60 °C)"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Critical (70 °C)"
+msgstr "Critical (70 °C)"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Warning (85.0%)"
+msgstr "Warning (85.0%)"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Critical (95.0%)"
+msgstr "Critical (95.0%)"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "SMART Health Failed"
+msgstr "SMART Health Failed"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Sector Issues"
+msgstr "Sector Issues"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "NVMe Warning"
+msgstr "NVMe Warning"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Faulted"
+msgstr "Faulted"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Select a template"
+msgstr "Select a template"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Test Notification Rule"
+msgstr "Test Notification Rule"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Condition"
+msgstr "Condition"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Send Test"
+msgstr "<0/> Send Test"

@@ -81,3 +81,12 @@ export async function updateNotificationRule(
 export async function deleteNotificationRule(id: number): Promise<NotificationRulesConfig> {
 	return await apiRequest(`/notifications/rules/${id}`, NotificationRulesConfigSchema, 'DELETE');
 }
+
+export async function testNotificationRule(payload: {
+	templateKey: string;
+	targetKey?: string;
+	condition?: string;
+	severity?: string;
+}): Promise<APIResponse> {
+	return await apiRequest('/notifications/rules/test', APIResponseSchema, 'POST', payload);
+}

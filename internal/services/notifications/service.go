@@ -219,6 +219,13 @@ type RuleUpdateInput struct {
 	Config       string `json:"config"`
 }
 
+type TestRuleInput struct {
+	TemplateKey string `json:"templateKey"`
+	TargetKey   string `json:"targetKey"`
+	Condition   string `json:"condition"`
+	Severity    string `json:"severity"`
+}
+
 func NewService(db *gorm.DB) *Service {
 	s := &Service{
 		DB: db,
@@ -240,6 +247,10 @@ func (s *Service) SetDiskService(ds diskServiceInterfaces.DiskServiceInterface) 
 }
 
 func (s *Service) recordDeletedKind(kind string) {
+	if !notifier.IsDiskSmartKind(kind) {
+		return
+	}
+
 	s.deletedKindsMu.Lock()
 	s.deletedKinds[strings.TrimSpace(strings.ToLower(kind))] = true
 	s.deletedKindsMu.Unlock()
@@ -543,6 +554,165 @@ func (s *Service) TestTransport(ctx context.Context, id uint) error {
 		return s.emailSender(ctx, cfg, input, password)
 	default:
 		return fmt.Errorf("invalid_transport_type")
+	}
+}
+
+func (s *Service) TestRule(ctx context.Context, input TestRuleInput) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	templateKey := normalizeRuleTemplateKey(input.TemplateKey)
+	if templateKey == "" {
+		return fmt.Errorf("notification_rule_template_required")
+	}
+
+	definitions, _, err := s.loadRuleTemplateDefinitions(ctx, s.DB.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	var definition *ruleTemplateDefinition
+	for _, def := range definitions {
+		if def.View.Key == templateKey {
+			definition = def
+			break
+		}
+	}
+	if definition == nil {
+		return fmt.Errorf("notification_rule_template_not_found")
+	}
+	if len(definition.View.Targets) == 0 {
+		return fmt.Errorf("notification_rule_no_targets")
+	}
+
+	targetKey := normalizeRuleTargetKey(input.TargetKey)
+	if targetKey == "" {
+		targetKey = definition.View.Targets[0].Key
+	}
+	if _, active := definition.ActiveTargets[targetKey]; !active {
+		return fmt.Errorf("notification_rule_target_not_found")
+	}
+
+	now := s.now().UTC()
+	condition := strings.TrimSpace(input.Condition)
+	if condition == "" {
+		condition = defaultTestConditionForTemplate(templateKey)
+	}
+
+	kind, err := ruleKindForTemplateTarget(templateKey, targetKey)
+	if err != nil {
+		return err
+	}
+
+	event := buildTestEventInput(templateKey, targetKey, kind, condition, now)
+	if input.Severity != "" {
+		event.Severity = normalizeSeverity(input.Severity)
+	}
+
+	_, err = notifier.Emit(ctx, event)
+	return err
+}
+
+func buildTestEventInput(templateKey, targetKey, kind, condition string, now time.Time) notifier.EventInput {
+	switch condition {
+	case "temperature_warning":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s temperature high: 60 C", targetKey),
+			Body: fmt.Sprintf("Temperature 60 C exceeds warning threshold configured for disk %s.", targetKey),
+			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "temperature": "60"},
+		}
+	case "temperature_critical":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s temperature critical: 70 C", targetKey),
+			Body: fmt.Sprintf("Temperature 70 C exceeds critical threshold configured for disk %s.", targetKey),
+			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "temperature": "70"},
+		}
+	case "wearout_warning":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s wear-out high: 85.0%%", targetKey),
+			Body: fmt.Sprintf("Wear-out of 85.0%% exceeds warning threshold configured for disk %s.", targetKey),
+			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "wearout": "85.0"},
+		}
+	case "wearout_critical":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s wear-out critical: 95.0%%", targetKey),
+			Body: fmt.Sprintf("Wear-out of 95.0%% exceeds critical threshold configured for disk %s.", targetKey),
+			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "wearout": "95.0"},
+		}
+	case "health_failed":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s S.M.A.R.T health check FAILED", targetKey),
+			Body: fmt.Sprintf("The overall S.M.A.R.T health assessment for disk %s indicates failure.", targetKey),
+			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true"},
+		}
+	case "sector_issues":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s has sector issues", targetKey),
+			Body: fmt.Sprintf("Sector anomalies detected on disk %s: reallocated=5, pending=2.", targetKey),
+			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "reallocated": "5", "pending": "2"},
+		}
+	case "nvme_warning":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s NVMe S.M.A.R.T warning", targetKey),
+			Body: fmt.Sprintf("NVMe S.M.A.R.T issues on disk %s: critical_warning=0x08; available_spare=5%%, threshold=10%%.", targetKey),
+			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "critical_warning": "0x08"},
+		}
+	case "pool_degraded":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("ZFS pool %s vdev pool is DEGRADED", targetKey),
+			Body: fmt.Sprintf("ZFS state-change detected for pool %s: vdev pool is now DEGRADED.", targetKey),
+			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"pool": targetKey, "state": "DEGRADED", "test": "true"},
+		}
+	case "pool_faulted":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("ZFS pool %s vdev pool is FAULTED", targetKey),
+			Body: fmt.Sprintf("ZFS state-change detected for pool %s: vdev pool is now FAULTED.", targetKey),
+			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"pool": targetKey, "state": "FAULTED", "test": "true"},
+		}
+	default:
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("[TEST] %s / %s", templateKey, targetKey),
+			Body: fmt.Sprintf("This is a test notification for template %s on target %s sent at %s.", templateKey, targetKey, now.Format(time.RFC3339)),
+			Severity: string(models.NotificationSeverityInfo), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"test": "true"},
+		}
+	}
+}
+
+func defaultTestConditionForTemplate(templateKey string) string {
+	switch templateKey {
+	case RuleTemplateDiskSmartTemperature:
+		return "temperature_warning"
+	case RuleTemplateDiskSmartWearout:
+		return "wearout_warning"
+	case RuleTemplateDiskSmartHealth:
+		return "health_failed"
+	case RuleTemplateDiskSmartNvme:
+		return "nvme_warning"
+	case RuleTemplateZFSPoolState:
+		return "pool_degraded"
+	default:
+		return ""
 	}
 }
 

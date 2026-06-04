@@ -520,6 +520,7 @@ func RegisterRoutes(r *gin.Engine,
 		notifications.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
 		notifications.POST("/transports/:id/test", notificationsHandlers.TestTransport(notificationService))
 		notifications.GET("/rules", notificationsHandlers.GetRules(notificationService))
+		notifications.POST("/rules/test", notificationsHandlers.TestRule(notificationService))
 		notifications.POST("/rules", notificationsHandlers.CreateRule(notificationService))
 		notifications.PUT("/rules", notificationsHandlers.UpdateRules(notificationService))
 		notifications.PUT("/rules/:id", notificationsHandlers.UpdateRule(notificationService))
