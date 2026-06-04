@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -186,6 +187,13 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error setting up initial users: %v", err)
 	}
 
+	if cfg.Admin.ForcePasswordReset {
+		logger.L.Warn().Msg("Admin force password reset detected; clearing config flag")
+		if err := config.ResetForcePasswordReset(); err != nil {
+			logger.L.Error().Msgf("Failed to clear forcePasswordReset flag: %v", err)
+		}
+	}
+
 	err = initClusterRecord(db)
 	if err != nil {
 		logger.L.Fatal().Msgf("Error initializing cluster record: %v", err)
@@ -273,7 +281,7 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 			needsUpdate = true
 		}
 
-		if adminCfg.Password != "" {
+		if adminCfg.ForcePasswordReset && adminCfg.Password != "" {
 			if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
 				hashed, err := utils.HashPassword(adminCfg.Password)
 				if err != nil {
@@ -282,6 +290,8 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 				}
 				updates["password"] = hashed
 				needsUpdate = true
+				cfg.Admin.ForcePasswordReset = false
+				logger.L.Warn().Msg("Admin password forcefully reset from config")
 			}
 		}
 

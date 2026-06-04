@@ -9,8 +9,9 @@
 package internal
 
 type BaseConfigAdmin struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email              string `json:"email"`
+	Password           string `json:"password"`
+	ForcePasswordReset bool   `json:"forcePasswordReset"`
 }
 
 type TLSConfig struct {

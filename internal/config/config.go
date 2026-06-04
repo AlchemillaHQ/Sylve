@@ -220,11 +220,15 @@ func GetRaftPath() (string, error) {
 	return raftPath, nil
 }
 
-func ResetRaftReset() error {
-	if ParsedConfig.Raft.Reset {
-		ParsedConfig.Raft.Reset = false
+func ResetForcePasswordReset() error {
+	if ParsedConfig.Admin.ForcePasswordReset {
+		ParsedConfig.Admin.ForcePasswordReset = false
 	}
 
+	return writeConfig()
+}
+
+func writeConfig() error {
 	file, err := os.OpenFile(ConfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open config file for writing: %w", err)
@@ -239,4 +243,12 @@ func ResetRaftReset() error {
 	}
 
 	return nil
+}
+
+func ResetRaftReset() error {
+	if ParsedConfig.Raft.Reset {
+		ParsedConfig.Raft.Reset = false
+	}
+
+	return writeConfig()
 }
