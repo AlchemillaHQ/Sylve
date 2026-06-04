@@ -47,7 +47,8 @@
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
-		if (!isValidUsername(properties.username)) return 'Invalid username format';
+		if (!(edit && user && properties.username === user.username) && !isValidUsername(properties.username))
+			return 'Invalid username format';
 		if (!edit && users.some((u) => u.username === properties.username))
 			return 'Username already exists';
 		if (edit && user && users.some((u) => u.id !== user!.id && u.username === properties.username))

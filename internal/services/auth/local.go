@@ -545,7 +545,7 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 		}
 	}
 
-	if !utils.IsValidUsername(opts.Username) {
+	if user.Username != opts.Username && !utils.IsValidUsername(opts.Username) {
 		return fmt.Errorf("invalid_username_format: %s", opts.Username)
 	}
 
