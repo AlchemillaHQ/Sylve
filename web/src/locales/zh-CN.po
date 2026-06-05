@@ -3510,11 +3510,13 @@ msgstr "加载进度失败"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Demoting"
 msgstr "降级中"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Promoting"
 msgstr "升级中"
 
@@ -3920,6 +3922,8 @@ msgid "HA State"
 msgstr "HA 状态"
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
@@ -14300,4 +14304,9 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "<0/> Send Test"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Catching Up"
 msgstr ""

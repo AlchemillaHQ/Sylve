@@ -3510,11 +3510,13 @@ msgstr "Fortschritt konnte nicht geladen werden"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Demoting"
 msgstr "Wird zurückgestuft"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Promoting"
 msgstr "Wird hochgestuft"
 
@@ -3920,6 +3922,8 @@ msgid "HA State"
 msgstr "HA-Status"
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
@@ -14303,4 +14307,9 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "<0/> Send Test"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Catching Up"
 msgstr ""

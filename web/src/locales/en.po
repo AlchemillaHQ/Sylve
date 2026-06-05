@@ -3510,11 +3510,13 @@ msgstr "Failed to load progress"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Demoting"
 msgstr "Demoting"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Promoting"
 msgstr "Promoting"
 
@@ -3920,6 +3922,8 @@ msgid "HA State"
 msgstr "HA State"
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
@@ -14327,3 +14331,8 @@ msgstr "Condition"
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "<0/> Send Test"
 msgstr "<0/> Send Test"
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Catching Up"
+msgstr "Catching Up"

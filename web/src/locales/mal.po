@@ -3510,11 +3510,13 @@ msgstr "പുരോഗതി ലോഡ് ചെയ്യുന്നതിൽ 
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Demoting"
 msgstr "തരംതാഴ്ത്തുന്നു"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Promoting"
 msgstr "സ്ഥാനക്കയറ്റം നൽകുന്നു"
 
@@ -3920,6 +3922,8 @@ msgid "HA State"
 msgstr "HA നില"
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
@@ -14303,4 +14307,9 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "<0/> Send Test"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Catching Up"
 msgstr ""
