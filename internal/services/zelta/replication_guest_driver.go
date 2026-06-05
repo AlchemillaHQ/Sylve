@@ -72,7 +72,7 @@ func (d jailReplicationGuestDriver) selfFence(
 	if reason == "" {
 		reason = replicationFenceReasonPolicyOwnerMismatch
 	}
-	if err := d.service.stopLocalJailIfPresent(guestID); err != nil {
+	if err := d.service.forceKillReplicationJail(ctx, guestID); err != nil {
 		logger.L.Warn().
 			Err(err).
 			Uint("policy_id", policyID).
@@ -128,7 +128,7 @@ func (d vmReplicationGuestDriver) selfFence(
 	if reason == "" {
 		reason = replicationFenceReasonPolicyOwnerMismatch
 	}
-	if err := d.service.stopVMIfPresent(guestID); err != nil {
+	if err := d.service.forceKillReplicationVM(ctx, guestID); err != nil {
 		logger.L.Warn().
 			Err(err).
 			Uint("policy_id", policyID).

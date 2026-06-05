@@ -185,20 +185,15 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 			return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
 
 		case hasByName:
-			if existingByName.ID == target.ID {
-				if backupTargetsEquivalent(existingByName, *target) {
-					return nil
-				}
-				return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
+			if existingByName.ID != target.ID {
+				return fmt.Errorf("backup_target_name_conflict_id_mismatch")
 			}
 
-			updatesWithID := make(map[string]any, len(updates)+1)
-			for key, value := range updates {
-				updatesWithID[key] = value
+			if backupTargetsEquivalent(existingByName, *target) {
+				return nil
 			}
-			updatesWithID["id"] = target.ID
 
-			return tx.Model(&BackupTarget{}).Where("id = ?", existingByName.ID).Updates(updatesWithID).Error
+			return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
 
 		default:
 			return tx.Create(target).Error

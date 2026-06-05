@@ -600,6 +600,7 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	clusterNotes := cluster.Group("/notes")
+	clusterNotes.Use(middleware.RequireLocalAdmin(authService))
 	{
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
@@ -609,6 +610,7 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	clusterBackups := cluster.Group("/backups")
+	clusterBackups.Use(middleware.RequireLocalAdmin(authService))
 	{
 		targets := clusterBackups.Group("/targets")
 		{
@@ -643,10 +645,11 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	clusterReplication := cluster.Group("/replication")
+	clusterReplication.Use(middleware.RequireLocalAdmin(authService))
 	{
 		clusterReplication.GET("/policies", clusterHandlers.ReplicationPolicies(clusterService))
 		clusterReplication.POST("/policies", clusterHandlers.CreateReplicationPolicy(clusterService))
-		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService))
+		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService, zeltaService))
 		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService, zeltaService))
 		clusterReplication.POST("/policies/:id/run", clusterHandlers.RunReplicationPolicyNow(clusterService, zeltaService))
 		clusterReplication.POST("/policies/:id/failover", clusterHandlers.FailoverReplicationPolicy(clusterService, zeltaService))

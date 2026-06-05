@@ -349,8 +349,9 @@ type VM struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 
-	StartedAt *time.Time `json:"startedAt" gorm:"default:null"`
-	StoppedAt *time.Time `json:"stoppedAt" gorm:"default:null"`
+	StartedAt           *time.Time `json:"startedAt" gorm:"default:null"`
+	StoppedAt           *time.Time `json:"stoppedAt" gorm:"default:null"`
+	IntentionallyStopped bool       `json:"intentionallyStopped" gorm:"default:false"`
 }
 
 type VMTemplate struct {

@@ -104,6 +104,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		}
 		jail.StartedAt = &now
 		jail.StoppedAt = nil
+		jail.IntentionallyStopped = false
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
@@ -117,6 +118,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 			}
 		}
 		jail.StoppedAt = &now
+		jail.IntentionallyStopped = true
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
@@ -139,6 +141,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		}
 		jail.StartedAt = &now
 		jail.StoppedAt = nil
+		jail.IntentionallyStopped = false
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}

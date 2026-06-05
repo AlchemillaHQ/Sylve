@@ -201,6 +201,7 @@
 		switch ((status || '').toLowerCase()) {
 			case 'running':
 			case 'demoting':
+			case 'catchup':
 			case 'promoting':
 				return true;
 			default:
@@ -214,6 +215,8 @@
 				return { icon: 'mdi:progress-clock', label: 'Running', className: 'text-yellow-500' };
 			case 'demoting':
 				return { icon: 'mdi:arrow-collapse-right', label: 'Demoting', className: 'text-amber-500' };
+			case 'catchup':
+				return { icon: 'mdi:sync', label: 'Catching Up', className: 'text-indigo-500' };
 			case 'promoting':
 				return { icon: 'mdi:arrow-expand-right', label: 'Promoting', className: 'text-sky-500' };
 			case 'active':
@@ -222,6 +225,8 @@
 				return { icon: 'mdi:check-circle', label: 'Success', className: 'text-green-500' };
 			case 'failed':
 				return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
+			case 'degraded':
+				return { icon: 'mdi:alert-circle-outline', label: 'Degraded', className: 'text-amber-500' };
 			default:
 				return {
 					icon: 'mdi:help-circle-outline',

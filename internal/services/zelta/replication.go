@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,7 +45,9 @@ const (
 	replicationOrphanCleanupInterval  = 5 * time.Minute
 	replicationReceiptCleanupInterval = 5 * time.Minute
 	replicationFailoverDownMissLimit  = 3
+	replicationFailbackHitLimit       = 3
 	replicationCrashRestartLimit      = 3
+	replicationLeaseTTL               = 20 * time.Second
 	replicationLowPoolCapacityPercent = 90
 
 	replicationEventStatusRunning   = "running"
@@ -53,6 +56,7 @@ const (
 	replicationEventStatusActive    = "active"
 	replicationEventStatusSuccess   = "success"
 	replicationEventStatusFailed    = "failed"
+	replicationEventStatusDegraded  = "degraded"
 
 	replicationFailoverRequestSafe  = "safe"
 	replicationFailoverRequestForce = "force"
@@ -60,6 +64,9 @@ const (
 	replicationControlDefaultTimeout = 30 * time.Second
 	replicationControlCatchupTimeout = 2 * time.Hour
 	replicationControlReceiptTimeout = 10 * time.Second
+
+	replicationControlForwardAttempts = 3
+	replicationControlForwardBackoff  = 500 * time.Millisecond
 
 	replicationReceiptForwardAttempts = 3
 	replicationReceiptForwardBackoff  = 500 * time.Millisecond
@@ -362,7 +369,7 @@ func (s *Service) failPolicyTransition(policy *clusterModels.ReplicationPolicy, 
 		transition.Error = "transition_failed"
 	}
 
-	if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition, false); err != nil {
+	if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
 		if transitionErr != nil {
 			return fmt.Errorf("%v; transition_checkpoint_persist_failed: %v", transitionErr, err)
 		}
@@ -417,7 +424,7 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 	transition.CompletedAt = &now
 	transition.OwnerEpoch = replicationPolicyOwnerEpoch(policy)
 	transition.Error = ""
-	if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition, false); err != nil {
+	if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
 		return err
 	}
 
@@ -458,7 +465,7 @@ func (s *Service) resumePolicyTransition(ctx context.Context, policy *clusterMod
 			transition := transitionPayloadFromPolicy(policy)
 			transition.State = clusterModels.ReplicationTransitionStatePromoting
 			transition.Error = ""
-			if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition, false); err != nil {
+			if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
 				return err
 			}
 			policy.TransitionState = clusterModels.ReplicationTransitionStatePromoting
@@ -1032,6 +1039,7 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	skippedNoIdentity := 0
 	attemptedTransfers := 0
 	failedTargets := make([]string, 0)
+	succeededTargets := 0
 
 	// Re-verify the lease immediately before starting transfers.
 	// The lease may have expired or been transferred since the
@@ -1113,32 +1121,11 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 						}
 					}
 				} else if isReplicationTargetModifiedError(err) {
-					_ = s.AppendReplicationEventOutput(event.ID, "target_dataset_diverged_attempting_zelta_rotate")
-					rotateOut, rotateErr := s.RotateWithTargetAndPrefix(ctx, targetSpec, sourceDataset, destSuffix, "ha")
-					if strings.TrimSpace(rotateOut) != "" {
-						_ = s.AppendReplicationEventOutput(event.ID, rotateOut)
-					}
-					if rotateErr != nil {
-						attemptErr = fmt.Errorf(
-							"replication_to_target_%s_failed_after_diverged_target_rotate_failed: %w (original: %v)",
-							targetNodeID,
-							rotateErr,
-							err,
-						)
-					} else {
-						retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
-						if strings.TrimSpace(retryOut) != "" {
-							_ = s.AppendReplicationEventOutput(event.ID, retryOut)
-						}
-						if retryErr != nil {
-							attemptErr = fmt.Errorf(
-								"replication_to_target_%s_failed_after_diverged_target_rotate: %w (original: %v)",
-								targetNodeID,
-								retryErr,
-								err,
-							)
-						}
-					}
+					attemptErr = fmt.Errorf(
+						"replication_to_target_%s_failed_diverged_target_unrecoverable: %w",
+						targetNodeID,
+						err,
+					)
 				} else {
 					attemptErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
 				}
@@ -1190,7 +1177,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 
 			if attemptErr != nil {
 				runErr = attemptErr
-				break
 			}
 		}
 
@@ -1204,6 +1190,8 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 				Msg("replication_target_failed_continuing")
 			failedTargets = append(failedTargets, targetNodeID)
 			runErr = nil
+		} else {
+			succeededTargets++
 		}
 	}
 
@@ -1215,16 +1203,17 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		}
 	}
 
-	// If some targets succeeded and some failed, clear the error
-	// (the replication run succeeded partially). The per-target
-	// receipts already track individual status.
-	if runErr != nil && len(failedTargets) > 0 && eligibleTargets > len(failedTargets) {
+	// If some targets succeeded and some failed, surface a degraded
+	// status so the UI can show a warning rather than hiding failures
+	// behind "success". The per-target receipts still carry details.
+	if succeededTargets > 0 && len(failedTargets) > 0 {
 		logger.L.Warn().
 			Uint("policy_id", policy.ID).
 			Strs("failed_targets", failedTargets).
-			Int("attempted", attemptedTransfers).
+			Int("succeeded", succeededTargets).
+			Int("failed", len(failedTargets)).
 			Msg("replication_partial_success")
-		runErr = nil
+		runErr = fmt.Errorf("replication_degraded:%d_succeeded_%d_failed", succeededTargets, len(failedTargets))
 	}
 
 	s.finalizeReplicationEvent(&event, runErr)
@@ -1270,44 +1259,13 @@ func (s *Service) applyReplicationRetention(
 	}
 	retentionErrors := make([]string, 0)
 
-	pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(
-		ctx,
-		target,
-		sourceDataset,
-		destSuffix,
-		defaultReplicationPruneKeepLast,
-	)
-	if strings.TrimSpace(pruneOutput) != "" {
-		_ = s.AppendReplicationEventOutput(eventID, pruneOutput)
-	}
-	if pruneErr != nil {
-		retentionErrors = append(retentionErrors, fmt.Sprintf("source_prune_scan_failed: %v", pruneErr))
-	} else if len(pruneCandidates) > 0 {
-		if err := s.DestroySnapshots(ctx, pruneCandidates); err != nil {
-			retentionErrors = append(retentionErrors, fmt.Sprintf("source_prune_destroy_failed: %v", err))
-		} else {
-			_ = s.AppendReplicationEventOutput(eventID, fmt.Sprintf("source_prune_completed: %d", len(pruneCandidates)))
-		}
-	}
-
-	targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(
-		ctx,
-		target,
-		sourceDataset,
-		destSuffix,
-		defaultReplicationPruneKeepLast,
-	)
-	if strings.TrimSpace(targetPruneOutput) != "" {
-		_ = s.AppendReplicationEventOutput(eventID, targetPruneOutput)
-	}
-	if targetPruneErr != nil {
-		retentionErrors = append(retentionErrors, fmt.Sprintf("target_prune_scan_failed: %v", targetPruneErr))
-	} else if len(targetPruneCandidates) > 0 {
-		if err := s.DestroyTargetSnapshotsByName(ctx, target, targetPruneCandidates); err != nil {
-			retentionErrors = append(retentionErrors, fmt.Sprintf("target_prune_destroy_failed: %v", err))
-		} else {
-			_ = s.AppendReplicationEventOutput(eventID, fmt.Sprintf("target_prune_completed: %d", len(targetPruneCandidates)))
-		}
+	if err := s.retainReplicationSnapshots(ctx, target, sourceDataset, destSuffix, defaultReplicationPruneKeepLast); err != nil {
+		_ = s.AppendReplicationEventOutput(eventID, fmt.Sprintf("replication_prune_warning: %v", err))
+		logger.L.Warn().
+			Err(err).
+			Uint("event_id", eventID).
+			Str("source_dataset", sourceDataset).
+			Msg("replication_prune_failed")
 	}
 
 	if err := s.trimLocalReplicationLineageDatasets(ctx, sourceDataset, defaultReplicationLineageKeepOld); err != nil {
@@ -1592,25 +1550,7 @@ func (s *Service) replicateWithTargetAndPrefixStreaming(
 	snapPrefix string,
 	onLine func(string),
 ) (string, error) {
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
-	extraEnv := s.buildZeltaEnv(target)
-	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
-	snapshotName := zeltaSnapshotName(strings.TrimSpace(snapPrefix))
-	if strings.TrimSpace(snapPrefix) == "" {
-		snapshotName = zeltaSnapshotName("ha")
-	}
-
-	return runZeltaWithEnvStreaming(
-		ctx,
-		extraEnv,
-		onLine,
-		"backup",
-		"--json",
-		"--snap-name",
-		snapshotName,
-		sourceDataset,
-		zeltaEndpoint,
-	)
+	return s.replicationZFSSend(ctx, target, sourceDataset, destSuffix, snapPrefix, onLine)
 }
 
 func (s *Service) replicationSourceDatasets(ctx context.Context, policy *clusterModels.ReplicationPolicy) ([]string, error) {
@@ -1672,9 +1612,12 @@ func (s *Service) updateReplicationPolicyResult(policy *clusterModels.Replicatio
 		"next_run_at": next,
 	}
 	if runErr != nil {
-		updates["last_status"] = "failed"
-		if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
+		if strings.Contains(runErr.Error(), "replication_degraded") {
+			updates["last_status"] = "degraded"
+		} else if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
 			updates["last_status"] = "blocked"
+		} else {
+			updates["last_status"] = "failed"
 		}
 		updates["last_error"] = runErr.Error()
 	}
@@ -1690,9 +1633,14 @@ func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent
 	now := time.Now().UTC()
 	event.CompletedAt = &now
 	if runErr != nil {
-		event.Status = replicationEventStatusFailed
+		if strings.Contains(runErr.Error(), "replication_degraded") {
+			event.Status = replicationEventStatusDegraded
+			event.Message = "replication_run_degraded"
+		} else {
+			event.Status = replicationEventStatusFailed
+			event.Message = "replication_run_failed"
+		}
 		event.Error = runErr.Error()
-		event.Message = "replication_run_failed"
 	} else {
 		event.Status = replicationEventStatusSuccess
 		event.Error = ""
@@ -1799,6 +1747,89 @@ func (s *Service) releasePolicyTransition(policyID uint) {
 	delete(s.runningTransitions, policyID)
 }
 
+func (s *Service) IsPolicyTransitionRunning(policyID uint) bool {
+	s.transitionMu.Lock()
+	_, exists := s.runningTransitions[policyID]
+	s.transitionMu.Unlock()
+	return exists
+}
+
+const (
+	badgerKeyCrashMisses    = "repl:crash:"
+	badgerKeyDownMisses     = "repl:down:"
+	badgerKeyFailbackHits   = "repl:failback:"
+	badgerCounterTTL        = 86400
+)
+
+func badgerCrashKey(policyID uint) string    { return fmt.Sprintf("%s%d", badgerKeyCrashMisses, policyID) }
+func badgerDownKey(policyID uint) string     { return fmt.Sprintf("%s%d", badgerKeyDownMisses, policyID) }
+
+func badgerCounterGet(key string) uint64 {
+	val, ok := db.GetValue(key)
+	if !ok || len(val) < 8 {
+		return 0
+	}
+	return binary.LittleEndian.Uint64(val)
+}
+
+func badgerCounterSet(key string, val uint64) {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, val)
+	if err := db.SetValue(key, b, badgerCounterTTL); err != nil {
+		logger.L.Warn().Err(err).Str("key", key).Msg("badger_counter_set_failed")
+	}
+}
+
+func badgerCounterIncr(key string, max uint64) uint64 {
+	val := badgerCounterGet(key)
+	val++
+	if val > max {
+		val = max
+	}
+	badgerCounterSet(key, val)
+	return val
+}
+
+func badgerCounterDelete(key string) {
+	if err := db.SetValue(key, nil, 0); err != nil {
+		logger.L.Warn().Err(err).Str("key", key).Msg("badger_counter_delete_failed")
+	}
+}
+
+func (s *Service) crashMissesReset(policyID uint) {
+	badgerCounterSet(badgerCrashKey(policyID), 0)
+}
+
+func (s *Service) crashMissesIncr(policyID uint, max uint64) uint64 {
+	return badgerCounterIncr(badgerCrashKey(policyID), max)
+}
+
+func (s *Service) downMissesReset(policyID uint) {
+	badgerCounterSet(badgerDownKey(policyID), 0)
+}
+
+func (s *Service) downMissesIncr(policyID uint, max uint64) uint64 {
+	return badgerCounterIncr(badgerDownKey(policyID), max)
+}
+
+func (s *Service) downMissesSet(policyID uint, val uint64) {
+	badgerCounterSet(badgerDownKey(policyID), val)
+}
+
+func (s *Service) failbackHitsReset(policyID uint) {
+	badgerCounterSet(fmt.Sprintf("%s%d", badgerKeyFailbackHits, policyID), 0)
+}
+
+func (s *Service) failbackHitsIncr(policyID uint) uint64 {
+	return badgerCounterIncr(fmt.Sprintf("%s%d", badgerKeyFailbackHits, policyID), uint64(replicationFailbackHitLimit+1))
+}
+
+func (s *Service) replicationCountersDelete(policyID uint) {
+	badgerCounterDelete(badgerCrashKey(policyID))
+	badgerCounterDelete(badgerDownKey(policyID))
+	badgerCounterDelete(fmt.Sprintf("%s%d", badgerKeyFailbackHits, policyID))
+}
+
 func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 	if s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader {
 		return nil
@@ -1819,6 +1850,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 	}
 
 	now := time.Now().UTC()
+	var renewals []clusterModels.ReplicationLease
 	for i := range policies {
 		policy := policies[i]
 		if !policy.Enabled {
@@ -1852,33 +1884,31 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 		}
 
 		if status == "online" {
-			s.downMisses[policy.ID] = 0
-			lease := clusterModels.ReplicationLease{
+			s.downMissesReset(policy.ID)
+			renewals = append(renewals, clusterModels.ReplicationLease{
 				PolicyID:    policy.ID,
 				GuestType:   policy.GuestType,
 				GuestID:     policy.GuestID,
 				OwnerNodeID: owner,
 				OwnerEpoch:  ownerEpoch,
-				ExpiresAt:   now.Add(10 * time.Second),
+				ExpiresAt:   now.Add(replicationLeaseTTL),
 				Version:     uint64(now.UnixNano()),
 				LastReason:  "leader_renew",
 				LastActor:   s.Cluster.LocalNodeID(),
-			}
-			if err := s.Cluster.UpsertReplicationLease(lease, false); err != nil {
-				// Lease renewal is critical — retry once before logging failure.
-				// The lease TTL is 10s, tick interval is 5s, so a single 1s
-				// retry is safe and covers transient Raft hiccups.
-				time.Sleep(1 * time.Second)
-				if retryErr := s.Cluster.UpsertReplicationLease(lease, false); retryErr != nil {
-					logger.L.Warn().Err(retryErr).Uint("policy_id", policy.ID).Msg("replication_lease_renew_failed")
-				}
-			}
+			})
 
 			if policy.FailbackMode == clusterModels.ReplicationFailbackAuto &&
 				strings.TrimSpace(policy.SourceNodeID) != "" &&
 				strings.TrimSpace(policy.SourceNodeID) != owner {
-				sourceNode, ok := nodeByID[strings.TrimSpace(policy.SourceNodeID)]
-				if ok && strings.ToLower(strings.TrimSpace(sourceNode.Status)) == "online" {
+				sourceOnline := false
+				if sourceNode, ok := nodeByID[strings.TrimSpace(policy.SourceNodeID)]; ok {
+					sourceOnline = strings.ToLower(strings.TrimSpace(sourceNode.Status)) == "online"
+				}
+				if sourceOnline {
+					fbVal := s.failbackHitsIncr(policy.ID)
+					if fbVal < uint64(replicationFailbackHitLimit) {
+						continue
+					}
 					if err := s.failoverPolicyToNode(
 						ctx,
 						&policy,
@@ -1897,13 +1927,16 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 						}
 						logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("auto_failback_failed")
 					}
+					s.failbackHitsReset(policy.ID)
+				} else {
+					s.failbackHitsReset(policy.ID)
 				}
 			}
 			continue
 		}
 
-		s.downMisses[policy.ID]++
-		if s.downMisses[policy.ID] < replicationFailoverDownMissLimit {
+		downVal := s.downMissesIncr(policy.ID, uint64(replicationFailoverDownMissLimit+1))
+		if downVal < uint64(replicationFailoverDownMissLimit) {
 			continue
 		}
 
@@ -1943,7 +1976,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				StartedAt:    now,
 				CompletedAt:  &now,
 			}, false)
-			s.downMisses[policy.ID] = replicationFailoverDownMissLimit - 1
+			s.downMissesSet(policy.ID, uint64(replicationFailoverDownMissLimit-1))
 			continue
 		}
 
@@ -1996,7 +2029,16 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			continue
 		}
 
-		s.downMisses[policy.ID] = 0
+		s.downMissesReset(policy.ID)
+	}
+
+	if len(renewals) > 0 {
+		if err := s.Cluster.UpsertReplicationLeasesBatch(renewals); err != nil {
+			time.Sleep(1 * time.Second)
+			if retryErr := s.Cluster.UpsertReplicationLeasesBatch(renewals); retryErr != nil {
+				logger.L.Warn().Err(retryErr).Int("count", len(renewals)).Msg("replication_lease_batch_renew_failed")
+			}
+		}
 	}
 
 	return nil
@@ -2419,7 +2461,7 @@ func (s *Service) runPolicyOwnershipTransition(
 		RequestedAt:  &eventStartedAt,
 	}
 	persistTransition := func() error {
-		return s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition, false)
+		return s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition)
 	}
 	appendStepError := func(base error, label string, detail error) error {
 		if detail == nil {
@@ -2462,10 +2504,8 @@ func (s *Service) runPolicyOwnershipTransition(
 		rollbackReq := s.replicationPolicyToReq(policy)
 		if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 			rollbackReq.SourceNodeID = rollbackOwner
-			policy.SourceNodeID = rollbackOwner
 		} else if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned && previousSourceNodeID != "" {
 			rollbackReq.SourceNodeID = previousSourceNodeID
-			policy.SourceNodeID = previousSourceNodeID
 		}
 		rollbackReq.ActiveNodeID = rollbackOwner
 		rollbackReq.OwnerEpoch = rollbackEpoch
@@ -2479,7 +2519,7 @@ func (s *Service) runPolicyOwnershipTransition(
 			GuestID:     policy.GuestID,
 			OwnerNodeID: rollbackOwner,
 			OwnerEpoch:  rollbackEpoch,
-			ExpiresAt:   time.Now().UTC().Add(10 * time.Second),
+			ExpiresAt:   time.Now().UTC().Add(replicationLeaseTTL),
 			Version:     uint64(time.Now().UTC().UnixNano()),
 			LastReason:  reason + "_rollback",
 			LastActor:   s.Cluster.LocalNodeID(),
@@ -2488,6 +2528,7 @@ func (s *Service) runPolicyOwnershipTransition(
 			return err
 		}
 
+		policy.SourceNodeID = rollbackReq.SourceNodeID
 		policy.ActiveNodeID = rollbackOwner
 		policy.OwnerEpoch = rollbackEpoch
 		transition.OwnerEpoch = rollbackEpoch
@@ -2501,12 +2542,6 @@ func (s *Service) runPolicyOwnershipTransition(
 			transition.Error = transitionErr.Error()
 		} else {
 			transition.Error = "transition_failed"
-		}
-		if err := persistTransition(); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("policy_id", policy.ID).
-				Msg("replication_policy_transition_checkpoint_persist_failed")
 		}
 	}
 
@@ -2601,22 +2636,22 @@ func (s *Service) runPolicyOwnershipTransition(
 
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 		req.SourceNodeID = targetNodeID
-		policy.SourceNodeID = targetNodeID
 	}
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned && options.MovePinnedSource {
 		req.SourceNodeID = targetNodeID
-		policy.SourceNodeID = targetNodeID
 	}
 	req.ActiveNodeID = targetNodeID
 	req.OwnerEpoch = nextEpoch
 
-	policy.ActiveNodeID = targetNodeID
-	policy.OwnerEpoch = nextEpoch
 	if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
 		markTransitionFailed(err)
 		updateTransitionEvent(replicationEventStatusFailed, reason+"_demoting_failed", err, true)
 		return err
 	}
+
+	policy.SourceNodeID = req.SourceNodeID
+	policy.ActiveNodeID = targetNodeID
+	policy.OwnerEpoch = nextEpoch
 
 	lease := clusterModels.ReplicationLease{
 		PolicyID:    policy.ID,
@@ -2624,7 +2659,7 @@ func (s *Service) runPolicyOwnershipTransition(
 		GuestID:     policy.GuestID,
 		OwnerNodeID: targetNodeID,
 		OwnerEpoch:  nextEpoch,
-		ExpiresAt:   time.Now().UTC().Add(10 * time.Second),
+		ExpiresAt:   time.Now().UTC().Add(replicationLeaseTTL),
 		Version:     uint64(time.Now().UTC().UnixNano()),
 		LastReason:  reason,
 		LastActor:   s.Cluster.LocalNodeID(),
@@ -2726,13 +2761,13 @@ func (s *Service) runPolicyOwnershipTransition(
 }
 
 func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint) error {
-	return s.forwardReplicationPolicyControl(nodeID, "activate", map[string]any{
+	return s.forwardReplicationPolicyControlWithRetry(nodeID, "activate", map[string]any{
 		"policyId": policyID,
 	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) forwardDemoteReplicationPolicy(nodeID string, policyID uint, ownerEpoch uint64) error {
-	return s.forwardReplicationPolicyControl(nodeID, "demote", map[string]any{
+	return s.forwardReplicationPolicyControlWithRetry(nodeID, "demote", map[string]any{
 		"policyId":   policyID,
 		"ownerEpoch": ownerEpoch,
 	}, replicationControlDefaultTimeout)
@@ -2744,7 +2779,7 @@ func (s *Service) forwardCatchupReplicationPolicy(
 	targetNodeID string,
 	ownerEpoch uint64,
 ) error {
-	return s.forwardReplicationPolicyControl(nodeID, "catchup", map[string]any{
+	return s.forwardReplicationPolicyControlWithRetry(nodeID, "catchup", map[string]any{
 		"policyId":     policyID,
 		"targetNodeId": targetNodeID,
 		"ownerEpoch":   ownerEpoch,
@@ -2944,6 +2979,26 @@ func (s *Service) enqueueReplicationValidationRun(ctx context.Context, policyID 
 	return s.forwardRunReplicationPolicy(targetNodeID, policyID)
 }
 
+func (s *Service) forwardReplicationPolicyControlWithRetry(
+	nodeID string,
+	action string,
+	payload map[string]any,
+	timeout time.Duration,
+) error {
+	var lastErr error
+	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
+		if err := s.forwardReplicationPolicyControl(nodeID, action, payload, timeout); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < replicationControlForwardAttempts-1 {
+			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
+		}
+	}
+	return lastErr
+}
+
 func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload map[string]any, timeout time.Duration) error {
 	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
 	if err != nil {
@@ -3064,6 +3119,8 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(ctx context.Cont
 	if err := s.Cluster.DeleteLocalReplicationReceiptsByPolicy(policyID); err != nil {
 		cleanupErrs = append(cleanupErrs, fmt.Sprintf("delete_local_replication_receipts_failed: %v", err))
 	}
+
+	s.replicationCountersDelete(policyID)
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
@@ -3356,45 +3413,14 @@ func (s *Service) CatchupReplicationPolicyToNode(
 			}
 			continue
 		}
-		if !isReplicationTargetModifiedError(runErr) {
-			return fmt.Errorf("replication_catchup_to_target_%s_failed: %w", targetNodeID, runErr)
-		}
-
-		rotateOut, rotateErr := s.RotateWithTargetAndPrefix(ctx, targetSpec, sourceDataset, destSuffix, "ha")
-		if strings.TrimSpace(rotateOut) != "" {
-			logger.L.Debug().
-				Uint("policy_id", policyID).
-				Str("target_node_id", targetNodeID).
-				Str("source_dataset", sourceDataset).
-				Str("output", rotateOut).
-				Msg("replication_catchup_rotate_output")
-		}
-		if rotateErr != nil {
+		if isReplicationTargetModifiedError(runErr) {
 			return fmt.Errorf(
-				"replication_catchup_to_target_%s_failed_after_diverged_target_rotate_failed: %w (original: %v)",
+				"replication_catchup_to_target_%s_failed_diverged_target_unrecoverable: %w",
 				targetNodeID,
-				rotateErr,
 				runErr,
 			)
 		}
-
-		retryOut, retryErr := s.replicateWithTargetAndPrefix(ctx, targetSpec, sourceDataset, destSuffix, "ha")
-		if strings.TrimSpace(retryOut) != "" {
-			logger.L.Debug().
-				Uint("policy_id", policyID).
-				Str("target_node_id", targetNodeID).
-				Str("source_dataset", sourceDataset).
-				Str("output", retryOut).
-				Msg("replication_catchup_retry_output")
-		}
-		if retryErr != nil {
-			return fmt.Errorf(
-				"replication_catchup_to_target_%s_failed_after_diverged_target_rotate: %w (original: %v)",
-				targetNodeID,
-				retryErr,
-				runErr,
-			)
-		}
+		return fmt.Errorf("replication_catchup_to_target_%s_failed: %w", targetNodeID, runErr)
 	}
 
 	return nil
@@ -3638,6 +3664,93 @@ func (s *Service) stopLocalJailIfPresent(ctID uint) error {
 	return nil
 }
 
+func (s *Service) forceKillReplicationJail(ctx context.Context, ctID uint) error {
+	if s.Jail == nil {
+		return nil
+	}
+
+	if err := s.stopLocalJailIfPresent(ctID); err != nil {
+		return err
+	}
+
+	if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", ctID).Update("intentionally_stopped", false).Error; err != nil {
+		return fmt.Errorf("force_kill_jail_reset_intentionally_stopped_failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) forceKillReplicationVM(ctx context.Context, rid uint) error {
+	if s.VM == nil {
+		return nil
+	}
+
+	vm, err := s.findVMByRID(rid)
+	if err != nil {
+		return err
+	}
+	if vm == nil {
+		return nil
+	}
+
+	isShutOff, err := s.VM.IsDomainShutOff(rid)
+	if err != nil && !isVMDomainNotFoundError(err) {
+		return fmt.Errorf("force_kill_vm_state_check_failed: %w", err)
+	}
+	if isShutOff || isVMDomainNotFoundError(err) {
+		return nil
+	}
+
+	if err := s.VM.LvVMAction(*vm, "stop"); err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not running") || isVMDomainNotFoundError(err) {
+			return nil
+		}
+		return fmt.Errorf("force_kill_vm_stop_failed: %w", err)
+	}
+
+	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Update("intentionally_stopped", false).Error; err != nil {
+		return fmt.Errorf("force_kill_vm_reset_intentionally_stopped_failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) unfenceReplicationGuestDatasetsIfNeeded(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
+	if policy == nil || policy.GuestID == 0 {
+		return nil
+	}
+
+	rootDataset, err := s.findLocalGuestDataset(ctx, policy.GuestType, policy.GuestID)
+	if err != nil {
+		return fmt.Errorf("unfence_find_dataset_failed: %w", err)
+	}
+	if rootDataset == "" {
+		return nil
+	}
+
+	val, err := utils.RunCommandWithContext(ctx, "zfs", "get", "-H", "-o", "value", "readonly", rootDataset)
+	if err != nil {
+		return fmt.Errorf("unfence_check_readonly_failed: %w", err)
+	}
+	if strings.TrimSpace(val) != "on" {
+		return nil
+	}
+
+	logger.L.Info().
+		Uint("policy_id", policy.ID).
+		Uint("guest_id", policy.GuestID).
+		Str("guest_type", policy.GuestType).
+		Str("root_dataset", rootDataset).
+		Msg("replication_self_fence_unfencing_datasets")
+
+	if err := s.prepareReplicatedDatasetForActivation(ctx, rootDataset); err != nil {
+		return fmt.Errorf("unfence_prepare_dataset_failed: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) retireStaleNonOwnerJailMetadata(ctx context.Context, ctID uint, localNodeID string, expectedOwner string) (bool, error) {
 	if ctID == 0 {
 		return false, nil
@@ -3702,6 +3815,22 @@ func (s *Service) retireStaleNonOwnerVMMetadata(ctx context.Context, rid uint, l
 	return true, nil
 }
 
+func (s *Service) rollbackReplicationDatasetActivation(ctx context.Context, datasets []string) {
+	for i := len(datasets) - 1; i >= 0; i-- {
+		ds, err := s.getLocalDataset(ctx, datasets[i])
+		if err != nil || ds == nil {
+			continue
+		}
+		_ = ds.Unmount(ctx, true)
+		if err := ds.SetProperties(ctx, "readonly", "on"); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Str("dataset", datasets[i]).
+				Msg("rollback_activation_readonly_failed")
+		}
+	}
+}
+
 func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, rootDataset string) error {
 	rootDataset = normalizeDatasetPath(rootDataset)
 	if rootDataset == "" {
@@ -3764,6 +3893,18 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 	})
 	sort.Strings(volSubtree)
 
+	var activated []string
+	rolledBack := false
+
+	defer func() {
+		if rolledBack {
+			return
+		}
+		if len(activated) > 0 {
+			s.rollbackReplicationDatasetActivation(context.Background(), activated)
+		}
+	}()
+
 	for idx, dataset := range subtree {
 		ds, err := s.getLocalDataset(ctx, dataset)
 		if err != nil {
@@ -3786,6 +3927,7 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
 			return fmt.Errorf("failed_to_set_replication_dataset_properties_%s: %w", dataset, err)
 		}
+		activated = append(activated, dataset)
 
 		if idx == 0 {
 			if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dataset); err != nil {
@@ -3823,8 +3965,10 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		if err := ds.SetProperties(ctx, "readonly", "off"); err != nil {
 			return fmt.Errorf("failed_to_set_replication_volume_readonly_%s: %w", dataset, err)
 		}
+		activated = append(activated, dataset)
 	}
 
+	rolledBack = true
 	return nil
 }
 
@@ -3932,10 +4076,34 @@ func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 			if strings.TrimSpace(lease.OwnerNodeID) == localNodeID &&
 				lease.OwnerEpoch == expectedEpoch &&
 				time.Now().UTC().Before(lease.ExpiresAt) {
+				if err := s.unfenceReplicationGuestDatasetsIfNeeded(ctx, &policy); err != nil {
+					logger.L.Warn().
+						Err(err).
+						Uint("policy_id", policy.ID).
+						Uint("guest_id", policy.GuestID).
+						Str("guest_type", strings.TrimSpace(policy.GuestType)).
+						Msg("replication_self_fence_unfence_failed")
+				}
 				continue
 			}
 
 			fenceReason = replicationFenceReasonOwnerLeaseInvalid
+
+			if s.Cluster.Raft != nil &&
+				s.Cluster.Raft.State() != raft.Leader {
+				_, leaderID := s.Cluster.Raft.LeaderWithID()
+				if string(leaderID) == "" &&
+					time.Now().UTC().Before(lease.ExpiresAt) {
+					logger.L.Warn().
+						Uint("policy_id", policy.ID).
+						Msg("replication_self_fence_deferred_no_raft_leader_lease_still_valid")
+					continue
+				}
+			}
+		}
+
+		if s.IsPolicyTransitionRunning(policy.ID) {
+			continue
 		}
 
 		driver, err := s.replicationGuestDriver(policy.GuestType)
@@ -4000,7 +4168,7 @@ func (s *Service) isReplicationGuestIntentionallyStopped(guestType string, guest
 			}
 			return false, err
 		}
-		return vm.StoppedAt != nil && (vm.StartedAt == nil || vm.StoppedAt.After(*vm.StartedAt)), nil
+		return vm.IntentionallyStopped, nil
 	case clusterModels.ReplicationGuestTypeJail:
 		var jail jailModels.Jail
 		if err := s.DB.Where("ct_id = ?", guestID).First(&jail).Error; err != nil {
@@ -4009,7 +4177,7 @@ func (s *Service) isReplicationGuestIntentionallyStopped(guestType string, guest
 			}
 			return false, err
 		}
-		return jail.StoppedAt != nil && (jail.StartedAt == nil || jail.StoppedAt.After(*jail.StartedAt)), nil
+		return jail.IntentionallyStopped, nil
 	default:
 		return false, nil
 	}
@@ -4051,7 +4219,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 		}
 
 		if !policy.CrashRecovery {
-			s.crashMisses[policy.ID] = 0
+			s.crashMissesReset(policy.ID)
 			continue
 		}
 
@@ -4064,7 +4232,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 			continue
 		}
 		if intentionallyStopped {
-			s.crashMisses[policy.ID] = 0
+			s.crashMissesReset(policy.ID)
 			continue
 		}
 
@@ -4079,20 +4247,20 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 		}
 
 		if running {
-			s.crashMisses[policy.ID] = 0
+			s.crashMissesReset(policy.ID)
 			continue
 		}
 
-		s.crashMisses[policy.ID]++
 		crashLimit := policy.CrashRestartMax
 		if crashLimit < 1 {
 			crashLimit = replicationCrashRestartLimit
 		}
-		if s.crashMisses[policy.ID] < crashLimit {
+		crashVal := s.crashMissesIncr(policy.ID, uint64(crashLimit+1))
+		if crashVal < uint64(crashLimit) {
 			logger.L.Warn().
 				Uint("policy_id", policy.ID).
 				Uint("guest_id", policy.GuestID).
-				Int("crash_miss", s.crashMisses[policy.ID]).
+				Int("crash_miss", int(crashVal)).
 				Msg("replication_guest_crashed_attempting_local_restart")
 
 			if err := s.restartReplicationGuestLocally(policy.GuestType, policy.GuestID); err != nil {
@@ -4105,7 +4273,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 			continue
 		}
 
-		if s.crashMisses[policy.ID] != crashLimit {
+		if crashVal != uint64(crashLimit) {
 			continue
 		}
 
@@ -4145,7 +4313,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 			continue
 		}
 
-		s.crashMisses[policy.ID] = 0
+		s.crashMissesReset(policy.ID)
 	}
 
 	s.checkLocalPoolHealth(ctx, localNodeID)

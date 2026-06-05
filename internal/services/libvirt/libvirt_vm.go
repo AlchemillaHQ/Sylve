@@ -1080,12 +1080,18 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 	switch action {
 	case "start":
 		vm.StartedAt = &now
+		vm.StoppedAt = nil
+		vm.IntentionallyStopped = false
 	case "reboot":
 		vm.StartedAt = &now
+		vm.StoppedAt = nil
+		vm.IntentionallyStopped = false
 	case "stop":
 		vm.StoppedAt = &now
+		vm.IntentionallyStopped = true
 	case "shutdown":
 		vm.StoppedAt = &now
+		vm.IntentionallyStopped = true
 	default:
 		return fmt.Errorf("invalid_action: %s", action)
 	}

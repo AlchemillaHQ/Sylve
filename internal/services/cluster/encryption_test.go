@@ -10,6 +10,7 @@ package cluster
 
 import (
 	"testing"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -174,5 +175,47 @@ func TestProposeEncryptionKeyDeleteEmptyUUID(t *testing.T) {
 
 	if err := s.ProposeEncryptionKeyDelete("  ", true); err != nil {
 		t.Fatalf("delete with empty uuid should be no-op, got: %v", err)
+	}
+}
+
+func TestForwardEncryptionKeyToLeaderRaftNil(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
+	s := &Service{DB: db, Raft: nil}
+
+	err := s.ForwardEncryptionKeyToLeader("test-uuid", "data-32-bytes-minimum-for-key", "passphrase")
+	if err != nil {
+		t.Fatal("expected local upsert when Raft is nil (bypass), got error:", err)
+	}
+
+	var key clusterModels.EncryptionKey
+	if err := db.Where("uuid = ?", "test-uuid").First(&key).Error; err != nil {
+		t.Fatalf("key not persisted: %v", err)
+	}
+}
+
+func TestForwardEncryptionKeyToLeaderAsLeader(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.EncryptionKey{})
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	err := leader.service.ForwardEncryptionKeyToLeader("leader-key", "leader-key-data-min-32-bytes", "passphrase")
+	if err != nil {
+		t.Fatalf("ForwardEncryptionKeyToLeader as leader: %v", err)
+	}
+
+	var key clusterModels.EncryptionKey
+	if err := leader.service.DB.Where("uuid = ?", "leader-key").First(&key).Error; err != nil {
+		t.Fatalf("key not persisted on leader: %v", err)
+	}
+}
+
+func TestForwardEncryptionKeyToLeaderNoLeaderElected(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
+	s := &Service{DB: db, Raft: nil}
+
+	err := s.ForwardEncryptionKeyToLeader("no-leader-key", "no-leader-key-data-32-bytes", "passphrase")
+	if err != nil {
+		t.Fatalf("ForwardEncryptionKeyToLeader with nil Raft: %v", err)
 	}
 }

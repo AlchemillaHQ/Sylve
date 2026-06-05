@@ -497,6 +497,9 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationEvent{}).Error; err != nil {
 					return err
 				}
+				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationReceipt{}).Error; err != nil {
+					return err
+				}
 				return tx.Delete(&ReplicationPolicy{}, payload.ID).Error
 			})
 		default:
@@ -512,6 +515,19 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return upsertReplicationLease(db, &lease)
+		case "upsert_batch":
+			var leases []ReplicationLease
+			if err := json.Unmarshal(raw, &leases); err != nil {
+				return err
+			}
+			return db.Transaction(func(tx *gorm.DB) error {
+				for i := range leases {
+					if err := upsertReplicationLease(tx, &leases[i]); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 		case "delete":
 			var payload struct {
 				PolicyID uint `json:"policyId"`

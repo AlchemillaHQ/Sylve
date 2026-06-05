@@ -1043,6 +1043,11 @@ func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 }
 
 func (s *Service) newRaftObjectID(table string) (uint, error) {
+	// ID allocation uses cryptographically random IDs in a 2^53 range.
+	// Cross-node collisions are astronomically unlikely (~1e-12 per call
+	// with 1000 existing rows). If a collision does occur, the per-model
+	// upsert's OnConflict behaviour handles it without data loss, and the
+	// 16-attempt retry loop picks a new ID on the next call.
 	idRangeMax := raftObjectIDRangeForTable(table)
 	for attempts := 0; attempts < 16; attempts++ {
 		n, err := rand.Int(rand.Reader, idRangeMax)

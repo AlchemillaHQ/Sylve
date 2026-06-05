@@ -1,0 +1,282 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package zelta
+
+import (
+	"errors"
+	"testing"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+)
+
+type stubVMService struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	shutOff    bool
+	shutOffErr error
+}
+
+func (s stubVMService) IsDomainShutOff(_ uint) (bool, error) {
+	return s.shutOff, s.shutOffErr
+}
+
+type stubJailService struct {
+	jailServiceInterfaces.JailServiceInterface
+	running    bool
+	runningErr error
+}
+
+func (s stubJailService) IsJailRunning(_ uint) (bool, error) {
+	return s.running, s.runningErr
+}
+
+func TestReplicationGuestDriver(t *testing.T) {
+	s := &Service{}
+
+	driver, err := s.replicationGuestDriver(clusterModels.ReplicationGuestTypeVM)
+	if err != nil {
+		t.Fatalf("vm driver: %v", err)
+	}
+	if _, ok := driver.(vmReplicationGuestDriver); !ok {
+		t.Fatalf("expected vmReplicationGuestDriver, got %T", driver)
+	}
+
+	driver, err = s.replicationGuestDriver(clusterModels.ReplicationGuestTypeJail)
+	if err != nil {
+		t.Fatalf("jail driver: %v", err)
+	}
+	if _, ok := driver.(jailReplicationGuestDriver); !ok {
+		t.Fatalf("expected jailReplicationGuestDriver, got %T", driver)
+	}
+
+	_, err = s.replicationGuestDriver("invalid")
+	if err == nil {
+		t.Fatal("expected error for invalid guest type")
+	}
+}
+
+func TestIsReplicationGuestRunning(t *testing.T) {
+	t.Run("vm running", func(t *testing.T) {
+		s := &Service{VM: stubVMService{shutOff: false}}
+		running, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !running {
+			t.Fatal("expected running when domain is not shut off")
+		}
+	})
+
+	t.Run("vm shutoff", func(t *testing.T) {
+		s := &Service{VM: stubVMService{shutOff: true}}
+		running, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if running {
+			t.Fatal("expected not running when domain is shut off")
+		}
+	})
+
+	t.Run("vm service nil", func(t *testing.T) {
+		s := &Service{VM: nil}
+		running, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if running {
+			t.Fatal("expected not running when VM service is nil")
+		}
+	})
+
+	t.Run("vm domain not found treated as not running", func(t *testing.T) {
+		err := errors.New("virDomainGetInfo: Domain not found: no domain with matching id 100")
+		s := &Service{VM: stubVMService{shutOffErr: err}}
+		running, checkErr := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, 100)
+		if checkErr != nil {
+			t.Fatalf("domain not found should not error: %v", checkErr)
+		}
+		if running {
+			t.Fatal("domain not found should not be running")
+		}
+	})
+
+	t.Run("vm real error propagated", func(t *testing.T) {
+		s := &Service{VM: stubVMService{shutOffErr: errors.New("connection refused")}}
+		_, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, 100)
+		if err == nil {
+			t.Fatal("expected error propagation for non-domain-not-found errors")
+		}
+	})
+
+	t.Run("jail running", func(t *testing.T) {
+		s := &Service{Jail: stubJailService{running: true}}
+		running, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeJail, 200)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !running {
+			t.Fatal("expected running")
+		}
+	})
+
+	t.Run("jail not running", func(t *testing.T) {
+		s := &Service{Jail: stubJailService{running: false}}
+		running, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeJail, 200)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if running {
+			t.Fatal("expected not running")
+		}
+	})
+
+	t.Run("jail service nil", func(t *testing.T) {
+		s := &Service{Jail: nil}
+		running, err := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeJail, 200)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if running {
+			t.Fatal("expected not running when jail service is nil")
+		}
+	})
+
+	t.Run("unknown guest type", func(t *testing.T) {
+		s := &Service{}
+		running, err := s.isReplicationGuestRunning("unknown", 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if running {
+			t.Fatal("unknown guest type should not be running")
+		}
+	})
+}
+
+func TestIsReplicationGuestIntentionallyStopped(t *testing.T) {
+	t.Run("vm intentionally stopped", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &vmModels.VM{})
+		s := &Service{DB: db}
+
+		db.Create(&vmModels.VM{RID: 100, IntentionallyStopped: true})
+
+		stopped, err := s.isReplicationGuestIntentionallyStopped(clusterModels.ReplicationGuestTypeVM, 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !stopped {
+			t.Fatal("expected intentionally stopped")
+		}
+	})
+
+	t.Run("vm not intentionally stopped", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &vmModels.VM{})
+		s := &Service{DB: db}
+
+		db.Create(&vmModels.VM{RID: 100, IntentionallyStopped: false})
+
+		stopped, err := s.isReplicationGuestIntentionallyStopped(clusterModels.ReplicationGuestTypeVM, 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if stopped {
+			t.Fatal("expected not intentionally stopped")
+		}
+	})
+
+	t.Run("vm not found returns false", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &vmModels.VM{})
+		s := &Service{DB: db}
+
+		stopped, err := s.isReplicationGuestIntentionallyStopped(clusterModels.ReplicationGuestTypeVM, 999)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if stopped {
+			t.Fatal("non-existent VM should not be stopped")
+		}
+	})
+
+	t.Run("jail intentionally stopped", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &jailModels.Jail{})
+		s := &Service{DB: db}
+
+		db.Create(&jailModels.Jail{CTID: 50, IntentionallyStopped: true})
+
+		stopped, err := s.isReplicationGuestIntentionallyStopped(clusterModels.ReplicationGuestTypeJail, 50)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !stopped {
+			t.Fatal("expected intentionally stopped jail")
+		}
+	})
+
+	t.Run("unknown guest type", func(t *testing.T) {
+		s := &Service{DB: newZeltaServiceTestDB(t)}
+		stopped, err := s.isReplicationGuestIntentionallyStopped("unknown", 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if stopped {
+			t.Fatal("unknown guest type should not be intentionally stopped")
+		}
+	})
+}
+
+func TestReplicationGuestExistsLocally(t *testing.T) {
+	t.Run("vm exists", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &vmModels.VM{})
+		s := &Service{DB: db}
+
+		db.Create(&vmModels.VM{RID: 100})
+
+		if !s.replicationGuestExistsLocally(clusterModels.ReplicationGuestTypeVM, 100) {
+			t.Fatal("expected vm to exist")
+		}
+	})
+
+	t.Run("vm does not exist", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &vmModels.VM{})
+		s := &Service{DB: db}
+
+		if s.replicationGuestExistsLocally(clusterModels.ReplicationGuestTypeVM, 999) {
+			t.Fatal("expected vm to not exist")
+		}
+	})
+
+	t.Run("jail exists", func(t *testing.T) {
+		db := newZeltaServiceTestDB(t, &jailModels.Jail{})
+		s := &Service{DB: db}
+
+		db.Create(&jailModels.Jail{CTID: 50})
+
+		if !s.replicationGuestExistsLocally(clusterModels.ReplicationGuestTypeJail, 50) {
+			t.Fatal("expected jail to exist")
+		}
+	})
+
+	t.Run("nil service returns false", func(t *testing.T) {
+		var s *Service
+		if s.replicationGuestExistsLocally(clusterModels.ReplicationGuestTypeVM, 100) {
+			t.Fatal("nil service should return false")
+		}
+	})
+
+	t.Run("zero guestID returns false", func(t *testing.T) {
+		s := &Service{DB: newZeltaServiceTestDB(t)}
+		if s.replicationGuestExistsLocally(clusterModels.ReplicationGuestTypeVM, 0) {
+			t.Fatal("zero guestID should return false")
+		}
+	})
+}

@@ -595,7 +595,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 		}
 
 		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
-			body, statusCode, err := forwardBackupTargetRestoreToNode(cS, uint(id64), restoreNodeID, map[string]any{
+			body, statusCode, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
 				"remoteDataset":      strings.TrimSpace(req.RemoteDataset),
 				"snapshot":           strings.TrimSpace(req.Snapshot),
 				"destinationDataset": strings.TrimSpace(req.DestinationDataset),

@@ -373,7 +373,7 @@ func ParamUint(c *gin.Context, name string) (uint, error) {
 	return uint(value), nil
 }
 
-func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
+func HTTPRequestJSON(method, url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
@@ -381,7 +381,7 @@ func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]stri
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -433,4 +433,8 @@ func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]stri
 	}
 
 	return respBody, resp.StatusCode, nil
+}
+
+func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
+	return HTTPRequestJSON(http.MethodPost, url, payload, headers, timeout)
 }

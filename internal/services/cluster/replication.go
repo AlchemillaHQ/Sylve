@@ -29,8 +29,6 @@ const (
 )
 
 func (s *Service) ListReplicationPolicies() ([]clusterModels.ReplicationPolicy, error) {
-	s.cleanupOrphanReplicationRows()
-
 	var policies []clusterModels.ReplicationPolicy
 	if err := s.DB.Preload("Targets").Order("name ASC").Find(&policies).Error; err != nil {
 		return policies, err
@@ -168,6 +166,34 @@ func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error
 	})
 }
 
+// guestExistsInCluster checks whether a guest (VM or jail) exists on any
+// node in the cluster by aggregating per-node resources.
+func (s *Service) guestExistsInCluster(guestType string, guestID uint) (bool, error) {
+	resources, err := s.Resources()
+	if err != nil {
+		return false, err
+	}
+
+	for _, node := range resources {
+		switch guestType {
+		case clusterModels.ReplicationGuestTypeVM:
+			for _, vm := range node.VMs {
+				if vm.RID == guestID {
+					return true, nil
+				}
+			}
+		case clusterModels.ReplicationGuestTypeJail:
+			for _, jail := range node.Jails {
+				if jail.CTID == guestID {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
 func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces.ReplicationPolicyReq) (*clusterModels.ReplicationPolicy, []clusterModels.ReplicationPolicyTarget, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -184,6 +210,15 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 	if input.GuestID == 0 {
 		return nil, nil, fmt.Errorf("guest_id_required")
+	}
+
+	// Validate the guest actually exists somewhere in the cluster.
+	// Uses Resources() (cross-node aggregation) rather than a local DB
+	// query so the check works regardless of which node is leader.
+	if found, err := s.guestExistsInCluster(guestType, input.GuestID); err != nil {
+		return nil, nil, fmt.Errorf("failed_to_verify_guest: %w", err)
+	} else if !found {
+		return nil, nil, fmt.Errorf("guest_not_found")
 	}
 
 	sourceMode := strings.TrimSpace(strings.ToLower(input.SourceMode))
@@ -338,6 +373,25 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		PoolHealthCheck: poolHealthCheck,
 		PoolCapacityPct: poolCapacityPct,
 		NextRunAt:       next,
+	}
+
+	// Preserve transition state from the existing row.
+	// The OnConflict.DoUpdates list already excludes transition columns
+	// so the DB preserves them on UPDATE, but explicitly carrying them
+	// forward guards against GORM edge cases and the INSERT branch.
+	if existingByIDFound {
+		policy.TransitionState = existingByID.TransitionState
+		policy.TransitionRunID = existingByID.TransitionRunID
+		policy.TransitionReason = existingByID.TransitionReason
+		policy.TransitionSourceNodeID = existingByID.TransitionSourceNodeID
+		policy.TransitionTargetNodeID = existingByID.TransitionTargetNodeID
+		policy.TransitionOwnerEpoch = existingByID.TransitionOwnerEpoch
+		policy.TransitionRequestedAt = existingByID.TransitionRequestedAt
+		policy.TransitionDemotedAt = existingByID.TransitionDemotedAt
+		policy.TransitionCatchupAt = existingByID.TransitionCatchupAt
+		policy.TransitionPromotedAt = existingByID.TransitionPromotedAt
+		policy.TransitionCompletedAt = existingByID.TransitionCompletedAt
+		policy.TransitionError = existingByID.TransitionError
 	}
 
 	var existing clusterModels.ReplicationPolicy
@@ -507,6 +561,23 @@ func (s *Service) UpsertReplicationLease(lease clusterModels.ReplicationLease, b
 	})
 }
 
+func (s *Service) UpsertReplicationLeasesBatch(leases []clusterModels.ReplicationLease) error {
+	if len(leases) == 0 {
+		return nil
+	}
+
+	data, err := json.Marshal(leases)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_leases_batch: %w", err)
+	}
+
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_lease",
+		Action: "upsert_batch",
+		Data:   data,
+	})
+}
+
 func (s *Service) DeleteReplicationLease(policyID uint, bypassRaft bool) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
@@ -533,14 +604,9 @@ func (s *Service) DeleteReplicationLease(policyID uint, bypassRaft bool) error {
 func (s *Service) UpdateReplicationPolicyTransition(
 	policyID uint,
 	transition clusterModels.ReplicationPolicyTransition,
-	bypassRaft bool,
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-
-	if bypassRaft {
-		return clusterModels.UpsertReplicationPolicyTransitionTxn(s.DB, policyID, &transition)
 	}
 
 	data, err := json.Marshal(struct {
@@ -597,8 +663,6 @@ func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.Replication
 }
 
 func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterModels.ReplicationEvent, error) {
-	s.cleanupOrphanReplicationRows()
-
 	if limit <= 0 {
 		limit = 200
 	}
@@ -615,8 +679,6 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 }
 
 func (s *Service) ListReplicationReceipts(policyID uint) ([]clusterModels.ReplicationReceipt, error) {
-	s.cleanupOrphanReplicationRows()
-
 	query := s.DB.Order("last_attempt_at DESC")
 	if policyID > 0 {
 		query = query.Where("policy_id = ?", policyID)
@@ -802,24 +864,6 @@ func replicationFreshnessWindowSeconds(cronExpr string) (int64, error) {
 	}
 
 	return windowSeconds, nil
-}
-
-func (s *Service) cleanupOrphanReplicationRows() {
-	if s.DB == nil {
-		return
-	}
-
-	policyIDs := s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
-	_ = s.DB.Where("policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationPolicyTarget{}).Error
-
-	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
-	_ = s.DB.Where("policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationLease{}).Error
-
-	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
-	_ = s.DB.Where("policy_id IS NOT NULL AND policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationEvent{}).Error
-
-	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
-	_ = s.DB.Where("policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationReceipt{}).Error
 }
 
 func (s *Service) GetReplicationEventByID(id uint) (*clusterModels.ReplicationEvent, error) {

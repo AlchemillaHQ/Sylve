@@ -245,7 +245,7 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 
 		runnerNodeID := strings.TrimSpace(job.RunnerNodeID)
 		if runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
-			body, statusCode, err := forwardBackupJobRunToRunner(cS, uint(id64), runnerNodeID)
+			body, statusCode, err := forwardBackupJobRunToRunner(c, cS, uint(id64), runnerNodeID)
 			if err != nil {
 				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
 					Status:  "error",
@@ -292,18 +292,28 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
-func forwardBackupJobRunToRunner(cS *cluster.Service, jobID uint, runnerNodeID string) ([]byte, int, error) {
+func forwardBackupJobRunToRunner(c *gin.Context, cS *cluster.Service, jobID uint, runnerNodeID string) ([]byte, int, error) {
 	targetAPI, err := resolveClusterNodeAPI(cS, runnerNodeID)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
+	userID := c.GetUint("UserID")
+	username := strings.TrimSpace(c.GetString("Username"))
+	authType := strings.TrimSpace(c.GetString("AuthType"))
+	if username == "" {
+		hostname, _ := utils.GetSystemHostname()
+		if hostname != "" {
+			username = hostname
+		} else {
+			username = "cluster"
+		}
+	}
+	if authType == "" {
+		authType = "local"
 	}
 
-	clusterToken, err := cS.AuthService.CreateClusterJWT(0, hostname, "", "")
+	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
@@ -321,18 +331,28 @@ func forwardBackupJobRunToRunner(cS *cluster.Service, jobID uint, runnerNodeID s
 	return body, statusCode, nil
 }
 
-func forwardBackupTargetRestoreToNode(cS *cluster.Service, targetID uint, restoreNodeID string, payload map[string]any) ([]byte, int, error) {
+func forwardBackupTargetRestoreToNode(c *gin.Context, cS *cluster.Service, targetID uint, restoreNodeID string, payload map[string]any) ([]byte, int, error) {
 	targetAPI, err := resolveClusterNodeAPI(cS, restoreNodeID)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
+	userID := c.GetUint("UserID")
+	username := strings.TrimSpace(c.GetString("Username"))
+	authType := strings.TrimSpace(c.GetString("AuthType"))
+	if username == "" {
+		hostname, _ := utils.GetSystemHostname()
+		if hostname != "" {
+			username = hostname
+		} else {
+			username = "cluster"
+		}
+	}
+	if authType == "" {
+		authType = "local"
 	}
 
-	clusterToken, err := cS.AuthService.CreateClusterJWT(0, hostname, "", "")
+	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

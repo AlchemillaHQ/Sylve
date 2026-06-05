@@ -273,8 +273,9 @@ type Jail struct {
 
 	StartLogs string     `json:"startLogs" gorm:"default:''"`
 	StopLogs  string     `json:"stopLogs" gorm:"default:''"`
-	StartedAt *time.Time `json:"startedAt" gorm:"default:null"`
-	StoppedAt *time.Time `json:"stoppedAt" gorm:"default:null"`
+	StartedAt           *time.Time `json:"startedAt" gorm:"default:null"`
+	StoppedAt           *time.Time `json:"stoppedAt" gorm:"default:null"`
+	IntentionallyStopped bool       `json:"intentionallyStopped" gorm:"default:false"`
 }
 
 type JailBootstrap struct {

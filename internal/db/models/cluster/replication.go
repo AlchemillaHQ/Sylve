@@ -44,8 +44,8 @@ type ReplicationPolicy struct {
 	ID                     uint                      `gorm:"primaryKey" json:"id"`
 	Name                   string                    `gorm:"not null" json:"name"`
 	Description            string                    `gorm:"type:text" json:"description"`
-	GuestType              string                    `gorm:"index:idx_replication_policy_guest,priority:1;not null" json:"guestType"`
-	GuestID                uint                      `gorm:"index:idx_replication_policy_guest,priority:2;not null" json:"guestId"`
+	GuestType              string                    `gorm:"uniqueIndex:idx_replication_policy_guest_unique,priority:1;not null" json:"guestType"`
+	GuestID                uint                      `gorm:"uniqueIndex:idx_replication_policy_guest_unique,priority:2;not null" json:"guestId"`
 	SourceNodeID           string                    `gorm:"index" json:"sourceNodeId"`
 	ActiveNodeID           string                    `gorm:"index" json:"activeNodeId"`
 	OwnerEpoch             uint64                    `gorm:"not null;default:1" json:"ownerEpoch"`

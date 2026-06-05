@@ -83,8 +83,6 @@ type Service struct {
 	runningReplication map[uint]struct{}
 	transitionMu       sync.Mutex
 	runningTransitions map[uint]struct{}
-	downMisses         map[uint]int
-	crashMisses        map[uint]int
 	poolDownMisses       map[string]int
 
 	workloadOpMu      sync.Mutex
@@ -125,8 +123,6 @@ func NewService(
 		queuedJobs:         make(map[uint]struct{}),
 		runningReplication: make(map[uint]struct{}),
 		runningTransitions: make(map[uint]struct{}),
-		downMisses:         make(map[uint]int),
-		crashMisses:        make(map[uint]int),
 		poolDownMisses:     make(map[string]int),
 		runningWorkloadOp:  make(map[string]string),
 	}
@@ -554,6 +550,17 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	defer s.releaseJob(job.ID)
 
 	jobGuestType, jobGuestID := backupJobGuestIdentity(job)
+
+	// Dataset-mode jobs don't have a guest identity, so use the
+	// source dataset path as the lock key to prevent concurrent
+	// operations on the same dataset.
+	if jobGuestType == "" && jobGuestID == 0 &&
+		job.Mode == clusterModels.BackupJobModeDataset &&
+		strings.TrimSpace(job.SourceDataset) != "" {
+		jobGuestType = clusterModels.BackupJobModeDataset
+		jobGuestID = datasetHash(strings.TrimSpace(job.SourceDataset))
+	}
+
 	if jobGuestType != "" && jobGuestID > 0 && s.Cluster != nil {
 		localNodeID := s.localNodeID()
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, localNodeID)
@@ -2197,10 +2204,21 @@ func workloadOperationKey(guestType string, guestID uint) string {
 	if guestID == 0 {
 		return ""
 	}
+	if guestType == clusterModels.BackupJobModeDataset {
+		return fmt.Sprintf("dataset:%s", strconv.FormatUint(uint64(guestID), 16))
+	}
 	if guestType != clusterModels.BackupJobModeVM && guestType != clusterModels.BackupJobModeJail {
 		return ""
 	}
 	return fmt.Sprintf("%s:%d", guestType, guestID)
+}
+
+func datasetHash(s string) uint {
+	h := uint(0)
+	for i := 0; i < len(s); i++ {
+		h = h*31 + uint(s[i])
+	}
+	return h
 }
 
 func (s *Service) acquireWorkloadOperation(guestType string, guestID uint, operation string) (bool, string) {

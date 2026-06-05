@@ -87,7 +87,7 @@ func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func UpdateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
+func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -100,6 +100,16 @@ func UpdateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 				Status:  "error",
 				Message: "invalid_policy_id",
 				Error:   "invalid_policy_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		if zS != nil && zS.IsPolicyTransitionRunning(uint(id64)) {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "policy_transition_in_progress",
+				Error:   "cannot_update_policy_during_failover",
 				Data:    nil,
 			})
 			return
@@ -153,6 +163,15 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 		}
 
 		if zS != nil {
+			if zS.IsPolicyTransitionRunning(uint(id64)) {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "policy_transition_in_progress",
+					Error:   "cannot_delete_policy_during_failover",
+					Data:    nil,
+				})
+				return
+			}
 			if cleanupErr := zS.CleanupReplicationPolicyDeleteBestEffort(c.Request.Context(), uint(id64)); cleanupErr != nil {
 				logger.L.Warn().
 					Uint("policy_id", uint(id64)).
@@ -210,7 +229,7 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS *zelta.Service) gin.Handler
 		}
 
 		if runNodeID != "" && localNodeID != "" && runNodeID != localNodeID {
-			body, statusCode, err := forwardReplicationRunToNode(cS, uint(id64), runNodeID)
+			body, statusCode, err := forwardReplicationRunToNode(c, cS, uint(id64), runNodeID)
 			if err != nil {
 				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
 					Status:  "error",
@@ -356,18 +375,28 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 	}
 }
 
-func forwardReplicationRunToNode(cS *cluster.Service, policyID uint, nodeID string) ([]byte, int, error) {
+func forwardReplicationRunToNode(c *gin.Context, cS *cluster.Service, policyID uint, nodeID string) ([]byte, int, error) {
 	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
+	userID := c.GetUint("UserID")
+	username := strings.TrimSpace(c.GetString("Username"))
+	authType := strings.TrimSpace(c.GetString("AuthType"))
+	if username == "" {
+		hostname, _ := utils.GetSystemHostname()
+		if hostname != "" {
+			username = hostname
+		} else {
+			username = "cluster"
+		}
+	}
+	if authType == "" {
+		authType = "local"
 	}
 
-	clusterToken, err := cS.AuthService.CreateClusterJWT(0, hostname, "", "")
+	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
@@ -824,9 +853,28 @@ func EnqueueFailoverInternal(zS *zelta.Service) gin.HandlerFunc {
 		}
 
 		if err := zS.EnqueueReplicationPolicyFailover(req.PolicyID, req.TargetNodeID, req.Mode, req.ConfirmDataLoss, req.MovePinnedSource); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			statusCode := http.StatusInternalServerError
+			message := "enqueue_failover_failed"
+			lowerErr := strings.ToLower(err.Error())
+			switch {
+			case strings.Contains(lowerErr, "invalid_policy_id"):
+				statusCode = http.StatusBadRequest
+			case strings.Contains(lowerErr, "not_found") || strings.Contains(lowerErr, "record not found"):
+				statusCode = http.StatusNotFound
+			case strings.Contains(lowerErr, "transition_already_running"):
+				statusCode = http.StatusConflict
+			case strings.Contains(lowerErr, "not_leader"):
+				statusCode = http.StatusConflict
+			case strings.Contains(lowerErr, "confirm_data_loss_required"):
+				statusCode = http.StatusBadRequest
+			case strings.Contains(lowerErr, "cluster_service_unavailable"):
+				statusCode = http.StatusServiceUnavailable
+			case strings.Contains(lowerErr, "ha_ineligible"):
+				statusCode = http.StatusBadRequest
+			}
+			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "enqueue_failover_failed",
+				Message: message,
 				Error:   err.Error(),
 				Data:    nil,
 			})

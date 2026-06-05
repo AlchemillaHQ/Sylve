@@ -671,7 +671,11 @@
 			width: 150,
 			minWidth: 130,
 			formatter: (cell: CellComponent) => {
-				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string };
+				const row = cell.getRow().getData() as {
+					enabled: boolean;
+					lastStatus: string;
+					transitionState: string;
+				};
 				const icons = [];
 				if (row.enabled) {
 					icons.push(renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500'));
@@ -679,11 +683,30 @@
 					icons.push(renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500'));
 				}
 
+				const transitionState = String(row.transitionState || 'none');
+				if (transitionState !== 'none' && transitionState !== 'completed' && transitionState !== 'failed') {
+					const phaseLabels: Record<string, string> = {
+						demoting: 'Demoting',
+						catchup: 'Catching Up',
+						promoting: 'Promoting'
+					};
+					icons.push(
+						renderWithIcon(
+							'mdi:swap-horizontal-bold',
+							phaseLabels[transitionState] || transitionState,
+							'text-blue-500'
+						)
+					);
+					return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
+				}
+
 				const lastStatus = String(row.lastStatus || '').toLowerCase();
 				if (lastStatus === 'success') {
 					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
 				} else if (lastStatus === 'failed') {
 					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
+				} else if (lastStatus === 'degraded') {
+					icons.push(renderWithIcon('mdi:alert-circle-outline', 'Degraded', 'text-amber-500'));
 				} else if (lastStatus === 'blocked') {
 					icons.push(renderWithIcon('mdi:alert-octagon', 'Blocked', 'text-red-500'));
 				} else if (lastStatus === 'running') {
@@ -812,16 +835,12 @@
 				workload: workloadLabel,
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
-				haState: haLabel,
-				haLabel,
+			haState: haLabel,
 				haEligible,
-				haDegraded,
-				targets: targetsLabel,
-				targetSync: targetSync.label,
-				targetSyncState: targetSync.state,
-				targetSyncLabel: targetSync.label,
-				schedule: scheduleLabel(policy.cronExpr),
+				haDegraded: policy.haDegraded,
+				haLabel,
 				lastStatus: policy.lastStatus,
+				transitionState: policy.transitionState,
 				lastRunAt: policy.lastRunAt,
 				nextRunAt: policy.nextRunAt
 			};
@@ -1265,7 +1284,7 @@
 			size="sm"
 			variant="outline"
 			class="h-6"
-			disabled={Boolean(selectedPolicy && !selectedPolicy.haEligible)}
+			disabled={Boolean(selectedPolicy && (!selectedPolicy.haEligible || (selectedPolicy.transitionState !== 'none' && selectedPolicy.transitionState !== 'completed' && selectedPolicy.transitionState !== 'failed')))}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--swap-horizontal-bold] mr-1 h-4 w-4"></span>
@@ -1280,7 +1299,7 @@
 			size="sm"
 			variant="outline"
 			class="h-6"
-			disabled={Boolean(selectedPolicy && !selectedPolicy.haEligible)}
+			disabled={Boolean(selectedPolicy && (!selectedPolicy.haEligible || (selectedPolicy.transitionState !== 'none' && selectedPolicy.transitionState !== 'completed' && selectedPolicy.transitionState !== 'failed')))}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
