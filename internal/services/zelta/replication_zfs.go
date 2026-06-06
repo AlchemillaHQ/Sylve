@@ -130,6 +130,20 @@ func (s *Service) replicationZFSSend(
 			continue
 		}
 
+		if !forceRecv && attempt == 0 {
+			lowerSend := strings.ToLower(sendErr.Error())
+			lowerOut := strings.ToLower(out)
+			if strings.Contains(lowerSend, "signal") ||
+				strings.Contains(lowerSend, "broken pipe") ||
+				strings.Contains(lowerSend, "exit status") ||
+				strings.Contains(lowerOut, "cannot receive") ||
+				strings.Contains(lowerOut, "failed to read from stream") {
+				appendLine("replication_transfer_interrupted_retrying_with_force_recv")
+				forceRecv = true
+				continue
+			}
+		}
+
 		return outputLog.String(), sendErr
 	}
 
@@ -168,7 +182,11 @@ func (s *Service) runReplicationPipeline(
 
 	sshArgs := s.buildSSHArgs(target)
 	recvArgs := make([]string, 0, len(sshArgs)+10)
-	recvArgs = append(recvArgs, sshArgs...)
+	for _, a := range sshArgs {
+		if a != "-n" {
+			recvArgs = append(recvArgs, a)
+		}
+	}
 	recvArgs = append(recvArgs, target.SSHHost, "zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto")
 	if forceRecv {
 		recvArgs = append(recvArgs, "-F")

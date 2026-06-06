@@ -290,7 +290,6 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 				}
 				updates["password"] = hashed
 				needsUpdate = true
-				cfg.Admin.ForcePasswordReset = false
 				logger.L.Warn().Msg("Admin password forcefully reset from config")
 			}
 		}

@@ -1203,6 +1203,14 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		}
 	}
 
+	if succeededTargets == 0 && len(failedTargets) > 0 {
+		logger.L.Error().
+			Uint("policy_id", policy.ID).
+			Strs("failed_targets", failedTargets).
+			Msg("replication_all_targets_failed")
+		runErr = fmt.Errorf("replication_all_targets_failed:%d_targets", len(failedTargets))
+	}
+
 	// If some targets succeeded and some failed, surface a degraded
 	// status so the UI can show a warning rather than hiding failures
 	// behind "success". The per-target receipts still carry details.

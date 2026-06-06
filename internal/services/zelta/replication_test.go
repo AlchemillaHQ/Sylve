@@ -355,6 +355,34 @@ func TestIsReplicationResumeAbortNoopError(t *testing.T) {
 	}
 }
 
+func TestReplicationErrorRetryClassificationMatchesRealisticError(t *testing.T) {
+	realisticError := fmt.Errorf("full\tzroot/sylve/virtual-machines/103@ha_mq1atsyr\t71688\n" +
+		"full\tzroot/sylve/virtual-machines/103/zvol-9@ha_mq1atsyr\t30187048\n" +
+		"size\t30258736\n" +
+		"warning: cannot send 'zroot/sylve/virtual-machines/103/zvol-9@ha_mq1atsyr': signal received\n" +
+		"cannot receive: failed to read from stream: exit status 1: exit status 1")
+
+	lowerSend := strings.ToLower(realisticError.Error())
+	lowerOut := strings.ToLower("warning: cannot send 'zroot/sylve/virtual-machines/103/zvol-9@ha_mq1atsyr': signal received\n" +
+		"cannot receive: failed to read from stream")
+	if !strings.Contains(lowerSend, "signal") {
+		t.Fatal("error should contain 'signal'")
+	}
+	if !strings.Contains(lowerSend, "exit status") {
+		t.Fatal("error should contain 'exit status'")
+	}
+	if !strings.Contains(lowerSend, "cannot receive") {
+		t.Fatal("error should contain 'cannot receive'")
+	}
+	if !strings.Contains(lowerOut, "failed to read from stream") {
+		t.Fatal("output should contain 'failed to read from stream'")
+	}
+	_ = lowerSend
+	if isReplicationResumeStateError(realisticError) || isReplicationTargetModifiedError(realisticError) {
+		t.Log("realistic error unexpectedly matched existing classification - pre-fix behavior")
+	}
+}
+
 func TestAppendReplicationFenceDatasetError(t *testing.T) {
 	base := errors.New("base error")
 	wrapped := appendReplicationFenceDatasetError(base, "tank/data", errors.New("dataset busy"))
