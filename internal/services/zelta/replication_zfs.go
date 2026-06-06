@@ -98,7 +98,7 @@ func (s *Service) replicationZFSSend(
 	}
 
 	forceRecv := false
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < 3; attempt++ {
 		out, sendErr := s.runReplicationPipeline(ctx, target, sourceDataset, snapName, commonSnap, targetPath, encrypted, forceRecv)
 		if strings.TrimSpace(out) != "" {
 			appendLine(out)
@@ -139,6 +139,26 @@ func (s *Service) replicationZFSSend(
 				strings.Contains(lowerOut, "cannot receive") ||
 				strings.Contains(lowerOut, "failed to read from stream") {
 				appendLine("replication_transfer_interrupted_retrying_with_force_recv")
+				forceRecv = true
+				continue
+			}
+		}
+
+		if forceRecv && attempt < 2 {
+			lowerSend := strings.ToLower(sendErr.Error())
+			if strings.Contains(lowerSend, "has snapshots") ||
+				strings.Contains(lowerSend, "must destroy") {
+				appendLine("replication_target_has_orphan_snapshots_destroying_target")
+				if destroyErr := s.destroyTargetDatasetBestEffort(ctx, target, targetPath); destroyErr != nil {
+					appendLine(fmt.Sprintf("target_dataset_destroy_failed: %v", destroyErr))
+					return outputLog.String(), fmt.Errorf(
+						"replication_failed_target_has_orphan_snapshots_destroy_failed: %w (original: %v)",
+						destroyErr,
+						sendErr,
+					)
+				}
+				appendLine("target_dataset_destroyed_retrying_full_send")
+				commonSnap = ""
 				forceRecv = true
 				continue
 			}
@@ -530,5 +550,28 @@ func (s *Service) destroyRemoteSnapshotBestEffort(ctx context.Context, target *c
 		return fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
 	}
 
+	return nil
+}
+
+func (s *Service) destroyTargetDatasetBestEffort(ctx context.Context, target *clusterModels.BackupTarget, dataset string) error {
+	if target == nil {
+		return nil
+	}
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return nil
+	}
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", "-r", dataset)
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		lower := strings.ToLower(err.Error() + " " + output)
+		if strings.Contains(lower, "dataset does not exist") ||
+			strings.Contains(lower, "no such") ||
+			strings.Contains(lower, "does not exist") {
+			return nil
+		}
+		return fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
+	}
 	return nil
 }
