@@ -37,7 +37,6 @@ func (s *Service) CheckVirtualization() error {
 		"bhyve-firmware",
 		"u-boot-bhyve-arm64",
 		"swtpm",
-		"qemu-tools",
 	}
 
 	for _, p := range requiredPackages {
@@ -58,7 +57,11 @@ func (s *Service) CheckVirtualization() error {
 		}
 	}
 
-	if _,err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
+	if !utils.HasCmd("qemu-img") {
+		return fmt.Errorf("virt_required_command_qemu-img_not_found")
+	}
+
+	if _, err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
 		return nil
 	}
 
