@@ -416,6 +416,23 @@ func forwardReplicationRunToNode(c *gin.Context, cS *cluster.Service, policyID u
 
 func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
+		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
+			body, statusCode, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/replication/events")
+			if err != nil {
+				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "replication_events_remote_forward_failed",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.Data(statusCode, "application/json", body)
+			return
+		}
+
 		limit := 200
 		if q := c.Query("limit"); q != "" {
 			if parsed, err := strconv.Atoi(q); err == nil {
@@ -490,6 +507,24 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
+		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
+		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
+			path := fmt.Sprintf("/api/cluster/replication/events/%d", id64)
+			body, statusCode, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, path)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "replication_event_remote_forward_failed",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.Data(statusCode, "application/json", body)
+			return
+		}
+
 		event, err := cS.GetReplicationEventByID(uint(id64))
 		if err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -527,6 +562,34 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 				Status:  "error",
 				Message: "invalid_event_id",
 				Error:   "invalid_event_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
+		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
+			path := fmt.Sprintf("/api/cluster/replication/events/%d/progress", id64)
+			body, statusCode, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, path)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "replication_event_progress_remote_forward_failed",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.Data(statusCode, "application/json", body)
+			return
+		}
+
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
 				Data:    nil,
 			})
 			return
@@ -887,4 +950,100 @@ func EnqueueFailoverInternal(zS *zelta.Service) gin.HandlerFunc {
 			Data:    nil,
 		})
 	}
+}
+
+func UpdateReplicationPolicyStateInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
+		var req cluster.ReplicationPolicyRuntimeState
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := cS.ProposeReplicationPolicyStateUpdate(req, cS.Raft == nil); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "update_replication_policy_state_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_policy_state_updated",
+			Data:    nil,
+		})
+	}
+}
+
+func shouldForwardReplicationEventsRequest(cS *cluster.Service, requestedNodeID string) bool {
+	requestedNodeID = strings.TrimSpace(requestedNodeID)
+	if requestedNodeID == "" || cS == nil {
+		return false
+	}
+
+	localNodeID := ""
+	if detail := cS.Detail(); detail != nil {
+		localNodeID = strings.TrimSpace(detail.NodeID)
+	}
+
+	return localNodeID == "" || requestedNodeID != localNodeID
+}
+
+func forwardReplicationEventsRequestToNode(c *gin.Context, cS *cluster.Service, nodeID, path string) ([]byte, int, error) {
+	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	userID := c.GetUint("UserID")
+	username := strings.TrimSpace(c.GetString("Username"))
+	authType := strings.TrimSpace(c.GetString("AuthType"))
+	if username == "" {
+		hostname, _ := utils.GetSystemHostname()
+		if hostname != "" {
+			username = hostname
+		} else {
+			username = "cluster"
+		}
+	}
+	if authType == "" {
+		authType = "local"
+	}
+
+	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
+	if err != nil {
+		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
+	}
+
+	query := c.Request.URL.Query()
+	query.Del("nodeId")
+
+	remoteURL := fmt.Sprintf("https://%s%s", targetAPI, path)
+	if encoded := query.Encode(); encoded != "" {
+		remoteURL += "?" + encoded
+	}
+
+	body, statusCode, err := utils.HTTPGetJSONRead(remoteURL, map[string]string{
+		"Accept":          "application/json",
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	})
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	return body, statusCode, nil
 }

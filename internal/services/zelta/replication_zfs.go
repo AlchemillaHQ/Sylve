@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -77,15 +78,6 @@ func (s *Service) replicationZFSSend(
 		appendLine(fmt.Sprintf("snapshot_failed: %v", err))
 		return "", fmt.Errorf("replication_snapshot_failed: %w", err)
 	}
-	defer func() {
-		if err := s.destroyLocalSnapshotBestEffort(ctx, sourceDataset, snapName); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Str("dataset", sourceDataset).
-				Str("snapshot", snapName).
-				Msg("replication_post_send_snap_cleanup_failed")
-		}
-	}()
 
 	commonSnap, err := s.findCommonReplicationSnapshot(ctx, target, sourceDataset, targetPath)
 	if err != nil {
@@ -561,9 +553,11 @@ func (s *Service) destroyTargetDatasetBestEffort(ctx context.Context, target *cl
 	if dataset == "" {
 		return nil
 	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	sshArgs := s.buildSSHArgs(target)
 	sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", "-r", dataset)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	output, err := utils.RunCommandWithContext(timeoutCtx, "ssh", sshArgs...)
 	if err != nil {
 		lower := strings.ToLower(err.Error() + " " + output)
 		if strings.Contains(lower, "dataset does not exist") ||

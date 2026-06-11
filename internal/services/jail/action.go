@@ -152,6 +152,53 @@ func (s *Service) JailAction(ctId int, action string) error {
 	return nil
 }
 
+func (s *Service) ForceStopJail(ctID uint) error {
+	ctIDInt := int(ctID)
+	if ctIDInt <= 0 {
+		return fmt.Errorf("invalid_ct_id")
+	}
+
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get jails path: %w", err)
+	}
+
+	jailConf := fmt.Sprintf("%s/%d/%d.conf", jailsPath, ctIDInt, ctIDInt)
+
+	var jail jailModels.Jail
+	if err := s.DB.First(&jail, "ct_id = ?", ctIDInt).Error; err != nil {
+		if strings.Contains(err.Error(), "record not found") {
+			return nil
+		}
+		return fmt.Errorf("failed to find jail: %w", err)
+	}
+
+	jailName := s.GetCTIDHash(jail.CTID)
+
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command("jail", args...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	if out, err := run("-f", jailConf, "-r", jailName); err != nil {
+		if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
+			return fmt.Errorf("failed to force stop jail %s: %v\n%s", jailName, err, out)
+		}
+	}
+
+	now := time.Now().UTC()
+	jail.StoppedAt = &now
+	jail.IntentionallyStopped = true
+	if err := s.DB.Save(&jail).Error; err != nil {
+		return fmt.Errorf("failed to update jail status: %w", err)
+	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("jail_stop_%d", ctIDInt))
+
+	return nil
+}
+
 func (s *Service) canMutateProtectedJail(ctID uint) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {

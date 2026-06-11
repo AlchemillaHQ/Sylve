@@ -269,12 +269,22 @@ func forwardBackupEventsRequestToNode(c *gin.Context, cS *clusterService.Service
 		return nil, 0, err
 	}
 
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
+	userID := c.GetUint("UserID")
+	username := strings.TrimSpace(c.GetString("Username"))
+	authType := strings.TrimSpace(c.GetString("AuthType"))
+	if username == "" {
+		hostname, _ := utils.GetSystemHostname()
+		if hostname != "" {
+			username = hostname
+		} else {
+			username = "cluster"
+		}
+	}
+	if authType == "" {
+		authType = "local"
 	}
 
-	clusterToken, err := cS.AuthService.CreateClusterJWT(0, hostname, "", "")
+	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

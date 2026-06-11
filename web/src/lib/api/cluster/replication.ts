@@ -81,14 +81,17 @@ export async function failoverReplicationPolicy(
 
 export async function listReplicationEvents(
 	limit: number = 200,
-	policyId?: number
+	policyId?: number,
+	nodeId?: string
 ): Promise<z.infer<typeof ReplicationEventSchema>[]> {
 	const params = new URLSearchParams();
 	params.set('limit', String(limit));
 	if (policyId && policyId > 0) {
 		params.set('policyId', String(policyId));
 	}
-
+	if (nodeId && nodeId.trim() !== '') {
+		params.set('nodeId', nodeId.trim());
+	}
 	return await apiRequest(
 		`/cluster/replication/events?${params.toString()}`,
 		z.array(ReplicationEventSchema),
@@ -116,10 +119,19 @@ export async function getReplicationEvent(
 }
 
 export async function getReplicationEventProgress(
-	id: number
+	id: number,
+	nodeId?: string
 ): Promise<z.infer<typeof ReplicationEventProgressSchema>> {
+	let url = `/cluster/replication/events/${id}/progress`;
+	const params = new URLSearchParams();
+	if (nodeId && nodeId.trim() !== '') {
+		params.set('nodeId', nodeId.trim());
+	}
+	if (params.toString()) {
+		url += `?${params.toString()}`;
+	}
 	return await apiRequest(
-		`/cluster/replication/events/${id}/progress`,
+		url,
 		ReplicationEventProgressSchema,
 		'GET'
 	);

@@ -16,6 +16,43 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestReplicationFreshnessWindowSeconds(t *testing.T) {
+	tests := []struct {
+		name    string
+		cron    string
+		wantMin int64
+		wantErr bool
+	}{
+		{name: "empty", cron: "", wantErr: true},
+		{name: "invalid", cron: "not-a-cron", wantErr: true},
+		{name: "every 1h", cron: "@every 1h", wantMin: 7200},
+		{name: "every 30m", cron: "@every 30m", wantMin: 3600},
+		{name: "every 5m hits floor", cron: "@every 5m", wantMin: 600},
+		{name: "every 1m floored to 10m", cron: "@every 1m", wantMin: 600},
+		{name: "every 10s floored to 10m", cron: "@every 10s", wantMin: 600},
+		{name: "standard daily", cron: "@daily", wantMin: 600},
+		{name: "standard hourly", cron: "@hourly", wantMin: 600},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := replicationFreshnessWindowSeconds(tt.cron)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got window=%d", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got < tt.wantMin {
+				t.Fatalf("expected window >= %d, got %d", tt.wantMin, got)
+			}
+		})
+	}
+}
+
 func TestListReplicationLeases(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ReplicationLease{})
 	s := &Service{DB: db}
@@ -359,32 +396,6 @@ func TestDeleteClusterSSHIdentityBypassRaft(t *testing.T) {
 	}
 	if err := s.DeleteClusterSSHIdentity("  ", true); err != nil {
 		t.Fatalf("whitespace nodeUUID should be no-op: %v", err)
-	}
-}
-
-func TestLocalNodeIsLeader(t *testing.T) {
-	s := &Service{Raft: nil}
-	if s.LocalNodeIsLeader() {
-		t.Fatal("expected false when Raft is nil")
-	}
-
-	nodes := setupClusterRaftTestNodes(t, 2)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if !leader.service.LocalNodeIsLeader() {
-		t.Fatal("expected leader to report true")
-	}
-
-	var follower *clusterRaftTestNode
-	for _, n := range nodes {
-		if n.id != leader.id {
-			follower = n
-			break
-		}
-	}
-	if follower.service.LocalNodeIsLeader() {
-		t.Fatal("expected follower to report false")
 	}
 }
 

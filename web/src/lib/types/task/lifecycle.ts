@@ -10,6 +10,7 @@ export const LifecycleTaskSchema = z.object({
     requestedBy: z.string().nullable().optional(),
     message: z.string().nullable().optional(),
     error: z.string().nullable().optional(),
+    payload: z.string().nullable().optional(),
     overrideRequested: z.boolean().default(false),
     startedAt: z.string().nullable().optional(),
     finishedAt: z.string().nullable().optional(),

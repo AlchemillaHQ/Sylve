@@ -490,37 +490,7 @@ func (s *Service) PopulateClusterNodes() error {
 		}
 	}
 
-	payloadBytes, _ := json.Marshal(syncPayload)
-	headers := map[string]string{
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	for _, server := range cfg.Servers {
-		if server.Address == s.Raft.Leader() {
-			continue
-		}
-
-		go func(addr string) {
-			host := raftAddressHost(addr)
-			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, ClusterEmbeddedHTTPSPort)
-
-			_, statusCode, err := utils.HTTPPostJSONWithTimeout(
-				url,
-				payloadBytes,
-				headers,
-				5*time.Second,
-			)
-			if err != nil {
-				logger.L.Debug().
-					Err(err).
-					Str("peer_addr", addr).
-					Str("url", url).
-					Int("status_code", statusCode).
-					Msg("PopulateClusterNodes: failed to sync health payload to peer")
-			}
-		}(string(server.Address))
-	}
+	s.fanOutHealthSync(syncPayload, clusterToken, cfg, "PopulateClusterNodes")
 
 	return nil
 }
@@ -762,6 +732,8 @@ func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]s
 		Int64("offline_rows", offlineRows).
 		Msg("FastStatusCheck: applied leader peer status updates")
 	publishLeftPanelRefresh()
+
+	go s.syncClusterHealthToFollowers()
 }
 
 func (s *Service) FastStatusCheck() {
@@ -811,6 +783,80 @@ func (s *Service) FastStatusCheck() {
 	s.fastStatusCheckLeader(peerIDs, peerAddrs, now)
 }
 
+func (s *Service) syncClusterHealthToFollowers() {
+	if s.Raft == nil || s.Raft.State() != raft.Leader || s.AuthService == nil {
+		return
+	}
+
+	selfHostname, err := utils.GetSystemHostname()
+	if err != nil {
+		return
+	}
+
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
+	if err != nil {
+		return
+	}
+
+	var nodes []clusterModels.ClusterNode
+	if err := s.DB.Find(&nodes).Error; err != nil || len(nodes) == 0 {
+		return
+	}
+
+	syncPayload := make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
+	for _, node := range nodes {
+		syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
+			NodeUUID:    node.NodeUUID,
+			Hostname:    node.Hostname,
+			API:         node.API,
+			Status:      node.Status,
+			CPU:         node.CPU,
+			CPUUsage:    node.CPUUsage,
+			Memory:      node.Memory,
+			MemoryUsage: node.MemoryUsage,
+			Disk:        node.Disk,
+			DiskUsage:   node.DiskUsage,
+			GuestIDs:    node.GuestIDs,
+		})
+	}
+
+	cfgFuture := s.Raft.GetConfiguration()
+	if err := cfgFuture.Error(); err != nil {
+		return
+	}
+	cfg := cfgFuture.Configuration()
+
+	s.fanOutHealthSync(syncPayload, clusterToken, cfg, "syncClusterHealthToFollowers")
+}
+
+func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealthSync, clusterToken string, cfg raft.Configuration, callerName string) {
+	payloadBytes, _ := json.Marshal(payload)
+	headers := map[string]string{
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	}
+
+	for _, server := range cfg.Servers {
+		if server.Address == s.Raft.Leader() {
+			continue
+		}
+
+		go func(addr string) {
+			host := raftAddressHost(addr)
+			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, ClusterEmbeddedHTTPSPort)
+			_, statusCode, err := utils.HTTPPostJSONWithTimeout(url, payloadBytes, headers, 5*time.Second)
+			if err != nil {
+				logger.L.Debug().
+					Err(err).
+					Str("peer_addr", addr).
+					Str("url", url).
+					Int("status_code", statusCode).
+					Msgf("%s: failed to sync health payload to peer", callerName)
+			}
+		}(string(server.Address))
+	}
+}
+
 func (s *Service) StartClusterMonitors() {
 	s.monitorOnce.Do(func() {
 		runPopulateClusterNodes := func() {
@@ -833,7 +879,7 @@ func (s *Service) StartClusterMonitors() {
 		}()
 
 		go func() {
-			ticker := time.NewTicker(60 * time.Second)
+			ticker := time.NewTicker(clusterNodePopulateInterval)
 			defer ticker.Stop()
 
 			for range ticker.C {

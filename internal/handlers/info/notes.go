@@ -21,15 +21,6 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type NoteRequest struct {
-	Title   string `json:"title" binding:"required,min=3,max=128"`
-	Content string `json:"content" binding:"required,min=3"`
-}
-
-type BulkDeleteRequest struct {
-	IDs []int `json:"ids" binding:"required"`
-}
-
 func NotesHandler(infoService *info.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		switch c.Request.Method {
@@ -96,10 +87,10 @@ func handleGetNotes(c *gin.Context, infoService *info.Service) {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/notes [post]
 func handlePostNotes(c *gin.Context, infoService *info.Service) {
-	var req NoteRequest
+	var req internal.NoteRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		validationErrors := utils.MapValidationErrors(err, NoteRequest{})
+		validationErrors := utils.MapValidationErrors(err, internal.NoteRequest{})
 
 		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 			Status:  "error",
@@ -221,7 +212,7 @@ func handleUpdateNoteByID(c *gin.Context, infoService *info.Service) {
 		return
 	}
 
-	var req NoteRequest
+	var req internal.NoteRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		var validationErrors []string
@@ -285,7 +276,7 @@ func handleUpdateNoteByID(c *gin.Context, infoService *info.Service) {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/notes/bulk-delete [post]
 func handleBulkDeleteNotes(c *gin.Context, infoService *info.Service) {
-	var req BulkDeleteRequest
+	var req internal.BulkDeleteRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{

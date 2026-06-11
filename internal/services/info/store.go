@@ -80,12 +80,14 @@ func (s *Service) StoreNetworkInterfaceStats() {
 	}
 
 	now := time.Now()
-	rowsByKey := make(map[string]infoModels.NetworkInterface, len(interfaces))
+	indexByKey := make(map[string]int, len(interfaces))
+	rows := make([]infoModels.NetworkInterface, 0, len(interfaces))
 	for _, iface := range interfaces {
 		key := iface.Name + "|" + iface.Network
-		row, exists := rowsByKey[key]
+		idx, exists := indexByKey[key]
 		if !exists {
-			rowsByKey[key] = infoModels.NetworkInterface{
+			indexByKey[key] = len(rows)
+			rows = append(rows, infoModels.NetworkInterface{
 				CreatedAt:       now,
 				Name:            iface.Name,
 				Flags:           iface.Flags,
@@ -100,11 +102,11 @@ func (s *Service) StoreNetworkInterfaceStats() {
 				SendErrors:      iface.SendErrors,
 				SentBytes:       iface.SentBytes,
 				Collisions:      iface.Collisions,
-			}
+			})
 			continue
 		}
 
-		// netstat can emit duplicate rows per interface key; keep max counters to avoid duplicate inflation
+		row := &rows[idx]
 		if iface.ReceivedPackets > row.ReceivedPackets {
 			row.ReceivedPackets = iface.ReceivedPackets
 		}
@@ -129,12 +131,6 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		if iface.Collisions > row.Collisions {
 			row.Collisions = iface.Collisions
 		}
-		rowsByKey[key] = row
-	}
-
-	rows := make([]infoModels.NetworkInterface, 0, len(rowsByKey))
-	for _, row := range rowsByKey {
-		rows = append(rows, row)
 	}
 
 	if len(rows) == 0 {

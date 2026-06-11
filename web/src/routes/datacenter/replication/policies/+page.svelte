@@ -481,28 +481,24 @@
 		return out;
 	});
 
-	function resolvePolicyTargetSync(policy: ReplicationPolicy): {
-		state: 'ok' | 'failed' | 'stale' | 'never';
-		label: string;
-	} {
+	function resolvePolicyTargetSync(policy: ReplicationPolicy) {
 		const ownerNodeID = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
-		const targetNodeIDs = Array.from(
-			new Set(
-				(policy.targets || [])
-					.map((target) => String(target.nodeId || '').trim())
-					.filter((nodeID) => nodeID.length > 0 && nodeID !== ownerNodeID)
-			)
+		const targetSet = new Set(
+			(policy.targets || [])
+				.map((t) => String(t.nodeId || '').trim())
+				.filter((id) => id.length > 0)
 		);
-
-		if (targetNodeIDs.length === 0) {
-			return { state: 'never', label: 'Pending' };
+		const targetWeightByID: Record<string, number> = {};
+		for (const t of policy.targets || []) {
+			const id = String(t.nodeId || '').trim();
+			if (id) targetWeightByID[id] = Number(t.weight) || 0;
 		}
 
 		const receiptsForPolicy = receiptsByPolicyID[policy.id] || [];
 		const receiptByTargetID: Record<string, ReplicationReceipt> = {};
 		for (const receipt of receiptsForPolicy) {
 			const targetID = String(receipt.targetNodeId || '').trim();
-			if (!targetID || !targetNodeIDs.includes(targetID)) continue;
+			if (!targetID || !targetSet.has(targetID)) continue;
 			const existing = receiptByTargetID[targetID];
 			if (!existing) {
 				receiptByTargetID[targetID] = receipt;
@@ -518,48 +514,60 @@
 			}
 		}
 
-		let hasFailed = false;
-		let hasStale = false;
-		let hasNever = false;
 		const now = Date.now();
+		const allNodeIDs = nodes.map((n) => n.nodeUUID);
 
-		for (const targetNodeID of targetNodeIDs) {
-			const receipt = receiptByTargetID[targetNodeID];
+		return allNodeIDs.map((nodeID) => {
+			const label = compactNodeLabel(nodeID);
+
+			if (nodeID === ownerNodeID) {
+				return {
+					nodeId: nodeID,
+					label,
+					weight: targetWeightByID[nodeID] ?? undefined,
+					state: 'active' as const,
+					dotColor: '#3b82f6'
+				};
+			}
+
+			if (!targetSet.has(nodeID)) {
+				return {
+					nodeId: nodeID,
+					label,
+					weight: undefined,
+					state: 'untargeted' as const,
+					dotColor: '#9ca3af'
+				};
+			}
+
+			const weight = targetWeightByID[nodeID];
+			const receipt = receiptByTargetID[nodeID];
 			if (!receipt) {
-				hasNever = true;
-				continue;
+				return { nodeId: nodeID, label, weight, state: 'never' as const, dotColor: '#9ca3af' };
 			}
 
-			const status = String(receipt.status || '')
-				.trim()
-				.toLowerCase();
+			const status = String(receipt.status || '').trim().toLowerCase();
 			if (status === 'failed') {
-				hasFailed = true;
-				continue;
+				return { nodeId: nodeID, label, weight, state: 'failed' as const, dotColor: '#ef4444' };
 			}
 
-			const lastSuccessRaw = receipt.lastSuccessAt || '';
-			const lastSuccessAt = Date.parse(lastSuccessRaw);
+			const lastSuccessAt = Date.parse(receipt.lastSuccessAt || '');
 			const freshnessWindowSeconds = Number(receipt.freshnessWindowSeconds || 0);
 			if (
 				!Number.isFinite(lastSuccessAt) ||
 				!Number.isFinite(freshnessWindowSeconds) ||
 				freshnessWindowSeconds <= 0
 			) {
-				hasStale = true;
-				continue;
+				return { nodeId: nodeID, label, weight, state: 'stale' as const, dotColor: '#f59e0b' };
 			}
 
 			const ageSeconds = (now - lastSuccessAt) / 1000;
 			if (ageSeconds > freshnessWindowSeconds) {
-				hasStale = true;
+				return { nodeId: nodeID, label, weight, state: 'stale' as const, dotColor: '#f59e0b' };
 			}
-		}
 
-		if (hasFailed) return { state: 'failed', label: 'Failed' };
-		if (hasStale) return { state: 'stale', label: 'Stale' };
-		if (hasNever) return { state: 'never', label: 'Pending' };
-		return { state: 'ok', label: 'OK' };
+			return { nodeId: nodeID, label, weight, state: 'ok' as const, dotColor: '#22c55e' };
+		});
 	}
 
 	let nodeOptions = $derived.by(() =>
@@ -755,37 +763,52 @@
 				return renderWithIcon('mdi:check-circle', row.haLabel || 'Eligible', 'text-green-500');
 			}
 		},
-		{ field: 'targets', title: 'Targets', width: 260, minWidth: 180 },
 		{
-			field: 'targetSync',
-			title: 'Target Sync',
-			width: 140,
-			minWidth: 120,
+			field: 'targets',
+			title: 'Targets',
+			width: 320,
+			minWidth: 220,
 			formatter: (cell: CellComponent) => {
-				const row = cell.getRow().getData() as { targetSyncState: string; targetSyncLabel: string };
-				const state = String(row.targetSyncState || '').toLowerCase();
-				if (state === 'ok') {
-					return renderWithIcon('mdi:check-circle', row.targetSyncLabel || 'OK', 'text-green-500');
-				}
-				if (state === 'failed') {
-					return renderWithIcon(
-						'mdi:close-circle',
-						row.targetSyncLabel || 'Failed',
-						'text-red-500'
+				const row = cell.getRow().getData() as {
+					nodeSyncStatuses: Array<{
+						nodeId: string;
+						label: string;
+						weight?: number;
+						state: string;
+						dotColor: string;
+					}>;
+				};
+				const statuses = row.nodeSyncStatuses;
+				if (!statuses || !statuses.length) return '-';
+
+				const stateLabels: Record<string, string> = {
+					active: 'Active',
+					ok: 'Synced',
+					failed: 'Failed',
+					stale: 'Stale',
+					never: 'Pending',
+					untargeted: 'Not targeted'
+				};
+
+				const tracked = statuses.filter((s) => s.state !== 'untargeted');
+				const untargeted = statuses.filter((s) => s.state === 'untargeted');
+
+				const nodeHtml = (s: (typeof statuses)[number]) => {
+					const humanState = stateLabels[s.state] || s.state;
+					const suffix =
+						s.weight !== undefined ? `${s.label} (${s.weight})` : s.label;
+					return `<span class="inline-flex items-center gap-0.5" title="${s.label}: ${humanState}"><span class="shrink-0 inline-block rounded-full" style="width:8px;height:8px;background-color:${s.dotColor}"></span><span>${suffix}</span></span>`;
+				};
+
+				let parts = tracked.map(nodeHtml);
+
+				if (untargeted.length > 0) {
+					parts.push(
+						`<span class="inline-flex items-center gap-0.5 text-muted-foreground" title="${untargeted.length} node${untargeted.length > 1 ? 's' : ''} not targeted">+${untargeted.length}</span>`
 					);
 				}
-				if (state === 'stale') {
-					return renderWithIcon(
-						'mdi:clock-alert-outline',
-						row.targetSyncLabel || 'Stale',
-						'text-amber-500'
-					);
-				}
-				return renderWithIcon(
-					'mdi:progress-question',
-					row.targetSyncLabel || 'Pending',
-					'text-muted-foreground'
-				);
+
+				return `<span class="inline-flex items-center gap-1.5 flex-wrap">${parts.join('')}</span>`;
 			}
 		},
 		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
@@ -835,10 +858,13 @@
 				workload: workloadLabel,
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
-			haState: haLabel,
+				haState: haLabel,
 				haEligible,
 				haDegraded: policy.haDegraded,
 				haLabel,
+				targets: targetsLabel,
+				nodeSyncStatuses: targetSync,
+				schedule: scheduleLabel(policy.cronExpr),
 				lastStatus: policy.lastStatus,
 				transitionState: policy.transitionState,
 				lastRunAt: policy.lastRunAt,

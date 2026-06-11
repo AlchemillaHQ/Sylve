@@ -75,6 +75,18 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 
+func newTestZeltaService(db *gorm.DB) *Service {
+	return &Service{
+		DB:                 db,
+		runningJobs:        make(map[uint]struct{}),
+		queuedJobs:         make(map[uint]struct{}),
+		runningReplication: make(map[uint]struct{}),
+		runningTransitions: make(map[uint]struct{}),
+		poolDownMisses:     make(map[string]int),
+		runningWorkloadOp:  make(map[string]string),
+	}
+}
+
 func newFakeSSHHarness(t *testing.T) *fakeSSHHarness {
 	t.Helper()
 

@@ -240,6 +240,7 @@
 		'/api/vm/options/ignore-umsrs': 'VM Options - Ignore UMSRs',
 		'/api/vm/options/qemu-guest-agent': 'VM Options - QEMU Guest Agent',
 		'/api/vm/options/tpm': 'VM Options - TPM',
+		'/api/vm/migrate': 'VM - Migrate',
 		'/api/vm': 'VM',
 		'/api/network/manual-switch': 'Manual Switch',
 		'/api/zfs/pools': 'ZFS Pool',
@@ -272,6 +273,7 @@
 		'/api/jail/options/allowed-options': 'Jail Options - Allowed',
 		'/api/jail/options/metadata': 'Jail Options - Metadata',
 		'/api/jail/options/lifecycle-hooks': 'Jail Options - Lifecycle Hooks',
+		'/api/jail/migrate': 'Jail - Migrate',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
@@ -327,6 +329,7 @@
 		'/api/notifications': 'Notification',
 		'/api/basic/system/reboot': 'System - Reboot',
 		'/api/basic/initialize': 'System - Initialize',
+		'/api/tasks/migration/cancel': 'Migration - Cancel',
 		'/api/basic': 'Basic Settings',
 		'/api/health': 'Health Check'
 	});
@@ -563,6 +566,21 @@
 	}
 
 	function lifecycleTaskLabel(task: LifecycleTask): string {
+		if (task.action === 'migrate') {
+			if (task.guestType === 'vm') {
+				const name = vmNameById.get(task.guestId);
+				return name
+					? `Migrate VM - ${name} (RID ${task.guestId})`
+					: `Migrate VM - RID ${task.guestId}`;
+			}
+			if (task.guestType === 'jail') {
+				const name = jailNameByCtId.get(task.guestId);
+				return name
+					? `Migrate Jail - ${name} (CTID ${task.guestId})`
+					: `Migrate Jail - CTID ${task.guestId}`;
+			}
+		}
+
 		if (task.guestType === 'jail-template' && task.action === 'create') {
 			const templateName = templateNameById.get(task.guestId);
 			return templateName

@@ -137,6 +137,35 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	return &snap, nil
 }
 
+func dedupReplicationTargets(payloads []ReplicationPolicyPayload) ([]ReplicationPolicy, []ReplicationPolicyTarget) {
+	replicationPolicies := make([]ReplicationPolicy, 0, len(payloads))
+	replicationTargets := make([]ReplicationPolicyTarget, 0)
+	seenID := make(map[uint]struct{})
+	seenPair := make(map[string]struct{})
+
+	for _, payload := range payloads {
+		replicationPolicies = append(replicationPolicies, payload.Policy)
+		for _, t := range payload.Targets {
+			t.PolicyID = payload.Policy.ID
+			if t.ID != 0 {
+				if _, exists := seenID[t.ID]; exists {
+					continue
+				}
+				seenID[t.ID] = struct{}{}
+			} else {
+				k := fmt.Sprintf("%d|%s", t.PolicyID, strings.TrimSpace(t.NodeID))
+				if _, exists := seenPair[k]; exists {
+					continue
+				}
+				seenPair[k] = struct{}{}
+			}
+			replicationTargets = append(replicationTargets, t)
+		}
+	}
+
+	return replicationPolicies, replicationTargets
+}
+
 func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
 	var snap ClusterSnapshot
@@ -155,29 +184,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		for _, t := range snap.BackupTargets {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
-		replicationPolicies := make([]ReplicationPolicy, 0, len(snap.ReplicationPolicies))
-		replicationTargets := make([]ReplicationPolicyTarget, 0)
-		seenReplicationTargetID := make(map[uint]struct{})
-		seenReplicationTargetPair := make(map[string]struct{})
-		for _, payload := range snap.ReplicationPolicies {
-			replicationPolicies = append(replicationPolicies, payload.Policy)
-			for _, t := range payload.Targets {
-				t.PolicyID = payload.Policy.ID
-				if t.ID != 0 {
-					if _, exists := seenReplicationTargetID[t.ID]; exists {
-						continue
-					}
-					seenReplicationTargetID[t.ID] = struct{}{}
-				} else {
-					k := fmt.Sprintf("%d|%s", t.PolicyID, strings.TrimSpace(t.NodeID))
-					if _, exists := seenReplicationTargetPair[k]; exists {
-						continue
-					}
-					seenReplicationTargetPair[k] = struct{}{}
-				}
-				replicationTargets = append(replicationTargets, t)
-			}
-		}
+		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
 
 		deleteSets := []restoreSet{
 			{"replication_events", snap.ReplicationEvents, 500},
@@ -502,6 +509,27 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				}
 				return tx.Delete(&ReplicationPolicy{}, payload.ID).Error
 			})
+		case "state_update":
+			var payload struct {
+				ID         uint    `json:"id"`
+				LastRunAt  *time.Time `json:"lastRunAt"`
+				LastStatus string  `json:"lastStatus"`
+				LastError  string  `json:"lastError"`
+				NextRunAt  *time.Time `json:"nextRunAt"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			if payload.ID == 0 {
+				return nil
+			}
+			updates := map[string]any{
+				"last_run_at": payload.LastRunAt,
+				"last_status": payload.LastStatus,
+				"last_error":  payload.LastError,
+				"next_run_at": payload.NextRunAt,
+			}
+			return db.Model(&ReplicationPolicy{}).Where("id = ?", payload.ID).Updates(updates).Error
 		default:
 			return nil
 		}

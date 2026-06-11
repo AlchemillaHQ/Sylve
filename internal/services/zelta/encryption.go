@@ -30,7 +30,8 @@ func (s *Service) ReconcileEncryptionKeys() error {
 	var materialized int
 	for _, key := range keys {
 		keyPath := filepath.Join(EncryptionKeyDirectory, key.UUID)
-		if _, statErr := os.Stat(keyPath); statErr == nil {
+		existing, statErr := os.ReadFile(keyPath)
+		if statErr == nil && string(existing) == key.KeyData {
 			continue
 		}
 

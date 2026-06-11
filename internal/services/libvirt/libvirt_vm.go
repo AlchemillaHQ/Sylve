@@ -824,6 +824,28 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	return nil
 }
 
+func (s *Service) ForceStopVM(rid uint) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain: %w", err)
+	}
+
+	if err := s.stopVM(&domain, vmModels.VM{RID: rid}); err != nil {
+		return err
+	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("vm_stop_%d", rid))
+
+	return nil
+}
+
 func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
 	return s.canMutateProtectedVM(rid)
 }

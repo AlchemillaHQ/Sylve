@@ -20,6 +20,7 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -65,10 +66,12 @@
 	setContext('jailState', jState);
 
 	let hasActiveLifecycleTask = $derived(!!jState.current?.pendingAction);
+	let isMigrationActive = $derived(jState.current?.pendingAction === 'migrate');
 	let lifecycleActionBadge = $derived(
 		getJailLifecycleBadgeStyle(jState.current?.pendingAction || '')
 	);
 	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
+	let showMigrateModal = $state(false);
 
 	class SummaryBarExtras {
 		logsLength = $state(0);
@@ -275,7 +278,7 @@
 					</Button>
 				{/if}
 
-				{#if hasActiveLifecycleTask}
+				{#if hasActiveLifecycleTask && !isMigrationActive}
 					<Badge
 						variant={lifecycleActionBadge.variant}
 						class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
@@ -303,6 +306,19 @@
 						/>
 					</Button>
 				{/if}
+
+				<Button
+					onclick={() => (showMigrateModal = true)}
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
+				>
+					{#if isMigrationActive}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin text-purple-500"></span>
+					{:else}
+						<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
+					{/if}
+					<span>Migrate</span>
+				</Button>
 				<SimpleSelect
 					options={[
 						{ label: 'Hourly', value: 'hourly' },
@@ -366,4 +382,17 @@
 	title={modalState.loading.title}
 	description={modalState.loading.description}
 	iconColor={modalState.loading.iconColor}
+/>
+
+<MigrateModal
+	bind:open={showMigrateModal}
+	guestType="jail"
+	guestId={ctId}
+	guestName={jail.current?.name || ''}
+	node={page.params.node || ''}
+	onSuccess={(targetHostname: string) => {
+		if (targetHostname) {
+			goto(`/${targetHostname}/jail/${ctId}/summary`);
+		}
+	}}
 />

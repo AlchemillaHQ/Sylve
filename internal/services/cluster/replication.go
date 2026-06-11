@@ -166,32 +166,58 @@ func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error
 	})
 }
 
+type ReplicationPolicyRuntimeState struct {
+	ID         uint       `json:"id"`
+	LastRunAt  *time.Time `json:"lastRunAt"`
+	LastStatus string     `json:"lastStatus"`
+	LastError  string     `json:"lastError"`
+	NextRunAt  *time.Time `json:"nextRunAt"`
+}
+
+func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRuntimeState, bypassRaft bool) error {
+	if update.ID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	if update.LastStatus == "" {
+		return fmt.Errorf("last_status_required")
+	}
+
+	if bypassRaft {
+		return s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", update.ID).Updates(map[string]any{
+			"last_run_at": update.LastRunAt,
+			"last_status": update.LastStatus,
+			"last_error":  update.LastError,
+			"next_run_at": update.NextRunAt,
+		}).Error
+	}
+
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	if s.Raft.State() != raft.Leader {
+		return fmt.Errorf("not_leader")
+	}
+
+	data, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_policy_state_update: %w", err)
+	}
+
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_policy",
+		Action: "state_update",
+		Data:   data,
+	})
+}
+
 // guestExistsInCluster checks whether a guest (VM or jail) exists on any
 // node in the cluster by aggregating per-node resources.
 func (s *Service) guestExistsInCluster(guestType string, guestID uint) (bool, error) {
-	resources, err := s.Resources()
+	nodeID, err := s.ResolveReplicationGuestOwnerNode(guestType, guestID)
 	if err != nil {
 		return false, err
 	}
-
-	for _, node := range resources {
-		switch guestType {
-		case clusterModels.ReplicationGuestTypeVM:
-			for _, vm := range node.VMs {
-				if vm.RID == guestID {
-					return true, nil
-				}
-			}
-		case clusterModels.ReplicationGuestTypeJail:
-			for _, jail := range node.Jails {
-				if jail.CTID == guestID {
-					return true, nil
-				}
-			}
-		}
-	}
-
-	return false, nil
+	return nodeID != "", nil
 }
 
 func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces.ReplicationPolicyReq) (*clusterModels.ReplicationPolicy, []clusterModels.ReplicationPolicyTarget, error) {
@@ -212,13 +238,16 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		return nil, nil, fmt.Errorf("guest_id_required")
 	}
 
-	// Validate the guest actually exists somewhere in the cluster.
-	// Uses Resources() (cross-node aggregation) rather than a local DB
-	// query so the check works regardless of which node is leader.
-	if found, err := s.guestExistsInCluster(guestType, input.GuestID); err != nil {
-		return nil, nil, fmt.Errorf("failed_to_verify_guest: %w", err)
-	} else if !found {
-		return nil, nil, fmt.Errorf("guest_not_found")
+	// On create (id == 0) verify the guest exists somewhere in the cluster.
+	// On update the policy already exists and the guest was verified at creation;
+	// skipping the check is essential for failover: the source node hosting the
+	// guest may be offline, making live HTTP aggregation unable to find it.
+	if id == 0 {
+		if found, err := s.guestExistsInCluster(guestType, input.GuestID); err != nil {
+			return nil, nil, fmt.Errorf("failed_to_verify_guest: %w", err)
+		} else if !found {
+			return nil, nil, fmt.Errorf("guest_not_found")
+		}
 	}
 
 	sourceMode := strings.TrimSpace(strings.ToLower(input.SourceMode))
@@ -325,34 +354,10 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		ownerEpoch = input.OwnerEpoch
 	}
 
-	crashRecovery := true
-	if existingByIDFound {
-		crashRecovery = existingByID.CrashRecovery
-	}
-	if input.CrashRecovery != nil {
-		crashRecovery = *input.CrashRecovery
-	}
-	crashRestartMax := 3
-	if existingByIDFound {
-		crashRestartMax = existingByID.CrashRestartMax
-	}
-	if input.CrashRestartMax != nil {
-		crashRestartMax = *input.CrashRestartMax
-	}
-	poolHealthCheck := true
-	if existingByIDFound {
-		poolHealthCheck = existingByID.PoolHealthCheck
-	}
-	if input.PoolHealthCheck != nil {
-		poolHealthCheck = *input.PoolHealthCheck
-	}
-	poolCapacityPct := 90
-	if existingByIDFound {
-		poolCapacityPct = existingByID.PoolCapacityPct
-	}
-	if input.PoolCapacityPct != nil {
-		poolCapacityPct = *input.PoolCapacityPct
-	}
+	crashRecovery := resolveOptional(existingByIDFound, existingByID.CrashRecovery, input.CrashRecovery, true)
+	crashRestartMax := resolveOptional(existingByIDFound, existingByID.CrashRestartMax, input.CrashRestartMax, 3)
+	poolHealthCheck := resolveOptional(existingByIDFound, existingByID.PoolHealthCheck, input.PoolHealthCheck, true)
+	poolCapacityPct := resolveOptional(existingByIDFound, existingByID.PoolCapacityPct, input.PoolCapacityPct, 90)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID:              id,
@@ -664,7 +669,7 @@ func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.Replication
 
 func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterModels.ReplicationEvent, error) {
 	if limit <= 0 {
-		limit = 200
+		limit = defaultEventListLimit
 	}
 	query := s.DB.Order("started_at DESC").Limit(limit)
 	if policyID > 0 {
@@ -679,59 +684,35 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 }
 
 func (s *Service) ListReplicationReceipts(policyID uint) ([]clusterModels.ReplicationReceipt, error) {
-	query := s.DB.Order("last_attempt_at DESC")
-	if policyID > 0 {
-		query = query.Where("policy_id = ?", policyID)
+	type receiptWithCron struct {
+		clusterModels.ReplicationReceipt
+		CronExpr string `gorm:"column:cron_expr"`
 	}
 
-	var receipts []clusterModels.ReplicationReceipt
-	if err := query.Find(&receipts).Error; err != nil {
+	query := s.DB.Table("replication_receipts").
+		Select("replication_receipts.*, replication_policies.cron_expr").
+		Joins("LEFT JOIN replication_policies ON replication_policies.id = replication_receipts.policy_id").
+		Order("replication_receipts.last_attempt_at DESC")
+
+	if policyID > 0 {
+		query = query.Where("replication_receipts.policy_id = ?", policyID)
+	}
+
+	var rows []receiptWithCron
+	if err := query.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	if len(receipts) == 0 {
-		return receipts, nil
+	if len(rows) == 0 {
+		return []clusterModels.ReplicationReceipt{}, nil
 	}
 
-	policyIDSet := make(map[uint]struct{}, len(receipts))
-	for _, receipt := range receipts {
-		if receipt.PolicyID > 0 {
-			policyIDSet[receipt.PolicyID] = struct{}{}
-		}
-	}
-
-	policyIDs := make([]uint, 0, len(policyIDSet))
-	for id := range policyIDSet {
-		policyIDs = append(policyIDs, id)
-	}
-
-	type policyIntervalRow struct {
-		ID       uint
-		CronExpr string
-	}
-	var intervalRows []policyIntervalRow
-	if len(policyIDs) > 0 {
-		if err := s.DB.
-			Model(&clusterModels.ReplicationPolicy{}).
-			Select("id", "cron_expr").
-			Where("id IN ?", policyIDs).
-			Find(&intervalRows).Error; err != nil {
-			return nil, err
-		}
-	}
-
-	freshnessByPolicyID := make(map[uint]int64, len(intervalRows))
-	for _, row := range intervalRows {
+	receipts := make([]clusterModels.ReplicationReceipt, len(rows))
+	for i, row := range rows {
+		receipts[i] = row.ReplicationReceipt
 		windowSeconds, err := replicationFreshnessWindowSeconds(row.CronExpr)
-		if err != nil || windowSeconds <= 0 {
-			continue
-		}
-		freshnessByPolicyID[row.ID] = windowSeconds
-	}
-
-	for idx := range receipts {
-		if windowSeconds, ok := freshnessByPolicyID[receipts[idx].PolicyID]; ok && windowSeconds > 0 {
+		if err == nil && windowSeconds > 0 {
 			value := windowSeconds
-			receipts[idx].FreshnessWindowSec = &value
+			receipts[i].FreshnessWindowSec = &value
 		}
 	}
 
@@ -984,4 +965,14 @@ func (s *Service) LocalNodeID() string {
 
 func (s *Service) LocalNodeIsLeader() bool {
 	return s.Raft != nil && s.Raft.State() == raft.Leader
+}
+
+func resolveOptional[T any](hasExisting bool, existing T, input *T, defaultVal T) T {
+	if input != nil {
+		return *input
+	}
+	if hasExisting {
+		return existing
+	}
+	return defaultVal
 }

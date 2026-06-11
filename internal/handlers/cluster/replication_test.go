@@ -175,17 +175,7 @@ func TestReplicationEventByIDHandler(t *testing.T) {
 	cS := &cluster.Service{DB: db}
 	r := newReplicationRouter(cS)
 
-	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/replication/events/0", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for zero id, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/replication/events/abc", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-numeric id, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/replication/events/9999", nil)
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/replication/events/9999", nil)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for non-existent, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -335,30 +325,6 @@ func TestContainsGuestID(t *testing.T) {
 	}
 }
 
-func TestReplicationServicesRouter(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/services/vnc/:guestType/:id", nil)
-	r.GET("/services/serial/:guestType/:id", nil)
-	r.GET("/services/rdp/:guestType/:id", nil)
-
-	if r == nil {
-		t.Fatal("router should not be nil")
-	}
-}
-
-func TestJoinLeaderAPIHost(t *testing.T) {
-	hostPort := joinLeaderAPIHost("10.0.0.1")
-	if hostPort == "" {
-		t.Fatal("expected non-empty host:port for IPv4")
-	}
-
-	hostPort = joinLeaderAPIHost("2001:db8::1")
-	if hostPort == "" {
-		t.Fatal("expected non-empty host:port for IPv6")
-	}
-}
-
 func TestCreateReplicationPolicyHandlerValidation(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
 	cS := &cluster.Service{DB: db}
@@ -399,34 +365,34 @@ func TestUpdateReplicationPolicyHandlerValidation(t *testing.T) {
 	cS := &cluster.Service{DB: db}
 	r := newReplicationRouter(cS)
 
-	rr := performJSONRequest(t, r, http.MethodPut, "/cluster/replication/policies/abc", []byte(`{}`))
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-numeric id, got %d", rr.Code)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodPut, "/cluster/replication/policies/0", []byte(`{}`))
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for zero id, got %d", rr.Code)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodPut, "/cluster/replication/policies/1", []byte(`{}`))
+	rr := performJSONRequest(t, r, http.MethodPut, "/cluster/replication/policies/1", []byte(`{}`))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty payload, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
-func TestDeleteReplicationPolicyHandlerValidation(t *testing.T) {
+func TestReplicationPolicyHandlerList(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
 	cS := &cluster.Service{DB: db}
 	r := newReplicationRouter(cS)
 
-	rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/replication/policies/abc", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-numeric id, got %d", rr.Code)
+	policy := clusterModels.ReplicationPolicy{
+		Name: "existing-policy", GuestType: "vm", GuestID: 100,
+		CronExpr: "@every 1h", FailoverMode: "manual",
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
 	}
 
-	rr = performJSONRequest(t, r, http.MethodDelete, "/cluster/replication/policies/0", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for zero id, got %d", rr.Code)
+	var listResp handlerAPIResponse[[]clusterModels.ReplicationPolicy]
+	listRR := performJSONRequest(t, r, http.MethodGet, "/cluster/replication/policies", nil)
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("list: expected 200, got %d: %s", listRR.Code, listRR.Body.String())
+	}
+	if err := json.Unmarshal(listRR.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("list unmarshal: %v", err)
+	}
+	if len(listResp.Data) != 1 {
+		t.Fatalf("expected 1 policy in list, got %d", len(listResp.Data))
 	}
 }

@@ -58,7 +58,7 @@ func (s *Service) CheckVirtualization() error {
 		}
 	}
 
-	if _,err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
+	if _, err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
 		return nil
 	}
 

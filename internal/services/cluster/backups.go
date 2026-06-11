@@ -1012,7 +1012,7 @@ func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
 		return fmt.Errorf("failed_to_marshal_command: %w", err)
 	}
 
-	applyFuture := s.Raft.Apply(payload, 5*time.Second)
+	applyFuture := s.Raft.Apply(payload, raftApplyTimeout)
 	if err := applyFuture.Error(); err != nil {
 		return fmt.Errorf("raft_apply_failed: %w", err)
 	}
@@ -1043,33 +1043,16 @@ func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 }
 
 func (s *Service) newRaftObjectID(table string) (uint, error) {
-	// ID allocation uses cryptographically random IDs in a 2^53 range.
-	// Cross-node collisions are astronomically unlikely (~1e-12 per call
-	// with 1000 existing rows). If a collision does occur, the per-model
-	// upsert's OnConflict behaviour handles it without data loss, and the
-	// 16-attempt retry loop picks a new ID on the next call.
 	idRangeMax := raftObjectIDRangeForTable(table)
-	for attempts := 0; attempts < 16; attempts++ {
-		n, err := rand.Int(rand.Reader, idRangeMax)
-		if err != nil {
-			return 0, err
-		}
-
-		id := uint(n.Uint64())
-		if id == 0 {
-			continue
-		}
-
-		var count int64
-		if err := s.DB.Table(table).Where("id = ?", id).Count(&count).Error; err != nil {
-			return 0, err
-		}
-		if count == 0 {
-			return id, nil
-		}
+	n, err := rand.Int(rand.Reader, idRangeMax)
+	if err != nil {
+		return 0, err
 	}
-
-	return 0, fmt.Errorf("unable_to_allocate_unique_id")
+	id := uint(n.Uint64())
+	if id == 0 {
+		return 0, fmt.Errorf("generated_zero_id")
+	}
+	return id, nil
 }
 
 func raftObjectIDRangeForTable(table string) *big.Int {

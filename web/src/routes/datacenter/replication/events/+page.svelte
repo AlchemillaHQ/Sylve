@@ -40,6 +40,7 @@
 	let query = $state('');
 	let reload = $state(false);
 	let filterPolicyId = $state('');
+	let selectedNodeId = $state('');
 	let activeRows: Row[] | null = $state(null);
 
 	let errorModal = $state({
@@ -67,13 +68,12 @@
 
 	// svelte-ignore state_referenced_locally
 	let events = resource(
-		() => `replication-events-${filterPolicyId || 'all'}`,
+		() => `replication-events-${filterPolicyId || 'all'}-${selectedNodeId || 'auto'}`,
 		async () => {
 			const policyId = Number.parseInt(filterPolicyId, 10);
-			const res = await listReplicationEvents(
-				200,
-				Number.isFinite(policyId) ? policyId : undefined
-			);
+			const numeric = Number.isFinite(policyId) ? policyId : undefined;
+			const nodeId = selectedNodeId || (numeric ? policyNodeIDByID[numeric] : undefined);
+			const res = await listReplicationEvents(200, numeric, nodeId);
 			updateCache('replication-events', res);
 			return res;
 		},
@@ -111,6 +111,17 @@
 		return out;
 	});
 
+	let policyNodeIDByID = $derived.by(() => {
+		const out: Record<number, string> = {};
+		for (const policy of policies.current) {
+			const nodeId = (policy.activeNodeId || policy.sourceNodeId || '').trim();
+			if (nodeId) {
+				out[policy.id] = nodeId;
+			}
+		}
+		return out;
+	});
+
 	let nodeNameByID = $derived.by(() => {
 		const out: Record<string, string> = {};
 		for (const node of nodes) {
@@ -130,6 +141,14 @@
 	let policyFilterOptions = $derived.by(() => [
 		{ value: '', label: 'All policies' },
 		...policies.current.map((policy) => ({ value: String(policy.id), label: policy.name }))
+	]);
+
+	let nodeFilterOptions = $derived.by(() => [
+		{ value: '', label: 'Auto-detect node' },
+		...nodes.map((node) => ({
+			value: node.nodeUUID,
+			label: node.hostname || node.nodeUUID
+		}))
 	]);
 
 	let selectedEventId = $derived.by(() => {
@@ -157,7 +176,10 @@
 			if (!open || eventId <= 0) return null;
 
 			try {
-				const res = await getReplicationEventProgress(eventId);
+				const nodeId = selectedEvent
+					? (selectedEvent.sourceNodeId || '').trim()
+					: undefined;
+				const res = await getReplicationEventProgress(eventId, nodeId || undefined);
 				progressModal.error = '';
 				return res;
 			} catch (error: any) {
@@ -236,6 +258,14 @@
 		}
 	}
 
+	function eventTypeLabel(value: string): string {
+		if (value === 'failover') return 'Failover';
+		if (value === 'replication') return 'Replication';
+		if (value === 'failback') return 'Failback';
+		if (value === 'demotion') return 'Demotion';
+		return value || 'Event';
+	}
+
 	function receiptStatusMeta(status: string): { icon: string; label: string; className: string } {
 		switch ((status || '').toLowerCase()) {
 			case 'success':
@@ -254,6 +284,12 @@
 	let receiptRows = $derived.by(() =>
 		(receipts.current || [])
 			.slice()
+			.filter((r) => {
+				if (!selectedNodeId) return true;
+				const sid = (r.sourceNodeId || '').trim();
+				const tid = (r.targetNodeId || '').trim();
+				return sid === selectedNodeId || tid === selectedNodeId;
+			})
 			.sort((a, b) => Date.parse(b.lastAttemptAt || '') - Date.parse(a.lastAttemptAt || ''))
 	);
 
@@ -307,11 +343,23 @@
 			width: 130,
 			minWidth: 110,
 			formatter: (cell: CellComponent) => {
-				const meta = statusMeta(String(cell.getValue() || ''));
+				const row = cell.getRow().getData();
+				const rawStatus = String(cell.getValue() || '');
+				if (rawStatus === 'active' && row.eventType === 'failover' && row.finishedAt) {
+					const completed = statusMeta('success');
+					return renderWithIcon(completed.icon, 'Completed', completed.className);
+				}
+				const meta = statusMeta(rawStatus);
 				return renderWithIcon(meta.icon, meta.label, meta.className);
 			}
 		},
-		{ field: 'eventType', title: 'Type', width: 110, minWidth: 100 },
+		{
+			field: 'eventType',
+			title: 'Type',
+			width: 110,
+			minWidth: 100,
+			formatter: (cell: CellComponent) => eventTypeLabel(String(cell.getValue() || ''))
+		},
 		{ field: 'policy', title: 'Policy', width: 170, minWidth: 130 },
 		{
 			field: 'workload',
@@ -391,6 +439,18 @@
 			}}
 			onChange={(value) => {
 				filterPolicyId = value;
+				activeRows = null;
+			}}
+		/>
+
+		<SimpleSelect
+			value={selectedNodeId}
+			options={nodeFilterOptions}
+			classes={{
+				trigger: '!h-6 text-sm'
+			}}
+			onChange={(value) => {
+				selectedNodeId = value;
 				activeRows = null;
 			}}
 		/>
@@ -507,7 +567,7 @@
 </div>
 
 <Dialog.Root bind:open={progressModal.open}>
-	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-5">
+	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-6">
 		<Dialog.Header>
 			<Dialog.Title>Replication Progress</Dialog.Title>
 		</Dialog.Header>
@@ -517,44 +577,53 @@
 				{progressModal.error}
 			</div>
 		{:else if progressEvent.current}
+			{@const ev = progressEvent.current.event}
+			{@const sm = statusMeta(ev.status === 'active' && ev.completedAt ? 'success' : ev.status)}
+			{@const terminated = ev.completedAt !== null && ev.completedAt !== undefined}
+			{@const showBytes =
+				(progressEvent.current.movedBytes !== null &&
+					progressEvent.current.movedBytes !== undefined) ||
+				(progressEvent.current.totalBytes !== null &&
+					progressEvent.current.totalBytes !== undefined)}
 			<div class="space-y-3">
-				<div class="space-y-1 text-sm">
+				<div class="space-y-2 text-sm">
 					<div class="flex justify-between">
 						<span>Status</span>
-						<span>{progressEvent.current.event.status}</span>
+						<span class="inline-flex items-center gap-1">
+							<span class={sm.icon + ' h-4 w-4'}></span>
+							<span class={sm.className}>{terminated ? 'Completed' : sm.label}</span>
+						</span>
 					</div>
-					<div class="flex justify-between">
-						<span>Moved</span>
-						<span
-							>{progressEvent.current.movedBytes !== null &&
-							progressEvent.current.movedBytes !== undefined
-								? formatBytesBinary(progressEvent.current.movedBytes)
-								: '-'}</span
-						>
-					</div>
-					<div class="flex justify-between">
-						<span>Total</span>
-						<span
-							>{progressEvent.current.totalBytes !== null &&
-							progressEvent.current.totalBytes !== undefined
-								? formatBytesBinary(progressEvent.current.totalBytes)
-								: '-'}</span
-						>
-					</div>
+					{#if showBytes}
+						<div class="flex justify-between">
+							<span>Moved</span>
+							<span
+								>{progressEvent.current.movedBytes !== null &&
+								progressEvent.current.movedBytes !== undefined
+									? formatBytesBinary(progressEvent.current.movedBytes)
+									: '-'}</span
+							>
+						</div>
+						<div class="flex justify-between">
+							<span>Total</span>
+							<span
+								>{progressEvent.current.totalBytes !== null &&
+								progressEvent.current.totalBytes !== undefined
+									? formatBytesBinary(progressEvent.current.totalBytes)
+									: '-'}</span
+							>
+						</div>
+					{/if}
 				</div>
 
-				<div class="space-y-1">
-					<div class="text-sm">{Math.round(progressPercent)}%</div>
-					<Progress value={progressPercent} />
+				<div class="space-y-2">
+					<div class="text-sm">{terminated ? 100 : Math.round(progressPercent)}%</div>
+					<Progress value={terminated ? 100 : progressPercent} />
 				</div>
 			</div>
 		{:else}
 			<div class="text-sm text-muted-foreground">Loading progress...</div>
 		{/if}
-
-		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (progressModal.open = false)}>Close</Button>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
 

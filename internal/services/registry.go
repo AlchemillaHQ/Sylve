@@ -28,6 +28,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/migration"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/startup"
@@ -55,6 +56,8 @@ type ServiceRegistry struct {
 	JailService      jailServiceInterfaces.JailServiceInterface
 	ClusterService   clusterServiceInterfaces.ClusterServiceInterface
 	ZeltaService     *zelta.Service
+	MigrationService *migration.Service
+	GzfsClient       *gzfs.Client
 }
 
 func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
@@ -169,6 +172,16 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
 	zeltaService := NewService[zelta.Service](db, telemetryDB, clusterService, jailService, networkService, libvirtService, gzfs)
 
+	migrationService := migration.NewService(
+		db,
+		telemetryDB,
+		clusterService.(*cluster.Service),
+		libvirtService.(*libvirt.Service),
+		jailService.(*jail.Service),
+		gzfs,
+		zeltaService.(*zelta.Service),
+	)
+
 	return &ServiceRegistry{
 		AuthService:      authService.(serviceInterfaces.AuthServiceInterface),
 		StartupService:   NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService, clusterService, iscsiService).(*startup.Service),
@@ -184,5 +197,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		JailService:      jailService.(jailServiceInterfaces.JailServiceInterface),
 		ClusterService:   clusterService.(clusterServiceInterfaces.ClusterServiceInterface),
 		ZeltaService:     zeltaService.(*zelta.Service),
+		MigrationService: migrationService,
+		GzfsClient:       gzfs,
 	}
 }

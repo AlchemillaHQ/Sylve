@@ -57,19 +57,35 @@ func TestReconcileEncryptionKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("skips existing key file", func(t *testing.T) {
+	t.Run("skips when content matches", func(t *testing.T) {
 		clusterSvc.UpsertEncryptionKeyLocally("skip-uuid", "skip-key-data-32bytes-longer", "passphrase")
 
 		keyPath := filepath.Join(keyDir, "skip-uuid")
-		os.WriteFile(keyPath, []byte("existing-content-32bytes-that"), 0600)
+		os.WriteFile(keyPath, []byte("skip-key-data-32bytes-longer"), 0600)
 
 		if err := s.ReconcileEncryptionKeys(); err != nil {
 			t.Fatalf("ReconcileEncryptionKeys failed: %v", err)
 		}
 
 		data, _ := os.ReadFile(keyPath)
-		if string(data) != "existing-content-32bytes-that" {
-			t.Fatalf("existing key file was overwritten: %q", string(data))
+		if string(data) != "skip-key-data-32bytes-longer" {
+			t.Fatalf("matching key file was overwritten: %q", string(data))
+		}
+	})
+
+	t.Run("overwrites when content differs", func(t *testing.T) {
+		clusterSvc.UpsertEncryptionKeyLocally("overwrite-uuid", "db-key-data-32bytes-longer!", "passphrase")
+
+		keyPath := filepath.Join(keyDir, "overwrite-uuid")
+		os.WriteFile(keyPath, []byte("stale-content-32bytes-on-dis"), 0600)
+
+		if err := s.ReconcileEncryptionKeys(); err != nil {
+			t.Fatalf("ReconcileEncryptionKeys failed: %v", err)
+		}
+
+		data, _ := os.ReadFile(keyPath)
+		if string(data) != "db-key-data-32bytes-longer!" {
+			t.Fatalf("stale key file was not updated: expected %q, got %q", "db-key-data-32bytes-longer!", string(data))
 		}
 	})
 }

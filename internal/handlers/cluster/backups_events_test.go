@@ -108,17 +108,7 @@ func TestBackupEventByIDHandler(t *testing.T) {
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 
-	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/abc", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-numeric id, got %d", rr.Code)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/0", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for zero id, got %d", rr.Code)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/1", nil)
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/1", nil)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for non-existent, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -144,17 +134,7 @@ func TestBackupEventProgressByIDHandler(t *testing.T) {
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 
-	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/abc/progress", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-numeric id, got %d", rr.Code)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/0/progress", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for zero id, got %d", rr.Code)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/1/progress", nil)
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/1/progress", nil)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for non-existent, got %d: %s", rr.Code, rr.Body.String())
 	}

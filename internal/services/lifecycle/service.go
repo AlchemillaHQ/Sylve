@@ -42,6 +42,7 @@ var (
 	ErrTaskInProgress = errors.New("lifecycle_task_in_progress")
 	ErrInvalidGuest   = errors.New("invalid_guest_type")
 	ErrInvalidAction  = errors.New("invalid_action")
+	ErrMigrationActive = errors.New("migration_in_progress")
 )
 
 var errGuestAlreadyRunning = errors.New("guest_already_running")
@@ -49,6 +50,8 @@ var errGuestAlreadyRunning = errors.New("guest_already_running")
 type guestLifecycleExecPayload struct {
 	TaskID uint `json:"taskId"`
 }
+
+type MigrationExecutor func(ctx context.Context, taskID uint) error
 
 type Service struct {
 	DB          *gorm.DB
@@ -68,6 +71,12 @@ type Service struct {
 
 	vmTemplateConvertFn func(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
+
+	migrateFn MigrationExecutor
+}
+
+func (s *Service) SetMigrationExecutor(fn MigrationExecutor) {
+	s.migrateFn = fn
 }
 
 func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
@@ -118,14 +127,14 @@ func validateAction(guestType, action string) error {
 	switch guestType {
 	case taskModels.GuestTypeVM:
 		switch action {
-		case "start", "stop", "shutdown", "reboot":
+		case "start", "stop", "shutdown", "reboot", "migrate":
 			return nil
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
 		}
 	case taskModels.GuestTypeJail:
 		switch action {
-		case "start", "stop", "restart":
+		case "start", "stop", "restart", "migrate":
 			return nil
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
@@ -232,6 +241,10 @@ func (s *Service) createTask(
 
 	// Mimic the Proxmox-style override flow: stop can interrupt an in-flight shutdown.
 	if active != nil {
+		if active.Action == "migrate" {
+			return active, "", ErrMigrationActive
+		}
+
 		if guestType == taskModels.GuestTypeVM && action == "stop" && active.Action == "shutdown" && !active.OverrideRequested {
 			now := time.Now().UTC()
 			if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", active.ID).Updates(map[string]any{
@@ -357,6 +370,13 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestLifecycleTask) error {
 	switch task.GuestType {
 	case taskModels.GuestTypeVM:
+		if task.Action == "migrate" {
+			if s.migrateFn == nil {
+				return fmt.Errorf("migration_executor_not_configured")
+			}
+			return s.migrateFn(ctx, task.ID)
+		}
+
 		if s.vmActionFn == nil {
 			return fmt.Errorf("vm_action_function_not_configured")
 		}
@@ -373,6 +393,13 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 		return s.vmActionFn(task.GuestID, task.Action)
 
 	case taskModels.GuestTypeJail:
+		if task.Action == "migrate" {
+			if s.migrateFn == nil {
+				return fmt.Errorf("migration_executor_not_configured")
+			}
+			return s.migrateFn(ctx, task.ID)
+		}
+
 		if s.jailActionFn == nil {
 			return fmt.Errorf("jail_action_function_not_configured")
 		}

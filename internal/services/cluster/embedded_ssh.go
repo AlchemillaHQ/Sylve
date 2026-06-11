@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/alchemillahq/sylve/internal/logger"
 	"golang.org/x/crypto/ssh"
@@ -151,7 +152,7 @@ func parseExecRequestPayload(payload []byte) (string, error) {
 	}
 
 	size := int(binary.BigEndian.Uint32(payload[:4]))
-	if size < 0 || len(payload) < 4+size {
+	if len(payload) < 4+size {
 		return "", fmt.Errorf("invalid_exec_payload_size")
 	}
 
@@ -164,6 +165,19 @@ func exitCodeFromErr(err error) uint32 {
 	}
 
 	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if exitErr.ProcessState != nil {
+			if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+				return uint32(128 + ws.Signal())
+			}
+		}
+		code := exitErr.ExitCode()
+		if code >= 0 {
+			return uint32(code)
+		}
+		return 1
+	}
+
 	if ok := strings.Contains(err.Error(), "signal: killed"); ok {
 		return 137
 	}
@@ -174,11 +188,6 @@ func exitCodeFromErr(err error) uint32 {
 		return 130
 	}
 
-	if errors.As(err, &exitErr) {
-		if code := exitErr.ExitCode(); code >= 0 {
-			return uint32(code)
-		}
-	}
 	return 1
 }
 

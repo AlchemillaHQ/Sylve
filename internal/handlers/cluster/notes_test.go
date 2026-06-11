@@ -110,7 +110,7 @@ func TestClusterNotesHandlerValidationFailures(t *testing.T) {
 	})
 }
 
-func TestClusterNotesHandlerCreateUpdateDeleteSuccess(t *testing.T) {
+func TestClusterNotesHandlerCreateSuccess(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
 	cS := &cluster.Service{DB: db}
 	r := newClusterNotesRouter(cS)
@@ -128,11 +128,21 @@ func TestClusterNotesHandlerCreateUpdateDeleteSuccess(t *testing.T) {
 	if createJSON.Message != "note_created" {
 		t.Fatalf("expected note_created message, got %q", createJSON.Message)
 	}
+}
+
+func TestClusterNotesHandlerUpdateSuccess(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
+	cS := &cluster.Service{DB: db}
+	r := newClusterNotesRouter(cS)
+
+	if err := db.Create(&clusterModels.ClusterNote{
+		Title: "original", Content: "original content",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed note: %v", err)
+	}
 
 	var created clusterModels.ClusterNote
-	if err := db.First(&created).Error; err != nil {
-		t.Fatalf("failed to fetch created note: %v", err)
-	}
+	db.First(&created)
 
 	updateBody := []byte(`{"title":"updated title","content":"updated content"}`)
 	updatePath := "/cluster/notes/" + strconv.FormatUint(uint64(created.ID), 10)
@@ -148,6 +158,21 @@ func TestClusterNotesHandlerCreateUpdateDeleteSuccess(t *testing.T) {
 	if updated.Title != "updated title" || updated.Content != "updated content" {
 		t.Fatalf("update mismatch: got title=%q content=%q", updated.Title, updated.Content)
 	}
+}
+
+func TestClusterNotesHandlerDeleteSuccess(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
+	cS := &cluster.Service{DB: db}
+	r := newClusterNotesRouter(cS)
+
+	if err := db.Create(&clusterModels.ClusterNote{
+		Title: "to-delete", Content: "to-delete content",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed note: %v", err)
+	}
+
+	var created clusterModels.ClusterNote
+	db.First(&created)
 
 	deletePath := "/cluster/notes/" + strconv.FormatUint(uint64(created.ID), 10)
 	deleteResp := performJSONRequest(t, r, http.MethodDelete, deletePath, nil)

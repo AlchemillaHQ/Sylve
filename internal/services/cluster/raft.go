@@ -10,6 +10,7 @@ package cluster
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -24,6 +25,40 @@ import (
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
+
+func (s *Service) initRaftStores(dataDir string, rw io.Writer) (raft.LogStore, raft.StableStore, raft.SnapshotStore, error) {
+	logStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-log.db", dataDir))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed_to_create_log_store")
+	}
+
+	stableStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-stable.db", dataDir))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed_to_create_stable_store")
+	}
+
+	snapStore, err := raft.NewFileSnapshotStore(dataDir, 2, rw)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed_to_create_snap_store")
+	}
+
+	return logStore, stableStore, snapStore, nil
+}
+
+func (s *Service) initRaftTransport(raftIP string) (*raft.NetworkTransport, error) {
+	bindAddr := RaftServerAddress(raftIP)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
+	if err != nil {
+		return nil, fmt.Errorf("Could not resolve address: %s", err)
+	}
+
+	t, err := raft.NewTCPTransport(bindAddr, tcpAddr, raftTransportMaxPool, raftTransportTimeout, os.Stdout)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
+	}
+
+	return t, nil
+}
 
 func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 	if config.ParsedConfig.Raft.Reset {
@@ -49,59 +84,37 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
 	}
 
-	port := ClusterRaftPort
-
-	err := network.TryBindToPort(c.RaftIP, port, "tcp")
-	if err != nil {
+	if err := network.TryBindToPort(c.RaftIP, ClusterRaftPort, "tcp"); err != nil {
 		return nil, fmt.Errorf("failed_to_bind_raft_port: %v", err)
 	}
 
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(detail.NodeID)
-	cfg.SnapshotThreshold = 1024
+	cfg.SnapshotThreshold = raftSnapshotThreshold
 
 	raftLog := logger.NewZerologHCLog(logger.L, "raft")
 	raftLog.SetLevel(hclog.Error)
 	cfg.Logger = raftLog
-
-	rw := logger.StandardWriterAdapter(logger.L)
 
 	dataDir, err := config.GetRaftPath()
 	if err != nil {
 		return nil, fmt.Errorf("no_raft_path")
 	}
 
-	logStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-log.db", dataDir))
+	rw := logger.StandardWriterAdapter(logger.L)
+	logStore, stableStore, snapStore, err := s.initRaftStores(dataDir, rw)
 	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_log_store")
+		return nil, err
 	}
 
-	stableStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-stable.db", dataDir))
+	t, err := s.initRaftTransport(c.RaftIP)
 	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_stable_store")
+		return nil, err
 	}
 
-	snapStore, err := raft.NewFileSnapshotStore(dataDir, 2, rw)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_snap_store")
-	}
-
-	bindAddr := RaftServerAddress(c.RaftIP)
-	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
-	if err != nil {
-		return nil, fmt.Errorf("Could not resolve address: %s", err)
-	}
-
-	t, err := raft.NewTCPTransport(bindAddr, tcpAddr, 3, 10*time.Second, os.Stdout)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
-	}
-
-	raftAddr := raft.ServerAddress(bindAddr)
+	raftAddr := raft.ServerAddress(RaftServerAddress(c.RaftIP))
 	s.RaftID = &raftAddr
 	s.NodeID = detail.NodeID
-
 	s.Transport = t
 
 	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, s.Transport)

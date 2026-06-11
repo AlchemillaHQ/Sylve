@@ -63,6 +63,13 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 	return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("NVMe device with serial %s not found", serial)
 }
 
+func kelvinToCelsius(v int) int {
+	if v > 150 {
+		return v - 273
+	}
+	return v
+}
+
 func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvme {
 	var smart diskServiceInterfaces.SMARTNvme
 
@@ -76,6 +83,17 @@ func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvm
 
 	lines := strings.Split(output, "\n")
 	inCriticalSection := false
+
+	getInt := func(s string) int {
+		fields := strings.Fields(s)
+		if len(fields) > 0 {
+			val, err := strconv.Atoi(fields[0])
+			if err == nil {
+				return val
+			}
+		}
+		return 0
+	}
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -91,17 +109,6 @@ func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvm
 		key := strings.ToLower(strings.TrimSpace(parts[0]))
 		valStr := strings.TrimSpace(parts[1])
 
-		getInt := func(s string) int {
-			fields := strings.Fields(s)
-			if len(fields) > 0 {
-				val, err := strconv.Atoi(fields[0])
-				if err == nil {
-					return val
-				}
-			}
-			return 0
-		}
-
 		if key == "critical warning state" {
 			smart.CriticalWarning = valStr
 			inCriticalSection = true
@@ -116,7 +123,7 @@ func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvm
 		case inCriticalSection && key == "available spare":
 			smart.CriticalWarningState.AvailableSpare = getInt(valStr)
 		case inCriticalSection && key == "temperature":
-			smart.CriticalWarningState.Temperature = getInt(valStr)
+			smart.CriticalWarningState.Temperature = kelvinToCelsius(getInt(valStr))
 		case inCriticalSection && key == "device reliability":
 			smart.CriticalWarningState.DeviceReliability = getInt(valStr)
 		case inCriticalSection && key == "read only":
@@ -126,7 +133,7 @@ func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvm
 			inCriticalSection = false
 
 		case key == "temperature":
-			smart.Temperature = getInt(valStr)
+			smart.Temperature = kelvinToCelsius(getInt(valStr))
 
 		case key == "available spare":
 			smart.AvailableSpare = getInt(valStr)

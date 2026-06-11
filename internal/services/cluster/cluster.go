@@ -156,7 +156,7 @@ func (s *Service) waitUntilLeader(timeout time.Duration) (bool, raft.ServerAddre
 		if addr := s.Raft.Leader(); addr != "" {
 			lastKnownLeader = addr
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(raftLeaderPollInterval)
 	}
 
 	if lastKnownLeader != "" {
@@ -431,7 +431,7 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	c.RaftIP = ip
 	c.RaftPort = port
 
-	becameLeader, leaderAddr, err := s.waitUntilLeader(10 * time.Second)
+	becameLeader, leaderAddr, err := s.waitUntilLeader(raftLeaderWaitTimeout)
 	if err != nil {
 		logger.L.Warn().Err(err).Msg("Leader not elected yet; skipping immediate snapshot")
 		return nil

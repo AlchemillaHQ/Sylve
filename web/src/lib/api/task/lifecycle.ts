@@ -43,11 +43,11 @@ export async function getActiveLifecycleTaskForGuest(
     );
     const task = result ?? null;
 
-    if (isAPIResponse(task) || !isLifecycleTaskActive(task)) {
+    if (isAPIResponse(task)) {
         return null;
     }
 
-    if (task.guestType !== guestType || task.guestId !== guestId) {
+    if (!task || task.guestType !== guestType || task.guestId !== guestId) {
         return null;
     }
 

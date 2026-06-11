@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -161,5 +162,83 @@ func TestEmitLeftPanelRefreshLocal(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for left-panel-refresh event")
+	}
+}
+
+func TestApplyProbeHysteresisConcurrent(t *testing.T) {
+	db := newClusterServiceTestDB(t)
+	s := &Service{DB: db}
+	s.peerProbeFailureStreak = make(map[string]int)
+
+	numPeers := 20
+	numGoroutines := 50
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				peerKey := string(rune('A' + (id+j)%numPeers))
+				_ = s.applyProbeHysteresis(peerKey, "offline")
+				_ = s.applyProbeHysteresis(peerKey, "online")
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestPersistCurrentClusterNodes(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
+	s := &Service{DB: db}
+
+	current := map[string]curInfo{
+		"node-1": {
+			nodeUUID: "node-1", api: "https://node-1:8184",
+			canonHost: "node-1.local", healthOK: true,
+			cpu: 4, cpuUsage: 25.5, memory: 8192, memUsage: 50.0,
+			disk: 100000, diskUsage: 30.0, guestIDs: []uint{1, 2},
+		},
+		"node-2": {
+			nodeUUID: "node-2", api: "https://node-2:8184",
+			canonHost: "node-2.local", healthOK: true,
+			cpu: 8, cpuUsage: 10.0, memory: 16384, memUsage: 25.0,
+			disk: 200000, diskUsage: 15.0, guestIDs: []uint{3},
+		},
+	}
+
+	changed, err := s.persistCurrentClusterNodes(current)
+	if err != nil {
+		t.Fatalf("persist returned error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true for new nodes")
+	}
+
+	changed, err = s.persistCurrentClusterNodes(current)
+	if err != nil {
+		t.Fatalf("second persist returned error: %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false for unchanged nodes")
+	}
+
+	var count int64
+	db.Model(&clusterModels.ClusterNode{}).Count(&count)
+	if count != 2 {
+		t.Fatalf("expected 2 nodes in DB, got %d", count)
+	}
+
+	delete(current, "node-2")
+	changed, err = s.persistCurrentClusterNodes(current)
+	if err != nil {
+		t.Fatalf("removal persist returned error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true on removal")
+	}
+	db.Model(&clusterModels.ClusterNode{}).Count(&count)
+	if count != 1 {
+		t.Fatalf("expected 1 node after removal, got %d", count)
 	}
 }

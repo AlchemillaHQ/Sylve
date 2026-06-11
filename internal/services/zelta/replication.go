@@ -557,11 +557,12 @@ func parseReplicationGuestKey(key string) (string, uint, bool) {
 }
 
 func isHAReplicationSnapshotShortName(snapshotName string) bool {
-	value := strings.ToLower(strings.TrimSpace(snapshotName))
-	if value == "" {
+	snapshotName = strings.TrimSpace(snapshotName)
+	snapshotName = strings.TrimPrefix(snapshotName, "@")
+	if snapshotName == "" {
 		return false
 	}
-	return strings.HasPrefix(value, "ha_")
+	return strings.HasPrefix(strings.ToLower(snapshotName), "ha_")
 }
 
 func buildOrphanHAReplicationPruneCandidates(snapshots []SnapshotInfo) []string {
@@ -1613,24 +1614,82 @@ func (s *Service) updateReplicationPolicyResult(policy *clusterModels.Replicatio
 		}
 	}
 
-	updates := map[string]any{
-		"last_run_at": now,
-		"last_status": "success",
-		"last_error":  "",
-		"next_run_at": next,
-	}
+	lastStatus := "success"
+	lastError := ""
 	if runErr != nil {
 		if strings.Contains(runErr.Error(), "replication_degraded") {
-			updates["last_status"] = "degraded"
+			lastStatus = "degraded"
 		} else if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
-			updates["last_status"] = "blocked"
+			lastStatus = "blocked"
 		} else {
-			updates["last_status"] = "failed"
+			lastStatus = "failed"
 		}
-		updates["last_error"] = runErr.Error()
+		lastError = runErr.Error()
 	}
 
-	_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(updates).Error
+	if s.syncReplicationPolicyRuntimeState(policy.ID, now, next, lastStatus, lastError) {
+		return
+	}
+
+	_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
+		"last_run_at": now,
+		"last_status": lastStatus,
+		"last_error":  lastError,
+		"next_run_at": next,
+	}).Error
+}
+
+func (s *Service) syncReplicationPolicyRuntimeState(policyID uint, lastRunAt time.Time, nextRunAt *time.Time, lastStatus, lastError string) bool {
+	if s == nil || s.Cluster == nil {
+		return false
+	}
+
+	update := clusterService.ReplicationPolicyRuntimeState{
+		ID:         policyID,
+		LastRunAt:  &lastRunAt,
+		LastStatus: lastStatus,
+		LastError:  lastError,
+		NextRunAt:  nextRunAt,
+	}
+	bypassRaft := s.Cluster.Raft == nil
+	if err := s.Cluster.ProposeReplicationPolicyStateUpdate(update, bypassRaft); err == nil {
+		return true
+	} else if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
+		forwardErr := s.forwardReplicationPolicyStateToLeader(update)
+		if forwardErr == nil {
+			return true
+		}
+		logger.L.Warn().Err(forwardErr).Uint("policy_id", policyID).Msg("failed_to_forward_replication_policy_state_to_leader")
+	} else {
+		logger.L.Warn().Err(err).Uint("policy_id", policyID).Msg("failed_to_sync_replication_policy_state_cluster_wide")
+	}
+
+	return false
+}
+
+func (s *Service) forwardReplicationPolicyStateToLeader(update clusterService.ReplicationPolicyRuntimeState) error {
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+
+	_, leaderID := s.Cluster.Raft.LeaderWithID()
+	leaderNodeID := strings.TrimSpace(string(leaderID))
+	if leaderNodeID == "" {
+		return fmt.Errorf("leader_unknown")
+	}
+
+	payload := map[string]any{
+		"id":         update.ID,
+		"lastRunAt":  update.LastRunAt,
+		"lastStatus": update.LastStatus,
+		"lastError":  update.LastError,
+		"nextRunAt":  update.NextRunAt,
+	}
+
+	return s.forwardReplicationPolicyControl(leaderNodeID, "replication-policy-state", payload, 5*time.Second)
 }
 
 func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent, runErr error) {
@@ -3659,7 +3718,7 @@ func (s *Service) stopLocalJailIfPresent(ctID uint) error {
 		return nil
 	}
 
-	if err := s.Jail.JailAction(int(ctID), "stop"); err != nil {
+	if err := s.Jail.ForceStopJail(ctID); err != nil {
 		lower := strings.ToLower(err.Error())
 		if strings.Contains(lower, "failed to find jail") ||
 			strings.Contains(lower, "not found") ||
@@ -3709,7 +3768,7 @@ func (s *Service) forceKillReplicationVM(ctx context.Context, rid uint) error {
 		return nil
 	}
 
-	if err := s.VM.LvVMAction(*vm, "stop"); err != nil {
+	if err := s.VM.ForceStopVM(rid); err != nil {
 		lower := strings.ToLower(err.Error())
 		if strings.Contains(lower, "not running") || isVMDomainNotFoundError(err) {
 			return nil

@@ -48,6 +48,8 @@
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { resolve } from '$app/paths';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 
 	interface Data {
 		node: string;
@@ -183,10 +185,12 @@
 	);
 	let isDomainErrorState = $derived(normalizedDomainStatus === 'error');
 	let hasActiveLifecycleTask = $derived(!!domain.current?.pendingAction);
+	let isMigrationActive = $derived(domain.current?.pendingAction === 'migrate');
 	let lifecycleActionBadge = $derived(
 		getVMLifecycleBadgeStyle(domain.current?.pendingAction || '')
 	);
-	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
+	let shouldHideActionButtons = $derived(hasActiveLifecycleTask && !isMigrationActive);
+	let showMigrateModal = $state(false);
 	let isDomainRunningForActions = $derived.by(() => {
 		if (normalizedDomainStatus === 'running') return true;
 		if (isDomainErrorState) return false;
@@ -621,20 +625,36 @@
 				</div>
 			{/if}
 		</Button>
+	{:else if type === 'migrate'}
+		<Button
+			onclick={() => (showMigrateModal = true)}
+			disabled={isMigrationActive}
+			size="sm"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
+		>
+			{#if isMigrationActive}
+				<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin text-purple-500"></span>
+			{:else}
+				<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
+			{/if}
+			<span>Migrate</span>
+		</Button>
 	{/if}
 {/snippet}
 
 <div>
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		<div class="flex items-center gap-1">
-			{@render button('start')}
-			{@render button('force-delete')}
-			{@render button('force-stop')}
-			{@render button('reboot')}
-			{@render button('shutdown')}
-			{@render button('stop')}
+			{#if !isMigrationActive}
+				{@render button('start')}
+				{@render button('force-delete')}
+				{@render button('force-stop')}
+				{@render button('reboot')}
+				{@render button('shutdown')}
+				{@render button('stop')}
+			{/if}
 
-			{#if hasActiveLifecycleTask}
+			{#if hasActiveLifecycleTask && !isMigrationActive}
 				<Badge
 					variant={lifecycleActionBadge.variant}
 					class={`mt-0.5 ml-2 ${lifecycleActionBadge.className}`}
@@ -664,6 +684,8 @@
 					</Button>
 				</div>
 			{/if}
+
+			{@render button('migrate')}
 
 			<SimpleSelect
 				options={[
@@ -938,6 +960,19 @@
 		</Card.Root>
 	</Dialog.Content>
 </Dialog.Root>
+
+<MigrateModal
+	bind:open={showMigrateModal}
+	guestType="vm"
+	guestId={Number(data.rid)}
+	guestName={vm.current.name || ''}
+	node={data.node}
+	onSuccess={(targetHostname: string) => {
+		if (targetHostname) {
+			goto(`/${targetHostname}/vm/${data.rid}/summary`);
+		}
+	}}
+/>
 
 <style>
 	.logs-container {

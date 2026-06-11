@@ -415,6 +415,9 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 				logger.L.Warn().Err(err).Msg("backup_scheduler_tick_failed")
 			}
 		case <-cleanupTicker.C:
+			if err := s.runOrphanBackupSnapshotCleanupTick(ctx); err != nil {
+				logger.L.Warn().Err(err).Msg("backup_orphan_cleanup_tick_failed")
+			}
 			if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
 				logger.L.Warn().Err(err).Msg("periodic_backup_target_ssh_key_reconcile_failed")
 			}
@@ -1717,6 +1720,149 @@ func compactNowToken() string {
 	return strings.ToLower(strconv.FormatInt(time.Now().UTC().UnixMilli(), 36))
 }
 
+func isBackupOrphanSnapshotShortName(snapshotName string) bool {
+	snapshotName = strings.TrimSpace(snapshotName)
+	snapshotName = strings.TrimPrefix(snapshotName, "@")
+	if snapshotName == "" {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(snapshotName), "bk_")
+}
+
+func buildOrphanBackupPruneCandidates(snapshots []SnapshotInfo) []string {
+	if len(snapshots) == 0 {
+		return []string{}
+	}
+
+	seen := make(map[string]struct{}, len(snapshots))
+	out := make([]string, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		fullName := strings.TrimSpace(snapshot.Name)
+		if !isValidZFSSnapshotName(fullName) {
+			continue
+		}
+		if !isBackupOrphanSnapshotShortName(snapshotShortName(snapshot)) {
+			continue
+		}
+		if _, ok := seen[fullName]; ok {
+			continue
+		}
+		seen[fullName] = struct{}{}
+		out = append(out, fullName)
+	}
+
+	sort.Strings(out)
+	return out
+}
+
+func (s *Service) runOrphanBackupSnapshotCleanupTick(ctx context.Context) error {
+	if s == nil || s.DB == nil {
+		return nil
+	}
+
+	localNodeID := s.localNodeID()
+
+	var jobs []clusterModels.BackupJob
+	if err := s.DB.
+		Select("id", "mode", "source_dataset", "jail_root_dataset", "runner_node_id").
+		Where("enabled = ?", true).
+		Find(&jobs).Error; err != nil {
+		return err
+	}
+
+	protectedGuests := make(map[string]struct{}, len(jobs))
+	for _, job := range jobs {
+		if !s.isLocalBackupJobRunner(&job, localNodeID) {
+			continue
+		}
+		kind, guestID := backupJobGuestIdentity(&job)
+		if kind == "" || guestID == 0 {
+			continue
+		}
+		key := replicationGuestKey(kind, guestID)
+		if key != "" {
+			protectedGuests[key] = struct{}{}
+		}
+	}
+
+	datasets, err := s.listLocalFilesystemDatasets(ctx)
+	if err != nil {
+		return err
+	}
+
+	orphanGuests := make(map[string]struct{})
+	for _, dataset := range datasets {
+		guestType, guestID := inferRestoreDatasetKind(dataset)
+		if guestType != clusterModels.BackupJobModeJail && guestType != clusterModels.BackupJobModeVM {
+			continue
+		}
+
+		key := replicationGuestKey(guestType, guestID)
+		if key == "" {
+			continue
+		}
+		if _, protected := protectedGuests[key]; protected {
+			continue
+		}
+		orphanGuests[key] = struct{}{}
+	}
+
+	for key := range orphanGuests {
+		guestType, guestID, ok := parseReplicationGuestKey(key)
+		if !ok {
+			continue
+		}
+
+		roots, findErr := s.findLocalGuestDatasets(ctx, guestType, guestID)
+		if findErr != nil {
+			logger.L.Warn().
+				Str("guest_type", guestType).
+				Uint("guest_id", guestID).
+				Err(findErr).
+				Msg("backup_orphan_cleanup_list_guest_roots_failed")
+			continue
+		}
+
+		for _, root := range roots {
+			snapshots, snapErr := s.listLocalSnapshotsForDataset(ctx, root)
+			if snapErr != nil {
+				logger.L.Warn().
+					Str("guest_type", guestType).
+					Uint("guest_id", guestID).
+					Str("dataset", root).
+					Err(snapErr).
+					Msg("backup_orphan_cleanup_list_snapshots_failed")
+				continue
+			}
+
+			pruneCandidates := buildOrphanBackupPruneCandidates(snapshots)
+			if len(pruneCandidates) == 0 {
+				continue
+			}
+
+			if destroyErr := s.DestroySnapshots(ctx, pruneCandidates); destroyErr != nil {
+				logger.L.Warn().
+					Str("guest_type", guestType).
+					Uint("guest_id", guestID).
+					Str("dataset", root).
+					Int("snapshots", len(pruneCandidates)).
+					Err(destroyErr).
+					Msg("backup_orphan_cleanup_destroy_snapshots_failed")
+				continue
+			}
+
+			logger.L.Info().
+				Str("guest_type", guestType).
+				Uint("guest_id", guestID).
+				Str("dataset", root).
+				Int("snapshots_deleted", len(pruneCandidates)).
+				Msg("backup_orphan_snapshots_cleaned")
+		}
+	}
+
+	return nil
+}
+
 func targetGenerationDatasetCandidate(activeDataset, generationToken string, attempt int) string {
 	activeDataset = normalizeDatasetPath(activeDataset)
 	generationToken = strings.TrimSpace(generationToken)
@@ -2255,6 +2401,14 @@ func (s *Service) releaseWorkloadOperation(guestType string, guestID uint) {
 	s.workloadOpMu.Lock()
 	defer s.workloadOpMu.Unlock()
 	delete(s.runningWorkloadOp, key)
+}
+
+func (s *Service) AcquireGuestLock(guestType string, guestID uint, operation string) (bool, string) {
+	return s.acquireWorkloadOperation(guestType, guestID, operation)
+}
+
+func (s *Service) ReleaseGuestLock(guestType string, guestID uint) {
+	s.releaseWorkloadOperation(guestType, guestID)
 }
 
 func (s *Service) localNodeID() string {

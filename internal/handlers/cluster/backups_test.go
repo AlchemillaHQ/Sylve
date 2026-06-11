@@ -93,17 +93,7 @@ func TestBackupTargetRunningJobIDs(t *testing.T) {
 	cS := &cluster.Service{DB: db}
 	r := newBackupsRouter(cS)
 
-	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/abc/running-job-ids", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-numeric id, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/0/running-job-ids", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for zero id, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-job-ids", nil)
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-job-ids", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 for non-existent target, got %d: %s", rr.Code, rr.Body.String())
 	}

@@ -82,3 +82,12 @@ type APIResponse[T any] struct {
 }
 
 const MinimumVMStorageSize = 1024 * 1024 * 128
+
+type NoteRequest struct {
+	Title   string `json:"title" binding:"required,min=3,max=128"`
+	Content string `json:"content" binding:"required,min=3"`
+}
+
+type BulkDeleteRequest struct {
+	IDs []int `json:"ids" binding:"required"`
+}

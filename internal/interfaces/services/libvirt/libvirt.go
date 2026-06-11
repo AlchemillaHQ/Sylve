@@ -81,6 +81,7 @@ type LibvirtServiceInterface interface {
 	StopTPM(rid uint) error
 	CheckPCIDevicesInUse(vm vmModels.VM) error
 	LvVMAction(vm vmModels.VM, action string) error
+	ForceStopVM(rid uint) error
 	SetActionDate(vm vmModels.VM, action string) error
 	GetVMXML(rid uint) (string, error)
 	IsDomainInactive(rid uint) (bool, error)

@@ -19,7 +19,10 @@ import (
 )
 
 // clusterAuthStub provides a minimal AuthService stub for cluster tests.
-// Embed the real interface so only overridden methods need implementations.
+// The embedded (nil) interface means any method call not explicitly overridden
+// will panic. See the grep at the top for which cluster methods are stubbed.
+// If a test panics with nil pointer from AuthServiceInterface, add the
+// missing method here.
 type clusterAuthStub struct {
 	serviceInterfaces.AuthServiceInterface
 }

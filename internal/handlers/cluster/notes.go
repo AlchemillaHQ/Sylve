@@ -17,15 +17,6 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-type NoteRequest struct {
-	Title   string `json:"title" binding:"required,min=3"`
-	Content string `json:"content" binding:"required,min=3"`
-}
-
-type BulkDeleteRequest struct {
-	IDs []int `json:"ids" binding:"required"`
-}
-
 // @Summary Get All Cluster Notes
 // @Description Get all notes stored in the cluster
 // @Tags Cluster
@@ -75,7 +66,7 @@ func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req NoteRequest
+		var req internal.NoteRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -136,7 +127,7 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req NoteRequest
+		var req internal.NoteRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -254,7 +245,7 @@ func BulkDeleteNotes(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req BulkDeleteRequest
+		var req internal.BulkDeleteRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",

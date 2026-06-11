@@ -29,6 +29,7 @@ import (
 	iscsiHandlers "github.com/alchemillahq/sylve/internal/handlers/iscsi"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
+	migrationHandlers "github.com/alchemillahq/sylve/internal/handlers/migration"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
 	notificationsHandlers "github.com/alchemillahq/sylve/internal/handlers/notifications"
 	sambaHandlers "github.com/alchemillahq/sylve/internal/handlers/samba"
@@ -46,6 +47,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+	"github.com/alchemillahq/sylve/internal/services/migration"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
@@ -92,6 +94,7 @@ func RegisterRoutes(r *gin.Engine,
 	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
 	zeltaService *zelta.Service,
+	migrationService *migration.Service,
 	fsm *clusterModels.FSMDispatcher,
 	db *gorm.DB,
 	telemetryDB *gorm.DB,
@@ -364,6 +367,7 @@ func RegisterRoutes(r *gin.Engine,
 	vm.Use(EnsureCorrectHost(db, authService))
 	vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
+		vm.POST("/migrate/:rid", migrationHandlers.MigrateVM(migrationService, lifecycleService))
 		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
 		vm.GET("/templates/simple", vmHandlers.ListVMTemplatesSimple(libvirtService))
@@ -438,6 +442,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.POST("/snapshots/:id", jailHandlers.CreateJailSnapshot(jailService))
 		jail.POST("/snapshots/rollback/:id/:snapshotId", jailHandlers.RollbackJailSnapshot(jailService))
 		jail.DELETE("/snapshots/:id/:snapshotId", jailHandlers.DeleteJailSnapshot(jailService))
+		jail.POST("/migrate/:ctId", migrationHandlers.MigrateJail(migrationService, lifecycleService))
 		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
 		jail.PUT("/name", jailHandlers.UpdateJailName(jailService, clusterService))
@@ -567,6 +572,8 @@ func RegisterRoutes(r *gin.Engine,
 	intraCluster.Use(middleware.EnsureAuthenticated(authService))
 	intraCluster.Use(middleware.RequireClusterScope())
 	{
+		intraCluster.POST("/migration/import-vm", migrationHandlers.IntraClusterImportVM(zeltaService, libvirtService))
+		intraCluster.POST("/migration/import-jail", migrationHandlers.IntraClusterImportJail(zeltaService, jailService))
 		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
 		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
@@ -579,6 +586,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
 		intraCluster.POST("/replication-failover-enqueue", clusterHandlers.EnqueueFailoverInternal(zeltaService))
 		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
+		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
 	}
@@ -676,6 +684,12 @@ func RegisterRoutes(r *gin.Engine,
 			lifecycleTasks.GET("/active", taskHandlers.ActiveLifecycleTasks(lifecycleService))
 			lifecycleTasks.GET("/active/:guestType/:guestId", taskHandlers.ActiveLifecycleTaskForGuest(lifecycleService))
 			lifecycleTasks.GET("/recent", taskHandlers.RecentLifecycleTasks(lifecycleService))
+		}
+
+		migrationTasks := tasks.Group("/migration")
+		{
+			migrationTasks.POST("/cancel/:taskId", migrationHandlers.CancelMigration(migrationService))
+			migrationTasks.GET("/validate", migrationHandlers.ValidateMigration(migrationService))
 		}
 	}
 

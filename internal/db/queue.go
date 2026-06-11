@@ -86,6 +86,7 @@ func resolveQueueLane(jobName string) string {
 
 	switch {
 	case strings.HasPrefix(name, "guest-lifecycle-"), strings.HasPrefix(name, "guest-autostart-"),
+		strings.HasPrefix(name, "guest-migrate-"),
 		strings.HasPrefix(name, "utils-wol-"):
 		return queueLaneLifecycleID
 	case strings.HasPrefix(name, "utils-download-"):

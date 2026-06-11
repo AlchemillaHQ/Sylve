@@ -177,6 +177,8 @@ func main() {
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
 	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc)
+	migrationSvc := serviceRegistry.MigrationService
+	lifecycleSvc.SetMigrationExecutor(migrationSvc.ExecuteMigration)
 	refreshEmitter := func(reason string) {
 		clusterSvc.EmitLeftPanelRefreshClusterWide(reason)
 	}
@@ -257,6 +259,7 @@ func main() {
 
 	go zeltaS.StartBackupScheduler(qCtx)
 	go zeltaS.StartReplicationScheduler(qCtx)
+	go migrationSvc.StartSnapshotCleanupTicker(qCtx)
 	go aS.ClearExpiredJWTTokens(qCtx)
 
 	gin.SetMode(gin.ReleaseMode)
@@ -287,6 +290,7 @@ func main() {
 		lifecycleSvc,
 		clusterSvc,
 		zeltaS,
+		migrationSvc,
 		fsm,
 		d,
 		telemetryDB,
