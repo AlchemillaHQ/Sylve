@@ -285,6 +285,7 @@ func TestSnapshotCleanupDestroysTargetedPrefixes(t *testing.T) {
 	// Create snapshots with various prefixes
 	zfsTakeSnapshot(t, client, vmRoot, "ha_abc123")
 	zfsTakeSnapshot(t, client, vmRoot, "ha_xyz789")
+	zfsTakeSnapshot(t, client, vmRoot, "ha_def456")
 	zfsTakeSnapshot(t, client, vmRoot, "bk_20250101")
 	zfsTakeSnapshot(t, client, vmRoot, "bk_j2s_20250101")
 	zfsTakeSnapshot(t, client, vmRoot, "sylve-migrate-initial-1700000000")
@@ -308,6 +309,7 @@ func TestSnapshotCleanupDestroysTargetedPrefixes(t *testing.T) {
 	for _, snap := range []string{
 		vmRoot + "@ha_abc123",
 		vmRoot + "@ha_xyz789",
+		vmRoot + "@ha_def456",
 		vmRoot + "@bk_20250101",
 		vmRoot + "@bk_j2s_20250101",
 		vmRoot + "@sylve-migrate-initial-1700000000",
