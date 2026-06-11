@@ -13,6 +13,37 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 <meta name="twitter:image" content={ogImage} />
 <meta name="twitter:card" content="summary_large_image" />
 
+<link
+  rel="icon"
+  type="image/png"
+  sizes="16x16"
+  href="/favicon-16x16.png"
+  media="(prefers-color-scheme: light)"
+/>
+<link
+  rel="icon"
+  type="image/png"
+  sizes="16x16"
+  href="/favicon-dark-16x16.png"
+  media="(prefers-color-scheme: dark)"
+/>
+
+<link
+  rel="icon"
+  type="image/png"
+  sizes="32x32"
+  href="/favicon-32x32.png"
+  media="(prefers-color-scheme: light)"
+/>
+<link
+  rel="icon"
+  type="image/png"
+  sizes="32x32"
+  href="/favicon-dark-32x32.png"
+  media="(prefers-color-scheme: dark)"
+/>
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+
 <link id="favicon" rel="icon" type="image/svg+xml" href="/white.svg" />
 
 <script is:inline>
