@@ -101,6 +101,7 @@ func Read(devicePath string) (*DeviceInfo, error) {
 		thresh := int(C.get_threshold_for_id(&cAttr, cAttr.id))
 
 		attr := Attribute{
+			Page:      uint32(cAttr.page),
 			ID:        uint32(cAttr.id),
 			Name:      C.GoString(cAttr.description),
 			Threshold: thresh,
@@ -132,7 +133,14 @@ func Read(devicePath string) (*DeviceInfo, error) {
 
 		info.Attributes = append(info.Attributes, attr)
 
-		// Populate convenience fields
+		if !isATA {
+			if attr.Page == 0x0D && attr.ID == 0 {
+				info.Temperature = int(attr.RawValue)
+			}
+			continue
+		}
+
+		// Populate ATA convenience fields
 		switch attr.ID {
 		case 9:
 			info.PowerOnHours = int(attr.RawValue)

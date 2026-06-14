@@ -9,6 +9,7 @@
 package smart
 
 type Attribute struct {
+	Page      uint32
 	ID        uint32
 	Name      string
 	Value     int

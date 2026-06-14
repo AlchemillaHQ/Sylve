@@ -218,6 +218,7 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 
 		for i, attr := range info.Attributes {
 			data.Attributes[i] = diskServiceInterfaces.ATASmartAttribute{
+				Page:      int(attr.Page),
 				ID:        int(attr.ID),
 				Name:      attr.Name,
 				Value:     attr.Value,
@@ -255,6 +256,10 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 	}
 
 	if data, ok := smartData.(diskServiceInterfaces.SmartData); ok {
+		if strings.ToUpper(data.Device.Protocol) == "SCSI" {
+			return 0, errors.New("wearout not available for SCSI protocol")
+		}
+
 		const (
 			MaxLifespanHours = 50000.0
 			SectorPenalty    = 10.0

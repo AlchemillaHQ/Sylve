@@ -27,7 +27,7 @@ import (
 const (
 	diskSmartMonitorInterval        = 30 * time.Minute
 	diskSmartConsecutiveTrigger     = 2
-	diskSmartConsecutiveClear       = 1
+	diskSmartConsecutiveClear       = 3
 	diskSmartConsecutiveUnavailable = 3
 )
 
@@ -529,6 +529,15 @@ func (s *Service) getTemperature(smartData any) int {
 	}
 
 	if ata, ok := smartData.(diskServiceInterfaces.SmartData); ok {
+		protocol := strings.ToUpper(ata.Device.Protocol)
+		if protocol == "SCSI" {
+			for _, attr := range ata.Attributes {
+				if attr.Page == 0x0D && attr.ID == 0 {
+					return int(attr.RawValue)
+				}
+			}
+			return ata.Temperature
+		}
 		return ata.Temperature
 	}
 
@@ -554,6 +563,10 @@ func (s *Service) getSMARTPassed(smartData any) bool {
 func (s *Service) getReallocatedSectors(smartData any) (reallocated, pending, uncorrectable int64) {
 	ata, ok := smartData.(diskServiceInterfaces.SmartData)
 	if !ok {
+		return 0, 0, 0
+	}
+
+	if strings.ToUpper(ata.Device.Protocol) == "SCSI" {
 		return 0, 0, 0
 	}
 

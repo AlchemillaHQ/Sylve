@@ -49,6 +49,7 @@ type SmartData struct {
 }
 
 type ATASmartAttribute struct {
+	Page   int    `json:"page"`
 	ID     int    `json:"id"`
 	Name   string `json:"name"`
 	Value  int    `json:"value"`
