@@ -556,7 +556,7 @@ func (s *Service) GeneratePinArgs(pins []vmModels.VMCPUPinning) []string {
 		socketCount = 1
 	}
 
-	coresPerSocket := cpuid.CPU.LogicalCores / socketCount
+	coresPerSocket := utils.GetLogicalCores() / socketCount
 	if coresPerSocket <= 0 {
 		coresPerSocket = cpuid.CPU.LogicalCores
 	}
