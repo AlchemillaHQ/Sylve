@@ -23,9 +23,10 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
+
+var ErrSwitchNotFound = errors.New("switch_not_found")
 
 type jailConfigBuilder interface {
 	CreateJailConfig(data jailModels.Jail, mountPoint string, mac string) (string, error)
@@ -535,7 +536,6 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 	out := make([]jailModels.Network, 0, len(networks))
 	usedNames := make(map[string]struct{})
 	resolvedSwitches := make(map[string]restoredSwitchResolution)
-	standardSwitchesCreated := false
 
 	for idx, net := range networks {
 		next := net
@@ -547,26 +547,19 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			next.SwitchID = resolved.ID
 			next.SwitchType = resolved.Type
 		} else {
-			resolvedSwitchID, resolvedSwitchType, createdStandardSwitch, err := s.ensureRestoredJailSwitch(
+			resolvedSwitchID, resolvedSwitchType, err := s.ensureRestoredJailSwitch(
 				tx,
 				ctid,
 				idx,
-				next.SwitchID,
 				next.SwitchType,
 				next.StandardSwitch,
 				next.ManualSwitch,
 			)
 			if err != nil {
+				if errors.Is(err, ErrSwitchNotFound) {
+					continue
+				}
 				return nil, false, fmt.Errorf("failed_to_ensure_restored_jail_switch: %w", err)
-			}
-			if resolvedSwitchID == 0 {
-				return nil, false, fmt.Errorf(
-					"restored_jail_network_switch_unresolved: ctid=%d index=%d switch_id=%d switch_type=%s",
-					ctid,
-					idx,
-					next.SwitchID,
-					strings.TrimSpace(next.SwitchType),
-				)
 			}
 
 			next.SwitchID = resolvedSwitchID
@@ -574,9 +567,6 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			resolvedSwitches[switchKey] = restoredSwitchResolution{
 				ID:   resolvedSwitchID,
 				Type: resolvedSwitchType,
-			}
-			if createdStandardSwitch {
-				standardSwitchesCreated = true
 			}
 		}
 
@@ -657,33 +647,32 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 		out = append(out, next)
 	}
 
-	return out, standardSwitchesCreated, nil
+	return out, false, nil
 }
 
 func (s *Service) ensureRestoredJailSwitch(
 	tx *gorm.DB,
 	ctid uint,
 	index int,
-	existingSwitchID uint,
 	switchType string,
 	standardMetadata *networkModels.StandardSwitch,
 	manualMetadata *networkModels.ManualSwitch,
-) (uint, string, bool, error) {
+) (uint, string, error) {
 	switchType = normalizeRestoredSwitchType(switchType)
 
 	switch switchType {
 	case "manual":
-		switchID, err := s.ensureRestoredManualSwitch(tx, ctid, index, existingSwitchID, manualMetadata)
+		switchID, err := s.ensureRestoredManualSwitch(tx, ctid, index, 0, manualMetadata)
 		if err != nil {
-			return 0, "", false, err
+			return 0, "", err
 		}
-		return switchID, "manual", false, nil
+		return switchID, "manual", nil
 	default:
-		switchID, created, err := s.ensureRestoredStandardSwitch(tx, ctid, index, existingSwitchID, standardMetadata)
+		switchID, _, err := s.ensureRestoredStandardSwitch(tx, ctid, index, 0, standardMetadata)
 		if err != nil {
-			return 0, "", false, err
+			return 0, "", err
 		}
-		return switchID, "standard", created, nil
+		return switchID, "standard", nil
 	}
 }
 
@@ -691,467 +680,92 @@ func (s *Service) ensureRestoredStandardSwitch(
 	tx *gorm.DB,
 	ctid uint,
 	index int,
-	existingSwitchID uint,
+	_ uint,
 	metadata *networkModels.StandardSwitch,
 ) (uint, bool, error) {
-	if existingSwitchID > 0 {
-		var existing networkModels.StandardSwitch
-		err := tx.First(&existing, existingSwitchID).Error
-		if err == nil {
-			if metadata == nil {
-				return existing.ID, false, nil
-			}
+	if metadata == nil {
+		return 0, false, ErrSwitchNotFound
+	}
 
-			nameMatch := true
-			bridgeMatch := true
-			metadataName := strings.TrimSpace(metadata.Name)
-			metadataBridge := strings.TrimSpace(metadata.BridgeName)
-			if metadataName != "" {
-				nameMatch = strings.EqualFold(strings.TrimSpace(existing.Name), metadataName)
-			}
-			if metadataBridge != "" {
-				bridgeMatch = strings.EqualFold(strings.TrimSpace(existing.BridgeName), metadataBridge)
-			}
-			if nameMatch && bridgeMatch {
-				return existing.ID, false, nil
-			}
+	name := strings.TrimSpace(metadata.Name)
+	if name != "" {
+		var byName networkModels.StandardSwitch
+		err := tx.
+			Where("name = ?", name).
+			First(&byName).Error
+		if err == nil {
+			return byName.ID, false, nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_id: %w", err)
+			return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_name: %w", err)
 		}
 	}
 
-	if metadata != nil {
-		name := strings.TrimSpace(metadata.Name)
-		if name != "" {
-			var byName networkModels.StandardSwitch
-			err := tx.
-				Preload("Ports").
-				Preload("AddressObj").
-				Preload("AddressObj.Entries").
-				Preload("Address6Obj").
-				Preload("Address6Obj.Entries").
-				Preload("NetworkObj").
-				Preload("NetworkObj.Entries").
-				Preload("Network6Obj").
-				Preload("Network6Obj.Entries").
-				Preload("GatewayAddressObj").
-				Preload("GatewayAddressObj.Entries").
-				Preload("Gateway6AddressObj").
-				Preload("Gateway6AddressObj.Entries").
-				Where("name = ?", name).
-				First(&byName).Error
-			if err == nil {
-				if restoredStandardSwitchCompatible(&byName, metadata) {
-					return byName.ID, false, nil
-				}
-				return 0, false, fmt.Errorf("restored_standard_switch_name_conflict: %s", name)
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_name: %w", err)
-			}
+	bridgeName := strings.TrimSpace(metadata.BridgeName)
+	if bridgeName != "" {
+		var byBridge networkModels.StandardSwitch
+		err := tx.Where("bridge_name = ?", bridgeName).First(&byBridge).Error
+		if err == nil {
+			return byBridge.ID, false, nil
 		}
-
-		bridgeName := strings.TrimSpace(metadata.BridgeName)
-		if bridgeName != "" {
-			var byBridge networkModels.StandardSwitch
-			err := tx.Where("bridge_name = ?", bridgeName).First(&byBridge).Error
-			if err == nil {
-				return byBridge.ID, false, nil
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_bridge: %w", err)
-			}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_bridge: %w", err)
 		}
-
-		addressObj, err := s.ensureRestoredNetworkObject(
-			tx,
-			metadata.AddressID,
-			metadata.AddressObj,
-			"Host",
-			fmt.Sprintf("restored-switch-%d-%d-address", ctid, index+1),
-		)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed_to_ensure_restored_standard_switch_address_object: %w", err)
-		}
-
-		address6Obj, err := s.ensureRestoredNetworkObject(
-			tx,
-			metadata.Address6ID,
-			metadata.Address6Obj,
-			"Host",
-			fmt.Sprintf("restored-switch-%d-%d-address6", ctid, index+1),
-		)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed_to_ensure_restored_standard_switch_address6_object: %w", err)
-		}
-
-		networkObj, err := s.ensureRestoredNetworkObject(
-			tx,
-			metadata.NetworkID,
-			metadata.NetworkObj,
-			"Network",
-			fmt.Sprintf("restored-switch-%d-%d-network4", ctid, index+1),
-		)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed_to_ensure_restored_standard_switch_network4_object: %w", err)
-		}
-
-		network6Obj, err := s.ensureRestoredNetworkObject(
-			tx,
-			metadata.Network6ID,
-			metadata.Network6Obj,
-			"Network",
-			fmt.Sprintf("restored-switch-%d-%d-network6", ctid, index+1),
-		)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed_to_ensure_restored_standard_switch_network6_object: %w", err)
-		}
-
-		gatewayAddressObj, err := s.ensureRestoredNetworkObject(
-			tx,
-			metadata.GatewayAddressID,
-			metadata.GatewayAddressObj,
-			"Host",
-			fmt.Sprintf("restored-switch-%d-%d-gateway4", ctid, index+1),
-		)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed_to_ensure_restored_standard_switch_gateway4_object: %w", err)
-		}
-
-		gateway6AddressObj, err := s.ensureRestoredNetworkObject(
-			tx,
-			metadata.Gateway6AddressID,
-			metadata.Gateway6AddressObj,
-			"Host",
-			fmt.Sprintf("restored-switch-%d-%d-gateway6", ctid, index+1),
-		)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed_to_ensure_restored_standard_switch_gateway6_object: %w", err)
-		}
-
-		switchName, err := s.ensureUniqueRestoredSwitchName(tx, metadata.Name, ctid, index, "standard")
-		if err != nil {
-			return 0, false, err
-		}
-
-		bridge, err := s.ensureUniqueRestoredSwitchBridge(tx, metadata.BridgeName, ctid, index, "standard")
-		if err != nil {
-			return 0, false, err
-		}
-
-		mtu := metadata.MTU
-		if mtu <= 0 {
-			mtu = 1500
-		}
-
-		created := networkModels.StandardSwitch{
-			Name:              switchName,
-			BridgeName:        bridge,
-			MTU:               mtu,
-			VLAN:              metadata.VLAN,
-			Address:           strings.TrimSpace(metadata.Address),
-			Address6:          strings.TrimSpace(metadata.Address6),
-			AddressID:         objectIDPtr(addressObj),
-			Address6ID:        objectIDPtr(address6Obj),
-			NetworkID:         objectIDPtr(networkObj),
-			Network6ID:        objectIDPtr(network6Obj),
-			GatewayAddressID:  objectIDPtr(gatewayAddressObj),
-			Gateway6AddressID: objectIDPtr(gateway6AddressObj),
-			DisableIPv6:       metadata.DisableIPv6,
-			Private:           metadata.Private,
-			DefaultRoute:      metadata.DefaultRoute,
-			DHCP:              metadata.DHCP,
-			SLAAC:             metadata.SLAAC,
-		}
-		if err := tx.Create(&created).Error; err != nil {
-			return 0, false, fmt.Errorf("failed_to_create_restored_standard_switch: %w", err)
-		}
-
-		for _, port := range metadata.Ports {
-			name := strings.TrimSpace(port.Name)
-			if name == "" {
-				continue
-			}
-			if err := tx.Create(&networkModels.NetworkPort{
-				Name:     name,
-				SwitchID: created.ID,
-			}).Error; err != nil {
-				return 0, false, fmt.Errorf("failed_to_insert_restored_standard_switch_port: %w", err)
-			}
-		}
-
-		return created.ID, true, nil
 	}
 
-	return 0, false, nil
+	logger.L.Warn().
+		Uint("ctid", ctid).
+		Int("network_idx", index).
+		Str("switch_name", name).
+		Str("switch_bridge", bridgeName).
+		Msg("standard_switch_not_found_on_target_skipping_network")
+
+	return 0, false, ErrSwitchNotFound
 }
 
 func (s *Service) ensureRestoredManualSwitch(
 	tx *gorm.DB,
 	ctid uint,
 	index int,
-	existingSwitchID uint,
+	_ uint,
 	metadata *networkModels.ManualSwitch,
 ) (uint, error) {
-	if existingSwitchID > 0 {
-		var existing networkModels.ManualSwitch
-		err := tx.First(&existing, existingSwitchID).Error
-		if err == nil {
-			if metadata == nil {
-				return existing.ID, nil
-			}
+	if metadata == nil {
+		return 0, ErrSwitchNotFound
+	}
 
-			nameMatch := true
-			bridgeMatch := true
-			metadataName := strings.TrimSpace(metadata.Name)
-			metadataBridge := strings.TrimSpace(metadata.Bridge)
-			if metadataName != "" {
-				nameMatch = strings.EqualFold(strings.TrimSpace(existing.Name), metadataName)
-			}
-			if metadataBridge != "" {
-				bridgeMatch = strings.EqualFold(strings.TrimSpace(existing.Bridge), metadataBridge)
-			}
-			if nameMatch && bridgeMatch {
-				return existing.ID, nil
-			}
+	name := strings.TrimSpace(metadata.Name)
+	if name != "" {
+		var byName networkModels.ManualSwitch
+		err := tx.Where("name = ?", name).First(&byName).Error
+		if err == nil {
+			return byName.ID, nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_id: %w", err)
+			return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_name: %w", err)
 		}
 	}
 
-	if metadata != nil {
-		name := strings.TrimSpace(metadata.Name)
-		if name != "" {
-			var byName networkModels.ManualSwitch
-			err := tx.Where("name = ?", name).First(&byName).Error
-			if err == nil {
-				metadataBridge := strings.TrimSpace(metadata.Bridge)
-				if metadataBridge == "" || strings.EqualFold(strings.TrimSpace(byName.Bridge), metadataBridge) {
-					return byName.ID, nil
-				}
-				return 0, fmt.Errorf("restored_manual_switch_name_conflict: %s", name)
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_name: %w", err)
-			}
+	bridge := strings.TrimSpace(metadata.Bridge)
+	if bridge != "" {
+		var byBridge networkModels.ManualSwitch
+		err := tx.Where("bridge = ?", bridge).First(&byBridge).Error
+		if err == nil {
+			return byBridge.ID, nil
 		}
-
-		bridge := strings.TrimSpace(metadata.Bridge)
-		if bridge != "" {
-			var byBridge networkModels.ManualSwitch
-			err := tx.Where("bridge = ?", bridge).First(&byBridge).Error
-			if err == nil {
-				return byBridge.ID, nil
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_bridge: %w", err)
-			}
-		}
-
-		switchName, err := s.ensureUniqueRestoredSwitchName(tx, metadata.Name, ctid, index, "manual")
-		if err != nil {
-			return 0, err
-		}
-		bridge, err = s.ensureUniqueRestoredSwitchBridge(tx, metadata.Bridge, ctid, index, "manual")
-		if err != nil {
-			return 0, err
-		}
-
-		created := networkModels.ManualSwitch{
-			Name:   switchName,
-			Bridge: bridge,
-		}
-		if err := tx.Create(&created).Error; err != nil {
-			return 0, fmt.Errorf("failed_to_create_restored_manual_switch: %w", err)
-		}
-
-		return created.ID, nil
-	}
-
-	return 0, nil
-}
-
-func normalizeRestoredSwitchMTU(mtu int) int {
-	if mtu <= 0 {
-		return 1500
-	}
-	return mtu
-}
-
-func restoredObjectEntriesMatch(existing *networkModels.Object, metadata *networkModels.Object) bool {
-	if metadata == nil {
-		return true
-	}
-	if existing == nil {
-		return false
-	}
-	if strings.TrimSpace(metadata.Type) != "" && !strings.EqualFold(strings.TrimSpace(existing.Type), strings.TrimSpace(metadata.Type)) {
-		return false
-	}
-
-	metadataEntries := make([]string, 0, len(metadata.Entries))
-	for _, entry := range metadata.Entries {
-		value := strings.TrimSpace(entry.Value)
-		if value == "" {
-			continue
-		}
-		metadataEntries = append(metadataEntries, value)
-	}
-	if len(metadataEntries) == 0 {
-		return true
-	}
-
-	existingEntries := make(map[string]struct{}, len(existing.Entries))
-	for _, entry := range existing.Entries {
-		value := strings.TrimSpace(entry.Value)
-		if value == "" {
-			continue
-		}
-		existingEntries[value] = struct{}{}
-	}
-	for _, value := range metadataEntries {
-		if _, ok := existingEntries[value]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func restoredPortsCompatible(existing []networkModels.NetworkPort, metadata []networkModels.NetworkPort) bool {
-	if len(metadata) == 0 {
-		return true
-	}
-
-	existingSet := make(map[string]struct{}, len(existing))
-	for _, port := range existing {
-		name := strings.ToLower(strings.TrimSpace(port.Name))
-		if name == "" {
-			continue
-		}
-		existingSet[name] = struct{}{}
-	}
-
-	for _, port := range metadata {
-		name := strings.ToLower(strings.TrimSpace(port.Name))
-		if name == "" {
-			continue
-		}
-		if _, ok := existingSet[name]; !ok {
-			return false
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_bridge: %w", err)
 		}
 	}
 
-	return true
-}
+	logger.L.Warn().
+		Uint("ctid", ctid).
+		Int("network_idx", index).
+		Str("switch_name", name).
+		Str("switch_bridge", bridge).
+		Msg("manual_switch_not_found_on_target_skipping_network")
 
-func restoredStandardSwitchCompatible(existing *networkModels.StandardSwitch, metadata *networkModels.StandardSwitch) bool {
-	if existing == nil || metadata == nil {
-		return false
-	}
-
-	if strings.TrimSpace(metadata.BridgeName) != "" &&
-		!strings.EqualFold(strings.TrimSpace(existing.BridgeName), strings.TrimSpace(metadata.BridgeName)) {
-		return false
-	}
-	if normalizeRestoredSwitchMTU(existing.MTU) != normalizeRestoredSwitchMTU(metadata.MTU) {
-		return false
-	}
-	if existing.VLAN != metadata.VLAN {
-		return false
-	}
-	if existing.DisableIPv6 != metadata.DisableIPv6 ||
-		existing.Private != metadata.Private ||
-		existing.DefaultRoute != metadata.DefaultRoute ||
-		existing.DHCP != metadata.DHCP ||
-		existing.SLAAC != metadata.SLAAC {
-		return false
-	}
-
-	if !restoredPortsCompatible(existing.Ports, metadata.Ports) {
-		return false
-	}
-	if !restoredObjectEntriesMatch(existing.AddressObj, metadata.AddressObj) {
-		return false
-	}
-	if !restoredObjectEntriesMatch(existing.Address6Obj, metadata.Address6Obj) {
-		return false
-	}
-	if !restoredObjectEntriesMatch(existing.NetworkObj, metadata.NetworkObj) {
-		return false
-	}
-	if !restoredObjectEntriesMatch(existing.Network6Obj, metadata.Network6Obj) {
-		return false
-	}
-	if !restoredObjectEntriesMatch(existing.GatewayAddressObj, metadata.GatewayAddressObj) {
-		return false
-	}
-	if !restoredObjectEntriesMatch(existing.Gateway6AddressObj, metadata.Gateway6AddressObj) {
-		return false
-	}
-
-	return true
-}
-
-func (s *Service) ensureUniqueRestoredSwitchName(tx *gorm.DB, base string, ctid uint, index int, switchType string) (string, error) {
-	base = strings.TrimSpace(base)
-	if base == "" {
-		if strings.EqualFold(strings.TrimSpace(switchType), "manual") {
-			base = fmt.Sprintf("Restored Manual Switch %d (%d)", index+1, ctid)
-		} else {
-			base = fmt.Sprintf("Restored Standard Switch %d (%d)", index+1, ctid)
-		}
-	}
-
-	candidate := base
-	for i := 1; ; i++ {
-		standardCount := int64(0)
-		if err := tx.Model(&networkModels.StandardSwitch{}).Where("name = ?", candidate).Count(&standardCount).Error; err != nil {
-			return "", fmt.Errorf("failed_to_validate_standard_switch_name: %w", err)
-		}
-		if standardCount == 0 {
-			manualCount := int64(0)
-			if err := tx.Model(&networkModels.ManualSwitch{}).Where("name = ?", candidate).Count(&manualCount).Error; err != nil {
-				return "", fmt.Errorf("failed_to_validate_manual_switch_name: %w", err)
-			}
-			if manualCount == 0 {
-				return candidate, nil
-			}
-		}
-
-		candidate = fmt.Sprintf("%s-%d", base, i)
-	}
-}
-
-func (s *Service) ensureUniqueRestoredSwitchBridge(tx *gorm.DB, base string, ctid uint, index int, switchType string) (string, error) {
-	base = strings.TrimSpace(base)
-	if base == "" {
-		prefix := "ssw"
-		if strings.EqualFold(strings.TrimSpace(switchType), "manual") {
-			prefix = "msw"
-		}
-		base = strings.ToLower(fmt.Sprintf("%s%s", prefix, utils.ShortHash(fmt.Sprintf("%d-%d-%s", ctid, index, switchType))))
-	}
-
-	candidate := base
-	for i := 1; ; i++ {
-		standardCount := int64(0)
-		if err := tx.Model(&networkModels.StandardSwitch{}).Where("bridge_name = ?", candidate).Count(&standardCount).Error; err != nil {
-			return "", fmt.Errorf("failed_to_validate_standard_switch_bridge: %w", err)
-		}
-		if standardCount == 0 {
-			manualCount := int64(0)
-			if err := tx.Model(&networkModels.ManualSwitch{}).Where("bridge = ?", candidate).Count(&manualCount).Error; err != nil {
-				return "", fmt.Errorf("failed_to_validate_manual_switch_bridge: %w", err)
-			}
-			if manualCount == 0 {
-				return candidate, nil
-			}
-		}
-
-		candidate = fmt.Sprintf("%s-%d", base, i)
-	}
+	return 0, ErrSwitchNotFound
 }
 
 func objectIDPtr(object *networkModels.Object) *uint {

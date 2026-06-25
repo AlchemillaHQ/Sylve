@@ -13,13 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
-	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
@@ -42,16 +41,6 @@ func (s *Service) ImportMigratedVM(ctx context.Context, rid uint) (warnings []st
 	}
 	if meta == nil || meta.VM.RID == 0 {
 		return nil, fmt.Errorf("migrated_vm_metadata_invalid")
-	}
-
-	filteredNetworks, netWarnings := s.filterVMNetworksByBridgeExistence(meta.VM.Networks)
-	warnings = append(warnings, netWarnings...)
-
-	if len(filteredNetworks) < len(meta.VM.Networks) {
-		meta.VM.Networks = filteredNetworks
-		if writeErr := s.writeVMMetadataToDataset(ctx, dataset, meta); writeErr != nil {
-			return warnings, fmt.Errorf("failed_to_write_filtered_vm_metadata: %w", writeErr)
-		}
 	}
 
 	if err := s.reconcileRestoredVMFromDatasetWithOptions(ctx, dataset, true); err != nil {
@@ -78,25 +67,12 @@ func (s *Service) ImportMigratedJail(ctx context.Context, ctID uint) (warnings [
 		return nil, fmt.Errorf("migrated_jail_dataset_not_found_on_target")
 	}
 
-	meta, mountPoint, err := s.readLocalRestoredJailMetadata(ctx, dataset)
+	meta, _, err := s.readLocalRestoredJailMetadata(ctx, dataset)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_read_migrated_jail_metadata: %w", err)
 	}
 	if meta == nil || meta.Jail.CTID == 0 {
 		return nil, fmt.Errorf("migrated_jail_metadata_invalid")
-	}
-
-	filteredNetworks, netWarnings := s.filterJailNetworksByBridgeExistence(meta.Jail.Networks)
-	warnings = append(warnings, netWarnings...)
-
-	if len(filteredNetworks) < len(meta.Jail.Networks) {
-		if mountPoint == "" || mountPoint == "-" || mountPoint == "legacy" || mountPoint == "none" {
-			mountPoint = "/" + strings.Trim(dataset, "/")
-		}
-		meta.Jail.Networks = filteredNetworks
-		if writeErr := s.writeJailMetadataToDisk(meta, mountPoint); writeErr != nil {
-			return warnings, fmt.Errorf("failed_to_write_filtered_jail_metadata: %w", writeErr)
-		}
 	}
 
 	if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, dataset, true); err != nil {
@@ -141,89 +117,6 @@ func (s *Service) discoverLocalJailDataset(ctx context.Context, ctID uint) (stri
 	}
 
 	return "", nil
-}
-
-func (s *Service) filterVMNetworksByBridgeExistence(networks []vmModels.Network) ([]vmModels.Network, []string) {
-	var filtered []vmModels.Network
-	var warnings []string
-
-	for _, net := range networks {
-		bridge := s.resolveNetworkBridge(net)
-		if bridge == "" {
-			filtered = append(filtered, net)
-			continue
-		}
-
-		if !s.checkLocalBridgeExists(bridge) {
-			warnings = append(warnings, fmt.Sprintf("network_skipped_missing_bridge: %s", bridge))
-			continue
-		}
-
-		filtered = append(filtered, net)
-	}
-
-	return filtered, warnings
-}
-
-func (s *Service) filterJailNetworksByBridgeExistence(networks []jailModels.Network) ([]jailModels.Network, []string) {
-	var filtered []jailModels.Network
-	var warnings []string
-
-	for _, net := range networks {
-		bridge := s.resolveJailNetworkBridge(net)
-		if bridge == "" {
-			filtered = append(filtered, net)
-			continue
-		}
-
-		if !s.checkLocalBridgeExists(bridge) {
-			warnings = append(warnings, fmt.Sprintf("network_skipped_missing_bridge: %s", bridge))
-			continue
-		}
-
-		filtered = append(filtered, net)
-	}
-
-	return filtered, warnings
-}
-
-func (s *Service) resolveNetworkBridge(net vmModels.Network) string {
-	switch strings.ToLower(strings.TrimSpace(net.SwitchType)) {
-	case "standard":
-		if net.StandardSwitch != nil && strings.TrimSpace(net.StandardSwitch.BridgeName) != "" {
-			return strings.TrimSpace(net.StandardSwitch.BridgeName)
-		}
-	case "manual":
-		if net.ManualSwitch != nil && strings.TrimSpace(net.ManualSwitch.Bridge) != "" {
-			return strings.TrimSpace(net.ManualSwitch.Bridge)
-		}
-	}
-	return ""
-}
-
-func (s *Service) resolveJailNetworkBridge(net jailModels.Network) string {
-	switch strings.ToLower(strings.TrimSpace(net.SwitchType)) {
-	case "standard":
-		if net.StandardSwitch != nil && strings.TrimSpace(net.StandardSwitch.BridgeName) != "" {
-			return strings.TrimSpace(net.StandardSwitch.BridgeName)
-		}
-	case "manual":
-		if net.ManualSwitch != nil && strings.TrimSpace(net.ManualSwitch.Bridge) != "" {
-			return strings.TrimSpace(net.ManualSwitch.Bridge)
-		}
-	}
-	return ""
-}
-
-func (s *Service) checkLocalBridgeExists(bridge string) bool {
-	if bridge == "" {
-		return false
-	}
-	cmd := exec.Command("/sbin/ifconfig", bridge)
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-	return true
 }
 
 func (s *Service) writeVMMetadataToDataset(ctx context.Context, dataset string, meta *restoredVMMetadata) error {

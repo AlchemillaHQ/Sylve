@@ -9,10 +9,12 @@
 package zelta
 
 import (
+	"errors"
 	"testing"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"gorm.io/gorm"
 )
 
 func TestNormalizeRestoredSwitchType(t *testing.T) {
@@ -30,21 +32,6 @@ func TestNormalizeRestoredSwitchType(t *testing.T) {
 	}
 	if normalizeRestoredSwitchType("unknown") != "standard" {
 		t.Fatal("unknown should default to standard")
-	}
-}
-
-func TestNormalizeRestoredSwitchMTU(t *testing.T) {
-	if normalizeRestoredSwitchMTU(1500) != 1500 {
-		t.Fatal("valid MTU preserved")
-	}
-	if normalizeRestoredSwitchMTU(9000) != 9000 {
-		t.Fatal("jumbo MTU preserved")
-	}
-	if normalizeRestoredSwitchMTU(0) != 1500 {
-		t.Fatal("zero defaults to 1500")
-	}
-	if normalizeRestoredSwitchMTU(-1) != 1500 {
-		t.Fatal("negative defaults to 1500")
 	}
 }
 
@@ -143,72 +130,275 @@ func TestRestoredSwitchResolutionKey(t *testing.T) {
 	}
 }
 
-func TestRestoredObjectEntriesMatch(t *testing.T) {
-	metaNil := func() *networkModels.Object { return nil }
-	makeObj := func(typ string, values ...string) *networkModels.Object {
-		entries := make([]networkModels.ObjectEntry, len(values))
-		for i, v := range values {
-			entries[i] = networkModels.ObjectEntry{Value: v}
+func TestEnsureRestoredStandardSwitch(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t, &networkModels.StandardSwitch{})
+
+	lan := networkModels.StandardSwitch{Name: "lan", BridgeName: "bridge-lan"}
+	if err := db.Create(&lan).Error; err != nil {
+		t.Fatalf("failed to seed standard switch: %v", err)
+	}
+
+	t.Run("found by name", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		meta := &networkModels.StandardSwitch{Name: "lan", BridgeName: "bridge-lan"}
+		id, created, err := svc.ensureRestoredStandardSwitch(tx, 1, 0, 0, meta)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		return &networkModels.Object{Type: typ, Entries: entries}
+		if id != lan.ID {
+			t.Fatalf("expected switch ID %d, got %d", lan.ID, id)
+		}
+		if created {
+			t.Fatal("expected created=false for found switch")
+		}
+	})
+
+	t.Run("found by bridge when name empty", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		meta := &networkModels.StandardSwitch{BridgeName: "bridge-lan"}
+		id, created, err := svc.ensureRestoredStandardSwitch(tx, 1, 0, 0, meta)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if id != lan.ID {
+			t.Fatalf("expected switch ID %d, got %d", lan.ID, id)
+		}
+		if created {
+			t.Fatal("expected created=false")
+		}
+	})
+
+	t.Run("not found returns ErrSwitchNotFound", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		meta := &networkModels.StandardSwitch{Name: "wan", BridgeName: "bridge-wan"}
+		_, _, err := svc.ensureRestoredStandardSwitch(tx, 1, 0, 0, meta)
+		if !errors.Is(err, ErrSwitchNotFound) {
+			t.Fatalf("expected ErrSwitchNotFound, got %v", err)
+		}
+	})
+
+	t.Run("nil metadata returns ErrSwitchNotFound", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		_, _, err := svc.ensureRestoredStandardSwitch(tx, 1, 0, 0, nil)
+		if !errors.Is(err, ErrSwitchNotFound) {
+			t.Fatalf("expected ErrSwitchNotFound, got %v", err)
+		}
+	})
+}
+
+func TestEnsureRestoredManualSwitch(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t, &networkModels.ManualSwitch{})
+
+	home := networkModels.ManualSwitch{Name: "home-net", Bridge: "re0"}
+	if err := db.Create(&home).Error; err != nil {
+		t.Fatalf("failed to seed manual switch: %v", err)
 	}
 
-	if !restoredObjectEntriesMatch(nil, metaNil()) {
-		t.Fatal("nil metadata should match")
+	t.Run("found by name", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		meta := &networkModels.ManualSwitch{Name: "home-net", Bridge: "re0"}
+		id, err := svc.ensureRestoredManualSwitch(tx, 1, 0, 0, meta)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if id != home.ID {
+			t.Fatalf("expected switch ID %d, got %d", home.ID, id)
+		}
+	})
+
+	t.Run("found by bridge when name empty", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		meta := &networkModels.ManualSwitch{Bridge: "re0"}
+		id, err := svc.ensureRestoredManualSwitch(tx, 1, 0, 0, meta)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if id != home.ID {
+			t.Fatalf("expected switch ID %d, got %d", home.ID, id)
+		}
+	})
+
+	t.Run("not found returns ErrSwitchNotFound", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		meta := &networkModels.ManualSwitch{Name: "other-net", Bridge: "em0"}
+		_, err := svc.ensureRestoredManualSwitch(tx, 1, 0, 0, meta)
+		if !errors.Is(err, ErrSwitchNotFound) {
+			t.Fatalf("expected ErrSwitchNotFound, got %v", err)
+		}
+	})
+
+	t.Run("nil metadata returns ErrSwitchNotFound", func(t *testing.T) {
+		tx := db.Begin()
+		defer tx.Rollback()
+
+		_, err := svc.ensureRestoredManualSwitch(tx, 1, 0, 0, nil)
+		if !errors.Is(err, ErrSwitchNotFound) {
+			t.Fatalf("expected ErrSwitchNotFound, got %v", err)
+		}
+	})
+}
+
+func TestNormalizeRestoredJailNetworksSkipsUnresolved(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&jailModels.Network{},
+	)
+
+	lan := networkModels.StandardSwitch{Name: "lan", BridgeName: "bridge-lan"}
+	if err := db.Create(&lan).Error; err != nil {
+		t.Fatalf("failed to seed lan switch: %v", err)
 	}
-	if restoredObjectEntriesMatch(nil, makeObj("HOST", "10.0.0.1")) {
-		t.Fatal("non-nil metadata with nil existing should not match")
+	mgmt := networkModels.ManualSwitch{Name: "mgmt", Bridge: "re0"}
+	if err := db.Create(&mgmt).Error; err != nil {
+		t.Fatalf("failed to seed mgmt switch: %v", err)
 	}
 
-	existing := makeObj("HOST", "10.0.0.1", "10.0.0.2")
-	if !restoredObjectEntriesMatch(existing, makeObj("HOST", "10.0.0.1")) {
-		t.Fatal("subset match should pass")
-	}
-	if restoredObjectEntriesMatch(existing, makeObj("HOST", "10.0.0.1", "10.0.0.3")) {
-		t.Fatal("metadata with extra entry not in existing should fail")
-	}
-	if restoredObjectEntriesMatch(existing, makeObj("NETWORK", "10.0.0.1")) {
-		t.Fatal("type mismatch should fail")
+	networks := []jailModels.Network{
+		{
+			Name:       "lan-net",
+			SwitchType: "standard",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "lan",
+				BridgeName: "bridge-lan",
+			},
+		},
+		{
+			Name:       "mgmt-net",
+			SwitchType: "manual",
+			ManualSwitch: &networkModels.ManualSwitch{
+				Name:   "mgmt",
+				Bridge: "re0",
+			},
+		},
+		{
+			Name:       "dmz-net",
+			SwitchType: "standard",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "dmz",
+				BridgeName: "bridge-dmz",
+			},
+		},
 	}
 
-	if !restoredObjectEntriesMatch(existing, metaNil()) {
-		t.Fatal("nil metadata should always match")
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	resolved, requiresSync, err := svc.normalizeRestoredJailNetworks(tx, 100, 200, networks)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if requiresSync {
+		t.Fatal("expected requiresSync=false")
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("expected 2 networks (lan + mgmt), dmz should be skipped, got %d", len(resolved))
+	}
+
+	var foundLan, foundMgmt bool
+	for _, n := range resolved {
+		switch n.Name {
+		case "lan-net":
+			foundLan = true
+			if n.SwitchID != lan.ID || n.SwitchType != "standard" {
+				t.Fatalf("lan-net switch mismatch: id=%d type=%s", n.SwitchID, n.SwitchType)
+			}
+		case "mgmt-net":
+			foundMgmt = true
+			if n.SwitchID != mgmt.ID || n.SwitchType != "manual" {
+				t.Fatalf("mgmt-net switch mismatch: id=%d type=%s", n.SwitchID, n.SwitchType)
+			}
+		}
+	}
+	if !foundLan {
+		t.Fatal("lan-net should be in resolved networks")
+	}
+	if !foundMgmt {
+		t.Fatal("mgmt-net should be in resolved networks")
 	}
 }
 
-func TestRestoredPortsCompatible(t *testing.T) {
-	existing := []networkModels.NetworkPort{
-		{Name: "eth0"}, {Name: "eth1"},
+func TestNormalizeRestoredJailNetworksAllResolved(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&jailModels.Network{},
+	)
+
+	lan := networkModels.StandardSwitch{Name: "lan", BridgeName: "bridge-lan"}
+	if err := db.Create(&lan).Error; err != nil {
+		t.Fatalf("failed to seed lan switch: %v", err)
 	}
-	if !restoredPortsCompatible(existing, nil) {
-		t.Fatal("nil metadata ports should be compatible")
+	wifi := networkModels.StandardSwitch{Name: "wifi", BridgeName: "bridge-wifi"}
+	if err := db.Create(&wifi).Error; err != nil {
+		t.Fatalf("failed to seed wifi switch: %v", err)
 	}
-	if !restoredPortsCompatible(existing, []networkModels.NetworkPort{}) {
-		t.Fatal("empty metadata should be compatible")
+
+	networks := []jailModels.Network{
+		{
+			Name: "nic0",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "lan",
+				BridgeName: "bridge-lan",
+			},
+		},
+		{
+			Name: "nic1",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "wifi",
+				BridgeName: "bridge-wifi",
+			},
+		},
 	}
-	if restoredPortsCompatible(existing, []networkModels.NetworkPort{{Name: "eth2"}}) {
-		t.Fatal("missing port should not be compatible")
+
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	resolved, requiresSync, err := svc.normalizeRestoredJailNetworks(tx, 100, 200, networks)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !restoredPortsCompatible(existing, []networkModels.NetworkPort{{Name: "ETH0"}}) {
-		t.Fatal("case-insensitive match should be compatible")
+	if requiresSync {
+		t.Fatal("expected requiresSync=false")
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("expected 2 resolved, got %d", len(resolved))
+	}
+
+	switchIDs := map[string]uint{}
+	for _, n := range resolved {
+		switchIDs[n.Name] = n.SwitchID
+	}
+	if switchIDs["nic0"] != lan.ID {
+		t.Fatalf("nic0 expected switch %d, got %d", lan.ID, switchIDs["nic0"])
+	}
+	if switchIDs["nic1"] != wifi.ID {
+		t.Fatalf("nic1 expected switch %d, got %d", wifi.ID, switchIDs["nic1"])
 	}
 }
 
-func TestRestoredStandardSwitchCompatible(t *testing.T) {
-	existing := &networkModels.StandardSwitch{Name: "sw1", BridgeName: "bridge0"}
-	metadata := &networkModels.StandardSwitch{Name: "sw1", BridgeName: "bridge0"}
-	if !restoredStandardSwitchCompatible(existing, metadata) {
-		t.Fatal("identical should be compatible")
-	}
-	metadataDiff := &networkModels.StandardSwitch{Name: "sw1", BridgeName: "other"}
-	if restoredStandardSwitchCompatible(existing, metadataDiff) {
-		t.Fatal("different bridge should not be compatible")
-	}
-
-	if restoredStandardSwitchCompatible(existing, nil) {
-		t.Fatal("nil metadata with existing should not be compatible")
-	}
-	if restoredStandardSwitchCompatible(nil, metadata) {
-		t.Fatal("nil existing should not be compatible")
-	}
+func newTestZeltaServiceWithDB(t *testing.T, models ...any) (*Service, *gorm.DB) {
+	t.Helper()
+	db := newZeltaServiceTestDB(t, models...)
+	return newTestZeltaService(db), db
 }

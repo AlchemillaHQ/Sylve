@@ -11,6 +11,8 @@ package zelta
 import (
 	"testing"
 
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
 
@@ -60,5 +62,101 @@ func TestInferRestoredVMRootDatasets(t *testing.T) {
 	}, "")
 	if len(roots) != 1 {
 		t.Fatalf("duplicate pool should be deduplicated, got %d: %v", len(roots), roots)
+	}
+}
+
+func TestNormalizeRestoredVMNetworksSkipsUnresolved(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&jailModels.Network{},
+	)
+
+	lan := networkModels.StandardSwitch{Name: "lan", BridgeName: "bridge-lan"}
+	if err := db.Create(&lan).Error; err != nil {
+		t.Fatalf("failed to seed lan switch: %v", err)
+	}
+
+	networks := []vmModels.Network{
+		{
+			SwitchType: "standard",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "lan",
+				BridgeName: "bridge-lan",
+			},
+			Emulation: "e1000",
+		},
+		{
+			SwitchType: "standard",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "dmz",
+				BridgeName: "bridge-dmz",
+			},
+			Emulation: "virtio",
+		},
+	}
+
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	resolved, requiresSync, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if requiresSync {
+		t.Fatal("expected requiresSync=false")
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved network (lan), dmz should be skipped, got %d", len(resolved))
+	}
+	if resolved[0].SwitchID != lan.ID {
+		t.Fatalf("expected switch ID %d, got %d", lan.ID, resolved[0].SwitchID)
+	}
+	if resolved[0].Emulation != "e1000" {
+		t.Fatalf("expected emulation e1000, got %q", resolved[0].Emulation)
+	}
+}
+
+func TestNormalizeRestoredVMNetworksDefaultsEmulation(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&jailModels.Network{},
+	)
+
+	lan := networkModels.StandardSwitch{Name: "lan", BridgeName: "bridge-lan"}
+	if err := db.Create(&lan).Error; err != nil {
+		t.Fatalf("failed to seed lan switch: %v", err)
+	}
+
+	networks := []vmModels.Network{
+		{
+			SwitchType: "standard",
+			StandardSwitch: &networkModels.StandardSwitch{
+				Name:       "lan",
+				BridgeName: "bridge-lan",
+			},
+			Emulation: "",
+		},
+	}
+
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	resolved, _, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved, got %d", len(resolved))
+	}
+	if resolved[0].Emulation != "virtio" {
+		t.Fatalf("expected default emulation virtio, got %q", resolved[0].Emulation)
 	}
 }
