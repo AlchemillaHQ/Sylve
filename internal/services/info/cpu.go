@@ -77,6 +77,9 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 	}
 
 	info.Name = cpuid.CPU.BrandName
+	if info.Name == "" {
+		info.Name = utils.GetCPUModel()
+	}
 	info.Sockets = sockets
 	info.Architecture = infoServiceInterfaces.Architecture(runtime.GOARCH)
 	info.PhysicalCores = physical

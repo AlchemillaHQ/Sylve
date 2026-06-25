@@ -168,6 +168,14 @@ func GetSystemMemoryBytes() (int64, error) {
 	return memBytes, nil
 }
 
+func GetCPUModel() string {
+	model, err := getSysctlString("hw.model")
+	if err != nil {
+		return ""
+	}
+	return model
+}
+
 func GetLogicalCores() int {
 	ncpu, err := getSysctlInt64("hw.ncpu")
 	if err != nil || ncpu <= 0 {
