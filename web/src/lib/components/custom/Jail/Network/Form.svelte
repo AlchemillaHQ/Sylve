@@ -63,7 +63,8 @@
 		ipv6gw: '',
 		dhcp: false,
 		slaac: false,
-		defaultGateway: false
+		defaultGateway: false,
+		vlan: 0
 	};
 
 	let properties = $state(options);
@@ -122,7 +123,8 @@
 				: '',
 		dhcp: selectedNetwork?.dhcp ?? false,
 		slaac: selectedNetwork?.slaac ?? false,
-		defaultGateway: selectedNetwork?.defaultGateway ?? false
+		defaultGateway: selectedNetwork?.defaultGateway ?? false,
+		vlan: selectedNetwork?.vlan ?? 0
 	};
 
 	let editProperties = $state(editOptions);
@@ -274,7 +276,8 @@
 			parseNumberOrZero(comboBoxes.ipv6Gw.value),
 			properties.dhcp,
 			properties.slaac,
-			properties.defaultGateway
+			properties.defaultGateway,
+			properties.vlan
 		);
 
 		reload = true;
@@ -327,7 +330,8 @@
 			parseNumberOrZero(editComboBoxes.ipv6Gw.value),
 			editProperties.dhcp,
 			editProperties.slaac,
-			editProperties.defaultGateway
+			editProperties.defaultGateway,
+			editProperties.vlan
 		);
 
 		reload = true;
@@ -376,7 +380,7 @@
 		</Dialog.Header>
 
 		{#if !selectedNetwork}
-			<div class="grid grid-cols-3 gap-4 items-end">
+			<div class="grid grid-cols-4 gap-4 items-end">
 				<CustomValueInput
 					label="Name"
 					placeholder="Primary Network"
@@ -409,6 +413,14 @@
 					classes="flex-1 space-y-1"
 					triggerWidth="w-full"
 					width="w-full"
+				/>
+
+				<CustomValueInput
+					label="VLAN"
+					placeholder="0"
+					bind:value={properties.vlan}
+					classes="flex-1 space-y-1"
+					type="number"
 				/>
 			</div>
 
@@ -489,7 +501,7 @@
 				</div>
 			{/if}
 		{:else}
-			<div class="grid grid-cols-3 gap-4 items-end">
+			<div class="grid grid-cols-4 gap-4 items-end">
 				<CustomValueInput
 					label="Name"
 					placeholder="Primary Network"
@@ -522,6 +534,14 @@
 					classes="flex-1 space-y-1"
 					triggerWidth="w-full"
 					width="w-full"
+				/>
+
+				<CustomValueInput
+					label="VLAN"
+					placeholder="0"
+					bind:value={editProperties.vlan}
+					classes="flex-1 space-y-1"
+					type="number"
 				/>
 			</div>
 

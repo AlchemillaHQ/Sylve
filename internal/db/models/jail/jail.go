@@ -50,6 +50,8 @@ type Network struct {
 
 	DHCP  bool `json:"dhcp" gorm:"default:false"`
 	SLAAC bool `json:"slaac" gorm:"default:false"`
+
+	VLAN *int `json:"vlan" gorm:"default:0"`
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {

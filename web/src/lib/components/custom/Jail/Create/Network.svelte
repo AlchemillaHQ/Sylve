@@ -33,6 +33,7 @@
 		dhcp: boolean;
 		slaac: boolean;
 		resolvConf: string;
+		vlan: number;
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
 		jailType: 'freebsd' | 'linux';
@@ -53,6 +54,7 @@
 		dhcp = $bindable(),
 		slaac = $bindable(),
 		resolvConf = $bindable(),
+		vlan = $bindable(),
 		switches,
 		networkObjects,
 		jailType,
@@ -423,6 +425,14 @@
 					}
 				}}
 			></CustomComboBox>
+
+			<CustomValueInput
+				label="VLAN"
+				placeholder="0"
+				bind:value={vlan}
+				classes="flex-1 space-y-1"
+				type="number"
+			/>
 		</div>
 
 		{#if jailType === 'freebsd'}

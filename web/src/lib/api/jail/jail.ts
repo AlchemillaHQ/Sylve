@@ -43,6 +43,7 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
         ipv6: data.network.ipv6,
         ipv6Gw: data.network.ipv6Gateway,
         mac: data.network.mac,
+        vlan: data.network.vlan,
         resourceLimits: data.hardware.resourceLimits,
         cores: Number(data.hardware.cpuCores.toString()),
         memory: Number(data.hardware.ram.toString()),
@@ -187,7 +188,8 @@ export async function addNetwork(
     ip6gw: number,
     dhcp: boolean,
     slaac: boolean,
-    defaultGateway: boolean
+    defaultGateway: boolean,
+    vlan: number
 ): Promise<APIResponse> {
     return await apiRequest('/jail/network', APIResponseSchema, 'POST', {
         ctId,
@@ -200,7 +202,8 @@ export async function addNetwork(
         ip6gw,
         dhcp,
         slaac,
-        defaultGateway
+        defaultGateway,
+        vlan
     });
 }
 
@@ -215,7 +218,8 @@ export async function updateNetwork(
     ip6gw: number,
     dhcp: boolean,
     slaac: boolean,
-    defaultGateway: boolean
+    defaultGateway: boolean,
+    vlan: number
 ): Promise<APIResponse> {
     return await apiRequest('/jail/network', APIResponseSchema, 'PUT', {
         networkId,
@@ -228,7 +232,8 @@ export async function updateNetwork(
         ip6gw,
         dhcp,
         slaac,
-        defaultGateway
+        defaultGateway,
+        vlan
     });
 }
 

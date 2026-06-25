@@ -287,3 +287,240 @@ func TestEditNetworkRejectsUnassignableIPv6CIDRBeforeSync(t *testing.T) {
 		t.Fatalf("expected existing jail network to remain unchanged, got %q", refreshed.Name)
 	}
 }
+
+func TestAddNetworkRejectsInvalidVLANLow(t *testing.T) {
+	requireSystemUUIDOrSkip(t)
+
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Network{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&networkModels.ManualSwitch{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+	)
+
+	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
+	svc := &Service{DB: db, NetworkService: fakeNetwork}
+
+	jail := jailModels.Jail{CTID: 9201, Name: "jail-vlan-low", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("failed to seed jail: %v", err)
+	}
+
+	sw := networkModels.StandardSwitch{Name: "sw-vlan-low", BridgeName: "vm-sw-vlan-low"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("failed to seed standard switch: %v", err)
+	}
+
+	vlan := -1
+	req := jailServiceInterfaces.AddJailNetworkRequest{
+		CTID:       jail.CTID,
+		Name:       "net-vlan-low",
+		SwitchName: sw.Name,
+		VLAN:       &vlan,
+	}
+
+	err := svc.AddNetwork(req)
+	if err == nil {
+		t.Fatal("expected invalid_vlan error, got nil")
+	}
+	if err.Error() != "invalid_vlan" {
+		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
+	}
+	if fakeNetwork.syncEpairsCall != 0 {
+		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	}
+
+	var count int64
+	if err := db.Model(&jailModels.Network{}).Count(&count).Error; err != nil {
+		t.Fatalf("failed counting jail networks: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no jail networks to be created, found %d", count)
+	}
+}
+
+func TestAddNetworkRejectsInvalidVLANHigh(t *testing.T) {
+	requireSystemUUIDOrSkip(t)
+
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Network{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&networkModels.ManualSwitch{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+	)
+
+	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
+	svc := &Service{DB: db, NetworkService: fakeNetwork}
+
+	jail := jailModels.Jail{CTID: 9202, Name: "jail-vlan-high", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("failed to seed jail: %v", err)
+	}
+
+	sw := networkModels.StandardSwitch{Name: "sw-vlan-high", BridgeName: "vm-sw-vlan-high"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("failed to seed standard switch: %v", err)
+	}
+
+	vlan := 4096
+	req := jailServiceInterfaces.AddJailNetworkRequest{
+		CTID:       jail.CTID,
+		Name:       "net-vlan-high",
+		SwitchName: sw.Name,
+		VLAN:       &vlan,
+	}
+
+	err := svc.AddNetwork(req)
+	if err == nil {
+		t.Fatal("expected invalid_vlan error, got nil")
+	}
+	if err.Error() != "invalid_vlan" {
+		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
+	}
+	if fakeNetwork.syncEpairsCall != 0 {
+		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	}
+
+	var count int64
+	if err := db.Model(&jailModels.Network{}).Count(&count).Error; err != nil {
+		t.Fatalf("failed counting jail networks: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no jail networks to be created, found %d", count)
+	}
+}
+
+func TestEditNetworkRejectsInvalidVLAN(t *testing.T) {
+	requireSystemUUIDOrSkip(t)
+
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Network{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&networkModels.ManualSwitch{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+	)
+
+	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
+	svc := &Service{DB: db, NetworkService: fakeNetwork}
+
+	jail := jailModels.Jail{CTID: 9203, Name: "jail-vlan-edit", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("failed to seed jail: %v", err)
+	}
+
+	sw := networkModels.StandardSwitch{Name: "sw-vlan-edit", BridgeName: "vm-sw-vlan-edit"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("failed to seed standard switch: %v", err)
+	}
+
+	existing := jailModels.Network{
+		JailID:     jail.ID,
+		Name:       "net-vlan-edit",
+		SwitchID:   sw.ID,
+		SwitchType: "standard",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("failed to seed existing jail network: %v", err)
+	}
+
+	vlan := 5000
+	req := jailServiceInterfaces.EditJailNetworkRequest{
+		NetworkID:  existing.ID,
+		Name:       "net-vlan-edit-updated",
+		SwitchName: sw.Name,
+		VLAN:       &vlan,
+	}
+
+	err := svc.EditNetwork(req)
+	if err == nil {
+		t.Fatal("expected invalid_vlan error, got nil")
+	}
+	if err.Error() != "invalid_vlan" {
+		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
+	}
+	if fakeNetwork.syncEpairsCall != 0 {
+		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	}
+
+	var refreshed jailModels.Network
+	if err := db.First(&refreshed, existing.ID).Error; err != nil {
+		t.Fatalf("failed to reload existing jail network: %v", err)
+	}
+	if refreshed.Name != "net-vlan-edit" {
+		t.Fatalf("expected existing jail network to remain unchanged, got %q", refreshed.Name)
+	}
+}
+
+func TestAddNetworkStoresVLANOnNetworkRecord(t *testing.T) {
+	requireSystemUUIDOrSkip(t)
+
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Network{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&networkModels.ManualSwitch{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+	)
+
+	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
+	svc := &Service{DB: db, NetworkService: fakeNetwork}
+
+	jail := jailModels.Jail{CTID: 9204, Name: "jail-vlan-store", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("failed to seed jail: %v", err)
+	}
+
+	sw := networkModels.StandardSwitch{Name: "sw-vlan-store", BridgeName: "vm-sw-vlan-store"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("failed to seed standard switch: %v", err)
+	}
+
+	vlan := 100
+	req := jailServiceInterfaces.AddJailNetworkRequest{
+		CTID:       jail.CTID,
+		Name:       "net-vlan-store",
+		SwitchName: sw.Name,
+		VLAN:       &vlan,
+	}
+
+	_ = svc.AddNetwork(req)
+
+	var networks []jailModels.Network
+	if err := db.Where("jid = ?", jail.ID).Find(&networks).Error; err != nil {
+		t.Fatalf("failed to load jail networks: %v", err)
+	}
+	if len(networks) != 1 {
+		t.Fatalf("expected 1 network, got %d", len(networks))
+	}
+
+	stored := networks[0]
+	if stored.VLAN == nil {
+		t.Fatal("expected VLAN to be non-nil")
+	}
+	if *stored.VLAN != 100 {
+		t.Fatalf("expected VLAN 100, got %d", *stored.VLAN)
+	}
+}

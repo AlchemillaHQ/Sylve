@@ -266,7 +266,6 @@
 	watch(
 		() => visible.current,
 		(current) => {
-			console.log(storage.visible, 'FFF');
 			storage.visible = current;
 		}
 	);

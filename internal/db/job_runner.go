@@ -27,6 +27,7 @@ type jobRunnerOpts struct {
 	Extend       time.Duration
 	Limit        int
 	Log          jobLogger
+	Name         string
 	PollInterval time.Duration
 	Queue        *goqite.Queue
 }
@@ -38,6 +39,7 @@ type jobRunner struct {
 	jobCountLock  sync.RWMutex
 	jobs          map[string]jobFunc
 	log           jobLogger
+	name          string
 	pollInterval  time.Duration
 	queue         *goqite.Queue
 }
@@ -76,6 +78,7 @@ func newJobRunner(opts jobRunnerOpts) *jobRunner {
 		jobCountLimit: opts.Limit,
 		jobs:          make(map[string]jobFunc),
 		log:           opts.Log,
+		name:          opts.Name,
 		pollInterval:  opts.PollInterval,
 		queue:         opts.Queue,
 	}
@@ -95,15 +98,15 @@ func (r *jobRunner) Start(ctx context.Context) {
 	}
 	sort.Strings(names)
 
-	r.log.Info("Starting job runner", "jobs", names)
+	r.log.Info("Starting job runner", "name", r.name, "jobs", names)
 
 	var wg sync.WaitGroup
 	for {
 		select {
 		case <-ctx.Done():
-			r.log.Info("Stopping job runner")
+			r.log.Info("Stopping job runner", "name", r.name)
 			wg.Wait()
-			r.log.Info("Stopped job runner")
+			r.log.Info("Stopped job runner", "name", r.name)
 			return
 		default:
 			r.receiveAndRun(ctx, &wg)

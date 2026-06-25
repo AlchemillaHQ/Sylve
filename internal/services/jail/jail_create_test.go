@@ -690,3 +690,46 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 		t.Fatalf("expected rollback to remove root dataset %q after post-commit failure", rootDataset)
 	}
 }
+
+func TestValidateCreateRejectsInvalidVLAN(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&utilitiesModels.Downloads{},
+	)
+
+	svc := &Service{
+		DB:     db,
+		System: jailCreateTestSystemService{pools: []*gzfs.ZPool{{Name: "tank"}}},
+	}
+
+	baseDir := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("failed to create base directory: %v", err)
+	}
+	seedBaseDownload(t, db, "base-vlan-validate", baseDir)
+
+	ctid := uint(780)
+	vlan := 5000
+	req := jailServiceInterfaces.CreateJailRequest{
+		Name:        fmt.Sprintf("jail-%d", ctid),
+		CTID:        &ctid,
+		Pool:        "tank",
+		Base:        "base-vlan-validate",
+		SwitchName:  "none",
+		Type:        jailModels.JailTypeFreeBSD,
+		VLAN:        &vlan,
+	}
+
+	err := svc.ValidateCreate(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected invalid_vlan error, got nil")
+	}
+	if err.Error() != "invalid_vlan" {
+		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
+	}
+}

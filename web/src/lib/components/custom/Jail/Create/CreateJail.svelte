@@ -195,7 +195,8 @@
 			ipv6Gateway: 0,
 			dhcp: false,
 			slaac: false,
-			resolvConf: ''
+			resolvConf: '',
+			vlan: 0
 		},
 		hardware: {
 			cpuCores: 1,
@@ -383,9 +384,10 @@
 										bind:ipv4Gateway={modal.network.ipv4Gateway}
 										bind:ipv6={modal.network.ipv6}
 										bind:ipv6Gateway={modal.network.ipv6Gateway}
-										bind:dhcp={modal.network.dhcp}
-										bind:slaac={modal.network.slaac}
-										bind:resolvConf={modal.network.resolvConf}
+									bind:dhcp={modal.network.dhcp}
+									bind:slaac={modal.network.slaac}
+									bind:resolvConf={modal.network.resolvConf}
+									bind:vlan={modal.network.vlan}
 										bind:refetch={networkRefetch}
 										jailType={modal.advanced.jailType}
 										switches={networkSwitches.current}

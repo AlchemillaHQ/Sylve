@@ -1039,7 +1039,7 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		if err != nil {
 			continue
 		}
-		if strings.Contains(oif.Driver, "tap") || utils.Contains(oif.Groups, "tap") || utils.Contains(oif.Groups, "vnet") {
+		if strings.Contains(oif.Driver, "tap") || utils.Contains(oif.Groups, "tap") || utils.Contains(oif.Groups, "vnet") || utils.Contains(oif.Groups, "svm-vlan") {
 			if _, err := syncRunCommand("/sbin/ifconfig", br, "addm", m, "up"); err != nil {
 				if !strings.Contains(err.Error(), "BRDGADD "+m+": File exists") {
 					return fmt.Errorf("edit_standard_bridge: re-add tap %s: %v", m, err)

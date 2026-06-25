@@ -62,6 +62,8 @@ type CreateJailRequest struct {
 
 	MAC *int `json:"mac"`
 
+	VLAN *int `json:"vlan"`
+
 	ResourceLimits *bool  `json:"resourceLimits"`
 	Cores          *int   `json:"cores"`
 	Memory         *int   `json:"memory"`
@@ -113,6 +115,7 @@ type AddJailNetworkRequest struct {
 	DHCP           *bool  `json:"dhcp"`
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`
+	VLAN           *int   `json:"vlan"`
 }
 
 type EditJailNetworkRequest struct {
@@ -127,6 +130,7 @@ type EditJailNetworkRequest struct {
 	DHCP           *bool  `json:"dhcp"`
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`
+	VLAN           *int   `json:"vlan"`
 }
 
 type JailServiceInterface interface {

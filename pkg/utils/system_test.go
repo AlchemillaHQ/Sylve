@@ -162,45 +162,85 @@ func TestGetLoadAvg_Error(t *testing.T) {
 }
 
 func TestBootMode(t *testing.T) {
-	original := getSysctlString
-	defer func() { getSysctlString = original }()
+	originalSysctl := getSysctlString
+	originalStat := stat
+	defer func() {
+		getSysctlString = originalSysctl
+		stat = originalStat
+	}()
 
 	tests := []struct {
-		name         string
-		mockReturn   string
-		mockError    error
-		expectedMode string
+		name               string
+		bootMethodReturn   string
+		bootMethodError    error
+		efiRtReturn        string
+		efiRtError         error
+		efiDevExists       bool
+		expectedMode       string
 	}{
 		{
-			name:         "BIOS mode",
-			mockReturn:   "BIOS",
-			mockError:    nil,
-			expectedMode: "BIOS",
+			name:             "BIOS mode",
+			bootMethodReturn: "BIOS",
+			bootMethodError:  nil,
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "BIOS",
 		},
 		{
-			name:         "UEFI mode",
-			mockReturn:   "UEFI Firmware",
-			mockError:    nil,
-			expectedMode: "UEFI",
+			name:             "UEFI mode from bootmethod",
+			bootMethodReturn: "UEFI Firmware",
+			bootMethodError:  nil,
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "UEFI",
 		},
 		{
-			name:         "Unknown mode string",
-			mockReturn:   "SomeOtherBoot",
-			mockError:    nil,
-			expectedMode: "Unknown",
+			name:             "Unknown mode string, no fallback",
+			bootMethodReturn: "SomeOtherBoot",
+			bootMethodError:  nil,
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "Unknown",
 		},
 		{
-			name:         "Error from sysctl",
-			mockReturn:   "",
-			mockError:    errors.New("sysctl error"),
-			expectedMode: "Unknown",
+			name:             "Error from sysctl, no fallback",
+			bootMethodReturn: "",
+			bootMethodError:  errors.New("sysctl error"),
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "Unknown",
+		},
+		{
+			name:             "EFI runtime fallback detects UEFI",
+			bootMethodReturn: "",
+			bootMethodError:  errors.New("sysctl error"),
+			efiRtReturn:      "1",
+			efiRtError:       nil,
+			expectedMode:     "UEFI",
+		},
+		{
+			name:             "EFI dev fallback detects UEFI",
+			bootMethodReturn: "",
+			bootMethodError:  errors.New("sysctl error"),
+			efiRtError:       errors.New("not found"),
+			efiDevExists:     true,
+			expectedMode:     "UEFI",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			getSysctlString = func(key string) (string, error) {
-				return tt.mockReturn, tt.mockError
+				if key == "machdep.bootmethod" {
+					return tt.bootMethodReturn, tt.bootMethodError
+				}
+				if key == "machdep.efi_rt_handle_faults" {
+					return tt.efiRtReturn, tt.efiRtError
+				}
+				return "", errors.New("unexpected key")
+			}
+
+			stat = func(name string) (os.FileInfo, error) {
+				if name == "/dev/efi" && tt.efiDevExists {
+					return nil, nil
+				}
+				return nil, os.ErrNotExist
 			}
 
 			result := BootMode()

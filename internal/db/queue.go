@@ -133,6 +133,7 @@ func SetupQueue(cfg *internal.SylveConfig, isTest bool, log zerolog.Logger) erro
 		laneRunners[lane.LaneID] = newJobRunner(jobRunnerOpts{
 			Limit:        lane.Limit,
 			Log:          zerologJobLogger{Logger: log},
+			Name:         lane.QueueName,
 			PollInterval: 2 * time.Second,
 			Queue:        q,
 		})

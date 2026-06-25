@@ -27,6 +27,7 @@ var getSysctlString = sysctl.GetString
 var getHostname = os.Hostname
 var getUptime = uptime.Get
 var getLoadAvg = loadavg.Get
+var stat = os.Stat
 
 var cachedHostname string
 var hostnameOnce sync.Once
@@ -98,7 +99,7 @@ func BootMode() string {
 	if _, err := getSysctlString("machdep.efi_rt_handle_faults"); err == nil {
 		return "UEFI"
 	}
-	if _, err := os.Stat("/dev/efi"); err == nil {
+	if _, err := stat("/dev/efi"); err == nil {
 		return "UEFI"
 	}
 

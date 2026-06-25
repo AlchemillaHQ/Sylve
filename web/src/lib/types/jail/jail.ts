@@ -25,6 +25,7 @@ export interface CreateData {
         dhcp: boolean;
         slaac: boolean;
         resolvConf: string;
+        vlan: number;
     };
     hardware: {
         cpuCores: number;
@@ -82,7 +83,8 @@ export const NetworkSchema = z.object({
     ipv6GwId: z.number().int().nullable(),
     dhcp: z.boolean().nullable().default(false),
     slaac: z.boolean().nullable().default(false),
-    defaultGateway: z.boolean().default(false)
+    defaultGateway: z.boolean().default(false),
+    vlan: z.number().int().min(0).max(4095).optional().default(0)
 });
 
 export const JailHookPhaseSchema = z.enum([

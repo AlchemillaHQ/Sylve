@@ -329,6 +329,13 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		return fmt.Errorf("jail_with_ctid_already_exists")
 	}
 
+	if data.VLAN != nil {
+		vlan := *data.VLAN
+		if vlan < 0 || vlan > 4095 {
+			return fmt.Errorf("invalid_vlan")
+		}
+	}
+
 	if err := s.validateNoStaleJailCreateArtifacts(ctx, *data.CTID); err != nil {
 		return err
 	}
@@ -1236,11 +1243,21 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 				return "", fmt.Errorf("failed to get bridge name: %w", err)
 			}
 
-			preStartCfg += fmt.Sprintf("if ! ifconfig %s | grep -qw %s_%sa; then\n",
-				bridgeName, ctidHash, networkId)
-			preStartCfg += fmt.Sprintf("\tifconfig %s addm %s_%sa 2>&1 || true\n",
-				bridgeName, ctidHash, networkId)
-			preStartCfg += "fi\n"
+			epairA := fmt.Sprintf("%s_%sa", ctidHash, networkId)
+
+			if network.VLAN != nil && *network.VLAN > 0 {
+				vlanIface := fmt.Sprintf("%s.%d", epairA, *network.VLAN)
+				preStartCfg += fmt.Sprintf("if ! ifconfig %s > /dev/null 2>&1; then\n", vlanIface)
+				preStartCfg += fmt.Sprintf("\tifconfig vlan create vlandev %s vlan %d name %s group svm-vlan up\n", epairA, *network.VLAN, vlanIface)
+				preStartCfg += "fi\n"
+				preStartCfg += fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, vlanIface)
+				preStartCfg += fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, vlanIface)
+				preStartCfg += "fi\n"
+			} else {
+				preStartCfg += fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, epairA)
+				preStartCfg += fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, epairA)
+				preStartCfg += "fi\n"
+			}
 			preStartCfg += fmt.Sprintf("# End Setup Network Interface %s_%sb\n", ctidHash, networkId)
 			preStartCfg += "### End Sylve-Managed Network ###\n\n"
 		}
@@ -1777,6 +1794,14 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			slaac = *data.SLAAC
 		}
 
+		vlan := 0
+		if data.VLAN != nil {
+			vlan = *data.VLAN
+			if vlan < 0 || vlan > 4095 {
+				return fmt.Errorf("invalid_vlan")
+			}
+		}
+
 		// Create the network record first to get its ID
 		network := jailModels.Network{
 			Name:           fmt.Sprintf("Initial Switch - %s - %s", swName, data.Name),
@@ -1790,6 +1815,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			DHCP:           dhcp,
 			SLAAC:          slaac,
 			DefaultGateway: true,
+			VLAN:           &vlan,
 		}
 
 		if err = tx.Create(&network).Error; err != nil {

@@ -250,6 +250,14 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 		defaultGateway = *req.DefaultGateway
 	}
 
+	vlan := 0
+	if req.VLAN != nil {
+		vlan = *req.VLAN
+		if vlan < 0 || vlan > 4095 {
+			return fmt.Errorf("invalid_vlan")
+		}
+	}
+
 	if dhcp && slaac && defaultGateway {
 		return fmt.Errorf("cannot_set_dhcp_slaac_and_default_gateway_together")
 	}
@@ -398,6 +406,7 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 
 	network.Name = req.Name
 	network.JailID = jail.ID
+	network.VLAN = &vlan
 	err := s.DB.Create(&network).Error
 	if err != nil {
 		return fmt.Errorf("failed_to_create_network: %w", err)
@@ -430,6 +439,11 @@ func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
 	err := s.DB.Find(&network, networkId).Error
 	if err != nil {
 		return fmt.Errorf("failed_to_find_network: %w", err)
+	}
+
+	if network.VLAN != nil && *network.VLAN > 0 {
+		vlanIface := fmt.Sprintf("%s_%sa.%d", s.GetCTIDHash(ctId), fmt.Sprintf("net%d", network.ID), *network.VLAN)
+		_, _ = utils.RunCommand("/sbin/ifconfig", vlanIface, "destroy")
 	}
 
 	epair := fmt.Sprintf("%s_%s", s.GetCTIDHash(ctId), fmt.Sprintf("net%d", network.ID))
@@ -619,14 +633,25 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n", epairB, mac))
 					preStartBuilder.WriteString("\n")
 
-					bridgeName, err := s.NetworkService.GetBridgeNameByIDType(n.SwitchID, n.SwitchType)
-					if err != nil {
-						return fmt.Errorf("failed to get bridge name: %w", err)
-					}
+				bridgeName, err := s.NetworkService.GetBridgeNameByIDType(n.SwitchID, n.SwitchType)
+				if err != nil {
+					return fmt.Errorf("failed to get bridge name: %w", err)
+				}
+
+				if n.VLAN != nil && *n.VLAN > 0 {
+					vlanIface := fmt.Sprintf("%s.%d", epairA, *n.VLAN)
+					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s > /dev/null 2>&1; then\n", vlanIface))
+					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig vlan create vlandev %s vlan %d name %s group svm-vlan up\n", epairA, *n.VLAN, vlanIface))
+					preStartBuilder.WriteString("fi\n")
+					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, vlanIface))
+					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, vlanIface))
+					preStartBuilder.WriteString("fi\n")
+				} else {
 					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, epairA))
 					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, epairA))
 					preStartBuilder.WriteString("fi\n")
-					preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
+				}
+				preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
 				}
 
 				if jail.Type == jailModels.JailTypeLinux {
@@ -840,6 +865,14 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 		defaultGateway = *req.DefaultGateway
 	}
 
+	vlan := 0
+	if req.VLAN != nil {
+		vlan = *req.VLAN
+		if vlan < 0 || vlan > 4095 {
+			return fmt.Errorf("invalid_vlan")
+		}
+	}
+
 	if dhcp && slaac && defaultGateway {
 		return fmt.Errorf("cannot_set_dhcp_slaac_and_default_gateway_together")
 	}
@@ -900,6 +933,7 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	network.Name = req.Name
 	network.SwitchID = switchId
 	network.SwitchType = switchType
+	network.VLAN = &vlan
 
 	network.IPv4ID = nil
 	network.IPv4GwID = nil

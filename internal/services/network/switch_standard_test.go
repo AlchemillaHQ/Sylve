@@ -1667,3 +1667,54 @@ func TestCreateStandardBridgeAppliesManualIPv6ScopedLinkLocalGateway(t *testing.
 		t.Fatalf("expected scoped manual link-local IPv6 route, got commands: %v", commands)
 	}
 }
+
+func TestEditStandardBridgePreservesSvmVlanMembers(t *testing.T) {
+	var commands []string
+	getCalls := 0
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			getCalls++
+			if getCalls == 1 {
+				return &iface.Interface{
+					Name: name,
+					BridgeMembers: []iface.BridgeMember{
+						{Name: "epair0a.100"},
+					},
+				}, nil
+			}
+			return &iface.Interface{
+				Name:   name,
+				Groups: []string{"svm-vlan", "vlan"},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:       "svm-vlan-preserve",
+		BridgeName: "vm-svm-vlan-preserve",
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:       "svm-vlan-preserve",
+		BridgeName: "vm-svm-vlan-preserve",
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	var sawSvmVlanAttach bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-svm-vlan-preserve addm epair0a.100 up" {
+			sawSvmVlanAttach = true
+			break
+		}
+	}
+	if !sawSvmVlanAttach {
+		t.Fatalf("expected svm-vlan member to be reattached, got commands: %v", commands)
+	}
+}
