@@ -10,8 +10,6 @@ package info
 
 import (
 	"encoding/json"
-	"sort"
-	"time"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
@@ -43,79 +41,22 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 }
 
 func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.HistoricalNetworkInterface, error) {
-	type row struct {
-		Name          string
-		Network       string
-		CreatedAt     time.Time
-		ReceivedBytes int64
-		SentBytes     int64
-	}
-
-	var rows []row
+	var rows []infoModels.NetworkInterface
 	if err := s.networkDB().
-		Model(&infoModels.NetworkInterface{}).
-		Select("name, network, created_at, received_bytes, sent_bytes").
-		Where("is_delta = false").
+		Where("is_delta = ?", true).
 		Order("created_at ASC").
-		Scan(&rows).Error; err != nil {
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	if len(rows) == 0 {
-		return nil, nil
+	result := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, infoServiceInterfaces.HistoricalNetworkInterface{
+			SentBytes:     row.SentBytes,
+			ReceivedBytes: row.ReceivedBytes,
+			CreatedAt:     row.CreatedAt,
+		})
 	}
-
-	buckets := make(map[int64]*infoServiceInterfaces.HistoricalNetworkInterface)
-	last := make(map[string]struct {
-		ReceivedBytes int64
-		SentBytes     int64
-	})
-	delta := func(cur, prev int64) int64 {
-		if cur < prev {
-			return 0
-		}
-		return cur - prev
-	}
-
-	for _, cur := range rows {
-		key := cur.Name + "|" + cur.Network
-		prev, ok := last[key]
-		last[key] = struct {
-			ReceivedBytes int64
-			SentBytes     int64
-		}{
-			ReceivedBytes: cur.ReceivedBytes,
-			SentBytes:     cur.SentBytes,
-		}
-
-		if !ok {
-			continue
-		}
-
-		receivedDelta := delta(cur.ReceivedBytes, prev.ReceivedBytes)
-		sentDelta := delta(cur.SentBytes, prev.SentBytes)
-		sec := cur.CreatedAt.Truncate(time.Second).Unix()
-
-		b, ok := buckets[sec]
-		if !ok {
-			b = &infoServiceInterfaces.HistoricalNetworkInterface{
-				CreatedAt: time.Unix(sec, 0).In(cur.CreatedAt.Location()),
-			}
-			buckets[sec] = b
-		}
-
-		b.ReceivedBytes += receivedDelta
-		b.SentBytes += sentDelta
-	}
-
-	result := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(buckets))
-	for _, v := range buckets {
-		result = append(result, *v)
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].CreatedAt.Before(result[j].CreatedAt)
-	})
 
 	return result, nil
 }

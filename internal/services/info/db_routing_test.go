@@ -155,28 +155,33 @@ func TestDBRoutingReadsFromTelemetryDB(t *testing.T) {
 			[]any{&infoModels.NetworkInterface{}},
 			func(db *gorm.DB) error {
 				return db.Create(&[]infoModels.NetworkInterface{
-					{ID: 1, Name: "igb0", Network: "link#1", IsDelta: false, ReceivedBytes: 100, SentBytes: 100, CreatedAt: now, UpdatedAt: now},
-					{ID: 2, Name: "igb0", Network: "link#1", IsDelta: false, ReceivedBytes: 200, SentBytes: 300, CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second)},
+					{ID: 1, IsDelta: true, ReceivedBytes: 100, SentBytes: 200, CreatedAt: now, UpdatedAt: now},
 				}).Error
 			},
 			func(db *gorm.DB) error {
 				return db.Create(&[]infoModels.NetworkInterface{
-					{ID: 3, Name: "igb1", Network: "link#2", IsDelta: false, ReceivedBytes: 1000, SentBytes: 2000, CreatedAt: now, UpdatedAt: now},
-					{ID: 4, Name: "igb1", Network: "link#2", IsDelta: false, ReceivedBytes: 1250, SentBytes: 2600, CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second)},
+					{ID: 2, IsDelta: true, ReceivedBytes: 350, SentBytes: 600, CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second)},
+					{ID: 3, IsDelta: true, ReceivedBytes: 1000, SentBytes: 2000, CreatedAt: now.Add(2 * time.Second), UpdatedAt: now.Add(2 * time.Second)},
 				}).Error
 			},
 			func(svc *Service) ([]infoServiceInterfaces.HistoricalNetworkInterface, error) {
 				return svc.GetNetworkInterfacesHistorical()
 			},
 			func(t *testing.T, results []infoServiceInterfaces.HistoricalNetworkInterface) {
-				if len(results) != 1 {
-					t.Fatalf("expected one telemetry bucket row, got %d", len(results))
+				if len(results) != 2 {
+					t.Fatalf("expected two telemetry rows, got %d", len(results))
 				}
-				if results[0].ReceivedBytes != 250 {
-					t.Fatalf("expected telemetry received delta 250, got %d", results[0].ReceivedBytes)
+				if results[0].ReceivedBytes != 350 {
+					t.Fatalf("expected telemetry received 350, got %d", results[0].ReceivedBytes)
 				}
 				if results[0].SentBytes != 600 {
-					t.Fatalf("expected telemetry sent delta 600, got %d", results[0].SentBytes)
+					t.Fatalf("expected telemetry sent 600, got %d", results[0].SentBytes)
+				}
+				if results[1].ReceivedBytes != 1000 {
+					t.Fatalf("expected telemetry received 1000, got %d", results[1].ReceivedBytes)
+				}
+				if results[1].SentBytes != 2000 {
+					t.Fatalf("expected telemetry sent 2000, got %d", results[1].SentBytes)
 				}
 			},
 		)

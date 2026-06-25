@@ -18,9 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const netRetention = 2 * time.Hour
 const auditRetentionInterval = 6 * time.Hour
-const netSampleInterval = 2 * time.Minute
 
 func (s *Service) StoreStats() {
 	now := time.Now()
@@ -80,75 +78,80 @@ func (s *Service) StoreNetworkInterfaceStats() {
 	}
 
 	now := time.Now()
-	indexByKey := make(map[string]int, len(interfaces))
-	rows := make([]infoModels.NetworkInterface, 0, len(interfaces))
+	s.netMu.Lock()
+
+	deduped := make(map[string]struct {
+		receivedBytes int64
+		sentBytes     int64
+	}, len(interfaces))
+
 	for _, iface := range interfaces {
 		key := iface.Name + "|" + iface.Network
-		idx, exists := indexByKey[key]
-		if !exists {
-			indexByKey[key] = len(rows)
-			rows = append(rows, infoModels.NetworkInterface{
-				CreatedAt:       now,
-				Name:            iface.Name,
-				Flags:           iface.Flags,
-				Network:         iface.Network,
-				Address:         iface.Address,
-				IsDelta:         false,
-				ReceivedPackets: iface.ReceivedPackets,
-				ReceivedErrors:  iface.ReceivedErrors,
-				DroppedPackets:  iface.DroppedPackets,
-				ReceivedBytes:   iface.ReceivedBytes,
-				SentPackets:     iface.SentPackets,
-				SendErrors:      iface.SendErrors,
-				SentBytes:       iface.SentBytes,
-				Collisions:      iface.Collisions,
-			})
-			continue
+		cur, exists := deduped[key]
+		if !exists || iface.ReceivedBytes > cur.receivedBytes {
+			cur.receivedBytes = iface.ReceivedBytes
 		}
-
-		row := &rows[idx]
-		if iface.ReceivedPackets > row.ReceivedPackets {
-			row.ReceivedPackets = iface.ReceivedPackets
+		if !exists || iface.SentBytes > cur.sentBytes {
+			cur.sentBytes = iface.SentBytes
 		}
-		if iface.ReceivedErrors > row.ReceivedErrors {
-			row.ReceivedErrors = iface.ReceivedErrors
-		}
-		if iface.DroppedPackets > row.DroppedPackets {
-			row.DroppedPackets = iface.DroppedPackets
-		}
-		if iface.ReceivedBytes > row.ReceivedBytes {
-			row.ReceivedBytes = iface.ReceivedBytes
-		}
-		if iface.SentPackets > row.SentPackets {
-			row.SentPackets = iface.SentPackets
-		}
-		if iface.SendErrors > row.SendErrors {
-			row.SendErrors = iface.SendErrors
-		}
-		if iface.SentBytes > row.SentBytes {
-			row.SentBytes = iface.SentBytes
-		}
-		if iface.Collisions > row.Collisions {
-			row.Collisions = iface.Collisions
-		}
+		deduped[key] = cur
 	}
 
-	if len(rows) == 0 {
+	if s.lastNet == nil {
+		s.lastNet = make(map[string]netCounter, len(deduped))
+		for key, cur := range deduped {
+			s.lastNet[key] = netCounter{receivedBytes: cur.receivedBytes, sentBytes: cur.sentBytes}
+		}
+		s.netMu.Unlock()
 		return
 	}
 
-	if err := s.networkDB().Create(&rows).Error; err != nil {
+	var totalReceivedDelta int64
+	var totalSentDelta int64
+
+	for key, cur := range deduped {
+		prev, ok := s.lastNet[key]
+		if !ok {
+			s.lastNet[key] = netCounter{receivedBytes: cur.receivedBytes, sentBytes: cur.sentBytes}
+			continue
+		}
+
+		receivedDelta := int64(0)
+		if cur.receivedBytes > prev.receivedBytes {
+			receivedDelta = cur.receivedBytes - prev.receivedBytes
+		}
+
+		sentDelta := int64(0)
+		if cur.sentBytes > prev.sentBytes {
+			sentDelta = cur.sentBytes - prev.sentBytes
+		}
+
+		totalReceivedDelta += receivedDelta
+		totalSentDelta += sentDelta
+		s.lastNet[key] = netCounter{receivedBytes: cur.receivedBytes, sentBytes: cur.sentBytes}
+	}
+
+	s.netMu.Unlock()
+
+	if !s.lastNetSampleTime.IsZero() {
+		elapsed := now.Sub(s.lastNetSampleTime).Seconds()
+		if elapsed > 0 {
+			totalReceivedDelta = int64(float64(totalReceivedDelta) / elapsed)
+			totalSentDelta = int64(float64(totalSentDelta) / elapsed)
+		}
+	}
+	s.lastNetSampleTime = now
+
+	if err := s.networkDB().Create(&infoModels.NetworkInterface{
+		ReceivedBytes: totalReceivedDelta,
+		SentBytes:     totalSentDelta,
+		IsDelta:       true,
+	}).Error; err != nil {
 		logger.L.Err(err).Msg("failed storing network interface stats")
 		return
 	}
 
-	cutoffPrune := now.Add(-netRetention)
-	if err := s.networkDB().Unscoped().
-		Where("created_at < ?", cutoffPrune).
-		Delete(&infoModels.NetworkInterface{}).
-		Error; err != nil {
-		logger.L.Err(err).Msg("failed pruning old network interface stats")
-	}
+	pruneGFS(s.networkDB(), now, infoModels.NetworkInterface{})
 }
 
 func (s *Service) Cron(ctx context.Context) {
@@ -157,10 +160,8 @@ func (s *Service) Cron(ctx context.Context) {
 	s.PruneAuditRecords(time.Now())
 
 	statsTicker := time.NewTicker(10 * time.Second)
-	netTicker := time.NewTicker(netSampleInterval)
 	auditRetentionTicker := time.NewTicker(auditRetentionInterval)
 	defer statsTicker.Stop()
-	defer netTicker.Stop()
 	defer auditRetentionTicker.Stop()
 
 	logger.L.Info().Msg("Info service cron workers started")
@@ -173,8 +174,6 @@ func (s *Service) Cron(ctx context.Context) {
 
 		case <-statsTicker.C:
 			s.StoreStats()
-
-		case <-netTicker.C:
 			s.StoreNetworkInterfaceStats()
 
 		case <-auditRetentionTicker.C:

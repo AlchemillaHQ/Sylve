@@ -257,6 +257,41 @@ export function formatBytesPerSecondBinary(
     return `${value}/s`;
 }
 
+export function formatBitsPerSecondDecimal(
+	bytesPerSecond: unknown,
+	options: ByteFormatOptions = {}
+): string {
+	const fallback = options.fallback ?? '0 bps';
+	const bytes = normalizeNumberishToBytes(bytesPerSecond);
+
+	if (bytes === null) {
+		return fallback;
+	}
+
+	const bits = bytes * 8;
+	if (bits === 0) {
+		return '0 bps';
+	}
+
+	const DECIMAL_UNITS = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'] as const;
+	const DECIMAL_BASE = 1000;
+
+	let unitIndex = 0;
+	let scaled = bits;
+
+	while (scaled >= DECIMAL_BASE && unitIndex < DECIMAL_UNITS.length - 1) {
+		scaled /= DECIMAL_BASE;
+		unitIndex += 1;
+	}
+
+	const decimals = unitIndex === 0 ? 0 : 2;
+	const factor = 10 ** Math.max(0, decimals);
+	const rounded = Math.round(scaled * factor) / factor;
+	const formatted = unitIndex === 0 ? rounded.toString() : trimTrailingZeros(rounded.toFixed(decimals));
+
+	return `${formatted} ${DECIMAL_UNITS[unitIndex]}`;
+}
+
 export function normalizeSizeInputExact(input: unknown): string | null {
     const bytes = parseSizeInputToBytes(input);
     if (bytes === null) {

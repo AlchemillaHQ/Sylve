@@ -873,34 +873,20 @@ func TestMigrateNetworkInterfacesToTelemetryCopiesRowsAndDropsLegacyTable(t *tes
 	now := time.Now().UTC().Truncate(time.Second)
 	legacyRows := []infoModels.NetworkInterface{
 		{
-			ID:              11,
-			Name:            "igb0",
-			Flags:           "UP",
-			IsDelta:         false,
-			Network:         "link#1",
-			Address:         "aa:bb:cc:dd:ee:ff",
-			ReceivedPackets: 10,
-			ReceivedBytes:   1000,
-			SentPackets:     5,
-			SentBytes:       500,
-			Collisions:      0,
-			CreatedAt:       now,
-			UpdatedAt:       now,
+			ID:            11,
+			IsDelta:       false,
+			ReceivedBytes: 1000,
+			SentBytes:     500,
+			CreatedAt:     now,
+			UpdatedAt:     now,
 		},
 		{
-			ID:              12,
-			Name:            "igb0",
-			Flags:           "UP",
-			IsDelta:         false,
-			Network:         "link#1",
-			Address:         "aa:bb:cc:dd:ee:ff",
-			ReceivedPackets: 15,
-			ReceivedBytes:   1500,
-			SentPackets:     9,
-			SentBytes:       900,
-			Collisions:      0,
-			CreatedAt:       now.Add(1 * time.Second),
-			UpdatedAt:       now.Add(1 * time.Second),
+			ID:            12,
+			IsDelta:       false,
+			ReceivedBytes: 1500,
+			SentBytes:     900,
+			CreatedAt:     now.Add(1 * time.Second),
+			UpdatedAt:     now.Add(1 * time.Second),
 		},
 	}
 	if err := mainDB.Create(&legacyRows).Error; err != nil {
@@ -956,9 +942,9 @@ func TestMigrateNetworkInterfacesToTelemetryIsIdempotentAfterPartialTargetState(
 
 	now := time.Now().UTC().Truncate(time.Second)
 	legacyRows := []infoModels.NetworkInterface{
-		{ID: 1, Name: "igb0", Flags: "UP", IsDelta: false, Network: "link#1", Address: "aa:bb", ReceivedBytes: 100, SentBytes: 100, CreatedAt: now, UpdatedAt: now},
-		{ID: 2, Name: "igb0", Flags: "UP", IsDelta: false, Network: "link#1", Address: "aa:bb", ReceivedBytes: 200, SentBytes: 250, CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second)},
-		{ID: 3, Name: "igb1", Flags: "UP", IsDelta: false, Network: "link#2", Address: "cc:dd", ReceivedBytes: 50, SentBytes: 70, CreatedAt: now.Add(2 * time.Second), UpdatedAt: now.Add(2 * time.Second)},
+		{ID: 1, IsDelta: false, ReceivedBytes: 100, SentBytes: 100, CreatedAt: now, UpdatedAt: now},
+		{ID: 2, IsDelta: false, ReceivedBytes: 200, SentBytes: 250, CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second)},
+		{ID: 3, IsDelta: false, ReceivedBytes: 50, SentBytes: 70, CreatedAt: now.Add(2 * time.Second), UpdatedAt: now.Add(2 * time.Second)},
 	}
 	if err := mainDB.Create(&legacyRows).Error; err != nil {
 		t.Fatalf("failed to seed legacy network interface rows: %v", err)
@@ -966,11 +952,7 @@ func TestMigrateNetworkInterfacesToTelemetryIsIdempotentAfterPartialTargetState(
 
 	if err := telemetryDB.Create(&infoModels.NetworkInterface{
 		ID:            1,
-		Name:          "igb0",
-		Flags:         "UP",
 		IsDelta:       false,
-		Network:       "link#1",
-		Address:       "aa:bb",
 		ReceivedBytes: 100,
 		SentBytes:     100,
 		CreatedAt:     now,

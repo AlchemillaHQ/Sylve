@@ -29,8 +29,9 @@ const (
 	auditRecordsTelemetryMigrationName    = "audit_records_to_telemetry_1"
 	ramStatsTelemetryMigrationName        = "ram_stats_to_telemetry_1"
 	swapStatsTelemetryMigrationName       = "swap_stats_to_telemetry_1"
-	networkStatsTelemetryMigrationName    = "network_interfaces_to_telemetry_1"
-	zPoolHistoricalTelemetryMigrationName = "z_pool_historical_to_telemetry_1"
+	networkStatsTelemetryMigrationName          = "network_interfaces_to_telemetry_1"
+	networkInterfacesAggregateDeltasMigrationName = "network_interfaces_aggregate_deltas_v2"
+	zPoolHistoricalTelemetryMigrationName       = "z_pool_historical_to_telemetry_1"
 )
 
 func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest bool) *gorm.DB {
@@ -119,6 +120,11 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		logger.L.Fatal().Msgf("Error migrating network interface stats to telemetry database: %v", err)
 	}
 
+	droppedNetworkInterfacesAggregate, err := migrateNetworkInterfacesAggregateDeltas(mainDB, telemetryDB, mainDBPath)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error migrating network interface aggregate deltas: %v", err)
+	}
+
 	droppedZPoolHistoricalTable, err := migrateZPoolHistoricalToTelemetry(mainDB, mainDBPath)
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating zpool historical to telemetry database: %v", err)
@@ -130,6 +136,7 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		droppedRAMTable ||
 		droppedSwapTable ||
 		droppedNetworkInterfacesTable ||
+		droppedNetworkInterfacesAggregate ||
 		droppedZPoolHistoricalTable) && !isTest {
 		if err := mainDB.Exec("VACUUM").Error; err != nil {
 			logger.L.Warn().Msgf("VACUUM failed after dropping legacy telemetry tables: %v", err)
@@ -866,6 +873,33 @@ func copyNetworkInterfacesInBatches(mainDB, telemetryDB *gorm.DB) error {
 	}
 
 	return nil
+}
+
+func migrateNetworkInterfacesAggregateDeltas(mainDB, telemetryDB *gorm.DB, _ string) (bool, error) {
+	applied, err := migrationApplied(mainDB, networkInterfacesAggregateDeltasMigrationName)
+	if err != nil {
+		return false, err
+	}
+
+	if applied {
+		return false, nil
+	}
+
+	if telemetryDB.Migrator().HasTable(&infoModels.NetworkInterface{}) {
+		if err := telemetryDB.Migrator().DropTable(&infoModels.NetworkInterface{}); err != nil {
+			return false, fmt.Errorf("failed dropping network_interfaces table for aggregate deltas migration: %w", err)
+		}
+	}
+
+	if err := telemetryDB.AutoMigrate(&infoModels.NetworkInterface{}); err != nil {
+		return false, fmt.Errorf("failed recreating network_interfaces table for aggregate deltas: %w", err)
+	}
+
+	if err := recordMigration(mainDB, networkInterfacesAggregateDeltasMigrationName); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func migrateZPoolHistoricalToTelemetry(mainDB *gorm.DB, _ string) (bool, error) {

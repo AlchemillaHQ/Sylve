@@ -347,7 +347,7 @@
 		title="Network Usage"
 		percentage={false}
 		data={true}
-		types="bytes"
+		types="bitsPerSecond"
 		smooth={false}
 		series={[
 			{

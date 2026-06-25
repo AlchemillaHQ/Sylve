@@ -2,7 +2,7 @@
 	import { Chart } from 'svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { LineChart } from 'echarts/charts';
-	import { formatBytesBinary, formatBytesPerSecondBinary } from '$lib/utils/bytes';
+	import { formatBytesBinary, formatBytesPerSecondBinary, formatBitsPerSecondDecimal } from '$lib/utils/bytes';
 	import {
 		GridComponent,
 		TitleComponent,
@@ -36,7 +36,7 @@
 		color: 'one' | 'two' | 'three' | 'four';
 	}
 
-	type ValueType = 'auto' | 'number' | 'bytes' | 'bytesPerSecond';
+	type ValueType = 'auto' | 'number' | 'bytes' | 'bytesPerSecond' | 'bitsPerSecond';
 
 	interface Props {
 		title: string;
@@ -153,6 +153,8 @@
 				return formatBytesBinary(value);
 			case 'bytesPerSecond':
 				return formatBytesPerSecondBinary(value);
+			case 'bitsPerSecond':
+				return formatBitsPerSecondDecimal(value);
 			default:
 				return axis ? value.toString() : Number(value).toFixed(2);
 		}
