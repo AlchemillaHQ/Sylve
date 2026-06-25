@@ -21,6 +21,7 @@ type StaticRoute struct {
 	Family          string    `json:"family" gorm:"not null"`      // inet|inet6
 	NextHopMode     string    `json:"nextHopMode" gorm:"not null"` // gateway|interface
 	Gateway         string    `json:"gateway"`
+	GatewayZone     string    `json:"gatewayZone"` // IPv6 link-local scope interface (zone id)
 	Interface       string    `json:"interface"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`

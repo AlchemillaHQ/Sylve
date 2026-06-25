@@ -1795,7 +1795,6 @@ msgstr "Sind Sie sicher?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -14634,4 +14633,12 @@ msgstr ""
 
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 msgid "Creating Peer..."
+msgstr ""
+
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Scope Interface"
+msgstr ""
+
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Optional — required for fe80:: link-local gateways"
 msgstr ""

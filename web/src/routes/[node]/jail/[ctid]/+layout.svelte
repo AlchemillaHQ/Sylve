@@ -21,6 +21,7 @@
 	import type { GFSStep } from '$lib/types/common';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -72,6 +73,31 @@
 	);
 	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
 	let showMigrateModal = $state(false);
+
+	let sourceNodeUuid = $derived.by(() => {
+		const nds = (page.data as Record<string, unknown>).nodes;
+		if (!nds || !Array.isArray(nds)) return '';
+		const self = (nds as ClusterNode[]).find((n) => n.guestIDs?.includes(ctId));
+		if (self) return self.nodeUUID;
+		const selfNode = (page.params.node || '').toLowerCase();
+		const byName = (nds as ClusterNode[]).find((n) => n.hostname.toLowerCase() === selfNode);
+		return byName?.nodeUUID ?? '';
+	});
+
+	let availableNodeCount = $derived.by(() => {
+		const nds = (page.data as Record<string, unknown>).nodes;
+		if (!nds || !Array.isArray(nds)) return 1;
+		const selfUuid = sourceNodeUuid;
+		const selfHostname = (page.params.node || '').toLowerCase();
+		let count = 0;
+		for (const n of nds as ClusterNode[]) {
+			if (n.nodeUUID === '' || n.status !== 'online') continue;
+			if (n.nodeUUID === selfUuid) continue;
+			if (!selfUuid && n.hostname.toLowerCase() === selfHostname) continue;
+			count++;
+		}
+		return count;
+	});
 
 	class SummaryBarExtras {
 		logsLength = $state(0);
@@ -307,6 +333,7 @@
 					</Button>
 				{/if}
 
+			{#if availableNodeCount > 0}
 				<Button
 					onclick={() => (showMigrateModal = true)}
 					size="sm"
@@ -319,6 +346,7 @@
 					{/if}
 					<span>Migrate</span>
 				</Button>
+			{/if}
 				<SimpleSelect
 					options={[
 						{ label: 'Hourly', value: 'hourly' },
@@ -390,6 +418,7 @@
 	guestId={ctId}
 	guestName={jail.current?.name || ''}
 	node={page.params.node || ''}
+	sourceNodeUuid={sourceNodeUuid}
 	onSuccess={(targetHostname: string) => {
 		if (targetHostname) {
 			goto(`/${targetHostname}/jail/${ctId}/summary`);

@@ -124,6 +124,16 @@ export function isValidIPv6(ip: string, cidr = false): boolean {
     }
 }
 
+export function isLinkLocalIPv6(ip: string): boolean {
+    try {
+        const parsed = new Address6(ip);
+        if (parsed.parsedSubnet !== '') return false;
+        return parsed.isLinkLocal();
+    } catch {
+        return false;
+    }
+}
+
 export function isDownloadURL(url: string): boolean {
     const cleanUrl = typeof url === 'string' ? url.trim() : '';
 

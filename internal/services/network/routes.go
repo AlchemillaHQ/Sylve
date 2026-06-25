@@ -120,6 +120,7 @@ func validateStaticRouteRequest(req *networkServiceInterfaces.UpsertStaticRouteR
 		Family:          normalizeStaticRouteFamily(req.Family),
 		NextHopMode:     normalizeStaticRouteNextHopMode(req.NextHopMode),
 		Gateway:         strings.TrimSpace(req.Gateway),
+		GatewayZone:     strings.TrimSpace(req.GatewayZone),
 		Interface:       strings.TrimSpace(req.Interface),
 	}
 
@@ -186,6 +187,9 @@ func validateStaticRouteRequest(req *networkServiceInterfaces.UpsertStaticRouteR
 		if route.Interface != "" {
 			return networkModels.StaticRoute{}, fmt.Errorf("route_interface_not_allowed_for_next_hop_mode_gateway")
 		}
+		if strings.Contains(route.Gateway, "%") {
+			return networkModels.StaticRoute{}, fmt.Errorf("route_gateway_must_not_include_zone")
+		}
 
 		gw := net.ParseIP(route.Gateway)
 		if gw == nil {
@@ -195,12 +199,24 @@ func validateStaticRouteRequest(req *networkServiceInterfaces.UpsertStaticRouteR
 			return networkModels.StaticRoute{}, fmt.Errorf("gateway_family_mismatch")
 		}
 		route.Gateway = gw.String()
+
+		if route.GatewayZone != "" {
+			if route.Family != staticRouteFamilyINET6 {
+				return networkModels.StaticRoute{}, fmt.Errorf("gateway_zone_requires_inet6")
+			}
+			if !gw.IsLinkLocalUnicast() {
+				return networkModels.StaticRoute{}, fmt.Errorf("gateway_zone_requires_link_local")
+			}
+		}
 	case staticRouteNextHopInterface:
 		if route.Interface == "" {
 			return networkModels.StaticRoute{}, fmt.Errorf("route_interface_required_for_next_hop_mode_interface")
 		}
 		if route.Gateway != "" {
 			return networkModels.StaticRoute{}, fmt.Errorf("route_gateway_not_allowed_for_next_hop_mode_interface")
+		}
+		if route.GatewayZone != "" {
+			return networkModels.StaticRoute{}, fmt.Errorf("gateway_zone_not_allowed_for_next_hop_mode_interface")
 		}
 	default:
 		return networkModels.StaticRoute{}, fmt.Errorf("invalid_route_next_hop_mode")
@@ -224,7 +240,11 @@ func staticRouteCommandArgs(route *networkModels.StaticRoute, action string) []s
 	args = append(args, route.Destination)
 
 	if route.NextHopMode == staticRouteNextHopGateway {
-		args = append(args, route.Gateway)
+		gateway := route.Gateway
+		if route.GatewayZone != "" {
+			gateway = gateway + "%" + route.GatewayZone
+		}
+		args = append(args, gateway)
 	} else {
 		args = append(args, "-iface", route.Interface)
 	}
@@ -276,6 +296,7 @@ func equalStaticRouteRuntime(a, b *networkModels.StaticRoute) bool {
 		a.Family == b.Family &&
 		a.NextHopMode == b.NextHopMode &&
 		a.Gateway == b.Gateway &&
+		a.GatewayZone == b.GatewayZone &&
 		a.Interface == b.Interface
 }
 
@@ -363,6 +384,7 @@ func (s *Service) EditStaticRoute(id uint, req *networkServiceInterfaces.UpsertS
 		next.Family = normalized.Family
 		next.NextHopMode = normalized.NextHopMode
 		next.Gateway = normalized.Gateway
+		next.GatewayZone = normalized.GatewayZone
 		next.Interface = normalized.Interface
 
 		if err := applyStaticRouteDiff(&current, &next); err != nil {

@@ -22,6 +22,7 @@
 		guestId,
 		guestName = '',
 		node,
+		sourceNodeUuid = '',
 		onSuccess = () => {}
 	}: {
 		open: boolean;
@@ -29,6 +30,7 @@
 		guestId: number;
 		guestName?: string;
 		node: string;
+		sourceNodeUuid?: string;
 		onSuccess?: (targetHostname: string) => void;
 	} = $props();
 
@@ -99,8 +101,13 @@
 		// Try the current node first, then all other online cluster nodes.
 		const candidates = [node];
 		for (const n of onlineNodes) {
-			if (n.hostname && n.hostname !== node) {
-				candidates.push(n.hostname);
+			if (n.hostname) {
+				const isSelf = sourceNodeUuid
+					? n.nodeUUID === sourceNodeUuid
+					: n.hostname.toLowerCase() === node.toLowerCase();
+				if (!isSelf) {
+					candidates.push(n.hostname);
+				}
 			}
 		}
 
@@ -166,8 +173,14 @@
 	onMount(async () => {
 		const result = await getNodes();
 		if (!isAPIResponse(result)) {
+			const selfUuid = sourceNodeUuid;
+			const selfHostname = node.toLowerCase();
 			nodes = result.filter(
-				(n) => n.nodeUUID !== '' && n.status === 'online' && n.hostname !== node
+				(n) =>
+					n.nodeUUID !== '' &&
+					n.status === 'online' &&
+					n.nodeUUID !== selfUuid &&
+					(selfUuid === '' ? n.hostname.toLowerCase() !== selfHostname : true)
 			);
 		}
 	});

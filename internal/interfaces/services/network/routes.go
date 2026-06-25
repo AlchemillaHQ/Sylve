@@ -18,6 +18,7 @@ type UpsertStaticRouteRequest struct {
 	Family          string `json:"family" binding:"required,oneof=inet inet6"`
 	NextHopMode     string `json:"nextHopMode" binding:"required,oneof=gateway interface"`
 	Gateway         string `json:"gateway"`
+	GatewayZone     string `json:"gatewayZone"`
 	Interface       string `json:"interface"`
 }
 

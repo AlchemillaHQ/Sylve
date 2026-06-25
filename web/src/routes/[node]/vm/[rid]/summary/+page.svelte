@@ -50,6 +50,7 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Data {
 		node: string;
@@ -57,10 +58,36 @@
 		vm: VM;
 		stats: VMStat[];
 		gaInfo: QGAInfo | APIResponse | null;
+		nodes: ClusterNode[] | null;
 	}
 
 	let { data }: { data: Data } = $props();
 	let gfsStep = $state<GFSStep>('hourly');
+
+	let sourceNodeUuid = $derived.by(() => {
+		const nds = data.nodes;
+		if (!nds || !Array.isArray(nds)) return '';
+		const self = nds.find((n) => n.guestIDs?.includes(data.rid));
+		if (self) return self.nodeUUID;
+		const selfNode = data.node.toLowerCase();
+		const byName = nds.find((n) => n.hostname.toLowerCase() === selfNode);
+		return byName?.nodeUUID ?? '';
+	});
+
+	let availableNodeCount = $derived.by(() => {
+		const nds = data.nodes;
+		if (!nds || !Array.isArray(nds)) return 1;
+		const selfUuid = sourceNodeUuid;
+		const selfHostname = data.node.toLowerCase();
+		let count = 0;
+		for (const n of nds) {
+			if (n.nodeUUID === '' || n.status !== 'online') continue;
+			if (n.nodeUUID === selfUuid) continue;
+			if (!selfUuid && n.hostname.toLowerCase() === selfHostname) continue;
+			count++;
+		}
+		return count;
+	});
 
 	// svelte-ignore state_referenced_locally
 	const vm = resource(
@@ -685,7 +712,9 @@
 				</div>
 			{/if}
 
-			{@render button('migrate')}
+			{#if availableNodeCount > 0}
+				{@render button('migrate')}
+			{/if}
 
 			<SimpleSelect
 				options={[
@@ -967,6 +996,7 @@
 	guestId={Number(data.rid)}
 	guestName={vm.current.name || ''}
 	node={data.node}
+	sourceNodeUuid={sourceNodeUuid}
 	onSuccess={(targetHostname: string) => {
 		if (targetHostname) {
 			goto(`/${targetHostname}/vm/${data.rid}/summary`);

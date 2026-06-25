@@ -1795,7 +1795,6 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -14658,3 +14657,11 @@ msgstr "Saving Changes..."
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 msgid "Creating Peer..."
 msgstr "Creating Peer..."
+
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Scope Interface"
+msgstr "Scope Interface"
+
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Optional — required for fe80:: link-local gateways"
+msgstr "Optional — required for fe80:: link-local gateways"

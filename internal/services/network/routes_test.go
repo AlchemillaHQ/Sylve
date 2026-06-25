@@ -137,6 +137,57 @@ func TestValidateStaticRouteRequestRejectsInvalidShapes(t *testing.T) {
 			},
 			want: "invalid_route_fib",
 		},
+		{
+			name: "gateway zone with inet family",
+			req: networkServiceInterfaces.UpsertStaticRouteRequest{
+				Name:            "zone-inet",
+				DestinationType: "network",
+				Destination:     "0.0.0.0/0",
+				Family:          "inet",
+				NextHopMode:     "gateway",
+				Gateway:         "198.51.100.1",
+				GatewayZone:     "em0",
+			},
+			want: "gateway_zone_requires_inet6",
+		},
+		{
+			name: "gateway zone with non link local gateway",
+			req: networkServiceInterfaces.UpsertStaticRouteRequest{
+				Name:            "zone-global",
+				DestinationType: "network",
+				Destination:     "::/0",
+				Family:          "inet6",
+				NextHopMode:     "gateway",
+				Gateway:         "2001:db8::1",
+				GatewayZone:     "em0",
+			},
+			want: "gateway_zone_requires_link_local",
+		},
+		{
+			name: "gateway includes inline zone",
+			req: networkServiceInterfaces.UpsertStaticRouteRequest{
+				Name:            "inline-zone",
+				DestinationType: "network",
+				Destination:     "::/0",
+				Family:          "inet6",
+				NextHopMode:     "gateway",
+				Gateway:         "fe80::1%em0",
+			},
+			want: "route_gateway_must_not_include_zone",
+		},
+		{
+			name: "gateway zone in interface mode",
+			req: networkServiceInterfaces.UpsertStaticRouteRequest{
+				Name:            "iface-zone",
+				DestinationType: "network",
+				Destination:     "::/0",
+				Family:          "inet6",
+				NextHopMode:     "interface",
+				Interface:       "em0",
+				GatewayZone:     "em0",
+			},
+			want: "gateway_zone_not_allowed_for_next_hop_mode_interface",
+		},
 	}
 
 	for _, tc := range cases {
@@ -273,5 +324,54 @@ func TestReconcileManagedRoutesReturnsErrorButContinues(t *testing.T) {
 	}
 	if callCount < 2 {
 		t.Fatalf("expected reconcile to continue processing routes, got %d calls", callCount)
+	}
+}
+
+func TestValidateStaticRouteRequestAcceptsLinkLocalGatewayWithZone(t *testing.T) {
+	mockStaticRouteFIBCount(t, 4)
+
+	req := &networkServiceInterfaces.UpsertStaticRouteRequest{
+		Name:            "v6 default",
+		DestinationType: "network",
+		Destination:     "::/0",
+		Family:          "inet6",
+		NextHopMode:     "gateway",
+		Gateway:         "fe80::200:17ff:fe44:663a",
+		GatewayZone:     "dSkxOdFn",
+	}
+
+	route, err := validateStaticRouteRequest(req)
+	if err != nil {
+		t.Fatalf("expected validation success, got: %v", err)
+	}
+	if route.GatewayZone != "dSkxOdFn" {
+		t.Fatalf("expected gateway zone preserved, got %q", route.GatewayZone)
+	}
+	if strings.Contains(route.Gateway, "%") {
+		t.Fatalf("expected gateway without zone, got %q", route.Gateway)
+	}
+}
+
+func TestAddManagedRouteBuildsScopedGatewayCommand(t *testing.T) {
+	mockStaticRouteRunCommand(t, func(command string, args ...string) (string, error) {
+		got := strings.Join(append([]string{command}, args...), " ")
+		expected := "/sbin/route -n -6 add -net ::/0 fe80::200:17ff:fe44:663a%dSkxOdFn"
+		if got != expected {
+			t.Fatalf("unexpected command: got %q want %q", got, expected)
+		}
+		return "", nil
+	})
+
+	route := &networkModels.StaticRoute{
+		FIB:             0,
+		DestinationType: staticRouteDestinationNetwork,
+		Destination:     "::/0",
+		Family:          staticRouteFamilyINET6,
+		NextHopMode:     staticRouteNextHopGateway,
+		Gateway:         "fe80::200:17ff:fe44:663a",
+		GatewayZone:     "dSkxOdFn",
+	}
+	if err := addManagedRoute(route); err != nil {
+		t.Fatalf("expected add route success, got: %v", err)
 	}
 }

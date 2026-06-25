@@ -16,6 +16,7 @@ export const StaticRouteSchema = z.object({
 	family: z.enum(['inet', 'inet6']),
 	nextHopMode: z.enum(['gateway', 'interface']),
 	gateway: nullableString,
+	gatewayZone: nullableString,
 	interface: nullableString,
 	createdAt: z.string(),
 	updatedAt: z.string()

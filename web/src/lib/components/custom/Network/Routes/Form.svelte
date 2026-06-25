@@ -54,6 +54,7 @@
 		family: 'inet' | 'inet6';
 		nextHopMode: 'gateway' | 'interface';
 		gateway: string;
+		gatewayZone: string;
 		interface: string;
 	};
 
@@ -68,6 +69,7 @@
 			family: 'inet',
 			nextHopMode: 'interface',
 			gateway: '',
+			gatewayZone: '',
 			interface: ''
 		};
 	}
@@ -83,7 +85,8 @@
 	let cbOpen = $state({
 		iface: false,
 		destination: false,
-		gateway: false
+		gateway: false,
+		gatewayZone: false
 	});
 	let selectedSuggestion = $state('0');
 
@@ -102,6 +105,7 @@
 				| 'gateway'
 				| 'interface',
 			gateway: String(prefillRoute.gateway ?? ''),
+			gatewayZone: String(prefillRoute.gatewayZone ?? ''),
 			interface: String(prefillRoute.interface ?? '')
 		};
 	}
@@ -122,6 +126,7 @@
 					family: editingRoute.family,
 					nextHopMode: editingRoute.nextHopMode,
 					gateway: editingRoute.gateway ?? '',
+					gatewayZone: editingRoute.gatewayZone ?? '',
 					interface: editingRoute.interface ?? ''
 				};
 				return;
@@ -157,6 +162,16 @@
 				form.interface = '';
 			} else {
 				form.gateway = '';
+				form.gatewayZone = '';
+			}
+		}
+	);
+
+	watch(
+		() => form.family,
+		(family) => {
+			if (family !== 'inet6') {
+				form.gatewayZone = '';
 			}
 		}
 	);
@@ -173,6 +188,11 @@
 		{ value: 'interface', label: 'Interface' },
 		{ value: 'gateway', label: 'Gateway' }
 	];
+	const selectClasses = {
+		parent: 'min-w-0 space-y-1.5',
+		label: 'flex h-7 w-full items-center text-sm',
+		trigger: 'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+	};
 	const suggestionOptions = $derived.by(() => {
 		return (suggestions ?? []).map((suggestion, idx) => {
 			const destination = String(suggestion.destination ?? '');
@@ -242,6 +262,7 @@
 				family: editingRoute.family,
 				nextHopMode: editingRoute.nextHopMode,
 				gateway: editingRoute.gateway ?? '',
+				gatewayZone: editingRoute.gatewayZone ?? '',
 				interface: editingRoute.interface ?? ''
 			};
 		} else {
@@ -260,6 +281,8 @@
 			family: form.family,
 			nextHopMode: form.nextHopMode,
 			gateway: form.nextHopMode === 'gateway' ? resolveObjToRaw(form.gateway) : '',
+			gatewayZone:
+				form.nextHopMode === 'gateway' && form.family === 'inet6' ? form.gatewayZone.trim() : '',
 			interface: form.nextHopMode === 'interface' ? form.interface.trim() : ''
 		};
 
@@ -303,9 +326,9 @@
 		</Dialog.Header>
 
 		<ScrollArea orientation="vertical" class="max-h-[70vh] pr-2">
-			<div class="space-y-5">
+			<div class="space-y-4">
 				{#if !editingRoute && suggestions.length > 1}
-					<section>
+					<div>
 						<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 							Suggestion
 						</p>
@@ -313,110 +336,118 @@
 							label=""
 							options={suggestionOptions}
 							bind:value={selectedSuggestion}
+							classes={selectClasses}
 							onChange={(v) => (selectedSuggestion = String(v))}
 						/>
-					</section>
+					</div>
 				{/if}
 
-				<section>
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<CustomValueInput
-							label="Name"
-							placeholder="LAN return route"
-							bind:value={form.name}
-							classes="space-y-1.5"
-						/>
-						<CustomValueInput
-							label="Description"
-							placeholder="Optional description"
-							bind:value={form.description}
-							classes="space-y-1.5"
-						/>
-					</div>
-				</section>
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+					<CustomValueInput
+						label="Name"
+						placeholder="LAN return route"
+						bind:value={form.name}
+						classes="space-y-1.5"
+					/>
+					<CustomValueInput
+						label="Description"
+						placeholder="Optional description"
+						bind:value={form.description}
+						classes="space-y-1.5"
+					/>
+				</div>
 
-				<section>
-					<div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
-						<CustomValueInput
-							label="FIB"
-							type="number"
-							placeholder="0"
-							bind:value={form.fib}
-							classes="space-y-1.5"
-						/>
-						<SimpleSelect
-							label="Type"
-							options={destinationTypeOptions}
-							bind:value={form.destinationType}
-							onChange={(v) => (form.destinationType = v as Form['destinationType'])}
-						/>
-						<SimpleSelect
-							label="Family"
-							options={familyOptions}
-							bind:value={form.family}
-							onChange={(v) => (form.family = v as Form['family'])}
-						/>
-					</div>
-					<div class="mt-3">
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+					<CustomValueInput
+						label="FIB"
+						type="number"
+						placeholder="0"
+						bind:value={form.fib}
+						classes="space-y-1.5"
+					/>
+					<SimpleSelect
+						label="Type"
+						options={destinationTypeOptions}
+						bind:value={form.destinationType}
+						classes={selectClasses}
+						onChange={(v) => (form.destinationType = v as Form['destinationType'])}
+					/>
+					<SimpleSelect
+						label="Family"
+						options={familyOptions}
+						bind:value={form.family}
+						classes={selectClasses}
+						onChange={(v) => (form.family = v as Form['family'])}
+					/>
+				</div>
+
+				<ComboBox
+					bind:open={cbOpen.destination}
+					label="Address"
+					bind:value={form.destination}
+					data={destObjectOptions}
+					classes="space-y-1.5"
+					placeholder={form.destinationType === 'host'
+						? '192.168.180.102 or object'
+						: '192.168.180.0/24 or object'}
+					width="w-full"
+					allowCustom={true}
+				/>
+
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+					<SimpleSelect
+						label="Mode"
+						options={nextHopModeOptions}
+						bind:value={form.nextHopMode}
+						classes={selectClasses}
+						onChange={(v) => (form.nextHopMode = v as Form['nextHopMode'])}
+					/>
+					{#if form.nextHopMode === 'gateway'}
 						<ComboBox
-							bind:open={cbOpen.destination}
-							label="Address"
-							bind:value={form.destination}
-							data={destObjectOptions}
-							classes="space-y-1"
-							placeholder={form.destinationType === 'host'
-								? '192.168.180.102 or object'
-								: '192.168.180.0/24 or object'}
+							bind:open={cbOpen.gateway}
+							label="Gateway"
+							bind:value={form.gateway}
+							data={gatewayObjectOptions}
+							classes="space-y-1.5"
+							placeholder={form.family === 'inet6'
+								? '2001:db8::1 or object'
+								: '178.63.44.129 or object'}
 							width="w-full"
 							allowCustom={true}
 						/>
-					</div>
-				</section>
-
-				<section>
-					<div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-						<SimpleSelect
-							label="Mode"
-							options={nextHopModeOptions}
-							bind:value={form.nextHopMode}
-							onChange={(v) => (form.nextHopMode = v as Form['nextHopMode'])}
+					{:else}
+						<ComboBox
+							bind:open={cbOpen.iface}
+							label="Interface"
+							bind:value={form.interface}
+							data={ifaceOptions}
+							classes="space-y-1.5"
+							placeholder="Select interface"
+							width="w-full"
+							allowCustom={true}
 						/>
-						{#if form.nextHopMode === 'gateway'}
-							<ComboBox
-								bind:open={cbOpen.gateway}
-								label="Gateway"
-								bind:value={form.gateway}
-								data={gatewayObjectOptions}
-								classes="space-y-1"
-								placeholder={form.family === 'inet6'
-									? '2001:db8::1 or object'
-									: '178.63.44.129 or object'}
-								width="w-full"
-								allowCustom={true}
-							/>
-						{:else}
-							<ComboBox
-								bind:open={cbOpen.iface}
-								label="Interface"
-								bind:value={form.interface}
-								data={ifaceOptions}
-								classes="space-y-1"
-								placeholder="Select interface"
-								width="w-full"
-								allowCustom={true}
-							/>
-						{/if}
-					</div>
-					<div class="mt-3">
-						<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
-					</div>
-				</section>
+					{/if}
+				</div>
+
+				{#if form.nextHopMode === 'gateway' && form.family === 'inet6'}
+					<ComboBox
+						bind:open={cbOpen.gatewayZone}
+						label="Scope Interface"
+						bind:value={form.gatewayZone}
+						data={ifaceOptions}
+						classes="space-y-1.5"
+						placeholder="Optional — required for fe80:: link-local gateways"
+						width="w-full"
+						allowCustom={true}
+					/>
+				{/if}
+
+				<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
 			</div>
 		</ScrollArea>
 
 		<Dialog.Footer>
 			<div class="flex items-center gap-2">
-				<Button size="sm" variant="outline" onclick={() => (open = false)}>Cancel</Button>
 				<Button size="sm" onclick={save}>{edit ? 'Save' : 'Create'}</Button>
 			</div>
 		</Dialog.Footer>

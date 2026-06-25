@@ -1,4 +1,4 @@
-import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
+import { isValidIPv4, isValidIPv6, isLinkLocalIPv6 } from '$lib/utils/string';
 
 export interface StaticRoutePayload {
 	name: string;
@@ -8,6 +8,7 @@ export interface StaticRoutePayload {
 	family: 'inet' | 'inet6' | string;
 	nextHopMode: 'gateway' | 'interface' | string;
 	gateway?: string;
+	gatewayZone?: string;
 	interface?: string;
 }
 
@@ -81,12 +82,19 @@ export function validateStaticRoutePayload(payload: StaticRoutePayload): RouteVa
 
 	const gateway = String(payload.gateway ?? '').trim();
 	const iface = String(payload.interface ?? '').trim();
+	const gatewayZone = String(payload.gatewayZone ?? '').trim();
 	if (nextHopMode === 'gateway') {
 		if (!gateway) {
 			return { valid: false, error: 'Gateway is required for gateway next hop mode' };
 		}
 		if (iface) {
 			return { valid: false, error: 'Interface must be empty for gateway next hop mode' };
+		}
+		if (gateway.includes('%')) {
+			return {
+				valid: false,
+				error: 'Gateway must not include a zone — use the Scope Interface field'
+			};
 		}
 		const isGwV4 = isValidIPv4(gateway, false);
 		const isGwV6 = isValidIPv6(gateway, false);
@@ -99,12 +107,26 @@ export function validateStaticRoutePayload(payload: StaticRoutePayload): RouteVa
 		if (family === 'inet6' && !isGwV6) {
 			return { valid: false, error: 'Gateway must be IPv6 for family inet6' };
 		}
+		if (gatewayZone) {
+			if (family !== 'inet6') {
+				return { valid: false, error: 'Scope interface is only valid for IPv6 gateways' };
+			}
+			if (!isLinkLocalIPv6(gateway)) {
+				return {
+					valid: false,
+					error: 'Scope interface is only valid for link-local (fe80::/10) gateways'
+				};
+			}
+		}
 	} else {
 		if (!iface) {
 			return { valid: false, error: 'Interface is required for interface next hop mode' };
 		}
 		if (gateway) {
 			return { valid: false, error: 'Gateway must be empty for interface next hop mode' };
+		}
+		if (gatewayZone) {
+			return { valid: false, error: 'Scope interface must be empty for interface next hop mode' };
 		}
 	}
 
