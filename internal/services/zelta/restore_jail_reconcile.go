@@ -776,66 +776,10 @@ func objectIDPtr(object *networkModels.Object) *uint {
 	return &id
 }
 
-func restoredNetworkObjectLooksLikeMetadata(existing *networkModels.Object, metadata *networkModels.Object) bool {
-	if existing == nil || metadata == nil {
-		return true
-	}
-
-	metadataName := strings.TrimSpace(metadata.Name)
-	if metadataName != "" && strings.EqualFold(strings.TrimSpace(existing.Name), metadataName) {
-		return true
-	}
-
-	metadataEntries := make(map[string]struct{}, len(metadata.Entries))
-	for _, entry := range metadata.Entries {
-		value := strings.TrimSpace(entry.Value)
-		if value == "" {
-			continue
-		}
-		metadataEntries[value] = struct{}{}
-	}
-	if len(metadataEntries) == 0 {
-		return metadataName == ""
-	}
-
-	existingEntries := make(map[string]struct{}, len(existing.Entries))
-	for _, entry := range existing.Entries {
-		value := strings.TrimSpace(entry.Value)
-		if value == "" {
-			continue
-		}
-		existingEntries[value] = struct{}{}
-	}
-	for value := range metadataEntries {
-		if _, ok := existingEntries[value]; !ok {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (s *Service) ensureRestoredNetworkObject(tx *gorm.DB, existingID *uint, metadata *networkModels.Object, fallbackType, fallbackName string) (*networkModels.Object, error) {
+func (s *Service) ensureRestoredNetworkObject(tx *gorm.DB, _ *uint, metadata *networkModels.Object, fallbackType, fallbackName string) (*networkModels.Object, error) {
 	desiredType := strings.TrimSpace(fallbackType)
 	if metadata != nil && strings.TrimSpace(metadata.Type) != "" {
 		desiredType = strings.TrimSpace(metadata.Type)
-	}
-
-	if existingID != nil && *existingID > 0 {
-		var byID networkModels.Object
-		err := tx.Preload("Entries").Preload("Resolutions").First(&byID, *existingID).Error
-		if err == nil {
-			if desiredType == "" || strings.EqualFold(byID.Type, desiredType) {
-				if metadata == nil || restoredNetworkObjectLooksLikeMetadata(&byID, metadata) {
-					if err := s.mergeRestoredNetworkObjectData(tx, &byID, metadata); err != nil {
-						return nil, err
-					}
-					return &byID, nil
-				}
-			}
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("failed_to_lookup_network_object_by_id: %w", err)
-		}
 	}
 
 	if metadata != nil {
