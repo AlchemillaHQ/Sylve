@@ -86,17 +86,23 @@ func GetLoadAvg() (string, error) {
 
 func BootMode() string {
 	v, err := getSysctlString("machdep.bootmethod")
-	if err != nil {
-		return "Unknown"
+	if err == nil {
+		if strings.Contains(v, "BIOS") {
+			return "BIOS"
+		}
+		if strings.Contains(v, "UEFI") {
+			return "UEFI"
+		}
 	}
 
-	if strings.Contains(v, "BIOS") {
-		return "BIOS"
-	} else if strings.Contains(v, "UEFI") {
+	if _, err := getSysctlString("machdep.efi_rt_handle_faults"); err == nil {
 		return "UEFI"
-	} else {
-		return "Unknown"
 	}
+	if _, err := os.Stat("/dev/efi"); err == nil {
+		return "UEFI"
+	}
+
+	return "Unknown"
 }
 
 func ReadDiskSector(disk string, sector int64) ([]byte, error) {
