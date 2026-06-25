@@ -9,11 +9,13 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { WireGuardServer, WireGuardServerPeer } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
+	import { sleep } from '$lib/utils';
 	import {
 		clientAddressesPlaceHolder,
 		generateKeypair,
 		generateNextClientIPs,
-		generatePresharedKey
+		generatePresharedKey,
+		isValidWireGuardKey
 	} from '$lib/utils/network/wireguard';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
@@ -26,6 +28,8 @@
 	}
 
 	let { server, open = $bindable(), id = null, afterChange }: Props = $props();
+
+	let saving = $state(false);
 
 	let peer = $derived.by((): WireGuardServerPeer | null => {
 		if (id !== null) return server.peers.find((p) => p.id === id) ?? null;
@@ -100,32 +104,49 @@
 			return;
 		}
 
+		const trimmedKey = form.privateKey.trim();
+		if (trimmedKey && !isValidWireGuardKey(trimmedKey)) {
+			toast.error('Invalid private key - must be a valid 32-byte base64-encoded WireGuard key', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		const payload = {
 			id: id ?? undefined,
 			name: form.name.trim(),
 			enabled: form.enabled,
 			persistentKeepalive: form.persistentKeepalive,
-			privateKey: form.privateKey.trim() || undefined,
-			preSharedKey: form.preSharedKey.trim() || undefined,
+			privateKey: trimmedKey || undefined,
+			preSharedKey: form.preSharedKey.trim(),
 			clientIPs,
 			routableIPs: splitLines(form.routableIPs),
 			routeIPs: form.routeIPs
 		};
 
-		const response =
-			id !== null
-				? await wireGuardServerPeers.edit(payload)
-				: await wireGuardServerPeers.add(payload);
+		saving = true;
+		try {
+			const [response] = await Promise.all([
+				id !== null
+					? wireGuardServerPeers.edit(payload)
+					: wireGuardServerPeers.add(payload),
+				sleep(800)
+			]);
 
-		if (response.status === 'success') {
-			toast.success(id !== null ? 'Peer updated' : 'Peer added', { position: 'bottom-center' });
-			close();
-			afterChange();
-			return;
+			if (response.status === 'success') {
+				toast.success(id !== null ? 'Peer updated' : 'Peer added', {
+					position: 'bottom-center'
+				});
+				close();
+				afterChange();
+				return;
+			}
+
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to save peer', { position: 'bottom-center' });
+		} finally {
+			saving = false;
 		}
-
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to save peer', { position: 'bottom-center' });
 	}
 </script>
 
@@ -271,8 +292,13 @@
 
 		<Dialog.Footer>
 			<div class="flex w-full justify-end pt-2">
-				<Button size="sm" class="h-8" onclick={save}>
-					{id !== null ? 'Save Changes' : 'Create Peer'}
+				<Button size="sm" class="h-8" onclick={save} disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+						{id !== null ? 'Saving Changes...' : 'Creating Peer...'}
+					{:else}
+						{id !== null ? 'Save Changes' : 'Create Peer'}
+					{/if}
 				</Button>
 			</div>
 		</Dialog.Footer>

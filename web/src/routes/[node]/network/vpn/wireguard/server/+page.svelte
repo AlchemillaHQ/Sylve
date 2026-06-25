@@ -22,7 +22,8 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { randomPrivateIPv4Range, randomPrivateIPv6Range } from '$lib/utils/inet';
-	import { generateKeypair } from '$lib/utils/network/wireguard';
+	import { generateKeypair, isValidWireGuardKey } from '$lib/utils/network/wireguard';
+	import { sleep } from '$lib/utils';
 	import { convertDbTime, formatUptime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -164,6 +165,10 @@
 		deletePeer: false
 	});
 
+	let saving = $state(false);
+	let deiniting = $state(false);
+	let toggling = $state(false);
+
 	let targetPeerID = $state(0);
 	let exportPeerID = $state<number | null>(null);
 	let exportModalOpen = $state(false);
@@ -183,16 +188,6 @@
 	function openPeerEditor(peer?: WireGuardServerPeer) {
 		peerModalId = peer ? peer.id : null;
 		peerModalOpen = true;
-	}
-
-	function isValidWireGuardKey(key: string): boolean {
-		if (!key) return false;
-		try {
-			const binary = atob(key);
-			return binary.length === 32;
-		} catch {
-			return false;
-		}
 	}
 
 	async function saveServer() {
@@ -219,49 +214,68 @@
 			masqueradeIPv6Interface: serverForm.masqueradeIPv6Interface || ''
 		};
 
-		const response = notInitialized
-			? await initWireGuardServer(payload)
-			: await editWireGuardServer(payload);
+		saving = true;
+		try {
+			const [response] = await Promise.all([
+				notInitialized ? initWireGuardServer(payload) : editWireGuardServer(payload),
+				sleep(800)
+			]);
 
-		if (response.status === 'success') {
-			toast.success(notInitialized ? 'WireGuard server initialized' : 'WireGuard server updated', {
+			if (response.status === 'success') {
+				toast.success(
+					notInitialized ? 'WireGuard server initialized' : 'WireGuard server updated',
+					{
+						position: 'bottom-center'
+					}
+				);
+				await serverResource.refetch();
+				return;
+			}
+
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to save WireGuard server', {
 				position: 'bottom-center'
 			});
-			await serverResource.refetch();
-			return;
+		} finally {
+			saving = false;
 		}
-
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to save WireGuard server', {
-			position: 'bottom-center'
-		});
 	}
 
 	async function toggleServer() {
-		const response = await toggleWireGuardServer();
-		if (response.status === 'success') {
-			toast.success('WireGuard server toggled', { position: 'bottom-center' });
-			await serverResource.refetch();
-			return;
+		toggling = true;
+		try {
+			const [response] = await Promise.all([toggleWireGuardServer(), sleep(800)]);
+			if (response.status === 'success') {
+				toast.success('WireGuard server toggled', { position: 'bottom-center' });
+				await serverResource.refetch();
+				return;
+			}
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to toggle WireGuard server', {
+				position: 'bottom-center'
+			});
+		} finally {
+			toggling = false;
 		}
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to toggle WireGuard server', {
-			position: 'bottom-center'
-		});
 	}
 
 	async function confirmDeinitServer() {
-		const response = await deinitWireGuardServer();
-		if (response.status === 'success') {
-			toast.success('WireGuard server deinitialized', { position: 'bottom-center' });
-			modals.deinit = false;
-			await serverResource.refetch();
-			return;
+		deiniting = true;
+		try {
+			const [response] = await Promise.all([deinitWireGuardServer(), sleep(800)]);
+			if (response.status === 'success') {
+				toast.success('WireGuard server deinitialized', { position: 'bottom-center' });
+				modals.deinit = false;
+				await serverResource.refetch();
+				return;
+			}
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to deinitialize WireGuard server', {
+				position: 'bottom-center'
+			});
+		} finally {
+			deiniting = false;
 		}
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to deinitialize WireGuard server', {
-			position: 'bottom-center'
-		});
 	}
 
 	async function togglePeer(peerID: number) {
@@ -445,8 +459,17 @@
 				<div>
 					{#if !notInitialized}
 						<div class="flex gap-2">
-							<Button size="sm" variant="outline" onclick={toggleServer} disabled={serviceDisabled}>
-								<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+							<Button
+								size="sm"
+								variant="outline"
+								onclick={toggleServer}
+								disabled={serviceDisabled || toggling}
+							>
+								{#if toggling}
+									<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+								{:else}
+									<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+								{/if}
 								{server?.enabled ? 'Disable Server' : 'Enable Server'}
 							</Button>
 							<Button
@@ -456,7 +479,7 @@
 								onclick={() => {
 									modals.deinit = true;
 								}}
-								disabled={serviceDisabled}
+								disabled={serviceDisabled || deiniting}
 							>
 								<span class="icon-[mdi--trash-can-outline] mr-1 h-4 w-4"></span>
 								Deinitialize
@@ -464,8 +487,12 @@
 						</div>
 					{/if}
 				</div>
-				<Button size="sm" onclick={saveServer} disabled={serviceDisabled}>
-					<span class="icon-[mdi--content-save-outline] mr-1 h-4 w-4"></span>
+				<Button size="sm" onclick={saveServer} disabled={serviceDisabled || saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					{:else}
+						<span class="icon-[mdi--content-save-outline] mr-1 h-4 w-4"></span>
+					{/if}
 					{notInitialized ? 'Initialize' : 'Save'}
 				</Button>
 			</div>
@@ -499,7 +526,10 @@
 <AlertDialog
 	bind:open={modals.deinit}
 	names={{ parent: 'WireGuard Server', element: '' }}
-	customTitle="This will remove the WireGuard server runtime state and peer records. Continue?"
+	customTitle="This will remove the WireGuard server state and associated peer records."
+	loading={deiniting}
+	confirmLabel="Deinitialize"
+	loadingLabel="Deinitializing..."
 	actions={{
 		onConfirm: async () => {
 			await confirmDeinitServer();
@@ -513,7 +543,7 @@
 <AlertDialog
 	bind:open={modals.deletePeer}
 	names={{ parent: 'WireGuard Peer', element: targetPeerID ? String(targetPeerID) : '' }}
-	customTitle="This action removes the selected peer. Continue?"
+	customTitle="This action permanently removes the selected peer."
 	actions={{
 		onConfirm: async () => {
 			await deletePeer();

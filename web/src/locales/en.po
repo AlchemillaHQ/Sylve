@@ -1796,7 +1796,6 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
-#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -11166,17 +11165,15 @@ msgstr "Persistent Keepalive"
 #~ msgid "Peer Config Preview"
 #~ msgstr "Peer Config Preview"
 
-#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
-msgid "This will remove the WireGuard server runtime state and peer records. Continue?"
-msgstr "This will remove the WireGuard server runtime state and peer records. Continue?"
+#~ msgid "This will remove the WireGuard server runtime state and peer records. Continue?"
+#~ msgstr "This will remove the WireGuard server runtime state and peer records. Continue?"
 
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "WireGuard Peer"
 msgstr "WireGuard Peer"
 
-#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
-msgid "This action removes the selected peer. Continue?"
-msgstr "This action removes the selected peer. Continue?"
+#~ msgid "This action removes the selected peer. Continue?"
+#~ msgstr "This action removes the selected peer. Continue?"
 
 #~ msgid "Client updated"
 #~ msgstr "Client updated"
@@ -11543,6 +11540,7 @@ msgstr "Help Information"
 msgid "Generate random private addresses"
 msgstr "Generate random private addresses"
 
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Invalid private key - must be a valid 32-byte base64-encoded WireGuard key"
 msgstr "Invalid private key - must be a valid 32-byte base64-encoded WireGuard key"
@@ -14630,3 +14628,33 @@ msgstr "Cleaning up source…"
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Complete"
 msgstr "Complete"
+
+#~ msgid "This will remove the WireGuard server and all peer associated peer records. Continue?"
+#~ msgstr "This will remove the WireGuard server and all peer associated peer records. Continue?"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Deinitialize"
+msgstr "Deinitialize"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Deinitializing..."
+msgstr "Deinitializing..."
+
+#~ msgid "This will remove the WireGuard server state and associated peer records. Continue?"
+#~ msgstr "This will remove the WireGuard server state and associated peer records. Continue?"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "This will remove the WireGuard server state and associated peer records."
+msgstr "This will remove the WireGuard server state and associated peer records."
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "This action permanently removes the selected peer."
+msgstr "This action permanently removes the selected peer."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Saving Changes..."
+msgstr "Saving Changes..."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Creating Peer..."
+msgstr "Creating Peer..."

@@ -97,7 +97,7 @@ func (s *Service) CreateWireGuardClient(req *WireGuardClientRequest) error {
 		routeAllowedIPs = *req.RouteAllowedIPs
 	}
 
-	mtu := uint(1420)
+	mtu := uint(1280)
 	if req.MTU != nil {
 		mtu = *req.MTU
 	}

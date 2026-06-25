@@ -64,7 +64,7 @@ type WireGuardClientRequest struct {
 	EndpointHost string `json:"endpointHost" binding:"required"`
 	EndpointPort uint   `json:"endpointPort" binding:"required,min=1,max=65535"`
 
-	ListenPort *uint `json:"listenPort" binding:"omitempty,min=1,max=65535"`
+	ListenPort *uint `json:"listenPort" binding:"omitempty,max=65535"`
 
 	PrivateKey string `json:"privateKey" binding:"required"`
 

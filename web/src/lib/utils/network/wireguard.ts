@@ -5,6 +5,15 @@ export interface WireGuardKeypair {
     publicKey: string;
 }
 
+export function isValidWireGuardKey(key: string): boolean {
+    if (!key) return false;
+    try {
+        return atob(key).length === 32;
+    } catch {
+        return false;
+    }
+}
+
 function base64UrlToBytes(input: string): Uint8Array {
     const base64 = input.replace(/-/g, '+').replace(/_/g, '/')
         + '='.repeat((4 - (input.length % 4)) % 4);

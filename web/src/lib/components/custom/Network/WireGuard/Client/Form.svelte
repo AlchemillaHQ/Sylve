@@ -33,7 +33,7 @@
 			addresses: (client?.addresses ?? []).join('\n'),
 			routeAllowedIPs: client?.routeAllowedIPs ?? true,
 			persistentKeepalive: client?.persistentKeepalive ?? false,
-			mtu: client?.mtu ?? 1420,
+			mtu: client?.mtu ?? 1280,
 			metric: client?.metric ?? 0,
 			fib: client?.fib ?? 0,
 			importedFileName: ''
@@ -174,17 +174,17 @@
 			name: form.name.trim(),
 			endpointHost: form.endpointHost.trim(),
 			endpointPort: Number(form.endpointPort),
-			listenPort: Number(form.listenPort) || undefined,
+			listenPort: Number(form.listenPort),
 			privateKey: form.privateKey.trim(),
 			peerPublicKey: form.peerPublicKey.trim(),
-			preSharedKey: form.preSharedKey.trim() || undefined,
+			preSharedKey: form.preSharedKey.trim(),
 			allowedIPs: splitLines(form.allowedIPs),
 			addresses: splitLines(form.addresses),
 			routeAllowedIPs: form.routeAllowedIPs,
 			persistentKeepalive: form.persistentKeepalive,
-			mtu: Number(form.mtu) || undefined,
-			metric: Number(form.metric) || undefined,
-			fib: Number(form.fib) || undefined
+			mtu: Number(form.mtu) || 1280,
+			metric: Number(form.metric),
+			fib: Number(form.fib)
 		};
 
 		const response = client
@@ -471,13 +471,13 @@
 									/>
 								</div>
 								<div class="space-y-1">
-									<CustomValueInput
-										label="MTU"
-										placeholder="1420"
-										type="number"
-										bind:value={form.mtu}
-										classes="space-y-1"
-									/>
+								<CustomValueInput
+									label="MTU"
+									placeholder="1280"
+									type="number"
+									bind:value={form.mtu}
+									classes="space-y-1"
+								/>
 								</div>
 								<CustomValueInput
 									label="Interface Metric"
@@ -518,7 +518,6 @@
 
 		<Dialog.Footer>
 			<div class="flex w-full justify-end gap-2 pt-1">
-				<Button variant="secondary" size="sm" class="h-8" onclick={close}>Cancel</Button>
 				<Button size="sm" class="h-8" onclick={save}>
 					{client ? 'Save Changes' : 'Initialize Client'}
 				</Button>
