@@ -65,23 +65,19 @@ export function generateTableData(switches: SwitchList | undefined): {
 				let gw4 = '';
 
 				const networkObj = data.networkObj as NetworkObject;
-				if (data.networkObj) {
-					if (networkObj && networkObj.entries) {
-						v4 = networkObj.entries[0].value || '-';
-					} else {
-						v4 = '-';
-					}
+				if (networkObj && networkObj.entries && networkObj.entries.length > 0) {
+					v4 = networkObj.entries[0].value || '-';
+				} else if (data.networkManual) {
+					v4 = data.networkManual as string;
 				} else {
 					v4 = '-';
 				}
 
 				const gatewayObj = data.gatewayAddressObj as NetworkObject;
-				if (data.gatewayAddressObj) {
-					if (gatewayObj && gatewayObj.entries) {
-						gw4 = gatewayObj.entries[0].value || '-';
-					} else {
-						gw4 = '-';
-					}
+				if (gatewayObj && gatewayObj.entries && gatewayObj.entries.length > 0) {
+					gw4 = gatewayObj.entries[0].value || '-';
+				} else if (data.gatewayManual) {
+					gw4 = data.gatewayManual as string;
 				} else {
 					gw4 = '-';
 				}
@@ -109,23 +105,19 @@ export function generateTableData(switches: SwitchList | undefined): {
 				let gw6 = '';
 
 				const networkObj = data.network6Obj as NetworkObject;
-				if (data.network6Obj) {
-					if (networkObj && networkObj.entries) {
-						v6 = networkObj.entries[0].value || '-';
-					} else {
-						v6 = '-';
-					}
+				if (networkObj && networkObj.entries && networkObj.entries.length > 0) {
+					v6 = networkObj.entries[0].value || '-';
+				} else if (data.network6Manual) {
+					v6 = data.network6Manual as string;
 				} else {
 					v6 = '-';
 				}
 
 				const gatewayObj = data.gateway6AddressObj as NetworkObject;
-				if (data.gateway6AddressObj) {
-					if (gatewayObj && gatewayObj.entries) {
-						gw6 = gatewayObj.entries[0].value || '-';
-					} else {
-						gw6 = '-';
-					}
+				if (gatewayObj && gatewayObj.entries && gatewayObj.entries.length > 0) {
+					gw6 = gatewayObj.entries[0].value || '-';
+				} else if (data.gateway6Manual) {
+					gw6 = data.gateway6Manual as string;
 				} else {
 					gw6 = '-';
 				}
@@ -196,6 +188,10 @@ export function generateTableData(switches: SwitchList | undefined): {
 				gatewayAddressObj: sw.gatewayAddressObj || '-',
 				network6Obj: sw.network6Obj || '-',
 				gateway6AddressObj: sw.gateway6AddressObj || '-',
+				networkManual: sw.networkManual || '',
+				gatewayManual: sw.gatewayManual || '',
+				network6Manual: sw.network6Manual || '',
+				gateway6Manual: sw.gateway6Manual || '',
 				ports: sw.ports,
 				private: sw.private,
 				portsOnly: portsOnly,

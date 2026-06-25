@@ -1,6 +1,11 @@
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from './object';
 
+const nullableString = z
+	.string()
+	.nullish()
+	.transform((value) => value ?? '');
+
 export const NetworkPortSchema = z.object({
 	id: z.number(),
 	name: z.string(),
@@ -22,6 +27,10 @@ export const StandardSwitchSchema = z.object({
 	network6Obj: NetworkObjectSchema.nullable(),
 	gatewayAddressObj: NetworkObjectSchema.nullable(),
 	gateway6AddressObj: NetworkObjectSchema.nullable(),
+	networkManual: nullableString,
+	network6Manual: nullableString,
+	gatewayManual: nullableString,
+	gateway6Manual: nullableString,
 	ports: z.array(NetworkPortSchema).optional().nullable(),
 	dhcp: z.boolean().optional(),
 	slaac: z.boolean(),

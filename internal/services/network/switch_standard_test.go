@@ -104,6 +104,7 @@ func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 		false,
 		false,
 		false,
+		networkModels.StandardSwitchManualAddresses{},
 	)
 	if err == nil {
 		t.Fatal("expected invalid_mtu error, got nil")
@@ -134,6 +135,7 @@ func TestNewStandardSwitchRejectsInvalidVLAN(t *testing.T) {
 		false,
 		false,
 		false,
+		networkModels.StandardSwitchManualAddresses{},
 	)
 	if err == nil {
 		t.Fatal("expected invalid_vlan error, got nil")
@@ -179,6 +181,7 @@ func TestNewStandardSwitchRejectsPortOverlapDeterministically(t *testing.T) {
 		false,
 		false,
 		false,
+		networkModels.StandardSwitchManualAddresses{},
 	)
 	if err == nil {
 		t.Fatal("expected port_overlap error, got nil")
@@ -1249,5 +1252,418 @@ func TestEditStandardBridgeReplacesIPv6WhenNetworkChanges(t *testing.T) {
 	}
 	if !sawAdd {
 		t.Fatalf("expected new IPv6 assignment, got commands: %v", commands)
+	}
+}
+
+func TestValidateStandardSwitchManual(t *testing.T) {
+	tests := []struct {
+		name                                       string
+		net4Id, gw4Id, net6Id, gw6Id               uint
+		manual                                     networkModels.StandardSwitchManualAddresses
+		wantErr                                    string
+		wantNetwork4, wantGateway4                 string
+		wantNetwork6, wantGateway6                 string
+	}{
+		{
+			name:         "valid manual values are trimmed and returned",
+			manual:       networkModels.StandardSwitchManualAddresses{Network4: "  10.0.0.1/24 ", Gateway4: " 10.0.0.254 ", Network6: "2001:db8::1/64", Gateway6: "fe80::1"},
+			wantNetwork4: "10.0.0.1/24",
+			wantGateway4: "10.0.0.254",
+			wantNetwork6: "2001:db8::1/64",
+			wantGateway6: "fe80::1",
+		},
+		{
+			name:    "network4 object and manual are mutually exclusive",
+			net4Id:  5,
+			manual:  networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1/24"},
+			wantErr: "network4_object_and_manual_mutually_exclusive",
+		},
+		{
+			name:    "gateway4 object and manual are mutually exclusive",
+			gw4Id:   5,
+			manual:  networkModels.StandardSwitchManualAddresses{Gateway4: "10.0.0.254"},
+			wantErr: "gateway4_object_and_manual_mutually_exclusive",
+		},
+		{
+			name:    "network6 object and manual are mutually exclusive",
+			net6Id:  5,
+			manual:  networkModels.StandardSwitchManualAddresses{Network6: "2001:db8::1/64"},
+			wantErr: "network6_object_and_manual_mutually_exclusive",
+		},
+		{
+			name:    "gateway6 object and manual are mutually exclusive",
+			gw6Id:   5,
+			manual:  networkModels.StandardSwitchManualAddresses{Gateway6: "fe80::1"},
+			wantErr: "gateway6_object_and_manual_mutually_exclusive",
+		},
+		{
+			name:    "network4 manual without prefix is rejected",
+			manual:  networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1"},
+			wantErr: "invalid_network4_manual",
+		},
+		{
+			name:    "network4 manual that is actually IPv6 is rejected",
+			manual:  networkModels.StandardSwitchManualAddresses{Network4: "2001:db8::/64"},
+			wantErr: "invalid_network4_manual",
+		},
+		{
+			name:    "gateway4 manual that is a CIDR is rejected",
+			manual:  networkModels.StandardSwitchManualAddresses{Gateway4: "10.0.0.0/24"},
+			wantErr: "invalid_gateway4_manual",
+		},
+		{
+			name:    "network6 manual that is actually IPv4 is rejected",
+			manual:  networkModels.StandardSwitchManualAddresses{Network6: "10.0.0.0/24"},
+			wantErr: "invalid_network6_manual",
+		},
+		{
+			name:    "gateway6 manual that is IPv4 is rejected",
+			manual:  networkModels.StandardSwitchManualAddresses{Gateway6: "10.0.0.1"},
+			wantErr: "invalid_gateway6_manual",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateStandardSwitchManual(tt.net4Id, tt.gw4Id, tt.net6Id, tt.gw6Id, tt.manual)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if got.Network4 != tt.wantNetwork4 || got.Gateway4 != tt.wantGateway4 ||
+				got.Network6 != tt.wantNetwork6 || got.Gateway6 != tt.wantGateway6 {
+				t.Fatalf("trimmed mismatch: got %+v", got)
+			}
+		})
+	}
+}
+
+func TestStandardSwitchManualHelperFallback(t *testing.T) {
+	swBoth := networkModels.StandardSwitch{
+		NetworkObj:     &networkModels.Object{Entries: []networkModels.ObjectEntry{{Value: "10.0.0.1/24"}}},
+		NetworkManual:  "172.16.0.1/24",
+		Network6Manual: "2001:db8::1/64",
+		GatewayManual:  "10.0.0.254",
+		Gateway6Manual: "fe80::1",
+	}
+	if got := swBoth.Network(4); got != "10.0.0.1/24" {
+		t.Fatalf("expected object value to win for Network(4), got %q", got)
+	}
+	if got := swBoth.Network(6); got != "2001:db8::1/64" {
+		t.Fatalf("expected manual fallback for Network(6), got %q", got)
+	}
+	if got := swBoth.Gateway(4); got != "10.0.0.254" {
+		t.Fatalf("expected manual fallback for Gateway(4), got %q", got)
+	}
+	if got := swBoth.Gateway(6); got != "fe80::1" {
+		t.Fatalf("expected manual fallback for Gateway(6), got %q", got)
+	}
+
+	empty := networkModels.StandardSwitch{}
+	if empty.Network(4) != "" || empty.Network(6) != "" || empty.Gateway(4) != "" || empty.Gateway(6) != "" {
+		t.Fatalf("expected empty strings when neither object nor manual set")
+	}
+}
+
+func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	stubSyncFunctions(t, syncStubSet{
+		createBridge: func(networkModels.StandardSwitch) error { return nil },
+	})
+
+	err := svc.NewStandardSwitch(
+		"manual-store",
+		1500,
+		0,
+		0,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		false,
+		false,
+		false,
+		networkModels.StandardSwitchManualAddresses{
+			Network4: "10.81.0.254/24",
+			Gateway4: "10.81.0.1",
+			Network6: "2001:db8:81::1/64",
+			Gateway6: "fe80::1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected create success, got %v", err)
+	}
+
+	var got networkModels.StandardSwitch
+	if err := db.Where("name = ?", "manual-store").First(&got).Error; err != nil {
+		t.Fatalf("failed to load created switch: %v", err)
+	}
+
+	if got.NetworkID != nil || got.GatewayAddressID != nil || got.Network6ID != nil || got.Gateway6AddressID != nil {
+		t.Fatalf("expected no object FKs set for manual switch, got %+v", got)
+	}
+	if got.NetworkManual != "10.81.0.254/24" || got.GatewayManual != "10.81.0.1" ||
+		got.Network6Manual != "2001:db8:81::1/64" || got.Gateway6Manual != "fe80::1" {
+		t.Fatalf("manual columns not persisted: %+v", got)
+	}
+	if got.Network(4) != "10.81.0.254/24" || got.Gateway(6) != "fe80::1" {
+		t.Fatalf("helpers did not resolve manual values: net4=%q gw6=%q", got.Network(4), got.Gateway(6))
+	}
+}
+
+func TestNewStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	obj := networkModels.Object{
+		Name:    "net-obj",
+		Type:    "Network",
+		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.0/24"}},
+	}
+	if err := db.Create(&obj).Error; err != nil {
+		t.Fatalf("failed to seed object: %v", err)
+	}
+
+	err := svc.NewStandardSwitch(
+		"conflict-sw",
+		1500,
+		0,
+		obj.ID,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		false,
+		false,
+		false,
+		networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1/24"},
+	)
+	if err == nil {
+		t.Fatal("expected mutual-exclusivity error, got nil")
+	}
+	if !strings.Contains(err.Error(), "network4_object_and_manual_mutually_exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	obj := networkModels.Object{
+		Name:    "net-obj-edit",
+		Type:    "Network",
+		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.0/24"}},
+	}
+	if err := db.Create(&obj).Error; err != nil {
+		t.Fatalf("failed to seed object: %v", err)
+	}
+
+	sw := networkModels.StandardSwitch{
+		Name:       "o2m",
+		BridgeName: "vm-o2m",
+		MTU:        1500,
+		NetworkID:  &obj.ID,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("failed to seed switch: %v", err)
+	}
+
+	stubSyncFunctions(t, syncStubSet{
+		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error { return nil },
+	})
+
+	err := svc.EditStandardSwitch(
+		sw.ID,
+		1500,
+		0,
+		0,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		false,
+		false,
+		false,
+		networkModels.StandardSwitchManualAddresses{Network4: "10.9.0.1/24"},
+	)
+	if err != nil {
+		t.Fatalf("expected edit success, got %v", err)
+	}
+
+	var got networkModels.StandardSwitch
+	if err := db.First(&got, sw.ID).Error; err != nil {
+		t.Fatalf("failed to reload switch: %v", err)
+	}
+	if got.NetworkID != nil {
+		t.Fatalf("expected NetworkID cleared, got %v", *got.NetworkID)
+	}
+	if got.NetworkManual != "10.9.0.1/24" {
+		t.Fatalf("expected NetworkManual set, got %q", got.NetworkManual)
+	}
+}
+
+func TestEditStandardSwitchManualToObjectClearsManual(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	obj := networkModels.Object{
+		Name:    "net-obj-m2o",
+		Type:    "Network",
+		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.0/24"}},
+	}
+	if err := db.Create(&obj).Error; err != nil {
+		t.Fatalf("failed to seed object: %v", err)
+	}
+
+	sw := networkModels.StandardSwitch{
+		Name:          "m2o",
+		BridgeName:    "vm-m2o",
+		MTU:           1500,
+		NetworkManual: "10.5.0.1/24",
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("failed to seed switch: %v", err)
+	}
+
+	stubSyncFunctions(t, syncStubSet{
+		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error { return nil },
+	})
+
+	err := svc.EditStandardSwitch(
+		sw.ID,
+		1500,
+		0,
+		obj.ID,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		false,
+		false,
+		false,
+		networkModels.StandardSwitchManualAddresses{},
+	)
+	if err != nil {
+		t.Fatalf("expected edit success, got %v", err)
+	}
+
+	var got networkModels.StandardSwitch
+	if err := db.First(&got, sw.ID).Error; err != nil {
+		t.Fatalf("failed to reload switch: %v", err)
+	}
+	if got.NetworkManual != "" {
+		t.Fatalf("expected NetworkManual cleared when switching to object, got %q", got.NetworkManual)
+	}
+	if got.NetworkID == nil || *got.NetworkID != obj.ID {
+		t.Fatalf("expected NetworkID set to object, got %v", got.NetworkID)
+	}
+}
+
+func TestCreateStandardBridgeAppliesManualIPv4(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge99\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:          "manual-apply4",
+		BridgeName:    "vm-manual-apply4",
+		DisableIPv6:   true,
+		NetworkManual: "10.81.0.254/24",
+	}
+
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("expected create bridge success, got %v", err)
+	}
+
+	var sawAssign bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-manual-apply4 inet 10.81.0.254/24" {
+			sawAssign = true
+			break
+		}
+	}
+	if !sawAssign {
+		t.Fatalf("expected manual IPv4 assignment, got commands: %v", commands)
+	}
+}
+
+func TestCreateStandardBridgeAppliesManualIPv6ScopedLinkLocalGateway(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge100\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:           "manual-apply6",
+		BridgeName:     "vm-manual-apply6",
+		Network6Manual: "2001:db8::1/64",
+		Gateway6Manual: "fe80::1",
+	}
+
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("expected create bridge success, got %v", err)
+	}
+
+	var sawScopedRoute bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/route -6 add -net 2001:db8::1/64 fe80::1%vm-manual-apply6" {
+			sawScopedRoute = true
+			break
+		}
+	}
+	if !sawScopedRoute {
+		t.Fatalf("expected scoped manual link-local IPv6 route, got commands: %v", commands)
 	}
 }

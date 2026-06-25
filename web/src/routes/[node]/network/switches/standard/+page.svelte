@@ -20,7 +20,7 @@
 	import { generateIPOptions, generateNetworkOptions } from '$lib/utils/network/object';
 	import { generateTableData } from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
-	import { isValidSwitchName } from '$lib/utils/string';
+	import { isValidIPv4, isValidIPv6, isValidSwitchName } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -154,6 +154,25 @@
 		}
 	});
 
+	const ipv4NetworkOptions = $derived(generateNetworkOptions(networkObjects.current, 'IPv4'));
+	const ipv4GatewayOptions = $derived(generateIPOptions(networkObjects.current, 'IPv4'));
+	const ipv6NetworkOptions = $derived(generateNetworkOptions(networkObjects.current, 'IPv6'));
+	const ipv6GatewayOptions = $derived(generateIPOptions(networkObjects.current, 'IPv6'));
+
+	function splitObjectOrManual(
+		value: string | string[],
+		options: { label: string; value: string }[]
+	): { id: number; manual: string } {
+		const v = (Array.isArray(value) ? '' : (value ?? '')).trim();
+		if (!v) {
+			return { id: 0, manual: '' };
+		}
+		if (options.some((o) => o.value === v)) {
+			return { id: Number(v), manual: '' };
+		}
+		return { id: 0, manual: v };
+	}
+
 	let reload = $state(false);
 
 	watch(
@@ -221,26 +240,55 @@
 				}
 			}
 
-			activeModal.network4 = comboBoxes.ipv4.value;
-			activeModal.gwAddress4 = comboBoxes.ipv4Gw.value;
-			activeModal.network6 = comboBoxes.ipv6.value;
-			activeModal.gwAddress6 = comboBoxes.ipv6Gw.value;
+			const net4 = splitObjectOrManual(comboBoxes.ipv4.value, ipv4NetworkOptions);
+			const gw4 = splitObjectOrManual(comboBoxes.ipv4Gw.value, ipv4GatewayOptions);
+			const net6 = splitObjectOrManual(comboBoxes.ipv6.value, ipv6NetworkOptions);
+			const gw6 = splitObjectOrManual(comboBoxes.ipv6Gw.value, ipv6GatewayOptions);
+
+			const manual = {
+				network4: net4.manual,
+				gateway4: gw4.manual,
+				network6: net6.manual,
+				gateway6: gw6.manual
+			};
+
+			if (manual.network4 && !isValidIPv4(manual.network4, true)) {
+				toast.error('Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (manual.gateway4 && !isValidIPv4(manual.gateway4)) {
+				toast.error('Invalid IPv4 gateway address', { position: 'bottom-center' });
+				return;
+			}
+			if (manual.network6 && !isValidIPv6(manual.network6, true)) {
+				toast.error('Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (manual.gateway6 && !isValidIPv6(manual.gateway6)) {
+				toast.error('Invalid IPv6 gateway address', { position: 'bottom-center' });
+				return;
+			}
 
 			if (confirmModals.active === 'newSwitch') {
 				const created = await createSwitch(
 					activeModal.name,
 					parseInt(activeModal.mtu),
 					parseInt(activeModal.vlan),
-					Number(activeModal.network4),
-					Number(activeModal.gwAddress4),
-					Number(activeModal.network6),
-					Number(activeModal.gwAddress6),
+					net4.id,
+					gw4.id,
+					net6.id,
+					gw6.id,
 					activeModal.private,
 					activeModal.dhcp,
 					comboBoxes.ports.value,
 					activeModal.disableIPv6,
 					activeModal.slaac,
-					activeModal.defaultRoute
+					activeModal.defaultRoute,
+					manual
 				);
 
 				reload = true;
@@ -255,25 +303,21 @@
 					});
 				}
 			} else {
-				activeModal.network4 = comboBoxes.ipv4.value;
-				activeModal.network6 = comboBoxes.ipv6.value;
-				activeModal.gwAddress4 = comboBoxes.ipv4Gw.value;
-				activeModal.gwAddress6 = comboBoxes.ipv6Gw.value;
-
 				const edited = await updateSwitch(
 					activeRow?.id as number,
 					parseInt(activeModal.mtu),
 					parseInt(activeModal.vlan),
-					Number(activeModal.network4),
-					Number(activeModal.gwAddress4),
-					Number(activeModal.network6),
-					Number(activeModal.gwAddress6),
+					net4.id,
+					gw4.id,
+					net6.id,
+					gw6.id,
 					activeModal.private,
 					comboBoxes.ports.value,
 					activeModal.disableIPv6,
 					activeModal.slaac,
 					activeModal.dhcp,
-					activeModal.defaultRoute
+					activeModal.defaultRoute,
+					manual
 				);
 
 				reload = true;
@@ -315,28 +359,33 @@
 			confirmModals.editSwitch.mtu = activeRow.mtu as string;
 			confirmModals.editSwitch.vlan = activeRow.vlan === '-' ? '' : (activeRow.vlan as string);
 
-			if (activeRow.networkObj) {
-				if (activeRow.networkObj.id) {
-					comboBoxes.ipv4.value = activeRow.networkObj.id.toString();
-				}
+			comboBoxes.ipv4.value = '';
+			comboBoxes.ipv4Gw.value = '';
+			comboBoxes.ipv6.value = '';
+			comboBoxes.ipv6Gw.value = '';
+
+			if (activeRow.networkObj && activeRow.networkObj.id) {
+				comboBoxes.ipv4.value = activeRow.networkObj.id.toString();
+			} else if (activeRow.networkManual) {
+				comboBoxes.ipv4.value = activeRow.networkManual as string;
 			}
 
-			if (activeRow.network6Obj) {
-				if (activeRow.network6Obj.id) {
-					comboBoxes.ipv6.value = activeRow.network6Obj.id.toString();
-				}
+			if (activeRow.network6Obj && activeRow.network6Obj.id) {
+				comboBoxes.ipv6.value = activeRow.network6Obj.id.toString();
+			} else if (activeRow.network6Manual) {
+				comboBoxes.ipv6.value = activeRow.network6Manual as string;
 			}
 
-			if (activeRow.gatewayAddressObj) {
-				if (activeRow.gatewayAddressObj.id) {
-					comboBoxes.ipv4Gw.value = activeRow.gatewayAddressObj.id.toString();
-				}
+			if (activeRow.gatewayAddressObj && activeRow.gatewayAddressObj.id) {
+				comboBoxes.ipv4Gw.value = activeRow.gatewayAddressObj.id.toString();
+			} else if (activeRow.gatewayManual) {
+				comboBoxes.ipv4Gw.value = activeRow.gatewayManual as string;
 			}
 
-			if (activeRow.gateway6AddressObj) {
-				if (activeRow.gateway6AddressObj.id) {
-					comboBoxes.ipv6Gw.value = activeRow.gateway6AddressObj.id.toString();
-				}
+			if (activeRow.gateway6AddressObj && activeRow.gateway6AddressObj.id) {
+				comboBoxes.ipv6Gw.value = activeRow.gateway6AddressObj.id.toString();
+			} else if (activeRow.gateway6Manual) {
+				comboBoxes.ipv6Gw.value = activeRow.gateway6Manual as string;
 			}
 
 			confirmModals.editSwitch.disableIPv6 = (activeRow.disableIPv6 as boolean) || false;
@@ -374,6 +423,10 @@
 		confirmModals.editSwitch.dhcp = false;
 		confirmModals.editSwitch.slaac = false;
 
+		comboBoxes.ipv4.value = '';
+		comboBoxes.ipv4Gw.value = '';
+		comboBoxes.ipv6.value = '';
+		comboBoxes.ipv6Gw.value = '';
 		comboBoxes.ports.value = [];
 
 		if (close) {
@@ -530,24 +583,26 @@
 					bind:open={comboBoxes.ipv4.open}
 					label="IPv4 Network"
 					bind:value={comboBoxes.ipv4.value}
-					data={generateNetworkOptions(networkObjects.current, 'IPv4')}
+					data={ipv4NetworkOptions}
 					classes="flex-1 space-y-1"
-					placeholder="Select IPv4 Network"
+					placeholder="Select object or type CIDR (192.168.1.1/24)"
 					width="w-3/4"
 					disabled={confirmModals[confirmModals.active].dhcp ? true : false}
 					multiple={false}
+					allowCustom={true}
 				></CustomComboBox>
 
 				<CustomComboBox
 					bind:open={comboBoxes.ipv4Gw.open}
 					label="IPv4 Gateway"
 					bind:value={comboBoxes.ipv4Gw.value}
-					data={generateIPOptions(networkObjects.current, 'IPv4')}
+					data={ipv4GatewayOptions}
 					classes="flex-1 space-y-1"
-					placeholder="Select IPv4 Gateway"
+					placeholder="Select object or type IP (192.168.1.254)"
 					width="w-3/4"
 					disabled={confirmModals[confirmModals.active].dhcp ? true : false}
 					multiple={false}
+					allowCustom={true}
 				></CustomComboBox>
 			</div>
 
@@ -556,30 +611,32 @@
 					bind:open={comboBoxes.ipv6.open}
 					label="IPv6 Network"
 					bind:value={comboBoxes.ipv6.value}
-					data={generateNetworkOptions(networkObjects.current, 'IPv6')}
+					data={ipv6NetworkOptions}
 					classes="flex-1 space-y-1"
-					placeholder="Select IPv6 Network"
+					placeholder="Select object or type CIDR (2001:db8::1/64)"
 					width="w-3/4"
 					disabled={confirmModals[confirmModals.active].disableIPv6 ||
 					confirmModals[confirmModals.active].slaac
 						? true
 						: false}
 					multiple={false}
+					allowCustom={true}
 				></CustomComboBox>
 
 				<CustomComboBox
 					bind:open={comboBoxes.ipv6Gw.open}
 					label="IPv6 Gateway"
 					bind:value={comboBoxes.ipv6Gw.value}
-					data={generateIPOptions(networkObjects.current, 'IPv6')}
+					data={ipv6GatewayOptions}
 					classes="flex-1 space-y-1"
-					placeholder="Select IPv6 Gateway"
+					placeholder="Select object or type IP (2001:db8::1)"
 					width="w-3/4"
 					disabled={confirmModals[confirmModals.active].disableIPv6 ||
 					confirmModals[confirmModals.active].slaac
 						? true
 						: false}
 					multiple={false}
+					allowCustom={true}
 				></CustomComboBox>
 			</div>
 

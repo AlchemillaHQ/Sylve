@@ -67,6 +67,50 @@ func (s *Service) conflictingPortsForVLAN(ports []string, vlan int, excludeSwitc
 	return conflicts, nil
 }
 
+// validateStandardSwitchManual trims the manually-typed address inputs,
+// enforces that no field is supplied both as an object ID and a manual string,
+// and validates each manual value for its expected family/shape. It returns the
+// trimmed values to be stored on the switch.
+func validateStandardSwitchManual(
+	network4Id, gateway4Id, network6Id, gateway6Id uint,
+	manual networkModels.StandardSwitchManualAddresses,
+) (networkModels.StandardSwitchManualAddresses, error) {
+	trimmed := networkModels.StandardSwitchManualAddresses{
+		Network4: strings.TrimSpace(manual.Network4),
+		Gateway4: strings.TrimSpace(manual.Gateway4),
+		Network6: strings.TrimSpace(manual.Network6),
+		Gateway6: strings.TrimSpace(manual.Gateway6),
+	}
+
+	if network4Id != 0 && trimmed.Network4 != "" {
+		return trimmed, fmt.Errorf("network4_object_and_manual_mutually_exclusive")
+	}
+	if gateway4Id != 0 && trimmed.Gateway4 != "" {
+		return trimmed, fmt.Errorf("gateway4_object_and_manual_mutually_exclusive")
+	}
+	if network6Id != 0 && trimmed.Network6 != "" {
+		return trimmed, fmt.Errorf("network6_object_and_manual_mutually_exclusive")
+	}
+	if gateway6Id != 0 && trimmed.Gateway6 != "" {
+		return trimmed, fmt.Errorf("gateway6_object_and_manual_mutually_exclusive")
+	}
+
+	if trimmed.Network4 != "" && !utils.IsValidIPv4CIDR(trimmed.Network4) {
+		return trimmed, fmt.Errorf("invalid_network4_manual: must be an IPv4 CIDR")
+	}
+	if trimmed.Gateway4 != "" && !utils.IsValidIPv4(trimmed.Gateway4) {
+		return trimmed, fmt.Errorf("invalid_gateway4_manual: must be an IPv4 address")
+	}
+	if trimmed.Network6 != "" && !utils.IsValidIPv6CIDR(trimmed.Network6) {
+		return trimmed, fmt.Errorf("invalid_network6_manual: must be an IPv6 CIDR")
+	}
+	if trimmed.Gateway6 != "" && !utils.IsValidIPv6(trimmed.Gateway6) {
+		return trimmed, fmt.Errorf("invalid_gateway6_manual: must be an IPv6 address")
+	}
+
+	return trimmed, nil
+}
+
 func (s *Service) NewStandardSwitch(
 	name string,
 	mtu int,
@@ -81,6 +125,7 @@ func (s *Service) NewStandardSwitch(
 	disableIPv6 bool,
 	slaac bool,
 	defaultRoute bool,
+	manual networkModels.StandardSwitchManualAddresses,
 ) error {
 	var count int64
 	if err := s.DB.Model(&networkModels.ManualSwitch{}).
@@ -187,6 +232,11 @@ func (s *Service) NewStandardSwitch(
 		}
 	}
 
+	trimmedManual, err := validateStandardSwitchManual(network4Id, gateway4Id, network6Id, gateway6Id, manual)
+	if err != nil {
+		return err
+	}
+
 	sw := &networkModels.StandardSwitch{
 		Name:              name,
 		MTU:               mtu,
@@ -202,6 +252,10 @@ func (s *Service) NewStandardSwitch(
 		Network6ID:        nil,
 		GatewayAddressID:  nil,
 		Gateway6AddressID: nil,
+		NetworkManual:     trimmedManual.Network4,
+		GatewayManual:     trimmedManual.Gateway4,
+		Network6Manual:    trimmedManual.Network6,
+		Gateway6Manual:    trimmedManual.Gateway6,
 	}
 
 	if network4Id != 0 {
@@ -357,6 +411,7 @@ func (s *Service) EditStandardSwitch(
 	disableIPv6 bool,
 	slaac bool,
 	defaultRoute bool,
+	manual networkModels.StandardSwitchManualAddresses,
 ) error {
 	if !utils.IsValidMTU(mtu) {
 		return fmt.Errorf("invalid_mtu")
@@ -452,6 +507,11 @@ func (s *Service) EditStandardSwitch(
 		}
 	}
 
+	trimmedManual, err := validateStandardSwitchManual(network4Id, gateway4Id, network6Id, gateway6Id, manual)
+	if err != nil {
+		return err
+	}
+
 	var loaded networkModels.StandardSwitch
 	if err := s.DB.
 		Preload("Ports").
@@ -474,32 +534,40 @@ func (s *Service) EditStandardSwitch(
 
 	if network4Id != 0 {
 		loaded.NetworkID = &network4Id
+		loaded.NetworkManual = ""
 	} else {
 		loaded.NetworkID = nil
+		loaded.NetworkManual = trimmedManual.Network4
 	}
 
 	if gateway4Id != 0 {
 		loaded.GatewayAddressID = &gateway4Id
+		loaded.GatewayManual = ""
 	} else {
 		loaded.GatewayAddressID = nil
+		loaded.GatewayManual = trimmedManual.Gateway4
 	}
 
 	if network6Id != 0 {
 		loaded.Network6ID = &network6Id
+		loaded.Network6Manual = ""
 	} else {
 		loaded.Network6ID = nil
+		loaded.Network6Manual = trimmedManual.Network6
 	}
 
 	if gateway6Id != 0 {
 		loaded.Gateway6AddressID = &gateway6Id
+		loaded.Gateway6Manual = ""
 	} else {
 		loaded.Gateway6AddressID = nil
+		loaded.Gateway6Manual = trimmedManual.Gateway6
 	}
 
 	loaded.DefaultRoute = defaultRoute
 
 	if err := s.DB.Model(&loaded).
-		Select("MTU", "VLAN", "Private", "DHCP", "DisableIPv6", "SLAAC", "NetworkID", "GatewayAddressID", "Network6ID", "Gateway6AddressID", "DefaultRoute").
+		Select("MTU", "VLAN", "Private", "DHCP", "DisableIPv6", "SLAAC", "NetworkID", "GatewayAddressID", "Network6ID", "Gateway6AddressID", "DefaultRoute", "NetworkManual", "GatewayManual", "Network6Manual", "Gateway6Manual").
 		Updates(loaded).Error; err != nil {
 		return fmt.Errorf("failed_to_update_switch: %v", err)
 	}

@@ -27,7 +27,8 @@ type NetworkServiceInterface interface {
 		dhcp bool,
 		disableIPv6 bool,
 		slaac bool,
-		defaultRoute bool) error
+		defaultRoute bool,
+		manual networkModels.StandardSwitchManualAddresses) error
 
 	EditStandardSwitch(id uint,
 		mtu int,
@@ -41,7 +42,8 @@ type NetworkServiceInterface interface {
 		dhcp bool,
 		disableIPv6 bool,
 		slaac bool,
-		defaultRoute bool) error
+		defaultRoute bool,
+		manual networkModels.StandardSwitchManualAddresses) error
 	DeleteStandardSwitch(id int) error
 	IsObjectUsed(id uint) (bool, string, error)
 	GetObjectEntryByID(id uint) (string, error)

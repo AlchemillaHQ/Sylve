@@ -48,6 +48,11 @@ type StandardSwitch struct {
 	Gateway6AddressID  *uint   `json:"gateway6AddressId" gorm:"column:gateway6_address_object_id"`
 	Gateway6AddressObj *Object `json:"gateway6AddressObj" gorm:"foreignKey:Gateway6AddressID"`
 
+	NetworkManual  string `json:"networkManual" gorm:"column:network_manual"`
+	Network6Manual string `json:"network6Manual" gorm:"column:network6_manual"`
+	GatewayManual  string `json:"gatewayManual" gorm:"column:gateway_manual"`
+	Gateway6Manual string `json:"gateway6Manual" gorm:"column:gateway6_manual"`
+
 	DisableIPv6  bool `json:"disableIPv6" gorm:"default:false"`
 	Private      bool `json:"private" gorm:"default:false"`
 	DefaultRoute bool `json:"defaultRoute" gorm:"default:false"`
@@ -68,25 +73,47 @@ type NetworkPort struct {
 	Switch   StandardSwitch `gorm:"foreignKey:SwitchID"`
 }
 
+// StandardSwitchManualAddresses carries raw, manually-typed address values for a
+// standard switch as an alternative to selecting NetworkObjects. Each field is
+// mutually exclusive with its corresponding object ID at the service layer.
+type StandardSwitchManualAddresses struct {
+	Network4 string
+	Gateway4 string
+	Network6 string
+	Gateway6 string
+}
+
 func (sw *StandardSwitch) Network(v int) string {
-	if v == 4 && sw.NetworkObj != nil && len(sw.NetworkObj.Entries) > 0 {
-		return sw.NetworkObj.Entries[0].Value
+	if v == 4 {
+		if sw.NetworkObj != nil && len(sw.NetworkObj.Entries) > 0 {
+			return sw.NetworkObj.Entries[0].Value
+		}
+		return sw.NetworkManual
 	}
 
-	if v == 6 && sw.Network6Obj != nil && len(sw.Network6Obj.Entries) > 0 {
-		return sw.Network6Obj.Entries[0].Value
+	if v == 6 {
+		if sw.Network6Obj != nil && len(sw.Network6Obj.Entries) > 0 {
+			return sw.Network6Obj.Entries[0].Value
+		}
+		return sw.Network6Manual
 	}
 
 	return ""
 }
 
 func (sw *StandardSwitch) Gateway(v int) string {
-	if v == 4 && sw.GatewayAddressObj != nil && len(sw.GatewayAddressObj.Entries) > 0 {
-		return sw.GatewayAddressObj.Entries[0].Value
+	if v == 4 {
+		if sw.GatewayAddressObj != nil && len(sw.GatewayAddressObj.Entries) > 0 {
+			return sw.GatewayAddressObj.Entries[0].Value
+		}
+		return sw.GatewayManual
 	}
 
-	if v == 6 && sw.Gateway6AddressObj != nil && len(sw.Gateway6AddressObj.Entries) > 0 {
-		return sw.Gateway6AddressObj.Entries[0].Value
+	if v == 6 {
+		if sw.Gateway6AddressObj != nil && len(sw.Gateway6AddressObj.Entries) > 0 {
+			return sw.Gateway6AddressObj.Entries[0].Value
+		}
+		return sw.Gateway6Manual
 	}
 
 	return ""

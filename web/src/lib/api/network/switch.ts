@@ -19,6 +19,20 @@ export async function deleteManualSwitch(id: number): Promise<APIResponse> {
 	return await apiRequest(`/network/manual-switch/${id}`, APIResponseSchema, 'DELETE');
 }
 
+export type SwitchManualAddresses = {
+	network4: string;
+	gateway4: string;
+	network6: string;
+	gateway6: string;
+};
+
+const emptyManualAddresses: SwitchManualAddresses = {
+	network4: '',
+	gateway4: '',
+	network6: '',
+	gateway6: ''
+};
+
 export async function createSwitch(
 	name: string,
 	mtu: number,
@@ -32,7 +46,8 @@ export async function createSwitch(
 	ports: string[],
 	disableIPv6: boolean,
 	slaac: boolean,
-	defaultRoute: boolean
+	defaultRoute: boolean,
+	manual: SwitchManualAddresses = emptyManualAddresses
 ): Promise<APIResponse> {
 	const body = {
 		name,
@@ -47,7 +62,11 @@ export async function createSwitch(
 		dhcp,
 		disableIPv6,
 		slaac,
-		defaultRoute
+		defaultRoute,
+		network4Manual: manual.network4,
+		gateway4Manual: manual.gateway4,
+		network6Manual: manual.network6,
+		gateway6Manual: manual.gateway6
 	};
 
 	return await apiRequest('/network/switch/standard', APIResponseSchema, 'POST', body);
@@ -70,7 +89,8 @@ export async function updateSwitch(
 	disableIPv6: boolean,
 	slaac: boolean,
 	dhcp: boolean,
-	defaultRoute: boolean
+	defaultRoute: boolean,
+	manual: SwitchManualAddresses = emptyManualAddresses
 ): Promise<APIResponse> {
 	const body = {
 		id,
@@ -85,7 +105,11 @@ export async function updateSwitch(
 		disableIPv6,
 		slaac,
 		dhcp,
-		defaultRoute
+		defaultRoute,
+		network4Manual: manual.network4,
+		gateway4Manual: manual.gateway4,
+		network6Manual: manual.network6,
+		gateway6Manual: manual.gateway6
 	};
 
 	return await apiRequest('/network/switch/standard', APIResponseSchema, 'PUT', body);

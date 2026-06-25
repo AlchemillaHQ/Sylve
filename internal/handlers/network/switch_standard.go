@@ -13,41 +13,50 @@ import (
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/services/network"
 
 	"github.com/gin-gonic/gin"
 )
 
 type CreateStandardSwitchRequest struct {
-	Name         string   `json:"name" binding:"required"`
-	MTU          *int     `json:"mtu"`
-	VLAN         *int     `json:"vlan"`
-	Network4     *uint    `json:"network4"`
-	Gateway4     *uint    `json:"gateway4"`
-	Network6     *uint    `json:"network6"`
-	Gateway6     *uint    `json:"gateway6"`
-	DisableIPv6  *bool    `json:"disableIPv6"`
-	SLAAC        *bool    `json:"slaac"`
-	Private      *bool    `json:"private" binding:"required"`
-	DefaultRoute *bool    `json:"defaultRoute"`
-	DHCP         *bool    `json:"dhcp"`
-	Ports        []string `json:"ports" binding:"required"`
+	Name           string   `json:"name" binding:"required"`
+	MTU            *int     `json:"mtu"`
+	VLAN           *int     `json:"vlan"`
+	Network4       *uint    `json:"network4"`
+	Gateway4       *uint    `json:"gateway4"`
+	Network6       *uint    `json:"network6"`
+	Gateway6       *uint    `json:"gateway6"`
+	Network4Manual *string  `json:"network4Manual"`
+	Gateway4Manual *string  `json:"gateway4Manual"`
+	Network6Manual *string  `json:"network6Manual"`
+	Gateway6Manual *string  `json:"gateway6Manual"`
+	DisableIPv6    *bool    `json:"disableIPv6"`
+	SLAAC          *bool    `json:"slaac"`
+	Private        *bool    `json:"private" binding:"required"`
+	DefaultRoute   *bool    `json:"defaultRoute"`
+	DHCP           *bool    `json:"dhcp"`
+	Ports          []string `json:"ports" binding:"required"`
 }
 
 type UpdateStandardSwitchRequest struct {
-	ID           uint     `json:"id" binding:"required"`
-	MTU          *int     `json:"mtu"`
-	VLAN         *int     `json:"vlan"`
-	Network4     *uint    `json:"network4"`
-	Gateway4     *uint    `json:"gateway4"`
-	Network6     *uint    `json:"network6"`
-	Gateway6     *uint    `json:"gateway6"`
-	DisableIPv6  *bool    `json:"disableIPv6"`
-	SLAAC        *bool    `json:"slaac"`
-	Private      *bool    `json:"private" binding:"required"`
-	Ports        []string `json:"ports" binding:"required"`
-	DHCP         *bool    `json:"dhcp"`
-	DefaultRoute *bool    `json:"defaultRoute"`
+	ID             uint     `json:"id" binding:"required"`
+	MTU            *int     `json:"mtu"`
+	VLAN           *int     `json:"vlan"`
+	Network4       *uint    `json:"network4"`
+	Gateway4       *uint    `json:"gateway4"`
+	Network6       *uint    `json:"network6"`
+	Gateway6       *uint    `json:"gateway6"`
+	Network4Manual *string  `json:"network4Manual"`
+	Gateway4Manual *string  `json:"gateway4Manual"`
+	Network6Manual *string  `json:"network6Manual"`
+	Gateway6Manual *string  `json:"gateway6Manual"`
+	DisableIPv6    *bool    `json:"disableIPv6"`
+	SLAAC          *bool    `json:"slaac"`
+	Private        *bool    `json:"private" binding:"required"`
+	Ports          []string `json:"ports" binding:"required"`
+	DHCP           *bool    `json:"dhcp"`
+	DefaultRoute   *bool    `json:"defaultRoute"`
 }
 
 // @Summary Create a new Standard Switch
@@ -188,6 +197,29 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			defaultRoute = *request.DefaultRoute
 		}
 
+		manual := networkModels.StandardSwitchManualAddresses{}
+		if request.Network4Manual != nil {
+			manual.Network4 = *request.Network4Manual
+		}
+		if request.Gateway4Manual != nil {
+			manual.Gateway4 = *request.Gateway4Manual
+		}
+		if request.Network6Manual != nil {
+			manual.Network6 = *request.Network6Manual
+		}
+		if request.Gateway6Manual != nil {
+			manual.Gateway6 = *request.Gateway6Manual
+		}
+
+		if *request.DHCP {
+			manual.Network4 = ""
+			manual.Gateway4 = ""
+		}
+		if *request.DisableIPv6 || *request.SLAAC {
+			manual.Network6 = ""
+			manual.Gateway6 = ""
+		}
+
 		err := networkService.NewStandardSwitch(request.Name,
 			mtu,
 			vlan,
@@ -201,6 +233,7 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			*request.DisableIPv6,
 			*request.SLAAC,
 			defaultRoute,
+			manual,
 		)
 
 		if err != nil {
@@ -394,6 +427,29 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			defaultRoute = *request.DefaultRoute
 		}
 
+		manual := networkModels.StandardSwitchManualAddresses{}
+		if request.Network4Manual != nil {
+			manual.Network4 = *request.Network4Manual
+		}
+		if request.Gateway4Manual != nil {
+			manual.Gateway4 = *request.Gateway4Manual
+		}
+		if request.Network6Manual != nil {
+			manual.Network6 = *request.Network6Manual
+		}
+		if request.Gateway6Manual != nil {
+			manual.Gateway6 = *request.Gateway6Manual
+		}
+
+		if *request.DHCP {
+			manual.Network4 = ""
+			manual.Gateway4 = ""
+		}
+		if *request.DisableIPv6 || *request.SLAAC {
+			manual.Network6 = ""
+			manual.Gateway6 = ""
+		}
+
 		err := networkService.EditStandardSwitch(
 			request.ID,
 			mtu,
@@ -407,7 +463,8 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			*request.DHCP,
 			*request.DisableIPv6,
 			*request.SLAAC,
-			defaultRoute)
+			defaultRoute,
+			manual)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
