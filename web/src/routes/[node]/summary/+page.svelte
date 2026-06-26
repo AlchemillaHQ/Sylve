@@ -19,7 +19,6 @@
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
 	import { resource, useInterval } from 'runed';
-	import { fade } from 'svelte/transition';
 	import { watch } from 'runed';
 
 	interface Data {
@@ -220,7 +219,7 @@
 	);
 </script>
 
-<div class="space-y-4 p-4" transition:fade|global={{ duration: 300 }}>
+<div class="space-y-4 p-4">
 	<Card.Root class="w-full gap-0 p-0">
 		<Card.Header class="p-4 pb-0">
 			<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">

@@ -22,7 +22,7 @@
 	import { dateToAgo } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
-	import { getContext } from 'svelte';
+	import { getContext, onMount } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -278,23 +278,24 @@
 	}
 
 	// Register with the layout's toolbar bar on mount; clean up on unmount
-	$effect(() => {
-		barExtras.active = true;
+	onMount(() => {
 		barExtras.showLogsCallback = () => {
 			followLogs = true;
 			showLogs = true;
 		};
 		barExtras.refetchStats = () => stats.refetch();
 		return () => {
-			barExtras.active = false;
 			barExtras.logsLength = 0;
 		};
 	});
 
 	// Keep logsLength in the shared bar state in sync
-	$effect(() => {
-		barExtras.logsLength = logs.current.logs.length;
-	});
+	watch(
+		() => logs.current.logs.length,
+		(length) => {
+			barExtras.logsLength = length;
+		}
+	);
 
 	watch(
 		() => logs.current.logs,

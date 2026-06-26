@@ -13,7 +13,6 @@
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
-	import { fade } from 'svelte/transition';
 	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
@@ -41,7 +40,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: null as SimpleVm | null }
+		{ initialValue: (page.data as { vm?: SimpleVm | null }).vm ?? null }
 	);
 
 	const domain = resource(
@@ -389,7 +388,7 @@
 			</div>
 
 			{#key rid}
-				<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
+				<div class="flex items-center gap-1">
 					{#if vm.current && domain.current}
 						{#if !shouldHideActionButtons && domain.current.id === -1 && !isDomainRunningForActions && !isDomainErrorState}
 							<Button
@@ -482,7 +481,9 @@
 		class:overflow-hidden={isConsolePage}
 		class:overflow-auto={!isConsolePage}
 	>
-		{@render children?.()}
+		{#key rid}
+			{@render children?.()}
+		{/key}
 	</div>
 </div>
 

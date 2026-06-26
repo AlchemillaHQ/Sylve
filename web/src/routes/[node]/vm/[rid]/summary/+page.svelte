@@ -44,7 +44,6 @@
 		getVMLifecycleBadgeStyle
 	} from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
-	import { fade } from 'svelte/transition';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { resolve } from '$app/paths';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -694,7 +693,7 @@
 
 		<div class="ml-auto flex h-full items-center gap-2">
 			{#if vmLogs.length > 0}
-				<div transition:fade>
+				<div>
 					<Button
 						size="sm"
 						onclick={() => {

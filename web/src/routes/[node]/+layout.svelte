@@ -15,7 +15,6 @@
 	} from '$lib/utils/enabled-services';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
-	import { fade } from 'svelte/transition';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	const toggleCategory = (label: string) => {
@@ -444,11 +443,11 @@
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
 			{#if isConsoleRoute}
-				<div class="h-full w-full overflow-hidden" transition:fade>
+				<div class="h-full w-full overflow-hidden">
 					{@render children?.()}
 				</div>
 			{:else}
-				<div class="h-full w-full overflow-y-auto" transition:fade>
+				<div class="h-full w-full overflow-y-auto">
 					{@render children?.()}
 				</div>
 			{/if}

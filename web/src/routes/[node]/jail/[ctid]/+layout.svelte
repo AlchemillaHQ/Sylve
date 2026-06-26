@@ -41,6 +41,7 @@
 		return segments[jailIndex + 2] ?? '';
 	});
 	let isConsolePage = $derived.by(() => jailChildRoute === 'console');
+	let isSummaryPage = $derived.by(() => jailChildRoute === '' || jailChildRoute === 'summary');
 
 	const jail = resource(
 		() => `simple-jail-${ctId}`,
@@ -50,7 +51,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: null as SimpleJail | null }
+		{ initialValue: (page.data as { jail?: SimpleJail | null }).jail ?? null }
 	);
 
 	const jState = resource(
@@ -257,7 +258,7 @@
 
 <div class="flex h-full min-h-0 w-full flex-col">
 	<div class="flex h-10 w-full shrink-0 items-center justify-between gap-1 border p-4">
-		{#if !summaryBarExtras.active}
+		{#if !isSummaryPage}
 			<div class="min-w-0 flex items-center gap-2">
 				{#if jail.current && jState.current}
 					<Badge
@@ -316,7 +317,7 @@
 			{/if}
 		</div>
 
-		{#if summaryBarExtras.active}
+		{#if isSummaryPage}
 			<div class="ml-auto flex items-center gap-2">
 				{#if summaryBarExtras.logsLength > 0}
 					<Button
@@ -369,7 +370,9 @@
 		class:overflow-hidden={isConsolePage}
 		class:overflow-auto={!isConsolePage}
 	>
-		{@render children?.()}
+		{#key ctId}
+			{@render children?.()}
+		{/key}
 	</div>
 </div>
 

@@ -4,7 +4,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
-	import { preloadData } from '$app/navigation';
+	import { preloadData, onNavigate } from '$app/navigation';
 	import {
 		isClusterTokenValid,
 		isTokenValid,
@@ -288,6 +288,18 @@
 		}
 	);
 
+	onNavigate((navigation) => {
+		if (!document.startViewTransition) return;
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+		return new Promise((resolve) => {
+			document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+		});
+	});
+
 	let busy = $state(false);
 </script>
 
@@ -373,5 +385,10 @@
 <style>
 	:global(#top-loader) {
 		height: 0.5px !important;
+	}
+
+	:global(::view-transition-old(root)),
+	:global(::view-transition-new(root)) {
+		animation-duration: 150ms;
 	}
 </style>
