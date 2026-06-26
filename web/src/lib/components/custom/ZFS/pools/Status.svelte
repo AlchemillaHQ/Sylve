@@ -124,7 +124,7 @@
 		<!-- children -->
 		{#if vdev.vdevs}
 			<div class="ml-2 border-l pl-2">
-				{#each Object.values(vdev.vdevs) as child (child.guid ?? child.name)}
+				{#each Object.entries(vdev.vdevs) as [key, child] (key)}
 					{@render VdevTree(child, scan, depth + 1)}
 				{/each}
 			</div>
@@ -216,7 +216,7 @@
 					<ScrollArea orientation="vertical" class="h-64 w-full">
 						<div class="px-3 py-2 space-y-3">
 							{#if status.current?.vdevs}
-								{#each Object.values(status.current.vdevs) as root (root.guid ?? root.name)}
+								{#each Object.entries(status.current.vdevs) as [key, root] (key)}
 									{@render VdevTree(root, status.current.scan_stats || undefined)}
 								{/each}
 							{:else}
@@ -233,7 +233,7 @@
 										<span>Logs</span>
 									</div>
 									<div class="p-4 space-y-2">
-										{#each Object.values(status.current.logs) as log (log.guid ?? log.name)}
+										{#each Object.entries(status.current.logs) as [key, log] (key)}
 											{@render VdevTree(log)}
 										{/each}
 									</div>
@@ -247,7 +247,7 @@
 										<span>Spares</span>
 									</div>
 									<div class="p-4 space-y-2">
-										{#each Object.values(status.current.spares) as spare (spare.guid ?? spare.name)}
+										{#each Object.entries(status.current.spares) as [key, spare] (key)}
 											{@render VdevTree(spare)}
 										{/each}
 									</div>
@@ -261,7 +261,7 @@
 										<span>Cache</span>
 									</div>
 									<div class="p-4 space-y-2">
-										{#each Object.values(status.current.l2cache) as cache (cache.guid ?? cache.name)}
+										{#each Object.entries(status.current.l2cache) as [key, cache] (key)}
 											{@render VdevTree(cache)}
 										{/each}
 									</div>

@@ -572,7 +572,7 @@
 {/snippet}
 
 {#snippet vdevContainer(id: number)}
-	{#each properties.vdev.containers[id]?.disks || [] as disk (disk.uuid)}
+	{#each properties.vdev.containers[id]?.disks || [] as disk (disk.device)}
 		<div animate:flip={{ duration: 300 }} class="relative">
 			{#if disk.type === 'HDD'}
 				<span class="icon-[mdi--harddisk] h-11 w-11 text-green-500"></span>
@@ -620,7 +620,7 @@
 {#snippet diskContainer(type: string)}
 	<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
 		<div class="flex min-h-16 items-center justify-start gap-4 px-1 py-2">
-			{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)) as disk (disk.uuid)}
+			{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)) as disk (disk.device)}
 				<div class="relative text-center" animate:flip={{ duration: 300 }}>
 					<div class="cursor-move" use:draggable={disk.uuid ?? ''}>
 						{#if type === 'HDD'}

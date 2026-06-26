@@ -159,9 +159,23 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 		return nil, err
 	}
 
+	seenUUIDs := make(map[string]bool)
+
 	for _, d := range dinfo {
 		var disk diskServiceInterfaces.Disk
-		disk.UUID = utils.GenerateDeterministicUUID(fmt.Sprintf("%s-%s", d.LunID, d.Serial))
+
+		seed := fmt.Sprintf("%s-%s", d.LunID, d.Serial)
+		if strings.TrimSpace(d.LunID) == "" && strings.TrimSpace(d.Serial) == "" {
+			seed = d.Name
+		}
+
+		uuid := utils.GenerateDeterministicUUID(seed)
+		for attempt := 1; seenUUIDs[uuid]; attempt++ {
+			uuid = utils.GenerateDeterministicUUID(fmt.Sprintf("%s#%s#%d", seed, d.Name, attempt))
+		}
+		seenUUIDs[uuid] = true
+
+		disk.UUID = uuid
 		disk.Device = d.Name
 		disk.Type = d.Type
 		disk.Size = uint64(d.MediaSize)
