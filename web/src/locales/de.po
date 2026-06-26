@@ -7218,6 +7218,7 @@ msgstr "Pool {0} gelöscht"
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "Ausgeschaltet"
@@ -14670,3 +14671,21 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select object or type IP (2001:db8::1)"
 msgstr ""
+
+#~ msgid "Ctrl"
+#~ msgstr ""
+
+#~ msgid "Alt"
+#~ msgstr ""
+
+#~ msgid "Leave the host console?"
+#~ msgstr ""
+
+#~ msgid "You have an active terminal session. Leaving this page will disconnect it."
+#~ msgstr ""
+
+#~ msgid "Stay"
+#~ msgstr ""
+
+#~ msgid "Leave"
+#~ msgstr ""

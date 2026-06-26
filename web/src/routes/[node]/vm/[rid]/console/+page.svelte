@@ -5,8 +5,13 @@
 	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
-	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
-	import { onMount, tick, getContext } from 'svelte';
+	import { Xterm, XtermAddon } from '@battlefieldduck/xterm-svelte';
+	import type {
+		ITerminalOptions,
+		ITerminalInitOnlyOptions,
+		Terminal
+	} from '@battlefieldduck/xterm-svelte';
+	import { onMount, getContext } from 'svelte';
 	import { getVmById } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import {
@@ -24,8 +29,10 @@
 	import { swatches } from '$lib/utils/terminal';
 	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import { isMac } from '$lib/hooks/is-mac.svelte';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
+	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
 
 	interface Data {
 		vm: VM;
@@ -98,25 +105,25 @@
 	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
 	let openSettings = $state(false);
 
-	let terminal = $state<GhosttyTerminal | null>(null);
+	let terminal = $state<Terminal>();
+	let fitAddon: FitAddonInstance | null = null;
 	let ws = $state<WebSocket | null>(null);
 	let serialConnectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
-	let terminalContainer = $state<HTMLElement | null>(null);
-	let lastWidth = 0;
-	let lastHeight = 0;
+	let wrapper = $state<HTMLElement | null>(null);
 	let connectionToken = 0;
-	let serialSetupToken = 0;
-	let serialSetupPromise: Promise<void> | null = null;
 	let destroyed = $state(false);
-	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
 
-	function loadGhostty() {
-		if (!ghosttyModulePromise) {
-			ghosttyModulePromise = import('ghostty-web');
+	const options: ITerminalOptions & ITerminalInitOnlyOptions = {
+		cursorBlink: true,
+		cursorStyle: 'bar',
+		scrollback: 10000,
+		fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+		fontSize: theme.current.fontSize || 14,
+		theme: {
+			background: theme.current.background,
+			foreground: theme.current.foreground
 		}
-
-		return ghosttyModulePromise;
-	}
+	};
 
 	useInterval(() => 1000, {
 		callback: () => {
@@ -134,11 +141,31 @@
 		}
 	);
 
-	const applyFontSize = useDebounce(() => {
+	function fitAndSend() {
+		if (!terminal || !fitAddon) return;
+		try {
+			fitAddon.fit();
+		} catch {
+			return;
+		}
+		sendSize(terminal.cols, terminal.rows);
+	}
+
+	function setFontSize(size: number) {
 		if (!terminal) return;
-		theme.current.fontSize = Math.max(8, Math.min(24, fontSizeBindable));
-		terminal.options.fontSize = theme.current.fontSize;
-		resizeTerminal(lastWidth, lastHeight);
+		const clamped = Math.max(8, Math.min(24, Math.round(size)));
+		fontSizeBindable = clamped;
+		theme.current.fontSize = clamped;
+		terminal.options.fontSize = clamped;
+		fitAndSend();
+	}
+
+	function changeFontSize(delta: number) {
+		setFontSize((theme.current.fontSize || 14) + delta);
+	}
+
+	const applyFontSize = useDebounce(() => {
+		setFontSize(fontSizeBindable);
 	}, 200);
 
 	const applyThemeDebounced = useDebounce(() => {
@@ -158,11 +185,6 @@
 			background: theme.current.background,
 			foreground: theme.current.foreground
 		};
-
-		if (ws?.readyState === WebSocket.OPEN) {
-			cleanupSerial(true);
-			void serialConnect();
-		}
 	}, 300);
 
 	let vncPath = $derived.by(() => {
@@ -195,8 +217,6 @@
 	}
 
 	function cleanupSerial(forceKill = false) {
-		serialSetupToken += 1;
-		serialSetupPromise = null;
 		connectionToken += 1;
 		serialConnectionState = 'disconnected';
 
@@ -220,9 +240,6 @@
 		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
 		}
-
-		terminal?.dispose?.();
-		terminal = null;
 	}
 
 	function disconnectSerial() {
@@ -238,7 +255,8 @@
 	function reconnectSerial() {
 		if (isSerialSocketActive()) return;
 		cState.current = false;
-		void serialConnect();
+		if (!terminal) return;
+		serialConnect();
 	}
 
 	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 10) {
@@ -264,90 +282,20 @@
 		);
 	}
 
-	function resizeTerminal(width: number, height: number) {
-		if (!terminal) return;
-
-		const root = terminal.element as HTMLElement | undefined;
-		if (!root) return;
-
-		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
-		if (!canvas) return;
-
-		const currentCols = terminal.cols || 80;
-		const currentRows = terminal.rows || 24;
-
-		const cellWidth = canvas.clientWidth / currentCols || 8;
-		const cellHeight = canvas.clientHeight / currentRows || 16;
-		if (!cellWidth || !cellHeight) return;
-
-		const cols = Math.max(2, Math.floor(width / cellWidth));
-		const rows = Math.max(2, Math.floor(height / cellHeight));
-		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
-
-		terminal.resize(cols, rows);
-		sendSize(cols, rows);
-
-		terminal.focus();
-	}
-
-	function syncTerminalSizeAfterOpen() {
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				if (!terminalContainer) return;
-				const rect = terminalContainer.getBoundingClientRect();
-				if (!rect.width || !rect.height) return;
-				lastWidth = rect.width;
-				lastHeight = rect.height;
-				resizeTerminal(rect.width, rect.height);
-			});
-		});
-	}
-
 	useResizeObserver(
-		() => terminalContainer,
-		(entries) => {
-			const entry = entries[0];
-			if (!entry) return;
-			const { width, height } = entry.contentRect;
-			lastWidth = width;
-			lastHeight = height;
-			resizeTerminal(width, height);
+		() => wrapper,
+		() => {
+			fitAndSend();
 		}
 	);
 
-	const serialConnectInternal = async (activeSerialSetupToken: number) => {
-		cState.current = false;
-
+	function serialConnect() {
+		if (destroyed || !terminal) return;
 		if (!vm.current.serial) return;
 		if (!domain.current || domain.current.status === 'Shutoff') return;
-		if (!terminalContainer) return;
 		if (isSerialSocketActive()) return;
 
-		const ghostty = await loadGhostty();
-		await ghostty.init();
-		if (destroyed || activeSerialSetupToken !== serialSetupToken) return;
-
-		terminal?.dispose?.();
-		terminal = null;
-
-		terminal = new ghostty.Terminal({
-			cursorBlink: true,
-			cursorStyle: 'bar',
-			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-			fontSize: theme.current.fontSize || 14,
-			theme: {
-				background: theme.current.background,
-				foreground: theme.current.foreground
-			}
-		});
-
-		terminal.open(terminalContainer);
-
-		if (destroyed || activeSerialSetupToken !== serialSetupToken) {
-			terminal?.dispose?.();
-			terminal = null;
-			return;
-		}
+		cState.current = false;
 
 		const wssAuth = getWSSAuth();
 		const url = `/api/vm/console?rid=${vm.current.rid}&auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
@@ -359,21 +307,16 @@
 		ws = socket;
 		serialConnectionState = 'connecting';
 
-		socket.onopen = async () => {
+		socket.onopen = () => {
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
 			serialConnectionState = 'connected';
 
 			console.log(`Serial console connected for VM ${data.rid}`);
-			if (lastWidth && lastHeight) {
-				resizeTerminal(lastWidth, lastHeight);
-			} else if (terminalContainer) {
-				const rect = terminalContainer.getBoundingClientRect();
-				resizeTerminal(rect.width, rect.height);
-			}
-
-			syncTerminalSizeAfterOpen();
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => fitAndSend());
+			});
 		};
 
 		socket.onmessage = (e) => {
@@ -395,11 +338,6 @@
 			}
 		};
 
-		terminal.onData((data: string) => {
-			if (socket.readyState !== WebSocket.OPEN) return;
-			socket.send(new TextEncoder().encode('\x00' + data));
-		});
-
 		socket.onclose = socket.onerror = () => {
 			if (activeConnectionToken !== connectionToken) return;
 			if (ws === socket) {
@@ -407,32 +345,70 @@
 			}
 			serialConnectionState = 'disconnected';
 		};
-	};
+	}
 
-	const serialConnect = () => {
-		if (serialSetupPromise) return serialSetupPromise;
+	function onData(data: string) {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x00' + data));
+	}
 
-		const activeSerialSetupToken = ++serialSetupToken;
-		const currentSetup = serialConnectInternal(activeSerialSetupToken).finally(() => {
-			if (serialSetupPromise === currentSetup) {
-				serialSetupPromise = null;
+	async function onLoad(t: Terminal) {
+		terminal = t;
+		fitAddon = new (await XtermAddon.FitAddon()).FitAddon();
+		t.loadAddon(fitAddon);
+
+		t.attachCustomKeyEventHandler((e) => {
+			const zoomModifier = isMac ? e.metaKey : e.ctrlKey;
+			const otherModifier = isMac ? e.ctrlKey : e.metaKey;
+			if (e.type === 'keydown' && zoomModifier && !e.altKey && !otherModifier) {
+				if (e.key === '+' || e.key === '=') {
+					e.preventDefault();
+					changeFontSize(1);
+					return false;
+				}
+				if (e.key === '-' || e.key === '_') {
+					e.preventDefault();
+					changeFontSize(-1);
+					return false;
+				}
 			}
+			return true;
 		});
 
-		serialSetupPromise = currentSetup;
-		return currentSetup;
-	};
+		if (destroyed) return;
+
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				fitAndSend();
+				if (
+					consoleType === 'serial' &&
+					vm.current.serial &&
+					domain.current?.status !== 'Shutoff' &&
+					!cState.current &&
+					!isSerialSocketActive()
+				) {
+					serialConnect();
+				}
+			});
+		});
+	}
+
+	function handleBeforeUnload(event: BeforeUnloadEvent) {
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
+	}
 
 	onMount(() => {
+		window.addEventListener('beforeunload', handleBeforeUnload);
+
 		if (consoleType === 'vnc' && vm.current.vncEnabled) {
 			startVncLoading();
-		} else if (consoleType === 'serial' && vm.current.serial && !cState.current) {
-			tick().then(() => {
-				void serialConnect();
-			});
 		}
 
 		return () => {
+			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
 			serialConnectionState = 'disconnected';
@@ -446,15 +422,10 @@
 				ws = null;
 			}
 
-			if (terminal) {
-				terminal.clear?.();
-				terminal.reset?.();
-			}
-
 			applyFontSize.cancel?.();
 			applyThemeDebounced.cancel?.();
 			terminal?.dispose?.();
-			terminal = null;
+			terminal = undefined;
 		};
 	});
 
@@ -467,11 +438,6 @@
 				cleanupSerial(false);
 			} else if (type === 'serial' && vm.current.serial) {
 				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
-				if (!cState.current) {
-					tick().then(() => {
-						void serialConnect();
-					});
-				}
 			}
 		},
 		{ lazy: true }
@@ -583,8 +549,8 @@
 						size="sm"
 						class="ml-auto h-6"
 						onclick={() => {
-							terminal?.clear?.();
-							terminal?.focus?.();
+							terminal?.clear();
+							terminal?.focus();
 						}}
 					>
 						<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
@@ -636,16 +602,24 @@
 				{/if}
 
 				<div
-					class="terminal-wrapper min-h-0 w-full flex-1 focus:outline-none caret-transparent"
+					bind:this={wrapper}
+					class="terminal-wrapper min-h-0 w-full flex-1 overflow-hidden"
 					class:hidden={cState.current}
-					role="application"
-					aria-label="VM serial terminal"
-					tabindex="-1"
 					style:background-color={theme.current.background}
-					style="outline: none;"
-					bind:this={terminalContainer}
-					onpointerdown={() => terminal?.focus()}
-				></div>
+				>
+					<Xterm
+						class="h-full w-full caret-transparent focus:outline-none"
+						style="outline: none;"
+						role="application"
+						aria-label="VM serial terminal"
+						tabindex={-1}
+						{options}
+						bind:terminal
+						{onLoad}
+						{onData}
+						onpointerdown={() => terminal?.focus()}
+					/>
+				</div>
 			</div>
 		{:else}
 			<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
@@ -700,7 +674,7 @@
 			/>
 		</div>
 
-		<div class="grid grid-cols-2">
+		<div class="color-pickers grid grid-cols-2">
 			<ColorPicker
 				bind:hex={bgThemeBindable}
 				{swatches}
@@ -716,3 +690,27 @@
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<style>
+	:global(.terminal-wrapper .xterm) {
+		height: 100%;
+		padding: 0;
+	}
+
+	:global(.terminal-wrapper .xterm-viewport) {
+		background-color: transparent !important;
+	}
+
+	:global(.color-pickers .alpha) {
+		display: none;
+	}
+
+	:global(.color-pickers .color) {
+		box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+	}
+
+	:global(.color-pickers .color:focus-visible),
+	:global(.color-pickers input:focus-visible ~ .color) {
+		outline-color: var(--ring);
+	}
+</style>
