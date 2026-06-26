@@ -89,6 +89,57 @@ func (s *Service) RemoveSSHKey(targetID uint) {
 	_ = os.Remove(keyPath)
 }
 
+func isManagedSSHKeyName(name string) bool {
+	return strings.HasPrefix(name, "target-") && strings.HasSuffix(name, "_id")
+}
+
+func pathWithinDir(path, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+func (s *Service) targetSSHKeyPath(target *clusterModels.BackupTarget) (string, error) {
+	if target == nil {
+		return "", fmt.Errorf("backup_target_required")
+	}
+
+	stored := strings.TrimSpace(target.SSHKeyPath)
+
+	if target.ID == 0 {
+		return stored, nil
+	}
+
+	sshDir, err := GetSSHKeyDir()
+	if err != nil {
+		return "", err
+	}
+	canonical := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", target.ID))
+
+	if stored == "" {
+		return canonical, nil
+	}
+
+	if isManagedSSHKeyName(filepath.Base(stored)) && pathWithinDir(stored, sshDir) {
+		return canonical, nil
+	}
+
+	return stored, nil
+}
+
+func (s *Service) resolvedSSHKeyPath(target *clusterModels.BackupTarget) string {
+	path, err := s.targetSSHKeyPath(target)
+	if err != nil {
+		return strings.TrimSpace(target.SSHKeyPath)
+	}
+	return path
+}
+
 func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.BackupTarget) error {
 	if target == nil {
 		return fmt.Errorf("backup_target_required")
@@ -101,26 +152,19 @@ func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.Bac
 		return nil
 	}
 
-	if target.SSHKeyPath == "" {
-		generatedPath, err := SaveSSHKey(target.ID, keyData)
-		if err != nil {
-			return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
-		}
-
-		target.SSHKeyPath = generatedPath
-		if s != nil && s.DB != nil && target.ID != 0 {
-			if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", generatedPath).Error; err != nil {
-				return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
-			}
-		}
-
+	keyPath, err := s.targetSSHKeyPath(target)
+	if err != nil {
+		return fmt.Errorf("resolve_target_ssh_key_path id=%d: %w", target.ID, err)
+	}
+	if keyPath == "" {
 		return nil
 	}
 
-	if err := ensureSSHKeyFileAtPath(target.SSHKeyPath, keyData); err != nil {
+	if err := ensureSSHKeyFileAtPath(keyPath, keyData); err != nil {
 		return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
 	}
 
+	target.SSHKeyPath = keyPath
 	return nil
 }
 
@@ -199,6 +243,10 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 	backupRoot := strings.TrimSpace(target.BackupRoot)
 	if backupRoot == "" {
 		return fmt.Errorf("backup_root_required")
+	}
+
+	if err := s.ensureBackupTargetSSHKeyMaterialized(target); err != nil {
+		return fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
 
 	if err := s.ensureSSHConnectivity(ctx, target); err != nil {
@@ -325,13 +373,15 @@ func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterMode
 	return nil
 }
 
-func sshControlPath(target *clusterModels.BackupTarget) string {
+func sshControlPath(target *clusterModels.BackupTarget, keyPath string) string {
 	h := fnv.New32a()
-	fmt.Fprintf(h, "%s:%d:%s", target.SSHHost, target.SSHPort, target.SSHKeyPath)
+	fmt.Fprintf(h, "%s:%d:%s", target.SSHHost, target.SSHPort, keyPath)
 	return filepath.Join(os.TempDir(), fmt.Sprintf("sylve-ssh-%x.sock", h.Sum32()))
 }
 
 func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
+	keyPath := s.resolvedSSHKeyPath(target)
+
 	args := []string{
 		"-n",
 		"-o", "BatchMode=yes",
@@ -340,7 +390,7 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 		"-o", "ConnectionAttempts=1",
 		"-o", "UpdateHostKeys=no",
 		"-o", "ControlMaster=auto",
-		"-o", fmt.Sprintf("ControlPath=%s", sshControlPath(target)),
+		"-o", fmt.Sprintf("ControlPath=%s", sshControlPath(target, keyPath)),
 		"-o", "ControlPersist=60",
 	}
 
@@ -348,8 +398,8 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 		args = append(args, "-p", fmt.Sprintf("%d", target.SSHPort))
 	}
 
-	if target.SSHKeyPath != "" {
-		args = append(args, "-i", target.SSHKeyPath)
+	if keyPath != "" {
+		args = append(args, "-i", keyPath)
 	}
 
 	return args

@@ -97,7 +97,7 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 		}
 	})
 
-	t.Run("missing key path materializes key and persists db path", func(t *testing.T) {
+	t.Run("missing key path derives canonical path without persisting", func(t *testing.T) {
 		resetZeltaTestGlobals(t)
 		SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
 		if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
@@ -143,8 +143,37 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 		if err := db.First(&persisted, 7).Error; err != nil {
 			t.Fatalf("failed to fetch persisted target: %v", err)
 		}
-		if persisted.SSHKeyPath != expectedPath {
-			t.Fatalf("expected persisted ssh_key_path %q, got %q", expectedPath, persisted.SSHKeyPath)
+		if strings.TrimSpace(persisted.SSHKeyPath) != "" {
+			t.Fatalf("expected ssh_key_path to remain unpersisted, got %q", persisted.SSHKeyPath)
+		}
+	})
+
+	t.Run("stale managed key path is ignored in favor of canonical", func(t *testing.T) {
+		resetZeltaTestGlobals(t)
+		SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+		if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+			t.Fatalf("failed to create ssh key dir: %v", err)
+		}
+
+		target := &clusterModels.BackupTarget{
+			ID:         12345,
+			SSHKeyPath: filepath.Join(SSHKeyDirectory, "target-999_id"),
+			SSHKey:     "  drifted-key  ",
+		}
+		s := &Service{}
+		if err := s.ensureBackupTargetSSHKeyMaterialized(target); err != nil {
+			t.Fatalf("ensureBackupTargetSSHKeyMaterialized failed: %v", err)
+		}
+
+		expectedPath := filepath.Join(SSHKeyDirectory, "target-12345_id")
+		if target.SSHKeyPath != expectedPath {
+			t.Fatalf("expected canonical key path %q, got %q", expectedPath, target.SSHKeyPath)
+		}
+		if _, err := os.Stat(expectedPath); err != nil {
+			t.Fatalf("expected canonical key file to exist: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(SSHKeyDirectory, "target-999_id")); !os.IsNotExist(err) {
+			t.Fatalf("expected stale key file not to be written, stat err=%v", err)
 		}
 	})
 
@@ -167,6 +196,67 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 		}
 		if string(content) != "explicit-key\n" {
 			t.Fatalf("expected explicit key content with newline, got %q", string(content))
+		}
+	})
+}
+
+func TestTargetSSHKeyPath(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("failed to create ssh key dir: %v", err)
+	}
+	s := &Service{}
+	canonical := filepath.Join(SSHKeyDirectory, "target-555_id")
+
+	t.Run("empty stored path derives canonical", func(t *testing.T) {
+		got, err := s.targetSSHKeyPath(&clusterModels.BackupTarget{ID: 555})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != canonical {
+			t.Fatalf("expected %q, got %q", canonical, got)
+		}
+	})
+
+	t.Run("stale managed in-dir path derives canonical", func(t *testing.T) {
+		got, err := s.targetSSHKeyPath(&clusterModels.BackupTarget{
+			ID:         555,
+			SSHKeyPath: filepath.Join(SSHKeyDirectory, "target-646079_id"),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != canonical {
+			t.Fatalf("expected canonical %q, got %q", canonical, got)
+		}
+	})
+
+	t.Run("external out-of-dir path honored", func(t *testing.T) {
+		external := filepath.Join(t.TempDir(), "id_ed25519")
+		got, err := s.targetSSHKeyPath(&clusterModels.BackupTarget{
+			ID:         555,
+			SSHKeyPath: external,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != external {
+			t.Fatalf("expected external %q, got %q", external, got)
+		}
+	})
+
+	t.Run("transient target honors stored path", func(t *testing.T) {
+		stored := filepath.Join(SSHKeyDirectory, "validate-abc.tmp")
+		got, err := s.targetSSHKeyPath(&clusterModels.BackupTarget{
+			ID:         0,
+			SSHKeyPath: stored,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != stored {
+			t.Fatalf("expected stored %q, got %q", stored, got)
 		}
 	})
 }
