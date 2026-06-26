@@ -530,7 +530,7 @@
 {#if confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch'}
 	<Dialog.Root bind:open={confirmModals[confirmModals.active].open}>
 		<Dialog.Content
-			class="w-[90%] gap-4 p-5 lg:max-w-2xl"
+			class="w-[90%] gap-4 p-5 lg:max-w-2xl overflow-hidden"
 			showCloseButton={true}
 			showResetButton={true}
 			onReset={() => resetModal(false)}
@@ -560,7 +560,7 @@
 				/>
 			{/if}
 
-			<div class="flex gap-4">
+			<div class="flex gap-4 min-w-0">
 				<CustomValueInput
 					label="MTU"
 					placeholder="1280"
@@ -578,7 +578,7 @@
 				/>
 			</div>
 
-			<div class="flex gap-4">
+			<div class="flex gap-4 min-w-0">
 				<CustomComboBox
 					bind:open={comboBoxes.ipv4.open}
 					label="IPv4 Network"
@@ -586,7 +586,7 @@
 					data={ipv4NetworkOptions}
 					classes="flex-1 space-y-1"
 					placeholder="Select object or type CIDR (192.168.1.1/24)"
-					width="w-3/4"
+					width="w-full"
 					disabled={confirmModals[confirmModals.active].dhcp ? true : false}
 					multiple={false}
 					allowCustom={true}
@@ -599,14 +599,14 @@
 					data={ipv4GatewayOptions}
 					classes="flex-1 space-y-1"
 					placeholder="Select object or type IP (192.168.1.254)"
-					width="w-3/4"
+					width="w-full"
 					disabled={confirmModals[confirmModals.active].dhcp ? true : false}
 					multiple={false}
 					allowCustom={true}
 				></CustomComboBox>
 			</div>
 
-			<div class="flex gap-4">
+			<div class="flex gap-4 min-w-0">
 				<CustomComboBox
 					bind:open={comboBoxes.ipv6.open}
 					label="IPv6 Network"
@@ -614,7 +614,7 @@
 					data={ipv6NetworkOptions}
 					classes="flex-1 space-y-1"
 					placeholder="Select object or type CIDR (2001:db8::1/64)"
-					width="w-3/4"
+					width="w-full"
 					disabled={confirmModals[confirmModals.active].disableIPv6 ||
 					confirmModals[confirmModals.active].slaac
 						? true
@@ -630,7 +630,7 @@
 					data={ipv6GatewayOptions}
 					classes="flex-1 space-y-1"
 					placeholder="Select object or type IP (2001:db8::1)"
-					width="w-3/4"
+					width="w-full"
 					disabled={confirmModals[confirmModals.active].disableIPv6 ||
 					confirmModals[confirmModals.active].slaac
 						? true
@@ -649,7 +649,7 @@
 					classes="flex-1 space-y-1"
 					placeholder="Select ports"
 					multiple={true}
-					width="w-3/4"
+					width="w-full"
 				></CustomComboBox>
 			{:else}
 				<CustomComboBox
@@ -660,7 +660,7 @@
 					classes="flex-1 space-y-1"
 					placeholder="Select ports"
 					multiple={true}
-					width="w-3/4"
+					width="w-full"
 				></CustomComboBox>
 			{/if}
 
