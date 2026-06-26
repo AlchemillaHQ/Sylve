@@ -4742,7 +4742,6 @@ msgstr "IPv4 brána"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
 msgstr "Vybrat IPv4 bránu"
 
@@ -4788,7 +4787,6 @@ msgstr "IPv6 brána"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
 msgstr "Vybrat IPv6 bránu"
 
@@ -7059,13 +7057,11 @@ msgstr "Upravit standardní přepínač – {0}"
 msgid "Create Standard Switch"
 msgstr "Vytvořit standardní přepínač"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Select IPv4 Network"
-msgstr "Vybrat IPv4 síť"
+#~ msgid "Select IPv4 Network"
+#~ msgstr "Vybrat IPv4 síť"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Select IPv6 Network"
-msgstr "Vyberte IPv6 síť"
+#~ msgid "Select IPv6 Network"
+#~ msgstr "Vyberte IPv6 síť"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
@@ -14663,4 +14659,36 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Routes/Form.svelte
 msgid "Optional — required for fe80:: link-local gateways"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv4 gateway address"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv6 gateway address"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type CIDR (192.168.1.1/24)"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type IP (192.168.1.254)"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type CIDR (2001:db8::1/64)"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type IP (2001:db8::1)"
 msgstr ""

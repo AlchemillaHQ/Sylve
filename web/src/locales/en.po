@@ -4742,7 +4742,6 @@ msgstr "IPv4 Gateway"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
 msgstr "Select IPv4 Gateway"
 
@@ -4788,7 +4787,6 @@ msgstr "IPv6 Gateway"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
 msgstr "Select IPv6 Gateway"
 
@@ -7057,13 +7055,11 @@ msgstr "Edit Standard Switch - {0}"
 msgid "Create Standard Switch"
 msgstr "Create Standard Switch"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Select IPv4 Network"
-msgstr "Select IPv4 Network"
+#~ msgid "Select IPv4 Network"
+#~ msgstr "Select IPv4 Network"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Select IPv6 Network"
-msgstr "Select IPv6 Network"
+#~ msgid "Select IPv6 Network"
+#~ msgstr "Select IPv6 Network"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
@@ -14665,3 +14661,35 @@ msgstr "Scope Interface"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 msgid "Optional — required for fe80:: link-local gateways"
 msgstr "Optional — required for fe80:: link-local gateways"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24"
+msgstr "Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv4 gateway address"
+msgstr "Invalid IPv4 gateway address"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64"
+msgstr "Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv6 gateway address"
+msgstr "Invalid IPv6 gateway address"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type CIDR (192.168.1.1/24)"
+msgstr "Select object or type CIDR (192.168.1.1/24)"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type IP (192.168.1.254)"
+msgstr "Select object or type IP (192.168.1.254)"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type CIDR (2001:db8::1/64)"
+msgstr "Select object or type CIDR (2001:db8::1/64)"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select object or type IP (2001:db8::1)"
+msgstr "Select object or type IP (2001:db8::1)"

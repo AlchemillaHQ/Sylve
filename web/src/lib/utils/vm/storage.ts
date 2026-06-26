@@ -99,6 +99,16 @@ export function generateTableData(
 
                 return formatBytesBinary(value);
             }
+        },
+        {
+            field: 'path',
+            title: 'Path',
+            copyOnClick: true,
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                if (!value) return '-';
+                return value;
+            }
         }
     ];
 
@@ -133,6 +143,25 @@ export function generateTableData(
             size = 0;
         }
 
+        let path = '';
+
+        if (storage.type === 'image') {
+            const download = downloads.find((d) => storage.uuid === d.uuid);
+            path = download?.extractedPath || download?.path || '';
+        } else if (storage.type === 'raw') {
+            const datasetName =
+                storage.dataset?.name ||
+                `${storage.pool}/sylve/virtual-machines/${vm.rid}/raw-${storage.id}`;
+            path = `/${datasetName}/${storage.id}.img`;
+        } else if (storage.type === 'zvol') {
+            path =
+                storage.dataset?.name ||
+                `${storage.pool}/sylve/virtual-machines/${vm.rid}/zvol-${storage.id}`;
+        } else if (storage.type === 'filesystem') {
+            const dataset = datasets.find((d) => d.name === storage.dataset?.name);
+            path = dataset?.mountpoint || storage.dataset?.name || '';
+        }
+
         rows.push({
             id: storage.id,
             enabled: storage.enable,
@@ -140,7 +169,8 @@ export function generateTableData(
             emulation: storage.emulation,
             bootorder: storage.type === 'filesystem' ? undefined : (storage.bootOrder ?? 0),
             name: name,
-            size: size || storage.size
+            size: size || storage.size,
+            path: path || '-'
         });
     }
 
