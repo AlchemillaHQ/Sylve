@@ -8,6 +8,7 @@
 	import { actionVm, deleteVM, getSimpleVMById, getVMDomain } from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { storage } from '$lib';
 	import { reload, vmPowerSignal } from '$lib/stores/api.svelte';
 	import { sleep } from '$lib/utils';
@@ -396,8 +397,7 @@
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-								<span>Start</span>
+								<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-1" title="Start" />
 							</Button>
 
 							<Button
@@ -405,8 +405,7 @@
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-								<span>Delete</span>
+								<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 							</Button>
 						{/if}
 
@@ -416,8 +415,7 @@
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
-								<span>Force Delete</span>
+								<SpanWithIcon icon="icon-[mdi--alert-octagon]" size="h-4 w-4" gap="gap-1" title="Force Delete" />
 							</Button>
 						{/if}
 
@@ -428,10 +426,7 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--alert] mr-1 h-4 w-4"></span>
-										<span>Force Stop</span>
-									</div>
+									<SpanWithIcon icon="icon-[mdi--alert]" size="h-4 w-4" gap="gap-1" title="Force Stop" />
 								</Button>
 							{/if}
 
@@ -441,10 +436,7 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
-										<span>Reboot</span>
-									</div>
+									<SpanWithIcon icon="icon-[mdi--restart]" size="h-4 w-4" gap="gap-1" title="Reboot" />
 								</Button>
 
 								<Button
@@ -452,10 +444,7 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
-										<span>Shutdown</span>
-									</div>
+									<SpanWithIcon icon="icon-[mdi--power]" size="h-4 w-4" gap="gap-1" title="Shutdown" />
 								</Button>
 
 								<Button
@@ -463,10 +452,7 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-										<span>Stop</span>
-									</div>
+									<SpanWithIcon icon="icon-[mdi--stop]" size="h-4 w-4" gap="gap-1" title="Stop" />
 								</Button>
 							{/if}
 						{/if}

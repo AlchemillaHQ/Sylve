@@ -595,8 +595,7 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-			<span>Start</span>
+			<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-1" title="Start" />
 		</Button>
 
 		<Button
@@ -604,8 +603,7 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-			<span>Delete</span>
+			<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 		</Button>
 	{:else if type === 'force-delete' && !shouldHideActionButtons && isDomainErrorState}
 		<Button
@@ -613,8 +611,7 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
-			<span>Force Delete</span>
+			<SpanWithIcon icon="icon-[mdi--alert-octagon]" size="h-4 w-4" gap="gap-1" title="Force Delete" />
 		</Button>
 	{:else if type === 'force-stop' && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
@@ -622,10 +619,7 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--alert] mr-1 h-4 w-4"></span>
-				<span>Force Stop</span>
-			</div>
+			<SpanWithIcon icon="icon-[mdi--alert]" size="h-4 w-4" gap="gap-1" title="Force Stop" />
 		</Button>
 	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions}
 		<Button
@@ -634,22 +628,16 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			{#if type === 'stop'}
-				<div class="flex items-center">
-					<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-					<span>Stop</span>
-				</div>
-			{:else if type === 'shutdown'}
-				<div class="flex items-center">
-					<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
-					<span>Shutdown</span>
-				</div>
-			{:else if type === 'reboot'}
-				<div class="flex items-center">
-					<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
-					<span>Reboot</span>
-				</div>
-			{/if}
+			<SpanWithIcon
+				icon={type === 'stop'
+					? 'icon-[mdi--stop]'
+					: type === 'shutdown'
+						? 'icon-[mdi--power]'
+						: 'icon-[mdi--restart]'}
+				size="h-4 w-4"
+				gap="gap-1"
+				title={type === 'stop' ? 'Stop' : type === 'shutdown' ? 'Shutdown' : 'Reboot'}
+			/>
 		</Button>
 	{:else if type === 'migrate'}
 		<Button
@@ -658,12 +646,14 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			{#if isMigrationActive}
-				<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin text-purple-500"></span>
-			{:else}
-				<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
-			{/if}
-			<span>Migrate</span>
+			<div class="flex items-center gap-1">
+				{#if isMigrationActive}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin text-purple-500"></span>
+				{:else}
+					<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
+				{/if}
+				<span>Migrate</span>
+			</div>
 		</Button>
 	{/if}
 {/snippet}
@@ -703,10 +693,12 @@
 						}}
 						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
 					>
-						<div class="flex items-center">
-							<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
-							<span>View Logs</span>
-						</div>
+						<SpanWithIcon
+							icon="icon-[mdi--file-document-outline]"
+							size="h-4 w-4"
+							gap="gap-1"
+							title="View Logs"
+						/>
 					</Button>
 				</div>
 			{/if}
