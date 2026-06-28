@@ -1,23 +1,20 @@
 ---
-// Import the global.css file here so that it is included on
-// all pages through the use of the <BaseHead /> component.
 import "@/styles/global.css";
-import { ClientRouter } from "astro:transitions";
 
 export interface Props {
   title: string;
   description: string;
   image?: string;
+  ogType?: string;
 }
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 
-const { title, description, image = "/og-default.png" } = Astro.props;
+const { title, description, image = "/og-default.png", ogType = "website" } = Astro.props;
 ---
 
-<ClientRouter />
 
-<!-- Global Metadata -->
+
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -27,16 +24,15 @@ const { title, description, image = "/og-default.png" } = Astro.props;
 <link rel="manifest" href="/site.webmanifest" />
 <meta name="generator" content={Astro.generator} />
 
-<!-- Canonical URL -->
 <link rel="canonical" href={canonicalURL} />
 
-<!-- Primary Meta Tags -->
 <title>{title}</title>
 <meta name="title" content={title} />
 <meta name="description" content={description} />
 
-<!-- Open Graph / Facebook -->
-<meta property="og:type" content="website" />
+<meta property="og:type" content={ogType} />
+<meta property="og:site_name" content="Sylve" />
+<meta property="og:locale" content="en_US" />
 <meta property="og:url" content={Astro.url} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
@@ -45,16 +41,10 @@ const { title, description, image = "/og-default.png" } = Astro.props;
 <meta property="og:image:height" content="630" />
 <meta property="og:image:type" content="image/png" />
 
-<!-- Twitter -->
-<meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:url" content={Astro.url} />
-<meta property="twitter:title" content={title} />
-<meta property="twitter:description" content={description} />
-<meta property="twitter:image" content={new URL(image, Astro.url)} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content={Astro.url} />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={new URL(image, Astro.url)} />
 
-<!-- Additional SEO Meta Tags -->
 <meta name="robots" content="index, follow" />
-<meta
-  name="keywords"
-  content="FreeBSD control panel, Bhyve management, FreeBSD Jails, ZFS management, FreeBSD virtualization, FreeBSD web interface, FreeBSD server management, Proxmox FreeBSD, FreeBSD GUI, Bhyve VMs, FreeBSD networking, FreeBSD firewall, ZFS pools, FreeBSD storage, FreeBSD PAM, smartmontools FreeBSD"
-/>

@@ -1,13 +1,24 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
+import BlogStructuredData from "@/components/BlogStructuredData.astro";
 import "@/assets/landing.css";
 const { frontmatter } = Astro.props;
+const slug = Astro.url.pathname.replace(/^\/blog\//, "").replace(/\/$/, "");
 ---
 
 <BaseLayout
   title={`${frontmatter.title} - Sylve Blog`}
   description={frontmatter.description}
+  ogType="article"
 >
+  <BlogStructuredData
+    title={frontmatter.title}
+    description={frontmatter.description}
+    author={frontmatter.author}
+    pubDate={new Date(frontmatter.pubDate)}
+    slug={slug}
+    image={frontmatter.image}
+  />
   <div class="pt-32 px-8 max-w-3xl mx-auto mb-24">
     <a href="/blog" class="text-primary hover:underline mb-8 inline-block"
       >← Back to Blog</a

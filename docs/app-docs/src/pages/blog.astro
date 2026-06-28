@@ -9,7 +9,7 @@ const sortedPosts = posts.sort(
 );
 ---
 
-<BaseLayout title="Blog - FreeBSD Bhyve, Jails & ZFS Guides | Sylve">
+<BaseLayout title="Blog - FreeBSD Bhyve, Jails & ZFS Guides | Sylve" description="Field notes from building on FreeBSD: sharp guides, practical walkthroughs, and real-world lessons for Bhyve, Jails, and ZFS.">
   <div class="min-h-screen pt-32 px-8 max-w-4xl mx-auto mb-24">
     <h1 class="text-4xl font-bold mb-4" data-i18n="sylveBlog">Sylve Blog</h1>
     <p class="mb-8 text-muted-foreground" data-i18n="blogIntro">
@@ -18,7 +18,7 @@ const sortedPosts = posts.sort(
     </p>
     {
       sortedPosts.length === 0 ? (
-        <div class="border bg-muted/20 border-muted/20 rounded-lg p-8 text-center">
+        <div class="border border-border bg-card rounded-lg p-8 text-center">
           <p class="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-3">
             Fresh Ink Pending
           </p>
@@ -34,7 +34,7 @@ const sortedPosts = posts.sort(
             sortedPosts.map((post) => (
               <a
                 href={`/blog/${post.id}`}
-                class="group h-full border bg-muted/20 border-muted/20 rounded-lg"
+                class="group h-full border border-border bg-card rounded-lg"
               >
                 <article class="bg-background-lighter w-full h-full rounded-lg shadow-md overflow-hidden transition-all duration-300 transform hover:scale-105 flex flex-col">
                   <div class="p-6 grow flex flex-col">

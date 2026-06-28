@@ -62,16 +62,3 @@
 @view-transition {
   navigation: auto;
 }
-
-::view-transition-old(root) {
-  animation: none;
-}
-
-::view-transition-new(root) {
-  animation: 200ms ease-out both vt-fade-in;
-  mix-blend-mode: normal;
-}
-
-@keyframes vt-fade-in {
-  from { opacity: 0; }
-}

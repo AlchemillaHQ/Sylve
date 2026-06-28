@@ -5,6 +5,14 @@ import { ClientRouter } from "astro:transitions";
 const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 ---
 
+<script is:inline>
+  (() => {
+    const stored = localStorage.getItem("starlight-theme") || localStorage.getItem("sylve_theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const theme = stored === "light" ? "light" : stored === "dark" ? "dark" : prefersDark ? "dark" : "light";
+    document.documentElement.style.setProperty("background-color", theme === "dark" ? "#0f0f0f" : "#fff");
+  })();
+</script>
 <ClientRouter />
 <DefaultHead />
 

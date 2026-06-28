@@ -2,13 +2,14 @@
 import BaseHead from "@/components/BaseHead.astro";
 import Footer from "@/components/Footer.astro";
 import Header from "@/components/sections/Header.astro";
+import StructuredData from "@/components/StructuredData.astro";
 import "@/assets/landing.css";
 
 const SITE_TITLE = "Sylve - Management Plane for FreeBSD";
 const SITE_DESCRIPTION =
   "Modern web interface for FreeBSD. Unified management of Bhyve VMs, Jails, ZFS storage, networking, and system monitoring.";
 
-const { title, description } = Astro.props;
+const { title, description, ogType = "website" } = Astro.props;
 ---
 
 <!doctype html>
@@ -29,14 +30,21 @@ const { title, description } = Astro.props;
               ? "dark"
               : "light";
 
+        root.style.setProperty(
+          "background-color",
+          theme === "dark" ? "#0f0f0f" : "#fff",
+        );
         root.classList.toggle("dark", theme === "dark");
+        root.dataset.theme = theme;
         root.dataset.websiteTheme = theme;
       })();
     </script>
     <BaseHead
       title={title ?? SITE_TITLE}
       description={description ?? SITE_DESCRIPTION}
+      ogType={ogType}
     />
+    <StructuredData />
   </head>
   <body>
     <script is:inline>
@@ -44,12 +52,26 @@ const { title, description } = Astro.props;
         const storageKey = "sylve_theme";
         const root = document.documentElement;
 
-        const getTheme = () =>
-          root.classList.contains("dark") ? "dark" : "light";
-        const setTheme = (theme) => {
+        const applyTheme = (theme) => {
+          root.style.setProperty(
+            "background-color",
+            theme === "dark" ? "#0f0f0f" : "#fff",
+          );
           root.classList.toggle("dark", theme === "dark");
+          root.dataset.theme = theme;
           root.dataset.websiteTheme = theme;
           window.localStorage.setItem(storageKey, theme);
+          window.localStorage.setItem("starlight-theme", theme);
+        };
+
+        const getTheme = () =>
+          root.classList.contains("dark") ? "dark" : "light";
+
+        const syncFromStorage = () => {
+          const stored = window.localStorage.getItem(storageKey);
+          if (stored === "light" || stored === "dark") {
+            applyTheme(stored);
+          }
         };
 
         document.addEventListener("click", (event) => {
@@ -63,18 +85,39 @@ const { title, description } = Astro.props;
             return;
           }
 
-          const nextTheme = getTheme() === "dark" ? "light" : "dark";
-          setTheme(nextTheme);
+          applyTheme(getTheme() === "dark" ? "light" : "dark");
         });
+
+        document.addEventListener("astro:page-load", syncFromStorage);
+
+        const observer = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            if (m.type === "attributes" && m.attributeName === "data-theme") {
+              const starlightTheme = root.dataset.theme;
+              const isDark = root.classList.contains("dark");
+              if (starlightTheme === "dark" && !isDark) {
+                root.classList.add("dark");
+                root.dataset.websiteTheme = "dark";
+                window.localStorage.setItem(storageKey, "dark");
+              } else if (starlightTheme === "light" && isDark) {
+                root.classList.remove("dark");
+                root.dataset.websiteTheme = "light";
+                window.localStorage.setItem(storageKey, "light");
+              }
+              break;
+            }
+          }
+        });
+        observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
 
         document.documentElement.lang = "en";
       })();
     </script>
     <div class="min-h-screen overflow-x-clip bg-background text-foreground">
       <Header title="Sylve" />
-      <div>
+      <main>
         <slot />
-      </div>
+      </main>
       <Footer />
     </div>
   </body>
