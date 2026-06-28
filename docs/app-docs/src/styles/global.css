@@ -63,25 +63,15 @@
   navigation: auto;
 }
 
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-
 ::view-transition-old(root) {
-  animation: 250ms ease-out both vt-fade-out;
+  animation: none;
 }
 
 ::view-transition-new(root) {
-  animation: 250ms ease-in-out both vt-fade-in;
-}
-
-@keyframes vt-fade-out {
-  to { opacity: 0; }
+  animation: 200ms ease-out both vt-fade-in;
+  mix-blend-mode: normal;
 }
 
 @keyframes vt-fade-in {
   from { opacity: 0; }
-  to   { opacity: 1; }
 }
