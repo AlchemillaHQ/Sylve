@@ -16,6 +16,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
 func TestParseRestoreSnapshotInput(t *testing.T) {
@@ -58,7 +59,7 @@ func TestParseRestoreSnapshotInput(t *testing.T) {
 
 func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 	job := &clusterModels.BackupJob{
-		Mode: clusterModels.BackupJobModeJail,
+		Mode:            clusterModels.BackupJobModeJail,
 		JailRootDataset: "zroot/jails/42",
 	}
 	snapshots := []SnapshotInfo{
@@ -79,7 +80,7 @@ func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 	}
 
 	jobVM := &clusterModels.BackupJob{
-		Mode: clusterModels.BackupJobModeVM,
+		Mode:          clusterModels.BackupJobModeVM,
 		SourceDataset: "zroot/virtual-machines/7",
 	}
 	vmSnapshots := []SnapshotInfo{
@@ -98,7 +99,7 @@ func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 	}
 
 	datasetJob := &clusterModels.BackupJob{
-		Mode: clusterModels.BackupJobModeDataset,
+		Mode:          clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data",
 	}
 	dsResult := filterSnapshotsForRestoreJob(datasetJob, "", snapshots)
@@ -108,17 +109,17 @@ func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 }
 
 func TestListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping ZFS restore integration in short mode")
 	}
 
-	poolName, gzfsClient, zfsCleanup := zfsTestSetup(t)
+	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 	_ = gzfsClient
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/source/data")
-	ensureZFSDataset(t, gzfsClient, poolName+"/target")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
@@ -130,11 +131,11 @@ func TestListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
-		GZFS:             gzfsClient,
+		GZFS:              gzfsClient,
 	}
 
 	target := clusterModels.BackupTarget{
@@ -148,7 +149,7 @@ func TestListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	job := clusterModels.BackupJob{
 		ID: 1, Name: "restore-snap-list", Mode: "dataset", TargetID: 1,
 		SourceDataset: poolName + "/source/data",
-		CronExpr: "0 0 * * *", Enabled: true,
+		CronExpr:      "0 0 * * *", Enabled: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)
@@ -220,18 +221,18 @@ func TestListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 }
 
 func TestRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping ZFS restore integration in short mode")
 	}
 
-	poolName, gzfsClient, zfsCleanup := zfsTestSetup(t)
+	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 	_ = gzfsClient
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/source/data")
-	ensureZFSDataset(t, gzfsClient, poolName+"/target")
-	ensureZFSDataset(t, gzfsClient, poolName+"/restore")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/restore")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
@@ -244,11 +245,11 @@ func TestRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
-		GZFS:             gzfsClient,
+		GZFS:              gzfsClient,
 	}
 
 	target := clusterModels.BackupTarget{
@@ -262,7 +263,7 @@ func TestRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 	job := clusterModels.BackupJob{
 		ID: 2, Name: "restore-dataset", Mode: "dataset", TargetID: 2,
 		SourceDataset: poolName + "/restore",
-		CronExpr: "0 0 * * *", Enabled: true,
+		CronExpr:      "0 0 * * *", Enabled: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)

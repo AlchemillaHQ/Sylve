@@ -10,107 +10,18 @@ package zelta
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
-func zfsSkipIfNotAvailable(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SYLVE_SKIP_ZFS_TESTS") == "1" {
-		t.Skip("SYLVE_SKIP_ZFS_TESTS=1")
-	}
-	if _, err := exec.LookPath("zpool"); err != nil {
-		t.Skip("zpool binary not found")
-	}
-	if _, err := exec.LookPath("zfs"); err != nil {
-		t.Skip("zfs binary not found")
-	}
-	// Must run as root to create zpools
-	if os.Geteuid() != 0 {
-		t.Skip("must be root to create ZFS pools")
-	}
-}
-
-// zfsTestSetup creates a file-backed ZFS pool in a temp directory, returning the
-// pool name and a cleanup function. The pool is completely isolated from the
-// system's zroot pool.
-func zfsTestSetup(t *testing.T) (poolName string, client *gzfs.Client, cleanup func()) {
-	t.Helper()
-	zfsSkipIfNotAvailable(t)
-
-	dir := t.TempDir()
-	vdevPath := filepath.Join(dir, "vdev.img")
-	poolName = fmt.Sprintf("sylve-test-%d", time.Now().UnixNano())
-
-	// create a sparse file for the vdev
-	f, err := os.CreateTemp("", "sylve-zfs-vdev-*")
-	if err != nil {
-		t.Fatalf("create vdev file: %v", err)
-	}
-	vdevPath = f.Name()
-	if err := f.Truncate(200 * 1024 * 1024); err != nil { // 200MB
-		f.Close()
-		t.Fatalf("truncate vdev: %v", err)
-	}
-	f.Close()
-
-	// create the pool
-	cmd := exec.Command("zpool", "create", "-m", dir, poolName, vdevPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		os.Remove(vdevPath)
-		t.Fatalf("zpool create %s: %v\noutput: %s", poolName, err, string(out))
-	}
-
-	client = gzfs.NewClient(gzfs.Options{})
-
-	cleanup = func() {
-		ctx := context.Background()
-		// try to export the pool gracefully
-		export := exec.CommandContext(ctx, "zpool", "export", poolName)
-		export.CombinedOutput()
-		// if export fails, try destroy
-		destroy := exec.CommandContext(ctx, "zpool", "destroy", "-f", poolName)
-		destroy.CombinedOutput()
-		os.Remove(vdevPath)
-	}
-
-	return poolName, client, cleanup
-}
-
-func ensureZFSDataset(t *testing.T, client *gzfs.Client, name string) {
-	t.Helper()
-	ctx := context.Background()
-	// create parent datasets if needed
-	parts := strings.Split(name, "/")
-	for i := 1; i < len(parts); i++ {
-		parent := strings.Join(parts[:i+1], "/")
-		_, err := client.ZFS.CreateFilesystem(ctx, parent, nil)
-		if err != nil {
-			errStr := err.Error()
-			if !strings.Contains(errStr, "already exists") && !strings.Contains(errStr, "dataset already exists") {
-				// only create intermediate dirs, fail on the final one
-				if i == len(parts)-1 {
-					t.Fatalf("CreateFilesystem(%q): %v", parent, err)
-				}
-			}
-		}
-	}
-}
-
 func TestZFSGetLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ds := pool + "/get-test"
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, ds)
+	zfstest.EnsureDataset(t, client, ds)
 	s := &Service{GZFS: client}
 
 	result, err := s.getLocalDataset(ctx, ds)
@@ -131,12 +42,12 @@ func TestZFSGetLocalDataset(t *testing.T) {
 }
 
 func TestZFSLocalDatasetExists(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ds := pool + "/exists-test"
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, ds)
+	zfstest.EnsureDataset(t, client, ds)
 	s := &Service{GZFS: client}
 
 	exists, err := s.localDatasetExists(ctx, ds)
@@ -157,12 +68,12 @@ func TestZFSLocalDatasetExists(t *testing.T) {
 }
 
 func TestZFSDestroyLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ds := pool + "/destroy-test"
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, ds)
+	zfstest.EnsureDataset(t, client, ds)
 	s := &Service{GZFS: client}
 
 	exists, _ := s.localDatasetExists(ctx, ds)
@@ -181,13 +92,13 @@ func TestZFSDestroyLocalDataset(t *testing.T) {
 }
 
 func TestZFSRenameLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	src := pool + "/rename-src"
 	dst := pool + "/rename-dst"
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, src)
+	zfstest.EnsureDataset(t, client, src)
 	s := &Service{GZFS: client}
 
 	if err := s.renameLocalDataset(ctx, src, dst); err != nil {
@@ -205,12 +116,12 @@ func TestZFSRenameLocalDataset(t *testing.T) {
 }
 
 func TestZFSMountUnmountLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ds := pool + "/mount-test"
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, ds)
+	zfstest.EnsureDataset(t, client, ds)
 	s := &Service{GZFS: client}
 
 	if err := s.unmountLocalDataset(ctx, ds); err != nil {
@@ -223,7 +134,7 @@ func TestZFSMountUnmountLocalDataset(t *testing.T) {
 }
 
 func TestZFSEnsureLocalPoolExists(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	s := &Service{GZFS: client}
 
@@ -236,12 +147,12 @@ func TestZFSEnsureLocalPoolExists(t *testing.T) {
 }
 
 func TestZFSListLocalDatasets(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, pool+"/list1")
-	ensureZFSDataset(t, client, pool+"/list2")
+	zfstest.EnsureDataset(t, client, pool+"/list1")
+	zfstest.EnsureDataset(t, client, pool+"/list2")
 	s := &Service{GZFS: client}
 
 	filesystems, err := s.listLocalFilesystemDatasets(ctx)

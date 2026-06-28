@@ -83,7 +83,7 @@ type Service struct {
 	runningReplication map[uint]struct{}
 	transitionMu       sync.Mutex
 	runningTransitions map[uint]struct{}
-	poolDownMisses       map[string]int
+	poolDownMisses     map[string]int
 
 	workloadOpMu      sync.Mutex
 	runningWorkloadOp map[string]string
@@ -912,12 +912,33 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 	}
 
+	if strings.TrimSpace(job.Target.SSHHost) != "" {
+		for _, sc := range s.backupRunScopes(job, sourceDataset, destSuffix, vmSourceDatasets) {
+			activeDataset := remoteActiveDatasetForSuffix(job.Target.BackupRoot, sc.destSuffix)
+			if activeDataset == "" {
+				continue
+			}
+			removed, neErr := s.neutralizeForeignTargetSnapshots(ctx, &job.Target, sc.sourceDataset, activeDataset, backupSnapPrefix)
+			if neErr != nil {
+				output = appendOutput(output, fmt.Sprintf("pre_backup_neutralize_failed: %s: %v", activeDataset, neErr))
+				logger.L.Warn().Err(neErr).Uint("job_id", job.ID).Str("target", activeDataset).Msg("backup_pre_neutralize_foreign_snapshots_failed")
+				continue
+			}
+			if len(removed) > 0 {
+				output = appendOutput(output, fmt.Sprintf("pre_backup_removed_foreign_target_snapshots: %d (%s): %s", len(removed), activeDataset, strings.Join(removed, ", ")))
+				logger.L.Info().Uint("job_id", job.ID).Str("target", activeDataset).Strs("snapshots", removed).Msg("backup_pre_neutralize_foreign_snapshots")
+			}
+		}
+	}
+
 	if job.Mode == clusterModels.BackupJobModeVM {
 		runErr = runVMBackupPass()
 	} else {
-		output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
+		var attemptOutput string
+		attemptOutput, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
+		output = appendOutput(output, attemptOutput)
 		if runErr == nil {
-			outcome := classifyBackupOutput(output)
+			outcome := classifyBackupOutput(attemptOutput)
 			if code := outcome.errorCode(); code != "" {
 				runErr = errors.New(code)
 			} else if outcome == backupOutputUpToDate {
@@ -988,54 +1009,112 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			}
 		}
 
-		logger.L.Info().
-			Uint("job_id", job.ID).
-			Str("source", reseedSource).
-			Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
-			Str("reason", runErr.Error()).
-			Msg("backup_auto_reseed_starting")
+		recovered := false
+		recoveryActive := remoteActiveDatasetForSuffix(job.Target.BackupRoot, reseedDestSuffix)
+		if recoveryActive != "" {
+			localSnaps, localErr := s.listLocalSnapshotsForDataset(ctx, reseedSource)
+			remoteSnaps, remoteErr := s.listRemoteSnapshotsForDataset(ctx, &job.Target, recoveryActive)
+			if localErr != nil {
+				logger.L.Warn().Err(localErr).Uint("job_id", job.ID).Str("source", reseedSource).Msg("backup_recovery_local_snapshot_list_failed")
+			}
+			if remoteErr != nil {
+				logger.L.Warn().Err(remoteErr).Uint("job_id", job.ID).Str("target", recoveryActive).Msg("backup_recovery_remote_snapshot_list_failed")
+			}
+			if localErr == nil && remoteErr == nil {
+				if _, ok := latestCommonBackupSnapshot(localSnaps, remoteSnaps, backupSnapPrefix); ok {
+					if removed, neErr := s.neutralizeForeignTargetSnapshots(ctx, &job.Target, reseedSource, recoveryActive, backupSnapPrefix); neErr != nil {
+						logger.L.Warn().Err(neErr).Uint("job_id", job.ID).Str("target", recoveryActive).Msg("backup_foreign_snapshot_cleanup_failed")
+					} else if len(removed) > 0 {
+						output = appendOutput(output, fmt.Sprintf("removed_foreign_target_snapshots: %d (%s): %s", len(removed), recoveryActive, strings.Join(removed, ", ")))
+						logger.L.Info().Uint("job_id", job.ID).Str("target", recoveryActive).Strs("snapshots", removed).Msg("backup_foreign_snapshots_removed")
+					}
 
-		fromDataset, archivedDataset, archiveErr := s.archiveActiveTargetDatasetForReseed(ctx, &job.Target, reseedDestSuffix)
-		if archiveErr != nil {
-			runErr = fmt.Errorf("backup_auto_reseed_failed: %w", archiveErr)
-		} else {
+					logger.L.Info().
+						Uint("job_id", job.ID).
+						Str("source", reseedSource).
+						Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
+						Str("reason", runErr.Error()).
+						Msg("backup_diverged_recovery_starting")
+
+					var recoverErr error
+					if job.Mode == clusterModels.BackupJobModeVM {
+						recoverErr = runVMBackupPass()
+					} else {
+						recoverOutput, rErr := s.backupWithEventProgress(ctx, &job.Target, reseedSource, reseedDestSuffix, event.ID, backupSnapPrefix)
+						output = appendOutput(output, recoverOutput)
+						recoverErr = rErr
+						if recoverErr == nil {
+							if code := classifyBackupOutput(recoverOutput).errorCode(); code != "" {
+								recoverErr = errors.New(code)
+							}
+						}
+					}
+
+					if recoverErr == nil {
+						runErr = nil
+						recovered = true
+						logger.L.Info().
+							Uint("job_id", job.ID).
+							Str("source", reseedSource).
+							Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
+							Msg("backup_recovered_without_reseed")
+					} else {
+						logger.L.Warn().Err(recoverErr).Uint("job_id", job.ID).Str("source", reseedSource).Msg("backup_diverged_recovery_failed_falling_back_to_reseed")
+					}
+				}
+			}
+		}
+
+		if !recovered {
 			logger.L.Info().
 				Uint("job_id", job.ID).
 				Str("source", reseedSource).
 				Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
-				Str("archived_from", fromDataset).
-				Str("archived_to", archivedDataset).
-				Msg("backup_auto_reseed_archive_completed")
-			if strings.TrimSpace(archivedDataset) != "" {
-				output = appendOutput(output, fmt.Sprintf("auto_archived_target_dataset: %s -> %s", fromDataset, archivedDataset))
-			}
+				Str("reason", runErr.Error()).
+				Msg("backup_auto_reseed_starting")
 
-			if job.Mode == clusterModels.BackupJobModeVM {
-				runErr = runVMBackupPass()
+			fromDataset, archivedDataset, archiveErr := s.archiveActiveTargetDatasetForReseed(ctx, &job.Target, reseedDestSuffix)
+			if archiveErr != nil {
+				runErr = fmt.Errorf("backup_auto_reseed_failed: %w", archiveErr)
 			} else {
-				retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
-				output = appendOutput(output, retryOutput)
-				runErr = retryErr
-				if runErr == nil {
-					retryOutcome := classifyBackupOutput(retryOutput)
-					if code := retryOutcome.errorCode(); code != "" {
-						runErr = errors.New(code)
-					} else if retryOutcome == backupOutputUpToDate {
-						logger.L.Info().
-							Uint("job_id", job.ID).
-							Str("source", sourceDataset).
-							Str("target", event.TargetEndpoint).
-							Msg("backup_up_to_date_noop_after_reseed")
-					}
-				}
-			}
-
-			if runErr == nil {
 				logger.L.Info().
 					Uint("job_id", job.ID).
 					Str("source", reseedSource).
 					Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
-					Msg("backup_completed_after_reseed")
+					Str("archived_from", fromDataset).
+					Str("archived_to", archivedDataset).
+					Msg("backup_auto_reseed_archive_completed")
+				if strings.TrimSpace(archivedDataset) != "" {
+					output = appendOutput(output, fmt.Sprintf("auto_archived_target_dataset: %s -> %s", fromDataset, archivedDataset))
+				}
+
+				if job.Mode == clusterModels.BackupJobModeVM {
+					runErr = runVMBackupPass()
+				} else {
+					retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
+					output = appendOutput(output, retryOutput)
+					runErr = retryErr
+					if runErr == nil {
+						retryOutcome := classifyBackupOutput(retryOutput)
+						if code := retryOutcome.errorCode(); code != "" {
+							runErr = errors.New(code)
+						} else if retryOutcome == backupOutputUpToDate {
+							logger.L.Info().
+								Uint("job_id", job.ID).
+								Str("source", sourceDataset).
+								Str("target", event.TargetEndpoint).
+								Msg("backup_up_to_date_noop_after_reseed")
+						}
+					}
+				}
+
+				if runErr == nil {
+					logger.L.Info().
+						Uint("job_id", job.ID).
+						Str("source", reseedSource).
+						Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
+						Msg("backup_completed_after_reseed")
+				}
 			}
 		}
 	}
@@ -1047,28 +1126,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	if runErr == nil && job.PruneKeepLast > 0 {
-		type pruneScope struct {
-			sourceDataset string
-			destSuffix    string
-		}
-
-		pruneScopes := make([]pruneScope, 0, 1)
-		if job.Mode == clusterModels.BackupJobModeVM {
-			for _, vmSource := range vmSourceDatasets {
-				vmDestSuffix := s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), vmSource)
-				pruneScopes = append(pruneScopes, pruneScope{
-					sourceDataset: vmSource,
-					destSuffix:    vmDestSuffix,
-				})
-			}
-		} else {
-			pruneScopes = append(pruneScopes, pruneScope{
-				sourceDataset: sourceDataset,
-				destSuffix:    destSuffix,
-			})
-		}
-
-		for _, scope := range pruneScopes {
+		for _, scope := range s.backupRunScopes(job, sourceDataset, destSuffix, vmSourceDatasets) {
 			scopeSource := normalizeDatasetPath(scope.sourceDataset)
 			scopeDestSuffix := normalizeDatasetPath(scope.destSuffix)
 			if scopeSource == "" {
@@ -1081,15 +1139,17 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				logger.L.Warn().Err(localListErr).Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_local_snapshot_list_failed")
 			}
 
-			pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, scopeSource, scopeDestSuffix, 0)
+			_, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, scopeSource, scopeDestSuffix, 0)
 			output = appendOutput(output, pruneOutput)
-
 			if pruneErr != nil {
 				logger.L.Warn().Err(pruneErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("dest_suffix", scopeDestSuffix).Msg("backup_prune_scan_failed")
-			} else if localListErr == nil {
-				pruneCandidates = buildBKRetentionPruneCandidates(localSnapshots, job.PruneKeepLast, snapshotCandidateSet(pruneCandidates), backupSnapPrefix)
-			} else {
-				pruneCandidates = []string{}
+			}
+
+			var pruneCandidates []string
+			if localListErr == nil {
+				remoteActiveDataset := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scopeDestSuffix)
+				protect := s.localRetentionProtectSet(ctx, &job.Target, remoteActiveDataset, backupSnapPrefix, localSnapshots)
+				pruneCandidates = buildLocalRetentionPruneCandidates(localSnapshots, job.PruneKeepLast, protect, backupSnapPrefix)
 			}
 
 			if len(pruneCandidates) > 0 {
@@ -1154,6 +1214,21 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				} else {
 					logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
 				}
+			}
+		}
+	}
+
+	if runErr == nil && strings.TrimSpace(job.Target.SSHHost) != "" {
+		for _, scope := range s.backupRunScopes(job, sourceDataset, destSuffix, vmSourceDatasets) {
+			genActiveDataset := remoteActiveDatasetForSuffix(job.Target.BackupRoot, normalizeDatasetPath(scope.destSuffix))
+			if genActiveDataset == "" {
+				continue
+			}
+			if destroyed, genErr := s.trimTargetBackupGenerations(ctx, &job.Target, genActiveDataset, backupGenerationsToKeep); genErr != nil {
+				logger.L.Warn().Err(genErr).Uint("job_id", job.ID).Str("active", genActiveDataset).Msg("backup_generation_gc_failed")
+			} else if destroyed > 0 {
+				output = appendOutput(output, fmt.Sprintf("trimmed_backup_generations: %d (%s)", destroyed, genActiveDataset))
+				logger.L.Info().Uint("job_id", job.ID).Str("active", genActiveDataset).Int("destroyed", destroyed).Int("kept", backupGenerationsToKeep).Msg("backup_generations_trimmed")
 			}
 		}
 	}
@@ -1619,7 +1694,7 @@ func (s *Service) listLocalSnapshotsForDataset(ctx context.Context, dataset stri
 		"-t", "snapshot",
 		"-r",
 		"-Hp",
-		"-o", "name,creation,used,refer",
+		"-o", "name,creation,used,refer,guid",
 		"-s", "creation",
 		dataset,
 	)

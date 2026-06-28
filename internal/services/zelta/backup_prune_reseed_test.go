@@ -18,6 +18,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
 func createZFSSnapshot(t *testing.T, dataset, snap string) {
@@ -44,17 +45,17 @@ func zfsDatasetExists(t *testing.T, name string) bool {
 }
 
 func TestRunBackupJobPruneAfterBackup(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping prune integration test in short mode")
 	}
 
-	poolName, gzfsClient, zfsCleanup := zfsTestSetup(t)
+	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 	_ = gzfsClient
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/source/backup")
-	ensureZFSDataset(t, gzfsClient, poolName+"/target")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
@@ -66,11 +67,11 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
-		GZFS:             gzfsClient,
+		GZFS:              gzfsClient,
 	}
 
 	target := clusterModels.BackupTarget{
@@ -84,7 +85,7 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 	job := clusterModels.BackupJob{
 		ID: 2, Name: "prune-test", Mode: "dataset", TargetID: 2,
 		SourceDataset: poolName + "/source/backup",
-		CronExpr: "0 0 * * *", Enabled: true,
+		CronExpr:      "0 0 * * *", Enabled: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)
@@ -112,6 +113,9 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 		}
 	}
 	t.Logf("before prune: %d bk snapshots (from %d runs)", bkBefores, 4)
+	if bkBefores <= 2 {
+		t.Skipf("expected > 2 bk snapshots from seeding runs (got %d); backup env (root@localhost ssh) likely not set up", bkBefores)
+	}
 
 	job.PruneKeepLast = 2
 	svc.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", 2).Update("prune_keep_last", 2)
@@ -123,9 +127,8 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 	var loadedFinal clusterModels.BackupJob
 	db.Preload("Target").First(&loadedFinal, 2)
 
-	err := svc.runBackupJob(ctx, &loadedFinal)
-	if err != nil {
-		t.Logf("final backup (triggering prune) failed: %v", err)
+	if err := svc.runBackupJob(ctx, &loadedFinal); err != nil {
+		t.Fatalf("final backup (triggering prune) failed: %v", err)
 	}
 
 	afterSnapshots := listZFSSnapshots(t, poolName+"/source/backup")
@@ -136,24 +139,24 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 			t.Logf("  remaining bk snap: %s", s)
 		}
 	}
-	t.Logf("after prune: %d bk snapshots (expected <= 2 old + 1 new from this run)", bkAfter)
-	if bkAfter > 3 {
-		t.Logf("prune may not have removed snapshots (all exist on target)")
+	t.Logf("after prune: %d bk snapshots (keep_last=2)", bkAfter)
+	if bkAfter != 2 {
+		t.Fatalf("expected exactly 2 bk snapshots after Keep-2 prune (Fix B), got %d", bkAfter)
 	}
 }
 
 func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping auto-reseed integration test in short mode")
 	}
 
-	poolName, gzfsClient, zfsCleanup := zfsTestSetup(t)
+	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 	_ = gzfsClient
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/source/reseed")
-	ensureZFSDataset(t, gzfsClient, poolName+"/target")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/reseed")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
@@ -165,11 +168,11 @@ func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
-		GZFS:             gzfsClient,
+		GZFS:              gzfsClient,
 	}
 
 	target := clusterModels.BackupTarget{
@@ -183,6 +186,7 @@ func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 	job := clusterModels.BackupJob{
 		ID: 3, Name: "reseed-test", Mode: "dataset", TargetID: 3,
 		SourceDataset: poolName + "/source/reseed",
+		PruneKeepLast: 7, PruneTarget: true,
 		CronExpr: "0 0 * * *", Enabled: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
@@ -191,14 +195,9 @@ func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 3)
-
-	err := svc.runBackupJob(ctx, &loaded)
-	if err != nil {
-		t.Logf("first backup failed: %v", err)
-		t.Logf("Cannot continue auto-reseed test without successful first backup")
-		return
+	if err := svc.runBackupJob(ctx, &loaded); err != nil {
+		t.Skipf("first backup failed (localhost ssh/zelta env not set up): %v", err)
 	}
-	t.Log("first backup succeeded")
 
 	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/reseed")
 	targetDS := poolName + "/target/" + destSuffix
@@ -206,40 +205,46 @@ func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 		t.Fatalf("target dataset %s does not exist after first backup", targetDS)
 	}
 
-	divergenceSnapshot := "diverged_local_change_" + time.Now().Format("150405")
-	createZFSSnapshot(t, targetDS, divergenceSnapshot)
-	t.Logf("created divergent snapshot on target: %s@%s", targetDS, divergenceSnapshot)
+	destroyedCommon := 0
+	for _, snap := range listZFSSnapshots(t, targetDS) {
+		if strings.Contains(snap, "@bk_j") {
+			destroyZFSSnapshot(t, snap)
+			destroyedCommon++
+		}
+	}
+	if destroyedCommon == 0 {
+		t.Fatalf("expected at least one bk_ snapshot on target after first backup")
+	}
 
+	svc.queuedJobs = make(map[uint]struct{})
+	svc.runningJobs = make(map[uint]struct{})
+	svc.runningWorkloadOp = make(map[string]string)
 	db.Model(&clusterModels.BackupJob{}).Where("id = ?", 3).Updates(map[string]interface{}{
-		"last_run_at": nil,
-		"last_status": "",
-		"last_error":  "",
+		"last_run_at": nil, "last_status": "", "last_error": "",
 	})
 	var loaded2 clusterModels.BackupJob
 	db.Preload("Target").First(&loaded2, 3)
-
-	err = svc.runBackupJob(ctx, &loaded2)
-	t.Logf("second backup (after divergence) result: %v", err)
-
-	var events []clusterModels.BackupEvent
-	db.Order("id desc").Find(&events)
-	if len(events) > 0 {
-		e := events[len(events)-1]
-		if strings.Contains(e.Output, "auto_archived_target_dataset") {
-			t.Logf("auto-reseed archive detected!")
-		}
-		if e.Status == "success" {
-			t.Logf("backup succeeded after reseed!")
-		}
-		t.Logf("event output tail: %s", lastLines(e.Output, 8))
+	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
+		t.Fatalf("reseed-fallback backup should ultimately succeed, got: %v\n--- last backup event output ---\n%s\n--- target snapshots ---\n%v",
+			err, dumpLatestBackupEvent(t, db), listZFSSnapshots(t, targetDS))
 	}
 
-	targetDSStillExists := zfsDatasetExists(t, targetDS)
-	t.Logf("target dataset %s still exists: %v", targetDS, targetDSStillExists)
+	gens := listActiveGenerations(t, targetDS)
+	if len(gens) != 1 {
+		t.Fatalf("expected exactly 1 generation archive from a single reseed, got %v", gens)
+	}
 
-	rotatedDS := targetDS + ".rotated-" + time.Now().UTC().Format("20060102")
-	rotatedExists := zfsDatasetExists(t, rotatedDS)
-	if rotatedExists {
-		t.Logf("rotated dataset %s exists (auto-archive worked)", rotatedDS)
+	if !zfsDatasetExists(t, targetDS) {
+		t.Fatalf("target dataset %s should exist after reseed", targetDS)
+	}
+	freshBk := false
+	for _, snap := range listZFSSnapshots(t, targetDS) {
+		if strings.Contains(snap, "@bk_j") {
+			freshBk = true
+			break
+		}
+	}
+	if !freshBk {
+		t.Fatalf("target %s should have a fresh bk_ snapshot after reseed", targetDS)
 	}
 }

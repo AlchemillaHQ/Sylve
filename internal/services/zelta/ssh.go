@@ -386,6 +386,7 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 		"-n",
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=3",
 		"-o", "ConnectionAttempts=1",
 		"-o", "UpdateHostKeys=no",

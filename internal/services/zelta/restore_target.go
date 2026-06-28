@@ -1163,10 +1163,21 @@ func (s *Service) restoreChildDatasetsFromTarget(ctx context.Context, target *cl
 }
 
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
+	return s.listRemoteSnapshots(ctx, target, remoteDataset, false)
+}
+
+func (s *Service) listRemoteSnapshotsForDatasetRecursive(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
+	return s.listRemoteSnapshots(ctx, target, remoteDataset, true)
+}
+
+func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string, recursive bool) ([]SnapshotInfo, error) {
 	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost,
-		"zfs", "list", "-t", "snapshot", "-Hp",
-		"-o", "name,creation,used,refer",
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-t", "snapshot", "-Hp")
+	if recursive {
+		sshArgs = append(sshArgs, "-r")
+	}
+	sshArgs = append(sshArgs,
+		"-o", "name,creation,used,refer,guid",
 		"-s", "creation",
 		remoteDataset,
 	)
@@ -1175,6 +1186,7 @@ func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clu
 		Str("ssh_host", target.SSHHost).
 		Str("ssh_key_path", target.SSHKeyPath).
 		Str("remote_dataset", remoteDataset).
+		Bool("recursive", recursive).
 		Strs("ssh_args", sshArgs).
 		Msg("listing_remote_snapshots")
 
@@ -1521,7 +1533,7 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 			continue
 		}
 
-		fields := strings.SplitN(line, "\t", 4)
+		fields := strings.Split(line, "\t")
 		if len(fields) < 4 {
 			continue
 		}
@@ -1539,6 +1551,11 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 			creation = time.Unix(epoch, 0).UTC().Format(time.RFC3339)
 		}
 
+		guid := ""
+		if len(fields) >= 5 {
+			guid = strings.TrimSpace(fields[4])
+		}
+
 		snapshots = append(snapshots, SnapshotInfo{
 			Name:      fullName,
 			ShortName: shortName,
@@ -1546,6 +1563,7 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 			Creation:  creation,
 			Used:      fields[2],
 			Refer:     fields[3],
+			Guid:      guid,
 		})
 	}
 

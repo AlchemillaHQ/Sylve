@@ -25,12 +25,13 @@ import (
 
 // SnapshotInfo represents a single ZFS snapshot on the backup target.
 type SnapshotInfo struct {
-	Name       string `json:"name"`                // full dataset@snap name
-	ShortName  string `json:"shortName"`           // just the @snap portion
-	Dataset    string `json:"dataset"`             // dataset portion (without @snap)
-	Creation   string `json:"creation"`            // creation timestamp
-	Used       string `json:"used"`                // space used
-	Refer      string `json:"refer"`               // referenced size
+	Name       string `json:"name"`      // full dataset@snap name
+	ShortName  string `json:"shortName"` // just the @snap portion
+	Dataset    string `json:"dataset"`   // dataset portion (without @snap)
+	Creation   string `json:"creation"`  // creation timestamp
+	Used       string `json:"used"`      // space used
+	Refer      string `json:"refer"`     // referenced size
+	Guid       string `json:"guid,omitempty"`
 	Lineage    string `json:"lineage,omitempty"`   // "active" | "rotated" | "other"
 	OutOfBand  bool   `json:"outOfBand,omitempty"` // true when snapshot is outside the active lineage
 	ChildCount int    `json:"childCount"`          // number of child datasets on the target
@@ -575,7 +576,12 @@ func (s *Service) targetDatasetExists(
 		return false, err
 	}
 
-	return normalizeDatasetPath(strings.TrimSpace(output)) == dataset, nil
+	for _, line := range strings.Split(output, "\n") {
+		if normalizeDatasetPath(strings.TrimSpace(line)) == dataset {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) renameTargetDataset(

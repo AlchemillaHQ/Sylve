@@ -11,104 +11,13 @@ package migration
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
-
-// ---------------------------------------------------------------------------
-// ZFS test helpers (shared pattern from zelta/zfs_local_test.go)
-// ---------------------------------------------------------------------------
-
-func zfsSkipIfNotAvailable(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SYLVE_SKIP_ZFS_TESTS") == "1" {
-		t.Skip("SYLVE_SKIP_ZFS_TESTS=1")
-	}
-	if _, err := exec.LookPath("zpool"); err != nil {
-		t.Skip("zpool binary not found")
-	}
-	if _, err := exec.LookPath("zfs"); err != nil {
-		t.Skip("zfs binary not found")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("must be root to create ZFS pools")
-	}
-}
-
-func zfsTestSetup(t *testing.T) (poolName string, client *gzfs.Client, cleanup func()) {
-	t.Helper()
-	zfsSkipIfNotAvailable(t)
-
-	dir := t.TempDir()
-	poolName = fmt.Sprintf("sylve-test-%d", time.Now().UnixNano())
-
-	f, err := os.CreateTemp("", "sylve-zfs-vdev-*")
-	if err != nil {
-		t.Fatalf("create vdev file: %v", err)
-	}
-	vdevPath := f.Name()
-	if err := f.Truncate(200 * 1024 * 1024); err != nil {
-		f.Close()
-		t.Fatalf("truncate vdev: %v", err)
-	}
-	f.Close()
-
-	cmd := exec.Command("zpool", "create", "-m", dir, poolName, vdevPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		os.Remove(vdevPath)
-		t.Fatalf("zpool create %s: %v\noutput: %s", poolName, err, string(out))
-	}
-
-	client = gzfs.NewClient(gzfs.Options{})
-
-	cleanup = func() {
-		ctx := context.Background()
-		export := exec.CommandContext(ctx, "zpool", "export", poolName)
-		export.CombinedOutput()
-		destroy := exec.CommandContext(ctx, "zpool", "destroy", "-f", poolName)
-		destroy.CombinedOutput()
-		os.Remove(vdevPath)
-	}
-
-	return poolName, client, cleanup
-}
-
-func ensureZFSDataset(t *testing.T, client *gzfs.Client, name string) {
-	t.Helper()
-	ctx := context.Background()
-	parts := strings.Split(name, "/")
-	for i := 1; i < len(parts); i++ {
-		parent := strings.Join(parts[:i+1], "/")
-		_, err := client.ZFS.CreateFilesystem(ctx, parent, nil)
-		if err != nil {
-			errStr := err.Error()
-			if !strings.Contains(errStr, "already exists") && !strings.Contains(errStr, "dataset already exists") {
-				if i == len(parts)-1 {
-					t.Fatalf("CreateFilesystem(%q): %v", parent, err)
-				}
-			}
-		}
-	}
-}
-
-func ensureZFSVolume(t *testing.T, client *gzfs.Client, name string, sizeMB int) {
-	t.Helper()
-	ctx := context.Background()
-	parent := name
-	if idx := strings.LastIndex(name, "/"); idx >= 0 {
-		parent = name[:idx]
-		ensureZFSDataset(t, client, parent)
-	}
-	_, err := client.ZFS.CreateVolume(ctx, name, uint64(sizeMB)*1024*1024, nil)
-	if err != nil {
-		t.Fatalf("CreateVolume(%q): %v", name, err)
-	}
-}
 
 func zfsSnapshotExists(t *testing.T, client *gzfs.Client, fullSnap string) bool {
 	t.Helper()
@@ -211,16 +120,16 @@ func TestParseMigrationSnapshotTimestamp(t *testing.T) {
 
 func TestExtractGuestFromDatasetPath(t *testing.T) {
 	tests := []struct {
-		dataset       string
-		wantType      string
-		wantID        uint
+		dataset  string
+		wantType string
+		wantID   uint
 	}{
 		{"zroot/sylve/virtual-machines/103", "vm", 103},
 		{"tank/sylve/virtual-machines/42/data", "vm", 42},
 		{"pool/sylve/jails/7", "jail", 7},
 		{"pool/sylve/jails/99/root", "jail", 99},
 		{"just/a/path", "", 0},
-		{"virtual-machines/abc", "", 0},         // non-numeric ID
+		{"virtual-machines/abc", "", 0}, // non-numeric ID
 		{"pool/virtual-machines/1/no/sylve", "vm", 1},
 		{"", "", 0},
 	}
@@ -240,14 +149,14 @@ func TestExtractGuestFromDatasetPath(t *testing.T) {
 
 func TestGuestKey(t *testing.T) {
 	tests := []struct {
-		guestType     string
-		guestID       uint
-		want          string
+		guestType string
+		guestID   uint
+		want      string
 	}{
 		{"vm", 103, "vm-103"},
 		{"jail", 42, "jail-42"},
-		{"", 1, ""},         // empty type
-		{"vm", 0, ""},       // zero ID
+		{"", 1, ""},               // empty type
+		{"vm", 0, ""},             // zero ID
 		{"  vm  ", 103, "vm-103"}, // trimmed
 	}
 
@@ -275,12 +184,12 @@ func TestMigrationSnapshotPrefix(t *testing.T) {
 // cleanup logic only destroys snapshots matching the specified prefixes
 // and leaves all other snapshots intact.
 func TestSnapshotCleanupDestroysTargetedPrefixes(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	vmRoot := pool + "/sylve/virtual-machines/103"
-	ensureZFSDataset(t, client, vmRoot)
+	zfstest.EnsureDataset(t, client, vmRoot)
 
 	// Create snapshots with various prefixes
 	zfsTakeSnapshot(t, client, vmRoot, "ha_abc123")
@@ -335,20 +244,20 @@ func TestSnapshotCleanupDestroysTargetedPrefixes(t *testing.T) {
 // TestSnapshotCleanupChildDatasets verifies that snapshots on child datasets
 // (e.g. zvol, data subdirs) are also caught by the cleanup.
 func TestSnapshotCleanupChildDatasets(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	vmRoot := pool + "/sylve/virtual-machines/103"
-	ensureZFSDataset(t, client, vmRoot)
+	zfstest.EnsureDataset(t, client, vmRoot)
 
 	// Create a child volume (like a disk zvol)
 	zvol := vmRoot + "/zvol-9"
-	ensureZFSVolume(t, client, zvol, 50)
+	zfstest.EnsureVolume(t, client, zvol, 50)
 
 	// Create a child filesystem (like data subdir)
 	dataDS := vmRoot + "/data"
-	ensureZFSDataset(t, client, dataDS)
+	zfstest.EnsureDataset(t, client, dataDS)
 
 	// Snapshots on the root dataset
 	zfsTakeSnapshot(t, client, vmRoot, "ha_parent")
@@ -399,26 +308,26 @@ func TestSnapshotCleanupChildDatasets(t *testing.T) {
 // snapshots belonging to the specified guest dataset and does NOT affect
 // other guests on the same pool.
 func TestSnapshotCleanupScopedToGuest(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	// Guest 103 - the one being migrated
 	vm103 := pool + "/sylve/virtual-machines/103"
-	ensureZFSDataset(t, client, vm103)
+	zfstest.EnsureDataset(t, client, vm103)
 	zfsTakeSnapshot(t, client, vm103, "ha_g103")
 	zfsTakeSnapshot(t, client, vm103, "my-snap-103")
 
 	// Guest 104 - a different guest, must NOT be touched
 	vm104 := pool + "/sylve/virtual-machines/104"
-	ensureZFSDataset(t, client, vm104)
+	zfstest.EnsureDataset(t, client, vm104)
 	zfsTakeSnapshot(t, client, vm104, "ha_g104")
 	zfsTakeSnapshot(t, client, vm104, "bk_g104")
 	zfsTakeSnapshot(t, client, vm104, "my-snap-104")
 
 	// Also create a jail on the same pool, must NOT be touched
 	jail42 := pool + "/sylve/jails/42"
-	ensureZFSDataset(t, client, jail42)
+	zfstest.EnsureDataset(t, client, jail42)
 	zfsTakeSnapshot(t, client, jail42, "ha_jail42")
 	zfsTakeSnapshot(t, client, jail42, "bk_jail42")
 
@@ -465,12 +374,12 @@ func TestSnapshotCleanupScopedToGuest(t *testing.T) {
 // TestSnapshotCleanupEmptyDataset verifies cleanup handles a dataset
 // with no snapshots gracefully.
 func TestSnapshotCleanupEmptyDataset(t *testing.T) {
-	pool, client, cleanup := zfsTestSetup(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	vmRoot := pool + "/sylve/virtual-machines/103"
-	ensureZFSDataset(t, client, vmRoot)
+	zfstest.EnsureDataset(t, client, vmRoot)
 
 	prefixes := []string{"ha_", "bk_", migrationSnapPrefix}
 	destroyed, err := snapshotCleanup(ctx, client, vmRoot, prefixes)

@@ -278,3 +278,46 @@ func TestParseTotalBytesFromOutput(t *testing.T) {
 		t.Fatal("empty output should return nil")
 	}
 }
+
+func TestJailDestSuffixForSource(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured string
+		jailRoot   string
+		want       string
+	}{
+		{"lineage tail remapped under jail root", "jails/10/j-exsj2r/active", "zapp/sylve/jails/10", "zapp/sylve/jails/10/j-exsj2r/active"},
+		{"empty suffix returns jail root", "", "zapp/sylve/jails/10", "zapp/sylve/jails/10"},
+		{"suffix equals jail root", "zapp/sylve/jails/10", "zapp/sylve/jails/10", "zapp/sylve/jails/10"},
+		{"job- lineage tail remapped", "jails/10/job-abc/active", "zapp/sylve/jails/10", "zapp/sylve/jails/10/job-abc/active"},
+		{"empty jail root returns configured", "anything", "", "anything"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := jailDestSuffixForSource(tc.configured, tc.jailRoot); got != tc.want {
+				t.Fatalf("jailDestSuffixForSource(%q, %q) = %q, want %q", tc.configured, tc.jailRoot, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVMDestSuffixForSource(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured string
+		vmSource   string
+		want       string
+	}{
+		{"empty suffix returns vm root", "", "pool/sylve/virtual-machines/100", "pool/sylve/virtual-machines/100"},
+		{"empty suffix preserves child rel", "", "pool/sylve/virtual-machines/100/disk0", "pool/sylve/virtual-machines/100/disk0"},
+		{"lineage tail remapped under vm root", "virtual-machines/100/j-x/active", "pool/sylve/virtual-machines/100", "pool/sylve/virtual-machines/100/j-x/active"},
+		{"lineage tail remapped with child rel", "virtual-machines/100/j-x/active", "pool/sylve/virtual-machines/100/disk0", "pool/sylve/virtual-machines/100/j-x/active/disk0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := vmDestSuffixForSource(tc.configured, tc.vmSource); got != tc.want {
+				t.Fatalf("vmDestSuffixForSource(%q, %q) = %q, want %q", tc.configured, tc.vmSource, got, tc.want)
+			}
+		})
+	}
+}

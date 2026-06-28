@@ -19,6 +19,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
 func extractZeltaToTemp(t *testing.T) string {
@@ -33,7 +34,7 @@ func extractZeltaToTemp(t *testing.T) string {
 }
 
 func TestZeltaBinaryExtractsAndRuns(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	dir := extractZeltaToTemp(t)
 
 	bin := filepath.Join(dir, "bin", "zelta")
@@ -52,15 +53,15 @@ func TestZeltaBinaryExtractsAndRuns(t *testing.T) {
 }
 
 func TestZeltaBackupWithEphemeralZFS(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping full ZFS integration test in short mode")
 	}
 
-	poolName, gzfsClient, zfsCleanup := zfsTestSetup(t)
+	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/source/data")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
 	ctx := context.Background()
 
 	zfsBin, err := exec.LookPath("zfs")
@@ -115,24 +116,24 @@ func TestZeltaBackupWithEphemeralZFS(t *testing.T) {
 		t.Fatalf("snapshot %s not found in:\n%s", snapName, string(snapOut))
 	}
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/target")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 	setProp = exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target")
 	setProp.CombinedOutput()
 	_ = gzfsClient
 }
 
 func TestRunBackupJobWithEmbeddedZelta(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
+	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping full ZFS integration test in short mode")
 	}
 
-	poolName, gzfsClient, zfsCleanup := zfsTestSetup(t)
+	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 	_ = gzfsClient
 
-	ensureZFSDataset(t, gzfsClient, poolName+"/source/backup")
-	ensureZFSDataset(t, gzfsClient, poolName+"/target")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
@@ -144,11 +145,11 @@ func TestRunBackupJobWithEmbeddedZelta(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
-		GZFS:             gzfsClient,
+		GZFS:              gzfsClient,
 	}
 
 	target := clusterModels.BackupTarget{
@@ -162,7 +163,7 @@ func TestRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	job := clusterModels.BackupJob{
 		ID: 1, Name: "ephemeral-test", Mode: "dataset", TargetID: 1,
 		SourceDataset: poolName + "/source/backup",
-		CronExpr: "0 0 * * *", Enabled: true,
+		CronExpr:      "0 0 * * *", Enabled: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)

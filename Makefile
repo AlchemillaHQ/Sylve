@@ -4,7 +4,7 @@ ARCH ?= amd64
 FREEBSD_VERSION ?= 15.0-RELEASE
 FREEBSD_SYSROOT ?= .cache/freebsd/$(ARCH)-$(FREEBSD_VERSION)
 
-.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test clean
+.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test test-integration clean
 
 all: build
 
@@ -57,7 +57,11 @@ frontend:
 	cp -rf web/build/* internal/assets/web-files/
 
 test:
-	go test ./...
+	go test -short ./...
+
+test-integration:
+	@[ "$$(id -u)" = "0" ] || { echo "make test-integration must run as root (it creates ZFS pools)"; exit 1; }
+	go test -count=1 -v ./...
 
 clean:
 	rm -rf $(BIN_DIR)

@@ -17,6 +17,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
 func zfsGetProperty(t *testing.T, dataset, prop string) string {
@@ -29,14 +30,14 @@ func zfsGetProperty(t *testing.T, dataset, prop string) string {
 }
 
 func TestFenceReplicationGuestDatasets(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
-	pool, client, cleanup := zfsTestSetup(t)
+	zfstest.SkipIfUnavailable(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	// create datasets with VM naming pattern so findLocalGuestDatasets can match them
 	vmDS := pool + "/virtual-machines/100"
-	ensureZFSDataset(t, client, vmDS)
+	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
 
@@ -54,13 +55,13 @@ func TestFenceReplicationGuestDatasets(t *testing.T) {
 }
 
 func TestFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
-	pool, client, cleanup := zfsTestSetup(t)
+	zfstest.SkipIfUnavailable(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	vmDS := pool + "/virtual-machines/200"
-	ensureZFSDataset(t, client, vmDS)
+	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
 
@@ -79,13 +80,13 @@ func TestFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 }
 
 func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
-	pool, client, cleanup := zfsTestSetup(t)
+	zfstest.SkipIfUnavailable(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	jailDS := pool + "/jails/50"
-	ensureZFSDataset(t, client, jailDS)
+	zfstest.EnsureDataset(t, client, jailDS)
 
 	s := &Service{GZFS: client}
 
@@ -103,8 +104,8 @@ func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
 }
 
 func TestFenceReplicationGuestDatasetsNoMatch(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
-	_, client, cleanup := zfsTestSetup(t)
+	zfstest.SkipIfUnavailable(t)
+	_, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -128,13 +129,13 @@ func TestFenceReplicationGuestDatasetsNilPolicy(t *testing.T) {
 }
 
 func TestUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
-	pool, client, cleanup := zfsTestSetup(t)
+	zfstest.SkipIfUnavailable(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	vmDS := pool + "/virtual-machines/300"
-	ensureZFSDataset(t, client, vmDS)
+	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
 
@@ -158,14 +159,14 @@ func TestUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 }
 
 func TestFindLocalGuestDatasets(t *testing.T) {
-	zfsSkipIfNotAvailable(t)
-	pool, client, cleanup := zfsTestSetup(t)
+	zfstest.SkipIfUnavailable(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	ensureZFSDataset(t, client, pool+"/virtual-machines/100")
-	ensureZFSDataset(t, client, pool+"/virtual-machines/100/disk0")
-	ensureZFSDataset(t, client, pool+"/jails/50")
+	zfstest.EnsureDataset(t, client, pool+"/virtual-machines/100")
+	zfstest.EnsureDataset(t, client, pool+"/virtual-machines/100/disk0")
+	zfstest.EnsureDataset(t, client, pool+"/jails/50")
 
 	s := &Service{GZFS: client}
 
