@@ -42,8 +42,9 @@ const (
 )
 
 const (
-	TransportTypeNtfy = "ntfy"
-	TransportTypeSMTP = "smtp"
+	TransportTypeNtfy    = "ntfy"
+	TransportTypeSMTP    = "smtp"
+	TransportTypeDiscord = "discord"
 )
 
 const (
@@ -78,14 +79,17 @@ type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig
 
 type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error
 
+type DiscordSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, webhookURL string) error
+
 type Service struct {
 	DB          *gorm.DB
 	DiskService diskServiceInterfaces.DiskServiceInterface
 	httpClient  *http.Client
 	now         func() time.Time
 
-	ntfySender  NtfySender
-	emailSender EmailSender
+	ntfySender    NtfySender
+	emailSender   EmailSender
+	discordSender DiscordSender
 
 	deletedKinds   map[string]bool
 	deletedKindsMu sync.Mutex
@@ -103,12 +107,13 @@ type TransportConfigView struct {
 }
 
 type TransportConfigEntryView struct {
-	ID      uint                      `json:"id"`
-	Name    string                    `json:"name"`
-	Type    string                    `json:"type"`
-	Enabled bool                      `json:"enabled"`
-	Ntfy    *NtfyTransportConfigView  `json:"ntfy,omitempty"`
-	Email   *EmailTransportConfigView `json:"email,omitempty"`
+	ID      uint                         `json:"id"`
+	Name    string                       `json:"name"`
+	Type    string                       `json:"type"`
+	Enabled bool                         `json:"enabled"`
+	Ntfy    *NtfyTransportConfigView     `json:"ntfy,omitempty"`
+	Email   *EmailTransportConfigView    `json:"email,omitempty"`
+	Discord *DiscordTransportConfigView  `json:"discord,omitempty"`
 }
 
 type NtfyTransportConfigView struct {
@@ -127,17 +132,22 @@ type EmailTransportConfigView struct {
 	HasPassword  bool     `json:"hasPassword"`
 }
 
+type DiscordTransportConfigView struct {
+	WebhookURL string `json:"webhookUrl"`
+}
+
 type TransportConfigUpdate struct {
 	Transports []TransportConfigEntryUpdate `json:"transports"`
 }
 
 type TransportConfigEntryUpdate struct {
-	ID      uint                        `json:"id"`
-	Name    string                      `json:"name"`
-	Type    string                      `json:"type"`
-	Enabled bool                        `json:"enabled"`
-	Ntfy    *NtfyTransportConfigUpdate  `json:"ntfy,omitempty"`
-	Email   *EmailTransportConfigUpdate `json:"email,omitempty"`
+	ID      uint                           `json:"id"`
+	Name    string                         `json:"name"`
+	Type    string                         `json:"type"`
+	Enabled bool                           `json:"enabled"`
+	Ntfy    *NtfyTransportConfigUpdate     `json:"ntfy,omitempty"`
+	Email   *EmailTransportConfigUpdate    `json:"email,omitempty"`
+	Discord *DiscordTransportConfigUpdate  `json:"discord,omitempty"`
 }
 
 type NtfyTransportConfigUpdate struct {
@@ -156,23 +166,28 @@ type EmailTransportConfigUpdate struct {
 	SMTPPassword *string  `json:"smtpPassword,omitempty"`
 }
 
+type DiscordTransportConfigUpdate struct {
+	WebhookURL *string `json:"webhookUrl,omitempty"`
+}
+
 type RuleConfigView struct {
 	Rules     []RuleConfigEntryView `json:"rules"`
 	Templates []RuleTemplateView    `json:"templates"`
 }
 
 type RuleConfigEntryView struct {
-	ID            uint   `json:"id"`
-	Kind          string `json:"kind"`
-	TemplateKey   string `json:"templateKey"`
-	TemplateLabel string `json:"templateLabel"`
-	TargetKey     string `json:"targetKey"`
-	TargetLabel   string `json:"targetLabel"`
-	Active        bool   `json:"active"`
-	UIEnabled     bool   `json:"uiEnabled"`
-	NtfyEnabled   bool   `json:"ntfyEnabled"`
-	EmailEnabled  bool   `json:"emailEnabled"`
-	Config        string `json:"config"`
+	ID             uint   `json:"id"`
+	Kind           string `json:"kind"`
+	TemplateKey    string `json:"templateKey"`
+	TemplateLabel  string `json:"templateLabel"`
+	TargetKey      string `json:"targetKey"`
+	TargetLabel    string `json:"targetLabel"`
+	Active         bool   `json:"active"`
+	UIEnabled      bool   `json:"uiEnabled"`
+	NtfyEnabled    bool   `json:"ntfyEnabled"`
+	EmailEnabled   bool   `json:"emailEnabled"`
+	DiscordEnabled bool   `json:"discordEnabled"`
+	Config         string `json:"config"`
 }
 
 type RuleTemplateView struct {
@@ -194,29 +209,32 @@ type RuleConfigUpdate struct {
 }
 
 type RuleConfigEntryUpdate struct {
-	ID           uint   `json:"id"`
-	Kind         string `json:"kind"`
-	Pool         string `json:"pool"`
-	TemplateKey  string `json:"templateKey"`
-	TargetKey    string `json:"targetKey"`
-	UIEnabled    bool   `json:"uiEnabled"`
-	NtfyEnabled  bool   `json:"ntfyEnabled"`
-	EmailEnabled bool   `json:"emailEnabled"`
+	ID             uint   `json:"id"`
+	Kind           string `json:"kind"`
+	Pool           string `json:"pool"`
+	TemplateKey    string `json:"templateKey"`
+	TargetKey      string `json:"targetKey"`
+	UIEnabled      bool   `json:"uiEnabled"`
+	NtfyEnabled    bool   `json:"ntfyEnabled"`
+	EmailEnabled   bool   `json:"emailEnabled"`
+	DiscordEnabled bool   `json:"discordEnabled"`
 }
 
 type RuleCreateInput struct {
-	TemplateKey  string `json:"templateKey"`
-	TargetKey    string `json:"targetKey"`
-	UIEnabled    bool   `json:"uiEnabled"`
-	NtfyEnabled  bool   `json:"ntfyEnabled"`
-	EmailEnabled bool   `json:"emailEnabled"`
+	TemplateKey    string `json:"templateKey"`
+	TargetKey      string `json:"targetKey"`
+	UIEnabled      bool   `json:"uiEnabled"`
+	NtfyEnabled    bool   `json:"ntfyEnabled"`
+	EmailEnabled   bool   `json:"emailEnabled"`
+	DiscordEnabled bool   `json:"discordEnabled"`
 }
 
 type RuleUpdateInput struct {
-	UIEnabled    bool   `json:"uiEnabled"`
-	NtfyEnabled  bool   `json:"ntfyEnabled"`
-	EmailEnabled bool   `json:"emailEnabled"`
-	Config       string `json:"config"`
+	UIEnabled      bool   `json:"uiEnabled"`
+	NtfyEnabled    bool   `json:"ntfyEnabled"`
+	EmailEnabled   bool   `json:"emailEnabled"`
+	DiscordEnabled bool   `json:"discordEnabled"`
+	Config         string `json:"config"`
 }
 
 type TestRuleInput struct {
@@ -237,6 +255,7 @@ func NewService(db *gorm.DB) *Service {
 
 	s.ntfySender = s.sendNtfy
 	s.emailSender = s.sendEmail
+	s.discordSender = s.sendDiscord
 	s.deletedKinds = make(map[string]bool)
 
 	return s
@@ -272,6 +291,15 @@ func (s *Service) SetEmailSender(sender EmailSender) {
 	}
 
 	s.emailSender = sender
+}
+
+func (s *Service) SetDiscordSender(sender DiscordSender) {
+	if sender == nil {
+		s.discordSender = s.sendDiscord
+		return
+	}
+
+	s.discordSender = sender
 }
 
 func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier.EmitResult, error) {
@@ -401,6 +429,17 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			password := strings.TrimSpace(cfg.SMTPPassword)
 			if err := s.emailSender(ctx, cfg, normalized, password); err == nil {
 				result.SentEmail = true
+			}
+		case TransportTypeDiscord:
+			if !cfg.DiscordEnabled || !kindRule.DiscordEnabled {
+				continue
+			}
+			webhookURL := strings.TrimSpace(cfg.DiscordWebhookURL)
+			if webhookURL == "" {
+				continue
+			}
+			if err := s.discordSender(ctx, cfg, normalized, webhookURL); err == nil {
+				result.SentDiscord = true
 			}
 		}
 	}
@@ -552,6 +591,12 @@ func (s *Service) TestTransport(ctx context.Context, id uint) error {
 	case TransportTypeSMTP:
 		password := strings.TrimSpace(cfg.SMTPPassword)
 		return s.emailSender(ctx, cfg, input, password)
+	case TransportTypeDiscord:
+		webhookURL := strings.TrimSpace(cfg.DiscordWebhookURL)
+		if webhookURL == "" {
+			return fmt.Errorf("discord_webhook_url_required")
+		}
+		return s.discordSender(ctx, cfg, input, webhookURL)
 	default:
 		return fmt.Errorf("invalid_transport_type")
 	}
@@ -741,7 +786,7 @@ func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConf
 
 		for _, entry := range entries {
 			transportType := normalizeTransportType(entry.Type)
-			if transportType != TransportTypeNtfy && transportType != TransportTypeSMTP {
+			if transportType != TransportTypeNtfy && transportType != TransportTypeSMTP && transportType != TransportTypeDiscord {
 				return fmt.Errorf("invalid_transport_type")
 			}
 
@@ -779,6 +824,8 @@ func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConf
 				cfg.SMTPUseTLS = true
 				cfg.EmailRecipients = []string{}
 				cfg.SMTPPassword = ""
+				cfg.DiscordEnabled = false
+				cfg.DiscordWebhookURL = ""
 
 				if entry.Ntfy.AuthToken != nil {
 					cfg.NtfyAuthToken = strings.TrimSpace(*entry.Ntfy.AuthToken)
@@ -809,9 +856,37 @@ func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConf
 				cfg.NtfyBaseURL = defaultNtfyBaseURL
 				cfg.NtfyTopic = ""
 				cfg.NtfyAuthToken = ""
+				cfg.DiscordEnabled = false
+				cfg.DiscordWebhookURL = ""
 
 				if entry.Email.SMTPPassword != nil {
 					cfg.SMTPPassword = strings.TrimSpace(*entry.Email.SMTPPassword)
+				}
+			case TransportTypeDiscord:
+				if entry.Discord == nil {
+					return fmt.Errorf("discord_config_required")
+				}
+
+				cfg.DiscordEnabled = entry.Enabled
+				cfg.NtfyEnabled = false
+				cfg.NtfyBaseURL = defaultNtfyBaseURL
+				cfg.NtfyTopic = ""
+				cfg.NtfyAuthToken = ""
+				cfg.EmailEnabled = false
+				cfg.SMTPHost = ""
+				cfg.SMTPPort = defaultSMTPPort
+				cfg.SMTPUsername = ""
+				cfg.SMTPFrom = ""
+				cfg.SMTPUseTLS = true
+				cfg.EmailRecipients = []string{}
+				cfg.SMTPPassword = ""
+
+				if entry.Discord.WebhookURL != nil {
+					webhookURL := strings.TrimSpace(*entry.Discord.WebhookURL)
+					if webhookURL != "" && !strings.HasPrefix(webhookURL, "https://discord.com/api/webhooks/") {
+						return fmt.Errorf("invalid_discord_webhook_url")
+					}
+					cfg.DiscordWebhookURL = webhookURL
 				}
 			default:
 				return fmt.Errorf("invalid_transport_type")
@@ -947,6 +1022,7 @@ func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) 
 			rule.UIEnabled = entry.UIEnabled
 			rule.NtfyEnabled = entry.NtfyEnabled
 			rule.EmailEnabled = entry.EmailEnabled
+			rule.DiscordEnabled = entry.DiscordEnabled
 			if err := tx.Save(rule).Error; err != nil {
 				return err
 			}
@@ -1013,10 +1089,11 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 		}
 
 		record := models.NotificationKindRule{
-			Kind:         kind,
-			UIEnabled:    input.UIEnabled,
-			NtfyEnabled:  input.NtfyEnabled,
-			EmailEnabled: input.EmailEnabled,
+			Kind:           kind,
+			UIEnabled:      input.UIEnabled,
+			NtfyEnabled:    input.NtfyEnabled,
+			EmailEnabled:   input.EmailEnabled,
+			DiscordEnabled: input.DiscordEnabled,
 		}
 		return tx.Create(&record).Error
 	})
@@ -1056,6 +1133,7 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 		rule.UIEnabled = input.UIEnabled
 		rule.NtfyEnabled = input.NtfyEnabled
 		rule.EmailEnabled = input.EmailEnabled
+		rule.DiscordEnabled = input.DiscordEnabled
 		if input.Config != "" {
 			if !json.Valid([]byte(input.Config)) {
 				return fmt.Errorf("invalid_notification_rule_config_json")
@@ -1126,11 +1204,12 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string)
 	}
 
 	rule = models.NotificationKindRule{
-		Kind:         kind,
-		UIEnabled:    true,
-		NtfyEnabled:  true,
-		EmailEnabled: true,
-		Config:       defaultConfig,
+		Kind:           kind,
+		UIEnabled:      true,
+		NtfyEnabled:    true,
+		EmailEnabled:   true,
+		DiscordEnabled: true,
+		Config:         defaultConfig,
 	}
 	if err := tx.Create(&rule).Error; err != nil {
 		return models.NotificationKindRule{}, err
@@ -1384,17 +1463,18 @@ func (s *Service) buildRuleConfigView(definitions []*ruleTemplateDefinition, def
 		}
 
 		view.Rules = append(view.Rules, RuleConfigEntryView{
-			ID:            rule.ID,
-			Kind:          rule.Kind,
-			TemplateKey:   templateKey,
-			TemplateLabel: templateLabel,
-			TargetKey:     targetKey,
-			TargetLabel:   targetLabel,
-			Active:        active,
-			UIEnabled:     rule.UIEnabled,
-			NtfyEnabled:   rule.NtfyEnabled,
-			EmailEnabled:  rule.EmailEnabled,
-			Config:        rule.Config,
+			ID:             rule.ID,
+			Kind:           rule.Kind,
+			TemplateKey:    templateKey,
+			TemplateLabel:  templateLabel,
+			TargetKey:      targetKey,
+			TargetLabel:    targetLabel,
+			Active:         active,
+			UIEnabled:      rule.UIEnabled,
+			NtfyEnabled:    rule.NtfyEnabled,
+			EmailEnabled:   rule.EmailEnabled,
+			DiscordEnabled: rule.DiscordEnabled,
+			Config:         rule.Config,
 		})
 	}
 
@@ -1492,13 +1572,15 @@ func (s *Service) ensureTransportConfigs(tx *gorm.DB) ([]models.NotificationTran
 		updated := false
 		cfg := &configs[idx]
 		normalizedType := normalizeTransportType(cfg.Type)
-		if normalizedType == "" {
-			if cfg.NtfyEnabled && !cfg.EmailEnabled {
-				normalizedType = TransportTypeNtfy
-			} else {
-				normalizedType = TransportTypeSMTP
+			if normalizedType == "" {
+				if cfg.NtfyEnabled && !cfg.EmailEnabled && !cfg.DiscordEnabled {
+					normalizedType = TransportTypeNtfy
+				} else if cfg.DiscordEnabled && !cfg.NtfyEnabled && !cfg.EmailEnabled {
+					normalizedType = TransportTypeDiscord
+				} else {
+					normalizedType = TransportTypeSMTP
+				}
 			}
-		}
 		if cfg.Type != normalizedType {
 			cfg.Type = normalizedType
 			updated = true
@@ -1587,6 +1669,10 @@ func (s *Service) toTransportConfigView(configs []models.NotificationTransportCo
 			entry.Enabled = cfg.EmailEnabled
 			email := s.toEmailTransportConfigView(cfg)
 			entry.Email = &email
+		case TransportTypeDiscord:
+			entry.Enabled = cfg.DiscordEnabled
+			discord := s.toDiscordTransportConfigView(cfg)
+			entry.Discord = &discord
 		default:
 			entry.Type = TransportTypeSMTP
 			entry.Enabled = cfg.EmailEnabled
@@ -1617,6 +1703,12 @@ func (s *Service) toEmailTransportConfigView(cfg models.NotificationTransportCon
 		SMTPUseTLS:   cfg.SMTPUseTLS,
 		Recipients:   append([]string{}, cfg.EmailRecipients...),
 		HasPassword:  strings.TrimSpace(cfg.SMTPPassword) != "",
+	}
+}
+
+func (s *Service) toDiscordTransportConfigView(cfg models.NotificationTransportConfig) DiscordTransportConfigView {
+	return DiscordTransportConfigView{
+		WebhookURL: strings.TrimSpace(cfg.DiscordWebhookURL),
 	}
 }
 
@@ -1751,6 +1843,80 @@ func (s *Service) sendEmail(ctx context.Context, cfg models.NotificationTranspor
 	return nil
 }
 
+func (s *Service) sendDiscord(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, webhookURL string) error {
+	webhookURL = strings.TrimSpace(webhookURL)
+	if webhookURL == "" {
+		return fmt.Errorf("discord_webhook_url_required")
+	}
+
+	color := discordColorForSeverity(input.Severity)
+	severityLabel := strings.ToUpper(strings.TrimSpace(input.Severity)[:1]) + strings.TrimSpace(input.Severity)[1:]
+	if severityLabel == "" {
+		severityLabel = "Info"
+	}
+
+	payload := map[string]interface{}{
+		"embeds": []map[string]interface{}{
+			{
+				"title":       fmt.Sprintf("[%s] %s", severityLabel, input.Title),
+				"description": input.Body,
+				"color":       color,
+				"timestamp":   s.now().UTC().Format(time.RFC3339),
+				"fields": []map[string]interface{}{
+					{
+						"name":   "Severity",
+						"value":  severityLabel,
+						"inline": true,
+					},
+					{
+						"name":   "Kind",
+						"value":  input.Kind,
+						"inline": true,
+					},
+				},
+				"footer": map[string]interface{}{
+					"text": "Sylve",
+				},
+			},
+		},
+	}
+
+	if source := strings.TrimSpace(input.Source); source != "" {
+		payload["embeds"].([]map[string]interface{})[0]["fields"] = append(
+			payload["embeds"].([]map[string]interface{})[0]["fields"].([]map[string]interface{}),
+			map[string]interface{}{
+				"name":   "Source",
+				"value":  source,
+				"inline": true,
+			},
+		)
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+
+	if res.StatusCode >= 400 {
+		return fmt.Errorf("discord_send_failed_status_%d", res.StatusCode)
+	}
+
+	return nil
+}
+
 func dialSMTPClient(ctx context.Context, host string, port int, useTLS bool) (*smtp.Client, net.Conn, error) {
 	address := net.JoinHostPort(host, strconv.Itoa(port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
@@ -1866,6 +2032,8 @@ func normalizeTransportType(value string) string {
 		return TransportTypeNtfy
 	case TransportTypeSMTP:
 		return TransportTypeSMTP
+	case TransportTypeDiscord:
+		return TransportTypeDiscord
 	default:
 		return ""
 	}
@@ -1965,5 +2133,20 @@ func ntfyTagForSeverity(severity string) string {
 		return "rotating_light"
 	default:
 		return "white_check_mark"
+	}
+}
+
+func discordColorForSeverity(severity string) int {
+	switch strings.TrimSpace(strings.ToLower(severity)) {
+	case "info":
+		return 3447003   // blue
+	case "warning":
+		return 16776960  // yellow
+	case "error":
+		return 15548997  // red
+	case "critical":
+		return 10038562  // dark red
+	default:
+		return 3447003
 	}
 }

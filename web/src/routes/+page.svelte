@@ -1,4 +1,5 @@
 <!-- 
+<span class="icon-[mdi--discord]"></span>
 <span class="icon-[mdi--lock-outline]"></span>
 <span class="icon-[mdi--tune-variant]"></span>
 <span class="icon-[mdi--palette]"></span>

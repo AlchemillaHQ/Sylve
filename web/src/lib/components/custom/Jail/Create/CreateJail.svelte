@@ -309,7 +309,7 @@
 					<span class="icon-[hugeicons--prison] h-5 w-5"></span>
 					<span>Create Jail</span>
 				</div>
-				<div class="flex items-center gap-0.5">
+				<div class="flex items-center gap-0.5 -mr-3">
 					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title="Reset">
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>

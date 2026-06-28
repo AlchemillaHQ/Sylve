@@ -214,6 +214,11 @@ msgid "Node — <0/>"
 msgstr "Node — <0/>"
 
 #: src/lib/components/custom/About.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Discord"
 msgstr "Discord"
 
@@ -1799,7 +1804,6 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -2616,6 +2620,7 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/routes/[node]/network/routes/+page.svelte
@@ -3460,6 +3465,7 @@ msgid "OOB Restore"
 msgstr "OOB Restore"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -12902,13 +12908,11 @@ msgstr "Dismiss"
 msgid "Dismissed"
 msgstr "Dismissed"
 
-#: src/lib/components/custom/Notifications/Bell.svelte
-msgid "Refresh Count"
-msgstr "Refresh Count"
+#~ msgid "Refresh Count"
+#~ msgstr "Refresh Count"
 
-#: src/lib/components/custom/Notifications/Bell.svelte
-msgid "Refresh List"
-msgstr "Refresh List"
+#~ msgid "Refresh List"
+#~ msgstr "Refresh List"
 
 #. 0: edit ? 'updated' \\: 'created'
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
@@ -14750,33 +14754,57 @@ msgid "System Tunable"
 msgstr "System Tunable"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "SysV IPC (allow.sysvipc)"
 msgstr "SysV IPC (allow.sysvipc)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Adjust Time (allow.adjtime)"
 msgstr "Adjust Time (allow.adjtime)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Extended Attributes (allow.extattr)"
 msgstr "Extended Attributes (allow.extattr)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Routing (allow.routing)"
 msgstr "Routing (allow.routing)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Audit (allow.setaudit)"
 msgstr "Set Audit (allow.setaudit)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Time (allow.settime)"
 msgstr "Set Time (allow.settime)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Super User Privileges (allow.suser)"
 msgstr "Super User Privileges (allow.suser)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Unprivileged Parent Tampering (allow.unprivileged_parent_tampering)"
 msgstr "Unprivileged Parent Tampering (allow.unprivileged_parent_tampering)"
+
+#~ msgid "Immediate attention required."
+#~ msgstr "Immediate attention required."
+
+#~ msgid "An error has occurred that needs investigation."
+#~ msgstr "An error has occurred that needs investigation."
+
+#~ msgid "Please review at your earliest convenience."
+#~ msgstr "Please review at your earliest convenience."
+
+#~ msgid "For your information - no action needed."
+#~ msgstr "For your information - no action needed."
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Webhook URL"
+msgstr "Webhook URL"

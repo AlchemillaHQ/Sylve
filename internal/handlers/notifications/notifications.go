@@ -50,35 +50,41 @@ type notificationConfigUpdateRequest struct {
 			Recipients   []string `json:"recipients"`
 			SMTPPassword *string  `json:"smtpPassword"`
 		} `json:"email"`
+		Discord *struct {
+			WebhookURL *string `json:"webhookUrl"`
+		} `json:"discord"`
 	} `json:"transports"`
 }
 
 type notificationRulesUpdateRequest struct {
 	Rules []struct {
-		ID           uint   `json:"id"`
-		Kind         string `json:"kind"`
-		Pool         string `json:"pool"`
-		TemplateKey  string `json:"templateKey"`
-		TargetKey    string `json:"targetKey"`
-		UIEnabled    bool   `json:"uiEnabled"`
-		NtfyEnabled  bool   `json:"ntfyEnabled"`
-		EmailEnabled bool   `json:"emailEnabled"`
+		ID             uint   `json:"id"`
+		Kind           string `json:"kind"`
+		Pool           string `json:"pool"`
+		TemplateKey    string `json:"templateKey"`
+		TargetKey      string `json:"targetKey"`
+		UIEnabled      bool   `json:"uiEnabled"`
+		NtfyEnabled    bool   `json:"ntfyEnabled"`
+		EmailEnabled   bool   `json:"emailEnabled"`
+		DiscordEnabled bool   `json:"discordEnabled"`
 	} `json:"rules"`
 }
 
 type notificationRuleCreateRequest struct {
-	TemplateKey  string `json:"templateKey"`
-	TargetKey    string `json:"targetKey"`
-	UIEnabled    bool   `json:"uiEnabled"`
-	NtfyEnabled  bool   `json:"ntfyEnabled"`
-	EmailEnabled bool   `json:"emailEnabled"`
+	TemplateKey    string `json:"templateKey"`
+	TargetKey      string `json:"targetKey"`
+	UIEnabled      bool   `json:"uiEnabled"`
+	NtfyEnabled    bool   `json:"ntfyEnabled"`
+	EmailEnabled   bool   `json:"emailEnabled"`
+	DiscordEnabled bool   `json:"discordEnabled"`
 }
 
 type notificationRuleUpdateRequest struct {
-	UIEnabled    bool   `json:"uiEnabled"`
-	NtfyEnabled  bool   `json:"ntfyEnabled"`
-	EmailEnabled bool   `json:"emailEnabled"`
-	Config       string `json:"config"`
+	UIEnabled      bool   `json:"uiEnabled"`
+	NtfyEnabled    bool   `json:"ntfyEnabled"`
+	EmailEnabled   bool   `json:"emailEnabled"`
+	DiscordEnabled bool   `json:"discordEnabled"`
+	Config         string `json:"config"`
 }
 
 func List(service *notifications.Service) gin.HandlerFunc {
@@ -243,6 +249,12 @@ func UpdateConfig(service *notifications.Service) gin.HandlerFunc {
 					SMTPPassword: transport.Email.SMTPPassword,
 				}
 			}
+			var discord *notifications.DiscordTransportConfigUpdate
+			if transport.Discord != nil {
+				discord = &notifications.DiscordTransportConfigUpdate{
+					WebhookURL: transport.Discord.WebhookURL,
+				}
+			}
 
 			transportUpdates = append(transportUpdates, notifications.TransportConfigEntryUpdate{
 				ID:      transport.ID,
@@ -251,6 +263,7 @@ func UpdateConfig(service *notifications.Service) gin.HandlerFunc {
 				Enabled: transport.Enabled,
 				Ntfy:    ntfy,
 				Email:   email,
+				Discord: discord,
 			})
 		}
 
@@ -354,11 +367,12 @@ func CreateRule(service *notifications.Service) gin.HandlerFunc {
 		}
 
 		updated, err := service.CreateRule(c.Request.Context(), notifications.RuleCreateInput{
-			TemplateKey:  req.TemplateKey,
-			TargetKey:    req.TargetKey,
-			UIEnabled:    req.UIEnabled,
-			NtfyEnabled:  req.NtfyEnabled,
-			EmailEnabled: req.EmailEnabled,
+			TemplateKey:    req.TemplateKey,
+			TargetKey:      req.TargetKey,
+			UIEnabled:      req.UIEnabled,
+			NtfyEnabled:    req.NtfyEnabled,
+			EmailEnabled:   req.EmailEnabled,
+			DiscordEnabled: req.DiscordEnabled,
 		})
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -404,10 +418,11 @@ func UpdateRule(service *notifications.Service) gin.HandlerFunc {
 		}
 
 		updated, err := service.UpdateRule(c.Request.Context(), uint(id), notifications.RuleUpdateInput{
-			UIEnabled:    req.UIEnabled,
-			NtfyEnabled:  req.NtfyEnabled,
-			EmailEnabled: req.EmailEnabled,
-			Config:       req.Config,
+			UIEnabled:      req.UIEnabled,
+			NtfyEnabled:    req.NtfyEnabled,
+			EmailEnabled:   req.EmailEnabled,
+			DiscordEnabled: req.DiscordEnabled,
+			Config:         req.Config,
 		})
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -505,14 +520,15 @@ func UpdateRules(service *notifications.Service) gin.HandlerFunc {
 		ruleUpdates := make([]notifications.RuleConfigEntryUpdate, 0, len(req.Rules))
 		for _, rule := range req.Rules {
 			ruleUpdates = append(ruleUpdates, notifications.RuleConfigEntryUpdate{
-				ID:           rule.ID,
-				Kind:         rule.Kind,
-				Pool:         rule.Pool,
-				TemplateKey:  rule.TemplateKey,
-				TargetKey:    rule.TargetKey,
-				UIEnabled:    rule.UIEnabled,
-				NtfyEnabled:  rule.NtfyEnabled,
-				EmailEnabled: rule.EmailEnabled,
+				ID:             rule.ID,
+				Kind:           rule.Kind,
+				Pool:           rule.Pool,
+				TemplateKey:    rule.TemplateKey,
+				TargetKey:      rule.TargetKey,
+				UIEnabled:      rule.UIEnabled,
+				NtfyEnabled:    rule.NtfyEnabled,
+				EmailEnabled:   rule.EmailEnabled,
+				DiscordEnabled: rule.DiscordEnabled,
 			})
 		}
 
@@ -663,6 +679,8 @@ func isTestTransportBadRequest(err error) bool {
 	case strings.HasPrefix(msg, "ntfy_"):
 		return true
 	case strings.HasPrefix(msg, "smtp_"):
+		return true
+	case strings.HasPrefix(msg, "discord_"):
 		return true
 	default:
 		return false

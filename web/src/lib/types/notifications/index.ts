@@ -33,7 +33,7 @@ export const NotificationConfigSchema = z.object({
 		z.object({
 			id: z.number(),
 			name: z.string(),
-			type: z.enum(['ntfy', 'smtp']),
+			type: z.enum(['ntfy', 'smtp', 'discord']),
 			enabled: z.boolean(),
 			ntfy: z
 				.object({
@@ -52,6 +52,11 @@ export const NotificationConfigSchema = z.object({
 					recipients: z.array(z.string()),
 					hasPassword: z.boolean()
 				})
+				.optional(),
+			discord: z
+				.object({
+					webhookUrl: z.string()
+				})
 				.optional()
 		})
 	)
@@ -68,6 +73,7 @@ export const NotificationRuleSchema = z.object({
 	uiEnabled: z.boolean(),
 	ntfyEnabled: z.boolean(),
 	emailEnabled: z.boolean(),
+	discordEnabled: z.boolean(),
 	config: z.string()
 });
 
@@ -103,7 +109,7 @@ export type UpdateNotificationConfigInput = {
 	transports: Array<{
 		id?: number;
 		name: string;
-		type: 'ntfy' | 'smtp';
+		type: 'ntfy' | 'smtp' | 'discord';
 		enabled: boolean;
 		ntfy: {
 			baseUrl: string;
@@ -119,6 +125,9 @@ export type UpdateNotificationConfigInput = {
 			recipients: string[];
 			smtpPassword?: string;
 		} | null;
+		discord: {
+			webhookUrl?: string;
+		} | null;
 	}>;
 };
 
@@ -132,6 +141,7 @@ export type UpdateNotificationRulesInput = {
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
 		emailEnabled: boolean;
+		discordEnabled: boolean;
 	}>;
 };
 
@@ -141,11 +151,13 @@ export type CreateNotificationRuleInput = {
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
 	emailEnabled: boolean;
+	discordEnabled: boolean;
 };
 
 export type UpdateNotificationRuleInput = {
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
 	emailEnabled: boolean;
+	discordEnabled: boolean;
 	config?: string;
 };

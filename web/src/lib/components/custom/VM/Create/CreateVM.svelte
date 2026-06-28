@@ -275,7 +275,7 @@
 					<span class="icon-[material-symbols--monitor-outline-rounded] h-5 w-5"></span>
 					<span class="cursor-events-none cursor-default">Create Virtual Machine</span>
 				</div>
-				<div class="flex items-center gap-0.5">
+				<div class="flex items-center gap-0.5 -mr-3">
 					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title="Reset">
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>

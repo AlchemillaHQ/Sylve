@@ -79,6 +79,10 @@
 		}
 	});
 
+	async function refresh() {
+		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
+	}
+
 	async function dismiss(item: Notification) {
 		if (!item?.id || dismissing !== null) {
 			return;
@@ -104,7 +108,20 @@
 		});
 	}
 
-	function severityClass(severity: string) {
+	function severityIcon(severity: string) {
+		switch (severity) {
+			case 'critical':
+				return 'icon-[mdi--alert-octagon-outline]';
+			case 'error':
+				return 'icon-[mdi--alert-circle-outline]';
+			case 'warning':
+				return 'icon-[mdi--alert-outline]';
+			default:
+				return 'icon-[mdi--information-outline]';
+		}
+	}
+
+	function severityColor(severity: string) {
 		switch (severity) {
 			case 'critical':
 				return 'text-red-600';
@@ -115,6 +132,10 @@
 			default:
 				return 'text-blue-600';
 		}
+	}
+
+	function capitalize(s: string) {
+		return s.charAt(0).toUpperCase() + s.slice(1);
 	}
 </script>
 
@@ -139,22 +160,28 @@
 </Button>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[95%] max-w-5xl p-5" showCloseButton={false}>
+	<Dialog.Content class="w-[95%] !max-w-[50vw] p-5" showCloseButton={false}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between gap-4">
+			<Dialog.Title class="flex items-center justify-between">
 				<SpanWithIcon
 					icon="icon-[mdi--bell-outline]"
 					size="h-5 w-5"
 					gap="gap-2"
 					title="Notifications"
 				/>
-				<CustomCheckbox label="Show Dismissed" bind:checked={showDismissed} />
+				<button
+					onclick={() => (open = false)}
+					class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+				>
+					<span class="icon-[lucide--x] h-5 w-5"></span>
+					<span class="sr-only">Close</span>
+				</button>
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="max-h-[55vh] overflow-auto rounded-md border">
+		<div class="max-h-[40vh] overflow-auto rounded-md border">
 			<Table.Root class="w-full">
-				<Table.Header class="bg-muted/50 sticky top-0">
+				<Table.Header class="bg-muted sticky top-0 z-10">
 					<Table.Row>
 						<Table.Head class="w-28">Severity</Table.Head>
 						<Table.Head>Notification</Table.Head>
@@ -175,7 +202,13 @@
 						{#each items as item (item.id)}
 							<Table.Row>
 								<Table.Cell>
-									<span class={severityClass(item.severity)}>{item.severity}</span>
+									<SpanWithIcon
+										icon={severityIcon(item.severity)}
+										size="h-4 w-4"
+										gap="gap-1.5"
+										title={capitalize(item.severity)}
+										class={severityColor(item.severity)}
+									/>
 								</Table.Cell>
 								<Table.Cell>
 									<div class="space-y-0.5">
@@ -190,17 +223,16 @@
 								<Table.Cell class="text-right">{item.occurrenceCount}</Table.Cell>
 								<Table.Cell class="text-right">
 									{#if !item.dismissedAt}
-										<Button
-											size="sm"
-											variant="outline"
-											class="h-6"
+										<button
 											onclick={() => dismiss(item)}
 											disabled={dismissing !== null}
+											class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none disabled:opacity-30"
+											title="Dismiss"
 										>
-											Dismiss
-										</Button>
+											<span class="icon-[lucide--x] h-4 w-4"></span>
+										</button>
 									{:else}
-										<span class="text-muted-foreground text-xs">Dismissed</span>
+										<span class="icon-[lucide--bell-off] h-4 w-4 text-muted-foreground/50" title="Dismissed"></span>
 									{/if}
 								</Table.Cell>
 							</Table.Row>
@@ -210,14 +242,9 @@
 			</Table.Root>
 		</div>
 
-		<Dialog.Footer>
-			<Button variant="outline" class="h-7" onclick={() => notificationCount.refetch()}
-				>Refresh Count</Button
-			>
-			<Button variant="outline" class="h-7" onclick={() => notifications.refetch()}
-				>Refresh List</Button
-			>
-			<Button variant="outline" class="h-7" onclick={() => (open = false)}>Close</Button>
+		<Dialog.Footer class="flex items-center !justify-between">
+			<CustomCheckbox label="Show Dismissed" bind:checked={showDismissed} />
+			<Button variant="outline" class="h-7" onclick={refresh}>Refresh</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

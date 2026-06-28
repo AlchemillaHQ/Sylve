@@ -38,6 +38,7 @@
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
 		emailEnabled: boolean;
+		discordEnabled: boolean;
 		config?: string;
 		isTemplateRow: boolean;
 	}
@@ -100,7 +101,8 @@
 				const channels: { field: keyof RuleRow; label: string; icon: string }[] = [
 					{ field: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
 					{ field: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
-					{ field: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' }
+					{ field: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
+					{ field: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
 				];
 				const parts = channels.map(({ field, label, icon }) => {
 					const enabled = rowData[field];
@@ -126,6 +128,7 @@
 				uiEnabled: false,
 				ntfyEnabled: false,
 				emailEnabled: false,
+				discordEnabled: false,
 				isTemplateRow: true,
 				children: []
 			});
@@ -143,6 +146,7 @@
 				uiEnabled: rule.uiEnabled,
 				ntfyEnabled: rule.ntfyEnabled,
 				emailEnabled: rule.emailEnabled,
+				discordEnabled: rule.discordEnabled,
 				config: rule.config,
 				isTemplateRow: false
 			};
@@ -157,6 +161,7 @@
 					uiEnabled: false,
 					ntfyEnabled: false,
 					emailEnabled: false,
+					discordEnabled: false,
 					isTemplateRow: true,
 					children: []
 				});
@@ -212,7 +217,8 @@
 			targetKey: '',
 			uiEnabled: true,
 			ntfyEnabled: true,
-			emailEnabled: true
+			emailEnabled: true,
+			discordEnabled: true
 		},
 		edit: {
 			open: false,
@@ -224,6 +230,7 @@
 			uiEnabled: true,
 			ntfyEnabled: true,
 			emailEnabled: true,
+			discordEnabled: true,
 			config: ''
 		},
 		delete: {
@@ -239,7 +246,7 @@
 		}
 	});
 
-	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true, config: '' });
+	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true, discordEnabled: true, config: '' });
 
 	function configNumber(key: string, fallback: number): number {
 		try {
@@ -358,7 +365,8 @@
 			targetKey: '',
 			uiEnabled: true,
 			ntfyEnabled: true,
-			emailEnabled: true
+			emailEnabled: true,
+			discordEnabled: true
 		};
 	}
 
@@ -382,6 +390,7 @@
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
 			emailEnabled: selectedRule.emailEnabled,
+			discordEnabled: selectedRule.discordEnabled,
 			config
 		};
 
@@ -389,6 +398,7 @@
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
 			emailEnabled: selectedRule.emailEnabled,
+			discordEnabled: selectedRule.discordEnabled,
 			config
 		};
 	}
@@ -422,7 +432,8 @@
 			targetKey: modals.create.targetKey,
 			uiEnabled: modals.create.uiEnabled,
 			ntfyEnabled: modals.create.ntfyEnabled,
-			emailEnabled: modals.create.emailEnabled
+			emailEnabled: modals.create.emailEnabled,
+			discordEnabled: modals.create.discordEnabled
 		});
 		busy.create = false;
 
@@ -448,6 +459,7 @@
 			uiEnabled: modals.edit.uiEnabled,
 			ntfyEnabled: modals.edit.ntfyEnabled,
 			emailEnabled: modals.edit.emailEnabled,
+			discordEnabled: modals.edit.discordEnabled,
 			config: modals.edit.config
 		});
 		busy.edit = false;
@@ -682,6 +694,7 @@
 						<CustomCheckbox label="In-App" bind:checked={modals.create.uiEnabled} />
 						<CustomCheckbox label="ntfy" bind:checked={modals.create.ntfyEnabled} />
 						<CustomCheckbox label="Email" bind:checked={modals.create.emailEnabled} />
+						<CustomCheckbox label="Discord" bind:checked={modals.create.discordEnabled} />
 					</div>
 				</div>
 			</div>
@@ -714,6 +727,7 @@
 				modals.edit.uiEnabled = editOriginal.uiEnabled;
 				modals.edit.ntfyEnabled = editOriginal.ntfyEnabled;
 				modals.edit.emailEnabled = editOriginal.emailEnabled;
+				modals.edit.discordEnabled = editOriginal.discordEnabled;
 				modals.edit.config = editOriginal.config;
 			}}
 		>
@@ -836,6 +850,7 @@
 					<CustomCheckbox label="In-App" bind:checked={modals.edit.uiEnabled} />
 					<CustomCheckbox label="ntfy" bind:checked={modals.edit.ntfyEnabled} />
 					<CustomCheckbox label="Email" bind:checked={modals.edit.emailEnabled} />
+					<CustomCheckbox label="Discord" bind:checked={modals.edit.discordEnabled} />
 				</div>
 			</div>
 

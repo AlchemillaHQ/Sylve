@@ -60,7 +60,7 @@
 			title: 'Type',
 			formatter: (cell: CellComponent) => {
 				const v = cell.getValue();
-				return v === 'ntfy' ? 'ntfy' : v === 'smtp' ? 'SMTP' : v || '-';
+				return v === 'ntfy' ? 'ntfy' : v === 'smtp' ? 'SMTP' : v === 'discord' ? 'Discord' : v || '-';
 			}
 		},
 		{
@@ -87,6 +87,8 @@
 				details = r.length <= 2 ? r.join(', ') : `${r[0]} ...+${r.length - 1} more`;
 			} else if (t.type === 'ntfy' && t.ntfy?.topic) {
 				details = t.ntfy.topic;
+			} else if (t.type === 'discord') {
+				details = t.discord?.webhookUrl ? new URL(t.discord.webhookUrl).hostname : '-';
 			}
 			return {
 				id: t.id,

@@ -44,32 +44,35 @@ type NotificationSuppression struct {
 }
 
 type NotificationKindRule struct {
-	ID           uint      `json:"id" gorm:"primaryKey"`
-	Kind         string    `json:"kind" gorm:"uniqueIndex;not null"`
-	UIEnabled    bool      `json:"uiEnabled" gorm:"not null;default:true"`
-	NtfyEnabled  bool      `json:"ntfyEnabled" gorm:"not null;default:true"`
-	EmailEnabled bool      `json:"emailEnabled" gorm:"not null;default:true"`
-	Config       string    `json:"config" gorm:"type:json;default:'{}'"`
-	CreatedAt    time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt    time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	Kind           string    `json:"kind" gorm:"uniqueIndex;not null"`
+	UIEnabled      bool      `json:"uiEnabled" gorm:"not null;default:true"`
+	NtfyEnabled    bool      `json:"ntfyEnabled" gorm:"not null;default:true"`
+	EmailEnabled   bool      `json:"emailEnabled" gorm:"not null;default:true"`
+	DiscordEnabled bool      `json:"discordEnabled" gorm:"not null;default:true"`
+	Config         string    `json:"config" gorm:"type:json;default:'{}'"`
+	CreatedAt      time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
 type NotificationTransportConfig struct {
-	ID              uint      `json:"id" gorm:"primaryKey"`
-	Name            string    `json:"name" gorm:"not null;default:default;index"`
-	Type            string    `json:"type" gorm:"not null;default:smtp;index"`
-	NtfyEnabled     bool      `json:"ntfyEnabled" gorm:"not null;default:false"`
-	NtfyBaseURL     string    `json:"ntfyBaseUrl" gorm:"not null;default:https://ntfy.sh"`
-	NtfyTopic       string    `json:"ntfyTopic"`
-	NtfyAuthToken   string    `json:"-"`
-	EmailEnabled    bool      `json:"emailEnabled" gorm:"not null;default:false"`
-	SMTPHost        string    `json:"smtpHost"`
-	SMTPPort        int       `json:"smtpPort" gorm:"not null;default:587"`
-	SMTPUsername    string    `json:"smtpUsername"`
-	SMTPFrom        string    `json:"smtpFrom"`
-	SMTPUseTLS      bool      `json:"smtpUseTls" gorm:"not null;default:true"`
-	SMTPPassword    string    `json:"-"`
-	EmailRecipients []string  `json:"emailRecipients" gorm:"serializer:json;type:json"`
-	CreatedAt       time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt       time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID               uint      `json:"id" gorm:"primaryKey"`
+	Name             string    `json:"name" gorm:"not null;default:default;index"`
+	Type             string    `json:"type" gorm:"not null;default:smtp;index"`
+	NtfyEnabled      bool      `json:"ntfyEnabled" gorm:"not null;default:false"`
+	NtfyBaseURL      string    `json:"ntfyBaseUrl" gorm:"not null;default:https://ntfy.sh"`
+	NtfyTopic        string    `json:"ntfyTopic"`
+	NtfyAuthToken    string    `json:"-"`
+	EmailEnabled     bool      `json:"emailEnabled" gorm:"not null;default:false"`
+	SMTPHost         string    `json:"smtpHost"`
+	SMTPPort         int       `json:"smtpPort" gorm:"not null;default:587"`
+	SMTPUsername     string    `json:"smtpUsername"`
+	SMTPFrom         string    `json:"smtpFrom"`
+	SMTPUseTLS       bool      `json:"smtpUseTls" gorm:"not null;default:true"`
+	SMTPPassword     string    `json:"-"`
+	EmailRecipients  []string  `json:"emailRecipients" gorm:"serializer:json;type:json"`
+	DiscordEnabled   bool   `json:"discordEnabled" gorm:"not null;default:false"`
+	DiscordWebhookURL string `json:"discordWebhookUrl"`
+	CreatedAt        time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt        time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }

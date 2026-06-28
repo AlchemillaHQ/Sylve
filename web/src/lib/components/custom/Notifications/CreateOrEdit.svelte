@@ -15,7 +15,7 @@
 	import { watch } from 'runed';
 	import { generatePassword } from '$lib/utils/string';
 
-	type TransportType = 'ntfy' | 'smtp';
+	type TransportType = 'ntfy' | 'smtp' | 'discord';
 	type TransportForm = {
 		id?: number;
 		name: string;
@@ -33,6 +33,7 @@
 		smtpRecipients: string[];
 		smtpPassword: string;
 		smtpHasPassword: boolean;
+		discordWebhookUrl: string;
 	};
 
 	interface Props {
@@ -65,7 +66,8 @@
 			smtpUseTls: true,
 			smtpRecipients: [],
 			smtpPassword: '',
-			smtpHasPassword: false
+			smtpHasPassword: false,
+			discordWebhookUrl: ''
 		};
 	}
 
@@ -99,7 +101,8 @@
 						smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
 						smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
 						smtpPassword: '',
-						smtpHasPassword: editingTransport.email?.hasPassword ?? false
+						smtpHasPassword: editingTransport.email?.hasPassword ?? false,
+						discordWebhookUrl: editingTransport.discord?.webhookUrl ?? ''
 					};
 				} else {
 					form = defaultForm();
@@ -170,6 +173,12 @@
 							recipients: normalizeRecipients(f.smtpRecipients),
 							...(f.smtpPassword.trim().length > 0 ? { smtpPassword: f.smtpPassword.trim() } : {})
 						}
+					: null,
+			discord:
+				f.type === 'discord'
+					? {
+							...(f.discordWebhookUrl.trim().length > 0 ? { webhookUrl: f.discordWebhookUrl.trim() } : {})
+						}
 					: null
 		};
 	}
@@ -192,7 +201,8 @@
 						smtpUseTls: t.email.smtpUseTls,
 						recipients: t.email.recipients
 					}
-				: null
+				: null,
+			discord: t.discord ? { webhookUrl: t.discord.webhookUrl } : null
 		};
 	}
 
@@ -214,7 +224,8 @@
 				smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
 				smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
 				smtpPassword: '',
-				smtpHasPassword: editingTransport.email?.hasPassword ?? false
+				smtpHasPassword: editingTransport.email?.hasPassword ?? false,
+				discordWebhookUrl: editingTransport.discord?.webhookUrl ?? ''
 			};
 		}
 	}
@@ -279,7 +290,7 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="space-y-4 py-2">
+		<div class="space-y-4">
 			<div class="grid gap-3 sm:grid-cols-2">
 				<CustomValueInput
 					label="Transport Name"
@@ -290,13 +301,14 @@
 					label="Type"
 					options={[
 						{ value: 'ntfy', label: 'ntfy' },
-						{ value: 'smtp', label: 'SMTP' }
+						{ value: 'smtp', label: 'SMTP' },
+						{ value: 'discord', label: 'Discord' }
 					]}
 					bind:value={form.type}
-					onChange={(v) => (form.type = v as 'ntfy' | 'smtp')}
+					onChange={(v) => (form.type = v as TransportType)}
 					classes={{
 						parent: 'flex-1 min-w-0 space-y-1.5',
-						label: 'text-sm font-medium whitespace-nowrap',
+						label: 'text-sm font-medium whitespace-nowrap h-7',
 						trigger:
 							'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
 					}}
@@ -328,6 +340,15 @@
 						bind:value={form.ntfyToken}
 						placeholder={form.ntfyHasAuthToken ? 'Token stored (leave blank to keep)' : 'Optional'}
 						revealOnFocus={true}
+					/>
+					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
+				</div>
+			{:else if form.type === 'discord'}
+				<div class="space-y-3">
+					<CustomValueInput
+						label="Webhook URL"
+						bind:value={form.discordWebhookUrl}
+						placeholder="https://discord.com/api/webhooks/..."
 					/>
 					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
 				</div>
@@ -387,7 +408,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button onclick={save} disabled={loading}>
 				{#if loading}
 					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>

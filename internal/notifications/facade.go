@@ -41,6 +41,7 @@ type EmitResult struct {
 	Suppressed     bool `json:"suppressed"`
 	SentNtfy       bool `json:"sentNtfy"`
 	SentEmail      bool `json:"sentEmail"`
+	SentDiscord    bool `json:"sentDiscord"`
 }
 
 type Emitter interface {

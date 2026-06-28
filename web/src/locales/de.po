@@ -214,6 +214,11 @@ msgid "Node — <0/>"
 msgstr "Knoten — <0/>"
 
 #: src/lib/components/custom/About.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Discord"
 msgstr "Discord"
 
@@ -1799,7 +1804,6 @@ msgstr "Sind Sie sicher?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -2616,6 +2620,7 @@ msgstr "ZFS-Pools"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/routes/[node]/network/routes/+page.svelte
@@ -3460,6 +3465,7 @@ msgid "OOB Restore"
 msgstr "OOB-Wiederherstellung"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -12902,13 +12908,11 @@ msgstr ""
 msgid "Dismissed"
 msgstr ""
 
-#: src/lib/components/custom/Notifications/Bell.svelte
-msgid "Refresh Count"
-msgstr ""
+#~ msgid "Refresh Count"
+#~ msgstr ""
 
-#: src/lib/components/custom/Notifications/Bell.svelte
-msgid "Refresh List"
-msgstr ""
+#~ msgid "Refresh List"
+#~ msgstr ""
 
 #. 0: edit ? 'updated' \\: 'created'
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
@@ -14727,33 +14731,57 @@ msgid "System Tunable"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "SysV IPC (allow.sysvipc)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Adjust Time (allow.adjtime)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Extended Attributes (allow.extattr)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Routing (allow.routing)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Audit (allow.setaudit)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Time (allow.settime)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Super User Privileges (allow.suser)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Unprivileged Parent Tampering (allow.unprivileged_parent_tampering)"
+msgstr ""
+
+#~ msgid "Immediate attention required."
+#~ msgstr ""
+
+#~ msgid "An error has occurred that needs investigation."
+#~ msgstr ""
+
+#~ msgid "Please review at your earliest convenience."
+#~ msgstr ""
+
+#~ msgid "For your information - no action needed."
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Webhook URL"
 msgstr ""
