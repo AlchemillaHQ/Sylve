@@ -88,7 +88,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="flex max-h-[90vh] flex-col p-5 overflow-hidden"
+		class="flex max-h-[90vh] flex-col p-5 overflow-hidden sm:max-w-2xl"
 		showCloseButton={true}
 		showResetButton={true}
 		onClose={() => {
@@ -123,25 +123,25 @@
 					}
 				}}
 			/>
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<CustomValueInput
+					bind:value={properties.meta}
+					placeholder={cloudInitPlaceholders.metadata}
+					classes="space-y-1"
+					label="Meta Data"
+					type="textarea"
+					textAreaClasses="h-28 [field-sizing:fixed] overflow-y-auto"
+				/>
+				<CustomValueInput
+					bind:value={properties.networkConfig}
+					placeholder={cloudInitPlaceholders.networkConfig}
+					classes="space-y-1"
+					label="Network Config"
+					type="textarea"
+					textAreaClasses="h-28 [field-sizing:fixed] overflow-y-auto"
+				/>
+			</div>
 		</div>
-
-		<CustomValueInput
-			bind:value={properties.meta}
-			placeholder={cloudInitPlaceholders.metadata}
-			classes="space-y-1"
-			label="Meta Data"
-			type="textarea"
-			textAreaClasses="min-h-32 max-h-64"
-		/>
-
-		<CustomValueInput
-			bind:value={properties.networkConfig}
-			placeholder={cloudInitPlaceholders.networkConfig}
-			classes="space-y-1"
-			label="Network Config"
-			type="textarea"
-			textAreaClasses="min-h-32 max-h-64"
-		/>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
@@ -161,16 +161,20 @@
 	<Dialog.Root bind:open={templateSelector.open}>
 		<Dialog.Content
 			class="overflow-hidden p-5 max-w-[320px]!"
-			showCloseButton={true}
+			showCloseButton={false}
 			onClose={() => {
 				templateSelector.open = false;
 			}}
 		>
-			<Dialog.Header>
+			<div class="flex items-center justify-between">
 				<Dialog.Title>
 					<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title="Select a Template" />
 				</Dialog.Title>
-			</Dialog.Header>
+				<Dialog.Close onclick={() => { templateSelector.open = false; }}>
+					<span class="icon-[lucide--x] h-5 w-5 opacity-50 transition-opacity hover:opacity-100"></span>
+					<span class="sr-only">Close</span>
+				</Dialog.Close>
+			</div>
 
 			<SimpleSelect
 				options={[
