@@ -23,6 +23,6 @@ export async function initialize(pools: string[], services: string[]): Promise<I
 	});
 }
 
-export async function getBasicSettings(): Promise<BasicSettings> {
-	return await apiRequest('/basic/settings', BasicSettingsSchema, 'GET');
+export async function getBasicSettings(hostname?: string): Promise<BasicSettings> {
+	return await apiRequest('/basic/settings', BasicSettingsSchema, 'GET', undefined, { hostname });
 }

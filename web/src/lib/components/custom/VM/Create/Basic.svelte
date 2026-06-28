@@ -1,9 +1,7 @@
 <script lang="ts">
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { storage } from '$lib';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import { watch } from 'runed';
 
 	interface Props {
 		name: string;
@@ -11,7 +9,6 @@
 		id: number;
 		description: string;
 		nodes: ClusterNode[];
-		refetch: boolean;
 	}
 
 	let {
@@ -19,8 +16,7 @@
 		id = $bindable(),
 		description = $bindable(),
 		node = $bindable(),
-		nodes,
-		refetch = $bindable()
+		nodes
 	}: Props = $props();
 
 	let host = $state({
@@ -35,16 +31,6 @@
 			value: n.hostname
 		}));
 	});
-
-	watch(
-		() => node,
-		() => {
-			if (node && node.trim() !== '') {
-				storage.hostname = node;
-				refetch = true;
-			}
-		}
-	);
 </script>
 
 <div class="flex flex-col gap-4 p-4">

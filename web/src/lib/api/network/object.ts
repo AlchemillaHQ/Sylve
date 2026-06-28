@@ -3,8 +3,8 @@ import { NetworkObjectSchema, type NetworkObject } from '$lib/types/network/obje
 import { apiRequest } from '$lib/utils/http';
 import z from 'zod/v4';
 
-export async function getNetworkObjects(): Promise<NetworkObject[] | APIResponse> {
-    return await apiRequest('/network/object', NetworkObjectSchema.array(), 'GET');
+export async function getNetworkObjects(hostname?: string): Promise<NetworkObject[] | APIResponse> {
+    return await apiRequest('/network/object', NetworkObjectSchema.array(), 'GET', undefined, { hostname });
 }
 
 export async function createNetworkObject(

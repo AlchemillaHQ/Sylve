@@ -41,137 +41,6 @@
 		{ value: 'advanced', label: 'Advanced' }
 	];
 
-	let downloads = resource(
-		() => 'downloads',
-		async (key) => {
-			const downloads = await getDownloads();
-			updateCache(key, downloads);
-			return downloads;
-		}
-	);
-
-	let networkSwitches = resource(
-		() => 'network-switches',
-		async (key) => {
-			const switches = await getSwitches();
-			updateCache(key, switches);
-			return switches;
-		}
-	);
-
-	let networkObjects = resource(
-		() => 'network-objects',
-		async (key) => {
-			const objects = await getNetworkObjects();
-			updateCache(key, objects);
-			return objects;
-		}
-	);
-
-	let networkRefetch = $state(false);
-
-	watch(
-		() => networkRefetch,
-		(value) => {
-			if (value) {
-				networkObjects.refetch();
-				networkRefetch = false;
-			}
-		}
-	);
-
-	let vms = resource(
-		() => 'simple-vm-list',
-		async (key) => {
-			const vms = await getSimpleVMs();
-			updateCache(key, vms);
-			return vms;
-		}
-	);
-
-	let jails = resource(
-		() => 'simple-jail-list',
-		async (key) => {
-			const jails = await getSimpleJails();
-			updateCache(key, jails);
-			return jails;
-		}
-	);
-
-	let nodes = resource(
-		() => 'cluster-nodes',
-		async (key) => {
-			const nodes = await getNodes();
-			updateCache(key, nodes);
-			return nodes;
-		}
-	);
-
-	let pools = resource(
-		() => 'pool-list',
-		async (key) => {
-			const pools = await getPools();
-			updateCache(key, pools);
-			return pools;
-		}
-	);
-
-	const clusterNodes = resource(
-		() => 'cluster-nodes',
-		async (key) => {
-			const result = await getNodes();
-			updateCache(key, result);
-			return result;
-		}
-	);
-
-	let bootstrapRefetch = $state(false);
-
-	let bootstraps = resource(
-		() => (open && modal.storage.pool ? `bootstraps-${modal.storage.pool}` : null),
-		async (key) => {
-			if (!modal.storage.pool) return [] as BootstrapEntry[];
-			const result = await getBootstraps(modal.storage.pool);
-			if (key !== null) {
-				updateCache(key, result);
-			}
-			return result;
-		},
-		{ initialValue: [] as BootstrapEntry[] }
-	);
-
-	watch(
-		() => bootstrapRefetch,
-		(value) => {
-			if (value) {
-				bootstraps.refetch();
-				bootstrapRefetch = false;
-			}
-		}
-	);
-
-	let refetch = $state(false);
-
-	watch(
-		() => refetch,
-		(value) => {
-			if (value) {
-				downloads.refetch();
-				networkSwitches.refetch();
-				networkObjects.refetch();
-				vms.refetch();
-				jails.refetch();
-				nodes.refetch();
-				pools.refetch();
-				bootstraps.refetch();
-
-				refetch = false;
-			}
-		}
-	);
-
-	let creating: boolean = $state(false);
-
 	let options = {
 		name: '',
 		hostname: '',
@@ -226,21 +95,147 @@
 		}
 	};
 
+	let modal: CreateData = $state(options);
+
+	let downloads = resource(
+		() => `downloads-${modal.node || '__default__'}`,
+		async (key) => {
+			const downloads = await getDownloads(modal.node || undefined);
+			updateCache(key, downloads);
+			return downloads;
+		}
+	);
+
+	let networkSwitches = resource(
+		() => `network-switches-${modal.node || '__default__'}`,
+		async (key) => {
+			const switches = await getSwitches(modal.node || undefined);
+			updateCache(key, switches);
+			return switches;
+		}
+	);
+
+	let networkObjects = resource(
+		() => `network-objects-${modal.node || '__default__'}`,
+		async (key) => {
+			const objects = await getNetworkObjects(modal.node || undefined);
+			updateCache(key, objects);
+			return objects;
+		}
+	);
+
+	let networkRefetch = $state(false);
+
+	watch(
+		() => networkRefetch,
+		(value) => {
+			if (value) {
+				networkObjects.refetch();
+				networkRefetch = false;
+			}
+		}
+	);
+
+	let vms = resource(
+		() => `simple-vm-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const vms = await getSimpleVMs(modal.node || undefined);
+			updateCache(key, vms);
+			return vms;
+		}
+	);
+
+	let jails = resource(
+		() => `simple-jail-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const jails = await getSimpleJails(modal.node || undefined);
+			updateCache(key, jails);
+			return jails;
+		}
+	);
+
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key) => {
+			const nodes = await getNodes();
+			updateCache(key, nodes);
+			return nodes;
+		}
+	);
+
+	let pools = resource(
+		() => `pool-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const pools = await getPools(false, modal.node || undefined);
+			updateCache(key, pools);
+			return pools;
+		}
+	);
+
+	let bootstrapRefetch = $state(false);
+
+	let bootstraps = resource(
+		() => (open && modal.storage.pool ? `bootstraps-${modal.storage.pool}` : null),
+		async (key) => {
+			if (!modal.storage.pool) return [] as BootstrapEntry[];
+			const result = await getBootstraps(modal.storage.pool);
+			if (key !== null) {
+				updateCache(key, result);
+			}
+			return result;
+		},
+		{ initialValue: [] as BootstrapEntry[] }
+	);
+
+	watch(
+		() => bootstrapRefetch,
+		(value) => {
+			if (value) {
+				bootstraps.refetch();
+				bootstrapRefetch = false;
+			}
+		}
+	);
+
+	watch([() => open, () => minimize], ([open, minimize]) => {
+		if (open && !minimize) {
+			downloads.refetch();
+			networkSwitches.refetch();
+			networkObjects.refetch();
+			vms.refetch();
+			jails.refetch();
+			nodes.refetch();
+			pools.refetch();
+			bootstraps.refetch();
+		}
+	});
+
+	watch(
+		() => modal.node,
+		(node) => {
+			if (!node || node.trim() === '') return;
+			modal.storage.pool = '';
+			modal.storage.base = '';
+			modal.network.switch = 'None';
+			modal.network.mac = 0;
+		}
+	);
+
+	let creating: boolean = $state(false);
+
 	let nextId = $derived.by(() => {
 		if (open) {
 			if (
-				clusterNodes.current &&
-				Array.isArray(clusterNodes.current) &&
-				clusterNodes.current.length > 0
+				nodes.current &&
+				Array.isArray(nodes.current) &&
+				nodes.current.length > 0
 			) {
-				return getNextGuestId(clusterNodes.current);
+				return getNextGuestId(nodes.current);
 			}
 
 			return getNextId(vms.current || [], jails.current || []);
 		}
 	});
-
-	let modal: CreateData = $state(options);
 
 	watch(
 		() => nextId,
@@ -327,7 +322,11 @@
 						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Minimize</span>
 					</Button>
-					<Button size="sm" variant="link" class="h-4" onclick={() => (open = false)} title="Close">
+					<Button size="sm" variant="link" class="h-4" onclick={() => {
+						open = false;
+						minimize = false;
+						resetModal();
+					}} title="Close">
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
@@ -353,7 +352,6 @@
 										bind:id={modal.id}
 										bind:hostname={modal.hostname}
 										bind:description={modal.description}
-										bind:refetch
 										bind:node={modal.node}
 										nodes={nodes.current}
 									/>

@@ -9,12 +9,12 @@ import {
 } from '$lib/types/utilities/downloader';
 import { apiRequest } from '$lib/utils/http';
 
-export async function getDownloads(): Promise<Download[]> {
-	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET');
+export async function getDownloads(hostname?: string): Promise<Download[]> {
+	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET', undefined, { hostname });
 }
 
-export async function getDownloadsByUType(): Promise<UTypeGroupedDownload[]> {
-	return await apiRequest('/utilities/downloads/utype', UTypeGroupedDownloadSchema.array(), 'GET');
+export async function getDownloadsByUType(hostname?: string): Promise<UTypeGroupedDownload[]> {
+	return await apiRequest('/utilities/downloads/utype', UTypeGroupedDownloadSchema.array(), 'GET', undefined, { hostname });
 }
 
 export async function getDownloadPaths(): Promise<DownloadPaths> {

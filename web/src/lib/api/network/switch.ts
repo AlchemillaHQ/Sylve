@@ -2,8 +2,8 @@ import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { SwitchListSchema, type SwitchList } from '$lib/types/network/switch';
 import { apiRequest } from '$lib/utils/http';
 
-export async function getSwitches(): Promise<SwitchList> {
-	return await apiRequest('/network/switch', SwitchListSchema, 'GET');
+export async function getSwitches(hostname?: string): Promise<SwitchList> {
+	return await apiRequest('/network/switch', SwitchListSchema, 'GET', undefined, { hostname });
 }
 
 export async function createManualSwitch(name: string, bridge: string): Promise<APIResponse> {

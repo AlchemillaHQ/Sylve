@@ -38,126 +38,6 @@
 
 	let { open = $bindable(), minimize = $bindable() }: Props = $props();
 
-	const networkObjects = resource(
-		() => 'network-objects',
-		async (key) => {
-			const result = await getNetworkObjects();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const networkSwitches = resource(
-		() => 'network-switches',
-		async (key) => {
-			const result = await getSwitches();
-			updateCache(key, result);
-			return result;
-		}
-	);
-
-	const pciDevices = resource(
-		() => 'pci-devices',
-		async (key) => {
-			const result = await getPCIDevices();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const pptDevices = resource(
-		() => 'ppt-devices',
-		async (key) => {
-			const result = await getPPTDevices();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const downloadsByUtype = resource(
-		() => 'downloads-by-utype',
-		async (key) => {
-			const result = await getDownloadsByUType();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const vms = resource(
-		() => 'simple-vm-list',
-		async (key) => {
-			const result = await getSimpleVMs();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const jails = resource(
-		() => 'simple-jail-list',
-		async (key) => {
-			const result = await getSimpleJails();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const clusterNodes = resource(
-		() => 'cluster-nodes',
-		async (key) => {
-			const result = await getNodes();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: [] }
-	);
-
-	const basicSettings = resource(
-		() => 'basic-settings',
-		async (key) => {
-			const result = await getBasicSettings();
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: { pools: [], services: [], initialized: false } }
-	);
-
-	let reload = $state(false);
-
-	watch([() => reload, () => minimize], ([reload, minimize]) => {
-		if (reload || !minimize) {
-			networkObjects.refetch();
-			networkSwitches.refetch();
-			pciDevices.refetch();
-			pptDevices.refetch();
-			downloadsByUtype.refetch();
-			vms.refetch();
-			jails.refetch();
-			clusterNodes.refetch();
-			basicSettings.refetch();
-
-			reload = false;
-		}
-	});
-
-	let passablePci: PCIDevice[] = $derived.by(() => {
-		if (!pciDevices.current) return [];
-		return pciDevices.current.filter((device) => device.name.startsWith('ppt'));
-	});
-
-	const tabs = [
-		{ value: 'basic', label: 'Basic' },
-		{ value: 'storage', label: 'Storage' },
-		{ value: 'network', label: 'Network' },
-		{ value: 'hardware', label: 'Hardware' },
-		{ value: 'advanced', label: 'Advanced' }
-	];
-
 	let options = {
 		name: '',
 		id: 0,
@@ -210,6 +90,137 @@
 		}
 	};
 
+	let modal: CreateData = $state(options);
+
+	const networkObjects = resource(
+		() => `network-objects-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getNetworkObjects(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const networkSwitches = resource(
+		() => `network-switches-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getSwitches(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		}
+	);
+
+	const pciDevices = resource(
+		() => `pci-devices-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getPCIDevices(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const pptDevices = resource(
+		() => `ppt-devices-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getPPTDevices(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const downloadsByUtype = resource(
+		() => `downloads-by-utype-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getDownloadsByUType(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const vms = resource(
+		() => `simple-vm-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getSimpleVMs(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const jails = resource(
+		() => `simple-jail-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getSimpleJails(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const clusterNodes = resource(
+		() => 'cluster-nodes',
+		async (key) => {
+			const result = await getNodes();
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: [] }
+	);
+
+	const basicSettings = resource(
+		() => `basic-settings-${modal.node || '__default__'}`,
+		async (key) => {
+			const result = await getBasicSettings(modal.node || undefined);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: { pools: [], services: [], initialized: false } }
+	);
+
+	watch([() => open, () => minimize], ([open, minimize]) => {
+		if (open && !minimize) {
+			networkObjects.refetch();
+			networkSwitches.refetch();
+			pciDevices.refetch();
+			pptDevices.refetch();
+			downloadsByUtype.refetch();
+			vms.refetch();
+			jails.refetch();
+			clusterNodes.refetch();
+			basicSettings.refetch();
+		}
+	});
+
+	watch(
+		() => modal.node,
+		(node) => {
+			if (!node || node.trim() === '') return;
+			modal.storage.pool = '';
+			modal.storage.iso = '';
+			modal.network.switch = 'None';
+			modal.network.mac = '';
+			modal.hardware.passthroughIds = [];
+			modal.hardware.pinnedCPUs = [];
+		}
+	);
+
+	let passablePci: PCIDevice[] = $derived.by(() => {
+		if (!pciDevices.current) return [];
+		return pciDevices.current.filter((device) => device.name.startsWith('ppt'));
+	});
+
+	const tabs = [
+		{ value: 'basic', label: 'Basic' },
+		{ value: 'storage', label: 'Storage' },
+		{ value: 'network', label: 'Network' },
+		{ value: 'hardware', label: 'Hardware' },
+		{ value: 'advanced', label: 'Advanced' }
+	];
+
 	let nextId = $derived.by(() => {
 		if (
 			clusterNodes.current &&
@@ -222,7 +233,6 @@
 		return getNextId(vms.current || [], jails.current || []);
 	});
 
-	let modal: CreateData = $state(options);
 	let loading = $state(false);
 	let lastTab = $state('basic');
 
@@ -334,7 +344,6 @@
 										bind:id={modal.id}
 										bind:description={modal.description}
 										nodes={clusterNodes.current}
-										bind:refetch={reload}
 									/>
 								</div>
 							{:else if value === 'storage'}
