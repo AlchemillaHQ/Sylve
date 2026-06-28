@@ -28,5 +28,8 @@
     "jails": {
         "disableDevFS": false
     },
+    "zfs": {
+        "tune": true
+    },
     "trustedProxies": []
 }

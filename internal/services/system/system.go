@@ -10,9 +10,11 @@ package system
 
 import (
 	"sync"
+	"time"
 
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 
 	"github.com/alchemillahq/gzfs"
 	"gorm.io/gorm"
@@ -26,6 +28,10 @@ type Service struct {
 	achMutex    sync.Mutex
 	GZFS        *gzfs.Client
 	DiskService diskServiceInterfaces.DiskServiceInterface
+
+	tunMutex    sync.Mutex
+	tunCache    []sysctl.Tunable
+	tunCachedAt time.Time
 }
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {

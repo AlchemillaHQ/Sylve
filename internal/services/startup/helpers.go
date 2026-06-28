@@ -9,6 +9,7 @@
 package startup
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,12 +24,28 @@ import (
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
+	"gorm.io/gorm"
 )
 
 var (
-	startupGetSysctlInt64 = sysctl.GetInt64
-	startupSetSysctlInt32 = sysctl.SetInt32
+	startupGetSysctlInt64       = sysctl.GetInt64
+	startupSetSysctlInt32       = sysctl.SetInt32
+	startupSetSysctlInt64       = sysctl.SetInt64
+	startupGetSystemMemoryBytes = utils.GetSystemMemoryBytes
 )
+
+const arcMaxOID = "vfs.zfs.arc.max"
+
+// computeARCMax returns 10% of host memory, capped at 16 GiB.
+func computeARCMax(memBytes int64) int64 {
+	arcMax := memBytes / 10
+	capBytes := int64(16) * 1024 * 1024 * 1024
+	if arcMax > capBytes {
+		arcMax = capBytes
+	}
+
+	return arcMax
+}
 
 func (s *Service) SysctlSync() error {
 	intVals := map[string]int32{
@@ -67,6 +84,47 @@ func (s *Service) SysctlSync() error {
 
 		logger.L.Info().Msg("Raised sysctl net.fibs to 8 for multi-FIB routing support")
 	}
+
+	return nil
+}
+
+// ZFSTune sets the ZFS ARC max to 10% of host memory (capped at 16 GiB) when
+// zfs.tune is enabled in the config. A user-stored vfs.zfs.arc.max tunable takes
+// precedence and disables the auto-tune.
+func (s *Service) ZFSTune() error {
+	if config.ParsedConfig == nil || !config.ParsedConfig.ZFS.Tune {
+		return nil
+	}
+
+	if s.DB != nil {
+		var existing models.SystemTunable
+		err := s.DB.Where("name = ?", arcMaxOID).First(&existing).Error
+		if err == nil {
+			logger.L.Info().Msgf("%s user override present, skipping ZFS ARC auto-tune", arcMaxOID)
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+
+	mem, err := startupGetSystemMemoryBytes()
+	if err != nil {
+		logger.L.Error().Msgf("Error getting system memory for ZFS ARC tuning: %v, skipping!", err)
+		return nil
+	}
+
+	arcMax := computeARCMax(mem)
+	if arcMax <= 0 {
+		return nil
+	}
+
+	if err := startupSetSysctlInt64(arcMaxOID, arcMax); err != nil {
+		logger.L.Error().Msgf("Error setting %s: %v", arcMaxOID, err)
+		return nil
+	}
+
+	logger.L.Info().Msgf("Set %s to %d bytes (10%% of host memory, capped at 16G)", arcMaxOID, arcMax)
 
 	return nil
 }

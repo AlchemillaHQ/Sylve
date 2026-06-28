@@ -339,6 +339,8 @@ func RegisterRoutes(r *gin.Engine,
 		system.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
 		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService, networkService))
+		system.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
+		system.PUT("/tunables", systemHandlers.SetTunable(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")

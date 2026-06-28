@@ -50,3 +50,8 @@ func SetInt32(name string, value int32) error {
 	s := strconv.FormatInt(int64(value), 10)
 	return Set(name, []byte(s))
 }
+
+func SetInt64(name string, value int64) error {
+	s := strconv.FormatInt(value, 10)
+	return Set(name, []byte(s))
+}

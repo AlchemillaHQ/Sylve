@@ -25,6 +25,8 @@ type SystemServiceInterface interface {
 	GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error)
 	Initialize(ctx context.Context, req InitializeRequest) []error
 
+	ReapplyStoredTunables() error
+
 	StartNetlinkWatcher(ctx context.Context)
 	NetlinkEventsCleaner(ctx context.Context)
 	StartDiskSmartMonitor(ctx context.Context)

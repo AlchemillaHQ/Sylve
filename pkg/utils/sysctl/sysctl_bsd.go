@@ -108,3 +108,14 @@ func SetInt32(name string, value int32) error {
 	_, err := C.sysctlbyname(nameC, nil, nil, newp, newlen)
 	return err
 }
+
+func SetInt64(name string, value int64) error {
+	nameC := C.CString(name)
+	defer C.free(unsafe.Pointer(nameC))
+
+	newlen := C.size_t(unsafe.Sizeof(value))
+	newp := unsafe.Pointer(&value)
+
+	_, err := C.sysctlbyname(nameC, nil, nil, newp, newlen)
+	return err
+}

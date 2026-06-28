@@ -4,7 +4,7 @@
 	import { sha256 } from '$lib/utils/string';
 	import { findRow, getAllRows } from '$lib/utils/tree-table';
 	import { watch, Debounced } from 'runed';
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import {
 		TabulatorFull as Tabulator,
@@ -84,6 +84,48 @@
 	let scroll = $state([0, 0]);
 	let hash = $state('');
 
+	const MIN_PAGE_SIZE = 10;
+	const MAX_PAGE_SIZE = 100;
+	const DEFAULT_ROW_HEIGHT = 42;
+	const HEADER_FOOTER_OVERHEAD = 80;
+
+	let currentPageSize = 25;
+	let resizeObserver: ResizeObserver | null = null;
+	let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	let observerPrimed = false;
+	let lastObservedHeight = 0;
+
+	function clampPageSize(value: number): number {
+		return Math.max(MIN_PAGE_SIZE, Math.min(MAX_PAGE_SIZE, value));
+	}
+
+	function estimateInitialPageSize(): number {
+		const height = tableComponent?.clientHeight ?? 0;
+		const usable = height - HEADER_FOOTER_OVERHEAD;
+		if (usable <= 0) return 25;
+		return clampPageSize(Math.floor(usable / DEFAULT_ROW_HEIGHT));
+	}
+
+	function adaptPageSize() {
+		if (!table || !tableInitialized) return;
+
+		const holder = tableComponent?.querySelector('.tabulator-tableholder') as HTMLElement | null;
+		if (!holder) return;
+
+		const holderHeight = holder.clientHeight;
+		if (holderHeight <= 0) return;
+
+		const rowEl = tableComponent?.querySelector('.tabulator-row') as HTMLElement | null;
+		const rowHeight = rowEl?.offsetHeight || DEFAULT_ROW_HEIGHT;
+		if (rowHeight <= 0) return;
+
+		const size = clampPageSize(Math.floor(holderHeight / rowHeight));
+		if (size !== currentPageSize) {
+			currentPageSize = size;
+			table.setPageSize(size);
+		}
+	}
+
 	function updateParentActiveRows() {
 		if (tableInitialized) {
 			parentActiveRow = table?.getSelectedRows().map((r) => r.getData() as Row) || [];
@@ -141,15 +183,19 @@
         */
 
 		if (tableComponent) {
+			const initialPageSize = estimateInitialPageSize();
+			currentPageSize = initialPageSize;
 			table = new Tabulator(tableComponent, {
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
+				height: '100%',
 				ajaxResponse: function (url, params, response) {
 					return response.data;
 				},
-				ajaxParams: {
+				ajaxParams: () => ({
 					hash,
-					...extraParams
-				},
+					...extraParams,
+					search: query || ''
+				}),
 				ajaxConfig: {
 					method: 'GET',
 					headers: {
@@ -175,7 +221,7 @@
 				},
 				placeholder: customPlaceholder || 'No data available',
 				pagination: true,
-				paginationSize: 25,
+				paginationSize: initialPageSize,
 				paginationCounter: 'pages',
 				sortMode: 'remote',
 				filterMode: 'remote',
@@ -212,6 +258,24 @@
 					}
 				}
 			});
+
+			resizeObserver = new ResizeObserver((entries) => {
+				const newHeight = entries[0]?.contentRect.height ?? 0;
+				if (!observerPrimed) {
+					observerPrimed = true;
+					lastObservedHeight = newHeight;
+					return;
+				}
+				if (Math.abs(newHeight - lastObservedHeight) < DEFAULT_ROW_HEIGHT / 2) return;
+				lastObservedHeight = newHeight;
+				if (resizeTimer) {
+					clearTimeout(resizeTimer);
+				}
+				resizeTimer = setTimeout(adaptPageSize, 200);
+			});
+			if (tableComponent) {
+				resizeObserver.observe(tableComponent);
+			}
 		});
 
 		table?.on('scrollVertical', (top) => {
@@ -259,17 +323,21 @@
 		});
 	});
 
+	onDestroy(() => {
+		if (resizeTimer) {
+			clearTimeout(resizeTimer);
+		}
+		resizeObserver?.disconnect();
+		resizeObserver = null;
+	});
+
 	const debouncedQuery = new Debounced(() => query, 300);
 
 	watch(
 		() => debouncedQuery.current,
-		(newQuery) => {
+		() => {
 			if (table && tableInitialized) {
-				table.setData(ajaxURL!, {
-					hash,
-					...extraParams,
-					search: newQuery || ''
-				});
+				table.setData(ajaxURL!);
 			}
 		}
 	);
@@ -278,11 +346,7 @@
 		() => reload,
 		(newReload) => {
 			if (newReload) {
-				table?.setData(ajaxURL!, {
-					hash,
-					...extraParams,
-					search: query || ''
-				});
+				table?.setData(ajaxURL!);
 				reload = false;
 			}
 		}
@@ -313,6 +377,11 @@
 </ContextMenu.Root>
 
 <style>
+	.s-tree-table-container {
+		display: flex;
+		flex-direction: column;
+	}
+
 	:global(.s-tree-table-container > .tabulator) {
 		flex: 1;
 		min-height: 0;

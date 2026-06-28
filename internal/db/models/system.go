@@ -52,3 +52,11 @@ type NetlinkEvent struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime;index"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
+
+type SystemTunable struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	Name      string    `json:"name" gorm:"uniqueIndex;not null"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}

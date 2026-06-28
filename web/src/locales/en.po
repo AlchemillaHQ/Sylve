@@ -861,6 +861,7 @@ msgstr "Failed to create note"
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -898,6 +899,7 @@ msgstr "Updated"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "View"
@@ -1674,6 +1676,7 @@ msgstr "Property"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -1688,6 +1691,7 @@ msgid "Leader Node"
 msgstr "Leader Node"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/lib/components/custom/Dialog/ValueViewer.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -1822,6 +1826,7 @@ msgid "Cancel"
 msgstr "Cancel"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 msgid "Enter value"
 msgstr "Enter value"
 
@@ -2027,6 +2032,7 @@ msgstr "First Modified"
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "Type"
@@ -2724,6 +2730,8 @@ msgstr "ZFS Pools updated"
 #. 0: title
 #. 0: activeRow.property
 #. 0: activeRow.property
+#. 0: activeRow?.name
+#. 0: editModal.name
 #. 0: title
 #. 0: title
 #. 0: title
@@ -2734,6 +2742,8 @@ msgstr "ZFS Pools updated"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -4182,6 +4192,7 @@ msgstr "Failback"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -4213,6 +4224,7 @@ msgstr "Yes"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -5971,8 +5983,8 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -9995,8 +10007,10 @@ msgstr "This jail is owned by another node right now"
 msgid "Select a base/rootfs to add FStab entries"
 msgstr "Select a base/rootfs to add FStab entries"
 
+#. 0: truncated
 #. 0: textToCopy
 #. 0: truncated
+#: src/lib/components/custom/Dialog/ValueViewer.svelte
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "Copied \"{0}\" to clipboard"
@@ -14712,3 +14726,25 @@ msgstr "Select object or type IP (2001:db8::1)"
 
 #~ msgid "Leave"
 #~ msgstr "Leave"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Tunables"
+msgstr "Tunables"
+
+#: src/routes/[node]/settings/system/tunables/+page.svelte
+msgid "Writable"
+msgstr "Writable"
+
+#. 0: editModal.name
+#: src/routes/[node]/settings/system/tunables/+page.svelte
+msgid "Tunable {0} updated"
+msgstr "Tunable {0} updated"
+
+#. 0: editModal.name
+#: src/routes/[node]/settings/system/tunables/+page.svelte
+msgid "Failed to update {0}"
+msgstr "Failed to update {0}"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "System Tunable"
+msgstr "System Tunable"

@@ -346,6 +346,11 @@
 								label: 'Services',
 								icon: 'material-symbols--design-services-outline-rounded',
 								href: `/${node}/settings/system/services`
+							},
+							{
+								label: 'Tunables',
+								icon: 'mdi--tune-variant',
+								href: `/${node}/settings/system/tunables`
 							}
 						]
 					},

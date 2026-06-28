@@ -129,6 +129,14 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	s.SysctlSync()
 
+	if err := s.ZFSTune(); err != nil {
+		logger.L.Error().Err(err).Msg("ZFS ARC auto-tune failed")
+	}
+
+	if err := s.System.ReapplyStoredTunables(); err != nil {
+		logger.L.Error().Err(err).Msg("Re-applying stored tunables failed")
+	}
+
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
 		err := ensureServiceStarted("libvirtd")
 		if err != nil {

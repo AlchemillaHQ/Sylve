@@ -55,6 +55,10 @@ type JailsConfig struct {
 	DisableDevFS bool `json:"disableDevFS"`
 }
 
+type ZFSConfig struct {
+	Tune bool `json:"tune"`
+}
+
 type SylveConfig struct {
 	Environment    Environment     `json:"environment"`
 	ProxyToVite    bool            `json:"proxyToVite"`
@@ -71,6 +75,7 @@ type SylveConfig struct {
 	BTT            BTT             `json:"btt"`
 	Auth           AuthConfig      `json:"auth"`
 	Jails          JailsConfig     `json:"jails"`
+	ZFS            ZFSConfig       `json:"zfs"`
 	TrustedProxies []string        `json:"trustedProxies"`
 }
 

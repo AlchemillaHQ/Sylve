@@ -45,6 +45,9 @@ func ParseConfig(path string) *internal.SylveConfig {
 		Auth: internal.AuthConfig{
 			EnablePAM: true,
 		},
+		ZFS: internal.ZFSConfig{
+			Tune: true,
+		},
 	}
 	err = decoder.Decode(ParsedConfig)
 

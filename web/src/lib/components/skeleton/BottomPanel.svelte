@@ -187,6 +187,7 @@
 		'/api/system/ppt-devices/prepare': 'PCI Passthrough - Prepare',
 		'/api/system/ppt-devices/import': 'PCI Passthrough - Import',
 		'/api/system/ppt-devices': 'PCI Passthrough',
+		'/api/system/tunables': 'System Tunable',
 		'/api/zfs/datasets/filesystem': 'ZFS Filesystem',
 		'/api/zfs/datasets/volume/flash': 'ZFS Volume - Flash',
 		'/api/zfs/datasets/volume': 'ZFS Volume',
@@ -369,9 +370,9 @@
 				.map((s) => (/^\d+$/.test(s) ? ':id' : s))
 				.join('/');
 
-			const matchedEntry = Object.entries(pathToActionMap).find(([prefix]) =>
-				normalizedPath.startsWith(prefix)
-			);
+			const matchedEntry = Object.entries(pathToActionMap)
+				.sort(([a], [b]) => b.length - a.length)
+				.find(([prefix]) => normalizedPath.startsWith(prefix));
 
 			if (matchedEntry) {
 				const label = matchedEntry[1];

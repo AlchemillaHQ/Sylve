@@ -1,4 +1,6 @@
 <!-- 
+<span class="icon-[mdi--lock-outline]"></span>
+<span class="icon-[mdi--tune-variant]"></span>
 <span class="icon-[mdi--palette]"></span>
 <span class="icon-[mdi--account-box]"></span>
 <span class="icon-[mdi--account-arrow-right]"></span>
