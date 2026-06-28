@@ -14748,3 +14748,35 @@ msgstr "Failed to update {0}"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "System Tunable"
 msgstr "System Tunable"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "SysV IPC (allow.sysvipc)"
+msgstr "SysV IPC (allow.sysvipc)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Adjust Time (allow.adjtime)"
+msgstr "Adjust Time (allow.adjtime)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Extended Attributes (allow.extattr)"
+msgstr "Extended Attributes (allow.extattr)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Routing (allow.routing)"
+msgstr "Routing (allow.routing)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Set Audit (allow.setaudit)"
+msgstr "Set Audit (allow.setaudit)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Set Time (allow.settime)"
+msgstr "Set Time (allow.settime)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Super User Privileges (allow.suser)"
+msgstr "Super User Privileges (allow.suser)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Unprivileged Parent Tampering (allow.unprivileged_parent_tampering)"
+msgstr "Unprivileged Parent Tampering (allow.unprivileged_parent_tampering)"
