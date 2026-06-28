@@ -132,6 +132,10 @@
 				field: 'mac'
 			},
 			{
+				title: 'VLAN',
+				field: 'vlan'
+			},
+			{
 				title: 'IPv4',
 				field: 'ipv4',
 				formatter: 'html'
@@ -196,7 +200,8 @@
 							switch: name,
 							mac: macFormtter(networkObjects.current, network.macId || 0),
 							ipv4,
-							ipv6
+							ipv6,
+							vlan: network.vlan === 0 ? '-' : network.vlan
 						});
 					}
 				}

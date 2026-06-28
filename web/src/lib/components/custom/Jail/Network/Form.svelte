@@ -277,7 +277,7 @@
 			properties.dhcp,
 			properties.slaac,
 			properties.defaultGateway,
-			properties.vlan
+			parseNumberOrZero(properties.vlan)
 		);
 
 		reload = true;
@@ -331,7 +331,7 @@
 			editProperties.dhcp,
 			editProperties.slaac,
 			editProperties.defaultGateway,
-			editProperties.vlan
+			parseNumberOrZero(editProperties.vlan)
 		);
 
 		reload = true;

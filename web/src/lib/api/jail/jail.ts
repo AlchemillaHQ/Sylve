@@ -43,7 +43,7 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
         ipv6: data.network.ipv6,
         ipv6Gw: data.network.ipv6Gateway,
         mac: data.network.mac,
-        vlan: data.network.vlan,
+		vlan: Number(data.network.vlan),
         resourceLimits: data.hardware.resourceLimits,
         cores: Number(data.hardware.cpuCores.toString()),
         memory: Number(data.hardware.ram.toString()),
