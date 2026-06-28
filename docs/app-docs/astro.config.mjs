@@ -20,11 +20,11 @@ export default defineConfig({
                     lang: 'en',
                 },
             },
+            favicon: '/favicon.svg',
             logo: {
                 light: './src/assets/logo-black.svg',
                 dark: './src/assets/logo-white.svg',
             },
-            favicon: '/white.svg',
             social: [
                 {
                     icon: 'github',

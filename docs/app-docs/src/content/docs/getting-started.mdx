@@ -104,13 +104,19 @@ We will setup an `rc` script for running Sylve but prior to that we need to do 2
 
 1. Create a `config.json` file:
 
+:::caution
+In the ports tree version v0.2.3 by default the enablePAM has been set to `true` this might be a footgun for you when you have users configured on the system that does NOT need to access Sylve's Web UI, as Sylve doesn't support authorization yes just authentication via PAM. Setting this to `false` disables PAM based login completely and you can use regular Local authentication that is maintained in Sylve's sqlite database.
+
+You can also set the `password` for the admin user to be empty after initial setup is done, Sylve will ignore this field when it's set to empty.
+:::
+
 ```json
 {
   "environment": "production",
   "proxyToVite": false,
   "dataPath": "/var/db/sylve",
   "auth": {
-    "enablePAM": true
+    "enablePAM": false
   },
   "admin": {
     "email": "admin@sylve.local",

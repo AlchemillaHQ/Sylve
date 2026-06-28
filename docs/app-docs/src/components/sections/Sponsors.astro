@@ -18,6 +18,12 @@ const sponsors = [
     lightLogo: "/sponsors/IP-Technics-Dark.webp",
     darkLogo: "/sponsors/IP-Technics-White.webp",
   },
+  {
+    name: "Zyner",
+    href: "https://zyner.org",
+    lightLogo: "/partners/zyner.svg",
+    darkLogo: "/partners/zyner.svg",
+  },
 ];
 ---
 
@@ -39,7 +45,7 @@ const sponsors = [
     </div>
 
     <div
-      class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 -translate-y-4 animate-fade-in opacity-0"
+      class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 -translate-y-4 animate-fade-in opacity-0"
       style="--animation-delay: 320ms"
     >
       {
@@ -54,14 +60,14 @@ const sponsors = [
             <img
               src={sponsor.lightLogo}
               alt={`${sponsor.name} logo`}
-              class="max-h-14 w-auto object-contain dark:hidden"
+              class={`max-h-14 w-auto object-contain dark:hidden ${sponsor.name === "Zyner" ? "rounded-lg" : ""}`}
               loading="lazy"
               decoding="async"
             />
             <img
               src={sponsor.darkLogo}
               alt={`${sponsor.name} logo`}
-              class="hidden max-h-14 w-auto object-contain dark:block"
+              class={`hidden max-h-14 w-auto object-contain dark:block ${sponsor.name === "Zyner" ? "rounded-lg" : ""}`}
               loading="lazy"
               decoding="async"
             />

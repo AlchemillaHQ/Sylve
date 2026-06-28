@@ -2,7 +2,6 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import CopyButton from "@/components/CopyButton.svelte";
-import ViewInstallerButton from "@/components/ViewInstallerButton.svelte";
 import HeroFrame from "@/components/HeroFrame.svelte";
 import Particles from "../magicui/Particles.svelte";
 import { buttonVariants } from "../ui/button";
@@ -94,7 +93,6 @@ try {
           class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
         >
           <span><span class="text-foreground">$ </span>pkg install sylve</span>
-          <ViewInstallerButton client:load />
           <CopyButton client:load text="pkg install sylve" />
         </div>
       </div>
