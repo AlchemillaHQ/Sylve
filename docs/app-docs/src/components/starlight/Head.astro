@@ -1,9 +1,11 @@
 ---
 import DefaultHead from "@astrojs/starlight/components/Head.astro";
+import { ViewTransitions } from "astro:transitions";
 
 const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 ---
 
+<ViewTransitions />
 <DefaultHead />
 
 <link rel="icon" type="image/x-icon" href="/favicon.ico" />

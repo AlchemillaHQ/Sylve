@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import svelte from '@astrojs/svelte';
 
@@ -11,6 +12,7 @@ export default defineConfig({
     output: 'static',
     site,
     integrations: [
+        sitemap(),
         starlight({
             title: 'Sylve',
             defaultLocale: 'root',
@@ -43,15 +45,15 @@ export default defineConfig({
                     items: [
                         'docs',
                         'getting-started',
-                        {
-                            label: 'Contributing',
-                            collapsed: false,
-                            items: [
-                                'guides/contributing/code-contributions',
-                                'guides/contributing/docs-contributions',
-                                'guides/contributing/translations',
-                            ],
-                        },
+                    ],
+                },
+                {
+                    label: 'Contributing',
+                    collapsed: false,
+                    items: [
+                        'guides/contributing/code-contributions',
+                        'guides/contributing/docs-contributions',
+                        'guides/contributing/translations',
                     ],
                 },
                 {

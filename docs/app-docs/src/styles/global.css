@@ -57,3 +57,31 @@
   --color-gray-900: oklch(0.2 0 0);
   --color-gray-950: oklch(0.15 0 0);
 }
+
+/* ── View Transitions ─────────────────────────────── */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  animation: 250ms ease-out both vt-fade-out;
+}
+
+::view-transition-new(root) {
+  animation: 250ms ease-in-out both vt-fade-in;
+}
+
+@keyframes vt-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
