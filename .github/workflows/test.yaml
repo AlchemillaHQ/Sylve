@@ -27,6 +27,7 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
+          copyback: true
           prepare: |
             pkg update
             pkg install -y go git
@@ -39,5 +40,19 @@ jobs:
             cat /root/.ssh/id_ed25519.pub >> /root/.ssh/authorized_keys
             chmod 600 /root/.ssh/authorized_keys
             ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
+            for i in $(seq 1 60); do
+              ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null && break
+              sleep 0.5
+            done
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
           run: |
-            make test-integration
+            { make test-integration 2>&1; echo "$?" > /tmp/it.rc; } | tee test-integration.log
+            exit "$(cat /tmp/it.rc)"
+
+      - name: Upload integration test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-log
+          path: test-integration.log
+          if-no-files-found: warn
