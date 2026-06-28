@@ -4,6 +4,7 @@ import type { Disk } from '$lib/types/disk/disk';
 import type { Dataset } from '$lib/types/zfs/dataset';
 import type {
     ScanSentenceResult,
+    VdevType,
     Zpool,
     ZpoolStatusPool,
     ZpoolVdev
@@ -41,6 +42,38 @@ export const raidTypeArr = [
         available: false
     }
 ];
+
+export const vdevTypeArr: { value: VdevType; label: string; icon: string }[] = [
+	{ value: 'data', label: 'Data', icon: 'icon-[bi--hdd-stack-fill]' },
+	{ value: 'log', label: 'Log (ZIL)', icon: 'icon-[carbon--log]' },
+	{ value: 'cache', label: 'Cache (L2ARC)', icon: 'icon-[carbon--cache-data-set]' },
+	{ value: 'special', label: 'Special', icon: 'icon-[carbon--data-table]' },
+	{ value: 'dedup', label: 'Dedup', icon: 'icon-[carbon--data-set]' }
+];
+
+const raidMinDisks: Record<string, number> = {
+	stripe: 1,
+	mirror: 2,
+	raidz: 3,
+	raidz2: 4,
+	raidz3: 5
+};
+
+export function getAvailableRaidTypes(type: VdevType, deviceCount?: number) {
+	let types = raidTypeArr;
+	if (type === 'cache') {
+		types = raidTypeArr.filter((r) => r.value === 'stripe');
+	} else if (type === 'log') {
+		types = raidTypeArr.filter((r) => r.value === 'stripe' || r.value === 'mirror');
+	}
+	if (deviceCount !== undefined) {
+		return types.map((r) => ({
+			...r,
+			available: deviceCount >= (raidMinDisks[r.value] ?? 1)
+		}));
+	}
+	return types;
+}
 
 function getPoolRedundancy(pool: Zpool): 'Stripe' | 'Mirror' | 'RAIDZ' | 'RAIDZ2' | 'RAIDZ3' {
     if (!pool.vdevs) {
@@ -121,6 +154,8 @@ export function generateTableData(
                             return renderWithIcon('icon-park-outline:ssd', value);
                         } else if (disk.type === 'NVMe') {
                             return renderWithIcon('bi:nvme', value, 'rotate-90');
+                        } else if (disk.type === 'Virtual') {
+                            return renderWithIcon('mdi:nas', value);
                         }
                     }
                 }
@@ -297,12 +332,72 @@ export function generateTableData(
             poolRow.children!.push(sparesRow);
         }
 
+        if (pool.special && countKeys(pool.special) > 0) {
+            const specialRow: Row = {
+                id: generateNumberFromString(`${pool.name}-${pool.guid}-special`),
+                name: 'Special',
+                size:
+                    Object.values(pool.special).reduce((acc, v) => acc + v.size, 0) > 0
+                        ? Object.values(pool.special).reduce((acc, v) => acc + v.size, 0)
+                        : '-',
+                used: '-',
+                health: '-',
+                redundancy: '-',
+                children: []
+            };
+
+            for (const v in pool.special) {
+                const current = pool.special[v];
+                specialRow.children!.push({
+                    id: generateNumberFromString(current.guid + pool.guid),
+                    name: current.name,
+                    size: current.size,
+                    used: '-',
+                    health: current.state,
+                    redundancy: '-',
+                    children: []
+                });
+            }
+
+            poolRow.children!.push(specialRow);
+        }
+
+        if (pool.dedup && countKeys(pool.dedup) > 0) {
+            const dedupRow: Row = {
+                id: generateNumberFromString(`${pool.name}-${pool.guid}-dedup`),
+                name: 'Dedup',
+                size:
+                    Object.values(pool.dedup).reduce((acc, v) => acc + v.size, 0) > 0
+                        ? Object.values(pool.dedup).reduce((acc, v) => acc + v.size, 0)
+                        : '-',
+                used: '-',
+                health: '-',
+                redundancy: '-',
+                children: []
+            };
+
+            for (const v in pool.dedup) {
+                const current = pool.dedup[v];
+                dedupRow.children!.push({
+                    id: generateNumberFromString(current.guid + pool.guid),
+                    name: current.name,
+                    size: current.size,
+                    used: '-',
+                    health: current.state,
+                    redundancy: '-',
+                    children: []
+                });
+            }
+
+            poolRow.children!.push(dedupRow);
+        }
+
         rows.push(poolRow);
     }
 
     rows = rows.map((row) => {
         if (row.children) {
-            const specialVdevs = ['Logs', 'L2 Cache', 'Spares'];
+            const specialVdevs = ['Logs', 'L2 Cache', 'Spares', 'Special', 'Dedup'];
             specialVdevs.forEach((vdevName) => {
                 const vdevIndex = row.children!.findIndex((child) => child.name === vdevName);
                 if (vdevIndex !== -1) {
@@ -344,7 +439,11 @@ export function isReplaceableDevice(pools: Zpool[], name: string): boolean {
             return true;
         }
 
-        if (Object.values(pool.logs ?? {}).some((v) => v.name === name)) {
+        if (
+            Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
+            Object.values(pool.special ?? {}).some((v) => v.name === name) ||
+            Object.values(pool.dedup ?? {}).some((v) => v.name === name)
+        ) {
             return true;
         }
     }
@@ -359,9 +458,11 @@ export function getPoolByDevice(pools: Zpool[], name: string): string {
         }
 
         if (
-            Object.values(pool.spares ?? {}).some((v) => v.name === name) ||
-            Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
-            Object.values(pool.l2cache ?? {}).some((v) => v.name === name)
+			Object.values(pool.spares ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.l2cache ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.special ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.dedup ?? {}).some((v) => v.name === name)
         ) {
             return pool.name;
         }

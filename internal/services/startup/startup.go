@@ -231,8 +231,8 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			logger.L.Error().Err(err).Msg("unable to start iscsid")
 		}
 
-		if err := ensureServiceStarted("iscsictl"); err != nil {
-			logger.L.Error().Err(err).Msg("unable to start iscsictl")
+		if err := ensureServiceStarted("ctld"); err != nil {
+			logger.L.Error().Err(err).Msg("unable to start ctld")
 		}
 	}
 

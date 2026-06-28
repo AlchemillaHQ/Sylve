@@ -34,8 +34,8 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-md sm:max-w-lg p-0 overflow-hidden">
-		<div class="relative flex items-center justify-center border-b bg-muted/10 p-5">
+	<Dialog.Content class="max-w-md sm:max-w-lg p-0 overflow-hidden" showCloseButton={false}>
+		<div class="relative flex items-center justify-center border-b bg-muted/10 p-6">
 			<div class="flex items-center space-x-2.5">
 				<img
 					src={mode.current === 'dark' ? '/logo/white.svg' : '/logo/black.svg'}
@@ -44,9 +44,15 @@
 				/>
 				<h1 class="text-xl font-light tracking-[.3em] uppercase">Sylve</h1>
 			</div>
+			<Dialog.Close
+				class="absolute top-7 right-6 opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+			>
+				<span class="icon-[lucide--x] h-5 w-5"></span>
+				<span class="sr-only">Close</span>
+			</Dialog.Close>
 		</div>
 
-		<div class="max-h-[80vh] overflow-y-auto px-5 pt-0 pb-6 space-y-5">
+		<div class="max-h-[80vh] overflow-y-auto px-6 pt-0 pb-6 space-y-5">
 			<p class="text-sm leading-relaxed text-foreground/80 text-justify">
 				Sylve is a lightweight control plane for the <strong>FreeBSD ecosystem</strong>, unifying
 				Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a

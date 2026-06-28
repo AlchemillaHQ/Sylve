@@ -30,7 +30,7 @@ export const SmartDataSchema = z.object({
 	power_on_hours: z.number(),
 	power_cycle_count: z.number(),
 	temperature: z.number(),
-	attributes: z.array(ATASmartAttributeSchema).optional()
+	attributes: z.array(ATASmartAttributeSchema).nullable().optional()
 });
 
 export const NvmeCriticalWarningStateSchema = z.object({

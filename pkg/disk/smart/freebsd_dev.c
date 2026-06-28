@@ -76,7 +76,7 @@ device_open(smart_protocol_e protocol, char *devname)
 				(protocol == proto)) {
 			h->common.protocol = proto;
 		} else {
-			printf("%s: protocol mismatch %d vs %d\n",
+			dprintf("%s: protocol mismatch %d vs %d\n",
 					__func__, protocol, proto);
 		}
 
@@ -101,6 +101,11 @@ device_close(smart_h h)
 	if (fsmart != NULL) {
 		if (fsmart->camdev != NULL) {
 			cam_close_device(fsmart->camdev);
+		}
+
+		if (fsmart->common.pg_list != NULL &&
+		    fsmart->common.protocol == SMART_PROTO_SCSI) {
+			free(fsmart->common.pg_list);
 		}
 
 		free(fsmart);
@@ -394,8 +399,8 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 		return rc;
 	}
 
-	if (((rc = cam_send_ccb(fsmart->camdev, ccb)) < 0)
-			|| ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)) {
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if ((rc < 0) || ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)) {
 		if (rc < 0)
 			warn("error sending command");
 	}
@@ -413,13 +418,16 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 	}
 
 	if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
-		cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
-				CAM_EPF_ALL, stderr);
+		if (do_debug)
+			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
+					CAM_EPF_ALL, stderr);
+		if (rc >= 0)
+			rc = EIO;
 	}
 
 	cam_freeccb(ccb);
 
-	return 0;
+	return rc;
 }
 
 /*
@@ -515,9 +523,9 @@ __device_get_proto(struct fbsd_smart *fsmart)
 					proto = SMART_PROTO_NVME;
 					break;
 				default:
-					printf("%s: unknown protocol %d\n",
-							__func__,
-							cts->protocol);
+				dprintf("%s: unknown protocol %d\n",
+						__func__,
+						cts->protocol);
 				}
 			}
 		}
@@ -638,7 +646,7 @@ __device_info_scsi(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 	if ((cam_send_ccb(fsmart->camdev, ccb) >= 0) &&
 			((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)) {
 		if ((ie.hdr.param_len < 4) || ie.ie_asc || ie.ie_ascq) {
-			printf("Log Sense, Informational Exceptions failed "
+			dprintf("Log Sense, Informational Exceptions failed "
 					"(length=%u asc=%#x ascq=%#x)\n",
 					ie.hdr.param_len, ie.ie_asc, ie.ie_ascq); 
 		} else {
@@ -756,6 +764,10 @@ __device_info_tunneled_ata(struct fbsd_smart *fsmart)
 		goto __device_info_tunneled_ata_out;
 	}
 
+	if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		goto __device_info_tunneled_ata_out;
+	}
+
 	fsmart->common.info.supported = ident_data.support.command1 &
 		ATA_SUPPORT_SMART;
 
@@ -817,8 +829,8 @@ __device_get_info(struct fbsd_smart *fsmart)
 					rc = __device_info_nvme(fsmart, cgd);
 					break;
 				default:
-					printf("%s: unsupported protocol %d\n",
-							__func__, cgd->protocol);
+				dprintf("%s: unsupported protocol %d\n",
+						__func__, cgd->protocol);
 				}
 			}
 		}

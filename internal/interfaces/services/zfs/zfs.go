@@ -57,6 +57,7 @@ type ZfsServiceInterface interface {
 	EditPool(ctx context.Context, name string, props map[string]string, spares []string) error
 	DeletePool(ctx context.Context, guid string) error
 	ReplaceDevice(ctx context.Context, guid, old, latest string) error
+	DetachDevice(ctx context.Context, guid, device string) error
 	GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]PoolStatPoint, int, error)
 
 	CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error

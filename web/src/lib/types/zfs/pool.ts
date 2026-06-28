@@ -148,7 +148,9 @@ export const ZpoolSchema = z
 		vdevs: z.record(z.string(), ZpoolVdevSchema),
 		spares: z.record(z.string(), ZpoolVdevSchema).optional().nullable(),
 		logs: z.record(z.string(), ZpoolVdevSchema).optional().nullable(),
-		l2cache: z.record(z.string(), ZpoolVdevSchema).optional().nullable()
+		l2cache: z.record(z.string(), ZpoolVdevSchema).optional().nullable(),
+		special: z.record(z.string(), ZpoolVdevSchema).optional().nullable(),
+		dedup: z.record(z.string(), ZpoolVdevSchema).optional().nullable()
 	})
 	.transform((data) => ({
 		...data,
@@ -207,19 +209,25 @@ export const ZPoolStatusPoolSchema = z
 		vdevs: z.record(z.string(), ZPoolStatusVDEVSchema),
 		logs: z.record(z.string(), ZPoolStatusVDEVSchema).optional().nullable(),
 		spares: z.record(z.string(), ZPoolStatusVDEVSchema).optional().nullable(),
-		l2cache: z.record(z.string(), ZPoolStatusVDEVSchema).optional().nullable()
+		l2cache: z.record(z.string(), ZPoolStatusVDEVSchema).optional().nullable(),
+		special: z.record(z.string(), ZPoolStatusVDEVSchema).optional().nullable(),
+		dedup: z.record(z.string(), ZPoolStatusVDEVSchema).optional().nullable()
 	})
 	.loose();
-
-export const CreateVdevSchema = z.object({
-	name: z.string(),
-	devices: z.array(z.string())
-});
 
 export const ZpoolRaidTypeSchema = z.union([
 	z.enum(['mirror', 'raidz', 'raidz2', 'raidz3', 'stripe']),
 	z.undefined()
 ]);
+
+export const VdevTypeSchema = z.enum(['data', 'log', 'cache', 'special', 'dedup']);
+
+export const CreateVdevSchema = z.object({
+	name: z.string(),
+	devices: z.array(z.string()),
+	type: VdevTypeSchema.default('data'),
+	raidType: ZpoolRaidTypeSchema
+});
 
 export const CreateZpoolSchema = z.object({
 	name: z
@@ -227,7 +235,6 @@ export const CreateZpoolSchema = z.object({
 		.min(1, 'Name must be at least 1 character long')
 		.max(24, 'Name must be at most 24 characters long')
 		.regex(/^[a-zA-Z0-9]+$/, 'Name must be alphanumeric'),
-	raidType: ZpoolRaidTypeSchema,
 	vdevs: z.array(CreateVdevSchema),
 	properties: z.record(z.string(), z.string()).optional(),
 	createForce: z.boolean().default(false),
@@ -274,6 +281,7 @@ export type Zpool = z.infer<typeof ZpoolSchema>;
 export type ReplaceDevice = z.infer<typeof ReplaceDeviceSchema>;
 export type CreateZpool = z.infer<typeof CreateZpoolSchema>;
 export type ZpoolRaidType = z.infer<typeof ZpoolRaidTypeSchema>;
+export type VdevType = z.infer<typeof VdevTypeSchema>;
 export type PoolStatPointsResponse = z.infer<typeof PoolStatPointsResponseSchema>;
 export type PoolsDiskUsage = z.infer<typeof PoolsDiskUsageSchema>;
 

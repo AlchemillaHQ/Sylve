@@ -167,6 +167,7 @@ func RegisterRoutes(r *gin.Engine,
 			pools.POST("/:guid/scrub", zfsHandlers.ScrubPool(infoService, zfsService))
 			pools.DELETE("/:guid", zfsHandlers.DeletePool(infoService, zfsService))
 			pools.PATCH("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
+			pools.POST("/:guid/detach", zfsHandlers.DetachDevice(infoService, zfsService))
 		}
 
 		datasets := zfs.Group("/datasets")

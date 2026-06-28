@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
@@ -29,18 +30,23 @@ import (
 
 var _ diskServiceInterfaces.DiskServiceInterface = (*Service)(nil)
 
+const smartFailRetryAfter = 1 * time.Hour
+
 type Service struct {
 	DB                 *gorm.DB
 	DiskOperationMutex sync.Mutex
 	ZFS                zfsServiceInterfaces.ZfsServiceInterface
 	GZFS               *gzfs.Client
+	smartFailCache     map[string]time.Time
+	smartFailMu        sync.Mutex
 }
 
 func NewDiskService(db *gorm.DB, zfsService zfsServiceInterfaces.ZfsServiceInterface, gzfs *gzfs.Client) diskServiceInterfaces.DiskServiceInterface {
 	return &Service{
-		DB:   db,
-		ZFS:  zfsService,
-		GZFS: gzfs,
+		DB:             db,
+		ZFS:            zfsService,
+		GZFS:           gzfs,
+		smartFailCache: make(map[string]time.Time),
 	}
 }
 
@@ -75,16 +81,17 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 		}
 
 		provider := geom.Providers[0]
-		diskType := "HDD"
+		diskType := "SSD"
 
-		if provider.Config.RotationRate == "0" {
-			if strings.HasPrefix(provider.Name, "nvme") ||
-				strings.HasPrefix(provider.Name, "nda") ||
-				strings.HasPrefix(provider.Alias, "nv") {
-				diskType = "NVMe"
-			} else {
-				diskType = "SSD"
-			}
+		if strings.Contains(strings.ToLower(provider.Config.Descr), "virtual") ||
+			strings.Contains(strings.ToLower(provider.Config.Descr), "iscsi") {
+			diskType = "Virtual"
+		} else if provider.Config.RotationRate != "0" && provider.Config.RotationRate != "" {
+			diskType = "HDD"
+		} else if strings.HasPrefix(provider.Name, "nvme") ||
+			strings.HasPrefix(provider.Name, "nda") ||
+			strings.HasPrefix(provider.Alias, "nv") {
+			diskType = "NVMe"
 		}
 
 		disk := diskServiceInterfaces.DiskInfo{
@@ -188,13 +195,32 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 		}
 
 		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
-			smartData, err := s.GetSmartData(d)
-			if err != nil {
-				logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to retrieve S.M.A.R.T data %v", err))
-				disk.SmartData = nil
-			} else if err == nil && smartData != nil {
-				disk.SmartData = smartData
+			s.smartFailMu.Lock()
+			failTime, failed := s.smartFailCache[d.Name]
+			s.smartFailMu.Unlock()
 
+			if failed {
+				if time.Since(failTime) < smartFailRetryAfter {
+					disk.SmartData = nil
+				} else {
+					s.smartFailMu.Lock()
+					delete(s.smartFailCache, d.Name)
+					s.smartFailMu.Unlock()
+					failed = false
+				}
+			}
+
+			if !failed {
+				smartData, err := s.GetSmartData(d)
+				if err != nil {
+					s.smartFailMu.Lock()
+					s.smartFailCache[d.Name] = time.Now()
+					s.smartFailMu.Unlock()
+					logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to retrieve S.M.A.R.T data %v", err))
+					disk.SmartData = nil
+				} else if err == nil && smartData != nil {
+					disk.SmartData = smartData
+				}
 			}
 		} else {
 			disk.SmartData = nil

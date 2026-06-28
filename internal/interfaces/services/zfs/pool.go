@@ -18,14 +18,25 @@ const (
 	RaidTypeRaidZ3 RaidType = "raidz3"
 )
 
+type VdevType string
+
+const (
+	VdevTypeData    VdevType = "data"
+	VdevTypeLog     VdevType = "log"
+	VdevTypeCache   VdevType = "cache"
+	VdevTypeSpecial VdevType = "special"
+	VdevTypeDedup   VdevType = "dedup"
+)
+
 type Vdev struct {
 	Name        string   `json:"name"`
+	Type        VdevType `json:"type"`
+	RaidType    RaidType `json:"raidType"`
 	VdevDevices []string `json:"devices"`
 }
 
 type CreateZPoolRequest struct {
 	Name        string            `json:"name" binding:"required,alphanum,min=1,max=24"`
-	RaidType    RaidType          `json:"raidType" binding:"required"`
 	Vdevs       []Vdev            `json:"vdevs"`
 	Properties  map[string]string `json:"properties"`
 	CreateForce bool              `json:"createForce"`

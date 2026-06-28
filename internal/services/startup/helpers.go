@@ -34,7 +34,7 @@ var (
 	startupGetSystemMemoryBytes = utils.GetSystemMemoryBytes
 )
 
-const arcMaxOID = "vfs.zfs.arc.max"
+const arcMaxOID = "vfs.zfs.arc_max"
 
 // computeARCMax returns 10% of host memory, capped at 16 GiB.
 func computeARCMax(memBytes int64) int64 {

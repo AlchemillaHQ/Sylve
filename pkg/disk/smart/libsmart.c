@@ -841,7 +841,7 @@ __smart_map_scsi_err_page(smart_map_t *sm, void *b, size_t bsize)
 		cmd = "Non-Medium";
 		break;
 	default:
-		fprintf(stderr, "Unknown command %#x\n", err->page_code);
+		dprintf("Unknown command %#x\n", err->page_code);
 		cmd = "Unknown";
 		break;
 	}
@@ -851,8 +851,23 @@ __smart_map_scsi_err_page(smart_map_t *sm, void *b, size_t bsize)
 	p = 0;
 	page_length = be16toh(err->page_length);
 
+	/* Validate page length fits within the provided buffer */
+	if (page_length + 4 > bsize) {
+		return;
+	}
+
 	while (p < page_length) {
+		/* Validate that the parameter entry header fits within the page */
+		if (p + 4 > page_length) {
+			break;
+		}
+
 		param = (struct scsi_err_counter_param *) (err->param + p);
+
+		/* Validate that the full parameter (header + length) fits within the page */
+		if (p + 4 + param->length > page_length) {
+			break;
+		}
 
 		sm->attr[a].page = err->page_code;
 		sm->attr[a].id = be16toh(param->code);
@@ -870,13 +885,16 @@ __smart_map_scsi_err_page(smart_map_t *sm, void *b, size_t bsize)
 			}
 		}
 		sm->attr[a].bytes = param->length;
-		sm->attr[a].flags = SMART_ATTR_F_BE;
+		sm->attr[a].flags |= SMART_ATTR_F_BE;
 		sm->attr[a].raw = param->counter;
 		sm->attr[a].thresh = NULL;
 
 		p += 4 + param->length;
 
 		a++;
+		if (a >= sm->sb->attr_count) {
+			break;
+		}
 	}
 	
 	sm->count = a;
@@ -911,8 +929,20 @@ __smart_map_scsi_last_err(smart_map_t *sm, void *b, size_t bsize)
 	p = 0;
 	page_length = be16toh(lastn->page_length);
 
+	if (page_length + 4 > bsize) {
+		return;
+	}
+
 	while (p < page_length) {
+		if (p + 4 > page_length) {
+			break;
+		}
+
 		event = (struct scsi_last_n_error_event *) (lastn->event + p);
+
+		if (p + 4 + event->length > page_length) {
+			break;
+		}
 
 		sm->attr[a].page = lastn->page_code;
 		sm->attr[a].id = be16toh(event->code);
@@ -924,6 +954,9 @@ __smart_map_scsi_last_err(smart_map_t *sm, void *b, size_t bsize)
 		p += 4 + event->length;
 
 		a++;
+		if (a >= sm->sb->attr_count) {
+			break;
+		}
 	}
 	
 	sm->count = a;
@@ -944,9 +977,18 @@ __smart_map_scsi_temp(smart_map_t *sm, void *b, size_t bsize)
 			uint8_t temperature;
 		} param[];
 	} __attribute__((packed)) *temp = b;
-	uint32_t a, p, count;
+	uint32_t a, p, count, page_length;
 
-	count = be16toh(temp->page_length) / sizeof(struct scsi_temperature_log_entry);
+	if (bsize < 4) {
+		return;
+	}
+
+	page_length = be16toh(temp->page_length);
+	if (page_length + 4 > bsize) {
+		return;
+	}
+
+	count = page_length / sizeof(struct scsi_temperature_log_entry);
 
 	a = sm->count;
 
@@ -963,6 +1005,9 @@ __smart_map_scsi_temp(smart_map_t *sm, void *b, size_t bsize)
 			sm->attr[a].raw = &(temp->param[p].temperature);
 			sm->attr[a].thresh = NULL;
 			a++;
+			if (a >= sm->sb->attr_count) {
+				break;
+			}
 			break;
 		default:
 			break;
@@ -1005,8 +1050,20 @@ __smart_map_scsi_start_stop(smart_map_t *sm, void *b, size_t bsize)
 	p = 0;
 	page_length = be16toh(sstop->page_length);
 
+	if (page_length + 4 > bsize) {
+		return;
+	}
+
 	while (p < page_length) {
+		if (p + 4 > page_length) {
+			break;
+		}
+
 		param = (struct scsi_start_stop_param *) (sstop->param + p);
+
+		if (p + 4 + param->length > page_length) {
+			break;
+		}
 
 		sm->attr[a].page = sstop->page_code;
 		sm->attr[a].id = be16toh(param->code);
@@ -1045,6 +1102,9 @@ __smart_map_scsi_start_stop(smart_map_t *sm, void *b, size_t bsize)
 		p += 4 + param->length;
 
 		a++;
+		if (a >= sm->sb->attr_count) {
+			break;
+		}
 	}
 
 	sm->count = a;
@@ -1076,10 +1136,20 @@ __smart_map_scsi_info_exception(smart_map_t *sm, void *b, size_t bsize)
 	p = 0;
 	page_length = be16toh(ie->page_length);
 
-	while (p < page_length) {
-		param = (struct scsi_ie_param *)(ie->param + p);
+	if (page_length + 4 > bsize) {
+		return;
+	}
 
-		p += 4 + param->length;
+	while (p < page_length) {
+		if (a + 5 > sm->sb->attr_count) {
+			break;
+		}
+
+		if (p + sizeof(struct scsi_ie_param) > page_length + 4) {
+			break;
+		}
+
+		param = (struct scsi_ie_param *)(ie->param + p);
 
 		sm->attr[a].page = ie->page_code;
 		sm->attr[a].id = offsetof(struct scsi_ie_param, asc);
@@ -1125,6 +1195,8 @@ __smart_map_scsi_info_exception(smart_map_t *sm, void *b, size_t bsize)
 		sm->attr[a].raw = &param->temp_max;
 		sm->attr[a].thresh = NULL;
 		a++;
+
+		p += 4 + param->length;
 	}
 
 	sm->count = a;
@@ -1248,11 +1320,15 @@ __smart_page_list_scsi(smart_t *s)
 	rc = device_read_log(s, PAGE_ID_SCSI_SUPPORTED_PAGES, (uint8_t *)b,
 			bsize);
 	if (rc < 0) {
-		fprintf(stderr, "Read Supported Log Pages failed\n");
+		dprintf("Read Supported Log Pages failed\n");
 	} else {
 		uint8_t *supported_page = b->supported_pages;
 		uint32_t n_supported = be16toh(b->page_length);
 		uint32_t s, p, pmax = pg_list_scsi.pg_count;
+
+		if (n_supported > bsize - 4) {
+			n_supported = bsize - 4;
+		}
 
 		/* Build a page list using only pages the device supports */
 		pg_list = malloc(sizeof(pg_list_scsi));
@@ -1328,8 +1404,10 @@ __smart_read_pages(smart_h h, smart_buf_t *sb)
 
 	buf = sb->b;
 
+	/* Zero the entire buffer so unread pages contain safe zeroes */
+	bzero(buf, sb->bsize);
+
 	for (p = 0; p < s->pg_list->pg_count; p++) {
-		bzero(buf, plist->pages[p].bytes);
 		rc = device_read_log(h, plist->pages[p].id, buf, plist->pages[p].bytes);
 		if (rc) {
 			dprintf("bad read (%d) from page %#x (bytes=%lu)\n", rc,

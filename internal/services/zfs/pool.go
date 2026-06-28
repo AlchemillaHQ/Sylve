@@ -81,45 +81,78 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		}
 	}
 
-	raidKeyword := ""
-	if req.RaidType != "" && req.RaidType != zfsServiceInterfaces.RaidTypeStripe {
-		validRaidTypes := map[zfsServiceInterfaces.RaidType]int{
-			zfsServiceInterfaces.RaidTypeMirror: 2,
-			zfsServiceInterfaces.RaidTypeRaidZ:  3,
-			zfsServiceInterfaces.RaidTypeRaidZ2: 4,
-			zfsServiceInterfaces.RaidTypeRaidZ3: 5,
-		}
-
-		minDevices, ok := validRaidTypes[req.RaidType]
-		if !ok {
-			return fmt.Errorf("invalid_raidz_type")
-		}
-
-		for _, vdev := range req.Vdevs {
-			if len(vdev.VdevDevices) < minDevices {
-				return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, req.RaidType, minDevices)
-			}
-		}
-
-		raidKeyword = string(req.RaidType)
-	} else {
-		for _, vdev := range req.Vdevs {
-			if len(vdev.VdevDevices) == 0 {
-				return fmt.Errorf("vdev %s has no devices", vdev.Name)
-			}
-		}
+	validRaidMinDisks := map[zfsServiceInterfaces.RaidType]int{
+		zfsServiceInterfaces.RaidTypeStripe: 1,
+		zfsServiceInterfaces.RaidTypeMirror: 2,
+		zfsServiceInterfaces.RaidTypeRaidZ:  3,
+		zfsServiceInterfaces.RaidTypeRaidZ2: 4,
+		zfsServiceInterfaces.RaidTypeRaidZ3: 5,
 	}
 
-	var vdevArgs []string
+	if len(req.Vdevs) == 0 {
+		return fmt.Errorf("at_least_one_vdev_required")
+	}
+
 	for _, vdev := range req.Vdevs {
-		if raidKeyword != "" {
-			vdevArgs = append(vdevArgs, raidKeyword)
+		raidType := vdev.RaidType
+		if raidType == "" {
+			raidType = zfsServiceInterfaces.RaidTypeStripe
 		}
-		vdevArgs = append(vdevArgs, vdev.VdevDevices...)
+		minDisks, ok := validRaidMinDisks[raidType]
+		if !ok {
+			return fmt.Errorf("vdev %s has invalid raid type: %s", vdev.Name, raidType)
+		}
+		if len(vdev.VdevDevices) < minDisks {
+			return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, raidType, minDisks)
+		}
 	}
-	var args []string
 
-	args = append(args, vdevArgs...)
+	var dataVdevs, logVdevs, cacheVdevs, specialVdevs, dedupVdevs []zfsServiceInterfaces.Vdev
+	for _, vdev := range req.Vdevs {
+		t := vdev.Type
+		if t == "" {
+			t = zfsServiceInterfaces.VdevTypeData
+		}
+		switch t {
+		case zfsServiceInterfaces.VdevTypeLog:
+			logVdevs = append(logVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeCache:
+			cacheVdevs = append(cacheVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeSpecial:
+			specialVdevs = append(specialVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeDedup:
+			dedupVdevs = append(dedupVdevs, vdev)
+		default:
+			dataVdevs = append(dataVdevs, vdev)
+		}
+	}
+
+	if len(dataVdevs) == 0 {
+		return fmt.Errorf("at_least_one_data_vdev_required")
+	}
+
+	var args []string
+	args = append(args, buildVdevArgs(dataVdevs)...)
+
+	if len(logVdevs) > 0 {
+		args = append(args, "log")
+		args = append(args, buildVdevArgs(logVdevs)...)
+	}
+
+	if len(cacheVdevs) > 0 {
+		args = append(args, "cache")
+		args = append(args, buildVdevArgs(cacheVdevs)...)
+	}
+
+	if len(specialVdevs) > 0 {
+		args = append(args, "special")
+		args = append(args, buildVdevArgs(specialVdevs)...)
+	}
+
+	if len(dedupVdevs) > 0 {
+		args = append(args, "dedup")
+		args = append(args, buildVdevArgs(dedupVdevs)...)
+	}
 
 	if len(req.Spares) > 0 {
 		args = append(args, "spare")
@@ -149,6 +182,17 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	}
 
 	return nil
+}
+
+func buildVdevArgs(vdevs []zfsServiceInterfaces.Vdev) []string {
+	var args []string
+	for _, vdev := range vdevs {
+		if vdev.RaidType != "" && vdev.RaidType != zfsServiceInterfaces.RaidTypeStripe {
+			args = append(args, string(vdev.RaidType))
+		}
+		args = append(args, vdev.VdevDevices...)
+	}
+	return args
 }
 
 func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string) error {
@@ -421,4 +465,20 @@ func (s *Service) GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[s
 	// return result, count, nil
 
 	return nil, 0, fmt.Errorf("zpool_historical_stats_not_implemented")
+}
+
+func (s *Service) DetachDevice(ctx context.Context, guid, device string) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil {
+		return fmt.Errorf("pool_not_found")
+	}
+
+	if err := pool.Detach(ctx, device); err != nil {
+		return fmt.Errorf("detach_failed: %v", err)
+	}
+
+	return nil
 }

@@ -11,7 +11,7 @@ ignore assets
 ignore internal/testutil
 
 require (
-	github.com/alchemillahq/gzfs v0.0.0-20260521122547-799501f7a542
+	github.com/alchemillahq/gzfs v0.0.0-20260628213635-44c839cfc46e
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/beevik/etree v1.6.0
 	github.com/cavaliergopher/grab/v3 v3.0.1

@@ -69,6 +69,8 @@ export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
         if (attributes.length > 0) {
             return attributes;
         }
+    } else if (disk.type === 'Virtual') {
+        return {};
     }
 
     return {};
@@ -76,14 +78,14 @@ export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
 
 export function smartStatus(disk: Disk): string {
     if (disk.smartData) {
-        if (disk.smartData.hasOwnProperty('passed')) {
+        if (Object.prototype.hasOwnProperty.call(disk.smartData, 'passed')) {
             if ((disk.smartData as SmartData).passed) {
                 return 'Passed';
             }
             return 'Failed';
         }
 
-        if (disk.smartData.hasOwnProperty('criticalWarning')) {
+        if (Object.prototype.hasOwnProperty.call(disk.smartData, 'criticalWarning')) {
             if ((disk.smartData as SmartNVMe).criticalWarning !== '0x00') {
                 return 'Failed';
             }
@@ -105,22 +107,7 @@ export function diskSpaceAvailable(disk: Disk, required: number): boolean {
     return disk.size >= required;
 }
 
-export function isPartitionInDisk(disks: Disk[], partition: Partition): Disk | null {
-    for (const disk of disks) {
-        if (disk.usage === 'Partitions') {
-            for (const p of disk.partitions) {
-                const raw = p.name.replace(/p\d+$/, '');
-                if (disk.device === raw) {
-                    return disk;
-                }
-            }
-        }
-    }
-
-    return null;
-}
-
-export function zpoolUseableDisks(disks: Disk[], pools: Zpool[]): Disk[] {
+export function zpoolUseableDisks(disks: Disk[]): Disk[] {
     const useable: Disk[] = [];
     for (const disk of disks) {
         if (disk.usage === 'Partitions') {
@@ -196,7 +183,6 @@ export function generateTableData(disks: Disk[]): { rows: Row[]; columns: Column
             title: 'Device',
             formatter: (cell: CellComponent) => {
                 const value = cell.getValue();
-                const row = cell.getRow();
                 const disk = disks.find((d) => d.device === value);
 
                 if (disk) {
@@ -210,6 +196,10 @@ export function generateTableData(disks: Disk[]): { rows: Row[]; columns: Column
 
                     if (disk.type === 'SSD') {
                         return renderWithIcon('icon-park-outline:ssd', value);
+                    }
+
+                    if (disk.type === 'Virtual') {
+                        return renderWithIcon('mdi:nas', value);
                     }
                 }
 
@@ -278,7 +268,7 @@ export function generateTableData(disks: Disk[]): { rows: Row[]; columns: Column
             model: disk.model,
             serial: disk.serial,
             smartStatus: smartStatus(disk),
-            wearOut: disk.wearOut
+            wearOut: disk.type === 'Virtual' ? '-' : disk.wearOut
         };
 
         if (disk.partitions && disk.partitions.length > 0) {

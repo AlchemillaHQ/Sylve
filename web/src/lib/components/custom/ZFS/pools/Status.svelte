@@ -267,6 +267,34 @@
 									</div>
 								</div>
 							{/if}
+
+							{#if status.current?.special}
+								<div class="border mt-4">
+									<div class="bg-muted gap-2 px-4 py-2 font-semibold flex items-center">
+										<span class="icon icon-[carbon--data-table] h-4 w-4 align-middle"></span>
+										<span>Special</span>
+									</div>
+									<div class="p-4 space-y-2">
+										{#each Object.entries(status.current.special) as [key, vdev] (key)}
+											{@render VdevTree(vdev)}
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							{#if status.current?.dedup}
+								<div class="border mt-4">
+									<div class="bg-muted gap-2 px-4 py-2 font-semibold flex items-center">
+										<span class="icon icon-[carbon--data-set] h-4 w-4 align-middle"></span>
+										<span>Dedup</span>
+									</div>
+									<div class="p-4 space-y-2">
+										{#each Object.entries(status.current.dedup) as [key, vdev] (key)}
+											{@render VdevTree(vdev)}
+										{/each}
+									</div>
+								</div>
+							{/if}
 						</div>
 					</ScrollArea>
 				</div>

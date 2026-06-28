@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { handleAPIResponse } from '$lib/api/common';
 	import { listDisks } from '$lib/api/disk/disk';
-	import { deletePool, getPools, scrubPool } from '$lib/api/zfs/pool';
+	import { deletePool, detachDevice, getPools, scrubPool } from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -126,7 +126,7 @@
 
 	let usable = $derived.by(() => {
 		return {
-			disks: zpoolUseableDisks(disks.current, pools.current),
+			disks: zpoolUseableDisks(disks.current),
 			partitions: zpoolUseablePartitions(disks.current, pools.current)
 		};
 	});
@@ -152,6 +152,9 @@
 				old: '',
 				latest: ''
 			}
+		},
+		detach: {
+			open: false
 		}
 	});
 </script>
@@ -258,6 +261,28 @@
 				</Button>
 			{/if}
 		{/if}
+
+		{#if type === 'pool-detach'}
+			{#if isReplaceableDevice(pools.current, activeRow.name)}
+				<Button
+					onclick={() => {
+						modals.detach.open = true;
+					}}
+					variant="outline"
+					size="sm"
+					class="h-6.5"
+					disabled={replacing}
+					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
+				>
+					<SpanWithIcon
+						icon="icon-[mdi--link-variant-off]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Detach Device"
+					/>
+				</Button>
+			{/if}
+		{/if}
 	{/if}
 {/snippet}
 
@@ -279,6 +304,7 @@
 		{@render button('pool-edit')}
 		{@render button('pool-delete')}
 		{@render button('pool-replace')}
+		{@render button('pool-detach')}
 	</div>
 
 	<TreeTable
@@ -314,6 +340,35 @@
 		},
 		onCancel: () => {
 			modals.delete.open = false;
+		}
+	}}
+/>
+
+<!-- Detach -->
+<AlertDialog
+	open={modals.detach.open}
+	names={{
+		parent: 'ZFS Pool',
+		element: activeRow ? (activeRow.name as string) : ''
+	}}
+	customTitle={`This will detach <span class='font-semibold'>${activeRow?.name}</span> from the pool.`}
+	confirmLabel="Detach"
+	actions={{
+		onConfirm: async () => {
+			modals.detach.open = false;
+			let pool = getPoolByDevice(pools.current, activeRow?.name);
+			if (!pool) return;
+			const poolObj = pools.current.find((p) => p.name === pool);
+			if (!poolObj) return;
+			const response = await detachDevice(poolObj.guid, activeRow?.name as string);
+			if (response.status === 'error') {
+				toast.error(response.error || 'Detach failed', { position: 'bottom-center' });
+			} else {
+				toast.success(`Detached ${activeRow?.name}`, { position: 'bottom-center' });
+			}
+		},
+		onCancel: () => {
+			modals.detach.open = false;
 		}
 	}}
 />

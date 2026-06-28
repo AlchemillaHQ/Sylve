@@ -13,10 +13,10 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Disk, Partition } from '$lib/types/disk/disk';
-	import type { Zpool, ZpoolRaidType } from '$lib/types/zfs/pool';
+	import type { VdevType, Zpool, ZpoolRaidType } from '$lib/types/zfs/pool';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { draggable, dropzone } from '$lib/utils/dnd';
-	import { raidTypeArr } from '$lib/utils/zfs/pool';
+	import { getAvailableRaidTypes, raidTypeArr, vdevTypeArr } from '$lib/utils/zfs/pool';
 	import { flip } from 'svelte/animate';
 	import { slide } from 'svelte/transition';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -37,6 +37,8 @@
 
 	interface VdevContainer {
 		id: string;
+		type: VdevType;
+		raidType: ZpoolRaidType;
 		disks: Disk[];
 		partitions: Partition[];
 	}
@@ -46,7 +48,6 @@
 	let options = {
 		name: '',
 		vdev: {
-			count: 1,
 			containers: [] as VdevContainer[]
 		},
 		advanced: true,
@@ -60,44 +61,42 @@
 			spares: [] as string[],
 			autoreplace: 'off'
 		},
-		raid: 'stripe' as ZpoolRaidType,
 		mount: '',
 		usable: 0,
 		force: false,
 		creating: false
 	};
 
-	let raidTypes = $state(raidTypeArr);
 	let properties = $state(options);
 	let accordionOpen = $state<string[]>([]);
-	let sectionOrder = $state<string[]>(['HDD', 'SSD', 'NVMe', 'Partitions']);
+	let sectionOrder = $state<string[]>(['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions']);
 
 	watch(
 		() => open,
 		() => {
 			if (open) {
+				if (properties.vdev.containers.length === 0) {
+					properties.vdev.containers = [
+						{
+							id: 'vdev-0',
+							type: 'data',
+							raidType: 'stripe',
+							disks: [],
+							partitions: []
+						}
+					];
+				}
 				const initialCounts: Record<string, number> = {
 					HDD: usable.disks.filter((d) => d.type === 'HDD' && d.partitions.length === 0).length,
 					SSD: usable.disks.filter((d) => d.type === 'SSD' && d.partitions.length === 0).length,
 					NVMe: usable.disks.filter((d) => d.type === 'NVMe' && d.partitions.length === 0).length,
+					Virtual: usable.disks.filter((d) => d.type === 'Virtual' && d.partitions.length === 0)
+						.length,
 					Partitions: usable.partitions.length
 				};
-				sectionOrder = ['HDD', 'SSD', 'NVMe', 'Partitions'].sort(
+				sectionOrder = ['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions'].sort(
 					(a, b) => (initialCounts[b] ?? 0) - (initialCounts[a] ?? 0)
 				);
-				accordionOpen = diskSections.filter((s) => s.count > 0).map((s) => s.key);
-			}
-		}
-	);
-
-	watch(
-		() => properties.vdev.count,
-		() => {
-			let int = parseInt(properties.vdev.count.toString(), 10);
-			if (isNaN(int) || int < 1) {
-				properties.vdev.count = 1;
-			} else {
-				properties.vdev.count = int;
 			}
 		}
 	);
@@ -111,10 +110,15 @@
 							(p) =>
 								!properties.vdev.containers
 									.flatMap((v) => v.partitions)
-									.some((vp) => vp.name === p.name)
+									.some((vp) => vp.name === p.name) &&
+								!properties.props.spares.includes(p.name)
 						).length
 					: usable.disks.filter(
-							(d) => d.type === key && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
+							(d) =>
+								d.type === key &&
+								d.partitions.length === 0 &&
+								!isDiskInVdev(d.uuid) &&
+								!properties.props.spares.includes(d.device)
 						).length
 		}))
 	);
@@ -145,6 +149,7 @@
 		let totalUsable = 0;
 
 		for (const vdev of properties.vdev.containers) {
+			if (vdev.type !== 'data') continue;
 			const sizes = [
 				...(vdev.disks ?? []).map((d) => d.size),
 				...(vdev.partitions ?? []).map((p) => p.size)
@@ -156,7 +161,7 @@
 
 			const total = sizes.reduce((sum, s) => sum + s, 0);
 
-			switch (properties.raid) {
+			switch (vdev.raidType ?? 'stripe') {
 				case 'stripe':
 					totalUsable += total;
 					break;
@@ -179,51 +184,115 @@
 					}
 					break;
 				default:
-					console.warn(`Unknown RAID type: ${properties.raid}`);
+					console.warn(`Unknown RAID type: ${vdev.raidType}`);
 			}
 		}
 
 		properties.usable = totalUsable;
 	}
 
-	function setRedundancyAvailability() {
-		const vdevLengths = properties.vdev.containers.map(
-			(vdev) => vdev.disks.length + vdev.partitions.length
-		);
-
-		raidTypes = raidTypes.map((type) => {
-			switch (type.value) {
-				case 'stripe':
-					return { ...type, available: true };
-				case 'mirror': {
-					const allMirrors = vdevLengths.every((length) => length >= 2) && vdevLengths.length > 0;
-					return { ...type, available: allMirrors };
-				}
-				case 'raidz':
-					return {
-						...type,
-						available: vdevLengths.every((length) => length >= 3) && vdevLengths.length > 0
-					};
-				case 'raidz2':
-					return {
-						...type,
-						available: vdevLengths.every((length) => length >= 4) && vdevLengths.length > 0
-					};
-				case 'raidz3':
-					return {
-						...type,
-						available: vdevLengths.every((length) => length >= 5) && vdevLengths.length > 0
-					};
-				default:
-					return type;
-			}
+	function syncAccordion() {
+		accordionOpen = accordionOpen.filter((key) => {
+			const section = diskSections.find((s) => s.key === key);
+			return section && section.count > 0;
 		});
+	}
 
-		if (!raidTypes.find((rt) => rt.value === properties.raid)?.available) {
-			properties.raid = (raidTypes.find((rt) => rt.available)?.value as ZpoolRaidType) || 'stripe';
+	function handleDropToSpares(diskId: string) {
+		if (!diskId) return;
+
+		const disk = disks.find((d) => d.uuid === diskId);
+		if (disk) {
+			if (!properties.props.spares.includes(disk.device)) {
+				properties.props.spares = [...properties.props.spares, disk.device];
+				usable.disks = usable.disks.filter((ud) => ud.uuid !== disk.uuid);
+				setUsableSpace();
+				syncAccordion();
+			}
+			return;
 		}
 
+		const parentDisk = disks.find((d) => d.partitions.some((p) => p.name === diskId));
+		if (parentDisk) {
+			const partition = parentDisk.partitions.find((p) => p.name === diskId);
+			if (partition && !properties.props.spares.includes(partition.name)) {
+				properties.props.spares = [...properties.props.spares, partition.name];
+				usable.disks = usable.disks.filter(
+					(ud) => !ud.partitions.some((p) => p.name === partition.name)
+				);
+				usable.partitions = usable.partitions.filter((p) => p.name !== partition.name);
+				setUsableSpace();
+				syncAccordion();
+			}
+		}
+	}
+
+	function removeFromSpares(device: string) {
+		properties.props.spares = properties.props.spares.filter((s) => s !== device);
+
+		const disk = disks.find((d) => d.device === device);
+		if (disk && !usable.disks.some((ud) => ud.uuid === disk.uuid)) {
+			usable.disks = [...usable.disks, disk];
+			setUsableSpace();
+			syncAccordion();
+			return;
+		}
+
+		const parentDisk = disks.find((d) => d.partitions.some((p) => p.name === device));
+		if (parentDisk) {
+			const partition = parentDisk.partitions.find((p) => p.name === device);
+			if (partition && !usable.partitions.some((p) => p.name === device)) {
+				usable.partitions = [...usable.partitions, partition];
+				if (!usable.disks.some((ud) => ud.uuid === parentDisk.uuid)) {
+					usable.disks = [...usable.disks, { ...parentDisk }];
+				}
+				setUsableSpace();
+				syncAccordion();
+			}
+		}
+	}
+
+	function validateVdevRaid(vdev: VdevContainer) {
+		const deviceCount = vdev.disks.length + vdev.partitions.length;
+		const available = getAvailableRaidTypes(vdev.type, deviceCount).filter((r) => r.available);
+		if (available.length === 0) return;
+		if (!available.some((r) => r.value === vdev.raidType)) {
+			vdev.raidType = (available[0]?.value ?? 'stripe') as ZpoolRaidType;
+		}
+	}
+
+	function addVdev() {
+		const idx = properties.vdev.containers.length;
+		properties.vdev.containers.push({
+			id: `vdev-${idx}`,
+			type: 'data',
+			raidType: 'stripe',
+			disks: [],
+			partitions: []
+		});
+	}
+
+	function removeVdev(idx: number) {
+		const vdev = properties.vdev.containers[idx];
+		if (!vdev) return;
+		for (const disk of vdev.disks) {
+			if (!usable.disks.some((ud) => ud.uuid === disk.uuid)) {
+				usable.disks = [...usable.disks, disk];
+			}
+		}
+		for (const partition of vdev.partitions) {
+			const parentDisk = disks.find((d) => d.partitions.some((p) => p.name === partition.name));
+			if (
+				parentDisk &&
+				!usable.disks.some((ud) => ud.partitions.some((p) => p.name === partition.name))
+			) {
+				usable.disks = [...usable.disks, { ...parentDisk }];
+			}
+		}
+		properties.vdev.containers.splice(idx, 1);
+		properties.props.spares = [];
 		setUsableSpace();
+		syncAccordion();
 	}
 
 	function getVdevErrors(id: number): string {
@@ -275,6 +344,8 @@
 		if (!properties.vdev.containers[containerId]) {
 			properties.vdev.containers[containerId] = {
 				id: `vdev-${containerId}`,
+				type: 'data',
+				raidType: 'stripe',
 				disks: [],
 				partitions: []
 			};
@@ -314,8 +385,8 @@
 			}
 		}
 
-		setRedundancyAvailability();
 		setUsableSpace();
+		syncAccordion();
 	}
 
 	function isDiskInVdev(diskId: string | undefined | string[]): boolean {
@@ -344,11 +415,22 @@
 	}
 
 	function addToLastVdev(itemId: string) {
-		const lastIdx = properties.vdev.count - 1;
+		if (properties.vdev.containers.length === 0) {
+			properties.vdev.containers.push({
+				id: 'vdev-0',
+				type: 'data',
+				raidType: 'stripe',
+				disks: [],
+				partitions: []
+			});
+		}
+		const lastIdx = properties.vdev.containers.length - 1;
 
 		if (!properties.vdev.containers[lastIdx]) {
 			properties.vdev.containers[lastIdx] = {
 				id: `vdev-${lastIdx}`,
+				type: 'data',
+				raidType: 'stripe',
 				disks: [],
 				partitions: []
 			};
@@ -380,8 +462,8 @@
 		}
 
 		properties.props.spares = [];
-		setRedundancyAvailability();
 		setUsableSpace();
+		syncAccordion();
 	}
 
 	function removeFromVdev(id: number, diskId: string) {
@@ -412,7 +494,9 @@
 			}
 		}
 
-		setRedundancyAvailability();
+		setUsableSpace();
+		validateVdevRaid(vdev);
+		syncAccordion();
 	}
 
 	async function makePool() {
@@ -420,46 +504,90 @@
 
 		properties.creating = true;
 
-		if (usable.disks.length === 0 && usable.partitions.length === 0) {
-			toast.error('No available disks or partitions', {
-				position: 'bottom-center'
-			});
-
-			properties.creating = false;
-			return;
-		}
-
 		if (!isValidPoolName(properties.name)) {
 			toast.error('Invalid pool name', {
 				position: 'bottom-center'
 			});
-
 			properties.creating = false;
 			return;
 		}
 
-		if (
-			properties.vdev.containers.some((vdev) => {
-				return vdev.disks.length === 0 && vdev.partitions.length === 0;
-			})
-		) {
-			properties.vdev.containers = properties.vdev.containers.filter((vdev) => {
-				return vdev.disks.length > 0 || vdev.partitions.length > 0;
-			});
-			return;
-		}
-
-		if (properties.vdev.containers.length === 0) {
-			toast.error('At least one VDEV containing disks is required', {
+		const existingPools = pools.filter((pool) => pool.name === properties.name);
+		if (existingPools.length > 0) {
+			toast.error('A pool with this name already exists', {
 				position: 'bottom-center'
 			});
 			properties.creating = false;
 			return;
 		}
 
-		const raid: ZpoolRaidType = properties.raid;
+		if (properties.vdev.containers.length === 0) {
+			toast.error('At least one VDEV is required', {
+				position: 'bottom-center'
+			});
+			properties.creating = false;
+			return;
+		}
 
-		properties.creating = true;
+		const raidMinDisks: Record<string, number> = {
+			stripe: 1,
+			mirror: 2,
+			raidz: 3,
+			raidz2: 4,
+			raidz3: 5
+		};
+
+		for (const vdev of properties.vdev.containers) {
+			const vdevNum = vdev.id.split('-').pop() ?? vdev.id;
+			const deviceCount = vdev.disks.length + vdev.partitions.length;
+			if (deviceCount === 0) {
+				toast.error(`VDEV #${vdevNum} has no disks`, {
+					position: 'bottom-center'
+				});
+				properties.creating = false;
+				return;
+			}
+			const minDisks = raidMinDisks[vdev.raidType ?? 'stripe'] ?? 1;
+			if (deviceCount < minDisks) {
+				const label = raidTypeArr.find((r) => r.value === vdev.raidType)?.label ?? 'Stripe';
+				toast.error(`VDEV #${vdevNum} needs at least ${minDisks} disks for ${label}`, {
+					position: 'bottom-center'
+				});
+				properties.creating = false;
+				return;
+			}
+		}
+
+		if (!properties.vdev.containers.some((v) => v.type === 'data')) {
+			toast.error('At least one Data VDEV is required', {
+				position: 'bottom-center'
+			});
+			properties.creating = false;
+			return;
+		}
+
+		const specialVdevs = properties.vdev.containers.filter(
+			(v) => v.type === 'special' || v.type === 'dedup'
+		);
+		const specialRaidTypes = new Set(specialVdevs.map((v) => v.raidType ?? 'stripe'));
+		if (specialRaidTypes.size > 1) {
+			toast.error('Special and Dedup VDEVs must use the same RAID type', {
+				position: 'bottom-center'
+			});
+			properties.creating = false;
+			return;
+		}
+
+		const dataVdevs = properties.vdev.containers.filter((v) => v.type === 'data');
+		const dataRaidTypes = new Set(dataVdevs.map((v) => v.raidType ?? 'stripe'));
+		if (dataRaidTypes.size > 1 && !properties.force) {
+			toast.error('All Data VDEVs must use the same RAID type or enable Force Create', {
+				position: 'bottom-center'
+			});
+			properties.creating = false;
+			return;
+		}
+
 		let biggestSize = 0;
 
 		for (const vdev of properties.vdev.containers) {
@@ -496,20 +624,12 @@
 			}
 		}
 
-		const existingPools = pools.filter((pool) => pool.name === properties.name);
-		if (existingPools.length > 0) {
-			toast.error('A pool with this name already exists', {
-				position: 'bottom-center'
-			});
-			properties.creating = false;
-			return;
-		}
-
 		const response = await createPool({
 			name: properties.name,
-			raidType: raid,
 			vdevs: properties.vdev.containers.map((vdev) => ({
 				name: vdev.id,
+				type: vdev.type,
+				raidType: vdev.raidType,
 				devices: [
 					...vdev.disks.map((disk) => disk.device),
 					...vdev.partitions.map((partition) => partition.name)
@@ -544,10 +664,7 @@
 		}
 	}
 
-	onMount(() => {
-		properties.raid = 'stripe';
-		raidTypes = raidTypeArr;
-	});
+	onMount(() => {});
 </script>
 
 {#snippet vdevErrors(id: number)}
@@ -575,11 +692,13 @@
 	{#each properties.vdev.containers[id]?.disks || [] as disk (disk.device)}
 		<div animate:flip={{ duration: 300 }} class="relative">
 			{#if disk.type === 'HDD'}
-				<span class="icon-[mdi--harddisk] h-11 w-11 text-green-500"></span>
+				<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
 			{:else if disk.type === 'SSD'}
-				<span class="icon-[icon-park-outline--ssd] h-11 w-11 text-blue-500"></span>
+				<span class="icon-[icon-park-outline--ssd] h-9 w-9 text-blue-500"></span>
 			{:else if disk.type === 'NVMe'}
-				<span class="icon-[bi--nvme] h-11 w-11 rotate-90 text-blue-500"></span>
+				<span class="icon-[bi--nvme] h-9 w-9 rotate-90 text-blue-500"></span>
+			{:else if disk.type === 'Virtual'}
+				<span class="icon-[mdi--nas] h-9 w-9 text-purple-500"></span>
 			{/if}
 
 			<div class="max-w-12 truncate text-center text-xs">
@@ -599,7 +718,7 @@
 
 	{#each properties.vdev.containers[id]?.partitions || [] as partition (partition.name)}
 		<div animate:flip={{ duration: 300 }} class="relative">
-			<span class="icon-[ant-design--partition-outlined] h-11 w-11 rotate-90 text-blue-500"></span>
+			<span class="icon-[ant-design--partition-outlined] h-9 w-9 rotate-90 text-blue-500"></span>
 
 			<div class="max-w-12 truncate text-center text-xs">
 				{partition.name.split('/').pop()}
@@ -620,15 +739,17 @@
 {#snippet diskContainer(type: string)}
 	<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
 		<div class="flex min-h-16 items-center justify-start gap-4 px-1 py-2">
-			{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)) as disk (disk.device)}
+			{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid) && !properties.props.spares.includes(disk.device)) as disk (disk.device)}
 				<div class="relative text-center" animate:flip={{ duration: 300 }}>
 					<div class="cursor-move" use:draggable={disk.uuid ?? ''}>
 						{#if type === 'HDD'}
-							<span class="icon-[mdi--harddisk] h-11 w-11 text-green-500"></span>
+							<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
 						{:else if type === 'SSD'}
-							<span class="icon-[icon-park-outline--ssd] h-11 w-11 text-blue-500"></span>
+							<span class="icon-[icon-park-outline--ssd] h-9 w-9 text-blue-500"></span>
 						{:else if type === 'NVMe'}
-							<span class="icon-[bi--nvme] h-11 w-11 rotate-90 text-blue-500"></span>
+							<span class="icon-[bi--nvme] h-9 w-9 rotate-90 text-blue-500"></span>
+						{:else if type === 'Virtual'}
+							<span class="icon-[mdi--nas] h-9 w-9 text-purple-500"></span>
 						{/if}
 					</div>
 					<div class="max-w-16 truncate text-xs">
@@ -647,7 +768,7 @@
 				</div>
 			{/each}
 
-			{#if usable.disks.filter((disk) => disk.type === type).length === 0 || usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)).length === 0}
+			{#if usable.disks.filter((disk) => disk.type === type).length === 0 || usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid) && !properties.props.spares.includes(disk.device)).length === 0}
 				<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
 					No available {type} disks
 				</div>
@@ -661,10 +782,10 @@
 		<div class="flex min-h-16 items-center justify-start gap-4 px-1 py-2">
 			{#each usable.partitions.filter((partition) => !properties.vdev.containers
 						.flatMap((vdev) => vdev.partitions)
-						.some((p) => p.name === partition.name)) as partition (partition.name)}
+						.some((p) => p.name === partition.name) && !properties.props.spares.includes(partition.name)) as partition (partition.name)}
 				<div class="relative text-center" animate:flip={{ duration: 100 }}>
 					<div class="cursor-move" use:draggable={partition.name}>
-						<span class="icon-[ant-design--partition-outlined] h-11 w-11 rotate-90 text-blue-500"
+						<span class="icon-[ant-design--partition-outlined] h-9 w-9 rotate-90 text-blue-500"
 						></span>
 					</div>
 					<div class="max-w-16 truncate text-xs">
@@ -685,7 +806,7 @@
 
 			{#if usable.partitions.length === 0 || usable.partitions.filter((partition) => !properties.vdev.containers
 							.flatMap((vdev) => vdev.partitions)
-							.some((p) => p.name === partition.name)).length === 0}
+							.some((p) => p.name === partition.name) && !properties.props.spares.includes(partition.name)).length === 0}
 				<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
 					No available partitions
 				</div>
@@ -709,7 +830,7 @@
 		onReset={() => {
 			properties = options;
 		}}
-		class="fixed top-1/2 left-1/2 flex h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-4 overflow-auto p-5 transition-all duration-300 ease-in-out lg:max-w-[70%]"
+		class="fixed top-1/2 left-1/2 flex h-[75vh] max-h-[800px] w-[75%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-3 overflow-auto pt-5 pr-6 pb-5 pl-5 transition-all duration-300 ease-in-out lg:max-w-4xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="text-left">
@@ -722,297 +843,337 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<Tabs.Root value="tab-devices" class="flex h-full flex-col overflow-y-auto ">
+		<Tabs.Root value="tab-devices" class="flex min-h-0 flex-1 flex-col gap-1">
 			<Tabs.List class="grid w-full grid-cols-2 p-0 ">
 				<Tabs.Trigger value="tab-devices" class="border-b">Devices</Tabs.Trigger>
 				<Tabs.Trigger value="tab-options" class="border-b">Options</Tabs.Trigger>
 			</Tabs.List>
 
-			<Tabs.Content class="mt-4" value="tab-devices">
-				<Card.Root class="border-none ">
-					<Card.Content class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-end">
-						<CustomValueInput
-							label="Name"
-							placeholder="tank"
-							bind:value={properties.name}
-							classes="flex-1 space-y-1"
-						/>
+			<Tabs.Content class="min-h-0 overflow-y-auto" value="tab-devices">
+				<div class="flex flex-col gap-4">
+					<CustomValueInput
+						label="Name"
+						placeholder="tank"
+						bind:value={properties.name}
+						classes="w-full space-y-1"
+					/>
 
-						<CustomValueInput
-							label="Virtual Devices"
-							placeholder="1"
-							bind:value={properties.vdev.count}
-							classes="flex-1 space-y-1"
-							type="number"
-						></CustomValueInput>
-
-						<div class="flex-1 space-y-1">
-							<Label class="w-24 text-sm whitespace-nowrap" for="raid"
-								>Redundancy
-								<span class="font-semibold text-green-500 {properties.usable ? '' : 'hidden'}"
-									>{`(${formatBytesBinary(properties.usable)})`}</span
-								></Label
-							>
-
-							<Select.Root
-								type="single"
-								bind:value={properties.raid}
-								onValueChange={() => {
-									setRedundancyAvailability();
-								}}
-							>
-								<Select.Trigger class="w-full">
-									{properties.raid
-										? raidTypes.find((rt) => rt.value === properties.raid)?.label
-										: 'Select Redundancy'}
-								</Select.Trigger>
-								<Select.Content>
-									{#each raidTypes as raidType (raidType.value)}
-										{#if raidType.available}
-											<Select.Item value={raidType.value} label={raidType.label}>
-												{raidType.label}
-											</Select.Item>
-										{/if}
-									{/each}
-								</Select.Content>
-							</Select.Root>
-						</div>
-					</Card.Content>
-
-					<Card.Content class="flex flex-col gap-4 ">
-						<div id="vdev-containers">
-							<Label>VDEVs</Label>
-							<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
-								<div
-									class="bg-muted mt-1 flex w-full items-center justify-center gap-7 overflow-hidden rounded-lg border-y border-none p-4 pr-4"
+					<div id="vdev-containers">
+						<div class="flex items-center justify-between">
+							<Label>
+								VDEVs<span class="ml-0 font-semibold text-green-500"
+									>{properties.usable
+										? ` (${formatBytesBinary(properties.usable)} Usable)`
+										: ''}</span
 								>
-									{#each Array(properties.vdev.count) as _, i (i)}
-										<div class="relative flex flex-col">
-											{@render vdevErrors(i)}
-											<div
-												class={`bg-primary/10 dark:bg-background relative h-28 w-48 shrink-0 overflow-auto rounded-lg p-2 ${getVdevErrors(i) ? 'border border-yellow-700 ' : ''}`}
-												use:dropzone={{
-													on_dropzone: (_: unknown, event: DragEvent) => handleDropToVdev(i, event),
-													dragover_class: 'droppable'
+							</Label>
+							<Button onclick={addVdev} variant="outline" size="sm" class="h-7 text-xs px-2"
+								>+ Add VDEV</Button
+							>
+						</div>
+						<div
+							class="bg-accent/30 mt-1 flex w-full flex-col gap-3 overflow-hidden rounded-lg border-y border-none p-4"
+						>
+							{#each properties.vdev.containers as vdev, i (vdev.id)}
+								<div class="flex flex-col gap-2">
+									<div class="flex items-center gap-2">
+										<div class="flex items-center gap-2">
+											<Select.Root
+												type="single"
+												bind:value={vdev.type}
+												onValueChange={() => {
+													validateVdevRaid(vdev);
+													setUsableSpace();
 												}}
 											>
-												{#if !vdevContains(i)}
-													<div
-														class="text-muted-foreground/60 flex h-full flex-col items-center justify-center gap-1"
-													>
-														<span class="text-muted-foreground/60">{i + 1}</span>
-														<span>Drop disks here</span>
-													</div>
-												{:else}
-													<div class="flex h-full flex-wrap items-center justify-center gap-2">
-														{@render vdevContainer(i)}
-													</div>
-												{/if}
-											</div>
-										</div>
-									{/each}
-								</div></ScrollArea
-							>
-						</div>
-					</Card.Content>
-
-					<Card.Content class="flex flex-col gap-4">
-						<div id="disk-containers">
-							<Label>Disks &amp; Partitions</Label>
-							<Accordion.Root
-								type="multiple"
-								bind:value={accordionOpen}
-								class="mt-1 overflow-hidden rounded-lg border"
-							>
-								{#each diskSections as section, i (section.key)}
-									<Accordion.Item
-										value={section.key}
-										class={i < diskSections.length - 1 ? 'border-b' : 'border-b-0'}
-									>
-										<Accordion.Trigger class="px-4 hover:no-underline">
-											<div class="flex items-center gap-2 text-sm font-medium">
-												{#if section.key === 'HDD'}
-													<span class="icon-[mdi--harddisk] h-4 w-4 text-green-500"></span>
-												{:else if section.key === 'SSD'}
-													<span class="icon-[icon-park-outline--ssd] h-4 w-4 text-blue-500"></span>
-												{:else if section.key === 'NVMe'}
-													<span class="icon-[bi--nvme] h-4 w-4 text-blue-500"></span>
-												{:else if section.key === 'Partitions'}
-													<span
-														class="icon-[ant-design--partition-outlined] h-4 w-4 rotate-90 text-blue-500"
-													></span>
-												{/if}
-												{section.key}
-												<span class="text-muted-foreground text-xs font-normal"
-													>({section.count} available)</span
-												>
-											</div>
-										</Accordion.Trigger>
-										<Accordion.Content class="px-4 pb-3">
-											{#if section.key === 'Partitions'}
-												{@render partitionsContainer()}
-											{:else}
-												{@render diskContainer(section.key)}
-											{/if}
-										</Accordion.Content>
-									</Accordion.Item>
-								{/each}
-							</Accordion.Root>
-						</div>
-					</Card.Content>
-				</Card.Root>
-			</Tabs.Content>
-
-			<Tabs.Content class="mt-3" value="tab-options">
-				<Card.Root class="min-h-[20vh] border-none pb-6">
-					<Card.Content class="flex flex-col gap-4 p-4 pb-0!">
-						<div transition:slide class="grid grid-cols-1 gap-4">
-							<div class="flex-1 space-y-1.5">
-								<Label for="comment">Comment</Label>
-								<Textarea
-									id="comment"
-									placeholder="Comments about the pool"
-									bind:value={properties.props.comment}
-								/>
-							</div>
-
-							<div transition:slide class="grid grid-cols-1 items-center gap-4 md:grid-cols-3">
-								<CustomValueInput
-									type="text"
-									label="Mount Point"
-									placeholder="/tank"
-									bind:value={properties.mount}
-									classes="flex-1 space-y-1"
-								></CustomValueInput>
-
-								<div class="col-span-2 flex items-center gap-6 md:mt-4">
-									<CustomCheckbox
-										label="Force Create"
-										bind:checked={properties.force}
-										classes="flex items-center gap-2"
-									></CustomCheckbox>
-
-									<CustomCheckbox
-										label="Advanced"
-										bind:checked={properties.advanced}
-										classes="flex items-center gap-2"
-									></CustomCheckbox>
-								</div>
-							</div>
-						</div>
-
-						{#if properties.advanced}
-							<div transition:slide class="grid grid-cols-1 gap-4 md:grid-cols-3">
-								<SimpleSelect
-									label="AShift"
-									placeholder="Select ASHIFT"
-									options={[
-										{ value: '9', label: '9' },
-										{ value: '10', label: '10' },
-										{ value: '11', label: '11' },
-										{ value: '12', label: '12' },
-										{ value: '13', label: '13' },
-										{ value: '14', label: '14' },
-										{ value: '15', label: '15' },
-										{ value: '16', label: '16' }
-									]}
-									bind:value={properties.props.ashift}
-									onChange={(value) => (properties.props.ashift = value)}
-								/>
-
-								<SimpleSelect
-									label="Auto Expand"
-									placeholder="Select Auto Expand"
-									options={[
-										{ value: 'on', label: 'Yes' },
-										{ value: 'off', label: 'No' }
-									]}
-									bind:value={properties.props.autoexpand}
-									onChange={(value) => (properties.props.autoexpand = value)}
-								/>
-
-								<SimpleSelect
-									label="Auto Trim"
-									placeholder="Select Auto Trim"
-									options={[
-										{ value: 'on', label: 'Yes' },
-										{ value: 'off', label: 'No' }
-									]}
-									bind:value={properties.props.autotrim}
-									onChange={(value) => (properties.props.autotrim = value)}
-								/>
-
-								<SimpleSelect
-									label="Delegation"
-									placeholder="Select Delegation"
-									options={[
-										{ value: 'on', label: 'Yes' },
-										{ value: 'off', label: 'No' }
-									]}
-									bind:value={properties.props.delegation}
-									onChange={(value) => (properties.props.delegation = value)}
-								/>
-
-								<SimpleSelect
-									label="Fail Mode"
-									placeholder="Select Fail Mode"
-									options={[
-										{ value: 'continue', label: 'Continue' },
-										{ value: 'wait', label: 'Wait' },
-										{ value: 'panic', label: 'Panic' }
-									]}
-									bind:value={properties.props.failmode}
-									onChange={(value) => (properties.props.failmode = value)}
-								/>
-
-								{#if spares && spares.length > 0 && properties.raid !== 'stripe'}
-									<div class="h-full space-y-1">
-										<Label class="w-24 text-sm whitespace-nowrap">Spares</Label>
-										<Select.Root
-											type="multiple"
-											bind:value={properties.props.spares}
-											onValueChange={(value) => {
-												properties.props.spares = value as string[];
-											}}
-										>
-											<Select.Trigger class="w-full">
-												{#if properties.props.spares.length > 0}
-													<span>
-														{properties.props.spares.join(', ')}
-													</span>
-												{:else}
-													<span>Select spares</span>
-												{/if}
-											</Select.Trigger>
-											<Select.Content>
-												<Select.Group>
-													{#each spares as spare (spare)}
-														<Select.Item value={spare} label={spare}>
-															{spare}
+												<Select.Trigger class="!bg-primary/5 dark:!bg-background h-6 w-32 text-xs">
+													{vdevTypeArr.find((vt) => vt.value === vdev.type)?.label ?? 'Data'}
+												</Select.Trigger>
+												<Select.Content>
+													{#each vdevTypeArr as vt (vt.value)}
+														<Select.Item value={vt.value} label={vt.label}>
+															{vt.label}
 														</Select.Item>
 													{/each}
-												</Select.Group>
-											</Select.Content>
-										</Select.Root>
+												</Select.Content>
+											</Select.Root>
+
+											{#if getAvailableRaidTypes(vdev.type, vdev.disks.length + vdev.partitions.length).filter((r) => r.available).length > 1}
+												<Select.Root
+													type="single"
+													bind:value={vdev.raidType}
+													onValueChange={() => setUsableSpace()}
+												>
+													<Select.Trigger
+														class="!bg-primary/5 dark:!bg-background h-6 w-24 text-xs"
+													>
+														{vdev.raidType
+															? raidTypeArr.find((rt) => rt.value === vdev.raidType)?.label
+															: 'Stripe'}
+													</Select.Trigger>
+													<Select.Content>
+														{#each getAvailableRaidTypes(vdev.type, vdev.disks.length + vdev.partitions.length).filter((r) => r.available) as rt (rt.value)}
+															<Select.Item value={rt.value} label={rt.label}>
+																{rt.label}
+															</Select.Item>
+														{/each}
+													</Select.Content>
+												</Select.Root>
+											{/if}
+										</div>
+										<button
+											class="ml-auto h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+											onclick={() => removeVdev(i)}
+											aria-label="Remove VDEV"
+										>
+											<span class="icon-[mdi--close] h-3 w-3 block"></span>
+										</button>
 									</div>
 
-									{#if properties.props.spares.length > 0}
-										<SimpleSelect
-											label="Auto Replace"
-											placeholder="Select Auto Replace"
-											options={[
-												{ value: 'on', label: 'Yes' },
-												{ value: 'off', label: 'No' }
-											]}
-											bind:value={properties.props.autoreplace}
-											onChange={(value) => (properties.props.autoreplace = value)}
-										/>
-									{/if}
+									<div
+										class={`bg-primary/10 dark:bg-background relative h-24 w-full shrink-0 overflow-auto rounded-lg p-2 ${getVdevErrors(i) ? 'border border-yellow-700' : ''}`}
+										use:dropzone={{
+											on_dropzone: (_: unknown, event: DragEvent) => handleDropToVdev(i, event),
+											dragover_class: 'droppable'
+										}}
+									>
+										{@render vdevErrors(i)}
+										{#if !vdevContains(i)}
+											<div
+												class="text-muted-foreground/60 flex h-full w-full flex-col items-center justify-center gap-1"
+											>
+												<span>Drop disks here</span>
+											</div>
+										{:else}
+											<div class="flex h-full w-full flex-wrap items-center justify-center gap-2">
+												{@render vdevContainer(i)}
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+
+							{#if properties.vdev.containers.length === 0}
+								<div class="text-muted-foreground/60 flex h-24 items-center justify-center">
+									No VDEVs. Click &quot;+ Add VDEV&quot; to add one.
+								</div>
+							{/if}
+						</div>
+					</div>
+
+					<div id="disk-containers">
+						<div class="flex items-center justify-between">
+							<Label>Disks &amp; Partitions</Label>
+							{#if properties.vdev.containers.some((v) => v.raidType && v.raidType !== 'stripe')}
+								<div class="flex items-center gap-1">
+									<span class="text-xs text-muted-foreground">Spares</span>
+									<span class="text-xs font-semibold text-green-500 {properties.props.spares.length ? '' : 'hidden'}">
+										({properties.props.spares.length})
+									</span>
+								</div>
+							{/if}
+						</div>
+
+						{#if properties.vdev.containers.some((v) => v.raidType && v.raidType !== 'stripe')}
+						<div id="spares-container" class="mt-2">
+							<div
+								class="bg-primary/10 dark:bg-background relative h-20 w-full overflow-auto rounded-lg border border-dashed border-muted-foreground/30 p-2"
+								use:dropzone={{
+									on_dropzone: (data: string) => handleDropToSpares(data),
+									dragover_class: 'droppable'
+								}}
+							>
+								{#if properties.props.spares.length === 0}
+									<div
+										class="text-muted-foreground/60 flex h-full w-full items-center justify-center"
+									>
+										Drop disks here to use as spares
+									</div>
+								{:else}
+									<div
+										class="flex h-full items-center justify-center gap-3"
+									>
+										{#each properties.props.spares as spare (spare)}
+											<div class="relative text-center">
+												<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
+												<div class="max-w-16 truncate text-xs">
+													{spare.split('/').pop()}
+												</div>
+												<button
+													class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+													onclick={() => removeFromSpares(spare)}
+													aria-label="Remove {spare} from spares"
+												>
+													<span class="icon-[mdi--close] h-3 w-3 block"></span>
+												</button>
+											</div>
+										{/each}
+									</div>
 								{/if}
 							</div>
+						</div>
 						{/if}
-					</Card.Content>
-				</Card.Root>
+
+						<Accordion.Root
+							type="multiple"
+							bind:value={accordionOpen}
+							class="mt-1 overflow-hidden rounded-lg border"
+						>
+							{#each diskSections as section, i (section.key)}
+								<Accordion.Item
+									value={section.key}
+									class={i < diskSections.length - 1 ? 'border-b' : 'border-b-0'}
+								>
+									<Accordion.Trigger class="px-4 hover:no-underline">
+										<div class="flex items-center gap-2 text-sm font-medium">
+											{#if section.key === 'HDD'}
+												<span class="icon-[mdi--harddisk] h-4 w-4 text-green-500"></span>
+											{:else if section.key === 'SSD'}
+												<span class="icon-[icon-park-outline--ssd] h-4 w-4 text-blue-500"></span>
+											{:else if section.key === 'NVMe'}
+												<span class="icon-[bi--nvme] h-4 w-4 text-blue-500"></span>
+											{:else if section.key === 'Virtual'}
+												<span class="icon-[mdi--nas] h-4 w-4 text-purple-500"></span>
+											{:else if section.key === 'Partitions'}
+												<span
+													class="icon-[ant-design--partition-outlined] h-4 w-4 rotate-90 text-blue-500"
+												></span>
+											{/if}
+											{section.key}
+											<span class="text-muted-foreground text-xs font-normal"
+												>({section.count} available)</span
+											>
+										</div>
+									</Accordion.Trigger>
+									<Accordion.Content class="px-4 pb-3">
+										{#if section.key === 'Partitions'}
+											{@render partitionsContainer()}
+										{:else}
+											{@render diskContainer(section.key)}
+										{/if}
+									</Accordion.Content>
+								</Accordion.Item>
+							{/each}
+						</Accordion.Root>
+					</div>
+				</div>
+			</Tabs.Content>
+
+			<Tabs.Content class="min-h-0 overflow-y-auto" value="tab-options">
+				<div class="flex flex-col gap-4">
+					<div transition:slide class="grid grid-cols-1 gap-4">
+						<CustomValueInput
+							type="textarea"
+							label="Comments"
+							placeholder="Comments about the pool"
+							bind:value={properties.props.comment}
+							classes="flex-1 space-y-1"
+						></CustomValueInput>
+
+						<div transition:slide class="grid grid-cols-1 items-center gap-4 md:grid-cols-3">
+							<CustomValueInput
+								type="text"
+								label="Mount Point"
+								placeholder="/tank"
+								bind:value={properties.mount}
+								classes="flex-1 space-y-1"
+							></CustomValueInput>
+
+							<div class="col-span-2 flex items-center gap-6 md:mt-4">
+								<CustomCheckbox
+									label="Force Create"
+									bind:checked={properties.force}
+									classes="flex items-center gap-2"
+								></CustomCheckbox>
+
+								<CustomCheckbox
+									label="Advanced"
+									bind:checked={properties.advanced}
+									classes="flex items-center gap-2"
+								></CustomCheckbox>
+							</div>
+						</div>
+					</div>
+
+					{#if properties.advanced}
+						<div transition:slide class="grid grid-cols-1 gap-4 md:grid-cols-3">
+							<SimpleSelect
+								label="AShift"
+								placeholder="Select ASHIFT"
+								options={[
+									{ value: '9', label: '9' },
+									{ value: '10', label: '10' },
+									{ value: '11', label: '11' },
+									{ value: '12', label: '12' },
+									{ value: '13', label: '13' },
+									{ value: '14', label: '14' },
+									{ value: '15', label: '15' },
+									{ value: '16', label: '16' }
+								]}
+								bind:value={properties.props.ashift}
+								onChange={(value) => (properties.props.ashift = value)}
+							/>
+
+							<SimpleSelect
+								label="Auto Expand"
+								placeholder="Select Auto Expand"
+								options={[
+									{ value: 'on', label: 'Yes' },
+									{ value: 'off', label: 'No' }
+								]}
+								bind:value={properties.props.autoexpand}
+								onChange={(value) => (properties.props.autoexpand = value)}
+							/>
+
+							<SimpleSelect
+								label="Auto Trim"
+								placeholder="Select Auto Trim"
+								options={[
+									{ value: 'on', label: 'Yes' },
+									{ value: 'off', label: 'No' }
+								]}
+								bind:value={properties.props.autotrim}
+								onChange={(value) => (properties.props.autotrim = value)}
+							/>
+
+							<SimpleSelect
+								label="Delegation"
+								placeholder="Select Delegation"
+								options={[
+									{ value: 'on', label: 'Yes' },
+									{ value: 'off', label: 'No' }
+								]}
+								bind:value={properties.props.delegation}
+								onChange={(value) => (properties.props.delegation = value)}
+							/>
+
+							<SimpleSelect
+								label="Fail Mode"
+								placeholder="Select Fail Mode"
+								options={[
+									{ value: 'continue', label: 'Continue' },
+									{ value: 'wait', label: 'Wait' },
+									{ value: 'panic', label: 'Panic' }
+								]}
+								bind:value={properties.props.failmode}
+								onChange={(value) => (properties.props.failmode = value)}
+							/>
+
+							{#if properties.props.spares.length > 0}
+								<SimpleSelect
+									label="Auto Replace"
+									placeholder="Select Auto Replace"
+									options={[
+										{ value: 'on', label: 'Yes' },
+										{ value: 'off', label: 'No' }
+									]}
+									bind:value={properties.props.autoreplace}
+									onChange={(value) => (properties.props.autoreplace = value)}
+								/>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			</Tabs.Content>
 		</Tabs.Root>
 

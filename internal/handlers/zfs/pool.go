@@ -452,3 +452,52 @@ func EditPool(infoService *info.Service, zfsService *zfs.Service) gin.HandlerFun
 		})
 	}
 }
+
+type DetachRequest struct {
+	Device string `json:"device" binding:"required"`
+}
+
+// @Summary Detach Device
+// @Description Detach a device from a mirrored ZFS pool
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param guid path string true "Pool GUID"
+// @Param request body DetachRequest true "Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/pools/{guid}/detach [post]
+func DetachDevice(infoService *info.Service, zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		guid := c.Param("guid")
+		var request DetachRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx := c.Request.Context()
+		if err := zfsService.DetachDevice(ctx, guid, request.Device); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "detach_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "device_detached",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}

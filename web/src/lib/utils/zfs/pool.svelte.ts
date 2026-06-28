@@ -1,5 +1,16 @@
 import type { APIResponse } from '$lib/types/common';
 
+function prettifyError(raw: string): string {
+	const idx = raw.indexOf('stderr: ');
+	if (idx !== -1) {
+		let msg = raw.slice(idx + 8);
+		msg = msg.replace(/^\(?\s*|\s*\)?\s*$/g, '');
+		return msg.trim().replace(/./, (c) => c.toUpperCase());
+	}
+	const msg = raw.replace(/^zpool_\w+_failed:\s*/, '');
+	return msg.replace(/:\s*exit status \d+/, '').trim();
+}
+
 export function parsePoolActionError(error: APIResponse): string {
 	if (error.message && error.message === 'pool_create_failed') {
 		if (error.error) {
@@ -9,6 +20,10 @@ export function parsePoolActionError(error: APIResponse): string {
 				return 'Pool contains a RAIDZ vdev with devices of different sizes';
 			}
 		}
+		if (error.error) {
+			return prettifyError(error.error);
+		}
+		return 'Pool creation failed';
 	}
 
 	if (error.message && error.message === 'pool_delete_failed') {
@@ -41,5 +56,9 @@ export function parsePoolActionError(error: APIResponse): string {
 		return 'Pool edit failed';
 	}
 
-	return '';
+	if (error.error) {
+		return prettifyError(error.error);
+	}
+
+	return prettifyError(error.message ?? 'An unknown error occurred');
 }

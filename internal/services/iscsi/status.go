@@ -33,7 +33,8 @@ func (s *Service) GetStatus() (map[string]string, error) {
 		}
 
 		targetName := fields[0]
-		state := strings.Join(fields[2:], " ")
+		state := fields[2]
+		state = strings.TrimRight(state, ":")
 		result[targetName] = state
 	}
 

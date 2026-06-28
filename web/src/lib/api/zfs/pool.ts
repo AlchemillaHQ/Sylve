@@ -82,3 +82,9 @@ export async function editPool(
 		spares
 	});
 }
+
+export async function detachDevice(guid: string, device: string): Promise<APIResponse> {
+	return await apiRequest(`/zfs/pools/${guid}/detach`, APIResponseSchema, 'POST', {
+		device
+	});
+}

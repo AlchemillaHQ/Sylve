@@ -84,7 +84,7 @@ func (s *Service) CreateTarget(targetName, alias, authMethod, chapName, chapSecr
 		return fmt.Errorf("failed_to_create_target: %w", err)
 	}
 
-	return nil
+	return s.WriteTargetConfig(true)
 }
 
 func (s *Service) UpdateTarget(id uint, targetName, alias, authMethod, chapName, chapSecret, mutualChapName, mutualChapSecret string) error {

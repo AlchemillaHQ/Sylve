@@ -13054,8 +13054,7 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreateZPoolRequest": {
             "type": "object",
             "required": [
-                "name",
-                "raidType"
+                "name"
             ],
             "properties": {
                 "createForce": {
@@ -13071,9 +13070,6 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "string"
                     }
-                },
-                "raidType": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.RaidType"
                 },
                 "spares": {
                     "type": "array",

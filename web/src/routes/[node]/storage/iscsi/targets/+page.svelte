@@ -207,7 +207,6 @@
 		toast.success('Portal added', { position: 'bottom-center' });
 		portalForm = blankPortalForm();
 		reload = true;
-		await targets.refetch();
 	}
 
 	async function submitRemovePortal(portalId: number) {
@@ -221,7 +220,6 @@
 		}
 		toast.success('Portal removed', { position: 'bottom-center' });
 		reload = true;
-		await targets.refetch();
 	}
 
 	async function submitAddLUN() {
@@ -237,7 +235,6 @@
 		toast.success('LUN added', { position: 'bottom-center' });
 		lunForm = blankLUNForm();
 		reload = true;
-		await targets.refetch();
 	}
 
 	async function submitRemoveLUN(lunId: number) {
@@ -251,7 +248,6 @@
 		}
 		toast.success('LUN removed', { position: 'bottom-center' });
 		reload = true;
-		await targets.refetch();
 	}
 
 	function generateTableData(targets: ISCSITarget[]): { rows: Row[]; columns: Column[] } {

@@ -410,6 +410,7 @@ msgstr "Ruční přepínač"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "ZFS Pool"
 msgstr "ZFS fond"
 
@@ -1067,6 +1068,7 @@ msgstr "Nové"
 msgid "Reset"
 msgstr "Resetovat"
 
+#: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
@@ -2498,6 +2500,7 @@ msgstr "MAC adresa/adresy"
 msgid "DUID(s)"
 msgstr "DUID identifikátor(y)"
 
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Data"
 msgstr "Data"
@@ -5992,7 +5995,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6250,17 +6253,15 @@ msgstr "Oddíly v rámci VDEV by měly mít nejlépe stejnou velikost"
 msgid "Disks/Partitions within a VDEV should ideally be the same drive type"
 msgstr "Disky/oddíly v rámci VDEV by měly být nejlépe stejného typu jednotky"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "No available disks or partitions"
-msgstr "Nejsou k dispozici žádné disky nebo oddíly"
+#~ msgid "No available disks or partitions"
+#~ msgstr "Nejsou k dispozici žádné disky nebo oddíly"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Invalid pool name"
 msgstr "Neplatný název fondu"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "At least one VDEV containing disks is required"
-msgstr "Je třeba vybrat alespoň jedno VDEV obsahující disky"
+#~ msgid "At least one VDEV containing disks is required"
+#~ msgstr "Je třeba vybrat alespoň jedno VDEV obsahující disky"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Spares must be larger than the largest disk in the pool"
@@ -6304,27 +6305,22 @@ msgstr "Nejsou k dispozici žádné oddíly"
 msgid "Devices"
 msgstr "Zařízení"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "Virtual Devices"
-msgstr "Virtuální zařízení"
+#~ msgid "Virtual Devices"
+#~ msgstr "Virtuální zařízení"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "Redundancy <0/>"
-msgstr "<0/> redundance"
+#~ msgid "Redundancy <0/>"
+#~ msgstr "<0/> redundance"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "Select Redundancy"
-msgstr "Vybrat redundanci"
+#~ msgid "Select Redundancy"
+#~ msgstr "Vybrat redundanci"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "VDEVs"
-msgstr "VDEV zařízení"
+#~ msgid "VDEVs"
+#~ msgstr "VDEV zařízení"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Drop disks here"
 msgstr "Disky přetáhněte sem"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Comment"
 msgstr "Komentář"
@@ -6407,7 +6403,6 @@ msgstr "Panika"
 msgid "Spares"
 msgstr "Náhradní"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select spares"
 msgstr "Vybrat náhradní"
@@ -7207,6 +7202,7 @@ msgstr "Vyčkejte než bude operace scrub/nahrazení dokončena"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Please wait for the current replace operation to finish"
 msgstr "Vyčkejte, než bude stávající operace nahrazování dokončena"
 
@@ -7308,6 +7304,7 @@ msgstr "Neznámý přepínač"
 msgid "Unknown MAC"
 msgstr "Neznámá MAC adresa"
 
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -7948,6 +7945,7 @@ msgid "Select IP Address"
 msgstr "Vybrat IP adresu"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Comments"
 msgstr "Komentáře"
 
@@ -14809,4 +14807,143 @@ msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Webhook URL"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Virtual"
+msgstr ""
+
+#~ msgid "Redundancy <0>{0} Usable</0>"
+#~ msgstr ""
+
+#~ msgid "Usable space"
+#~ msgstr ""
+
+#~ msgid "Usable Space <0/>"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "+ Add VDEV"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Stripe"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "No VDEVs. Click \"+ Add VDEV\" to add one."
+msgstr ""
+
+#~ msgid "Usable Space"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Remove VDEV"
+msgstr ""
+
+#~ msgid "({0} Usable)"
+#~ msgstr ""
+
+#~ msgid "VDEVs <0/>"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "VDEVs<0/>"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "At least one VDEV is required"
+msgstr ""
+
+#~ msgid "VDEV {0} has no disks"
+#~ msgstr ""
+
+#~ msgid "VDEV {0} needs at least {1} disks for {2}"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "At least one Data VDEV is required"
+msgstr ""
+
+#. 0: vdevNum
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "VDEV #{0} has no disks"
+msgstr ""
+
+#. 0: vdevNum; 1: minDisks; 2: label
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "VDEV #{0} needs at least {1} disks for {2}"
+msgstr ""
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Pool creation failed"
+msgstr ""
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "An unknown error occurred"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Special and Dedup VDEVs must use the same RAID type"
+msgstr ""
+
+#~ msgid "All Data VDEVs must use the same RAID type — or enable Force Create"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "All Data VDEVs must use the same RAID type or enable Force Create"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Special"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Dedup"
+msgstr ""
+
+#~ msgid "({0} selected)"
+#~ msgstr ""
+
+#~ msgid "No devices available for spares"
+#~ msgstr ""
+
+#~ msgid "No available spare devices"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Drop disks here to use as spares"
+msgstr ""
+
+#. 0: spare
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Remove {0} from spares"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Detach failed"
+msgstr ""
+
+#. 0: activeRow?.name
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Detached {0}"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Detach Device"
+msgstr ""
+
+#. 0: activeRow?.name
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "This will detach <span class='font-semibold'>{0}</span> from the pool."
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "S.M.A.R.T data is not available for this device"
 msgstr ""

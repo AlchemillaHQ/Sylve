@@ -104,6 +104,10 @@
 					smartModal.KV = parseSMART($state.snapshot(activeDisk));
 					smartModal.open = true;
 					smartModal.type = 'array';
+				} else {
+					toast.info('S.M.A.R.T data is not available for this device', {
+						position: 'bottom-center'
+					});
 				}
 			}
 		}
