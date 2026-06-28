@@ -130,7 +130,8 @@
 			bind:value
 			{disabled}
 			oninput={(e) => {
-				value = (e.currentTarget as HTMLInputElement).value;
+				const raw = (e.currentTarget as HTMLInputElement).value;
+				value = type === 'number' ? Number(raw) : raw;
 				if (onChange) onChange(value);
 			}}
 			onblur={() => {
