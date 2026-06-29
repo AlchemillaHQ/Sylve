@@ -62,6 +62,8 @@ export const storage = createReactiveStorage<SharedStorage>(
 
 export const languageArr: { value: Locales; label: string }[] = [
     { value: 'en', label: 'English' },
+    { value: 'es', label: 'Español' },
+    { value: 'gl', label: 'Galego' },
     { value: 'mal', label: 'മലയാളം' },
     { value: 'hi', label: 'हिन्दी' },
     { value: 'zh-CN', label: '简体中文' },
