@@ -13,6 +13,11 @@ import iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 type ISCSIServiceInterface interface {
 	WriteConfig(reload bool) error
 	GetInitiators() ([]iscsiModels.ISCSIInitiator, error)
+	CreateInitiator(nickname, targetAddress, targetName, initiatorName, authMethod, chapName, chapSecret, tgtChapName, tgtChapSecret string) error
+	UpdateInitiator(id uint, nickname, targetAddress, targetName, initiatorName, authMethod, chapName, chapSecret, tgtChapName, tgtChapSecret string) error
+	DeleteInitiator(id uint) error
+	ConnectInitiator(id uint) error
+	GenerateConfig() (string, error)
 	GetStatus() (map[string]string, error)
 
 	GetTargets() ([]iscsiModels.ISCSITarget, error)

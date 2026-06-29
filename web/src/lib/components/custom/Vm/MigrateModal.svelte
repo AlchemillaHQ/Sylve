@@ -6,6 +6,7 @@
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { migrateVM, migrateJail, validateMigration, cancelMigration } from '$lib/api/migration';
+	import { formatMigrationReason, formatMigrationReasons } from '$lib/utils/migration-messages';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { ValidateResult } from '$lib/types/migration';
 	import { getRecentLifecycleTasks } from '$lib/api/task/lifecycle';
@@ -15,6 +16,7 @@
 	import { sleep } from '$lib/utils';
 	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
+	import { toast } from 'svelte-sonner';
 
 	let {
 		open = $bindable(false),
@@ -56,11 +58,17 @@
 		finalize: 'Finalize'
 	};
 
-	function formatMessage(s: string): string {
-		return s
-			.replace(/_/g, ' ')
-			.replace(/\b\w/g, (c) => c.toUpperCase())
-			.replace(/Warning /gi, '⚠ ');
+	function notifyMigrationWarnings(warnings: unknown) {
+		if (!Array.isArray(warnings) || warnings.length === 0) return;
+		const formatted = warnings
+			.filter((w): w is string => typeof w === 'string')
+			.map(formatMigrationReason)
+			.join(' ');
+		if (!formatted) return;
+		toast.warning(`Migration completed with warnings: ${formatted}`, {
+			position: 'bottom-center',
+			duration: 10000
+		});
 	}
 
 	function formatDetail(s: string): string {
@@ -124,6 +132,7 @@
 
 			if (doneTask && hostname === node) {
 				let th = '';
+				let doneWarnings: unknown;
 				try {
 					if (doneTask.payload) {
 						const p = JSON.parse(doneTask.payload);
@@ -131,12 +140,14 @@
 							const n = onlineNodes.find((x) => x.nodeUUID === p.targetNodeUuid);
 							if (n) th = n.hostname || '';
 						}
+						doneWarnings = p.warnings;
 					}
 				} catch {
 					/* ignore */
 				}
 				if (th) {
 					open = false;
+					notifyMigrationWarnings(doneWarnings);
 					onSuccess(th);
 					return;
 				}
@@ -261,6 +272,7 @@
 		loading = false;
 
 		// Parse phase from payload
+		let polledWarnings: unknown;
 		try {
 			if (task.payload) {
 				const payload = JSON.parse(task.payload);
@@ -271,6 +283,7 @@
 					const target = nodes.find((n) => n.nodeUUID === payload.targetNodeUuid);
 					if (target) targetHostname = target.hostname || '';
 				}
+				polledWarnings = payload.warnings;
 			}
 		} catch {
 			// payload may not be valid JSON
@@ -279,6 +292,7 @@
 		if (task.status === 'success') {
 			stopPolling();
 			migrationStatus = 'Migration completed successfully';
+			notifyMigrationWarnings(polledWarnings);
 			setTimeout(() => {
 				open = false;
 				onSuccess(targetHostname);
@@ -287,7 +301,7 @@
 		} else if (task.status === 'failed') {
 			stopPolling();
 			migrationStatus = 'Migration failed';
-			error = task.error || 'Migration failed';
+			error = task.error ? formatMigrationReasons(task.error) : 'Migration failed';
 		}
 	}
 
@@ -569,7 +583,7 @@
 								<AlertDescription>
 									<ul class="list-inside list-disc space-y-0.5">
 										{#each validation.reasons as reason (reason)}
-											<li>{formatMessage(reason)}</li>
+											<li>{formatMigrationReason(reason)}</li>
 										{/each}
 									</ul>
 								</AlertDescription>
@@ -600,7 +614,7 @@
 										class="list-inside list-disc space-y-0.5 text-yellow-700 dark:text-yellow-300"
 									>
 										{#each validation.warnings as warning (warning)}
-											<li>{formatMessage(warning)}</li>
+											<li>{formatMigrationReason(warning)}</li>
 										{/each}
 									</ul>
 								</AlertDescription>

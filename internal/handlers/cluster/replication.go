@@ -828,6 +828,41 @@ func DemoteReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin
 	}
 }
 
+func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			GuestType      string `json:"guest_type"`
+			GuestID        uint   `json:"guest_id"`
+			NewOwnerNodeID string `json:"new_owner_node_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 || strings.TrimSpace(req.NewOwnerNodeID) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "guest_id and new_owner_node_id are required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.MigrateGuestOwnership(c.Request.Context(), req.GuestType, req.GuestID, req.NewOwnerNodeID); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "reassign_replication_owner_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_owner_reassigned",
+			Data:    nil,
+		})
+	}
+}
+
 func CatchupReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {

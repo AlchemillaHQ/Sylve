@@ -940,6 +940,7 @@ msgstr "കാണുക"
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -980,6 +981,7 @@ msgstr "ഇല്ലാതാക്കുക"
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -1268,6 +1270,7 @@ msgstr "വിച്ഛേദിക്കുക"
 
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
@@ -1818,7 +1821,6 @@ msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -12253,13 +12255,11 @@ msgstr ""
 msgid "Target CHAP Secret"
 msgstr ""
 
-#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
-msgid "Edit Initiator"
-msgstr ""
+#~ msgid "Edit Initiator"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
-msgid "Delete Initiator"
-msgstr ""
+#~ msgid "Delete Initiator"
+#~ msgstr ""
 
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 msgid "New iSCSI Initiator"
@@ -12955,8 +12955,11 @@ msgstr ""
 #~ msgid "smtp"
 #~ msgstr ""
 
-#~ msgid "Remove"
-#~ msgstr ""
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Remove"
+msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Base URL"
@@ -14924,4 +14927,71 @@ msgstr ""
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "S.M.A.R.T data is not available for this device"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to connect initiator"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator connected"
+msgstr ""
+
+#~ msgid "Connect"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM entry removed (datasets preserved)"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Remove"
+msgstr ""
+
+#. 0: item.label
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Remove the stale inventory entry for <span class=\"font-semibold\">{0}</span>? Only the local VM record and any local libvirt domain are removed &mdash; ZFS datasets are preserved and nothing is deleted on other nodes."
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Removing..."
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Removing Stale VM Entry"
+msgstr ""
+
+#. 0: vm.current.name; 1: vm.current.rid
+#. 0: vm.current.name; 1: vm.current.rid
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Removing stale registration for VM <b>{0} ({1})</b>; datasets are preserved"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Error removing VM entry"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM entry removed with warnings; datasets preserved"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Remove stale entry"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Remove stale VM entry?"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "This will remove the stale inventory entry for VM <0/> on this node. <1>Only the local VM record and any local libvirt domain are removed. ZFS datasets are preserved and nothing is deleted on other nodes.</1>"
 msgstr ""

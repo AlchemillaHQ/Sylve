@@ -1,20 +1,18 @@
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
 
-let _navigating = $state(false);
-let _pendingHref: string | null = null;
+let _navigatingHref: string | null = $state(null);
 
 export function useSafeGoto(href: string, opts?: Parameters<typeof goto>[1]) {
     if (page.url.pathname === href) {
         return;
     }
 
-    if (_navigating && _pendingHref === href) {
+    if (_navigatingHref === href) {
         return;
     }
 
-    _navigating = true;
-    _pendingHref = href;
+    _navigatingHref = href;
 
     // eslint-disable-next-line svelte/no-navigation-without-resolve
     return goto(href, opts)
@@ -28,7 +26,8 @@ export function useSafeGoto(href: string, opts?: Parameters<typeof goto>[1]) {
             throw err;
         })
         .finally(() => {
-            _navigating = false;
-            _pendingHref = null;
+            if (_navigatingHref === href) {
+                _navigatingHref = null;
+            }
         });
 }

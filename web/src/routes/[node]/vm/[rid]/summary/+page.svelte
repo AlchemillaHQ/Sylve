@@ -10,6 +10,7 @@
 		getStats,
 		getVmById,
 		getVMLogs,
+		purgeVMRegistration,
 		updateDescription,
 		updateName
 	} from '$lib/api/vm/vm';
@@ -210,6 +211,7 @@
 			.toLowerCase()
 	);
 	let isDomainErrorState = $derived(normalizedDomainStatus === 'error');
+	let isOrphanState = $derived(normalizedDomainStatus === 'orphan');
 	let hasActiveLifecycleTask = $derived(!!domain.current?.pendingAction);
 	let isMigrationActive = $derived(domain.current?.pendingAction === 'migrate');
 	let lifecycleActionBadge = $derived(
@@ -260,6 +262,7 @@
 	let modalState = $state({
 		isDeleteOpen: false,
 		forceDelete: false,
+		purgeOnly: false,
 		deleteMACs: true,
 		deleteRAWDisks: false,
 		deleteVolumes: false,
@@ -273,10 +276,21 @@
 	});
 
 	function openDeleteModal(forceDelete: boolean = false) {
+		modalState.purgeOnly = false;
 		modalState.forceDelete = forceDelete;
 		modalState.deleteMACs = true;
 		modalState.deleteRAWDisks = forceDelete;
 		modalState.deleteVolumes = forceDelete;
+		modalState.title = `${vm.current.name} (${vm.current.rid})`;
+		modalState.isDeleteOpen = true;
+	}
+
+	function openRemoveModal() {
+		modalState.purgeOnly = true;
+		modalState.forceDelete = false;
+		modalState.deleteMACs = true;
+		modalState.deleteRAWDisks = false;
+		modalState.deleteVolumes = false;
 		modalState.title = `${vm.current.name} (${vm.current.rid})`;
 		modalState.isDeleteOpen = true;
 	}
@@ -303,30 +317,38 @@
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
-		modalState.loading.title = modalState.forceDelete
-			? 'Force Deleting Virtual Machine'
-			: 'Deleting Virtual Machine';
-		modalState.loading.description = modalState.forceDelete
-			? `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being force deleted with best-effort cleanup`
-			: `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
+		modalState.loading.title = modalState.purgeOnly
+			? 'Removing Stale VM Entry'
+			: modalState.forceDelete
+				? 'Force Deleting Virtual Machine'
+				: 'Deleting Virtual Machine';
+		modalState.loading.description = modalState.purgeOnly
+			? `Removing stale registration for VM <b>${vm.current.name} (${vm.current.rid})</b>; datasets are preserved`
+			: modalState.forceDelete
+				? `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being force deleted with best-effort cleanup`
+				: `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
 
 		await sleep(1000);
-		const result = await deleteVM(
-			vm.current.rid,
-			modalState.deleteMACs,
-			modalState.deleteRAWDisks,
-			modalState.deleteVolumes,
-			modalState.forceDelete
-		);
+		const result = modalState.purgeOnly
+			? await purgeVMRegistration(vm.current.rid, modalState.deleteMACs)
+			: await deleteVM(
+					vm.current.rid,
+					modalState.deleteMACs,
+					modalState.deleteRAWDisks,
+					modalState.deleteVolumes,
+					modalState.forceDelete
+				);
 		modalState.loading.open = false;
 		reload.leftPanel = true;
 		const wasForceDelete = modalState.forceDelete;
+		const wasPurgeOnly = modalState.purgeOnly;
 		modalState.forceDelete = false;
+		modalState.purgeOnly = false;
 
 		if (result.status === 'error') {
 			isDeleteInFlight = false;
 			await Promise.all([vm.refetch(), domain.refetch(), stats.refetch()]);
-			toast.error(wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
+			toast.error(wasPurgeOnly ? 'Error removing VM entry' : wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -336,7 +358,17 @@
 					node: data.node
 				})
 			);
-			if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
+			if (wasPurgeOnly && result.message === 'vm_registration_purged_with_warnings') {
+				toast.warning('VM entry removed with warnings; datasets preserved', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (wasPurgeOnly) {
+				toast.success('VM entry removed (datasets preserved)', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
 					duration: 5000,
 					position: 'bottom-center'
@@ -589,7 +621,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && !shouldHideActionButtons && domain.current?.id == -1 && !isDomainRunningForActions && !isDomainErrorState}
+	{#if type === 'start' && !shouldHideActionButtons && domain.current?.id == -1 && !isDomainRunningForActions && !isDomainErrorState && !isOrphanState}
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
@@ -612,6 +644,14 @@
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<SpanWithIcon icon="icon-[mdi--alert-octagon]" size="h-4 w-4" gap="gap-1" title="Force Delete" />
+		</Button>
+	{:else if type === 'remove-orphan' && !shouldHideActionButtons && isOrphanState}
+		<Button
+			onclick={() => openRemoveModal()}
+			size="sm"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+		>
+			<SpanWithIcon icon="icon-[mdi--delete-sweep]" size="h-4 w-4" gap="gap-1" title="Remove stale entry" />
 		</Button>
 	{:else if type === 'force-stop' && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
@@ -639,7 +679,7 @@
 				title={type === 'stop' ? 'Stop' : type === 'shutdown' ? 'Shutdown' : 'Reboot'}
 			/>
 		</Button>
-	{:else if type === 'migrate'}
+	{:else if type === 'migrate' && !isOrphanState}
 		<Button
 			onclick={() => (showMigrateModal = true)}
 			disabled={isMigrationActive}
@@ -664,6 +704,7 @@
 			{#if !isMigrationActive}
 				{@render button('start')}
 				{@render button('force-delete')}
+				{@render button('remove-orphan')}
 				{@render button('force-stop')}
 				{@render button('reboot')}
 				{@render button('shutdown')}
@@ -888,36 +929,49 @@
 	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5 max-w-xl!">
 		<AlertDialogRaw.Header>
 			<AlertDialogRaw.Title
-				>{modalState.forceDelete ? 'Force Delete VM?' : 'Are you sure?'}</AlertDialogRaw.Title
+				>{modalState.purgeOnly
+					? 'Remove stale VM entry?'
+					: modalState.forceDelete
+						? 'Force Delete VM?'
+						: 'Are you sure?'}</AlertDialogRaw.Title
 			>
 			<AlertDialogRaw.Description>
-				{modalState.forceDelete ? `This will force delete VM` : `This will permanently delete VM`}
-				<span class="font-semibold">{modalState?.title}.</span>
-				{#if modalState.forceDelete}
+				{#if modalState.purgeOnly}
+					This will remove the stale inventory entry for VM
+					<span class="font-semibold">{modalState?.title}</span> on this node.
 					<div class="mt-2 text-sm">
-						Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and
-						VM network objects. Partial failures will be tolerated.
+						Only the local VM record and any local libvirt domain are removed. ZFS datasets are
+						preserved and nothing is deleted on other nodes.
 					</div>
 				{:else}
-					<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">
-						<CustomCheckbox
-							label="Delete MAC Object(s)"
-							bind:checked={modalState.deleteMACs}
-							classes="flex items-center gap-2 mt-3"
-						></CustomCheckbox>
+					{modalState.forceDelete ? `This will force delete VM` : `This will permanently delete VM`}
+					<span class="font-semibold">{modalState?.title}.</span>
+					{#if modalState.forceDelete}
+						<div class="mt-2 text-sm">
+							Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and
+							VM network objects. Partial failures will be tolerated.
+						</div>
+					{:else}
+						<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">
+							<CustomCheckbox
+								label="Delete MAC Object(s)"
+								bind:checked={modalState.deleteMACs}
+								classes="flex items-center gap-2 mt-3"
+							></CustomCheckbox>
 
-						<CustomCheckbox
-							label="Delete RAW Disk(s)"
-							bind:checked={modalState.deleteRAWDisks}
-							classes="flex items-center gap-2 mt-3"
-						></CustomCheckbox>
+							<CustomCheckbox
+								label="Delete RAW Disk(s)"
+								bind:checked={modalState.deleteRAWDisks}
+								classes="flex items-center gap-2 mt-3"
+							></CustomCheckbox>
 
-						<CustomCheckbox
-							label="Delete Volume(s)"
-							bind:checked={modalState.deleteVolumes}
-							classes="flex items-center gap-2 mt-3"
-						></CustomCheckbox>
-					</div>
+							<CustomCheckbox
+								label="Delete Volume(s)"
+								bind:checked={modalState.deleteVolumes}
+								classes="flex items-center gap-2 mt-3"
+							></CustomCheckbox>
+						</div>
+					{/if}
 				{/if}
 			</AlertDialogRaw.Description>
 		</AlertDialogRaw.Header>
@@ -926,10 +980,15 @@
 				onclick={() => {
 					modalState.isDeleteOpen = false;
 					modalState.forceDelete = false;
+					modalState.purgeOnly = false;
 				}}>Cancel</AlertDialogRaw.Cancel
 			>
 			<AlertDialogRaw.Action onclick={handleDelete}
-				>{modalState.forceDelete ? 'Force Delete' : 'Continue'}</AlertDialogRaw.Action
+				>{modalState.purgeOnly
+					? 'Remove'
+					: modalState.forceDelete
+						? 'Force Delete'
+						: 'Continue'}</AlertDialogRaw.Action
 			>
 		</AlertDialogRaw.Footer>
 	</AlertDialogRaw.Content>

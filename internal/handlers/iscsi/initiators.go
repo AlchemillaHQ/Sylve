@@ -94,3 +94,19 @@ func GetStatus(svc *iscsi.Service) gin.HandlerFunc {
 		c.JSON(http.StatusOK, internal.APIResponse[map[string]string]{Status: "success", Message: "status_retrieved", Data: status})
 	}
 }
+
+func ConnectInitiator(svc *iscsi.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.ParseUint(idStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_id", Error: err.Error()})
+			return
+		}
+		if err := svc.ConnectInitiator(uint(id)); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "initiator_connected"})
+	}
+}

@@ -167,7 +167,7 @@
 				nodeHostname: node,
 				label: `${vm.name} (${vm.rid})`,
 				icon: 'material-symbols--monitor-outline',
-				href: `/${node}/vm/${vm.rid}`,
+				href: `/${node}/vm/${vm.rid}/summary`,
 				state: (vm.state === DomainState.DomainRunning ? 'active' : 'inactive') as
 					| 'active'
 					| 'inactive'
@@ -180,7 +180,7 @@
 				nodeHostname: node,
 				label: `${jail.name} (${jail.ctId})`,
 				icon: 'hugeicons--prison',
-				href: `/${node}/jail/${jail.ctId}`,
+				href: `/${node}/jail/${jail.ctId}/summary`,
 				state: (jail.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
 			}))
 		].sort((a, b) => a.sortId - b.sortId);
@@ -220,13 +220,13 @@
 			id: 'datacenter',
 			label: 'Data Center',
 			icon: 'fa-solid--server',
-			href: '/datacenter',
+			href: '/datacenter/summary',
 			children: [
 				{
 					id: `node-${node}`,
 					label: node,
 					icon: 'fluent--storage-20-filled',
-					href: `/${node}`,
+					href: `/${node}/summary`,
 					children:
 						guestChildren.length > 0 || templateChildren.length > 0
 							? [

@@ -32,7 +32,8 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	for _, name := range basicSettings.Pools {
 		pool, err := s.GZFS.Zpool.Get(ctx, name)
 		if err != nil {
-			return pools, err
+			logger.L.Warn().Err(err).Str("pool", name).Msg("skipping missing pool")
+			continue
 		}
 
 		pools = append(pools, pool)

@@ -14,8 +14,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -285,6 +288,128 @@ func IntraClusterImportVM(
 			"status":   "success",
 			"message":  "vm_imported_and_started",
 			"warnings": warnings,
+		})
+	}
+}
+
+type CheckVMTargetSwitch struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Bridge string `json:"bridge"`
+}
+
+type CheckVMTargetRequest struct {
+	RID        uint                  `json:"rid"`
+	MediaUUIDs []string              `json:"mediaUuids"`
+	VNCPort    int                   `json:"vncPort"`
+	Switches   []CheckVMTargetSwitch `json:"switches"`
+	FsDatasets []string              `json:"fsDatasets"`
+}
+
+func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req CheckVMTargetRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{Status: "error", Message: "invalid_request_body", Error: err.Error()})
+			return
+		}
+
+		if libvirtService == nil {
+			c.JSON(500, internal.APIResponse[any]{Status: "error", Message: "libvirt_not_configured", Error: "libvirt_not_configured"})
+			return
+		}
+
+		ctx := c.Request.Context()
+		db := libvirtService.DB
+
+		missingMedia := make([]string, 0, len(req.MediaUUIDs))
+		seenMedia := make(map[string]struct{}, len(req.MediaUUIDs))
+		for _, uuid := range req.MediaUUIDs {
+			uuid = strings.TrimSpace(uuid)
+			if uuid == "" {
+				continue
+			}
+			if _, ok := seenMedia[uuid]; ok {
+				continue
+			}
+			seenMedia[uuid] = struct{}{}
+
+			if _, err := libvirtService.FindISOByUUID(uuid, true); err != nil {
+				missingMedia = append(missingMedia, uuid)
+			}
+		}
+
+		missingSwitches := make([]string, 0, len(req.Switches))
+		if db != nil {
+			for _, sw := range req.Switches {
+				name := strings.TrimSpace(sw.Name)
+				bridge := strings.TrimSpace(sw.Bridge)
+				if name == "" && bridge == "" {
+					continue
+				}
+
+				found := false
+				if strings.EqualFold(strings.TrimSpace(sw.Type), "manual") {
+					var m networkModels.ManualSwitch
+					if name != "" && db.Where("name = ?", name).First(&m).Error == nil {
+						found = true
+					}
+					if !found && bridge != "" && db.Where("bridge = ?", bridge).First(&m).Error == nil {
+						found = true
+					}
+				} else {
+					var st networkModels.StandardSwitch
+					if name != "" && db.Where("name = ?", name).First(&st).Error == nil {
+						found = true
+					}
+					if !found && bridge != "" && db.Where("bridge_name = ?", bridge).First(&st).Error == nil {
+						found = true
+					}
+				}
+
+				if !found {
+					label := name
+					if label == "" {
+						label = bridge
+					}
+					missingSwitches = append(missingSwitches, label)
+				}
+			}
+		}
+
+		missingFsDatasets := make([]string, 0, len(req.FsDatasets))
+		if libvirtService.GZFS != nil && libvirtService.GZFS.ZFS != nil {
+			for _, ds := range req.FsDatasets {
+				ds = strings.TrimSpace(ds)
+				if ds == "" {
+					continue
+				}
+				datasets, err := libvirtService.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, ds)
+				if err != nil || len(datasets) == 0 {
+					missingFsDatasets = append(missingFsDatasets, ds)
+				}
+			}
+		}
+
+		vncPortInUse := false
+		if db != nil && req.VNCPort > 0 {
+			var count int64
+			if err := db.Model(&vmModels.VM{}).
+				Where("vnc_enabled = ? AND vnc_port = ? AND rid <> ?", true, req.VNCPort, req.RID).
+				Count(&count).Error; err == nil && count > 0 {
+				vncPortInUse = true
+			}
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[map[string]any]{
+			Status:  "success",
+			Message: "vm_target_check_complete",
+			Data: map[string]any{
+				"missingMedia":      missingMedia,
+				"vncPortInUse":      vncPortInUse,
+				"missingSwitches":   missingSwitches,
+				"missingFsDatasets": missingFsDatasets,
+			},
 		})
 	}
 }

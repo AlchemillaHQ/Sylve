@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
@@ -584,12 +585,7 @@ func isVMDatasetNotFoundError(err error) bool {
 }
 
 func isVMDomainNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "domain") &&
-		(strings.Contains(msg, "not found") || strings.Contains(msg, "no domain"))
+	return libvirtServiceInterfaces.IsDomainNotFoundError(err)
 }
 
 func (s *Service) waitForVMShutOffState(rid uint, shouldBeShutOff bool, timeout time.Duration) error {

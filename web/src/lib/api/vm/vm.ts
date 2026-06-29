@@ -109,12 +109,29 @@ export async function deleteVM(
     deleteMacs: boolean,
     deleteRawDisks: boolean,
     deleteVolumes: boolean,
-    forceDelete: boolean = false
+    forceDelete: boolean = false,
+    hostname?: string
 ): Promise<APIResponse> {
     return await apiRequest(
         `/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}&force=${forceDelete}`,
         APIResponseSchema,
-        'DELETE'
+        'DELETE',
+        undefined,
+        { hostname }
+    );
+}
+
+export async function purgeVMRegistration(
+    rid: number,
+    deleteMacs: boolean = true,
+    hostname?: string
+): Promise<APIResponse> {
+    return await apiRequest(
+        `/vm/${rid}?purgeOnly=true&deletemacs=${deleteMacs}`,
+        APIResponseSchema,
+        'DELETE',
+        undefined,
+        { hostname }
     );
 }
 

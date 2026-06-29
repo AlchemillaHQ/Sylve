@@ -136,7 +136,13 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				var err error
 				disk, err = s.FindISOByUUID(storage.DownloadUUID, true)
 				if err != nil {
-					return "", fmt.Errorf("failed_to_find_iso: %w", err)
+					logger.L.Warn().
+						Err(err).
+						Uint("rid", vm.RID).
+						Uint("storage_id", storage.ID).
+						Str("download_uuid", storage.DownloadUUID).
+						Msg("skipping_disk_image_iso_not_found_on_this_node")
+					continue
 				}
 			} else if storage.Type == vmModels.VMStorageTypeFilesystem {
 				sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)

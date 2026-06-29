@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 // validateChapSecret enforces RFC 3720 11.1.1? CHAP-MD5 secrets must be 12–16 bytes.
@@ -163,4 +164,17 @@ func (s *Service) DeleteInitiator(id uint) error {
 	}
 
 	return s.WriteConfig(true)
+}
+
+func (s *Service) ConnectInitiator(id uint) error {
+	var initiator iscsiModels.ISCSIInitiator
+	if err := s.DB.Where("id = ?", id).First(&initiator).Error; err != nil {
+		return fmt.Errorf("initiator_not_found: %w", err)
+	}
+
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0, 1}, "-An", initiator.Nickname); err != nil {
+		return fmt.Errorf("failed_to_connect_initiator: %w", err)
+	}
+
+	return nil
 }

@@ -64,3 +64,7 @@ export async function deleteInitiator(id: number): Promise<APIResponse> {
 export async function getISCSIStatus(): Promise<ISCSIStatus> {
     return await apiRequest('/iscsi/status', ISCSIStatusSchema, 'GET');
 }
+
+export async function connectInitiator(id: number): Promise<APIResponse> {
+    return await apiRequest(`/iscsi/initiators/${id}/connect`, APIResponseSchema, 'POST');
+}

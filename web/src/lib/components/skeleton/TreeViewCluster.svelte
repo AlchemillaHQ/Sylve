@@ -8,7 +8,7 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { actionVm, convertVMToTemplate, deleteVMTemplate } from '$lib/api/vm/vm';
+	import { actionVm, convertVMToTemplate, deleteVMTemplate, purgeVMRegistration } from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { slide } from 'svelte/transition';
@@ -23,7 +23,7 @@
 		label: string;
 		icon: string;
 		href?: string;
-		state?: 'active' | 'inactive';
+		state?: 'active' | 'inactive' | 'orphan';
 		resourceId?: number;
 		resourceType?: 'vm' | 'jail' | 'jail-template' | 'vm-template';
 		nodeHostname?: string;
@@ -59,8 +59,14 @@
 	const sidebarActive = 'rounded-md bg-muted dark:bg-muted font-inter font-medium';
 
 	function isItemActive(menuItem: SidebarProps, currentUrl: string): boolean {
-		if (menuItem.href && currentUrl.startsWith(menuItem.href)) {
-			return true;
+		if (menuItem.href) {
+			if (currentUrl.startsWith(menuItem.href)) {
+				return true;
+			}
+			const basePath = menuItem.href.replace(/\/summary$/, '');
+			if (basePath !== menuItem.href && currentUrl.startsWith(basePath)) {
+				return true;
+			}
 		}
 		if (menuItem.children) {
 			return menuItem.children.some((child) => isItemActive(child, currentUrl));
@@ -87,6 +93,8 @@
 	let convertTemplateOpen = $state(false);
 	let convertTemplateLoading = $state(false);
 	let convertTemplateName = $state('');
+	let deleteVMOpen = $state(false);
+	let deleteVMLoading = $state(false);
 
 	function baseGuestName(label: string): string {
 		return label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim();
@@ -188,6 +196,37 @@
 			deleteTemplateLoading = false;
 		}
 	};
+
+	const handleRemoveVMEntry = async () => {
+		if (!item.resourceId) return;
+		deleteVMLoading = true;
+		try {
+			const result = await purgeVMRegistration(item.resourceId, true, item.nodeHostname);
+			if (result.error) {
+				if (result.message === 'vm_not_orphaned' || result.error.includes('vm_not_orphaned')) {
+					deleteVMOpen = false;
+					reload.leftPanel = true;
+					toast.error(
+						'This VM still has a live definition on its node \u2014 use Delete instead of removing a stale entry',
+						{ position: 'bottom-center' }
+					);
+					return;
+				}
+				handleAPIError(result);
+				return;
+			}
+
+			deleteVMOpen = false;
+			reload.leftPanel = true;
+			toast.success('VM entry removed (datasets preserved)', { position: 'bottom-center' });
+
+			if (item.href && activeUrl.startsWith(item.href.replace(/\/summary$/, ''))) {
+				useSafeGoto(`/${item.nodeHostname}/summary`, { replaceState: false, noScroll: false });
+			}
+		} finally {
+			deleteVMLoading = false;
+		}
+	};
 </script>
 
 <li class="w-full">
@@ -276,6 +315,12 @@
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Create Template
 					</ContextMenu.Item>
+					{#if item.state === 'orphan'}
+						<ContextMenu.Item class="gap-2 text-destructive" onclick={() => (deleteVMOpen = true)}>
+							<span class="icon-[mdi--delete-sweep] h-4 w-4"></span>
+							Remove stale entry
+						</ContextMenu.Item>
+					{/if}
 				{:else if item.resourceType === 'jail-template'}
 					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
 						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
@@ -412,6 +457,22 @@
 			</Dialog.Footer>
 		</Dialog.Content>
 	</Dialog.Root>
+{/if}
+
+{#if item.resourceType === 'vm' && item.resourceId}
+	<AlertDialog
+		bind:open={deleteVMOpen}
+		customTitle={`Remove the stale inventory entry for <span class="font-semibold">${item.label}</span>? Only the local VM record and any local libvirt domain are removed &mdash; ZFS datasets are preserved and nothing is deleted on other nodes.`}
+		actions={{
+			onConfirm: () => void handleRemoveVMEntry(),
+			onCancel: () => {
+				deleteVMOpen = false;
+			}
+		}}
+		loading={deleteVMLoading}
+		confirmLabel="Remove"
+		loadingLabel="Removing..."
+	/>
 {/if}
 
 {#if item.resourceType === 'jail-template' && item.resourceId}

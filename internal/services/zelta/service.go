@@ -1631,13 +1631,7 @@ func (s *Service) startVMIfPresent(rid uint) error {
 }
 
 func isVMDomainNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "domain") &&
-		(strings.Contains(lower, "not found") || strings.Contains(lower, "no domain"))
+	return libvirtServiceInterfaces.IsDomainNotFoundError(err)
 }
 
 func (s *Service) buildTargetRetentionPruneCandidatesForDataset(

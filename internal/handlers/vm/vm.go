@@ -110,13 +110,8 @@ func isVMNotFoundError(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "vm_not_found")
 }
 
-func isVMDomainNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "failed_to_lookup_domain")
+func isLibvirtDomainAbsent(err error) bool {
+	return libvirtServiceInterfaces.IsDomainNotFoundError(err)
 }
 
 func isSnakeCaseErrorCode(value string) bool {
@@ -416,12 +411,24 @@ func GetLvDomain(libvirtService *libvirt.Service, lifecycleService *lifecycle.Se
 
 		domain, err := libvirtService.GetLvDomain(uint(ridInt))
 		if err != nil {
-			if isVMDomainNotFoundError(err) {
-				c.JSON(404, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "vm_domain_not_found",
-					Error:   "vm_domain_not_found",
-					Data:    nil,
+			if isLibvirtDomainAbsent(err) {
+				orphanDomain := &libvirtServiceInterfaces.LvDomain{
+					ID:     -1,
+					Name:   strconv.FormatUint(ridInt, 10),
+					Status: "orphan",
+				}
+
+				activeTask, _ := lifecycleService.GetActiveTaskForGuest("vm", uint(ridInt))
+				if activeTask != nil {
+					orphanDomain.PendingAction = activeTask.Action
+					orphanDomain.OverrideRequested = activeTask.OverrideRequested
+				}
+
+				c.JSON(200, internal.APIResponse[*libvirtServiceInterfaces.LvDomain]{
+					Status:  "success",
+					Message: "vm_domain_orphaned",
+					Data:    orphanDomain,
+					Error:   "",
 				})
 				return
 			}
@@ -531,6 +538,73 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 				Message: "invalid_vm_id_format",
 				Data:    nil,
 				Error:   "Virtual Machine ID must be a valid integer",
+			})
+			return
+		}
+
+		purgeOnly := false
+		purgeOnlyStr := strings.TrimSpace(c.DefaultQuery("purgeOnly", "false"))
+		if purgeOnlyStr != "" {
+			purgeOnly, err = strconv.ParseBool(purgeOnlyStr)
+			if err != nil {
+				c.JSON(400, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_purgeonly_param",
+					Error:   "invalid 'purgeOnly' value: " + err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+		}
+
+		if purgeOnly {
+			deleteMacs := true
+			if deleteMacsStr := strings.TrimSpace(c.Query("deletemacs")); deleteMacsStr != "" {
+				parsedDeleteMacs, parseErr := strconv.ParseBool(deleteMacsStr)
+				if parseErr != nil {
+					c.JSON(400, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "invalid_deletemacs_param",
+						Error:   "invalid 'deletemacs' value: " + parseErr.Error(),
+						Data:    nil,
+					})
+					return
+				}
+				deleteMacs = parsedDeleteMacs
+			}
+
+			warnings, removeErr := libvirtService.PurgeVMRegistration(uint(vmInt), deleteMacs)
+			if removeErr != nil {
+				if strings.Contains(removeErr.Error(), "vm_not_orphaned") {
+					c.JSON(409, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "vm_not_orphaned",
+						Data:    nil,
+						Error:   "vm_not_orphaned: this VM still has a live definition on its node; use Delete instead of removing a stale entry",
+					})
+					return
+				}
+				c.JSON(500, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "failed_to_purge_vm_registration",
+					Data:    nil,
+					Error:   "failed_to_purge_vm_registration: " + removeErr.Error(),
+				})
+				return
+			}
+
+			message := "vm_registration_purged"
+			if len(warnings) > 0 {
+				message = "vm_registration_purged_with_warnings"
+			}
+
+			c.JSON(200, internal.APIResponse[map[string]any]{
+				Status:  "success",
+				Message: message,
+				Data: map[string]any{
+					"warnings": warnings,
+				},
+				Error: "",
 			})
 			return
 		}

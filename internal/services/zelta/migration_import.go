@@ -44,6 +44,7 @@ func (s *Service) ImportMigratedVM(ctx context.Context, rid uint) (warnings []st
 	}
 
 	if err := s.reconcileRestoredVMFromDatasetWithOptions(ctx, dataset, true); err != nil {
+		s.cleanupOrphanedVMRegistration(rid)
 		return warnings, fmt.Errorf("failed_to_import_migrated_vm: %w", err)
 	}
 

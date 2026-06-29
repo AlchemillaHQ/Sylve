@@ -274,6 +274,9 @@
 			class="h-6.5"
 			onclick={() => {
 				if (activeRow?.property === 'ZFS Pools') {
+					modals.zfsPools.values = basicSettings.current.pools
+						.filter((p) => pools.current.some((live) => live.name === p))
+						.join(',');
 					modals.zfsPools.open = true;
 				} else if (activeRow?.property === 'DHCP Server') {
 					modals['dhcp-server'].open = true;

@@ -415,6 +415,12 @@ func (s *Service) normalizeRestoredVMStorages(
 				datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", cleaned.Pool, rid, originalID)
 			case vmModels.VMStorageTypeZVol:
 				datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", cleaned.Pool, rid, originalID)
+			case vmModels.VMStorageTypeFilesystem:
+				logger.L.Warn().
+					Uint("rid", rid).
+					Uint("storage_id", originalID).
+					Msg("skipping_restored_vm_filesystem_storage_without_dataset")
+				continue
 			default:
 				return nil, fmt.Errorf("unsupported_restored_vm_storage_type: %s", cleaned.Type)
 			}
@@ -425,6 +431,13 @@ func (s *Service) normalizeRestoredVMStorages(
 			return nil, fmt.Errorf("failed_to_check_restored_vm_storage_dataset: %w", err)
 		}
 		if !exists {
+			if cleaned.Type == vmModels.VMStorageTypeFilesystem {
+				logger.L.Warn().
+					Uint("rid", rid).
+					Str("dataset", datasetName).
+					Msg("skipping_restored_vm_filesystem_share_dataset_not_present_on_target")
+				continue
+			}
 			return nil, fmt.Errorf("restored_vm_storage_dataset_not_found: %s", datasetName)
 		}
 

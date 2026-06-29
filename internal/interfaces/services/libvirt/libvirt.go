@@ -11,6 +11,7 @@ package libvirtServiceInterfaces
 import (
 	"context"
 	"encoding/xml"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -75,6 +76,7 @@ type LibvirtServiceInterface interface {
 	CreateLvVm(id int, ctx context.Context) error
 	RemoveLvVm(rid uint) error
 	RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error
+	PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, error)
 	GetLvDomain(rid uint) (*LvDomain, error)
 	GetVMLogs(rid uint) (string, error)
 	StartTPM() error
@@ -383,4 +385,16 @@ type Domain struct {
 	Devices Devices `xml:"devices"`
 
 	BhyveCommandline *BhyveCommandline `xml:"bhyve:commandline,omitempty"`
+}
+
+func IsDomainNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if libvirt.IsNotFound(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "domain") &&
+		(strings.Contains(msg, "not found") || strings.Contains(msg, "no domain"))
 }

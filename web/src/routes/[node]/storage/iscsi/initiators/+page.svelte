@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		connectInitiator,
 		createInitiator,
 		deleteInitiator,
 		getInitiators,
@@ -87,6 +88,8 @@
 		edit: { open: false },
 		delete: { open: false }
 	});
+
+	let isConnecting = $state(false);
 
 	let loading = $state(false);
 	let query = $state('');
@@ -182,6 +185,20 @@
 		}
 		toast.success('Initiator updated', { position: 'bottom-center' });
 		properties.edit.open = false;
+		reload = true;
+	}
+
+	async function submitConnect() {
+		if (!activeRow) return;
+		isConnecting = true;
+		const response = await connectInitiator(Number(activeRow.id));
+		isConnecting = false;
+		if (response.status === 'error') {
+			handleAPIError(response);
+			toast.error('Failed to connect initiator', { position: 'bottom-center' });
+			return;
+		}
+		toast.success('Initiator connected', { position: 'bottom-center' });
 		reload = true;
 	}
 
@@ -341,7 +358,6 @@
 		</div>
 
 		<Dialog.Footer class="mt-4">
-			<Button type="button" variant="outline" onclick={onClose} disabled={loading}>Cancel</Button>
 			<Button type="submit" disabled={loading}>{submitLabel}</Button>
 		</Dialog.Footer>
 	</form>
@@ -356,8 +372,23 @@
 		</Button>
 
 		{#if activeRows !== null && activeRows.length === 1}
+			<Button
+				onclick={submitConnect}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={isConnecting}
+			>
+				<SpanWithIcon
+					icon={isConnecting ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--lan-connect]'}
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Reconnect"
+				/>
+			</Button>
+
 			<Button onclick={openEdit} size="sm" variant="outline" class="h-6.5">
-				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit Initiator" />
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 
 			<Button
@@ -366,12 +397,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<SpanWithIcon
-					icon="icon-[mdi--delete]"
-					size="h-4 w-4"
-					gap="gap-2"
-					title="Delete Initiator"
-				/>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 	</div>

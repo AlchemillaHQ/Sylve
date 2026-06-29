@@ -27,6 +27,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -96,6 +97,34 @@ func (s *Service) phasePreflight(ctx context.Context, mp *migrationPayload, task
 	sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost), "zfs", "version")
 	if _, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...); err != nil {
 		return fmt.Errorf("%w: %v", ErrSSHUnreachable, err)
+	}
+
+	if task.GuestType == taskModels.GuestTypeVM {
+		var vm vmModels.VM
+		if err := s.DB.
+			Preload("Storages").
+			Preload("Storages.Dataset").
+			Preload("Networks").
+			Preload("CPUPinning").
+			Where("rid = ?", task.GuestID).First(&vm).Error; err != nil {
+			return fmt.Errorf("vm_not_found_for_preflight: %w", err)
+		}
+
+		var reasons []string
+		reasons = append(reasons, s.vmConfigPreflightReasons(vm, targetNode)...)
+		reasons = append(reasons, s.vmTargetPreflightReasons(ctx, vm, targetNode)...)
+
+		var hard []string
+		for _, r := range reasons {
+			if strings.HasPrefix(strings.ToLower(r), "warning_") {
+				logger.L.Warn().Str("reason", r).Uint("rid", task.GuestID).Msg("vm_migration_preflight_warning")
+			} else {
+				hard = append(hard, r)
+			}
+		}
+		if len(hard) > 0 {
+			return fmt.Errorf("%s", strings.Join(hard, "; "))
+		}
 	}
 
 	return nil

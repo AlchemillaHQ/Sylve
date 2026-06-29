@@ -224,6 +224,7 @@ func RegisterRoutes(r *gin.Engine,
 		iscsiGroup.POST("/initiators", iscsiHandlers.CreateInitiator(iscsiService))
 		iscsiGroup.PUT("/initiators", iscsiHandlers.UpdateInitiator(iscsiService))
 		iscsiGroup.DELETE("/initiators/:id", iscsiHandlers.DeleteInitiator(iscsiService))
+		iscsiGroup.POST("/initiators/:id/connect", iscsiHandlers.ConnectInitiator(iscsiService))
 		iscsiGroup.GET("/status", iscsiHandlers.GetStatus(iscsiService))
 
 		iscsiGroup.GET("/targets", iscsiHandlers.GetTargets(iscsiService))
@@ -577,6 +578,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		intraCluster.POST("/migration/import-vm", migrationHandlers.IntraClusterImportVM(zeltaService, libvirtService))
 		intraCluster.POST("/migration/import-jail", migrationHandlers.IntraClusterImportJail(zeltaService, jailService))
+		intraCluster.POST("/migration/check-vm-target", migrationHandlers.IntraClusterCheckVMTarget(libvirtService))
 		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
 		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
@@ -585,6 +587,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-reassign-owner", clusterHandlers.ReassignReplicationOwnerInternal(clusterService, zeltaService))
 		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
 		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
 		intraCluster.POST("/replication-failover-enqueue", clusterHandlers.EnqueueFailoverInternal(zeltaService))

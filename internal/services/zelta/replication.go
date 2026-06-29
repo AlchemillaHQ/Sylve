@@ -1822,14 +1822,14 @@ func (s *Service) IsPolicyTransitionRunning(policyID uint) bool {
 }
 
 const (
-	badgerKeyCrashMisses    = "repl:crash:"
-	badgerKeyDownMisses     = "repl:down:"
-	badgerKeyFailbackHits   = "repl:failback:"
-	badgerCounterTTL        = 86400
+	badgerKeyCrashMisses  = "repl:crash:"
+	badgerKeyDownMisses   = "repl:down:"
+	badgerKeyFailbackHits = "repl:failback:"
+	badgerCounterTTL      = 86400
 )
 
-func badgerCrashKey(policyID uint) string    { return fmt.Sprintf("%s%d", badgerKeyCrashMisses, policyID) }
-func badgerDownKey(policyID uint) string     { return fmt.Sprintf("%s%d", badgerKeyDownMisses, policyID) }
+func badgerCrashKey(policyID uint) string { return fmt.Sprintf("%s%d", badgerKeyCrashMisses, policyID) }
+func badgerDownKey(policyID uint) string  { return fmt.Sprintf("%s%d", badgerKeyDownMisses, policyID) }
 
 func badgerCounterGet(key string) uint64 {
 	val, ok := db.GetValue(key)
@@ -2937,7 +2937,14 @@ func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string)
 }
 
 func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.ReplicationPolicy, runnerNodeID string) error {
-	if s == nil || s.Cluster == nil || policy == nil || policy.ID == 0 {
+	if s == nil || policy == nil || policy.ID == 0 {
+		return nil
+	}
+	return s.rebindGuestBackupJobRunners(policy.GuestType, policy.GuestID, runnerNodeID)
+}
+
+func (s *Service) rebindGuestBackupJobRunners(guestType string, guestID uint, runnerNodeID string) error {
+	if s == nil || s.Cluster == nil || guestID == 0 {
 		return nil
 	}
 
@@ -2946,9 +2953,8 @@ func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.R
 		return nil
 	}
 
-	policyGuestType := strings.ToLower(strings.TrimSpace(policy.GuestType))
-	policyGuestID := policy.GuestID
-	if policyGuestType == "" || policyGuestID == 0 {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	if guestType == "" {
 		return nil
 	}
 
@@ -2961,7 +2967,7 @@ func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.R
 	for i := range jobs {
 		job := jobs[i]
 		jobGuestType, jobGuestID := backupJobGuestIdentity(&job)
-		if jobGuestType != policyGuestType || jobGuestID != policyGuestID {
+		if jobGuestType != guestType || jobGuestID != guestID {
 			continue
 		}
 		if strings.TrimSpace(job.RunnerNodeID) == runnerNodeID {
@@ -2975,17 +2981,103 @@ func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.R
 		}
 
 		logger.L.Info().
-			Uint("policy_id", policy.ID).
 			Uint("job_id", job.ID).
-			Str("guest_type", policyGuestType).
-			Uint("guest_id", policyGuestID).
+			Str("guest_type", guestType).
+			Uint("guest_id", guestID).
 			Str("runner_node_id", runnerNodeID).
-			Msg("replication_backup_job_runner_rebound")
+			Msg("guest_backup_job_runner_rebound")
 	}
 
 	if len(updateErrs) > 0 {
 		return fmt.Errorf("backup_job_runner_rebind_partial_failure: %s", strings.Join(updateErrs, "; "))
 	}
+	return nil
+}
+
+func (s *Service) MigrateGuestOwnership(ctx context.Context, guestType string, guestID uint, newOwnerNodeID string) error {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	newOwnerNodeID = strings.TrimSpace(newOwnerNodeID)
+	if guestType == "" || guestID == 0 || newOwnerNodeID == "" {
+		return fmt.Errorf("invalid_migrate_ownership_input")
+	}
+	if s.Cluster == nil || s.Cluster.Raft == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+
+	if s.Cluster.Raft.State() != raft.Leader {
+		_, leaderID := s.Cluster.Raft.LeaderWithID()
+		leaderNodeID := strings.TrimSpace(string(leaderID))
+		if leaderNodeID == "" {
+			return fmt.Errorf("leader_not_available")
+		}
+		return s.forwardReplicationPolicyControlWithRetry(leaderNodeID, "replication-reassign-owner", map[string]any{
+			"guest_type":        guestType,
+			"guest_id":          guestID,
+			"new_owner_node_id": newOwnerNodeID,
+		}, replicationControlDefaultTimeout)
+	}
+
+	var policies []clusterModels.ReplicationPolicy
+	if err := s.DB.
+		Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).
+		Find(&policies).Error; err != nil {
+		return fmt.Errorf("lookup_replication_policies_failed: %w", err)
+	}
+
+	errs := make([]string, 0)
+	for i := range policies {
+		if err := s.reassignReplicationPolicyOwner(&policies[i], newOwnerNodeID); err != nil {
+			errs = append(errs, fmt.Sprintf("policy_%d: %v", policies[i].ID, err))
+		}
+	}
+
+	if err := s.rebindGuestBackupJobRunners(guestType, guestID, newOwnerNodeID); err != nil {
+		errs = append(errs, fmt.Sprintf("backup_jobs: %v", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("migrate_guest_ownership_partial_failure: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func (s *Service) reassignReplicationPolicyOwner(policy *clusterModels.ReplicationPolicy, newOwnerNodeID string) error {
+	if policy == nil || policy.ID == 0 {
+		return fmt.Errorf("invalid_policy")
+	}
+
+	currentEpoch := replicationPolicyOwnerEpoch(policy)
+	if currentEpoch == math.MaxUint64 {
+		return fmt.Errorf("replication_policy_owner_epoch_exhausted")
+	}
+	nextEpoch := currentEpoch + 1
+
+	req := s.replicationPolicyToReq(policy)
+	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
+		req.SourceNodeID = newOwnerNodeID
+	}
+	req.ActiveNodeID = newOwnerNodeID
+	req.OwnerEpoch = nextEpoch
+
+	if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
+		return fmt.Errorf("propose_policy_update_failed: %w", err)
+	}
+
+	lease := clusterModels.ReplicationLease{
+		PolicyID:    policy.ID,
+		GuestType:   policy.GuestType,
+		GuestID:     policy.GuestID,
+		OwnerNodeID: newOwnerNodeID,
+		OwnerEpoch:  nextEpoch,
+		ExpiresAt:   time.Now().UTC().Add(replicationLeaseTTL),
+		Version:     uint64(time.Now().UTC().UnixNano()),
+		LastReason:  "manual_migration",
+		LastActor:   s.Cluster.LocalNodeID(),
+	}
+	if err := s.Cluster.UpsertReplicationLease(lease, false); err != nil {
+		return fmt.Errorf("upsert_lease_failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -3689,17 +3781,52 @@ func (s *Service) activateReplicationVM(ctx context.Context, rid uint) error {
 		return fmt.Errorf("vm_dataset_not_found")
 	}
 	if err := s.reconcileRestoredVMFromDatasetWithOptions(ctx, dataset, true); err != nil {
+		s.cleanupOrphanedVMRegistration(rid)
 		return err
 	}
 	vm, err := s.findVMByRID(rid)
 	if err != nil {
+		s.cleanupOrphanedVMRegistration(rid)
 		return err
 	}
 	if vm == nil {
+		s.cleanupOrphanedVMRegistration(rid)
 		return fmt.Errorf("vm_definition_not_found_after_reconcile")
 	}
 
-	return s.VM.LvVMAction(*vm, "start")
+	if err := s.VM.LvVMAction(*vm, "start"); err != nil {
+		s.cleanupOrphanedVMRegistration(rid)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) cleanupOrphanedVMRegistration(rid uint) {
+	if s.VM == nil || rid == 0 {
+		return
+	}
+
+	var count int64
+	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&count).Error; err != nil || count == 0 {
+		return
+	}
+
+	if _, err := s.VM.GetLvDomain(rid); err == nil {
+		return // a libvirt domain is defined here -> not an orphan
+	} else if !isVMDomainNotFoundError(err) {
+		return // libvirt unreachable / other error -> cannot confirm orphan, leave it
+	}
+
+	warnings, purgeErr := s.VM.PurgeVMRegistration(rid, true)
+	if purgeErr != nil {
+		logger.L.Warn().Err(purgeErr).Uint("rid", rid).Msg("failed_to_purge_orphaned_vm_after_failed_activation")
+		return
+	}
+	if len(warnings) > 0 {
+		logger.L.Warn().Strs("warnings", warnings).Uint("rid", rid).Msg("purged_orphaned_vm_after_failed_activation_with_warnings")
+		return
+	}
+	logger.L.Info().Uint("rid", rid).Msg("purged_orphaned_vm_after_failed_activation")
 }
 
 func (s *Service) stopLocalJailIfPresent(ctID uint) error {
