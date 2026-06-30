@@ -731,7 +731,7 @@ func (s *Service) countStaleVMStorageDatasetRowsForCreate(rid uint) (int64, erro
 			fmt.Sprintf("%%/sylve/virtual-machines/%d", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d/%%", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d.%%", rid),
-			fmt.Sprintf("%%/sylve/virtual-machines/%d_%%", rid)).
+			fmt.Sprintf("%%/sylve/virtual-machines/%d\\_%%", rid)).
 		Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("failed_to_check_stale_vm_storage_dataset_rows: %w", err)
 	}
@@ -1344,6 +1344,34 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 
 	if err := s.DB.Delete(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_delete_vm: %w", err)
+	}
+
+	var patternDatasetIDs []uint
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
+		Where("name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ?",
+			fmt.Sprintf("%%/sylve/virtual-machines/%d", rid),
+			fmt.Sprintf("%%/sylve/virtual-machines/%d/%%", rid),
+			fmt.Sprintf("%%/sylve/virtual-machines/%d.%%", rid),
+			fmt.Sprintf("%%/sylve/virtual-machines/%d\\_%%", rid)).
+		Pluck("id", &patternDatasetIDs).Error; err != nil {
+		logger.L.Warn().Err(err).Uint("rid", rid).Msg("failed to lookup orphaned vm_storage_datasets after normal delete")
+	} else {
+		for _, id := range uniqueUintValues(patternDatasetIDs) {
+			var refs int64
+			if err := s.DB.Model(&vmModels.Storage{}).Where("dataset_id = ?", id).Count(&refs).Error; err != nil {
+				logger.L.Warn().Err(err).Uint("rid", rid).Uint("dataset_id", id).Msg("failed to count refs for orphaned vm_storage_dataset")
+				continue
+			}
+			if refs > 0 {
+				continue
+			}
+			if err := s.DB.Delete(&vmModels.VMStorageDataset{}, id).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					continue
+				}
+				logger.L.Warn().Err(err).Uint("rid", rid).Uint("dataset_id", id).Msg("failed to delete orphaned vm_storage_dataset")
+			}
+		}
 	}
 
 	if err := s.cleanupVMMACObjects(cleanUpMacs, usedMACS); err != nil {

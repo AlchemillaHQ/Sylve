@@ -50,6 +50,7 @@
 		const hasFirewall = enabledServices.includes('firewall');
 		const hasWireGuard = enabledServices.includes('wireguard');
 		const hasIscsi = enabledServices.includes('iscsi');
+		const hasMdns = enabledServices.includes('mdns');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
 			const vmName = page.url.pathname.split('/')[3];
@@ -170,6 +171,14 @@
 							}
 						]
 					},
+					// hasMdns && {
+					// 	label: 'mDNS',
+					// 	icon: 'mdi--broadcast',
+					// 	children: [
+					// 		{ label: 'Records', icon: 'mdi--format-list-bulleted', href: `/${node}/network/mdns/records` },
+					// 		{ label: 'Settings', icon: 'mdi--cog-outline', href: `/${node}/network/mdns/settings` }
+					// 	]
+					// },
 					hasWireGuard && {
 						label: 'VPN',
 						icon: 'mdi--vpn',

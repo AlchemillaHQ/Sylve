@@ -22,6 +22,7 @@ import (
 	iscsiServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/iscsi"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	mdnsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
@@ -46,6 +47,7 @@ type Service struct {
 	Jail      jailServiceInterfaces.JailServiceInterface
 	Cluster   clusterServiceInterfaces.ClusterServiceInterface
 	ISCSI     iscsiServiceInterfaces.ISCSIServiceInterface
+	Mdns      mdnsServiceInterfaces.MdnsServiceInterface
 }
 
 func NewStartupService(db *gorm.DB,
@@ -59,6 +61,7 @@ func NewStartupService(db *gorm.DB,
 	jail jailServiceInterfaces.JailServiceInterface,
 	cluster clusterServiceInterfaces.ClusterServiceInterface,
 	iscsiSvc iscsiServiceInterfaces.ISCSIServiceInterface,
+	mdnsSvc mdnsServiceInterfaces.MdnsServiceInterface,
 ) serviceInterfaces.StartupServiceInterface {
 	return &Service{
 		DB:        db,
@@ -72,6 +75,7 @@ func NewStartupService(db *gorm.DB,
 		Jail:      jail,
 		Cluster:   cluster,
 		ISCSI:     iscsiSvc,
+		Mdns:      mdnsSvc,
 	}
 }
 
@@ -220,6 +224,12 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}
 
 		go s.Samba.WatchAuditLogs(dCtx)
+	}
+
+	if slices.Contains(basicSettings.Services, models.Mdns) {
+		if err := s.Mdns.Rebuild(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to rebuild mdns on startup")
+		}
 	}
 
 	if slices.Contains(basicSettings.Services, models.ISCSI) {

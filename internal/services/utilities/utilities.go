@@ -145,6 +145,8 @@ func defaultOutName(src string, ext string) string {
 }
 
 func (s *Service) RegisterJobs() {
+	s.CleanupStaleAuditRecords()
+
 	db.QueueRegisterJSON("utils-download-start", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadStartPayload) error {
 		if err := s.StartDownload(&payload.ID); err != nil {
 			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("StartDownload failed")

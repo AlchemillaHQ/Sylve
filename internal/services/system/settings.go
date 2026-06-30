@@ -163,6 +163,12 @@ func (s *Service) ServiceToggle(service models.AvailableService) error {
 		if err := s.ToggleDHCPServer(enabled); err != nil {
 			return err
 		}
+	case models.Mdns:
+		if s.MdnsRebuild != nil {
+			if err := s.MdnsRebuild(); err != nil {
+				return err
+			}
+		}
 	}
 
 	basicSettings.Services = basicSettings.Services[:0]

@@ -285,6 +285,8 @@
 		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
 		'/api/system/basic-settings/services/firewall/toggle': 'Toggle - Firewall',
 		'/api/system/basic-settings/services/wireguard/toggle': 'Toggle - WireGuard',
+		'/api/system/basic-settings/services/iscsi/toggle': 'Toggle - iSCSI',
+		'/api/system/basic-settings/services/mdns/toggle': 'Toggle - mDNS',
 		'/api/network/firewall/traffic/reorder': 'Firewall - Traffic Reorder',
 		'/api/network/firewall/traffic': 'Firewall - Traffic Rule',
 		'/api/network/firewall/nat/reorder': 'Firewall - NAT Reorder',

@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -71,15 +72,22 @@ func (s *Service) ListDownloadsByUType() ([]utilitiesServiceInterfaces.UTypeGrou
 
 		if dl.ExtractedPath != "" {
 			info, err := os.Stat(dl.ExtractedPath)
-			if err == nil && info.IsDir() {
-				files, err := os.ReadDir(dl.ExtractedPath)
-				if err == nil && len(files) == 1 {
-					if strings.HasSuffix(files[0].Name(), ".raw") ||
-						strings.HasSuffix(files[0].Name(), ".img") ||
-						strings.HasSuffix(files[0].Name(), ".disk") ||
-						strings.HasSuffix(files[0].Name(), ".iso") {
-						label = fmt.Sprintf("%s@@@%s", dl.Name, files[0].Name())
+			if err == nil {
+				var targetFile string
+				if info.IsDir() {
+					files, err := os.ReadDir(dl.ExtractedPath)
+					if err == nil && len(files) == 1 {
+						targetFile = files[0].Name()
 					}
+				} else {
+					targetFile = filepath.Base(dl.ExtractedPath)
+				}
+				if targetFile != "" &&
+					(strings.HasSuffix(targetFile, ".raw") ||
+						strings.HasSuffix(targetFile, ".img") ||
+						strings.HasSuffix(targetFile, ".disk") ||
+						strings.HasSuffix(targetFile, ".iso")) {
+					label = fmt.Sprintf("%s@@@%s", dl.Name, targetFile)
 				}
 			}
 		}
@@ -745,6 +753,56 @@ func (s *Service) failDownload(d *utilitiesModels.Downloads, cause error) error 
 	return err
 }
 
+func (s *Service) UpdateDownload(id uint, req utilitiesServiceInterfaces.UpdateDownloadRequest) error {
+	var d utilitiesModels.Downloads
+	if err := s.DB.First(&d, "id = ?", id).Error; err != nil {
+		return fmt.Errorf("download_not_found: %w", err)
+	}
+
+	updates := map[string]any{}
+
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.UType != nil {
+		updates["u_type"] = *req.UType
+	}
+
+	needPostProc := false
+
+	if req.AutomaticExtraction != nil {
+		updates["automatic_extraction"] = *req.AutomaticExtraction
+		if *req.AutomaticExtraction && d.ExtractedPath == "" {
+			needPostProc = true
+		}
+	}
+	if req.AutomaticRawConversion != nil {
+		updates["automatic_raw_conversion"] = *req.AutomaticRawConversion
+		if *req.AutomaticRawConversion && d.ExtractedPath == "" {
+			needPostProc = true
+		}
+	}
+
+	if len(updates) > 0 {
+		if err := s.DB.Model(&d).Updates(updates).Error; err != nil {
+			return fmt.Errorf("update_download: %w", err)
+		}
+	}
+
+	if needPostProc && d.Status == utilitiesModels.DownloadStatusDone {
+		s.DB.Model(&d).Update("status", utilitiesModels.DownloadStatusProcessing)
+		if err := s.enqueuePostProcOnce(d.ID); err != nil {
+			s.DB.Model(&d).Updates(map[string]any{
+				"status": utilitiesModels.DownloadStatusFailed,
+				"error":  fmt.Sprintf("failed to enqueue post-processing: %v", err),
+			})
+			return fmt.Errorf("enqueue_post_proc: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) SyncDownloadProgress() error {
 	var downloads []utilitiesModels.Downloads
 	if err := s.DB.
@@ -776,7 +834,21 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 
 	t := s.BTTClient.GetTorrent(download.UUID)
 	if t == nil {
-		logger.L.Error().Msgf("Torrent %s not found in client", download.UUID)
+		if download.Status == utilitiesModels.DownloadStatusProcessing {
+			staleWindow := time.Now().Add(-5 * time.Minute)
+			if download.UpdatedAt.Before(staleWindow) {
+				download.Error = "torrent_lost_from_client"
+				download.Status = utilitiesModels.DownloadStatusFailed
+				s.DB.Model(download).Select("Error", "Status").Updates(download)
+				if s.TelemetryDB != nil {
+					db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
+						"downloadId": download.ID,
+						"status":     "failed",
+						"error":      download.Error,
+					})
+				}
+			}
+		}
 		return
 	}
 
@@ -784,6 +856,21 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 	have, total := st.Pieces.Have, st.Pieces.Total
 
 	if total == 0 {
+		staleWindow := time.Now().Add(-15 * time.Minute)
+		if download.UpdatedAt.Before(staleWindow) {
+			download.Error = "magnet_metadata_timeout"
+			download.Status = utilitiesModels.DownloadStatusFailed
+			s.DB.Model(download).Select("Error", "Status").Updates(download)
+			if s.TelemetryDB != nil {
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
+					"downloadId": download.ID,
+					"status":     "failed",
+					"error":      download.Error,
+				})
+			}
+			s.BTTClient.RemoveTorrent(download.UUID, true)
+			return
+		}
 		download.Progress = 0
 	} else {
 		download.Progress = int((have * 100) / total)
@@ -796,28 +883,29 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 	if isFinished {
 		download.Status = utilitiesModels.DownloadStatusDone
 		download.Progress = 100
-		if err := s.BTTClient.RemoveTorrent(download.UUID, true); err != nil {
-			logger.L.Error().Err(err).Msgf("Failed to remove completed torrent %s", download.UUID)
+		if err := s.DB.Model(download).Select("Progress", "Status").Updates(download).Error; err != nil {
+			logger.L.Error().Err(err).Msgf("Failed to save completed status for download %s", download.UUID)
 			return
 		}
-	} else {
-		download.Status = utilitiesModels.DownloadStatusProcessing
+		if err := s.BTTClient.RemoveTorrent(download.UUID, true); err != nil {
+			logger.L.Error().Err(err).Msgf("Failed to remove completed torrent %s", download.UUID)
+		}
+		if s.TelemetryDB != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
+				"downloadId": download.ID,
+				"status":     "success",
+			})
+		}
+		return
 	}
 
+	download.Status = utilitiesModels.DownloadStatusProcessing
 	err := s.DB.Model(download).
 		Select("Progress", "Size", "Name", "Status").
 		Updates(download).Error
 
 	if err != nil {
 		logger.L.Error().Err(err).Msgf("Failed to update database for download %s", download.UUID)
-		return
-	}
-
-	if isFinished && s.TelemetryDB != nil {
-		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
-			"downloadId": download.ID,
-			"status":     "success",
-		})
 	}
 }
 
@@ -1057,6 +1145,13 @@ func (s *Service) DeleteDownload(id int) error {
 		}
 	}
 
+	if s.TelemetryDB != nil {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "Cancelled", "deleted_by_user", map[string]any{
+			"download_id": download.ID,
+			"status":      "Cancelled",
+		})
+	}
+
 	if err := s.DB.Delete(&download).Error; err != nil {
 		logger.L.Debug().Msgf("Failed to delete download: %v", err)
 		return err
@@ -1126,6 +1221,13 @@ func (s *Service) BulkDeleteDownload(ids []int) error {
 			}
 		}
 
+		if s.TelemetryDB != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "Cancelled", "deleted_by_user", map[string]any{
+				"download_id": download.ID,
+				"status":      "Cancelled",
+			})
+		}
+
 		if err := s.DB.Delete(&download).Error; err != nil {
 			logger.L.Debug().Msgf("Failed to delete download: %v", err)
 			return err
@@ -1133,4 +1235,28 @@ func (s *Service) BulkDeleteDownload(ids []int) error {
 	}
 
 	return nil
+}
+
+func (s *Service) CleanupStaleAuditRecords() {
+	if s.TelemetryDB == nil {
+		return
+	}
+
+	var orphans []infoModels.AuditRecord
+	s.TelemetryDB.
+		Where("async_job_type = ? AND status = ?", "file_download", "pending").
+		Find(&orphans)
+
+	for _, rec := range orphans {
+		if rec.AsyncJobID == nil {
+			continue
+		}
+		var d utilitiesModels.Downloads
+		if err := s.DB.First(&d, *rec.AsyncJobID).Error; err != nil {
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", *rec.AsyncJobID, "Cancelled", "orphaned_audit_record", map[string]any{
+				"download_id": *rec.AsyncJobID,
+				"status":      "Cancelled",
+			})
+		}
+	}
 }

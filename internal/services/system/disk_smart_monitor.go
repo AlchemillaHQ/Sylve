@@ -78,6 +78,10 @@ type diskSmartState struct {
 	nvmeWarnCount      int
 	nvmeNormalCount    int
 
+	lastSelfTestFingerprint string
+	selftestFailCount       int
+	selftestNormalCount     int
+
 	unavailableCount int
 }
 
@@ -176,8 +180,12 @@ func (s *Service) evaluateSmartData(ctx context.Context, disk diskServiceInterfa
 
 	s.evaluateTemperature(ctx, disk, st, warmup)
 	s.evaluateHealth(ctx, disk, st, warmup)
-	s.evaluateWearout(ctx, disk, st, warmup)
 	s.evaluateReallocated(ctx, disk, st, warmup)
+	s.evaluateSelfTestLog(ctx, disk, st, warmup)
+
+	if disk.Type == "NVMe" || disk.Type == "SSD" {
+		s.evaluateWearout(ctx, disk, st, warmup)
+	}
 
 	if disk.Type == "NVMe" {
 		if nvmeData, ok := disk.SmartData.(diskServiceInterfaces.SMARTNvme); ok {
@@ -488,6 +496,73 @@ func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.D
 				fmt.Sprintf("Previously reported NVMe S.M.A.R.T issues on disk %s have cleared.", disk.Device),
 				map[string]string{
 					"condition": "nvme_recovered",
+				})
+		}
+	}
+}
+
+func (s *Service) evaluateSelfTestLog(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
+	if s.DiskService == nil {
+		return
+	}
+
+	log, err := s.DiskService.GetSelfTestLog(diskServiceInterfaces.DiskInfo{
+		Name:   disk.Device,
+		Type:   disk.Type,
+		Serial: disk.Serial,
+	})
+	if err != nil || log == nil {
+		return
+	}
+
+	if len(log.Entries) == 0 {
+		return
+	}
+
+	latest := log.Entries[0]
+	fingerprint := fmt.Sprintf("%s|%s|%d", latest.Type, latest.Status, latest.LifetimeHours)
+
+	hasFailure := false
+	for _, e := range log.Entries {
+		if e.Status == "failed_read" || e.Status == "failed_unknown" ||
+			e.Status == "failed_electrical" || e.Status == "failed_servo" ||
+			e.Status == "failed_handling" || e.Status == "fatal" ||
+			e.Status == "failed_segments" {
+			hasFailure = true
+			break
+		}
+	}
+
+	if hasFailure {
+		st.selftestFailCount++
+		st.selftestNormalCount = 0
+
+		if !warmup && st.selftestFailCount >= diskSmartConsecutiveTrigger &&
+			fingerprint != st.lastSelfTestFingerprint {
+			st.lastSelfTestFingerprint = fingerprint
+
+			s.emitDiskSmartNotification(ctx, disk.Device, "system.disk.smart.selftest",
+				"self_test_failed", "warning",
+				fmt.Sprintf("Disk %s self-test failed", disk.Device),
+				fmt.Sprintf("The most recent self-test on disk %s reported a failure.", disk.Device),
+				map[string]string{
+					"condition": "self_test_failed",
+				})
+		}
+	} else {
+		st.selftestFailCount = 0
+		st.selftestNormalCount++
+
+		if !warmup && st.selftestNormalCount >= diskSmartConsecutiveClear &&
+			st.lastSelfTestFingerprint != "" && fingerprint != st.lastSelfTestFingerprint {
+			st.lastSelfTestFingerprint = fingerprint
+
+			s.emitDiskSmartNotification(ctx, disk.Device, "system.disk.smart.selftest",
+				"self_test_passed", "info",
+				fmt.Sprintf("Disk %s self-test passed", disk.Device),
+				fmt.Sprintf("The most recent self-test on disk %s completed successfully.", disk.Device),
+				map[string]string{
+					"condition": "self_test_passed",
 				})
 		}
 	}

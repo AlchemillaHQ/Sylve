@@ -64,7 +64,7 @@
 				if (
 					download.uType === 'cloud-init' ||
 					(download.uType === 'uncategorized' &&
-						(download.label.endsWith('.iso') || download.label.endsWith('.img')))
+						(download.label.endsWith('.iso') || download.label.endsWith('.img') || download.label.endsWith('.raw')))
 				) {
 					options.push({ label: download.label.replace('@@@', ' → '), value: download.uuid });
 				}

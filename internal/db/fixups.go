@@ -9,10 +9,12 @@
 package db
 
 import (
+	"os"
 	"strings"
 
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -35,6 +37,9 @@ func Fixups(db *gorm.DB) error {
 	backfillFirewallRuleVisibilityDefaults(db)
 	backfillUserSourceColumn(db)
 	backfillUserSystemData(db)
+	seedMdnsSettings(db)
+	preserveAppleExtensionsToMdns(db)
+	cleanupStaleAvahi(db)
 
 	return nil
 }
@@ -780,4 +785,112 @@ func backfillUserSourceColumn(db *gorm.DB) {
 	})
 
 	logger.L.Info().Msg("Backfilled user source column")
+}
+
+func seedMdnsSettings(db *gorm.DB) {
+	const name = "seed_mdns_settings"
+
+	var count int64
+	if err := db.Table("migrations").Where("name = ?", name).Count(&count).Error; err != nil {
+		logger.L.Warn().Msgf("seed_mdns_settings: failed to check migration: %v", err)
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	settings := mdnsModels.MdnsSettings{}
+	if err := db.FirstOrCreate(&settings).Error; err != nil {
+		logger.L.Warn().Msgf("seed_mdns_settings: failed to seed: %v", err)
+		return
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+
+	logger.L.Info().Msg("Seeded mDNS settings")
+}
+
+func preserveAppleExtensionsToMdns(db *gorm.DB) {
+	const name = "preserve_apple_extensions_to_mdns"
+
+	var count int64
+	if err := db.Table("migrations").Where("name = ?", name).Count(&count).Error; err != nil {
+		logger.L.Warn().Msgf("preserve_apple_extensions_to_mdns: failed to check migration: %v", err)
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	var sambaSettings sambaModels.SambaSettings
+	if err := db.First(&sambaSettings).Error; err != nil {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	if !sambaSettings.AppleExtensions {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	var basic authModels.BasicSettings
+	if err := db.First(&basic).Error; err != nil {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	hasMdns := false
+	for _, svc := range basic.Services {
+		if svc == authModels.Mdns {
+			hasMdns = true
+			break
+		}
+	}
+
+	if !hasMdns {
+		basic.Services = append(basic.Services, authModels.Mdns)
+		if err := db.Save(&basic).Error; err != nil {
+			logger.L.Warn().Msgf("preserve_apple_extensions_to_mdns: failed to add mdns: %v", err)
+		}
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+
+	logger.L.Info().Msg("Preserved Apple Extensions → mDNS service")
+}
+
+func cleanupStaleAvahi(db *gorm.DB) {
+	const name = "cleanup_stale_avahi"
+
+	var count int64
+	if err := db.Table("migrations").Where("name = ?", name).Count(&count).Error; err != nil {
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	_ = os.Remove("/usr/local/etc/avahi/services/timemachine.service")
+	if _, err := os.Stat("/usr/local/etc/avahi/services"); err == nil {
+		os.Remove("/usr/local/etc/avahi/services")
+	}
+	if _, err := os.Stat("/usr/local/etc/avahi"); err == nil {
+		os.Remove("/usr/local/etc/avahi")
+	}
+
+	if err := system.ServiceAction("avahi-daemon", "onestatus"); err == nil {
+		if stopErr := system.ServiceAction("avahi-daemon", "onestop"); stopErr != nil {
+			logger.L.Warn().Err(stopErr).Msg("failed to stop stale avahi-daemon")
+		}
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+
+	logger.L.Info().Msg("Cleaned up stale avahi config and daemon")
 }

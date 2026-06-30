@@ -97,6 +97,7 @@ msgstr "Objekte"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Samba/Config.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Interfaces"
@@ -543,6 +544,7 @@ msgid "Node"
 msgstr "Knoten"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
@@ -853,6 +855,8 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -870,6 +874,7 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/routes/[node]/settings/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -906,6 +911,8 @@ msgstr "Aktualisiert"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "View"
@@ -926,6 +933,7 @@ msgstr "Anzeigen"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/manual/+page.svelte
@@ -970,6 +978,8 @@ msgstr "Löschen"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -986,6 +996,8 @@ msgstr "Löschen"
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -1166,10 +1178,13 @@ msgstr "Dies ist eine Notiz"
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -1458,6 +1473,7 @@ msgstr "Diagramme konnten nicht geladen werden."
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
 msgstr "Hostname"
@@ -1668,6 +1684,7 @@ msgstr "Cluster-Informationen"
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -1685,6 +1702,7 @@ msgstr "Eigenschaft"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
@@ -2038,6 +2056,8 @@ msgstr "Zuerst geändert"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -2278,6 +2298,7 @@ msgid "Type to create"
 msgstr "Zum Erstellen eingeben"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Add"
@@ -2650,6 +2671,7 @@ msgstr "ZFS-Pools"
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2685,6 +2707,7 @@ msgstr "Aktiviert"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -2990,19 +3013,23 @@ msgid "Optional File Name"
 msgstr "Optionaler Dateiname"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download Type"
 msgstr "Download-Typ"
 
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Select Download Type"
 msgstr "Download-Typ auswählen"
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Uncategorized (ISOs, IMGs, etc.)"
 msgstr "Nicht kategorisiert (ISOs, IMGs usw.)"
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Base / RootFS"
 msgstr "Basis / RootFS"
@@ -3010,19 +3037,23 @@ msgstr "Basis / RootFS"
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
 msgstr "Cloud-Init"
 
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Ignore TLS Errors"
 msgstr "TLS-Fehler ignorieren"
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
 msgstr "Automatisch entpacken"
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Auto-convert to RAW"
 msgstr "Automatisch in RAW konvertieren"
@@ -3319,6 +3350,7 @@ msgstr "Ereignisfortschritt konnte nicht geladen werden"
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -3494,6 +3526,8 @@ msgstr "SSH-Host"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
@@ -5997,7 +6031,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -14946,9 +14980,8 @@ msgstr ""
 msgid "VM entry removed (datasets preserved)"
 msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "<0/> Remove"
-msgstr ""
+#~ msgid "<0/> Remove"
+#~ msgstr ""
 
 #. 0: item.label
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -14994,4 +15027,100 @@ msgstr ""
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "This will remove the stale inventory entry for VM <0/> on this node. <1>Only the local VM record and any local libvirt domain are removed. ZFS datasets are preserved and nothing is deleted on other nodes.</1>"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "This VM still has a live definition on its node — use Delete instead of removing a stale entry"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Remove stale entry"
+msgstr ""
+
+#. 0: formatted
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Migration completed with warnings: {0}"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download updated"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to update download"
+msgstr ""
+
+#~ msgid "Edit Download"
+#~ msgstr ""
+
+#. 0: editState.extractedPath
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Already extracted to: {0}"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Magnet"
+msgstr ""
+
+#~ msgid "Records"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - iSCSI"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - mDNS"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Managed by Samba"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Failed to save mDNS record"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Record updated"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Record created"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Failed to delete record"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Record deleted"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Edit Record"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Add mDNS Record"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "TXT (key=val, key2=val2)"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/settings/+page.svelte
+msgid "Failed to save settings"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/settings/+page.svelte
+msgid "mDNS Settings"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/settings/+page.svelte
+msgid "Interfaces (comma-separated, empty=all)"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/settings/+page.svelte
+msgid "Hostname (empty=system hostname)"
 msgstr ""

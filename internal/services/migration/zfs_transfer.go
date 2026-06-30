@@ -149,6 +149,12 @@ func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPaylo
 
 	datasets = filterParentDatasets(datasets)
 
+	if task.GuestType == taskModels.GuestTypeVM {
+		if err := s.Libvirt.WriteVMJson(task.GuestID); err != nil {
+			logger.L.Warn().Err(err).Uint("rid", task.GuestID).Msg("migration_writevmjson_flush_failed")
+		}
+	}
+
 	var targetNode clusterModels.ClusterNode
 	if err := s.DB.Where("node_uuid = ?", mp.TargetNodeUUID).First(&targetNode).Error; err != nil {
 		return fmt.Errorf("target_node_not_found: %w", err)

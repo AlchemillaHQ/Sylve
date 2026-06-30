@@ -171,4 +171,22 @@ void smart_print(smart_h, smart_map_t *, smart_matches_t *, uint32_t);
  */
 void smart_print_device_info(smart_h);
 
+int32_t smart_self_test(smart_h, uint8_t);
+
+smart_map_t *smart_read_log(smart_h, uint8_t, size_t);
+
+smart_map_t *smart_read_error_log(smart_h);
+
+smart_map_t *smart_read_log_directory(smart_h);
+
+smart_map_t *smart_read_gpl_log(smart_h, uint8_t, uint8_t, size_t);
+
+smart_map_t *smart_read_sct_temp_history(smart_h);
+
+int32_t smart_write_smart_log(smart_h, uint8_t, void *, size_t);
+
+int32_t smart_nvme_identify_ctrl(smart_h, void *, size_t);
+
+int32_t smart_enable(smart_h);
+
 #endif

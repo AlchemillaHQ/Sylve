@@ -19,6 +19,7 @@ const (
 	Firewall       AvailableService = "firewall"
 	WireGuard      AvailableService = "wireguard"
 	ISCSI          AvailableService = "iscsi"
+	Mdns           AvailableService = "mdns"
 )
 
 type BasicSettings struct {

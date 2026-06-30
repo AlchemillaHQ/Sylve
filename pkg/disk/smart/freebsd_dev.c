@@ -117,6 +117,11 @@ static const uint8_t smart_read_data[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+static const uint8_t smart_read_thresholds[] = {
+	0xb0, 0xd1, 0x00, 0x4f, 0xc2, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
 static const uint8_t smart_return_status[] = {
 	0xb0, 0xda, 0x00, 0x4f, 0xc2, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00
@@ -136,6 +141,13 @@ __device_read_ata(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb *
 	case PAGE_ID_ATA_SMART_READ_DATA: /* Support SMART READ DATA */
 		smart_fis = smart_read_data;
 		smart_fis_size = sizeof(smart_read_data);
+		cam_flags = CAM_DIR_IN;
+		sector_count = 1;
+		protocol = AP_PROTO_PIO_IN;
+		break;
+	case PAGE_ID_ATA_SMART_READ_THRESHOLDS: /* Support SMART READ THRESHOLDS */
+		smart_fis = smart_read_thresholds;
+		smart_fis_size = sizeof(smart_read_thresholds);
 		cam_flags = CAM_DIR_IN;
 		sector_count = 1;
 		protocol = AP_PROTO_PIO_IN;
@@ -359,6 +371,505 @@ __device_status_ata(smart_h h, union ccb *ccb)
 }
 
 int32_t
+device_self_test(smart_h h, uint8_t test_type)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb = NULL;
+	uint8_t smart_fis[12];
+	int rc = 0;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	switch (fsmart->common.protocol) {
+	case SMART_PROTO_ATA:
+		if (fsmart->common.info.tunneled) {
+			struct ata_pass_16 *cdb;
+
+			cdb = (struct ata_pass_16 *)ccb->csio.cdb_io.cdb_bytes;
+			bzero(cdb, sizeof(*cdb));
+
+			scsi_ata_pass_16(&ccb->csio,
+					1, NULL,
+					CAM_DIR_NONE,
+					MSG_SIMPLE_Q_TAG,
+					AP_PROTO_NON_DATA,
+					AP_FLAG_CHK_COND |
+					    AP_FLAG_TDIR_FROM_DEV |
+					    AP_FLAG_BYT_BLOK_BLOCKS,
+					0xD4,
+					0,
+					test_type,
+					ATA_SMART_CMD,
+					0,
+					NULL, 0,
+					SSD_FULL_SIZE,
+					5000);
+			cdb->lba_mid = 0x4f;
+			cdb->lba_high = 0xc2;
+			cdb->device = 0;
+		} else {
+			memset(smart_fis, 0, sizeof(smart_fis));
+			smart_fis[0] = ATA_SMART_CMD;
+			smart_fis[1] = 0xD4;
+			smart_fis[2] = test_type;
+			smart_fis[3] = 0x4f;
+			smart_fis[4] = 0xc2;
+
+			bcopy(smart_fis, &ccb->ataio.cmd.command, sizeof(smart_fis));
+
+			cam_fill_ataio(&ccb->ataio,
+					1, NULL,
+					CAM_DIR_NONE,
+					0,
+					NULL, 0,
+					5000);
+			ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
+			ccb->ataio.cmd.control = 0;
+		}
+		break;
+
+	case SMART_PROTO_NVME: {
+		struct ccb_nvmeio *nvmeio = &ccb->nvmeio;
+		uint8_t nvme_type = test_type;
+		if (nvme_type == 0x7F)
+			nvme_type = NVME_STC_ABORT;
+		nvmeio->cmd.opc = NVME_OPC_DEVICE_SELF_TEST;
+		nvmeio->cmd.nsid = NVME_GLOBAL_NAMESPACE_TAG;
+		nvmeio->cmd.cdw10 = nvme_type;
+
+		cam_fill_nvmeadmin(&ccb->nvmeio,
+				1, NULL,
+				CAM_DIR_NONE,
+				NULL, 0,
+				5000);
+		}
+		break;
+
+	default:
+		cam_freeccb(ccb);
+		return ENODEV;
+	}
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		warn("error sending self-test command");
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (do_debug)
+			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
+					CAM_EPF_ALL, stderr);
+		rc = EIO;
+	}
+
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb = NULL;
+	uint8_t smart_fis[12];
+	int rc = 0;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	switch (fsmart->common.protocol) {
+	case SMART_PROTO_ATA:
+		if (fsmart->common.info.tunneled) {
+			struct ata_pass_16 *cdb;
+
+			cdb = (struct ata_pass_16 *)ccb->csio.cdb_io.cdb_bytes;
+			bzero(cdb, sizeof(*cdb));
+
+			scsi_ata_pass_16(&ccb->csio,
+					1, NULL,
+					CAM_DIR_IN,
+					MSG_SIMPLE_Q_TAG,
+					AP_PROTO_PIO_IN,
+					AP_FLAG_TDIR_FROM_DEV |
+					    AP_FLAG_BYT_BLOK_BLOCKS |
+					    AP_FLAG_TLEN_SECT_CNT,
+					0xD5,
+					1,
+					log_addr,
+					ATA_SMART_CMD,
+					0,
+					buf, bsize,
+					SSD_FULL_SIZE,
+					5000);
+			cdb->lba_mid = 0x4f;
+			cdb->lba_high = 0xc2;
+			cdb->device = 0;
+		} else {
+			memset(smart_fis, 0, sizeof(smart_fis));
+			smart_fis[0] = ATA_SMART_CMD;
+			smart_fis[1] = 0xD5;
+			smart_fis[2] = log_addr;
+			smart_fis[3] = 0x4f;
+			smart_fis[4] = 0xc2;
+			smart_fis[10] = 1;
+
+			bcopy(smart_fis, &ccb->ataio.cmd.command, sizeof(smart_fis));
+
+			cam_fill_ataio(&ccb->ataio,
+					1, NULL,
+					CAM_DIR_IN,
+					0,
+					buf, bsize,
+					5000);
+			ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
+			ccb->ataio.cmd.control = 0;
+		}
+		break;
+
+	case SMART_PROTO_NVME: {
+		struct ccb_nvmeio *nvmeio = &ccb->nvmeio;
+		uint32_t numd = (uint32_t)(bsize / sizeof(uint32_t));
+		if (numd > 0)
+			numd--;
+		nvmeio->cmd.opc = NVME_OPC_GET_LOG_PAGE;
+		nvmeio->cmd.nsid = NVME_GLOBAL_NAMESPACE_TAG;
+		nvmeio->cmd.cdw10 = log_addr | (numd << 16);
+
+		cam_fill_nvmeadmin(&ccb->nvmeio,
+				1, NULL,
+				CAM_DIR_IN,
+				buf, bsize,
+				5000);
+		}
+		break;
+
+	default:
+		cam_freeccb(ccb);
+		return ENODEV;
+	}
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		warn("error sending read log command");
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (do_debug)
+			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
+					CAM_EPF_ALL, stderr);
+		rc = EIO;
+	}
+
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_read_log_ext(smart_h h, uint8_t logaddr, uint8_t page, void *buf, size_t bsize)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb = NULL;
+	uint8_t smart_fis[12];
+	int rc = 0;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	if (fsmart->common.protocol != SMART_PROTO_ATA) {
+		cam_freeccb(ccb);
+		return ENODEV;
+	}
+
+	if (fsmart->common.info.tunneled) {
+		struct ata_pass_16 *cdb;
+
+		cdb = (struct ata_pass_16 *)ccb->csio.cdb_io.cdb_bytes;
+		bzero(cdb, sizeof(*cdb));
+
+		scsi_ata_pass_16(&ccb->csio,
+				1, NULL,
+				CAM_DIR_IN,
+				MSG_SIMPLE_Q_TAG,
+				AP_PROTO_PIO_IN,
+				AP_FLAG_TDIR_FROM_DEV |
+				    AP_FLAG_BYT_BLOK_BLOCKS |
+				    AP_FLAG_TLEN_SECT_CNT,
+				0x2F,
+				1,
+				logaddr,
+				ATA_SMART_CMD,
+				0,
+				buf, bsize,
+				SSD_FULL_SIZE,
+				5000);
+		cdb->lba_mid = page;
+		cdb->lba_high = logaddr;
+		cdb->device = 0x40;
+	} else {
+		smart_fis[0] = 0x2F;
+		smart_fis[2] = logaddr;
+		smart_fis[3] = page;
+		smart_fis[10] = 1;
+		smart_fis[11] = 0x40 | 0x10;
+
+		bcopy(smart_fis, &ccb->ataio.cmd.command, sizeof(smart_fis));
+
+		cam_fill_ataio(&ccb->ataio,
+				1, NULL,
+				CAM_DIR_IN,
+				0,
+				buf, bsize,
+				5000);
+		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT | CAM_ATAIO_48BIT;
+		ccb->ataio.cmd.control = 0;
+	}
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		warn("error sending read log ext command");
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (do_debug)
+			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
+					CAM_EPF_ALL, stderr);
+		rc = EIO;
+	}
+
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_write_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb = NULL;
+	uint8_t smart_fis[12];
+	int rc = 0;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	if (fsmart->common.protocol != SMART_PROTO_ATA) {
+		cam_freeccb(ccb);
+		return ENODEV;
+	}
+
+	if (fsmart->common.info.tunneled) {
+		struct ata_pass_16 *cdb;
+
+		cdb = (struct ata_pass_16 *)ccb->csio.cdb_io.cdb_bytes;
+		bzero(cdb, sizeof(*cdb));
+
+		scsi_ata_pass_16(&ccb->csio,
+				1, NULL,
+				CAM_DIR_OUT,
+				MSG_SIMPLE_Q_TAG,
+				AP_PROTO_PIO_OUT,
+				AP_FLAG_TDIR_TO_DEV |
+				    AP_FLAG_BYT_BLOK_BLOCKS |
+				    AP_FLAG_TLEN_SECT_CNT,
+				0xD6,
+				1,
+				log_addr,
+				ATA_SMART_CMD,
+				0,
+				buf, bsize,
+				SSD_FULL_SIZE,
+				5000);
+		cdb->lba_mid = 0x4f;
+		cdb->lba_high = 0xc2;
+		cdb->device = 0;
+	} else {
+		memset(smart_fis, 0, sizeof(smart_fis));
+		smart_fis[0] = ATA_SMART_CMD;
+		smart_fis[1] = 0xD6;
+		smart_fis[2] = log_addr;
+		smart_fis[3] = 0x4f;
+		smart_fis[4] = 0xc2;
+		smart_fis[10] = 1;
+
+		bcopy(smart_fis, &ccb->ataio.cmd.command, sizeof(smart_fis));
+
+		cam_fill_ataio(&ccb->ataio,
+				1, NULL,
+				CAM_DIR_OUT,
+				0,
+				buf, bsize,
+				5000);
+		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
+		ccb->ataio.cmd.control = 0;
+	}
+	ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
+	ccb->ataio.cmd.control = 0;
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		warn("error sending write log command");
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (do_debug)
+			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
+					CAM_EPF_ALL, stderr);
+		rc = EIO;
+	}
+
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_smart_enable(smart_h h)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb = NULL;
+	uint8_t smart_fis[12];
+	int rc = 0;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	if (fsmart->common.protocol != SMART_PROTO_ATA)
+		return ENODEV;
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	if (fsmart->common.info.tunneled) {
+		struct ata_pass_16 *cdb;
+
+		cdb = (struct ata_pass_16 *)ccb->csio.cdb_io.cdb_bytes;
+		bzero(cdb, sizeof(*cdb));
+
+		scsi_ata_pass_16(&ccb->csio,
+				1, NULL,
+				CAM_DIR_NONE,
+				MSG_SIMPLE_Q_TAG,
+				AP_PROTO_NON_DATA,
+				AP_FLAG_CHK_COND |
+				    AP_FLAG_TDIR_FROM_DEV |
+				    AP_FLAG_BYT_BLOK_BLOCKS,
+				0xD8,
+				0,
+				0,
+				ATA_SMART_CMD,
+				0,
+				NULL, 0,
+				SSD_FULL_SIZE,
+				5000);
+		cdb->lba_mid = 0x4f;
+		cdb->lba_high = 0xc2;
+		cdb->device = 0;
+	} else {
+		memset(smart_fis, 0, sizeof(smart_fis));
+		smart_fis[0] = ATA_SMART_CMD;
+		smart_fis[1] = 0xD8;
+		smart_fis[3] = 0x4f;
+		smart_fis[4] = 0xc2;
+
+		bcopy(smart_fis, &ccb->ataio.cmd.command, sizeof(smart_fis));
+
+		cam_fill_ataio(&ccb->ataio,
+				1, NULL,
+				CAM_DIR_NONE,
+				0,
+				NULL, 0,
+				5000);
+		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
+		ccb->ataio.cmd.control = 0;
+	}
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		warn("error sending smart enable command");
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		rc = EIO;
+	}
+
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_nvme_identify_ctrl(smart_h h, void *buf, size_t bsize)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb = NULL;
+	struct ccb_nvmeio *nvmeio;
+	int rc = 0;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	if (fsmart->common.protocol != SMART_PROTO_NVME)
+		return ENODEV;
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	nvmeio = &ccb->nvmeio;
+	nvmeio->cmd.opc = 0x06;
+	nvmeio->cmd.nsid = NVME_GLOBAL_NAMESPACE_TAG;
+	nvmeio->cmd.cdw10 = 1;
+
+	cam_fill_nvmeadmin(&ccb->nvmeio,
+			1, NULL,
+			CAM_DIR_IN,
+			buf, bsize,
+			5000);
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		warn("error sending nvme identify command");
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (do_debug)
+			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
+					CAM_EPF_ALL, stderr);
+		rc = EIO;
+	}
+
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
 device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 {
 	struct fbsd_smart *fsmart = h;
@@ -398,6 +909,8 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 
 		return rc;
 	}
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
 
 	rc = cam_send_ccb(fsmart->camdev, ccb);
 	if ((rc < 0) || ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)) {

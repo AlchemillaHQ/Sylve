@@ -6,6 +6,11 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+func IsServiceRunning(name string) bool {
+	_, err := utils.RunCommand("/usr/sbin/service", name, "onestatus")
+	return err == nil
+}
+
 func ServiceAction(name string, action string) error {
 	args := []string{name, action}
 

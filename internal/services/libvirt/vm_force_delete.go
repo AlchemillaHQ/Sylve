@@ -272,7 +272,7 @@ func (s *Service) forceRemoveVMDBRecords(rid uint, cleanUpMacs bool, warnings *[
 			fmt.Sprintf("%%/sylve/virtual-machines/%d", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d/%%", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d.%%", rid),
-			fmt.Sprintf("%%/sylve/virtual-machines/%d_%%", rid)).
+			fmt.Sprintf("%%/sylve/virtual-machines/%d\\_%%", rid)).
 		Pluck("id", &patternDatasetIDs).Error; err != nil {
 		appendForceRemoveWarning(warnings, rid, "failed_to_lookup_vm_storage_dataset_rows_by_name", err)
 	} else {

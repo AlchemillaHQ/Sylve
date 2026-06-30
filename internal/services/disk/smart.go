@@ -11,7 +11,6 @@ package disk
 import (
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -208,24 +207,62 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 		Protocol: info.Protocol,
 	}
 
-	data.Passed = true
+	data.Passed = info.Passed
+	data.ChecksumValid = info.ChecksumValid
 	data.PowerOnHours = info.PowerOnHours
 	data.PowerCycleCount = info.PowerCycleCount
 	data.Temperature = info.Temperature
+	data.SelfTestStatus = diskServiceInterfaces.DiskSelfTestStatus{
+		Status:       info.SelfTestStatus.Status,
+		RemainingPct: info.SelfTestStatus.RemainingPct,
+	}
+	data.SmartCapability = info.SmartCapability
+
+	if len(info.SCSISelfTestResults) > 0 {
+		data.SCSISelfTestResults = make([]diskServiceInterfaces.DiskSCSISelfTestEntry, len(info.SCSISelfTestResults))
+		for i, e := range info.SCSISelfTestResults {
+			data.SCSISelfTestResults[i] = diskServiceInterfaces.DiskSCSISelfTestEntry{
+				Type:          e.Type,
+				Status:        e.Status,
+				LifetimeHours: e.LifetimeHours,
+				LBA:           e.LBA,
+				SenseKey:      e.SenseKey,
+				ASC:           e.ASC,
+				ASCQ:          e.ASCQ,
+			}
+		}
+	}
 
 	if len(info.Attributes) > 0 {
 		data.Attributes = make([]diskServiceInterfaces.ATASmartAttribute, len(info.Attributes))
 
 		for i, attr := range info.Attributes {
+			state := smart.AtaAttrState(attr.Value, attr.Worst, attr.Threshold)
+			whenFailed := ""
+			switch state {
+			case smart.AttrStateFailedNow:
+				whenFailed = "FAILING_NOW"
+			case smart.AttrStateFailedPast:
+				whenFailed = "In_the_past"
+			}
+
 			data.Attributes[i] = diskServiceInterfaces.ATASmartAttribute{
 				Page:      int(attr.Page),
 				ID:        int(attr.ID),
-				Name:      attr.Name,
+				Name:      strings.ReplaceAll(attr.Name, "_", " "),
 				Value:     attr.Value,
 				Worst:     attr.Worst,
 				Thresh:    attr.Threshold,
 				RawValue:  int64(attr.RawValue),
 				RawString: attr.TextValue,
+				State:     state,
+				WhenFailed: whenFailed,
+				PreFailure:     attr.Flags.PreFailure,
+				Online:         attr.Flags.Online,
+				Performance:    attr.Flags.Performance,
+				ErrorRate:      attr.Flags.ErrorRate,
+				EventCount:     attr.Flags.EventCount,
+				AutoKeep:       attr.Flags.SelfPreserving,
 			}
 		}
 	}
@@ -256,69 +293,355 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 	}
 
 	if data, ok := smartData.(diskServiceInterfaces.SmartData); ok {
-		if strings.ToUpper(data.Device.Protocol) == "SCSI" {
-			return 0, errors.New("wearout not available for SCSI protocol")
-		}
-
-		const (
-			MaxLifespanHours = 50000.0
-			SectorPenalty    = 10.0
-		)
-
-		var wear177, wear232, wear233 *float64
-
-		powerOnHours := float64(data.PowerOnHours)
-		reallocatedSectors := 0
+		var wear177, wear202, wear230, wear231, wear232, wear233 *float64
 
 		for _, attr := range data.Attributes {
 			switch attr.ID {
-			case 5: // Reallocated Sector Count
-				reallocatedSectors = int(attr.RawValue)
-
-			case 177: // Wear Leveling Count
+			case 177:
 				if attr.Value > 0 {
 					val := 100.0 - float64(attr.Value)
 					wear177 = &val
 				}
-
-			case 233: // Media Wearout Indicator
+			case 202:
+				if attr.Value > 0 {
+					val := 100.0 - float64(attr.Value)
+					wear202 = &val
+				}
+			case 230:
+				if attr.Value > 0 {
+					val := 100.0 - float64(attr.Value)
+					wear230 = &val
+				}
+			case 231:
+				if attr.Value > 0 {
+					val := 100.0 - float64(attr.Value)
+					wear231 = &val
+				}
+			case 232:
+				if attr.Value > 0 {
+					val := 100.0 - float64(attr.Value)
+					wear232 = &val
+				}
+			case 233:
 				if attr.Value > 0 {
 					val := 100.0 - float64(attr.Value)
 					wear233 = &val
 				}
-
-			case 232: // Available Reserved Space / Endurance Remaining
-				// WD/Sandisk often store % Remaining in RawValue
-				if attr.RawValue <= 100 {
-					val := 100.0 - float64(attr.RawValue)
-					wear232 = &val
-				}
 			}
 		}
 
-		// Priority 1: ID 232 (Endurance Remaining) - Usually the most explicit "Gas Gauge"
+		if wear202 != nil {
+			return *wear202, nil
+		}
+		if wear231 != nil {
+			return *wear231, nil
+		}
 		if wear232 != nil {
 			return *wear232, nil
 		}
-
-		// Priority 2: ID 233 (Media Wearout) - Common Intel Standard apparently?
 		if wear233 != nil {
 			return *wear233, nil
 		}
-
-		// Priority 3: ID 177 (Wear Leveling) - Common for generic SATA SSDs
+		if wear230 != nil {
+			return *wear230, nil
+		}
 		if wear177 != nil {
 			return *wear177, nil
 		}
 
-		// Priority 4: Fallback Heuristic (Old HDDs or cheap SSDs)
-		wearoutAge := (powerOnHours / MaxLifespanHours) * 100
-		wearoutSectors := float64(reallocatedSectors) * SectorPenalty
-		totalWearout := wearoutAge + wearoutSectors
-		totalWearout = math.Min(math.Max(totalWearout, 0), 100)
-
-		return totalWearout, nil
+		return 0, errors.New("no SSD wearout indicators found")
 	}
 
 	return 0, errors.New("unsupported SMART data type")
+}
+
+func (s *Service) RunSelfTest(disk diskServiceInterfaces.DiskInfo, testType string) error {
+	var tt uint8
+	switch testType {
+	case "short":
+		tt = 0x01
+	case "long", "extended":
+		tt = 0x02
+	case "conveyance":
+		tt = 0x03
+	case "abort":
+		tt = 0x7F
+	default:
+		return fmt.Errorf("unknown self-test type: %s", testType)
+	}
+
+	if disk.Type == "NVMe" {
+		switch tt {
+		case 0x01:
+			tt = 0x01
+		case 0x02:
+			tt = 0x02
+		case 0x7F:
+			tt = 0x0F
+		default:
+			tt = 0x01
+		}
+		if testType == "conveyance" {
+			return fmt.Errorf("conveyance self-test not supported for NVMe")
+		}
+	}
+
+	return smart.SelfTest(disk.Name, tt)
+}
+
+func (s *Service) GetSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
+	log, err := smart.ReadSelfTestLog(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskSelfTestLog{
+		InProgress:    log.InProgress,
+		ProgressPct:   log.ProgressPct,
+		ChecksumValid: log.ChecksumValid,
+		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
+	}
+
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
+			Type:          e.Type,
+			Status:        e.Status,
+			RemainingPct:  e.RemainingPct,
+			LifetimeHours: e.LifetimeHours,
+			LBA:           e.LBA,
+			NSID:          e.NSID,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
+	log, err := smart.ReadErrorLog(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskErrorLog{
+		ChecksumValid: log.ChecksumValid,
+		Entries: make([]diskServiceInterfaces.DiskErrorEntry, len(log.Entries)),
+	}
+
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskErrorEntry{
+			ErrorData:     e.ErrorData,
+			ExtendedData:  e.ExtendedData,
+			LifetimeHours: e.LifetimeHours,
+			LBA:           e.LBA,
+			Status:        e.Status,
+			Error:         e.Error,
+			SectorCount:   e.SectorCount,
+			Device:        e.Device,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetNVMEErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskNVMEErrorLog, error) {
+	log, err := smart.ReadNVMEErrorLog(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskNVMEErrorLog{
+		Entries: make([]diskServiceInterfaces.DiskNVMEErrorEntry, len(log.Entries)),
+	}
+
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskNVMEErrorEntry{
+			ErrorCount:  e.ErrorCount,
+			SQID:        e.SQID,
+			CommandID:   e.CommandID,
+			StatusField: e.StatusField,
+			ParamError:  e.ParamError,
+			LBA:         e.LBA,
+			NamespaceID: e.NamespaceID,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetSCTStatus(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSCTStatus, error) {
+	st, err := smart.ReadSCTStatus(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &diskServiceInterfaces.DiskSCTStatus{
+		FormatVersion:     st.FormatVersion,
+		SCTVersion:        st.SCTVersion,
+		SCTSpec:           st.SCTSpec,
+		StatusFlags:       st.StatusFlags,
+		DeviceState:       st.DeviceState,
+		ExtStatusCode:     st.ExtStatusCode,
+		ActionCode:        st.ActionCode,
+		FunctionCode:      st.FunctionCode,
+		LBACurrent:        st.LBACurrent,
+		CurrentTemp:       st.CurrentTemp,
+		MinTempCycle:      st.MinTempCycle,
+		MaxTempCycle:      st.MaxTempCycle,
+		LifetimeMinTemp:   st.LifetimeMinTemp,
+		LifetimeMaxTemp:   st.LifetimeMaxTemp,
+		MaxOpLimit:        st.MaxOpLimit,
+		OverTempCount:     st.OverTempCount,
+		UnderTempCount:    st.UnderTempCount,
+		SmartStatusPassed: st.SmartStatusPassed,
+		MinERCTime:        st.MinERCTime,
+	}, nil
+}
+
+func (s *Service) GetSCTTempHistory(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSCTTempHistory, error) {
+	ht, err := smart.ReadSCTTempHistory(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskSCTTempHistory{
+		SamplingPeriod: ht.SamplingPeriod,
+		Interval:       ht.Interval,
+		MaxOpLimit:     ht.MaxOpLimit,
+		OverLimit:      ht.OverLimit,
+		MinOpLimit:     ht.MinOpLimit,
+		UnderLimit:     ht.UnderLimit,
+		CBSize:         ht.CBSize,
+		CBIndex:        ht.CBIndex,
+		Samples:        make([]diskServiceInterfaces.DiskSCTTempSample, len(ht.Samples)),
+	}
+
+	for i, s := range ht.Samples {
+		result.Samples[i] = diskServiceInterfaces.DiskSCTTempSample{
+			Temperature: s.Temperature,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) AbortSelfTest(disk diskServiceInterfaces.DiskInfo) error {
+	dev := "/dev/" + disk.Name
+	return smart.AbortSelfTest(dev)
+}
+
+func (s *Service) GetLogDirectory(disk diskServiceInterfaces.DiskInfo) ([]uint8, error) {
+	dev := "/dev/" + disk.Name
+	return smart.ReadLogDirectory(dev)
+}
+
+func (s *Service) GetExtendedErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
+	dev := "/dev/" + disk.Name
+	log, err := smart.ReadExtendedErrorLog(dev)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskErrorLog{
+		ChecksumValid: log.ChecksumValid,
+		Entries: make([]diskServiceInterfaces.DiskErrorEntry, len(log.Entries)),
+	}
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskErrorEntry{
+			ErrorData:    e.ErrorData,
+			ExtendedData: e.ExtendedData,
+			LifetimeHours: e.LifetimeHours,
+			LBA:          e.LBA,
+			Status:       e.Status,
+			Error:        e.Error,
+			SectorCount:  e.SectorCount,
+			Device:       e.Device,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetExtendedSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
+	dev := "/dev/" + disk.Name
+	log, err := smart.ReadExtendedSelfTestLog(dev)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskSelfTestLog{
+		ChecksumValid: log.ChecksumValid,
+		Entries:    make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
+		InProgress: log.InProgress,
+	}
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
+			Type:          e.Type,
+			Status:        e.Status,
+			RemainingPct:  e.RemainingPct,
+			LifetimeHours: e.LifetimeHours,
+			LBA:           e.LBA,
+			NSID:          e.NSID,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetDeviceStatistics(disk diskServiceInterfaces.DiskInfo) ([]diskServiceInterfaces.DiskAttribute, error) {
+	dev := "/dev/" + disk.Name
+	attrs, err := smart.ReadDeviceStatistics(dev)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]diskServiceInterfaces.DiskAttribute, len(attrs))
+	for i, a := range attrs {
+		result[i] = diskServiceInterfaces.DiskAttribute{
+			Page:      a.Page,
+			ID:        a.ID,
+			Name:      a.Name,
+			Value:     a.Value,
+			Worst:     a.Worst,
+			Threshold: a.Threshold,
+			RawValue:  a.RawValue,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetSelectiveSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
+	dev := "/dev/" + disk.Name
+	log, err := smart.ReadSelectiveSelfTestLog(dev)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &diskServiceInterfaces.DiskSelfTestLog{
+		ChecksumValid: log.ChecksumValid,
+		Entries:    make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
+		InProgress: log.InProgress,
+	}
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
+			Type:          e.Type,
+			Status:        e.Status,
+			RemainingPct:  e.RemainingPct,
+			LifetimeHours: e.LifetimeHours,
+			LBA:           e.LBA,
+			NSID:          e.NSID,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) SetSCTFeatureControl(disk diskServiceInterfaces.DiskInfo, featureCode uint16, state uint16, persistent bool) error {
+	dev := "/dev/" + disk.Name
+	return smart.SetSCTFeatureControl(dev, featureCode, state, persistent)
+}
+
+func (s *Service) SetSCTErrorRecoveryControl(disk diskServiceInterfaces.DiskInfo, read bool, timeLimit uint16) error {
+	dev := "/dev/" + disk.Name
+	return smart.SetSCTErrorRecoveryControl(dev, read, timeLimit)
 }

@@ -376,6 +376,61 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Update Download
+// @Description Update a download's metadata (name, type, extraction flags)
+// @Tags Utilities
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Download ID"
+// @Param request body utilitiesServiceInterfaces.UpdateDownloadRequest true "Update Download Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /utilities/downloads/{id} [put]
+func UpdateDownload(utilitiesService *utilities.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := utils.GetIdFromParam(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		var request utilitiesServiceInterfaces.UpdateDownloadRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := utilitiesService.UpdateDownload(uint(id), request); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_update_download",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "download_updated",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Download File
 // @Description Download a file from a signed URL
 // @Tags Utilities

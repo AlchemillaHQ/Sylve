@@ -22,7 +22,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -90,9 +89,6 @@ type Service struct {
 	ntfySender    NtfySender
 	emailSender   EmailSender
 	discordSender DiscordSender
-
-	deletedKinds   map[string]bool
-	deletedKindsMu sync.Mutex
 }
 
 type ListScope string
@@ -256,23 +252,12 @@ func NewService(db *gorm.DB) *Service {
 	s.ntfySender = s.sendNtfy
 	s.emailSender = s.sendEmail
 	s.discordSender = s.sendDiscord
-	s.deletedKinds = make(map[string]bool)
 
 	return s
 }
 
 func (s *Service) SetDiskService(ds diskServiceInterfaces.DiskServiceInterface) {
 	s.DiskService = ds
-}
-
-func (s *Service) recordDeletedKind(kind string) {
-	if !notifier.IsDiskSmartKind(kind) {
-		return
-	}
-
-	s.deletedKindsMu.Lock()
-	s.deletedKinds[strings.TrimSpace(strings.ToLower(kind))] = true
-	s.deletedKindsMu.Unlock()
 }
 
 func (s *Service) SetNtfySender(sender NtfySender) {
@@ -1171,11 +1156,11 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 			return err
 		}
 
-		if err := tx.Delete(&rule).Error; err != nil {
+		rule.UserDisabled = true
+		if err := tx.Save(&rule).Error; err != nil {
 			return err
 		}
 
-		s.recordDeletedKind(rule.Kind)
 		return nil
 	})
 	if err != nil {
@@ -1190,6 +1175,9 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string)
 	var rule models.NotificationKindRule
 	err := tx.Where("kind = ?", kind).First(&rule).Error
 	if err == nil {
+		if rule.UserDisabled {
+			return rule, nil
+		}
 		if rule.Config == "" && defaultConfig != "" {
 			rule.Config = defaultConfig
 			if saveErr := tx.Save(&rule).Error; saveErr != nil {
@@ -1206,9 +1194,9 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string)
 	rule = models.NotificationKindRule{
 		Kind:           kind,
 		UIEnabled:      true,
-		NtfyEnabled:    true,
-		EmailEnabled:   true,
-		DiscordEnabled: true,
+		NtfyEnabled:    false,
+		EmailEnabled:   false,
+		DiscordEnabled: false,
 		Config:         defaultConfig,
 	}
 	if err := tx.Create(&rule).Error; err != nil {
@@ -1296,11 +1284,15 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 		}
 		info := deviceInfo{key: disk.Device, label: label}
 		allDisks = append(allDisks, info)
-		if disk.Type == "SSD" || disk.Type == "NVMe" {
-			ssdDisks = append(ssdDisks, info)
-		}
 		if disk.Type == "NVMe" {
+			ssdDisks = append(ssdDisks, info)
 			nvmeDisks = append(nvmeDisks, info)
+		} else if disk.Type == "SSD" {
+			if sd, ok := disk.SmartData.(diskServiceInterfaces.SmartData); ok {
+				if sd.Device.Protocol != "SCSI" {
+					ssdDisks = append(ssdDisks, info)
+				}
+			}
 		}
 	}
 
@@ -1385,6 +1377,8 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 }
 
 func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateDefinition) error {
+	expectedKinds := make(map[string]bool)
+
 	for _, definition := range definitions {
 		if !definition.AutoCreateRules {
 			continue
@@ -1396,15 +1390,26 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 				return err
 			}
 
-			s.deletedKindsMu.Lock()
-			deleted := s.deletedKinds[kind]
-			s.deletedKindsMu.Unlock()
-			if deleted {
-				continue
-			}
+			expectedKinds[kind] = true
 
 			if _, err := s.ensureKindRule(tx, kind, definition.DefaultConfig); err != nil {
 				return err
+			}
+		}
+	}
+
+	existing, err := s.listManagedRuleRows(tx)
+	if err != nil {
+		return err
+	}
+
+	for _, rule := range existing {
+		if rule.UserDisabled {
+			continue
+		}
+		if _, expected := expectedKinds[rule.Kind]; !expected {
+			if deleteErr := tx.Delete(&rule).Error; deleteErr != nil {
+				return deleteErr
 			}
 		}
 	}

@@ -21,6 +21,9 @@ export const DownloadSchema = z.object({
 	extractedPath: z.string().optional(),
 	error: z.string().optional(),
 	status: z.string(),
+	automaticExtraction: z.boolean(),
+	automaticRawConversion: z.boolean(),
+	ignoreTLS: z.boolean(),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });

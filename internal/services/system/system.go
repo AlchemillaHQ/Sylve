@@ -32,6 +32,8 @@ type Service struct {
 	tunMutex    sync.Mutex
 	tunCache    []sysctl.Tunable
 	tunCachedAt time.Time
+
+	MdnsRebuild func() error
 }
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {

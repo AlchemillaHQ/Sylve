@@ -29,6 +29,13 @@ type DownloadStartPayload struct {
 	ID uint `json:"id"`
 }
 
+type UpdateDownloadRequest struct {
+	Name                   *string                        `json:"name"`
+	UType                  *utilitiesModels.DownloadUType `json:"uType"`
+	AutomaticExtraction    *bool                          `json:"automaticExtraction"`
+	AutomaticRawConversion *bool                          `json:"automaticRawConversion"`
+}
+
 type DownloadPostProcPayload struct {
 	ID uint `json:"id"`
 }

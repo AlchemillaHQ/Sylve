@@ -255,19 +255,23 @@ export function isValidEmail(email: string): boolean {
 export function addTrackersToMagnet(uri: string): string {
     try {
         const parsed = magnetDecode(uri);
-        if (!parsed.tr || parsed.tr.length === 0) {
-            const trackers = [
-                'udp://tracker.opentrackr.org:1337/announce',
-                'udp://tracker.coppersurfer.tk:6969/announce',
-                'udp://tracker.internetwarriors.net:1337/announce',
-                'udp://tracker.openbittorrent.com:80/announce',
-                'udp://tracker.publicbt.com:80/announce'
-            ];
+        const knownTrackers = [
+            'udp://tracker.opentrackr.org:1337/announce',
+            'udp://open.demonii.com:1337/announce',
+            'udp://tracker.torrent.eu.org:451/announce',
+            'udp://explodie.org:6969/announce',
+            'udp://open.stealth.si:80/announce',
+            'udp://tracker.moeking.me:6969/announce',
+            'udp://tracker1.bt.moack.co.kr:80/announce',
+            'udp://tracker.bitsearch.to:1337/announce',
+            'udp://tracker-udp.gbitt.info:80/announce',
+            'udp://new-line.net:6969/announce'
+        ];
 
-            parsed.tr = trackers;
-            parsed.announce = trackers;
-        }
-
+        const existing = (parsed.tr && Array.isArray(parsed.tr)) ? parsed.tr : [];
+        const merged = [...new Set([...existing, ...knownTrackers])];
+        parsed.tr = merged;
+        parsed.announce = merged;
         return magnetEncode(parsed);
     } catch (e) {
         console.error('Invalid magnet URI:', e);

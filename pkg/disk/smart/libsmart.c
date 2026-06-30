@@ -36,9 +36,10 @@
 /* Default page lists */
 
 smart_page_list_t pg_list_ata = {
-	.pg_count = 2,
+	.pg_count = 3,
 	.pages = {
 		{ .id = PAGE_ID_ATA_SMART_READ_DATA, .bytes = 512 },
+		{ .id = PAGE_ID_ATA_SMART_READ_THRESHOLDS, .bytes = 512 },
 		{ .id = PAGE_ID_ATA_SMART_RET_STATUS, .bytes = 4 }
 	}
 };
@@ -53,7 +54,7 @@ smart_page_list_t pg_list_nvme = {
 };
 
 smart_page_list_t pg_list_scsi = {
-	.pg_count = 8,
+	.pg_count = 12,
 	.pages = {
 		{ .id = PAGE_ID_SCSI_WRITE_ERR, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_READ_ERR, .bytes = 128 },
@@ -63,6 +64,10 @@ smart_page_list_t pg_list_scsi = {
 		{ .id = PAGE_ID_SCSI_TEMPERATURE, .bytes = 64 },
 		{ .id = PAGE_ID_SCSI_START_STOP_CYCLE, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_INFO_EXCEPTION, .bytes = 64 },
+		{ .id = PAGE_ID_SCSI_SELF_TEST, .bytes = 512 },
+		{ .id = PAGE_ID_SCSI_SS_MEDIA, .bytes = 128 },
+		{ .id = PAGE_ID_SCSI_BG_SCAN, .bytes = 128 },
+		{ .id = PAGE_ID_SCSI_PROTO_SPECIFIC, .bytes = 256 },
 	}
 };
 
@@ -71,6 +76,16 @@ static uint32_t __smart_buffer_size(smart_h h);
 static smart_map_t *__smart_map(smart_h h, smart_buf_t *sb);
 static smart_page_list_t *__smart_page_list(smart_h h);
 static int32_t __smart_read_pages(smart_h h, smart_buf_t *sb);
+
+static void __smart_map_self_test_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm, uint8_t log_addr);
+
+static void __smart_map_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm);
+
+static void __smart_map_nvme_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm);
+
+static void __smart_map_sct_status(smart_t *s, smart_buf_t *sb, smart_map_t *sm);
+
+static void __smart_map_gpl_raw(smart_buf_t *sb, smart_map_t *sm, uint8_t logaddr);
 
 static char *
 smart_proto_str(smart_protocol_e p)
@@ -189,6 +204,266 @@ smart_read_out:
 	return sm;
 }
 
+int32_t
+smart_self_test(smart_h h, uint8_t test_type)
+{
+	return device_self_test(h, test_type);
+}
+
+smart_map_t *
+smart_read_log(smart_h h, uint8_t log_addr, size_t size)
+{
+	smart_t *s = h;
+	smart_buf_t *sb = NULL;
+	smart_map_t *sm = NULL;
+
+	if (s == NULL)
+		return NULL;
+
+	sb = calloc(1, sizeof(smart_buf_t));
+	if (sb) {
+		sb->protocol = s->protocol;
+
+		sb->b = malloc(size);
+		sb->bsize = size;
+
+		if (sb->b == NULL) {
+			free(sb);
+			return NULL;
+		}
+
+		if (device_read_smart_log(h, log_addr, sb->b, size) < 0) {
+			free(sb->b);
+			free(sb);
+			return NULL;
+		}
+
+		sb->attr_count = 32;
+
+		sm = malloc(sizeof(smart_map_t) + (32 * sizeof(smart_attr_t)));
+		if (sm) {
+			memset(sm, 0, sizeof(smart_map_t) + (32 * sizeof(smart_attr_t)));
+			sm->sb = sb;
+			sm->count = 32;
+
+			if (log_addr == LOG_ADDR_SELF_TEST) {
+				__smart_map_self_test_log(s, sb, sm, log_addr);
+			} else if (log_addr == LOG_ADDR_ERROR_LOG) {
+				if (s->protocol == SMART_PROTO_NVME)
+					__smart_map_nvme_error_log(s, sb, sm);
+				else
+					__smart_map_error_log(s, sb, sm);
+			} else if (log_addr == GPL_ADDR_EXT_ERROR_LOG) {
+				__smart_map_error_log(s, sb, sm);
+			} else if (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG ||
+			           log_addr == 0x09) {
+				__smart_map_self_test_log(s, sb, sm, log_addr);
+			} else if (log_addr == GPL_ADDR_SCT_STATUS) {
+				__smart_map_sct_status(s, sb, sm);
+			}
+		} else {
+			free(sb->b);
+			free(sb);
+		}
+	}
+
+	return sm;
+}
+
+smart_map_t *
+smart_read_error_log(smart_h h)
+{
+	return smart_read_log(h, LOG_ADDR_ERROR_LOG, 512);
+}
+
+smart_map_t *
+smart_read_log_directory(smart_h h)
+{
+	return smart_read_log(h, 0x00, 512);
+}
+
+smart_map_t *
+smart_read_gpl_log(smart_h h, uint8_t logaddr, uint8_t page, size_t size)
+{
+	smart_t *s = h;
+	smart_buf_t *sb = NULL;
+	smart_map_t *sm = NULL;
+
+	if (s == NULL)
+		return NULL;
+
+	sb = calloc(1, sizeof(smart_buf_t));
+	if (sb) {
+		sb->protocol = s->protocol;
+		sb->b = malloc(size);
+		sb->bsize = size;
+
+		if (sb->b == NULL) {
+			free(sb);
+			return NULL;
+		}
+
+		if (device_read_log_ext(h, logaddr, page, sb->b, size) < 0) {
+			free(sb->b);
+			free(sb);
+			return NULL;
+		}
+
+		sb->attr_count = 32;
+
+		sm = malloc(sizeof(smart_map_t) + (32 * sizeof(smart_attr_t)));
+		if (sm) {
+			memset(sm, 0, sizeof(smart_map_t) + (32 * sizeof(smart_attr_t)));
+			sm->sb = sb;
+			sm->count = 32;
+
+			if (logaddr == GPL_ADDR_SCT_STATUS)
+				__smart_map_sct_status(s, sb, sm);
+			else
+				__smart_map_gpl_raw(sb, sm, logaddr);
+		} else {
+			free(sb->b);
+			free(sb);
+		}
+	}
+
+	return sm;
+}
+
+int32_t
+smart_write_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t size)
+{
+	return device_write_smart_log(h, log_addr, buf, size);
+}
+
+smart_map_t *
+smart_read_sct_temp_history(smart_h h)
+{
+	smart_t *s = h;
+	smart_buf_t *sb = NULL;
+	smart_map_t *sm = NULL;
+	uint8_t *cmd_buf = NULL;
+	uint8_t *raw = NULL;
+	uint16_t fmt_ver;
+
+	if (s == NULL || s->protocol != SMART_PROTO_ATA)
+		return NULL;
+
+	/*
+	 * Step 1: Read SCT status to check for executing commands
+	 * and validate format version.
+	 */
+	raw = calloc(1, 512);
+	if (!raw)
+		return NULL;
+	if (device_read_smart_log(h, GPL_ADDR_SCT_STATUS, raw, 512) < 0) {
+		free(raw);
+		return NULL;
+	}
+
+	fmt_ver = raw[0] | (raw[1] << 8);
+	if (fmt_ver != 2 && fmt_ver != 3) {
+		dprintf("Unknown SCT format version %u\n", fmt_ver);
+		free(raw);
+		return NULL;
+	}
+
+	uint16_t ext_status = raw[14] | (raw[15] << 8);
+	if (ext_status == 0xffff) {
+		free(raw);
+		return NULL;
+	}
+
+	/*
+	 * Step 2: Write SCT Data Table command via SMART WRITE LOG 0xE0.
+	 * action_code=5 (Data Table), function_code=1 (Read), table_id=2 (Temp History).
+	 */
+	cmd_buf = calloc(1, 512);
+	if (!cmd_buf) {
+		free(raw);
+		return NULL;
+	}
+	cmd_buf[0] = 5;   cmd_buf[1] = 0;   /* action_code */
+	cmd_buf[2] = 1;   cmd_buf[3] = 0;   /* function_code */
+	cmd_buf[4] = 2;   cmd_buf[5] = 0;   /* table_id */
+
+	if (device_write_smart_log(h, GPL_ADDR_SCT_STATUS, cmd_buf, 512) < 0) {
+		free(cmd_buf);
+		free(raw);
+		return NULL;
+	}
+	free(cmd_buf);
+
+	/*
+	 * Step 3: Read temperature history via SMART READ LOG 0xE1.
+	 */
+	memset(raw, 0, 512);
+	if (device_read_smart_log(h, GPL_ADDR_SCT_TEMP_HIST, raw, 512) < 0) {
+		free(raw);
+		return NULL;
+	}
+
+	/*
+	 * Step 4: Re-read SCT status and verify the command completed.
+	 */
+	cmd_buf = calloc(1, 512);
+	if (!cmd_buf) {
+		free(raw);
+		return NULL;
+	}
+	if (device_read_smart_log(h, GPL_ADDR_SCT_STATUS, cmd_buf, 512) < 0) {
+		free(cmd_buf);
+		free(raw);
+		return NULL;
+	}
+	uint16_t verify_ext = cmd_buf[14] | (cmd_buf[15] << 8);
+	uint16_t verify_action = cmd_buf[16] | (cmd_buf[17] << 8);
+	uint16_t verify_func = cmd_buf[18] | (cmd_buf[19] << 8);
+	if (!(verify_ext == 0 && verify_action == 5 && verify_func == 1)) {
+		dprintf("SCT verify failed: ext=0x%04x action=%u func=%u\n",
+		    verify_ext, verify_action, verify_func);
+		free(cmd_buf);
+		free(raw);
+		return NULL;
+	}
+	free(cmd_buf);
+
+	sb = calloc(1, sizeof(smart_buf_t));
+	if (!sb) {
+		free(raw);
+		return NULL;
+	}
+	sb->protocol = s->protocol;
+	sb->b = raw;
+	sb->bsize = 512;
+	sb->attr_count = 1;
+
+	sm = malloc(sizeof(smart_map_t) + sizeof(smart_attr_t));
+	if (sm) {
+		memset(sm, 0, sizeof(smart_map_t) + sizeof(smart_attr_t));
+		sm->sb = sb;
+		sm->count = 1;
+		__smart_map_gpl_raw(sb, sm, GPL_ADDR_SCT_TEMP_HIST);
+	} else {
+		free(raw);
+		free(sb);
+	}
+
+	return sm;
+}
+
+int32_t
+smart_nvme_identify_ctrl(smart_h h, void *buf, size_t size)
+{
+	return device_nvme_identify_ctrl(h, buf, size);
+}
+
+int32_t
+smart_enable(smart_h h)
+{
+	return device_smart_enable(h);
+}
+
 void
 smart_free(smart_map_t *sm)
 {
@@ -213,6 +488,12 @@ smart_free(smart_map_t *sm)
 		smart_map_t *tm = sm->attr[i].thresh;
 
 		if (tm) {
+			uint32_t j;
+			for (j = 0; j < tm->count; j++) {
+				if (tm->attr[j].raw) {
+					free(tm->attr[j].raw);
+				}
+			}
 			free(tm);
 		}
 
@@ -330,7 +611,7 @@ __smart_print_thresh(smart_map_t *tm, uint32_t flags)
 	if (flags & SMART_OPEN_F_THRESH)
 		do_thresh = true;
 
-	if (do_thresh && tm) {
+	if (do_thresh && tm && tm->count >= 4) {
 		__smart_print_val(do_hex ? THRESH_HEX : THRESH_DEC,
 				*((uint16_t *)tm->attr[0].raw),
 				*((uint8_t *)tm->attr[1].raw),
@@ -497,7 +778,7 @@ smart_print_device_info(smart_h h)
 	if (*s->info.device != '\0')
 		__smart_print_val(DEV_STR, s->info.device);
 	if (*s->info.rev != '\0')
-		__smart_print_val(REV_STR, s->info.device);
+		__smart_print_val(REV_STR, s->info.rev);
 	if (*s->info.serial != '\0')
 		__smart_print_val(SERIAL_STR, s->info.serial);
 }
@@ -546,7 +827,7 @@ __smart_attribute_max(smart_buf_t *sb)
 	if (sb != NULL) {
 		switch (sb->protocol) {
 		case SMART_PROTO_ATA:
-			count = __smart_attr_max_ata(sb);
+			count = __smart_attr_max_ata(sb) + 3;
 			break;
 		case SMART_PROTO_NVME:
 			count = __smart_attr_max_nvme(sb);
@@ -583,48 +864,40 @@ __smart_buffer_size(smart_h h)
 	return size;
 }
 
-/* Map SMART READ DATA threshold attributes */
+static void __smart_map_ata_read_data(smart_map_t *sm, void *buf, size_t bsize, uint8_t *threshold_by_id);
+
 static smart_map_t *
-__smart_map_ata_thresh(uint8_t *b)
+__smart_make_attr_thresh(uint8_t id, uint8_t threshold)
 {
-	smart_map_t *sm = NULL;
+	smart_map_t *thm;
+	uint8_t *tbuf;
 
-	sm = malloc(sizeof(smart_map_t) + (4 * sizeof(smart_attr_t)));
-	if (sm) {
-		uint32_t i;
+	thm = calloc(1, sizeof(smart_map_t) + sizeof(smart_attr_t));
+	if (!thm)
+		return NULL;
 
-		sm->count = 4;
-
-		sm->attr[0].page = 0;
-		sm->attr[0].id = 0;
-		sm->attr[0].bytes = 2;
-		sm->attr[0].flags = 0;
-		sm->attr[0].raw = b;
-		sm->attr[0].thresh = NULL;
-
-		b +=2;
-
-		for (i = 1; i < sm->count; i++) {
-			sm->attr[i].page = 0;
-			sm->attr[i].id = i;
-			sm->attr[i].bytes = 1;
-			sm->attr[i].flags = 0;
-			sm->attr[i].raw = b;
-			sm->attr[i].thresh = NULL;
-
-			b ++;
-
-			if (i == 2)
-				b += 6;
-		}
+	tbuf = malloc(2);
+	if (!tbuf) {
+		free(thm);
+		return NULL;
 	}
+	tbuf[0] = 0;
+	tbuf[1] = threshold;
 
-	return sm;
+	thm->count = 1;
+	thm->attr[0].page = 0;
+	thm->attr[0].id = id;
+	thm->attr[0].bytes = 2;
+	thm->attr[0].flags = 0;
+	thm->attr[0].raw = tbuf;
+	thm->attr[0].thresh = NULL;
+
+	return thm;
 }
 
 /* Map SMART READ DATA attributes */
 static void
-__smart_map_ata_read_data(smart_map_t *sm, void *buf, size_t bsize)
+__smart_map_ata_read_data(smart_map_t *sm, void *buf, size_t bsize, uint8_t *threshold_by_id)
 {
 	uint8_t *b = NULL;
 	uint8_t *b_end = NULL;
@@ -652,16 +925,39 @@ __smart_map_ata_read_data(smart_map_t *sm, void *buf, size_t bsize)
 			sm->attr[a].id = b[0];
 			sm->attr[a].description = __smart_ata_desc(
 			    PAGE_ID_ATA_SMART_READ_DATA, sm->attr[a].id);
-			sm->attr[a].bytes = 6;
+			sm->attr[a].bytes = 12;
 			sm->attr[a].flags = 0;
-			sm->attr[a].raw = b + 5;
-			sm->attr[a].thresh = __smart_map_ata_thresh(b + 1);
+			sm->attr[a].raw = b;
+			if (threshold_by_id && threshold_by_id[b[0]] > 0) {
+				sm->attr[a].thresh = __smart_make_attr_thresh(
+				    b[0], threshold_by_id[b[0]]);
+			} else {
+				sm->attr[a].thresh = NULL;
+			}
 
 			a++;
 		}
 
 		b += 12;
 	}
+
+	sm->attr[a].page = PAGE_ID_ATA_SMART_READ_DATA;
+	sm->attr[a].id = 255;
+	sm->attr[a].description = "Self-Test Status";
+	sm->attr[a].bytes = 1;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 1;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = PAGE_ID_ATA_SMART_READ_DATA;
+	sm->attr[a].id = 254;
+	sm->attr[a].description = "SMART Capability";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 6;
+	sm->attr[a].thresh = NULL;
+	a++;
 
 	sm->count = a;
 }
@@ -696,17 +992,47 @@ __smart_map_ata(smart_h h, smart_buf_t *sb, smart_map_t *sm)
 	smart_t *s = h;
 	smart_page_list_t *pg_list = NULL;
 	uint8_t *b = NULL;
+	uint8_t *thresh_buf = NULL;
+	uint8_t threshold_by_id[256];
 	uint32_t p;
 
 	pg_list = s->pg_list;
 	b = sb->b;
 
+	memset(threshold_by_id, 0, sizeof(threshold_by_id));
+
+	for (p = 0; p < pg_list->pg_count; p++) {
+		if (pg_list->pages[p].id == PAGE_ID_ATA_SMART_READ_THRESHOLDS) {
+			thresh_buf = b;
+			b += pg_list->pages[p].bytes;
+			continue;
+		}
+		b += pg_list->pages[p].bytes;
+	}
+
+	if (thresh_buf) {
+		uint8_t *tb = thresh_buf + 2;
+		uint32_t i;
+		for (i = 0; i < 30; i++) {
+			uint8_t id = tb[0];
+			uint8_t thresh = tb[1];
+			if (id > 0 && id < 255) {
+				threshold_by_id[id] = thresh;
+			}
+			tb += 12;
+		}
+	}
+
+	b = sb->b;
 	sm->count = 0;
 
 	for (p = 0; p < pg_list->pg_count; p++) {
 		switch (pg_list->pages[p].id) {
 		case PAGE_ID_ATA_SMART_READ_DATA:
-			__smart_map_ata_read_data(sm, b, pg_list->pages[p].bytes);
+			__smart_map_ata_read_data(sm, b, pg_list->pages[p].bytes,
+			    threshold_by_id);
+			break;
+		case PAGE_ID_ATA_SMART_READ_THRESHOLDS:
 			break;
 		case PAGE_ID_ATA_SMART_RET_STATUS:
 			__smart_map_ata_return_status(sm, b, pg_list->pages[p].bytes);
@@ -796,6 +1122,341 @@ __smart_map_nvme(smart_buf_t *sb, smart_map_t *sm)
 	}
 
 	sm->count = a;
+}
+
+static void
+__smart_map_self_test_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm, uint8_t log_addr)
+{
+	uint8_t *b = sb->b;
+	uint32_t a = 0;
+
+	sm->count = 0;
+
+	if (s->protocol == SMART_PROTO_NVME && sb->bsize >= 4) {
+		uint8_t cur_op = b[0] & 0x0F;
+		uint8_t cur_pct = b[1] & 0x7F;
+
+		sm->attr[a].page = NVME_LOG_SELF_TEST;
+		sm->attr[a].id = 0;
+		sm->attr[a].description = cur_op ? "Self-Test In Progress" : "Self-Test Idle";
+		sm->attr[a].bytes = 1;
+		sm->attr[a].flags = 0;
+		sm->attr[a].raw = b;
+		sm->attr[a].thresh = NULL;
+		a++;
+
+		sm->attr[a].page = NVME_LOG_SELF_TEST;
+		sm->attr[a].id = 1;
+		sm->attr[a].description = "Current Completion";
+		sm->attr[a].bytes = 1;
+		sm->attr[a].flags = 0;
+		sm->attr[a].raw = b + 1;
+		sm->attr[a].thresh = NULL;
+		a++;
+
+		if (sb->bsize >= 564) {
+			uint32_t i;
+			for (i = 0; i < 20 && a < 30; i++) {
+				uint8_t *entry = b + 4 + (i * 28);
+				uint8_t status = entry[0];
+				uint8_t op = (status >> 4) & 0x0F;
+
+				if (op == 0x0 && (status & 0x0F) == 0x0F)
+					continue;
+
+				sm->attr[a].page = NVME_LOG_SELF_TEST;
+				sm->attr[a].id = 2 + i;
+				sm->attr[a].description = "Self-Test Result";
+				sm->attr[a].bytes = 28;
+				sm->attr[a].flags = 0;
+				sm->attr[a].raw = entry;
+				sm->attr[a].thresh = NULL;
+				a++;
+			}
+		}
+	} else if (s->protocol == SMART_PROTO_ATA && sb->bsize >= 512) {
+		uint32_t entry_size = (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG) ? 26 : 24;
+		uint32_t max_entries = (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG) ? 19 : 21;
+		uint32_t entry_offset = (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG) ? 0 : 2;
+		uint8_t most_recent = (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG) ? 0 : b[508];
+		int i;
+
+		for (i = max_entries - 1; i >= 0 && a < 30; i--) {
+			int j = (i + most_recent) % max_entries;
+			uint8_t *entry = b + entry_offset + (j * entry_size);
+			uint8_t type = entry[0];
+			uint8_t status = entry[1];
+
+			if (type == 0 && status == 0)
+				continue;
+
+			sm->attr[a].page = log_addr;
+			sm->attr[a].id = max_entries - i;
+			sm->attr[a].description = "Self-Test Result";
+			sm->attr[a].bytes = entry_size;
+			sm->attr[a].flags = 0;
+			sm->attr[a].raw = entry;
+			sm->attr[a].thresh = NULL;
+			a++;
+		}
+	}
+
+	sm->count = a;
+}
+
+static void
+__smart_map_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm)
+{
+	uint8_t *b = sb->b;
+	uint32_t a = 0;
+	uint8_t err_idx;
+	int i;
+
+	sm->count = 0;
+
+	if (sb->bsize < 512)
+		return;
+
+	err_idx = b[1];
+
+	for (i = 0; i < 5 && a < 30; i++) {
+		int entry_idx = (err_idx + i) % 5;
+		uint8_t *entry = b + 2 + (entry_idx * 90);
+
+		if (entry[0] == 0 && entry[2] == 0)
+			continue;
+
+		sm->attr[a].page = LOG_ADDR_ERROR_LOG;
+		sm->attr[a].id = i;
+		sm->attr[a].description = "ATA Error";
+		sm->attr[a].bytes = 90;
+		sm->attr[a].flags = 0;
+		sm->attr[a].raw = entry;
+		sm->attr[a].thresh = NULL;
+		a++;
+	}
+
+	sm->count = a;
+}
+
+static void
+__smart_map_nvme_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm)
+{
+	uint8_t *b = sb->b;
+	uint32_t a = 0;
+	uint32_t entry_size = 64;
+	uint32_t max_entries = 5;
+	uint32_t i;
+
+	sm->count = 0;
+
+	if (sb->bsize < entry_size)
+		return;
+
+	if (sb->bsize / entry_size < max_entries)
+		max_entries = (uint32_t)(sb->bsize / entry_size);
+
+	for (i = 0; i < max_entries && a < 30; i++) {
+		uint8_t *entry = b + (i * entry_size);
+		uint64_t err_cnt = (uint64_t)entry[0] | ((uint64_t)entry[1] << 8) |
+			((uint64_t)entry[2] << 16) | ((uint64_t)entry[3] << 24) |
+			((uint64_t)entry[4] << 32) | ((uint64_t)entry[5] << 40) |
+			((uint64_t)entry[6] << 48) | ((uint64_t)entry[7] << 56);
+
+		if (err_cnt == 0)
+			continue;
+
+		sm->attr[a].page = NVME_LOG_ERROR;
+		sm->attr[a].id = i;
+		sm->attr[a].description = "NVMe Error";
+		sm->attr[a].bytes = entry_size;
+		sm->attr[a].flags = 0;
+		sm->attr[a].raw = entry;
+		sm->attr[a].thresh = NULL;
+		a++;
+	}
+
+	sm->count = a;
+}
+
+static void
+__smart_map_sct_status(smart_t *s, smart_buf_t *sb, smart_map_t *sm)
+{
+	uint8_t *b = sb->b;
+	uint32_t a = 0;
+
+	sm->count = 0;
+
+	if (sb->bsize < 512)
+		return;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 0;
+	sm->attr[a].description = "SCT Format Version";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 1;
+	sm->attr[a].description = "SCT Device State";
+	sm->attr[a].bytes = 1;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 10;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 2;
+	sm->attr[a].description = "Current Temperature";
+	sm->attr[a].bytes = 1;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 200;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 3;
+	sm->attr[a].description = "Min/Max Temperature (this cycle)";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 201;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 4;
+	sm->attr[a].description = "Lifetime Min/Max Temperature";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 203;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 5;
+	sm->attr[a].description = "Over Temperature Limit Count";
+	sm->attr[a].bytes = 4;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 206;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 6;
+	sm->attr[a].description = "Under Temperature Limit Count";
+	sm->attr[a].bytes = 4;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 210;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 7;
+	sm->attr[a].description = "Smart Status";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 214;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 8;
+	sm->attr[a].description = "Max Operation Limit";
+	sm->attr[a].bytes = 1;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 205;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 9;
+	sm->attr[a].description = "SCT Version";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 2;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 10;
+	sm->attr[a].description = "SCT Spec";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 4;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 11;
+	sm->attr[a].description = "SCT Status Flags";
+	sm->attr[a].bytes = 4;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 6;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 12;
+	sm->attr[a].description = "SCT Ext Status Code";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 14;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 13;
+	sm->attr[a].description = "SCT Action Code";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 16;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 14;
+	sm->attr[a].description = "SCT Function Code";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 18;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 15;
+	sm->attr[a].description = "SCT LBA Current";
+	sm->attr[a].bytes = 8;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 40;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = GPL_ADDR_SCT_STATUS;
+	sm->attr[a].id = 16;
+	sm->attr[a].description = "SCT Min ERC Time";
+	sm->attr[a].bytes = 2;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = b + 216;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->count = a;
+}
+
+static void
+__smart_map_gpl_raw(smart_buf_t *sb, smart_map_t *sm, uint8_t logaddr)
+{
+	sm->attr[0].page = logaddr;
+	sm->attr[0].id = 0;
+	sm->attr[0].description = "GPL Data";
+	sm->attr[0].bytes = sb->bsize;
+	sm->attr[0].flags = 0;
+	sm->attr[0].raw = sb->b;
+	sm->attr[0].thresh = NULL;
+	sm->count = 1;
 }
 
 /*
@@ -1202,6 +1863,61 @@ __smart_map_scsi_info_exception(smart_map_t *sm, void *b, size_t bsize)
 	sm->count = a;
 }
 
+static void
+__smart_map_scsi_raw(smart_map_t *sm, void *b, size_t bsize, uint32_t page)
+{
+	uint32_t a = sm->count;
+
+	sm->attr[a].page = page;
+	sm->attr[a].id = 0;
+	sm->attr[a].description = "SCSI Log Page";
+	sm->attr[a].bytes = bsize;
+	sm->attr[a].flags = SMART_ATTR_F_BE;
+	sm->attr[a].raw = b;
+	sm->attr[a].thresh = NULL;
+
+	sm->count = a + 1;
+}
+
+static void
+__smart_map_scsi_self_test(smart_map_t *sm, void *b, size_t bsize)
+{
+	uint32_t a = sm->count;
+	uint8_t *buf = b;
+	uint16_t page_length;
+	uint32_t i, max_entries;
+
+	if (bsize < 4)
+		return;
+
+	page_length = (uint16_t)buf[2] << 8 | buf[3];
+	if (page_length + 4 > bsize)
+		return;
+
+	max_entries = page_length / 20;
+	if (max_entries > 20)
+		max_entries = 20;
+
+	for (i = 0; i < max_entries && a < sm->sb->attr_count; i++) {
+		uint8_t *entry = buf + 4 + (i * 20);
+		uint8_t result = entry[4] & 0x0F;
+
+		if (result == 0x0F)
+			continue;
+
+		sm->attr[a].page = PAGE_ID_SCSI_SELF_TEST;
+		sm->attr[a].id = (uint16_t)entry[0] << 8 | entry[1];
+		sm->attr[a].description = "SCSI Self-Test Result";
+		sm->attr[a].bytes = 20;
+		sm->attr[a].flags = SMART_ATTR_F_BE;
+		sm->attr[a].raw = entry;
+		sm->attr[a].thresh = NULL;
+		a++;
+	}
+
+	sm->count = a;
+}
+
 /*
  * Create a map based on the page list
  */
@@ -1237,6 +1953,15 @@ __smart_map_scsi(smart_h h, smart_buf_t *sb, smart_map_t *sm)
 			break;
 		case PAGE_ID_SCSI_INFO_EXCEPTION:
 			__smart_map_scsi_info_exception(sm, b, pg_list->pages[p].bytes);
+			break;
+		case PAGE_ID_SCSI_SELF_TEST:
+			__smart_map_scsi_self_test(sm, b, pg_list->pages[p].bytes);
+			break;
+		case PAGE_ID_SCSI_SS_MEDIA:
+		case PAGE_ID_SCSI_BG_SCAN:
+		case PAGE_ID_SCSI_PROTO_SPECIFIC:
+			__smart_map_scsi_raw(sm, b, pg_list->pages[p].bytes,
+			    pg_list->pages[p].id);
 			break;
 		}
 
@@ -1331,7 +2056,8 @@ __smart_page_list_scsi(smart_t *s)
 		}
 
 		/* Build a page list using only pages the device supports */
-		pg_list = malloc(sizeof(pg_list_scsi));
+		pg_list = malloc(sizeof(smart_page_list_t) +
+		    pg_list_scsi.pg_count * sizeof(pg_list_scsi.pages[0]));
 		if (pg_list == NULL) {
 			n_supported = 0;
 		} else {

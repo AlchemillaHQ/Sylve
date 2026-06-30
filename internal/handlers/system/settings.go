@@ -127,7 +127,8 @@ func ToggleService(systemService *system.Service, networkSvc *networkService.Ser
 			models.WoLServer,
 			models.Firewall,
 			models.WireGuard,
-			models.ISCSI:
+			models.ISCSI,
+			models.Mdns:
 		default:
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",

@@ -60,6 +60,22 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
             }
         },
         {
+            field: 'extract',
+            title: 'Extract / Convert',
+            formatter: (cell: CellComponent) => {
+                const autoExtract = cell.getRow().getData().automaticExtraction;
+                const autoRaw = cell.getRow().getData().automaticRawConversion;
+                if (autoExtract && autoRaw) {
+                    return renderWithIcon('mdi:package-variant-closed', 'Extracted & Raw Converted');
+                } else if (autoExtract) {
+                    return renderWithIcon('mdi:package-variant-closed', 'Extracted');
+                } else if (autoRaw) {
+                    return renderWithIcon('mdi:package-variant-closed', 'Raw Converted');
+                }
+                return '-';
+            }
+        },
+        {
             field: 'size',
             title: 'Size',
             formatter: (cell: CellComponent) => {
@@ -85,7 +101,7 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
                 const error = cell.getRow().getData().error;
                 const status = cell.getRow().getData().status;
 
-                if (status === 'processing') {
+                if (status === 'processing' && (value === 0 || value === '-')) {
                     return renderWithIcon('eos-icons:three-dots-loading', 'Processing');
                 }
 
@@ -152,6 +168,8 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
             progress: download.progress,
             error: download.error,
             status: download.status,
+            automaticExtraction: download.automaticExtraction,
+            automaticRawConversion: download.automaticRawConversion,
             children: []
         };
 

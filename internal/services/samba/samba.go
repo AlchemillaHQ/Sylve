@@ -19,10 +19,11 @@ import (
 var _ sambaServiceInterfaces.SambaServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB          *gorm.DB
-	TelemetryDB *gorm.DB
-	ZFS         zfsServiceInterfaces.ZfsServiceInterface
-	GZFS        *gzfs.Client
+	DB              *gorm.DB
+	TelemetryDB     *gorm.DB
+	ZFS             zfsServiceInterfaces.ZfsServiceInterface
+	GZFS            *gzfs.Client
+	OnConfigChange  func() error
 }
 
 func NewSambaService(

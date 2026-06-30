@@ -18,8 +18,9 @@
 
 /* OS-independent structures and definitions internal to libsmart */
 
-#define PAGE_ID_ATA_SMART_READ_DATA	0xd0		/* SMART Read Data */
-#define PAGE_ID_ATA_SMART_RET_STATUS	0xda		/* SMART Return Status */
+#define PAGE_ID_ATA_SMART_READ_DATA		0xd0		/* SMART Read Data */
+#define PAGE_ID_ATA_SMART_READ_THRESHOLDS	0xd1		/* SMART Read Thresholds */
+#define PAGE_ID_ATA_SMART_RET_STATUS		0xda		/* SMART Return Status */
 
 #define PAGE_ID_SCSI_SUPPORTED_PAGES	0x00
 #define PAGE_ID_SCSI_WRITE_ERR		0x02		/* Write Error counter */
@@ -30,6 +31,41 @@
 #define PAGE_ID_SCSI_TEMPERATURE	0x0d		/* Temperature */
 #define PAGE_ID_SCSI_START_STOP_CYCLE	0x0e		/* Start-Stop Cycle counter */
 #define PAGE_ID_SCSI_INFO_EXCEPTION	0x2f		/* Informational Exceptions */
+
+#define PAGE_ID_SCSI_SELF_TEST		0x10		/* Self-test Results */
+#define PAGE_ID_SCSI_SS_MEDIA		0x11		/* Solid State Media */
+#define PAGE_ID_SCSI_BG_SCAN		0x15		/* Background Scan Results */
+#define PAGE_ID_SCSI_PROTO_SPECIFIC	0x18		/* Protocol Specific */
+
+/* ATA SMART self-test types (LBA Low register for EXECUTE OFF-LINE) */
+#define ATA_SELF_TEST_SHORT            0x01
+#define ATA_SELF_TEST_EXTENDED         0x02
+#define ATA_SELF_TEST_CONVEYANCE       0x03
+#define ATA_SELF_TEST_ABORT            0x7F
+
+/* SMART log addresses */
+#define LOG_ADDR_SELF_TEST             0x06
+#define LOG_ADDR_ERROR_LOG             0x01
+
+/* General Purpose Log addresses (via READ_LOG_EXT 0x2F) */
+#define GPL_ADDR_SCT_STATUS             0xE0
+#define GPL_ADDR_SCT_TEMP_HIST          0xE1
+#define GPL_ADDR_EXT_ERROR_LOG          0x03
+#define GPL_ADDR_EXT_SELF_TEST_LOG      0x07
+#define GPL_ADDR_DEVICE_STATS           0x04
+#define GPL_ADDR_PENDING_DEFECTS        0x0C
+
+/* NVMe self-test codes (cdw10 for admin opcode 0x14) */
+#define NVME_STC_SHORT                 0x01
+#define NVME_STC_EXTENDED              0x02
+#define NVME_STC_ABORT                 0x0F
+
+#define NVME_LOG_SELF_TEST             0x06
+#define NVME_LOG_ERROR                  0x01
+
+#ifndef NVME_OPC_DEVICE_SELF_TEST
+#define NVME_OPC_DEVICE_SELF_TEST      0x14
+#endif
 
 extern bool do_debug;
 

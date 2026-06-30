@@ -132,6 +132,11 @@
 				id: generateNanoId('iscsi'),
 				property: 'iSCSI',
 				value: basicSettings.current.services.includes('iscsi') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('mdns'),
+				property: 'mDNS Discovery',
+				value: basicSettings.current.services.includes('mdns') ? 'Enabled' : 'Disabled'
 			}
 		];
 
@@ -177,6 +182,10 @@
 		iscsi: {
 			open: false,
 			enabled: basicSettings.current.services.includes('iscsi')
+		},
+		mdns: {
+			open: false,
+			enabled: basicSettings.current.services.includes('mdns')
 		}
 	});
 
@@ -201,7 +210,8 @@
 			modals.jails.open ||
 			modals.firewall.open ||
 			modals.wireguard.open ||
-			modals.iscsi.open
+			modals.iscsi.open ||
+			modals.mdns.open
 	);
 
 	useInterval(3000, {
@@ -294,6 +304,8 @@
 					modals['wireguard'].open = true;
 				} else if (activeRow?.property === 'iSCSI') {
 					modals['iscsi'].open = true;
+				} else if (activeRow?.property === 'mDNS Discovery') {
+					modals.mdns.open = true;
 				}
 			}}
 		>
@@ -318,7 +330,8 @@
 		| 'jails'
 		| 'firewall'
 		| 'wireguard'
-		| 'iscsi',
+		| 'iscsi'
+		| 'mdns',
 	enabled: boolean
 )}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
@@ -390,3 +403,4 @@
 {@render serviceToggleDialog('Firewall', 'firewall', modals['firewall'].enabled)}
 {@render serviceToggleDialog('WireGuard', 'wireguard', modals['wireguard'].enabled)}
 {@render serviceToggleDialog('iSCSI', 'iscsi', modals['iscsi'].enabled)}
+{@render serviceToggleDialog('mDNS Discovery', 'mdns', modals.mdns.enabled)}

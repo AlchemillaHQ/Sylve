@@ -43,6 +43,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
+	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -159,6 +160,7 @@ func main() {
 	sysS := serviceRegistry.SystemService
 	lvS := serviceRegistry.LibvirtService
 	smbS := serviceRegistry.SambaService
+	mdS := serviceRegistry.MdnsService
 	iscsiSvc := serviceRegistry.ISCSIService.(*iscsi.Service)
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
@@ -285,6 +287,7 @@ func main() {
 		sysS.(*system.Service),
 		libvirtSvc,
 		smbS.(*samba.Service),
+		mdS.(*mdns.Service),
 		iscsiSvc,
 		jailSvc,
 		lifecycleSvc,

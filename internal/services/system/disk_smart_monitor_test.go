@@ -299,6 +299,48 @@ func (m *mockDiskServiceForWearout) DestroyPartitionTable(device string) error {
 	return errors.New("not implemented")
 }
 func (m *mockDiskServiceForWearout) IsDiskGPT(device string) bool { return false }
+func (m *mockDiskServiceForWearout) RunSelfTest(disk diskServiceInterfaces.DiskInfo, testType string) error {
+	return errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetNVMEErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskNVMEErrorLog, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetSCTStatus(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSCTStatus, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetSCTTempHistory(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSCTTempHistory, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) AbortSelfTest(disk diskServiceInterfaces.DiskInfo) error {
+	return errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetExtendedSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetExtendedErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetLogDirectory(disk diskServiceInterfaces.DiskInfo) ([]uint8, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetDeviceStatistics(disk diskServiceInterfaces.DiskInfo) ([]diskServiceInterfaces.DiskAttribute, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) GetSelectiveSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
+	return nil, errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) SetSCTFeatureControl(disk diskServiceInterfaces.DiskInfo, featureCode uint16, state uint16, persistent bool) error {
+	return errors.New("not implemented")
+}
+func (m *mockDiskServiceForWearout) SetSCTErrorRecoveryControl(disk diskServiceInterfaces.DiskInfo, read bool, timeLimit uint16) error {
+	return errors.New("not implemented")
+}
 
 func TestEvaluateWearoutSCSISilentlySkips(t *testing.T) {
 	diskService := &mockDiskServiceForWearout{

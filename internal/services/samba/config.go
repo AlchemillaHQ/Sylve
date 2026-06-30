@@ -448,6 +448,8 @@ func (s *Service) GlobalConfig() (string, error) {
 		config += "map to guest = Bad User\n"
 	}
 
+	config += "multicast dns register = no\n"
+
 	if settings.AppleExtensions {
 		config += "min protocol = SMB2\n"
 		config += "ea support = yes\n"
@@ -600,48 +602,6 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 	return config.String(), nil
 }
 
-func (s *Service) WriteAvahiConfig() error {
-	var shares []sambaModels.SambaShare
-	if err := s.DB.Where("time_machine = ?", true).Find(&shares).Error; err != nil {
-		return fmt.Errorf("failed to retrieve Time Machine shares: %w", err)
-	}
-
-	var diskEntries string
-	for i, share := range shares {
-		diskEntries += fmt.Sprintf("\t\t<txt-record>dk%d=adVN=%s,adVF=0x82</txt-record>\n", i, share.Name)
-	}
-
-	xml := fmt.Sprintf(`<?xml version="1.0" standalone='no'?>
-<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
-<service-group>
-	<name replace-wildcards="yes">%%h</name>
-	<service>
-		<type>_smb._tcp</type>
-		<port>445</port>
-	</service>
-	<service>
-		<type>_device-info._tcp</type>
-		<port>0</port>
-		<txt-record>model=RackMac</txt-record>
-	</service>
-	<service>
-		<type>_adisk._tcp</type>
-		<txt-record>sys=waMa=0,adVF=0x100</txt-record>
-%s	</service>
-</service-group>`, diskEntries)
-
-	dir := "/usr/local/etc/avahi/services"
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create avahi services directory: %w", err)
-	}
-
-	if err := os.WriteFile(dir+"/timemachine.service", []byte(xml), 0644); err != nil {
-		return fmt.Errorf("failed to write Avahi config: %w", err)
-	}
-
-	return nil
-}
-
 func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	gCfg, err := s.GlobalConfig()
 	if err != nil {
@@ -664,30 +624,9 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 		return fmt.Errorf("failed to write Samba configuration to %s: %w", filePath, err)
 	}
 
-	settings, err := s.GetGlobalConfig()
-	if err != nil {
-		return fmt.Errorf("failed to get global config for avahi management: %w", err)
-	}
-
-	if settings.AppleExtensions {
-		if err := s.WriteAvahiConfig(); err != nil {
-			logger.L.Warn().Err(err).Msg("failed to write avahi config")
-		}
-		if err := system.ServiceAction("dbus", "onerestart"); err != nil {
-			logger.L.Warn().Err(err).Msg("failed to restart dbus")
-		}
-		if err := system.ServiceAction("avahi-daemon", "onerestart"); err != nil {
-			logger.L.Warn().Err(err).Msg("failed to restart avahi-daemon")
-		}
-	} else {
-		avahiPath := "/usr/local/etc/avahi/services/timemachine.service"
-		if _, err := os.Stat(avahiPath); err == nil {
-			if err := os.Remove(avahiPath); err != nil {
-				logger.L.Warn().Err(err).Msg("failed to remove avahi timemachine service file")
-			}
-		}
-		if err := system.ServiceAction("avahi-daemon", "onestop"); err != nil {
-			logger.L.Warn().Err(err).Msg("failed to stop avahi-daemon")
+	if s.OnConfigChange != nil {
+		if err := s.OnConfigChange(); err != nil {
+			logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
 		}
 	}
 

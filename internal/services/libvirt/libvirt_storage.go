@@ -434,18 +434,27 @@ func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
 		var diskValue string
 
 		if storage.Type == vmModels.VMStorageTypeRaw {
-			diskValue = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
-				storage.Pool,
-				rid,
-				storage.ID,
-				storage.ID,
-			)
+			if storage.Dataset.Name != "" {
+				rawID := storageIDFromDataset(storage.Dataset.Name, "raw")
+				diskValue = fmt.Sprintf("/%s/%d.img", storage.Dataset.Name, rawID)
+			} else {
+				diskValue = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
+					storage.Pool,
+					rid,
+					storage.ID,
+					storage.ID,
+				)
+			}
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
-			diskValue = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d",
-				storage.Pool,
-				rid,
-				storage.ID,
-			)
+			if storage.Dataset.Name != "" {
+				diskValue = "/dev/zvol/" + storage.Dataset.Name
+			} else {
+				diskValue = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d",
+					storage.Pool,
+					rid,
+					storage.ID,
+				)
+			}
 		} else if storage.Type == vmModels.VMStorageTypeDiskImage {
 			diskValue, err = s.FindISOByUUID(storage.DownloadUUID, true)
 			if err != nil {

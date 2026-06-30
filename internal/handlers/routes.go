@@ -28,6 +28,7 @@ import (
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
 	iscsiHandlers "github.com/alchemillahq/sylve/internal/handlers/iscsi"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
+	mdnsHandlers "github.com/alchemillahq/sylve/internal/handlers/mdns"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	migrationHandlers "github.com/alchemillahq/sylve/internal/handlers/migration"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
@@ -47,6 +48,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/migration"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
@@ -89,6 +91,7 @@ func RegisterRoutes(r *gin.Engine,
 	systemService *systemService.Service,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
+	mdnsService *mdns.Service,
 	iscsiService *iscsi.Service,
 	jailService *jail.Service,
 	lifecycleService *lifecycle.Service,
@@ -213,6 +216,20 @@ func RegisterRoutes(r *gin.Engine,
 		samba.DELETE("/shares/:id", sambaHandlers.DeleteShare(sambaService))
 
 		samba.GET("/audit-logs", sambaHandlers.GetAuditLogs(sambaService))
+	}
+
+	mdnsGroup := api.Group("/mdns")
+	mdnsGroup.Use(middleware.EnsureAuthenticated(authService))
+	mdnsGroup.Use(EnsureCorrectHost(db, authService))
+	mdnsGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		mdnsGroup.GET("/config", mdnsHandlers.GetSettings(mdnsService))
+		mdnsGroup.POST("/config", mdnsHandlers.SetSettings(mdnsService))
+
+		mdnsGroup.GET("/records", mdnsHandlers.GetRecords(mdnsService))
+		mdnsGroup.POST("/records", mdnsHandlers.CreateRecord(mdnsService))
+		mdnsGroup.PUT("/records/:id", mdnsHandlers.UpdateRecord(mdnsService))
+		mdnsGroup.DELETE("/records/:id", mdnsHandlers.DeleteRecord(mdnsService))
 	}
 
 	iscsiGroup := api.Group("/iscsi")
@@ -487,6 +504,7 @@ func RegisterRoutes(r *gin.Engine,
 		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
 		utilities.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
 		utilities.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
+		utilities.PUT("/downloads/:id", utilitiesHandlers.UpdateDownload(utilitiesService))
 		utilities.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
 		utilities.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
 		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))

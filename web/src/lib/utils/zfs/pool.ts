@@ -44,35 +44,35 @@ export const raidTypeArr = [
 ];
 
 export const vdevTypeArr: { value: VdevType; label: string; icon: string }[] = [
-	{ value: 'data', label: 'Data', icon: 'icon-[bi--hdd-stack-fill]' },
-	{ value: 'log', label: 'Log (ZIL)', icon: 'icon-[carbon--log]' },
-	{ value: 'cache', label: 'Cache (L2ARC)', icon: 'icon-[carbon--cache-data-set]' },
-	{ value: 'special', label: 'Special', icon: 'icon-[carbon--data-table]' },
-	{ value: 'dedup', label: 'Dedup', icon: 'icon-[carbon--data-set]' }
+    { value: 'data', label: 'Data', icon: 'icon-[bi--hdd-stack-fill]' },
+    { value: 'log', label: 'Log (ZIL)', icon: 'icon-[icon-park-outline--log]' },
+    { value: 'cache', label: 'Cache (L2ARC)', icon: 'icon-[octicon--cache-16]' },
+    { value: 'special', label: 'Special', icon: 'icon-[carbon--data-table]' },
+    { value: 'dedup', label: 'Dedup', icon: 'icon-[carbon--data-set]' }
 ];
 
 const raidMinDisks: Record<string, number> = {
-	stripe: 1,
-	mirror: 2,
-	raidz: 3,
-	raidz2: 4,
-	raidz3: 5
+    stripe: 1,
+    mirror: 2,
+    raidz: 3,
+    raidz2: 4,
+    raidz3: 5
 };
 
 export function getAvailableRaidTypes(type: VdevType, deviceCount?: number) {
-	let types = raidTypeArr;
-	if (type === 'cache') {
-		types = raidTypeArr.filter((r) => r.value === 'stripe');
-	} else if (type === 'log') {
-		types = raidTypeArr.filter((r) => r.value === 'stripe' || r.value === 'mirror');
-	}
-	if (deviceCount !== undefined) {
-		return types.map((r) => ({
-			...r,
-			available: deviceCount >= (raidMinDisks[r.value] ?? 1)
-		}));
-	}
-	return types;
+    let types = raidTypeArr;
+    if (type === 'cache') {
+        types = raidTypeArr.filter((r) => r.value === 'stripe');
+    } else if (type === 'log') {
+        types = raidTypeArr.filter((r) => r.value === 'stripe' || r.value === 'mirror');
+    }
+    if (deviceCount !== undefined) {
+        return types.map((r) => ({
+            ...r,
+            available: deviceCount >= (raidMinDisks[r.value] ?? 1)
+        }));
+    }
+    return types;
 }
 
 function getPoolRedundancy(pool: Zpool): 'Stripe' | 'Mirror' | 'RAIDZ' | 'RAIDZ2' | 'RAIDZ3' {
@@ -458,11 +458,11 @@ export function getPoolByDevice(pools: Zpool[], name: string): string {
         }
 
         if (
-			Object.values(pool.spares ?? {}).some((v) => v.name === name) ||
-			Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
-			Object.values(pool.l2cache ?? {}).some((v) => v.name === name) ||
-			Object.values(pool.special ?? {}).some((v) => v.name === name) ||
-			Object.values(pool.dedup ?? {}).some((v) => v.name === name)
+            Object.values(pool.spares ?? {}).some((v) => v.name === name) ||
+            Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
+            Object.values(pool.l2cache ?? {}).some((v) => v.name === name) ||
+            Object.values(pool.special ?? {}).some((v) => v.name === name) ||
+            Object.values(pool.dedup ?? {}).some((v) => v.name === name)
         ) {
             return pool.name;
         }

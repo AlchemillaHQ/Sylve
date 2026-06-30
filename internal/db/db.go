@@ -18,6 +18,7 @@ import (
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -151,6 +152,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&sambaModels.SambaSettings{},
 		&sambaModels.SambaShare{},
+
+		&mdnsModels.MdnsSettings{},
+		&mdnsModels.MdnsRecord{},
 
 		&iscsiModels.ISCSIInitiator{},
 		&iscsiModels.ISCSITarget{},

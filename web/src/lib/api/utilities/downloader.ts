@@ -39,6 +39,18 @@ export async function startDownload(
 	});
 }
 
+export async function updateDownload(
+	id: number,
+	data: {
+		name?: string;
+		uType?: string;
+		automaticExtraction?: boolean;
+		automaticRawConversion?: boolean;
+	}
+): Promise<APIResponse> {
+	return await apiRequest(`/utilities/downloads/${id}`, APIResponseSchema, 'PUT', data);
+}
+
 export async function deleteDownload(id: number): Promise<APIResponse> {
 	return await apiRequest(`/utilities/downloads/${id}`, APIResponseSchema, 'DELETE');
 }

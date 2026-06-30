@@ -47,9 +47,10 @@ type NotificationKindRule struct {
 	ID             uint      `json:"id" gorm:"primaryKey"`
 	Kind           string    `json:"kind" gorm:"uniqueIndex;not null"`
 	UIEnabled      bool      `json:"uiEnabled" gorm:"not null;default:true"`
-	NtfyEnabled    bool      `json:"ntfyEnabled" gorm:"not null;default:true"`
-	EmailEnabled   bool      `json:"emailEnabled" gorm:"not null;default:true"`
-	DiscordEnabled bool      `json:"discordEnabled" gorm:"not null;default:true"`
+	NtfyEnabled    bool      `json:"ntfyEnabled" gorm:"not null;default:false"`
+	EmailEnabled   bool      `json:"emailEnabled" gorm:"not null;default:false"`
+	DiscordEnabled bool      `json:"discordEnabled" gorm:"not null;default:false"`
+	UserDisabled   bool      `json:"userDisabled" gorm:"not null;default:false"`
 	Config         string    `json:"config" gorm:"type:json;default:'{}'"`
 	CreatedAt      time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt      time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

@@ -4,7 +4,8 @@
 		deleteDownload,
 		getDownloads,
 		getSignedURL,
-		startDownload
+		startDownload,
+		updateDownload
 	} from '$lib/api/utilities/downloader';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -115,6 +116,21 @@
 		isOpen: false,
 		loading: false
 	});
+	let editState = $state({
+		isOpen: false,
+		loading: false,
+		id: 0,
+		type: '',
+		name: '',
+		url: '',
+		uType: 'uncategorized' as DownloadType,
+		ignoreTLS: false,
+		automaticExtraction: false,
+		automaticRawConversion: false,
+		extractedPath: ''
+	});
+	let isAlreadyExtracted = $derived(editState.extractedPath !== '');
+	let isAlreadyRawConverted = $derived(editState.extractedPath.endsWith('.raw'));
 	let uploadStagingPath: string = $derived.by(() => {
 		const pathDownloadsPath =
 			data?.downloadPaths && typeof data.downloadPaths.path === 'string'
@@ -327,6 +343,75 @@
 		toast.error('Failed to start download from uploaded file', { position: 'bottom-center' });
 	}
 
+	function handleView() {
+		if (!activeRows || activeRows.length !== 1) return;
+		const row = activeRows[0];
+		const download = (downloads.current as Download[]).find((d) => d.uuid === row.uuid);
+		if (!download) return;
+
+		editState = {
+			isOpen: true,
+			loading: false,
+			id: download.id,
+			type: download.type,
+			name: download.name,
+			url: download.url,
+			uType: (download.uType as DownloadType) || 'uncategorized',
+			ignoreTLS: download.ignoreTLS,
+			automaticExtraction: download.automaticExtraction,
+			automaticRawConversion: download.automaticRawConversion,
+			extractedPath: download.extractedPath || ''
+		};
+	}
+
+	function handleEdit() {
+		if (!activeRows || activeRows.length !== 1) return;
+		const row = activeRows[0];
+		const download = (downloads.current as Download[]).find((d) => d.uuid === row.uuid);
+		if (!download) return;
+
+		const alreadyExtracted = !!download.extractedPath;
+		const alreadyRaw = download.extractedPath?.endsWith('.raw') ?? false;
+
+		editState = {
+			isOpen: true,
+			loading: false,
+			id: download.id,
+			type: download.type,
+			name: download.name,
+			url: download.url,
+			uType: (download.uType as DownloadType) || 'uncategorized',
+			ignoreTLS: download.ignoreTLS,
+			automaticExtraction: alreadyExtracted || download.automaticExtraction,
+			automaticRawConversion: alreadyRaw || download.automaticRawConversion,
+			extractedPath: download.extractedPath || ''
+		};
+	}
+
+	async function handleSaveEdit() {
+		editState.loading = true;
+		const result = await updateDownload(
+			editState.id,
+			{
+				name: editState.name,
+				uType: editState.uType,
+				automaticExtraction: editState.automaticExtraction,
+				automaticRawConversion: editState.automaticRawConversion
+			}
+		);
+
+		editState.loading = false;
+
+		if (isAPIResponse(result) && result.status === 'success') {
+			editState.isOpen = false;
+			reload = true;
+			toast.success('Download updated', { position: 'bottom-center' });
+		} else {
+			handleAPIError(result as APIResponse);
+			toast.error('Failed to update download', { position: 'bottom-center' });
+		}
+	}
+
 	watch(
 		() => modalState.downloadType,
 		() => {
@@ -334,6 +419,15 @@
 				if (modalState.automaticExtraction === false) {
 					modalState.automaticExtraction = true;
 				}
+			}
+		}
+	);
+
+	watch(
+		() => editState.uType,
+		() => {
+			if (editState.uType === 'base-rootfs' && editState.automaticExtraction === false) {
+				editState.automaticExtraction = true;
 			}
 		}
 	);
@@ -364,6 +458,22 @@
 		{/if}
 	{/if}
 
+	{#if type === 'view' && onlyParentsSelected}
+		{#if activeRows && activeRows.length == 1 && activeRows[0].type === 'torrent'}
+			<Button onclick={handleView} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon icon="icon-[mdi--eye]" size="h-4 w-4" gap="gap-2" title="View" />
+			</Button>
+		{/if}
+	{/if}
+
+	{#if type === 'edit' && onlyParentsSelected}
+		{#if activeRows && activeRows.length == 1 && activeRows[0].type !== 'torrent'}
+			<Button onclick={handleEdit} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
+			</Button>
+		{/if}
+	{/if}
+
 	{#if type === 'delete' && onlyParentsSelected}
 		{#if activeRows && activeRows.length >= 1}
 			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
@@ -385,6 +495,8 @@
 			<div class="flex items-center gap-2">
 				{@render button('download')}
 				{@render button('copy')}
+				{@render button('view')}
+				{@render button('edit')}
 				{@render button('delete')}
 			</div>
 		</div>
@@ -494,6 +606,111 @@
 					</Button>
 				</div>
 			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+
+	<Dialog.Root bind:open={editState.isOpen}>
+		<Dialog.Content
+			class="gap-0 pt-6 px-6 pb-3 max-w-xl"
+			showCloseButton={true}
+			onClose={() => {
+				editState.isOpen = false;
+			}}
+		>
+			<Dialog.Header class="pr-14">
+				<Dialog.Title>
+					<SpanWithIcon
+						icon={editState.type === 'torrent' ? 'icon-[mdi--eye] text-primary' : 'icon-[mdi--pencil] text-primary'}
+						size="h-5 w-5"
+						gap="gap-2"
+						title={editState.type === 'torrent' ? 'View' : 'Edit'}
+					/>
+				</Dialog.Title>
+			</Dialog.Header>
+
+			<div class="flex flex-col gap-4 mt-4">
+				<CustomValueInput
+					label="Name"
+					placeholder="download-name.iso"
+					bind:value={editState.name}
+					classes="flex-1 space-y-1"
+					disabled={editState.type === 'torrent'}
+				/>
+
+				<CustomValueInput
+					label={editState.type === 'torrent' ? 'Magnet' : 'URL'}
+					placeholder="https://example.com/file.iso"
+					bind:value={editState.url}
+					classes="flex-1 space-y-1"
+					type="textarea"
+					textAreaClasses="h-20 w-full break-all"
+					disabled={true}
+				/>
+
+				{#if editState.type !== 'torrent'}
+					<SimpleSelect
+						label="Download Type"
+						placeholder="Select Download Type"
+						options={[
+							{ value: 'uncategorized', label: 'Uncategorized (ISOs, IMGs, etc.)' },
+							{ value: 'base-rootfs', label: 'Base / RootFS' },
+							{ value: 'cloud-init', label: 'Cloud-Init' }
+						]}
+						classes={{
+							parent: 'flex-1 space-y-1 w-full',
+							label: 'whitespace-nowrap text-sm',
+							trigger: 'w-full'
+						}}
+						bind:value={editState.uType}
+						onChange={(value) => (editState.uType = value as DownloadType)}
+					/>
+
+					<div class="flex flex-row gap-2">
+						{#if editState.type === 'http'}
+							<CustomCheckbox
+								label="Ignore TLS Errors"
+								bind:checked={editState.ignoreTLS}
+								disabled={true}
+								classes="flex items-center gap-2"
+							/>
+						{/if}
+
+						<CustomCheckbox
+							label="Extract Automatically"
+							bind:checked={editState.automaticExtraction}
+							disabled={isAlreadyExtracted}
+							classes="flex items-center gap-2"
+						/>
+
+						<CustomCheckbox
+							label="Auto-convert to RAW"
+							bind:checked={editState.automaticRawConversion}
+							disabled={isAlreadyRawConverted}
+							classes="flex items-center gap-2"
+						/>
+					</div>
+
+					{#if editState.extractedPath}
+						<p class="text-xs text-muted-foreground">
+							Already extracted to: {editState.extractedPath}
+						</p>
+					{/if}
+				{/if}
+			</div>
+
+			{#if editState.type !== 'torrent'}
+				<Dialog.Footer class="flex justify-end">
+					<div class="flex w-full items-center justify-end gap-2 py-2">
+						<Button onclick={handleSaveEdit} type="submit" size="sm">
+							{#if editState.loading}
+								<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+							{:else}
+								<span>Save</span>
+							{/if}
+						</Button>
+					</div>
+				</Dialog.Footer>
+			{/if}
 		</Dialog.Content>
 	</Dialog.Root>
 
