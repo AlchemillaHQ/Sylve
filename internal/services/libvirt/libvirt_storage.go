@@ -245,6 +245,11 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 	}
 
 	if storage.Type == vmModels.VMStorageTypeRaw {
+		if err := dataset.Mount(ctx, false); err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "already mounted") {
+				return fmt.Errorf("failed_to_mount_raw_child_dataset: %w", err)
+			}
+		}
 		imageID := storage.ID
 		if id := storageIDFromDataset(dataset.Name, "raw"); id != 0 {
 			imageID = uint(id)
