@@ -32,6 +32,7 @@ jobs:
             pkg update
             pkg install -y go git
             kldload zfs || true
+            kldload pf || true
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
             service sshd onestart 2>/dev/null || service sshd onerestart || true
@@ -46,7 +47,9 @@ jobs:
             done
             ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
           run: |
-            { make test-integration 2>&1; echo "$?" > /tmp/it.rc; } | tee test-integration.log
+            set +e
+            make test-integration 2>&1 | tee test-integration.log
+            echo "$?" > /tmp/it.rc
             exit "$(cat /tmp/it.rc)"
 
       - name: Upload integration test log
