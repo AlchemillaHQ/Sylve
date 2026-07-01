@@ -1143,7 +1143,7 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 	}
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -1154,6 +1154,16 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 		var rule models.NotificationKindRule
 		if err := tx.First(&rule, id).Error; err != nil {
 			return err
+		}
+
+		if templateKey, targetKey, ok := resolveTemplateTargetFromKind(rule.Kind); ok {
+			if templateKey == RuleTemplateZFSPoolState {
+				if def, exists := definitionsByKey[templateKey]; exists {
+					if _, active := def.ActiveTargets[targetKey]; active {
+						return nil
+					}
+				}
+			}
 		}
 
 		rule.UserDisabled = true
@@ -1194,8 +1204,8 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string)
 	rule = models.NotificationKindRule{
 		Kind:           kind,
 		UIEnabled:      true,
-		NtfyEnabled:    false,
-		EmailEnabled:   false,
+		NtfyEnabled:    true,
+		EmailEnabled:   true,
 		DiscordEnabled: false,
 		Config:         defaultConfig,
 	}
@@ -1288,7 +1298,7 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 			ssdDisks = append(ssdDisks, info)
 			nvmeDisks = append(nvmeDisks, info)
 		} else if disk.Type == "SSD" {
-			if sd, ok := disk.SmartData.(diskServiceInterfaces.SmartData); ok {
+			if sd, ok := disk.SmartData.(*diskServiceInterfaces.SmartData); ok {
 				if sd.Device.Protocol != "SCSI" {
 					ssdDisks = append(ssdDisks, info)
 				}
@@ -1408,9 +1418,7 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 			continue
 		}
 		if _, expected := expectedKinds[rule.Kind]; !expected {
-			if deleteErr := tx.Delete(&rule).Error; deleteErr != nil {
-				return deleteErr
-			}
+			continue
 		}
 	}
 
@@ -1445,6 +1453,9 @@ func (s *Service) buildRuleConfigView(definitions []*ruleTemplateDefinition, def
 	}
 
 	for _, rule := range rules {
+		if rule.UserDisabled {
+			continue
+		}
 		templateKey, targetKey, ok := resolveTemplateTargetFromKind(rule.Kind)
 		if !ok {
 			continue

@@ -267,11 +267,15 @@ func bytesToUint64(b []byte, bigEndian bool) uint64 {
 	var res uint64
 	length := len(b)
 
-	if length == 12 && !bigEndian {
+	if length == 12 {
 		start := 5
 		for i := 0; i < 6; i++ {
 			val := uint64(b[start+i])
-			res |= val << (8 * i)
+			if bigEndian {
+				res = (res << 8) | val
+			} else {
+				res |= val << (8 * i)
+			}
 		}
 		return res
 	}
