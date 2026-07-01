@@ -48,6 +48,10 @@ func (s *Service) ImportMigratedVM(ctx context.Context, rid uint) (warnings []st
 		return warnings, fmt.Errorf("failed_to_import_migrated_vm: %w", err)
 	}
 
+	if err := s.prepareReplicatedDatasetForActivation(ctx, dataset); err != nil {
+		logger.L.Warn().Err(err).Uint("rid", rid).Str("dataset", dataset).Msg("failed_to_prepare_migrated_vm_dataset_for_activation")
+	}
+
 	if err := s.destroyDatasetMigrationSnapshots(ctx, dataset); err != nil {
 		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("failed_to_destroy_migration_snapshots_on_target")
 	}
@@ -78,6 +82,10 @@ func (s *Service) ImportMigratedJail(ctx context.Context, ctID uint) (warnings [
 
 	if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, dataset, true); err != nil {
 		return warnings, fmt.Errorf("failed_to_import_migrated_jail: %w", err)
+	}
+
+	if err := s.prepareReplicatedDatasetForActivation(ctx, dataset); err != nil {
+		logger.L.Warn().Err(err).Uint("ct_id", ctID).Str("dataset", dataset).Msg("failed_to_prepare_migrated_jail_dataset_for_activation")
 	}
 
 	if err := s.destroyDatasetMigrationSnapshots(ctx, dataset); err != nil {

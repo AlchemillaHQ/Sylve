@@ -22,7 +22,7 @@ import (
 	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 	"github.com/alchemillahq/sylve/internal/logger"
 
-	"github.com/brutella/dnssd"
+	"github.com/alchemillahq/sylve/pkg/network/mdns"
 	"gorm.io/gorm"
 )
 

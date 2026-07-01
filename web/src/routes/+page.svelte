@@ -1,5 +1,7 @@
 <!-- 
 <span class="icon-[mdi--package-variant-closed]"></span>
+<span class="icon-[mdi--format-list-bulleted]"></span>
+<span class="icon-[mdi--broadcast]"></span>
 <span class="icon-[mdi--discord]"></span>
 <span class="icon-[mdi--lock-outline]"></span>
 <span class="icon-[mdi--tune-variant]"></span>

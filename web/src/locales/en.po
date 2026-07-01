@@ -95,8 +95,10 @@ msgstr "Objects"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Samba/Config.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -165,6 +167,7 @@ msgstr "Samba"
 msgid "Shares"
 msgstr "Shares"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Settings"
@@ -979,7 +982,6 @@ msgstr "Delete"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -1156,6 +1158,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -1179,7 +1182,6 @@ msgstr "This is a note"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -1472,6 +1474,7 @@ msgstr "Unable to load charts."
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
@@ -6030,6 +6033,7 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Update"
 msgstr "Update"
@@ -15085,8 +15089,9 @@ msgstr "Already extracted to: {0}"
 msgid "Magnet"
 msgstr "Magnet"
 
-#~ msgid "Records"
-#~ msgstr "Records"
+#: src/routes/[node]/+layout.svelte
+msgid "Records"
+msgstr "Records"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Toggle - iSCSI"
@@ -15100,9 +15105,8 @@ msgstr "Toggle - mDNS"
 msgid "Managed by Samba"
 msgstr "Managed by Samba"
 
-#: src/routes/[node]/network/mdns/records/+page.svelte
-msgid "Failed to save mDNS record"
-msgstr "Failed to save mDNS record"
+#~ msgid "Failed to save mDNS record"
+#~ msgstr "Failed to save mDNS record"
 
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Record updated"
@@ -15120,30 +15124,55 @@ msgstr "Failed to delete record"
 msgid "Record deleted"
 msgstr "Record deleted"
 
-#: src/routes/[node]/network/mdns/records/+page.svelte
-msgid "Edit Record"
-msgstr "Edit Record"
+#~ msgid "Edit Record"
+#~ msgstr "Edit Record"
+
+#~ msgid "Add mDNS Record"
+#~ msgstr "Add mDNS Record"
+
+#~ msgid "TXT (key=val, key2=val2)"
+#~ msgstr "TXT (key=val, key2=val2)"
+
+#~ msgid "Failed to save settings"
+#~ msgstr "Failed to save settings"
+
+#~ msgid "mDNS Settings"
+#~ msgstr "mDNS Settings"
+
+#~ msgid "Interfaces (comma-separated, empty=all)"
+#~ msgstr "Interfaces (comma-separated, empty=all)"
+
+#~ msgid "Hostname (empty=system hostname)"
+#~ msgstr "Hostname (empty=system hostname)"
 
 #: src/routes/[node]/network/mdns/records/+page.svelte
-msgid "Add mDNS Record"
-msgstr "Add mDNS Record"
+msgid "Failed to update record"
+msgstr "Failed to update record"
 
 #: src/routes/[node]/network/mdns/records/+page.svelte
-msgid "TXT (key=val, key2=val2)"
-msgstr "TXT (key=val, key2=val2)"
+msgid "Failed to create record"
+msgstr "Failed to create record"
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "TXT (key=val,key2=val2)"
+msgstr "TXT (key=val,key2=val2)"
+
+#: src/lib/components/custom/Network/MDNS/Config.svelte
+msgid "Failed to update mDNS settings"
+msgstr "Failed to update mDNS settings"
+
+#: src/lib/components/custom/Network/MDNS/Config.svelte
+msgid "Update mDNS Settings"
+msgstr "Update mDNS Settings"
+
+#: src/lib/components/custom/Network/MDNS/Config.svelte
+msgid "All interfaces"
+msgstr "All interfaces"
+
+#: src/lib/components/custom/Network/MDNS/Config.svelte
+msgid "Leave empty to use the system hostname"
+msgstr "Leave empty to use the system hostname"
 
 #: src/routes/[node]/network/mdns/settings/+page.svelte
-msgid "Failed to save settings"
-msgstr "Failed to save settings"
-
-#: src/routes/[node]/network/mdns/settings/+page.svelte
-msgid "mDNS Settings"
-msgstr "mDNS Settings"
-
-#: src/routes/[node]/network/mdns/settings/+page.svelte
-msgid "Interfaces (comma-separated, empty=all)"
-msgstr "Interfaces (comma-separated, empty=all)"
-
-#: src/routes/[node]/network/mdns/settings/+page.svelte
-msgid "Hostname (empty=system hostname)"
-msgstr "Hostname (empty=system hostname)"
+msgid "System Hostname"
+msgstr "System Hostname"
