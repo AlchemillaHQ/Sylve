@@ -4,11 +4,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/alchemillahq/sylve/pkg/network/mdns/log"
 	"github.com/miekg/dns"
 )
 
-// ServiceHandle serves a middleman between a service and a responder.
 type ServiceHandle interface {
 	UpdateText(text map[string]string, r Responder)
 	Service() Service
@@ -28,19 +26,13 @@ func (h *serviceHandle) UpdateText(text map[string]string, r Responder) {
 
 	setAnswerCacheFlushBit(msg)
 
-	log.Debug.Println("Reannounce TXT", text)
-
 	rr := r.(*responder)
 	for _, iface := range h.service.Interfaces() {
 		resp := &Response{msg: msg, iface: iface}
 		go func() {
-			if err := rr.conn.SendResponse(resp); err != nil {
-				log.Debug.Println("1st reannounce:", err)
-			}
+			rr.conn.SendResponse(resp)
 			time.Sleep(1 * time.Second)
-			if err := rr.conn.SendResponse(resp); err != nil {
-				log.Debug.Println("2nd reannounce:", err)
-			}
+			rr.conn.SendResponse(resp)
 		}()
 	}
 }

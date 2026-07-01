@@ -2,7 +2,6 @@ package dnssd
 
 import (
 	"context"
-	"github.com/alchemillahq/sylve/pkg/network/mdns/log"
 	"github.com/miekg/dns"
 	"net"
 	"testing"
@@ -109,8 +108,6 @@ type expectedIP struct {
 }
 
 func TestRegisterServiceWithSpecifiedAdvertisedIP(t *testing.T) {
-	log.Debug.Enable()
-
 	v4 := net.IP{192, 168, 0, 123}
 	v6 := net.ParseIP("fe80::1")
 

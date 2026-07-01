@@ -3,11 +3,9 @@ package dnssd
 import (
 	"context"
 
-	"github.com/alchemillahq/sylve/pkg/network/mdns/log"
 	"github.com/miekg/dns"
 )
 
-// LookupInstance resolves a service by its service instance name.
 func LookupInstance(ctx context.Context, instance string) (Service, error) {
 	var srv Service
 
@@ -56,9 +54,7 @@ func lookupInstance(ctx context.Context, instance string, conn MDNSConn) (srv Se
 	for {
 		select {
 		case q := <-qs:
-			if err := conn.SendQuery(q); err != nil {
-				log.Info.Println("dnssd:", err)
-			}
+			conn.SendQuery(q)
 		case req := <-ch:
 			cache.UpdateFrom(req)
 			if s, ok := cache.services[instance]; ok {

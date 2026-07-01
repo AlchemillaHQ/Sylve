@@ -80,7 +80,6 @@ func (c *testConn) start(ctx context.Context) {
 // service instance name and host name.Once the first services
 // is announced, the probing for the second service should give
 func TestProbing(t *testing.T) {
-	// log.Debug.Enable()
 	testIface, _ = net.InterfaceByName("lo0")
 	if testIface == nil {
 		testIface, _ = net.InterfaceByName("lo")

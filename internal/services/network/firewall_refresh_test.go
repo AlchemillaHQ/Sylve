@@ -1112,8 +1112,8 @@ func TestBuildPFMainConfigIncludesObjectTablesAnchor(t *testing.T) {
 	if !strings.Contains(rendered, `binat-anchor "sylve/nat-rules" all`) {
 		t.Fatalf("expected binat-anchor hook declaration, got:\n%s", rendered)
 	}
-	if strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`) > strings.Index(rendered, `anchor "sylve/object-tables"`) {
-		t.Fatalf("expected translation anchor hooks before filtering anchors, got:\n%s", rendered)
+	if strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`) < strings.Index(rendered, `anchor "sylve/object-tables"`) {
+		t.Fatalf("expected object-tables anchor before translation hooks, got:\n%s", rendered)
 	}
 }
 

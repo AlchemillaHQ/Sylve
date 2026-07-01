@@ -3,8 +3,6 @@ package dnssd
 import (
 	"bytes"
 
-	"github.com/alchemillahq/sylve/pkg/network/mdns/log"
-
 	"fmt"
 	"net"
 	"os"
@@ -13,38 +11,15 @@ import (
 )
 
 type Config struct {
-	// Name of the service.
-	Name string
-
-	// Type is the service type, for example "_hap._tcp".
-	Type string
-
-	// Domain is the name of the domain, for example "local".
-	// If empty, "local" is used.
-	Domain string
-
-	// Host is the name of the host (no trailing dot).
-	// If empty the local host name is used.
-	Host string
-
-	// Txt records
-	Text map[string]string
-
-	// IP addresses of the service.
-	// This field is deprecated and should not be used.
-	IPs []net.IP
-
-	// Port is the port of the service.
-	Port int
-
-	// Interfaces at which the service should be registered
-	Ifaces []string
-
-	// BlockedIPNets contains the blocked ip networks.
+	Name      string
+	Type      string
+	Domain    string
+	Host      string
+	Text      map[string]string
+	IPs       []net.IP
+	Port      int
+	Ifaces    []string
 	BlockedIPNets []string
-
-	// The addresses for the interface which should be used (A / AAAA / Both)
-	// If empty, all addresses are used.
 	AdvertiseIPType IPType
 }
 
@@ -75,7 +50,6 @@ func isWhitespace(r rune) bool {
 	return r == ' '
 }
 
-// validHostname returns a valid hostname as specified in RFC-952 and RFC1123.
 func validHostname(host string) string {
 	result := ""
 	z := len(host) - 1
@@ -83,20 +57,15 @@ func validHostname(host string) string {
 		if isWhitespace(r) {
 			r = '-'
 		}
-		// hostname must start with an alpha [RFC-952 ASSUMPTIONS] or digit [RFC1123 2.1] character.
 		if i == 0 && (!isDigit(r) && !isAlpha(r)) {
-			log.Debug.Printf(`hostname "%s" starts with "%s"`, host, string(r))
 			continue
 		}
 
-		// [RFC-952 ASSUMPTIONS] The last character must not be a minus sign or period.
 		if i == z && (r == '-' || r == '.') {
-			log.Debug.Printf(`hostname "%s" ends with "%s"`, host, string(r))
 			continue
 		}
 
 		if !isDigit(r) && !isAlpha(r) && r != '-' && r != '.' {
-			log.Debug.Printf(`hostname "%s" contains "%s"`, host, string(r))
 			continue
 		}
 
@@ -114,26 +83,23 @@ const (
 	IPv6 = IPType(6)
 )
 
-// Service represents a DNS-SD service instance
 type Service struct {
 	Name            string
 	Type            string
 	Domain          string
 	Host            string
 	Text            map[string]string
-	TTL             time.Duration // Original time to live
+	TTL             time.Duration
 	Port            int
 	IPs             []net.IP
 	Ifaces          []string
 	Blocked         []*net.IPNet
 	AdvertiseIPType IPType
 
-	// stores ips by interface name for caching purposes
 	ifaceIPs   map[string][]net.IP
 	expiration time.Time
 }
 
-// NewService returns a new service for the given config.
 func NewService(cfg Config) (s Service, err error) {
 	name := cfg.Name
 	typ := cfg.Type
@@ -205,8 +171,6 @@ func NewService(cfg Config) (s Service, err error) {
 	}, nil
 }
 
-// Interfaces returns the network interfaces for which the service is registered,
-// or all multicast network interfaces, if no IP addresses are specified.
 func (s *Service) Interfaces() []*net.Interface {
 	if len(s.Ifaces) > 0 {
 		ifis := []*net.Interface{}
@@ -222,8 +186,6 @@ func (s *Service) Interfaces() []*net.Interface {
 	return MulticastInterfaces()
 }
 
-// IsVisibleAtInterface returns true, if the service is published
-// at the network interface with name n.
 func (s *Service) IsVisibleAtInterface(n string) bool {
 	if len(s.Ifaces) == 0 {
 		return true
@@ -238,7 +200,6 @@ func (s *Service) IsVisibleAtInterface(n string) bool {
 	return false
 }
 
-// IPsAtInterface returns the ip address at a specific interface.
 func (s *Service) IPsAtInterface(iface *net.Interface) []net.IP {
 	if iface == nil {
 		return []net.IP{}
@@ -261,16 +222,12 @@ func (s *Service) IPsAtInterface(iface *net.Interface) []net.IP {
 	for _, addr := range addrs {
 		if ip, _, err := net.ParseCIDR(addr.String()); err == nil && !s.blocks(ip) {
 			ips = append(ips, ip)
-		} else {
-			log.Debug.Println(err)
 		}
 	}
 
 	return ips
 }
 
-// HasIPOnAnyInterface returns true, if the service defines
-// the ip address on any network interface.
 func (s *Service) HasIPOnAnyInterface(ip net.IP) bool {
 	for _, iface := range s.Interfaces() {
 		ips := s.IPsAtInterface(iface)
@@ -284,7 +241,6 @@ func (s *Service) HasIPOnAnyInterface(ip net.IP) bool {
 	return false
 }
 
-// Copy returns a copy of the service.
 func (s Service) Copy() *Service {
 	return &Service{
 		Name:            s.Name,
@@ -307,7 +263,6 @@ func (s Service) EscapedName() string {
 	return escape.Replace(s.Name)
 }
 
-// Removes blocked ip addresses from the list of addresses.
 func (s *Service) filterIPs(ips []net.IP) []net.IP {
 	var tmp []net.IP
 	for _, ip := range ips {
@@ -319,7 +274,6 @@ func (s *Service) filterIPs(ips []net.IP) []net.IP {
 	return tmp
 }
 
-// Return `true` if the ip address is blocked for this service.
 func (s *Service) blocks(ip net.IP) bool {
 	for _, ipNet := range s.Blocked {
 		if ipNet.Contains(ip) {
@@ -336,12 +290,11 @@ func incrementHostname(name string, count int) string {
 
 func trimHostNameSuffixRight(name string) string {
 	minus := strings.LastIndex(name, "-")
-	if minus == -1 || /* not found*/
-		minus == len(name)-1 /* at the end */ {
+	if minus == -1 ||
+		minus == len(name)-1 {
 		return name
 	}
 
-	// after minus
 	after := name[minus+1:]
 	for _, r := range after {
 		if !isDigit(r) {
@@ -356,18 +309,16 @@ func trimHostNameSuffixRight(name string) string {
 	return trimmed
 }
 
-// trimServiceNameSuffixRight removes any suffix with the format " (%d)".
 func trimServiceNameSuffixRight(name string) string {
 	open := strings.LastIndex(name, "(")
 	close := strings.LastIndex(name, ")")
-	if open == -1 || close == -1 || /* not found*/
-		open >= close || /* wrong order */
-		open == 0 || /* at the beginning */
-		close != len(name)-1 /* not at the end */ {
+	if open == -1 || close == -1 ||
+		open >= close ||
+		open == 0 ||
+		close != len(name)-1 {
 		return name
 	}
 
-	// between brackets are only numbers
 	between := name[open+1 : close-1]
 	for _, r := range between {
 		if !isDigit(r) {
@@ -375,7 +326,6 @@ func trimServiceNameSuffixRight(name string) string {
 		}
 	}
 
-	// before opening bracket is a whitespace
 	if name[open-1] != ' ' {
 		return name
 	}
@@ -392,37 +342,22 @@ func incrementServiceName(name string, count int) string {
 	return fmt.Sprintf("%s (%d)", trimServiceNameSuffixRight(name), count)
 }
 
-// EscapedServiceInstanceName returns the same as `ServiceInstanceName()`
-// but escapes any special characters.
 func (s Service) EscapedServiceInstanceName() string {
 	return fmt.Sprintf("%s.%s.%s.", s.EscapedName(), s.Type, s.Domain)
 }
 
-// ServiceInstanceName returns the service instance name
-// in the form of <instance name>.<service>.<domain>.
-// (Note the trailing dot.)
 func (s Service) ServiceInstanceName() string {
 	return fmt.Sprintf("%s.%s.%s.", s.Name, s.Type, s.Domain)
 }
 
-// ServiceName returns the service name in the
-// form of "<service>.<domain>."
-// (Note the trailing dot.)
 func (s Service) ServiceName() string {
 	return fmt.Sprintf("%s.%s.", s.Type, s.Domain)
 }
-
-// Hostname returns the hostname in the
-// form of "<hostname>.<domain>."
-// (Note the trailing dot.)
 
 func (s Service) Hostname() string {
 	return fmt.Sprintf("%s.%s.", s.Host, s.Domain)
 }
 
-// SetHostname sets the service's host name and
-// domain (if specified as "<hostname>.<domain>.").
-// (Note the trailing dot.)
 func (s *Service) SetHostname(hostname string) {
 	name, domain := parseHostname(hostname)
 
@@ -431,9 +366,6 @@ func (s *Service) SetHostname(hostname string) {
 	}
 }
 
-// ServicesMetaQueryName returns the name of the meta query
-// for the service domain in the form of "_services._dns-sd._udp.<domain.".
-// (Note the trailing dot.)
 func (s Service) ServicesMetaQueryName() string {
 	return fmt.Sprintf("_services._dns-sd._udp.%s.", s.Domain)
 }
@@ -483,7 +415,6 @@ func reverse(s string) string {
 	return string(r)
 }
 
-// parseServiceInstanceName parses str to get the instance, service and domain name.
 func parseServiceInstanceName(str string) (name string, service string, domain string) {
 	r := bytes.NewBufferString(reverse(strings.Trim(str, ".")))
 	l, err := r.ReadString('.')
@@ -508,8 +439,6 @@ func parseServiceInstanceName(str string) (name string, service string, domain s
 	return
 }
 
-// Get Fully Qualified Domain Name
-// returns "unknown" or hostanme in case of error
 func hostname() string {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -533,7 +462,6 @@ func parseHostname(str string) (name string, domain string) {
 	return
 }
 
-// MulticastInterfaces returns a list of all active multicast network interfaces.
 func MulticastInterfaces(filters ...string) []*net.Interface {
 	var tmp []*net.Interface
 	ifaces, err := net.Interfaces()
@@ -555,7 +483,6 @@ func MulticastInterfaces(filters ...string) []*net.Interface {
 			continue
 		}
 
-		// check for a valid ip at that interface
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue

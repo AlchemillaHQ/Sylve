@@ -8,12 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/pkg/network/mdns/log"
 	"github.com/miekg/dns"
 )
 
-// ProbeService probes for the hostname and service instance name of srv.
-// If err == nil, the returned service is verified to be unique on the local network.
 func ProbeService(ctx context.Context, srv Service) (Service, error) {
 	conn, err := newMDNSConn(srv.Ifaces...)
 
@@ -23,17 +20,11 @@ func ProbeService(ctx context.Context, srv Service) (Service, error) {
 
 	defer conn.close()
 
-	// After one minute of probing, if the Multicast DNS responder has been
-	// unable to find any unused name, it should log an error (RFC6762 9)
 	probeCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	// When ready to send its Multicast DNS probe packet(s) the host should
-	// first wait for a short random delay time, uniformly distributed in
-	// the range 0-250 ms. (RFC6762 8.1)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	delay := time.Duration(r.Intn(250)) * time.Millisecond
-	log.Debug.Println("Probing delay", delay)
 	time.Sleep(delay)
 
 	return probeService(probeCtx, conn, srv, 250*time.Millisecond, false)
@@ -54,7 +45,6 @@ func probeService(ctx context.Context, conn MDNSConn, srv Service, delay time.Du
 	candidate := srv.Copy()
 	prevConflict := probeConflict{}
 
-	// Keep track of the number of conflicts
 	numHostConflicts := 0
 	numNameConflicts := 0
 
@@ -87,14 +77,9 @@ func probeService(ctx context.Context, conn MDNSConn, srv Service, delay time.Du
 		prevConflict = conflict
 
 		if conflict.hasAny() {
-			// If the host finds that its own data is lexicographically earlier,
-			// then it defers to the winning host by waiting one second,
-			// and then begins probing for this record again. (RFC6762 8.2)
-			log.Debug.Println("Increase wait time after receiving conflicting data")
 			delay = 1 * time.Second
 		}
 
-		log.Debug.Println("Probing wait", delay)
 		time.Sleep(delay)
 	}
 
@@ -110,8 +95,6 @@ func probe(ctx context.Context, conn MDNSConn, service Service) (conflict probeC
 	readCtx, readCancel := context.WithCancel(ctx)
 	defer readCancel()
 
-	// Multicast DNS responses received *before* the first probe packet is sent
-	// MUST be silently ignored. (RFC6762 8.1)
 	conn.Drain(readCtx)
 	ch := conn.Read(readCtx)
 
@@ -132,21 +115,13 @@ func probe(ctx context.Context, conn MDNSConn, service Service) (conflict probeC
 			aaaas := AAAA(service, rsp.iface)
 
 			if len(reqAs) > 0 && len(as) > 0 && areDenyingAs(reqAs, as) {
-				log.Debug.Printf("%v:%d@%s denies A\n", rsp.from.IP, rsp.from.Port, rsp.IfaceName())
-				log.Debug.Println(reqAs)
-				log.Debug.Println(as)
 				conflict.hostname = true
 			}
 
 			if len(reqAAAAs) > 0 && len(aaaas) > 0 && areDenyingAAAAs(reqAAAAs, aaaas) {
-				log.Debug.Printf("%v:%d@%s denies AAAA\n", rsp.from.IP, rsp.from.Port, rsp.IfaceName())
-				log.Debug.Println(reqAAAAs)
-				log.Debug.Println(aaaas)
 				conflict.hostname = true
 			}
 
-			// If the service instance name is already taken from another host,
-			// we have a service instance name conflict
 			conflict.serviceName = len(reqSRVs) > 0
 
 		case <-ctx.Done():
@@ -154,27 +129,20 @@ func probe(ctx context.Context, conn MDNSConn, service Service) (conflict probeC
 			return
 
 		case <-queryTime:
-			// Stop on conflict
 			if conflict.hasAny() {
 				return conflict, err
 			}
 
-			// Stop after 3 probe queries
 			if queriesCount > 3 {
 				return
 			}
 
 			queriesCount++
 			for _, q := range queries {
-				log.Debug.Println("Sending probe", q.iface.Name, q.msg)
-				if err := conn.SendQuery(q); err != nil {
-					log.Debug.Println("Sending probe err:", err)
-				}
+				conn.SendQuery(q)
 			}
 
-			delay := 250 * time.Millisecond
-			log.Debug.Println("Waiting for conflicting data", delay)
-			queryTime = time.After(delay)
+			queryTime = time.After(250 * time.Millisecond)
 		}
 	}
 }
@@ -230,54 +198,40 @@ func (pr probeConflict) hasAny() bool {
 
 func isDenyingA(this *dns.A, that *dns.A) bool {
 	if strings.EqualFold(this.Hdr.Name, that.Hdr.Name) {
-		log.Debug.Println("Same hosts")
-
 		if !isValidRR(this) {
-			log.Debug.Println("Invalid record produces conflict")
 			return true
 		}
 
 		switch compareIP(this.A.To4(), that.A.To4()) {
 		case -1:
-			log.Debug.Println("Lexicographical earlier")
 		case 1:
-			log.Debug.Println("Lexicographical later")
 			return true
 		default:
-			log.Debug.Println("No conflict")
 		}
 	}
 
 	return false
 }
 
-// isDenyingAAAA returns true if this denies that.
 func isDenyingAAAA(this *dns.AAAA, that *dns.AAAA) bool {
 	if strings.EqualFold(this.Hdr.Name, that.Hdr.Name) {
-		log.Debug.Println("Same hosts")
 		if !isValidRR(this) {
-			log.Debug.Println("Invalid record produces conflict")
 			return true
 		}
 
 		switch compareIP(this.AAAA.To16(), that.AAAA.To16()) {
 		case -1:
-			log.Debug.Println("Lexicographical earlier")
 		case 1:
-			log.Debug.Println("Lexicographical later")
 			return true
 		default:
-			log.Debug.Println("No conflict")
 		}
 	}
 
 	return false
 }
 
-// areDenyingAs returns true if this and that are denying each other.
 func areDenyingAs(this []*dns.A, that []*dns.A) bool {
 	if len(this) != len(that) {
-		log.Debug.Printf("A: different number of records is a conflict (%d != %d)\n", len(this), len(that))
 		return true
 	}
 
@@ -291,13 +245,11 @@ func areDenyingAs(this []*dns.A, that []*dns.A) bool {
 		}
 	}
 
-	log.Debug.Println("A: same records are no conflict")
 	return false
 }
 
 func areDenyingAAAAs(this []*dns.AAAA, that []*dns.AAAA) bool {
 	if len(this) != len(that) {
-		log.Debug.Printf("AAAA: different number of records is a conflict (%d != %d)\n", len(this), len(that))
 		return true
 	}
 
@@ -311,7 +263,6 @@ func areDenyingAAAAs(this []*dns.AAAA, that []*dns.AAAA) bool {
 		}
 	}
 
-	log.Debug.Println("AAAA: same records are no conflict")
 	return false
 }
 
@@ -331,23 +282,17 @@ func (a byAAAAIP) Less(i, j int) bool {
 	return strings.Compare(a[i].AAAA.To16().String(), a[j].AAAA.To16().String()) == -1
 }
 
-// isDenyingSRV returns true if this denies that.
 func isDenyingSRV(this *dns.SRV, that *dns.SRV) bool {
 	if strings.EqualFold(this.Hdr.Name, that.Hdr.Name) {
-		log.Debug.Println("Same SRV")
 		if !isValidRR(this) {
-			log.Debug.Println("Invalid record produces conflict")
 			return true
 		}
 
 		switch compareSRV(this, that) {
 		case -1:
-			log.Debug.Println("Lexicographical earlier")
 		case 1:
-			log.Debug.Println("Lexicographical later")
 			return true
 		default:
-			log.Debug.Println("No conflict")
 		}
 	}
 

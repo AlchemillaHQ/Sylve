@@ -2,11 +2,7 @@
 
 package dnssd
 
-import (
-	"context"
-
-	"github.com/alchemillahq/sylve/pkg/network/mdns/log"
-)
+import "context"
 
 type stubLinkWatcher struct{}
 
@@ -15,6 +11,5 @@ func newPlatformLinkWatcher() LinkWatcher {
 }
 
 func (w *stubLinkWatcher) Subscribe(ctx context.Context) (<-chan LinkUpdate, error) {
-	log.Info.Println("dnssd: unable to wait for link updates")
 	return nil, nil
 }

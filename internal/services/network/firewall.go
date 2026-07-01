@@ -1859,14 +1859,14 @@ func buildPFMainConfig(preRules string, postRules string, objectTablesPath strin
 		b.WriteString("\n\n")
 	}
 
+	b.WriteString("anchor \"sylve/object-tables\"\n")
+	b.WriteString(fmt.Sprintf("load anchor \"sylve/object-tables\" from \"%s\"\n\n", objectTablesPath))
+
 	b.WriteString("nat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("rdr-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("binat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("anchor \"sylve/nat-rules\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/nat-rules\" from \"%s\"\n\n", natPath))
-
-	b.WriteString("anchor \"sylve/object-tables\"\n")
-	b.WriteString(fmt.Sprintf("load anchor \"sylve/object-tables\" from \"%s\"\n\n", objectTablesPath))
 
 	b.WriteString("anchor \"sylve/traffic-rules\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/traffic-rules\" from \"%s\"\n", trafficPath))
