@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1094,14 +1095,12 @@ func TestGetFirewallLiveHitsAppliesFilters(t *testing.T) {
 	}
 }
 
-func TestBuildPFMainConfigIncludesObjectTablesAnchor(t *testing.T) {
-	rendered := buildPFMainConfig("", "", "/tmp/object-tables.conf", "/tmp/nat.conf", "/tmp/traffic.conf")
+func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
+	inlineTables := "table <sylve_obj_1_inet> persist { 10.0.0.0/8 }"
+	rendered := buildPFMainConfig("", "", inlineTables, "/tmp/nat.conf", "/tmp/traffic.conf")
 
-	if !strings.Contains(rendered, `anchor "sylve/object-tables"`) {
-		t.Fatalf("expected object-tables anchor declaration, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, `load anchor "sylve/object-tables" from "/tmp/object-tables.conf"`) {
-		t.Fatalf("expected object-tables anchor load path, got:\n%s", rendered)
+	if !strings.Contains(rendered, `table <sylve_obj_1_inet> persist { 10.0.0.0/8 }`) {
+		t.Fatalf("expected inline table definition, got:\n%s", rendered)
 	}
 	if !strings.Contains(rendered, `nat-anchor "sylve/nat-rules" all`) {
 		t.Fatalf("expected nat-anchor hook declaration, got:\n%s", rendered)
@@ -1112,13 +1111,34 @@ func TestBuildPFMainConfigIncludesObjectTablesAnchor(t *testing.T) {
 	if !strings.Contains(rendered, `binat-anchor "sylve/nat-rules" all`) {
 		t.Fatalf("expected binat-anchor hook declaration, got:\n%s", rendered)
 	}
-	if strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`) < strings.Index(rendered, `anchor "sylve/object-tables"`) {
-		t.Fatalf("expected object-tables anchor before translation hooks, got:\n%s", rendered)
+
+	natAnchorIdx := strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`)
+	tableIdx := strings.Index(rendered, `table <sylve_obj_1_inet>`)
+	if tableIdx == -1 || natAnchorIdx == -1 {
+		t.Fatalf("expected both inline table definition and nat-anchor in rendered output, got:\n%s", rendered)
+	}
+	if tableIdx > natAnchorIdx {
+		t.Fatalf("expected inline table definition before translation hooks, got:\n%s", rendered)
+	}
+}
+
+func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
+	tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
+	rendered := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+
+	if strings.Contains(rendered, `sylve/object-tables`) {
+		t.Fatalf("did not expect object-tables anchor when tables are empty, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, `managed by Sylve: object tables`) {
+		t.Fatalf("did not expect object tables comment when no tables exist, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, `nat-anchor "sylve/nat-rules" all`) {
+		t.Fatalf("expected nat-anchor hook declaration even with empty tables, got:\n%s", rendered)
 	}
 }
 
 func TestBuildPFMainConfigPlacesPreRulesAfterTranslationHooks(t *testing.T) {
-	rendered := buildPFMainConfig("pass in all keep state", "", "/tmp/object-tables.conf", "/tmp/nat.conf", "/tmp/traffic.conf")
+	rendered := buildPFMainConfig("pass in all keep state", "", "", "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	natHook := strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`)
 	preRule := strings.Index(rendered, "pass in all keep state")
@@ -2987,5 +3007,322 @@ func TestSampleFirewallCountersSkipsWhenFirewallServiceDisabled(t *testing.T) {
 	}
 	if rt.countersError != "firewall_service_disabled" {
 		t.Fatalf("expected disabled status error, got %q", rt.countersError)
+	}
+}
+
+func TestPFConfigValidation(t *testing.T) {
+	if _, err := exec.LookPath("pfctl"); err != nil {
+		t.Skip("pfctl not available")
+	}
+
+	svc := &Service{}
+
+	t.Run("snat_with_object_table_source", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{
+			{
+				ID:               1,
+				Name:             "SNAT LAN",
+				Enabled:          true,
+				Log:              false,
+				Priority:         1,
+				NATType:          "snat",
+				EgressInterfaces: []string{"vtnet0"},
+				TranslateMode:    "interface",
+				Family:           "inet",
+				Protocol:         "any",
+				SourceObj: &networkModels.Object{
+					ID:   8,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "192.168.12.0/24"},
+					},
+				},
+				DestRaw: "any",
+			},
+		}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("dnat_with_raw_target", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{
+			{
+				ID:                10,
+				Name:              "DNAT Web",
+				Enabled:           true,
+				Log:               false,
+				Priority:          10,
+				NATType:           "dnat",
+				IngressInterfaces: []string{"vtnet0"},
+				Family:            "inet",
+				Protocol:          "tcp",
+				SourceRaw:         "any",
+				DestRaw:           "203.0.113.10",
+				DNATTargetRaw:     "10.0.0.80",
+				DstPortsRaw:       "443",
+				RedirectPortsRaw:  "8443",
+			},
+		}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("traffic_rule_with_object_tables", func(t *testing.T) {
+		trafficRules := []networkModels.FirewallTrafficRule{
+			{
+				ID:       20,
+				Name:     "Allow LAN to WAN",
+				Enabled:  true,
+				Priority: 100,
+				Action:   "pass",
+				Quick:    true,
+				Family:   "inet",
+				Protocol: "any",
+				SourceObj: &networkModels.Object{
+					ID:   1,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "10.0.0.0/8"},
+						{ResolvedValue: "172.16.0.0/12"},
+						{ResolvedValue: "192.168.0.0/16"},
+					},
+				},
+				DestRaw: "any",
+			},
+			{
+				ID:       21,
+				Name:     "Allow SSH",
+				Enabled:  true,
+				Priority: 200,
+				Action:   "pass",
+				Quick:    true,
+				Family:   "inet",
+				Protocol: "tcp",
+				DestObj: &networkModels.Object{
+					ID:   2,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "203.0.113.0/24"},
+					},
+				},
+				SourceRaw:   "any",
+				DstPortsRaw: "22",
+			},
+		}
+		validateGeneratedConfig(t, svc, nil, trafficRules, "", "")
+	})
+
+	t.Run("mixed_nat_and_traffic_with_objects", func(t *testing.T) {
+		natRules := []networkModels.FirewallNATRule{
+			{
+				ID:               50,
+				Name:             "SNAT Office",
+				Enabled:          true,
+				Log:              false,
+				Priority:         10,
+				NATType:          "snat",
+				EgressInterfaces: []string{"igb0"},
+				TranslateMode:    "interface",
+				Family:           "inet",
+				Protocol:         "any",
+				SourceObj: &networkModels.Object{
+					ID:   30,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "10.99.0.0/16"},
+					},
+				},
+				DestRaw: "any",
+			},
+			{
+				ID:                60,
+				Name:              "DNAT Mail",
+				Enabled:           true,
+				Log:               true,
+				Priority:          20,
+				NATType:           "dnat",
+				IngressInterfaces: []string{"igb0"},
+				Family:            "inet",
+				Protocol:          "tcp",
+				SourceRaw:         "any",
+				DestRaw:           "198.51.100.25",
+				DNATTargetRaw:     "10.99.0.25",
+				DstPortsRaw:       "25",
+			},
+		}
+		trafficRules := []networkModels.FirewallTrafficRule{
+			{
+				ID:          70,
+				Name:        "Pass LAN out",
+				Enabled:     true,
+				Priority:    100,
+				Action:      "pass",
+				Quick:       true,
+				Family:      "inet",
+				Protocol:    "any",
+				Direction:   "out",
+				EgressInterfaces: []string{"igb0"},
+				SourceObj: &networkModels.Object{
+					ID:   30,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "10.99.0.0/16"},
+					},
+				},
+				DestRaw: "any",
+			},
+		}
+		validateGeneratedConfig(t, svc, natRules, trafficRules, "", "")
+	})
+
+	t.Run("snat_with_raw_translate_address_and_object", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{
+			{
+				ID:               80,
+				Name:             "SNAT fixed IP",
+				Enabled:          true,
+				Log:              false,
+				Priority:         30,
+				NATType:          "snat",
+				EgressInterfaces: []string{"vtnet1"},
+				TranslateMode:    "address",
+				TranslateToRaw:   "203.0.113.99",
+				Family:           "inet",
+				Protocol:         "any",
+				SourceObj: &networkModels.Object{
+					ID:   40,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "172.16.0.0/12"},
+					},
+				},
+				DestRaw: "any",
+			},
+		}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("no_rules_empty_config", func(t *testing.T) {
+		validateGeneratedConfig(t, svc, nil, nil, "", "")
+	})
+
+	t.Run("pre_and_post_rules", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{
+			{
+				ID:               100,
+				Name:             "SNAT DMZ",
+				Enabled:          true,
+				Log:              false,
+				Priority:         1,
+				NATType:          "snat",
+				EgressInterfaces: []string{"igb1"},
+				TranslateMode:    "interface",
+				Family:           "inet",
+				Protocol:         "any",
+				SourceRaw:        "10.10.10.0/24",
+				DestRaw:          "any",
+			},
+		}
+		validateGeneratedConfig(t, svc, rules, nil, "set skip on lo0", "pass out all keep state")
+	})
+
+	t.Run("binat_with_object", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{
+			{
+				ID:               110,
+				Name:             "BINAT gateway",
+				Enabled:          true,
+				Log:              false,
+				Priority:         1,
+				NATType:          "binat",
+				EgressInterfaces: []string{"vmx0"},
+				TranslateMode:    "interface",
+				Family:           "inet",
+				Protocol:         "any",
+				SourceObj: &networkModels.Object{
+					ID:   50,
+					Type: "Host",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "10.254.254.1"},
+					},
+				},
+				DestRaw: "any",
+			},
+		}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("tables_inline_before_translation", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{
+			{
+				ID:               1,
+				Name:             "SNAT LAN",
+				Enabled:          true,
+				Log:              false,
+				Priority:         1,
+				NATType:          "snat",
+				EgressInterfaces: []string{"vtnet0"},
+				TranslateMode:    "interface",
+				Family:           "inet",
+				Protocol:         "any",
+				SourceObj: &networkModels.Object{
+					ID:   8,
+					Type: "List",
+					Resolutions: []networkModels.ObjectResolution{
+						{ResolvedValue: "192.168.12.0/24"},
+					},
+				},
+				DestRaw: "any",
+			},
+		}
+		tables := buildFirewallObjectTables(nil, rules)
+		tablesRendered := renderFirewallObjectTables(tables)
+		config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+		if !strings.Contains(config, `table <sylve_obj_8_inet> persist { 192.168.12.0/24 }`) {
+			t.Fatal("expected inline table definition in pf.conf before " +
+				"nat-anchor (tables must be top-level for pf section ordering)")
+		}
+	})
+}
+
+func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModels.FirewallNATRule, trafficRules []networkModels.FirewallTrafficRule, preRules, postRules string) {
+	t.Helper()
+
+	tables := buildFirewallObjectTables(trafficRules, natRules)
+	tablesRendered := renderFirewallObjectTables(tables)
+
+	natRendered, err := svc.renderNATRules(natRules, tables)
+	if err != nil {
+		t.Fatalf("unexpected render error: %v", err)
+	}
+	trafficRendered, err := svc.renderTrafficRules(trafficRules, tables)
+	if err != nil {
+		t.Fatalf("unexpected render error: %v", err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "sylve-pf-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	natPath := filepath.Join(tmpDir, "nat-rules.conf")
+	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")
+
+	if err := os.WriteFile(natPath, []byte(natRendered), 0644); err != nil {
+		t.Fatalf("failed to write nat-rules.conf: %v", err)
+	}
+	if err := os.WriteFile(trafficPath, []byte(trafficRendered), 0644); err != nil {
+		t.Fatalf("failed to write traffic-rules.conf: %v", err)
+	}
+
+	config := buildPFMainConfig(preRules, postRules, tablesRendered, natPath, trafficPath)
+	configPath := filepath.Join(tmpDir, "pf.conf")
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("failed to write pf.conf: %v", err)
+	}
+
+	cmd := exec.Command("/sbin/pfctl", "-nf", configPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pfctl validation failed: %v\npfctl output:\n%s\n--- config ---\n%s", err, string(output), config)
 	}
 }

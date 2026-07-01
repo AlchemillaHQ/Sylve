@@ -1708,7 +1708,7 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-	mainCandidate := buildPFMainConfig(advanced.PreRules, advanced.PostRules, tmpObjectTablesPath, tmpNatPath, tmpTrafficPath)
+	mainCandidate := buildPFMainConfig(advanced.PreRules, advanced.PostRules, objectTablesRendered, tmpNatPath, tmpTrafficPath)
 	if err := os.WriteFile(tmpMainPath, []byte(mainCandidate), 0644); err != nil {
 		return err
 	}
@@ -1730,7 +1730,7 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-	finalMain := buildPFMainConfig(advanced.PreRules, advanced.PostRules, pfObjectTablesPath, pfNatRulesPath, pfTrafficRulesPath)
+	finalMain := buildPFMainConfig(advanced.PreRules, advanced.PostRules, objectTablesRendered, pfNatRulesPath, pfTrafficRulesPath)
 
 	if err := atomicWriteFile(pfObjectTablesPath, []byte(objectTablesRendered), 0644); err != nil {
 		return err
@@ -1848,7 +1848,7 @@ func formatPFValidationError(err error, candidates map[string]string) error {
 	return fmt.Errorf("pf_validation_failed: %s | hint: %s", detailText, strings.Join(hints, " | "))
 }
 
-func buildPFMainConfig(preRules string, postRules string, objectTablesPath string, natPath string, trafficPath string) string {
+func buildPFMainConfig(preRules string, postRules string, objectTablesContent string, natPath string, trafficPath string) string {
 	var b strings.Builder
 	b.WriteString(pfManagedHeader)
 	b.WriteString("\n\n")
@@ -1859,8 +1859,10 @@ func buildPFMainConfig(preRules string, postRules string, objectTablesPath strin
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString("anchor \"sylve/object-tables\"\n")
-	b.WriteString(fmt.Sprintf("load anchor \"sylve/object-tables\" from \"%s\"\n\n", objectTablesPath))
+	if trimmedTables := strings.TrimSpace(objectTablesContent); trimmedTables != "" {
+		b.WriteString(trimmedTables)
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString("nat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("rdr-anchor \"sylve/nat-rules\" all\n")
@@ -2043,11 +2045,12 @@ func buildFirewallObjectTables(trafficRules []networkModels.FirewallTrafficRule,
 
 func renderFirewallObjectTables(tables map[uint]firewallObjectTable) string {
 	var b strings.Builder
-	b.WriteString("# managed by Sylve: object tables\n")
 
 	if len(tables) == 0 {
-		return b.String()
+		return ""
 	}
+
+	b.WriteString("# managed by Sylve: object tables\n")
 
 	ids := make([]int, 0, len(tables))
 	for id := range tables {
