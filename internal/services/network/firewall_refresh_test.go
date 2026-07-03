@@ -1123,7 +1123,7 @@ func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 }
 
 func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
-	tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
+		tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{}, "")
 	rendered := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if strings.Contains(rendered, `sylve/object-tables`) {
@@ -1244,24 +1244,24 @@ func TestBuildFirewallObjectTablesDeterministicAndFiltered(t *testing.T) {
 }
 
 func TestRenderFirewallObjectTablesSortedOutput(t *testing.T) {
-	rendered := renderFirewallObjectTables(map[uint]firewallObjectTable{
-		10: {
-			ObjectID:    10,
-			ObjectName:  "Portal IPv4/IPv6",
-			InetName:    "sylve_obj_10_inet",
-			InetValues:  []string{"10.0.0.2", "10.0.0.1"},
-			Inet6Name:   "sylve_obj_10_inet6",
-			Inet6Values: []string{"2001:db8::2"},
-		},
-		2: {
-			ObjectID:    2,
-			ObjectName:  "LAN Allow",
-			InetName:    "sylve_obj_2_inet",
-			InetValues:  []string{"192.168.1.1"},
-			Inet6Name:   "",
-			Inet6Values: nil,
-		},
-	})
+		rendered := renderFirewallObjectTables(map[uint]firewallObjectTable{
+			10: {
+				ObjectID:    10,
+				ObjectName:  "Portal IPv4/IPv6",
+				InetName:    "sylve_obj_10_inet",
+				InetValues:  []string{"10.0.0.2", "10.0.0.1"},
+				Inet6Name:   "sylve_obj_10_inet6",
+				Inet6Values: []string{"2001:db8::2"},
+			},
+			2: {
+				ObjectID:    2,
+				ObjectName:  "LAN Allow",
+				InetName:    "sylve_obj_2_inet",
+				InetValues:  []string{"192.168.1.1"},
+				Inet6Name:   "",
+				Inet6Values: nil,
+			},
+		}, "/entries")
 
 	firstObjectIdx := strings.Index(rendered, "table <sylve_obj_2_inet>")
 	secondObjectIdx := strings.Index(rendered, "table <sylve_obj_10_inet>")
@@ -1270,6 +1270,119 @@ func TestRenderFirewallObjectTablesSortedOutput(t *testing.T) {
 	}
 	if !strings.Contains(rendered, `# object id=10 name="`) {
 		t.Fatalf("expected object comment above table definitions, got:\n%s", rendered)
+	}
+}
+
+func TestWriteFirewallObjectTableEntriesCreatesFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	entriesDir := filepath.Join(tmpDir, "entries")
+
+	tables := map[uint]firewallObjectTable{
+		1: {
+			ObjectID:   1,
+			InetName:   "sylve_obj_1_inet",
+			InetValues: []string{"10.0.0.1", "10.0.0.2"},
+		},
+		2: {
+			ObjectID:    2,
+			InetName:    "sylve_obj_2_inet",
+			InetValues:  []string{"192.168.1.1"},
+			Inet6Name:   "sylve_obj_2_inet6",
+			Inet6Values: []string{"2001:db8::1"},
+		},
+	}
+
+	if err := writeFirewallObjectTableEntries(tables, entriesDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	checkContent := func(path, expected string) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", path, err)
+		}
+		if string(data) != expected {
+			t.Fatalf("expected %q, got %q", expected, string(data))
+		}
+	}
+
+	checkContent(filepath.Join(entriesDir, "sylve_obj_1_inet"), "10.0.0.1\n10.0.0.2\n")
+	checkContent(filepath.Join(entriesDir, "sylve_obj_2_inet"), "192.168.1.1\n")
+	checkContent(filepath.Join(entriesDir, "sylve_obj_2_inet6"), "2001:db8::1\n")
+}
+
+func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
+	tmpDir := t.TempDir()
+	entriesDir := filepath.Join(tmpDir, "entries")
+
+		initial := map[uint]firewallObjectTable{
+		1: {
+			ObjectID:   1,
+			InetName:   "sylve_obj_1_inet",
+			InetValues: []string{"10.0.0.1"},
+		},
+		2: {
+			ObjectID:   2,
+			InetName:   "sylve_obj_2_inet",
+			InetValues: []string{"10.0.0.2"},
+		},
+	}
+	if err := writeFirewallObjectTableEntries(initial, entriesDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+		updated := map[uint]firewallObjectTable{
+		2: {
+			ObjectID:   2,
+			InetName:   "sylve_obj_2_inet",
+			InetValues: []string{"10.0.0.5"},
+		},
+		3: {
+			ObjectID:   3,
+			InetName:   "sylve_obj_3_inet",
+			InetValues: []string{"172.16.0.1"},
+		},
+	}
+	if err := writeFirewallObjectTableEntries(updated, entriesDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+		if _, err := os.Stat(filepath.Join(entriesDir, "sylve_obj_1_inet")); !os.IsNotExist(err) {
+		t.Fatalf("expected sylve_obj_1_inet to be removed, got err: %v", err)
+	}
+
+		data, err := os.ReadFile(filepath.Join(entriesDir, "sylve_obj_2_inet"))
+	if err != nil {
+		t.Fatalf("failed to read sylve_obj_2_inet: %v", err)
+	}
+	if string(data) != "10.0.0.5\n" {
+		t.Fatalf("expected updated content, got %q", string(data))
+	}
+
+	// Table 3 file should exist
+	if _, err := os.Stat(filepath.Join(entriesDir, "sylve_obj_3_inet")); err != nil {
+		t.Fatalf("expected sylve_obj_3_inet to exist, got err: %v", err)
+	}
+}
+
+func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
+	tmpDir := t.TempDir()
+	entriesDir := filepath.Join(tmpDir, "entries")
+
+		if err := os.MkdirAll(entriesDir, 0755); err != nil {
+		t.Fatalf("failed to create entries dir: %v", err)
+	}
+	stalePath := filepath.Join(entriesDir, "stale_file")
+	if err := os.WriteFile(stalePath, []byte("stale"), 0644); err != nil {
+		t.Fatalf("failed to write stale file: %v", err)
+	}
+
+		if err := writeFirewallObjectTableEntries(map[uint]firewallObjectTable{}, entriesDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale_file to be removed, got err: %v", err)
 	}
 }
 
@@ -3276,13 +3389,13 @@ func TestPFConfigValidation(t *testing.T) {
 				DestRaw: "any",
 			},
 		}
-		tables := buildFirewallObjectTables(nil, rules)
-		tablesRendered := renderFirewallObjectTables(tables)
-		config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
-		if !strings.Contains(config, `table <sylve_obj_8_inet> persist { 192.168.12.0/24 }`) {
-			t.Fatal("expected inline table definition in pf.conf before " +
-				"nat-anchor (tables must be top-level for pf section ordering)")
-		}
+			tables := buildFirewallObjectTables(nil, rules)
+			tablesRendered := renderFirewallObjectTables(tables, "/entries")
+			config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+			if !strings.Contains(config, `table <sylve_obj_8_inet> persist file "/entries/sylve_obj_8_inet"`) {
+				t.Fatal("expected file-based table definition in pf.conf before " +
+					"nat-anchor (tables must be top-level for pf section ordering)")
+			}
 	})
 }
 
@@ -3290,7 +3403,6 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 	t.Helper()
 
 	tables := buildFirewallObjectTables(trafficRules, natRules)
-	tablesRendered := renderFirewallObjectTables(tables)
 
 	natRendered, err := svc.renderNATRules(natRules, tables)
 	if err != nil {
@@ -3306,6 +3418,13 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
+
+		entriesDir := filepath.Join(tmpDir, "entries")
+	if err := writeFirewallObjectTableEntries(tables, entriesDir); err != nil {
+		t.Fatalf("failed to write table entries: %v", err)
+	}
+
+	tablesRendered := renderFirewallObjectTables(tables, entriesDir)
 
 	natPath := filepath.Join(tmpDir, "nat-rules.conf")
 	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")
