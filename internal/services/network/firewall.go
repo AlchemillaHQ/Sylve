@@ -1695,7 +1695,7 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-	objectTablesRendered := renderFirewallObjectTables(objectTables, tmpEntriesDir)
+		objectTablesRendered := renderFirewallObjectTables(objectTables)
 
 	tmpObjectTablesPath := filepath.Join(tmpSylveDir, "object-tables.conf")
 	tmpNatPath := filepath.Join(tmpSylveDir, "nat-rules.conf")
@@ -1740,7 +1740,7 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-	objectTablesRenderedFinal := renderFirewallObjectTables(objectTables, pfObjectTableEntriesDir)
+	objectTablesRenderedFinal := renderFirewallObjectTables(objectTables)
 
 	finalMain := buildPFMainConfig(advanced.PreRules, advanced.PostRules, objectTablesRenderedFinal, pfNatRulesPath, pfTrafficRulesPath)
 
@@ -1760,16 +1760,19 @@ func (s *Service) ApplyFirewallConfig() error {
 	s.flushFirewallCounterDeltas()
 	s.updateFirewallRuleNames()
 
-		_, _ = firewallRunCommand("/sbin/pfctl", "-a", "sylve/object-tables", "-F", "Tables")
+	_, _ = firewallRunCommand("/sbin/pfctl", "-a", "sylve/object-tables", "-F", "Tables")
 
 	if s.isPFEnabled() {
 		if err := system.ServiceAction("pf", "onereload"); err != nil {
 			return err
 		}
-		return nil
+		return s.loadFirewallObjectTableEntries(objectTables)
 	}
 
-	return system.ServiceAction("pf", "onestart")
+	if err := system.ServiceAction("pf", "onestart"); err != nil {
+		return err
+	}
+	return s.loadFirewallObjectTableEntries(objectTables)
 }
 
 func extractCommandOutput(raw string) string {
@@ -2057,7 +2060,7 @@ func buildFirewallObjectTables(trafficRules []networkModels.FirewallTrafficRule,
 	return tables
 }
 
-func renderFirewallObjectTables(tables map[uint]firewallObjectTable, entriesDir string) string {
+func renderFirewallObjectTables(tables map[uint]firewallObjectTable) string {
 	var b strings.Builder
 
 	if len(tables) == 0 {
@@ -2080,10 +2083,10 @@ func renderFirewallObjectTables(tables map[uint]firewallObjectTable, entriesDir 
 		}
 		b.WriteString("# " + objectLabel + "\n")
 		if table.InetName != "" && len(table.InetValues) > 0 {
-			b.WriteString(fmt.Sprintf("table <%s> persist file %q\n", table.InetName, filepath.Join(entriesDir, table.InetName)))
+			b.WriteString(fmt.Sprintf("table <%s> persist\n", table.InetName))
 		}
 		if table.Inet6Name != "" && len(table.Inet6Values) > 0 {
-			b.WriteString(fmt.Sprintf("table <%s> persist file %q\n", table.Inet6Name, filepath.Join(entriesDir, table.Inet6Name)))
+			b.WriteString(fmt.Sprintf("table <%s> persist\n", table.Inet6Name))
 		}
 	}
 
@@ -2128,6 +2131,24 @@ func writeFirewallObjectTableEntries(tables map[uint]firewallObjectTable, entrie
 		}
 	}
 
+	return nil
+}
+
+func (s *Service) loadFirewallObjectTableEntries(tables map[uint]firewallObjectTable) error {
+	for _, table := range tables {
+		if table.InetName != "" && len(table.InetValues) > 0 {
+			filePath := filepath.Join(pfObjectTableEntriesDir, table.InetName)
+			if _, err := firewallRunCommand("/sbin/pfctl", "-t", table.InetName, "-T", "add", "-f", filePath); err != nil {
+				return fmt.Errorf("failed_to_load_table_entries: %w", err)
+			}
+		}
+		if table.Inet6Name != "" && len(table.Inet6Values) > 0 {
+			filePath := filepath.Join(pfObjectTableEntriesDir, table.Inet6Name)
+			if _, err := firewallRunCommand("/sbin/pfctl", "-t", table.Inet6Name, "-T", "add", "-f", filePath); err != nil {
+				return fmt.Errorf("failed_to_load_table_entries: %w", err)
+			}
+		}
+	}
 	return nil
 }
 

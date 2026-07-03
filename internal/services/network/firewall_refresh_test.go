@@ -1123,7 +1123,7 @@ func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 }
 
 func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
-		tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{}, "")
+		tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
 	rendered := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if strings.Contains(rendered, `sylve/object-tables`) {
@@ -1261,7 +1261,7 @@ func TestRenderFirewallObjectTablesSortedOutput(t *testing.T) {
 				Inet6Name:   "",
 				Inet6Values: nil,
 			},
-		}, "/entries")
+			},)
 
 	firstObjectIdx := strings.Index(rendered, "table <sylve_obj_2_inet>")
 	secondObjectIdx := strings.Index(rendered, "table <sylve_obj_10_inet>")
@@ -3389,13 +3389,13 @@ func TestPFConfigValidation(t *testing.T) {
 				DestRaw: "any",
 			},
 		}
-			tables := buildFirewallObjectTables(nil, rules)
-			tablesRendered := renderFirewallObjectTables(tables, "/entries")
-			config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
-			if !strings.Contains(config, `table <sylve_obj_8_inet> persist file "/entries/sylve_obj_8_inet"`) {
-				t.Fatal("expected file-based table definition in pf.conf before " +
-					"nat-anchor (tables must be top-level for pf section ordering)")
-			}
+		tables := buildFirewallObjectTables(nil, rules)
+		tablesRendered := renderFirewallObjectTables(tables)
+		config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+		if !strings.Contains(config, `table <sylve_obj_8_inet> persist`) {
+			t.Fatal("expected table definition in pf.conf before " +
+				"nat-anchor (tables must be top-level for pf section ordering)")
+		}
 	})
 }
 
@@ -3417,14 +3417,9 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+		defer os.RemoveAll(tmpDir)
 
-		entriesDir := filepath.Join(tmpDir, "entries")
-	if err := writeFirewallObjectTableEntries(tables, entriesDir); err != nil {
-		t.Fatalf("failed to write table entries: %v", err)
-	}
-
-	tablesRendered := renderFirewallObjectTables(tables, entriesDir)
+		tablesRendered := renderFirewallObjectTables(tables)
 
 	natPath := filepath.Join(tmpDir, "nat-rules.conf")
 	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")
