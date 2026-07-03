@@ -5,6 +5,7 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -51,6 +52,8 @@
 		encryptionKey: '',
 		volblocksize: '16384',
 		size: '',
+		refreservation: '',
+		sparse: 'on',
 		primarycache: 'metadata',
 		volmode: 'dev'
 	};
@@ -62,6 +65,7 @@
 		dedup: string;
 		encryption: string;
 		volblocksize: string;
+		sparse: string;
 		primarycache: string;
 		volmode: string;
 	};
@@ -126,7 +130,7 @@
 			return;
 		}
 
-		const response = await createVolume(properties.name, properties.parent, {
+		const props: Record<string, string> = {
 			parent: properties.parent,
 			checksum: properties.checksum,
 			compression: properties.compression,
@@ -135,9 +139,19 @@
 			encryptionKey: properties.encryptionKey,
 			volblocksize: properties.volblocksize,
 			size: toZfsBytesString(parsedSize),
+			sparse: properties.sparse,
 			primarycache: properties.primarycache,
 			volmode: properties.volmode
-		});
+		};
+
+		if (properties.refreservation) {
+			const parsed = parseSizeInputToBytes(properties.refreservation);
+			if (parsed !== null && parsed > 0) {
+				props.refreservation = toZfsBytesString(parsed);
+			}
+		}
+
+		const response = await createVolume(properties.name, properties.parent, props);
 
 		reload = true;
 
@@ -215,22 +229,32 @@
 					/>
 				</div>
 
-				<div class="space-y-1">
-					<Label class="flex h-7 items-center whitespace-nowrap text-sm">Size</Label>
-					<Input
-						type="text"
-						class="w-full text-left"
-						min="0"
-						bind:value={properties.size}
-						placeholder="128M"
-						onblur={() => {
-							const normalized = normalizeSizeInputExact(properties.size);
-							if (normalized !== null) {
-								properties.size = normalized;
-							}
-						}}
-					/>
-				</div>
+				<CustomValueInput
+					label="Size"
+					placeholder="128M"
+					bind:value={properties.size}
+					classes="flex-1 space-y-1"
+					onBlur={() => {
+						const normalized = normalizeSizeInputExact(properties.size);
+						if (normalized !== null) {
+							properties.size = normalized;
+						}
+					}}
+				/>
+
+				<CustomValueInput
+					label="Referenced Reservation"
+					placeholder="10G (optional)"
+					bind:value={properties.refreservation}
+					classes="flex-1 space-y-1"
+					hint="Minimum guaranteed space for referenced data. Leave empty for default. Useful with sparse volumes to cap actual space usage."
+					onBlur={() => {
+						const normalized = normalizeSizeInputExact(properties.refreservation);
+						if (normalized !== null) {
+							properties.refreservation = normalized;
+						}
+					}}
+				/>
 
 				<SimpleSelect
 					label="Pool"
@@ -304,11 +328,12 @@
 
 				{@render simpleSelect('primarycache', 'Primary Cache', 'Select primary cache mode')}
 				{@render simpleSelect('volmode', 'Volume Mode', 'Select volume mode')}
+				{@render simpleSelect('sparse', 'Sparse', 'Select sparse mode')}
 			</div>
 		</div>
 
 		<Dialog.Footer>
-			<div class="flex items-center justify-end space-x-4">
+			<div class="mt-4 flex items-center justify-end space-x-4">
 				<Button
 					size="sm"
 					type="button"

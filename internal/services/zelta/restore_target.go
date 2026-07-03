@@ -1151,12 +1151,13 @@ func (s *Service) restoreChildDatasetsFromTarget(ctx context.Context, target *cl
 		}
 
 		if _, err := s.promoteRestoredDataset(ctx, restorePath, localChild); err != nil {
-			logger.L.Warn().Err(err).Str("child", localChild).
-				Msg("restore_child_promote_failed")
-			continue
-		}
+				logger.L.Warn().Err(err).Str("child", localChild).
+					Msg("restore_child_promote_failed")
+				continue
+			}
 
-		logger.L.Info().Str("child", localChild).Msg("restored_child_dataset")
+			s.fixRestoredProperties(ctx, localChild)
+			logger.L.Info().Str("child", localChild).Msg("restored_child_dataset")
 	}
 
 	return nil

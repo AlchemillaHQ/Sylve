@@ -40,3 +40,4 @@ Temporary Items
 /gzfs/
 /.cache/
 /libbsmart/
+/dataset.json

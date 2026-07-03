@@ -225,16 +225,17 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 					"recordsize": recordSize,
 				}),
 			)
-		case vmModels.VMStorageTypeZVol:
-			dataset, err = s.GZFS.ZFS.CreateVolume(
-				ctx,
-				datasetName,
-				uint64(storage.Size),
-				utils.MergeMaps(props, map[string]string{
-					"volblocksize": volblocksize,
-					"volmode":      "dev",
-				}),
-			)
+			case vmModels.VMStorageTypeZVol:
+				dataset, err = s.GZFS.ZFS.CreateVolume(
+					ctx,
+					datasetName,
+					uint64(storage.Size),
+					utils.MergeMaps(props, map[string]string{
+						"volblocksize": volblocksize,
+						"volmode":      "dev",
+						"sparse":       "on",
+					}),
+				)
 		}
 
 		if err != nil {

@@ -607,7 +607,6 @@ msgstr "Copied response to clipboard"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -2258,8 +2257,10 @@ msgstr "Directory Mask"
 #~ msgid "Guests"
 #~ msgstr "Guests"
 
-#~ msgid "Read Only"
-#~ msgstr "Read Only"
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Read Only"
+msgstr "Read Only"
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
@@ -8557,9 +8558,8 @@ msgstr "Volume {0} edited"
 msgid "Volume Size"
 msgstr "Volume Size"
 
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
-msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
-msgstr "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+#~ msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+#~ msgstr "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 
 #~ msgid "<0/> Flash File to {0}"
 #~ msgstr "<0/> Flash File to {0}"
@@ -15176,3 +15176,48 @@ msgstr "Leave empty to use the system hostname"
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 msgid "System Hostname"
 msgstr "System Hostname"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Minimum guaranteed space for referenced data. Leave empty for default. Useful with sparse volumes to cap actual space usage."
+msgstr "Minimum guaranteed space for referenced data. Leave empty for default. Useful with sparse volumes to cap actual space usage."
+
+#~ msgid "Ref Reservation <0/>"
+#~ msgstr "Ref Reservation <0/>"
+
+#~ msgid "Sparse (Thin Provision)"
+#~ msgstr "Sparse (Thin Provision)"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Select sparse mode"
+msgstr "Select sparse mode"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Minimum guaranteed space for referenced data. Leave empty to keep current value."
+msgstr "Minimum guaranteed space for referenced data. Leave empty to keep current value."
+
+#~ msgid "Referenced Reservation <0/>"
+#~ msgstr "Referenced Reservation <0/>"
+
+#~ msgid "Ref Reservation"
+#~ msgstr "Ref Reservation"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size is not a multiple of block size, click to adjust"
+msgstr "Volume size is not a multiple of block size, click to adjust"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Sparse"
+msgstr "Sparse"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Referenced Reservation"
+msgstr "Referenced Reservation"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select read only mode"
+msgstr "Select read only mode"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select Read Only"
+msgstr "Select Read Only"

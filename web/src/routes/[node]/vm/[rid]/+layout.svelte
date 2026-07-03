@@ -2,10 +2,15 @@
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import { goto } from '$app/navigation';
 	import { setContext } from 'svelte';
 	import { page } from '$app/state';
-	import { actionVm, deleteVM, getSimpleVMById, getVMDomain, purgeVMRegistration } from '$lib/api/vm/vm';
+	import {
+		actionVm,
+		deleteVM,
+		getSimpleVMById,
+		getVMDomain,
+		purgeVMRegistration
+	} from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -201,10 +206,17 @@
 		if (result.status === 'error') {
 			isDeleteInFlight = false;
 			await refreshVmDomain();
-			toast.error(wasPurgeOnly ? 'Error removing VM entry' : wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			toast.error(
+				wasPurgeOnly
+					? 'Error removing VM entry'
+					: wasForceDelete
+						? 'Error force deleting VM'
+						: 'Error deleting VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			await useSafeGoto(`/${storage.hostname}/summary`);
 			if (wasPurgeOnly && result.message === 'vm_registration_purged_with_warnings') {
@@ -447,7 +459,12 @@
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<SpanWithIcon icon="icon-[mdi--alert-octagon]" size="h-4 w-4" gap="gap-1" title="Force Delete" />
+								<SpanWithIcon
+									icon="icon-[mdi--alert-octagon]"
+									size="h-4 w-4"
+									gap="gap-1"
+									title="Force Delete"
+								/>
 							</Button>
 						{/if}
 
@@ -458,7 +475,12 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<SpanWithIcon icon="icon-[mdi--alert]" size="h-4 w-4" gap="gap-1" title="Force Stop" />
+									<SpanWithIcon
+										icon="icon-[mdi--alert]"
+										size="h-4 w-4"
+										gap="gap-1"
+										title="Force Stop"
+									/>
 								</Button>
 							{/if}
 
@@ -468,7 +490,12 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<SpanWithIcon icon="icon-[mdi--restart]" size="h-4 w-4" gap="gap-1" title="Reboot" />
+									<SpanWithIcon
+										icon="icon-[mdi--restart]"
+										size="h-4 w-4"
+										gap="gap-1"
+										title="Reboot"
+									/>
 								</Button>
 
 								<Button
@@ -476,7 +503,12 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<SpanWithIcon icon="icon-[mdi--power]" size="h-4 w-4" gap="gap-1" title="Shutdown" />
+									<SpanWithIcon
+										icon="icon-[mdi--power]"
+										size="h-4 w-4"
+										gap="gap-1"
+										title="Shutdown"
+									/>
 								</Button>
 
 								<Button
@@ -496,7 +528,12 @@
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
-							<SpanWithIcon icon="icon-[mdi--delete-sweep]" size="h-4 w-4" gap="gap-1" title="Remove stale entry" />
+							<SpanWithIcon
+								icon="icon-[mdi--delete-sweep]"
+								size="h-4 w-4"
+								gap="gap-1"
+								title="Remove stale entry"
+							/>
 						</Button>
 					{/if}
 				</div>
@@ -538,8 +575,8 @@
 					<span class="font-semibold">{modalState?.title}.</span>
 					{#if modalState.forceDelete}
 						<div class="mt-2 text-sm">
-							Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and
-							VM network objects. Partial failures will be tolerated.
+							Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records,
+							and VM network objects. Partial failures will be tolerated.
 						</div>
 					{:else}
 						<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">

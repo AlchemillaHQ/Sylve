@@ -182,12 +182,22 @@ export const createFSProps = {
             label: '128K - default',
             value: '131072'
         },
-        {
-            label: '1M - Large Files',
-            value: '1048576'
-        }
-    ]
-};
+	    {
+	            label: '1M - Large Files',
+	            value: '1048576'
+	        }
+	    ],
+	    readonly: [
+	        {
+	            label: 'No',
+	            value: 'off'
+	        },
+	        {
+	            label: 'Yes',
+	            value: 'on'
+	        }
+	    ]
+	};
 
 export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; columns: Column[] } {
     const columns: Column[] = [

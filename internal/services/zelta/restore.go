@@ -468,6 +468,42 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_mount_failed")
 		}
 	}
+
+	// Fix volumes separately: no canmount, no mountpoint, no mount.
+	volDatasets, volErr := s.listLocalVolumeDatasets(ctx)
+	if volErr == nil {
+		prefix := dataset + "/"
+		for _, v := range volDatasets {
+			vn := normalizeDatasetPath(v)
+			if vn == "" || !strings.HasPrefix(vn, prefix) {
+				continue
+			}
+			vol, getErr := s.getLocalDataset(ctx, vn)
+			if getErr != nil {
+				logger.L.Warn().Err(getErr).Str("dataset", vn).Msg("fix_restored_volume_get_failed")
+				continue
+			}
+			if vol == nil {
+				continue
+			}
+			if vol.IsEncrypted() {
+				keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, vol)
+				if keyErr != nil {
+					logger.L.Error().Err(keyErr).Str("dataset", vn).Msg("fix_restored_volume_key_load_failed")
+					continue
+				}
+				if !keyLoaded {
+					logger.L.Error().Str("dataset", vn).Msg("fix_restored_volume_key_not_auto_loaded")
+					continue
+				}
+			}
+			if err := vol.SetProperties(ctx, "readonly", "off"); err != nil {
+				logger.L.Warn().Err(err).Str("dataset", vn).Msg("fix_restored_volume_readonly_failed")
+			}
+		}
+	} else {
+		logger.L.Warn().Err(volErr).Msg("fix_restored_property_list_volumes_failed")
+	}
 }
 
 func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err error, output string) {
