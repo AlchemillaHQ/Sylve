@@ -227,6 +227,7 @@ msgstr "Knoten — <0/>"
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Discord"
 msgstr "Discord"
@@ -4613,6 +4614,7 @@ msgstr "Benutzerdefinierte Jail-Lebenszyklus-Hooks (exec.*-Skripte)"
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Enable"
 msgstr "Aktivieren"
 
@@ -5922,6 +5924,7 @@ msgstr "Aktivieren oder deaktivieren Sie die TPM-Emulation (Trusted Platform Mod
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Disable"
 msgstr "Deaktivieren"
 
@@ -13122,8 +13125,9 @@ msgstr ""
 msgid "Rules"
 msgstr ""
 
-#~ msgid "Failed to update notification rules"
-#~ msgstr ""
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to update notification rules"
+msgstr ""
 
 #~ msgid "Notification rules updated"
 #~ msgstr ""
@@ -13134,9 +13138,11 @@ msgstr ""
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "In-App"
 msgstr ""
 
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -15384,4 +15390,40 @@ msgstr ""
 
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "On Disk"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Select at least one channel"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Bulk Update"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Bulk Update Notification Channels"
+msgstr ""
+
+#~ msgid "Applying changes to <0/> selected rule(s)."
+#~ msgstr ""
+
+#~ msgid "Channel Settings"
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "No Change"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Apply Changes"
+msgstr ""
+
+#. 0: modals.bulkUpdate.ids.length
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "{0} Rule(s) Selected"
+msgstr ""
+
+#. 0: group.count; 1: group.count !== 1 ? 's' \\: ''
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "{0} rule{1}"
 msgstr ""

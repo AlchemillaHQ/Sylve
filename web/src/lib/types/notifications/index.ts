@@ -161,3 +161,11 @@ export type UpdateNotificationRuleInput = {
 	discordEnabled: boolean;
 	config?: string;
 };
+
+export type BulkUpdateRulesInput = {
+	ids: number[];
+	uiEnabled?: boolean;
+	ntfyEnabled?: boolean;
+	emailEnabled?: boolean;
+	discordEnabled?: boolean;
+};

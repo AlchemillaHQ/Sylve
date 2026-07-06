@@ -1220,6 +1220,55 @@ func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigVi
 	return s.GetRuleConfig(ctx)
 }
 
+func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, ntfyEnabled, emailEnabled, discordEnabled *bool) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+	if len(ids) == 0 {
+		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_ids")
+	}
+
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		var rules []models.NotificationKindRule
+		if err := tx.Find(&rules, ids).Error; err != nil {
+			return err
+		}
+
+		for _, rule := range rules {
+			if uiEnabled != nil {
+				rule.UIEnabled = *uiEnabled
+			}
+			if ntfyEnabled != nil {
+				rule.NtfyEnabled = *ntfyEnabled
+			}
+			if emailEnabled != nil {
+				rule.EmailEnabled = *emailEnabled
+			}
+			if discordEnabled != nil {
+				rule.DiscordEnabled = *discordEnabled
+			}
+			if err := tx.Save(&rule).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return s.GetRuleConfig(ctx)
+}
+
 func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string) (models.NotificationKindRule, error) {
 	kind = strings.TrimSpace(kind)
 	var rule models.NotificationKindRule

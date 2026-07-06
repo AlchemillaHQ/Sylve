@@ -566,6 +566,68 @@ func BulkDeleteRules(service *notifications.Service) gin.HandlerFunc {
 	}
 }
 
+func BulkUpdateRules(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req internal.BulkUpdateRulesRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_body",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if len(req.IDs) == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_notification_rule_ids",
+				Error:   "invalid_notification_rule_ids",
+				Data:    nil,
+			})
+			return
+		}
+
+		ids := make([]uint, len(req.IDs))
+		for i, id := range req.IDs {
+			ids[i] = uint(id)
+		}
+
+		updated, err := service.BulkUpdateRules(c.Request.Context(), ids, req.UIEnabled, req.NtfyEnabled, req.EmailEnabled, req.DiscordEnabled)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "notification_rule_not_found",
+					Error:   "notification_rule_not_found",
+					Data:    nil,
+				})
+				return
+			}
+
+			status := http.StatusBadRequest
+			if !isRuleRequestBad(err) {
+				status = http.StatusInternalServerError
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_bulk_update_notification_rules",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[notifications.RuleConfigView]{
+			Status:  "success",
+			Message: "notification_rules_bulk_updated",
+			Error:   "",
+			Data:    updated,
+		})
+	}
+}
+
 func UpdateRules(service *notifications.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req notificationRulesUpdateRequest

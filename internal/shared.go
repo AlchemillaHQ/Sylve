@@ -96,3 +96,11 @@ type NoteRequest struct {
 type BulkDeleteRequest struct {
 	IDs []int `json:"ids" binding:"required"`
 }
+
+type BulkUpdateRulesRequest struct {
+	IDs            []int  `json:"ids" binding:"required"`
+	UIEnabled      *bool  `json:"uiEnabled"`
+	NtfyEnabled    *bool  `json:"ntfyEnabled"`
+	EmailEnabled   *bool  `json:"emailEnabled"`
+	DiscordEnabled *bool  `json:"discordEnabled"`
+}

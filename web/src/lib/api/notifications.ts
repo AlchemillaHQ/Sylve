@@ -4,6 +4,7 @@ import {
 	NotificationRulesConfigSchema,
 	NotificationsCountSchema,
 	NotificationsListSchema,
+	type BulkUpdateRulesInput,
 	type NotificationConfig,
 	type NotificationRulesConfig,
 	type NotificationsCount,
@@ -84,6 +85,10 @@ export async function deleteNotificationRule(id: number): Promise<NotificationRu
 
 export async function bulkDeleteNotificationRules(ids: number[]): Promise<NotificationRulesConfig> {
 	return await apiRequest('/notifications/rules/bulk-delete', NotificationRulesConfigSchema, 'POST', { ids });
+}
+
+export async function bulkUpdateNotificationRules(payload: BulkUpdateRulesInput): Promise<NotificationRulesConfig> {
+	return await apiRequest('/notifications/rules/bulk-update', NotificationRulesConfigSchema, 'POST', payload);
 }
 
 export async function testNotificationRule(payload: {

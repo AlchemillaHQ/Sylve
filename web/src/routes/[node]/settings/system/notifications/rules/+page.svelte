@@ -1,12 +1,13 @@
 <script lang="ts">
-	import {
-		bulkDeleteNotificationRules,
-		createNotificationRule,
-		deleteNotificationRule,
-		getNotificationRules,
-		testNotificationRule,
-		updateNotificationRule
-	} from '$lib/api/notifications';
+import {
+	bulkDeleteNotificationRules,
+	bulkUpdateNotificationRules,
+	createNotificationRule,
+	deleteNotificationRule,
+	getNotificationRules,
+	testNotificationRule,
+	updateNotificationRule
+} from '$lib/api/notifications';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -14,10 +15,11 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as Table from '$lib/components/ui/table/index.js';
+import * as Accordion from '$lib/components/ui/accordion/index.js';
+import * as Dialog from '$lib/components/ui/dialog/index.js';
+import * as Table from '$lib/components/ui/table/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { NotificationRulesConfig } from '$lib/types/notifications';
+	import type { BulkUpdateRulesInput, NotificationRulesConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource } from 'runed';
@@ -243,12 +245,43 @@
 			open: false,
 			ids: [] as number[]
 		},
+		bulkUpdate: {
+			open: false,
+			ids: [] as number[],
+			rules: [] as Array<{
+				id: number;
+				templateKey: string;
+				templateLabel: string;
+				targetLabel: string;
+				uiEnabled: boolean;
+				ntfyEnabled: boolean;
+				emailEnabled: boolean;
+				discordEnabled: boolean;
+			}>,
+			uiEnabled: null as boolean | null,
+			ntfyEnabled: null as boolean | null,
+			emailEnabled: null as boolean | null,
+			discordEnabled: null as boolean | null
+		},
 		test: {
 			open: false,
 			templateKey: '',
 			targetKey: '',
 			condition: ''
 		}
+	});
+
+	let bulkUpdateGroups = $derived.by(() => {
+		const map = new Map<string, { label: string; count: number }>();
+		for (const r of modals.bulkUpdate.rules) {
+			const existing = map.get(r.templateKey);
+			if (existing) {
+				existing.count++;
+			} else {
+				map.set(r.templateKey, { label: r.templateLabel, count: 1 });
+			}
+		}
+		return Array.from(map.values());
 	});
 
 	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true, discordEnabled: true, config: '' });
@@ -425,6 +458,34 @@
 		};
 	}
 
+	function openBulkUpdateModal() {
+		const eligibleRows = (activeRows || []).filter(
+			(r): r is RuleRow => !(r as RuleRow).isTemplateRow && !!(r as RuleRow).ruleId
+		);
+		if (eligibleRows.length < 2) {
+			return;
+		}
+
+		modals.bulkUpdate = {
+			open: true,
+			ids: eligibleRows.map((r) => r.ruleId as number),
+			rules: eligibleRows.map((r) => ({
+				id: r.ruleId as number,
+				templateKey: r.templateKey,
+				templateLabel: r.templateLabel,
+				targetLabel: r.targetLabel,
+				uiEnabled: r.uiEnabled,
+				ntfyEnabled: r.ntfyEnabled,
+				emailEnabled: r.emailEnabled,
+				discordEnabled: r.discordEnabled
+			})),
+			uiEnabled: null,
+			ntfyEnabled: null,
+			emailEnabled: null,
+			discordEnabled: null
+		};
+	}
+
 	async function createRule() {
 		if (busy.create) {
 			return;
@@ -536,6 +597,39 @@
 		await rulesResource.refetch();
 	}
 
+	async function bulkUpdateRules() {
+		if (busy.delete || modals.bulkUpdate.ids.length === 0) {
+			return;
+		}
+
+		const payload: BulkUpdateRulesInput = { ids: modals.bulkUpdate.ids };
+		if (modals.bulkUpdate.uiEnabled !== null) payload.uiEnabled = modals.bulkUpdate.uiEnabled;
+		if (modals.bulkUpdate.ntfyEnabled !== null) payload.ntfyEnabled = modals.bulkUpdate.ntfyEnabled;
+		if (modals.bulkUpdate.emailEnabled !== null) payload.emailEnabled = modals.bulkUpdate.emailEnabled;
+		if (modals.bulkUpdate.discordEnabled !== null) payload.discordEnabled = modals.bulkUpdate.discordEnabled;
+
+		if (Object.keys(payload).length <= 1) {
+			toast.error('Select at least one channel', { position: 'bottom-center' });
+			return;
+		}
+
+		busy.delete = true;
+		const response = await bulkUpdateNotificationRules(payload);
+		busy.delete = false;
+
+		if (isAPIResponse(response) && response.status === 'error') {
+			handleAPIError(response);
+			toast.error('Failed to update notification rules', { position: 'bottom-center' });
+			modals.bulkUpdate.open = false;
+			return;
+		}
+
+		toast.success(`${modals.bulkUpdate.ids.length} notification rules updated`, { position: 'bottom-center' });
+		modals.bulkUpdate.open = false;
+		await rulesResource.refetch();
+		activeRows = null;
+	}
+
 	function openTestModal() {
 		const firstTemplate = createTemplateOptions[0]?.key || '';
 		modals.test = {
@@ -642,6 +736,9 @@
 			</Button>
 		{/if}
 		{#if activeRows && activeRows.filter((r) => !(r as RuleRow).isTemplateRow && (r as RuleRow).ruleId).length > 1}
+			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkUpdateModal}>
+				<SpanWithIcon icon="icon-[material-symbols--toggle-on]" size="h-4 w-4" gap="gap-2" title="Bulk Update" />
+			</Button>
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkDeleteModal}>
 				<SpanWithIcon icon="icon-[material-symbols--delete-sweep]" size="h-4 w-4" gap="gap-2" title="Bulk Delete" />
 			</Button>
@@ -1007,3 +1104,95 @@
 		}
 	}}
 />
+
+{#if modals.bulkUpdate.open}
+	<Dialog.Root bind:open={modals.bulkUpdate.open}>
+		<Dialog.Content
+			class="sm:max-w-150"
+			onInteractOutside={(e) => e.preventDefault()}
+			showCloseButton={true}
+			onClose={() => (modals.bulkUpdate.open = false)}
+		>
+			<Dialog.Header>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[material-symbols--toggle-on]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Bulk Update Notification Channels"
+					/>
+				</Dialog.Title>
+			</Dialog.Header>
+
+			<div class="space-y-4">
+				<div class="rounded-md border bg-muted/10">
+					<Accordion.Root type="single" collapsible>
+						<Accordion.Item value="selected-rules" class="border-b-0">
+							<Accordion.Trigger
+								class="px-4 py-2.5 text-xs uppercase tracking-widest text-muted-foreground hover:no-underline"
+							>
+								{modals.bulkUpdate.ids.length} Rule(s) Selected
+							</Accordion.Trigger>
+							<Accordion.Content class="px-4 pb-3">
+								<div class="space-y-1">
+									{#each bulkUpdateGroups as group (group.label)}
+										<div class="flex items-center justify-between rounded bg-background px-3 py-1.5 text-xs">
+											<span class="text-muted-foreground">{group.label}</span>
+											<span class="font-medium">{group.count} rule{group.count !== 1 ? 's' : ''}</span>
+										</div>
+									{/each}
+								</div>
+							</Accordion.Content>
+						</Accordion.Item>
+					</Accordion.Root>
+				</div>
+
+				<div class="grid grid-cols-2 gap-3">
+					{#each [
+						{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
+						{ key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+						{ key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
+						{ key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
+					] as channel (channel.key)}
+						{@const value = modals.bulkUpdate[channel.key]}
+						<div class="rounded-md border p-3 space-y-2.5">
+							<div class="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+								<span class="{channel.icon} h-4 w-4 shrink-0"></span>
+								{channel.label}
+							</div>
+							<div class="flex gap-2">
+								<button
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value === true ? 'border-green-600 bg-green-600 text-white shadow-xs' : 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									onclick={() => (modals.bulkUpdate[channel.key] = true)}
+								>
+									Enable
+								</button>
+								<button
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value === false ? 'border-red-600 bg-red-600 text-white shadow-xs' : 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									onclick={() => (modals.bulkUpdate[channel.key] = false)}
+								>
+									Disable
+								</button>
+								<button
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value === null ? 'bg-muted text-foreground shadow-xs' : 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									onclick={() => (modals.bulkUpdate[channel.key] = null)}
+								>
+									No Change
+								</button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+
+			<Dialog.Footer>
+				<Button onclick={bulkUpdateRules} size="sm" disabled={busy.delete}>
+					{#if busy.delete}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					{/if}
+					Apply Changes
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}
