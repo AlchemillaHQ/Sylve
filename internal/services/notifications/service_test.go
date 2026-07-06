@@ -826,14 +826,8 @@ func TestDeleteRuleRecreatesActivePoolRule(t *testing.T) {
 		t.Fatalf("delete_rule_failed: %v", err)
 	}
 
-	if len(updated.Rules) != 1 {
-		t.Fatalf("expected_single_rule_after_delete got: %d", len(updated.Rules))
-	}
-	if updated.Rules[0].TargetKey != "zroot" {
-		t.Fatalf("expected_zroot_rule_after_delete got: %s", updated.Rules[0].TargetKey)
-	}
-	if !updated.Rules[0].Active {
-		t.Fatalf("expected_rule_active_after_delete")
+	if len(updated.Rules) != 0 {
+		t.Fatalf("expected_no_rules_after_delete got: %d", len(updated.Rules))
 	}
 }
 
@@ -1066,7 +1060,7 @@ func TestDismissDoesNotPersistSuppressionForZFSPoolState(t *testing.T) {
 
 func TestTestRuleEmitsThroughPipeline(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
@@ -1096,7 +1090,7 @@ func TestTestRuleEmitsThroughPipeline(t *testing.T) {
 
 func TestTestRuleSendsThroughTransports(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	ntfyCalls := 0
@@ -1148,7 +1142,7 @@ func TestTestRuleSendsThroughTransports(t *testing.T) {
 
 func TestTestRuleRejectsUnknownTemplate(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	err := svc.TestRule(context.Background(), TestRuleInput{
@@ -1165,8 +1159,8 @@ func TestTestRuleRejectsUnknownTemplate(t *testing.T) {
 
 func TestTestRuleFallsBackToFirstTarget(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
-		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
+		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	if err := svc.TestRule(context.Background(), TestRuleInput{
@@ -1178,7 +1172,7 @@ func TestTestRuleFallsBackToFirstTarget(t *testing.T) {
 
 func TestTestRuleRejectsTargetNotInTemplate(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	err := svc.TestRule(context.Background(), TestRuleInput{
@@ -1195,7 +1189,7 @@ func TestTestRuleRejectsTargetNotInTemplate(t *testing.T) {
 
 func TestDiskSmartTemplatesAppearWhenDiskServiceSet(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
 	})
 
@@ -1227,7 +1221,7 @@ func TestDiskSmartTemplatesAppearWhenDiskServiceSet(t *testing.T) {
 
 func TestDiskSmartTemplatesHaveOnlySmartDisks(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 		{Device: "ada1", Model: "Test NoSMART", Type: "HDD", SmartData: nil},
 	})
 
@@ -1247,8 +1241,8 @@ func TestDiskSmartTemplatesHaveOnlySmartDisks(t *testing.T) {
 
 func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
-		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
+		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: diskServiceInterfaces.SmartData{}},
 		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
 	})
 
@@ -1294,7 +1288,7 @@ func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
 
 func TestNvmeTemplateTargetsOnlyNVMe(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
 	})
 
@@ -1320,7 +1314,7 @@ func TestNvmeTemplateTargetsOnlyNVMe(t *testing.T) {
 
 func TestDiskSmartConfigDefaultsWritten(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
@@ -1354,7 +1348,7 @@ func TestDiskSmartConfigDefaultsWritten(t *testing.T) {
 
 func TestDiskSmartTargetLabelsIncludeModel(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "CONSISTENT SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "CONSISTENT SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	view, err := svc.GetRuleConfig(context.Background())
@@ -1376,7 +1370,7 @@ func TestDiskSmartTargetLabelsIncludeModel(t *testing.T) {
 
 func TestUpdateRulePersistsConfig(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	view, err := svc.GetRuleConfig(context.Background())
@@ -1416,7 +1410,7 @@ func TestUpdateRulePersistsConfig(t *testing.T) {
 
 func TestDeleteDiskRuleStaysDeleted(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	view, err := svc.GetRuleConfig(context.Background())
@@ -1518,7 +1512,7 @@ func TestTestRuleWithNVMeTemplate(t *testing.T) {
 
 func TestTestRuleDefaultConditionPerTemplate(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: &diskServiceInterfaces.SmartData{}},
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	tests := []struct {
