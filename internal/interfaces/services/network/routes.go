@@ -14,10 +14,14 @@ type UpsertStaticRouteRequest struct {
 	Enabled         *bool  `json:"enabled"`
 	FIB             *uint  `json:"fib"`
 	DestinationType string `json:"destinationType" binding:"required,oneof=host network"`
-	Destination     string `json:"destination" binding:"required"`
+	Destination     string `json:"destination"`
+	DestinationRaw  string `json:"destinationRaw"`
+	DestinationObjID *uint `json:"destinationObjId"`
 	Family          string `json:"family" binding:"required,oneof=inet inet6"`
 	NextHopMode     string `json:"nextHopMode" binding:"required,oneof=gateway interface"`
 	Gateway         string `json:"gateway"`
+	GatewayRaw      string `json:"gatewayRaw"`
+	GatewayObjID    *uint  `json:"gatewayObjId"`
 	GatewayZone     string `json:"gatewayZone"`
 	Interface       string `json:"interface"`
 }

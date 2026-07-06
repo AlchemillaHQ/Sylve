@@ -1249,6 +1249,10 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 		}
 	}
 
+	if err := s.ReconcileObjectStaticRoutes(id); err != nil {
+		logger.L.Error().Err(err).Uint("object_id", id).Msg("failed_to_reconcile_static_routes_after_object_edit")
+	}
+
 	if oType == "FQDN" || oType == "List" {
 		if err := s.RefreshObjectByID(id); err != nil {
 			if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {

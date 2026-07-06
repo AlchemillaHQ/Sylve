@@ -5,9 +5,13 @@ export interface StaticRoutePayload {
 	fib: number;
 	destinationType: 'host' | 'network' | string;
 	destination: string;
+	destinationRaw?: string;
+	destinationObjId?: number | null;
 	family: 'inet' | 'inet6' | string;
 	nextHopMode: 'gateway' | 'interface' | string;
 	gateway?: string;
+	gatewayRaw?: string;
+	gatewayObjId?: number | null;
 	gatewayZone?: string;
 	interface?: string;
 }

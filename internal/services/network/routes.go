@@ -331,6 +331,44 @@ func applyStaticRouteDiff(current, next *networkModels.StaticRoute) error {
 	return nil
 }
 
+func (s *Service) resolveStaticRouteRefs(req *networkServiceInterfaces.UpsertStaticRouteRequest) error {
+	if req.DestinationObjID != nil {
+		var obj networkModels.Object
+		if err := s.DB.Preload("Entries").First(&obj, *req.DestinationObjID).Error; err != nil {
+			return fmt.Errorf("invalid_destination_object_id")
+		}
+		if len(obj.Entries) == 0 || strings.TrimSpace(obj.Entries[0].Value) == "" {
+			return fmt.Errorf("destination_object_has_no_entries")
+		}
+		req.Destination = strings.TrimSpace(obj.Entries[0].Value)
+		req.DestinationRaw = req.Destination
+	} else if req.DestinationRaw != "" {
+		req.Destination = strings.TrimSpace(req.DestinationRaw)
+	} else if req.Destination == "" {
+		return fmt.Errorf("route_destination_required")
+	} else {
+		req.DestinationRaw = strings.TrimSpace(req.Destination)
+	}
+
+	if req.GatewayObjID != nil {
+		var obj networkModels.Object
+		if err := s.DB.Preload("Entries").First(&obj, *req.GatewayObjID).Error; err != nil {
+			return fmt.Errorf("invalid_gateway_object_id")
+		}
+		if len(obj.Entries) == 0 || strings.TrimSpace(obj.Entries[0].Value) == "" {
+			return fmt.Errorf("gateway_object_has_no_entries")
+		}
+		req.Gateway = strings.TrimSpace(obj.Entries[0].Value)
+		req.GatewayRaw = req.Gateway
+	} else if req.GatewayRaw != "" {
+		req.Gateway = strings.TrimSpace(req.GatewayRaw)
+	} else if req.Gateway != "" {
+		req.GatewayRaw = strings.TrimSpace(req.Gateway)
+	}
+
+	return nil
+}
+
 func (s *Service) GetStaticRoutes() ([]networkModels.StaticRoute, error) {
 	var routes []networkModels.StaticRoute
 	if err := s.DB.Order("id asc").Find(&routes).Error; err != nil {
@@ -340,10 +378,19 @@ func (s *Service) GetStaticRoutes() ([]networkModels.StaticRoute, error) {
 }
 
 func (s *Service) CreateStaticRoute(req *networkServiceInterfaces.UpsertStaticRouteRequest) (uint, error) {
+	if err := s.resolveStaticRouteRefs(req); err != nil {
+		return 0, err
+	}
+
 	route, err := validateStaticRouteRequest(req)
 	if err != nil {
 		return 0, err
 	}
+
+	route.DestinationRaw = strings.TrimSpace(req.DestinationRaw)
+	route.DestinationObjID = req.DestinationObjID
+	route.GatewayRaw = strings.TrimSpace(req.GatewayRaw)
+	route.GatewayObjID = req.GatewayObjID
 
 	if txErr := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&route).Error; err != nil {
@@ -363,6 +410,10 @@ func (s *Service) CreateStaticRoute(req *networkServiceInterfaces.UpsertStaticRo
 }
 
 func (s *Service) EditStaticRoute(id uint, req *networkServiceInterfaces.UpsertStaticRouteRequest) error {
+	if err := s.resolveStaticRouteRefs(req); err != nil {
+		return err
+	}
+
 	normalized, err := validateStaticRouteRequest(req)
 	if err != nil {
 		return err
@@ -381,9 +432,13 @@ func (s *Service) EditStaticRoute(id uint, req *networkServiceInterfaces.UpsertS
 		next.FIB = normalized.FIB
 		next.DestinationType = normalized.DestinationType
 		next.Destination = normalized.Destination
+		next.DestinationRaw = strings.TrimSpace(req.DestinationRaw)
+		next.DestinationObjID = req.DestinationObjID
 		next.Family = normalized.Family
 		next.NextHopMode = normalized.NextHopMode
 		next.Gateway = normalized.Gateway
+		next.GatewayRaw = strings.TrimSpace(req.GatewayRaw)
+		next.GatewayObjID = req.GatewayObjID
 		next.GatewayZone = normalized.GatewayZone
 		next.Interface = normalized.Interface
 
@@ -446,6 +501,72 @@ func (s *Service) ReconcileManagedRoutes() error {
 
 	if len(errs) > 0 {
 		return fmt.Errorf("managed_route_reconcile_failed: %s", strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+func (s *Service) ReconcileObjectStaticRoutes(objID uint) error {
+	var routes []networkModels.StaticRoute
+	if err := s.DB.Where("destination_obj_id = ? OR gateway_obj_id = ?", objID, objID).
+		Find(&routes).Error; err != nil {
+		return err
+	}
+	if len(routes) == 0 {
+		return nil
+	}
+
+	var obj networkModels.Object
+	if err := s.DB.Preload("Entries").First(&obj, objID).Error; err != nil {
+		return fmt.Errorf("failed_to_load_object_for_route_reconciliation: %w", err)
+	}
+
+	var errs []string
+	for _, route := range routes {
+		next := route
+		changed := false
+
+		if route.DestinationObjID != nil && *route.DestinationObjID == objID {
+			if len(obj.Entries) > 0 {
+				next.Destination = strings.TrimSpace(obj.Entries[0].Value)
+				changed = true
+			}
+		}
+
+		if route.GatewayObjID != nil && *route.GatewayObjID == objID {
+			if len(obj.Entries) > 0 {
+				next.Gateway = strings.TrimSpace(obj.Entries[0].Value)
+				changed = true
+			}
+		}
+
+		if !changed {
+			continue
+		}
+
+		if err := applyStaticRouteDiff(&route, &next); err != nil {
+			logger.L.Error().
+				Err(err).
+				Uint("route_id", route.ID).
+				Msg("failed_to_apply_route_diff_during_object_reconciliation")
+			errs = append(errs, fmt.Sprintf("route=%d: %v", route.ID, err))
+			continue
+		}
+
+		if err := s.DB.Model(&route).Updates(map[string]interface{}{
+			"destination": next.Destination,
+			"gateway":     next.Gateway,
+		}).Error; err != nil {
+			logger.L.Error().
+				Err(err).
+				Uint("route_id", route.ID).
+				Msg("failed_to_update_route_during_object_reconciliation")
+			errs = append(errs, fmt.Sprintf("route=%d: %v", route.ID, err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("reconcile_object_static_routes_failed: %s", strings.Join(errs, "; "))
 	}
 
 	return nil

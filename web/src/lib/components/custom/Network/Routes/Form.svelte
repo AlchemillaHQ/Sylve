@@ -122,10 +122,14 @@
 					enabled: editingRoute.enabled ?? true,
 					fib: editingRoute.fib ?? 0,
 					destinationType: editingRoute.destinationType,
-					destination: editingRoute.destination,
+					destination: editingRoute.destinationObjId
+						? String(editingRoute.destinationObjId)
+						: (editingRoute.destinationRaw || editingRoute.destination),
 					family: editingRoute.family,
 					nextHopMode: editingRoute.nextHopMode,
-					gateway: editingRoute.gateway ?? '',
+					gateway: editingRoute.gatewayObjId
+						? String(editingRoute.gatewayObjId)
+						: (editingRoute.gatewayRaw || editingRoute.gateway || ''),
 					gatewayZone: editingRoute.gatewayZone ?? '',
 					interface: editingRoute.interface ?? ''
 				};
@@ -240,14 +244,14 @@
 			.map((obj) => ({ label: obj.name, value: String(obj.id) }))
 	);
 
-	function resolveObjToRaw(val: string): string {
+	function resolveAddr(val: string): { raw: string; objId: number | null } {
 		const trimmed = val.trim();
-		if (!trimmed) return '';
+		if (!trimmed) return { raw: '', objId: null };
 		const obj = objects.find((o) => String(o.id) === trimmed);
-		if (obj?.entries && obj.entries.length > 0) {
-			return obj.entries[0].value;
+		if (obj && ['Host', 'Network'].includes(obj.type)) {
+			return { raw: '', objId: obj.id };
 		}
-		return trimmed;
+		return { raw: trimmed, objId: null };
 	}
 
 	function resetForm() {
@@ -258,10 +262,14 @@
 				enabled: editingRoute.enabled ?? true,
 				fib: editingRoute.fib ?? 0,
 				destinationType: editingRoute.destinationType,
-				destination: editingRoute.destination,
+				destination: editingRoute.destinationObjId
+					? String(editingRoute.destinationObjId)
+					: (editingRoute.destinationRaw || editingRoute.destination),
 				family: editingRoute.family,
 				nextHopMode: editingRoute.nextHopMode,
-				gateway: editingRoute.gateway ?? '',
+				gateway: editingRoute.gatewayObjId
+					? String(editingRoute.gatewayObjId)
+					: (editingRoute.gatewayRaw || editingRoute.gateway || ''),
 				gatewayZone: editingRoute.gatewayZone ?? '',
 				interface: editingRoute.interface ?? ''
 			};
@@ -271,16 +279,23 @@
 	}
 
 	async function save() {
+		const dest = resolveAddr(form.destination);
+		const gw = form.nextHopMode === 'gateway' ? resolveAddr(form.gateway) : { raw: '', objId: null };
+
 		const payload = {
 			name: form.name.trim(),
 			description: form.description.trim(),
 			enabled: form.enabled,
 			fib: Number(form.fib),
 			destinationType: form.destinationType,
-			destination: resolveObjToRaw(form.destination),
+			destination: dest.raw,
+			destinationRaw: dest.raw,
+			destinationObjId: dest.objId,
 			family: form.family,
 			nextHopMode: form.nextHopMode,
-			gateway: form.nextHopMode === 'gateway' ? resolveObjToRaw(form.gateway) : '',
+			gateway: gw.raw,
+			gatewayRaw: gw.raw,
+			gatewayObjId: gw.objId,
 			gatewayZone:
 				form.nextHopMode === 'gateway' && form.family === 'inet6' ? form.gatewayZone.trim() : '',
 			interface: form.nextHopMode === 'interface' ? form.interface.trim() : ''

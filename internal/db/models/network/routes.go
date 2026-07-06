@@ -18,9 +18,13 @@ type StaticRoute struct {
 	FIB             uint      `json:"fib" gorm:"not null;default:0;index"`
 	DestinationType string    `json:"destinationType" gorm:"not null"` // host|network
 	Destination     string    `json:"destination" gorm:"not null"`
+	DestinationRaw  string    `json:"destinationRaw"`
+	DestinationObjID *uint    `json:"destinationObjId"`
 	Family          string    `json:"family" gorm:"not null"`      // inet|inet6
 	NextHopMode     string    `json:"nextHopMode" gorm:"not null"` // gateway|interface
 	Gateway         string    `json:"gateway"`
+	GatewayRaw      string    `json:"gatewayRaw"`
+	GatewayObjID    *uint     `json:"gatewayObjId"`
 	GatewayZone     string    `json:"gatewayZone"` // IPv6 link-local scope interface (zone id)
 	Interface       string    `json:"interface"`
 	CreatedAt       time.Time `json:"createdAt"`
