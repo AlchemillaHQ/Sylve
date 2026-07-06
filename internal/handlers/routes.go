@@ -552,6 +552,7 @@ func RegisterRoutes(r *gin.Engine,
 		notifications.PUT("/rules", notificationsHandlers.UpdateRules(notificationService))
 		notifications.PUT("/rules/:id", notificationsHandlers.UpdateRule(notificationService))
 		notifications.DELETE("/rules/:id", notificationsHandlers.DeleteRule(notificationService))
+		notifications.POST("/rules/bulk-delete", notificationsHandlers.BulkDeleteRules(notificationService))
 	}
 
 	users := auth.Group("/users")

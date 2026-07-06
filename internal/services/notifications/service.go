@@ -27,6 +27,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	hub "github.com/alchemillahq/sylve/internal/events"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
+	"github.com/alchemillahq/sylve/internal/logger"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -1067,6 +1068,17 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 		var existing models.NotificationKindRule
 		err = tx.Where("kind = ?", kind).First(&existing).Error
 		if err == nil {
+			if existing.UserDisabled {
+				existing.UserDisabled = false
+				existing.UIEnabled = input.UIEnabled
+				existing.NtfyEnabled = input.NtfyEnabled
+				existing.EmailEnabled = input.EmailEnabled
+				existing.DiscordEnabled = input.DiscordEnabled
+				if existing.Config == "" && definition.DefaultConfig != "" {
+					existing.Config = definition.DefaultConfig
+				}
+				return tx.Save(&existing).Error
+			}
 			return fmt.Errorf("notification_rule_already_exists")
 		}
 		if err != gorm.ErrRecordNotFound {
@@ -1143,7 +1155,7 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 	}
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -1156,19 +1168,47 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 			return err
 		}
 
-		if templateKey, targetKey, ok := resolveTemplateTargetFromKind(rule.Kind); ok {
-			if templateKey == RuleTemplateZFSPoolState {
-				if def, exists := definitionsByKey[templateKey]; exists {
-					if _, active := def.ActiveTargets[targetKey]; active {
-						return nil
-					}
-				}
-			}
-		}
-
 		rule.UserDisabled = true
 		if err := tx.Save(&rule).Error; err != nil {
 			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return s.GetRuleConfig(ctx)
+}
+
+func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+	if len(ids) == 0 {
+		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_ids")
+	}
+
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		var rules []models.NotificationKindRule
+		if err := tx.Find(&rules, ids).Error; err != nil {
+			return err
+		}
+
+		for _, rule := range rules {
+			rule.UserDisabled = true
+			if err := tx.Save(&rule).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -1297,8 +1337,8 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 		if disk.Type == "NVMe" {
 			ssdDisks = append(ssdDisks, info)
 			nvmeDisks = append(nvmeDisks, info)
-		} else if disk.Type == "SSD" {
-			if sd, ok := disk.SmartData.(*diskServiceInterfaces.SmartData); ok {
+		} else 		if disk.Type == "SSD" {
+			if sd, ok := disk.SmartData.(diskServiceInterfaces.SmartData); ok {
 				if sd.Device.Protocol != "SCSI" {
 					ssdDisks = append(ssdDisks, info)
 				}
@@ -1750,6 +1790,7 @@ func (s *Service) sendNtfy(ctx context.Context, cfg models.NotificationTransport
 	endpoint := fmt.Sprintf("%s/%s", strings.TrimRight(baseURL, "/"), topic)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(body))
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeNtfy).Str("topic", topic).Msg("ntfy_request_creation_failed")
 		return err
 	}
 
@@ -1762,12 +1803,14 @@ func (s *Service) sendNtfy(ctx context.Context, cfg models.NotificationTransport
 
 	res, err := s.httpClient.Do(req)
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeNtfy).Str("topic", topic).Msg("ntfy_request_failed")
 		return err
 	}
 	defer res.Body.Close()
 	_, _ = io.Copy(io.Discard, res.Body)
 
 	if res.StatusCode >= 400 {
+		logger.L.Error().Int("status_code", res.StatusCode).Str("transport_type", TransportTypeNtfy).Str("topic", topic).Msg("ntfy_non_200_response")
 		return fmt.Errorf("ntfy_send_failed_status_%d", res.StatusCode)
 	}
 
@@ -1813,6 +1856,7 @@ func (s *Service) sendEmail(ctx context.Context, cfg models.NotificationTranspor
 
 	client, conn, err := dialSMTPClient(ctx, host, port, cfg.SMTPUseTLS)
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Int("smtp_port", port).Msg("smtp_dial_failed")
 		return err
 	}
 	defer closeSMTPClient(client, conn)
@@ -1822,37 +1866,45 @@ func (s *Service) sendEmail(ctx context.Context, cfg models.NotificationTranspor
 	if username != "" {
 		auth = smtp.PlainAuth("", username, password, host)
 		if ok, _ := client.Extension("AUTH"); !ok {
+			logger.L.Error().Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Msg("smtp_auth_not_supported")
 			return fmt.Errorf("smtp_auth_not_supported")
 		}
 		if err := client.Auth(auth); err != nil {
+			logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Msg("smtp_auth_failed")
 			return err
 		}
 	}
 
 	if err := client.Mail(from); err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Str("smtp_from", from).Msg("smtp_mail_failed")
 		return err
 	}
 
 	for _, recipient := range cfg.EmailRecipients {
 		if err := client.Rcpt(recipient); err != nil {
+			logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Str("recipient", recipient).Msg("smtp_rcpt_failed")
 			return err
 		}
 	}
 
 	wc, err := client.Data()
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Msg("smtp_data_failed")
 		return err
 	}
 
 	if _, err := wc.Write([]byte(msg.String())); err != nil {
 		_ = wc.Close()
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Msg("smtp_write_failed")
 		return err
 	}
 	if err := wc.Close(); err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Msg("smtp_close_failed")
 		return err
 	}
 
 	if err := client.Quit(); err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeSMTP).Str("smtp_host", host).Msg("smtp_quit_failed")
 		return err
 	}
 
@@ -1910,23 +1962,27 @@ func (s *Service) sendDiscord(ctx context.Context, cfg models.NotificationTransp
 
 	body, err := json.Marshal(payload)
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeDiscord).Msg("discord_marshal_failed")
 		return err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, strings.NewReader(string(body)))
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeDiscord).Msg("discord_request_creation_failed")
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := s.httpClient.Do(req)
 	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypeDiscord).Msg("discord_request_failed")
 		return err
 	}
 	defer res.Body.Close()
 	_, _ = io.Copy(io.Discard, res.Body)
 
 	if res.StatusCode >= 400 {
+		logger.L.Error().Int("status_code", res.StatusCode).Str("transport_type", TransportTypeDiscord).Msg("discord_non_200_response")
 		return fmt.Errorf("discord_send_failed_status_%d", res.StatusCode)
 	}
 

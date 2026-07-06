@@ -82,6 +82,10 @@ export async function deleteNotificationRule(id: number): Promise<NotificationRu
 	return await apiRequest(`/notifications/rules/${id}`, NotificationRulesConfigSchema, 'DELETE');
 }
 
+export async function bulkDeleteNotificationRules(ids: number[]): Promise<NotificationRulesConfig> {
+	return await apiRequest('/notifications/rules/bulk-delete', NotificationRulesConfigSchema, 'POST', { ids });
+}
+
 export async function testNotificationRule(payload: {
 	templateKey: string;
 	targetKey?: string;

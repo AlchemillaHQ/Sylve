@@ -1013,6 +1013,7 @@ msgstr "Upravit"
 
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Bulk Delete"
@@ -6036,7 +6037,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -15219,4 +15220,33 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Read Only"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to delete notification rules"
+msgstr ""
+
+#. 0: modals.bulkDelete.ids.length
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "This will permanently delete <b>{0}</b> notification rule(s)."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "From Email is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Host is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "At least one recipient is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Topic is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Webhook URL is required"
 msgstr ""

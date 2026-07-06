@@ -1013,6 +1013,7 @@ msgstr "Edit"
 
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Bulk Delete"
@@ -6036,8 +6037,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -15221,3 +15222,32 @@ msgstr "Select read only mode"
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Read Only"
 msgstr "Select Read Only"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to delete notification rules"
+msgstr "Failed to delete notification rules"
+
+#. 0: modals.bulkDelete.ids.length
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "This will permanently delete <b>{0}</b> notification rule(s)."
+msgstr "This will permanently delete <b>{0}</b> notification rule(s)."
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "From Email is required"
+msgstr "From Email is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Host is required"
+msgstr "SMTP Host is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "At least one recipient is required"
+msgstr "At least one recipient is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Topic is required"
+msgstr "Topic is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Webhook URL is required"
+msgstr "Webhook URL is required"

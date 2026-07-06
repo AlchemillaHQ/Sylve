@@ -177,7 +177,9 @@
 			discord:
 				f.type === 'discord'
 					? {
-							...(f.discordWebhookUrl.trim().length > 0 ? { webhookUrl: f.discordWebhookUrl.trim() } : {})
+							...(f.discordWebhookUrl.trim().length > 0
+								? { webhookUrl: f.discordWebhookUrl.trim() }
+								: {})
 						}
 					: null
 		};
@@ -237,6 +239,34 @@
 				position: 'bottom-center'
 			});
 			return;
+		}
+
+		if (form.type === 'smtp') {
+			if (form.smtpFrom.trim().length === 0) {
+				toast.error('From Email is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+			if (form.smtpHost.trim().length === 0) {
+				toast.error('SMTP Host is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+			if (form.smtpRecipients.length === 0) {
+				toast.error('At least one recipient is required', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+		} else if (form.type === 'ntfy') {
+			if (form.ntfyTopic.trim().length === 0) {
+				toast.error('Topic is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+		} else if (form.type === 'discord') {
+			if (form.discordWebhookUrl.trim().length === 0) {
+				toast.error('Webhook URL is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
 		}
 
 		loading = true;
