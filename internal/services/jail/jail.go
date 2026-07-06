@@ -475,12 +475,32 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 	}
 
 	if swAvailable {
+		if data.MACRaw != "" && !utils.IsValidMAC(data.MACRaw) {
+			return fmt.Errorf("invalid_mac")
+		}
+
+		if data.IPv4Raw != "" && !utils.IsValidIPv4CIDR(data.IPv4Raw) {
+			return fmt.Errorf("invalid_ipv4_cidr")
+		}
+
+		if data.IPv4GwRaw != "" && !utils.IsValidIPv4(data.IPv4GwRaw) {
+			return fmt.Errorf("invalid_ipv4_gateway")
+		}
+
+		if data.IPv6Raw != "" && !utils.IsValidIPv6CIDR(data.IPv6Raw) {
+			return fmt.Errorf("invalid_ipv6_cidr")
+		}
+
+		if data.IPv6GwRaw != "" && !utils.IsValidIPv6(data.IPv6GwRaw) {
+			return fmt.Errorf("invalid_ipv6_gateway")
+		}
+
 		if !dhcp {
 			if data.IPv4 != nil {
 				ipv4Id := uint(*data.IPv4)
 				if ipv4Id != 0 && data.IPv4Gw != nil {
 					ipv4GwId := uint(*data.IPv4Gw)
-					if ipv4GwId == 0 {
+					if ipv4GwId == 0 && data.IPv4GwRaw == "" {
 						return fmt.Errorf("invalid_ipv4_gateway")
 					}
 
@@ -502,7 +522,7 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 
 				if ipv6Id != 0 && data.IPv6Gw != nil {
 					ipv6GwId := uint(*data.IPv6Gw)
-					if ipv6GwId == 0 {
+					if ipv6GwId == 0 && data.IPv6GwRaw == "" {
 						return fmt.Errorf("invalid_ipv6_gateway")
 					}
 
@@ -908,15 +928,15 @@ func (s *Service) forceRemoveJailDBRecords(ctid uint, warnings *[]string) {
 	}
 }
 
-func (s *Service) cleanupAutoCreatedJailCreateMACObjects(ctid uint, autoCreatedMACIDs []uint, warnings *[]string) {
-	for _, macID := range uniqueUintValues(autoCreatedMACIDs) {
+func (s *Service) cleanupAutoCreatedJailCreateObjects(ctid uint, autoCreatedIDs []uint, warnings *[]string) {
+	for _, objID := range uniqueUintValues(autoCreatedIDs) {
 		if s.NetworkService != nil {
-			used, _, err := s.NetworkService.IsObjectUsed(macID)
+			used, _, err := s.NetworkService.IsObjectUsed(objID)
 			if err != nil {
 				appendJailCreateCleanupWarning(
 					warnings,
 					ctid,
-					fmt.Sprintf("failed_to_check_auto_created_mac_usage_%d_during_create_rollback", macID),
+					fmt.Sprintf("failed_to_check_auto_created_object_usage_%d_during_create_rollback", objID),
 					err,
 				)
 				continue
@@ -925,83 +945,83 @@ func (s *Service) cleanupAutoCreatedJailCreateMACObjects(ctid uint, autoCreatedM
 				continue
 			}
 		} else {
-			var vmRefs int64
+			var refs int64
+
 			if err := s.DB.Model(&vmModels.Network{}).
-				Where("mac_id = ?", macID).
-				Count(&vmRefs).Error; err != nil {
+				Where("mac_id = ?", objID).
+				Count(&refs).Error; err != nil {
 				appendJailCreateCleanupWarning(
 					warnings,
 					ctid,
-					fmt.Sprintf("failed_to_count_vm_refs_for_auto_mac_%d_during_create_rollback", macID),
+					fmt.Sprintf("failed_to_count_vm_refs_for_auto_object_%d_during_create_rollback", objID),
 					err,
 				)
 				continue
 			}
-			if vmRefs > 0 {
+			if refs > 0 {
 				continue
 			}
 
-			var jailRefs int64
 			if err := s.DB.Model(&jailModels.Network{}).
-				Where("mac_id = ?", macID).
-				Count(&jailRefs).Error; err != nil {
+				Where("mac_id = ? OR ipv4_id = ? OR ipv4_gw_id = ? OR ipv6_id = ? OR ipv6_gw_id = ?",
+					objID, objID, objID, objID, objID).
+				Count(&refs).Error; err != nil {
 				appendJailCreateCleanupWarning(
 					warnings,
 					ctid,
-					fmt.Sprintf("failed_to_count_jail_refs_for_auto_mac_%d_during_create_rollback", macID),
+					fmt.Sprintf("failed_to_count_jail_refs_for_auto_object_%d_during_create_rollback", objID),
 					err,
 				)
 				continue
 			}
-			if jailRefs > 0 {
+			if refs > 0 {
 				continue
 			}
 
-			var dhcpRefs int64
 			if err := s.DB.Model(&networkModels.DHCPStaticLease{}).
-				Where("mac_object_id = ?", macID).
-				Count(&dhcpRefs).Error; err != nil {
+				Where("mac_object_id = ?", objID).
+				Count(&refs).Error; err != nil {
 				appendJailCreateCleanupWarning(
 					warnings,
 					ctid,
-					fmt.Sprintf("failed_to_count_dhcp_refs_for_auto_mac_%d_during_create_rollback", macID),
+					fmt.Sprintf("failed_to_count_dhcp_refs_for_auto_object_%d_during_create_rollback", objID),
 					err,
 				)
 				continue
 			}
-			if dhcpRefs > 0 {
+			if refs > 0 {
 				continue
 			}
 		}
 
-		if err := s.DB.Where("object_id = ?", macID).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+		if err := s.DB.Where("object_id = ?", objID).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
 			appendJailCreateCleanupWarning(
 				warnings,
 				ctid,
-				fmt.Sprintf("failed_to_delete_auto_created_mac_entries_%d_during_create_rollback", macID),
+				fmt.Sprintf("failed_to_delete_auto_created_object_entries_%d_during_create_rollback", objID),
 				err,
 			)
 		}
-		if err := s.DB.Where("object_id = ?", macID).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+		if err := s.DB.Where("object_id = ?", objID).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
 			appendJailCreateCleanupWarning(
 				warnings,
 				ctid,
-				fmt.Sprintf("failed_to_delete_auto_created_mac_resolutions_%d_during_create_rollback", macID),
+				fmt.Sprintf("failed_to_delete_auto_created_object_resolutions_%d_during_create_rollback", objID),
 				err,
 			)
 		}
-		if err := s.DB.Delete(&networkModels.Object{}, macID).Error; err != nil {
+		if err := s.DB.Delete(&networkModels.Object{}, objID).Error; err != nil {
 			appendJailCreateCleanupWarning(
 				warnings,
 				ctid,
-				fmt.Sprintf("failed_to_delete_auto_created_mac_object_%d_during_create_rollback", macID),
+				fmt.Sprintf("failed_to_delete_auto_created_object_%d_during_create_rollback", objID),
 				err,
 			)
 		}
 	}
 }
 
-func (s *Service) cleanupFailedJailCreate(ctid uint, fallbackPool string, autoCreatedMACIDs []uint) {
+func (s *Service) cleanupFailedJailCreate(ctid uint, fallbackPool string, autoCreatedIDs []uint) {
 	if ctid == 0 {
 		return
 	}
@@ -1014,7 +1034,7 @@ func (s *Service) cleanupFailedJailCreate(ctid uint, fallbackPool string, autoCr
 	s.forceRemoveJailRuntimeArtifacts(ctid, &warnings)
 	s.forceRemoveJailZFSDatasets(cleanupCtx, ctid, fallbackPool, &warnings)
 	s.forceRemoveJailDBRecords(ctid, &warnings)
-	s.cleanupAutoCreatedJailCreateMACObjects(ctid, autoCreatedMACIDs, &warnings)
+	s.cleanupAutoCreatedJailCreateObjects(ctid, autoCreatedIDs, &warnings)
 
 	if !config.IsDevFSDisabled() {
 		if _, statErr := os.Stat("/etc/devfs.rules"); statErr == nil {
@@ -1555,6 +1575,60 @@ func (s *Service) rollbackJailCreation(ctx context.Context, state *jailServiceIn
 	}
 }
 
+func uniqueObjectName(tx *gorm.DB, base string) string {
+	name := base
+	for i := 0; ; i++ {
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		var exists int64
+		tx.Model(&networkModels.Object{}).Where("name = ?", name).Limit(1).Count(&exists)
+		if exists == 0 {
+			return name
+		}
+	}
+}
+
+func createRawObject(tx *gorm.DB, objType, baseName, rawValue string, autoCreatedIDs *[]uint) (uint, error) {
+	name := uniqueObjectName(tx, baseName)
+
+	obj := networkModels.Object{
+		Name: name,
+		Type: objType,
+	}
+	if err := tx.Create(&obj).Error; err != nil {
+		return 0, fmt.Errorf("failed_to_create_raw_object: %w", err)
+	}
+
+	if err := tx.Create(&networkModels.ObjectEntry{
+		ObjectID: obj.ID,
+		Value:    rawValue,
+	}).Error; err != nil {
+		return 0, fmt.Errorf("failed_to_create_raw_object_entry: %w", err)
+	}
+
+	*autoCreatedIDs = append(*autoCreatedIDs, obj.ID)
+	return obj.ID, nil
+}
+
+func resolveRawIP(ptr *int, raw string, tx *gorm.DB, objType, baseName string, autoCreatedIDs *[]uint) (*uint, error) {
+	if ptr != nil && *ptr != 0 {
+		id := new(uint)
+		*id = uint(*ptr)
+		return id, nil
+	}
+	if raw != "" {
+		id := new(uint)
+		var err error
+		*id, err = createRawObject(tx, objType, baseName, raw, autoCreatedIDs)
+		if err != nil {
+			return nil, err
+		}
+		return id, nil
+	}
+	return nil, nil
+}
+
 func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) (err error) {
 	if err = s.ValidateCreate(ctx, data); err != nil {
 		logger.L.Debug().Err(err).Msg("create_jail: validation failed")
@@ -1562,14 +1636,14 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	ctid := *data.CTID
-	autoCreatedMACIDs := make([]uint, 0, 1)
+	autoCreatedIDs := make([]uint, 0, 5)
 
 	defer func() {
 		if err == nil {
 			return
 		}
 
-		s.cleanupFailedJailCreate(ctid, data.Pool, autoCreatedMACIDs)
+		s.cleanupFailedJailCreate(ctid, data.Pool, autoCreatedIDs)
 	}()
 
 	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, ctid)
@@ -1706,52 +1780,45 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		}
 
 		if mac == 0 {
-			base := fmt.Sprintf("%s-%s", data.Name, swName)
-			name := base
-
-			for i := 0; ; i++ {
-				if i > 0 {
-					name = fmt.Sprintf("%s-%d", base, i)
-				}
-				var exists int64
-				if err = tx.
-					Model(&networkModels.Object{}).
-					Where("name = ?", name).
-					Limit(1).
-					Count(&exists).Error; err != nil {
-					err = fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
+			if data.MACRaw != "" {
+				var macErr error
+				mac, macErr = createRawObject(tx, "Mac", fmt.Sprintf("%s-%s-MAC", data.Name, swName), data.MACRaw, &autoCreatedIDs)
+				if macErr != nil {
+					err = macErr
 					return
 				}
-				if exists == 0 {
-					break
+
+				macStr = data.MACRaw
+			} else {
+				base := fmt.Sprintf("%s-%s", data.Name, swName)
+				name := uniqueObjectName(tx, base)
+
+				macAddress := utils.GenerateRandomMAC()
+				macObj := networkModels.Object{
+					Type: "Mac",
+					Name: name,
 				}
+
+				macStr = macAddress
+
+				if err = tx.Create(&macObj).Error; err != nil {
+					err = fmt.Errorf("failed_to_create_mac_object: %w", err)
+					return
+				}
+				autoCreatedIDs = append(autoCreatedIDs, macObj.ID)
+
+				macEntry := networkModels.ObjectEntry{
+					ObjectID: macObj.ID,
+					Value:    macAddress,
+				}
+
+				if err = tx.Create(&macEntry).Error; err != nil {
+					err = fmt.Errorf("failed_to_create_mac_entry: %w", err)
+					return
+				}
+
+				mac = macObj.ID
 			}
-
-			macAddress := utils.GenerateRandomMAC()
-			macObj := networkModels.Object{
-				Type: "Mac",
-				Name: name,
-			}
-
-			macStr = macAddress
-
-			if err = tx.Create(&macObj).Error; err != nil {
-				err = fmt.Errorf("failed_to_create_mac_object: %w", err)
-				return
-			}
-			autoCreatedMACIDs = append(autoCreatedMACIDs, macObj.ID)
-
-			macEntry := networkModels.ObjectEntry{
-				ObjectID: macObj.ID,
-				Value:    macAddress,
-			}
-
-			if err = tx.Create(&macEntry).Error; err != nil {
-				err = fmt.Errorf("failed_to_create_mac_entry: %w", err)
-				return
-			}
-
-			mac = macObj.ID
 		} else {
 			var macEntry networkModels.ObjectEntry
 			if err = tx.Where("object_id = ?", mac).First(&macEntry).Error; err != nil {
@@ -1763,24 +1830,21 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		}
 
 		var ipv4ID, ipv4GwID, ipv6ID, ipv6GwID *uint
-		if data.IPv4 != nil {
-			ipv4ID = new(uint)
-			*ipv4ID = uint(*data.IPv4)
+		ipv4ID, err = resolveRawIP(data.IPv4, data.IPv4Raw, tx, "Network", fmt.Sprintf("%s-%s-IPv4", data.Name, swName), &autoCreatedIDs)
+		if err != nil {
+			return
 		}
-
-		if data.IPv4Gw != nil {
-			ipv4GwID = new(uint)
-			*ipv4GwID = uint(*data.IPv4Gw)
+		ipv4GwID, err = resolveRawIP(data.IPv4Gw, data.IPv4GwRaw, tx, "Host", fmt.Sprintf("%s-%s-IPv4-GW", data.Name, swName), &autoCreatedIDs)
+		if err != nil {
+			return
 		}
-
-		if data.IPv6 != nil {
-			ipv6ID = new(uint)
-			*ipv6ID = uint(*data.IPv6)
+		ipv6ID, err = resolveRawIP(data.IPv6, data.IPv6Raw, tx, "Network", fmt.Sprintf("%s-%s-IPv6", data.Name, swName), &autoCreatedIDs)
+		if err != nil {
+			return
 		}
-
-		if data.IPv6Gw != nil {
-			ipv6GwID = new(uint)
-			*ipv6GwID = uint(*data.IPv6Gw)
+		ipv6GwID, err = resolveRawIP(data.IPv6Gw, data.IPv6GwRaw, tx, "Host", fmt.Sprintf("%s-%s-IPv6-GW", data.Name, swName), &autoCreatedIDs)
+		if err != nil {
+			return
 		}
 
 		dhcp := false

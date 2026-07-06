@@ -296,6 +296,13 @@ func newJailCreateTestService(db *gorm.DB, runner *jailCreateTestZFSRunner, pool
 	}
 }
 
+func seedSwitch(t *testing.T, db *gorm.DB, name string) {
+	t.Helper()
+	if err := db.Create(&networkModels.StandardSwitch{Name: name}).Error; err != nil {
+		t.Fatalf("failed to seed switch %q: %v", name, err)
+	}
+}
+
 func seedBaseDownload(t *testing.T, db *gorm.DB, uuid string, extractedPath string) {
 	t.Helper()
 
@@ -498,6 +505,80 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 	}
 	if string(gotResolv) != resolvConf {
 		t.Fatalf("expected resolv.conf content %q, got %q", resolvConf, string(gotResolv))
+	}
+}
+
+func TestValidateCreate_AcceptsRawIPv4(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&utilitiesModels.Downloads{},
+	)
+
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, "tank")
+
+	baseDir := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("failed to create base directory: %v", err)
+	}
+	seedBaseDownload(t, db, "base-raw-ipv4", baseDir)
+
+	ctid := uint(790)
+	req := jailServiceInterfaces.CreateJailRequest{
+		Name:       fmt.Sprintf("jail-%d", ctid),
+		CTID:       &ctid,
+		Pool:       "tank",
+		Base:       "base-raw-ipv4",
+		SwitchName: "none",
+		Type:       jailModels.JailTypeFreeBSD,
+	}
+
+	err := svc.ValidateCreate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected validation to pass, got %v", err)
+	}
+}
+
+func TestValidateCreate_RejectsInvalidRawIPv4CIDR(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&utilitiesModels.Downloads{},
+	)
+	seedSwitch(t, db, "test-switch")
+
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, "tank")
+
+	baseDir := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("failed to create base directory: %v", err)
+	}
+	seedBaseDownload(t, db, "base-bad-raw-ipv4", baseDir)
+
+	ctid := uint(791)
+	req := jailServiceInterfaces.CreateJailRequest{
+		Name:       fmt.Sprintf("jail-%d", ctid),
+		CTID:       &ctid,
+		Pool:       "tank",
+		Base:       "base-bad-raw-ipv4",
+		SwitchName: "test-switch",
+		Type:       jailModels.JailTypeFreeBSD,
+		IPv4Raw:    "not-a-cidr",
+	}
+
+	err := svc.ValidateCreate(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "invalid_ipv4_cidr") {
+		t.Fatalf("expected invalid_ipv4_cidr error, got %v", err)
 	}
 }
 

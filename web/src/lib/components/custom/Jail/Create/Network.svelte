@@ -24,12 +24,17 @@
 		ctId: number;
 		switch: string;
 		mac: number;
+		macRaw: string;
 		inheritIPv4: boolean;
 		inheritIPv6: boolean;
 		ipv4: number;
+		ipv4Raw: string;
 		ipv4Gateway: number;
+		ipv4GatewayRaw: string;
 		ipv6: number;
+		ipv6Raw: string;
 		ipv6Gateway: number;
+		ipv6GatewayRaw: string;
 		dhcp: boolean;
 		slaac: boolean;
 		resolvConf: string;
@@ -45,12 +50,17 @@
 		ctId,
 		switch: nwSwitch = $bindable(),
 		mac = $bindable(),
+		macRaw = $bindable(),
 		inheritIPv4 = $bindable(),
 		inheritIPv6 = $bindable(),
 		ipv4 = $bindable(),
+		ipv4Raw = $bindable(),
 		ipv4Gateway = $bindable(),
+		ipv4GatewayRaw = $bindable(),
 		ipv6 = $bindable(),
+		ipv6Raw = $bindable(),
 		ipv6Gateway = $bindable(),
+		ipv6GatewayRaw = $bindable(),
 		dhcp = $bindable(),
 		slaac = $bindable(),
 		resolvConf = $bindable(),
@@ -90,23 +100,23 @@
 	let comboBoxes = $state({
 		mac: {
 			open: false,
-			value: '0'
+			value: ''
 		},
 		ipv4: {
 			open: false,
-			value: '0'
+			value: ''
 		},
 		ipv4Gateway: {
 			open: false,
-			value: '0'
+			value: ''
 		},
 		ipv6: {
 			open: false,
-			value: '0'
+			value: ''
 		},
 		ipv6Gateway: {
 			open: false,
-			value: '0'
+			value: ''
 		}
 	});
 
@@ -139,8 +149,15 @@
 		(current) => {
 			if (current === 'None') {
 				mac = 0;
+				macRaw = '';
 				ipv4 = 0;
+				ipv4Raw = '';
+				ipv4Gateway = 0;
+				ipv4GatewayRaw = '';
 				ipv6 = 0;
+				ipv6Raw = '';
+				ipv6Gateway = 0;
+				ipv6GatewayRaw = '';
 				dhcp = false;
 				slaac = false;
 				checkBoxes.dhcp = false;
@@ -152,16 +169,30 @@
 		}
 	);
 
+	function resolveField(
+		val: string,
+		usable: NetworkObject[]
+	): { id: number; raw: string } {
+		if (!val) return { id: 0, raw: '' };
+		const obj = usable.find((o) => String(o.id) === val);
+		if (obj) return { id: obj.id, raw: '' };
+		return { id: 0, raw: val };
+	}
+
 	watch(
 		() => checkBoxes.dhcp,
 		(current) => {
 			if (current) {
-				comboBoxes.ipv4.value = '0';
-				comboBoxes.ipv4Gateway.value = '0';
+				comboBoxes.ipv4.value = '';
+				comboBoxes.ipv4Gateway.value = '';
+				ipv4Raw = '';
+				ipv4GatewayRaw = '';
 				dhcp = true;
 			} else {
-				if (comboBoxes.ipv4.value !== '0') {
-					ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
+				if (comboBoxes.ipv4.value) {
+					const r = resolveField(comboBoxes.ipv4.value, usable.ipv4);
+					ipv4 = r.id;
+					ipv4Raw = r.raw;
 				}
 				dhcp = false;
 			}
@@ -172,12 +203,16 @@
 		() => checkBoxes.slaac,
 		(current) => {
 			if (current) {
-				comboBoxes.ipv6.value = '0';
-				comboBoxes.ipv6Gateway.value = '0';
+				comboBoxes.ipv6.value = '';
+				comboBoxes.ipv6Gateway.value = '';
+				ipv6Raw = '';
+				ipv6GatewayRaw = '';
 				slaac = true;
 			} else {
-				if (comboBoxes.ipv6.value !== '0') {
-					ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
+				if (comboBoxes.ipv6.value) {
+					const r = resolveField(comboBoxes.ipv6.value, usable.ipv6);
+					ipv6 = r.id;
+					ipv6Raw = r.raw;
 				}
 				slaac = false;
 			}
@@ -187,11 +222,9 @@
 	watch(
 		() => comboBoxes.mac.value,
 		(current) => {
-			if (current !== '0') {
-				mac = parseInt(comboBoxes.mac.value) || 0;
-			} else {
-				mac = 0;
-			}
+			const r = resolveField(current, usable.macs);
+			mac = r.id;
+			macRaw = r.raw;
 		}
 	);
 
@@ -203,22 +236,30 @@
 			() => comboBoxes.ipv6Gateway.value
 		],
 		([v4, v4Gw, v6, v6Gw]) => {
-			const parse = (val: string) => (val !== '0' ? parseInt(val) || 0 : 0);
+			const r4 = resolveField(v4, usable.ipv4);
+			const r4Gw = resolveField(v4Gw, usable.ipv4Gateway);
+			const r6 = resolveField(v6, usable.ipv6);
+			const r6Gw = resolveField(v6Gw, usable.ipv6Gateway);
 
-			ipv4 = parse(v4);
-			ipv4Gateway = parse(v4Gw);
-			ipv6 = parse(v6);
-			ipv6Gateway = parse(v6Gw);
+			ipv4 = r4.id;
+			ipv4Raw = r4.raw;
+			ipv4Gateway = r4Gw.id;
+			ipv4GatewayRaw = r4Gw.raw;
+			ipv6 = r6.id;
+			ipv6Raw = r6.raw;
+			ipv6Gateway = r6Gw.id;
+			ipv6GatewayRaw = r6Gw.raw;
 		}
 	);
 
 	watch(
 		() => nwSwitch,
 		() => {
-			comboBoxes.ipv4.value = '0';
-			comboBoxes.ipv4Gateway.value = '0';
-			comboBoxes.ipv6.value = '0';
-			comboBoxes.ipv6Gateway.value = '0';
+			comboBoxes.mac.value = '';
+			comboBoxes.ipv4.value = '';
+			comboBoxes.ipv4Gateway.value = '';
+			comboBoxes.ipv6.value = '';
+			comboBoxes.ipv6Gateway.value = '';
 		}
 	);
 
@@ -298,9 +339,10 @@
 				bind:value={comboBoxes.ipv4.value}
 				data={generateNetworkOptions(usable.ipv4, 'IPv4')}
 				classes="flex-1 space-y-1"
-				placeholder="Select IPv4"
+				placeholder="Select or type an IPv4 CIDR"
 				width="w-full"
-				disabled={usable.ipv4.length === 0 || checkBoxes.dhcp}
+				allowCustom={true}
+				disabled={checkBoxes.dhcp}
 				topRightButton={{
 					icon: 'icon-[oui--generate]',
 					tooltip: 'Create new IPv4 Network',
@@ -325,9 +367,10 @@
 				bind:value={comboBoxes.ipv4Gateway.value}
 				data={generateIPOptions(usable.ipv4Gateway, 'IPv4')}
 				classes="flex-1 space-y-1"
-				placeholder="Select IPv4 Gateway"
+				placeholder="Select or type an IPv4 GW"
 				width="w-full"
-				disabled={usable.ipv4Gateway.length === 0 || checkBoxes.dhcp}
+				allowCustom={true}
+				disabled={checkBoxes.dhcp}
 				topRightButton={{
 					icon: 'icon-[oui--generate]',
 					tooltip: 'Create new IPv4 Gateway',
@@ -352,9 +395,10 @@
 				bind:value={comboBoxes.ipv6.value}
 				data={generateNetworkOptions(usable.ipv6, 'IPv6')}
 				classes="flex-1 space-y-1"
-				placeholder="Select IPv6"
+				placeholder="Select or type an IPv6 CIDR"
 				width="w-full"
-				disabled={usable.ipv6.length === 0 || checkBoxes.slaac}
+				allowCustom={true}
+				disabled={checkBoxes.slaac}
 				topRightButton={{
 					icon: 'icon-[oui--generate]',
 					tooltip: 'Create new IPv6 Network',
@@ -379,9 +423,10 @@
 				bind:value={comboBoxes.ipv6Gateway.value}
 				data={generateIPOptions(usable.ipv6Gateway, 'IPv6')}
 				classes="flex-1 space-y-1"
-				placeholder="Select IPv6 Gateway"
+				placeholder="Select or type an IPv6 GW"
 				width="w-full"
-				disabled={usable.ipv6Gateway.length === 0 || checkBoxes.slaac}
+				allowCustom={true}
+				disabled={checkBoxes.slaac}
 				topRightButton={{
 					icon: 'icon-[oui--generate]',
 					tooltip: 'Create new IPv6 Gateway',
@@ -406,8 +451,9 @@
 				bind:value={comboBoxes.mac.value}
 				data={generateMACOptions(usable.macs)}
 				classes="flex-1 space-y-1"
-				placeholder="Select MAC"
+				placeholder="Select or type a MAC"
 				width="w-full"
+				allowCustom={true}
 				topRightButton={{
 					icon: 'icon-[oui--generate]',
 					tooltip: 'Create new MAC Address',

@@ -56,11 +56,16 @@ type CreateJailRequest struct {
 
 	IPv4   *int `json:"ipv4"`
 	IPv4Gw *int `json:"ipv4Gw"`
+	IPv4Raw   string `json:"ipv4Raw"`
+	IPv4GwRaw string `json:"ipv4GwRaw"`
 
 	IPv6   *int `json:"ipv6"`
 	IPv6Gw *int `json:"ipv6Gw"`
+	IPv6Raw   string `json:"ipv6Raw"`
+	IPv6GwRaw string `json:"ipv6GwRaw"`
 
-	MAC *int `json:"mac"`
+	MAC    *int   `json:"mac"`
+	MACRaw string `json:"macRaw"`
 
 	VLAN *int `json:"vlan"`
 
@@ -108,10 +113,15 @@ type AddJailNetworkRequest struct {
 	Name           string `json:"name" binding:"required"`
 	SwitchName     string `json:"switchName" binding:"required"`
 	MacID          *uint  `json:"macId"`
+	MACRaw         string `json:"macRaw"`
 	IP4            *uint  `json:"ip4"`
+	IP4Raw         string `json:"ip4Raw"`
 	IP4GW          *uint  `json:"ip4gw"`
+	IP4GwRaw       string `json:"ip4gwRaw"`
 	IP6            *uint  `json:"ip6"`
+	IP6Raw         string `json:"ip6Raw"`
 	IP6GW          *uint  `json:"ip6gw"`
+	IP6GwRaw       string `json:"ip6gwRaw"`
 	DHCP           *bool  `json:"dhcp"`
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`
@@ -123,10 +133,15 @@ type EditJailNetworkRequest struct {
 	Name           string `json:"name" binding:"required"`
 	SwitchName     string `json:"switchName" binding:"required"`
 	MacID          *uint  `json:"macId"`
+	MACRaw         string `json:"macRaw"`
 	IP4            *uint  `json:"ip4"`
+	IP4Raw         string `json:"ip4Raw"`
 	IP4GW          *uint  `json:"ip4gw"`
+	IP4GwRaw       string `json:"ip4gwRaw"`
 	IP6            *uint  `json:"ip6"`
+	IP6Raw         string `json:"ip6Raw"`
 	IP6GW          *uint  `json:"ip6gw"`
+	IP6GwRaw       string `json:"ip6gwRaw"`
 	DHCP           *bool  `json:"dhcp"`
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`

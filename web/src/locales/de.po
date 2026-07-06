@@ -42,6 +42,10 @@ msgstr "Hardware"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
@@ -4709,6 +4713,8 @@ msgid "Leave empty for default ruleset"
 msgstr "Leer lassen für Standard-Regelset"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -4717,6 +4723,10 @@ msgstr "Mac"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
@@ -4795,9 +4805,8 @@ msgstr "IPv4-Netzwerk"
 msgid "IPv4"
 msgstr "IPv4"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-msgid "Select IPv4"
-msgstr "IPv4 auswählen"
+#~ msgid "Select IPv4"
+#~ msgstr "IPv4 auswählen"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -4806,11 +4815,8 @@ msgstr "IPv4 auswählen"
 msgid "IPv4 Gateway"
 msgstr "IPv4-Gateway"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Select IPv4 Gateway"
-msgstr "IPv4-Gateway auswählen"
+#~ msgid "Select IPv4 Gateway"
+#~ msgstr "IPv4-Gateway auswählen"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -4840,9 +4846,8 @@ msgstr "IPv6-Netzwerk"
 msgid "IPv6"
 msgstr "IPv6"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-msgid "Select IPv6"
-msgstr "IPv6 auswählen"
+#~ msgid "Select IPv6"
+#~ msgstr "IPv6 auswählen"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -4851,13 +4856,9 @@ msgstr "IPv6 auswählen"
 msgid "IPv6 Gateway"
 msgstr "IPv6-Gateway"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Select IPv6 Gateway"
-msgstr "IPv6-Gateway auswählen"
+#~ msgid "Select IPv6 Gateway"
+#~ msgstr "IPv6-Gateway auswählen"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select MAC"
@@ -5151,30 +5152,24 @@ msgstr "Switch"
 msgid "Select Switch"
 msgstr "Switch auswählen"
 
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Select MAC Address"
-msgstr "MAC-Adresse auswählen"
+#~ msgid "Select MAC Address"
+#~ msgstr "MAC-Adresse auswählen"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "IPv4 Address"
 msgstr "IPv4-Adresse"
 
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Select IPv4 Address"
-msgstr "IPv4-Adresse auswählen"
+#~ msgid "Select IPv4 Address"
+#~ msgstr "IPv4-Adresse auswählen"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "IPv6 Address"
 msgstr "IPv6-Adresse"
 
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Select IPv6 Address"
-msgstr "IPv6-Adresse auswählen"
+#~ msgid "Select IPv6 Address"
+#~ msgstr "IPv6-Adresse auswählen"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -6039,7 +6034,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -15229,4 +15224,49 @@ msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Webhook URL is required"
+msgstr ""
+
+#~ msgid "Select IPv4 or type a CIDR"
+#~ msgstr ""
+
+#~ msgid "Select IPv4 Gateway or type an IP"
+#~ msgstr ""
+
+#~ msgid "Select IPv6 or type a CIDR"
+#~ msgstr ""
+
+#~ msgid "Select IPv6 Gateway or type an IP"
+#~ msgstr ""
+
+#~ msgid "Select MAC or type an address"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select or type an IPv4 CIDR"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select or type an IPv4 GW"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select or type an IPv6 CIDR"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select or type an IPv6 GW"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select or type a MAC"
 msgstr ""

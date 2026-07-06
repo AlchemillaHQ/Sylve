@@ -5,7 +5,7 @@ import type {
 } from '$lib/types/jail/jail';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
-import { isValidVMName } from '../string';
+import { isValidIPv4, isValidIPv6, isValidMACAddress, isValidVMName } from '../string';
 
 const DNS_PRESETS = {
     cloudflare: `nameserver 1.1.1.1
@@ -95,6 +95,31 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
                 toast.error('Either IPv4 or IPv6 must be inherited', toastConfig);
                 return false;
             }
+        }
+
+        if (modal.network.macRaw && !isValidMACAddress(modal.network.macRaw)) {
+            toast.error('Invalid MAC address', toastConfig);
+            return false;
+        }
+
+        if (modal.network.ipv4Raw && !isValidIPv4(modal.network.ipv4Raw, true)) {
+            toast.error('Invalid IPv4 network (CIDR required)', toastConfig);
+            return false;
+        }
+
+        if (modal.network.ipv4GatewayRaw && !isValidIPv4(modal.network.ipv4GatewayRaw)) {
+            toast.error('Invalid IPv4 gateway address', toastConfig);
+            return false;
+        }
+
+        if (modal.network.ipv6Raw && !isValidIPv6(modal.network.ipv6Raw, true)) {
+            toast.error('Invalid IPv6 network (CIDR required)', toastConfig);
+            return false;
+        }
+
+        if (modal.network.ipv6GatewayRaw && !isValidIPv6(modal.network.ipv6GatewayRaw)) {
+            toast.error('Invalid IPv6 gateway address', toastConfig);
+            return false;
         }
     }
 

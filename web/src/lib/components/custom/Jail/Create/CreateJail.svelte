@@ -56,12 +56,17 @@
 		network: {
 			switch: 'None',
 			mac: 0,
+			macRaw: '',
 			inheritIPv4: true,
 			inheritIPv6: true,
 			ipv4: 0,
+			ipv4Raw: '',
 			ipv4Gateway: 0,
+			ipv4GatewayRaw: '',
 			ipv6: 0,
+			ipv6Raw: '',
 			ipv6Gateway: 0,
+			ipv6GatewayRaw: '',
 			dhcp: false,
 			slaac: false,
 			resolvConf: '',
@@ -225,11 +230,7 @@
 
 	let nextId = $derived.by(() => {
 		if (open) {
-			if (
-				nodes.current &&
-				Array.isArray(nodes.current) &&
-				nodes.current.length > 0
-			) {
+			if (nodes.current && Array.isArray(nodes.current) && nodes.current.length > 0) {
 				return getNextGuestId(nodes.current);
 			}
 
@@ -322,11 +323,17 @@
 						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Minimize</span>
 					</Button>
-					<Button size="sm" variant="link" class="h-4" onclick={() => {
-						open = false;
-						minimize = false;
-						resetModal();
-					}} title="Close">
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						onclick={() => {
+							open = false;
+							minimize = false;
+							resetModal();
+						}}
+						title="Close"
+					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
@@ -376,16 +383,21 @@
 										ctId={modal.id}
 										bind:switch={modal.network.switch}
 										bind:mac={modal.network.mac}
+										bind:macRaw={modal.network.macRaw}
 										bind:inheritIPv4={modal.network.inheritIPv4}
 										bind:inheritIPv6={modal.network.inheritIPv6}
 										bind:ipv4={modal.network.ipv4}
+										bind:ipv4Raw={modal.network.ipv4Raw}
 										bind:ipv4Gateway={modal.network.ipv4Gateway}
+										bind:ipv4GatewayRaw={modal.network.ipv4GatewayRaw}
 										bind:ipv6={modal.network.ipv6}
+										bind:ipv6Raw={modal.network.ipv6Raw}
 										bind:ipv6Gateway={modal.network.ipv6Gateway}
-									bind:dhcp={modal.network.dhcp}
-									bind:slaac={modal.network.slaac}
-									bind:resolvConf={modal.network.resolvConf}
-									bind:vlan={modal.network.vlan}
+										bind:ipv6GatewayRaw={modal.network.ipv6GatewayRaw}
+										bind:dhcp={modal.network.dhcp}
+										bind:slaac={modal.network.slaac}
+										bind:resolvConf={modal.network.resolvConf}
+										bind:vlan={modal.network.vlan}
 										bind:refetch={networkRefetch}
 										jailType={modal.advanced.jailType}
 										switches={networkSwitches.current}

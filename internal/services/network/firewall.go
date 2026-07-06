@@ -176,10 +176,6 @@ func (s *Service) ApplyFirewallIfEnabled() error {
 }
 
 func (s *Service) SyncFirewallRuntimeState() error {
-	if err := s.ensurePFAutostartDisabledInRCConf(); err != nil {
-		return err
-	}
-
 	if s.IsFirewallServiceEnabled() {
 		return s.ApplyFirewallConfig()
 	}
@@ -1690,12 +1686,12 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-		tmpEntriesDir := filepath.Join(tmpSylveDir, "entries")
+	tmpEntriesDir := filepath.Join(tmpSylveDir, "entries")
 	if err := writeFirewallObjectTableEntries(objectTables, tmpEntriesDir); err != nil {
 		return err
 	}
 
-		objectTablesRendered := renderFirewallObjectTables(objectTables)
+	objectTablesRendered := renderFirewallObjectTables(objectTables)
 
 	tmpObjectTablesPath := filepath.Join(tmpSylveDir, "object-tables.conf")
 	tmpNatPath := filepath.Join(tmpSylveDir, "nat-rules.conf")
@@ -1736,7 +1732,7 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-		if err := writeFirewallObjectTableEntries(objectTables, pfObjectTableEntriesDir); err != nil {
+	if err := writeFirewallObjectTableEntries(objectTables, pfObjectTableEntriesDir); err != nil {
 		return err
 	}
 

@@ -15,8 +15,8 @@
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { toast } from 'svelte-sonner';
 	import { addNetwork, updateNetwork as updateNetworkAPI } from '$lib/api/jail/jail';
-	import { parseNumberOrZero } from '$lib/utils/string';
-	import { watch } from 'runed';
+import { parseNumberOrZero } from '$lib/utils/string';
+import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -203,6 +203,16 @@
 		}
 	);
 
+	function resolveField(
+		val: string,
+		objects: NetworkObject[]
+	): { id: number; raw: string } {
+		if (!val) return { id: 0, raw: '' };
+		const obj = objects.find((o) => String(o.id) === val);
+		if (obj) return { id: obj.id, raw: '' };
+		return { id: 0, raw: val };
+	}
+
 	watch([() => properties.dhcp, () => properties.slaac], ([dhcp, slaac]) => {
 		if (dhcp && slaac) {
 			properties.defaultGateway = false;
@@ -265,15 +275,21 @@
 			return;
 		}
 
+		const mac = resolveField(comboBoxes.mac.value, networkObjects.filter((o) => o.type === 'Mac'));
+		const ipv4 = resolveField(comboBoxes.ipv4.value, networkObjects.filter((o) => o.type === 'Network'));
+		const ipv4Gw = resolveField(comboBoxes.ipv4Gw.value, networkObjects.filter((o) => o.type === 'Host'));
+		const ipv6 = resolveField(comboBoxes.ipv6.value, networkObjects.filter((o) => o.type === 'Network'));
+		const ipv6Gw = resolveField(comboBoxes.ipv6Gw.value, networkObjects.filter((o) => o.type === 'Host'));
+
 		const response = await addNetwork(
 			jail.ctId,
 			properties.name,
 			comboBoxes.sw.value,
-			parseNumberOrZero(comboBoxes.mac.value),
-			parseNumberOrZero(comboBoxes.ipv4.value),
-			parseNumberOrZero(comboBoxes.ipv4Gw.value),
-			parseNumberOrZero(comboBoxes.ipv6.value),
-			parseNumberOrZero(comboBoxes.ipv6Gw.value),
+			mac.id, mac.raw,
+			ipv4.id, ipv4.raw,
+			ipv4Gw.id, ipv4Gw.raw,
+			ipv6.id, ipv6.raw,
+			ipv6Gw.id, ipv6Gw.raw,
 			properties.dhcp,
 			properties.slaac,
 			properties.defaultGateway,
@@ -319,15 +335,21 @@
 			return;
 		}
 
+		const mac = resolveField(editComboBoxes.mac.value, networkObjects.filter((o) => o.type === 'Mac'));
+		const ipv4 = resolveField(editComboBoxes.ipv4.value, networkObjects.filter((o) => o.type === 'Network'));
+		const ipv4Gw = resolveField(editComboBoxes.ipv4Gw.value, networkObjects.filter((o) => o.type === 'Host'));
+		const ipv6 = resolveField(editComboBoxes.ipv6.value, networkObjects.filter((o) => o.type === 'Network'));
+		const ipv6Gw = resolveField(editComboBoxes.ipv6Gw.value, networkObjects.filter((o) => o.type === 'Host'));
+
 		const response = await updateNetworkAPI(
 			selectedNetwork.id,
 			editProperties.name,
 			editComboBoxes.sw.value,
-			parseNumberOrZero(editComboBoxes.mac.value),
-			parseNumberOrZero(editComboBoxes.ipv4.value),
-			parseNumberOrZero(editComboBoxes.ipv4Gw.value),
-			parseNumberOrZero(editComboBoxes.ipv6.value),
-			parseNumberOrZero(editComboBoxes.ipv6Gw.value),
+			mac.id, mac.raw,
+			ipv4.id, ipv4.raw,
+			ipv4Gw.id, ipv4Gw.raw,
+			ipv6.id, ipv6.raw,
+			ipv6Gw.id, ipv6Gw.raw,
 			editProperties.dhcp,
 			editProperties.slaac,
 			editProperties.defaultGateway,
@@ -407,12 +429,13 @@
 				<CustomComboBox
 					bind:open={comboBoxes.mac.open}
 					label="MAC Address"
-					placeholder="Select MAC Address"
+					placeholder="Select or type a MAC"
 					bind:value={comboBoxes.mac.value}
 					data={generateMACOptions(networkObjects)}
 					classes="flex-1 space-y-1"
 					triggerWidth="w-full"
 					width="w-full"
+					allowCustom={true}
 				/>
 
 				<CustomValueInput
@@ -429,49 +452,53 @@
 					<CustomComboBox
 						bind:open={comboBoxes.ipv4.open}
 						label="IPv4 Address"
-						placeholder="Select IPv4 Address"
+						placeholder="Select or type an IPv4 CIDR"
 						bind:value={comboBoxes.ipv4.value}
 						data={comboBoxes.ipv4.options}
 						classes="flex-1 space-y-1 w-full"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={properties.dhcp}
+						allowCustom={true}
 					/>
 
 					<CustomComboBox
 						bind:open={comboBoxes.ipv4Gw.open}
 						label="IPv4 Gateway"
-						placeholder="Select IPv4 Gateway"
+						placeholder="Select or type an IPv4 GW"
 						bind:value={comboBoxes.ipv4Gw.value}
 						data={comboBoxes.ipv4Gw.options}
 						classes="flex-1 space-y-1"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={properties.dhcp}
+						allowCustom={true}
 					/>
 
 					<CustomComboBox
 						bind:open={comboBoxes.ipv6.open}
 						label="IPv6 Address"
-						placeholder="Select IPv6 Address"
+						placeholder="Select or type an IPv6 CIDR"
 						bind:value={comboBoxes.ipv6.value}
 						data={comboBoxes.ipv6.options}
 						classes="flex-1 space-y-1"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={properties.slaac}
+						allowCustom={true}
 					/>
 
 					<CustomComboBox
 						bind:open={comboBoxes.ipv6Gw.open}
 						label="IPv6 Gateway"
-						placeholder="Select IPv6 Gateway"
+						placeholder="Select or type an IPv6 GW"
 						bind:value={comboBoxes.ipv6Gw.value}
 						data={comboBoxes.ipv6Gw.options}
 						classes="flex-1 space-y-1"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={properties.slaac}
+						allowCustom={true}
 					/>
 				</div>
 
@@ -528,12 +555,13 @@
 				<CustomComboBox
 					bind:open={editComboBoxes.mac.open}
 					label="MAC Address"
-					placeholder="Select MAC Address"
+					placeholder="Select or type a MAC"
 					bind:value={editComboBoxes.mac.value}
 					data={generateMACOptions(networkObjects)}
 					classes="flex-1 space-y-1"
 					triggerWidth="w-full"
 					width="w-full"
+					allowCustom={true}
 				/>
 
 				<CustomValueInput
@@ -550,49 +578,53 @@
 					<CustomComboBox
 						bind:open={editComboBoxes.ipv4.open}
 						label="IPv4 Address"
-						placeholder="Select IPv4 Address"
+						placeholder="Select or type an IPv4 CIDR"
 						bind:value={editComboBoxes.ipv4.value}
 						data={editComboBoxes.ipv4.options}
 						classes="flex-1 space-y-1 w-full"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={editProperties.dhcp}
+						allowCustom={true}
 					/>
 
 					<CustomComboBox
 						bind:open={editComboBoxes.ipv4Gw.open}
 						label="IPv4 Gateway"
-						placeholder="Select IPv4 Gateway"
+						placeholder="Select or type an IPv4 GW"
 						bind:value={editComboBoxes.ipv4Gw.value}
 						data={editComboBoxes.ipv4Gw.options}
 						classes="flex-1 space-y-1"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={editProperties.dhcp}
+						allowCustom={true}
 					/>
 
 					<CustomComboBox
 						bind:open={editComboBoxes.ipv6.open}
 						label="IPv6 Address"
-						placeholder="Select IPv6 Address"
+						placeholder="Select or type an IPv6 CIDR"
 						bind:value={editComboBoxes.ipv6.value}
 						data={editComboBoxes.ipv6.options}
 						classes="flex-1 space-y-1"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={editProperties.slaac}
+						allowCustom={true}
 					/>
 
 					<CustomComboBox
 						bind:open={editComboBoxes.ipv6Gw.open}
 						label="IPv6 Gateway"
-						placeholder="Select IPv6 Gateway"
+						placeholder="Select or type an IPv6 GW"
 						bind:value={editComboBoxes.ipv6Gw.value}
 						data={editComboBoxes.ipv6Gw.options}
 						classes="flex-1 space-y-1"
 						triggerWidth="w-full"
 						width="w-full"
 						disabled={editProperties.slaac}
+						allowCustom={true}
 					/>
 				</div>
 

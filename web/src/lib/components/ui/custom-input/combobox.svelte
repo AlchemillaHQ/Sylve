@@ -55,16 +55,20 @@
 	}: Props = $props();
 
 	let search = $state('');
+	let suppressCustomInData = $state(false);
 
 	watch(
 		() => open,
 		(val) => {
-			if (val) search = '';
+			if (val) {
+				search = '';
+				suppressCustomInData = false;
+			}
 		}
 	);
 
 	const effectiveData = $derived.by(() => {
-		if (allowCustom) {
+		if (allowCustom && !suppressCustomInData) {
 			if (!multiple && typeof value === 'string' && value && !data.some((d) => d.value === value)) {
 				return [{ value: value, label: value }, ...data];
 			}
@@ -98,6 +102,7 @@
 			value = arr;
 			onValueChange(arr);
 		} else {
+			suppressCustomInData = true;
 			if (value === val && !disallowEmpty) {
 				value = '';
 				onValueChange('');
@@ -111,9 +116,10 @@
 
 	const selectedLabels = $derived.by(() => {
 		const vals = multiple ? (Array.isArray(value) ? value : []) : value ? [value] : [];
-
-		const matched = effectiveData.filter((d) => vals.includes(d.value)).map((d) => d.label);
-		return matched;
+		return vals.map((v) => {
+			const found = data.find((d) => d.value === v);
+			return found ? found.label : v;
+		});
 	});
 
 	function formatLabel(lbl: string): string {
@@ -144,6 +150,7 @@
 			{/if}
 		</div>
 	{/if}
+
 	<Popover.Root bind:open>
 		<Popover.Trigger class="{triggerWidth} min-w-0" {disabled}>
 			<Button
@@ -169,7 +176,7 @@
 									class={multiple
 										? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
 										: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
-									title={lbl}
+									title={Array.isArray(lbl) ? lbl.join(', ') : lbl}
 								>
 									{lbl}
 								</p>
@@ -184,7 +191,10 @@
 			</Button>
 		</Popover.Trigger>
 
-		<Popover.Content class="{width} mx-auto p-0">
+		<Popover.Content
+			class="{width} mx-auto p-0"
+			onCloseAutoFocus={(e: Event) => e.preventDefault()}
+		>
 			<Command.Root shouldFilter={false}>
 				<Command.Input
 					bind:value={search}
@@ -197,8 +207,9 @@
 							!data.some((d) => d.value === search.trim())
 						) {
 							e.preventDefault();
+							e.stopPropagation();
 							selectItem(search.trim());
-							if (!multiple) open = false;
+							(e.target as HTMLInputElement)?.blur();
 						}
 					}}
 				/>
@@ -230,13 +241,7 @@
 							</Command.Item>
 						{/each}
 						{#if allowCustom && search.trim() && !data.some((d) => d.value === search.trim()) && !(multiple && Array.isArray(value) && value.includes(search.trim()))}
-							<Command.Item
-								value={search.trim()}
-								onSelect={() => {
-									selectItem(search.trim());
-									if (!multiple) open = false;
-								}}
-							>
+							<Command.Item value={search.trim()} onSelect={() => selectItem(search.trim())}>
 								<span class="icon-[lucide--check] mr-2 h-4 w-4 opacity-0"></span>
 								Use "{search.trim()}"
 							</Command.Item>

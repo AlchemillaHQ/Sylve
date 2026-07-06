@@ -16,12 +16,17 @@ export interface CreateData {
     network: {
         switch: string;
         mac: number;
+        macRaw: string;
         inheritIPv4: boolean;
         inheritIPv6: boolean;
         ipv4: number;
+        ipv4Raw: string;
         ipv4Gateway: number;
+        ipv4GatewayRaw: string;
         ipv6: number;
+        ipv6Raw: string;
         ipv6Gateway: number;
+        ipv6GatewayRaw: string;
         dhcp: boolean;
         slaac: boolean;
         resolvConf: string;

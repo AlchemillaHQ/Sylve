@@ -307,94 +307,47 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 	network.SwitchID = switchId
 	network.SwitchType = switchType
 
-	if !dhcp {
-		if ip4 != 0 && ip4gw != 0 {
-			ipv4CIDR, err := s.NetworkService.GetObjectEntryByID(ip4)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
-			}
-			if err := validateAssignableJailIPv4CIDR(ipv4CIDR); err != nil {
-				return err
-			}
-
-			_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
-			}
-
-			network.IPv4ID = &ip4
-			network.IPv4GwID = &ip4gw
-		}
-	} else {
-		network.DHCP = true
-	}
-
-	if !slaac {
-		if ip6 != 0 && ip6gw != 0 {
-			ipv6CIDR, err := s.NetworkService.GetObjectEntryByID(ip6)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
-			}
-			if err := validateAssignableJailIPv6CIDR(ipv6CIDR); err != nil {
-				return err
-			}
-
-			_, err = s.NetworkService.GetObjectEntryByID(ip6gw)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip6gw_object: %w", err)
-			}
-
-			network.IPv6ID = &ip6
-			network.IPv6GwID = &ip6gw
-		}
-	} else {
-		network.SLAAC = true
-	}
-
 	if macId == 0 {
-		macAddress := utils.GenerateRandomMAC()
-		base := fmt.Sprintf("%s-%s", jail.Name, dbSwName)
-		name := base
+		if req.MACRaw != "" {
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-MAC", jail.Name, dbSwName))
 
-		for i := 0; ; i++ {
-			if i > 0 {
-				name = fmt.Sprintf("%s-%d", base, i)
+			macObj := networkModels.Object{
+				Name: name,
+				Type: "Mac",
+			}
+			if err := s.DB.Create(&macObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_object: %w", err)
 			}
 
-			var exists int64
-
-			if err := s.DB.
-				Model(&networkModels.Object{}).
-				Where("name = ?", name).
-				Limit(1).
-				Count(&exists).Error; err != nil {
-				return fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
+			if err := s.DB.Create(&networkModels.ObjectEntry{
+				ObjectID: macObj.ID,
+				Value:    req.MACRaw,
+			}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_entry: %w", err)
 			}
 
-			if exists == 0 {
-				break
+			network.MacID = &macObj.ID
+		} else {
+			macAddress := utils.GenerateRandomMAC()
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s", jail.Name, dbSwName))
+
+			macObj := networkModels.Object{
+				Name: name,
+				Type: "Mac",
 			}
-		}
+			if err := s.DB.Create(&macObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_object: %w", err)
+			}
 
-		macObj := networkModels.Object{
-			Name: name,
-			Type: "Mac",
-		}
+			if err := s.DB.Create(&networkModels.ObjectEntry{
+				ObjectID: macObj.ID,
+				Value:    macAddress,
+			}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_entry: %w", err)
+			}
 
-		if err := s.DB.Create(&macObj).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_object: %w", err)
+			network.MacID = &macObj.ID
 		}
-
-		macEntry := networkModels.ObjectEntry{
-			ObjectID: macObj.ID,
-			Value:    macAddress,
-		}
-
-		if err := s.DB.Create(&macEntry).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_entry: %w", err)
-		}
-
-		network.MacID = &macObj.ID
 	} else {
 		_, err := s.NetworkService.GetObjectEntryByID(macId)
 		if err != nil {
@@ -404,15 +357,107 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 		network.MacID = &macId
 	}
 
+	if !dhcp {
+		if ip4 != 0 {
+			ipv4CIDR, err := s.NetworkService.GetObjectEntryByID(ip4)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
+			}
+			if err := validateAssignableJailIPv4CIDR(ipv4CIDR); err != nil {
+				return err
+			}
+			network.IPv4ID = &ip4
+		} else if req.IP4Raw != "" {
+			if err := validateAssignableJailIPv4CIDR(req.IP4Raw); err != nil {
+				return err
+			}
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv4", jail.Name, dbSwName))
+			ipv4Obj := networkModels.Object{Name: name, Type: "Network"}
+			if err := s.DB.Create(&ipv4Obj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv4Obj.ID, Value: req.IP4Raw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4_entry: %w", err)
+			}
+			network.IPv4ID = &ipv4Obj.ID
+		}
+
+		if ip4gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip4gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
+			}
+			network.IPv4GwID = &ip4gw
+		} else if req.IP4GwRaw != "" {
+			gwName := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv4-GW", jail.Name, dbSwName))
+			ipv4GwObj := networkModels.Object{Name: gwName, Type: "Host"}
+			if err := s.DB.Create(&ipv4GwObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4gw_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv4GwObj.ID, Value: req.IP4GwRaw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4gw_entry: %w", err)
+			}
+			network.IPv4GwID = &ipv4GwObj.ID
+		}
+	} else {
+		network.DHCP = true
+	}
+
+	if !slaac {
+		if ip6 != 0 {
+			ipv6CIDR, err := s.NetworkService.GetObjectEntryByID(ip6)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
+			}
+			if err := validateAssignableJailIPv6CIDR(ipv6CIDR); err != nil {
+				return err
+			}
+			network.IPv6ID = &ip6
+		} else if req.IP6Raw != "" {
+			if err := validateAssignableJailIPv6CIDR(req.IP6Raw); err != nil {
+				return err
+			}
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv6", jail.Name, dbSwName))
+			ipv6Obj := networkModels.Object{Name: name, Type: "Network"}
+			if err := s.DB.Create(&ipv6Obj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv6Obj.ID, Value: req.IP6Raw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6_entry: %w", err)
+			}
+			network.IPv6ID = &ipv6Obj.ID
+		}
+
+		if ip6gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip6gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip6gw_object: %w", err)
+			}
+			network.IPv6GwID = &ip6gw
+		} else if req.IP6GwRaw != "" {
+			gwName := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv6-GW", jail.Name, dbSwName))
+			ipv6GwObj := networkModels.Object{Name: gwName, Type: "Host"}
+			if err := s.DB.Create(&ipv6GwObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6gw_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv6GwObj.ID, Value: req.IP6GwRaw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6gw_entry: %w", err)
+			}
+			network.IPv6GwID = &ipv6GwObj.ID
+		}
+	} else {
+		network.SLAAC = true
+	}
+
 	network.Name = req.Name
 	network.JailID = jail.ID
 	network.VLAN = &vlan
-	err := s.DB.Create(&network).Error
-	if err != nil {
+
+	if err := s.DB.Create(&network).Error; err != nil {
 		return fmt.Errorf("failed_to_create_network: %w", err)
 	}
 
-	err = s.NetworkService.SyncEpairs(false)
+	err := s.NetworkService.SyncEpairs(false)
 	if err != nil {
 		return fmt.Errorf("failed_to_sync_epairs: %w", err)
 	}
@@ -943,93 +988,35 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	network.SLAAC = false
 	network.DefaultGateway = defaultGateway
 
-	if !dhcp {
-		if ip4 != 0 && ip4gw != 0 {
-			ipv4CIDR, err := s.NetworkService.GetObjectEntryByID(ip4)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
-			}
-			if err := validateAssignableJailIPv4CIDR(ipv4CIDR); err != nil {
-				return err
-			}
-
-			_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
-			}
-
-			network.IPv4ID = &ip4
-			network.IPv4GwID = &ip4gw
-		}
-	} else {
-		network.DHCP = true
-	}
-
-	if !slaac {
-		if ip6 != 0 && ip6gw != 0 {
-			ipv6CIDR, err := s.NetworkService.GetObjectEntryByID(ip6)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
-			}
-			if err := validateAssignableJailIPv6CIDR(ipv6CIDR); err != nil {
-				return err
-			}
-
-			_, err = s.NetworkService.GetObjectEntryByID(ip6gw)
-			if err != nil {
-				return fmt.Errorf("failed_to_get_ip6gw_object: %w", err)
-			}
-
-			network.IPv6ID = &ip6
-			network.IPv6GwID = &ip6gw
-		}
-	} else {
-		network.SLAAC = true
-	}
-
 	if macId == 0 {
-		macAddress := utils.GenerateRandomMAC()
-		base := fmt.Sprintf("%s-%s", jail.Name, dbSwName)
-		name := base
+		if req.MACRaw != "" {
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-MAC", jail.Name, dbSwName))
 
-		for i := 0; ; i++ {
-			if i > 0 {
-				name = fmt.Sprintf("%s-%d", base, i)
+			macObj := networkModels.Object{Name: name, Type: "Mac"}
+			if err := s.DB.Create(&macObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_object: %w", err)
 			}
 
-			var exists int64
-			if err := s.DB.
-				Model(&networkModels.Object{}).
-				Where("name = ?", name).
-				Limit(1).
-				Count(&exists).Error; err != nil {
-				return fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: macObj.ID, Value: req.MACRaw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_entry: %w", err)
 			}
 
-			if exists == 0 {
-				break
+			network.MacID = &macObj.ID
+		} else {
+			macAddress := utils.GenerateRandomMAC()
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s", jail.Name, dbSwName))
+
+			macObj := networkModels.Object{Name: name, Type: "Mac"}
+			if err := s.DB.Create(&macObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_object: %w", err)
 			}
-		}
 
-		macObj := networkModels.Object{
-			Name: name,
-			Type: "Mac",
-		}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: macObj.ID, Value: macAddress}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_mac_entry: %w", err)
+			}
 
-		if err := s.DB.Create(&macObj).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_object: %w", err)
+			network.MacID = &macObj.ID
 		}
-
-		macEntry := networkModels.ObjectEntry{
-			ObjectID: macObj.ID,
-			Value:    macAddress,
-		}
-
-		if err := s.DB.Create(&macEntry).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_entry: %w", err)
-		}
-
-		network.MacID = &macObj.ID
 	} else {
 		_, err := s.NetworkService.GetObjectEntryByID(macId)
 		if err != nil {
@@ -1037,6 +1024,98 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 		}
 
 		network.MacID = &macId
+	}
+
+	if !dhcp {
+		if ip4 != 0 {
+			ipv4CIDR, err := s.NetworkService.GetObjectEntryByID(ip4)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
+			}
+			if err := validateAssignableJailIPv4CIDR(ipv4CIDR); err != nil {
+				return err
+			}
+			network.IPv4ID = &ip4
+		} else if req.IP4Raw != "" {
+			if err := validateAssignableJailIPv4CIDR(req.IP4Raw); err != nil {
+				return err
+			}
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv4", jail.Name, dbSwName))
+			ipv4Obj := networkModels.Object{Name: name, Type: "Network"}
+			if err := s.DB.Create(&ipv4Obj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv4Obj.ID, Value: req.IP4Raw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4_entry: %w", err)
+			}
+			network.IPv4ID = &ipv4Obj.ID
+		}
+
+		if ip4gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip4gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
+			}
+			network.IPv4GwID = &ip4gw
+		} else if req.IP4GwRaw != "" {
+			gwName := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv4-GW", jail.Name, dbSwName))
+			ipv4GwObj := networkModels.Object{Name: gwName, Type: "Host"}
+			if err := s.DB.Create(&ipv4GwObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4gw_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv4GwObj.ID, Value: req.IP4GwRaw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv4gw_entry: %w", err)
+			}
+			network.IPv4GwID = &ipv4GwObj.ID
+		}
+	} else {
+		network.DHCP = true
+	}
+
+	if !slaac {
+		if ip6 != 0 {
+			ipv6CIDR, err := s.NetworkService.GetObjectEntryByID(ip6)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
+			}
+			if err := validateAssignableJailIPv6CIDR(ipv6CIDR); err != nil {
+				return err
+			}
+			network.IPv6ID = &ip6
+		} else if req.IP6Raw != "" {
+			if err := validateAssignableJailIPv6CIDR(req.IP6Raw); err != nil {
+				return err
+			}
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv6", jail.Name, dbSwName))
+			ipv6Obj := networkModels.Object{Name: name, Type: "Network"}
+			if err := s.DB.Create(&ipv6Obj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv6Obj.ID, Value: req.IP6Raw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6_entry: %w", err)
+			}
+			network.IPv6ID = &ipv6Obj.ID
+		}
+
+		if ip6gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip6gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip6gw_object: %w", err)
+			}
+			network.IPv6GwID = &ip6gw
+		} else if req.IP6GwRaw != "" {
+			gwName := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-IPv6-GW", jail.Name, dbSwName))
+			ipv6GwObj := networkModels.Object{Name: gwName, Type: "Host"}
+			if err := s.DB.Create(&ipv6GwObj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6gw_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: ipv6GwObj.ID, Value: req.IP6GwRaw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_ipv6gw_entry: %w", err)
+			}
+			network.IPv6GwID = &ipv6GwObj.ID
+		}
+	} else {
+		network.SLAAC = true
 	}
 
 	if err := s.DB.Save(&network).Error; err != nil {
