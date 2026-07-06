@@ -312,7 +312,15 @@
 					<Table.Row>
 						<Table.Cell>Sylve Version</Table.Cell>
 						<Table.Cell>
-							{basicInfo.current.sylveVersion}{#if basicInfo.current.sylveCommit !== 'unknown'} — {basicInfo.current.sylveCommit}{/if}
+							<!-- @wc-ignore -->
+							<span>{basicInfo.current.sylveVersion}</span>
+							<!-- @wc-ignore -->
+							{#if basicInfo.current.sylveCommit !== 'unknown'}
+								<!-- @wc-ignore -->
+								<span> - </span>
+								<!-- @wc-ignore -->
+								<span>{basicInfo.current.sylveCommit}</span>
+							{/if}
 						</Table.Cell>
 					</Table.Row>
 				</Table.Body>
