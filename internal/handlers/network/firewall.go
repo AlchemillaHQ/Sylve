@@ -572,3 +572,58 @@ func UpdateFirewallAdvancedSettings(svc *network.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+func PreviewRenderedConfig(svc *network.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req networkServiceInterfaces.FirewallAdvancedRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		rendered, err := svc.PreviewRenderedConfig(&req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "preview_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "preview_rendered",
+			Error:   "",
+			Data:    rendered,
+		})
+	}
+}
+
+func GetRenderedConfig(svc *network.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rendered, err := svc.GetRenderedConfigOnDisk()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_rendered_config",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "rendered_config_retrieved",
+			Error:   "",
+			Data:    rendered,
+		})
+	}
+}

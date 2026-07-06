@@ -505,8 +505,12 @@ func initFirewallConfig(db *gorm.DB) error {
 	}
 
 	firewallConfig := &networkModels.FirewallAdvancedSettings{
-		PreRules:  "",
-		PostRules: "",
+		PreRules:          "",
+		PreNatDecl:        "",
+		PostNatDecl:       "",
+		PreTrafficAnchor:  "",
+		PostTrafficAnchor: "",
+		PostRules:         "",
 	}
 
 	if err := db.Create(firewallConfig).Error; err != nil {

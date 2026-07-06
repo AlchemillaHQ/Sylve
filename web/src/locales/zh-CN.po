@@ -10359,11 +10359,13 @@ msgstr "目标"
 #~ msgid "Custom PF text injected globally before and after Sylve anchors."
 #~ msgstr ""
 
-#~ msgid "Pre Rules"
-#~ msgstr ""
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Pre Rules"
+msgstr ""
 
-#~ msgid "Post Rules"
-#~ msgstr ""
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Post Rules"
+msgstr ""
 
 #~ msgid "Save Advanced Settings"
 #~ msgstr ""
@@ -10830,29 +10832,24 @@ msgstr "不用于入站规则"
 msgid "Advanced Firewall Settings"
 msgstr "高级防火墙设置"
 
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
-msgid "Global PF rules injected before and after Sylve anchors in <0/>."
-msgstr "在 <0/> 中的 Sylve 锚点之前和之后注入的全局 PF 规则。"
+#~ msgid "Global PF rules injected before and after Sylve anchors in <0/>."
+#~ msgstr "在 <0/> 中的 Sylve 锚点之前和之后注入的全局 PF 规则。"
 
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "Rules here are applied globally and may override managed rules. Use with caution."
 msgstr "此处的规则全局应用，可能会覆盖托管规则。请谨慎使用。"
 
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
-msgid "<0/> Pre Rules"
-msgstr "<0/> 前置规则"
+#~ msgid "<0/> Pre Rules"
+#~ msgstr "<0/> 前置规则"
 
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
-msgid "Injected before all Sylve-managed anchors."
-msgstr "在所有 Sylve 托管锚点之前注入。"
+#~ msgid "Injected before all Sylve-managed anchors."
+#~ msgstr "在所有 Sylve 托管锚点之前注入。"
 
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
-msgid "<0/> Post Rules"
-msgstr "<0/> 后置规则"
+#~ msgid "<0/> Post Rules"
+#~ msgstr "<0/> 后置规则"
 
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
-msgid "Injected after all Sylve-managed anchors."
-msgstr "在所有 Sylve 托管锚点之后注入。"
+#~ msgid "Injected after all Sylve-managed anchors."
+#~ msgstr "在所有 Sylve 托管锚点之后注入。"
 
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "<0/> Changes take effect immediately upon saving."
@@ -15266,4 +15263,122 @@ msgstr ""
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select or type a MAC"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Global PF rules injected at specific positions in <0/>."
+msgstr ""
+
+#~ msgid "Injected before all Sylve-managed content. Options, normalization, and general setup."
+#~ msgstr ""
+
+#~ msgid "<0/> Pre NAT Declarations"
+#~ msgstr ""
+
+#~ msgid "Injected before Sylve's <0/>/<1/>/<2/> lines. For translation rules like <3/>, <4/>, <5/>."
+#~ msgstr ""
+
+#~ msgid "<0/> Post NAT Declarations"
+#~ msgstr ""
+
+#~ msgid "Injected after Sylve's translation anchors but before the filtering section. Translation or filtering rules — transition zone."
+#~ msgstr ""
+
+#~ msgid "<0/> Pre Traffic Anchor"
+#~ msgstr ""
+
+#~ msgid "Injected before Sylve's <0/> line. For filtering rules."
+#~ msgstr ""
+
+#~ msgid "<0/> Post Traffic Anchor"
+#~ msgstr ""
+
+#~ msgid "Injected after Sylve's <0/> line but before Post Rules. For filtering rules."
+#~ msgstr ""
+
+#~ msgid "Injected after all Sylve-managed content. For final filtering rules."
+#~ msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Options, normalization, table definitions. Injected before all Sylve-managed content."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Pre NAT Declarations"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Translation rules injected before Sylve's nat-anchor / rdr-anchor / binat-anchor lines."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Post NAT Declarations"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Injected after Sylve's translation anchors, before the filtering section. Transition zone for translation or filtering."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Pre Traffic Anchor"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Filtering rules injected before Sylve's anchor \"sylve/traffic-rules\" line."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Post Traffic Anchor"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Filtering rules injected after Sylve's traffic anchor, before Post Rules."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Final filtering rules injected after all Sylve-managed content."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Generated pf.conf"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Full rendered pf.conf that will be written to /etc/pf.conf."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Object Tables"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Rendered object table definitions from the firewall objects."
+msgstr ""
+
+#~ msgid "Preview failed: "
+#~ msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "No generated config available."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "No object tables available."
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Advanced settings sections"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Editable Sections"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Preview"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "On Disk"
 msgstr ""

@@ -80,9 +80,13 @@ type FirewallNATRule struct {
 }
 
 type FirewallAdvancedSettings struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	PreRules  string    `json:"preRules"`
-	PostRules string    `json:"postRules"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID                  uint      `json:"id" gorm:"primaryKey"`
+	PreRules            string    `json:"preRules"`
+	PreNatDecl          string    `json:"preNatDecl"`
+	PostNatDecl         string    `json:"postNatDecl"`
+	PreTrafficAnchor    string    `json:"preTrafficAnchor"`
+	PostTrafficAnchor   string    `json:"postTrafficAnchor"`
+	PostRules           string    `json:"postRules"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
 }

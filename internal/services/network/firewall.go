@@ -1500,6 +1500,10 @@ func (s *Service) UpdateFirewallAdvancedSettings(req *networkServiceInterfaces.F
 
 	previous := *current
 	current.PreRules = strings.TrimSpace(req.PreRules)
+	current.PreNatDecl = strings.TrimSpace(req.PreNatDecl)
+	current.PostNatDecl = strings.TrimSpace(req.PostNatDecl)
+	current.PreTrafficAnchor = strings.TrimSpace(req.PreTrafficAnchor)
+	current.PostTrafficAnchor = strings.TrimSpace(req.PostTrafficAnchor)
 	current.PostRules = strings.TrimSpace(req.PostRules)
 
 	if err := s.DB.Save(current).Error; err != nil {
@@ -1512,6 +1516,122 @@ func (s *Service) UpdateFirewallAdvancedSettings(req *networkServiceInterfaces.F
 	}
 
 	return nil
+}
+
+func (s *Service) renderCurrentConfig(tmpDir, preRules, preNatDecl, postNatDecl, preTrafficAnchor, postTrafficAnchor, postRules string) (*networkServiceInterfaces.RenderedConfigResponse, error) {
+	natRules, err := s.getFirewallNATRulesForApply()
+	if err != nil {
+		return nil, err
+	}
+
+	trafficRules, err := s.getFirewallTrafficRulesForApply()
+	if err != nil {
+		return nil, err
+	}
+
+	objectTables, err := s.buildFirewallObjectTables(trafficRules, natRules)
+	if err != nil {
+		return nil, err
+	}
+
+	natRendered, err := s.renderNATRules(natRules, objectTables)
+	if err != nil {
+		return nil, err
+	}
+
+	natPolicyRoutingRendered, err := s.renderNATPolicyRoutingRules(natRules, objectTables)
+	if err != nil {
+		return nil, err
+	}
+
+	trafficRendered, err := s.renderTrafficRules(trafficRules, objectTables)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(natPolicyRoutingRendered) != "" {
+		if strings.TrimSpace(trafficRendered) != "" {
+			trafficRendered = strings.TrimRight(natPolicyRoutingRendered, "\n") + "\n" + trafficRendered
+		} else {
+			trafficRendered = natPolicyRoutingRendered
+		}
+	}
+
+	objectTablesRendered := renderFirewallObjectTables(objectTables)
+
+	natPath := filepath.Join(tmpDir, "nat-rules.conf")
+	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")
+
+	if err := os.WriteFile(natPath, []byte(natRendered), 0644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(trafficPath, []byte(trafficRendered), 0644); err != nil {
+		return nil, err
+	}
+
+	pfConf := buildPFMainConfig(preRules, preNatDecl, postNatDecl, preTrafficAnchor, postTrafficAnchor, postRules, objectTablesRendered, natPath, trafficPath)
+
+	return &networkServiceInterfaces.RenderedConfigResponse{
+		PfConf:       pfConf,
+		ObjectTables: objectTablesRendered,
+		NatRules:     natRendered,
+		TrafficRules: trafficRendered,
+	}, nil
+}
+
+func (s *Service) PreviewRenderedConfig(req *networkServiceInterfaces.FirewallAdvancedRequest) (*networkServiceInterfaces.RenderedConfigResponse, error) {
+	tmpDir, err := os.MkdirTemp("", "sylve-pf-preview-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	rendered, err := s.renderCurrentConfig(
+		tmpDir,
+		strings.TrimSpace(req.PreRules),
+		strings.TrimSpace(req.PreNatDecl),
+		strings.TrimSpace(req.PostNatDecl),
+		strings.TrimSpace(req.PreTrafficAnchor),
+		strings.TrimSpace(req.PostTrafficAnchor),
+		strings.TrimSpace(req.PostRules),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpMainPath := filepath.Join(tmpDir, "pf.conf")
+	if err := os.WriteFile(tmpMainPath, []byte(rendered.PfConf), 0644); err != nil {
+		return nil, err
+	}
+
+	if _, err := firewallRunCommand("/sbin/pfctl", "-nf", tmpMainPath); err != nil {
+		return nil, formatPFValidationError(err, map[string]string{
+			"pf.conf":            rendered.PfConf,
+			"object-tables.conf": rendered.ObjectTables,
+			"nat-rules.conf":     rendered.NatRules,
+			"traffic-rules.conf": rendered.TrafficRules,
+		})
+	}
+
+	return rendered, nil
+}
+
+func (s *Service) GetRenderedConfigOnDisk() (*networkServiceInterfaces.RenderedConfigResponse, error) {
+	resp := &networkServiceInterfaces.RenderedConfigResponse{}
+
+	if data, err := os.ReadFile(pfMainConfPath); err == nil {
+		resp.PfConf = string(data)
+	}
+	if data, err := os.ReadFile(pfObjectTablesPath); err == nil {
+		resp.ObjectTables = string(data)
+	}
+	if data, err := os.ReadFile(pfNatRulesPath); err == nil {
+		resp.NatRules = string(data)
+	}
+	if data, err := os.ReadFile(pfTrafficRulesPath); err == nil {
+		resp.TrafficRules = string(data)
+	}
+
+	return resp, nil
 }
 
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
@@ -1710,7 +1830,7 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-	mainCandidate := buildPFMainConfig(advanced.PreRules, advanced.PostRules, objectTablesRendered, tmpNatPath, tmpTrafficPath)
+	mainCandidate := buildPFMainConfig(advanced.PreRules, advanced.PreNatDecl, advanced.PostNatDecl, advanced.PreTrafficAnchor, advanced.PostTrafficAnchor, advanced.PostRules, objectTablesRendered, tmpNatPath, tmpTrafficPath)
 	if err := os.WriteFile(tmpMainPath, []byte(mainCandidate), 0644); err != nil {
 		return err
 	}
@@ -1738,7 +1858,7 @@ func (s *Service) ApplyFirewallConfig() error {
 
 	objectTablesRenderedFinal := renderFirewallObjectTables(objectTables)
 
-	finalMain := buildPFMainConfig(advanced.PreRules, advanced.PostRules, objectTablesRenderedFinal, pfNatRulesPath, pfTrafficRulesPath)
+	finalMain := buildPFMainConfig(advanced.PreRules, advanced.PreNatDecl, advanced.PostNatDecl, advanced.PreTrafficAnchor, advanced.PostTrafficAnchor, advanced.PostRules, objectTablesRenderedFinal, pfNatRulesPath, pfTrafficRulesPath)
 
 	if err := atomicWriteFile(pfObjectTablesPath, []byte(objectTablesRenderedFinal), 0644); err != nil {
 		return err
@@ -1861,7 +1981,7 @@ func formatPFValidationError(err error, candidates map[string]string) error {
 	return fmt.Errorf("pf_validation_failed: %s | hint: %s", detailText, strings.Join(hints, " | "))
 }
 
-func buildPFMainConfig(preRules string, postRules string, objectTablesContent string, natPath string, trafficPath string) string {
+func buildPFMainConfig(preRules string, preNatDecl string, postNatDecl string, preTrafficAnchor string, postTrafficAnchor string, postRules string, objectTablesContent string, natPath string, trafficPath string) string {
 	var b strings.Builder
 	b.WriteString(pfManagedHeader)
 	b.WriteString("\n\n")
@@ -1877,14 +1997,40 @@ func buildPFMainConfig(preRules string, postRules string, objectTablesContent st
 		b.WriteString("\n\n")
 	}
 
+	if strings.TrimSpace(preNatDecl) != "" {
+		b.WriteString("# --- sylve: pre nat declarations ---\n")
+		b.WriteString(strings.TrimSpace(preNatDecl))
+		b.WriteString("\n\n")
+	}
+
 	b.WriteString("nat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("rdr-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("binat-anchor \"sylve/nat-rules\" all\n")
+
+	if strings.TrimSpace(postNatDecl) != "" {
+		b.WriteString("\n# --- sylve: post nat declarations ---\n")
+		b.WriteString(strings.TrimSpace(postNatDecl))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
 	b.WriteString("anchor \"sylve/nat-rules\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/nat-rules\" from \"%s\"\n\n", natPath))
 
+	if strings.TrimSpace(preTrafficAnchor) != "" {
+		b.WriteString("# --- sylve: pre traffic anchor ---\n")
+		b.WriteString(strings.TrimSpace(preTrafficAnchor))
+		b.WriteString("\n\n")
+	}
+
 	b.WriteString("anchor \"sylve/traffic-rules\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/traffic-rules\" from \"%s\"\n", trafficPath))
+
+	if strings.TrimSpace(postTrafficAnchor) != "" {
+		b.WriteString("\n# --- sylve: post traffic anchor ---\n")
+		b.WriteString(strings.TrimSpace(postTrafficAnchor))
+		b.WriteString("\n")
+	}
 
 	if strings.TrimSpace(postRules) != "" {
 		b.WriteString("\n# --- sylve: post rules ---\n")

@@ -294,6 +294,8 @@ func RegisterRoutes(r *gin.Engine,
 
 		network.GET("/firewall/advanced", networkHandlers.GetFirewallAdvancedSettings(networkService))
 		network.PUT("/firewall/advanced", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
+		network.POST("/firewall/advanced/preview", networkHandlers.PreviewRenderedConfig(networkService))
+		network.GET("/firewall/advanced/rendered", networkHandlers.GetRenderedConfig(networkService))
 
 		network.GET("/route", networkHandlers.ListStaticRoutes(networkService))
 		network.POST("/route", networkHandlers.CreateStaticRoute(networkService))

@@ -1097,7 +1097,7 @@ func TestGetFirewallLiveHitsAppliesFilters(t *testing.T) {
 
 func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 	inlineTables := "table <sylve_obj_1_inet> persist { 10.0.0.0/8 }"
-	rendered := buildPFMainConfig("", "", inlineTables, "/tmp/nat.conf", "/tmp/traffic.conf")
+	rendered := buildPFMainConfig("", "", "", "", "", "", inlineTables, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if !strings.Contains(rendered, `table <sylve_obj_1_inet> persist { 10.0.0.0/8 }`) {
 		t.Fatalf("expected inline table definition, got:\n%s", rendered)
@@ -1124,7 +1124,7 @@ func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 
 func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
 		tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
-	rendered := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+	rendered := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if strings.Contains(rendered, `sylve/object-tables`) {
 		t.Fatalf("did not expect object-tables anchor when tables are empty, got:\n%s", rendered)
@@ -1137,8 +1137,8 @@ func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
 	}
 }
 
-func TestBuildPFMainConfigPlacesPreRulesAfterTranslationHooks(t *testing.T) {
-	rendered := buildPFMainConfig("pass in all keep state", "", "", "/tmp/nat.conf", "/tmp/traffic.conf")
+func TestBuildPFMainConfigPlacesPreRulesBeforeTranslationHooks(t *testing.T) {
+	rendered := buildPFMainConfig("pass in all keep state", "", "", "", "", "", "", "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	natHook := strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`)
 	preRule := strings.Index(rendered, "pass in all keep state")
@@ -3391,7 +3391,7 @@ func TestPFConfigValidation(t *testing.T) {
 		}
 		tables := buildFirewallObjectTables(nil, rules)
 		tablesRendered := renderFirewallObjectTables(tables)
-		config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+		config := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 		if !strings.Contains(config, `table <sylve_obj_8_inet> persist`) {
 			t.Fatal("expected table definition in pf.conf before " +
 				"nat-anchor (tables must be top-level for pf section ordering)")
@@ -3431,7 +3431,7 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 		t.Fatalf("failed to write traffic-rules.conf: %v", err)
 	}
 
-	config := buildPFMainConfig(preRules, postRules, tablesRendered, natPath, trafficPath)
+	config := buildPFMainConfig(preRules, "", "", "", "", postRules, tablesRendered, natPath, trafficPath)
 	configPath := filepath.Join(tmpDir, "pf.conf")
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("failed to write pf.conf: %v", err)

@@ -20,6 +20,7 @@ export type APIRequestOptions = {
     raw?: boolean;
     hostname?: string;
     headers?: Record<string, string>;
+    skipAuditLog?: boolean;
 };
 
 function getScopedCacheKey(key: string): string {
@@ -43,7 +44,7 @@ export async function apiRequest<T extends z.ZodType>(
     options?: APIRequestOptions
 ): Promise<z.infer<T> | APIResponse> {
     function setReloadFlag() {
-        if (method !== 'GET') {
+        if (method !== 'GET' && !options?.skipAuditLog) {
             reload.auditLog = true;
         }
     }

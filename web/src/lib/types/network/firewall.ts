@@ -89,6 +89,10 @@ export const FirewallNATRuleSchema = z.object({
 export const FirewallAdvancedSettingsSchema = z.object({
 	id: z.number().int(),
 	preRules: nullableString,
+	preNatDecl: nullableString,
+	postNatDecl: nullableString,
+	preTrafficAnchor: nullableString,
+	postTrafficAnchor: nullableString,
 	postRules: nullableString,
 	createdAt: z.string(),
 	updatedAt: z.string()
@@ -129,10 +133,18 @@ export const FirewallLiveHitsResponseSchema = z.object({
 	updatedAt: z.string()
 });
 
+export const RenderedConfigSchema = z.object({
+	pfConf: nullableString,
+	objectTables: nullableString,
+	natRules: nullableString,
+	trafficRules: nullableString
+});
+
 export type FirewallTrafficRule = z.infer<typeof FirewallTrafficRuleSchema>;
 export type FirewallNATRule = z.infer<typeof FirewallNATRuleSchema>;
 export type FirewallAdvancedSettings = z.infer<typeof FirewallAdvancedSettingsSchema>;
 export type FirewallTrafficRuleCounter = z.infer<typeof FirewallTrafficRuleCounterSchema>;
+export type RenderedConfig = z.infer<typeof RenderedConfigSchema>;
 export type FirewallNATRuleCounter = z.infer<typeof FirewallNATRuleCounterSchema>;
 export type FirewallLiveHitEvent = z.infer<typeof FirewallLiveHitEventSchema>;
 export type FirewallLiveHitsResponse = z.infer<typeof FirewallLiveHitsResponseSchema>;

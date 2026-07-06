@@ -6,12 +6,14 @@ import {
     FirewallNATRuleSchema,
     FirewallTrafficRuleCounterSchema,
     FirewallTrafficRuleSchema,
+    RenderedConfigSchema,
     type FirewallAdvancedSettings,
     type FirewallLiveHitsResponse,
     type FirewallNATRuleCounter,
     type FirewallNATRule,
     type FirewallTrafficRuleCounter,
-    type FirewallTrafficRule
+    type FirewallTrafficRule,
+    type RenderedConfig
 } from '$lib/types/network/firewall';
 import { apiRequest, isAPIResponse } from '$lib/utils/http';
 import z from 'zod/v4';
@@ -145,14 +147,30 @@ export async function getFirewallAdvancedSettings(): Promise<FirewallAdvancedSet
     return await apiRequest('/network/firewall/advanced', FirewallAdvancedSettingsSchema, 'GET');
 }
 
-export async function updateFirewallAdvancedSettings(
-    preRules: string,
-    postRules: string
-): Promise<APIResponse> {
-    return await apiRequest('/network/firewall/advanced', APIResponseSchema, 'PUT', {
-        preRules,
-        postRules
-    });
+export async function previewRenderedConfig(fields: {
+	preRules: string;
+	preNatDecl: string;
+	postNatDecl: string;
+	preTrafficAnchor: string;
+	postTrafficAnchor: string;
+	postRules: string;
+}): Promise<RenderedConfig | APIResponse> {
+	return await apiRequest('/network/firewall/advanced/preview', RenderedConfigSchema, 'POST', fields, { skipAuditLog: true });
+}
+
+export async function getRenderedConfigOnDisk(): Promise<RenderedConfig | APIResponse> {
+	return await apiRequest('/network/firewall/advanced/rendered', RenderedConfigSchema, 'GET');
+}
+
+export async function updateFirewallAdvancedSettings(fields: {
+	preRules: string;
+	preNatDecl: string;
+	postNatDecl: string;
+	preTrafficAnchor: string;
+	postTrafficAnchor: string;
+	postRules: string;
+}): Promise<APIResponse> {
+	return await apiRequest('/network/firewall/advanced', APIResponseSchema, 'PUT', fields);
 }
 
 export async function getFirewallLiveLogs(

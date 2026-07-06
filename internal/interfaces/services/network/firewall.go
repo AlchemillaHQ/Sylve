@@ -62,8 +62,12 @@ type UpsertFirewallNATRuleRequest struct {
 }
 
 type FirewallAdvancedRequest struct {
-	PreRules  string `json:"preRules"`
-	PostRules string `json:"postRules"`
+	PreRules          string `json:"preRules"`
+	PreNatDecl        string `json:"preNatDecl"`
+	PostNatDecl       string `json:"postNatDecl"`
+	PreTrafficAnchor  string `json:"preTrafficAnchor"`
+	PostTrafficAnchor string `json:"postTrafficAnchor"`
+	PostRules         string `json:"postRules"`
 }
 
 type FirewallReorderRequest struct {
@@ -105,6 +109,13 @@ type FirewallLiveHitsFilter struct {
 	Direction string `json:"direction"` // in|out
 	Interface string `json:"interface"` // optional
 	Query     string `json:"query"`     // optional text search over rawLine/ruleName
+}
+
+type RenderedConfigResponse struct {
+	PfConf       string `json:"pfConf"`
+	ObjectTables string `json:"objectTables"`
+	NatRules     string `json:"natRules"`
+	TrafficRules string `json:"trafficRules"`
 }
 
 type FirewallLiveHitsResponse struct {

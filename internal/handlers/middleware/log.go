@@ -276,7 +276,8 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			}
 		}
 
-		if strings.Contains(c.Request.URL.Path, "file-explorer/upload") {
+		if strings.Contains(c.Request.URL.Path, "file-explorer/upload") ||
+			strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") {
 			c.Next()
 			return
 		}
