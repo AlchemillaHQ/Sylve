@@ -25,13 +25,14 @@
 
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 
-	// svelte-ignore state_referenced_locally
-	let options = {
-		atime: dataset.properties?.atime || 'on',
-		checksum: dataset.properties?.checksum || 'on',
-		compression: dataset.properties?.compression || 'lz4',
-		dedup: dataset.properties?.dedup || 'off',
-		quota: dataset.properties?.quota
+		// svelte-ignore state_referenced_locally
+		let options = {
+			atime: dataset.properties?.atime || 'on',
+			checksum: dataset.properties?.checksum || 'on',
+			compression: dataset.properties?.compression || 'lz4',
+			dedup: dataset.properties?.dedup || 'off',
+			readonly: dataset.properties?.readonly || 'off',
+			quota: dataset.properties?.quota
 			? normalizeSizeInputExact(parseInt(dataset.properties.quota)) === '0 B'
 				? ''
 				: normalizeSizeInputExact(parseInt(dataset.properties.quota))
@@ -70,12 +71,13 @@
 			quota = toZfsBytesString(parsed);
 		}
 
-		const response = await editFileSystem(dataset.guid as string, {
-			atime: properties.atime,
-			checksum: properties.checksum,
-			compression: properties.compression,
-			dedup: properties.dedup,
-			quota: quota,
+			const response = await editFileSystem(dataset.guid as string, {
+				atime: properties.atime,
+				checksum: properties.checksum,
+				compression: properties.compression,
+				dedup: properties.dedup,
+				readonly: properties.readonly,
+				quota: quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
 			recordsize: properties.recordsize,
@@ -183,6 +185,26 @@
 					options={zfsProperties.dedup}
 					bind:value={properties.dedup}
 					onChange={(value) => (properties.dedup = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
+				/>
+
+				<SimpleSelect
+					label="Read Only"
+					placeholder="Select Read Only"
+					options={zfsProperties.readonly}
+					bind:value={properties.readonly}
+					onChange={(value) => (properties.readonly = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<div class="space-y-1">
@@ -204,12 +226,18 @@
 				</div>
 
 				<SimpleSelect
-					label="ACL Inherit"
-					placeholder="Select ACL Inherit"
-					options={zfsProperties.aclInherit}
-					bind:value={properties.aclinherit}
-					onChange={(value) => (properties.aclinherit = value)}
-				/>
+						label="ACL Inherit"
+						placeholder="Select ACL Inherit"
+						options={zfsProperties.aclInherit}
+						bind:value={properties.aclinherit}
+						onChange={(value) => (properties.aclinherit = value)}
+						classes={{
+							parent: 'flex-1 min-w-0 space-y-1',
+							label: 'flex h-7 items-center whitespace-nowrap text-sm',
+							trigger:
+								'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+						}}
+					/>
 
 				<SimpleSelect
 					label="ACL Mode"

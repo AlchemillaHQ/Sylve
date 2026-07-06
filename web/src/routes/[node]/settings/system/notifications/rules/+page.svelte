@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		bulkDeleteNotificationRules,
 		createNotificationRule,
 		deleteNotificationRule,
 		getNotificationRules,
@@ -22,7 +23,7 @@
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import type { CellComponent, RowComponent } from 'tabulator-tables';
+	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		rules: NotificationRulesConfig;
@@ -238,6 +239,10 @@
 			id: 0,
 			name: ''
 		},
+		bulkDelete: {
+			open: false,
+			ids: [] as number[]
+		},
 		test: {
 			open: false,
 			templateKey: '',
@@ -338,15 +343,6 @@
 		}
 	});
 
-	function rowFormatter(row: RowComponent) {
-		const rowData = row.getData() as RuleRow;
-		const element = row.getElement();
-		element.classList.remove('opacity-60');
-		if (!rowData.isTemplateRow && !rowData.active) {
-			element.classList.add('opacity-60');
-		}
-	}
-
 	async function refreshRules() {
 		if (busy.refresh) {
 			return;
@@ -412,6 +408,20 @@
 			open: true,
 			id: selectedRule.ruleId as number,
 			name: `${selectedRule.templateLabel} / ${selectedRule.targetLabel}`
+		};
+	}
+
+	function openBulkDeleteModal() {
+		const eligibleRows = (activeRows || []).filter(
+			(r) => !(r as RuleRow).isTemplateRow && (r as RuleRow).ruleId
+		);
+		if (eligibleRows.length < 2) {
+			return;
+		}
+
+		modals.bulkDelete = {
+			open: true,
+			ids: eligibleRows.map((r) => (r as RuleRow).ruleId as number)
 		};
 	}
 
@@ -500,6 +510,28 @@
 
 		toast.success('Notification rule deleted', { position: 'bottom-center' });
 		modals.delete.open = false;
+		activeRows = null;
+		await rulesResource.refetch();
+	}
+
+	async function bulkDeleteRules() {
+		if (busy.delete || modals.bulkDelete.ids.length === 0) {
+			return;
+		}
+
+		busy.delete = true;
+		const response = await bulkDeleteNotificationRules(modals.bulkDelete.ids);
+		busy.delete = false;
+
+		if (isAPIResponse(response) && response.status === 'error') {
+			handleAPIError(response);
+			toast.error('Failed to delete notification rules', { position: 'bottom-center' });
+			modals.bulkDelete.open = false;
+			return;
+		}
+
+		toast.success(`${modals.bulkDelete.ids.length} notification rules deleted`, { position: 'bottom-center' });
+		modals.bulkDelete.open = false;
 		activeRows = null;
 		await rulesResource.refetch();
 	}
@@ -609,6 +641,11 @@
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
+		{#if activeRows && activeRows.filter((r) => !(r as RuleRow).isTemplateRow && (r as RuleRow).ruleId).length > 1}
+			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkDeleteModal}>
+				<SpanWithIcon icon="icon-[material-symbols--delete-sweep]" size="h-4 w-4" gap="gap-2" title="Bulk Delete" />
+			</Button>
+		{/if}
 		<Button
 			size="sm"
 			variant="outline"
@@ -630,9 +667,12 @@
 		name="tt-notification-rules"
 		bind:parentActiveRow={activeRows}
 		bind:query
-		multipleSelect={false}
-		{rowFormatter}
+		multipleSelect={true}
 		customPlaceholder="No notification rules available"
+		selectableRowCheck={(row) => {
+			const d = row.getData() as RuleRow;
+			return !d.isTemplateRow && d.active;
+		}}
 	/>
 </div>
 
@@ -951,6 +991,19 @@
 		},
 		onCancel: () => {
 			modals.delete.open = false;
+		}
+	}}
+/>
+
+<AlertDialog
+	open={modals.bulkDelete.open}
+	customTitle={`This will permanently delete <b>${modals.bulkDelete.ids.length}</b> notification rule(s).`}
+	actions={{
+		onConfirm: async () => {
+			await bulkDeleteRules();
+		},
+		onCancel: () => {
+			modals.bulkDelete.open = false;
 		}
 	}}
 />

@@ -163,7 +163,27 @@ export const createVolProps = {
             value: '131072'
         }
     ],
-    primarycache: [
+    sparse: [
+        {
+            label: 'No',
+            value: 'off'
+        },
+        {
+            label: 'Yes',
+            value: 'on'
+        }
+	    ],
+	    readonly: [
+	        {
+	            label: 'No',
+	            value: 'off'
+	        },
+	        {
+	            label: 'Yes',
+	            value: 'on'
+	        }
+	    ],
+	    primarycache: [
         {
             label: 'All',
             value: 'all'

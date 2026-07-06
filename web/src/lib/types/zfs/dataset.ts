@@ -38,7 +38,9 @@ export const DatasetSchema = z.object({
             primarycache: zfsProp(),
             compressratio: zfsProp(),
             mountpoint: zfsProp(),
-            encryption: zfsProp()
+            encryption: zfsProp(),
+            refreservation: zfsProp(),
+            readonly: zfsProp()
         })
         .partial()
         .optional()

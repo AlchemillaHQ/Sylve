@@ -102,7 +102,7 @@ func addDatasetLookupMocks(t *testing.T, runner *gzfstest.MockRunner, datasets [
 
 	resp := makeResp()
 	runner.AddCommand("zfs get -p -H -o name,value guid -j", resp, "", nil)
-	runner.AddCommand("zfs list -o name,origin,used,available,recordsize,mountpoint,compression,type,volsize,quota,referenced,written,logicalused,usedbydataset,guid,mounted,checksum,aclmode,aclinherit,primarycache,volmode,compressratio,atime,dedup,volblocksize,encryption,encryptionroot,keyformat,keylocation -p", resp, "", nil)
+	runner.AddCommand("zfs list -o name,origin,used,available,recordsize,mountpoint,compression,type,volsize,quota,referenced,written,logicalused,usedbydataset,guid,mounted,checksum,aclmode,aclinherit,primarycache,volmode,compressratio,atime,dedup,volblocksize,encryption,encryptionroot,keyformat,keylocation,refreservation,readonly -p", resp, "", nil)
 }
 
 func TestGlobalConfigMapToGuestIsConditional(t *testing.T) {

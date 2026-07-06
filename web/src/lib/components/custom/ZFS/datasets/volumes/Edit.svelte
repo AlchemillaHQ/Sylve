@@ -4,9 +4,8 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Input from '$lib/components/ui/input/input.svelte';
-	import Label from '$lib/components/ui/label/label.svelte';
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import {
 		normalizeSizeInputExact,
@@ -17,14 +16,15 @@
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
-	type props = {
-		checksum: string;
-		compression: string;
-		volblocksize: string;
-		dedup: string;
-		primarycache: string;
-		volmode: string;
-	};
+		type props = {
+			checksum: string;
+			compression: string;
+			volblocksize: string;
+			dedup: string;
+			readonly: string;
+			primarycache: string;
+			volmode: string;
+		};
 
 	interface Props {
 		open: boolean;
@@ -44,7 +44,12 @@
 			: '16384',
 		checksum: dataset.properties?.checksum || 'on',
 		compression: dataset.properties?.compression || 'lz4',
-		dedup: dataset.properties?.dedup || 'off',
+			dedup: dataset.properties?.dedup || 'off',
+			readonly: dataset.properties?.readonly || 'off',
+			refreservation:
+			dataset.properties?.refreservation && dataset.properties.refreservation !== 'none'
+				? (normalizeSizeInputExact(dataset.properties.refreservation) ?? '')
+				: '',
 		primarycache: dataset.properties?.primarycache || 'metadata',
 		volmode: dataset.properties?.volmode || 'dev'
 	};
@@ -73,14 +78,24 @@
 
 		const volsizeBytes = toZfsBytesString(parsedVolsize);
 
-		const response = await editVolume(dataset.guid, {
-			volsize: volsizeBytes,
-			checksum: properties.checksum,
-			compression: properties.compression,
-			dedup: properties.dedup,
-			primarycache: properties.primarycache,
-			volmode: properties.volmode
-		});
+			const props: Record<string, string> = {
+				volsize: volsizeBytes,
+				checksum: properties.checksum,
+				compression: properties.compression,
+				dedup: properties.dedup,
+				readonly: properties.readonly,
+				primarycache: properties.primarycache,
+				volmode: properties.volmode
+			};
+
+		if (properties.refreservation) {
+			const parsed = parseSizeInputToBytes(properties.refreservation);
+			if (parsed !== null && parsed > 0) {
+				props.refreservation = toZfsBytesString(parsed);
+			}
+		}
+
+		const response = await editVolume(dataset.guid, props);
 
 		reload = true;
 
@@ -173,41 +188,42 @@
 
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-				<div class="space-y-1">
-					<div class="flex h-7 items-center gap-1">
-						<Label class="whitespace-nowrap text-sm">Volume Size</Label>
-						{#if invalidSizeForBlockSize}
-							<span
-								role="button"
-								tabindex="0"
-								class="icon-[mdi--alert-circle-outline] h-4 w-4 text-yellow-500"
-								title="Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
-								onclick={() => {
+				<CustomValueInput
+					label="Volume Size"
+					placeholder="128M"
+					bind:value={properties.volsize}
+					classes="flex-1 space-y-1"
+					topRightButton={invalidSizeForBlockSize
+						? {
+								icon: 'icon-[mdi--alert-circle-outline]',
+								tooltip: 'Volume size is not a multiple of block size, click to adjust',
+								function: async () => {
 									adjustBlockSize();
-								}}
-								onkeydown={(e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										adjustBlockSize();
-									}
-								}}
-							></span>
-						{/if}
-					</div>
-					<Input
-						type="text"
-						class="w-full text-left"
-						min="0"
-						bind:value={properties.volsize}
-						placeholder="128M"
-						onblur={() => {
-							const normalized = normalizeSizeInputExact(properties.volsize);
-							if (normalized !== null) {
-								properties.volsize = normalized;
+									return properties.volsize;
+								}
 							}
-						}}
-					/>
-				</div>
+						: undefined}
+					onBlur={() => {
+						const normalized = normalizeSizeInputExact(properties.volsize);
+						if (normalized !== null) {
+							properties.volsize = normalized;
+						}
+					}}
+				/>
+
+				<CustomValueInput
+					label="Referenced Reservation"
+					placeholder="10G (optional)"
+					bind:value={properties.refreservation}
+					classes="flex-1 space-y-1"
+					hint="Minimum guaranteed space for referenced data. Leave empty to keep current value."
+					onBlur={() => {
+						const normalized = normalizeSizeInputExact(properties.refreservation);
+						if (normalized !== null) {
+							properties.refreservation = normalized;
+						}
+					}}
+				/>
 
 				<CustomComboBox
 					bind:open={volblocksizeOpen}
@@ -233,6 +249,7 @@
 					allowCustom={true}
 				/>
 				{@render simpleSelect('dedup', 'Deduplication', 'Select deduplication mode')}
+				{@render simpleSelect('readonly', 'Read Only', 'Select read only mode')}
 				{@render simpleSelect('primarycache', 'Primary Cache', 'Select primary cache mode')}
 				{@render simpleSelect('volmode', 'Volume Mode', 'Select volume mode')}
 			</div>

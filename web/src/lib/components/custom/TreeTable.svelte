@@ -32,6 +32,7 @@
 		onRowMoved?: (rows: Row[]) => void;
 		persistSort?: boolean;
 		rowFormatter?: (row: RowComponent) => void;
+		selectableRowCheck?: (row: RowComponent) => boolean;
 	}
 
 	let {
@@ -45,7 +46,8 @@
 		movable = false,
 		onRowMoved,
 		persistSort = true,
-		rowFormatter
+		rowFormatter,
+		selectableRowCheck
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
@@ -229,6 +231,7 @@
 				columns: data.columns as ColumnDefinition[],
 				layout: 'fitDataStretch',
 				selectableRows: multipleSelect ? true : 1,
+				...(selectableRowCheck ? { selectableRow: selectableRowCheck } : {}),
 				dataTreeChildIndent: 16,
 				dataTree: true,
 				dataTreeChildField: 'children',
