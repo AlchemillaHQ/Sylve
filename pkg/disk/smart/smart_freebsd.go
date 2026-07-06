@@ -74,6 +74,7 @@ static const char * get_device_model(smart_h h) {
 */
 import "C"
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"unsafe"
@@ -145,23 +146,22 @@ func Read(devicePath string) (*DeviceInfo, error) {
 			Threshold: thresh,
 		}
 
-		if def, ok := modelAttrs[uint32(cAttr.id)]; ok {
-			if def.Name != "" {
-				attr.Name = def.Name
-			}
-		} else if attr.ID == 254 || attr.ID == 255 {
-		} else if def, ok := LookupAttrDef(attr.ID); ok {
-			if def.Name != "" {
-				attr.Name = def.Name
+		if isATA {
+			if def, ok := modelAttrs[uint32(cAttr.id)]; ok {
+				if def.Name != "" {
+					attr.Name = def.Name
+				}
+			} else if attr.ID == 254 || attr.ID == 255 {
+			} else if def, ok := LookupAttrDef(attr.ID); ok {
+				if def.Name != "" {
+					attr.Name = def.Name
+				}
 			}
 		}
 
 		if cAttr.raw != nil && cAttr.bytes > 0 {
 			attr.RawBytes = C.GoBytes(cAttr.raw, C.int(cAttr.bytes))
 
-			// Check Flags
-			// 0x01 = Big Endian
-			// 0x02 = String
 			isBigEndian := (uint32(cAttr.flags) & 0x01) != 0
 			attr.IsText = (uint32(cAttr.flags) & 0x02) != 0
 
@@ -171,9 +171,6 @@ func Read(devicePath string) (*DeviceInfo, error) {
 				attr.RawValue = bytesToUint64(attr.RawBytes, isBigEndian)
 			}
 
-			// ATA Specific Parsing for Value/Worst
-			// Standard ATA Attribute Layout (12 bytes):
-			// [0] ID, [1-2] Flags, [3] Current, [4] Worst, [5-10] Raw
 			if isATA && len(attr.RawBytes) >= 12 {
 				attr.Value = int(attr.RawBytes[3])
 				attr.Worst = int(attr.RawBytes[4])
@@ -207,6 +204,9 @@ func Read(devicePath string) (*DeviceInfo, error) {
 				}
 				info.Temperature = t
 			}
+			if attr.Page == 0x0E && attr.ID == 4 {
+				info.PowerCycleCount = int(attr.RawValue)
+			}
 			if attr.Page == 0x10 && len(attr.RawBytes) >= 20 {
 				e := parseSCSISelfTestEntry(attr.RawBytes)
 				if e.Type != "" {
@@ -216,7 +216,6 @@ func Read(devicePath string) (*DeviceInfo, error) {
 			continue
 		}
 
-		// Populate ATA convenience fields
 		switch attr.ID {
 		case 9:
 			info.PowerOnHours = int(attr.RawValue)
@@ -231,6 +230,36 @@ func Read(devicePath string) (*DeviceInfo, error) {
 
 	if isATA {
 		info.Temperature = findTemperature(info.Attributes)
+	}
+
+	if info.Protocol == "SCSI" {
+		for _, attr := range info.Attributes {
+			switch attr.Page {
+			case 0x15:
+				if poh, ok := parseSCSILogParamUint64(attr.RawBytes, 0x0004); ok {
+					info.PowerOnHours = int(poh)
+				}
+			case 0x11:
+				if info.PowerOnHours == 0 {
+					if poh, ok := parseSCSILogParamUint64(attr.RawBytes, 0x0008); ok {
+						info.PowerOnHours = int(poh)
+					}
+				}
+				if pct, ok := parseSCSILogParamUint64(attr.RawBytes, 0x0001); ok && pct > 0 {
+					used := int(pct)
+					if used > 100 {
+						used = 100
+					}
+					info.Attributes = append(info.Attributes, Attribute{
+						Page:     0x11,
+						ID:       1,
+						Name:     "Percentage Used Endurance Indicator",
+						Value:    100 - used,
+						RawValue: pct,
+					})
+				}
+			}
+		}
 	}
 
 	return info, nil
@@ -261,6 +290,39 @@ func checksumOK(raw []byte) bool {
 		sum += raw[i]
 	}
 	return sum == 0
+}
+
+func parseSCSILogParamUint64(raw []byte, targetCode uint16) (uint64, bool) {
+	if len(raw) < 4 {
+		return 0, false
+	}
+	pageLen := int(binary.BigEndian.Uint16(raw[2:4]))
+	end := 4 + pageLen
+	if pageLen <= 0 || end > len(raw) {
+		end = len(raw)
+	}
+	offset := 4
+	for offset+4 <= end {
+		code := binary.BigEndian.Uint16(raw[offset : offset+2])
+		paramLen := int(raw[offset+3])
+		dataEnd := offset + 4 + paramLen
+		if dataEnd > end {
+			break
+		}
+		if code == targetCode {
+			data := raw[offset+4 : dataEnd]
+			if len(data) == 0 {
+				return 0, true
+			}
+			var val uint64
+			for _, b := range data {
+				val = (val << 8) | uint64(b)
+			}
+			return val, true
+		}
+		offset = dataEnd
+	}
+	return 0, false
 }
 
 func bytesToUint64(b []byte, bigEndian bool) uint64 {

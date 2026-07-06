@@ -311,7 +311,9 @@
 
 					<Table.Row>
 						<Table.Cell>Sylve Version</Table.Cell>
-						<Table.Cell>{basicInfo.current.sylveVersion}</Table.Cell>
+						<Table.Cell>
+							{basicInfo.current.sylveVersion}{#if basicInfo.current.sylveCommit !== 'unknown'} — {basicInfo.current.sylveCommit}{/if}
+						</Table.Cell>
 					</Table.Row>
 				</Table.Body>
 			</Table.Root>

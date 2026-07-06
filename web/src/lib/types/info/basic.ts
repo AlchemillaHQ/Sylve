@@ -7,6 +7,7 @@ export const BasicInfoSchema = z.object({
 	loadAverage: z.string().default('Unknown'),
 	bootMode: z.string().default('Unknown'),
 	sylveVersion: z.string().default('Unknown'),
+	sylveCommit: z.string().default('unknown'),
 	devFSDisabled: z.boolean().default(false)
 });
 

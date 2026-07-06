@@ -38,6 +38,7 @@ func (s *Service) GetBasicInfo() (basicInfo infoServiceInterfaces.BasicInfo, err
 		LoadAverage:   loadAvg,
 		BootMode:      utils.BootMode(),
 		SylveVersion:  cmd.Version,
+		SylveCommit:   cmd.Commit,
 		DevFSDisabled: config.IsDevFSDisabled(),
 	}, nil
 }

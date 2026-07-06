@@ -15,5 +15,6 @@ type BasicInfo struct {
 	LoadAverage   string `json:"loadAverage"`
 	BootMode      string `json:"bootMode"`
 	SylveVersion  string `json:"sylveVersion"`
+	SylveCommit   string `json:"sylveCommit"`
 	DevFSDisabled bool   `json:"devFSDisabled"`
 }

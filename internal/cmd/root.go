@@ -21,6 +21,7 @@ const (
 )
 
 const Version = "0.2.3"
+var Commit = "unknown"
 
 func AsciiArt(w io.Writer) {
 	fmt.Fprintln(w, "  ____        _           ")

@@ -3,6 +3,7 @@ BIN_DIR := bin
 ARCH ?= amd64
 FREEBSD_VERSION ?= 15.0-RELEASE
 FREEBSD_SYSROOT ?= .cache/freebsd/$(ARCH)-$(FREEBSD_VERSION)
+GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test test-integration clean
 
@@ -13,7 +14,7 @@ build: frontend backend
 backend:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
-		go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+		go build -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 backend-debug:
 	mkdir -p $(BIN_DIR)
@@ -42,7 +43,7 @@ backend-cross:
 	CGO_LDFLAGS="-fuse-ld=lld --sysroot=$$SYSROOT" \
 	CC="clang --target=$$TARGET --sysroot=$$SYSROOT" \
 	CXX="clang++ --target=$$TARGET --sysroot=$$SYSROOT" \
-	go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+	go build -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 cross-build-amd64:
 	$(MAKE) backend-cross ARCH=amd64

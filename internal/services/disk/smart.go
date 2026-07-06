@@ -293,9 +293,13 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 	}
 
 	if data, ok := smartData.(diskServiceInterfaces.SmartData); ok {
-		var wear177, wear202, wear230, wear231, wear232, wear233 *float64
+		var wear177, wear202, wear230, wear231, wear232, wear233, wearScsi *float64
 
 		for _, attr := range data.Attributes {
+			if attr.Page == 0x11 && attr.ID == 1 && attr.Value > 0 {
+				val := 100.0 - float64(attr.Value)
+				wearScsi = &val
+			}
 			switch attr.ID {
 			case 177:
 				if attr.Value > 0 {
@@ -330,6 +334,9 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 			}
 		}
 
+		if wearScsi != nil {
+			return *wearScsi, nil
+		}
 		if wear202 != nil {
 			return *wear202, nil
 		}
