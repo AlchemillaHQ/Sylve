@@ -23,6 +23,7 @@
 #include <err.h>
 #include <errno.h>
 #include <camlib.h>
+#include <cam/cam.h>
 #include <cam/scsi/scsi_message.h>
 
 #include "libsmart.h"
@@ -44,7 +45,21 @@ struct scsi_log_informational_exceptions {
 struct fbsd_smart {
 	smart_t	common;
 	struct cam_device *camdev;
+	int	last_cam_err;	/* per-handle, no thread-safety issue */
 };
+
+/*
+ * Retrieve and clear the last CAM device error for this handle.
+ * Returns 0 if no error occurred since the last call.
+ */
+int smart_get_last_err(smart_h h) {
+	struct fbsd_smart *fs = (struct fbsd_smart *)h;
+	if (!fs)
+		return 0;
+	int e = fs->last_cam_err;
+	fs->last_cam_err = 0;
+	return e;
+}
 
 static smart_protocol_e __device_get_proto(struct fbsd_smart *);
 static bool __device_proto_tunneled(struct fbsd_smart *);
@@ -381,6 +396,7 @@ device_self_test(smart_h h, uint8_t test_type)
 	if (fsmart == NULL)
 		return EINVAL;
 
+	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -466,8 +482,24 @@ device_self_test(smart_h h, uint8_t test_type)
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
-		rc = EIO;
+		uint32_t cam_status = ccb->ccb_h.status & CAM_STATUS_MASK;
+		switch (cam_status) {
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		default:
+			rc = EIO;
+			break;
+		}
 	}
+
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
 
 	cam_freeccb(ccb);
 	return rc;
@@ -484,6 +516,7 @@ device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 	if (fsmart == NULL)
 		return EINVAL;
 
+	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -570,8 +603,24 @@ device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
-		rc = EIO;
+		uint32_t cam_status = ccb->ccb_h.status & CAM_STATUS_MASK;
+		switch (cam_status) {
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		default:
+			rc = EIO;
+			break;
+		}
 	}
+
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
 
 	cam_freeccb(ccb);
 	return rc;
@@ -588,6 +637,7 @@ device_read_log_ext(smart_h h, uint8_t logaddr, uint8_t page, void *buf, size_t 
 	if (fsmart == NULL)
 		return EINVAL;
 
+	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -652,8 +702,24 @@ device_read_log_ext(smart_h h, uint8_t logaddr, uint8_t page, void *buf, size_t 
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
-		rc = EIO;
+		uint32_t cam_status = ccb->ccb_h.status & CAM_STATUS_MASK;
+		switch (cam_status) {
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		default:
+			rc = EIO;
+			break;
+		}
 	}
+
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
 
 	cam_freeccb(ccb);
 	return rc;
@@ -670,6 +736,7 @@ device_write_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 	if (fsmart == NULL)
 		return EINVAL;
 
+	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -741,6 +808,9 @@ device_write_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 		rc = EIO;
 	}
 
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
+
 	cam_freeccb(ccb);
 	return rc;
 }
@@ -759,6 +829,7 @@ device_smart_enable(smart_h h)
 	if (fsmart->common.protocol != SMART_PROTO_ATA)
 		return ENODEV;
 
+	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -818,6 +889,9 @@ device_smart_enable(smart_h h)
 		rc = EIO;
 	}
 
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
+
 	cam_freeccb(ccb);
 	return rc;
 }
@@ -836,6 +910,7 @@ device_nvme_identify_ctrl(smart_h h, void *buf, size_t bsize)
 	if (fsmart->common.protocol != SMART_PROTO_NVME)
 		return ENODEV;
 
+	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -865,6 +940,9 @@ device_nvme_identify_ctrl(smart_h h, void *buf, size_t bsize)
 		rc = EIO;
 	}
 
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
+
 	cam_freeccb(ccb);
 	return rc;
 }
@@ -879,6 +957,7 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 	if (fsmart == NULL)
 		return EINVAL;
 
+	fsmart->last_cam_err = 0;
 	dprintf("read log page %#x\n", page);
 
 	ccb = cam_getccb(fsmart->camdev);
@@ -934,9 +1013,26 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
-		if (rc >= 0)
-			rc = EIO;
+		if (rc >= 0) {
+			uint32_t cam_status = ccb->ccb_h.status & CAM_STATUS_MASK;
+			switch (cam_status) {
+			case CAM_CMD_TIMEOUT:
+				rc = ETIMEDOUT;
+				break;
+			case CAM_REQ_ABORTED:
+			case CAM_SCSI_BUS_RESET:
+			case CAM_SEQUENCE_FAIL:
+				rc = ECONNABORTED;
+				break;
+			default:
+				rc = EIO;
+				break;
+			}
+		}
 	}
+
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
 
 	cam_freeccb(ccb);
 

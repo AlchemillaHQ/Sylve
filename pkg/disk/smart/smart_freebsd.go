@@ -15,10 +15,13 @@ package smart
 #cgo LDFLAGS: -lcam
 #include <stdlib.h>
 #include <stdbool.h>
+#include <errno.h>
 #include "libsmart.h"
 #include "libsmart_priv.h"
 
 bool do_debug = false;
+
+int smart_get_last_err(smart_h h);
 
 static smart_attr_t get_attr_at(smart_map_t *map, int i) {
     return map->attr[i];
@@ -75,10 +78,18 @@ static const char * get_device_model(smart_h h) {
 import "C"
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"unsafe"
 )
+
+var ErrControllerTimeout = errors.New("controller timeout")
+var ErrControllerAborted = errors.New("controller aborted")
+
+func IsControllerError(err error) bool {
+	return errors.Is(err, ErrControllerTimeout) || errors.Is(err, ErrControllerAborted)
+}
 
 func Read(devicePath string) (*DeviceInfo, error) {
 	if !strings.HasPrefix(devicePath, "/dev/") {
@@ -96,10 +107,26 @@ func Read(devicePath string) (*DeviceInfo, error) {
 
 	sm := C.smart_read(handle)
 	if sm == nil {
+		lastErr := int(C.smart_get_last_err(handle))
+		switch lastErr {
+		case int(C.ETIMEDOUT):
+			return nil, fmt.Errorf("%w: %s", ErrControllerTimeout, devicePath)
+		case int(C.ECONNABORTED):
+			return nil, fmt.Errorf("%w: %s", ErrControllerAborted, devicePath)
+		}
+
 		C.smart_enable(handle)
 		sm = C.smart_read(handle)
 	}
 	if sm == nil {
+		lastErr := int(C.smart_get_last_err(handle))
+		switch lastErr {
+		case int(C.ETIMEDOUT):
+			return nil, fmt.Errorf("%w: %s", ErrControllerTimeout, devicePath)
+		case int(C.ECONNABORTED):
+			return nil, fmt.Errorf("%w: %s", ErrControllerAborted, devicePath)
+		}
+
 		return nil, fmt.Errorf("failed to read SMART data from %s", devicePath)
 	}
 	defer C.smart_free(sm)

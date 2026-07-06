@@ -10,6 +10,7 @@ package libvirtHandlers
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -76,6 +77,15 @@ func ModifyCPU(libvirtService *libvirt.Service) gin.HandlerFunc {
 		}
 
 		if err := libvirtService.ModifyCPU(uint(rid), req); err != nil {
+			if strings.HasPrefix(err.Error(), "no_changes_detected") {
+				c.JSON(200, internal.APIResponse[any]{
+					Status:  "success",
+					Message: "no_changes_detected",
+					Error:   "",
+					Data:    nil,
+				})
+				return
+			}
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -141,6 +151,15 @@ func ModifyRAM(libvirtService *libvirt.Service) gin.HandlerFunc {
 		}
 
 		if err := libvirtService.ModifyRAM(uint(ridInt), req.RAM); err != nil {
+			if strings.HasPrefix(err.Error(), "no_changes_detected") {
+				c.JSON(200, internal.APIResponse[any]{
+					Status:  "success",
+					Message: "no_changes_detected",
+					Error:   "",
+					Data:    nil,
+				})
+				return
+			}
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -206,6 +225,15 @@ func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 		}
 
 		if err := libvirtService.ModifyVNC(uint(ridInt), req); err != nil {
+			if strings.HasPrefix(err.Error(), "no_changes_detected") {
+				c.JSON(200, internal.APIResponse[any]{
+					Status:  "success",
+					Message: "no_changes_detected",
+					Error:   "",
+					Data:    nil,
+				})
+				return
+			}
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

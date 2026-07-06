@@ -22,6 +22,7 @@ import (
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	diskUtils "github.com/alchemillahq/sylve/pkg/disk"
+	"github.com/alchemillahq/sylve/pkg/disk/smart"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/rs/zerolog"
@@ -217,6 +218,15 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 					s.smartFailCache[d.Name] = time.Now()
 					s.smartFailMu.Unlock()
 					logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to retrieve S.M.A.R.T data %v", err))
+
+					if smart.IsControllerError(err) {
+						logger.L.Warn().
+							Str("device", d.Name).
+							Msg("controller_level_error_skipping_remaining_disks")
+						disk.SmartData = nil
+						break
+					}
+
 					disk.SmartData = nil
 				} else if err == nil && smartData != nil {
 					disk.SmartData = smartData

@@ -181,7 +181,6 @@ func (s *Service) evaluateSmartData(ctx context.Context, disk diskServiceInterfa
 	s.evaluateTemperature(ctx, disk, st, warmup)
 	s.evaluateHealth(ctx, disk, st, warmup)
 	s.evaluateReallocated(ctx, disk, st, warmup)
-	s.evaluateSelfTestLog(ctx, disk, st, warmup)
 
 	if disk.Type == "NVMe" || disk.Type == "SSD" {
 		s.evaluateWearout(ctx, disk, st, warmup)
