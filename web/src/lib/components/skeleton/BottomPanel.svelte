@@ -327,6 +327,8 @@
 		'/api/iscsi': 'iSCSI',
 		'/api/notifications/transports/:id/test': 'Notification Transport - Test',
 		'/api/notifications/transports': 'Notification Transport',
+		'/api/notifications/rules/bulk-delete': 'Notification Rule - Bulk Delete',
+		'/api/notifications/rules/bulk-update': 'Notification Rule - Bulk Update',
 		'/api/notifications/rules': 'Notification Rule',
 		'/api/notifications/:id/dismiss': 'Notification - Dismiss',
 		'/api/notifications': 'Notification',

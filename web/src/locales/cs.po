@@ -15449,3 +15449,11 @@ msgstr ""
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "{0} rule{1}"
 msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification Rule - Bulk Delete"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification Rule - Bulk Update"
+msgstr ""
