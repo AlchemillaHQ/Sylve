@@ -4,6 +4,7 @@
 		addPortal,
 		createTarget,
 		deleteTarget,
+		getTargetSessions,
 		getTargets,
 		removeLUN,
 		removePortal,
@@ -15,22 +16,29 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import Combobox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
+	import { storage } from '$lib';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { TargetSessions } from '$lib/api/iscsi/target';
 	import type { ISCSITarget } from '$lib/types/iscsi/target';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { generateComboboxOptions } from '$lib/utils/input';
+	import { generateCHAPSecret } from '$lib/utils/string';
+	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
-	import { resource, watch } from 'runed';
+	import { resource, useInterval, watch, IsDocumentVisible } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
 		targets: ISCSITarget[];
 		volumes: Dataset[];
+		sessions: TargetSessions;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -57,6 +65,17 @@
 		{ initialValue: data.volumes }
 	);
 
+	// svelte-ignore state_referenced_locally
+	let sessions = resource(
+		() => 'iscsi-target-sessions',
+		async () => {
+			const result = await getTargetSessions();
+			updateCache('iscsi-target-sessions', result);
+			return result;
+		},
+		{ initialValue: data.sessions }
+	);
+
 	let reload = $state(false);
 
 	watch(
@@ -64,6 +83,7 @@
 		(value) => {
 			if (value) {
 				targets.refetch();
+				sessions.refetch();
 				reload = false;
 			}
 		}
@@ -100,6 +120,14 @@
 
 	let loading = $state(false);
 	let query = $state('');
+	let zvolComboOpen = $state(false);
+	let visible = new IsDocumentVisible();
+
+	let usedZvols = $derived(new Set(editTarget?.luns.map((l) => l.zvol) ?? []));
+
+	let availableVolumes = $derived(
+		volumes.current.filter((v) => !v.name.includes('/sylve/virtual-machines/') && !usedZvols.has(v.name))
+	);
 
 	function openCreate() {
 		form = blankForm();
@@ -192,12 +220,25 @@
 
 	async function submitAddPortal() {
 		if (!activeTarget) return;
+
+		if (!portalForm.address.trim()) {
+			toast.error('Portal address is required', { position: 'bottom-center' });
+			return;
+		}
+		const port = Number(portalForm.port);
+		if (!portalForm.port || isNaN(port) || port < 1 || port > 65535) {
+			toast.error('Port must be a number between 1 and 65535', { position: 'bottom-center' });
+			return;
+		}
+		if (editTarget?.portals.some((p) => p.address === portalForm.address && p.port === port)) {
+			toast.error('A portal with this address and port already exists', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		loading = true;
-		const response = await addPortal(
-			activeTarget.id,
-			portalForm.address,
-			Number(portalForm.port) || 3260
-		);
+		const response = await addPortal(activeTarget.id, portalForm.address, port);
 		loading = false;
 		if (response.status === 'error') {
 			handleAPIError(response);
@@ -205,7 +246,7 @@
 			return;
 		}
 		toast.success('Portal added', { position: 'bottom-center' });
-		portalForm = blankPortalForm();
+		portalForm = { address: '', port: port + 1 };
 		reload = true;
 	}
 
@@ -224,8 +265,23 @@
 
 	async function submitAddLUN() {
 		if (!activeTarget) return;
+
+		const lun = Number(lunForm.lunNumber);
+		if (isNaN(lun) || lun < 0) {
+			toast.error('LUN number must be a non-negative integer', { position: 'bottom-center' });
+			return;
+		}
+		if (!lunForm.zvol) {
+			toast.error('Please select a ZFS Volume', { position: 'bottom-center' });
+			return;
+		}
+		if (editTarget?.luns.some((l) => l.lunNumber === lun)) {
+			toast.error('A LUN with this number already exists', { position: 'bottom-center' });
+			return;
+		}
+
 		loading = true;
-		const response = await addLUN(activeTarget.id, Number(lunForm.lunNumber), lunForm.zvol);
+		const response = await addLUN(activeTarget.id, lun, lunForm.zvol);
 		loading = false;
 		if (response.status === 'error') {
 			handleAPIError(response);
@@ -250,11 +306,28 @@
 		reload = true;
 	}
 
-	function generateTableData(targets: ISCSITarget[]): { rows: Row[]; columns: Column[] } {
+	function generateTableData(
+		targets: ISCSITarget[],
+		sessions: TargetSessions
+	): { rows: Row[]; columns: Column[] } {
 		const columns: Column[] = [
 			{ field: 'id', title: 'ID', visible: false },
+			{
+				field: 'connectionStatus',
+				title: 'Status',
+				width: '5%',
+				formatter: (cell) => {
+					const val: string = cell.getValue() ?? 'Unknown';
+					const connected = val.startsWith('Connected');
+					return renderWithIcon(
+						connected ? 'mdi:check-circle' : 'mdi:close-circle',
+						val,
+						connected ? 'text-green-500' : 'text-muted-foreground'
+					);
+				}
+			},
 			{ field: 'targetName', title: 'Target Name (IQN)' },
-			{ field: 'alias', title: 'Alias' },
+			{ field: 'alias', title: 'Alias', formatter: (cell) => cell.getValue() || '-' },
 			{ field: 'authMethod', title: 'Auth Method' },
 			{ field: 'portalCount', title: 'Portals', width: '8%' },
 			{ field: 'lunCount', title: 'LUNs', width: '8%' },
@@ -267,8 +340,9 @@
 
 		const rows: Row[] = targets.map((tgt) => ({
 			id: tgt.id,
+			connectionStatus: sessions[tgt.targetName] ? `Connected (${sessions[tgt.targetName]})` : 'Idle',
 			targetName: tgt.targetName,
-			alias: tgt.alias,
+			alias: tgt.alias || '-',
 			authMethod: tgt.authMethod,
 			portalCount: tgt.portals?.length ?? 0,
 			lunCount: tgt.luns?.length ?? 0,
@@ -278,14 +352,20 @@
 		return { rows, columns };
 	}
 
-	let tableData = $derived(generateTableData(targets.current));
+	let tableData = $derived(generateTableData(targets.current, sessions.current));
 
 	// Updated active target after refetch
 	let editTarget: ISCSITarget | null = $derived(
-		properties.edit.open && activeTarget
-			? (targets.current.find((t) => t.id === activeTarget!.id) ?? activeTarget)
-			: null
+		activeTarget ? (targets.current.find((t) => t.id === activeTarget!.id) ?? activeTarget) : null
 	);
+
+	useInterval(5000, {
+		callback: () => {
+			if (visible.current && !storage.idle) {
+				sessions.refetch();
+			}
+		}
+	});
 </script>
 
 {#snippet targetForm(title: string, onSubmit: () => void, submitLabel: string, onClose: () => void)}
@@ -315,7 +395,7 @@
 				</div>
 				<div>
 					<CustomValueInput
-						label="Alias (optional)"
+						label="Alias"
 						placeholder="My Storage Target"
 						bind:value={form.alias}
 						classes="grid gap-1.5"
@@ -351,6 +431,11 @@
 								bind:value={form.chapSecret}
 								classes="grid gap-1.5"
 								revealOnFocus={true}
+								topRightButton={{
+									icon: 'icon-[fad--random-2dice]',
+									tooltip: 'Generate Secret',
+									function: async () => generateCHAPSecret()
+								}}
 							/>
 						</div>
 					</div>
@@ -372,6 +457,11 @@
 								bind:value={form.mutualChapSecret}
 								classes="grid gap-1.5"
 								revealOnFocus={true}
+								topRightButton={{
+									icon: 'icon-[fad--random-2dice]',
+									tooltip: 'Generate Secret',
+									function: async () => generateCHAPSecret()
+								}}
 							/>
 						</div>
 					</div>
@@ -380,7 +470,6 @@
 		</div>
 
 		<Dialog.Footer class="mt-4">
-			<Button type="button" variant="outline" onclick={onClose} disabled={loading}>Cancel</Button>
 			<Button type="submit" disabled={loading}>{submitLabel}</Button>
 		</Dialog.Footer>
 	</form>
@@ -398,121 +487,137 @@
 		</Dialog.Title>
 	</Dialog.Header>
 
-	<Tabs.Root value="details" class="mt-2 w-full">
+	<Tabs.Root value="details" class="flex flex-col min-h-0 flex-1">
 		<Tabs.List class="grid w-full grid-cols-3 p-0">
 			<Tabs.Trigger class="border-b" value="details">Details</Tabs.Trigger>
 			<Tabs.Trigger class="border-b" value="portals">Portals</Tabs.Trigger>
 			<Tabs.Trigger class="border-b" value="luns">LUNs</Tabs.Trigger>
 		</Tabs.List>
 
-		<Tabs.Content value="details" class="mt-4">
+		<Tabs.Content value="details" class="flex flex-col min-h-0 flex-1">
 			<form
+				class="flex flex-col min-h-0 flex-1"
 				onsubmit={(e) => {
 					e.preventDefault();
 					submitEdit();
 				}}
 			>
-				<div class="grid grid-cols-2 gap-x-4 gap-y-3">
-					<div>
-						<CustomValueInput
-							label="Target Name (IQN)"
-							placeholder="iqn.2025-01.com.example:target0"
-							bind:value={form.targetName}
-							classes="grid gap-1.5"
-						/>
-					</div>
-					<div>
-						<CustomValueInput
-							label="Alias (optional)"
-							placeholder="My Storage Target"
-							bind:value={form.alias}
-							classes="grid gap-1.5"
-						/>
-					</div>
-					<div class="col-span-2 grid gap-1.5">
-						<Label>Auth Method</Label>
-						<Select.Root type="single" bind:value={form.authMethod}>
-							<Select.Trigger class="w-full">
-								{form.authMethod}
-							</Select.Trigger>
-							<Select.Content>
-								<Select.Item value="None">None</Select.Item>
-								<Select.Item value="CHAP">CHAP (one-way)</Select.Item>
-								<Select.Item value="MutualCHAP">MutualCHAP (two-way)</Select.Item>
-							</Select.Content>
-						</Select.Root>
-					</div>
-					{#if form.authMethod === 'CHAP' || form.authMethod === 'MutualCHAP'}
-						<div class="col-span-2">
-							<div class="grid grid-cols-2 gap-x-4 gap-y-3">
-								<CustomValueInput
-									label="CHAP Name"
-									placeholder="user1"
-									bind:value={form.chapName}
-									classes="grid gap-1.5"
-								/>
-								<CustomValueInput
-									label="CHAP Secret"
-									placeholder="Password (12-16 characters)"
-									type="password"
-									bind:value={form.chapSecret}
-									classes="grid gap-1.5"
-									revealOnFocus={true}
-								/>
-							</div>
+				<div class="flex-1 overflow-y-auto">
+					<div class="grid grid-cols-2 gap-x-4 gap-y-3">
+						<div>
+							<CustomValueInput
+								label="Target Name (IQN)"
+								placeholder="iqn.2025-01.com.example:target0"
+								bind:value={form.targetName}
+								classes="grid gap-1.5"
+							/>
 						</div>
-					{/if}
-					{#if form.authMethod === 'MutualCHAP'}
-						<div class="col-span-2">
-							<div class="grid grid-cols-2 gap-x-4 gap-y-3">
-								<CustomValueInput
-									label="Mutual CHAP Name"
-									placeholder="mutualuser1"
-									bind:value={form.mutualChapName}
-									classes="grid gap-1.5"
-								/>
-								<CustomValueInput
-									label="Mutual CHAP Secret"
-									placeholder="Password (12-16 characters)"
-									type="password"
-									bind:value={form.mutualChapSecret}
-									classes="grid gap-1.5"
-									revealOnFocus={true}
-								/>
-							</div>
+						<div>
+							<CustomValueInput
+								label="Alias"
+								placeholder="My Storage Target"
+								bind:value={form.alias}
+								classes="grid gap-1.5"
+							/>
 						</div>
-					{/if}
+						<div class="col-span-2 grid gap-1.5">
+							<Label>Auth Method</Label>
+							<Select.Root type="single" bind:value={form.authMethod}>
+								<Select.Trigger class="w-full">
+									{form.authMethod}
+								</Select.Trigger>
+								<Select.Content>
+									<Select.Item value="None">None</Select.Item>
+									<Select.Item value="CHAP">CHAP (one-way)</Select.Item>
+									<Select.Item value="MutualCHAP">MutualCHAP (two-way)</Select.Item>
+								</Select.Content>
+							</Select.Root>
+						</div>
+						{#if form.authMethod === 'CHAP' || form.authMethod === 'MutualCHAP'}
+							<div class="col-span-2">
+								<div class="grid grid-cols-2 gap-x-4 gap-y-3">
+									<CustomValueInput
+										label="CHAP Name"
+										placeholder="user1"
+										bind:value={form.chapName}
+										classes="grid gap-1.5"
+									/>
+									<CustomValueInput
+										label="CHAP Secret"
+										placeholder="Password (12-16 characters)"
+										type="password"
+										bind:value={form.chapSecret}
+										classes="grid gap-1.5"
+										revealOnFocus={true}
+									/>
+								</div>
+							</div>
+						{/if}
+						{#if form.authMethod === 'MutualCHAP'}
+							<div class="col-span-2">
+								<div class="grid grid-cols-2 gap-x-4 gap-y-3">
+									<CustomValueInput
+										label="Mutual CHAP Name"
+										placeholder="mutualuser1"
+										bind:value={form.mutualChapName}
+										classes="grid gap-1.5"
+									/>
+									<CustomValueInput
+										label="Mutual CHAP Secret"
+										placeholder="Password (12-16 characters)"
+										type="password"
+										bind:value={form.mutualChapSecret}
+										classes="grid gap-1.5"
+										revealOnFocus={true}
+									/>
+								</div>
+							</div>
+						{/if}
+					</div>
 				</div>
-				<div class="mt-4 flex justify-end">
+				<div class="flex justify-end pt-3">
 					<Button type="submit" size="sm" disabled={loading}>Save Details</Button>
 				</div>
 			</form>
 		</Tabs.Content>
 
-		<Tabs.Content value="portals" class="mt-4">
-			<div class="flex flex-col gap-3">
-				{#if editTarget && editTarget.portals.length > 0}
-					{#each editTarget.portals as portal (portal.id)}
-						<div class="flex items-center justify-between rounded-md border p-3">
-							<div class="flex flex-col gap-0.5">
-								<span class="text-sm font-medium font-mono">{portal.address}:{portal.port}</span>
+		<Tabs.Content value="portals" class="flex flex-col min-h-0 flex-1">
+			{#if editTarget && editTarget.portals.length > 0}
+				<div class="flex-1 overflow-y-auto">
+					<div class="flex flex-col gap-3">
+						{#each editTarget.portals as portal (portal.id)}
+							<div class="flex items-center justify-between rounded-md border p-3">
+								<div class="flex flex-col gap-0.5">
+									<span
+									class="text-sm font-medium font-mono cursor-pointer"
+									onclick={async () => {
+										await navigator.clipboard.writeText(`${portal.address}:${portal.port}`);
+										toast.success('Copied portal address to clipboard', {
+											duration: 2000,
+											position: 'bottom-center'
+										});
+									}}
+								>{portal.address}:{portal.port}</span>
+								</div>
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={loading}
+									onclick={() => submitRemovePortal(portal.id)}
+								>
+									<span class="icon-[mdi--trash-can-outline] h-4 w-4 text-destructive"></span>
+								</Button>
 							</div>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={loading}
-								onclick={() => submitRemovePortal(portal.id)}
-							>
-								<span class="icon-[mdi--trash-can-outline] h-4 w-4 text-destructive"></span>
-							</Button>
-						</div>
-					{/each}
-				{:else}
-					<div class="py-4 text-center text-sm text-muted-foreground">No portals configured.</div>
-				{/if}
-			</div>
+						{/each}
+					</div>
+				</div>
+			{:else}
+				<div class="flex flex-1 items-center justify-center">
+					<div class="text-sm text-muted-foreground">No portals configured</div>
+				</div>
+			{/if}
 			<form
-				class="mt-4 flex items-end gap-2"
+				class="flex items-end gap-2 pt-3"
 				onsubmit={(e) => {
 					e.preventDefault();
 					submitAddPortal();
@@ -538,31 +643,35 @@
 			</form>
 		</Tabs.Content>
 
-		<Tabs.Content value="luns" class="mt-4">
-			<div class="flex flex-col gap-3">
-				{#if editTarget && editTarget.luns.length > 0}
-					{#each editTarget.luns as lun (lun.id)}
-						<div class="flex items-center justify-between rounded-md border p-3">
-							<div class="flex flex-col gap-0.5">
-								<span class="text-sm font-medium">LUN {lun.lunNumber}</span>
-								<span class="font-mono text-xs text-muted-foreground">/dev/zvol/{lun.zvol}</span>
+		<Tabs.Content value="luns" class="flex flex-col min-h-0 flex-1">
+			{#if editTarget && editTarget.luns.length > 0}
+				<div class="flex-1 overflow-y-auto">
+					<div class="flex flex-col gap-3">
+						{#each editTarget.luns as lun (lun.id)}
+							<div class="flex items-center justify-between rounded-md border p-3">
+								<div class="flex flex-col gap-0.5">
+									<span class="text-sm font-medium">LUN {lun.lunNumber}</span>
+									<span class="font-mono text-xs text-muted-foreground">/dev/zvol/{lun.zvol}</span>
+								</div>
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={loading}
+									onclick={() => submitRemoveLUN(lun.id)}
+								>
+									<span class="icon-[mdi--trash-can-outline] h-4 w-4 text-destructive"></span>
+								</Button>
 							</div>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={loading}
-								onclick={() => submitRemoveLUN(lun.id)}
-							>
-								<span class="icon-[mdi--trash-can-outline] h-4 w-4 text-destructive"></span>
-							</Button>
-						</div>
-					{/each}
-				{:else}
-					<div class="py-4 text-center text-sm text-muted-foreground">No LUNs configured.</div>
-				{/if}
-			</div>
+						{/each}
+					</div>
+				</div>
+			{:else}
+				<div class="flex flex-1 items-center justify-center">
+					<div class="text-sm text-muted-foreground">No LUNs configured</div>
+				</div>
+			{/if}
 			<form
-				class="mt-4 flex items-end gap-2"
+				class="flex items-end gap-2 pt-3"
 				onsubmit={(e) => {
 					e.preventDefault();
 					submitAddLUN();
@@ -576,20 +685,19 @@
 						classes="grid gap-1.5"
 					/>
 				</div>
-				<div class="grid flex-1 gap-1.5">
-					<Label>ZVol</Label>
-					<Select.Root type="single" bind:value={lunForm.zvol}>
-						<Select.Trigger class="w-full">
-							{lunForm.zvol || 'Select a volume...'}
-						</Select.Trigger>
-						<Select.Content>
-							{#each volumes.current as vol (vol.name)}
-								<Select.Item value={vol.name}>{vol.name}</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
+				<div class="flex-1 min-w-0">
+					<Combobox
+						label="ZFS Volume"
+						bind:open={zvolComboOpen}
+						bind:value={lunForm.zvol}
+						placeholder="Select a volume..."
+						triggerWidth="w-full"
+						width="w-full"
+						disabled={availableVolumes.length === 0}
+						data={generateComboboxOptions(availableVolumes.map((v) => v.name))}
+					/>
 				</div>
-				<Button type="submit" size="sm" class="mb-0.5 h-9" disabled={loading}>Add</Button>
+				<Button type="submit" size="sm" class="mb-0.5 h-9" disabled={loading || availableVolumes.length === 0}>Add</Button>
 			</form>
 		</Tabs.Content>
 	</Tabs.Root>
@@ -645,7 +753,7 @@
 
 <Dialog.Root bind:open={properties.edit.open}>
 	<Dialog.Content
-		class="sm:max-w-160"
+		class="sm:max-w-160 h-[85vh] max-h-[90vh] lg:h-[clamp(400px,45vh,480px)] lg:max-h-none flex flex-col"
 		showCloseButton={true}
 		onClose={() => (properties.edit.open = false)}
 	>

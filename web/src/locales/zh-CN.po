@@ -339,6 +339,7 @@ msgstr "ZFS 文件系统"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "ZFS Volume"
 msgstr "ZFS 卷"
 
@@ -583,6 +584,7 @@ msgstr "操作"
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -1368,6 +1370,7 @@ msgstr "准备中"
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -1848,7 +1851,6 @@ msgstr "您确定吗？"
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -5806,6 +5808,7 @@ msgid "Unable to find disk"
 msgstr "找不到磁盘"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Please select a ZFS Volume"
 msgstr "请选择 ZFS 卷"
 
@@ -11555,6 +11558,7 @@ msgstr "正在连接"
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Connected"
 msgstr "已连接"
 
@@ -12415,6 +12419,8 @@ msgid "LUN removed"
 msgstr "LUN 已移除"
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Alias"
 msgstr "别名"
 
@@ -12428,10 +12434,8 @@ msgstr "门户"
 msgid "LUNs"
 msgstr "LUN"
 
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "Alias (optional)"
-msgstr "别名（可选）"
+#~ msgid "Alias (optional)"
+#~ msgstr "别名（可选）"
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -12456,9 +12460,8 @@ msgstr "编辑 iSCSI 目标"
 msgid "Save Details"
 msgstr "保存详情"
 
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "No portals configured."
-msgstr "未配置门户。"
+#~ msgid "No portals configured."
+#~ msgstr "未配置门户。"
 
 #~ msgid "LUN {0}:"
 #~ msgstr ""
@@ -12468,13 +12471,11 @@ msgstr "未配置门户。"
 msgid "/dev/zvol/{0}"
 msgstr "/dev/zvol/{0}"
 
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "No LUNs configured."
-msgstr "未配置 LUN。"
+#~ msgid "No LUNs configured."
+#~ msgstr "未配置 LUN。"
 
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "ZVol"
-msgstr "ZVol"
+#~ msgid "ZVol"
+#~ msgstr "ZVol"
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Select a volume..."
@@ -15431,4 +15432,56 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Notification Rule - Bulk Update"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Generate Secret"
+msgstr ""
+
+#~ msgid "LUN #"
+#~ msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "No portals configured"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "No LUNs configured"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portal address is required"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Port must be a number between 1 and 65535"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "A portal with this address and port already exists"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN number must be a non-negative integer"
+msgstr ""
+
+#~ msgid "Please select a ZVol"
+#~ msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "A LUN with this number already exists"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copied portal address to clipboard"
+msgstr ""
+
+#. 0: sessions[tgt.targetName]
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Connected ({0})"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Idle"
 msgstr ""

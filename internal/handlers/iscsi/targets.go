@@ -173,3 +173,17 @@ func RemoveLUN(svc *iscsi.Service) gin.HandlerFunc {
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "lun_removed"})
 	}
 }
+
+func GetTargetSessions(svc *iscsi.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sessions, err := svc.GetTargetSessions()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{Status: "error", Message: "failed_to_get_target_sessions", Error: err.Error()})
+			return
+		}
+		if sessions == nil {
+			sessions = make(map[string]int)
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[map[string]int]{Status: "success", Message: "target_sessions_retrieved", Data: sessions})
+	}
+}

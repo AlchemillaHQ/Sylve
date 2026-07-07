@@ -9,10 +9,20 @@
 package iscsi
 
 import (
+	"encoding/xml"
 	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+type ctladmConnection struct {
+	Initiator string `xml:"initiator"`
+	Target    string `xml:"target"`
+}
+
+type ctladmIsList struct {
+	Connections []ctladmConnection `xml:"connection"`
+}
 
 func (s *Service) GetStatus() (map[string]string, error) {
 	out, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0, 1}, "-L")
@@ -38,5 +48,23 @@ func (s *Service) GetStatus() (map[string]string, error) {
 		result[targetName] = state
 	}
 
+	return result, nil
+}
+
+func (s *Service) GetTargetSessions() (map[string]int, error) {
+	out, err := utils.RunCommandAllowExitCode("/usr/sbin/ctladm", []int{0}, "islist", "-x")
+	if err != nil {
+		return nil, err
+	}
+
+	var list ctladmIsList
+	if err := xml.Unmarshal([]byte(out), &list); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]int)
+	for _, c := range list.Connections {
+		result[c.Target]++
+	}
 	return result, nil
 }

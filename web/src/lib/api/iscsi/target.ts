@@ -3,6 +3,13 @@ import { ISCSITargetSchema, type ISCSITarget } from '$lib/types/iscsi/target';
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+export const TargetSessionsSchema = z.record(z.string(), z.number());
+export type TargetSessions = z.infer<typeof TargetSessionsSchema>;
+
+export async function getTargetSessions(): Promise<TargetSessions> {
+    return await apiRequest('/iscsi/target-sessions', TargetSessionsSchema, 'GET');
+}
+
 export async function getTargets(): Promise<ISCSITarget[]> {
     return await apiRequest('/iscsi/targets', z.array(ISCSITargetSchema), 'GET');
 }

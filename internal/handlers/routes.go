@@ -252,6 +252,7 @@ func RegisterRoutes(r *gin.Engine,
 		iscsiGroup.DELETE("/targets/portals/:portalId", iscsiHandlers.RemovePortal(iscsiService))
 		iscsiGroup.POST("/targets/:id/luns", iscsiHandlers.AddLUN(iscsiService))
 		iscsiGroup.DELETE("/targets/luns/:lunId", iscsiHandlers.RemoveLUN(iscsiService))
+		iscsiGroup.GET("/target-sessions", iscsiHandlers.GetTargetSessions(iscsiService))
 	}
 
 	disk := api.Group("/disk")

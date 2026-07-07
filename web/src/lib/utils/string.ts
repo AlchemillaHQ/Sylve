@@ -80,6 +80,10 @@ function seedRandom(seed: string): () => number {
     };
 }
 
+export function generateCHAPSecret(): string {
+    return nanoid(16);
+}
+
 export function generateNanoId(seed?: string): string {
     if (seed) {
         const rng = seedRandom(seed);
