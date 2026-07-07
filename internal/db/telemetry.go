@@ -24,14 +24,14 @@ import (
 )
 
 const (
-	sambaAuditLogsTelemetryMigrationName  = "samba_audit_logs_to_telemetry_1"
-	cpuStatsTelemetryMigrationName        = "cpu_stats_to_telemetry_1"
-	auditRecordsTelemetryMigrationName    = "audit_records_to_telemetry_1"
-	ramStatsTelemetryMigrationName        = "ram_stats_to_telemetry_1"
-	swapStatsTelemetryMigrationName       = "swap_stats_to_telemetry_1"
-	networkStatsTelemetryMigrationName          = "network_interfaces_to_telemetry_1"
+	sambaAuditLogsTelemetryMigrationName          = "samba_audit_logs_to_telemetry_1"
+	cpuStatsTelemetryMigrationName                = "cpu_stats_to_telemetry_1"
+	auditRecordsTelemetryMigrationName            = "audit_records_to_telemetry_1"
+	ramStatsTelemetryMigrationName                = "ram_stats_to_telemetry_1"
+	swapStatsTelemetryMigrationName               = "swap_stats_to_telemetry_1"
+	networkStatsTelemetryMigrationName            = "network_interfaces_to_telemetry_1"
 	networkInterfacesAggregateDeltasMigrationName = "network_interfaces_aggregate_deltas_v2"
-	zPoolHistoricalTelemetryMigrationName       = "z_pool_historical_to_telemetry_1"
+	zPoolHistoricalTelemetryMigrationName         = "z_pool_historical_to_telemetry_1"
 )
 
 func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest bool) *gorm.DB {
@@ -53,6 +53,7 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		Logger:                                   logMode,
 		TranslateError:                           true,
 		DisableForeignKeyConstraintWhenMigrating: true,
+		SkipDefaultTransaction:                   true,
 	}
 
 	telemetryDBPath := ":memory:"

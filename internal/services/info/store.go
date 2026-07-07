@@ -21,29 +21,29 @@ import (
 const auditRetentionInterval = 6 * time.Hour
 
 func (s *Service) StoreStats() {
-	now := time.Now()
+	tx := s.telemetryDB().Begin()
 
 	if c, err := s.GetCPUInfo(true); err == nil {
-		s.cpuDB().Create(&infoModels.CPU{Usage: c.Usage})
+		tx.Create(&infoModels.CPU{Usage: c.Usage})
 	} else {
 		logger.L.Err(err).Msg("Failed to get CPU stats")
 	}
 
 	if r, err := s.GetRAMInfo(); err == nil {
-		s.ramDB().Create(&infoModels.RAM{Usage: r.UsedPercent})
+		tx.Create(&infoModels.RAM{Usage: r.UsedPercent})
 	} else {
 		logger.L.Err(err).Msg("Failed to get RAM stats")
 	}
 
 	if sw, err := s.GetSwapInfo(); err == nil {
-		s.swapDB().Create(&infoModels.Swap{Usage: sw.UsedPercent})
+		tx.Create(&infoModels.Swap{Usage: sw.UsedPercent})
 	} else {
 		logger.L.Err(err).Msg("Failed to get Swap stats")
 	}
 
-	pruneGFS(s.cpuDB(), now, infoModels.CPU{})
-	pruneGFS(s.ramDB(), now, infoModels.RAM{})
-	pruneGFS(s.swapDB(), now, infoModels.Swap{})
+	if err := tx.Commit().Error; err != nil {
+		logger.L.Err(err).Msg("Failed to commit stats transaction")
+	}
 }
 
 func pruneGFS[T db.TimeSeriesRow](dbConn *gorm.DB, now time.Time, dummy T) {
@@ -150,18 +150,27 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		logger.L.Err(err).Msg("failed storing network interface stats")
 		return
 	}
+}
 
+func (s *Service) PruneStats() {
+	now := time.Now()
+	pruneGFS(s.cpuDB(), now, infoModels.CPU{})
+	pruneGFS(s.ramDB(), now, infoModels.RAM{})
+	pruneGFS(s.swapDB(), now, infoModels.Swap{})
 	pruneGFS(s.networkDB(), now, infoModels.NetworkInterface{})
 }
 
 func (s *Service) Cron(ctx context.Context) {
 	s.StoreStats()
 	s.StoreNetworkInterfaceStats()
+	s.PruneStats()
 	s.PruneAuditRecords(time.Now())
 
 	statsTicker := time.NewTicker(10 * time.Second)
+	pruneTicker := time.NewTicker(5 * time.Minute)
 	auditRetentionTicker := time.NewTicker(auditRetentionInterval)
 	defer statsTicker.Stop()
+	defer pruneTicker.Stop()
 	defer auditRetentionTicker.Stop()
 
 	logger.L.Info().Msg("Info service cron workers started")
@@ -175,6 +184,9 @@ func (s *Service) Cron(ctx context.Context) {
 		case <-statsTicker.C:
 			s.StoreStats()
 			s.StoreNetworkInterfaceStats()
+
+		case <-pruneTicker.C:
+			s.PruneStats()
 
 		case <-auditRetentionTicker.C:
 			s.PruneAuditRecords(time.Now())

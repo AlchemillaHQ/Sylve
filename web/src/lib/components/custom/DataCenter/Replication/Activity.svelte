@@ -4,6 +4,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ReplicationEvent } from '$lib/types/cluster/replication';
 	import { convertDbTime } from '$lib/utils/time';
+	import { storage } from '$lib';
 	import { resource, useInterval } from 'runed';
 
 	const IN_PROGRESS_STATUSES = new Set([
@@ -145,6 +146,7 @@
 
 	useInterval(5000, {
 		callback: () => {
+			if (!storage.visible) return;
 			if (
 				!replicationModalOpen &&
 				!replicationActivity.current.available &&

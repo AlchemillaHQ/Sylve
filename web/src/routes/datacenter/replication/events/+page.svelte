@@ -23,6 +23,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
+	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -211,6 +212,7 @@
 
 	useInterval(2000, {
 		callback: () => {
+			if (!storage.visible) return;
 			if (!progressModal.open || progressEventId <= 0) return;
 			const status = progressEvent.current?.event?.status || '';
 			if (status === '' || isInProgressStatus(status)) {

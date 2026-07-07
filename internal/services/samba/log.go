@@ -220,6 +220,12 @@ func (s *Service) WatchAuditLogs(ctx context.Context) {
 	defer watcher.Close()
 
 	const logPath = "/var/log/samba4/audit.log"
+	const logDir = "/var/log/samba4"
+
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		logger.L.Error().Msgf("Failed to create audit log directory: %v", err)
+		return
+	}
 
 	if _, err := os.Stat(logPath); os.IsNotExist(err) {
 		if err := os.WriteFile(logPath, []byte(""), 0600); err != nil {
@@ -263,21 +269,21 @@ func (s *Service) WatchAuditLogs(ctx context.Context) {
 				})
 			}
 
-			if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				logger.L.Warn().Msgf("Audit log was removed or renamed. Attempting to re-watch...")
-				watcher.Remove(logPath)
+			if event.Has(fsnotify.Create) && event.Name == logPath {
+				logger.L.Info().Msg("Audit log recreated, re-attaching watch")
+				watcher.Remove(logDir)
+				if err := watcher.Add(logPath); err != nil {
+					logger.L.Error().Msgf("Failed to re-watch audit log: %v", err)
+					_ = watcher.Add(logDir)
+				}
+			}
 
-				go func() {
-					for {
-						time.Sleep(2 * time.Second)
-						if _, err := os.Stat(logPath); err == nil {
-							if err := watcher.Add(logPath); err == nil {
-								logger.L.Info().Msg("Successfully re-attached to audit log")
-								break
-							}
-						}
-					}
-				}()
+			if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+				logger.L.Warn().Msgf("Audit log was removed or renamed. Watching directory for recreation...")
+				watcher.Remove(logPath)
+				if err := watcher.Add(logDir); err != nil {
+					logger.L.Error().Msgf("Failed to watch parent directory: %v", err)
+				}
 			}
 
 		case err, ok := <-watcher.Errors:

@@ -68,6 +68,7 @@
 
 	useInterval(2000, {
 		callback: async () => {
+			if (!storage.visible) return;
 			await serverResource.refetch();
 		}
 	});

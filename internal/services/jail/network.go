@@ -1142,6 +1142,8 @@ func (s *Service) networkUpdateWorker() {
 
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case jailID, ok := <-s.networkUpdateChan:
 			if !ok {
 				return

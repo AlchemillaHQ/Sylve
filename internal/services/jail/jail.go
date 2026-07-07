@@ -46,6 +46,7 @@ type Service struct {
 	System         systemServiceInterfaces.SystemServiceInterface
 	GZFS           *gzfs.Client
 
+	ctx               context.Context
 	crudMutex         sync.Mutex
 	networkUpdateChan chan int64
 
@@ -75,6 +76,7 @@ func NewJailService(
 		NetworkService:      networkService,
 		System:              systemService,
 		GZFS:                gzfs,
+		ctx:                 context.Background(),
 		networkUpdateChan:   make(chan int64, 100),
 		liveStateByCTID:     make(map[uint]jailServiceInterfaces.State),
 		ctidHashByCTID:      make(map[uint]string),

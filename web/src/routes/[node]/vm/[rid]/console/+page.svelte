@@ -127,6 +127,7 @@
 
 	useInterval(() => 1000, {
 		callback: () => {
+			if (!storage.visible) return;
 			domain.refetch();
 		}
 	});

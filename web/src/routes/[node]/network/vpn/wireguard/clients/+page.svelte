@@ -9,6 +9,7 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
+	import { storage } from '$lib';
 	import { resource, useInterval } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -33,6 +34,7 @@
 
 	useInterval(2000, {
 		callback: async () => {
+			if (!storage.visible) return;
 			await clientsResource.refetch();
 		}
 	});

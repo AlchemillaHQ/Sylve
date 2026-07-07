@@ -30,8 +30,9 @@
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-	import { sleep } from '$lib/utils';
-	import { IsDocumentVisible, resource, useInterval } from 'runed';
+import { sleep } from '$lib/utils';
+import { storage } from '$lib';
+import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { watch } from 'runed';
 
 	interface Data {
@@ -87,6 +88,7 @@
 
 	useInterval(1000, {
 		callback: () => {
+			if (!storage.visible) return;
 			const incomplete = (downloads.current as Download[]).some(
 				(d) => d.status !== 'done' && d.status !== 'failed'
 			);

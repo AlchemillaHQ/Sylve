@@ -11,6 +11,7 @@
 	import type { Notification } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
+	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
@@ -72,6 +73,7 @@
 
 	useInterval(10000, {
 		callback: () => {
+			if (!storage.visible) return;
 			notificationCount.refetch();
 			if (open) {
 				notifications.refetch();

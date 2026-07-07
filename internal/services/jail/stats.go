@@ -40,6 +40,7 @@ type psUsage struct {
 }
 
 func (s *Service) StartStatsMonitoring(ctx context.Context) {
+	s.ctx = ctx
 	s.monitorOnce.Do(func() {
 		go s.liveStateMonitor(ctx)
 		go s.persistScheduler(ctx)
@@ -113,17 +114,33 @@ func (s *Service) enqueueRetention() {
 }
 
 func (s *Service) jailUsagePersistWorker() {
-	for range s.usagePersistQueue {
-		if err := s.StoreJailUsage(); err != nil {
-			logger.L.Error().Err(err).Msg("failed to store jail usage")
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case _, ok := <-s.usagePersistQueue:
+			if !ok {
+				return
+			}
+			if err := s.StoreJailUsage(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to store jail usage")
+			}
 		}
 	}
 }
 
 func (s *Service) jailUsageRetentionWorker() {
-	for range s.usageRetentionQueue {
-		if err := s.ApplyJailStatsRetention(); err != nil {
-			logger.L.Error().Err(err).Msg("failed to apply jail stats retention")
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case _, ok := <-s.usageRetentionQueue:
+			if !ok {
+				return
+			}
+			if err := s.ApplyJailStatsRetention(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to apply jail stats retention")
+			}
 		}
 	}
 }

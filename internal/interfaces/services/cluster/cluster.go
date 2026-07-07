@@ -9,6 +9,8 @@
 package clusterServiceInterfaces
 
 import (
+	"context"
+
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -54,5 +56,5 @@ type ClusterServiceInterface interface {
 	SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error)
 	GetClusterDetails() (*ClusterDetails, error)
 	PopulateClusterNodes() error
-	StartClusterMonitors()
+	StartClusterMonitors(ctx context.Context)
 }

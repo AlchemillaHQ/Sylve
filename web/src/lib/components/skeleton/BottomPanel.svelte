@@ -131,6 +131,7 @@
 
 	useInterval(() => 2000, {
 		callback: () => {
+			if (!storage.visible) return;
 			activeLifecycleTasks.refetch();
 			if (auditRecords.current?.some((r) => r.status === 'pending')) {
 				auditRecords.refetch();

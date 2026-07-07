@@ -167,7 +167,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			logger.L.Warn().Err(err).Msg("Virtio-9P migration had issues")
 		}
 
-		go s.Libvirt.StoreVMUsage()
 	}
 
 	go s.Info.Cron(dCtx)
@@ -248,17 +247,24 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
 		go func() {
-			for {
-				if err := s.Libvirt.StoreVMUsage(); err != nil {
-					logger.L.Error().Msgf("Failed to sync VM states: %v", err)
-				}
+			timer := time.NewTimer(0)
+			defer timer.Stop()
 
-				time.Sleep(5 * time.Second)
+			for {
+				select {
+				case <-dCtx.Done():
+					return
+				case <-timer.C:
+					if err := s.Libvirt.StoreVMUsage(); err != nil {
+						logger.L.Error().Msgf("Failed to sync VM states: %v", err)
+					}
+					timer.Reset(5 * time.Second)
+				}
 			}
 		}()
 	}
 
-	s.Cluster.StartClusterMonitors()
+	s.Cluster.StartClusterMonitors(dCtx)
 
 	if slices.Contains(basicSettings.Services, models.WoLServer) {
 		go s.Utilities.StartWOLServer()
@@ -266,7 +272,11 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.DHCPServer) {
 		go func() {
-			time.Sleep(30 * time.Second)
+			select {
+			case <-dCtx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
 
 			err := ensureServiceStarted("dnsmasq")
 			if err != nil {

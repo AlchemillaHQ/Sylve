@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -857,7 +858,7 @@ func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealth
 	}
 }
 
-func (s *Service) StartClusterMonitors() {
+func (s *Service) StartClusterMonitors(ctx context.Context) {
 	s.monitorOnce.Do(func() {
 		runPopulateClusterNodes := func() {
 			if err := s.PopulateClusterNodes(); err != nil {
@@ -873,8 +874,13 @@ func (s *Service) StartClusterMonitors() {
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				s.FastStatusCheck()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					s.FastStatusCheck()
+				}
 			}
 		}()
 
@@ -882,8 +888,13 @@ func (s *Service) StartClusterMonitors() {
 			ticker := time.NewTicker(clusterNodePopulateInterval)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				runPopulateClusterNodes()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runPopulateClusterNodes()
+				}
 			}
 		}()
 	})
