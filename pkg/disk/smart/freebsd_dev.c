@@ -234,6 +234,119 @@ __device_read_ata(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb *
 	return 0;
 }
 
+/*
+ * Twin-fetch SCSI LOG SENSE: first read the 4-byte header to determine
+ * the actual page length, then read the full page.
+ */
+static int32_t __device_read_scsi(smart_h, uint32_t, uint8_t, void *, size_t, union ccb *);
+
+static int32_t
+__device_scsi_log_sense(struct fbsd_smart *fsmart, uint32_t page, void *buf, size_t bsize)
+{
+	union ccb *ccb = NULL;
+	int rc = 0;
+	uint32_t alloc_len;
+	uint8_t *b = buf;
+
+	if (fsmart == NULL)
+		return EINVAL;
+
+	fsmart->last_cam_err = 0;
+	dprintf("read log page %#x (twin-fetch)\n", page);
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	__device_read_scsi((smart_h)fsmart, page, 0, buf, 4, ccb);
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0 || (ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (rc >= 0) {
+			uint32_t cam_status = ccb->ccb_h.status & CAM_STATUS_MASK;
+			switch (cam_status) {
+			case CAM_CMD_TIMEOUT:
+				rc = ETIMEDOUT;
+				break;
+			case CAM_REQ_ABORTED:
+			case CAM_SCSI_BUS_RESET:
+			case CAM_SEQUENCE_FAIL:
+				rc = ECONNABORTED;
+				break;
+			default:
+				rc = EIO;
+				break;
+			}
+		}
+		if (rc != 0)
+			fsmart->last_cam_err = rc;
+		cam_freeccb(ccb);
+		return rc;
+	}
+
+	if (page != 0 && (b[0] & 0x3f) != page) {
+		cam_freeccb(ccb);
+		return EIO;
+	}
+
+	alloc_len = ((uint32_t)b[2] << 8) | b[3];
+	if (alloc_len == 0) {
+		cam_freeccb(ccb);
+		return EIO;
+	}
+	alloc_len += 4;
+	if (alloc_len % 2)
+		alloc_len++;
+	if (alloc_len > bsize)
+		alloc_len = bsize;
+	if (alloc_len < 4)
+		alloc_len = 4;
+
+	cam_freeccb(ccb);
+
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	__device_read_scsi((smart_h)fsmart, page, 0, buf, alloc_len, ccb);
+
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0 || (ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (rc >= 0) {
+			uint32_t cam_status = ccb->ccb_h.status & CAM_STATUS_MASK;
+			switch (cam_status) {
+			case CAM_CMD_TIMEOUT:
+				rc = ETIMEDOUT;
+				break;
+			case CAM_REQ_ABORTED:
+			case CAM_SCSI_BUS_RESET:
+			case CAM_SEQUENCE_FAIL:
+				rc = ECONNABORTED;
+				break;
+			default:
+				rc = EIO;
+				break;
+			}
+		}
+		if (rc != 0)
+			fsmart->last_cam_err = rc;
+		cam_freeccb(ccb);
+		return rc;
+	}
+
+	if (page != 0 && (b[0] & 0x3f) != page) {
+		cam_freeccb(ccb);
+		return EIO;
+	}
+
+	cam_freeccb(ccb);
+	return 0;
+}
+
 static int32_t
 __device_read_scsi(smart_h h, uint32_t page, uint8_t subpage, void *buf, size_t bsize, union ccb *ccb)
 {
@@ -963,6 +1076,17 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 	fsmart->last_cam_err = 0;
 	dprintf("read log page %#x\n", page);
 
+	switch (fsmart->common.protocol) {
+	case SMART_PROTO_SCSI:
+		return __device_scsi_log_sense(fsmart, page, buf, bsize);
+	case SMART_PROTO_ATA:
+	case SMART_PROTO_NVME:
+		break;
+	default:
+		warnx("unsupported protocol %d", fsmart->common.protocol);
+		return ENODEV;
+	}
+
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -973,22 +1097,19 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 	case SMART_PROTO_ATA:
 		rc = __device_read_ata(h, page, buf, bsize, ccb);
 		break;
-	case SMART_PROTO_SCSI:
-		rc = __device_read_scsi(h, page, 0, buf, bsize, ccb);
-		break;
 	case SMART_PROTO_NVME:
 		rc = __device_read_nvme(h, page, buf, bsize, ccb);
 		break;
 	default:
-		warnx("unsupported protocol %d", fsmart->common.protocol);
-		cam_freeccb(ccb);
-		return ENODEV;
+		rc = ENODEV;
+		break;
 	}
 
 	if (rc) {
 		if (rc == EINVAL)
 			warnx("unsupported page %#x", page);
 
+		cam_freeccb(ccb);
 		return rc;
 	}
 

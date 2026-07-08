@@ -60,13 +60,13 @@ smart_page_list_t pg_list_scsi = {
 		{ .id = PAGE_ID_SCSI_READ_ERR, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_VERIFY_ERR, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_NON_MEDIUM_ERR, .bytes = 128 },
-		{ .id = PAGE_ID_SCSI_LAST_N_ERR, .bytes = 128 },
+		{ .id = PAGE_ID_SCSI_LAST_N_ERR, .bytes = 512 },
 		{ .id = PAGE_ID_SCSI_TEMPERATURE, .bytes = 64 },
 		{ .id = PAGE_ID_SCSI_START_STOP_CYCLE, .bytes = 128 },
-		{ .id = PAGE_ID_SCSI_SELF_TEST, .bytes = 512 },
-		{ .id = PAGE_ID_SCSI_SS_MEDIA, .bytes = 128 },
-		{ .id = PAGE_ID_SCSI_BG_SCAN, .bytes = 128 },
-		{ .id = PAGE_ID_SCSI_PROTO_SPECIFIC, .bytes = 256 },
+		{ .id = PAGE_ID_SCSI_SELF_TEST, .bytes = 1024 },
+		{ .id = PAGE_ID_SCSI_SS_MEDIA, .bytes = 1024 },
+		{ .id = PAGE_ID_SCSI_BG_SCAN, .bytes = 512 },
+		{ .id = PAGE_ID_SCSI_PROTO_SPECIFIC, .bytes = 1024 },
 		{ .id = PAGE_ID_SCSI_INFO_EXCEPTION, .bytes = 64 },
 	}
 };
