@@ -30,12 +30,11 @@
 #define PAGE_ID_SCSI_LAST_N_ERR		0x07		/* Last n Error events */
 #define PAGE_ID_SCSI_TEMPERATURE	0x0d		/* Temperature */
 #define PAGE_ID_SCSI_START_STOP_CYCLE	0x0e		/* Start-Stop Cycle counter */
-#define PAGE_ID_SCSI_INFO_EXCEPTION	0x2f		/* Informational Exceptions */
-
 #define PAGE_ID_SCSI_SELF_TEST		0x10		/* Self-test Results */
 #define PAGE_ID_SCSI_SS_MEDIA		0x11		/* Solid State Media */
 #define PAGE_ID_SCSI_BG_SCAN		0x15		/* Background Scan Results */
 #define PAGE_ID_SCSI_PROTO_SPECIFIC	0x18		/* Protocol Specific */
+#define PAGE_ID_SCSI_INFO_EXCEPTION	0x2f		/* Informational Exceptions */
 
 /* ATA SMART self-test types (LBA Low register for EXECUTE OFF-LINE) */
 #define ATA_SELF_TEST_SHORT            0x01
@@ -87,6 +86,7 @@ typedef struct smart_info_s {
 	 * Protocols may provide a subset of this information
 	 */
 	char vendor[16], device[48], rev[16], serial[32];
+	uint8_t  scsi_version;		/* SCSI ANSI version from INQUIRY (SPC-4=6, SPC-5=7) */
 } smart_info_t;
 
 /* List of pages providing SMART/health data */

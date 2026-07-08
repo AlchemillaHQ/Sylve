@@ -226,7 +226,7 @@ __device_read_ata(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb *
 				/* tag_action */0,
 				/* data_ptr */buf,
 				/* dxfer_len */bsize,
-				/* timeout */5000);
+			/* timeout */30000);
 		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
 		ccb->ataio.cmd.control = 0;
 	}
@@ -235,7 +235,7 @@ __device_read_ata(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb *
 }
 
 static int32_t
-__device_read_scsi(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb *ccb)
+__device_read_scsi(smart_h h, uint32_t page, uint8_t subpage, void *buf, size_t bsize, union ccb *ccb)
 {
 
 	scsi_log_sense(&ccb->csio,
@@ -250,7 +250,10 @@ __device_read_scsi(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb 
 			/* param_buf */buf,
 			/* param_len */bsize,
 			/* sense_len */0,
-			/* timeout */5000);
+			/* timeout */30000);
+
+	if (subpage > 0)
+		ccb->csio.cdb_io.cdb_bytes[3] = subpage;
 
 	return 0;
 }
@@ -426,7 +429,7 @@ device_self_test(smart_h h, uint8_t test_type)
 					0,
 					NULL, 0,
 					SSD_FULL_SIZE,
-					5000);
+					30000);
 			cdb->lba_mid = 0x4f;
 			cdb->lba_high = 0xc2;
 			cdb->device = 0;
@@ -445,7 +448,7 @@ device_self_test(smart_h h, uint8_t test_type)
 					CAM_DIR_NONE,
 					0,
 					NULL, 0,
-					5000);
+					30000);
 			ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
 			ccb->ataio.cmd.control = 0;
 		}
@@ -546,7 +549,7 @@ device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 					0,
 					buf, bsize,
 					SSD_FULL_SIZE,
-					5000);
+					30000);
 			cdb->lba_mid = 0x4f;
 			cdb->lba_high = 0xc2;
 			cdb->device = 0;
@@ -566,7 +569,7 @@ device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 					CAM_DIR_IN,
 					0,
 					buf, bsize,
-					5000);
+					30000);
 			ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
 			ccb->ataio.cmd.control = 0;
 		}
@@ -670,7 +673,7 @@ device_read_log_ext(smart_h h, uint8_t logaddr, uint8_t page, void *buf, size_t 
 				0,
 				buf, bsize,
 				SSD_FULL_SIZE,
-				5000);
+				30000);
 		cdb->lba_mid = page;
 		cdb->lba_high = logaddr;
 		cdb->device = 0x40;
@@ -688,7 +691,7 @@ device_read_log_ext(smart_h h, uint8_t logaddr, uint8_t page, void *buf, size_t 
 				CAM_DIR_IN,
 				0,
 				buf, bsize,
-				5000);
+				30000);
 		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT | CAM_ATAIO_48BIT;
 		ccb->ataio.cmd.control = 0;
 	}
@@ -769,7 +772,7 @@ device_write_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 				0,
 				buf, bsize,
 				SSD_FULL_SIZE,
-				5000);
+				30000);
 		cdb->lba_mid = 0x4f;
 		cdb->lba_high = 0xc2;
 		cdb->device = 0;
@@ -789,7 +792,7 @@ device_write_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 				CAM_DIR_OUT,
 				0,
 				buf, bsize,
-				5000);
+				30000);
 		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
 		ccb->ataio.cmd.control = 0;
 	}
@@ -857,7 +860,7 @@ device_smart_enable(smart_h h)
 				0,
 				NULL, 0,
 				SSD_FULL_SIZE,
-				5000);
+				30000);
 		cdb->lba_mid = 0x4f;
 		cdb->lba_high = 0xc2;
 		cdb->device = 0;
@@ -875,7 +878,7 @@ device_smart_enable(smart_h h)
 				CAM_DIR_NONE,
 				0,
 				NULL, 0,
-				5000);
+				30000);
 		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
 		ccb->ataio.cmd.control = 0;
 	}
@@ -971,7 +974,7 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 		rc = __device_read_ata(h, page, buf, bsize, ccb);
 		break;
 	case SMART_PROTO_SCSI:
-		rc = __device_read_scsi(h, page, buf, bsize, ccb);
+		rc = __device_read_scsi(h, page, 0, buf, bsize, ccb);
 		break;
 	case SMART_PROTO_NVME:
 		rc = __device_read_nvme(h, page, buf, bsize, ccb);
@@ -1071,7 +1074,7 @@ __device_proto_tunneled(struct fbsd_smart *fsmart)
 			1, // EVPD
 			SVPD_SUPPORTED_PAGE_LIST, // page code
 			SSD_FULL_SIZE, // sense length
-			5000); // timeout
+			30000); // timeout
 
 	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
 
@@ -1198,6 +1201,8 @@ __device_info_scsi(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 			sizeof(cgd->inq_data.revision),
 			sizeof(sinfo->rev));
 
+	sinfo->scsi_version = cgd->inq_data.version;
+
 	ccb = cam_getccb(fsmart->camdev);
 	snum = malloc(sizeof(struct scsi_vpd_unit_serial_number));
 	if (!ccb || !snum) {
@@ -1217,7 +1222,7 @@ __device_info_scsi(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 			1, // EVPD
 			SVPD_UNIT_SERIAL_NUMBER, // page code
 			SSD_FULL_SIZE, // sense length
-			5000); // timeout
+			30000); // timeout
 
 	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
 
@@ -1243,7 +1248,7 @@ __device_info_scsi(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 			/* param_buf */(uint8_t *)&ie,
 			/* param_len */sizeof(ie),
 			/* sense_len */0,
-			/* timeout */5000);
+			/* timeout */30000);
 
 	/*
 	 * Note: The existance of the Informational Exceptions (IE) log page

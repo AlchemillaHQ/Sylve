@@ -202,7 +202,7 @@ func Read(devicePath string) (*DeviceInfo, error) {
 				attr.Value = int(attr.RawBytes[3])
 				attr.Worst = int(attr.RawBytes[4])
 
-				f := attr.RawBytes[1]
+				f := uint16(attr.RawBytes[1]) | uint16(attr.RawBytes[2])<<8
 				attr.Flags = AttrFlags{
 					PreFailure:     (f & 0x01) != 0,
 					Online:         (f & 0x02) != 0,
@@ -293,7 +293,7 @@ func Read(devicePath string) (*DeviceInfo, error) {
 }
 
 func findTemperature(attrs []Attribute) int {
-	ids := []int{194, 190}
+	ids := []int{194, 190, 9, 220}
 	for _, id := range ids {
 		for _, attr := range attrs {
 			if int(attr.ID) != id {
@@ -998,18 +998,13 @@ func ReadNVMeIdentifyCtrl(devicePath string) (*NVMeIdentifyCtrl, error) {
 	if len(buf) >= 320 {
 		result.SelfTestOptions = buf[318]
 	}
-	if len(buf) >= 328 {
-		result.SanitizeCaps = uint32(buf[324]) | uint32(buf[325])<<8 |
-			uint32(buf[326])<<16 | uint32(buf[327])<<24
+	if len(buf) >= 342 {
+		result.SanitizeCaps = uint32(buf[338]) | uint32(buf[339])<<8 |
+			uint32(buf[340])<<16 | uint32(buf[341])<<24
 	}
-	if len(buf) >= 332 {
-		result.VolatileWriteCache = (buf[325] & 0x02) != 0
-	}
-	if len(buf) >= 328 {
-		result.MNTMT = uint16(buf[324]) | uint16(buf[325])<<8
-	}
-	if len(buf) >= 330 {
-		result.MXTMT = uint16(buf[326]) | uint16(buf[327])<<8
+	if len(buf) >= 334 {
+		result.MNTMT = uint16(buf[330]) | uint16(buf[331])<<8
+		result.MXTMT = uint16(buf[332]) | uint16(buf[333])<<8
 	}
 	if len(buf) >= 524 {
 		result.NumNamespaces = uint32(buf[516]) | uint32(buf[517])<<8 |
@@ -1290,30 +1285,43 @@ func ReadSelectiveSelfTestLog(devicePath string) (*SelfTestLog, error) {
 	}
 	defer C.smart_free(sm)
 
+	cAttr := C.get_attr_at(sm, C.int(0))
+	raw := C.GoBytes(cAttr.raw, C.int(cAttr.bytes))
+
+	log := parseSelectiveSelfTestLog(raw)
+	return log, nil
+}
+
+func parseSelectiveSelfTestLog(raw []byte) *SelfTestLog {
 	log := &SelfTestLog{}
-	count := int(sm.count)
-	for i := 0; i < count; i++ {
-		cAttr := C.get_attr_at(sm, C.int(i))
-		raw := C.GoBytes(cAttr.raw, C.int(cAttr.bytes))
-		if len(raw) == 0 {
-			continue
-		}
+	if len(raw) < 512 {
+		return log
+	}
 
-		entry := SelfTestEntry{}
-		page := uint32(cAttr.page)
+	var sum byte
+	for _, b := range raw[:512] {
+		sum += b
+	}
+	log.ChecksumValid = sum == 0
 
-		if page == 0x09 && len(raw) == 24 {
-			entry = parseATASelfTestEntry(raw)
-		} else if page == 0x09 && len(raw) == 28 {
-			entry = parseNVMESelfTestEntry(raw)
-		}
+	dataRev := uint16(raw[0]) | uint16(raw[1])<<8
+	if dataRev != 0x0001 {
+		return log
+	}
 
-		if entry.Type != "" {
-			log.Entries = append(log.Entries, entry)
+	flags := uint16(raw[344]) | uint16(raw[345])<<8
+	log.InProgress = (flags & 0x08) != 0
+
+	if log.InProgress {
+		cb := raw[336+1]
+		cp := raw[336]
+		cur := (uint(cb) << 8) | uint(cp)
+		if cur <= 65535 {
+			log.ProgressPct = int(cur)
 		}
 	}
 
-	return log, nil
+	return log
 }
 
 func SetSCTErrorRecoveryControl(devicePath string, read bool, timeLimit uint16) error {

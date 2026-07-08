@@ -63,11 +63,11 @@ smart_page_list_t pg_list_scsi = {
 		{ .id = PAGE_ID_SCSI_LAST_N_ERR, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_TEMPERATURE, .bytes = 64 },
 		{ .id = PAGE_ID_SCSI_START_STOP_CYCLE, .bytes = 128 },
-		{ .id = PAGE_ID_SCSI_INFO_EXCEPTION, .bytes = 64 },
 		{ .id = PAGE_ID_SCSI_SELF_TEST, .bytes = 512 },
 		{ .id = PAGE_ID_SCSI_SS_MEDIA, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_BG_SCAN, .bytes = 128 },
 		{ .id = PAGE_ID_SCSI_PROTO_SPECIFIC, .bytes = 256 },
+		{ .id = PAGE_ID_SCSI_INFO_EXCEPTION, .bytes = 64 },
 	}
 };
 
@@ -255,11 +255,12 @@ smart_read_log(smart_h h, uint8_t log_addr, size_t size)
 					__smart_map_error_log(s, sb, sm);
 			} else if (log_addr == GPL_ADDR_EXT_ERROR_LOG) {
 				__smart_map_error_log(s, sb, sm);
-			} else if (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG ||
-			           log_addr == 0x09) {
+			} else if (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG) {
 				__smart_map_self_test_log(s, sb, sm, log_addr);
 			} else if (log_addr == GPL_ADDR_SCT_STATUS) {
 				__smart_map_sct_status(s, sb, sm);
+			} else if (log_addr == 0x09) {
+				__smart_map_gpl_raw(sb, sm, log_addr);
 			}
 		} else {
 			free(sb->b);
@@ -2033,7 +2034,7 @@ __smart_page_list_scsi(smart_t *s)
 {
 	smart_page_list_t *pg_list = NULL;
 	scsi_supported_log_pages *b = NULL;
-	uint32_t bsize = 68;	/* 4 byte header + 63 entries + 1 just cuz */
+	uint32_t bsize = 256;	/* 4 byte header + 252 entries, matching smartmontools LOG_RESP_LEN */
 	int32_t rc;
 
 	b = malloc(bsize);
