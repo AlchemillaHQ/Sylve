@@ -10,10 +10,13 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/urfave/cli/v3"
 )
 
 func TestAsciiArt(t *testing.T) {
@@ -31,92 +34,80 @@ func TestAsciiArt(t *testing.T) {
 	}
 }
 
-func TestParseFlags_Defaults(t *testing.T) {
-	got, err := ParseFlags(nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if got.ConfigPath != "" {
-		t.Fatalf("expected empty config path when no flag given, got %q", got.ConfigPath)
-	}
-
-	if got.REPL {
-		t.Fatalf("expected REPL false by default")
-	}
-
-	if got.ShowHelp {
-		t.Fatalf("expected help false by default")
-	}
-
-	if got.ShowVersion {
-		t.Fatalf("expected version false by default")
+func TestNewRootCommand_Name(t *testing.T) {
+	root := NewRootCommand(nil)
+	if root.Name != "sylve" {
+		t.Fatalf("expected name sylve, got %q", root.Name)
 	}
 }
 
-func TestParseFlags_Config(t *testing.T) {
-	got, err := ParseFlags([]string{"-config", "/tmp/test.json"})
-	if err != nil {
+func TestNewRootCommand_Flags_Defaults(t *testing.T) {
+	var configPath string
+	var console bool
+
+	root := NewRootCommand(func(ctx context.Context, c *cli.Command) error {
+		configPath = c.String("config")
+		console = c.Bool("console")
+		return nil
+	})
+
+	if err := root.Run(context.Background(), []string{"sylve"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got.ConfigPath != "/tmp/test.json" {
-		t.Fatalf("expected /tmp/test.json, got %q", got.ConfigPath)
+	if configPath != "" {
+		t.Fatalf("expected empty config path, got %q", configPath)
+	}
+	if console {
+		t.Fatal("expected console false by default")
 	}
 }
 
-func TestParseFlags_Console(t *testing.T) {
-	got, err := ParseFlags([]string{"-console"})
-	if err != nil {
+func TestNewRootCommand_Flags_Config(t *testing.T) {
+	var configPath string
+
+	root := NewRootCommand(func(ctx context.Context, c *cli.Command) error {
+		configPath = c.String("config")
+		return nil
+	})
+
+	if err := root.Run(context.Background(), []string{"sylve", "--config", "/tmp/test.json"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !got.REPL {
-		t.Fatalf("expected REPL true")
+	if configPath != "/tmp/test.json" {
+		t.Fatalf("expected /tmp/test.json, got %q", configPath)
 	}
 }
 
-func TestParseFlags_Help(t *testing.T) {
-	got, err := ParseFlags([]string{"-help"})
-	if err != nil {
+func TestNewRootCommand_Flags_Console(t *testing.T) {
+	var console bool
+
+	root := NewRootCommand(func(ctx context.Context, c *cli.Command) error {
+		console = c.Bool("console")
+		return nil
+	})
+
+	if err := root.Run(context.Background(), []string{"sylve", "--console"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !got.ShowHelp {
-		t.Fatalf("expected help true")
+	if !console {
+		t.Fatal("expected console true")
 	}
 }
 
-func TestParseFlags_HelpShort(t *testing.T) {
-	got, err := ParseFlags([]string{"-h"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestNewRootCommand_Subcommand_Notes(t *testing.T) {
+	root := NewRootCommand(nil)
+	found := false
+	for _, sub := range root.Commands {
+		if sub.Name == "notes" {
+			found = true
+			break
+		}
 	}
-
-	if !got.ShowHelp {
-		t.Fatalf("expected help true")
-	}
-}
-
-func TestParseFlags_Version(t *testing.T) {
-	got, err := ParseFlags([]string{"-version"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !got.ShowVersion {
-		t.Fatalf("expected version true")
-	}
-}
-
-func TestParseFlags_VersionShort(t *testing.T) {
-	got, err := ParseFlags([]string{"-v"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !got.ShowVersion {
-		t.Fatalf("expected version true")
+	if !found {
+		t.Fatal("expected notes subcommand")
 	}
 }
 
@@ -144,7 +135,6 @@ func TestResolveConfigPath_ExplicitMissing(t *testing.T) {
 }
 
 func TestResolveConfigPath_NoArgs_NoneFound(t *testing.T) {
-	// Run from a temp dir so neither ./config.json nor the system path exist.
 	tmp := t.TempDir()
 	origDir, err := os.Getwd()
 	if err != nil {
@@ -182,12 +172,5 @@ func TestResolveConfigPath_NoArgs_LocalFound(t *testing.T) {
 	}
 	if got != DefaultConfigLocal {
 		t.Fatalf("expected %q, got %q", DefaultConfigLocal, got)
-	}
-}
-
-func TestParseFlags_InvalidFlag(t *testing.T) {
-	_, err := ParseFlags([]string{"-wat"})
-	if err == nil {
-		t.Fatalf("expected error for invalid flag")
 	}
 }

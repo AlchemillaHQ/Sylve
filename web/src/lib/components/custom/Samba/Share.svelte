@@ -39,6 +39,19 @@
 		appleExtensions = false
 	}: Props = $props();
 
+	const AUDIT_OPERATIONS = [
+		{ label: 'connect', value: 'connect' },
+		{ label: 'disconnect', value: 'disconnect' },
+		{ label: 'create_file', value: 'create_file' },
+		{ label: 'mkdirat', value: 'mkdirat' },
+		{ label: 'unlinkat', value: 'unlinkat' },
+		{ label: 'renameat', value: 'renameat' },
+		{ label: 'openat', value: 'openat' },
+		{ label: 'close', value: 'close' },
+		{ label: 'read', value: 'read' },
+		{ label: 'write', value: 'write' }
+	];
+
 	let userOptions = $derived.by(() => {
 		return users.map((user) => ({
 			label: user.username,
@@ -117,7 +130,15 @@
 			writeable: share ? share.guest.writeable : false
 		},
 		timeMachine: share ? share.timeMachine : false,
-		timeMachineMaxSize: share ? share.timeMachineMaxSize : 0
+		timeMachineMaxSize: share ? share.timeMachineMaxSize : 0,
+		auditEnabled: share ? share.auditEnabled : false,
+		auditedOperations: {
+			combobox: {
+				open: false,
+				value: share ? share.auditedOperations : ([] as string[]),
+				options: AUDIT_OPERATIONS
+			}
+		}
 	};
 
 	let properties = $state(options);
@@ -205,7 +226,9 @@
 				properties.createMask,
 				properties.directoryMask,
 				properties.timeMachine,
-				Number(properties.timeMachineMaxSize)
+				Number(properties.timeMachineMaxSize),
+				properties.auditEnabled,
+				properties.auditedOperations.combobox.value
 			);
 		} else {
 			response = await createSambaShare(
@@ -216,7 +239,9 @@
 				properties.createMask,
 				properties.directoryMask,
 				properties.timeMachine,
-				Number(properties.timeMachineMaxSize)
+				Number(properties.timeMachineMaxSize),
+				properties.auditEnabled,
+				properties.auditedOperations.combobox.value
 			);
 		}
 
@@ -263,6 +288,15 @@
 			}
 
 			normalizeWriteWins();
+		}
+	);
+
+	watch(
+		() => properties.auditEnabled,
+		() => {
+			if (!properties.auditEnabled) {
+				properties.auditedOperations.combobox.value = [];
+			}
 		}
 	);
 </script>
@@ -420,8 +454,31 @@
 			{/if}
 		</div>
 
+		<div class="flex items-center justify-between gap-2 rounded border p-2 md:col-span-2">
+			<Label for="audit-enabled">Audit Logging</Label>
+			<Checkbox id="audit-enabled" bind:checked={properties.auditEnabled} />
+		</div>
+
+		<div class="overflow-hidden">
+			{#if properties.auditEnabled}
+				<div class="md:col-span-2" in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
+					<CustomComboBox
+						label="Operations to Audit"
+						placeholder="Select operations"
+						bind:open={properties.auditedOperations.combobox.open}
+						bind:value={properties.auditedOperations.combobox.value}
+						data={properties.auditedOperations.combobox.options}
+						multiple={true}
+						showCount={true}
+						showCountLabel=" operations"
+						classes="flex-1 space-y-1"
+						width="w-full"
+					/>
+				</div>
+			{/if}
+		</div>
+
 		<div class="mt-4 flex justify-end gap-2">
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button onclick={createOrEdit} disabled={saving}>
 				{#if saving}
 					<div class="flex items-center gap-2">

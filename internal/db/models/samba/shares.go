@@ -29,6 +29,8 @@ type SambaShare struct {
 	ReadOnly           bool           `json:"readOnly" gorm:"default:false"`
 	TimeMachine        bool           `json:"timeMachine" gorm:"default:false"`
 	TimeMachineMaxSize uint64         `json:"timeMachineMaxSize" gorm:"default:0"`
+	AuditEnabled       bool           `json:"auditEnabled" gorm:"default:false"`
+	AuditedOperations  []string       `json:"auditedOperations" gorm:"serializer:json;default:'[]'"`
 	CreatedAt          time.Time      `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt          time.Time      `json:"updatedAt" gorm:"autoUpdateTime"`
 }

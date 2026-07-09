@@ -268,6 +268,8 @@ func (s *Service) CreateShare(
 	directoryMask string,
 	timeMachine bool,
 	timeMachineMaxSize uint64,
+	auditEnabled bool,
+	auditedOperations []string,
 ) error {
 	var nameConflictCount int64
 	if err := s.DB.Model(&sambaModels.SambaShare{}).
@@ -356,6 +358,8 @@ func (s *Service) CreateShare(
 		ReadOnly:           !guestWriteable && guestEnabled,
 		TimeMachine:        timeMachine,
 		TimeMachineMaxSize: timeMachineMaxSize,
+		AuditEnabled:       auditEnabled,
+		AuditedOperations:  auditedOperations,
 	}
 
 	tx := s.DB.Begin()
@@ -414,6 +418,8 @@ func (s *Service) UpdateShare(
 	directoryMask string,
 	timeMachine bool,
 	timeMachineMaxSize uint64,
+	auditEnabled bool,
+	auditedOperations []string,
 ) error {
 	var share sambaModels.SambaShare
 	if err := s.DB.
@@ -585,6 +591,8 @@ func (s *Service) UpdateShare(
 	share.ReadOnly = !guestWriteable && guestEnabled
 	share.TimeMachine = timeMachine
 	share.TimeMachineMaxSize = timeMachineMaxSize
+	share.AuditEnabled = auditEnabled
+	share.AuditedOperations = auditedOperations
 
 	if err := tx.Save(&share).Error; err != nil {
 		tx.Rollback()

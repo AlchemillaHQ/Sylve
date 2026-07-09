@@ -1840,7 +1840,6 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -6040,8 +6039,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -15511,3 +15510,15 @@ msgstr "Connected ({0})"
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Idle"
 msgstr "Idle"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Audit Logging"
+msgstr "Audit Logging"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Operations to Audit"
+msgstr "Operations to Audit"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select operations"
+msgstr "Select operations"

@@ -49,6 +49,8 @@ type CreateSambaShareRequest struct {
 	DirectoryMask      string                  `json:"directoryMask"`
 	TimeMachine        *bool                   `json:"timeMachine"`
 	TimeMachineMaxSize *uint64                 `json:"timeMachineMaxSize"`
+	AuditEnabled       *bool                   `json:"auditEnabled"`
+	AuditedOperations  []string                `json:"auditedOperations"`
 }
 
 type UpdateSambaShareRequest struct {
@@ -61,6 +63,8 @@ type UpdateSambaShareRequest struct {
 	DirectoryMask      string                  `json:"directoryMask"`
 	TimeMachine        *bool                   `json:"timeMachine"`
 	TimeMachineMaxSize *uint64                 `json:"timeMachineMaxSize"`
+	AuditEnabled       *bool                   `json:"auditEnabled"`
+	AuditedOperations  []string                `json:"auditedOperations"`
 }
 
 type SambaPrincipalUserResponse struct {
@@ -98,6 +102,8 @@ type SambaShareResponse struct {
 	DirectoryMask      string                   `json:"directoryMask"`
 	TimeMachine        bool                     `json:"timeMachine"`
 	TimeMachineMaxSize uint64                   `json:"timeMachineMaxSize"`
+	AuditEnabled       bool                     `json:"auditEnabled"`
+	AuditedOperations  []string                 `json:"auditedOperations"`
 	CreatedAt          string                   `json:"createdAt"`
 	UpdatedAt          string                   `json:"updatedAt"`
 }
@@ -167,6 +173,8 @@ func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 		DirectoryMask:      share.DirectoryMask,
 		TimeMachine:        share.TimeMachine,
 		TimeMachineMaxSize: share.TimeMachineMaxSize,
+		AuditEnabled:       share.AuditEnabled,
+		AuditedOperations:  share.AuditedOperations,
 		CreatedAt:          share.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:          share.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -265,6 +273,15 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			timeMachineMaxSize = *request.TimeMachineMaxSize
 		}
 
+		auditEnabled := false
+		if request.AuditEnabled != nil {
+			auditEnabled = *request.AuditEnabled
+		}
+
+		if request.AuditedOperations == nil {
+			request.AuditedOperations = []string{}
+		}
+
 		ctx := c.Request.Context()
 		if err := smbService.CreateShare(
 			ctx,
@@ -280,6 +297,8 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.DirectoryMask,
 			timeMachine,
 			timeMachineMaxSize,
+			auditEnabled,
+			request.AuditedOperations,
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
@@ -332,6 +351,15 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			timeMachineMaxSize = *request.TimeMachineMaxSize
 		}
 
+		auditEnabled := false
+		if request.AuditEnabled != nil {
+			auditEnabled = *request.AuditEnabled
+		}
+
+		if request.AuditedOperations == nil {
+			request.AuditedOperations = []string{}
+		}
+
 		ctx := c.Request.Context()
 		if err := smbService.UpdateShare(
 			ctx,
@@ -348,6 +376,8 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.DirectoryMask,
 			timeMachine,
 			timeMachineMaxSize,
+			auditEnabled,
+			request.AuditedOperations,
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",

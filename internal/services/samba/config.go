@@ -453,16 +453,6 @@ func (s *Service) GlobalConfig() (string, error) {
 	if settings.AppleExtensions {
 		config += "min protocol = SMB2\n"
 		config += "ea support = yes\n"
-		config += "vfs objects = fruit streams_xattr full_audit zfsacl\n"
-		config += "fruit:metadata = stream\n"
-		config += "fruit:model = MacSamba\n"
-		config += "fruit:veto_appledouble = no\n"
-		config += "fruit:nfs_aces = no\n"
-		config += "fruit:wipe_intentionally_left_blank_rfork = yes\n"
-		config += "fruit:delete_empty_adfiles = yes\n"
-		config += "fruit:posix_rename = yes\n"
-	} else {
-		config += "vfs objects = full_audit zfsacl\n"
 	}
 	config += "inherit acls = yes\n"
 
@@ -470,6 +460,11 @@ func (s *Service) GlobalConfig() (string, error) {
 }
 
 func (s *Service) ShareConfig(ctx context.Context) (string, error) {
+	settings, err := s.GetGlobalConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Samba settings: %w", err)
+	}
+
 	shares := []sambaModels.SambaShare{}
 	if err := s.DB.
 		Preload("ReadOnlyUsers").
@@ -582,19 +577,46 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 
 		config.WriteString(fmt.Sprintf("\tcreate mask = %s\n", share.CreateMask))
 		config.WriteString(fmt.Sprintf("\tdirectory mask = %s\n", share.DirectoryMask))
+
+		// Per-share VFS objects
+		var vfsObjects []string
+		if settings.AppleExtensions {
+			vfsObjects = append(vfsObjects, "fruit", "streams_xattr")
+		}
+		if share.AuditEnabled && len(share.AuditedOperations) > 0 {
+			vfsObjects = append(vfsObjects, "full_audit")
+		}
+		vfsObjects = append(vfsObjects, "zfsacl")
+		config.WriteString(fmt.Sprintf("\tvfs objects = %s\n", strings.Join(vfsObjects, " ")))
+
+		// Per-share fruit config
+		if settings.AppleExtensions {
+			config.WriteString("\tfruit:metadata = stream\n")
+			config.WriteString("\tfruit:model = MacSamba\n")
+			config.WriteString("\tfruit:veto_appledouble = no\n")
+			config.WriteString("\tfruit:nfs_aces = no\n")
+			config.WriteString("\tfruit:wipe_intentionally_left_blank_rfork = yes\n")
+			config.WriteString("\tfruit:delete_empty_adfiles = yes\n")
+			config.WriteString("\tfruit:posix_rename = yes\n")
+		}
+
 		if share.TimeMachine {
 			config.WriteString("\tfruit:time machine = yes\n")
 			if share.TimeMachineMaxSize > 0 {
 				config.WriteString(fmt.Sprintf("\tfruit:time machine max size = %dG\n", share.TimeMachineMaxSize))
 			}
 		}
-		config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
-		config.WriteString("\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n")
-		config.WriteString("\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n")
-		config.WriteString("\tfull_audit:facility = LOCAL7\n")
-		config.WriteString("\tfull_audit:priority = ALERT\n")
-		config.WriteString("\tfull_audit:syslog = true\n")
-		config.WriteString("\tfull_audit:log_secdesc = true\n")
+
+		// Per-share audit config
+		if share.AuditEnabled && len(share.AuditedOperations) > 0 {
+			config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
+			config.WriteString("\tfull_audit:log = /var/log/samba4/audit.log\n")
+			opsStr := strings.Join(share.AuditedOperations, " ")
+			config.WriteString(fmt.Sprintf("\tfull_audit:success = %s\n", opsStr))
+			config.WriteString(fmt.Sprintf("\tfull_audit:failure = %s\n", opsStr))
+			config.WriteString("\tfull_audit:syslog = false\n")
+			config.WriteString("\tfull_audit:log_secdesc = true\n")
+		}
 
 		config.WriteString("\n\n")
 	}

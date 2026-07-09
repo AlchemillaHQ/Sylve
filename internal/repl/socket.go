@@ -22,7 +22,6 @@ import (
 	"syscall"
 
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/chzyer/readline"
 )
 
 const ConsoleSocketPath = "/var/run/sylve-console.sock"
@@ -125,7 +124,7 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 			return
 		}
 
-		resp := processSocketRequest(ctx, req)
+		resp := processsocketRequest(ctx, req)
 		if err := enc.Encode(resp); err != nil {
 			return
 		}
@@ -136,7 +135,7 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 	}
 }
 
-func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
+func processsocketRequest(ctx *Context, req socketRequest) socketResponse {
 	if strings.TrimSpace(req.Command) == "" {
 		return socketResponse{Error: "command_required"}
 	}
@@ -170,65 +169,11 @@ func tryAttachSocketConsole(socketPath string) (bool, error) {
 	}
 	defer conn.Close()
 
-	if err := runRemoteConsole(conn, os.Stdin, os.Stdout); err != nil {
+	if err := runRemoteConsoleTUI(conn); err != nil {
 		return true, err
 	}
 
 	return true, nil
-}
-
-func runRemoteConsole(conn net.Conn, in io.ReadCloser, out io.Writer) error {
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          "sylve> ",
-		HistoryFile:     replHistoryFile,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-		Stdin:           in,
-		Stdout:          out,
-		Stderr:          out,
-	})
-	if err != nil {
-		return fmt.Errorf("repl_client_init_failed: %w", err)
-	}
-	defer rl.Close()
-
-	fmt.Fprintln(out, "Connected to Sylve daemon REPL. Type `help`.")
-
-	enc := json.NewEncoder(conn)
-	dec := json.NewDecoder(conn)
-
-	for {
-		line, err := rl.Readline()
-		if err != nil {
-			return nil
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if err := enc.Encode(socketRequest{Command: line}); err != nil {
-			return fmt.Errorf("repl_client_send_failed: %w", err)
-		}
-
-		var resp socketResponse
-		if err := dec.Decode(&resp); err != nil {
-			return fmt.Errorf("repl_client_read_failed: %w", err)
-		}
-
-		if resp.Error != "" {
-			fmt.Fprintf(out, "Error: %s\n", resp.Error)
-		}
-
-		if resp.Output != "" {
-			fmt.Fprint(out, resp.Output)
-		}
-
-		if resp.Close {
-			return nil
-		}
-	}
 }
 
 func prepareSocketPath(socketPath string) error {

@@ -9,10 +9,12 @@
 package cmd
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -21,6 +23,7 @@ const (
 )
 
 const Version = "0.2.3"
+
 var Commit = "unknown"
 
 func AsciiArt(w io.Writer) {
@@ -30,43 +33,7 @@ func AsciiArt(w io.Writer) {
 	fmt.Fprintln(w, "  ___) | |_| | |\\ V /  __/")
 	fmt.Fprintln(w, " |____/ \\__, |_| \\_/ \\___|")
 	fmt.Fprintln(w, "        |___/              ")
-	fmt.Fprintf(w, "\t              v%s\n", Version)
-}
-
-type FlagResult struct {
-	ConfigPath  string
-	REPL        bool
-	ShowHelp    bool
-	ShowVersion bool
-}
-
-func newFlagSet(output io.Writer) (*flag.FlagSet, *string, *bool, *bool, *bool, *bool, *bool) {
-	fs := flag.NewFlagSet("sylve", flag.ContinueOnError)
-	fs.SetOutput(output)
-
-	configPath := fs.String("config", "", "path to config file (default: ./config.json, then /usr/local/etc/sylve/config.json)")
-	help := fs.Bool("help", false, "print help and exit")
-	helpShort := fs.Bool("h", false, "print help and exit")
-	version := fs.Bool("version", false, "print version and exit")
-	versionShort := fs.Bool("v", false, "print version and exit")
-	repl := fs.Bool("console", false, "enable interactive command prompt")
-
-	return fs, configPath, help, helpShort, version, versionShort, repl
-}
-
-func ParseFlags(args []string) (FlagResult, error) {
-	fs, configPath, help, helpShort, version, versionShort, repl := newFlagSet(io.Discard)
-
-	if err := fs.Parse(args); err != nil {
-		return FlagResult{}, err
-	}
-
-	return FlagResult{
-		ConfigPath:  *configPath,
-		REPL:        *repl,
-		ShowHelp:    *help || *helpShort,
-		ShowVersion: *version || *versionShort,
-	}, nil
+	fmt.Fprintf(w, "\t\t              v%s\n", Version)
 }
 
 // ResolveConfigPath returns the config file path to use, following this priority:
@@ -93,8 +60,41 @@ func ResolveConfigPath(explicit string) (string, error) {
 		DefaultConfigLocal, DefaultConfigSystem)
 }
 
-func PrintUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage of sylve:")
-	fs, _, _, _, _, _, _ := newFlagSet(w)
-	fs.PrintDefaults()
+var asciiArtBlock = `  ____        _           
+ / ___| _   _| |_   _____ 
+ \___ \| | | | \ \ / / _ \
+  ___) | |_| | |\ V /  __/
+ |____/ \__, |_| \_/ \___|
+        |___/              
+` + "\t              v" + Version
+
+func NewRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) error) *cli.Command {
+	cmd := &cli.Command{
+		Name:    "sylve",
+		Usage:   "FreeBSD management platform",
+		Version: Version,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "config",
+				Usage:   "path to config file (default: ./config.json, then /usr/local/etc/sylve/config.json)",
+				Aliases: []string{"c"},
+			},
+			&cli.BoolFlag{
+				Name:    "console",
+				Usage:   "enable interactive command prompt",
+				Aliases: []string{"con"},
+			},
+		},
+		Commands: []*cli.Command{
+			newNotesCommand(),
+			newJailsCommand(),
+		},
+		CustomRootCommandHelpTemplate: asciiArtBlock + "\n\n" + cli.RootCommandHelpTemplate,
+	}
+
+	if daemonAction != nil {
+		cmd.Action = daemonAction
+	}
+
+	return cmd
 }

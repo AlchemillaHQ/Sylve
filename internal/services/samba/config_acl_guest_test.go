@@ -43,6 +43,17 @@ func newSambaServiceWithMockRunner(t *testing.T) (*Service, *gzfstest.MockRunner
 		Runner: runner,
 	})
 
+	settings := sambaModels.SambaSettings{
+		UnixCharset:        "UTF-8",
+		Workgroup:          "WORKGROUP",
+		ServerString:       "Sylve SMB Server",
+		Interfaces:         "lo0",
+		BindInterfacesOnly: true,
+	}
+	if err := dbConn.Create(&settings).Error; err != nil {
+		t.Fatalf("failed creating default samba settings: %v", err)
+	}
+
 	return &Service{
 		DB:   dbConn,
 		GZFS: client,
@@ -313,6 +324,8 @@ func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected error for guest-only share with principals")
@@ -351,6 +364,8 @@ func TestUpdateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected error for guest-only share with principals")
@@ -383,6 +398,8 @@ func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected ACL enforcement failure")
@@ -436,6 +453,8 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("CreateShare failed: %v", err)

@@ -54,43 +54,41 @@ import (
 	sysU "github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
-	cmd.AsciiArt(os.Stdout)
+	rootCmd := cmd.NewRootCommand(daemonAction)
 
-	cfgResult, err := cmd.ParseFlags(os.Args[1:])
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
+	if err := rootCmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
 	}
+}
 
-	if cfgResult.ShowHelp {
-		cmd.PrintUsage(os.Stdout)
-		return
-	}
+func daemonAction(ctx context.Context, c *cli.Command) error {
+	configPath := c.String("config")
+	console := c.Bool("console")
 
-	if cfgResult.ShowVersion {
-		return
+	if !console {
+		cmd.AsciiArt(os.Stdout)
 	}
 
 	if !sysU.IsRoot() {
 		logger.BootstrapFatal("Root privileges required!")
 	}
 
-	startLocalSylve, attachErr := shouldStartLocalSylve(cfgResult.REPL, repl.TryAttachSocketConsole)
+	startLocalSylve, attachErr := shouldStartLocalSylve(console, repl.TryAttachSocketConsole)
 	if attachErr != nil {
-		fmt.Fprintf(os.Stderr, "Failed to attach to running Sylve console: %v\n", attachErr)
-		os.Exit(1)
+		return fmt.Errorf("failed to attach to running Sylve console: %w", attachErr)
 	}
 	if !startLocalSylve {
-		return
+		return nil
 	}
 
-	resolvedConfigPath, err := cmd.ResolveConfigPath(cfgResult.ConfigPath)
+	resolvedConfigPath, err := cmd.ResolveConfigPath(configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	cfg := config.ParseConfig(resolvedConfigPath)
@@ -304,8 +302,10 @@ func main() {
 
 	replCtx := &repl.Context{
 		Auth:           aS.(*auth.Service),
+		Info:           iS.(*info.Service),
 		Jail:           jailSvc,
 		VirtualMachine: libvirtSvc,
+		Lifecycle:      lifecycleSvc,
 		Network:        nS.(*networkService.Service),
 		QuitChan:       sigChan,
 	}
@@ -322,7 +322,7 @@ func main() {
 		}
 	}()
 
-	if cfgResult.REPL {
+	if console {
 		go repl.Start(replCtx)
 	}
 
@@ -446,4 +446,5 @@ func main() {
 
 	wg.Wait()
 	logger.L.Info().Msg("Servers exited properly")
+	return nil
 }

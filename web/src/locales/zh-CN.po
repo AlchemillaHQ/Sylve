@@ -1840,7 +1840,6 @@ msgstr "您确定吗？"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -6040,7 +6039,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -15484,4 +15483,16 @@ msgstr ""
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Idle"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Audit Logging"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Operations to Audit"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select operations"
 msgstr ""

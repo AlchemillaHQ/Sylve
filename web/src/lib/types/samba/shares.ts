@@ -36,6 +36,8 @@ export const SambaShareSchema = z.object({
     directoryMask: z.string(),
     timeMachine: z.boolean().default(false),
     timeMachineMaxSize: z.number().default(0),
+    auditEnabled: z.boolean().default(false),
+    auditedOperations: z.array(z.string()).default([]),
     createdAt: z.string(),
     updatedAt: z.string()
 });
