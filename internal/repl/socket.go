@@ -124,7 +124,7 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 			return
 		}
 
-		resp := processsocketRequest(ctx, req)
+		resp := processSocketRequest(ctx, req)
 		if err := enc.Encode(resp); err != nil {
 			return
 		}
@@ -135,7 +135,7 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 	}
 }
 
-func processsocketRequest(ctx *Context, req socketRequest) socketResponse {
+func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 	if strings.TrimSpace(req.Command) == "" {
 		return socketResponse{Error: "command_required"}
 	}

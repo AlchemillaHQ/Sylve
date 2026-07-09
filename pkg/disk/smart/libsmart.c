@@ -79,7 +79,7 @@ static int32_t __smart_read_pages(smart_h h, smart_buf_t *sb);
 
 static void __smart_map_self_test_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm, uint8_t log_addr);
 
-static void __smart_map_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm);
+static void __smart_map_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm, uint8_t log_addr);
 
 static void __smart_map_nvme_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm);
 
@@ -176,7 +176,7 @@ smart_read(smart_h h)
 			goto smart_read_out;
 		}
 
-		if (__smart_read_pages(s, sb) < 0) {
+		if (__smart_read_pages(s, sb) != 0) {
 			goto smart_read_out;
 		}
 
@@ -232,7 +232,7 @@ smart_read_log(smart_h h, uint8_t log_addr, size_t size)
 			return NULL;
 		}
 
-		if (device_read_smart_log(h, log_addr, sb->b, size) < 0) {
+		if (device_read_smart_log(h, log_addr, sb->b, size) != 0) {
 			free(sb->b);
 			free(sb);
 			return NULL;
@@ -252,9 +252,9 @@ smart_read_log(smart_h h, uint8_t log_addr, size_t size)
 				if (s->protocol == SMART_PROTO_NVME)
 					__smart_map_nvme_error_log(s, sb, sm);
 				else
-					__smart_map_error_log(s, sb, sm);
+					__smart_map_error_log(s, sb, sm, log_addr);
 			} else if (log_addr == GPL_ADDR_EXT_ERROR_LOG) {
-				__smart_map_error_log(s, sb, sm);
+				__smart_map_error_log(s, sb, sm, log_addr);
 			} else if (log_addr == GPL_ADDR_EXT_SELF_TEST_LOG) {
 				__smart_map_self_test_log(s, sb, sm, log_addr);
 			} else if (log_addr == GPL_ADDR_SCT_STATUS) {
@@ -304,7 +304,7 @@ smart_read_gpl_log(smart_h h, uint8_t logaddr, uint8_t page, size_t size)
 			return NULL;
 		}
 
-		if (device_read_log_ext(h, logaddr, page, sb->b, size) < 0) {
+		if (device_read_log_ext(h, logaddr, page, sb->b, size) != 0) {
 			free(sb->b);
 			free(sb);
 			return NULL;
@@ -357,7 +357,7 @@ smart_read_sct_temp_history(smart_h h)
 	raw = calloc(1, 512);
 	if (!raw)
 		return NULL;
-	if (device_read_smart_log(h, GPL_ADDR_SCT_STATUS, raw, 512) < 0) {
+	if (device_read_smart_log(h, GPL_ADDR_SCT_STATUS, raw, 512) != 0) {
 		free(raw);
 		return NULL;
 	}
@@ -388,7 +388,7 @@ smart_read_sct_temp_history(smart_h h)
 	cmd_buf[2] = 1;   cmd_buf[3] = 0;   /* function_code */
 	cmd_buf[4] = 2;   cmd_buf[5] = 0;   /* table_id */
 
-	if (device_write_smart_log(h, GPL_ADDR_SCT_STATUS, cmd_buf, 512) < 0) {
+	if (device_write_smart_log(h, GPL_ADDR_SCT_STATUS, cmd_buf, 512) != 0) {
 		free(cmd_buf);
 		free(raw);
 		return NULL;
@@ -399,7 +399,7 @@ smart_read_sct_temp_history(smart_h h)
 	 * Step 3: Read temperature history via SMART READ LOG 0xE1.
 	 */
 	memset(raw, 0, 512);
-	if (device_read_smart_log(h, GPL_ADDR_SCT_TEMP_HIST, raw, 512) < 0) {
+	if (device_read_smart_log(h, GPL_ADDR_SCT_TEMP_HIST, raw, 512) != 0) {
 		free(raw);
 		return NULL;
 	}
@@ -412,7 +412,7 @@ smart_read_sct_temp_history(smart_h h)
 		free(raw);
 		return NULL;
 	}
-	if (device_read_smart_log(h, GPL_ADDR_SCT_STATUS, cmd_buf, 512) < 0) {
+	if (device_read_smart_log(h, GPL_ADDR_SCT_STATUS, cmd_buf, 512) != 0) {
 		free(cmd_buf);
 		free(raw);
 		return NULL;
@@ -1206,31 +1206,40 @@ __smart_map_self_test_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm, uint8_t 
 }
 
 static void
-__smart_map_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm)
+__smart_map_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm, uint8_t log_addr)
 {
 	uint8_t *b = sb->b;
 	uint32_t a = 0;
 	uint8_t err_idx;
 	int i;
+	uint32_t entry_size = 90;
+	uint32_t max_entries = 5;
+	uint32_t header_size = 2;
 
 	sm->count = 0;
 
 	if (sb->bsize < 512)
 		return;
 
-	err_idx = b[1];
+	if (log_addr == GPL_ADDR_EXT_ERROR_LOG) {
+		entry_size = 124;
+		max_entries = 4;
+		header_size = 4;
+	}
 
-	for (i = 0; i < 5 && a < 30; i++) {
-		int entry_idx = (err_idx + i) % 5;
-		uint8_t *entry = b + 2 + (entry_idx * 90);
+	err_idx = b[header_size - 1];
+
+	for (i = 0; i < (int)max_entries && a < 30; i++) {
+		int entry_idx = (err_idx + i) % max_entries;
+		uint8_t *entry = b + header_size + (entry_idx * entry_size);
 
 		if (entry[0] == 0 && entry[2] == 0)
 			continue;
 
-		sm->attr[a].page = LOG_ADDR_ERROR_LOG;
+		sm->attr[a].page = log_addr;
 		sm->attr[a].id = i;
 		sm->attr[a].description = "ATA Error";
-		sm->attr[a].bytes = 90;
+		sm->attr[a].bytes = entry_size;
 		sm->attr[a].flags = 0;
 		sm->attr[a].raw = entry;
 		sm->attr[a].thresh = NULL;
@@ -1246,7 +1255,7 @@ __smart_map_nvme_error_log(smart_t *s, smart_buf_t *sb, smart_map_t *sm)
 	uint8_t *b = sb->b;
 	uint32_t a = 0;
 	uint32_t entry_size = 64;
-	uint32_t max_entries = 5;
+	uint32_t max_entries = 64;
 	uint32_t i;
 
 	sm->count = 0;

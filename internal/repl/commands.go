@@ -25,6 +25,7 @@ var commands = []cmdHelp{
 	{"ping", "Check server connectivity"},
 	{"notes", "Manage notes"},
 	{"jails", "Manage jails"},
+	{"vms", "Manage virtual machines"},
 	{"quit/exit", "Exit console session"},
 	{"shutdown", "Shutdown Sylve"},
 }
@@ -49,6 +50,9 @@ func ExecuteLine(ctx *Context, line string) bool {
 
 	case "jails":
 		handleJails(ctx, args)
+
+	case "vms":
+		handleVms(ctx, args)
 
 	case "help":
 		printHelp(ctx)

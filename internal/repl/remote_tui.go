@@ -102,7 +102,7 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case remoteResponse:
 		if msg.err != "" {
-			m.messages = append(m.messages, styledErrorf(msg.err))
+			m.messages = append(m.messages, styledErrorf("%s", msg.err))
 		}
 		if msg.output != "" {
 			m.messages = append(m.messages, msg.output)

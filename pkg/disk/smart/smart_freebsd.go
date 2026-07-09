@@ -272,7 +272,7 @@ func Read(devicePath string) (*DeviceInfo, error) {
 						info.PowerOnHours = int(poh)
 					}
 				}
-				if pct, ok := parseSCSILogParamUint64(attr.RawBytes, 0x0001); ok && pct > 0 {
+				if pct, ok := parseSCSILogParamUint64(attr.RawBytes, 0x0001); ok {
 					used := int(pct)
 					if used > 100 {
 						used = 100
