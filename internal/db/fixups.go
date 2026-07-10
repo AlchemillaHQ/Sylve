@@ -9,6 +9,7 @@
 package db
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -23,6 +24,10 @@ import (
 )
 
 func Fixups(db *gorm.DB) error {
+	if err := enforceBasicSettingsSingleton(db); err != nil {
+		return err
+	}
+
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
 	backfillVMStorageEnableDefaults(db)
@@ -40,6 +45,70 @@ func Fixups(db *gorm.DB) error {
 	seedMdnsSettings(db)
 	preserveAppleExtensionsToMdns(db)
 	cleanupStaleAvahi(db)
+
+	return nil
+}
+
+func enforceBasicSettingsSingleton(db *gorm.DB) error {
+	const indexName = "idx_basic_settings_singleton"
+
+	if !db.Migrator().HasTable(&authModels.BasicSettings{}) {
+		return fmt.Errorf("basic settings table does not exist")
+	}
+
+	var duplicatesRemoved int64
+	normalizedID := false
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var settings []authModels.BasicSettings
+		if err := tx.
+			Order("initialized DESC").
+			Order("restarted DESC").
+			Order("id ASC").
+			Find(&settings).Error; err != nil {
+			return fmt.Errorf("failed to read basic settings: %w", err)
+		}
+
+		if len(settings) > 0 {
+			keep := settings[0]
+			deleteResult := tx.Where("id <> ?", keep.ID).Delete(&authModels.BasicSettings{})
+			if deleteResult.Error != nil {
+				return fmt.Errorf("failed to remove duplicate basic settings: %w", deleteResult.Error)
+			}
+			duplicatesRemoved = deleteResult.RowsAffected
+
+			if keep.ID != 1 {
+				updateResult := tx.Model(&authModels.BasicSettings{}).
+					Where("id = ?", keep.ID).
+					UpdateColumn("id", 1)
+				if updateResult.Error != nil {
+					return fmt.Errorf("failed to normalize basic settings ID: %w", updateResult.Error)
+				}
+				if updateResult.RowsAffected != 1 {
+					return fmt.Errorf("failed to normalize basic settings ID: expected one row, updated %d", updateResult.RowsAffected)
+				}
+				normalizedID = true
+			}
+		}
+
+		if err := tx.Exec(
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON basic_settings ((1))", indexName),
+		).Error; err != nil {
+			return fmt.Errorf("failed to create basic settings singleton index: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if duplicatesRemoved > 0 || normalizedID {
+		logger.L.Warn().
+			Int64("duplicates_removed", duplicatesRemoved).
+			Bool("normalized_id", normalizedID).
+			Msg("Repaired basic settings singleton")
+	}
 
 	return nil
 }

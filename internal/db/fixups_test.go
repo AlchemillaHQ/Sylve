@@ -220,6 +220,49 @@ func TestDropSambaSharePathUniqueIndexDropsLegacyPathUniqueness(t *testing.T) {
 	}
 }
 
+func TestEnforceBasicSettingsSingletonRepairsAndConstrainsRows(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+
+	settings := []models.BasicSettings{
+		{ID: 1, Pools: []string{"old"}, Initialized: false, Restarted: false},
+		{ID: 2, Pools: []string{"zroot"}, Initialized: true, Restarted: false},
+		{ID: 3, Pools: []string{"tank"}, Initialized: true, Restarted: true},
+	}
+	if err := dbConn.Create(&settings).Error; err != nil {
+		t.Fatalf("failed creating duplicate basic settings fixtures: %v", err)
+	}
+
+	if err := enforceBasicSettingsSingleton(dbConn); err != nil {
+		t.Fatalf("failed enforcing basic settings singleton: %v", err)
+	}
+
+	var repaired []models.BasicSettings
+	if err := dbConn.Find(&repaired).Error; err != nil {
+		t.Fatalf("failed reading repaired basic settings: %v", err)
+	}
+	if len(repaired) != 1 {
+		t.Fatalf("expected one repaired basic settings row, got %d", len(repaired))
+	}
+	if repaired[0].ID != 1 {
+		t.Fatalf("expected repaired row to use ID 1, got %d", repaired[0].ID)
+	}
+	if !repaired[0].Initialized || !repaired[0].Restarted {
+		t.Fatalf("expected the most complete settings row to be retained, got %+v", repaired[0])
+	}
+	if len(repaired[0].Pools) != 1 || repaired[0].Pools[0] != "tank" {
+		t.Fatalf("expected the selected row's settings to be retained, got %v", repaired[0].Pools)
+	}
+
+	duplicate := models.BasicSettings{ID: 2, Initialized: true}
+	if err := dbConn.Create(&duplicate).Error; err == nil {
+		t.Fatal("expected singleton index to reject a second basic settings row")
+	}
+
+	if err := enforceBasicSettingsSingleton(dbConn); err != nil {
+		t.Fatalf("expected singleton enforcement to be idempotent, got %v", err)
+	}
+}
+
 func TestBackfillTemplateSourceGuestIDsBackfillsOnlyUnambiguousMatches(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(
 		t,

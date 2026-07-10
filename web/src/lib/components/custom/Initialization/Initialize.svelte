@@ -51,29 +51,37 @@
 
 	let properties = $state(options);
 	let shownErrors = $state([] as string[]);
+	let initializing = $state(false);
 
 	async function startInit() {
-		const pools = properties.pools.combobox.values;
-		const services = [] as AvailableService[];
-		if (properties.services.virtualization) services.push('virtualization');
-		if (properties.services.jails) services.push('jails');
-		if (properties.services.sambaServer) services.push('samba-server');
-		if (properties.services.dhcpServer) services.push('dhcp-server');
-		if (properties.services.wolServer) services.push('wol-server');
-		if (properties.services.firewall) services.push('firewall');
-		if (properties.services.wireguard) services.push('wireguard');
+		if (initializing) return;
 
-		const errors = await initialize(pools, services);
-		if (errors.length === 0) {
-			shownErrors = [];
-			toast.success('Sylve initialized', {
-				position: 'bottom-center'
-			});
+		initializing = true;
+		try {
+			const pools = properties.pools.combobox.values;
+			const services = [] as AvailableService[];
+			if (properties.services.virtualization) services.push('virtualization');
+			if (properties.services.jails) services.push('jails');
+			if (properties.services.sambaServer) services.push('samba-server');
+			if (properties.services.dhcpServer) services.push('dhcp-server');
+			if (properties.services.wolServer) services.push('wol-server');
+			if (properties.services.firewall) services.push('firewall');
+			if (properties.services.wireguard) services.push('wireguard');
 
-			initialized = true;
-		} else {
-			reload = true;
-			shownErrors = errors;
+			const errors = await initialize(pools, services);
+			if (errors.length === 0) {
+				shownErrors = [];
+				toast.success('Sylve initialized', {
+					position: 'bottom-center'
+				});
+
+				initialized = true;
+			} else {
+				reload = true;
+				shownErrors = errors;
+			}
+		} finally {
+			initializing = false;
 		}
 	}
 </script>
@@ -174,7 +182,9 @@
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={startInit} type="submit" size="sm">Initialize</Button>
+					<Button onclick={startInit} type="button" size="sm" disabled={initializing}>
+						Initialize
+					</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>

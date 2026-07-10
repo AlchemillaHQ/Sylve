@@ -24,6 +24,7 @@ var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
 type Service struct {
 	DB          *gorm.DB
+	initMutex   sync.Mutex
 	syncMutex   sync.Mutex
 	achMutex    sync.Mutex
 	GZFS        *gzfs.Client

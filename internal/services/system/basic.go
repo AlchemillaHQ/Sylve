@@ -43,6 +43,9 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 }
 
 func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.InitializeRequest) []error {
+	s.initMutex.Lock()
+	defer s.initMutex.Unlock()
+
 	var basicSettings models.BasicSettings
 	err := s.DB.First(&basicSettings).Error
 
@@ -50,7 +53,7 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return []error{err}
 		}
-		basicSettings = models.BasicSettings{}
+		basicSettings = models.BasicSettings{ID: 1}
 	}
 
 	if basicSettings.Initialized {
@@ -149,6 +152,10 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 	basicSettings.Restarted = false
 
 	if err := s.DB.Create(&basicSettings).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return []error{fmt.Errorf("system_already_initialized")}
+		}
+
 		return []error{fmt.Errorf("failed_to_create_basic_settings: %w", err)}
 	}
 
