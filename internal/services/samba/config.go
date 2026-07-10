@@ -649,7 +649,8 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 		if settings.AppleExtensions {
 			config.WriteString("\tfruit:metadata = stream\n")
 			config.WriteString("\tfruit:model = MacSamba\n")
-			config.WriteString("\tfruit:veto_appledouble = no\n")
+			config.WriteString("\tfruit:veto_appledouble = yes\n")
+			config.WriteString("\tfruit:convert_adouble = no\n")
 			config.WriteString("\tfruit:nfs_aces = no\n")
 			config.WriteString("\tfruit:wipe_intentionally_left_blank_rfork = yes\n")
 			config.WriteString("\tfruit:delete_empty_adfiles = yes\n")

@@ -309,6 +309,47 @@ func TestShareConfigBestEffortWhenACLPropertySetFails(t *testing.T) {
 	}
 }
 
+func TestShareConfigAppleExtensionsDoNotConvertAppleDoubleFiles(t *testing.T) {
+	svc, runner := newSambaServiceWithMockRunner(t)
+	ctx := context.Background()
+
+	var settings sambaModels.SambaSettings
+	if err := svc.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed loading samba settings: %v", err)
+	}
+	settings.AppleExtensions = true
+	if err := svc.DB.Save(&settings).Error; err != nil {
+		t.Fatalf("failed enabling Apple extensions: %v", err)
+	}
+
+	share := sambaModels.SambaShare{
+		Name:          "backups",
+		Dataset:       "guid-backups",
+		GuestOk:       true,
+		CreateMask:    "0664",
+		DirectoryMask: "2775",
+	}
+	if err := svc.DB.Create(&share).Error; err != nil {
+		t.Fatalf("failed creating share: %v", err)
+	}
+
+	addDatasetLookupMocks(t, runner, []mockDataset{
+		{Name: "tank/backups", GUID: "guid-backups", Mountpoint: "/mnt/backups"},
+	})
+	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/backups", "", "", nil)
+
+	cfg, err := svc.ShareConfig(ctx)
+	if err != nil {
+		t.Fatalf("ShareConfig failed: %v", err)
+	}
+	if !strings.Contains(cfg, "\tfruit:veto_appledouble = yes\n") {
+		t.Fatalf("expected AppleDouble sidecars to be vetoed, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "\tfruit:convert_adouble = no\n") {
+		t.Fatalf("expected AppleDouble conversion to be disabled, got:\n%s", cfg)
+	}
+}
+
 func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 	svc, _ := newSambaServiceWithMockRunner(t)
 

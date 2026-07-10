@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -12,8 +13,8 @@ import (
 )
 
 var (
-	IPv4LinkLocalMulticast    = net.ParseIP("224.0.0.251")
-	IPv6LinkLocalMulticast    = net.ParseIP("ff02::fb")
+	IPv4LinkLocalMulticast = net.ParseIP("224.0.0.251")
+	IPv6LinkLocalMulticast = net.ParseIP("ff02::fb")
 
 	AddrIPv4LinkLocalMulticast = &net.UDPAddr{
 		IP:   IPv4LinkLocalMulticast,
@@ -87,11 +88,15 @@ type MDNSConn interface {
 }
 
 type mdnsConn struct {
-	ipv4     *ipv4.PacketConn
-	ipv6     *ipv6.PacketConn
-	udpConn4 *net.UDPConn
-	udpConn6 *net.UDPConn
-	ch       chan *Request
+	ipv4      *ipv4.PacketConn
+	ipv6      *ipv6.PacketConn
+	udpConn4  *net.UDPConn
+	udpConn6  *net.UDPConn
+	ch        chan *Request
+	closed    chan struct{}
+	readOnce  sync.Once
+	closeOnce sync.Once
+	readWG    sync.WaitGroup
 }
 
 func NewMDNSConn() (MDNSConn, error) {
@@ -115,9 +120,12 @@ func (c *mdnsConn) Read(ctx context.Context) <-chan *Request {
 }
 
 func (c *mdnsConn) Drain(ctx context.Context) {
+	ch := c.Read(ctx)
 	for {
 		select {
-		case <-c.Read(ctx):
+		case <-ctx.Done():
+			return
+		case <-ch:
 		default:
 			return
 		}
@@ -138,35 +146,39 @@ func newMDNSConn(ifs ...string) (*mdnsConn, error) {
 		errs = append(errs, err)
 	}
 
-	connIPv4 = ipv4.NewPacketConn(conn4)
-	if err := connIPv4.SetControlMessage(ipv4.FlagInterface, true); err != nil {
-	}
-	if err := connIPv4.SetMulticastLoopback(true); err != nil {
-	}
-	if err := connIPv4.SetTTL(255); err != nil {
-	}
-	if err := connIPv4.SetMulticastTTL(255); err != nil {
-	}
+	if conn4 != nil {
+		connIPv4 = ipv4.NewPacketConn(conn4)
+		if err := connIPv4.SetControlMessage(ipv4.FlagInterface, true); err != nil {
+		}
+		if err := connIPv4.SetMulticastLoopback(true); err != nil {
+		}
+		if err := connIPv4.SetTTL(255); err != nil {
+		}
+		if err := connIPv4.SetMulticastTTL(255); err != nil {
+		}
 
-	for _, iface := range MulticastInterfaces(ifs...) {
-		connIPv4.JoinGroup(iface, &net.UDPAddr{IP: IPv4LinkLocalMulticast})
+		for _, iface := range MulticastInterfaces(ifs...) {
+			connIPv4.JoinGroup(iface, &net.UDPAddr{IP: IPv4LinkLocalMulticast})
+		}
 	}
 
 	conn6, err := net.ListenUDP("udp6", AddrIPv6LinkLocalMulticast)
 	if err != nil {
 		errs = append(errs, err)
 	}
-	connIPv6 = ipv6.NewPacketConn(conn6)
-	if err := connIPv6.SetControlMessage(ipv6.FlagInterface, true); err != nil {
-	}
-	if err := connIPv6.SetMulticastLoopback(true); err != nil {
-	}
-	if err := connIPv6.SetHopLimit(255); err != nil {
-	}
-	if err := connIPv6.SetMulticastHopLimit(255); err != nil {
-	}
-	for _, iface := range MulticastInterfaces(ifs...) {
-		connIPv6.JoinGroup(iface, &net.UDPAddr{IP: IPv6LinkLocalMulticast})
+	if conn6 != nil {
+		connIPv6 = ipv6.NewPacketConn(conn6)
+		if err := connIPv6.SetControlMessage(ipv6.FlagInterface, true); err != nil {
+		}
+		if err := connIPv6.SetMulticastLoopback(true); err != nil {
+		}
+		if err := connIPv6.SetHopLimit(255); err != nil {
+		}
+		if err := connIPv6.SetMulticastHopLimit(255); err != nil {
+		}
+		for _, iface := range MulticastInterfaces(ifs...) {
+			connIPv6.JoinGroup(iface, &net.UDPAddr{IP: IPv6LinkLocalMulticast})
+		}
 	}
 
 	if err := first(errs...); connIPv4 == nil && connIPv6 == nil {
@@ -179,49 +191,57 @@ func newMDNSConn(ifs ...string) (*mdnsConn, error) {
 		udpConn4: conn4,
 		udpConn6: conn6,
 		ch:       make(chan *Request),
+		closed:   make(chan struct{}),
 	}, nil
 }
 
 func (c *mdnsConn) close() {
-	if c.ipv4 != nil {
-		c.ipv4.Close()
-	}
+	c.closeOnce.Do(func() {
+		close(c.closed)
 
-	if c.ipv6 != nil {
-		c.ipv6.Close()
-	}
+		if c.ipv4 != nil {
+			c.ipv4.Close()
+		}
 
-	if c.udpConn4 != nil {
-		c.udpConn4.Close()
-	}
+		if c.ipv6 != nil {
+			c.ipv6.Close()
+		}
 
-	if c.udpConn6 != nil {
-		c.udpConn6.Close()
-	}
+		if c.udpConn4 != nil {
+			c.udpConn4.Close()
+		}
+
+		if c.udpConn6 != nil {
+			c.udpConn6.Close()
+		}
+	})
 }
 
 func (c *mdnsConn) read(ctx context.Context) <-chan *Request {
-	c.readInto(ctx, c.ch)
+	c.readOnce.Do(func() {
+		go func() {
+			select {
+			case <-ctx.Done():
+				c.close()
+			case <-c.closed:
+			}
+		}()
+
+		c.readInto(ctx, c.ch)
+	})
 	return c.ch
 }
 
 func (c *mdnsConn) readInto(ctx context.Context, ch chan *Request) {
-
-	isDone := func(ctx context.Context) bool {
-		return ctx.Err() != nil
-	}
-
 	if c.ipv4 != nil {
+		c.readWG.Add(1)
 		go func() {
+			defer c.readWG.Done()
 			buf := make([]byte, 65536)
 			for {
-				if isDone(ctx) {
-					return
-				}
-
 				n, cm, from, err := c.ipv4.ReadFrom(buf)
 				if err != nil {
-					continue
+					return
 				}
 
 				udpAddr, ok := from.(*net.UDPAddr)
@@ -245,7 +265,13 @@ func (c *mdnsConn) readInto(ctx context.Context, ch chan *Request) {
 				if n > 0 {
 					m := new(dns.Msg)
 					if err := m.Unpack(buf); err == nil && !shouldIgnore(m) {
-						ch <- &Request{m, udpAddr, iface}
+						select {
+						case ch <- &Request{m, udpAddr, iface}:
+						case <-ctx.Done():
+							return
+						case <-c.closed:
+							return
+						}
 					}
 				}
 			}
@@ -253,16 +279,14 @@ func (c *mdnsConn) readInto(ctx context.Context, ch chan *Request) {
 	}
 
 	if c.ipv6 != nil {
+		c.readWG.Add(1)
 		go func() {
+			defer c.readWG.Done()
 			buf := make([]byte, 65536)
 			for {
-				if isDone(ctx) {
-					return
-				}
-
 				n, cm, from, err := c.ipv6.ReadFrom(buf)
 				if err != nil {
-					continue
+					return
 				}
 
 				udpAddr, ok := from.(*net.UDPAddr)
@@ -286,7 +310,13 @@ func (c *mdnsConn) readInto(ctx context.Context, ch chan *Request) {
 				if n > 0 {
 					m := new(dns.Msg)
 					if err := m.Unpack(buf); err == nil && !shouldIgnore(m) {
-						ch <- &Request{m, udpAddr, iface}
+						select {
+						case ch <- &Request{m, udpAddr, iface}:
+						case <-ctx.Done():
+							return
+						case <-c.closed:
+							return
+						}
 					}
 				}
 			}
