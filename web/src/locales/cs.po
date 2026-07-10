@@ -1846,6 +1846,7 @@ msgstr "Opravdu to chcete?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -3529,7 +3530,6 @@ msgid "OOB Restore"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
-#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -16274,4 +16274,30 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 msgid "Select or enter a cron expression"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Failed to dismiss notifications"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Dismiss All"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Dismiss all notifications?"
+msgstr ""
+
+#. 0: count; 1: count === 1 ? '' \\: 's'
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "This will dismiss all {0} active notification{1}."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "<0/> Dismissing"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification - Dismiss All"
 msgstr ""

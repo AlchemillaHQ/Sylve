@@ -28,6 +28,10 @@ export const NotificationsCountSchema = z.object({
 	active: z.number()
 });
 
+export const NotificationsDismissAllSchema = z.object({
+	dismissed: z.number()
+});
+
 export const NotificationConfigSchema = z.object({
 	transports: z.array(
 		z.object({
@@ -99,6 +103,7 @@ export const NotificationRulesConfigSchema = z.object({
 export type Notification = z.infer<typeof NotificationSchema>;
 export type NotificationsList = z.infer<typeof NotificationsListSchema>;
 export type NotificationsCount = z.infer<typeof NotificationsCountSchema>;
+export type NotificationsDismissAll = z.infer<typeof NotificationsDismissAllSchema>;
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 export type NotificationRule = z.infer<typeof NotificationRuleSchema>;
 export type NotificationRuleTemplateTarget = z.infer<typeof NotificationRuleTemplateTargetSchema>;

@@ -1,10 +1,12 @@
 <script lang="ts">
 	import {
+		dismissAllNotifications,
 		dismissNotification,
 		getNotificationsCount,
 		listNotifications
 	} from '$lib/api/notifications';
 	import ModalTable from '$lib/components/custom/ModalTable.svelte';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { reload } from '$lib/stores/api.svelte';
@@ -27,6 +29,8 @@
 	let open = $state(false);
 	let showDismissed = $state(false);
 	let dismissing = $state<number | null>(null);
+	let dismissAllOpen = $state(false);
+	let dismissingAll = $state(false);
 
 	const notificationCount = resource(
 		() => 'notification-bell-count',
@@ -88,12 +92,8 @@
 		}
 	});
 
-	async function refresh() {
-		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
-	}
-
 	async function dismiss(item: Notification) {
-		if (!item?.id || dismissing !== null) {
+		if (!item?.id || dismissing !== null || dismissingAll) {
 			return;
 		}
 
@@ -112,6 +112,32 @@
 
 		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
 		toast.success('Notification dismissed', {
+			duration: 3000,
+			position: 'bottom-center'
+		});
+	}
+
+	async function dismissAll() {
+		if (dismissingAll || count === 0) {
+			return;
+		}
+
+		dismissingAll = true;
+		const response = await dismissAllNotifications();
+		dismissingAll = false;
+
+		if (isAPIResponse(response)) {
+			handleAPIError(response);
+			toast.error('Failed to dismiss notifications', {
+				duration: 4000,
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		dismissAllOpen = false;
+		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
+		toast.success(`${response.dismissed} notification${response.dismissed === 1 ? '' : 's'} dismissed`, {
 			duration: 3000,
 			position: 'bottom-center'
 		});
@@ -204,11 +230,28 @@
 	}
 
 	const notificationColumns: ColumnDefinition[] = [
+		{
+			title: 'Action',
+			field: 'dismissedAt',
+			minWidth: 90,
+			frozen: true,
+			hozAlign: 'center',
+			headerHozAlign: 'center',
+			vertAlign: 'top',
+			formatter: dismissFormatter
+		},
+		{
+			title: 'Count',
+			field: 'occurrenceCount',
+			minWidth: 75,
+			hozAlign: 'left',
+			headerHozAlign: 'left'
+		},
 		{ title: 'Severity', field: 'severity', minWidth: 120, formatter: severityFormatter },
 		{
 			title: 'Notification',
 			field: 'notification',
-			minWidth: 220,
+			minWidth: 420,
 			widthGrow: 3,
 			variableHeight: true,
 			formatter: notificationFormatter
@@ -221,21 +264,6 @@
 			cssClass: 'text-xs',
 			formatter: (cell: CellComponent) => convertDbTime(String(cell.getValue()))
 		},
-		{
-			title: 'Count',
-			field: 'occurrenceCount',
-			minWidth: 75,
-			hozAlign: 'right',
-			headerHozAlign: 'right'
-		},
-		{
-			title: 'Action',
-			field: 'dismissedAt',
-			minWidth: 90,
-			hozAlign: 'center',
-			headerHozAlign: 'center',
-			formatter: dismissFormatter
-		}
 	];
 
 	let tableRows = $derived(
@@ -247,7 +275,7 @@
 			lastOccurredAt: item.lastOccurredAt,
 			occurrenceCount: item.occurrenceCount,
 			dismissedAt: item.dismissedAt,
-			dismissing: dismissing !== null
+			dismissing: dismissing !== null || dismissingAll
 		}))
 	);
 </script>
@@ -303,10 +331,43 @@
 
 		<Dialog.Footer class="flex items-center !justify-between">
 			<CustomCheckbox label="Show Dismissed" bind:checked={showDismissed} />
-			<Button variant="outline" class="h-7" onclick={refresh}>Refresh</Button>
+			<Button
+				variant="destructive"
+				class="h-7"
+				disabled={count === 0 || dismissingAll}
+				onclick={() => (dismissAllOpen = true)}
+			>
+				Dismiss All
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog.Root bind:open={dismissAllOpen}>
+	<AlertDialog.Content onInteractOutside={(event) => event.preventDefault()} class="p-5">
+		<AlertDialog.Header>
+			<AlertDialog.Title>Dismiss all notifications?</AlertDialog.Title>
+			<AlertDialog.Description>
+				This will dismiss all {count} active notification{count === 1 ? '' : 's'}.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={dismissingAll}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				class="bg-destructive text-white hover:bg-destructive/90"
+				disabled={count === 0 || dismissingAll}
+				onclick={dismissAll}
+			>
+				{#if dismissingAll}
+					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+					Dismissing
+				{:else}
+					Dismiss All
+				{/if}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 <style>
 	:global(
@@ -316,5 +377,32 @@
 			.tabulator-placeholder-contents
 	) {
 		color: var(--muted-foreground);
+	}
+
+	:global(.s-modal-table-container .tabulator-header .tabulator-col.tabulator-frozen-left) {
+		border-right: none;
+		background-color: var(--muted) !important;
+	}
+
+	:global(
+		.s-modal-table-container
+			.tabulator-table
+			.tabulator-row
+			.tabulator-cell.tabulator-frozen.tabulator-frozen-left
+	) {
+		background-color: var(--background) !important;
+	}
+
+	:global(
+		.s-modal-table-container
+			.tabulator-table
+			.tabulator-row:hover
+			.tabulator-cell.tabulator-frozen.tabulator-frozen-left
+	) {
+		background-color: var(--background) !important;
+	}
+
+	:global(.s-modal-table-container.tabulator .tabulator-table .tabulator-row:hover) {
+		background-color: var(--background) !important;
 	}
 </style>

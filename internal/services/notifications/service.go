@@ -739,32 +739,69 @@ func (s *Service) Dismiss(ctx context.Context, id uint) error {
 			return err
 		}
 
-		if notif.DismissedAt == nil {
-			if err := tx.Model(&models.Notification{}).Where("id = ?", notif.ID).Updates(map[string]any{
-				"dismissed_at": now,
-				"updated_at":   now,
-			}).Error; err != nil {
-				return err
-			}
-		}
-
-		if shouldPersistSuppressionForKind(notif.Kind) {
-			suppression := models.NotificationSuppression{
-				Fingerprint: suppressionKey(notif.Kind, notif.Fingerprint),
-				Kind:        notif.Kind,
-			}
-
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&suppression).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
+		return s.dismissNotification(tx, notif, now)
 	}); err != nil {
 		return err
 	}
 
 	s.publishRefresh()
+	return nil
+}
+
+func (s *Service) DismissAll(ctx context.Context) (int64, error) {
+	if s == nil || s.DB == nil {
+		return 0, fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	now := s.now().UTC()
+	var dismissed int64
+
+	if err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var notifications []models.Notification
+		if err := tx.Where("dismissed_at IS NULL").Find(&notifications).Error; err != nil {
+			return err
+		}
+
+		for _, notification := range notifications {
+			if err := s.dismissNotification(tx, notification, now); err != nil {
+				return err
+			}
+			dismissed++
+		}
+
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+
+	if dismissed > 0 {
+		s.publishRefresh()
+	}
+
+	return dismissed, nil
+}
+
+func (s *Service) dismissNotification(tx *gorm.DB, notification models.Notification, now time.Time) error {
+	if notification.DismissedAt == nil {
+		if err := tx.Model(&models.Notification{}).Where("id = ?", notification.ID).Updates(map[string]any{
+			"dismissed_at": now,
+			"updated_at":   now,
+		}).Error; err != nil {
+			return err
+		}
+	}
+
+	if shouldPersistSuppressionForKind(notification.Kind) {
+		suppression := models.NotificationSuppression{
+			Fingerprint: suppressionKey(notification.Kind, notification.Fingerprint),
+			Kind:        notification.Kind,
+		}
+
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&suppression).Error; err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

@@ -227,6 +227,67 @@ func TestDismissSuppressesFutureEmits(t *testing.T) {
 	}
 }
 
+func TestDismissAllDismissesActiveNotifications(t *testing.T) {
+	svc := newTestService(t)
+	now := time.Now().UTC()
+
+	if err := svc.DB.Create(&models.Notification{
+		Kind:            "storage.disks",
+		Title:           "Previously dismissed",
+		Severity:        models.NotificationSeverityInfo,
+		Fingerprint:     "previously-dismissed",
+		OccurrenceCount: 1,
+		FirstOccurredAt: now,
+		LastOccurredAt:  now,
+		DismissedAt:     &now,
+	}).Error; err != nil {
+		t.Fatalf("failed_to_seed_dismissed_notification: %v", err)
+	}
+
+	for _, input := range []notifier.EventInput{
+		{
+			Kind:        "storage.disks",
+			Title:       "Disk failure",
+			Severity:    "critical",
+			Fingerprint: "disk-failure",
+		},
+		{
+			Kind:        notifier.KindForZFSPoolState("zroot"),
+			Title:       "Pool degraded",
+			Severity:    "warning",
+			Fingerprint: "pool-degraded",
+		},
+	} {
+		if _, err := svc.Emit(context.Background(), input); err != nil {
+			t.Fatalf("failed_to_seed_active_notification: %v", err)
+		}
+	}
+
+	dismissed, err := svc.DismissAll(context.Background())
+	if err != nil {
+		t.Fatalf("dismiss_all_failed: %v", err)
+	}
+	if dismissed != 2 {
+		t.Fatalf("expected_2_dismissed got: %d", dismissed)
+	}
+
+	activeCount, err := svc.CountActive(context.Background())
+	if err != nil {
+		t.Fatalf("count_active_failed: %v", err)
+	}
+	if activeCount != 0 {
+		t.Fatalf("expected_no_active_notifications got: %d", activeCount)
+	}
+
+	var suppressions []models.NotificationSuppression
+	if err := svc.DB.Find(&suppressions).Error; err != nil {
+		t.Fatalf("failed_to_list_suppressions: %v", err)
+	}
+	if len(suppressions) != 1 || suppressions[0].Fingerprint != "storage.disks|disk-failure" {
+		t.Fatalf("unexpected_suppressions: %+v", suppressions)
+	}
+}
+
 func TestTransportSendersRespectConfigAndSuppression(t *testing.T) {
 	svc := newTestService(t)
 

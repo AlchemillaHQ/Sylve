@@ -30,6 +30,10 @@ type NotificationCountResponse struct {
 	Active int64 `json:"active"`
 }
 
+type NotificationDismissAllResponse struct {
+	Dismissed int64 `json:"dismissed"`
+}
+
 type notificationConfigUpdateRequest struct {
 	Transports []struct {
 		ID      uint   `json:"id"`
@@ -188,6 +192,30 @@ func Dismiss(service *notifications.Service) gin.HandlerFunc {
 			Message: "notification_dismissed",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+func DismissAll(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		dismissed, err := service.DismissAll(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_dismiss_notifications",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[NotificationDismissAllResponse]{
+			Status:  "success",
+			Message: "notifications_dismissed",
+			Error:   "",
+			Data: NotificationDismissAllResponse{
+				Dismissed: dismissed,
+			},
 		})
 	}
 }

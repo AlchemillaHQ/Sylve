@@ -112,6 +112,49 @@ func TestNotificationsListHandlerReturnsItems(t *testing.T) {
 	}
 }
 
+func TestDismissAllHandlerDismissesActiveNotifications(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	for _, input := range []notifier.EventInput{
+		{Kind: "system.alert", Title: "First alert", Severity: "warning", Fingerprint: "first-alert"},
+		{Kind: "system.alert", Title: "Second alert", Severity: "error", Fingerprint: "second-alert"},
+	} {
+		if _, err := svc.Emit(context.Background(), input); err != nil {
+			t.Fatalf("failed_to_seed_notification: %v", err)
+		}
+	}
+
+	r := gin.New()
+	r.POST("/api/notifications/dismiss-all", DismissAll(svc))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/notifications/dismiss-all", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Data NotificationDismissAllResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed_to_decode_response: %v", err)
+	}
+	if payload.Data.Dismissed != 2 {
+		t.Fatalf("expected_2_dismissed got: %d", payload.Data.Dismissed)
+	}
+
+	active, err := svc.CountActive(context.Background())
+	if err != nil {
+		t.Fatalf("failed_to_count_active_notifications: %v", err)
+	}
+	if active != 0 {
+		t.Fatalf("expected_no_active_notifications got: %d", active)
+	}
+}
+
 func TestTestTransportHandlerSendsNtfyTransport(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

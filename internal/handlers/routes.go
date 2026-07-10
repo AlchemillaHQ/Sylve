@@ -551,6 +551,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		notifications.GET("", notificationsHandlers.List(notificationService))
 		notifications.GET("/count", notificationsHandlers.Count(notificationService))
+		notifications.POST("/dismiss-all", notificationsHandlers.DismissAll(notificationService))
 		notifications.POST("/:id/dismiss", notificationsHandlers.Dismiss(notificationService))
 		notifications.GET("/transports", notificationsHandlers.GetConfig(notificationService))
 		notifications.PUT("/transports", notificationsHandlers.UpdateConfig(notificationService))

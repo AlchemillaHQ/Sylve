@@ -3,11 +3,13 @@ import {
 	NotificationConfigSchema,
 	NotificationRulesConfigSchema,
 	NotificationsCountSchema,
+	NotificationsDismissAllSchema,
 	NotificationsListSchema,
 	type BulkUpdateRulesInput,
 	type NotificationConfig,
 	type NotificationRulesConfig,
 	type NotificationsCount,
+	type NotificationsDismissAll,
 	type NotificationsList,
 	type CreateNotificationRuleInput,
 	type UpdateNotificationConfigInput,
@@ -36,6 +38,10 @@ export async function getNotificationsCount(): Promise<NotificationsCount> {
 
 export async function dismissNotification(id: number): Promise<APIResponse> {
 	return await apiRequest(`/notifications/${id}/dismiss`, APIResponseSchema, 'POST');
+}
+
+export async function dismissAllNotifications(): Promise<NotificationsDismissAll | APIResponse> {
+	return await apiRequest('/notifications/dismiss-all', NotificationsDismissAllSchema, 'POST');
 }
 
 export async function getNotificationTransports(): Promise<NotificationConfig> {
