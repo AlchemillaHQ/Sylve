@@ -38,6 +38,7 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 		},
 		"array": []interface{}{
 			map[string]interface{}{"clusterKey": "k1"},
+			map[string]interface{}{"encryptionKey": "restore-passphrase"},
 			map[string]interface{}{"value": "keep"},
 		},
 	}
@@ -64,8 +65,8 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 	}
 
 	arr, ok := out["array"].([]interface{})
-	if !ok || len(arr) != 2 {
-		t.Fatal("expected_two_array_entries")
+	if !ok || len(arr) != 3 {
+		t.Fatal("expected_three_array_entries")
 	}
 	firstMap, ok := arr[0].(map[string]interface{})
 	if !ok {
@@ -75,7 +76,11 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 		t.Fatal("expected_cluster_key_to_be_redacted")
 	}
 	secondMap, ok := arr[1].(map[string]interface{})
-	if !ok || secondMap["value"] != "keep" {
+	if !ok || secondMap["encryptionKey"] != "[REDACTED]" {
+		t.Fatal("expected_encryption_key_to_be_redacted")
+	}
+	thirdMap, ok := arr[2].(map[string]interface{})
+	if !ok || thirdMap["value"] != "keep" {
 		t.Fatal("expected_safe_array_value_to_be_preserved")
 	}
 }

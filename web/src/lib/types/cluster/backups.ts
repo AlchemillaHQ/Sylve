@@ -65,6 +65,7 @@ export const SnapshotInfoSchema = z.object({
 	name: z.string(),
 	shortName: z.string(),
 	dataset: z.string().optional().default(''),
+	encrypted: z.boolean().default(false),
 	creation: z.string(),
 	used: z.string(),
 	refer: z.string(),
@@ -75,6 +76,7 @@ export const SnapshotInfoSchema = z.object({
 
 export const BackupTargetDatasetInfoSchema = z.object({
 	name: z.string(),
+	encrypted: z.boolean().default(false),
 	suffix: z.string().default(''),
 	baseSuffix: z.string().optional().default(''),
 	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
@@ -128,4 +130,5 @@ export interface RestoreTargetDatasetGroup {
 	jailCtId: number;
 	vmRid: number;
 	totalSnapshots: number;
+	encrypted: boolean;
 }

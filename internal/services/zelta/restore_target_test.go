@@ -50,6 +50,26 @@ func TestNormalizeDatasetPath(t *testing.T) {
 	}
 }
 
+func TestParseRemoteDatasetEncryption(t *testing.T) {
+	tests := []struct {
+		line      string
+		dataset   string
+		encrypted bool
+	}{
+		{line: "tank/backups/plain\toff", dataset: "tank/backups/plain"},
+		{line: "tank/backups/encrypted\taes-256-gcm", dataset: "tank/backups/encrypted", encrypted: true},
+		{line: "tank/backups/legacy", dataset: "tank/backups/legacy"},
+		{line: "   "},
+	}
+
+	for _, tc := range tests {
+		dataset, encrypted := parseRemoteDatasetEncryption(tc.line)
+		if dataset != tc.dataset || encrypted != tc.encrypted {
+			t.Fatalf("line %q: got dataset=%q encrypted=%v", tc.line, dataset, encrypted)
+		}
+	}
+}
+
 func TestIsValidRestoreDestinationDataset(t *testing.T) {
 	if !isValidRestoreDestinationDataset("tank/data") {
 		t.Fatal("valid pool/path should pass")
@@ -232,13 +252,16 @@ func TestCanonicalVMDatasetRoot(t *testing.T) {
 }
 
 func TestParseSnapshotInfoOutput(t *testing.T) {
-	output := "pool/data@bk_1\t1749000000\t100M\t50M\npool/data@bk_2\t1749100000\t200M\t100M\n"
+	output := "pool/data@bk_1\t1749000000\t100M\t50M\tguid-1\toff\npool/data@bk_2\t1749100000\t200M\t100M\tguid-2\taes-256-gcm\n"
 	snaps := parseSnapshotInfoOutput(output)
 	if len(snaps) != 2 {
 		t.Fatalf("expected 2 snapshots, got %d", len(snaps))
 	}
 	if snaps[0].ShortName != "@bk_1" {
 		t.Fatalf("short name: %q", snaps[0].ShortName)
+	}
+	if snaps[0].Encrypted || !snaps[1].Encrypted {
+		t.Fatalf("unexpected encryption flags: %+v", snaps)
 	}
 	if snaps[0].Dataset != "pool/data" {
 		t.Fatalf("dataset: %q", snaps[0].Dataset)

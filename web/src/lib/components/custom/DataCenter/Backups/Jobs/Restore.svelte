@@ -6,6 +6,7 @@
 		restoreBackupJob
 	} from '$lib/api/cluster/backups';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -42,6 +43,7 @@
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let selectedGeneration = $state('');
 	let selectedSnapshot = $state('');
+	let encryptionKey = $state('');
 	let error = $state('');
 	let clusterDetails = $state<ClusterDetails | null>(null);
 
@@ -153,6 +155,7 @@
 		snapshots = [];
 		selectedGeneration = '';
 		selectedSnapshot = '';
+		encryptionKey = '';
 		error = '';
 		restoring = false;
 		clusterDetails = null;
@@ -224,7 +227,7 @@
 				}
 			}
 
-			const response = await restoreBackupJob(selectedJob.id, selectedSnapshot);
+			const response = await restoreBackupJob(selectedJob.id, selectedSnapshot, encryptionKey);
 			if (response.status === 'success') {
 				toast.success('Restore job started - check events for progress', {
 					position: 'bottom-center'
@@ -394,6 +397,21 @@
 							</tbody>
 						</table>
 					</div>
+				{/if}
+
+				{#if selectedSnapshotInfo?.encrypted || selectedJob?.encrypted}
+				<div class="space-y-1">
+					<CustomValueInput
+						label="Encryption Passphrase (Optional)"
+						placeholder="Required only when the key is not already registered"
+						type="password"
+						bind:value={encryptionKey}
+						classes="space-y-1"
+					/>
+					<p class="text-xs text-muted-foreground">
+						A supplied passphrase is saved in the cluster key store for automated recovery.
+					</p>
+				</div>
 				{/if}
 
 				<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">

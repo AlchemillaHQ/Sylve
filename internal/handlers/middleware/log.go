@@ -71,6 +71,8 @@ func isSensitiveAuditKey(key string) bool {
 		"authorization",
 		"clusterauthorization",
 		"clusterkey",
+		"encryptionkey",
+		"encryptionpassphrase",
 		"secret",
 		"signature",
 		"sig",

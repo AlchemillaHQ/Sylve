@@ -570,7 +570,9 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 		}
 
 		var req struct {
-			Snapshot string `json:"snapshot"`
+			Snapshot            string `json:"snapshot"`
+			EncryptionKey       string `json:"encryptionKey"`
+			EncryptionKeyFormat string `json:"encryptionKeyFormat"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Snapshot) == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -652,6 +654,16 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 					return
 				}
 			}
+		}
+
+		if err := zS.RegisterRestoreEncryptionKey(req.EncryptionKey, req.EncryptionKeyFormat); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "restore_encryption_key_register_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
 		}
 
 		if err := zS.EnqueueRestoreJob(c.Request.Context(), job.ID, req.Snapshot); err != nil {

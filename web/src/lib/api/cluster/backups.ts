@@ -52,6 +52,8 @@ export type RestoreFromTargetInput = {
     destinationDataset: string;
     restoreNodeId?: string;
     restoreNetwork?: boolean;
+    encryptionKey?: string;
+    encryptionKeyFormat?: 'passphrase';
 };
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {
@@ -171,9 +173,15 @@ export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInf
     );
 }
 
-export async function restoreBackupJob(jobId: number, snapshot: string): Promise<APIResponse> {
+export async function restoreBackupJob(
+    jobId: number,
+    snapshot: string,
+    encryptionKey = ''
+): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/jobs/${jobId}/restore`, APIResponseSchema, 'POST', {
-        snapshot
+        snapshot,
+        encryptionKey,
+        encryptionKeyFormat: 'passphrase'
     });
 }
 

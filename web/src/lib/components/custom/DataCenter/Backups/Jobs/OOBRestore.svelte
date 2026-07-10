@@ -68,6 +68,7 @@
 	let snapshot = $state('');
 	let destinationDataset = $state('');
 	let restoreNetwork = $state(true);
+	let encryptionKey = $state('');
 	let showActiveOnly = $state(true);
 
 	let datasets = $state<BackupTargetDatasetInfo[]>([]);
@@ -143,6 +144,7 @@
 				jailCtId: number;
 				vmRid: number;
 				totalSnapshots: number;
+				encrypted: boolean;
 			}
 		>();
 
@@ -156,12 +158,14 @@
 					kind: item.kind || 'dataset',
 					jailCtId: item.jailCtId || 0,
 					vmRid: item.vmRid || 0,
-					totalSnapshots: item.snapshotCount || 0
+					totalSnapshots: item.snapshotCount || 0,
+					encrypted: item.encrypted
 				});
 				continue;
 			}
 			existing.datasets.push(item);
 			existing.totalSnapshots += item.snapshotCount || 0;
+			existing.encrypted ||= item.encrypted;
 			if (existing.kind !== 'jail' && item.kind === 'jail') existing.kind = 'jail';
 			if (!existing.jailCtId && item.jailCtId) existing.jailCtId = item.jailCtId;
 			if (existing.kind !== 'vm' && item.kind === 'vm') existing.kind = 'vm';
@@ -193,7 +197,8 @@
 				kind: entry.kind,
 				jailCtId: entry.jailCtId,
 				vmRid: entry.vmRid,
-				totalSnapshots
+				totalSnapshots,
+				encrypted: entry.encrypted
 			});
 		}
 
@@ -342,6 +347,7 @@
 		snapshot = '';
 		destinationDataset = '';
 		restoreNetwork = true;
+		encryptionKey = '';
 		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
@@ -363,6 +369,7 @@
 		snapshot = '';
 		destinationDataset = '';
 		restoreNetwork = true;
+		encryptionKey = '';
 		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
@@ -448,6 +455,10 @@
 	async function onDatasetChange() {
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId || !dataset) return;
+		const selectedGroup = restoreTargetDatasetGroups.find(
+			(entry) => entry.representativeDataset === dataset
+		);
+		if (!selectedGroup?.encrypted) encryptionKey = '';
 
 		loadingSnapshots = true;
 		error = '';
@@ -557,7 +568,9 @@
 				snapshot,
 				destinationDataset: destinationDataset.trim(),
 				restoreNodeId: restoreNodeId.trim(),
-				restoreNetwork
+				restoreNetwork,
+				encryptionKey,
+				encryptionKeyFormat: 'passphrase'
 			});
 
 			if (response.status === 'success') {
@@ -711,6 +724,21 @@
 				bind:value={destinationDataset}
 				classes="space-y-1"
 			/>
+
+			{#if selectedSnapshotInfo?.encrypted || selectedRestoreTargetDatasetGroup?.encrypted}
+			<div class="space-y-1">
+				<CustomValueInput
+					label="Encryption Passphrase (Optional)"
+					placeholder="Required only when the key is not already registered"
+					type="password"
+					bind:value={encryptionKey}
+					classes="space-y-1"
+				/>
+				<p class="text-xs text-muted-foreground">
+					A supplied passphrase is saved in the cluster key store for automated recovery.
+				</p>
+			</div>
+			{/if}
 
 			{#if restoreTargetSupportsNetworkRestore}
 				<CustomCheckbox

@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"runtime/debug"
@@ -38,6 +39,7 @@ type restoreFromTargetPayload struct {
 
 type BackupTargetDatasetInfo struct {
 	Name          string `json:"name"` // full remote dataset path
+	Encrypted     bool   `json:"encrypted"`
 	Suffix        string `json:"suffix"`
 	BaseSuffix    string `json:"baseSuffix"`
 	Lineage       string `json:"lineage"` // "active" | "rotated" | "other"
@@ -66,7 +68,7 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		return nil, err
 	}
 
-	fsOutput, err := s.runTargetZFSList(ctx, &target, "-t", "filesystem", "-r", "-Hp", "-o", "name", target.BackupRoot)
+	fsOutput, err := s.runTargetZFSList(ctx, &target, "-t", "filesystem", "-r", "-Hp", "-o", "name,encryption", target.BackupRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_list_target_datasets: %w", err)
 	}
@@ -98,7 +100,7 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 
 	datasets := []BackupTargetDatasetInfo{}
 	for _, line := range strings.Split(strings.TrimSpace(fsOutput), "\n") {
-		dataset := strings.TrimSpace(line)
+		dataset, encrypted := parseRemoteDatasetEncryption(line)
 		if dataset == "" {
 			continue
 		}
@@ -126,6 +128,7 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 
 		datasets = append(datasets, BackupTargetDatasetInfo{
 			Name:          dataset,
+			Encrypted:     encrypted,
 			Suffix:        suffix,
 			BaseSuffix:    baseSuffix,
 			Lineage:       lineage,
@@ -159,6 +162,20 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 	})
 
 	return datasets, nil
+}
+
+func parseRemoteDatasetEncryption(line string) (dataset string, encrypted bool) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) == 0 {
+		return "", false
+	}
+	dataset = fields[0]
+	if len(fields) < 2 {
+		return dataset, false
+	}
+
+	encryption := strings.ToLower(strings.TrimSpace(fields[len(fields)-1]))
+	return dataset, encryption != "" && encryption != "-" && encryption != "none" && encryption != "off"
 }
 
 func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID uint, remoteDataset string) ([]SnapshotInfo, error) {
@@ -820,7 +837,15 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		return "", restoreErr
 	}
 
-	s.fixRestoredProperties(ctx, destinationDataset)
+	if err := s.fixRestoredProperties(ctx, destinationDataset); err != nil {
+		restoreErr = fmt.Errorf("restore_activation_failed: %w", err)
+		if ownsEvent {
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+		} else {
+			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+		}
+		return "", restoreErr
+	}
 
 	if reconcileJail {
 		restoreNetwork := true
@@ -1117,6 +1142,7 @@ func (s *Service) restoreChildDatasetsFromTarget(ctx context.Context, target *cl
 	if len(children) == 0 {
 		return nil
 	}
+	var restoreErrors []error
 
 	logger.L.Info().Str("parent", localParent).Int("count", len(children)).
 		Msg("restoring_child_datasets")
@@ -1147,20 +1173,25 @@ func (s *Service) restoreChildDatasetsFromTarget(ctx context.Context, target *cl
 		if pullErr != nil {
 			logger.L.Warn().Err(pullErr).Str("child", localChild).Str("output", output).
 				Msg("restore_child_pull_failed")
+			restoreErrors = append(restoreErrors, fmt.Errorf("restore_child_%s_pull_failed: %w", localChild, pullErr))
 			continue
 		}
 
 		if _, err := s.promoteRestoredDataset(ctx, restorePath, localChild); err != nil {
-				logger.L.Warn().Err(err).Str("child", localChild).
-					Msg("restore_child_promote_failed")
-				continue
-			}
+			logger.L.Warn().Err(err).Str("child", localChild).
+				Msg("restore_child_promote_failed")
+			restoreErrors = append(restoreErrors, fmt.Errorf("restore_child_%s_promote_failed: %w", localChild, err))
+			continue
+		}
 
-			s.fixRestoredProperties(ctx, localChild)
-			logger.L.Info().Str("child", localChild).Msg("restored_child_dataset")
+		if err := s.fixRestoredProperties(ctx, localChild); err != nil {
+			restoreErrors = append(restoreErrors, fmt.Errorf("restore_child_%s_activation_failed: %w", localChild, err))
+			continue
+		}
+		logger.L.Info().Str("child", localChild).Msg("restored_child_dataset")
 	}
 
-	return nil
+	return errors.Join(restoreErrors...)
 }
 
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
@@ -1178,7 +1209,7 @@ func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels
 		sshArgs = append(sshArgs, "-r")
 	}
 	sshArgs = append(sshArgs,
-		"-o", "name,creation,used,refer,guid",
+		"-o", "name,creation,used,refer,guid,encryption",
 		"-s", "creation",
 		remoteDataset,
 	)
@@ -1556,11 +1587,17 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 		if len(fields) >= 5 {
 			guid = strings.TrimSpace(fields[4])
 		}
+		encrypted := false
+		if len(fields) >= 6 {
+			encryption := strings.ToLower(strings.TrimSpace(fields[5]))
+			encrypted = encryption != "" && encryption != "-" && encryption != "none" && encryption != "off"
+		}
 
 		snapshots = append(snapshots, SnapshotInfo{
 			Name:      fullName,
 			ShortName: shortName,
 			Dataset:   datasetName,
+			Encrypted: encrypted,
 			Creation:  creation,
 			Used:      fields[2],
 			Refer:     fields[3],

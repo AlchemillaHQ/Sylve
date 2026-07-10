@@ -519,11 +519,13 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 		}
 
 		var req struct {
-			RemoteDataset      string `json:"remoteDataset"`
-			Snapshot           string `json:"snapshot"`
-			DestinationDataset string `json:"destinationDataset"`
-			RestoreNodeID      string `json:"restoreNodeId"`
-			RestoreNetwork     *bool  `json:"restoreNetwork"`
+			RemoteDataset       string `json:"remoteDataset"`
+			Snapshot            string `json:"snapshot"`
+			DestinationDataset  string `json:"destinationDataset"`
+			RestoreNodeID       string `json:"restoreNodeId"`
+			RestoreNetwork      *bool  `json:"restoreNetwork"`
+			EncryptionKey       string `json:"encryptionKey"`
+			EncryptionKeyFormat string `json:"encryptionKeyFormat"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -599,11 +601,13 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 
 		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
 			body, statusCode, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
-				"remoteDataset":      strings.TrimSpace(req.RemoteDataset),
-				"snapshot":           strings.TrimSpace(req.Snapshot),
-				"destinationDataset": strings.TrimSpace(req.DestinationDataset),
-				"restoreNodeId":      restoreNodeID,
-				"restoreNetwork":     restoreNetwork,
+				"remoteDataset":       strings.TrimSpace(req.RemoteDataset),
+				"snapshot":            strings.TrimSpace(req.Snapshot),
+				"destinationDataset":  strings.TrimSpace(req.DestinationDataset),
+				"restoreNodeId":       restoreNodeID,
+				"restoreNetwork":      restoreNetwork,
+				"encryptionKey":       req.EncryptionKey,
+				"encryptionKeyFormat": req.EncryptionKeyFormat,
 			})
 			if err != nil {
 				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
@@ -616,6 +620,16 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			}
 
 			c.Data(statusCode, "application/json", body)
+			return
+		}
+
+		if err := zS.RegisterRestoreEncryptionKey(req.EncryptionKey, req.EncryptionKeyFormat); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "restore_encryption_key_register_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
 			return
 		}
 
