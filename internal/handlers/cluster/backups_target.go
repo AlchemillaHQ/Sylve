@@ -30,6 +30,8 @@ type backupTargetZelta interface {
 }
 
 var saveBackupTargetSSHKey = zelta.SaveSSHKey
+var saveTemporaryBackupTargetSSHKey = zelta.SaveTemporarySSHKey
+var removeTemporaryBackupTargetSSHKey = zelta.RemoveTemporarySSHKey
 
 func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -76,9 +78,8 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 		}
 
 		sshKeyPath := ""
-		tmpID := uint(time.Now().UnixNano() % 1000000)
 		if strings.TrimSpace(req.SSHKey) != "" {
-			path, err := saveBackupTargetSSHKey(tmpID, req.SSHKey)
+			path, err := saveTemporaryBackupTargetSSHKey(req.SSHKey)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 					Status:  "error",
@@ -89,7 +90,7 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 				return
 			}
 			sshKeyPath = path
-			defer zS.RemoveSSHKey(tmpID)
+			defer removeTemporaryBackupTargetSSHKey(path)
 		}
 
 		testTarget := &clusterModels.BackupTarget{
@@ -114,7 +115,9 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			return
 		}
 
-		req.SSHKeyPath = sshKeyPath
+		// The validation key is temporary. Persist the key material with no path;
+		// once the target has its real ID, each node materializes its canonical key.
+		req.SSHKeyPath = ""
 
 		err := cS.ProposeBackupTargetCreate(req, cS.Raft == nil)
 

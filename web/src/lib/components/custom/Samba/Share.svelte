@@ -303,7 +303,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="flex flex-col p-5"
+		class="flex flex-col p-6"
 		showCloseButton={true}
 		showResetButton={true}
 		onReset={() => {

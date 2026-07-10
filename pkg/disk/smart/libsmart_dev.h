@@ -59,13 +59,21 @@ extern int32_t device_read_log(smart_h, uint32_t, void *, size_t);
 
 extern int32_t device_self_test(smart_h, uint8_t);
 
+extern int32_t device_scsi_request_sense(smart_h, void *, size_t);
+
+extern int32_t device_scsi_control_mode_page(smart_h, void *, size_t);
+
+extern int32_t device_scsi_extended_inquiry(smart_h, void *, size_t);
+
 extern int32_t device_read_smart_log(smart_h, uint8_t, void *, size_t);
 
-extern int32_t device_read_log_ext(smart_h, uint8_t, uint8_t, void *, size_t);
+extern int32_t device_read_log_ext(smart_h, uint8_t, uint16_t, void *, size_t);
 
 extern int32_t device_write_smart_log(smart_h, uint8_t, void *, size_t);
 
 extern int32_t device_nvme_identify_ctrl(smart_h, void *, size_t);
+
+extern int32_t device_nvme_identify_ns(smart_h, uint32_t, void *, size_t);
 
 extern int32_t device_smart_enable(smart_h);
 

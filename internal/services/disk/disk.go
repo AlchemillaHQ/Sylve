@@ -212,7 +212,7 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 			}
 
 			if !failed {
-				smartData, err := s.GetSmartData(d)
+				smartData, selfTestLog, err := s.GetSmartData(d)
 				if err != nil {
 					s.smartFailMu.Lock()
 					s.smartFailCache[d.Name] = time.Now()
@@ -230,6 +230,7 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 					disk.SmartData = nil
 				} else if err == nil && smartData != nil {
 					disk.SmartData = smartData
+					disk.SelfTestLog = selfTestLog
 				}
 			}
 		} else {

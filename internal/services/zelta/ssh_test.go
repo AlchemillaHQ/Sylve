@@ -51,6 +51,46 @@ func TestSaveSSHKeyWritesTrimmedKeyWithTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestTemporarySSHKeyIsNotRemovedAsOrphan(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("failed to create ssh key dir: %v", err)
+	}
+
+	keyPath, err := SaveTemporarySSHKey("  temporary-key-data  ")
+	if err != nil {
+		t.Fatalf("SaveTemporarySSHKey failed: %v", err)
+	}
+	if isManagedSSHKeyName(filepath.Base(keyPath)) {
+		t.Fatalf("temporary key must not use a managed target key name: %q", keyPath)
+	}
+	oldStylePath := filepath.Join(SSHKeyDirectory, "target-164690_id")
+	if err := os.WriteFile(oldStylePath, []byte("old-temporary-key\n"), 0600); err != nil {
+		t.Fatalf("failed to create old-style temporary key: %v", err)
+	}
+
+	s := &Service{}
+	if err := s.cleanupOrphanTargetSSHKeys(nil); err != nil {
+		t.Fatalf("cleanupOrphanTargetSSHKeys failed: %v", err)
+	}
+	if _, err := os.Stat(oldStylePath); !os.IsNotExist(err) {
+		t.Fatalf("expected old-style temporary key to be removed as an orphan, stat err=%v", err)
+	}
+	content, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("temporary key was removed by orphan cleanup: %v", err)
+	}
+	if string(content) != "temporary-key-data\n" {
+		t.Fatalf("unexpected temporary key content: %q", string(content))
+	}
+
+	RemoveTemporarySSHKey(keyPath)
+	if _, err := os.Stat(keyPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temporary key to be removed, stat err=%v", err)
+	}
+}
+
 func TestRemoveSSHKeyRemovesTargetKeyPath(t *testing.T) {
 	resetZeltaTestGlobals(t)
 	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")

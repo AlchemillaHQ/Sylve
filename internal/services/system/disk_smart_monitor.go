@@ -191,6 +191,8 @@ func (s *Service) evaluateSmartData(ctx context.Context, disk diskServiceInterfa
 			s.evaluateNvme(ctx, disk, &nvmeData, st, warmup)
 		}
 	}
+
+	s.evaluateSelfTestLog(ctx, disk, st, warmup)
 }
 
 func (s *Service) evaluateTemperature(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
@@ -501,23 +503,11 @@ func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.D
 }
 
 func (s *Service) evaluateSelfTestLog(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
-	if s.DiskService == nil {
+	if disk.SelfTestLog == nil || len(disk.SelfTestLog.Entries) == 0 {
 		return
 	}
 
-	log, err := s.DiskService.GetSelfTestLog(diskServiceInterfaces.DiskInfo{
-		Name:   disk.Device,
-		Type:   disk.Type,
-		Serial: disk.Serial,
-	})
-	if err != nil || log == nil {
-		return
-	}
-
-	if len(log.Entries) == 0 {
-		return
-	}
-
+	log := disk.SelfTestLog
 	latest := log.Entries[0]
 	fingerprint := fmt.Sprintf("%s|%s|%d", latest.Type, latest.Status, latest.LifetimeHours)
 

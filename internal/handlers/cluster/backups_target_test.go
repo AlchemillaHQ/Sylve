@@ -65,6 +65,23 @@ func setBackupTargetSaveSSHKeyStub(
 	})
 }
 
+func setTemporaryBackupTargetSSHKeyStubs(
+	t *testing.T,
+	save func(keyData string) (string, error),
+	remove func(keyPath string),
+) {
+	t.Helper()
+
+	origSave := saveTemporaryBackupTargetSSHKey
+	origRemove := removeTemporaryBackupTargetSSHKey
+	saveTemporaryBackupTargetSSHKey = save
+	removeTemporaryBackupTargetSSHKey = remove
+	t.Cleanup(func() {
+		saveTemporaryBackupTargetSSHKey = origSave
+		removeTemporaryBackupTargetSSHKey = origRemove
+	})
+}
+
 func TestBackupTargetsHandlerGet(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
@@ -158,9 +175,9 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
-		setBackupTargetSaveSSHKeyStub(t, func(_ uint, _ string) (string, error) {
+		setTemporaryBackupTargetSSHKeyStubs(t, func(_ string) (string, error) {
 			return "", errors.New("save_failed")
-		})
+		}, func(string) {})
 
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
 		if rr.Code != http.StatusInternalServerError {
@@ -181,10 +198,11 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		cS := &cluster.Service{DB: db}
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("validation_failed")}
 		r := newBackupTargetRouter(cS, zStub)
+		var removedPath string
 
-		setBackupTargetSaveSSHKeyStub(t, func(targetID uint, _ string) (string, error) {
-			return "/tmp/test-key-" + strconv.FormatUint(uint64(targetID), 10), nil
-		})
+		setTemporaryBackupTargetSSHKeyStubs(t, func(_ string) (string, error) {
+			return "/tmp/test-validation-key", nil
+		}, func(path string) { removedPath = path })
 
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
 		if rr.Code != http.StatusBadRequest {
@@ -198,8 +216,8 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		if resp.Message != "target_validation_failed" {
 			t.Fatalf("unexpected response: %+v", resp)
 		}
-		if len(zStub.removedIDs) != 1 {
-			t.Fatalf("expected temporary key cleanup call, got %d remove call(s)", len(zStub.removedIDs))
+		if removedPath != "/tmp/test-validation-key" {
+			t.Fatalf("expected temporary key cleanup, got path %q", removedPath)
 		}
 	})
 
@@ -238,9 +256,9 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
-		setBackupTargetSaveSSHKeyStub(t, func(_ uint, _ string) (string, error) {
+		setTemporaryBackupTargetSSHKeyStubs(t, func(_ string) (string, error) {
 			return "/tmp/created-key", nil
-		})
+		}, func(string) {})
 
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
 		if rr.Code != http.StatusCreated {
@@ -259,8 +277,11 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		if err := db.Where("name = ?", "target-a").First(&created).Error; err != nil {
 			t.Fatalf("failed to fetch created backup target: %v", err)
 		}
-		if created.SSHKeyPath != "/tmp/created-key" {
-			t.Fatalf("expected saved ssh key path, got %q", created.SSHKeyPath)
+		if created.SSHKeyPath != "" {
+			t.Fatalf("expected temporary ssh key path not to be persisted, got %q", created.SSHKeyPath)
+		}
+		if created.SSHKey != "ssh-key-data" {
+			t.Fatalf("expected ssh key material to be persisted, got %q", created.SSHKey)
 		}
 		if len(zStub.validateCalls) != 1 {
 			t.Fatalf("expected one validate call, got %d", len(zStub.validateCalls))

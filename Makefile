@@ -3,9 +3,14 @@ BIN_DIR := bin
 ARCH ?= amd64
 FREEBSD_VERSION ?= 15.0-RELEASE
 FREEBSD_SYSROOT ?= .cache/freebsd/$(ARCH)-$(FREEBSD_VERSION)
+SMART_DEVICE ?=
+SMART_RUN_SELF_TEST ?= 0
+SMART_WAIT_SELF_TEST ?= 0
+SMART_TEST_OUTPUT ?= tmp/smart-integration.log
+SMART_TEST_TIMEOUT ?= 30m
 GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 
-.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test test-integration clean
+.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test test-integration test-smart-integration clean
 
 all: build
 
@@ -63,6 +68,29 @@ test:
 test-integration:
 	@[ "$$(id -u)" = "0" ] || { echo "make test-integration must run as root (it creates ZFS pools)"; exit 1; }
 	go test -count=1 -v ./...
+
+test-smart-integration:
+	@[ "$$(sysctl -n kern.ostype 2>/dev/null)" = "FreeBSD" ] || { echo "make test-smart-integration must run on FreeBSD"; exit 1; }
+	@[ -n "$(SMART_DEVICE)" ] || { echo "usage: make test-smart-integration SMART_DEVICE=/dev/ada0"; echo "optional: SMART_RUN_SELF_TEST=1 or SMART_WAIT_SELF_TEST=1; SMART_TEST_OUTPUT=path; SMART_TEST_TIMEOUT=30m"; exit 1; }
+	@[ -e "$(SMART_DEVICE)" ] || { echo "SMART_DEVICE does not exist: $(SMART_DEVICE)"; exit 1; }
+	@[ "$(SMART_RUN_SELF_TEST)" = "0" ] || [ "$(SMART_RUN_SELF_TEST)" = "1" ] || { echo "SMART_RUN_SELF_TEST must be 0 or 1"; exit 1; }
+	@[ "$(SMART_WAIT_SELF_TEST)" = "0" ] || [ "$(SMART_WAIT_SELF_TEST)" = "1" ] || { echo "SMART_WAIT_SELF_TEST must be 0 or 1"; exit 1; }
+	@[ "$(SMART_RUN_SELF_TEST)" != "1" ] || [ "$(SMART_WAIT_SELF_TEST)" != "1" ] || { echo "SMART_RUN_SELF_TEST and SMART_WAIT_SELF_TEST cannot both be 1"; exit 1; }
+	@mkdir -p "$$(dirname "$(SMART_TEST_OUTPUT)")"
+	@set -o pipefail; { \
+		printf 'Sylve SMART integration report\n'; \
+		printf 'commit: %s\n' "$(GIT_COMMIT)"; \
+		printf 'device: %s\n' "$(SMART_DEVICE)"; \
+		printf 'start-abort-self-test: %s\n' "$(SMART_RUN_SELF_TEST)"; \
+		printf 'wait-self-test: %s\n' "$(SMART_WAIT_SELF_TEST)"; \
+		printf 'output: %s\n' "$(SMART_TEST_OUTPUT)"; \
+		sysctl kern.ostype kern.osrelease kern.version hw.machine_arch; \
+		go version; \
+		SYLVE_SMART_TEST_DEVICE="$(SMART_DEVICE)" \
+		SYLVE_SMART_RUN_SELF_TEST="$(SMART_RUN_SELF_TEST)" \
+		SYLVE_SMART_WAIT_SELF_TEST="$(SMART_WAIT_SELF_TEST)" \
+		go test -count=1 -timeout="$(SMART_TEST_TIMEOUT)" -v -run '^TestHardware' ./pkg/disk/smart; \
+	} 2>&1 | tee "$(SMART_TEST_OUTPUT)"
 
 clean:
 	rm -rf $(BIN_DIR)

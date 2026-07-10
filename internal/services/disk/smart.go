@@ -11,189 +11,110 @@ package disk
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	"github.com/alchemillahq/sylve/pkg/disk/smart"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
-func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) {
-	output, err := utils.RunCommand("/sbin/nvmecontrol", "devlist")
-	if err != nil {
-		return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device list: %v", err)
-	}
-
-	var nvmeDevices []string
-	lines := strings.Split(output, "\n")
-	nvmeRegex := regexp.MustCompile(`^(nvme\d+):`)
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if matches := nvmeRegex.FindStringSubmatch(line); matches != nil {
-			nvmeDevices = append(nvmeDevices, matches[1])
+func nvmeAttributeInt(attribute smart.Attribute) int {
+	maxInt := int(^uint(0) >> 1)
+	if attribute.RawString != "" {
+		value, err := strconv.ParseUint(attribute.RawString, 10, 64)
+		if err != nil || value > uint64(maxInt) {
+			return maxInt
 		}
+		return int(value)
 	}
-
-	for _, nvmeDevice := range nvmeDevices {
-		output, err := utils.RunCommand("/sbin/nvmecontrol", "identify", fmt.Sprintf("/dev/%s", nvmeDevice))
-		if err != nil {
-			return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device info: %v", err)
-		}
-
-		serialRegex := regexp.MustCompile(`Serial Number:\s*(\S+)`)
-		if matches := serialRegex.FindStringSubmatch(output); matches != nil {
-			if matches[1] == serial {
-				output, err := utils.RunCommand("/sbin/nvmecontrol", "logpage", "-p", "2", nvmeDevice)
-				if err != nil {
-					return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device logpage: %v", err)
-				}
-
-				output = utils.RemoveEmptyLines(output)
-				parsedSMART := parseNVMeSMART(output, nvmeDevice)
-
-				return parsedSMART, nil
-			}
-		}
+	if attribute.RawValue > uint64(maxInt) {
+		return maxInt
 	}
-
-	return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("NVMe device with serial %s not found", serial)
+	return int(attribute.RawValue)
 }
 
-func kelvinToCelsius(v int) int {
-	if v > 150 {
-		return v - 273
+func nvmeAttributeDecimal(attribute smart.Attribute) string {
+	if attribute.RawString != "" {
+		return attribute.RawString
 	}
-	return v
+	return strconv.FormatUint(attribute.RawValue, 10)
 }
 
-func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvme {
-	var smart diskServiceInterfaces.SMARTNvme
-
-	smart.Device = diskServiceInterfaces.DeviceInfo{
-		Name:     device,
-		InfoName: device,
-		Type:     "nvme",
-		Protocol: "NVMe",
+func mapNVMeLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SMARTNvme {
+	result := diskServiceInterfaces.SMARTNvme{
+		Device: diskServiceInterfaces.DeviceInfo{
+			Name:     info.Device,
+			InfoName: "/dev/" + info.Device,
+			Type:     "nvme",
+			Protocol: info.Protocol,
+		},
+		Passed:          info.Passed,
+		PowerOnHours:    info.PowerOnHours,
+		PowerCycleCount: info.PowerCycleCount,
+		Temperature:     info.Temperature,
 	}
-	smart.Passed = true
-
-	lines := strings.Split(output, "\n")
-	inCriticalSection := false
-
-	getInt := func(s string) int {
-		fields := strings.Fields(s)
-		if len(fields) > 0 {
-			val, err := strconv.Atoi(fields[0])
-			if err == nil {
-				return val
-			}
-		}
-		return 0
-	}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "SMART/Health") || strings.HasPrefix(line, "===") {
-			continue
-		}
-
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.ToLower(strings.TrimSpace(parts[0]))
-		valStr := strings.TrimSpace(parts[1])
-
-		if key == "critical warning state" {
-			smart.CriticalWarning = valStr
-			inCriticalSection = true
-			continue
-		}
-
-		if strings.Contains(key, "percentage used") || strings.Contains(key, "data units") {
-			inCriticalSection = false
-		}
-
-		switch {
-		case inCriticalSection && key == "available spare":
-			smart.CriticalWarningState.AvailableSpare = getInt(valStr)
-		case inCriticalSection && key == "temperature":
-			smart.CriticalWarningState.Temperature = kelvinToCelsius(getInt(valStr))
-		case inCriticalSection && key == "device reliability":
-			smart.CriticalWarningState.DeviceReliability = getInt(valStr)
-		case inCriticalSection && key == "read only":
-			smart.CriticalWarningState.ReadOnly = getInt(valStr)
-		case inCriticalSection && key == "volatile memory backup":
-			smart.CriticalWarningState.VolatileMemoryBackup = getInt(valStr)
-			inCriticalSection = false
-
-		case key == "temperature":
-			smart.Temperature = kelvinToCelsius(getInt(valStr))
-
-		case key == "available spare":
-			smart.AvailableSpare = getInt(valStr)
-
-		case key == "available spare threshold":
-			smart.AvailableSpareThreshold = getInt(valStr)
-
-		case key == "percentage used":
-			smart.PercentageUsed = getInt(valStr)
-
-		case strings.Contains(key, "data units") && strings.Contains(key, "read"):
-			smart.DataUnitsRead = getInt(valStr)
-
-		case strings.Contains(key, "data units") && strings.Contains(key, "written"):
-			smart.DataUnitsWritten = getInt(valStr)
-
-		case key == "host read commands":
-			smart.HostReadCommands = getInt(valStr)
-
-		case key == "host write commands":
-			smart.HostWriteCommands = getInt(valStr)
-
-		case strings.Contains(key, "controller busy time"):
-			smart.ControllerBusyTime = getInt(valStr)
-
-		case key == "power cycles":
-			smart.PowerCycleCount = getInt(valStr)
-
-		case key == "power on hours":
-			smart.PowerOnHours = getInt(valStr)
-
-		case key == "unsafe shutdowns":
-			smart.UnsafeShutdowns = getInt(valStr)
-
-		case key == "media errors":
-			smart.MediaErrors = getInt(valStr)
-
-		case key == "no. error info log entries":
-			smart.ErrorInfoLogEntries = getInt(valStr)
-
-		case key == "warning temp composite time":
-			smart.WarningCompositeTempTime = getInt(valStr)
-
-		case key == "error temp composite time":
-			smart.ErrorCompositeTempTime = getInt(valStr)
-
-		case key == "temperature 1 transition count":
-			smart.Temperature1TransitionCnt = getInt(valStr)
-
-		case key == "temperature 2 transition count":
-			smart.Temperature2TransitionCnt = getInt(valStr)
-
-		case key == "total time for temperature 1":
-			smart.TotalTimeForTemperature1 = getInt(valStr)
-
-		case key == "total time for temperature 2":
-			smart.TotalTimeForTemperature2 = getInt(valStr)
+	for _, attribute := range info.Attributes {
+		value := nvmeAttributeInt(attribute)
+		switch attribute.ID {
+		case 0:
+			warning := uint8(attribute.RawValue)
+			result.CriticalWarning = fmt.Sprintf("0x%02x", warning)
+			result.CriticalWarningState.AvailableSpare = int(warning & 0x01)
+			result.CriticalWarningState.Temperature = int(warning>>1) & 0x01
+			result.CriticalWarningState.DeviceReliability = int(warning>>2) & 0x01
+			result.CriticalWarningState.ReadOnly = int(warning>>3) & 0x01
+			result.CriticalWarningState.VolatileMemoryBackup = int(warning>>4) & 0x01
+		case 3:
+			result.AvailableSpare = value
+		case 4:
+			result.AvailableSpareThreshold = value
+		case 5:
+			result.PercentageUsed = value
+		case 32:
+			result.DataUnitsRead = value
+			result.DataUnitsReadExact = nvmeAttributeDecimal(attribute)
+		case 48:
+			result.DataUnitsWritten = value
+			result.DataUnitsWrittenExact = nvmeAttributeDecimal(attribute)
+		case 64:
+			result.HostReadCommands = value
+			result.HostReadCommandsExact = nvmeAttributeDecimal(attribute)
+		case 80:
+			result.HostWriteCommands = value
+			result.HostWriteCommandsExact = nvmeAttributeDecimal(attribute)
+		case 96:
+			result.ControllerBusyTime = value
+			result.ControllerBusyTimeExact = nvmeAttributeDecimal(attribute)
+		case 112:
+			result.PowerCycleCount = value
+			result.PowerCycleCountExact = nvmeAttributeDecimal(attribute)
+		case 128:
+			result.PowerOnHours = value
+			result.PowerOnHoursExact = nvmeAttributeDecimal(attribute)
+		case 144:
+			result.UnsafeShutdowns = value
+			result.UnsafeShutdownsExact = nvmeAttributeDecimal(attribute)
+		case 160:
+			result.MediaErrors = value
+			result.MediaErrorsExact = nvmeAttributeDecimal(attribute)
+		case 176:
+			result.ErrorInfoLogEntries = value
+			result.ErrorInfoLogEntriesExact = nvmeAttributeDecimal(attribute)
+		case 192:
+			result.WarningCompositeTempTime = value
+		case 196:
+			result.ErrorCompositeTempTime = value
+		case 216:
+			result.Temperature1TransitionCnt = value
+		case 220:
+			result.Temperature2TransitionCnt = value
+		case 224:
+			result.TotalTimeForTemperature1 = value
+		case 228:
+			result.TotalTimeForTemperature2 = value
 		}
 	}
-
-	return smart
+	return result
 }
 
 func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartData {
@@ -235,9 +156,16 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 
 	if len(info.Attributes) > 0 {
 		data.Attributes = make([]diskServiceInterfaces.ATASmartAttribute, len(info.Attributes))
+		modelAttrs := smart.LookupModelAttrs(info.Model, info.Firmware)
 
 		for i, attr := range info.Attributes {
-			state := smart.AtaAttrState(attr.Value, attr.Worst, attr.Threshold)
+			var def *smart.AttrDef
+			if d, ok := modelAttrs[attr.ID]; ok {
+				def = &d
+			} else if d2, ok := smart.LookupAttrDef(attr.ID); ok {
+				def = &d2
+			}
+			state := smart.AtaAttrState(attr.Value, attr.Worst, attr.Threshold, def)
 			whenFailed := ""
 			switch state {
 			case smart.AttrStateFailedNow:
@@ -245,24 +173,28 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 			case smart.AttrStateFailedPast:
 				whenFailed = "In_the_past"
 			}
+			rawString := attr.RawString
+			if rawString == "" {
+				rawString = attr.TextValue
+			}
 
 			data.Attributes[i] = diskServiceInterfaces.ATASmartAttribute{
-				Page:      int(attr.Page),
-				ID:        int(attr.ID),
-				Name:      strings.ReplaceAll(attr.Name, "_", " "),
-				Value:     attr.Value,
-				Worst:     attr.Worst,
-				Thresh:    attr.Threshold,
-				RawValue:  int64(attr.RawValue),
-				RawString: attr.TextValue,
-				State:     state,
-				WhenFailed: whenFailed,
-				PreFailure:     attr.Flags.PreFailure,
-				Online:         attr.Flags.Online,
-				Performance:    attr.Flags.Performance,
-				ErrorRate:      attr.Flags.ErrorRate,
-				EventCount:     attr.Flags.EventCount,
-				AutoKeep:       attr.Flags.SelfPreserving,
+				Page:        int(attr.Page),
+				ID:          int(attr.ID),
+				Name:        strings.ReplaceAll(attr.Name, "_", " "),
+				Value:       attr.Value,
+				Worst:       attr.Worst,
+				Thresh:      attr.Threshold,
+				RawValue:    int64(attr.RawValue),
+				RawString:   rawString,
+				State:       state,
+				WhenFailed:  whenFailed,
+				PreFailure:  attr.Flags.PreFailure,
+				Online:      attr.Flags.Online,
+				Performance: attr.Flags.Performance,
+				ErrorRate:   attr.Flags.ErrorRate,
+				EventCount:  attr.Flags.EventCount,
+				AutoKeep:    attr.Flags.SelfPreserving,
 			}
 		}
 	}
@@ -270,17 +202,75 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 	return data
 }
 
-func (s *Service) GetSmartData(disk diskServiceInterfaces.DiskInfo) (interface{}, error) {
-	if disk.Type == "NVMe" {
-		return getNVMeControlData(disk.Serial)
-	}
-
-	smartInfo, err := smart.Read(disk.Name)
+func (s *Service) GetSmartData(disk diskServiceInterfaces.DiskInfo) (interface{}, *diskServiceInterfaces.DiskSelfTestLog, error) {
+	dev, err := smart.OpenDevice(disk.Name)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	defer dev.Close()
+
+	smartInfo, err := dev.Read()
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return mapLibSmartToInterface(smartInfo), nil
+	selfTestLog, err := dev.ReadSelfTestLog()
+	if err != nil {
+		selfTestLog = nil
+	}
+
+	var result any
+	if smartInfo.Protocol == "NVMe" {
+		result = mapNVMeLibSmartToInterface(smartInfo)
+	} else {
+		result = mapLibSmartToInterface(smartInfo)
+	}
+	var logResult *diskServiceInterfaces.DiskSelfTestLog
+	if selfTestLog != nil {
+		lr := mapSelfTestLogToInterface(selfTestLog)
+		logResult = &lr
+	}
+	return result, logResult, nil
+}
+
+func mapSelfTestLogToInterface(log *smart.SelfTestLog) diskServiceInterfaces.DiskSelfTestLog {
+	result := diskServiceInterfaces.DiskSelfTestLog{
+		InProgress:    log.InProgress,
+		ProgressPct:   log.ProgressPct,
+		ChecksumValid: log.ChecksumValid,
+		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
+	}
+	for i, e := range log.Entries {
+		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
+			Type:          e.Type,
+			Status:        e.Status,
+			RemainingPct:  e.RemainingPct,
+			LifetimeHours: e.LifetimeHours,
+			LBA:           e.LBA,
+			NSID:          e.NSID,
+		}
+	}
+	return result
+}
+
+func mapSelfTestStatusToInterface(status *smart.SelfTestStatus) diskServiceInterfaces.DiskSelfTestLog {
+	result := diskServiceInterfaces.DiskSelfTestLog{
+		InProgress:    status.Running,
+		ProgressPct:   status.ProgressPct,
+		ChecksumValid: status.ChecksumValid,
+		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(status.Results)),
+	}
+	for i, e := range status.Results {
+		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
+			Type:          e.Type,
+			Status:        e.Status,
+			RemainingPct:  e.RemainingPct,
+			LifetimeHours: e.LifetimeHours,
+			LBA:           e.LBA,
+			NSID:          e.NSID,
+		}
+	}
+	return result
 }
 
 func (s *Service) GetWearOut(smartData any) (float64, error) {
@@ -363,64 +353,46 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 }
 
 func (s *Service) RunSelfTest(disk diskServiceInterfaces.DiskInfo, testType string) error {
-	var tt uint8
+	var kind smart.SelfTestKind
 	switch testType {
 	case "short":
-		tt = 0x01
+		kind = smart.SelfTestKindShort
 	case "long", "extended":
-		tt = 0x02
+		kind = smart.SelfTestKindExtended
 	case "conveyance":
-		tt = 0x03
+		kind = smart.SelfTestKindConveyance
+	case "selective":
+		kind = smart.SelfTestKindSelective
+	case "offline":
+		kind = smart.SelfTestKindOffline
+	case "default":
+		kind = smart.SelfTestKindDefault
+	case "short_captive":
+		kind = smart.SelfTestKindShortCaptive
+	case "extended_captive":
+		kind = smart.SelfTestKindExtendedCaptive
 	case "abort":
-		tt = 0x7F
+		return smart.AbortSelfTest(disk.Name)
 	default:
 		return fmt.Errorf("unknown self-test type: %s", testType)
 	}
-
-	if disk.Type == "NVMe" {
-		switch tt {
-		case 0x01:
-			tt = 0x01
-		case 0x02:
-			tt = 0x02
-		case 0x7F:
-			tt = 0x0F
-		default:
-			tt = 0x01
-		}
-		if testType == "conveyance" {
-			return fmt.Errorf("conveyance self-test not supported for NVMe")
-		}
-	}
-
-	return smart.SelfTest(disk.Name, tt)
+	return smart.StartSelfTest(disk.Name, kind)
 }
 
 func (s *Service) GetSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
-	log, err := smart.ReadSelfTestLog(disk.Name)
+	dev, err := smart.OpenDevice(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer dev.Close()
+
+	status, err := dev.SelfTestStatus()
 	if err != nil {
 		return nil, err
 	}
 
-	result := &diskServiceInterfaces.DiskSelfTestLog{
-		InProgress:    log.InProgress,
-		ProgressPct:   log.ProgressPct,
-		ChecksumValid: log.ChecksumValid,
-		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
-	}
-
-	for i, e := range log.Entries {
-		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
-			Type:          e.Type,
-			Status:        e.Status,
-			RemainingPct:  e.RemainingPct,
-			LifetimeHours: e.LifetimeHours,
-			LBA:           e.LBA,
-			NSID:          e.NSID,
-		}
-	}
-
-	return result, nil
+	result := mapSelfTestStatusToInterface(status)
+	return &result, nil
 }
 
 func (s *Service) GetErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
@@ -431,7 +403,7 @@ func (s *Service) GetErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskService
 
 	result := &diskServiceInterfaces.DiskErrorLog{
 		ChecksumValid: log.ChecksumValid,
-		Entries: make([]diskServiceInterfaces.DiskErrorEntry, len(log.Entries)),
+		Entries:       make([]diskServiceInterfaces.DiskErrorEntry, len(log.Entries)),
 	}
 
 	for i, e := range log.Entries {
@@ -550,18 +522,18 @@ func (s *Service) GetExtendedErrorLog(disk diskServiceInterfaces.DiskInfo) (*dis
 
 	result := &diskServiceInterfaces.DiskErrorLog{
 		ChecksumValid: log.ChecksumValid,
-		Entries: make([]diskServiceInterfaces.DiskErrorEntry, len(log.Entries)),
+		Entries:       make([]diskServiceInterfaces.DiskErrorEntry, len(log.Entries)),
 	}
 	for i, e := range log.Entries {
 		result.Entries[i] = diskServiceInterfaces.DiskErrorEntry{
-			ErrorData:    e.ErrorData,
-			ExtendedData: e.ExtendedData,
+			ErrorData:     e.ErrorData,
+			ExtendedData:  e.ExtendedData,
 			LifetimeHours: e.LifetimeHours,
-			LBA:          e.LBA,
-			Status:       e.Status,
-			Error:        e.Error,
-			SectorCount:  e.SectorCount,
-			Device:       e.Device,
+			LBA:           e.LBA,
+			Status:        e.Status,
+			Error:         e.Error,
+			SectorCount:   e.SectorCount,
+			Device:        e.Device,
 		}
 	}
 
@@ -577,8 +549,8 @@ func (s *Service) GetExtendedSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*
 
 	result := &diskServiceInterfaces.DiskSelfTestLog{
 		ChecksumValid: log.ChecksumValid,
-		Entries:    make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
-		InProgress: log.InProgress,
+		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
+		InProgress:    log.InProgress,
 	}
 	for i, e := range log.Entries {
 		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
@@ -611,6 +583,7 @@ func (s *Service) GetDeviceStatistics(disk diskServiceInterfaces.DiskInfo) ([]di
 			Worst:     a.Worst,
 			Threshold: a.Threshold,
 			RawValue:  a.RawValue,
+			RawString: a.RawString,
 		}
 	}
 
@@ -626,8 +599,8 @@ func (s *Service) GetSelectiveSelfTestLog(disk diskServiceInterfaces.DiskInfo) (
 
 	result := &diskServiceInterfaces.DiskSelfTestLog{
 		ChecksumValid: log.ChecksumValid,
-		Entries:    make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
-		InProgress: log.InProgress,
+		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
+		InProgress:    log.InProgress,
 	}
 	for i, e := range log.Entries {
 		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{

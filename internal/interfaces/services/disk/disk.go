@@ -18,17 +18,18 @@ type Partition struct {
 }
 
 type Disk struct {
-	UUID       string      `json:"uuid"`
-	Device     string      `json:"device"`
-	Type       string      `json:"type"`
-	Usage      string      `json:"usage"`
-	Size       uint64      `json:"size"`
-	Model      string      `json:"model"`
-	Serial     string      `json:"serial"`
-	GPT        bool        `json:"gpt"`
-	SmartData  any         `json:"smartData"`
-	WearOut    string      `json:"wearOut"`
-	Partitions []Partition `json:"partitions"`
+	UUID        string           `json:"uuid"`
+	Device      string           `json:"device"`
+	Type        string           `json:"type"`
+	Usage       string           `json:"usage"`
+	Size        uint64           `json:"size"`
+	Model       string           `json:"model"`
+	Serial      string           `json:"serial"`
+	GPT         bool             `json:"gpt"`
+	SmartData   any              `json:"smartData"`
+	WearOut     string           `json:"wearOut"`
+	SelfTestLog *DiskSelfTestLog `json:"selfTestLog,omitempty"`
+	Partitions  []Partition      `json:"partitions"`
 }
 
 type DeviceInfo struct {
@@ -44,15 +45,15 @@ type DiskSelfTestStatus struct {
 }
 
 type SmartData struct {
-	Device               DeviceInfo              `json:"device"`
-	Passed               bool                    `json:"passed"`
-	ChecksumValid        bool                    `json:"checksum_valid"`
-	PowerOnHours         int                     `json:"power_on_hours"`
-	PowerCycleCount      int                     `json:"power_cycle_count"`
-	Temperature          int                     `json:"temperature"`
-	SelfTestStatus       DiskSelfTestStatus      `json:"self_test_status"`
-	SmartCapability      uint64                  `json:"smart_capability"`
-	SCSISelfTestResults  []DiskSCSISelfTestEntry `json:"scsi_self_test_results,omitempty"`
+	Device              DeviceInfo              `json:"device"`
+	Passed              bool                    `json:"passed"`
+	ChecksumValid       bool                    `json:"checksum_valid"`
+	PowerOnHours        int                     `json:"power_on_hours"`
+	PowerCycleCount     int                     `json:"power_cycle_count"`
+	Temperature         int                     `json:"temperature"`
+	SelfTestStatus      DiskSelfTestStatus      `json:"self_test_status"`
+	SmartCapability     uint64                  `json:"smart_capability"`
+	SCSISelfTestResults []DiskSCSISelfTestEntry `json:"scsi_self_test_results,omitempty"`
 
 	Attributes []ATASmartAttribute `json:"attributes"`
 }
@@ -60,7 +61,7 @@ type SmartData struct {
 type DiskSCSISelfTestEntry struct {
 	Type          string `json:"type"`
 	Status        string `json:"status"`
-	LifetimeHours int    `json:"lifetime_hours"`
+	LifetimeHours uint64 `json:"lifetime_hours"`
 	LBA           uint64 `json:"lba"`
 	SenseKey      uint8  `json:"sense_key"`
 	ASC           uint8  `json:"asc"`
@@ -97,11 +98,13 @@ type NvmeCriticalWarningState struct {
 }
 
 type SMARTNvme struct {
-	Device          DeviceInfo `json:"device"`
-	Passed          bool       `json:"passed"`
-	PowerOnHours    int        `json:"power_on_hours"`
-	PowerCycleCount int        `json:"power_cycle_count"`
-	Temperature     int        `json:"temperature"`
+	Device               DeviceInfo `json:"device"`
+	Passed               bool       `json:"passed"`
+	PowerOnHours         int        `json:"power_on_hours"`
+	PowerOnHoursExact    string     `json:"power_on_hours_exact"`
+	PowerCycleCount      int        `json:"power_cycle_count"`
+	PowerCycleCountExact string     `json:"power_cycle_count_exact"`
+	Temperature          int        `json:"temperature"`
 
 	CriticalWarning           string                   `json:"criticalWarning"`
 	CriticalWarningState      NvmeCriticalWarningState `json:"criticalWarningState"`
@@ -109,13 +112,21 @@ type SMARTNvme struct {
 	AvailableSpareThreshold   int                      `json:"availableSpareThreshold"`
 	PercentageUsed            int                      `json:"percentageUsed"`
 	DataUnitsRead             int                      `json:"dataUnitsRead"`
+	DataUnitsReadExact        string                   `json:"dataUnitsReadExact"`
 	DataUnitsWritten          int                      `json:"dataUnitsWritten"`
+	DataUnitsWrittenExact     string                   `json:"dataUnitsWrittenExact"`
 	HostReadCommands          int                      `json:"hostReadCommands"`
+	HostReadCommandsExact     string                   `json:"hostReadCommandsExact"`
 	HostWriteCommands         int                      `json:"hostWriteCommands"`
+	HostWriteCommandsExact    string                   `json:"hostWriteCommandsExact"`
 	ControllerBusyTime        int                      `json:"controllerBusyTime"`
+	ControllerBusyTimeExact   string                   `json:"controllerBusyTimeExact"`
 	UnsafeShutdowns           int                      `json:"unsafeShutdowns"`
+	UnsafeShutdownsExact      string                   `json:"unsafeShutdownsExact"`
 	MediaErrors               int                      `json:"mediaErrors"`
+	MediaErrorsExact          string                   `json:"mediaErrorsExact"`
 	ErrorInfoLogEntries       int                      `json:"errorInfoLogEntries"`
+	ErrorInfoLogEntriesExact  string                   `json:"errorInfoLogEntriesExact"`
 	WarningCompositeTempTime  int                      `json:"warningCompositeTempTime"`
 	ErrorCompositeTempTime    int                      `json:"errorCompositeTempTime"`
 	Temperature1TransitionCnt int                      `json:"temperature1TransitionCnt"`
@@ -126,7 +137,7 @@ type SMARTNvme struct {
 
 type DiskServiceInterface interface {
 	GetDiskDevices(ctx context.Context) ([]Disk, error)
-	GetSmartData(disk DiskInfo) (any, error)
+	GetSmartData(disk DiskInfo) (any, *DiskSelfTestLog, error)
 	GetWearOut(disk any) (float64, error)
 	GetDiskSize(device string) (uint64, error)
 	DestroyPartitionTable(device string) error
@@ -212,15 +223,15 @@ type DiskErrorEntry struct {
 
 type DiskErrorLog struct {
 	Entries       []DiskErrorEntry `json:"entries"`
-	ChecksumValid bool              `json:"checksum_valid"`
+	ChecksumValid bool             `json:"checksum_valid"`
 }
 
 type DiskSelfTestEntry struct {
 	Type          string `json:"type"`
 	Status        string `json:"status"`
 	RemainingPct  int    `json:"remaining_pct"`
-	LifetimeHours int    `json:"lifetime_hours"`
-	LBA           int64  `json:"lba"`
+	LifetimeHours uint64 `json:"lifetime_hours"`
+	LBA           uint64 `json:"lba"`
 	NSID          uint32 `json:"nsid"`
 }
 
@@ -239,4 +250,5 @@ type DiskAttribute struct {
 	Worst     int    `json:"worst"`
 	Threshold int    `json:"threshold"`
 	RawValue  uint64 `json:"raw_value"`
+	RawString string `json:"raw_string,omitempty"`
 }

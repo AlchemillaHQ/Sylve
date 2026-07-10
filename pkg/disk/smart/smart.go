@@ -8,6 +8,19 @@
 
 package smart
 
+const (
+	SelfTestOffline           uint8 = 0x00
+	SelfTestShort             uint8 = 0x01
+	SelfTestExtended          uint8 = 0x02
+	SelfTestConveyance        uint8 = 0x03
+	SelfTestSelective         uint8 = 0x04
+	SelfTestAbort             uint8 = 0x7f
+	SelfTestShortCaptive      uint8 = 0x81
+	SelfTestExtendedCaptive   uint8 = 0x82
+	SelfTestConveyanceCaptive uint8 = 0x83
+	SelfTestSelectiveCaptive  uint8 = 0x84
+)
+
 type Attribute struct {
 	Page      uint32
 	ID        uint32
@@ -16,6 +29,7 @@ type Attribute struct {
 	Worst     int
 	Threshold int
 	RawValue  uint64
+	RawString string
 	RawBytes  []byte
 	TextValue string
 	IsText    bool
@@ -36,17 +50,27 @@ const (
 	AttrStateFailedNow
 	AttrStateFailedPast
 	AttrStateNoThreshold
+	AttrStateNonExisting
+	AttrStateNoNormVal
 )
 
-func AtaAttrState(current, worst, threshold int) int {
+func AtaAttrState(current, worst, threshold int, def *AttrDef) int {
+	if def != nil && def.NoNormVal {
+		return AttrStateNoNormVal
+	}
+	if threshold < 0 {
+		return AttrStateNoThreshold
+	}
 	if threshold == 0 {
 		return AttrStateOK
 	}
 	if current <= threshold {
 		return AttrStateFailedNow
 	}
-	if worst <= threshold {
-		return AttrStateFailedPast
+	if def == nil || !def.NoWorstVal {
+		if worst <= threshold {
+			return AttrStateFailedPast
+		}
 	}
 	return AttrStateOK
 }
@@ -62,115 +86,157 @@ func DecodeSelfTestExecStatus(raw uint64) SelfTestExecStatus {
 	remainNibble := b & 0x0F
 
 	var status string
-	switch {
-	case b == 0xF0:
-		status = "completed_unknown"
-	case statusNibble == 0x0:
+	switch statusNibble {
+	case 0x0:
 		status = "completed"
-	case statusNibble == 0x1:
+	case 0x1:
 		status = "aborted_by_host"
-	case statusNibble == 0x2:
+	case 0x2:
 		status = "interrupted"
-	case statusNibble == 0x3:
+	case 0x3:
 		status = "fatal"
-	case statusNibble == 0x4:
+	case 0x4:
 		status = "failed_unknown"
-	case statusNibble == 0x5:
+	case 0x5:
 		status = "failed_electrical"
-	case statusNibble == 0x6:
+	case 0x6:
 		status = "failed_servo"
-	case statusNibble == 0x7:
+	case 0x7:
 		status = "failed_read"
-	case statusNibble == 0x8:
+	case 0x8:
 		status = "failed_handling"
-	case statusNibble == 0xF:
+	case 0x9, 0xA, 0xB, 0xC, 0xD, 0xE:
+		status = "reserved"
+	case 0xF:
 		status = "in_progress"
 	default:
 		status = "reserved"
 	}
 
+	rc := -1
+	if remainNibble <= 9 {
+		rc = int(remainNibble) * 10
+	}
 	return SelfTestExecStatus{
 		Status:       status,
-		RemainingPct: int(remainNibble) * 10,
+		RemainingPct: rc,
 	}
 }
 
 type SelfTestEntry struct {
-	Type          string
-	Status        string
-	RemainingPct  int
-	LifetimeHours int
-	LBA           int64
-	NSID          uint32
+	Protocol            string
+	Type                string
+	Mode                string
+	Status              string
+	Outcome             string
+	RemainingPct        int
+	LifetimeHours       uint64
+	LBA                 uint64
+	LBAValid            bool
+	NSID                uint32
+	NSIDValid           bool
+	SegmentNum          uint8
+	SenseKey            uint8
+	ASC                 uint8
+	ASCQ                uint8
+	StatusCodeType      uint8
+	StatusCodeTypeValid bool
+	StatusCode          uint8
+	StatusCodeValid     bool
+	Checkpoint          uint8
+}
+
+type SelectiveSpan struct {
+	Start uint64
+	End   uint64
 }
 
 type SelfTestLog struct {
-	Entries        []SelfTestEntry
-	InProgress     bool
-	ProgressPct    int
-	ChecksumValid  bool
+	Entries              []SelfTestEntry
+	Revision             uint16
+	InProgress           bool
+	CurrentType          string
+	ProgressPct          int
+	ProgressKnown        bool
+	ChecksumValid        bool
+	SelectiveSpans       [5]SelectiveSpan
+	SelectiveCurrentLBA  uint64
+	SelectiveCurrentSpan uint16
+	SelectiveFlags       uint16
+	SelectivePendingTime uint16
+	SelectiveScanEnabled bool
+	SelectiveScanPending bool
+	SelectiveScanActive  bool
 }
 
 type SCSISelfTestEntry struct {
 	Type          string
+	Mode          string
 	Status        string
-	LifetimeHours int
+	LifetimeHours uint64
 	LBA           uint64
+	LBAValid      bool
 	SenseKey      uint8
 	ASC           uint8
 	ASCQ          uint8
+	SegmentNumber uint8
 }
 
 type ATAErrorEntry struct {
-	ErrorData    uint16
-	ExtendedData uint16
+	ErrorData     uint16
+	ExtendedData  uint16
 	LifetimeHours uint32
-	LBA          uint64
-	Status       uint8
-	Error        uint8
-	SectorCount  uint8
-	Device       uint8
+	LBA           uint64
+	Status        uint8
+	Error         uint8
+	SectorCount   uint8
+	SectorCount16 uint16
+	Device        uint8
 }
 
 type ATAErrorLog struct {
 	Entries       []ATAErrorEntry
+	Revision      uint16
+	ErrorCount    uint32
 	ChecksumValid bool
 }
 
 type NVMeErrorEntry struct {
-	ErrorCount   uint64
-	SQID         uint16
-	CommandID    uint16
-	StatusField  uint16
-	ParamError   uint16
-	LBA          uint64
-	NamespaceID  uint32
+	ErrorCount  uint64
+	SQID        uint16
+	CommandID   uint16
+	StatusField uint16
+	ParamError  uint16
+	LBA         uint64
+	NamespaceID uint32
 }
 
 type NVMeErrorLog struct {
-	Entries []NVMeErrorEntry
+	Entries  []NVMeErrorEntry
+	Capacity int
 }
 
 type SCTStatus struct {
-	FormatVersion      uint16
-	SCTVersion         uint16
-	SCTSpec            uint16
-	StatusFlags        uint32
-	DeviceState        uint8
-	ExtStatusCode      uint16
-	ActionCode         uint16
-	FunctionCode       uint16
-	LBACurrent         uint64
-	CurrentTemp        int8
-	MinTempCycle       int8
-	MaxTempCycle       int8
-	LifetimeMinTemp    int8
-	LifetimeMaxTemp    int8
-	MaxOpLimit         int8
-	OverTempCount      uint32
-	UnderTempCount     uint32
-	SmartStatusPassed  bool
-	MinERCTime         uint16
+	FormatVersion     uint16
+	SCTVersion        uint16
+	SCTSpec           uint16
+	StatusFlags       uint32
+	DeviceState       uint8
+	ExtStatusCode     uint16
+	ActionCode        uint16
+	FunctionCode      uint16
+	LBACurrent        uint64
+	CurrentTemp       int8
+	MinTempCycle      int8
+	MaxTempCycle      int8
+	LifetimeMinTemp   int8
+	LifetimeMaxTemp   int8
+	MaxOpLimit        int8
+	OverTempCount     uint32
+	UnderTempCount    uint32
+	SmartStatusPassed bool
+	SmartStatusKnown  bool
+	MinERCTime        uint16
 }
 
 type SCTTempSample struct {
@@ -190,45 +256,87 @@ type SCTTempHistory struct {
 }
 
 type NVMeIdentifyCtrl struct {
-	SerialNumber     string
-	ModelNumber      string
-	FirmwareRev      string
-	NVMeVersion      uint32
-	PCIVendorID      uint16
-	SubsystemVendorID uint16
-	WCTemp           uint16
-	CCTemp           uint16
-	MNTMT            uint16
-	MXTMT            uint16
-	TotalCapacity    uint64
-	UnallocCapacity  uint64
-	NumNamespaces    uint32
-	MaxDataXferSize  uint8
-	AbortCmdLimit    uint8
-	AsyncEventLimit  uint8
-	FirmwareSlots    uint8
-	ErrorLogEntries  uint8
-	NumPowerStates   uint8
-	SanitizeCaps     uint32
-	VolatileWriteCache bool
-	HostMemBufPreferred uint32
-	HostMemBufMin     uint32
-	SelfTestTimeMinutes uint16
-	SelfTestOptions   uint8
-	ControllerID     uint16
-	IEEE             [3]uint8
+	SerialNumber          string
+	ModelNumber           string
+	FirmwareRev           string
+	NVMeVersion           uint32
+	PCIVendorID           uint16
+	SubsystemVendorID     uint16
+	WCTemp                uint16
+	CCTemp                uint16
+	MNTMT                 uint16
+	MXTMT                 uint16
+	TotalCapacity         uint64
+	TotalCapacityString   string
+	UnallocCapacity       uint64
+	UnallocCapacityString string
+	NumNamespaces         uint32
+	MaxDataXferSize       uint8
+	AbortCmdLimit         uint8
+	AsyncEventLimit       uint8
+	FirmwareSlots         uint8
+	ErrorLogEntries       uint16
+	NumPowerStates        uint16
+	SanitizeCaps          uint32
+	VolatileWriteCache    bool
+	HostMemBufPreferred   uint32
+	HostMemBufMin         uint32
+	SelfTestTimeMinutes   uint16
+	SelfTestOptions       uint8
+	OptionalAdminCommands uint16
+	SelfTestSupported     bool
+	NamespaceID           uint32
+	ControllerID          uint16
+	IEEE                  [3]uint8
+}
+
+type NVMeLBAFormat struct {
+	MetadataSize        uint16
+	DataSizeExponent    uint8
+	DataSize            uint64
+	RelativePerformance uint8
+}
+
+type NVMeIdentifyNamespace struct {
+	NamespaceID             uint32
+	Size                    uint64
+	Capacity                uint64
+	Utilization             uint64
+	Features                uint8
+	FormattedLBA            uint8
+	MetadataCapabilities    uint8
+	DataProtectionCaps      uint8
+	DataProtectionSettings  uint8
+	MultipathCapabilities   uint8
+	ReservationCapabilities uint8
+	FormatProgressIndicator uint8
+	NVMCapacity             uint64
+	NVMCapacityString       string
+	NamespaceGUID           [16]uint8
+	IEEEExtendedUniqueID    [8]uint8
+	LBAFormats              []NVMeLBAFormat
 }
 
 type DeviceInfo struct {
-	Device               string
-	Protocol             string
-	Passed               bool
-	ChecksumValid        bool
-	Temperature          int
-	PowerOnHours         int
-	PowerCycleCount      int
-	SelfTestStatus       SelfTestExecStatus
-	SmartCapability      uint64
-	Attributes           []Attribute
-	SCSISelfTestResults  []SCSISelfTestEntry
+	Device              string
+	Vendor              string
+	Model               string
+	Serial              string
+	Firmware            string
+	ModelFamily         string
+	DriveDBWarning      string
+	FirmwareBugs        FirmwareBug
+	SCTSupported        bool
+	SectorCount         uint64
+	Protocol            string
+	Passed              bool
+	HealthKnown         bool
+	ChecksumValid       bool
+	Temperature         int
+	PowerOnHours        int
+	PowerCycleCount     int
+	SelfTestStatus      SelfTestExecStatus
+	SmartCapability     uint64
+	Attributes          []Attribute
+	SCSISelfTestResults []SCSISelfTestEntry
 }

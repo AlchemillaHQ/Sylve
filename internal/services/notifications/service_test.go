@@ -44,8 +44,8 @@ func (m *mockDiskService) GetDiskDevices(ctx context.Context) ([]diskServiceInte
 	return m.disks, nil
 }
 
-func (m *mockDiskService) GetSmartData(disk diskServiceInterfaces.DiskInfo) (any, error) {
-	return nil, nil
+func (m *mockDiskService) GetSmartData(disk diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+	return nil, nil, nil
 }
 
 func (m *mockDiskService) GetWearOut(disk any) (float64, error) {

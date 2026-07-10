@@ -61,6 +61,54 @@ func SaveSSHKey(targetID uint, keyData string) (string, error) {
 	return keyPath, nil
 }
 
+// SaveTemporarySSHKey writes key material for pre-create target validation.
+// The filename intentionally does not match the managed target-<id>_id pattern,
+// so reconciliation cannot mistake it for an orphaned persisted target key.
+func SaveTemporarySSHKey(keyData string) (string, error) {
+	sshDir, err := GetSSHKeyDir()
+	if err != nil {
+		return "", err
+	}
+
+	keyFile, err := os.CreateTemp(sshDir, ".target-validation-*")
+	if err != nil {
+		return "", fmt.Errorf("create_temporary_ssh_key: %w", err)
+	}
+	keyPath := keyFile.Name()
+	cleanup := func() {
+		_ = keyFile.Close()
+		_ = os.Remove(keyPath)
+	}
+
+	if err := keyFile.Chmod(0600); err != nil {
+		cleanup()
+		return "", fmt.Errorf("chmod_temporary_ssh_key: %w", err)
+	}
+	if _, err := keyFile.WriteString(strings.TrimSpace(keyData) + "\n"); err != nil {
+		cleanup()
+		return "", fmt.Errorf("write_temporary_ssh_key: %w", err)
+	}
+	if err := keyFile.Close(); err != nil {
+		_ = os.Remove(keyPath)
+		return "", fmt.Errorf("close_temporary_ssh_key: %w", err)
+	}
+
+	return keyPath, nil
+}
+
+func RemoveTemporarySSHKey(keyPath string) {
+	sshDir, err := GetSSHKeyDir()
+	if err != nil {
+		return
+	}
+
+	cleanedPath := filepath.Clean(strings.TrimSpace(keyPath))
+	if !pathWithinDir(cleanedPath, sshDir) || !strings.HasPrefix(filepath.Base(cleanedPath), ".target-validation-") {
+		return
+	}
+	_ = os.Remove(cleanedPath)
+}
+
 func ensureSSHKeyFileAtPath(keyPath, keyData string) error {
 	trimmed := strings.TrimSpace(keyData)
 	if keyPath == "" || trimmed == "" {

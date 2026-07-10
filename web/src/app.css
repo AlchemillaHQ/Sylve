@@ -130,27 +130,6 @@
 		@apply bg-background text-foreground;
 	}
 
-	.filepond--list-scroller {
-		@apply bg-background text-foreground;
-	}
-
-	.filepond--drop-label {
-		@apply bg-muted! text-foreground rounded-lg dark:text-white/90!;
-	}
-
-	.filepond--panel-root {
-		@apply bg-background text-foreground;
-	}
-
-	.filepond--list {
-		margin-top: 12px !important;
-	}
-
-	.filepond--root {
-		max-height: 500px;
-		overflow-y: auto;
-	}
-
 	.file-explorer-container.drag-over {
 		background-color: rgba(59, 130, 246, 0.1);
 	}
@@ -171,10 +150,32 @@
 	}
 }
 
+@import './css/tabulator_simple.css';
+@import 'filepond/dist/filepond.css';
+@import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+
+.filepond--list-scroller {
+	@apply bg-transparent! text-foreground;
+}
+
+.filepond--drop-label {
+	@apply bg-muted! text-foreground rounded-lg dark:text-white/90!;
+}
+
+.filepond--panel-root {
+	@apply bg-muted! text-foreground;
+}
+
+.filepond--list {
+	margin-top: 12px !important;
+}
+
+.filepond--root {
+	max-height: 500px;
+	overflow-y: auto;
+}
+
 @layer components {
-	@import './css/tabulator_simple.css';
-	@import 'filepond/dist/filepond.css';
-	@import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 	.tabulator-popup-container {
 		background: var(--popover);

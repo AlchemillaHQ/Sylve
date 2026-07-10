@@ -33,7 +33,7 @@ func AsciiArt(w io.Writer) {
 	fmt.Fprintln(w, "  ___) | |_| | |\\ V /  __/")
 	fmt.Fprintln(w, " |____/ \\__, |_| \\_/ \\___|")
 	fmt.Fprintln(w, "        |___/              ")
-	fmt.Fprintf(w, "\t\t              v%s\n", Version)
+	fmt.Fprintf(w, "\t              v%s\n", Version)
 }
 
 // ResolveConfigPath returns the config file path to use, following this priority:

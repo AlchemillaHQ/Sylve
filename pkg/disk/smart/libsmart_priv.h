@@ -37,10 +37,16 @@
 #define PAGE_ID_SCSI_INFO_EXCEPTION	0x2f		/* Informational Exceptions */
 
 /* ATA SMART self-test types (LBA Low register for EXECUTE OFF-LINE) */
+#define ATA_SELF_TEST_OFFLINE          0x00
 #define ATA_SELF_TEST_SHORT            0x01
 #define ATA_SELF_TEST_EXTENDED         0x02
 #define ATA_SELF_TEST_CONVEYANCE       0x03
+#define ATA_SELF_TEST_SELECTIVE        0x04
 #define ATA_SELF_TEST_ABORT            0x7F
+#define ATA_SELF_TEST_SHORT_CAPTIVE        0x81
+#define ATA_SELF_TEST_EXTENDED_CAPTIVE     0x82
+#define ATA_SELF_TEST_CONVEYANCE_CAPTIVE   0x83
+#define ATA_SELF_TEST_SELECTIVE_CAPTIVE    0x84
 
 /* SMART log addresses */
 #define LOG_ADDR_SELF_TEST             0x06
@@ -76,7 +82,9 @@ typedef struct smart_info_s {
 	uint32_t supported:1,
 		 /* storage protocol is tunneled (e.g. ATA inside SCSI) */
 		 tunneled:1,
-		 :30;
+		 sct_supported:1,
+		 self_test_supported:1,
+		 :28;
 	/*
 	 * Device-provided information, including
 	 *  - vendor name
@@ -87,6 +95,9 @@ typedef struct smart_info_s {
 	 */
 	char vendor[16], device[48], rev[16], serial[32];
 	uint8_t  scsi_version;		/* SCSI ANSI version from INQUIRY (SPC-4=6, SPC-5=7) */
+	uint32_t nvme_version;		/* NVMe version from Identify Controller (NVME_VS format) */
+	uint32_t nvme_nsid;
+	uint64_t sector_count;
 } smart_info_t;
 
 /* List of pages providing SMART/health data */

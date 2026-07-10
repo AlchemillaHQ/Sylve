@@ -65,6 +65,7 @@ typedef struct {
 	void *b;		// buffer of raw data
 	size_t bsize;		// buffer size
 	uint32_t attr_count;	// number of SMART attributes
+	uint32_t nvme_version;	// NVMe version (NVME_VS format, 0 if not NVMe)
 } smart_buf_t;
 
 struct smart_map_s;
@@ -173,19 +174,33 @@ void smart_print_device_info(smart_h);
 
 int32_t smart_self_test(smart_h, uint8_t);
 
+int32_t smart_read_ata_data(smart_h, void *, size_t);
+
+int32_t smart_read_self_test_log(smart_h, void *, size_t);
+
+int32_t smart_scsi_request_sense(smart_h, void *, size_t);
+
+int32_t smart_scsi_control_mode_page(smart_h, void *, size_t);
+
+int32_t smart_scsi_extended_inquiry(smart_h, void *, size_t);
+
+bool smart_log_page_supported(smart_h, uint32_t);
+
 smart_map_t *smart_read_log(smart_h, uint8_t, size_t);
 
 smart_map_t *smart_read_error_log(smart_h);
 
 smart_map_t *smart_read_log_directory(smart_h);
 
-smart_map_t *smart_read_gpl_log(smart_h, uint8_t, uint8_t, size_t);
+smart_map_t *smart_read_gpl_log(smart_h, uint8_t, uint16_t, size_t);
 
 smart_map_t *smart_read_sct_temp_history(smart_h);
 
 int32_t smart_write_smart_log(smart_h, uint8_t, void *, size_t);
 
 int32_t smart_nvme_identify_ctrl(smart_h, void *, size_t);
+
+int32_t smart_nvme_identify_ns(smart_h, uint32_t, void *, size_t);
 
 int32_t smart_enable(smart_h);
 

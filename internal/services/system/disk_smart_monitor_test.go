@@ -286,8 +286,8 @@ type mockDiskServiceForWearout struct {
 func (m *mockDiskServiceForWearout) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
 	return nil, errors.New("not implemented")
 }
-func (m *mockDiskServiceForWearout) GetSmartData(disk diskServiceInterfaces.DiskInfo) (any, error) {
-	return nil, errors.New("not implemented")
+func (m *mockDiskServiceForWearout) GetSmartData(disk diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+	return nil, nil, errors.New("not implemented")
 }
 func (m *mockDiskServiceForWearout) GetWearOut(smartData any) (float64, error) {
 	return m.wearoutFn(smartData)
