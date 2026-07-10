@@ -16,9 +16,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
-	"github.com/alchemillahq/sylve/internal/db/models"
 	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 	"github.com/alchemillahq/sylve/internal/logger"
 
@@ -110,6 +110,7 @@ func (s *Service) gatherManagedRecords() ([]mdnsInterfaces.MdnsRecordWithManaged
 				Name: host,
 				Type: "_smb._tcp",
 				Port: 445,
+				Txt:  map[string]string{},
 			},
 			Managed: true,
 			Source:  "samba",

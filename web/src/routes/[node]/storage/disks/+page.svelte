@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { destroyDisk, destroyPartition, initializeGPT, listDisks } from '$lib/api/disk/disk';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -5,6 +15,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import CreatePartition from '$lib/components/custom/Disk/CreatePartition.svelte';
+	import SmartSelfTest from '$lib/components/custom/Disk/SmartSelfTest.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Row } from '$lib/types/components/tree-table';
 	import { type Disk, type Partition } from '$lib/types/disk/disk';
@@ -48,6 +59,7 @@
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let { rows, columns } = $derived(generateTableData(disks.current));
+	let knownDiskUUIDs = $derived(disks.current.map((disk) => disk.uuid));
 
 	let wipeModal = $state({
 		open: false,
@@ -67,6 +79,14 @@
 		title: '',
 		KV: {},
 		type: ''
+	});
+
+	let selfTestModal: {
+		open: boolean;
+		disk: Disk | null;
+	} = $state({
+		open: false,
+		disk: null
 	});
 
 	let activeDisk: Disk | null = $derived.by(() => {
@@ -95,7 +115,7 @@
 		if (action === 'smart') {
 			if (activeDisk) {
 				smartModal.open = false;
-				smartModal.title = `S.M.A.R.T Values (${activeDisk.device})`;
+				smartModal.title = `S.M.A.R.T Values - ${activeDisk.device}`;
 				if (activeDisk.type === 'NVMe') {
 					smartModal.KV = parseSMART($state.snapshot(activeDisk));
 					smartModal.open = true;
@@ -110,6 +130,11 @@
 					});
 				}
 			}
+		}
+
+		if (action === 'self-test' && activeDisk) {
+			selfTestModal.disk = activeDisk;
+			selfTestModal.open = true;
 		}
 
 		if (action === 'wipe') {
@@ -145,6 +170,9 @@
 		smart: {
 			ability: false
 		},
+		selfTest: {
+			ability: false
+		},
 		gpt: {
 			ability: false
 		},
@@ -159,7 +187,8 @@
 	$effect(() => {
 		if (activeDisk) {
 			untrack(() => {
-				buttonAbilities.smart.ability = activeDisk.smartData !== null;
+				buttonAbilities.smart.ability = activeDisk.smartData != null;
+				buttonAbilities.selfTest.ability = true;
 				buttonAbilities.gpt.ability = !activeDisk.gpt;
 
 				if (activeDisk.usage === 'ZFS') {
@@ -186,6 +215,7 @@
 				buttonAbilities.wipe.ability = true;
 				buttonAbilities.createPartition.ability = false;
 				buttonAbilities.smart.ability = false;
+				buttonAbilities.selfTest.ability = false;
 			});
 		} else {
 			untrack(() => {
@@ -193,6 +223,7 @@
 				buttonAbilities.wipe.ability = false;
 				buttonAbilities.createPartition.ability = false;
 				buttonAbilities.smart.ability = false;
+				buttonAbilities.selfTest.ability = false;
 			});
 		}
 	});
@@ -206,6 +237,15 @@
 			<div class="flex items-center">
 				<span class="icon-[icon-park-outline--hdd] mr-1 h-4 w-4"></span>
 				<span>S.M.A.R.T Values</span>
+			</div>
+		</Button>
+	{/if}
+
+	{#if type == 'self-test' && buttonAbilities.selfTest.ability}
+		<Button onclick={() => diskAction('self-test')} size="sm" variant="outline" class="h-6.5">
+			<div class="flex items-center">
+				<span class="icon-[material-symbols--fact-check-outline] mr-1 h-4 w-4"></span>
+				<span>S.M.A.R.T Test</span>
 			</div>
 		</Button>
 	{/if}
@@ -252,6 +292,7 @@
 		<Search bind:query />
 
 		{@render button('smart')}
+		{@render button('self-test')}
 		{@render button('gpt')}
 		{@render button('partition')}
 		{@render button('wipe-disk')}
@@ -268,6 +309,10 @@
 		bind:open={smartModal.open}
 		KV={smartModal.KV}
 	></KvTableModal>
+
+	{#if selfTestModal.disk}
+		<SmartSelfTest bind:open={selfTestModal.open} disk={selfTestModal.disk} {knownDiskUUIDs} />
+	{/if}
 
 	<TreeTable
 		data={{

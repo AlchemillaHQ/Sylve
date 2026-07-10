@@ -194,8 +194,12 @@ func sambaShareServiceErrorStatus(err error) int {
 		return http.StatusNotFound
 	case msg == "guest_only_share_cannot_have_principals",
 		msg == "no_principals_selected_and_guests_not_allowed",
+		msg == "invalid_share_name",
+		msg == "invalid_create_mask",
+		msg == "invalid_directory_mask",
 		msg == "dataset_not_found",
 		msg == "dataset_not_mounted",
+		strings.HasPrefix(msg, "invalid_audit_operation:"),
 		strings.HasPrefix(msg, "user_not_found:"),
 		strings.HasPrefix(msg, "group_not_found:"),
 		strings.Contains(msg, "dataset_not_filesystem:"):

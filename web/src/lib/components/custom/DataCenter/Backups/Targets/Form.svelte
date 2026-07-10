@@ -135,7 +135,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="w-[90%] max-w-xl overflow-hidden p-5"
+		class="w-[90%] max-w-xl overflow-hidden p-6"
 		showCloseButton={true}
 		showResetButton={edit}
 		onReset={() => reset(true)}

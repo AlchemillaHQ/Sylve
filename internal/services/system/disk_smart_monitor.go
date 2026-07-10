@@ -13,10 +13,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	"github.com/alchemillahq/sylve/internal/logger"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
@@ -53,17 +56,26 @@ type diskSmartConfig struct {
 }
 
 type diskSmartState struct {
-	passed               bool
-	temperature          int
-	wearoutPct           float64
-	reallocatedSectors   int64
-	pendingSectors       int64
-	uncorrectableSectors int64
+	passed                      bool
+	healthInitialized           bool
+	healthAlerted               bool
+	temperature                 int
+	wearoutPct                  float64
+	reallocatedSectors          int64
+	pendingSectors              int64
+	uncorrectableSectors        int64
+	sectorAlerted               bool
+	temperatureAlert            string
+	wearoutAlert                string
+	sectorNotifiedReallocated   int64
+	sectorNotifiedPending       int64
+	sectorNotifiedUncorrectable int64
 
 	nvmeAvailableSpare  int
 	nvmeSpareThreshold  int
-	nvmeMediaErrors     int
+	nvmeMediaErrors     string
 	nvmeCriticalWarning bool
+	nvmeAlerted         bool
 
 	tempWarningCount   int
 	tempCriticalCount  int
@@ -78,11 +90,19 @@ type diskSmartState struct {
 	nvmeWarnCount      int
 	nvmeNormalCount    int
 
-	lastSelfTestFingerprint string
-	selftestFailCount       int
-	selftestNormalCount     int
+	unavailableCount   int
+	unavailableAlerted bool
+}
 
-	unavailableCount int
+type diskSmartMonitorSource interface {
+	GetDiskDevicesForSMARTMonitor(context.Context) ([]diskServiceInterfaces.Disk, error)
+}
+
+func diskSmartTargetKey(disk diskServiceInterfaces.Disk) string {
+	if disk.IdentityStable && strings.TrimSpace(disk.UUID) != "" {
+		return strings.TrimSpace(strings.ToLower(disk.UUID))
+	}
+	return strings.TrimSpace(strings.ToLower(disk.Device))
 }
 
 func (s *Service) StartDiskSmartMonitor(ctx context.Context) {
@@ -119,29 +139,26 @@ func (s *Service) runDiskSmartMonitor(ctx context.Context) {
 		default:
 		}
 
-		disks, err := s.DiskService.GetDiskDevices(ctx)
+		disks, err := s.diskSmartMonitorDevices(ctx)
 		if err != nil {
 			logger.L.Warn().Err(err).Msg("disk_smart_monitor_failed_to_get_disks")
 			tickAndSleep()
 			continue
 		}
+		s.refreshDiskSmartConfigs(disks)
 
+		seenTargets := make(map[string]struct{}, len(disks))
 		for _, disk := range disks {
-			if disk.SmartData == nil {
-				s.handleMissingSmart(ctx, &mu, stateByDevice, disk.Device)
-				continue
-			}
-
-			mu.Lock()
-			st, exists := stateByDevice[disk.Device]
-			if !exists {
-				st = &diskSmartState{}
-				stateByDevice[disk.Device] = st
-			}
-			mu.Unlock()
-
-			s.evaluateSmartData(ctx, disk, st, warmup)
+			seenTargets[diskSmartTargetKey(disk)] = struct{}{}
+			s.processDiskSmartSample(ctx, &mu, stateByDevice, disk, warmup)
 		}
+		mu.Lock()
+		for target := range stateByDevice {
+			if _, ok := seenTargets[target]; !ok {
+				delete(stateByDevice, target)
+			}
+		}
+		mu.Unlock()
 
 		if warmup {
 			warmup = false
@@ -152,9 +169,37 @@ func (s *Service) runDiskSmartMonitor(ctx context.Context) {
 	}
 }
 
-func (s *Service) handleMissingSmart(ctx context.Context, mu *sync.Mutex, stateByDevice map[string]*diskSmartState, device string) {
+func (s *Service) diskSmartMonitorDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	if source, ok := s.DiskService.(diskSmartMonitorSource); ok {
+		return source.GetDiskDevicesForSMARTMonitor(ctx)
+	}
+	return s.DiskService.GetDiskDevices(ctx)
+}
+
+func (s *Service) processDiskSmartSample(ctx context.Context, mu *sync.Mutex, stateByDevice map[string]*diskSmartState, disk diskServiceInterfaces.Disk, warmup bool) {
+	if disk.SmartReadPowerSkipped {
+		return
+	}
+	target := diskSmartTargetKey(disk)
+	if disk.SmartData == nil {
+		s.handleMissingSmart(ctx, mu, stateByDevice, target, disk.Device)
+		return
+	}
+
 	mu.Lock()
-	st, exists := stateByDevice[device]
+	st, exists := stateByDevice[target]
+	if !exists {
+		st = &diskSmartState{}
+		stateByDevice[target] = st
+	}
+	mu.Unlock()
+
+	s.evaluateSmartData(ctx, disk, st, warmup)
+}
+
+func (s *Service) handleMissingSmart(ctx context.Context, mu *sync.Mutex, stateByDevice map[string]*diskSmartState, target, device string) {
+	mu.Lock()
+	st, exists := stateByDevice[target]
 	if !exists {
 		mu.Unlock()
 		return
@@ -164,35 +209,52 @@ func (s *Service) handleMissingSmart(ctx context.Context, mu *sync.Mutex, stateB
 	count := st.unavailableCount
 	mu.Unlock()
 
-	if count == diskSmartConsecutiveUnavailable {
-		s.emitDiskSmartNotification(ctx, device, notifier.DiskSmartHealthKindPrefix,
-			"smart unavailable", "warning",
+	if count >= diskSmartConsecutiveUnavailable && !st.unavailableAlerted {
+		if s.emitDiskSmartNotification(ctx, target, device, notifier.DiskSmartHealthKindPrefix,
+			"smart_unavailable", "warning",
 			fmt.Sprintf("SMART data unavailable for disk %s", device),
 			fmt.Sprintf("The disk %s previously returned valid S.M.A.R.T data but is now unavailable.", device),
 			map[string]string{
 				"condition": "smart_unavailable",
-			})
+			}) {
+			mu.Lock()
+			st.unavailableAlerted = true
+			mu.Unlock()
+		}
 	}
 }
 
 func (s *Service) evaluateSmartData(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
+	if st.unavailableAlerted {
+		target := diskSmartTargetKey(disk)
+		if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartHealthKindPrefix,
+			"smart_available", "info",
+			fmt.Sprintf("SMART data available for disk %s", disk.Device),
+			fmt.Sprintf("S.M.A.R.T data for disk %s is available again.", disk.Device),
+			map[string]string{"condition": "smart_available"}) {
+			st.unavailableAlerted = false
+		}
+	}
 	st.unavailableCount = 0
 
-	s.evaluateTemperature(ctx, disk, st, warmup)
 	s.evaluateHealth(ctx, disk, st, warmup)
-	s.evaluateReallocated(ctx, disk, st, warmup)
-
-	if disk.Type == "NVMe" || disk.Type == "SSD" {
-		s.evaluateWearout(ctx, disk, st, warmup)
+	attributesValid := true
+	if data, ok := disk.SmartData.(diskServiceInterfaces.SmartData); ok && strings.EqualFold(data.Device.Protocol, "ATA") && !data.ChecksumValid {
+		attributesValid = false
 	}
+	if attributesValid {
+		s.evaluateTemperature(ctx, disk, st, warmup)
+		s.evaluateReallocated(ctx, disk, st, warmup)
 
-	if disk.Type == "NVMe" {
+		if disk.Type == "NVMe" || disk.Type == "SSD" {
+			s.evaluateWearout(ctx, disk, st, warmup)
+		}
+
 		if nvmeData, ok := disk.SmartData.(diskServiceInterfaces.SMARTNvme); ok {
 			s.evaluateNvme(ctx, disk, &nvmeData, st, warmup)
 		}
 	}
 
-	s.evaluateSelfTestLog(ctx, disk, st, warmup)
 }
 
 func (s *Service) evaluateTemperature(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
@@ -201,53 +263,57 @@ func (s *Service) evaluateTemperature(ctx context.Context, disk diskServiceInter
 		return
 	}
 
-	cfg := s.loadDiskSmartConfig(disk.Device, notifier.DiskSmartTemperatureKindPrefix)
+	target := diskSmartTargetKey(disk)
+	cfg := s.loadDiskSmartConfig(target, notifier.DiskSmartTemperatureKindPrefix)
 	warnC := cfg.WarningCelsius
 	critC := cfg.CriticalCelsius
-	if warnC <= 0 {
-		warnC = defaultTemperatureWarningCelsius
-	}
-	if critC <= 0 {
-		critC = defaultTemperatureCriticalCelsius
-	}
 
-	prevTemp := st.temperature
 	st.temperature = temperature
+	if warmup {
+		st.tempCriticalCount = 0
+		st.tempWarningCount = 0
+		st.tempNormalCount = 0
+		return
+	}
 
-	if temperature >= int(critC) {
+	if float64(temperature) >= critC {
 		st.tempCriticalCount++
 		st.tempWarningCount = 0
 		st.tempNormalCount = 0
 
-		if !warmup && st.tempCriticalCount == diskSmartConsecutiveTrigger {
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartTemperatureKindPrefix,
-				"critical temperature", "critical",
+		if st.tempCriticalCount >= diskSmartConsecutiveTrigger && st.temperatureAlert != "critical" {
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartTemperatureKindPrefix,
+				"temperature_critical", "critical",
 				fmt.Sprintf("Disk %s temperature critical: %d C", disk.Device, temperature),
-				fmt.Sprintf("Temperature %d C exceeds critical threshold of %.0f C.", temperature, critC),
+				fmt.Sprintf("Temperature %d C exceeds critical threshold of %g C.", temperature, critC),
 				map[string]string{
 					"condition":   "temperature_critical",
 					"temperature": fmt.Sprintf("%d", temperature),
-					"threshold":   fmt.Sprintf("%.0f", critC),
-				})
+					"threshold":   fmt.Sprintf("%g", critC),
+				}) {
+				st.temperatureAlert = "critical"
+			}
 		}
 		return
 	}
 
-	if temperature >= int(warnC) {
+	if float64(temperature) >= warnC {
 		st.tempWarningCount++
 		st.tempCriticalCount = 0
 		st.tempNormalCount = 0
 
-		if !warmup && st.tempWarningCount == diskSmartConsecutiveTrigger {
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartTemperatureKindPrefix,
-				"high temperature", "warning",
+		if st.tempWarningCount >= diskSmartConsecutiveTrigger && st.temperatureAlert != "warning" {
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartTemperatureKindPrefix,
+				"temperature_warning", "warning",
 				fmt.Sprintf("Disk %s temperature high: %d C", disk.Device, temperature),
-				fmt.Sprintf("Temperature %d C exceeds warning threshold of %.0f C.", temperature, warnC),
+				fmt.Sprintf("Temperature %d C exceeds warning threshold of %g C.", temperature, warnC),
 				map[string]string{
 					"condition":   "temperature_warning",
 					"temperature": fmt.Sprintf("%d", temperature),
-					"threshold":   fmt.Sprintf("%.0f", warnC),
-				})
+					"threshold":   fmt.Sprintf("%g", warnC),
+				}) {
+				st.temperatureAlert = "warning"
+			}
 		}
 		return
 	}
@@ -256,35 +322,52 @@ func (s *Service) evaluateTemperature(ctx context.Context, disk diskServiceInter
 	st.tempWarningCount = 0
 	st.tempCriticalCount = 0
 
-	if !warmup && st.tempNormalCount == diskSmartConsecutiveClear && (prevTemp >= int(warnC)) {
-		s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartTemperatureKindPrefix,
-			"temperature normal", "info",
+	if st.tempNormalCount >= diskSmartConsecutiveClear && st.temperatureAlert != "" {
+		if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartTemperatureKindPrefix,
+			"temperature_normal", "info",
 			fmt.Sprintf("Disk %s temperature normal: %d C", disk.Device, temperature),
-			fmt.Sprintf("Temperature returned to %d C, below warning threshold of %.0f C.", temperature, warnC),
+			fmt.Sprintf("Temperature returned to %d C, below warning threshold of %g C.", temperature, warnC),
 			map[string]string{
 				"condition":   "temperature_normal",
 				"temperature": fmt.Sprintf("%d", temperature),
-			})
+			}) {
+			st.temperatureAlert = ""
+		}
 	}
 }
 
 func (s *Service) evaluateHealth(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
-	passed := s.getSMARTPassed(disk.SmartData)
-	prevPassed := st.passed
+	target := diskSmartTargetKey(disk)
+	known, passed := s.getSMARTHealth(disk.SmartData)
+	if !known {
+		st.healthFailCount = 0
+		st.healthNormalCount = 0
+		return
+	}
+	if !st.healthInitialized {
+		st.healthInitialized = true
+	}
 	st.passed = passed
+	if warmup {
+		st.healthFailCount = 0
+		st.healthNormalCount = 0
+		return
+	}
 
 	if !passed {
 		st.healthFailCount++
 		st.healthNormalCount = 0
 
-		if !warmup && st.healthFailCount == diskSmartConsecutiveTrigger {
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartHealthKindPrefix,
-				"SMART health failed", "critical",
+		if st.healthFailCount >= diskSmartConsecutiveTrigger && !st.healthAlerted {
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartHealthKindPrefix,
+				"health_failed", "critical",
 				fmt.Sprintf("Disk %s S.M.A.R.T health check FAILED", disk.Device),
 				fmt.Sprintf("The overall S.M.A.R.T health assessment for disk %s indicates failure.", disk.Device),
 				map[string]string{
 					"condition": "health_failed",
-				})
+				}) {
+				st.healthAlerted = true
+			}
 		}
 		return
 	}
@@ -292,14 +375,16 @@ func (s *Service) evaluateHealth(ctx context.Context, disk diskServiceInterfaces
 	st.healthNormalCount++
 	st.healthFailCount = 0
 
-	if !warmup && !prevPassed && st.healthNormalCount == diskSmartConsecutiveClear {
-		s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartHealthKindPrefix,
-			"SMART health recovered", "info",
+	if st.healthNormalCount >= diskSmartConsecutiveClear && st.healthAlerted {
+		if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartHealthKindPrefix,
+			"health_recovered", "info",
 			fmt.Sprintf("Disk %s S.M.A.R.T health check recovered", disk.Device),
 			fmt.Sprintf("The S.M.A.R.T health assessment for disk %s now passes.", disk.Device),
 			map[string]string{
 				"condition": "health_recovered",
-			})
+			}) {
+			st.healthAlerted = false
+		}
 	}
 }
 
@@ -309,34 +394,36 @@ func (s *Service) evaluateWearout(ctx context.Context, disk diskServiceInterface
 		return
 	}
 
-	cfg := s.loadDiskSmartConfig(disk.Device, notifier.DiskSmartWearoutKindPrefix)
+	target := diskSmartTargetKey(disk)
+	cfg := s.loadDiskSmartConfig(target, notifier.DiskSmartWearoutKindPrefix)
 	warnPct := cfg.WarningPercent
 	critPct := cfg.CriticalPercent
-	if warnPct <= 0 {
-		warnPct = defaultWearoutWarningPercent
-	}
-	if critPct <= 0 {
-		critPct = defaultWearoutCriticalPercent
-	}
 
-	prevWearout := st.wearoutPct
 	st.wearoutPct = wearout
+	if warmup {
+		st.wearCriticalCount = 0
+		st.wearWarningCount = 0
+		st.wearNormalCount = 0
+		return
+	}
 
 	if wearout >= critPct {
 		st.wearCriticalCount++
 		st.wearWarningCount = 0
 		st.wearNormalCount = 0
 
-		if !warmup && st.wearCriticalCount == diskSmartConsecutiveTrigger {
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartWearoutKindPrefix,
-				"critical wear-out", "critical",
+		if st.wearCriticalCount >= diskSmartConsecutiveTrigger && st.wearoutAlert != "critical" {
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartWearoutKindPrefix,
+				"wearout_critical", "critical",
 				fmt.Sprintf("Disk %s wear-out critical: %.1f%%", disk.Device, wearout),
 				fmt.Sprintf("Wear-out of %.1f%% exceeds critical threshold of %.0f%%.", wearout, critPct),
 				map[string]string{
 					"condition": "wearout_critical",
 					"wearout":   fmt.Sprintf("%.1f", wearout),
 					"threshold": fmt.Sprintf("%.0f", critPct),
-				})
+				}) {
+				st.wearoutAlert = "critical"
+			}
 		}
 		return
 	}
@@ -346,16 +433,18 @@ func (s *Service) evaluateWearout(ctx context.Context, disk diskServiceInterface
 		st.wearCriticalCount = 0
 		st.wearNormalCount = 0
 
-		if !warmup && st.wearWarningCount == diskSmartConsecutiveTrigger {
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartWearoutKindPrefix,
-				"high wear-out", "warning",
+		if st.wearWarningCount >= diskSmartConsecutiveTrigger && st.wearoutAlert != "warning" {
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartWearoutKindPrefix,
+				"wearout_warning", "warning",
 				fmt.Sprintf("Disk %s wear-out high: %.1f%%", disk.Device, wearout),
 				fmt.Sprintf("Wear-out of %.1f%% exceeds warning threshold of %.0f%%.", wearout, warnPct),
 				map[string]string{
 					"condition": "wearout_warning",
 					"wearout":   fmt.Sprintf("%.1f", wearout),
 					"threshold": fmt.Sprintf("%.0f", warnPct),
-				})
+				}) {
+				st.wearoutAlert = "warning"
+			}
 		}
 		return
 	}
@@ -364,30 +453,38 @@ func (s *Service) evaluateWearout(ctx context.Context, disk diskServiceInterface
 	st.wearWarningCount = 0
 	st.wearCriticalCount = 0
 
-	if !warmup && st.wearNormalCount == diskSmartConsecutiveClear && prevWearout >= warnPct {
-		s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartWearoutKindPrefix,
-			"wear-out normal", "info",
+	if st.wearNormalCount >= diskSmartConsecutiveClear && st.wearoutAlert != "" {
+		if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartWearoutKindPrefix,
+			"wearout_normal", "info",
 			fmt.Sprintf("Disk %s wear-out returned to normal: %.1f%%", disk.Device, wearout),
 			fmt.Sprintf("Wear-out of %.1f%% is below warning threshold of %.0f%%.", wearout, warnPct),
 			map[string]string{
 				"condition": "wearout_normal",
 				"wearout":   fmt.Sprintf("%.1f", wearout),
-			})
+			}) {
+			st.wearoutAlert = ""
+		}
 	}
 }
 
 func (s *Service) evaluateReallocated(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
+	target := diskSmartTargetKey(disk)
 	realloc, pending, uncorrect := s.getReallocatedSectors(disk.SmartData)
-	prevRealloc := st.reallocatedSectors
 	st.reallocatedSectors = realloc
 	st.pendingSectors = pending
 	st.uncorrectableSectors = uncorrect
+	if warmup {
+		st.reallocCount = 0
+		st.reallocNormalCount = 0
+		return
+	}
 
 	if realloc > 0 || pending > 0 || uncorrect > 0 {
 		st.reallocCount++
 		st.reallocNormalCount = 0
 
-		if !warmup && st.reallocCount == diskSmartConsecutiveTrigger && realloc != prevRealloc {
+		changed := realloc != st.sectorNotifiedReallocated || pending != st.sectorNotifiedPending || uncorrect != st.sectorNotifiedUncorrectable
+		if st.reallocCount >= diskSmartConsecutiveTrigger && (!st.sectorAlerted || changed) {
 			parts := []string{}
 			if realloc > 0 {
 				parts = append(parts, fmt.Sprintf("reallocated=%d", realloc))
@@ -399,8 +496,8 @@ func (s *Service) evaluateReallocated(ctx context.Context, disk diskServiceInter
 				parts = append(parts, fmt.Sprintf("uncorrectable=%d", uncorrect))
 			}
 
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartHealthKindPrefix,
-				"sector issues", "warning",
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartHealthKindPrefix,
+				"sector_issues", "warning",
 				fmt.Sprintf("Disk %s has sector issues", disk.Device),
 				fmt.Sprintf("Sector anomalies detected on disk %s: %s.", disk.Device, strings.Join(parts, ", ")),
 				map[string]string{
@@ -408,7 +505,12 @@ func (s *Service) evaluateReallocated(ctx context.Context, disk diskServiceInter
 					"reallocated":   fmt.Sprintf("%d", realloc),
 					"pending":       fmt.Sprintf("%d", pending),
 					"uncorrectable": fmt.Sprintf("%d", uncorrect),
-				})
+				}) {
+				st.sectorAlerted = true
+				st.sectorNotifiedReallocated = realloc
+				st.sectorNotifiedPending = pending
+				st.sectorNotifiedUncorrectable = uncorrect
+			}
 		}
 		return
 	}
@@ -416,40 +518,52 @@ func (s *Service) evaluateReallocated(ctx context.Context, disk diskServiceInter
 	st.reallocNormalCount++
 	st.reallocCount = 0
 
-	if !warmup && st.reallocNormalCount == diskSmartConsecutiveClear && prevRealloc > 0 {
-		s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartHealthKindPrefix,
-			"sector issues cleared", "info",
+	if st.reallocNormalCount >= diskSmartConsecutiveClear && st.sectorAlerted {
+		if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartHealthKindPrefix,
+			"sector_issues_cleared", "info",
 			fmt.Sprintf("Disk %s sector issues cleared", disk.Device),
 			fmt.Sprintf("Previously reported sector anomalies on disk %s have cleared.", disk.Device),
 			map[string]string{
 				"condition": "sector_issues_cleared",
-			})
+			}) {
+			st.sectorAlerted = false
+			st.sectorNotifiedReallocated = 0
+			st.sectorNotifiedPending = 0
+			st.sectorNotifiedUncorrectable = 0
+		}
 	}
 }
 
 func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.Disk, nvme *diskServiceInterfaces.SMARTNvme, st *diskSmartState, warmup bool) {
+	target := diskSmartTargetKey(disk)
 	hasCriticalWarning := nvme.CriticalWarning != "" && nvme.CriticalWarning != "0x00" && nvme.CriticalWarning != "0x0"
 	spareLow := nvme.AvailableSpareThreshold > 0 && nvme.AvailableSpare < nvme.AvailableSpareThreshold
-	hasMediaErrors := nvme.MediaErrors > 0
+	mediaErrors := strings.TrimSpace(nvme.MediaErrorsExact)
+	if mediaErrors == "" {
+		mediaErrors = strconv.Itoa(nvme.MediaErrors)
+	}
+	hasMediaErrors := strings.TrimLeft(mediaErrors, "0") != ""
 
 	prevSpare := st.nvmeAvailableSpare
 	prevMediaErrors := st.nvmeMediaErrors
 	prevCritWarn := st.nvmeCriticalWarning
-	prevHadWarning := prevCritWarn ||
-		(st.nvmeSpareThreshold > 0 && prevSpare < st.nvmeSpareThreshold) ||
-		prevMediaErrors > 0
-
 	st.nvmeAvailableSpare = nvme.AvailableSpare
 	st.nvmeSpareThreshold = nvme.AvailableSpareThreshold
-	st.nvmeMediaErrors = nvme.MediaErrors
+	st.nvmeMediaErrors = mediaErrors
 	st.nvmeCriticalWarning = hasCriticalWarning
+	if warmup {
+		st.nvmeWarnCount = 0
+		st.nvmeNormalCount = 0
+		return
+	}
 
 	warn := hasCriticalWarning || spareLow || hasMediaErrors
 	if warn {
 		st.nvmeWarnCount++
 		st.nvmeNormalCount = 0
 
-		if !warmup && st.nvmeWarnCount == diskSmartConsecutiveTrigger {
+		changed := prevCritWarn != hasCriticalWarning || prevSpare != nvme.AvailableSpare || prevMediaErrors != mediaErrors
+		if st.nvmeWarnCount >= diskSmartConsecutiveTrigger && (!st.nvmeAlerted || changed) {
 			parts := []string{}
 			if hasCriticalWarning {
 				parts = append(parts, fmt.Sprintf("critical_warning=%s", nvme.CriticalWarning))
@@ -458,11 +572,11 @@ func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.D
 				parts = append(parts, fmt.Sprintf("available_spare=%d%%, threshold=%d%%", nvme.AvailableSpare, nvme.AvailableSpareThreshold))
 			}
 			if hasMediaErrors {
-				parts = append(parts, fmt.Sprintf("media_errors=%d", nvme.MediaErrors))
+				parts = append(parts, "media_errors="+mediaErrors)
 			}
 
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartNvmeKindPrefix,
-				"NVMe warning", "warning",
+			if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartNvmeKindPrefix,
+				"nvme_warning", "warning",
 				fmt.Sprintf("Disk %s NVMe S.M.A.R.T warning", disk.Device),
 				fmt.Sprintf("NVMe S.M.A.R.T issues on disk %s: %s.", disk.Device, strings.Join(parts, "; ")),
 				map[string]string{
@@ -470,8 +584,10 @@ func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.D
 					"critical_warning": nvme.CriticalWarning,
 					"available_spare":  fmt.Sprintf("%d", nvme.AvailableSpare),
 					"spare_threshold":  fmt.Sprintf("%d", nvme.AvailableSpareThreshold),
-					"media_errors":     fmt.Sprintf("%d", nvme.MediaErrors),
-				})
+					"media_errors":     mediaErrors,
+				}) {
+				st.nvmeAlerted = true
+			}
 		}
 		return
 	}
@@ -479,87 +595,26 @@ func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.D
 	st.nvmeNormalCount++
 	st.nvmeWarnCount = 0
 
-	if !warmup && st.nvmeNormalCount == diskSmartConsecutiveClear && prevHadWarning {
-		recovered := false
-		if prevCritWarn && !hasCriticalWarning {
-			recovered = true
-		}
-		if prevSpare < nvme.AvailableSpareThreshold && nvme.AvailableSpare >= nvme.AvailableSpareThreshold {
-			recovered = true
-		}
-		if prevMediaErrors > 0 && nvme.MediaErrors == 0 {
-			recovered = true
-		}
-		if recovered {
-			s.emitDiskSmartNotification(ctx, disk.Device, notifier.DiskSmartNvmeKindPrefix,
-				"NVMe recovered", "info",
-				fmt.Sprintf("Disk %s NVMe S.M.A.R.T recovered", disk.Device),
-				fmt.Sprintf("Previously reported NVMe S.M.A.R.T issues on disk %s have cleared.", disk.Device),
-				map[string]string{
-					"condition": "nvme_recovered",
-				})
+	if st.nvmeNormalCount >= diskSmartConsecutiveClear && st.nvmeAlerted {
+		if s.emitDiskSmartNotification(ctx, target, disk.Device, notifier.DiskSmartNvmeKindPrefix,
+			"nvme_recovered", "info",
+			fmt.Sprintf("Disk %s NVMe S.M.A.R.T recovered", disk.Device),
+			fmt.Sprintf("Previously reported NVMe S.M.A.R.T issues on disk %s have cleared.", disk.Device),
+			map[string]string{
+				"condition": "nvme_recovered",
+			}) {
+			st.nvmeAlerted = false
 		}
 	}
 }
 
-func (s *Service) evaluateSelfTestLog(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
-	if disk.SelfTestLog == nil || len(disk.SelfTestLog.Entries) == 0 {
-		return
+func (s *Service) emitDiskSmartNotification(ctx context.Context, target, device, prefix, condition, severity, title, body string, metadata map[string]string) bool {
+	kind := notifier.KindForDiskSmart(prefix, target)
+	if metadata == nil {
+		metadata = make(map[string]string)
 	}
-
-	log := disk.SelfTestLog
-	latest := log.Entries[0]
-	fingerprint := fmt.Sprintf("%s|%s|%d", latest.Type, latest.Status, latest.LifetimeHours)
-
-	hasFailure := false
-	for _, e := range log.Entries {
-		if e.Status == "failed_read" || e.Status == "failed_unknown" ||
-			e.Status == "failed_electrical" || e.Status == "failed_servo" ||
-			e.Status == "failed_handling" || e.Status == "fatal" ||
-			e.Status == "failed_segments" {
-			hasFailure = true
-			break
-		}
-	}
-
-	if hasFailure {
-		st.selftestFailCount++
-		st.selftestNormalCount = 0
-
-		if !warmup && st.selftestFailCount >= diskSmartConsecutiveTrigger &&
-			fingerprint != st.lastSelfTestFingerprint {
-			st.lastSelfTestFingerprint = fingerprint
-
-			s.emitDiskSmartNotification(ctx, disk.Device, "system.disk.smart.selftest",
-				"self_test_failed", "warning",
-				fmt.Sprintf("Disk %s self-test failed", disk.Device),
-				fmt.Sprintf("The most recent self-test on disk %s reported a failure.", disk.Device),
-				map[string]string{
-					"condition": "self_test_failed",
-				})
-		}
-	} else {
-		st.selftestFailCount = 0
-		st.selftestNormalCount++
-
-		if !warmup && st.selftestNormalCount >= diskSmartConsecutiveClear &&
-			st.lastSelfTestFingerprint != "" && fingerprint != st.lastSelfTestFingerprint {
-			st.lastSelfTestFingerprint = fingerprint
-
-			s.emitDiskSmartNotification(ctx, disk.Device, "system.disk.smart.selftest",
-				"self_test_passed", "info",
-				fmt.Sprintf("Disk %s self-test passed", disk.Device),
-				fmt.Sprintf("The most recent self-test on disk %s completed successfully.", disk.Device),
-				map[string]string{
-					"condition": "self_test_passed",
-				})
-		}
-	}
-}
-
-func (s *Service) emitDiskSmartNotification(ctx context.Context, device, prefix, condition, severity, title, body string, metadata map[string]string) {
-	kind := notifier.KindForDiskSmart(prefix, device)
 	metadata["device"] = device
+	metadata["disk_key"] = target
 	metadata["condition"] = condition
 
 	input := notifier.EventInput{
@@ -568,18 +623,38 @@ func (s *Service) emitDiskSmartNotification(ctx context.Context, device, prefix,
 		Body:        body,
 		Severity:    severity,
 		Source:      "system.disk.smart",
-		Fingerprint: fmt.Sprintf("%s|%s", strings.ToLower(device), condition),
+		Fingerprint: fmt.Sprintf("%s|%s", strings.ToLower(target), diskSmartFingerprintCategory(prefix, condition)),
 		Metadata:    metadata,
 	}
 
 	_, err := notifier.Emit(ctx, input)
-	if err != nil && !errors.Is(err, notifier.ErrEmitterNotConfigured) {
-		logger.L.Error().
-			Err(err).
-			Str("kind", kind).
-			Str("device", device).
-			Str("condition", condition).
-			Msg("failed_to_emit_disk_smart_notification")
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, notifier.ErrEmitterNotConfigured) {
+		logger.L.Error().Err(err).Str("kind", kind).Str("device", device).Str("condition", condition).Msg("failed_to_emit_disk_smart_notification")
+	}
+	return false
+}
+
+func diskSmartFingerprintCategory(prefix, condition string) string {
+	switch prefix {
+	case notifier.DiskSmartTemperatureKindPrefix:
+		return "temperature"
+	case notifier.DiskSmartWearoutKindPrefix:
+		return "wearout"
+	case notifier.DiskSmartNvmeKindPrefix:
+		return "nvme"
+	case notifier.DiskSmartSelfTestKindPrefix:
+		return "selftest"
+	default:
+		if condition == "sector_issues" || condition == "sector_issues_cleared" {
+			return "sectors"
+		}
+		if condition == "smart_unavailable" || condition == "smart_available" {
+			return "availability"
+		}
+		return "health"
 	}
 }
 
@@ -608,26 +683,31 @@ func (s *Service) getTemperature(smartData any) int {
 	return 0
 }
 
-func (s *Service) getSMARTPassed(smartData any) bool {
+func (s *Service) getSMARTHealth(smartData any) (bool, bool) {
 	if smartData == nil {
-		return true
+		return false, false
 	}
 
 	if nvme, ok := smartData.(diskServiceInterfaces.SMARTNvme); ok {
 		if !nvme.HealthKnown {
-			return true
+			return false, false
 		}
-		return nvme.Passed
+		return true, nvme.Passed
 	}
 
 	if ata, ok := smartData.(diskServiceInterfaces.SmartData); ok {
 		if !ata.HealthKnown {
-			return true
+			return false, false
 		}
-		return ata.Passed
+		return true, ata.Passed
 	}
 
-	return true
+	return false, false
+}
+
+func (s *Service) getSMARTPassed(smartData any) bool {
+	known, passed := s.getSMARTHealth(smartData)
+	return !known || passed
 }
 
 func (s *Service) getReallocatedSectors(smartData any) (reallocated, pending, uncorrectable int64) {
@@ -637,7 +717,20 @@ func (s *Service) getReallocatedSectors(smartData any) (reallocated, pending, un
 	}
 
 	if strings.ToUpper(ata.Device.Protocol) == "SCSI" {
-		return 0, 0, 0
+		for _, attr := range ata.Attributes {
+			if attr.ID != 6 || attr.RawValue <= 0 {
+				continue
+			}
+			switch attr.Page {
+			case 0x02, 0x03, 0x05, 0x06:
+				if attr.RawValue > math.MaxInt64-uncorrectable {
+					uncorrectable = math.MaxInt64
+				} else {
+					uncorrectable += attr.RawValue
+				}
+			}
+		}
+		return 0, 0, uncorrectable
 	}
 
 	for _, attr := range ata.Attributes {
@@ -655,28 +748,93 @@ func (s *Service) getReallocatedSectors(smartData any) (reallocated, pending, un
 }
 
 func (s *Service) loadDiskSmartConfig(device, prefix string) diskSmartConfig {
-	if s == nil || s.DB == nil {
-		return diskSmartConfig{}
+	cfg := defaultDiskSmartConfig(prefix)
+	if s == nil {
+		return cfg
+	}
+	kind := notifier.KindForDiskSmart(prefix, device)
+	s.diskSmartConfigMu.RLock()
+	cached, cachedOK := s.diskSmartConfigs[kind]
+	snapshot := s.diskSmartConfigSnapshot
+	s.diskSmartConfigMu.RUnlock()
+	if cachedOK {
+		return cached
+	}
+	if snapshot {
+		return cfg
+	}
+	if s.DB == nil {
+		return cfg
 	}
 
-	kind := notifier.KindForDiskSmart(prefix, device)
 	var configJSON string
 	if err := s.DB.Raw("SELECT config FROM notification_kind_rules WHERE kind = ? LIMIT 1", kind).Scan(&configJSON).Error; err != nil {
 		logger.LogWithDeduplication(zerolog.DebugLevel,
 			fmt.Sprintf("disk_smart_config_load_failed: %v", err))
-		return diskSmartConfig{}
+		return cfg
 	}
 
 	if configJSON == "" {
-		return diskSmartConfig{}
+		return cfg
 	}
 
-	var cfg diskSmartConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		logger.LogWithDeduplication(zerolog.DebugLevel,
 			fmt.Sprintf("disk_smart_config_parse_failed: %v", err))
-		return diskSmartConfig{}
+		return cfg
 	}
 
 	return cfg
+}
+
+func defaultDiskSmartConfig(prefix string) diskSmartConfig {
+	cfg := diskSmartConfig{}
+	switch prefix {
+	case notifier.DiskSmartTemperatureKindPrefix:
+		cfg.WarningCelsius = defaultTemperatureWarningCelsius
+		cfg.CriticalCelsius = defaultTemperatureCriticalCelsius
+	case notifier.DiskSmartWearoutKindPrefix:
+		cfg.WarningPercent = defaultWearoutWarningPercent
+		cfg.CriticalPercent = defaultWearoutCriticalPercent
+	}
+	return cfg
+}
+
+func (s *Service) refreshDiskSmartConfigs(disks []diskServiceInterfaces.Disk) {
+	if s == nil || s.DB == nil {
+		return
+	}
+	kinds := make([]string, 0, len(disks)*2)
+	configs := make(map[string]diskSmartConfig, len(disks)*2)
+	for _, disk := range disks {
+		for _, prefix := range []string{notifier.DiskSmartTemperatureKindPrefix, notifier.DiskSmartWearoutKindPrefix} {
+			kind := notifier.KindForDiskSmart(prefix, diskSmartTargetKey(disk))
+			kinds = append(kinds, kind)
+			configs[kind] = defaultDiskSmartConfig(prefix)
+		}
+	}
+	if len(kinds) > 0 {
+		var rows []struct {
+			Kind   string
+			Config string
+		}
+		if err := s.DB.Model(&models.NotificationKindRule{}).Select("kind", "config").Where("kind IN ?", kinds).Find(&rows).Error; err != nil {
+			logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("disk_smart_config_load_failed: %v", err))
+			return
+		}
+		for _, row := range rows {
+			cfg := configs[row.Kind]
+			if row.Config != "" {
+				if err := json.Unmarshal([]byte(row.Config), &cfg); err != nil {
+					logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("disk_smart_config_parse_failed: %v", err))
+					continue
+				}
+			}
+			configs[row.Kind] = cfg
+		}
+	}
+	s.diskSmartConfigMu.Lock()
+	s.diskSmartConfigs = configs
+	s.diskSmartConfigSnapshot = true
+	s.diskSmartConfigMu.Unlock()
 }

@@ -102,12 +102,28 @@ func TestFormatWearOut(t *testing.T) {
 		t.Fatalf("HDD: %q", got)
 	}
 	data := diskServiceInterfaces.SmartData{
-		Attributes: []diskServiceInterfaces.ATASmartAttribute{{Page: 0x11, ID: 1, Value: 98}},
+		Device:     diskServiceInterfaces.DeviceInfo{Protocol: "SCSI"},
+		Attributes: []diskServiceInterfaces.ATASmartAttribute{{Page: 0x11, ID: 1, RawValue: 2}},
 	}
 	if got := service.formatWearOut("SSD", data); got != "2.00" {
 		t.Fatalf("SSD: %q", got)
 	}
 	if got := service.formatWearOut("SSD", nil); got != "Unknown" {
 		t.Fatalf("missing SSD data: %q", got)
+	}
+	scsiExhausted := diskServiceInterfaces.SmartData{
+		Device:     diskServiceInterfaces.DeviceInfo{Protocol: "SCSI"},
+		Attributes: []diskServiceInterfaces.ATASmartAttribute{{Page: 0x11, ID: 1, RawValue: 100}},
+	}
+	if got := service.formatWearOut("SSD", scsiExhausted); got != "100.00" {
+		t.Fatalf("exhausted SCSI SSD: %q", got)
+	}
+	ataExhausted := diskServiceInterfaces.SmartData{
+		Device:        diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
+		ChecksumValid: true,
+		Attributes:    []diskServiceInterfaces.ATASmartAttribute{{ID: 202, Value: 0}},
+	}
+	if got := service.formatWearOut("SSD", ataExhausted); got != "100.00" {
+		t.Fatalf("exhausted ATA SSD: %q", got)
 	}
 }

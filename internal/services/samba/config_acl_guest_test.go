@@ -12,6 +12,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -470,5 +472,89 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 	}
 	if len(share.WriteableGroups) != 1 || share.WriteableGroups[0].ID != group.ID {
 		t.Fatalf("expected write group to be retained after normalization")
+	}
+}
+
+func TestValidateSambaShareInputRejectsConfigurationInjection(t *testing.T) {
+	tests := []struct {
+		name          string
+		shareName     string
+		createMask    string
+		directoryMask string
+		operations    []string
+		wantError     string
+	}{
+		{
+			name:          "share section injection",
+			shareName:     "share]\n[global",
+			createMask:    "0664",
+			directoryMask: "2775",
+			wantError:     "invalid_share_name",
+		},
+		{
+			name:          "invalid create mask",
+			shareName:     "documents",
+			createMask:    "0668",
+			directoryMask: "2775",
+			wantError:     "invalid_create_mask",
+		},
+		{
+			name:          "invalid audit operation",
+			shareName:     "documents",
+			createMask:    "0664",
+			directoryMask: "2775",
+			operations:    []string{"openat\ninclude = /tmp/unsafe"},
+			wantError:     "invalid_audit_operation",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateSambaShareInput(test.shareName, test.createMask, test.directoryMask, test.operations)
+			if err == nil || !strings.HasPrefix(err.Error(), test.wantError) {
+				t.Fatalf("expected %q, got %v", test.wantError, err)
+			}
+		})
+	}
+}
+
+func TestWriteConfigValidatesBeforeReplacingActiveConfig(t *testing.T) {
+	svc, _ := newSambaServiceWithMockRunner(t)
+
+	originalConfigPath := sambaConfigFilePath
+	originalTestparmPath := sambaTestparmPath
+	originalRunCommand := sambaRunCommand
+	originalAtomicWriteFile := sambaAtomicWriteFile
+	t.Cleanup(func() {
+		sambaConfigFilePath = originalConfigPath
+		sambaTestparmPath = originalTestparmPath
+		sambaRunCommand = originalRunCommand
+		sambaAtomicWriteFile = originalAtomicWriteFile
+	})
+
+	sambaConfigFilePath = filepath.Join(t.TempDir(), "smb4.conf")
+	sambaTestparmPath = "/usr/local/bin/testparm"
+	sambaRunCommand = func(command string, args ...string) (string, error) {
+		if command != sambaTestparmPath {
+			t.Fatalf("expected testparm command, got %q", command)
+		}
+		if len(args) != 2 || args[0] != "-s" {
+			t.Fatalf("unexpected testparm args: %v", args)
+		}
+		return "invalid parameter", errors.New("testparm failed")
+	}
+
+	wroteActiveConfig := false
+	sambaAtomicWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		wroteActiveConfig = true
+		return nil
+	}
+
+	err := svc.WriteConfig(context.Background(), false)
+	if err == nil || !strings.Contains(err.Error(), "configuration validation failed") {
+		t.Fatalf("expected testparm validation error, got %v", err)
+	}
+	if wroteActiveConfig {
+		t.Fatal("active Samba configuration was replaced after testparm failure")
 	}
 }

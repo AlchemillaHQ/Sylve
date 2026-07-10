@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 import {
 	bulkDeleteNotificationRules,
@@ -666,6 +676,11 @@ import * as Table from '$lib/components/ui/table/index.js';
 				];
 			case 'system.disk.smart.nvme':
 				return [{ key: 'nvme_warning', label: 'NVMe Warning' }];
+			case 'system.disk.smart.selftest':
+				return [
+					{ key: 'self_test_failed', label: 'Self-Test Failed' },
+					{ key: 'self_test_passed', label: 'Self-Test Passed' }
+				];
 			case 'system.zfs.pool_state':
 				return [
 					{ key: 'pool_degraded', label: 'Degraded' },
@@ -695,6 +710,10 @@ import * as Table from '$lib/components/ui/table/index.js';
 		if (busy.test) return;
 		if (!modals.test.templateKey) {
 			toast.error('Select a template', { position: 'bottom-center' });
+			return;
+		}
+		if (!modals.test.targetKey) {
+			toast.error('Select an available target', { position: 'bottom-center' });
 			return;
 		}
 
@@ -768,7 +787,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 		customPlaceholder="No notification rules available"
 		selectableRowCheck={(row) => {
 			const d = row.getData() as RuleRow;
-			return !d.isTemplateRow && d.active;
+			return !d.isTemplateRow;
 		}}
 	/>
 </div>
@@ -1067,7 +1086,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 				<Button
 					onclick={sendTest}
 					size="sm"
-					disabled={busy.test || !modals.test.templateKey}
+					disabled={busy.test || !modals.test.templateKey || !modals.test.targetKey}
 				>
 					{#if busy.test}
 						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>

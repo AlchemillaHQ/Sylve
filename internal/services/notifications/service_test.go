@@ -10,7 +10,10 @@ package notifications
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
@@ -40,7 +43,27 @@ type mockDiskService struct {
 	disks []diskServiceInterfaces.Disk
 }
 
+type trackingInventoryDiskService struct {
+	mockDiskService
+	inventoryCalls int
+	fullCalls      int
+}
+
+func (m *trackingInventoryDiskService) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	m.fullCalls++
+	return m.disks, nil
+}
+
+func (m *trackingInventoryDiskService) GetDiskDevicesInventory(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	m.inventoryCalls++
+	return m.disks, nil
+}
+
 func (m *mockDiskService) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	return m.disks, nil
+}
+
+func (m *mockDiskService) GetDiskDevicesInventory(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
 	return m.disks, nil
 }
 
@@ -280,6 +303,81 @@ func TestTransportSendersRespectConfigAndSuppression(t *testing.T) {
 	}
 	if emailCalls != 1 {
 		t.Fatalf("expected_email_not_called_after_suppression got: %d", emailCalls)
+	}
+}
+
+func TestEmitReportsTotalTransportFailureWhenUIIsDisabled(t *testing.T) {
+	svc := newTestService(t)
+	kind := "system.test.transport_failure"
+	rule := models.NotificationKindRule{Kind: kind, UIEnabled: true, NtfyEnabled: true}
+	if err := svc.DB.Create(&rule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&rule).Update("ui_enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{Name: "ntfy", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	svc.SetNtfySender(func(context.Context, models.NotificationTransportConfig, notifier.EventInput, string) error {
+		calls++
+		return errors.New("transport unavailable")
+	})
+	result, err := svc.Emit(context.Background(), notifier.EventInput{Kind: kind, Title: "Transport failure", Fingerprint: "transport-failure"})
+	if err == nil || result.SentNtfy || result.NotificationID != 0 || calls != 1 {
+		t.Fatalf("result=%+v err=%v calls=%d", result, err, calls)
+	}
+	var count int64
+	if err := svc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("notifications=%d", count)
+	}
+}
+
+func TestTargetedDeliveryAddressesOneTransportRow(t *testing.T) {
+	svc := newTestService(t)
+	kind := "system.test.targeted_delivery"
+	rule := models.NotificationKindRule{Kind: kind, NtfyEnabled: true}
+	if err := svc.DB.Create(&rule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&rule).Update("ui_enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{Name: "first", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "first"}},
+			{Name: "second", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "second"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := notifier.EventInput{Kind: kind, Title: "targeted", Fingerprint: "targeted"}
+	targets, err := svc.DeliveryTargets(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Transports) != 2 || len(targets) != 2 {
+		t.Fatalf("transports=%+v targets=%v", view.Transports, targets)
+	}
+	calls := map[uint]int{}
+	svc.SetNtfySender(func(_ context.Context, cfg models.NotificationTransportConfig, _ notifier.EventInput, _ string) error {
+		calls[cfg.ID]++
+		return nil
+	})
+	if _, err := svc.EmitTarget(context.Background(), input, targets[1]); err != nil {
+		t.Fatal(err)
+	}
+	if calls[view.Transports[0].ID] != 0 || calls[view.Transports[1].ID] != 1 {
+		t.Fatalf("calls=%v", calls)
 	}
 }
 
@@ -1088,6 +1186,13 @@ func TestTestRuleEmitsThroughPipeline(t *testing.T) {
 	}
 }
 
+func TestDiskSmartSelfTestDismissalDoesNotPersistSuppression(t *testing.T) {
+	kind := notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0")
+	if shouldPersistSuppressionForKind(kind) {
+		t.Fatalf("self_test_kind_should_not_persist_suppression=%s", kind)
+	}
+}
+
 func TestTestRuleSendsThroughTransports(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
 		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
@@ -1198,31 +1303,433 @@ func TestDiskSmartTemplatesAppearWhenDiskServiceSet(t *testing.T) {
 		t.Fatalf("get_rule_config_failed: %v", err)
 	}
 
-	if len(view.Templates) < 5 {
-		t.Fatalf("expected_at_least_5_templates got: %d", len(view.Templates))
+	if len(view.Templates) < 6 {
+		t.Fatalf("expected_at_least_6_templates got: %d", len(view.Templates))
 	}
 
 	templateKeys := map[string]bool{}
+	templateLabels := map[string]string{}
 	for _, tpl := range view.Templates {
 		templateKeys[tpl.Key] = true
+		templateLabels[tpl.Key] = tpl.Label
 	}
 	for _, key := range []string{
 		RuleTemplateDiskSmartTemperature,
 		RuleTemplateDiskSmartWearout,
 		RuleTemplateDiskSmartHealth,
 		RuleTemplateDiskSmartNvme,
+		RuleTemplateDiskSmartSelfTest,
 		RuleTemplateZFSPoolState,
 	} {
 		if !templateKeys[key] {
 			t.Fatalf("expected_template_%s", key)
 		}
 	}
+	for key, label := range map[string]string{
+		RuleTemplateDiskSmartTemperature: "Disk S.M.A.R.T Temperature",
+		RuleTemplateDiskSmartWearout:     "Disk S.M.A.R.T Wear-Out",
+		RuleTemplateDiskSmartHealth:      "Disk S.M.A.R.T Health",
+		RuleTemplateDiskSmartSelfTest:    "Disk S.M.A.R.T Self-Test",
+	} {
+		if templateLabels[key] != label {
+			t.Fatalf("unexpected_template_label key=%s got=%q want=%q", key, templateLabels[key], label)
+		}
+	}
+	foundSelfTestRule := false
+	for _, rule := range view.Rules {
+		if rule.TemplateKey == RuleTemplateDiskSmartSelfTest && rule.TargetKey == "ada0" {
+			foundSelfTestRule = true
+			break
+		}
+	}
+	if !foundSelfTestRule {
+		t.Fatal("expected_managed_self_test_rule")
+	}
 }
 
-func TestDiskSmartTemplatesHaveOnlySmartDisks(t *testing.T) {
+func TestDiskSmartTemplateDiscoveryUsesInventory(t *testing.T) {
+	svc := newTestService(t)
+	diskService := &trackingInventoryDiskService{mockDiskService: mockDiskService{disks: []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test HDD", Type: "HDD"},
+	}}}
+	svc.SetDiskService(diskService)
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if diskService.inventoryCalls != 1 || diskService.fullCalls != 0 {
+		t.Fatalf("inventory_calls=%d full_calls=%d", diskService.inventoryCalls, diskService.fullCalls)
+	}
+}
+
+func TestDiskSmartSelfTestLegacyKindMigration(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test HDD", Type: "HDD"},
+	})
+	legacyKind := RuleTemplateDiskSmartSelfTest + "ada0"
+	newKind := notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0")
+	legacyRule := models.NotificationKindRule{
+		Kind:           legacyKind,
+		UIEnabled:      true,
+		NtfyEnabled:    false,
+		EmailEnabled:   true,
+		DiscordEnabled: true,
+		Config:         `{"legacy":true}`,
+	}
+	if err := svc.DB.Create(&legacyRule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&legacyRule).Update("ui_enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := svc.now().UTC()
+	legacyNotification := models.Notification{
+		Kind:            legacyKind,
+		Title:           "legacy self-test failure",
+		Severity:        models.NotificationSeverityWarning,
+		Fingerprint:     "legacy-self-test-failure",
+		OccurrenceCount: 1,
+		FirstOccurredAt: now,
+		LastOccurredAt:  now,
+	}
+	if err := svc.DB.Create(&legacyNotification).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacySuppression := models.NotificationSuppression{
+		Kind:        legacyKind,
+		Fingerprint: "legacy-self-test-suppression",
+	}
+	if err := svc.DB.Create(&legacySuppression).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var migratedRule models.NotificationKindRule
+	if err := svc.DB.Where("kind = ?", newKind).First(&migratedRule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migratedRule.ID != legacyRule.ID || migratedRule.UIEnabled || migratedRule.NtfyEnabled || !migratedRule.EmailEnabled || !migratedRule.DiscordEnabled || migratedRule.Config != `{"legacy":true}` {
+		t.Fatalf("legacy_rule_settings_not_preserved: %+v", migratedRule)
+	}
+	var legacyRuleCount int64
+	if err := svc.DB.Model(&models.NotificationKindRule{}).Where("kind = ?", legacyKind).Count(&legacyRuleCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if legacyRuleCount != 0 {
+		t.Fatalf("legacy_rule_not_removed count=%d", legacyRuleCount)
+	}
+	var migratedNotification models.Notification
+	if err := svc.DB.First(&migratedNotification, legacyNotification.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migratedNotification.Kind != newKind {
+		t.Fatalf("legacy_notification_kind=%q", migratedNotification.Kind)
+	}
+	var migratedSuppression models.NotificationSuppression
+	if err := svc.DB.First(&migratedSuppression, legacySuppression.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migratedSuppression.Kind != newKind {
+		t.Fatalf("legacy_suppression_kind=%q", migratedSuppression.Kind)
+	}
+	found := false
+	for _, rule := range view.Rules {
+		if rule.ID == legacyRule.ID && rule.TemplateKey == RuleTemplateDiskSmartSelfTest && rule.TargetKey == "ada0" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("migrated_self_test_rule_missing_from_view")
+	}
+}
+
+func TestDiskSmartSelfTestLegacySettingsOverrideNewAutomaticRule(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{{Device: "ada0", Type: "HDD"}})
+	legacyKind := RuleTemplateDiskSmartSelfTest + "ada0"
+	newKind := notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0")
+	legacy := models.NotificationKindRule{
+		Kind: legacyKind, UIEnabled: true, NtfyEnabled: true, EmailEnabled: true, DiscordEnabled: true, Config: `{"legacy":true}`,
+	}
+	if err := svc.DB.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&legacy).Updates(map[string]any{"ui_enabled": false, "ntfy_enabled": false, "email_enabled": false, "user_disabled": true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	current := models.NotificationKindRule{
+		Kind: newKind, UIEnabled: true, NtfyEnabled: true, EmailEnabled: true, DiscordEnabled: false, Config: "{}",
+	}
+	if err := svc.DB.Create(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var migrated models.NotificationKindRule
+	if err := svc.DB.First(&migrated, current.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migrated.UIEnabled || migrated.NtfyEnabled || migrated.EmailEnabled || !migrated.DiscordEnabled || !migrated.UserDisabled || migrated.Config != `{"legacy":true}` {
+		t.Fatalf("migrated=%+v", migrated)
+	}
+	var count int64
+	if err := svc.DB.Model(&models.NotificationKindRule{}).Where("kind = ?", legacyKind).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("legacy_count=%d", count)
+	}
+}
+
+func TestDiskSmartStableIdentityMigration(t *testing.T) {
+	const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{UUID: diskKey, IdentityStable: true, Device: "ada0", Model: "Stable SSD", Type: "SSD"},
+	})
+	oldKind := notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0")
+	newKind := notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, diskKey)
+	rule := models.NotificationKindRule{
+		Kind: oldKind, UIEnabled: true, NtfyEnabled: true, EmailEnabled: true, DiscordEnabled: true,
+		Config: `{"warningCelsius":45,"criticalCelsius":60}`,
+	}
+	if err := svc.DB.Create(&rule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&rule).Updates(map[string]any{"ui_enabled": false, "ntfy_enabled": false}).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	notification := models.Notification{
+		Kind: oldKind, Title: "temperature", Severity: models.NotificationSeverityWarning,
+		Source: "system.disk.smart", Fingerprint: "ada0|temperature_warning",
+		Metadata:        map[string]string{"device": "ada0", "condition": "temperature_warning"},
+		OccurrenceCount: 1, FirstOccurredAt: now, LastOccurredAt: now,
+	}
+	if err := svc.DB.Create(&notification).Error; err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var migrated models.NotificationKindRule
+	if err := svc.DB.Where("kind = ?", newKind).First(&migrated).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migrated.UIEnabled || migrated.NtfyEnabled || !migrated.EmailEnabled || !migrated.DiscordEnabled || migrated.Config != rule.Config {
+		t.Fatalf("migrated=%+v", migrated)
+	}
+	var stored models.Notification
+	if err := svc.DB.First(&stored, notification.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Kind != newKind || stored.Fingerprint != diskKey+"|temperature" || stored.Metadata["device"] != "ada0" || stored.Metadata["disk_key"] != diskKey {
+		t.Fatalf("stored=%+v", stored)
+	}
+	found := false
+	for _, entry := range view.Rules {
+		if entry.TemplateKey == RuleTemplateDiskSmartTemperature && entry.TargetKey == diskKey && entry.TargetLabel == "ada0 (Stable SSD)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("view=%+v", view)
+	}
+}
+
+func TestDiskSmartLegacyConditionMigration(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test HDD", Type: "HDD"},
+	})
+	now := svc.now().UTC()
+	current := models.Notification{
+		Kind:            notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0"),
+		Title:           "current temperature warning",
+		Severity:        models.NotificationSeverityWarning,
+		Source:          "system.disk.smart",
+		Fingerprint:     "ada0|temperature_warning",
+		Metadata:        map[string]string{"device": "ada0", "condition": "temperature_warning"},
+		OccurrenceCount: 3,
+		FirstOccurredAt: now.Add(-2 * time.Hour),
+		LastOccurredAt:  now.Add(-time.Hour),
+	}
+	legacy := models.Notification{
+		Kind:            current.Kind,
+		Title:           "legacy temperature warning",
+		Severity:        models.NotificationSeverityWarning,
+		Source:          "system.disk.smart",
+		Fingerprint:     "ada0|high temperature",
+		Metadata:        map[string]string{"device": "ada0", "condition": "high temperature"},
+		OccurrenceCount: 2,
+		FirstOccurredAt: now.Add(-3 * time.Hour),
+		LastOccurredAt:  now,
+	}
+	if err := svc.DB.Create(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored []models.Notification
+	if err := svc.DB.Where("source = ?", "system.disk.smart").Find(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("expected_1_merged_notification got=%d", len(stored))
+	}
+	merged := stored[0]
+	if merged.ID != current.ID || merged.Fingerprint != "ada0|temperature" || merged.Metadata["condition"] != "temperature_warning" {
+		t.Fatalf("legacy_condition_not_normalized: %+v", merged)
+	}
+	if merged.OccurrenceCount != 5 || !merged.FirstOccurredAt.Equal(now.Add(-3*time.Hour)) || !merged.LastOccurredAt.Equal(now) {
+		t.Fatalf("legacy_notification_not_merged: %+v", merged)
+	}
+	if merged.Title != legacy.Title {
+		t.Fatalf("newest_notification_content_not_preserved got=%q want=%q", merged.Title, legacy.Title)
+	}
+}
+
+func TestDiskSmartLegacyConditionMigrationReloadsMergedWinner(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test HDD", Type: "HDD"},
+	})
+	now := svc.now().UTC()
+	legacy := models.Notification{
+		Kind:            notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0"),
+		Title:           "legacy temperature warning",
+		Severity:        models.NotificationSeverityWarning,
+		Source:          "system.disk.smart",
+		Fingerprint:     "ada0|high temperature",
+		Metadata:        map[string]string{"device": "ada0", "condition": "high temperature"},
+		OccurrenceCount: 2,
+		FirstOccurredAt: now.Add(-3 * time.Hour),
+		LastOccurredAt:  now,
+	}
+	current := models.Notification{
+		Kind:            legacy.Kind,
+		Title:           "current temperature warning",
+		Severity:        models.NotificationSeverityWarning,
+		Source:          "system.disk.smart",
+		Fingerprint:     "ada0|temperature",
+		Metadata:        map[string]string{"device": "ada0", "condition": "temperature_warning"},
+		OccurrenceCount: 3,
+		FirstOccurredAt: now.Add(-2 * time.Hour),
+		LastOccurredAt:  now.Add(-time.Hour),
+	}
+	if err := svc.DB.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Create(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var stored []models.Notification
+	if err := svc.DB.Where("source = ?", "system.disk.smart").Find(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].ID != current.ID || stored[0].OccurrenceCount != 5 || stored[0].Title != legacy.Title || stored[0].Metadata["condition"] != "temperature_warning" {
+		t.Fatalf("stored=%+v", stored)
+	}
+}
+
+func TestLegacyDiskSmartCondition(t *testing.T) {
+	tests := map[string]string{
+		"smart unavailable":      "smart_unavailable",
+		"critical temperature":   "temperature_critical",
+		"high temperature":       "temperature_warning",
+		"temperature normal":     "temperature_normal",
+		"SMART health failed":    "health_failed",
+		"SMART health recovered": "health_recovered",
+		"critical wear-out":      "wearout_critical",
+		"high wear-out":          "wearout_warning",
+		"wear-out normal":        "wearout_normal",
+		"sector issues":          "sector_issues",
+		"sector issues cleared":  "sector_issues_cleared",
+		"NVMe warning":           "nvme_warning",
+		"NVMe recovered":         "nvme_recovered",
+	}
+	for legacy, expected := range tests {
+		actual, ok := legacyDiskSmartCondition(legacy)
+		if !ok || actual != expected {
+			t.Fatalf("legacy=%q got=%q ok=%t want=%q", legacy, actual, ok, expected)
+		}
+	}
+	if condition, ok := legacyDiskSmartCondition("temperature_warning"); ok || condition != "" {
+		t.Fatalf("stable_condition_was_treated_as_legacy=%q", condition)
+	}
+}
+
+func TestDiskSmartStableIdentityMigrationPrefersDeviceRuleOverAutomaticRule(t *testing.T) {
+	const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{UUID: diskKey, IdentityStable: true, Device: "ada0", Model: "Stable SSD", Type: "SSD"},
+	})
+	oldKind := notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0")
+	newKind := notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, diskKey)
+	oldRule := models.NotificationKindRule{
+		Kind: oldKind, UIEnabled: true, NtfyEnabled: true, EmailEnabled: true, DiscordEnabled: true,
+		Config: `{"warningCelsius":45,"criticalCelsius":60}`,
+	}
+	if err := svc.DB.Create(&oldRule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&oldRule).Updates(map[string]any{"ui_enabled": false, "ntfy_enabled": false, "email_enabled": false, "user_disabled": true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	current := models.NotificationKindRule{
+		Kind: newKind, UIEnabled: true, NtfyEnabled: true, EmailEnabled: true,
+		Config: `{"criticalCelsius":65,"warningCelsius":55}`,
+	}
+	if err := svc.DB.Create(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var migrated models.NotificationKindRule
+	if err := svc.DB.First(&migrated, current.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migrated.UIEnabled || migrated.NtfyEnabled || migrated.EmailEnabled || !migrated.DiscordEnabled || !migrated.UserDisabled || migrated.Config != oldRule.Config {
+		t.Fatalf("migrated=%+v", migrated)
+	}
+	var count int64
+	if err := svc.DB.Model(&models.NotificationKindRule{}).Where("kind = ?", oldKind).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("old_rule_count=%d", count)
+	}
+}
+
+func TestNotificationRuleReplacementPreservesNewestCustomSettings(t *testing.T) {
+	now := time.Now().UTC()
+	current := models.NotificationKindRule{Kind: "current", Config: `{"custom":true}`, UpdatedAt: now}
+	candidate := models.NotificationKindRule{Kind: "candidate", Config: `{"custom":true}`, UpdatedAt: now.Add(-time.Minute)}
+	if notificationRuleShouldReplace(current, candidate) {
+		t.Fatal("older_candidate_replaced_current")
+	}
+	candidate.UpdatedAt = now.Add(time.Minute)
+	if !notificationRuleShouldReplace(current, candidate) {
+		t.Fatal("newer_candidate_was_not_selected")
+	}
+}
+
+func TestDiskSmartTemplatesIncludeInventoryDisksWithoutCurrentData(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
 		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
-		{Device: "ada1", Model: "Test NoSMART", Type: "HDD", SmartData: nil},
+		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: nil},
+		{Device: "cd0", Model: "Test Optical", Type: "Optical", SmartData: nil},
 	})
 
 	view, err := svc.GetRuleConfig(context.Background())
@@ -1230,18 +1737,26 @@ func TestDiskSmartTemplatesHaveOnlySmartDisks(t *testing.T) {
 		t.Fatalf("get_rule_config_failed: %v", err)
 	}
 
+	foundUnavailable := false
 	for _, tpl := range view.Templates {
 		for _, target := range tpl.Targets {
-			if target.Key == "ada1" {
-				t.Fatalf("disk_without_smart_should_not_be_a_target got: %s in template %s", target.Key, tpl.Key)
+			if target.Key == "ada1" && tpl.Key != RuleTemplateDiskSmartWearout && tpl.Key != RuleTemplateDiskSmartNvme {
+				foundUnavailable = true
+			}
+			if target.Key == "cd0" {
+				t.Fatalf("unsupported_inventory_device_should_not_be_a_target got: %s in template %s", target.Key, tpl.Key)
 			}
 		}
+	}
+	if !foundUnavailable {
+		t.Fatal("inventory_disk_without_current_data_missing")
 	}
 }
 
 func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
 		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
+		{Device: "da0", Model: "Test SCSI SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{Device: diskServiceInterfaces.DeviceInfo{Protocol: "SCSI"}}},
 		{Device: "ada1", Model: "Test HDD", Type: "HDD", SmartData: diskServiceInterfaces.SmartData{}},
 		{Device: "nda0", Model: "Test NVMe", Type: "NVMe", SmartData: &diskServiceInterfaces.SMARTNvme{}},
 	})
@@ -1263,6 +1778,7 @@ func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
 	}
 
 	hasSSD := false
+	hasSCSISSD := false
 	hasNVMe := false
 	hasHDD := false
 	for _, target := range wearTpl.Targets {
@@ -1271,6 +1787,8 @@ func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
 			hasSSD = true
 		case "nda0":
 			hasNVMe = true
+		case "da0":
+			hasSCSISSD = true
 		case "ada1":
 			hasHDD = true
 		}
@@ -1280,6 +1798,9 @@ func TestWearoutTemplateTargetsOnlySSDandNVMe(t *testing.T) {
 	}
 	if !hasNVMe {
 		t.Fatalf("expected_nvme_in_wearout_targets")
+	}
+	if !hasSCSISSD {
+		t.Fatalf("expected_scsi_ssd_in_wearout_targets")
 	}
 	if hasHDD {
 		t.Fatalf("hdd_should_not_be_in_wearout_targets")
@@ -1324,6 +1845,7 @@ func TestDiskSmartConfigDefaultsWritten(t *testing.T) {
 	tempKind := notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0")
 	wearKind := notifier.KindForDiskSmart(notifier.DiskSmartWearoutKindPrefix, "ada0")
 	healthKind := notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "ada0")
+	selfTestKind := notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0")
 
 	for _, tc := range []struct {
 		kind           string
@@ -1332,6 +1854,7 @@ func TestDiskSmartConfigDefaultsWritten(t *testing.T) {
 		{tempKind, true},
 		{wearKind, true},
 		{healthKind, false},
+		{selfTestKind, false},
 	} {
 		var rule models.NotificationKindRule
 		if err := svc.DB.Where("kind = ?", tc.kind).First(&rule).Error; err != nil {
@@ -1408,10 +1931,57 @@ func TestUpdateRulePersistsConfig(t *testing.T) {
 	}
 }
 
+func TestUpdateRuleRejectsInvalidSmartThresholds(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
+	})
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]uint{}
+	for _, rule := range view.Rules {
+		ids[rule.TemplateKey] = rule.ID
+	}
+	tests := []struct {
+		template string
+		config   string
+	}{
+		{template: RuleTemplateDiskSmartTemperature, config: `{"warningCelsius":70,"criticalCelsius":60}`},
+		{template: RuleTemplateDiskSmartTemperature, config: `{"warningCelsius":55,"criticalCelsius":201}`},
+		{template: RuleTemplateDiskSmartWearout, config: `{"warningPercent":90,"criticalPercent":80}`},
+		{template: RuleTemplateDiskSmartWearout, config: `{"warningPercent":80,"criticalPercent":101}`},
+	}
+	for _, test := range tests {
+		_, err := svc.UpdateRule(context.Background(), ids[test.template], RuleUpdateInput{Config: test.config})
+		if err == nil || !strings.HasPrefix(err.Error(), "invalid_notification_rule_") {
+			t.Fatalf("template=%s err=%v", test.template, err)
+		}
+	}
+}
+
 func TestDeleteDiskRuleStaysDeleted(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
 		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
+	ntfyCalls := 0
+	emailCalls := 0
+	svc.SetNtfySender(func(context.Context, models.NotificationTransportConfig, notifier.EventInput, string) error {
+		ntfyCalls++
+		return nil
+	})
+	svc.SetEmailSender(func(context.Context, models.NotificationTransportConfig, notifier.EventInput, string) error {
+		emailCalls++
+		return nil
+	})
+	if _, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{Name: "ntfy", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"}},
+			{Name: "smtp", Type: TransportTypeSMTP, Enabled: true, Email: &EmailTransportConfigUpdate{SMTPHost: "smtp.example.com", SMTPPort: 587, SMTPFrom: "ops@example.com", Recipients: []string{"ops@example.com"}}},
+		},
+	}); err != nil {
+		t.Fatalf("seed_transport_config_failed: %v", err)
+	}
 
 	view, err := svc.GetRuleConfig(context.Background())
 	if err != nil {
@@ -1442,6 +2012,24 @@ func TestDeleteDiskRuleStaysDeleted(t *testing.T) {
 		if rule.TemplateKey == RuleTemplateDiskSmartHealth && rule.TargetKey == "ada0" {
 			t.Fatalf("deleted_rule_should_not_reappear")
 		}
+	}
+
+	result, err := svc.Emit(context.Background(), notifier.EventInput{
+		Kind:        notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "ada0"),
+		Title:       "Disk health failed",
+		Severity:    "critical",
+		Fingerprint: "ada0|health",
+		Metadata:    map[string]string{"device": "ada0", "disk_key": "ada0", "condition": "health_failed"},
+	})
+	if err != nil {
+		t.Fatalf("emit_deleted_rule_failed: %v", err)
+	}
+	var count int64
+	if err := svc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if result.NotificationID != 0 || result.SentNtfy || result.SentEmail || count != 0 || ntfyCalls != 0 || emailCalls != 0 {
+		t.Fatalf("deleted_rule_emitted result=%+v count=%d ntfy=%d email=%d", result, count, ntfyCalls, emailCalls)
 	}
 }
 
@@ -1510,18 +2098,50 @@ func TestTestRuleWithNVMeTemplate(t *testing.T) {
 	}
 }
 
+func TestTestRuleWithSelfTestTemplate(t *testing.T) {
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "ada0", Model: "Test SSD", Type: "SSD"},
+	})
+
+	for _, condition := range []string{"self_test_failed", "self_test_passed"} {
+		if err := svc.TestRule(context.Background(), TestRuleInput{
+			TemplateKey: RuleTemplateDiskSmartSelfTest,
+			TargetKey:   "ada0",
+			Condition:   condition,
+		}); err != nil {
+			t.Fatalf("test_rule_self_test_failed condition=%s: %v", condition, err)
+		}
+	}
+
+	kind := notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0")
+	var notifications []models.Notification
+	if err := svc.DB.Where("kind = ?", kind).Order("id ASC").Find(&notifications).Error; err != nil {
+		t.Fatalf("load_self_test_notifications_failed: %v", err)
+	}
+	if len(notifications) != 2 {
+		t.Fatalf("expected_2_self_test_notifications got=%d", len(notifications))
+	}
+	if notifications[0].Title != "Disk ada0 self-test failed" || notifications[1].Title != "Disk ada0 self-test passed" {
+		t.Fatalf("unexpected_self_test_notifications: %+v", notifications)
+	}
+	if notifications[0].Severity != models.NotificationSeverityCritical || notifications[1].Severity != models.NotificationSeverityInfo {
+		t.Fatalf("unexpected_self_test_severities: %+v", notifications)
+	}
+}
+
 func TestTestRuleDefaultConditionPerTemplate(t *testing.T) {
 	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
 		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
 	})
 
 	tests := []struct {
-		templateKey     string
-		expectedTitle   string
+		templateKey   string
+		expectedTitle string
 	}{
 		{RuleTemplateDiskSmartTemperature, "Disk ada0 temperature high: 60 C"},
 		{RuleTemplateDiskSmartWearout, "Disk ada0 wear-out high: 85.0%"},
 		{RuleTemplateDiskSmartHealth, "Disk ada0 S.M.A.R.T health check FAILED"},
+		{RuleTemplateDiskSmartSelfTest, "Disk ada0 self-test failed"},
 	}
 
 	for _, tc := range tests {

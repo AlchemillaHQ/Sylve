@@ -247,6 +247,34 @@ func TestCreateShareReturnsBadRequestForInvalidPrincipalMode(t *testing.T) {
 	}
 }
 
+func TestCreateShareReturnsBadRequestForInvalidMask(t *testing.T) {
+	db := newSambaHandlerTestDB(t, &sambaModels.SambaShare{})
+	svc := &samba.Service{DB: db}
+	router := newSambaSharesRouter(svc)
+
+	body := []byte(`{
+		"name":"documents",
+		"dataset":"dataset-guid-2",
+		"permissions":{"read":{"userIds":[],"groupIds":[]},"write":{"userIds":[],"groupIds":[]}},
+		"guest":{"enabled":true,"writeable":false},
+		"createMask":"0668",
+		"directoryMask":"2775"
+	}`)
+
+	rr := performSambaJSONRequest(t, router, http.MethodPost, "/samba/shares", body)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp handlerAPIResponse[any]
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp.Error != "invalid_create_mask" {
+		t.Fatalf("expected invalid_create_mask, got %q", resp.Error)
+	}
+}
+
 func TestUpdateShareReturnsNotFoundWhenShareIsMissing(t *testing.T) {
 	db := newSambaHandlerTestDB(t, &sambaModels.SambaShare{})
 	svc := &samba.Service{DB: db}

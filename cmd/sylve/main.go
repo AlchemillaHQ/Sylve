@@ -41,9 +41,9 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+	"github.com/alchemillahq/sylve/internal/services/mdns"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
-	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -164,9 +164,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
 	notificationService := notificationsService.NewService(d)
+	notificationService.SetDiskService(dS)
+	if err := notificationService.MigrateLegacyDiskSmartRecords(context.Background()); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_disk_smart_notifications")
+	}
 	notificationFacade.SetEmitter(notificationService)
 
-	notificationService.SetDiskService(dS)
 	sysS.(*system.Service).SetDiskService(dS)
 
 	clusterSvc := cS.(*cluster.Service)
@@ -189,6 +192,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	zS.RegisterJobs()
 	zeltaS.RegisterJobs()
 	lifecycleSvc.RegisterJobs()
+	dS.(*disk.Service).RegisterJobs()
 
 	zfs.EncryptionKeyCreatedHook = func(uuid, keyData, keyFormat string) {
 		if err := clusterSvc.ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat); err != nil {
@@ -222,6 +226,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if settingsErr != nil {
 		logger.L.Fatal().Err(settingsErr).Msg("Failed to evaluate startup readiness")
 	}
+	dS.(*disk.Service).SetSelfTestSchedulerReady(startAdvancedStartupWorkers)
 
 	go db.StartQueue(qCtx)
 	db.StartPruneWorker(qCtx, d)
@@ -229,7 +234,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if startAdvancedStartupWorkers {
 		logger.L.Info().Msg("Starting background watchers and queues")
 		go sysS.StartNetlinkWatcher(qCtx)
-		go sysS.StartDiskSmartMonitor(qCtx)
+		sysS.StartDiskSmartMonitor(qCtx)
+		go dS.(*disk.Service).StartSelfTestScheduler(qCtx)
 		go sysS.NetlinkEventsCleaner(qCtx)
 
 		if libvirtSvc.IsVirtualizationEnabled() {

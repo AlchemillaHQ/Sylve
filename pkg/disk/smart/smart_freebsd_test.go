@@ -46,6 +46,7 @@ func TestClosedDeviceMethodsReturnError(t *testing.T) {
 		{"device-statistics", func() error { _, err := d.ReadDeviceStatistics(); return err }},
 		{"selective-self-test-log", func() error { _, err := d.ReadSelectiveSelfTestLog(); return err }},
 		{"self-test", func() error { return d.SelfTest(SelfTestShort) }},
+		{"vendor-self-test", func() error { return d.StartVendorSelfTest(0x90) }},
 		{"abort", d.AbortSelfTest},
 	}
 	for _, check := range checks {
@@ -54,6 +55,20 @@ func TestClosedDeviceMethodsReturnError(t *testing.T) {
 				t.Fatalf("got %v, want ErrDeviceClosed", err)
 			}
 		})
+	}
+}
+
+func TestSelfTestDeviceLockKey(t *testing.T) {
+	first := selfTestDeviceLockKey("NVMe", "model", "serial", "revision", "/dev/nda0", true)
+	second := selfTestDeviceLockKey("NVMe", "model", "serial", "revision", "/dev/nda1", true)
+	if first != second {
+		t.Fatalf("controller keys differ: %q %q", first, second)
+	}
+	if got := selfTestDeviceLockKey("NVMe", "model", "serial", "revision", "/dev/nda1", false); got != "/dev/nda1" {
+		t.Fatalf("independent operation key=%q", got)
+	}
+	if got := selfTestDeviceLockKey("NVMe", "model", "", "revision", "/dev/nda1", true); got != "/dev/nda1" {
+		t.Fatalf("missing identity key=%q", got)
 	}
 }
 

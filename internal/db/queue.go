@@ -93,7 +93,7 @@ func resolveQueueLane(jobName string) string {
 		return queueLaneDownloadsID
 	case strings.HasPrefix(name, "zelta-"):
 		return queueLaneZeltaID
-	case strings.HasPrefix(name, "zfs_"):
+	case strings.HasPrefix(name, "zfs_"), strings.HasPrefix(name, "disk-smart-"):
 		return queueLaneMaintenanceID
 	default:
 		return queueLaneDefaultID

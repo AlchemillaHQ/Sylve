@@ -92,7 +92,7 @@ func TestEnforceNotificationRetentionPrunesOldDismissedNotifications(t *testing.
 	}
 }
 
-func TestEnforceNotificationRetentionPrunesSuppressionsByAgeAndZFSPrefix(t *testing.T) {
+func TestEnforceNotificationRetentionPrunesSuppressionsByAgeAndManagedPrefixes(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &models.NotificationSuppression{})
 
 	now := time.Date(2026, time.April, 24, 12, 0, 0, 0, time.UTC)
@@ -115,6 +115,31 @@ func TestEnforceNotificationRetentionPrunesSuppressionsByAgeAndZFSPrefix(t *test
 			Kind:        notifier.KindForZFSPoolState("test"),
 			CreatedAt:   freshCreatedAt,
 		},
+		{
+			Fingerprint: notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0") + "|temperature_warning",
+			Kind:        notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0"),
+			CreatedAt:   freshCreatedAt,
+		},
+		{
+			Fingerprint: notifier.KindForDiskSmart(notifier.DiskSmartWearoutKindPrefix, "ada0") + "|wearout_warning",
+			Kind:        notifier.KindForDiskSmart(notifier.DiskSmartWearoutKindPrefix, "ada0"),
+			CreatedAt:   freshCreatedAt,
+		},
+		{
+			Fingerprint: notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "ada0") + "|health_failed",
+			Kind:        notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "ada0"),
+			CreatedAt:   freshCreatedAt,
+		},
+		{
+			Fingerprint: notifier.KindForDiskSmart(notifier.DiskSmartNvmeKindPrefix, "nda0") + "|nvme_warning",
+			Kind:        notifier.KindForDiskSmart(notifier.DiskSmartNvmeKindPrefix, "nda0"),
+			CreatedAt:   freshCreatedAt,
+		},
+		{
+			Fingerprint: notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0") + "|self_test_failed",
+			Kind:        notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0"),
+			CreatedAt:   freshCreatedAt,
+		},
 	}
 
 	if err := db.Create(&rows).Error; err != nil {
@@ -135,5 +160,30 @@ func TestEnforceNotificationRetentionPrunesSuppressionsByAgeAndZFSPrefix(t *test
 	}
 	if kept[0].Kind != "storage.disks" || kept[0].Fingerprint != "storage.disks|disk-ada1-failure" {
 		t.Fatalf("unexpected_remaining_suppression: kind=%s fingerprint=%s", kept[0].Kind, kept[0].Fingerprint)
+	}
+}
+
+func TestEnforceNotificationRetentionPrunesDeadLetteredSmartSelfTestEvents(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.DiskSmartSelfTestEvent{})
+	now := time.Date(2026, time.April, 24, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-(DiskSmartSelfTestEventRetentionDays*24*time.Hour + time.Hour))
+	fresh := now.Add(-time.Hour)
+	events := []models.DiskSmartSelfTestEvent{
+		{EventKey: "old", RunKey: "old", Source: "manual", DiskKey: "disk", Device: "ada0", TestType: "short", Condition: "self_test_failed", Severity: "critical", Title: "old", DeadLetteredAt: &old, CreatedAt: old},
+		{EventKey: "fresh", RunKey: "fresh", Source: "manual", DiskKey: "disk", Device: "ada0", TestType: "short", Condition: "self_test_failed", Severity: "critical", Title: "fresh", DeadLetteredAt: &fresh, CreatedAt: fresh},
+		{EventKey: "pending", RunKey: "pending", Source: "manual", DiskKey: "disk", Device: "ada0", TestType: "short", Condition: "self_test_failed", Severity: "critical", Title: "pending", CreatedAt: old},
+	}
+	if err := db.Create(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := EnforceNotificationRetention(db, now); err != nil {
+		t.Fatal(err)
+	}
+	var kept []models.DiskSmartSelfTestEvent
+	if err := db.Order("event_key ASC").Find(&kept).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 2 || kept[0].EventKey != "fresh" || kept[1].EventKey != "pending" {
+		t.Fatalf("events=%+v", kept)
 	}
 }

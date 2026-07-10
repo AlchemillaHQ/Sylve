@@ -112,6 +112,11 @@ static uint32_t get_device_nvme_nsid(smart_h h) {
     return s ? s->info.nvme_nsid : 0;
 }
 
+static bool get_device_nvme_single_self_test(smart_h h) {
+    smart_t *s = (smart_t *)h;
+    return s && s->info.nvme_single_self_test;
+}
+
 static uint64_t get_device_sector_count(smart_h h) {
     smart_t *s = (smart_t *)h;
     return s ? s->info.sector_count : 0;
@@ -154,6 +159,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
@@ -228,12 +234,28 @@ func selfTestDeviceLock(device string) *sync.Mutex {
 	return lock.(*sync.Mutex)
 }
 
+func selfTestDeviceLockKey(protocol, model, serial, revision, devicePath string, singleOperation bool) string {
+	if protocol != "NVMe" || !singleOperation || serial == "" {
+		return devicePath
+	}
+	return protocol + "\x00" + model + "\x00" + serial + "\x00" + revision
+}
+
 func selfTestCapabilityKey(h C.smart_h, devicePath string) string {
+	protocol := protocolName(C.get_device_proto(h))
 	serial := C.GoString(C.get_device_serial(h))
 	if serial == "" {
 		serial = devicePath
 	}
-	return protocolName(C.get_device_proto(h)) + "\x00" + C.GoString(C.get_device_model(h)) + "\x00" + serial + "\x00" + C.GoString(C.get_device_rev(h))
+	namespaceID := uint32(0)
+	if protocol == "NVMe" {
+		namespaceID = uint32(C.get_device_nvme_nsid(h))
+	}
+	return selfTestCapabilityKeyParts(protocol, C.GoString(C.get_device_model(h)), serial, C.GoString(C.get_device_rev(h)), namespaceID)
+}
+
+func selfTestCapabilityKeyParts(protocol, model, serial, revision string, namespaceID uint32) string {
+	return protocol + "\x00" + model + "\x00" + serial + "\x00" + revision + "\x00" + strconv.FormatUint(uint64(namespaceID), 10)
 }
 
 func (d *Device) lockHandle() (C.smart_h, string, error) {
@@ -265,10 +287,15 @@ func OpenDevice(devicePath string) (*Device, error) {
 		C.GoString(C.get_device_model(handle)),
 		C.GoString(C.get_device_rev(handle)),
 	)
+	protocol := protocolName(C.get_device_proto(handle))
+	model := C.GoString(C.get_device_model(handle))
+	serial := C.GoString(C.get_device_serial(handle))
+	revision := C.GoString(C.get_device_rev(handle))
+	lockKey := selfTestDeviceLockKey(protocol, model, serial, revision, devicePath, bool(C.get_device_nvme_single_self_test(handle)))
 	return &Device{
 		h:            handle,
 		device:       strings.TrimPrefix(devicePath, "/dev/"),
-		selfTestMu:   selfTestDeviceLock(devicePath),
+		selfTestMu:   selfTestDeviceLock(lockKey),
 		driveMatch:   match,
 		driveMatched: matched,
 	}, nil
@@ -304,6 +331,58 @@ func Supported(devicePath string) (bool, error) {
 	}
 	defer d.Close()
 	return d.Supported()
+}
+
+func CheckATAPowerMode(devicePath string) (ATAPowerMode, error) {
+	if !strings.HasPrefix(devicePath, "/dev/") {
+		devicePath = "/dev/" + devicePath
+	}
+
+	cPath := C.CString(devicePath)
+	defer C.free(unsafe.Pointer(cPath))
+	var raw C.uint8_t
+	var sleeping C.bool
+	if rc := C.smart_ata_check_power_mode(cPath, &raw, &sleeping); rc != 0 {
+		switch rc {
+		case C.EPROTONOSUPPORT, C.EOPNOTSUPP:
+			return ATAPowerModeUnknown, fmt.Errorf("%w: ATA power mode on %s", ErrUnsupportedFeature, devicePath)
+		case C.ETIMEDOUT:
+			return ATAPowerModeUnknown, fmt.Errorf("%w: ATA power mode on %s", ErrControllerTimeout, devicePath)
+		case C.ECONNABORTED:
+			return ATAPowerModeUnknown, fmt.Errorf("%w: ATA power mode on %s", ErrControllerAborted, devicePath)
+		}
+		return ATAPowerModeUnknown, fmt.Errorf("failed to check ATA power mode on %s: code %d", devicePath, int(rc))
+	}
+	if bool(sleeping) {
+		return ATAPowerModeSleep, nil
+	}
+	return ATAPowerMode(raw), nil
+}
+
+func CheckSCSIPowerMode(devicePath string) (SCSIPowerMode, error) {
+	if !strings.HasPrefix(devicePath, "/dev/") {
+		devicePath = "/dev/" + devicePath
+	}
+
+	cPath := C.CString(devicePath)
+	defer C.free(unsafe.Pointer(cPath))
+	raw := make([]byte, 252)
+	if rc := C.smart_scsi_check_power_mode(cPath, unsafe.Pointer(&raw[0]), C.size_t(len(raw))); rc != 0 {
+		switch rc {
+		case C.EPROTONOSUPPORT, C.EOPNOTSUPP:
+			return SCSIPowerModeUnknown, fmt.Errorf("%w: SCSI power mode on %s", ErrUnsupportedFeature, devicePath)
+		case C.ETIMEDOUT:
+			return SCSIPowerModeUnknown, fmt.Errorf("%w: SCSI power mode on %s", ErrControllerTimeout, devicePath)
+		case C.ECONNABORTED:
+			return SCSIPowerModeUnknown, fmt.Errorf("%w: SCSI power mode on %s", ErrControllerAborted, devicePath)
+		}
+		return SCSIPowerModeUnknown, fmt.Errorf("failed to check SCSI power mode on %s: code %d", devicePath, int(rc))
+	}
+	mode, ok := parseSCSIPowerMode(raw)
+	if !ok {
+		return SCSIPowerModeUnknown, fmt.Errorf("invalid SCSI power mode response from %s", devicePath)
+	}
+	return mode, nil
 }
 
 func (d *Device) Enable() error {
@@ -614,6 +693,9 @@ func (d *Device) readSelfTestLogLocked(h C.smart_h, devicePath string) (*SelfTes
 		return &log, nil
 	case C.SMART_PROTO_SCSI:
 		log := parseSCSISelfTestLog(raw)
+		if !log.ChecksumValid {
+			return nil, fmt.Errorf("invalid SCSI self-test log from %s", devicePath)
+		}
 		return &log, nil
 	default:
 		log := parseNVMESelfTestLog(raw)
@@ -884,10 +966,8 @@ func (d *Device) selfTestCapabilitiesLocked(h C.smart_h, devicePath string, ataR
 		}
 		capabilities = parseATASelfTestCapabilities(ataRaw, bool(C.get_device_self_test_supported(h)))
 	case C.SMART_PROTO_SCSI:
-		capabilities.Protocol = "SCSI"
-		capabilities.Scope = "device"
-		capabilities.Supported = bool(C.smart_log_page_supported(h, C.uint32_t(0x10)))
-		if !capabilities.Supported {
+		resultLog := bool(C.smart_log_page_supported(h, C.uint32_t(0x10)))
+		if !resultLog {
 			switch int(C.smart_get_last_err(h)) {
 			case int(C.ETIMEDOUT):
 				return capabilities, fmt.Errorf("%w: %s", ErrControllerTimeout, devicePath)
@@ -895,15 +975,15 @@ func (d *Device) selfTestCapabilitiesLocked(h C.smart_h, devicePath string, ataR
 				return capabilities, fmt.Errorf("%w: %s", ErrControllerAborted, devicePath)
 			}
 		}
-		if capabilities.Supported {
-			capabilities.Default = true
-			capabilities.Short = true
-			capabilities.Extended = true
-			capabilities.ShortCaptive = true
-			capabilities.ExtendedCaptive = true
-			capabilities.Abort = true
-			capabilities.ResultLog = true
-			capabilities.Progress = true
+		var executionKnown C.bool
+		var executionSupported C.bool
+		if rc := C.smart_scsi_self_test_support(h, &executionKnown, &executionSupported); rc != 0 {
+			if int(rc) == int(C.ETIMEDOUT) || int(rc) == int(C.ECONNABORTED) {
+				return capabilities, wrapDeviceError(h, fmt.Errorf("failed to query SCSI self-test execution support from %s: code %d", devicePath, int(rc)), devicePath)
+			}
+		}
+		capabilities = scsiSelfTestCapabilities(resultLog, bool(executionKnown), bool(executionSupported))
+		if !capabilities.ExecutionSupportKnown || capabilities.Supported {
 			raw := make([]byte, 64)
 			rc := C.smart_scsi_control_mode_page(h, unsafe.Pointer(&raw[0]), C.size_t(len(raw)))
 			if rc == 0 {
@@ -977,56 +1057,37 @@ func (d *Device) selfTestStatusLocked(h C.smart_h, devicePath string) (*SelfTest
 		if !capabilities.Supported {
 			return nil, fmt.Errorf("%w: self-tests on %s", ErrUnsupportedFeature, devicePath)
 		}
-		exec := DecodeSelfTestExecStatus(uint64(raw[363]))
-		if d.driveMatch.FirmwareBugs&FirmwareBugSamsung3 != 0 && raw[363] == 0xf0 {
-			exec.Status = "ambiguous_completed_or_in_progress"
-			exec.RemainingPct = -1
-		}
-		status := &SelfTestStatus{Protocol: "ATA", State: SelfTestStateIdle, ExecutionStatus: exec.Status, ProgressPct: -1, RemainingPct: -1}
-		switch exec.Status {
-		case "in_progress":
-			status.State = SelfTestStateRunning
-			status.Running = true
-			if exec.RemainingPct >= 0 {
-				status.RemainingPct = exec.RemainingPct
-				status.RemainingKnown = true
-				status.ProgressPct = 100 - exec.RemainingPct
-				status.ProgressKnown = true
-			}
-		case "ambiguous_completed_or_in_progress":
-			status.State = SelfTestStateAmbiguous
-		}
+		status := ataSelfTestStatusFromData(raw, capabilities, d.driveMatch.FirmwareBugs)
 		if capabilities.ResultLog {
 			log, logErr := d.readSelfTestLogLocked(h, devicePath)
 			if logErr == nil {
 				status.Results = log.Entries
 				status.ChecksumValid = log.ChecksumValid
+				applyATAInProgressResultType(&status, capabilities)
 			} else if IsControllerError(logErr) {
 				return nil, logErr
 			}
 		}
-		return status, nil
+		return &status, nil
 	case C.SMART_PROTO_SCSI:
 		capabilities, err := d.selfTestCapabilitiesLocked(h, devicePath, nil)
 		if err != nil {
 			return nil, err
 		}
-		if !capabilities.Supported {
+		if capabilities.ExecutionSupportKnown && !capabilities.Supported {
 			return nil, fmt.Errorf("%w: self-tests on %s", ErrUnsupportedFeature, devicePath)
 		}
-		log, err := d.readSelfTestLogLocked(h, devicePath)
-		if err != nil {
-			return nil, err
+		log := &SelfTestLog{}
+		if capabilities.ResultLog {
+			log, err = d.readSelfTestLogLocked(h, devicePath)
+			if err != nil {
+				return nil, err
+			}
 		}
 		sense := make([]byte, 252)
 		rc := C.smart_scsi_request_sense(h, unsafe.Pointer(&sense[0]), C.size_t(len(sense)))
 		if rc == 0 {
-			running, progress, known := parseSCSISelfTestProgress(sense)
-			if running {
-				log.InProgress = true
-				log.ProgressPct = progress
-				log.ProgressKnown = known
-			}
+			applySCSISelfTestSense(log, sense)
 		} else if int(rc) == int(C.ETIMEDOUT) || int(rc) == int(C.ECONNABORTED) {
 			return nil, wrapDeviceError(h, fmt.Errorf("failed to read SCSI self-test status from %s: code %d", devicePath, int(rc)), devicePath)
 		}
@@ -1143,7 +1204,7 @@ func (d *Device) StartSelectiveSelfTest(spans []SelectiveSpan, options Selective
 	}
 	raw := C.GoBytes(buf, 512)
 	C.smart_free(sm)
-	configured, err := buildATASelectiveSelfTestLog(raw, spans, options, uint64(C.get_device_sector_count(h)))
+	configured, err := buildATASelectiveSelfTestLog(raw, spans, options, status.ExecutionStatus, uint64(C.get_device_sector_count(h)))
 	if err != nil {
 		return err
 	}
@@ -1174,6 +1235,47 @@ func StartSelfTest(devicePath string, kind SelfTestKind) error {
 	return d.StartSelfTest(kind)
 }
 
+func StartVendorSelfTest(devicePath string, code uint8) error {
+	d, err := OpenDevice(devicePath)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.StartVendorSelfTest(code)
+}
+
+func (d *Device) StartVendorSelfTest(code uint8) error {
+	if d == nil || d.selfTestMu == nil {
+		return ErrDeviceClosed
+	}
+	if !validVendorSelfTestCode(code) {
+		return fmt.Errorf("%w: 0x%02x", ErrInvalidSelfTestType, code)
+	}
+	d.selfTestMu.Lock()
+	defer d.selfTestMu.Unlock()
+	h, devicePath, err := d.lockHandle()
+	if err != nil {
+		return err
+	}
+	defer d.mu.Unlock()
+	if C.get_device_proto(h) != C.SMART_PROTO_ATA {
+		return fmt.Errorf("%w: vendor self-test on %s", ErrUnsupportedFeature, devicePath)
+	}
+	raw, err := readATASelfTestDataLocked(h, devicePath)
+	if err != nil {
+		return err
+	}
+	capabilities := parseATASelfTestCapabilities(raw, bool(C.get_device_self_test_supported(h)))
+	status := ataSelfTestStatusFromData(raw, capabilities, d.driveMatch.FirmwareBugs)
+	if status.Running || status.State == SelfTestStateAmbiguous {
+		return fmt.Errorf("%w: %s", ErrSelfTestInProgress, devicePath)
+	}
+	if rc := C.smart_self_test(h, C.uint8_t(code)); rc != 0 {
+		return wrapDeviceError(h, fmt.Errorf("start vendor self-test 0x%02x on %s failed with code %d", code, devicePath, int(rc)), devicePath)
+	}
+	return nil
+}
+
 func SelfTest(devicePath string, testType uint8) error {
 	d, err := OpenDevice(devicePath)
 	if err != nil {
@@ -1186,6 +1288,9 @@ func SelfTest(devicePath string, testType uint8) error {
 func (d *Device) SelfTest(testType uint8) error {
 	if testType == SelfTestAbort || testType == 0x0f {
 		return d.AbortSelfTest()
+	}
+	if validVendorSelfTestCode(testType) {
+		return d.StartVendorSelfTest(testType)
 	}
 	kind, ok := selfTestKindFromCode(testType)
 	if !ok {
@@ -1209,7 +1314,7 @@ func (d *Device) AbortSelfTest() error {
 	if err != nil {
 		return err
 	}
-	if !capabilities.Abort {
+	if !capabilities.Abort && !(capabilities.Protocol == "SCSI" && !capabilities.ExecutionSupportKnown) {
 		return fmt.Errorf("%w: abort self-test on %s", ErrUnsupportedFeature, devicePath)
 	}
 	if rc := C.smart_self_test(h, C.ATA_SELF_TEST_ABORT); rc != 0 {

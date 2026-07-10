@@ -16,37 +16,87 @@ import { generateNumberFromString } from './numbers';
 import { formatBytesBinary } from './bytes';
 import { renderWithIcon } from './table';
 
+function formatBigIntBytes(bytes: bigint): string {
+	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
+	let unitIndex = 0;
+	let divisor = 1n;
+	while (unitIndex < units.length - 1 && bytes >= divisor * 1024n) {
+		divisor *= 1024n;
+		unitIndex++;
+	}
+	if (unitIndex === 0) return `${bytes.toString()} B`;
+	const hundredths = (bytes * 100n + divisor / 2n) / divisor;
+	const whole = hundredths / 100n;
+	const fraction = (hundredths % 100n).toString().padStart(2, '0').replace(/0+$/, '');
+	return `${whole.toString()}${fraction ? `.${fraction}` : ''} ${units[unitIndex]}`;
+}
+
+function parseNVMeCounter(exact: string, fallback: number): bigint | undefined {
+	let value = exact.trim();
+	if (value === '' && Number.isFinite(fallback)) value = Math.trunc(fallback).toString();
+	if (!/^\d+$/.test(value)) return undefined;
+	return BigInt(value);
+}
+
+function formatNVMeCounter(exact: string, fallback: number): string {
+	return parseNVMeCounter(exact, fallback)?.toString() ?? fallback.toString();
+}
+
+function formatNVMeDataUnits(exact: string, fallback: number): string {
+	const units = parseNVMeCounter(exact, fallback);
+	if (units === undefined) return `${fallback} (${formatBytesBinary(fallback * 512000)})`;
+	return `${units.toString()} (${formatBigIntBytes(units * 512000n)})`;
+}
+
+function formatNVMeHours(exact: string, fallback: number): string {
+	const hours = parseNVMeCounter(exact, fallback);
+	if (hours === undefined) return `${fallback} (${Math.floor(fallback / 24)} days)`;
+	return `${hours.toString()} (${(hours / 24n).toString()} days)`;
+}
+
 export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
 	if (disk.type === 'NVMe') {
+		const data = disk.smartData as SmartNVMe;
 		return {
-			'Available Spare': (disk.smartData as SmartNVMe).availableSpare,
-			'Available Spare Threshold': (disk.smartData as SmartNVMe).availableSpareThreshold,
-			'Controller Busy Time': (disk.smartData as SmartNVMe).controllerBusyTime,
-			'Critical Warning': (disk.smartData as SmartNVMe).criticalWarning,
+			'Available Spare': data.availableSpare,
+			'Available Spare Threshold': data.availableSpareThreshold,
+			'Controller Busy Time': formatNVMeCounter(
+				data.controllerBusyTimeExact,
+				data.controllerBusyTime
+			),
+			'Critical Warning': data.criticalWarning,
 			'Critical Warning State': {
-				'Available Spare': (disk.smartData as SmartNVMe).criticalWarningState.availableSpare,
-				'Device Reliability': (disk.smartData as SmartNVMe).criticalWarningState.deviceReliability,
-				'Read Only': (disk.smartData as SmartNVMe).criticalWarningState.readOnly,
-				Temperature: (disk.smartData as SmartNVMe).criticalWarningState.temperature,
-				'Volatile Memory Backup': (disk.smartData as SmartNVMe).criticalWarningState
-					.volatileMemoryBackup
+				'Available Spare': data.criticalWarningState.availableSpare,
+				'Device Reliability': data.criticalWarningState.deviceReliability,
+				'Read Only': data.criticalWarningState.readOnly,
+				Temperature: data.criticalWarningState.temperature,
+				'Volatile Memory Backup': data.criticalWarningState.volatileMemoryBackup
 			},
-			'Data Units Read': `${(disk.smartData as SmartNVMe).dataUnitsRead} (${formatBytesBinary((disk.smartData as SmartNVMe).dataUnitsRead * 512)})`,
-			'Data Units Written': `${(disk.smartData as SmartNVMe).dataUnitsWritten} (${formatBytesBinary((disk.smartData as SmartNVMe).dataUnitsWritten * 512)})`,
-			'Error Info Log Entries': (disk.smartData as SmartNVMe).errorInfoLogEntries,
-			'Host Read Commands': (disk.smartData as SmartNVMe).hostReadCommands,
-			'Host Write Commands': (disk.smartData as SmartNVMe).hostWriteCommands,
-			'Media Errors': (disk.smartData as SmartNVMe).mediaErrors,
-			'Percentage Used': (disk.smartData as SmartNVMe).percentageUsed,
-			'Power Cycles': (disk.smartData as SmartNVMe).power_cycle_count,
-			'Power On Hours (Days)': `${(disk.smartData as SmartNVMe).power_on_hours} (${Math.floor((disk.smartData as SmartNVMe).power_on_hours / 24)} days)`,
-			Temperature: (disk.smartData as SmartNVMe).temperature,
-			'Temperature 1 Transition Count': (disk.smartData as SmartNVMe).temperature1TransitionCnt,
-			'Temperature 2 Transition Count': (disk.smartData as SmartNVMe).temperature2TransitionCnt,
-			'Total Time For Temperature 1': (disk.smartData as SmartNVMe).totalTimeForTemperature1,
-			'Total Time For Temperature 2': (disk.smartData as SmartNVMe).totalTimeForTemperature2,
-			'Unsafe Shutdowns': (disk.smartData as SmartNVMe).unsafeShutdowns,
-			'Warning Composite Temp Time': (disk.smartData as SmartNVMe).warningCompositeTempTime
+			'Data Units Read': formatNVMeDataUnits(data.dataUnitsReadExact, data.dataUnitsRead),
+			'Data Units Written': formatNVMeDataUnits(
+				data.dataUnitsWrittenExact,
+				data.dataUnitsWritten
+			),
+			'Error Info Log Entries': formatNVMeCounter(
+				data.errorInfoLogEntriesExact,
+				data.errorInfoLogEntries
+			),
+			'Host Read Commands': formatNVMeCounter(data.hostReadCommandsExact, data.hostReadCommands),
+			'Host Write Commands': formatNVMeCounter(
+				data.hostWriteCommandsExact,
+				data.hostWriteCommands
+			),
+			'Media Errors': formatNVMeCounter(data.mediaErrorsExact, data.mediaErrors),
+			'Percentage Used': data.percentageUsed,
+			'Power Cycles': formatNVMeCounter(data.power_cycle_count_exact, data.power_cycle_count),
+			'Power On Hours (Days)': formatNVMeHours(data.power_on_hours_exact, data.power_on_hours),
+			Temperature: data.temperature,
+			'Temperature 1 Transition Count': data.temperature1TransitionCnt,
+			'Temperature 2 Transition Count': data.temperature2TransitionCnt,
+			'Total Time For Temperature 1': data.totalTimeForTemperature1,
+			'Total Time For Temperature 2': data.totalTimeForTemperature2,
+			'Unsafe Shutdowns': formatNVMeCounter(data.unsafeShutdownsExact, data.unsafeShutdowns),
+			'Warning Composite Temp Time': data.warningCompositeTempTime
 		};
 	} else if (disk.type === 'HDD' || disk.type === 'SSD') {
 		const data = disk.smartData as SmartData;
@@ -57,10 +107,10 @@ export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
 				attributes.push({
 					['ID']: element.id,
 					['Name']: element.name || '-',
-					['Value']: element.value || '-',
-					['Worst']: element.worst || '-',
-					['Threshold']: element.thresh || '-',
-					['Raw Value']: element.raw_value || '-',
+					['Value']: element.value ?? '-',
+					['Worst']: element.worst ?? '-',
+					['Threshold']: element.thresh ?? '-',
+					['Raw Value']: element.raw_value ?? '-',
 					['Raw String']: element.raw_string || '-'
 				});
 			}

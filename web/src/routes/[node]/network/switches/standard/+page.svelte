@@ -530,7 +530,7 @@
 {#if confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch'}
 	<Dialog.Root bind:open={confirmModals[confirmModals.active].open}>
 		<Dialog.Content
-			class="w-[90%] gap-4 p-5 lg:max-w-2xl overflow-hidden"
+			class="w-[90%] gap-4 p-6 lg:max-w-2xl overflow-hidden"
 			showCloseButton={true}
 			showResetButton={true}
 			onReset={() => resetModal(false)}

@@ -150,6 +150,18 @@ smart_supported(smart_h h)
 	return supported;
 }
 
+int32_t
+smart_ata_check_power_mode(char *devname, uint8_t *mode, bool *sleeping)
+{
+	return device_ata_check_power_mode(devname, mode, sleeping);
+}
+
+int32_t
+smart_scsi_check_power_mode(char *devname, void *buf, size_t size)
+{
+	return device_scsi_check_power_mode(devname, buf, size);
+}
+
 bool
 smart_log_page_supported(smart_h h, uint32_t page)
 {
@@ -284,6 +296,12 @@ int32_t
 smart_scsi_extended_inquiry(smart_h h, void *buf, size_t size)
 {
 	return device_scsi_extended_inquiry(h, buf, size);
+}
+
+int32_t
+smart_scsi_self_test_support(smart_h h, bool *known, bool *supported)
+{
+	return device_scsi_self_test_support(h, known, supported);
 }
 
 smart_map_t *

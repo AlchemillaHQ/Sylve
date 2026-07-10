@@ -24,6 +24,14 @@ const (
 	DiskSmartWearoutKindPrefix     = "system.disk.smart.wearout."
 	DiskSmartHealthKindPrefix      = "system.disk.smart.health."
 	DiskSmartNvmeKindPrefix        = "system.disk.smart.nvme."
+	DiskSmartSelfTestKindPrefix    = "system.disk.smart.selftest."
+)
+
+const (
+	ChannelUI      = "ui"
+	ChannelNtfy    = "ntfy"
+	ChannelEmail   = "email"
+	ChannelDiscord = "discord"
 )
 
 type EventInput struct {
@@ -34,18 +42,34 @@ type EventInput struct {
 	Source      string            `json:"source"`
 	Fingerprint string            `json:"fingerprint"`
 	Metadata    map[string]string `json:"metadata"`
+	Channels    []string          `json:"-"`
+	TransportID uint              `json:"-"`
 }
 
 type EmitResult struct {
-	NotificationID uint `json:"notificationId"`
-	Suppressed     bool `json:"suppressed"`
-	SentNtfy       bool `json:"sentNtfy"`
-	SentEmail      bool `json:"sentEmail"`
-	SentDiscord    bool `json:"sentDiscord"`
+	NotificationID        uint `json:"notificationId"`
+	Suppressed            bool `json:"suppressed"`
+	UIHandled             bool `json:"-"`
+	TransportConfigLoaded bool `json:"-"`
+	AttemptedNtfy         bool `json:"-"`
+	AttemptedEmail        bool `json:"-"`
+	AttemptedDiscord      bool `json:"-"`
+	FailedNtfy            bool `json:"-"`
+	FailedEmail           bool `json:"-"`
+	FailedDiscord         bool `json:"-"`
+	SentNtfy              bool `json:"sentNtfy"`
+	SentEmail             bool `json:"sentEmail"`
+	SentDiscord           bool `json:"sentDiscord"`
 }
 
 type Emitter interface {
 	Emit(ctx context.Context, input EventInput) (EmitResult, error)
+}
+
+type TargetedEmitter interface {
+	Emitter
+	DeliveryTargets(ctx context.Context, input EventInput) ([]string, error)
+	EmitTarget(ctx context.Context, input EventInput, target string) (EmitResult, error)
 }
 
 var (
@@ -66,6 +90,36 @@ func Emit(ctx context.Context, input EventInput) (EmitResult, error) {
 
 	if active == nil {
 		return EmitResult{}, ErrEmitterNotConfigured
+	}
+
+	return active.Emit(ctx, input)
+}
+
+func DeliveryTargets(ctx context.Context, input EventInput) ([]string, error) {
+	emitterMu.RLock()
+	active := emitter
+	emitterMu.RUnlock()
+
+	if active == nil {
+		return nil, ErrEmitterNotConfigured
+	}
+	if targeted, ok := active.(TargetedEmitter); ok {
+		return targeted.DeliveryTargets(ctx, input)
+	}
+
+	return []string{"all"}, nil
+}
+
+func EmitTarget(ctx context.Context, input EventInput, target string) (EmitResult, error) {
+	emitterMu.RLock()
+	active := emitter
+	emitterMu.RUnlock()
+
+	if active == nil {
+		return EmitResult{}, ErrEmitterNotConfigured
+	}
+	if targeted, ok := active.(TargetedEmitter); ok {
+		return targeted.EmitTarget(ctx, input, target)
 	}
 
 	return active.Emit(ctx, input)
@@ -110,6 +164,7 @@ func DiskNameFromSmartKind(kind string) (prefix string, diskName string, ok bool
 		DiskSmartWearoutKindPrefix,
 		DiskSmartHealthKindPrefix,
 		DiskSmartNvmeKindPrefix,
+		DiskSmartSelfTestKindPrefix,
 	} {
 		if strings.HasPrefix(normalized, prefix) {
 			disk := strings.TrimSpace(normalized[len(prefix):])
@@ -133,6 +188,7 @@ var diskSmartKindPrefixes = []string{
 	DiskSmartWearoutKindPrefix,
 	DiskSmartHealthKindPrefix,
 	DiskSmartNvmeKindPrefix,
+	DiskSmartSelfTestKindPrefix,
 }
 
 func IsDiskSmartKind(kind string) bool {

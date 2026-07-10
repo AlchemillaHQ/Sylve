@@ -68,6 +68,32 @@ func parseSCSISenseCode(raw []byte) (uint8, uint8, bool) {
 	}
 }
 
+func parseSCSIPowerMode(raw []byte) (SCSIPowerMode, bool) {
+	asc, ascq, ok := parseSCSISenseCode(raw)
+	if !ok {
+		return SCSIPowerModeUnknown, false
+	}
+	if asc != 0x5e {
+		return SCSIPowerModeActive, true
+	}
+	switch ascq {
+	case 0x00:
+		return SCSIPowerModeLowPower, true
+	case 0x01, 0x03, 0x05, 0x06, 0x07, 0x08, 0x42:
+		return SCSIPowerModeIdle, true
+	case 0x02, 0x04, 0x43:
+		return SCSIPowerModeStandby, true
+	case 0x09, 0x0a:
+		return SCSIPowerModeStandbyY, true
+	case 0x41:
+		return SCSIPowerModeActive, true
+	case 0x45:
+		return SCSIPowerModeSleep, true
+	default:
+		return SCSIPowerModeUnknown, true
+	}
+}
+
 func scsiHealthFromCode(asc, ascq uint8) (bool, bool) {
 	if asc == 0 {
 		return true, true

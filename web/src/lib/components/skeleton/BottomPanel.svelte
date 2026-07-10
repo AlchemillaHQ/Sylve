@@ -340,6 +340,21 @@
 		'/api/health': 'Health Check'
 	});
 
+	const methodPathToActionMap: Record<string, string> = {
+		'GET /api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - View',
+		'POST /api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
+		'POST /api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
+		'GET /api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View',
+		'POST /api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create',
+		'PUT /api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update',
+		'DELETE /api/disk/smart/self-test/schedules/:id':
+			'Disk - S.M.A.R.T. Self-Test Schedule - Delete'
+	};
+
+	const sortedPathToActionEntries = $derived.by(() =>
+		Object.entries(pathToActionMap).sort(([a], [b]) => b.length - a.length)
+	);
+
 	let vmNameById = $derived.by(() => {
 		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
 	});
@@ -375,11 +390,15 @@
 				.map((s) => (/^\d+$/.test(s) ? ':id' : s))
 				.join('/');
 
-			const matchedEntry = Object.entries(pathToActionMap)
-				.sort(([a], [b]) => b.length - a.length)
-				.find(([prefix]) => normalizedPath.startsWith(prefix));
+			const methodPathAction =
+				methodPathToActionMap[`${method.toUpperCase()} ${normalizedPath}`];
+			const matchedEntry = methodPathAction
+				? undefined
+				: sortedPathToActionEntries.find(([prefix]) => normalizedPath.startsWith(prefix));
 
-			if (matchedEntry) {
+			if (methodPathAction) {
+				resolvedAction = methodPathAction;
+			} else if (matchedEntry) {
 				const label = matchedEntry[1];
 				if (!label.includes('-')) {
 					switch (method.toUpperCase()) {

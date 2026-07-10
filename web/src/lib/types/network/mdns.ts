@@ -13,7 +13,7 @@ export const MdnsRecordSchema = z.object({
     name: z.string(),
     type: z.string(),
     port: z.number(),
-    txt: z.record(z.string()).default({}),
+    txt: z.record(z.string(), z.string()).nullish().transform((value) => value ?? {}),
     interfaces: z.string().default(''),
     createdAt: z.string(),
     updatedAt: z.string()

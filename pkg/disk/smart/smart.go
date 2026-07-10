@@ -8,6 +8,86 @@
 
 package smart
 
+type ATAPowerMode int16
+
+const (
+	ATAPowerModeUnknown      ATAPowerMode = -2
+	ATAPowerModeSleep        ATAPowerMode = -1
+	ATAPowerModeStandby      ATAPowerMode = 0x00
+	ATAPowerModeStandbyY     ATAPowerMode = 0x01
+	ATAPowerModeActive       ATAPowerMode = 0x40
+	ATAPowerModeActiveAlt    ATAPowerMode = 0x41
+	ATAPowerModeIdle         ATAPowerMode = 0x80
+	ATAPowerModeIdleA        ATAPowerMode = 0x81
+	ATAPowerModeIdleB        ATAPowerMode = 0x82
+	ATAPowerModeIdleC        ATAPowerMode = 0x83
+	ATAPowerModeActiveOrIdle ATAPowerMode = 0xff
+)
+
+func (m ATAPowerMode) IsStandbyOrSleeping() bool {
+	return m == ATAPowerModeSleep || m == ATAPowerModeStandby || m == ATAPowerModeStandbyY
+}
+
+func (m ATAPowerMode) String() string {
+	switch m {
+	case ATAPowerModeSleep:
+		return "sleep"
+	case ATAPowerModeStandby:
+		return "standby"
+	case ATAPowerModeStandbyY:
+		return "standby_y"
+	case ATAPowerModeActive, ATAPowerModeActiveAlt:
+		return "active"
+	case ATAPowerModeIdle:
+		return "idle"
+	case ATAPowerModeIdleA:
+		return "idle_a"
+	case ATAPowerModeIdleB:
+		return "idle_b"
+	case ATAPowerModeIdleC:
+		return "idle_c"
+	case ATAPowerModeActiveOrIdle:
+		return "active_or_idle"
+	default:
+		return "unknown"
+	}
+}
+
+type SCSIPowerMode int8
+
+const (
+	SCSIPowerModeUnknown SCSIPowerMode = iota - 1
+	SCSIPowerModeActive
+	SCSIPowerModeLowPower
+	SCSIPowerModeIdle
+	SCSIPowerModeStandby
+	SCSIPowerModeStandbyY
+	SCSIPowerModeSleep
+)
+
+func (m SCSIPowerMode) IsStandbyOrSleeping() bool {
+	return m == SCSIPowerModeLowPower || m == SCSIPowerModeStandby || m == SCSIPowerModeStandbyY || m == SCSIPowerModeSleep
+}
+
+func (m SCSIPowerMode) String() string {
+	switch m {
+	case SCSIPowerModeActive:
+		return "active"
+	case SCSIPowerModeLowPower:
+		return "low_power"
+	case SCSIPowerModeIdle:
+		return "idle"
+	case SCSIPowerModeStandby:
+		return "standby"
+	case SCSIPowerModeStandbyY:
+		return "standby_y"
+	case SCSIPowerModeSleep:
+		return "sleep"
+	default:
+		return "unknown"
+	}
+}
+
 const (
 	SelfTestOffline           uint8 = 0x00
 	SelfTestShort             uint8 = 0x01
@@ -144,11 +224,15 @@ type SelfTestEntry struct {
 	StatusCode          uint8
 	StatusCodeValid     bool
 	Checkpoint          uint8
+	ParameterCode       uint16
+	VendorSpecific      uint8
 }
 
 type SelectiveSpan struct {
 	Start uint64
 	End   uint64
+	Size  uint64
+	Mode  SelectiveSpanMode
 }
 
 type SelfTestLog struct {
@@ -170,16 +254,18 @@ type SelfTestLog struct {
 }
 
 type SCSISelfTestEntry struct {
-	Type          string
-	Mode          string
-	Status        string
-	LifetimeHours uint64
-	LBA           uint64
-	LBAValid      bool
-	SenseKey      uint8
-	ASC           uint8
-	ASCQ          uint8
-	SegmentNumber uint8
+	Type           string
+	Mode           string
+	Status         string
+	LifetimeHours  uint64
+	LBA            uint64
+	LBAValid       bool
+	SenseKey       uint8
+	ASC            uint8
+	ASCQ           uint8
+	SegmentNumber  uint8
+	ParameterCode  uint16
+	VendorSpecific uint8
 }
 
 type ATAErrorEntry struct {

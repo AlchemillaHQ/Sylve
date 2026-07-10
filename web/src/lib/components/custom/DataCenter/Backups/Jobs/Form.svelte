@@ -513,7 +513,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="max-h-[90vh] w-[90%] max-w-xl! overflow-y-auto p-5"
+		class="max-h-[90vh] w-[90%] max-w-xl! overflow-y-auto p-6"
 		showCloseButton={true}
 		showResetButton={edit}
 		onReset={handleReset}

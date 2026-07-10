@@ -23,12 +23,15 @@ import (
 var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB          *gorm.DB
-	initMutex   sync.Mutex
-	syncMutex   sync.Mutex
-	achMutex    sync.Mutex
-	GZFS        *gzfs.Client
-	DiskService diskServiceInterfaces.DiskServiceInterface
+	DB                      *gorm.DB
+	initMutex               sync.Mutex
+	syncMutex               sync.Mutex
+	achMutex                sync.Mutex
+	GZFS                    *gzfs.Client
+	DiskService             diskServiceInterfaces.DiskServiceInterface
+	diskSmartConfigMu       sync.RWMutex
+	diskSmartConfigs        map[string]diskSmartConfig
+	diskSmartConfigSnapshot bool
 
 	tunMutex    sync.Mutex
 	tunCache    []sysctl.Tunable

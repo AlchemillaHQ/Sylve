@@ -206,7 +206,7 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable data={tableData} name="tt-mdns-records" bind:parentActiveRow={activeRow} bind:query />
+		<TreeTable data={tableData} name="tt-mdns-records" dataTree={false} bind:parentActiveRow={activeRow} bind:query />
 	</div>
 </div>
 

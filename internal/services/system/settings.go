@@ -146,6 +146,7 @@ func (s *Service) ServiceToggle(service models.AvailableService) error {
 	if err := s.DB.First(&basicSettings).Error; err != nil {
 		return err
 	}
+	previousServices := append([]models.AvailableService(nil), basicSettings.Services...)
 
 	serviceSet := make(map[models.AvailableService]bool)
 	for _, srv := range basicSettings.Services {
@@ -158,22 +159,37 @@ func (s *Service) ServiceToggle(service models.AvailableService) error {
 		delete(serviceSet, service)
 	}
 
+	basicSettings.Services = basicSettings.Services[:0]
+	for srv := range serviceSet {
+		basicSettings.Services = append(basicSettings.Services, srv)
+	}
+
 	switch service {
 	case models.DHCPServer:
 		if err := s.ToggleDHCPServer(enabled); err != nil {
 			return err
 		}
 	case models.Mdns:
+		if err := s.DB.Save(&basicSettings).Error; err != nil {
+			return err
+		}
+
 		if s.MdnsRebuild != nil {
 			if err := s.MdnsRebuild(); err != nil {
-				return err
+				basicSettings.Services = previousServices
+				if rollbackErr := s.DB.Save(&basicSettings).Error; rollbackErr != nil {
+					return fmt.Errorf("failed to rebuild mdns: %w; failed to restore service state: %v", err, rollbackErr)
+				}
+
+				if rollbackErr := s.MdnsRebuild(); rollbackErr != nil {
+					return fmt.Errorf("failed to rebuild mdns: %w; failed to restore mdns runtime state: %v", err, rollbackErr)
+				}
+
+				return fmt.Errorf("failed to rebuild mdns: %w", err)
 			}
 		}
-	}
 
-	basicSettings.Services = basicSettings.Services[:0]
-	for srv := range serviceSet {
-		basicSettings.Services = append(basicSettings.Services, srv)
+		return nil
 	}
 
 	return s.DB.Save(&basicSettings).Error

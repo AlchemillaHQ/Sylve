@@ -11,6 +11,7 @@ package system
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -20,6 +21,16 @@ import (
 	notificationService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+type retryingDiskSmartEmitter struct {
+	calls int
+	err   error
+}
+
+func (e *retryingDiskSmartEmitter) Emit(context.Context, notifier.EventInput) (notifier.EmitResult, error) {
+	e.calls++
+	return notifier.EmitResult{}, e.err
+}
 
 // --- test helpers ---
 
@@ -32,6 +43,7 @@ func makeTestSystemService(t *testing.T, diskService diskServiceInterfaces.DiskS
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.DiskSmartSelfTestSchedule{},
 	)
 
 	notifSvc := notificationService.NewService(db)
@@ -51,6 +63,7 @@ func makeATA(temp int, passed bool, powerOnHours int, attrs ...diskServiceInterf
 		Device:          diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
 		Passed:          passed,
 		HealthKnown:     true,
+		ChecksumValid:   true,
 		PowerOnHours:    powerOnHours,
 		Temperature:     temp,
 		PowerCycleCount: 0,
@@ -106,6 +119,78 @@ func TestGetTemperatureATA(t *testing.T) {
 	ata := makeATA(50, true, 100)
 	if got := svc.getTemperature(ata); got != 50 {
 		t.Fatalf("expected 50, got %d", got)
+	}
+}
+
+func TestDiskSmartTargetKeyUsesOnlyStableIdentity(t *testing.T) {
+	stable := diskServiceInterfaces.Disk{UUID: "D782E080-43C1-5ABC-9DEF-123456789ABC", IdentityStable: true, Device: "ada0"}
+	if got := diskSmartTargetKey(stable); got != "d782e080-43c1-5abc-9def-123456789abc" {
+		t.Fatalf("target=%q", got)
+	}
+	stable.Device = "ada9"
+	if got := diskSmartTargetKey(stable); got != "d782e080-43c1-5abc-9def-123456789abc" {
+		t.Fatalf("target=%q", got)
+	}
+	unstable := diskServiceInterfaces.Disk{UUID: stable.UUID, IdentityStable: false, Device: "da0"}
+	if got := diskSmartTargetKey(unstable); got != "da0" {
+		t.Fatalf("target=%q", got)
+	}
+}
+
+type monitorAwareDiskService struct {
+	diskServiceInterfaces.DiskServiceInterface
+	regularCalls int
+	monitorCalls int
+}
+
+func (m *monitorAwareDiskService) GetDiskDevices(context.Context) ([]diskServiceInterfaces.Disk, error) {
+	m.regularCalls++
+	return nil, errors.New("regular source used")
+}
+
+func (m *monitorAwareDiskService) GetDiskDevicesForSMARTMonitor(context.Context) ([]diskServiceInterfaces.Disk, error) {
+	m.monitorCalls++
+	return []diskServiceInterfaces.Disk{{Device: "ada0", SmartReadPowerSkipped: true}}, nil
+}
+
+func TestDiskSmartMonitorUsesPowerAwareSource(t *testing.T) {
+	source := &monitorAwareDiskService{}
+	svc := &Service{DiskService: source}
+	disks, err := svc.diskSmartMonitorDevices(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(disks) != 1 || !disks[0].SmartReadPowerSkipped || source.monitorCalls != 1 || source.regularCalls != 0 {
+		t.Fatalf("disks=%+v monitor=%d regular=%d", disks, source.monitorCalls, source.regularCalls)
+	}
+}
+
+func TestDiskSmartMonitorPowerSkipPreservesAvailabilityState(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, nil }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{unavailableCount: 2}
+	stateByDevice := map[string]*diskSmartState{"ada0": state}
+	var mu sync.Mutex
+
+	svc.processDiskSmartSample(context.Background(), &mu, stateByDevice, diskServiceInterfaces.Disk{
+		Device: "ada0", Type: "HDD", SmartReadPowerSkipped: true,
+	}, false)
+	if state.unavailableCount != 2 || state.unavailableAlerted {
+		t.Fatalf("state=%+v", state)
+	}
+
+	svc.processDiskSmartSample(context.Background(), &mu, stateByDevice, diskServiceInterfaces.Disk{
+		Device: "ada0", Type: "HDD", SmartData: makeATA(40, true, 10),
+	}, false)
+	if state.unavailableCount != 0 || state.unavailableAlerted {
+		t.Fatalf("state=%+v", state)
+	}
+	var count int64
+	if err := notifSvc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("notifications=%d", count)
 	}
 }
 
@@ -173,15 +258,18 @@ func TestGetReallocatedSectorsATA(t *testing.T) {
 	}
 }
 
-func TestGetReallocatedSectorsSCSIReturnsZero(t *testing.T) {
+func TestGetReallocatedSectorsSCSIReturnsUncorrectedErrors(t *testing.T) {
 	svc := &Service{}
 	scsi := makeSCSI(0, true,
 		diskServiceInterfaces.ATASmartAttribute{Page: 0x02, ID: 5, RawValue: 89832143138920, Name: "Write Total bytes processed"},
-		diskServiceInterfaces.ATASmartAttribute{Page: 0x03, ID: 5, RawValue: 76756194693360, Name: "Read Total bytes processed"},
+		diskServiceInterfaces.ATASmartAttribute{Page: 0x02, ID: 6, RawValue: 2, Name: "Write Total uncorrected errors"},
+		diskServiceInterfaces.ATASmartAttribute{Page: 0x03, ID: 6, RawValue: 3, Name: "Read Total uncorrected errors"},
+		diskServiceInterfaces.ATASmartAttribute{Page: 0x05, ID: 6, RawValue: 4, Name: "Verify Total uncorrected errors"},
+		diskServiceInterfaces.ATASmartAttribute{Page: 0x06, ID: 6, RawValue: 5, Name: "Non-medium Total uncorrected errors"},
 	)
 	realloc, pending, uncorrect := svc.getReallocatedSectors(scsi)
-	if realloc != 0 || pending != 0 || uncorrect != 0 {
-		t.Fatalf("expected (0,0,0) for SCSI, got (%d,%d,%d)", realloc, pending, uncorrect)
+	if realloc != 0 || pending != 0 || uncorrect != 14 {
+		t.Fatalf("expected (0,0,14) for SCSI, got (%d,%d,%d)", realloc, pending, uncorrect)
 	}
 }
 
@@ -271,6 +359,31 @@ func TestGetSMARTPassedUnknown(t *testing.T) {
 	data.HealthKnown = false
 	if !svc.getSMARTPassed(data) {
 		t.Fatal("unknown health reported as failed")
+	}
+}
+
+func TestDiskSmartMonitorIgnoresUntrackedSelfTestResults(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(smartData any) (float64, error) { return 0, nil }}
+	svc, notificationSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{
+		Device:    "da0",
+		SmartData: makeSCSI(0, true),
+		SelfTestLog: &diskServiceInterfaces.DiskSelfTestLog{Entries: []diskServiceInterfaces.DiskSelfTestEntry{
+			{Type: "short", Status: "completed", LifetimeHours: 100},
+		}},
+	}
+	svc.evaluateSmartData(context.Background(), disk, state, true)
+	disk.SelfTestLog.Entries = []diskServiceInterfaces.DiskSelfTestEntry{
+		{Type: "extended", Status: "failed_first_segment", LifetimeHours: 200},
+	}
+	svc.evaluateSmartData(context.Background(), disk, state, false)
+	var count int64
+	if err := notificationSvc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("notifications=%d", count)
 	}
 }
 
@@ -422,6 +535,69 @@ func TestEvaluateReallocatedSCSINeverAlerts(t *testing.T) {
 	}
 }
 
+func TestEvaluateReallocatedStableAttributesAlertAndRecover(t *testing.T) {
+	tests := []struct {
+		name          string
+		id            int
+		reallocated   string
+		pending       string
+		uncorrectable string
+	}{
+		{name: "reallocated", id: 5, reallocated: "4", pending: "0", uncorrectable: "0"},
+		{name: "pending", id: 197, reallocated: "0", pending: "4", uncorrectable: "0"},
+		{name: "uncorrectable", id: 198, reallocated: "0", pending: "0", uncorrectable: "4"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diskService := &mockDiskServiceForWearout{
+				wearoutFn: func(smartData any) (float64, error) {
+					return 0, errors.New("unused")
+				},
+			}
+			svc, notifSvc := makeTestSystemService(t, diskService)
+			state := &diskSmartState{}
+			disk := diskServiceInterfaces.Disk{
+				Device:    "ada0",
+				Type:      "HDD",
+				SmartData: makeATA(30, true, 0, attr(test.id, 4)),
+			}
+
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateReallocated(context.Background(), disk, state, false)
+			}
+
+			var notifications []models.Notification
+			if err := notifSvc.DB.Order("id ASC").Find(&notifications).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(notifications) != 1 || !state.sectorAlerted {
+				t.Fatalf("notifications=%d state=%+v", len(notifications), state)
+			}
+			if notifications[0].Metadata["condition"] != "sector_issues" ||
+				notifications[0].Metadata["reallocated"] != test.reallocated ||
+				notifications[0].Metadata["pending"] != test.pending ||
+				notifications[0].Metadata["uncorrectable"] != test.uncorrectable {
+				t.Fatalf("notification=%+v", notifications[0])
+			}
+
+			disk.SmartData = makeATA(30, true, 0, attr(test.id, 0))
+			for range diskSmartConsecutiveClear {
+				svc.evaluateReallocated(context.Background(), disk, state, false)
+			}
+			if err := notifSvc.DB.Order("id ASC").Find(&notifications).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(notifications) != 1 || state.sectorAlerted {
+				t.Fatalf("notifications=%d state=%+v", len(notifications), state)
+			}
+			if notifications[0].Metadata["condition"] != "sector_issues_cleared" || notifications[0].OccurrenceCount != 2 {
+				t.Fatalf("notification=%+v", notifications[0])
+			}
+		})
+	}
+}
+
 // --- evaluate temperature integration tests ---
 
 func TestEvaluateTemperatureATAAlertsAfterConsecutiveBadReadings(t *testing.T) {
@@ -459,6 +635,13 @@ func TestEvaluateTemperatureATAAlertsAfterConsecutiveBadReadings(t *testing.T) {
 	}
 	if active != 1 {
 		t.Fatalf("expected 1 active notification, got %d", active)
+	}
+	var notification models.Notification
+	if err := notifSvc.DB.Where("kind = ?", notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0")).First(&notification).Error; err != nil {
+		t.Fatal(err)
+	}
+	if notification.Metadata["condition"] != "temperature_warning" || notification.Fingerprint != "ada0|temperature" {
+		t.Fatalf("unstable_temperature_condition: %+v", notification)
 	}
 }
 
@@ -523,6 +706,143 @@ func TestEvaluateTemperatureNoAlertWhenNormal(t *testing.T) {
 	}
 }
 
+func TestEvaluateTemperatureHonorsFractionalThreshold(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, errors.New("unused") }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	rule := models.NotificationKindRule{
+		Kind:      notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "ada0"),
+		UIEnabled: true,
+		Config:    `{"warningCelsius":55.5,"criticalCelsius":65.5}`,
+	}
+	if err := svc.DB.Create(&rule).Error; err != nil {
+		t.Fatal(err)
+	}
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "ada0", Type: "SSD", SmartData: makeATA(55, true, 0)}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateTemperature(context.Background(), disk, state, false)
+	}
+	if count, err := notifSvc.CountActive(context.Background()); err != nil || count != 0 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	disk.SmartData = makeATA(56, true, 0)
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateTemperature(context.Background(), disk, state, false)
+	}
+	if count, err := notifSvc.CountActive(context.Background()); err != nil || count != 1 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+}
+
+func TestEvaluateTemperatureRecoveryReplacesAlert(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, nil }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "ada0", Type: "SSD", SmartData: makeATA(60, true, 0)}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateTemperature(context.Background(), disk, state, false)
+	}
+	disk.SmartData = makeATA(30, true, 0)
+	for range diskSmartConsecutiveClear {
+		svc.evaluateTemperature(context.Background(), disk, state, false)
+	}
+	var notifications []models.Notification
+	if err := notifSvc.DB.Find(&notifications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].Metadata["condition"] != "temperature_normal" || notifications[0].OccurrenceCount != 2 || state.temperatureAlert != "" {
+		t.Fatalf("notifications=%+v state=%+v", notifications, state)
+	}
+}
+
+func TestEvaluateWearoutRecoveryReplacesAlert(t *testing.T) {
+	wearout := 85.0
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return wearout, nil }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "ada0", Type: "SSD", SmartData: makeATA(30, true, 0)}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateWearout(context.Background(), disk, state, false)
+	}
+	wearout = 10
+	for range diskSmartConsecutiveClear {
+		svc.evaluateWearout(context.Background(), disk, state, false)
+	}
+	var notifications []models.Notification
+	if err := notifSvc.DB.Find(&notifications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].Metadata["condition"] != "wearout_normal" || notifications[0].OccurrenceCount != 2 || state.wearoutAlert != "" {
+		t.Fatalf("notifications=%+v state=%+v", notifications, state)
+	}
+}
+
+func TestEvaluateNvmeRecoveryReplacesAlert(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, nil }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "nda0", Type: "NVMe"}
+	warning := makeNVMe(10, "0x01")
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateNvme(context.Background(), disk, &warning, state, false)
+	}
+	normal := makeNVMe(10, "0x00")
+	for range diskSmartConsecutiveClear {
+		svc.evaluateNvme(context.Background(), disk, &normal, state, false)
+	}
+	var notifications []models.Notification
+	if err := notifSvc.DB.Find(&notifications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].Metadata["condition"] != "nvme_recovered" || notifications[0].OccurrenceCount != 2 || state.nvmeAlerted {
+		t.Fatalf("notifications=%+v state=%+v", notifications, state)
+	}
+}
+
+func TestEvaluateNvmePreservesExactMediaErrorCounter(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, nil }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "nda0", Type: "NVMe"}
+	warning := makeNVMe(10, "0x00")
+	warning.MediaErrorsExact = "340282366920938463463374607431768211455"
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateNvme(context.Background(), disk, &warning, state, false)
+	}
+	var notification models.Notification
+	if err := notifSvc.DB.First(&notification).Error; err != nil {
+		t.Fatal(err)
+	}
+	if notification.Metadata["media_errors"] != warning.MediaErrorsExact || state.nvmeMediaErrors != warning.MediaErrorsExact {
+		t.Fatalf("notification=%+v state=%+v", notification, state)
+	}
+}
+
+func TestEvaluateSmartAvailabilityRecoveryReplacesAlert(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, nil }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	stateByDevice := map[string]*diskSmartState{"ada0": {}}
+	var mu sync.Mutex
+	for range diskSmartConsecutiveUnavailable {
+		svc.handleMissingSmart(context.Background(), &mu, stateByDevice, "ada0", "ada0")
+	}
+	state := stateByDevice["ada0"]
+	if !state.unavailableAlerted {
+		t.Fatal("availability_alert_not_latched")
+	}
+
+	disk := diskServiceInterfaces.Disk{Device: "ada0", Type: "HDD", SmartData: makeATA(30, true, 0)}
+	svc.evaluateSmartData(context.Background(), disk, state, false)
+
+	var notifications []models.Notification
+	if err := notifSvc.DB.Find(&notifications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].Metadata["condition"] != "smart_available" || notifications[0].Fingerprint != "ada0|availability" || notifications[0].OccurrenceCount != 2 || state.unavailableAlerted || state.unavailableCount != 0 {
+		t.Fatalf("notifications=%+v state=%+v", notifications, state)
+	}
+}
+
 // --- evaluate health integration tests ---
 
 func TestEvaluateHealthATAAlert(t *testing.T) {
@@ -551,6 +871,13 @@ func TestEvaluateHealthATAAlert(t *testing.T) {
 	}
 	if active != 1 {
 		t.Fatalf("expected 1 active notification for health fail, got %d", active)
+	}
+	var notification models.Notification
+	if err := notifSvc.DB.Where("kind = ?", notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "ada0")).First(&notification).Error; err != nil {
+		t.Fatal(err)
+	}
+	if notification.Metadata["condition"] != "health_failed" || notification.Fingerprint != "ada0|health" {
+		t.Fatalf("unstable_health_condition: %+v", notification)
 	}
 }
 
@@ -610,6 +937,120 @@ func TestEvaluateHealthNormalNoAlert(t *testing.T) {
 	}
 	if active != 0 {
 		t.Fatalf("expected no notifications for healthy disk, got %d", active)
+	}
+}
+
+func TestEvaluateHealthRetriesFailedNotificationDelivery(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, errors.New("unused") }}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	emitter := &retryingDiskSmartEmitter{err: errors.New("delivery failed")}
+	notifier.SetEmitter(emitter)
+	defer notifier.SetEmitter(notifSvc)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "ada0", Type: "SSD", SmartData: makeATA(30, false, 0)}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateHealth(context.Background(), disk, state, false)
+	}
+	if state.healthAlerted || emitter.calls != 1 {
+		t.Fatalf("state=%+v calls=%d", state, emitter.calls)
+	}
+	emitter.err = nil
+	svc.evaluateHealth(context.Background(), disk, state, false)
+	if !state.healthAlerted || emitter.calls != 2 {
+		t.Fatalf("state=%+v calls=%d", state, emitter.calls)
+	}
+}
+
+func TestEvaluateHealthUnknownDoesNotAdvanceOrRecover(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{
+		wearoutFn: func(smartData any) (float64, error) {
+			return 0, errors.New("unused")
+		},
+	}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{
+		Device:    "ada0",
+		Type:      "SSD",
+		SmartData: makeATA(30, false, 0),
+	}
+
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateHealth(context.Background(), disk, state, false)
+	}
+	if !state.healthAlerted {
+		t.Fatalf("state=%+v", state)
+	}
+
+	unknown := makeATA(30, false, 0)
+	unknown.HealthKnown = false
+	disk.SmartData = unknown
+	for range diskSmartConsecutiveClear + 2 {
+		svc.evaluateHealth(context.Background(), disk, state, false)
+	}
+	if !state.healthAlerted || state.healthFailCount != 0 || state.healthNormalCount != 0 {
+		t.Fatalf("state=%+v", state)
+	}
+
+	var notifications []models.Notification
+	if err := notifSvc.DB.Order("id ASC").Find(&notifications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].Metadata["condition"] != "health_failed" {
+		t.Fatalf("notifications=%+v", notifications)
+	}
+
+	disk.SmartData = makeATA(30, true, 0)
+	for range diskSmartConsecutiveClear {
+		svc.evaluateHealth(context.Background(), disk, state, false)
+	}
+	if err := notifSvc.DB.Order("id ASC").Find(&notifications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || state.healthAlerted {
+		t.Fatalf("notifications=%+v state=%+v", notifications, state)
+	}
+	if notifications[0].Metadata["condition"] != "health_recovered" || notifications[0].OccurrenceCount != 2 {
+		t.Fatalf("notification=%+v", notifications[0])
+	}
+}
+
+func TestEvaluateHealthUnknownBreaksFailureStreak(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{
+		wearoutFn: func(smartData any) (float64, error) {
+			return 0, errors.New("unused")
+		},
+	}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{
+		Device:    "ada0",
+		Type:      "SSD",
+		SmartData: makeATA(30, false, 0),
+	}
+
+	svc.evaluateHealth(context.Background(), disk, state, false)
+	unknown := makeATA(30, false, 0)
+	unknown.HealthKnown = false
+	disk.SmartData = unknown
+	svc.evaluateHealth(context.Background(), disk, state, false)
+	disk.SmartData = makeATA(30, false, 0)
+	svc.evaluateHealth(context.Background(), disk, state, false)
+
+	var count int64
+	if err := notifSvc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 || state.healthFailCount != 1 {
+		t.Fatalf("count=%d state=%+v", count, state)
+	}
+
+	svc.evaluateHealth(context.Background(), disk, state, false)
+	if err := notifSvc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || !state.healthAlerted {
+		t.Fatalf("count=%d state=%+v", count, state)
 	}
 }
 

@@ -261,6 +261,13 @@ func RegisterRoutes(r *gin.Engine,
 	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		disk.GET("/list", diskHandlers.List(diskService))
+		disk.GET("/smart/self-test", diskHandlers.GetSelfTestInfo(diskService))
+		disk.POST("/smart/self-test", diskHandlers.StartSelfTest(diskService))
+		disk.POST("/smart/self-test/abort", diskHandlers.StopSelfTest(diskService))
+		disk.GET("/smart/self-test/schedules", diskHandlers.ListSelfTestSchedules(diskService))
+		disk.POST("/smart/self-test/schedules", diskHandlers.CreateSelfTestSchedule(diskService))
+		disk.PUT("/smart/self-test/schedules/:id", diskHandlers.UpdateSelfTestSchedule(diskService))
+		disk.DELETE("/smart/self-test/schedules/:id", diskHandlers.DeleteSelfTestSchedule(diskService))
 		disk.POST("/wipe", diskHandlers.WipeDisk(diskService, infoService))
 		disk.POST("/initialize-gpt", diskHandlers.InitializeGPT(diskService, infoService))
 		disk.POST("/create-partitions", diskHandlers.CreatePartition(infoService))

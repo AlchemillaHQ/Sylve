@@ -773,6 +773,7 @@ msgstr "Remember Me"
 msgid "Select an option"
 msgstr "Select an option"
 
+#: src/lib/components/custom/ModalTable.svelte
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
@@ -929,6 +930,7 @@ msgid "View"
 msgstr "View"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
@@ -1367,6 +1369,7 @@ msgid "Staging"
 msgstr "Staging"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
@@ -1835,6 +1838,9 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
@@ -2055,6 +2061,7 @@ msgid "First Modified"
 msgstr "First Modified"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -2649,6 +2656,9 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -2702,6 +2712,10 @@ msgstr "Enabled"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -2823,10 +2837,8 @@ msgstr "Failed to toggle {0}"
 msgid "Enter ZFS Pools"
 msgstr "Enter ZFS Pools"
 
-#. 0: activeDisk.device
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "S.M.A.R.T Values ({0})"
-msgstr "S.M.A.R.T Values ({0})"
+#~ msgid "S.M.A.R.T Values ({0})"
+#~ msgstr "S.M.A.R.T Values ({0})"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -3383,6 +3395,7 @@ msgid "Target"
 msgstr "Target"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -3478,6 +3491,7 @@ msgstr "Keep {0}"
 msgid "Off"
 msgstr "Off"
 
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3953,6 +3967,7 @@ msgstr "Auto move back"
 msgid "Manual move back"
 msgstr "Manual move back"
 
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -4301,8 +4316,9 @@ msgstr "Yes"
 msgid "No"
 msgstr "No"
 
-#~ msgid "Back"
-#~ msgstr "Back"
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Back"
+msgstr "Back"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Next"
@@ -5922,6 +5938,7 @@ msgstr "TPM emulation {0}"
 msgid "Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling this option after it has been enabled may lead to boot issues if the guest OS relies on TPM functionality."
 msgstr "Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling this option after it has been enabled may lead to boot issues if the guest OS relies on TPM functionality."
 
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
@@ -6039,8 +6056,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -7162,6 +7179,7 @@ msgstr "Create File"
 msgid "Share"
 msgstr "Share"
 
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Date"
 msgstr "Date"
@@ -10929,6 +10947,7 @@ msgstr "Time"
 msgid "Rule"
 msgstr "Rule"
 
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Details"
@@ -12165,6 +12184,8 @@ msgstr "Unknown error"
 #~ msgid "<0/> Installed"
 #~ msgstr "<0/> Installed"
 
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Retry"
 msgstr "Retry"
@@ -15522,3 +15543,736 @@ msgstr "Operations to Audit"
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select operations"
 msgstr "Select operations"
+
+#~ msgid "<0/> Initializing..."
+#~ msgstr "<0/> Initializing..."
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Self-Test Failed"
+msgstr "Self-Test Failed"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Self-Test Passed"
+msgstr "Self-Test Passed"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Select an available target"
+msgstr "Select an available target"
+
+#~ msgid "Failed to create"
+#~ msgstr "Failed to create"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "S.M.A.R.T Test"
+msgstr "S.M.A.R.T Test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Short"
+msgstr "Short"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "A brief device diagnostic intended for routine checks."
+msgstr "A brief device diagnostic intended for routine checks."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Extended"
+msgstr "Extended"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "A thorough media diagnostic that can run for several hours."
+msgstr "A thorough media diagnostic that can run for several hours."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Conveyance"
+msgstr "Conveyance"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Checks for damage that may have occurred while the device was transported."
+msgstr "Checks for damage that may have occurred while the device was transported."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Daily at 02:00"
+msgstr "Daily at 02:00"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Weekly on Sunday at 02:00"
+msgstr "Weekly on Sunday at 02:00"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Weekly on Sunday at 03:00"
+msgstr "Weekly on Sunday at 03:00"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Monthly on day 1 at 03:00"
+msgstr "Monthly on day 1 at 03:00"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Not reported by the device"
+msgstr "Not reported by the device"
+
+#. 0: result.segment_num
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Segment {0}"
+msgstr "Segment {0}"
+
+#. 0: result.sense_key.toString(16).padStart(2, '0'); 1: result.asc .toString(16) .padStart(2, '0'); 2: result.ascq.toString(16).padStart(2, '0')
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Sense {0}/{1}/{2}"
+msgstr "Sense {0}/{1}/{2}"
+
+#. 0: result.status_code_type
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Status type {0}"
+msgstr "Status type {0}"
+
+#. 0: result.status_code
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Status code {0}"
+msgstr "Status code {0}"
+
+#. 0: result.checkpoint
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Checkpoint {0}"
+msgstr "Checkpoint {0}"
+
+#. 0: result.parameter_code.toString(16)
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Parameter 0x{0}"
+msgstr "Parameter 0x{0}"
+
+#. 0: result.vendor_specific.toString(16)
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Vendor 0x{0}"
+msgstr "Vendor 0x{0}"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to load periodic self-test schedules"
+msgstr "Unable to load periodic self-test schedules"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Periodic tests require a stable disk identity"
+msgstr "Periodic tests require a stable disk identity"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "This test type is not supported by the selected disk"
+msgstr "This test type is not supported by the selected disk"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to save the self-test schedule"
+msgstr "Unable to save the self-test schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Self-test schedule updated"
+msgstr "Self-test schedule updated"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Self-test schedule created"
+msgstr "Self-test schedule created"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to disable the self-test schedule"
+msgstr "Unable to disable the self-test schedule"
+
+#. 0: schedule.device
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Self-test schedule for {0} disabled"
+msgstr "Self-test schedule for {0} disabled"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to delete the self-test schedule"
+msgstr "Unable to delete the self-test schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Self-test schedule deleted"
+msgstr "Self-test schedule deleted"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to read S.M.A.R.T self-test status"
+msgstr "Unable to read S.M.A.R.T self-test status"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to start the S.M.A.R.T test"
+msgstr "Unable to start the S.M.A.R.T test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unable to abort the S.M.A.R.T test"
+msgstr "Unable to abort the S.M.A.R.T test"
+
+#. 0: device
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "S.M.A.R.T test aborted on {0}"
+msgstr "S.M.A.R.T test aborted on {0}"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "S.M.A.R.T Self-Test"
+msgstr "S.M.A.R.T Self-Test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Disk diagnostic status and result history"
+msgstr "Disk diagnostic status and result history"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Reading self-test capabilities and status"
+msgstr "Reading self-test capabilities and status"
+
+#~ msgid "Current Status"
+#~ msgstr "Current Status"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Refresh status"
+msgstr "Refresh status"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Abort Test"
+msgstr "<0/> Abort Test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Execution"
+msgstr "Execution"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Test Type"
+msgstr "Test Type"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Estimated Duration"
+msgstr "Estimated Duration"
+
+#~ msgid "Scope"
+#~ msgstr "Scope"
+
+#~ msgid "Offline Collection"
+#~ msgstr "Offline Collection"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Test progress"
+msgstr "Test progress"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Progress not reported"
+msgstr "Progress not reported"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "The test continues on the device if this window is closed."
+msgstr "The test continues on the device if this window is closed."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Periodic Tests"
+msgstr "Periodic Tests"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Add Schedule"
+msgstr "<0/> Add Schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Periodic tests require a unique serial or LUN identity so the schedule follows the physical disk if its device name changes."
+msgstr "Periodic tests require a unique serial or LUN identity so the schedule follows the physical disk if its device name changes."
+
+#~ msgid "Periodic tests are opt-in and do not run until an enabled schedule is saved."
+#~ msgstr "Periodic tests are opt-in and do not run until an enabled schedule is saved."
+
+#~ msgid "Scheduled tests are globally serialized and may remain queued while another disk is being tested. Short schedules require at least 6 hours between runs; extended schedules require at least 24 hours. Cron expressions use the node's local time. Run timestamps below use this browser's local time."
+#~ msgstr "Scheduled tests are globally serialized and may remain queued while another disk is being tested. Short schedules require at least 6 hours between runs; extended schedules require at least 24 hours. Cron expressions use the node's local time. Run timestamps below use this browser's local time."
+
+#. 0: schedulesErrorMessage
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "{0}. The last successfully loaded schedules, if any, are retained below."
+msgstr "{0}. The last successfully loaded schedules, if any, are retained below."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Edit Schedule"
+msgstr "Edit Schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "New Schedule"
+msgstr "New Schedule"
+
+#~ msgid "Minimum: {0}"
+#~ msgstr "Minimum: {0}"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "This schedule is starting or running and cannot be edited until the test finishes."
+msgstr "This schedule is starting or running and cannot be edited until the test finishes."
+
+#~ msgid "Custom cron expression"
+#~ msgstr "Custom cron expression"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Invalid cron expression"
+msgstr "Invalid cron expression"
+
+#~ msgid "Custom expressions that violate the minimum interval are rejected when saved."
+#~ msgstr "Custom expressions that violate the minimum interval are rejected when saved."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Save Schedule"
+msgstr "<0/> Save Schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Loading schedules"
+msgstr "Loading schedules"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Self-test capabilities are unavailable and no saved schedule was found for this disk."
+msgstr "Self-test capabilities are unavailable and no saved schedule was found for this disk."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "This disk does not support schedulable short or extended tests."
+msgstr "This disk does not support schedulable short or extended tests."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "No periodic tests are configured for this disk."
+msgstr "No periodic tests are configured for this disk."
+
+#. 0: formatLabel(schedule.testType)
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "{0} Test"
+msgstr "{0} Test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "An active schedule cannot be edited"
+msgstr "An active schedule cannot be edited"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Edit schedule"
+msgstr "Edit schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "An active schedule cannot be deleted"
+msgstr "An active schedule cannot be deleted"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Delete schedule"
+msgstr "Delete schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Schedule (Node Local)"
+msgstr "Schedule (Node Local)"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Next Run (Browser Local)"
+msgstr "Next Run (Browser Local)"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Not scheduled"
+msgstr "Not scheduled"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Last Run (Browser Local)"
+msgstr "Last Run (Browser Local)"
+
+#. 0: formatScheduleTime(schedule.queuedAt, '')
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Queued {0} browser local; it starts when the global test slot is available."
+msgstr "Queued {0} browser local; it starts when the global test slot is available."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Starting scheduled test"
+msgstr "Starting scheduled test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Scheduled test progress"
+msgstr "Scheduled test progress"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Waiting for device acknowledgement"
+msgstr "Waiting for device acknowledgement"
+
+#~ msgid "Unavailable Disk Schedules"
+#~ msgstr "Unavailable Disk Schedules"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "These schedules reference disks that are not currently present. They can only be disabled or deleted."
+msgstr "These schedules reference disks that are not currently present. They can only be disabled or deleted."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "An active schedule cannot be disabled"
+msgstr "An active schedule cannot be disabled"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Disable schedule"
+msgstr "Disable schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Schedule is disabled"
+msgstr "Schedule is disabled"
+
+#~ msgid "Available Tests"
+#~ msgstr "Available Tests"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "This device does not report self-test support."
+msgstr "This device does not report self-test support."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "No non-blocking self-test types are available for this device."
+msgstr "No non-blocking self-test types are available for this device."
+
+#~ msgid "Self-test execution is unconfirmed but attemptable. The device may reject a start command."
+#~ msgstr "Self-test execution is unconfirmed but attemptable. The device may reject a start command."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Start Test"
+msgstr "Start Test"
+
+#~ msgid "A periodic test is queued for this disk. Manual starts are disabled until that run finishes or is no longer queued."
+#~ msgstr "A periodic test is queued for this disk. Manual starts are disabled until that run finishes or is no longer queued."
+
+#~ msgid "Results"
+#~ msgstr "Results"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Self-test result history is unavailable for this device."
+msgstr "Self-test result history is unavailable for this device."
+
+#~ msgid "Latest Result"
+#~ msgstr "Latest Result"
+
+#~ msgid "Recorded at {0} power-on hours"
+#~ msgstr "Recorded at {0} power-on hours"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "The device returned a self-test log with an invalid checksum."
+msgstr "The device returned a self-test log with an invalid checksum."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Result"
+msgstr "Result"
+
+#~ msgid "Power-On Hours"
+#~ msgstr "Power-On Hours"
+
+#~ msgid "Location"
+#~ msgstr "Location"
+
+#~ msgid "{0} h"
+#~ msgstr "{0} h"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "No self-test results are available."
+msgstr "No self-test results are available."
+
+#. 0: selectedDefinition?.label || 'S.M.A.R.T'
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Start {0} test?"
+msgstr "Start {0} test?"
+
+#~ msgid "The estimated duration is <0/>."
+#~ msgstr "The estimated duration is <0/>."
+
+#~ msgid "The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours."
+#~ msgstr "The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours."
+
+#~ msgid "Closing the status window does not stop the test."
+#~ msgstr "Closing the status window does not stop the test."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Starting"
+msgstr "<0/> Starting"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Delete periodic self-test schedule?"
+msgstr "Delete periodic self-test schedule?"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "This schedule is starting or running and cannot be deleted until the test finishes."
+msgstr "This schedule is starting or running and cannot be deleted until the test finishes."
+
+#. 0: formatLabel(deleteSchedule?.testType || ''); 1: deleteSchedule?.device || disk.device
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "The {0} schedule for {1} will be removed. This does not stop or remove completed test results."
+msgstr "The {0} schedule for {1} will be removed. This does not stop or remove completed test results."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Deleting"
+msgstr "<0/> Deleting"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Delete Schedule"
+msgstr "Delete Schedule"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Abort the running S.M.A.R.T test?"
+msgstr "Abort the running S.M.A.R.T test?"
+
+#. 0: disk.device
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "The current diagnostic on {0} will stop and its result may be recorded as aborted."
+msgstr "The current diagnostic on {0} will stop and its result may be recorded as aborted."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Aborting"
+msgstr "<0/> Aborting"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Abort Test"
+msgstr "Abort Test"
+
+#. 0: activeDisk.device
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "S.M.A.R.T Values - {0}"
+msgstr "S.M.A.R.T Values - {0}"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Run Test"
+msgstr "<0/> Run Test"
+
+#~ msgid "<0/> History <1/>"
+#~ msgstr "<0/> History <1/>"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> Schedule <1/>"
+msgstr "<0/> Schedule <1/>"
+
+#~ msgid "No self-test is running"
+#~ msgstr "No self-test is running"
+
+#~ msgid "Choose a test below or review the latest recorded result."
+#~ msgstr "Choose a test below or review the latest recorded result."
+
+#~ msgid "Latest: {0}"
+#~ msgstr "Latest: {0}"
+
+#~ msgid "Run a Test"
+#~ msgstr "Run a Test"
+
+#~ msgid "Self-test execution is unconfirmed for this device and the start command may be rejected."
+#~ msgstr "Self-test execution is unconfirmed for this device and the start command may be rejected."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Recommended"
+msgstr "Recommended"
+
+#. 0: selectedDefinition.label
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Start {0} Test"
+msgstr "Start {0} Test"
+
+#~ msgid "A periodic test is queued. Manual starts become available after that run finishes or leaves the queue."
+#~ msgstr "A periodic test is queued. Manual starts become available after that run finishes or leaves the queue."
+
+#~ msgid "Latest result: {0}"
+#~ msgstr "Latest result: {0}"
+
+#~ msgid "View test history"
+#~ msgstr "View test history"
+
+#~ msgid "Set up periodic tests"
+#~ msgstr "Set up periodic tests"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Reading self-test history"
+msgstr "Reading self-test history"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Unavailable disk schedules"
+msgstr "Unavailable disk schedules"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Schedules are opt-in and use the node's local time. A run waits safely if another disk test is active."
+msgstr "Schedules are opt-in and use the node's local time. A run waits safely if another disk test is active."
+
+#. 0: resultOutcome(latestResult)
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Last: {0}"
+msgstr "Last: {0}"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Choose a test"
+msgstr "Choose a test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Only supported tests are shown."
+msgstr "Only supported tests are shown."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Selected test"
+msgstr "Selected test"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Estimated duration"
+msgstr "Estimated duration"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Disk availability"
+msgstr "Disk availability"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Remains online"
+msgstr "Remains online"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "The diagnostic uses device resources and may temporarily reduce I/O performance."
+msgstr "The diagnostic uses device resources and may temporarily reduce I/O performance."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Execution is unconfirmed for this device and the start command may be rejected."
+msgstr "Execution is unconfirmed for this device and the start command may be rejected."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "A periodic test is queued. Manual starts become available when it leaves the queue."
+msgstr "A periodic test is queued. Manual starts become available when it leaves the queue."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "No runnable self-test is available for this device."
+msgstr "No runnable self-test is available for this device."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Test in progress"
+msgstr "Test in progress"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Encryption Passphrase (Optional)"
+msgstr "Encryption Passphrase (Optional)"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Required only when the key is not already registered"
+msgstr "Required only when the key is not already registered"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "A supplied passphrase is saved in the cluster key store for automated recovery."
+msgstr "A supplied passphrase is saved in the cluster key store for automated recovery."
+
+#~ msgid "{0} recorded {1}"
+#~ msgstr "{0} recorded {1}"
+
+#~ msgid "Latest"
+#~ msgstr "Latest"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "<0/> History"
+msgstr "<0/> History"
+
+#~ msgid "Rows: {0}"
+#~ msgstr "Rows: {0}"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "No self-test results are available"
+msgstr "No self-test results are available"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "No errors"
+msgstr "No errors"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Not reported"
+msgstr "Not reported"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Less than 10% remaining"
+msgstr "Less than 10% remaining"
+
+#~ msgid "Error Location"
+#~ msgstr "Error Location"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "First Error"
+msgstr "First Error"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Drive Hours"
+msgstr "Drive Hours"
+
+#~ msgid "The estimated duration is <0/>. The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours."
+#~ msgstr "The estimated duration is <0/>. The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours."
+
+#~ msgid "The estimated duration is <0/>. The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours. Closing the status window does not stop the test."
+#~ msgstr "The estimated duration is <0/>. The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours. Closing the status window does not stop the test."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "The estimated duration is <0/>. The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours. Closing the status window does <1>not</1> stop the test."
+msgstr "The estimated duration is <0/>. The disk remains available, but the diagnostic uses device resources and may reduce I/O performance while it runs. Extended tests can run for several hours. Closing the status window does <1>not</1> stop the test."
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Waiting for device"
+msgstr "Waiting for device"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Not reported by device"
+msgstr "Not reported by device"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "GET /api/disk/smart/self-test"
+msgstr "GET /api/disk/smart/self-test"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test - View"
+msgstr "Disk - S.M.A.R.T. Self-Test - View"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/disk/smart/self-test"
+msgstr "POST /api/disk/smart/self-test"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test - Start"
+msgstr "Disk - S.M.A.R.T. Self-Test - Start"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/disk/smart/self-test/abort"
+msgstr "POST /api/disk/smart/self-test/abort"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test - Abort"
+msgstr "Disk - S.M.A.R.T. Self-Test - Abort"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "GET /api/disk/smart/self-test/schedules"
+msgstr "GET /api/disk/smart/self-test/schedules"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test Schedule - View"
+msgstr "Disk - S.M.A.R.T. Self-Test Schedule - View"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/disk/smart/self-test/schedules"
+msgstr "POST /api/disk/smart/self-test/schedules"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test Schedule - Create"
+msgstr "Disk - S.M.A.R.T. Self-Test Schedule - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PUT /api/disk/smart/self-test/schedules/:id"
+msgstr "PUT /api/disk/smart/self-test/schedules/:id"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test Schedule - Update"
+msgstr "Disk - S.M.A.R.T. Self-Test Schedule - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DELETE /api/disk/smart/self-test/schedules/:id"
+msgstr "DELETE /api/disk/smart/self-test/schedules/:id"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - S.M.A.R.T. Self-Test Schedule - Delete"
+msgstr "Disk - S.M.A.R.T. Self-Test Schedule - Delete"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Every minute"
+msgstr "Every minute"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Every hour"
+msgstr "Every hour"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Every 6 hours"
+msgstr "Every 6 hours"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Daily at 03:00"
+msgstr "Daily at 03:00"
+
+#: src/lib/components/custom/Disk/SmartSelfTest.svelte
+msgid "Select or enter a cron expression"
+msgstr "Select or enter a cron expression"

@@ -35,7 +35,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="flex max-h-[80vh] w-[90%] flex-col gap-0 overflow-hidden p-5 lg:max-w-4xl"
+		class="flex max-h-[80vh] w-[90%] flex-col gap-0 overflow-hidden p-6 lg:max-w-4xl"
 		showCloseButton={true}
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}

@@ -31,6 +31,7 @@
 		movable?: boolean;
 		onRowMoved?: (rows: Row[]) => void;
 		persistSort?: boolean;
+		dataTree?: boolean;
 		rowFormatter?: (row: RowComponent) => void;
 		selectableRowCheck?: (row: RowComponent) => boolean;
 	}
@@ -46,6 +47,7 @@
 		movable = false,
 		onRowMoved,
 		persistSort = true,
+		dataTree = true,
 		rowFormatter,
 		selectableRowCheck
 	}: Props = $props();
@@ -232,8 +234,8 @@
 				layout: 'fitDataStretch',
 				selectableRows: multipleSelect ? true : 1,
 				...(selectableRowCheck ? { selectableRow: selectableRowCheck } : {}),
-				dataTreeChildIndent: 16,
-				dataTree: true,
+				dataTreeChildIndent: dataTree ? 16 : 0,
+				dataTree,
 				dataTreeChildField: 'children',
 				dataTreeStartExpanded: false,
 				persistenceID: name,

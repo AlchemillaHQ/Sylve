@@ -261,7 +261,7 @@
 
 	<Dialog.Root bind:open={modalState.isOpen}>
 		<Dialog.Content
-			class="w-[90%] overflow-hidden p-5 lg:max-w-2xl"
+			class="w-[90%] overflow-hidden p-6 lg:max-w-2xl"
 			showCloseButton={true}
 			showResetButton={modalState.isEditMode && selectedId !== null}
 			onReset={() => {

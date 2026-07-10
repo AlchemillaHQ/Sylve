@@ -188,6 +188,72 @@ func TestParseATASelfTestLogsCircularOrder(t *testing.T) {
 	}
 }
 
+func TestParseATASelfTestLogProgress(t *testing.T) {
+	standard := make([]byte, 512)
+	binary.LittleEndian.PutUint16(standard[0:2], 1)
+	standard[508] = 1
+	standard[2] = SelfTestShort
+	standard[3] = 0xf3
+	setATAChecksum(standard)
+	standardLog := parseATAStandardSelfTestLog(standard)
+	if !standardLog.InProgress || standardLog.CurrentType != "short" || !standardLog.ProgressKnown || standardLog.ProgressPct != 70 {
+		t.Fatalf("standard log: %+v", standardLog)
+	}
+
+	extended := make([]byte, 512)
+	extended[0] = 1
+	binary.LittleEndian.PutUint16(extended[2:4], 1)
+	extended[4] = SelfTestExtended
+	extended[5] = 0xf8
+	setATAChecksum(extended)
+	extendedLog := parseATAExtendedSelfTestLog(extended)
+	if !extendedLog.InProgress || extendedLog.CurrentType != "extended" || !extendedLog.ProgressKnown || extendedLog.ProgressPct != 20 {
+		t.Fatalf("extended log: %+v", extendedLog)
+	}
+}
+
+func TestParseATAVendorSelfTestTypes(t *testing.T) {
+	for _, code := range []byte{0x40, 0x7e, 0x90, 0xff} {
+		entry := parseATASelfTestEntry([]byte{code, 0})
+		if entry.Type != "vendor_specific" {
+			t.Fatalf("code %#x: %+v", code, entry)
+		}
+	}
+	for _, code := range []byte{0x05, 0x80, 0x85, 0x8f} {
+		entry := parseATASelfTestEntry([]byte{code, 0})
+		if entry.Type != "unknown" {
+			t.Fatalf("code %#x: %+v", code, entry)
+		}
+	}
+}
+
+func TestParseATASelfTestModes(t *testing.T) {
+	tests := []struct {
+		code     byte
+		wantType string
+		wantMode string
+	}{
+		{code: 0x00, wantType: "offline", wantMode: "offline"},
+		{code: 0x01, wantType: "short", wantMode: "offline"},
+		{code: 0x02, wantType: "extended", wantMode: "offline"},
+		{code: 0x03, wantType: "conveyance", wantMode: "offline"},
+		{code: 0x04, wantType: "selective", wantMode: "offline"},
+		{code: 0x7f, wantType: "abort", wantMode: "offline"},
+		{code: 0x81, wantType: "short_captive", wantMode: "captive"},
+		{code: 0x82, wantType: "extended_captive", wantMode: "captive"},
+		{code: 0x83, wantType: "conveyance_captive", wantMode: "captive"},
+		{code: 0x84, wantType: "selective_captive", wantMode: "captive"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.wantType, func(t *testing.T) {
+			entry := parseATASelfTestEntry([]byte{tt.code, 0})
+			if entry.Type != tt.wantType || entry.Mode != tt.wantMode {
+				t.Fatalf("entry=%+v", entry)
+			}
+		})
+	}
+}
+
 func TestParseNVMeAndSCSISelfTestLogs(t *testing.T) {
 	nvme := make([]byte, 4+28)
 	nvme[0] = 1
@@ -206,21 +272,84 @@ func TestParseNVMeAndSCSISelfTestLogs(t *testing.T) {
 		t.Fatalf("NVMe entry: %+v", got)
 	}
 
-	scsi := make([]byte, 44)
+	scsi := make([]byte, 404)
 	scsi[0] = 0x10
-	binary.BigEndian.PutUint16(scsi[2:4], 40)
+	binary.BigEndian.PutUint16(scsi[2:4], 400)
 	scsi[4], scsi[5] = 0, 1
 	scsi[8] = 1 << 5
 	scsi[9] = 3
 	binary.BigEndian.PutUint16(scsi[10:12], 123)
 	binary.BigEndian.PutUint64(scsi[12:20], 0x9876)
-	scsi[43] = 0xff
+	scsi[23] = 0xff
 	scsiLog := parseSCSISelfTestLog(scsi)
-	if len(scsiLog.Entries) != 1 {
+	if !scsiLog.ChecksumValid || len(scsiLog.Entries) != 1 {
 		t.Fatalf("SCSI log: %+v", scsiLog)
 	}
 	if got := scsiLog.Entries[0]; got.Protocol != "SCSI" || got.Type != "short" || got.Mode != "background" || got.Outcome != SelfTestOutcomePassed || got.LifetimeHours != 123 || got.LBA != 0x9876 {
 		t.Fatalf("SCSI entry: %+v", got)
+	}
+}
+
+func TestParseSCSISelfTestLogValidation(t *testing.T) {
+	valid := make([]byte, 404)
+	valid[0] = 0x10
+	binary.BigEndian.PutUint16(valid[2:4], 400)
+	if log := parseSCSISelfTestLog(valid); !log.ChecksumValid {
+		t.Fatalf("valid log rejected: %+v", log)
+	}
+
+	tests := map[string][]byte{
+		"short":        append([]byte(nil), valid[:403]...),
+		"wrong_page":   append([]byte(nil), valid...),
+		"wrong_length": append([]byte(nil), valid...),
+	}
+	tests["wrong_page"][0] = 0x11
+	binary.BigEndian.PutUint16(tests["wrong_length"][2:4], 399)
+	for name, raw := range tests {
+		t.Run(name, func(t *testing.T) {
+			log := parseSCSISelfTestLog(raw)
+			if log.ChecksumValid || len(log.Entries) != 0 {
+				t.Fatalf("malformed log accepted: %+v", log)
+			}
+		})
+	}
+}
+
+func TestParseSCSILBAValidity(t *testing.T) {
+	for _, result := range []byte{1, 2, 3, 7, 8, 14} {
+		raw := make([]byte, 20)
+		raw[4] = result
+		binary.BigEndian.PutUint64(raw[8:16], 123)
+		entry := parseSCSISelfTestEntry(raw)
+		if !entry.LBAValid {
+			t.Fatalf("result %#x: %+v", result, entry)
+		}
+	}
+	for _, result := range []byte{0, 15} {
+		raw := make([]byte, 20)
+		raw[4] = result
+		binary.BigEndian.PutUint64(raw[8:16], 123)
+		entry := parseSCSISelfTestEntry(raw)
+		if entry.LBAValid {
+			t.Fatalf("result %#x: %+v", result, entry)
+		}
+	}
+	raw := make([]byte, 20)
+	raw[4] = 1
+	binary.BigEndian.PutUint64(raw[8:16], ^uint64(0))
+	if entry := parseSCSISelfTestEntry(raw); entry.LBAValid {
+		t.Fatalf("sentinel LBA accepted: %+v", entry)
+	}
+}
+
+func TestParseSCSISelfTestEntryPreservesParameterAndVendorData(t *testing.T) {
+	raw := make([]byte, 20)
+	binary.BigEndian.PutUint16(raw[0:2], 0x1234)
+	raw[4] = 1 << 5
+	raw[19] = 0xab
+	entry := parseSCSISelfTestEntry(raw)
+	if entry.ParameterCode != 0x1234 || entry.VendorSpecific != 0xab {
+		t.Fatalf("entry=%+v", entry)
 	}
 }
 

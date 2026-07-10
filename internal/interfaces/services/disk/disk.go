@@ -8,7 +8,10 @@
 
 package diskServiceInterfaces
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Partition struct {
 	UUID  string `json:"uuid"`
@@ -18,18 +21,20 @@ type Partition struct {
 }
 
 type Disk struct {
-	UUID        string           `json:"uuid"`
-	Device      string           `json:"device"`
-	Type        string           `json:"type"`
-	Usage       string           `json:"usage"`
-	Size        uint64           `json:"size"`
-	Model       string           `json:"model"`
-	Serial      string           `json:"serial"`
-	GPT         bool             `json:"gpt"`
-	SmartData   any              `json:"smartData"`
-	WearOut     string           `json:"wearOut"`
-	SelfTestLog *DiskSelfTestLog `json:"selfTestLog,omitempty"`
-	Partitions  []Partition      `json:"partitions"`
+	UUID                  string           `json:"uuid"`
+	IdentityStable        bool             `json:"identityStable"`
+	Device                string           `json:"device"`
+	Type                  string           `json:"type"`
+	Usage                 string           `json:"usage"`
+	Size                  uint64           `json:"size"`
+	Model                 string           `json:"model"`
+	Serial                string           `json:"serial"`
+	GPT                   bool             `json:"gpt"`
+	SmartData             any              `json:"smartData"`
+	SmartReadPowerSkipped bool             `json:"-"`
+	WearOut               string           `json:"wearOut"`
+	SelfTestLog           *DiskSelfTestLog `json:"selfTestLog,omitempty"`
+	Partitions            []Partition      `json:"partitions"`
 }
 
 type DeviceInfo struct {
@@ -245,6 +250,84 @@ type DiskSelfTestLog struct {
 	InProgress    bool                `json:"in_progress"`
 	ProgressPct   int                 `json:"progress_pct"`
 	ChecksumValid bool                `json:"checksum_valid"`
+}
+
+type DiskSelfTestCapabilities struct {
+	Protocol                  string `json:"protocol"`
+	Scope                     string `json:"scope"`
+	NamespaceID               uint32 `json:"namespace_id"`
+	SingleOperation           bool   `json:"single_operation"`
+	ExecutionSupportKnown     bool   `json:"execution_support_known"`
+	Supported                 bool   `json:"supported"`
+	Offline                   bool   `json:"offline"`
+	Default                   bool   `json:"default"`
+	Short                     bool   `json:"short"`
+	Extended                  bool   `json:"extended"`
+	Conveyance                bool   `json:"conveyance"`
+	Selective                 bool   `json:"selective"`
+	ShortCaptive              bool   `json:"short_captive"`
+	ExtendedCaptive           bool   `json:"extended_captive"`
+	ConveyanceCaptive         bool   `json:"conveyance_captive"`
+	SelectiveCaptive          bool   `json:"selective_captive"`
+	Abort                     bool   `json:"abort"`
+	ResultLog                 bool   `json:"result_log"`
+	Progress                  bool   `json:"progress"`
+	OfflineDurationMinutes    int    `json:"offline_duration_minutes"`
+	ShortDurationMinutes      int    `json:"short_duration_minutes"`
+	ExtendedDurationMinutes   int    `json:"extended_duration_minutes"`
+	ConveyanceDurationMinutes int    `json:"conveyance_duration_minutes"`
+}
+
+type DiskSelfTestResult struct {
+	Protocol            string     `json:"protocol"`
+	Type                string     `json:"type"`
+	Mode                string     `json:"mode"`
+	Status              string     `json:"status"`
+	Outcome             string     `json:"outcome"`
+	RemainingPct        int        `json:"remaining_pct"`
+	LifetimeHours       uint64     `json:"lifetime_hours"`
+	LifetimeHoursExact  string     `json:"lifetime_hours_exact"`
+	LBA                 uint64     `json:"lba"`
+	LBAExact            string     `json:"lba_exact"`
+	LBAValid            bool       `json:"lba_valid"`
+	NSID                uint32     `json:"nsid"`
+	NSIDValid           bool       `json:"nsid_valid"`
+	SegmentNum          uint8      `json:"segment_num"`
+	SenseKey            uint8      `json:"sense_key"`
+	ASC                 uint8      `json:"asc"`
+	ASCQ                uint8      `json:"ascq"`
+	StatusCodeType      uint8      `json:"status_code_type"`
+	StatusCodeTypeValid bool       `json:"status_code_type_valid"`
+	StatusCode          uint8      `json:"status_code"`
+	StatusCodeValid     bool       `json:"status_code_valid"`
+	Checkpoint          uint8      `json:"checkpoint"`
+	ParameterCode       uint16     `json:"parameter_code"`
+	VendorSpecific      uint8      `json:"vendor_specific"`
+	StartedAt           *time.Time `json:"started_at,omitempty"`
+}
+
+type DiskSelfTestState struct {
+	Protocol                 string               `json:"protocol"`
+	NamespaceID              uint32               `json:"namespace_id"`
+	State                    string               `json:"state"`
+	ExecutionStatus          string               `json:"execution_status"`
+	Type                     string               `json:"type"`
+	Running                  bool                 `json:"running"`
+	ProgressPct              int                  `json:"progress_pct"`
+	ProgressKnown            bool                 `json:"progress_known"`
+	RemainingPct             int                  `json:"remaining_pct"`
+	RemainingKnown           bool                 `json:"remaining_known"`
+	EstimatedDurationMinutes int                  `json:"estimated_duration_minutes"`
+	OfflineCollectionStatus  string               `json:"offline_collection_status"`
+	OfflineCollectionRunning bool                 `json:"offline_collection_running"`
+	ChecksumValid            bool                 `json:"checksum_valid"`
+	Results                  []DiskSelfTestResult `json:"results"`
+}
+
+type DiskSelfTestInfo struct {
+	Device       string                   `json:"device"`
+	Capabilities DiskSelfTestCapabilities `json:"capabilities"`
+	Status       DiskSelfTestState        `json:"status"`
 }
 
 type DiskAttribute struct {

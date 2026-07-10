@@ -184,6 +184,8 @@ int32_t smart_scsi_control_mode_page(smart_h, void *, size_t);
 
 int32_t smart_scsi_extended_inquiry(smart_h, void *, size_t);
 
+int32_t smart_scsi_self_test_support(smart_h, bool *, bool *);
+
 bool smart_log_page_supported(smart_h, uint32_t);
 
 smart_map_t *smart_read_log(smart_h, uint8_t, size_t);
@@ -203,5 +205,9 @@ int32_t smart_nvme_identify_ctrl(smart_h, void *, size_t);
 int32_t smart_nvme_identify_ns(smart_h, uint32_t, void *, size_t);
 
 int32_t smart_enable(smart_h);
+
+int32_t smart_ata_check_power_mode(char *, uint8_t *, bool *);
+
+int32_t smart_scsi_check_power_mode(char *, void *, size_t);
 
 #endif

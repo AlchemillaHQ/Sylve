@@ -22,6 +22,7 @@
 #include <string.h>
 #include <err.h>
 #include <errno.h>
+#include <sys/ata.h>
 #include <camlib.h>
 #include <cam/cam.h>
 #include <cam/scsi/scsi_message.h>
@@ -65,6 +66,228 @@ int smart_get_last_err(smart_h h) {
 static smart_protocol_e __device_get_proto(struct fbsd_smart *);
 static bool __device_proto_tunneled(struct fbsd_smart *);
 static int32_t __device_get_info(struct fbsd_smart *);
+
+static size_t
+__scsi_transferred(union ccb *ccb, size_t requested)
+{
+	if (ccb == NULL)
+		return 0;
+	if (ccb->csio.resid <= 0)
+		return requested;
+	if ((size_t)ccb->csio.resid >= requested)
+		return 0;
+	return requested - (size_t)ccb->csio.resid;
+}
+
+static bool
+__ata_power_mode_from_sense(union ccb *ccb, uint8_t *mode)
+{
+	uint8_t *sense;
+	size_t end, offset, size;
+
+	if (ccb == NULL || mode == NULL)
+		return false;
+	sense = (uint8_t *)&ccb->csio.sense_data;
+	size = sizeof(ccb->csio.sense_data);
+	if (size < 18)
+		return false;
+
+	switch (sense[0] & 0x7f) {
+	case 0x70:
+	case 0x71:
+		if (sense[12] != 0 || sense[13] != 0x1d ||
+		    (sense[4] & 0xc1) != 0x40)
+			return false;
+		*mode = sense[6];
+		return true;
+	case 0x72:
+	case 0x73:
+		end = 8 + sense[7];
+		if (end > size)
+			end = size;
+		for (offset = 8; offset + 2 <= end;) {
+			size_t descriptor_size = 2 + sense[offset + 1];
+			if (descriptor_size < 2 || descriptor_size > end - offset)
+				break;
+			if (sense[offset] == 0x09 && descriptor_size >= 14 &&
+			    (sense[offset + 13] & 0xc1) == 0x40) {
+				*mode = sense[offset + 5];
+				return true;
+			}
+			offset += descriptor_size;
+		}
+		break;
+	}
+	return false;
+}
+
+int32_t
+device_ata_check_power_mode(char *devname, uint8_t *mode, bool *sleeping)
+{
+	struct fbsd_smart fsmart;
+	union ccb *ccb;
+	smart_protocol_e protocol;
+	int rc;
+
+	if (devname == NULL || mode == NULL || sleeping == NULL)
+		return EINVAL;
+
+	*mode = 0;
+	*sleeping = false;
+	memset(&fsmart, 0, sizeof(fsmart));
+	fsmart.camdev = cam_open_device(devname, O_RDWR);
+	if (fsmart.camdev == NULL)
+		fsmart.camdev = cam_open_device(devname, O_RDONLY);
+	if (fsmart.camdev == NULL)
+		return errno ? errno : EIO;
+
+	protocol = __device_get_proto(&fsmart);
+	fsmart.common.protocol = protocol;
+	if (protocol == SMART_PROTO_SCSI && __device_proto_tunneled(&fsmart)) {
+		fsmart.common.protocol = SMART_PROTO_ATA;
+		fsmart.common.info.tunneled = true;
+	} else if (protocol != SMART_PROTO_ATA) {
+		cam_close_device(fsmart.camdev);
+		return EPROTONOSUPPORT;
+	}
+
+	ccb = cam_getccb(fsmart.camdev);
+	if (ccb == NULL) {
+		cam_close_device(fsmart.camdev);
+		return ENOMEM;
+	}
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	if (fsmart.common.info.tunneled) {
+		scsi_ata_pass_16(&ccb->csio, 1, NULL, CAM_DIR_NONE,
+		    MSG_SIMPLE_Q_TAG, AP_PROTO_NON_DATA,
+		    AP_FLAG_CHK_COND | AP_FLAG_TDIR_FROM_DEV |
+		    AP_FLAG_BYT_BLOK_BLOCKS, 0, 0, 0,
+		    ATA_CHECK_POWER_MODE, 0, NULL, 0, SSD_FULL_SIZE, 5000);
+	} else {
+		cam_fill_ataio(&ccb->ataio, 0, NULL, CAM_DIR_NONE,
+		    MSG_SIMPLE_Q_TAG, NULL, 0, 5000);
+		ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
+		ccb->ataio.cmd.command = ATA_CHECK_POWER_MODE;
+		ccb->ataio.cmd.control = 0;
+	}
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart.camdev, ccb);
+	if (rc < 0) {
+		rc = errno ? errno : EIO;
+	} else if (fsmart.common.info.tunneled &&
+	    ((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP ||
+	    (ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_SCSI_STATUS_ERROR)) {
+		if (__ata_power_mode_from_sense(ccb, mode))
+			rc = 0;
+		else
+			rc = EIO;
+	} else {
+		switch (ccb->ccb_h.status & CAM_STATUS_MASK) {
+		case CAM_REQ_CMP:
+			rc = 0;
+			break;
+		case CAM_SEL_TIMEOUT:
+			*sleeping = true;
+			rc = 0;
+			break;
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		case CAM_REQ_INVALID:
+		case CAM_PROVIDE_FAIL:
+			rc = fsmart.common.info.tunneled ? EIO : EOPNOTSUPP;
+			break;
+		case CAM_DEV_NOT_THERE:
+			rc = ENODEV;
+			break;
+		default:
+			rc = EIO;
+			break;
+		}
+	}
+
+	if (rc == 0 && !*sleeping && !fsmart.common.info.tunneled)
+		*mode = ccb->ataio.res.sector_count;
+
+	cam_freeccb(ccb);
+	cam_close_device(fsmart.camdev);
+	return rc;
+}
+
+int32_t
+device_scsi_check_power_mode(char *devname, void *buf, size_t bsize)
+{
+	struct fbsd_smart fsmart;
+	union ccb *ccb;
+	int rc;
+
+	if (devname == NULL || buf == NULL || bsize < 18 || bsize > UINT8_MAX)
+		return EINVAL;
+
+	bzero(buf, bsize);
+	memset(&fsmart, 0, sizeof(fsmart));
+	fsmart.camdev = cam_open_device(devname, O_RDWR);
+	if (fsmart.camdev == NULL)
+		fsmart.camdev = cam_open_device(devname, O_RDONLY);
+	if (fsmart.camdev == NULL)
+		return errno ? errno : EIO;
+
+	if (__device_get_proto(&fsmart) != SMART_PROTO_SCSI) {
+		cam_close_device(fsmart.camdev);
+		return EPROTONOSUPPORT;
+	}
+
+	ccb = cam_getccb(fsmart.camdev);
+	if (ccb == NULL) {
+		cam_close_device(fsmart.camdev);
+		return ENOMEM;
+	}
+
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	scsi_request_sense(&ccb->csio, 1, NULL, buf, (uint8_t)bsize,
+	    MSG_SIMPLE_Q_TAG, SSD_FULL_SIZE, 5000);
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart.camdev, ccb);
+	if (rc < 0) {
+		rc = errno ? errno : EIO;
+	} else {
+		switch (ccb->ccb_h.status & CAM_STATUS_MASK) {
+		case CAM_REQ_CMP:
+			rc = __scsi_transferred(ccb, bsize) >= 18 ? 0 : EIO;
+			break;
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		case CAM_REQ_INVALID:
+		case CAM_PROVIDE_FAIL:
+			rc = EOPNOTSUPP;
+			break;
+		case CAM_DEV_NOT_THERE:
+			rc = ENODEV;
+			break;
+		default:
+			rc = EIO;
+			break;
+		}
+	}
+
+	cam_freeccb(ccb);
+	cam_close_device(fsmart.camdev);
+	return rc;
+}
 
 smart_h
 device_open(smart_protocol_e protocol, char *devname)
@@ -296,6 +519,12 @@ __device_scsi_log_sense(struct fbsd_smart *fsmart, uint32_t page, void *buf, siz
 		cam_freeccb(ccb);
 		return EIO;
 	}
+	size_t transferred = __scsi_transferred(ccb, bsize);
+	if (transferred < 4 ||
+	    4 + ((size_t)b[2] << 8) + b[3] > transferred) {
+		cam_freeccb(ccb);
+		return EIO;
+	}
 
 	cam_freeccb(ccb);
 	return 0;
@@ -463,6 +692,7 @@ device_self_test(smart_h h, uint8_t test_type)
 	struct fbsd_smart *fsmart = h;
 	union ccb *ccb = NULL;
 	uint8_t smart_fis[12];
+	uint32_t timeout = 30000;
 	int rc = 0;
 
 	if (fsmart == NULL)
@@ -486,14 +716,20 @@ device_self_test(smart_h h, uint8_t test_type)
 		case ATA_SELF_TEST_CONVEYANCE:
 		case ATA_SELF_TEST_SELECTIVE:
 		case ATA_SELF_TEST_ABORT:
+			break;
 		case ATA_SELF_TEST_SHORT_CAPTIVE:
 		case ATA_SELF_TEST_EXTENDED_CAPTIVE:
 		case ATA_SELF_TEST_CONVEYANCE_CAPTIVE:
 		case ATA_SELF_TEST_SELECTIVE_CAPTIVE:
+			timeout = 12U * 60U * 60U * 1000U;
 			break;
 		default:
-			cam_freeccb(ccb);
-			return EINVAL;
+			if (!((test_type >= 0x40 && test_type <= 0x7e) ||
+			    test_type >= 0x90)) {
+				cam_freeccb(ccb);
+				return EINVAL;
+			}
+			break;
 		}
 		if (fsmart->common.info.tunneled) {
 			struct ata_pass_16 *cdb;
@@ -515,7 +751,7 @@ device_self_test(smart_h h, uint8_t test_type)
 					0,
 					NULL, 0,
 					SSD_FULL_SIZE,
-					30000);
+					timeout);
 			cdb->lba_mid = 0x4f;
 			cdb->lba_high = 0xc2;
 			cdb->device = 0;
@@ -534,7 +770,7 @@ device_self_test(smart_h h, uint8_t test_type)
 					CAM_DIR_NONE,
 					MSG_SIMPLE_Q_TAG,
 					NULL, 0,
-					30000);
+					timeout);
 			ccb->ataio.cmd.flags |= CAM_ATAIO_NEEDRESULT;
 			ccb->ataio.cmd.control = 0;
 		}
@@ -543,12 +779,13 @@ device_self_test(smart_h h, uint8_t test_type)
 	case SMART_PROTO_SCSI: {
 		int self_test = 0;
 		int self_test_code;
-		uint32_t timeout = 30000;
+		timeout = 30000;
 
 		switch (test_type) {
 		case 0x00:
 			self_test = 1;
 			self_test_code = SSD_SELF_TEST_CODE_NONE;
+			timeout = 12U * 60U * 60U * 1000U;
 			break;
 		case ATA_SELF_TEST_SHORT:
 			self_test_code = SSD_SELF_TEST_CODE_BG_SHORT;
@@ -689,7 +926,7 @@ device_scsi_request_sense(smart_h h, void *buf, size_t bsize)
 			break;
 		}
 	} else
-		rc = 0;
+		rc = __scsi_transferred(ccb, bsize) >= 18 ? 0 : EIO;
 	if (rc != 0)
 		fsmart->last_cam_err = rc;
 	cam_freeccb(ccb);
@@ -793,6 +1030,73 @@ device_scsi_extended_inquiry(smart_h h, void *buf, size_t bsize)
 		}
 	} else
 		rc = 0;
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_scsi_self_test_support(smart_h h, bool *known, bool *supported)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb;
+	uint8_t response[36];
+	uint32_t transferred;
+	uint8_t support;
+	int rc;
+
+	if (fsmart == NULL || known == NULL || supported == NULL)
+		return EINVAL;
+	if (fsmart->common.protocol != SMART_PROTO_SCSI)
+		return ENODEV;
+
+	*known = false;
+	*supported = false;
+	fsmart->last_cam_err = 0;
+	bzero(response, sizeof(response));
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	scsi_report_supported_opcodes(&ccb->csio, 1, NULL,
+	    MSG_SIMPLE_Q_TAG, RSO_OPTIONS_OC, SEND_DIAGNOSTIC, 0,
+	    response, sizeof(response), SSD_FULL_SIZE, 30000);
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		rc = errno;
+		if (rc != ETIMEDOUT && rc != ECONNABORTED)
+			rc = 0;
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP) {
+		transferred = sizeof(response);
+		if (ccb->csio.resid > 0) {
+			if ((uint32_t)ccb->csio.resid >= transferred)
+				transferred = 0;
+			else
+				transferred -= (uint32_t)ccb->csio.resid;
+		}
+		if (transferred >= 4) {
+			support = response[1] & RSO_ONE_SUP_MASK;
+			if (support == RSO_ONE_SUP_NOT_SUP)
+				*known = true;
+		}
+		rc = 0;
+	} else {
+		switch (ccb->ccb_h.status & CAM_STATUS_MASK) {
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		default:
+			rc = 0;
+			break;
+		}
+	}
 	if (rc != 0)
 		fsmart->last_cam_err = rc;
 	cam_freeccb(ccb);
@@ -1472,6 +1776,7 @@ __device_proto_tunneled(struct fbsd_smart *fsmart)
 		return false;
 	}
 
+	bzero(&supportedp, sizeof(supportedp));
 	ccb = cam_getccb(fsmart->camdev);
 	if (!ccb) {
 		warn("Allocation failure ccb=%p", ccb);
@@ -1495,7 +1800,8 @@ __device_proto_tunneled(struct fbsd_smart *fsmart)
 			((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)) {
 		dprintf("Looking for page %#x (total = %u):\n", SVPD_ATA_INFORMATION,
 				supportedp.length);
-		for (i = 0; i < supportedp.length; i++) {
+		for (i = 0; i < supportedp.length &&
+		    i < sizeof(supportedp.list); i++) {
 			dprintf("\t[%u] = %#x\n", i, supportedp.list[i]);
 			if (supportedp.list[i] == SVPD_ATA_INFORMATION) {
 				is_tunneled = true;
@@ -1688,13 +1994,6 @@ __device_info_scsi(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 			/* sense_len */0,
 			/* timeout */30000);
 
-	/*
-	 * Note: The existance of the Informational Exceptions (IE) log page
-	 *       appears to be the litmus test for SMART support in SCSI
-	 *       devices. Confusingly, smartctl will report SMART health
-	 *       status as 'OK' if the device doesn't support the IE page.
-	 *       For now, just report the facts.
-	 */
 	if ((cam_send_ccb(fsmart->camdev, ccb) >= 0) &&
 			((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)) {
 		if (ie.hdr.param_len < 4) {
@@ -1750,6 +2049,7 @@ __device_info_nvme(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 			if (cam_send_ccb(fsmart->camdev, ccb) >= 0) {
 			if ((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP) {
 				sinfo->nvme_version = cd.ver;
+				sinfo->nvme_single_self_test = !!(cd.dsto & 0x1);
 				cam_strvis((uint8_t *)sinfo->device, cd.mn,
 						sizeof(cd.mn),
 						sizeof(sinfo->device));

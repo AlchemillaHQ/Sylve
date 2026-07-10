@@ -84,7 +84,8 @@ typedef struct smart_info_s {
 		 tunneled:1,
 		 sct_supported:1,
 		 self_test_supported:1,
-		 :28;
+		 nvme_single_self_test:1,
+		 :27;
 	/*
 	 * Device-provided information, including
 	 *  - vendor name

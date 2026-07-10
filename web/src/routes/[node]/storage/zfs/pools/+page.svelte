@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { handleAPIResponse } from '$lib/api/common';
 	import { listDisks } from '$lib/api/disk/disk';
@@ -51,10 +61,10 @@
 	);
 
 	const disks = resource(
-		() => 'disk-list',
+		() => 'disk-list-inventory',
 		async () => {
-			const disks = await listDisks();
-			updateCache('disk-list', disks);
+			const disks = await listDisks('none');
+			updateCache('disk-list-inventory', disks);
 			return disks;
 		},
 		{
@@ -70,7 +80,7 @@
 		}
 	});
 
-	useInterval(5000, {
+	useInterval(60000, {
 		callback: async () => {
 			if (visible.current && !storage.idle) {
 				disks.refetch();

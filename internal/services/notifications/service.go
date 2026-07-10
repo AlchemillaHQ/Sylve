@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -55,6 +57,7 @@ const (
 	RuleTemplateDiskSmartWearout     = "system.disk.smart.wearout"
 	RuleTemplateDiskSmartHealth      = "system.disk.smart.health"
 	RuleTemplateDiskSmartNvme        = "system.disk.smart.nvme"
+	RuleTemplateDiskSmartSelfTest    = "system.disk.smart.selftest"
 	ruleTemplateTargetTypeDisk       = "disk"
 
 	diskSmartConfigTemperatureWarningCelsius  = "warningCelsius"
@@ -72,7 +75,15 @@ type ruleTemplateDefinition struct {
 	View            RuleTemplateView
 	AutoCreateRules bool
 	ActiveTargets   map[string]struct{}
+	TargetDevices   map[string]string
 	DefaultConfig   string
+}
+
+type diskSmartRuleConfig struct {
+	WarningCelsius  float64 `json:"warningCelsius"`
+	CriticalCelsius float64 `json:"criticalCelsius"`
+	WarningPercent  float64 `json:"warningPercent"`
+	CriticalPercent float64 `json:"criticalPercent"`
 }
 
 type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error
@@ -90,6 +101,21 @@ type Service struct {
 	ntfySender    NtfySender
 	emailSender   EmailSender
 	discordSender DiscordSender
+
+	legacyDiskSmartMigrationMu   sync.Mutex
+	legacyDiskSmartMigrationDone bool
+	diskInventoryMu              sync.Mutex
+	diskInventoryCache           []diskServiceInterfaces.Disk
+	diskInventoryExpiresAt       time.Time
+}
+
+type diskInventoryProvider interface {
+	GetDiskDevicesInventory(ctx context.Context) ([]diskServiceInterfaces.Disk, error)
+}
+
+type diskSmartIdentityAlias struct {
+	device string
+	key    string
 }
 
 type ListScope string
@@ -104,13 +130,13 @@ type TransportConfigView struct {
 }
 
 type TransportConfigEntryView struct {
-	ID      uint                         `json:"id"`
-	Name    string                       `json:"name"`
-	Type    string                       `json:"type"`
-	Enabled bool                         `json:"enabled"`
-	Ntfy    *NtfyTransportConfigView     `json:"ntfy,omitempty"`
-	Email   *EmailTransportConfigView    `json:"email,omitempty"`
-	Discord *DiscordTransportConfigView  `json:"discord,omitempty"`
+	ID      uint                        `json:"id"`
+	Name    string                      `json:"name"`
+	Type    string                      `json:"type"`
+	Enabled bool                        `json:"enabled"`
+	Ntfy    *NtfyTransportConfigView    `json:"ntfy,omitempty"`
+	Email   *EmailTransportConfigView   `json:"email,omitempty"`
+	Discord *DiscordTransportConfigView `json:"discord,omitempty"`
 }
 
 type NtfyTransportConfigView struct {
@@ -138,13 +164,13 @@ type TransportConfigUpdate struct {
 }
 
 type TransportConfigEntryUpdate struct {
-	ID      uint                           `json:"id"`
-	Name    string                         `json:"name"`
-	Type    string                         `json:"type"`
-	Enabled bool                           `json:"enabled"`
-	Ntfy    *NtfyTransportConfigUpdate     `json:"ntfy,omitempty"`
-	Email   *EmailTransportConfigUpdate    `json:"email,omitempty"`
-	Discord *DiscordTransportConfigUpdate  `json:"discord,omitempty"`
+	ID      uint                          `json:"id"`
+	Name    string                        `json:"name"`
+	Type    string                        `json:"type"`
+	Enabled bool                          `json:"enabled"`
+	Ntfy    *NtfyTransportConfigUpdate    `json:"ntfy,omitempty"`
+	Email   *EmailTransportConfigUpdate   `json:"email,omitempty"`
+	Discord *DiscordTransportConfigUpdate `json:"discord,omitempty"`
 }
 
 type NtfyTransportConfigUpdate struct {
@@ -259,6 +285,80 @@ func NewService(db *gorm.DB) *Service {
 
 func (s *Service) SetDiskService(ds diskServiceInterfaces.DiskServiceInterface) {
 	s.DiskService = ds
+	s.diskInventoryMu.Lock()
+	s.diskInventoryCache = nil
+	s.diskInventoryExpiresAt = time.Time{}
+	s.diskInventoryMu.Unlock()
+}
+
+func (s *Service) MigrateLegacyDiskSmartRecords(ctx context.Context) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("notifications_service_not_initialized")
+	}
+	aliases := s.diskSmartIdentityAliases(ctx)
+	s.legacyDiskSmartMigrationMu.Lock()
+	defer s.legacyDiskSmartMigrationMu.Unlock()
+	if s.legacyDiskSmartMigrationDone {
+		return nil
+	}
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.migrateLegacyDiskSmartSelfTestKinds(tx); err != nil {
+			return err
+		}
+		if err := s.migrateDiskSmartIdentityAliases(tx, aliases); err != nil {
+			return err
+		}
+		return s.migrateLegacyDiskSmartNotificationConditions(tx, aliases)
+	})
+	if err == nil {
+		s.legacyDiskSmartMigrationDone = true
+	}
+	return err
+}
+
+func (s *Service) diskSmartIdentityAliases(ctx context.Context) []diskSmartIdentityAlias {
+	if s == nil || s.DiskService == nil {
+		return nil
+	}
+	disks, err := s.loadDiskInventory(ctx)
+	if err != nil {
+		return nil
+	}
+	aliases := make([]diskSmartIdentityAlias, 0, len(disks))
+	for _, disk := range disks {
+		device := normalizeRuleTargetKey(disk.Device)
+		key := normalizeRuleTargetKey(disk.UUID)
+		if !disk.IdentityStable || device == "" || key == "" || device == key {
+			continue
+		}
+		aliases = append(aliases, diskSmartIdentityAlias{device: device, key: key})
+	}
+	return aliases
+}
+
+func (s *Service) loadDiskInventory(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	if s == nil || s.DiskService == nil {
+		return nil, nil
+	}
+	s.diskInventoryMu.Lock()
+	defer s.diskInventoryMu.Unlock()
+	now := time.Now()
+	if now.Before(s.diskInventoryExpiresAt) {
+		return append([]diskServiceInterfaces.Disk(nil), s.diskInventoryCache...), nil
+	}
+	var disks []diskServiceInterfaces.Disk
+	var err error
+	if inventory, ok := s.DiskService.(diskInventoryProvider); ok {
+		disks, err = inventory.GetDiskDevicesInventory(ctx)
+	} else {
+		disks, err = s.DiskService.GetDiskDevices(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.diskInventoryCache = append([]diskServiceInterfaces.Disk(nil), disks...)
+	s.diskInventoryExpiresAt = now.Add(30 * time.Second)
+	return append([]diskServiceInterfaces.Disk(nil), disks...), nil
 }
 
 func (s *Service) SetNtfySender(sender NtfySender) {
@@ -309,13 +409,30 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 	result := notifier.EmitResult{}
 	var kindRule models.NotificationKindRule
 	canSuppress := shouldPersistSuppressionForKind(normalized.Kind)
+	uiSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelUI)
+	ntfySelected := notificationChannelSelected(normalized.Channels, notifier.ChannelNtfy)
+	emailSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelEmail)
+	discordSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelDiscord)
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
+		if prefix, target, ok := notifier.DiskNameFromSmartKind(normalized.Kind); ok {
+			device := normalizeRuleTargetKey(normalized.Metadata["device"])
+			diskKey := normalizeRuleTargetKey(normalized.Metadata["disk_key"])
+			if device != "" && diskKey != "" && device != diskKey && normalizeRuleTargetKey(target) == diskKey {
+				if err := s.migrateDiskSmartKindAlias(tx, prefix, diskSmartIdentityAlias{device: device, key: diskKey}); err != nil {
+					return err
+				}
+			}
+		}
 
 		kindRule, err = s.ensureKindRule(tx, normalized.Kind, "")
 		if err != nil {
 			return err
+		}
+		result.UIHandled = uiSelected
+		if kindRule.UserDisabled {
+			return nil
 		}
 
 		if canSuppress {
@@ -335,7 +452,7 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			}
 		}
 
-		if kindRule.UIEnabled {
+		if uiSelected && kindRule.UIEnabled {
 			var existing models.Notification
 			err = tx.Where("fingerprint = ?", normalized.Fingerprint).First(&existing).Error
 			if err == nil {
@@ -384,53 +501,179 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 	if err != nil {
 		return notifier.EmitResult{}, err
 	}
+	if kindRule.UserDisabled {
+		return result, nil
+	}
 
 	if result.Suppressed {
 		return result, nil
 	}
 
-	if kindRule.UIEnabled {
+	if uiSelected && kindRule.UIEnabled {
 		s.publishRefresh()
 	}
-
-	transportConfigs, err := s.listTransportConfigs(ctx)
-	if err != nil {
+	if !ntfySelected && !emailSelected && !discordSelected {
 		return result, nil
 	}
 
+	transportConfigs, err := s.listDeliveryTransportConfigs(ctx, normalized.TransportID)
+	if err != nil {
+		return result, err
+	}
+	result.TransportConfigLoaded = true
+
+	var transportErr error
 	for _, cfg := range transportConfigs {
+		if normalized.TransportID != 0 && cfg.ID != normalized.TransportID {
+			continue
+		}
 		switch normalizeTransportType(cfg.Type) {
 		case TransportTypeNtfy:
-			if !cfg.NtfyEnabled || !kindRule.NtfyEnabled {
+			if !ntfySelected || !cfg.NtfyEnabled || !kindRule.NtfyEnabled {
 				continue
 			}
 			token := strings.TrimSpace(cfg.NtfyAuthToken)
+			result.AttemptedNtfy = true
 			if err := s.ntfySender(ctx, cfg, normalized, token); err == nil {
 				result.SentNtfy = true
+			} else {
+				result.FailedNtfy = true
+				transportErr = err
 			}
 		case TransportTypeSMTP:
-			if !cfg.EmailEnabled || !kindRule.EmailEnabled || len(cfg.EmailRecipients) == 0 {
+			if !emailSelected || !cfg.EmailEnabled || !kindRule.EmailEnabled || len(cfg.EmailRecipients) == 0 {
 				continue
 			}
 			password := strings.TrimSpace(cfg.SMTPPassword)
+			result.AttemptedEmail = true
 			if err := s.emailSender(ctx, cfg, normalized, password); err == nil {
 				result.SentEmail = true
+			} else {
+				result.FailedEmail = true
+				transportErr = err
 			}
 		case TransportTypeDiscord:
-			if !cfg.DiscordEnabled || !kindRule.DiscordEnabled {
+			if !discordSelected || !cfg.DiscordEnabled || !kindRule.DiscordEnabled {
 				continue
 			}
 			webhookURL := strings.TrimSpace(cfg.DiscordWebhookURL)
 			if webhookURL == "" {
 				continue
 			}
+			result.AttemptedDiscord = true
 			if err := s.discordSender(ctx, cfg, normalized, webhookURL); err == nil {
 				result.SentDiscord = true
+			} else {
+				result.FailedDiscord = true
+				transportErr = err
+			}
+		}
+	}
+	if result.FailedNtfy || result.FailedEmail || result.FailedDiscord {
+		return result, fmt.Errorf("notification_delivery_failed: %w", transportErr)
+	}
+
+	return result, nil
+}
+
+func (s *Service) DeliveryTargets(ctx context.Context, input notifier.EventInput) ([]string, error) {
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	normalized := normalizeInput(input)
+	if normalized.Kind == "" {
+		return nil, fmt.Errorf("notification_kind_required")
+	}
+
+	var kindRule models.NotificationKindRule
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if prefix, target, ok := notifier.DiskNameFromSmartKind(normalized.Kind); ok {
+			device := normalizeRuleTargetKey(normalized.Metadata["device"])
+			diskKey := normalizeRuleTargetKey(normalized.Metadata["disk_key"])
+			if device != "" && diskKey != "" && device != diskKey && normalizeRuleTargetKey(target) == diskKey {
+				if err := s.migrateDiskSmartKindAlias(tx, prefix, diskSmartIdentityAlias{device: device, key: diskKey}); err != nil {
+					return err
+				}
+			}
+		}
+
+		var err error
+		kindRule, err = s.ensureKindRule(tx, normalized.Kind, "")
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if kindRule.UserDisabled {
+		return []string{}, nil
+	}
+
+	targets := make([]string, 0, 4)
+	if kindRule.UIEnabled {
+		targets = append(targets, notifier.ChannelUI)
+	}
+	if !kindRule.NtfyEnabled && !kindRule.EmailEnabled && !kindRule.DiscordEnabled {
+		return targets, nil
+	}
+
+	configs, err := s.listTransportConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, cfg := range configs {
+		switch normalizeTransportType(cfg.Type) {
+		case TransportTypeNtfy:
+			if kindRule.NtfyEnabled && cfg.NtfyEnabled {
+				targets = append(targets, notificationDeliveryTarget(notifier.ChannelNtfy, cfg.ID))
+			}
+		case TransportTypeSMTP:
+			if kindRule.EmailEnabled && cfg.EmailEnabled && len(cfg.EmailRecipients) > 0 {
+				targets = append(targets, notificationDeliveryTarget(notifier.ChannelEmail, cfg.ID))
+			}
+		case TransportTypeDiscord:
+			if kindRule.DiscordEnabled && cfg.DiscordEnabled && strings.TrimSpace(cfg.DiscordWebhookURL) != "" {
+				targets = append(targets, notificationDeliveryTarget(notifier.ChannelDiscord, cfg.ID))
 			}
 		}
 	}
 
-	return result, nil
+	return targets, nil
+}
+
+func (s *Service) EmitTarget(ctx context.Context, input notifier.EventInput, target string) (notifier.EmitResult, error) {
+	channel, transportID, err := parseNotificationDeliveryTarget(target)
+	if err != nil {
+		return notifier.EmitResult{}, err
+	}
+	if channel == "all" {
+		input.Channels = nil
+		input.TransportID = 0
+		return s.Emit(ctx, input)
+	}
+	input.Channels = []string{channel}
+	input.TransportID = transportID
+	return s.Emit(ctx, input)
+}
+
+func notificationDeliveryTarget(channel string, transportID uint) string {
+	return channel + ":" + strconv.FormatUint(uint64(transportID), 10)
+}
+
+func parseNotificationDeliveryTarget(target string) (string, uint, error) {
+	target = strings.TrimSpace(strings.ToLower(target))
+	if target == "all" || target == notifier.ChannelUI {
+		return target, 0, nil
+	}
+	channel, idValue, ok := strings.Cut(target, ":")
+	if !ok || channel != notifier.ChannelNtfy && channel != notifier.ChannelEmail && channel != notifier.ChannelDiscord {
+		return "", 0, fmt.Errorf("invalid_notification_delivery_target")
+	}
+	id, err := strconv.ParseUint(idValue, 10, 64)
+	if err != nil || id == 0 {
+		return "", 0, fmt.Errorf("invalid_notification_delivery_target")
+	}
+	return channel, uint(id), nil
 }
 
 func (s *Service) List(ctx context.Context, scope ListScope, limit, offset int) ([]models.Notification, int64, error) {
@@ -598,7 +841,8 @@ func (s *Service) TestRule(ctx context.Context, input TestRuleInput) error {
 		return fmt.Errorf("notification_rule_template_required")
 	}
 
-	definitions, _, err := s.loadRuleTemplateDefinitions(ctx, s.DB.WithContext(ctx))
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	definitions, _, err := s.loadRuleTemplateDefinitions(s.DB.WithContext(ctx), diskDefinitions)
 	if err != nil {
 		return err
 	}
@@ -637,6 +881,15 @@ func (s *Service) TestRule(ctx context.Context, input TestRuleInput) error {
 	}
 
 	event := buildTestEventInput(templateKey, targetKey, kind, condition, now)
+	if device := definition.TargetDevices[targetKey]; device != "" && device != targetKey {
+		event.Title = strings.ReplaceAll(event.Title, targetKey, device)
+		event.Body = strings.ReplaceAll(event.Body, targetKey, device)
+		if event.Metadata == nil {
+			event.Metadata = make(map[string]string)
+		}
+		event.Metadata["device"] = device
+		event.Metadata["disk_key"] = targetKey
+	}
 	if input.Severity != "" {
 		event.Severity = normalizeSeverity(input.Severity)
 	}
@@ -650,7 +903,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "temperature_warning":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s temperature high: 60 C", targetKey),
-			Body: fmt.Sprintf("Temperature 60 C exceeds warning threshold configured for disk %s.", targetKey),
+			Body:     fmt.Sprintf("Temperature 60 C exceeds warning threshold configured for disk %s.", targetKey),
 			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "temperature": "60"},
@@ -658,7 +911,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "temperature_critical":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s temperature critical: 70 C", targetKey),
-			Body: fmt.Sprintf("Temperature 70 C exceeds critical threshold configured for disk %s.", targetKey),
+			Body:     fmt.Sprintf("Temperature 70 C exceeds critical threshold configured for disk %s.", targetKey),
 			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "temperature": "70"},
@@ -666,7 +919,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "wearout_warning":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s wear-out high: 85.0%%", targetKey),
-			Body: fmt.Sprintf("Wear-out of 85.0%% exceeds warning threshold configured for disk %s.", targetKey),
+			Body:     fmt.Sprintf("Wear-out of 85.0%% exceeds warning threshold configured for disk %s.", targetKey),
 			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "wearout": "85.0"},
@@ -674,7 +927,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "wearout_critical":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s wear-out critical: 95.0%%", targetKey),
-			Body: fmt.Sprintf("Wear-out of 95.0%% exceeds critical threshold configured for disk %s.", targetKey),
+			Body:     fmt.Sprintf("Wear-out of 95.0%% exceeds critical threshold configured for disk %s.", targetKey),
 			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "wearout": "95.0"},
@@ -682,7 +935,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "health_failed":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s S.M.A.R.T health check FAILED", targetKey),
-			Body: fmt.Sprintf("The overall S.M.A.R.T health assessment for disk %s indicates failure.", targetKey),
+			Body:     fmt.Sprintf("The overall S.M.A.R.T health assessment for disk %s indicates failure.", targetKey),
 			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true"},
@@ -690,7 +943,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "sector_issues":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s has sector issues", targetKey),
-			Body: fmt.Sprintf("Sector anomalies detected on disk %s: reallocated=5, pending=2.", targetKey),
+			Body:     fmt.Sprintf("Sector anomalies detected on disk %s: reallocated=5, pending=2.", targetKey),
 			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "reallocated": "5", "pending": "2"},
@@ -698,15 +951,31 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "nvme_warning":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("Disk %s NVMe S.M.A.R.T warning", targetKey),
-			Body: fmt.Sprintf("NVMe S.M.A.R.T issues on disk %s: critical_warning=0x08; available_spare=5%%, threshold=10%%.", targetKey),
+			Body:     fmt.Sprintf("NVMe S.M.A.R.T issues on disk %s: critical_warning=0x08; available_spare=5%%, threshold=10%%.", targetKey),
 			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true", "critical_warning": "0x08"},
 		}
+	case "self_test_failed":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s self-test failed", targetKey),
+			Body:     fmt.Sprintf("The most recent self-test on disk %s reported a failure.", targetKey),
+			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true"},
+		}
+	case "self_test_passed":
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("Disk %s self-test passed", targetKey),
+			Body:     fmt.Sprintf("The most recent self-test on disk %s completed successfully.", targetKey),
+			Severity: string(models.NotificationSeverityInfo), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true"},
+		}
 	case "pool_degraded":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("ZFS pool %s vdev pool is DEGRADED", targetKey),
-			Body: fmt.Sprintf("ZFS state-change detected for pool %s: vdev pool is now DEGRADED.", targetKey),
+			Body:     fmt.Sprintf("ZFS state-change detected for pool %s: vdev pool is now DEGRADED.", targetKey),
 			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"pool": targetKey, "state": "DEGRADED", "test": "true"},
@@ -714,7 +983,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	case "pool_faulted":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("ZFS pool %s vdev pool is FAULTED", targetKey),
-			Body: fmt.Sprintf("ZFS state-change detected for pool %s: vdev pool is now FAULTED.", targetKey),
+			Body:     fmt.Sprintf("ZFS state-change detected for pool %s: vdev pool is now FAULTED.", targetKey),
 			Severity: string(models.NotificationSeverityCritical), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"pool": targetKey, "state": "FAULTED", "test": "true"},
@@ -722,7 +991,7 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 	default:
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("[TEST] %s / %s", templateKey, targetKey),
-			Body: fmt.Sprintf("This is a test notification for template %s on target %s sent at %s.", templateKey, targetKey, now.Format(time.RFC3339)),
+			Body:     fmt.Sprintf("This is a test notification for template %s on target %s sent at %s.", templateKey, targetKey, now.Format(time.RFC3339)),
 			Severity: string(models.NotificationSeverityInfo), Source: "settings.notifications.test",
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"test": "true"},
@@ -740,6 +1009,8 @@ func defaultTestConditionForTemplate(templateKey string) string {
 		return "health_failed"
 	case RuleTemplateDiskSmartNvme:
 		return "nvme_warning"
+	case RuleTemplateDiskSmartSelfTest:
+		return "self_test_failed"
 	case RuleTemplateZFSPoolState:
 		return "pool_degraded"
 	default:
@@ -916,10 +1187,14 @@ func (s *Service) GetRuleConfig(ctx context.Context) (RuleConfigView, error) {
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
+	}
 
 	var view RuleConfigView
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -946,12 +1221,16 @@ func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) 
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
+	}
 
 	entries := append([]RuleConfigEntryUpdate{}, input.Rules...)
 	var view RuleConfigView
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1033,6 +1312,9 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
+	}
 
 	templateKey := normalizeRuleTemplateKey(input.TemplateKey)
 	targetKey := normalizeRuleTargetKey(input.TargetKey)
@@ -1043,8 +1325,9 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 		return RuleConfigView{}, fmt.Errorf("notification_rule_target_required")
 	}
 
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1105,12 +1388,16 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
+	}
 	if id == 0 {
 		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_id")
 	}
 
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1135,6 +1422,10 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 			if !json.Valid([]byte(input.Config)) {
 				return fmt.Errorf("invalid_notification_rule_config_json")
 			}
+			templateKey, _, _ := resolveTemplateTargetFromKind(rule.Kind)
+			if err := validateDiskSmartRuleConfig(templateKey, input.Config); err != nil {
+				return err
+			}
 			rule.Config = input.Config
 		}
 		return tx.Save(&rule).Error
@@ -1146,16 +1437,42 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 	return s.GetRuleConfig(ctx)
 }
 
+func validateDiskSmartRuleConfig(templateKey, config string) error {
+	switch templateKey {
+	case RuleTemplateDiskSmartTemperature:
+		var value diskSmartRuleConfig
+		if err := json.Unmarshal([]byte(config), &value); err != nil {
+			return fmt.Errorf("invalid_notification_rule_config_json")
+		}
+		if value.WarningCelsius < 0 || value.CriticalCelsius <= value.WarningCelsius || value.CriticalCelsius > 200 {
+			return fmt.Errorf("invalid_notification_rule_temperature_thresholds")
+		}
+	case RuleTemplateDiskSmartWearout:
+		var value diskSmartRuleConfig
+		if err := json.Unmarshal([]byte(config), &value); err != nil {
+			return fmt.Errorf("invalid_notification_rule_config_json")
+		}
+		if value.WarningPercent < 0 || value.CriticalPercent <= value.WarningPercent || value.CriticalPercent > 100 {
+			return fmt.Errorf("invalid_notification_rule_wearout_thresholds")
+		}
+	}
+	return nil
+}
+
 func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, error) {
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
 	}
 	if id == 0 {
 		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_id")
 	}
 
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1186,12 +1503,16 @@ func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigVi
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
+	}
 	if len(ids) == 0 {
 		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_ids")
 	}
 
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1224,12 +1545,16 @@ func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, nt
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
+	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		return RuleConfigView{}, err
+	}
 	if len(ids) == 0 {
 		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_ids")
 	}
 
+	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(ctx, tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1318,7 +1643,7 @@ func (s *Service) listActivePools(tx *gorm.DB) ([]string, error) {
 	return normalizePoolNames(settings.Pools), nil
 }
 
-func (s *Service) loadRuleTemplateDefinitions(ctx context.Context, tx *gorm.DB) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
+func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, diskDefinitions []*ruleTemplateDefinition) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
 	pools, err := s.listActivePools(tx)
 	if err != nil {
 		return nil, nil, err
@@ -1348,8 +1673,7 @@ func (s *Service) loadRuleTemplateDefinitions(ctx context.Context, tx *gorm.DB) 
 		},
 	}
 
-	diskDefs := s.buildDiskSmartTemplateDefinitions(ctx)
-	definitions = append(definitions, diskDefs...)
+	definitions = append(definitions, diskDefinitions...)
 
 	definitionsByKey := make(map[string]*ruleTemplateDefinition, len(definitions))
 	for _, definition := range definitions {
@@ -1364,54 +1688,58 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 		return nil
 	}
 
-	disks, err := s.DiskService.GetDiskDevices(ctx)
+	disks, err := s.loadDiskInventory(ctx)
 	if err != nil {
 		return nil
 	}
 
-	type deviceInfo struct{ key, label string }
+	type deviceInfo struct{ key, label, device string }
 	allDisks := make([]deviceInfo, 0)
 	ssdDisks := make([]deviceInfo, 0)
 	nvmeDisks := make([]deviceInfo, 0)
 	for _, disk := range disks {
-		if disk.SmartData == nil {
+		diskType := strings.ToUpper(strings.TrimSpace(disk.Type))
+		if diskType != "HDD" && diskType != "SSD" && diskType != "NVME" && diskType != "VIRTUAL" {
 			continue
 		}
 		label := disk.Device
 		if disk.Model != "" {
 			label = fmt.Sprintf("%s (%s)", disk.Device, disk.Model)
 		}
-		info := deviceInfo{key: disk.Device, label: label}
+		key := disk.Device
+		if disk.IdentityStable && strings.TrimSpace(disk.UUID) != "" {
+			key = strings.TrimSpace(strings.ToLower(disk.UUID))
+		}
+		info := deviceInfo{key: key, label: label, device: disk.Device}
 		allDisks = append(allDisks, info)
-		if disk.Type == "NVMe" {
+		if diskType == "NVME" {
 			ssdDisks = append(ssdDisks, info)
 			nvmeDisks = append(nvmeDisks, info)
-		} else 		if disk.Type == "SSD" {
-			if sd, ok := disk.SmartData.(diskServiceInterfaces.SmartData); ok {
-				if sd.Device.Protocol != "SCSI" {
-					ssdDisks = append(ssdDisks, info)
-				}
-			}
+		} else if diskType == "SSD" {
+			ssdDisks = append(ssdDisks, info)
 		}
 	}
 
-	targetViews := func(devs []deviceInfo) ([]RuleTemplateTargetView, map[string]struct{}) {
+	targetViews := func(devs []deviceInfo) ([]RuleTemplateTargetView, map[string]struct{}, map[string]string) {
 		views := make([]RuleTemplateTargetView, 0, len(devs))
 		active := make(map[string]struct{}, len(devs))
+		devices := make(map[string]string, len(devs))
 		for _, dev := range devs {
 			views = append(views, RuleTemplateTargetView{
 				Key:   dev.key,
 				Label: dev.label,
 			})
 			active[dev.key] = struct{}{}
+			devices[dev.key] = dev.device
 		}
-		return views, active
+		return views, active, devices
 	}
 
-	tempViews, tempActive := targetViews(allDisks)
-	healthViews, healthActive := targetViews(allDisks)
-	wearViews, wearActive := targetViews(ssdDisks)
-	nvmeViews, nvmeActive := targetViews(nvmeDisks)
+	tempViews, tempActive, tempDevices := targetViews(allDisks)
+	healthViews, healthActive, healthDevices := targetViews(allDisks)
+	selfTestViews, selfTestActive, selfTestDevices := targetViews(allDisks)
+	wearViews, wearActive, wearDevices := targetViews(ssdDisks)
+	nvmeViews, nvmeActive, nvmeDevices := targetViews(nvmeDisks)
 
 	tempCfg, _ := json.Marshal(map[string]float64{
 		diskSmartConfigTemperatureWarningCelsius:  defaultTemperatureWarningCelsius,
@@ -1427,7 +1755,7 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 		{
 			View: RuleTemplateView{
 				Key:           RuleTemplateDiskSmartTemperature,
-				Label:         "Disk Temperature",
+				Label:         "Disk S.M.A.R.T Temperature",
 				Description:   "Disk S.M.A.R.T temperature threshold alerts.",
 				TargetType:    ruleTemplateTargetTypeDisk,
 				Targets:       tempViews,
@@ -1435,12 +1763,13 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 			},
 			AutoCreateRules: true,
 			ActiveTargets:   tempActive,
+			TargetDevices:   tempDevices,
 			DefaultConfig:   string(tempCfg),
 		},
 		{
 			View: RuleTemplateView{
 				Key:           RuleTemplateDiskSmartWearout,
-				Label:         "Disk Wear-Out",
+				Label:         "Disk S.M.A.R.T Wear-Out",
 				Description:   "Disk S.M.A.R.T wear-out threshold alerts (SSD/NVMe).",
 				TargetType:    ruleTemplateTargetTypeDisk,
 				Targets:       wearViews,
@@ -1448,18 +1777,20 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 			},
 			AutoCreateRules: true,
 			ActiveTargets:   wearActive,
+			TargetDevices:   wearDevices,
 			DefaultConfig:   string(wearCfg),
 		},
 		{
 			View: RuleTemplateView{
 				Key:         RuleTemplateDiskSmartHealth,
-				Label:       "Disk Health",
+				Label:       "Disk S.M.A.R.T Health",
 				Description: "Disk S.M.A.R.T health status and reallocated/pending sector alerts.",
 				TargetType:  ruleTemplateTargetTypeDisk,
 				Targets:     healthViews,
 			},
 			AutoCreateRules: true,
 			ActiveTargets:   healthActive,
+			TargetDevices:   healthDevices,
 		},
 		{
 			View: RuleTemplateView{
@@ -1471,12 +1802,42 @@ func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*rule
 			},
 			AutoCreateRules: true,
 			ActiveTargets:   nvmeActive,
+			TargetDevices:   nvmeDevices,
+		},
+		{
+			View: RuleTemplateView{
+				Key:         RuleTemplateDiskSmartSelfTest,
+				Label:       "Disk S.M.A.R.T Self-Test",
+				Description: "Disk S.M.A.R.T self-test lifecycle and result alerts.",
+				TargetType:  ruleTemplateTargetTypeDisk,
+				Targets:     selfTestViews,
+			},
+			AutoCreateRules: true,
+			ActiveTargets:   selfTestActive,
+			TargetDevices:   selfTestDevices,
 		},
 	}
 }
 
 func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateDefinition) error {
-	expectedKinds := make(map[string]bool)
+	aliasByDevice := make(map[string]string)
+	for _, definition := range definitions {
+		for key, device := range definition.TargetDevices {
+			device = normalizeRuleTargetKey(device)
+			key = normalizeRuleTargetKey(key)
+			if device != "" && key != "" && device != key {
+				aliasByDevice[device] = key
+			}
+		}
+	}
+	aliases := make([]diskSmartIdentityAlias, 0, len(aliasByDevice))
+	for device, key := range aliasByDevice {
+		aliases = append(aliases, diskSmartIdentityAlias{device: device, key: key})
+	}
+	if err := s.migrateDiskSmartIdentityAliases(tx, aliases); err != nil {
+		return err
+	}
+	expectedKinds := make(map[string]string)
 
 	for _, definition := range definitions {
 		if !definition.AutoCreateRules {
@@ -1489,29 +1850,481 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 				return err
 			}
 
-			expectedKinds[kind] = true
-
-			if _, err := s.ensureKindRule(tx, kind, definition.DefaultConfig); err != nil {
+			expectedKinds[kind] = definition.DefaultConfig
+		}
+	}
+	if len(expectedKinds) == 0 {
+		return nil
+	}
+	kinds := make([]string, 0, len(expectedKinds))
+	for kind := range expectedKinds {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	var existing []models.NotificationKindRule
+	if err := tx.Where("kind IN ?", kinds).Find(&existing).Error; err != nil {
+		return err
+	}
+	for _, rule := range existing {
+		defaultConfig := expectedKinds[rule.Kind]
+		delete(expectedKinds, rule.Kind)
+		if !rule.UserDisabled && strings.TrimSpace(rule.Config) == "" && defaultConfig != "" {
+			if err := tx.Model(&rule).Update("config", defaultConfig).Error; err != nil {
 				return err
 			}
 		}
 	}
+	missing := make([]models.NotificationKindRule, 0, len(expectedKinds))
+	for _, kind := range kinds {
+		defaultConfig, ok := expectedKinds[kind]
+		if !ok {
+			continue
+		}
+		missing = append(missing, models.NotificationKindRule{
+			Kind:           kind,
+			UIEnabled:      true,
+			NtfyEnabled:    true,
+			EmailEnabled:   true,
+			DiscordEnabled: false,
+			Config:         defaultConfig,
+		})
+	}
+	if len(missing) > 0 {
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&missing).Error
+	}
+	return nil
+}
 
-	existing, err := s.listManagedRuleRows(tx)
-	if err != nil {
+func (s *Service) migrateDiskSmartIdentityAliases(tx *gorm.DB, aliases []diskSmartIdentityAlias) error {
+	for _, alias := range aliases {
+		for _, prefix := range []string{
+			notifier.DiskSmartTemperatureKindPrefix,
+			notifier.DiskSmartWearoutKindPrefix,
+			notifier.DiskSmartHealthKindPrefix,
+			notifier.DiskSmartNvmeKindPrefix,
+			notifier.DiskSmartSelfTestKindPrefix,
+		} {
+			if err := s.migrateDiskSmartKindAlias(tx, prefix, alias); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) migrateDiskSmartKindAlias(tx *gorm.DB, prefix string, alias diskSmartIdentityAlias) error {
+	oldKind := notifier.KindForDiskSmart(prefix, alias.device)
+	newKind := notifier.KindForDiskSmart(prefix, alias.key)
+	if oldKind == newKind {
+		return nil
+	}
+	var oldRule models.NotificationKindRule
+	oldErr := tx.Where("kind = ?", oldKind).First(&oldRule).Error
+	if oldErr != nil && oldErr != gorm.ErrRecordNotFound {
+		return oldErr
+	}
+	if oldErr == nil {
+		var current models.NotificationKindRule
+		currentErr := tx.Where("kind = ?", newKind).First(&current).Error
+		switch currentErr {
+		case nil:
+			if notificationRuleShouldReplace(current, oldRule) {
+				copyNotificationRuleSettings(&current, oldRule)
+			}
+			if err := tx.Save(&current).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(&oldRule).Error; err != nil {
+				return err
+			}
+		case gorm.ErrRecordNotFound:
+			if err := tx.Model(&oldRule).Update("kind", newKind).Error; err != nil {
+				return err
+			}
+		default:
+			return currentErr
+		}
+	}
+	if err := s.migrateDiskSmartNotificationAlias(tx, oldKind, newKind, alias); err != nil {
 		return err
 	}
+	return tx.Model(&models.NotificationSuppression{}).Where("kind = ?", oldKind).Update("kind", newKind).Error
+}
 
-	for _, rule := range existing {
-		if rule.UserDisabled {
+func (s *Service) migrateDiskSmartNotificationAlias(tx *gorm.DB, oldKind, newKind string, alias diskSmartIdentityAlias) error {
+	var notifications []models.Notification
+	if err := tx.Where("kind = ?", oldKind).Find(&notifications).Error; err != nil {
+		return err
+	}
+	for i := range notifications {
+		var fresh models.Notification
+		if err := tx.First(&fresh, notifications[i].ID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return err
+		}
+		notification := &fresh
+		condition, ok := currentDiskSmartCondition(notification.Metadata["condition"])
+		if !ok {
+			condition, ok = legacyDiskSmartCondition(notification.Metadata["condition"])
+		}
+		if !ok {
+			separator := strings.LastIndex(notification.Fingerprint, "|")
+			if separator >= 0 {
+				condition, ok = currentDiskSmartCondition(notification.Fingerprint[separator+1:])
+				if !ok {
+					condition, ok = legacyDiskSmartCondition(notification.Fingerprint[separator+1:])
+				}
+			}
+		}
+		if !ok {
+			if err := tx.Model(notification).Update("kind", newKind).Error; err != nil {
+				return err
+			}
 			continue
 		}
-		if _, expected := expectedKinds[rule.Kind]; !expected {
+		if notification.Metadata == nil {
+			notification.Metadata = make(map[string]string)
+		}
+		notification.Kind = newKind
+		notification.Metadata["device"] = alias.device
+		notification.Metadata["disk_key"] = alias.key
+		notification.Metadata["condition"] = condition
+		fingerprint := alias.key + "|" + diskSmartConditionCategory(condition)
+		var current models.Notification
+		currentErr := tx.Where("fingerprint = ?", fingerprint).First(&current).Error
+		if currentErr != nil && currentErr != gorm.ErrRecordNotFound {
+			return currentErr
+		}
+		if currentErr == nil && current.ID != notification.ID {
+			winningCondition := condition
+			if value, valid := currentDiskSmartCondition(current.Metadata["condition"]); valid {
+				winningCondition = value
+			} else if value, valid := legacyDiskSmartCondition(current.Metadata["condition"]); valid {
+				winningCondition = value
+			}
+			current.OccurrenceCount += notification.OccurrenceCount
+			if current.FirstOccurredAt.IsZero() || (!notification.FirstOccurredAt.IsZero() && notification.FirstOccurredAt.Before(current.FirstOccurredAt)) {
+				current.FirstOccurredAt = notification.FirstOccurredAt
+			}
+			if notification.LastOccurredAt.After(current.LastOccurredAt) {
+				current.Kind = notification.Kind
+				current.Title = notification.Title
+				current.Body = notification.Body
+				current.Severity = notification.Severity
+				current.Source = notification.Source
+				current.Metadata = notification.Metadata
+				current.LastOccurredAt = notification.LastOccurredAt
+				winningCondition = condition
+			}
+			if current.Metadata == nil {
+				current.Metadata = make(map[string]string)
+			}
+			current.Metadata["device"] = alias.device
+			current.Metadata["disk_key"] = alias.key
+			current.Metadata["condition"] = winningCondition
+			if current.DismissedAt == nil || notification.DismissedAt == nil {
+				current.DismissedAt = nil
+			}
+			if err := tx.Save(&current).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(notification).Error; err != nil {
+				return err
+			}
 			continue
+		}
+		notification.Fingerprint = fingerprint
+		if err := tx.Save(notification).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) migrateLegacyDiskSmartNotificationConditions(tx *gorm.DB, aliases []diskSmartIdentityAlias) error {
+	aliasByDevice := make(map[string]string, len(aliases))
+	for _, alias := range aliases {
+		aliasByDevice[alias.device] = alias.key
+	}
+	var notifications []models.Notification
+	if err := tx.Where("source IN ?", []string{"system.disk.smart", "system.disk.smart.selftest"}).Find(&notifications).Error; err != nil {
+		return err
+	}
+	for idx := range notifications {
+		var fresh models.Notification
+		if err := tx.First(&fresh, notifications[idx].ID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return err
+		}
+		notification := &fresh
+		rawCondition := notification.Metadata["condition"]
+		condition, ok := legacyDiskSmartCondition(rawCondition)
+		if !ok {
+			condition, ok = currentDiskSmartCondition(rawCondition)
+		}
+		separator := strings.LastIndex(notification.Fingerprint, "|")
+		if !ok && separator >= 0 {
+			rawFingerprintCondition := notification.Fingerprint[separator+1:]
+			condition, ok = legacyDiskSmartCondition(rawFingerprintCondition)
+			if !ok {
+				condition, ok = currentDiskSmartCondition(rawFingerprintCondition)
+			}
+		}
+		if !ok {
+			continue
+		}
+		device := strings.TrimSpace(strings.ToLower(notification.Metadata["device"]))
+		if device == "" && separator > 0 {
+			device = strings.TrimSpace(strings.ToLower(notification.Fingerprint[:separator]))
+		}
+		if device == "" {
+			continue
+		}
+		target := device
+		if key := aliasByDevice[device]; key != "" {
+			target = key
+		}
+		if notification.Metadata == nil {
+			notification.Metadata = make(map[string]string)
+		}
+		notification.Metadata["device"] = device
+		notification.Metadata["disk_key"] = target
+		notification.Metadata["condition"] = condition
+		fingerprint := target + "|" + diskSmartConditionCategory(condition)
+
+		var current models.Notification
+		currentErr := tx.Where("fingerprint = ?", fingerprint).First(&current).Error
+		if currentErr != nil && currentErr != gorm.ErrRecordNotFound {
+			return currentErr
+		}
+		if currentErr == nil && current.ID != notification.ID {
+			winningCondition := condition
+			if value, valid := currentDiskSmartCondition(current.Metadata["condition"]); valid {
+				winningCondition = value
+			} else if value, valid := legacyDiskSmartCondition(current.Metadata["condition"]); valid {
+				winningCondition = value
+			}
+			current.OccurrenceCount += notification.OccurrenceCount
+			if current.FirstOccurredAt.IsZero() || (!notification.FirstOccurredAt.IsZero() && notification.FirstOccurredAt.Before(current.FirstOccurredAt)) {
+				current.FirstOccurredAt = notification.FirstOccurredAt
+			}
+			if notification.LastOccurredAt.After(current.LastOccurredAt) {
+				current.Kind = notification.Kind
+				current.Title = notification.Title
+				current.Body = notification.Body
+				current.Severity = notification.Severity
+				current.Source = notification.Source
+				current.Metadata = notification.Metadata
+				current.LastOccurredAt = notification.LastOccurredAt
+				winningCondition = condition
+			}
+			if current.Metadata == nil {
+				current.Metadata = make(map[string]string)
+			}
+			current.Metadata["device"] = device
+			current.Metadata["disk_key"] = target
+			current.Metadata["condition"] = winningCondition
+			if current.DismissedAt == nil || notification.DismissedAt == nil {
+				current.DismissedAt = nil
+			} else if notification.DismissedAt.After(*current.DismissedAt) {
+				current.DismissedAt = notification.DismissedAt
+			}
+			if err := tx.Save(&current).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(notification).Error; err != nil {
+				return err
+			}
+			continue
+		}
+
+		notification.Fingerprint = fingerprint
+		if err := tx.Save(notification).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func currentDiskSmartCondition(condition string) (string, bool) {
+	condition = strings.TrimSpace(strings.ToLower(condition))
+	switch condition {
+	case "smart_unavailable", "smart_available", "temperature_critical", "temperature_warning", "temperature_normal", "health_failed", "health_recovered", "wearout_critical", "wearout_warning", "wearout_normal", "sector_issues", "sector_issues_cleared", "nvme_warning", "nvme_recovered", "self_test_started", "self_test_passed", "self_test_failed", "self_test_aborted", "self_test_completed_unknown", "self_test_schedule_failed", "self_test_schedule_missed", "self_test_device_unavailable", "self_test_capabilities_unavailable", "self_test_status_unavailable", "self_test_unsupported", "self_test_start_failed", "self_test_timeout_aborted", "self_test_result_unknown":
+		return condition, true
+	default:
+		return "", false
+	}
+}
+
+func diskSmartConditionCategory(condition string) string {
+	if strings.HasPrefix(condition, "self_test_") {
+		return "selftest"
+	}
+	switch condition {
+	case "temperature_critical", "temperature_warning", "temperature_normal":
+		return "temperature"
+	case "wearout_critical", "wearout_warning", "wearout_normal":
+		return "wearout"
+	case "nvme_warning", "nvme_recovered":
+		return "nvme"
+	case "sector_issues", "sector_issues_cleared":
+		return "sectors"
+	case "smart_unavailable", "smart_available":
+		return "availability"
+	default:
+		return "health"
+	}
+}
+
+func legacyDiskSmartCondition(condition string) (string, bool) {
+	switch strings.TrimSpace(strings.ToLower(condition)) {
+	case "smart unavailable":
+		return "smart_unavailable", true
+	case "critical temperature":
+		return "temperature_critical", true
+	case "high temperature":
+		return "temperature_warning", true
+	case "temperature normal":
+		return "temperature_normal", true
+	case "smart health failed":
+		return "health_failed", true
+	case "smart health recovered":
+		return "health_recovered", true
+	case "critical wear-out":
+		return "wearout_critical", true
+	case "high wear-out":
+		return "wearout_warning", true
+	case "wear-out normal":
+		return "wearout_normal", true
+	case "sector issues":
+		return "sector_issues", true
+	case "sector issues cleared":
+		return "sector_issues_cleared", true
+	case "nvme warning":
+		return "nvme_warning", true
+	case "nvme recovered":
+		return "nvme_recovered", true
+	default:
+		return "", false
+	}
+}
+
+func (s *Service) migrateLegacyDiskSmartSelfTestKinds(tx *gorm.DB) error {
+	legacyPrefix := RuleTemplateDiskSmartSelfTest
+	newPrefix := notifier.DiskSmartSelfTestKindPrefix
+	kinds := make(map[string]struct{})
+	for _, model := range []any{
+		&models.NotificationKindRule{},
+		&models.Notification{},
+		&models.NotificationSuppression{},
+	} {
+		var stored []string
+		if err := tx.Model(model).Where("kind LIKE ?", legacyPrefix+"%").Pluck("kind", &stored).Error; err != nil {
+			return err
+		}
+		for _, kind := range stored {
+			kinds[kind] = struct{}{}
 		}
 	}
 
+	for legacyKind := range kinds {
+		normalized := strings.TrimSpace(strings.ToLower(legacyKind))
+		if !strings.HasPrefix(normalized, legacyPrefix) || strings.HasPrefix(normalized, newPrefix) {
+			continue
+		}
+		device := normalizeRuleTargetKey(normalized[len(legacyPrefix):])
+		if device == "" || strings.HasPrefix(device, ".") {
+			continue
+		}
+		newKind := notifier.KindForDiskSmart(newPrefix, device)
+
+		var legacyRule models.NotificationKindRule
+		legacyRuleErr := tx.Where("kind = ?", legacyKind).First(&legacyRule).Error
+		if legacyRuleErr != nil && legacyRuleErr != gorm.ErrRecordNotFound {
+			return legacyRuleErr
+		}
+		if legacyRuleErr == nil {
+			var currentRule models.NotificationKindRule
+			currentRuleErr := tx.Where("kind = ?", newKind).First(&currentRule).Error
+			switch currentRuleErr {
+			case nil:
+				if notificationRuleShouldReplace(currentRule, legacyRule) {
+					copyNotificationRuleSettings(&currentRule, legacyRule)
+				}
+				if err := tx.Save(&currentRule).Error; err != nil {
+					return err
+				}
+				if err := tx.Delete(&legacyRule).Error; err != nil {
+					return err
+				}
+			case gorm.ErrRecordNotFound:
+				if err := tx.Model(&legacyRule).Update("kind", newKind).Error; err != nil {
+					return err
+				}
+			default:
+				return currentRuleErr
+			}
+		}
+
+		if err := tx.Model(&models.Notification{}).Where("kind = ?", legacyKind).Update("kind", newKind).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.NotificationSuppression{}).Where("kind = ?", legacyKind).Update("kind", newKind).Error; err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func notificationRuleHasAutomaticDefaults(rule models.NotificationKindRule) bool {
+	if !rule.UIEnabled || !rule.NtfyEnabled || !rule.EmailEnabled || rule.DiscordEnabled || rule.UserDisabled {
+		return false
+	}
+	config := strings.TrimSpace(rule.Config)
+	if config == "" || config == "{}" {
+		return true
+	}
+	templateKey, _, ok := resolveTemplateTargetFromKind(rule.Kind)
+	if !ok {
+		return false
+	}
+	var values map[string]float64
+	if err := json.Unmarshal([]byte(config), &values); err != nil || len(values) != 2 {
+		return false
+	}
+	switch templateKey {
+	case RuleTemplateDiskSmartTemperature:
+		return values[diskSmartConfigTemperatureWarningCelsius] == defaultTemperatureWarningCelsius && values[diskSmartConfigTemperatureCriticalCelsius] == defaultTemperatureCriticalCelsius
+	case RuleTemplateDiskSmartWearout:
+		return values[diskSmartConfigWearoutWarningPercent] == defaultWearoutWarningPercent && values[diskSmartConfigWearoutCriticalPercent] == defaultWearoutCriticalPercent
+	default:
+		return false
+	}
+}
+
+func notificationRuleShouldReplace(current, candidate models.NotificationKindRule) bool {
+	currentAutomatic := notificationRuleHasAutomaticDefaults(current)
+	candidateAutomatic := notificationRuleHasAutomaticDefaults(candidate)
+	if currentAutomatic != candidateAutomatic {
+		return currentAutomatic
+	}
+	if currentAutomatic {
+		return false
+	}
+	return candidate.UpdatedAt.After(current.UpdatedAt)
+}
+
+func copyNotificationRuleSettings(target *models.NotificationKindRule, source models.NotificationKindRule) {
+	target.UIEnabled = source.UIEnabled
+	target.NtfyEnabled = source.NtfyEnabled
+	target.EmailEnabled = source.EmailEnabled
+	target.DiscordEnabled = source.DiscordEnabled
+	target.UserDisabled = source.UserDisabled
+	target.Config = source.Config
 }
 
 func (s *Service) listManagedRuleRows(tx *gorm.DB) ([]models.NotificationKindRule, error) {
@@ -1674,31 +2487,8 @@ func (s *Service) ensureTransportConfigs(tx *gorm.DB) ([]models.NotificationTran
 	}
 
 	for idx := range configs {
-		updated := false
 		cfg := &configs[idx]
-		normalizedType := normalizeTransportType(cfg.Type)
-			if normalizedType == "" {
-				if cfg.NtfyEnabled && !cfg.EmailEnabled && !cfg.DiscordEnabled {
-					normalizedType = TransportTypeNtfy
-				} else if cfg.DiscordEnabled && !cfg.NtfyEnabled && !cfg.EmailEnabled {
-					normalizedType = TransportTypeDiscord
-				} else {
-					normalizedType = TransportTypeSMTP
-				}
-			}
-		if cfg.Type != normalizedType {
-			cfg.Type = normalizedType
-			updated = true
-		}
-		if strings.TrimSpace(cfg.NtfyBaseURL) == "" {
-			cfg.NtfyBaseURL = defaultNtfyBaseURL
-			updated = true
-		}
-		if cfg.SMTPPort <= 0 {
-			cfg.SMTPPort = defaultSMTPPort
-			updated = true
-		}
-		if updated {
+		if normalizeTransportConfig(cfg) {
 			if err := tx.Save(cfg).Error; err != nil {
 				return nil, err
 			}
@@ -1708,12 +2498,59 @@ func (s *Service) ensureTransportConfigs(tx *gorm.DB) ([]models.NotificationTran
 	return configs, nil
 }
 
+func normalizeTransportConfig(cfg *models.NotificationTransportConfig) bool {
+	updated := false
+	normalizedType := normalizeTransportType(cfg.Type)
+	if normalizedType == "" {
+		if cfg.NtfyEnabled && !cfg.EmailEnabled && !cfg.DiscordEnabled {
+			normalizedType = TransportTypeNtfy
+		} else if cfg.DiscordEnabled && !cfg.NtfyEnabled && !cfg.EmailEnabled {
+			normalizedType = TransportTypeDiscord
+		} else {
+			normalizedType = TransportTypeSMTP
+		}
+	}
+	if cfg.Type != normalizedType {
+		cfg.Type = normalizedType
+		updated = true
+	}
+	if strings.TrimSpace(cfg.NtfyBaseURL) == "" {
+		cfg.NtfyBaseURL = defaultNtfyBaseURL
+		updated = true
+	}
+	if cfg.SMTPPort <= 0 {
+		cfg.SMTPPort = defaultSMTPPort
+		updated = true
+	}
+	return updated
+}
+
 func (s *Service) listTransportConfigs(ctx context.Context) ([]models.NotificationTransportConfig, error) {
 	if s == nil || s.DB == nil {
 		return nil, fmt.Errorf("notifications_service_not_initialized")
 	}
 
 	return s.ensureTransportConfigsDB(ctx)
+}
+
+func (s *Service) listDeliveryTransportConfigs(ctx context.Context, transportID uint) ([]models.NotificationTransportConfig, error) {
+	if transportID == 0 {
+		return s.listTransportConfigs(ctx)
+	}
+	var cfg models.NotificationTransportConfig
+	result := s.DB.WithContext(ctx).Where("id = ?", transportID).Limit(1).Find(&cfg)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return []models.NotificationTransportConfig{}, nil
+	}
+	if normalizeTransportConfig(&cfg) {
+		if err := s.DB.WithContext(ctx).Save(&cfg).Error; err != nil {
+			return nil, err
+		}
+	}
+	return []models.NotificationTransportConfig{cfg}, nil
 }
 
 func (s *Service) resolveTransportForUpdate(tx *gorm.DB, id uint) (models.NotificationTransportConfig, error) {
@@ -2055,6 +2892,14 @@ func dialSMTPClient(ctx context.Context, host string, port int, useTLS bool) (*s
 	if err != nil {
 		return nil, nil, err
 	}
+	deadline := time.Now().Add(15 * time.Second)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		_ = conn.Close()
+		return nil, nil, err
+	}
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
@@ -2100,6 +2945,8 @@ func normalizeInput(input notifier.EventInput) notifier.EventInput {
 		Source:      strings.TrimSpace(input.Source),
 		Fingerprint: strings.TrimSpace(input.Fingerprint),
 		Metadata:    map[string]string{},
+		Channels:    append([]string(nil), input.Channels...),
+		TransportID: input.TransportID,
 	}
 
 	for key, value := range input.Metadata {
@@ -2111,6 +2958,18 @@ func normalizeInput(input notifier.EventInput) notifier.EventInput {
 	}
 
 	return normalized
+}
+
+func notificationChannelSelected(channels []string, target string) bool {
+	if len(channels) == 0 {
+		return true
+	}
+	for _, channel := range channels {
+		if strings.EqualFold(strings.TrimSpace(channel), target) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeSeverity(value string) string {
@@ -2183,6 +3042,8 @@ func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
 			return RuleTemplateDiskSmartHealth, normalizeRuleTargetKey(diskName), true
 		case notifier.DiskSmartNvmeKindPrefix:
 			return RuleTemplateDiskSmartNvme, normalizeRuleTargetKey(diskName), true
+		case notifier.DiskSmartSelfTestKindPrefix:
+			return RuleTemplateDiskSmartSelfTest, normalizeRuleTargetKey(diskName), true
 		}
 	}
 
@@ -2211,6 +3072,8 @@ func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
 		return notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, targetKey), nil
 	case RuleTemplateDiskSmartNvme:
 		return notifier.KindForDiskSmart(notifier.DiskSmartNvmeKindPrefix, targetKey), nil
+	case RuleTemplateDiskSmartSelfTest:
+		return notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, targetKey), nil
 	default:
 		return "", fmt.Errorf("notification_rule_template_not_found")
 	}
@@ -2260,13 +3123,13 @@ func ntfyTagForSeverity(severity string) string {
 func discordColorForSeverity(severity string) int {
 	switch strings.TrimSpace(strings.ToLower(severity)) {
 	case "info":
-		return 3447003   // blue
+		return 3447003
 	case "warning":
-		return 16776960  // yellow
+		return 16776960
 	case "error":
-		return 15548997  // red
+		return 15548997
 	case "critical":
-		return 10038562  // dark red
+		return 10038562
 	default:
 		return 3447003
 	}

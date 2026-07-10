@@ -77,6 +77,55 @@ func TestParseSCSISenseCode(t *testing.T) {
 	}
 }
 
+func TestParseSCSIPowerMode(t *testing.T) {
+	tests := []struct {
+		ascq uint8
+		mode SCSIPowerMode
+	}{
+		{0x00, SCSIPowerModeLowPower},
+		{0x01, SCSIPowerModeIdle},
+		{0x02, SCSIPowerModeStandby},
+		{0x03, SCSIPowerModeIdle},
+		{0x04, SCSIPowerModeStandby},
+		{0x05, SCSIPowerModeIdle},
+		{0x06, SCSIPowerModeIdle},
+		{0x07, SCSIPowerModeIdle},
+		{0x08, SCSIPowerModeIdle},
+		{0x09, SCSIPowerModeStandbyY},
+		{0x0a, SCSIPowerModeStandbyY},
+		{0x41, SCSIPowerModeActive},
+		{0x42, SCSIPowerModeIdle},
+		{0x43, SCSIPowerModeStandby},
+		{0x45, SCSIPowerModeSleep},
+		{0x47, SCSIPowerModeUnknown},
+	}
+	for _, test := range tests {
+		fixed := make([]byte, 18)
+		fixed[0] = 0x70
+		fixed[12] = 0x5e
+		fixed[13] = test.ascq
+		mode, ok := parseSCSIPowerMode(fixed)
+		if !ok || mode != test.mode {
+			t.Fatalf("fixed ascq=%#x mode=%v valid=%v", test.ascq, mode, ok)
+		}
+		descriptor := []byte{0x72, 0, 0x5e, test.ascq}
+		mode, ok = parseSCSIPowerMode(descriptor)
+		if !ok || mode != test.mode {
+			t.Fatalf("descriptor ascq=%#x mode=%v valid=%v", test.ascq, mode, ok)
+		}
+	}
+
+	active := make([]byte, 18)
+	active[0] = 0x70
+	mode, ok := parseSCSIPowerMode(active)
+	if !ok || mode != SCSIPowerModeActive {
+		t.Fatalf("active mode=%v valid=%v", mode, ok)
+	}
+	if _, ok := parseSCSIPowerMode([]byte{0x70}); ok {
+		t.Fatal("truncated sense accepted")
+	}
+}
+
 func TestSCSIHealthFromCode(t *testing.T) {
 	tests := []struct {
 		asc    uint8

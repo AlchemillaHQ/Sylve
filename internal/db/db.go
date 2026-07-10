@@ -10,6 +10,9 @@ package db
 
 import (
 	"errors"
+	"log"
+	"os"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -34,16 +37,25 @@ import (
 	gormLogger "gorm.io/gorm/logger"
 )
 
+func databaseGormLogger(level gormLogger.LogLevel) gormLogger.Interface {
+	return gormLogger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), gormLogger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  level,
+		IgnoreRecordNotFoundError: true,
+		Colorful:                  true,
+	})
+}
+
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	var logMode gormLogger.Interface
 
 	switch cfg.Environment {
 	case internal.Development:
-		logMode = gormLogger.Default.LogMode(gormLogger.Warn)
+		logMode = databaseGormLogger(gormLogger.Warn)
 	case internal.Debug:
-		logMode = gormLogger.Default.LogMode(gormLogger.Info)
+		logMode = databaseGormLogger(gormLogger.Info)
 	case internal.Production:
-		logMode = gormLogger.Default.LogMode(gormLogger.Silent)
+		logMode = databaseGormLogger(gormLogger.Silent)
 	}
 
 	ormConfig := &gorm.Config{
@@ -88,6 +100,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.DiskSmartSelfTestSchedule{},
+		&models.DiskSmartSelfTestEvent{},
+		&models.DiskSmartSelfTestRun{},
+		&models.DiskSmartSelfTestSchedulerLease{},
 
 		&models.System{},
 		&models.User{},

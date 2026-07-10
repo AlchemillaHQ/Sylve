@@ -42,11 +42,11 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 	var logMode gormLogger.Interface
 	switch cfg.Environment {
 	case internal.Development:
-		logMode = gormLogger.Default.LogMode(gormLogger.Warn)
+		logMode = databaseGormLogger(gormLogger.Warn)
 	case internal.Debug:
-		logMode = gormLogger.Default.LogMode(gormLogger.Info)
+		logMode = databaseGormLogger(gormLogger.Info)
 	case internal.Production:
-		logMode = gormLogger.Default.LogMode(gormLogger.Silent)
+		logMode = databaseGormLogger(gormLogger.Silent)
 	}
 
 	ormConfig := &gorm.Config{

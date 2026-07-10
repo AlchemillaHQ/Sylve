@@ -222,6 +222,7 @@ func parseATAStandardSelfTestLogWithBugs(raw []byte, bugs FirmwareBug) SelfTestL
 		}
 		log.Entries = append(log.Entries, parseATASelfTestEntry(entryRaw))
 	}
+	setATAInProgress(&log)
 	return log
 }
 
@@ -253,7 +254,24 @@ func parseATAExtendedSelfTestLog(raw []byte) SelfTestLog {
 			index--
 		}
 	}
+	setATAInProgress(&log)
 	return log
+}
+
+func setATAInProgress(log *SelfTestLog) {
+	if log == nil || len(log.Entries) == 0 {
+		return
+	}
+	entry := log.Entries[0]
+	if entry.Outcome != SelfTestOutcomeInProgress && entry.Status != "in_progress" {
+		return
+	}
+	log.InProgress = true
+	log.CurrentType = entry.Type
+	if entry.RemainingPct >= 0 {
+		log.ProgressPct = 100 - entry.RemainingPct
+		log.ProgressKnown = true
+	}
 }
 
 func parseNVMESelfTestLog(raw []byte) SelfTestLog {
@@ -300,18 +318,12 @@ func parseNVMESelfTestLog(raw []byte) SelfTestLog {
 }
 
 func parseSCSISelfTestLog(raw []byte) SelfTestLog {
-	log := SelfTestLog{ChecksumValid: true}
-	if len(raw) < 4 || raw[0]&0x3f != 0x10 {
+	log := SelfTestLog{}
+	if len(raw) < 0x194 || raw[0]&0x3f != 0x10 || binary.BigEndian.Uint16(raw[2:4]) != 0x190 {
 		return log
 	}
-	end := 4 + int(binary.BigEndian.Uint16(raw[2:4]))
-	if end > len(raw) {
-		return log
-	}
-	entryCount := (end - 4) / 20
-	if entryCount > 20 {
-		entryCount = 20
-	}
+	log.ChecksumValid = true
+	entryCount := 20
 	validEntries := 0
 	for i := 0; i < entryCount; i++ {
 		entryRaw := raw[4+i*20 : 4+(i+1)*20]
@@ -330,19 +342,21 @@ func parseSCSISelfTestLog(raw []byte) SelfTestLog {
 		}
 		scsi := parseSCSISelfTestEntry(entryRaw)
 		entry := SelfTestEntry{
-			Protocol:      "SCSI",
-			Type:          scsi.Type,
-			Mode:          scsi.Mode,
-			Status:        scsi.Status,
-			Outcome:       selfTestOutcome(scsi.Status),
-			RemainingPct:  -1,
-			LifetimeHours: scsi.LifetimeHours,
-			LBA:           scsi.LBA,
-			LBAValid:      scsi.LBAValid,
-			SegmentNum:    scsi.SegmentNumber,
-			SenseKey:      scsi.SenseKey,
-			ASC:           scsi.ASC,
-			ASCQ:          scsi.ASCQ,
+			Protocol:       "SCSI",
+			Type:           scsi.Type,
+			Mode:           scsi.Mode,
+			Status:         scsi.Status,
+			Outcome:        selfTestOutcome(scsi.Status),
+			RemainingPct:   -1,
+			LifetimeHours:  scsi.LifetimeHours,
+			LBA:            scsi.LBA,
+			LBAValid:       scsi.LBAValid,
+			SegmentNum:     scsi.SegmentNumber,
+			SenseKey:       scsi.SenseKey,
+			ASC:            scsi.ASC,
+			ASCQ:           scsi.ASCQ,
+			ParameterCode:  scsi.ParameterCode,
+			VendorSpecific: scsi.VendorSpecific,
 		}
 		if i == 0 && entry.Outcome == SelfTestOutcomeInProgress {
 			log.InProgress = true
@@ -385,16 +399,22 @@ func parseATASelfTestEntry(raw []byte) SelfTestEntry {
 	switch raw[0] {
 	case 0x00:
 		e.Type = "offline"
+		e.Mode = "offline"
 	case 0x01:
 		e.Type = "short"
+		e.Mode = "offline"
 	case 0x02:
 		e.Type = "extended"
+		e.Mode = "offline"
 	case 0x03:
 		e.Type = "conveyance"
+		e.Mode = "offline"
 	case 0x04:
 		e.Type = "selective"
+		e.Mode = "offline"
 	case 0x7F:
 		e.Type = "abort"
+		e.Mode = "offline"
 	case 0x81:
 		e.Type = "short_captive"
 		e.Mode = "captive"
@@ -408,7 +428,7 @@ func parseATASelfTestEntry(raw []byte) SelfTestEntry {
 		e.Type = "selective_captive"
 		e.Mode = "captive"
 	default:
-		if raw[0] >= 0x40 && raw[0] <= 0x7E {
+		if raw[0] >= 0x40 && raw[0] <= 0x7E || raw[0] >= 0x90 {
 			e.Type = "vendor_specific"
 		} else {
 			e.Type = "unknown"
@@ -589,17 +609,23 @@ func parseSCSISelfTestEntry(raw []byte) SCSISelfTestEntry {
 	if len(raw) >= 6 {
 		e.SegmentNumber = raw[5]
 	}
+	if len(raw) >= 2 {
+		e.ParameterCode = binary.BigEndian.Uint16(raw[0:2])
+	}
 	if len(raw) >= 8 {
 		e.LifetimeHours = uint64(binary.BigEndian.Uint16(raw[6:8]))
 	}
 	if len(raw) >= 16 {
 		e.LBA = binary.BigEndian.Uint64(raw[8:16])
-		e.LBAValid = result >= 3 && result <= 7 && e.LBA != 0xffffffffffffffff
+		e.LBAValid = result > 0 && result < 0x0f && e.LBA != 0xffffffffffffffff
 	}
 	if len(raw) >= 19 {
 		e.SenseKey = raw[16] & 0x0f
 		e.ASC = raw[17]
 		e.ASCQ = raw[18]
+	}
+	if len(raw) >= 20 {
+		e.VendorSpecific = raw[19]
 	}
 	return e
 }

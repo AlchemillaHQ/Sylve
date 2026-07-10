@@ -271,6 +271,10 @@ func (s *Service) CreateShare(
 	auditEnabled bool,
 	auditedOperations []string,
 ) error {
+	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
+		return err
+	}
+
 	var nameConflictCount int64
 	if err := s.DB.Model(&sambaModels.SambaShare{}).
 		Where("name = ?", name).
@@ -421,6 +425,10 @@ func (s *Service) UpdateShare(
 	auditEnabled bool,
 	auditedOperations []string,
 ) error {
+	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
+		return err
+	}
+
 	var share sambaModels.SambaShare
 	if err := s.DB.
 		Preload("ReadOnlyUsers").

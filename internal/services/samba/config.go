@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
@@ -33,7 +34,25 @@ const (
 	writeACLPerm    = "modify_set"
 )
 
-var sambaRunCommand = utils.RunCommand
+var (
+	sambaRunCommand      = utils.RunCommand
+	sambaConfigFilePath  = "/usr/local/etc/smb4.conf"
+	sambaTestparmPath    = "/usr/local/bin/testparm"
+	sambaAtomicWriteFile = utils.AtomicWriteFile
+)
+
+var allowedSambaAuditOperations = map[string]struct{}{
+	"connect":     {},
+	"disconnect":  {},
+	"create_file": {},
+	"mkdirat":     {},
+	"unlinkat":    {},
+	"renameat":    {},
+	"openat":      {},
+	"close":       {},
+	"read":        {},
+	"write":       {},
+}
 
 func isMissingACLEntryRemovalError(err error) bool {
 	if err == nil {
@@ -41,6 +60,39 @@ func isMissingACLEntryRemovalError(err error) bool {
 	}
 
 	return strings.Contains(err.Error(), "cannot remove non-existent ACL entry")
+}
+
+func validateSambaShareInput(name, createMask, directoryMask string, auditedOperations []string) error {
+	if name == "" || strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\r\n[]") {
+		return fmt.Errorf("invalid_share_name")
+	}
+
+	validMask := func(mask string) bool {
+		if len(mask) != 4 {
+			return false
+		}
+		for _, char := range mask {
+			if char < '0' || char > '7' {
+				return false
+			}
+		}
+		return true
+	}
+
+	if !validMask(createMask) {
+		return fmt.Errorf("invalid_create_mask")
+	}
+	if !validMask(directoryMask) {
+		return fmt.Errorf("invalid_directory_mask")
+	}
+
+	for _, operation := range auditedOperations {
+		if _, allowed := allowedSambaAuditOperations[operation]; !allowed {
+			return fmt.Errorf("invalid_audit_operation: %s", operation)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
@@ -77,7 +129,7 @@ func (s *Service) SetGlobalConfig(
 		return fmt.Errorf("invalid workgroup name: %s", workgroup)
 	}
 
-	if !utils.IsValidServerString(serverString) {
+	if !utils.IsValidServerString(serverString) || strings.ContainsAny(serverString, "\r\n\x00") {
 		return fmt.Errorf("invalid server string: %s", serverString)
 	}
 
@@ -477,6 +529,10 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 
 	var datasets = make(map[string]*gzfs.Dataset)
 	for _, share := range shares {
+		if err := validateSambaShareInput(share.Name, share.CreateMask, share.DirectoryMask, share.AuditedOperations); err != nil {
+			return "", fmt.Errorf("invalid configuration for share %q: %w", share.Name, err)
+		}
+
 		if _, exists := datasets[share.Dataset]; !exists {
 			ds, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
 			if err != nil {
@@ -600,7 +656,7 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 			config.WriteString("\tfruit:posix_rename = yes\n")
 		}
 
-		if share.TimeMachine {
+		if settings.AppleExtensions && share.TimeMachine {
 			config.WriteString("\tfruit:time machine = yes\n")
 			if share.TimeMachineMaxSize > 0 {
 				config.WriteString(fmt.Sprintf("\tfruit:time machine max size = %dG\n", share.TimeMachineMaxSize))
@@ -624,6 +680,31 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 	return config.String(), nil
 }
 
+func validateSambaConfig(config string) error {
+	dir := filepath.Dir(sambaConfigFilePath)
+	file, err := os.CreateTemp(dir, ".smb4.conf-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary Samba configuration: %w", err)
+	}
+	temporaryPath := file.Name()
+	defer os.Remove(temporaryPath)
+
+	if _, err := file.WriteString(config); err != nil {
+		file.Close()
+		return fmt.Errorf("failed to write temporary Samba configuration: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary Samba configuration: %w", err)
+	}
+
+	output, err := sambaRunCommand(sambaTestparmPath, "-s", temporaryPath)
+	if err != nil {
+		return fmt.Errorf("Samba configuration validation failed: %w: %s", err, output)
+	}
+
+	return nil
+}
+
 func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	gCfg, err := s.GlobalConfig()
 	if err != nil {
@@ -640,21 +721,23 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	}
 
 	fullConfig := gCfg + "\n" + shareCfg
-	filePath := "/usr/local/etc/smb4.conf"
-
-	if err := os.WriteFile(filePath, []byte(fullConfig), 0644); err != nil {
-		return fmt.Errorf("failed to write Samba configuration to %s: %w", filePath, err)
+	if err := validateSambaConfig(fullConfig); err != nil {
+		return err
 	}
 
-	if s.OnConfigChange != nil {
-		if err := s.OnConfigChange(); err != nil {
-			logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
-		}
+	if err := sambaAtomicWriteFile(sambaConfigFilePath, []byte(fullConfig), 0644); err != nil {
+		return fmt.Errorf("failed to write Samba configuration to %s: %w", sambaConfigFilePath, err)
 	}
 
 	if reload {
 		if err := system.ServiceAction("samba_server", "onerestart"); err != nil {
 			return fmt.Errorf("failed to restart Samba service: %w", err)
+		}
+	}
+
+	if s.OnConfigChange != nil {
+		if err := s.OnConfigChange(); err != nil {
+			logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
 		}
 	}
 

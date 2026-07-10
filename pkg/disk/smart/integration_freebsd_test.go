@@ -24,6 +24,25 @@ func TestHardwareReadOnly(t *testing.T) {
 	}
 
 	started := time.Now()
+	powerMode, powerModeErr := CheckATAPowerMode(devicePath)
+	if powerModeErr == nil {
+		t.Logf("ATA power mode before open: %s (0x%02x) in %s", powerMode, int(powerMode), time.Since(started))
+	} else if errors.Is(powerModeErr, ErrUnsupportedFeature) {
+		t.Logf("ATA power mode before open: unsupported in %s", time.Since(started))
+		started = time.Now()
+		scsiPowerMode, scsiPowerModeErr := CheckSCSIPowerMode(devicePath)
+		if scsiPowerModeErr == nil {
+			t.Logf("SCSI power mode before open: %s in %s", scsiPowerMode, time.Since(started))
+		} else if errors.Is(scsiPowerModeErr, ErrUnsupportedFeature) {
+			t.Logf("SCSI power mode before open: unsupported in %s", time.Since(started))
+		} else {
+			t.Logf("SCSI power mode before open: unavailable: %v", scsiPowerModeErr)
+		}
+	} else {
+		t.Logf("ATA power mode before open: unavailable: %v", powerModeErr)
+	}
+
+	started = time.Now()
 	d, err := OpenDevice(devicePath)
 	if err != nil {
 		t.Fatal(err)
@@ -35,20 +54,23 @@ func TestHardwareReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !supported {
-		t.Fatalf("SMART is not supported by %s", devicePath)
-	}
+	t.Logf("SMART support reported: %v", supported)
 
 	capabilities, err := d.SelfTestCapabilities()
 	if err != nil {
 		t.Fatalf("self-test capabilities: %v", err)
 	}
-	if !capabilities.Supported || !capabilities.Short || !capabilities.Extended {
-		t.Fatalf("incomplete self-test capabilities: %+v", capabilities)
+	status := &SelfTestStatus{
+		Protocol:     capabilities.Protocol,
+		State:        SelfTestStateIdle,
+		ProgressPct:  -1,
+		RemainingPct: -1,
 	}
-	status, err := d.SelfTestStatus()
-	if err != nil {
-		t.Fatalf("self-test status: %v", err)
+	if capabilities.Supported {
+		status, err = d.SelfTestStatus()
+		if err != nil {
+			t.Fatalf("self-test status: %v", err)
+		}
 	}
 	t.Logf("self-test: protocol=%s state=%s execution=%s progress=%d progress_known=%v short_minutes=%d extended_minutes=%d results=%d",
 		capabilities.Protocol, status.State, status.ExecutionStatus, status.ProgressPct,
@@ -68,22 +90,30 @@ func TestHardwareReadOnly(t *testing.T) {
 	}
 	t.Logf("SMART data: %s", time.Since(started))
 
-	started = time.Now()
-	selfTests, err := d.ReadSelfTestLog()
-	if err != nil {
-		t.Fatalf("self-test result log: %v", err)
+	selfTests := &SelfTestLog{}
+	if capabilities.ResultLog {
+		started = time.Now()
+		selfTests, err = d.ReadSelfTestLog()
+		if err != nil {
+			t.Fatalf("self-test result log: %v", err)
+		}
+		t.Logf("self-test log: %s", time.Since(started))
+	} else {
+		t.Log("self-test result log: unavailable")
 	}
-	t.Logf("self-test log: %s", time.Since(started))
 	t.Logf("%s %s: protocol=%s health_known=%v passed=%v attributes=%d self_tests=%d",
 		info.Model, info.Firmware, info.Protocol, info.HealthKnown, info.Passed,
 		len(info.Attributes), len(selfTests.Entries))
 
 	switch info.Protocol {
 	case "ATA":
+		if powerModeErr != nil {
+			t.Fatalf("ATA power mode: %v", powerModeErr)
+		}
 		if info.SectorCount == 0 {
 			t.Fatal("ATA sector count is unavailable")
 		}
-		if !info.ChecksumValid || !selfTests.ChecksumValid {
+		if !info.ChecksumValid || capabilities.ResultLog && !selfTests.ChecksumValid {
 			t.Fatalf("invalid ATA SMART checksum: data=%v self-tests=%v", info.ChecksumValid, selfTests.ChecksumValid)
 		}
 		errorLog, err := d.ReadErrorLog()
@@ -168,10 +198,10 @@ func TestHardwareReadOnly(t *testing.T) {
 				t.Fatalf("internal SCSI page exposed as an attribute: page=%#x id=%#x bytes=%d", attribute.Page, attribute.ID, len(attribute.RawBytes))
 			}
 		}
-		if info.SCSISelfTestLog == nil {
+		if capabilities.ResultLog && info.SCSISelfTestLog == nil {
 			t.Fatal("SCSI self-test log was not retained from the device read")
 		}
-		if len(info.SCSISelfTestResults) != len(info.SCSISelfTestLog.Entries) {
+		if info.SCSISelfTestLog != nil && len(info.SCSISelfTestResults) != len(info.SCSISelfTestLog.Entries) {
 			t.Fatalf("inconsistent SCSI self-test results: legacy=%d normalized=%d", len(info.SCSISelfTestResults), len(info.SCSISelfTestLog.Entries))
 		}
 	case "NVMe":
@@ -196,14 +226,23 @@ func TestHardwareShortSelfTest(t *testing.T) {
 	}
 	defer d.Close()
 
+	capabilities, err := d.SelfTestCapabilities()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.Short {
+		t.Fatalf("short self-test unsupported: %+v", capabilities)
+	}
 	if err := d.SelfTest(SelfTestShort); err != nil {
 		t.Fatalf("start short self-test: %v", err)
 	}
 	if err := d.AbortSelfTest(); err != nil {
 		t.Fatalf("abort short self-test: %v", err)
 	}
-	if _, err := d.ReadSelfTestLog(); err != nil {
-		t.Fatalf("read self-test results after abort: %v", err)
+	if capabilities.ResultLog {
+		if _, err := d.ReadSelfTestLog(); err != nil {
+			t.Fatalf("read self-test results after abort: %v", err)
+		}
 	}
 	status, err := d.SelfTestStatus()
 	if err != nil {
@@ -232,6 +271,9 @@ func TestHardwareCompletedShortSelfTest(t *testing.T) {
 	}
 	if !capabilities.Short {
 		t.Fatalf("short self-test unsupported: %+v", capabilities)
+	}
+	if !capabilities.ResultLog {
+		t.Skip("completed self-test verification requires a result log")
 	}
 	duration := capabilities.ShortDurationMinutes
 	if duration <= 0 {
