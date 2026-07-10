@@ -161,6 +161,19 @@ func TestHardwareReadOnly(t *testing.T) {
 				t.Fatalf("SCT unsupported result: %v", err)
 			}
 		}
+	case "SCSI":
+		for _, attribute := range info.Attributes {
+			switch attribute.Page {
+			case 0x10, 0x15, 0x18, 0x2f:
+				t.Fatalf("internal SCSI page exposed as an attribute: page=%#x id=%#x bytes=%d", attribute.Page, attribute.ID, len(attribute.RawBytes))
+			}
+		}
+		if info.SCSISelfTestLog == nil {
+			t.Fatal("SCSI self-test log was not retained from the device read")
+		}
+		if len(info.SCSISelfTestResults) != len(info.SCSISelfTestLog.Entries) {
+			t.Fatalf("inconsistent SCSI self-test results: legacy=%d normalized=%d", len(info.SCSISelfTestResults), len(info.SCSISelfTestLog.Entries))
+		}
 	case "NVMe":
 		if _, err := d.ReadNVMeErrorLog(); err != nil {
 			t.Fatalf("NVMe error log: %v", err)

@@ -1970,87 +1970,66 @@ __smart_map_scsi_info_exception(smart_map_t *sm, void *b, size_t bsize)
 		uint8_t temp_trip_point;
 		uint8_t temp_max;
 	} __attribute__((packed)) *param;
-	uint32_t a, p, page_length;
+	uint32_t a, page_length;
 
 	a = sm->count;
-
-	p = 0;
 	page_length = be16toh(ie->page_length);
-
-	if (page_length + 4 > bsize) {
+	if (page_length < 4 || page_length + 4 > bsize)
 		return;
+	param = (struct scsi_ie_param *)ie->param;
+	if (be16toh(param->code) != 0 || param->length < 2 ||
+	    4 + param->length > page_length || a + 2 > sm->sb->attr_count)
+		return;
+
+	sm->attr[a].page = ie->page_code;
+	sm->attr[a].id = offsetof(struct scsi_ie_param, asc);
+	sm->attr[a].description = "Informational Exception ASC";
+	sm->attr[a].bytes = 1;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = &param->asc;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	sm->attr[a].page = ie->page_code;
+	sm->attr[a].id = offsetof(struct scsi_ie_param, ascq);
+	sm->attr[a].description = "Informational Exception ASCQ";
+	sm->attr[a].bytes = 1;
+	sm->attr[a].flags = 0;
+	sm->attr[a].raw = &param->ascq;
+	sm->attr[a].thresh = NULL;
+	a++;
+
+	if (param->length >= 3 && a < sm->sb->attr_count) {
+		sm->attr[a].page = ie->page_code;
+		sm->attr[a].id = offsetof(struct scsi_ie_param, temp_recent);
+		sm->attr[a].description = "Informational Exception Most recent temperature";
+		sm->attr[a].bytes = 1;
+		sm->attr[a].flags = 0;
+		sm->attr[a].raw = &param->temp_recent;
+		sm->attr[a].thresh = NULL;
+		a++;
 	}
 
-	while (p < page_length) {
-		if (p + 4 > page_length) {
-			break;
-		}
-
-		param = (struct scsi_ie_param *)(ie->param + p);
-
-		if (p + 4 + param->length > page_length) {
-			break;
-		}
-		if (param->length < 2) {
-			p += 4 + param->length;
-			continue;
-		}
-		if (a + 2 > sm->sb->attr_count) {
-			break;
-		}
-
+	if (param->length >= 4 && a < sm->sb->attr_count) {
 		sm->attr[a].page = ie->page_code;
-		sm->attr[a].id = offsetof(struct scsi_ie_param, asc);
-		sm->attr[a].description = "Informational Exception ASC";
+		sm->attr[a].id = offsetof(struct scsi_ie_param, temp_trip_point);
+		sm->attr[a].description = "Informational Exception Vendor HDA temperature trip point";
 		sm->attr[a].bytes = 1;
 		sm->attr[a].flags = 0;
-		sm->attr[a].raw = &param->asc;
+		sm->attr[a].raw = &param->temp_trip_point;
 		sm->attr[a].thresh = NULL;
 		a++;
+	}
 
+	if (param->length >= 5 && a < sm->sb->attr_count) {
 		sm->attr[a].page = ie->page_code;
-		sm->attr[a].id = offsetof(struct scsi_ie_param, ascq);
-		sm->attr[a].description = "Informational Exception ASCQ";
+		sm->attr[a].id = offsetof(struct scsi_ie_param, temp_max);
+		sm->attr[a].description = "Informational Exception Maximum temperature";
 		sm->attr[a].bytes = 1;
 		sm->attr[a].flags = 0;
-		sm->attr[a].raw = &param->ascq;
+		sm->attr[a].raw = &param->temp_max;
 		sm->attr[a].thresh = NULL;
 		a++;
-
-		if (param->length >= 3 && a < sm->sb->attr_count) {
-			sm->attr[a].page = ie->page_code;
-			sm->attr[a].id = offsetof(struct scsi_ie_param, temp_recent);
-			sm->attr[a].description = "Informational Exception Most recent temperature";
-			sm->attr[a].bytes = 1;
-			sm->attr[a].flags = 0;
-			sm->attr[a].raw = &param->temp_recent;
-			sm->attr[a].thresh = NULL;
-			a++;
-		}
-
-		if (param->length >= 4 && a < sm->sb->attr_count) {
-			sm->attr[a].page = ie->page_code;
-			sm->attr[a].id = offsetof(struct scsi_ie_param, temp_trip_point);
-			sm->attr[a].description = "Informational Exception Vendor HDA temperature trip point";
-			sm->attr[a].bytes = 1;
-			sm->attr[a].flags = 0;
-			sm->attr[a].raw = &param->temp_trip_point;
-			sm->attr[a].thresh = NULL;
-			a++;
-		}
-
-		if (param->length >= 5 && a < sm->sb->attr_count) {
-			sm->attr[a].page = ie->page_code;
-			sm->attr[a].id = offsetof(struct scsi_ie_param, temp_max);
-			sm->attr[a].description = "Informational Exception Maximum temperature";
-			sm->attr[a].bytes = 1;
-			sm->attr[a].flags = 0;
-			sm->attr[a].raw = &param->temp_max;
-			sm->attr[a].thresh = NULL;
-			a++;
-		}
-
-		p += 4 + param->length;
 	}
 
 	sm->count = a;
@@ -2060,11 +2039,19 @@ static void
 __smart_map_scsi_raw(smart_map_t *sm, void *b, size_t bsize, uint32_t page)
 {
 	uint32_t a = sm->count;
+	uint8_t *buf = b;
+	size_t actual;
+
+	if (bsize < 4 || (buf[0] & 0x3f) != page)
+		return;
+	actual = 4 + ((size_t)buf[2] << 8) + buf[3];
+	if (actual > bsize)
+		return;
 
 	sm->attr[a].page = page;
 	sm->attr[a].id = 0;
 	sm->attr[a].description = "SCSI Log Page";
-	sm->attr[a].bytes = bsize;
+	sm->attr[a].bytes = actual;
 	sm->attr[a].flags = SMART_ATTR_F_BE;
 	sm->attr[a].raw = b;
 	sm->attr[a].thresh = NULL;
@@ -2093,17 +2080,8 @@ __smart_map_scsi_self_test(smart_map_t *sm, void *b, size_t bsize)
 
 	for (i = 0; i < max_entries && a < sm->sb->attr_count; i++) {
 		uint8_t *entry = buf + 4 + (i * 20);
-
-		uint32_t j;
-		uint8_t all_zero = 1;
-		for (j = 0; j < 20; j++) {
-			if (entry[j] != 0) {
-				all_zero = 0;
-				break;
-			}
-		}
-		if (all_zero)
-			continue;
+		if (entry[4] == 0 && entry[6] == 0 && entry[7] == 0)
+			break;
 
 		sm->attr[a].page = PAGE_ID_SCSI_SELF_TEST;
 		sm->attr[a].id = (uint16_t)entry[0] << 8 | entry[1];

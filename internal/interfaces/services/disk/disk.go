@@ -47,6 +47,7 @@ type DiskSelfTestStatus struct {
 type SmartData struct {
 	Device              DeviceInfo              `json:"device"`
 	Passed              bool                    `json:"passed"`
+	HealthKnown         bool                    `json:"health_known"`
 	ChecksumValid       bool                    `json:"checksum_valid"`
 	PowerOnHours        int                     `json:"power_on_hours"`
 	PowerCycleCount     int                     `json:"power_cycle_count"`
@@ -63,6 +64,7 @@ type DiskSCSISelfTestEntry struct {
 	Status        string `json:"status"`
 	LifetimeHours uint64 `json:"lifetime_hours"`
 	LBA           uint64 `json:"lba"`
+	LBAValid      bool   `json:"lba_valid"`
 	SenseKey      uint8  `json:"sense_key"`
 	ASC           uint8  `json:"asc"`
 	ASCQ          uint8  `json:"ascq"`
@@ -100,6 +102,7 @@ type NvmeCriticalWarningState struct {
 type SMARTNvme struct {
 	Device               DeviceInfo `json:"device"`
 	Passed               bool       `json:"passed"`
+	HealthKnown          bool       `json:"health_known"`
 	PowerOnHours         int        `json:"power_on_hours"`
 	PowerOnHoursExact    string     `json:"power_on_hours_exact"`
 	PowerCycleCount      int        `json:"power_cycle_count"`
@@ -232,7 +235,9 @@ type DiskSelfTestEntry struct {
 	RemainingPct  int    `json:"remaining_pct"`
 	LifetimeHours uint64 `json:"lifetime_hours"`
 	LBA           uint64 `json:"lba"`
+	LBAValid      bool   `json:"lba_valid"`
 	NSID          uint32 `json:"nsid"`
+	NSIDValid     bool   `json:"nsid_valid"`
 }
 
 type DiskSelfTestLog struct {

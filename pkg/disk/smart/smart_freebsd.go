@@ -116,6 +116,37 @@ static uint64_t get_device_sector_count(smart_h h) {
     smart_t *s = (smart_t *)h;
     return s ? s->info.sector_count : 0;
 }
+
+static void * get_scsi_page_buffer(smart_h h, smart_map_t *sm, uint32_t page, size_t *size) {
+    smart_t *s = (smart_t *)h;
+    size_t offset = 0;
+    unsigned char *buf;
+    if (size) *size = 0;
+    if (!s || !sm || !sm->sb || !sm->sb->b || !s->pg_list || !size)
+        return NULL;
+    if (s->protocol != SMART_PROTO_SCSI)
+        return NULL;
+    buf = (unsigned char *)sm->sb->b;
+    for (uint32_t i = 0; i < s->pg_list->pg_count; i++) {
+        size_t allocated = s->pg_list->pages[i].bytes;
+        if (offset > sm->sb->bsize || allocated > sm->sb->bsize - offset)
+            return NULL;
+        if (s->pg_list->pages[i].id == page) {
+            size_t actual;
+            if (allocated < 4)
+                return NULL;
+            if ((buf[offset] & 0x3f) != page)
+                return NULL;
+            actual = 4 + ((size_t)buf[offset + 2] << 8) + buf[offset + 3];
+            if (actual > allocated)
+                return NULL;
+            *size = actual;
+            return buf + offset;
+        }
+        offset += allocated;
+    }
+    return NULL;
+}
 */
 import "C"
 import (
@@ -149,6 +180,32 @@ func wrapDeviceError(h C.smart_h, err error, devicePath string) error {
 		return fmt.Errorf("%w: %s: %v", ErrControllerAborted, devicePath, err)
 	}
 	return err
+}
+
+func scsiPageBytes(h C.smart_h, sm *C.smart_map_t, page uint32) []byte {
+	var size C.size_t
+	buf := C.get_scsi_page_buffer(h, sm, C.uint32_t(page), &size)
+	if buf == nil || size == 0 {
+		return nil
+	}
+	return C.GoBytes(buf, C.int(size))
+}
+
+func readSCSIHealthLocked(h C.smart_h, devicePath string, info scsiInformationalException, valid bool) (bool, bool, error) {
+	if !scsiHealthNeedsRequestSense(info, valid) {
+		known, passed := scsiHealthFromCode(info.ASC, info.ASCQ)
+		return known, passed, nil
+	}
+	raw := make([]byte, 252)
+	if rc := C.smart_scsi_request_sense(h, unsafe.Pointer(&raw[0]), C.size_t(len(raw))); rc != 0 {
+		return false, false, wrapDeviceError(h, fmt.Errorf("SCSI request sense failed on %s with code %d", devicePath, int(rc)), devicePath)
+	}
+	asc, ascq, ok := parseSCSISenseCode(raw)
+	if !ok {
+		return false, false, fmt.Errorf("invalid SCSI request sense response from %s", devicePath)
+	}
+	known, passed := scsiHealthFromCode(asc, ascq)
+	return known, passed, nil
 }
 
 type Device struct {
@@ -331,7 +388,20 @@ func (d *Device) Read() (*DeviceInfo, error) {
 		info.Protocol = "Unknown"
 	}
 
+	var scsiInfo scsiInformationalException
+	var scsiInfoValid bool
+	var scsiSelfTestRaw []byte
+	var scsiSolidStateRaw []byte
+	var scsiBackgroundScanRaw []byte
+	if protoVal == C.SMART_PROTO_SCSI {
+		scsiInfo, scsiInfoValid = parseSCSIInformationalException(scsiPageBytes(h, sm, 0x2f))
+		scsiSelfTestRaw = scsiPageBytes(h, sm, 0x10)
+		scsiSolidStateRaw = scsiPageBytes(h, sm, 0x11)
+		scsiBackgroundScanRaw = scsiPageBytes(h, sm, 0x15)
+	}
+
 	count := int(sm.count)
+	scsiTemperatureKnown := false
 	for i := 0; i < count; i++ {
 		cAttr := C.get_attr_at(sm, C.int(i))
 		thresh := int(C.get_threshold_for_id(&cAttr, cAttr.id))
@@ -346,6 +416,12 @@ func (d *Device) Read() (*DeviceInfo, error) {
 			ID:        uint32(cAttr.id),
 			Name:      C.GoString(cAttr.description),
 			Threshold: thresh,
+		}
+		if protoVal == C.SMART_PROTO_SCSI {
+			switch attr.Page {
+			case 0x10, 0x11, 0x15, 0x18, 0x2f:
+				continue
+			}
 		}
 
 		if isATA {
@@ -403,22 +479,14 @@ func (d *Device) Read() (*DeviceInfo, error) {
 
 		if !isATA {
 			if attr.Page == 0x0D && attr.ID == 0 {
-				info.Temperature = int(attr.RawValue)
+				if attr.RawValue != 0xff {
+					info.Temperature = int(attr.RawValue)
+					scsiTemperatureKnown = true
+				}
 			}
 			if attr.Page == 0x02 && attr.ID == 0 && info.Protocol == "NVMe" {
 				info.HealthKnown = true
 				info.Passed = attr.RawValue == 0
-			}
-			if attr.Page == 0x2F && info.Protocol == "SCSI" {
-				if attr.ID == 4 || attr.ID == 5 {
-					if !info.HealthKnown {
-						info.Passed = true
-					}
-					info.HealthKnown = true
-				}
-				if (attr.ID == 4 && attr.RawValue != 0) || (attr.ID == 5 && attr.RawValue != 0) {
-					info.Passed = false
-				}
 			}
 			if attr.Page == 0x02 && attr.ID == 1 && info.Protocol == "NVMe" {
 				t := int(attr.RawValue)
@@ -434,12 +502,6 @@ func (d *Device) Read() (*DeviceInfo, error) {
 			}
 			if attr.Page == 0x02 && attr.ID == 128 && info.Protocol == "NVMe" {
 				info.PowerOnHours = int(attr.RawValue)
-			}
-			if attr.Page == 0x10 && len(attr.RawBytes) >= 20 {
-				e := parseSCSISelfTestEntry(attr.RawBytes)
-				if e.Type != "" {
-					info.SCSISelfTestResults = append(info.SCSISelfTestResults, e)
-				}
 			}
 			continue
 		}
@@ -469,25 +531,49 @@ func (d *Device) Read() (*DeviceInfo, error) {
 	}
 
 	if info.Protocol == "SCSI" {
-		for _, attr := range info.Attributes {
-			switch attr.Page {
-			case 0x15:
-				if minutes, ok := parseSCSIBackgroundScanPowerOnMinutes(attr.RawBytes); ok {
-					info.PowerOnHours = int(minutes / 60)
-				}
-			case 0x11:
-				if pct, ok := parseSCSILogParamUint64(attr.RawBytes, 0x0001); ok {
-					used := int(pct)
-					if used > 100 {
-						used = 100
+		known, passed, healthErr := readSCSIHealthLocked(h, devicePath, scsiInfo, scsiInfoValid)
+		if healthErr != nil {
+			return nil, healthErr
+		}
+		info.HealthKnown = known
+		info.Passed = passed
+		if !scsiTemperatureKnown && scsiInfoValid && scsiInfo.CurrentTemperatureKnown {
+			info.Temperature = int(scsiInfo.CurrentTemperature)
+		}
+		if minutes, ok := parseSCSIBackgroundScanPowerOnMinutes(scsiBackgroundScanRaw); ok {
+			info.PowerOnHours = int(minutes / 60)
+		}
+		if pct, ok := parseSCSILogParamUint64(scsiSolidStateRaw, 0x0001); ok {
+			used := int(pct)
+			if used > 100 {
+				used = 100
+			}
+			info.Attributes = append(info.Attributes, Attribute{
+				Page:     0x11,
+				ID:       1,
+				Name:     "Percentage Used Endurance Indicator",
+				Value:    100 - used,
+				RawValue: pct,
+			})
+		}
+		if len(scsiSelfTestRaw) != 0 {
+			selfTestLog := parseSCSISelfTestLog(scsiSelfTestRaw)
+			info.SCSISelfTestLog = &selfTestLog
+			if len(selfTestLog.Entries) != 0 {
+				info.SCSISelfTestResults = make([]SCSISelfTestEntry, len(selfTestLog.Entries))
+				for i, entry := range selfTestLog.Entries {
+					info.SCSISelfTestResults[i] = SCSISelfTestEntry{
+						Type:          entry.Type,
+						Mode:          entry.Mode,
+						Status:        entry.Status,
+						LifetimeHours: entry.LifetimeHours,
+						LBA:           entry.LBA,
+						LBAValid:      entry.LBAValid,
+						SenseKey:      entry.SenseKey,
+						ASC:           entry.ASC,
+						ASCQ:          entry.ASCQ,
+						SegmentNumber: entry.SegmentNum,
 					}
-					info.Attributes = append(info.Attributes, Attribute{
-						Page:     0x11,
-						ID:       1,
-						Name:     "Percentage Used Endurance Indicator",
-						Value:    100 - used,
-						RawValue: pct,
-					})
 				}
 			}
 		}

@@ -50,6 +50,7 @@ func makeATA(temp int, passed bool, powerOnHours int, attrs ...diskServiceInterf
 	return diskServiceInterfaces.SmartData{
 		Device:          diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
 		Passed:          passed,
+		HealthKnown:     true,
 		PowerOnHours:    powerOnHours,
 		Temperature:     temp,
 		PowerCycleCount: 0,
@@ -61,6 +62,7 @@ func makeSCSI(temp int, passed bool, attrs ...diskServiceInterfaces.ATASmartAttr
 	return diskServiceInterfaces.SmartData{
 		Device:          diskServiceInterfaces.DeviceInfo{Protocol: "SCSI"},
 		Passed:          passed,
+		HealthKnown:     true,
 		PowerOnHours:    0,
 		Temperature:     temp,
 		PowerCycleCount: 0,
@@ -70,12 +72,13 @@ func makeSCSI(temp int, passed bool, attrs ...diskServiceInterfaces.ATASmartAttr
 
 func makeNVMe(pctUsed int, criticalWarning string) diskServiceInterfaces.SMARTNvme {
 	return diskServiceInterfaces.SMARTNvme{
-		Device:        diskServiceInterfaces.DeviceInfo{Protocol: "NVMe"},
-		Passed:        true,
-		Temperature:   40,
-		PercentageUsed: pctUsed,
-		CriticalWarning: criticalWarning,
-		AvailableSpare: 100,
+		Device:                  diskServiceInterfaces.DeviceInfo{Protocol: "NVMe"},
+		Passed:                  true,
+		HealthKnown:             true,
+		Temperature:             40,
+		PercentageUsed:          pctUsed,
+		CriticalWarning:         criticalWarning,
+		AvailableSpare:          100,
 		AvailableSpareThreshold: 10,
 	}
 }
@@ -259,6 +262,15 @@ func TestGetSMARTPassedNil(t *testing.T) {
 	svc := &Service{}
 	if !svc.getSMARTPassed(nil) {
 		t.Fatal("expected passed=true for nil (default safe)")
+	}
+}
+
+func TestGetSMARTPassedUnknown(t *testing.T) {
+	svc := &Service{}
+	data := makeSCSI(0, false)
+	data.HealthKnown = false
+	if !svc.getSMARTPassed(data) {
+		t.Fatal("unknown health reported as failed")
 	}
 }
 

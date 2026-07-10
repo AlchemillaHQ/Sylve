@@ -404,9 +404,9 @@ func (s *Service) evaluateReallocated(ctx context.Context, disk diskServiceInter
 				fmt.Sprintf("Disk %s has sector issues", disk.Device),
 				fmt.Sprintf("Sector anomalies detected on disk %s: %s.", disk.Device, strings.Join(parts, ", ")),
 				map[string]string{
-					"condition":    "sector_issues",
-					"reallocated":  fmt.Sprintf("%d", realloc),
-					"pending":      fmt.Sprintf("%d", pending),
+					"condition":     "sector_issues",
+					"reallocated":   fmt.Sprintf("%d", realloc),
+					"pending":       fmt.Sprintf("%d", pending),
 					"uncorrectable": fmt.Sprintf("%d", uncorrect),
 				})
 		}
@@ -466,11 +466,11 @@ func (s *Service) evaluateNvme(ctx context.Context, disk diskServiceInterfaces.D
 				fmt.Sprintf("Disk %s NVMe S.M.A.R.T warning", disk.Device),
 				fmt.Sprintf("NVMe S.M.A.R.T issues on disk %s: %s.", disk.Device, strings.Join(parts, "; ")),
 				map[string]string{
-					"condition":          "nvme_warning",
-					"critical_warning":   nvme.CriticalWarning,
-					"available_spare":    fmt.Sprintf("%d", nvme.AvailableSpare),
-					"spare_threshold":    fmt.Sprintf("%d", nvme.AvailableSpareThreshold),
-					"media_errors":       fmt.Sprintf("%d", nvme.MediaErrors),
+					"condition":        "nvme_warning",
+					"critical_warning": nvme.CriticalWarning,
+					"available_spare":  fmt.Sprintf("%d", nvme.AvailableSpare),
+					"spare_threshold":  fmt.Sprintf("%d", nvme.AvailableSpareThreshold),
+					"media_errors":     fmt.Sprintf("%d", nvme.MediaErrors),
 				})
 		}
 		return
@@ -614,10 +614,16 @@ func (s *Service) getSMARTPassed(smartData any) bool {
 	}
 
 	if nvme, ok := smartData.(diskServiceInterfaces.SMARTNvme); ok {
+		if !nvme.HealthKnown {
+			return true
+		}
 		return nvme.Passed
 	}
 
 	if ata, ok := smartData.(diskServiceInterfaces.SmartData); ok {
+		if !ata.HealthKnown {
+			return true
+		}
 		return ata.Passed
 	}
 

@@ -338,5 +338,6 @@ type DeviceInfo struct {
 	SelfTestStatus      SelfTestExecStatus
 	SmartCapability     uint64
 	Attributes          []Attribute
+	SCSISelfTestLog     *SelfTestLog
 	SCSISelfTestResults []SCSISelfTestEntry
 }

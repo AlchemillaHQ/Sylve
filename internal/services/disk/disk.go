@@ -237,16 +237,7 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 			disk.SmartData = nil
 		}
 
-		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
-			wearOut, err := s.GetWearOut(disk.SmartData)
-			if err != nil {
-				disk.WearOut = "Unknown"
-			} else {
-				disk.WearOut = fmt.Sprintf("%.2f", wearOut)
-			}
-		} else {
-			disk.WearOut = "Unknown"
-		}
+		disk.WearOut = s.formatWearOut(d.Type, disk.SmartData)
 
 		disk.Partitions = []diskServiceInterfaces.Partition{}
 

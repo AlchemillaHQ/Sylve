@@ -27,6 +27,7 @@ export const ATASmartAttributeSchema = z.object({
 export const SmartDataSchema = z.object({
 	device: DeviceInfoSchema,
 	passed: z.boolean(),
+	health_known: z.boolean().default(false),
 	power_on_hours: z.number(),
 	power_cycle_count: z.number(),
 	temperature: z.number(),
@@ -44,6 +45,7 @@ export const NvmeCriticalWarningStateSchema = z.object({
 export const SmartNVMeSchema = z.object({
 	device: DeviceInfoSchema,
 	passed: z.boolean(),
+	health_known: z.boolean().default(false),
 	power_on_hours: z.number(),
 	power_cycle_count: z.number(),
 	temperature: z.number(),

@@ -40,6 +40,27 @@ func nvmeAttributeDecimal(attribute smart.Attribute) string {
 	return strconv.FormatUint(attribute.RawValue, 10)
 }
 
+func smartAttributeRawValue(value uint64) int64 {
+	const max = uint64(1<<63 - 1)
+	if value > max {
+		return int64(max)
+	}
+	return int64(value)
+}
+
+func smartAttributeRawString(attribute smart.Attribute) string {
+	if attribute.RawString != "" {
+		return attribute.RawString
+	}
+	if attribute.TextValue != "" {
+		return attribute.TextValue
+	}
+	if attribute.RawValue > 1<<53-1 {
+		return strconv.FormatUint(attribute.RawValue, 10)
+	}
+	return ""
+}
+
 func mapNVMeLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SMARTNvme {
 	result := diskServiceInterfaces.SMARTNvme{
 		Device: diskServiceInterfaces.DeviceInfo{
@@ -49,6 +70,7 @@ func mapNVMeLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SM
 			Protocol: info.Protocol,
 		},
 		Passed:          info.Passed,
+		HealthKnown:     info.HealthKnown,
 		PowerOnHours:    info.PowerOnHours,
 		PowerCycleCount: info.PowerCycleCount,
 		Temperature:     info.Temperature,
@@ -129,6 +151,7 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 	}
 
 	data.Passed = info.Passed
+	data.HealthKnown = info.HealthKnown
 	data.ChecksumValid = info.ChecksumValid
 	data.PowerOnHours = info.PowerOnHours
 	data.PowerCycleCount = info.PowerCycleCount
@@ -142,11 +165,16 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 	if len(info.SCSISelfTestResults) > 0 {
 		data.SCSISelfTestResults = make([]diskServiceInterfaces.DiskSCSISelfTestEntry, len(info.SCSISelfTestResults))
 		for i, e := range info.SCSISelfTestResults {
+			lba := e.LBA
+			if !e.LBAValid {
+				lba = 0
+			}
 			data.SCSISelfTestResults[i] = diskServiceInterfaces.DiskSCSISelfTestEntry{
 				Type:          e.Type,
 				Status:        e.Status,
 				LifetimeHours: e.LifetimeHours,
-				LBA:           e.LBA,
+				LBA:           lba,
+				LBAValid:      e.LBAValid,
 				SenseKey:      e.SenseKey,
 				ASC:           e.ASC,
 				ASCQ:          e.ASCQ,
@@ -173,10 +201,7 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 			case smart.AttrStateFailedPast:
 				whenFailed = "In_the_past"
 			}
-			rawString := attr.RawString
-			if rawString == "" {
-				rawString = attr.TextValue
-			}
+			rawString := smartAttributeRawString(attr)
 
 			data.Attributes[i] = diskServiceInterfaces.ATASmartAttribute{
 				Page:        int(attr.Page),
@@ -185,7 +210,7 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 				Value:       attr.Value,
 				Worst:       attr.Worst,
 				Thresh:      attr.Threshold,
-				RawValue:    int64(attr.RawValue),
+				RawValue:    smartAttributeRawValue(attr.RawValue),
 				RawString:   rawString,
 				State:       state,
 				WhenFailed:  whenFailed,
@@ -214,9 +239,12 @@ func (s *Service) GetSmartData(disk diskServiceInterfaces.DiskInfo) (interface{}
 		return nil, nil, err
 	}
 
-	selfTestLog, err := dev.ReadSelfTestLog()
-	if err != nil {
-		selfTestLog = nil
+	selfTestLog := smartInfo.SCSISelfTestLog
+	if selfTestLog == nil {
+		selfTestLog, err = dev.ReadSelfTestLog()
+		if err != nil {
+			selfTestLog = nil
+		}
 	}
 
 	var result any
@@ -241,16 +269,30 @@ func mapSelfTestLogToInterface(log *smart.SelfTestLog) diskServiceInterfaces.Dis
 		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(log.Entries)),
 	}
 	for i, e := range log.Entries {
-		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
-			Type:          e.Type,
-			Status:        e.Status,
-			RemainingPct:  e.RemainingPct,
-			LifetimeHours: e.LifetimeHours,
-			LBA:           e.LBA,
-			NSID:          e.NSID,
-		}
+		result.Entries[i] = mapSelfTestEntryToInterface(e)
 	}
 	return result
+}
+
+func mapSelfTestEntryToInterface(entry smart.SelfTestEntry) diskServiceInterfaces.DiskSelfTestEntry {
+	lba := entry.LBA
+	if !entry.LBAValid {
+		lba = 0
+	}
+	nsid := entry.NSID
+	if !entry.NSIDValid {
+		nsid = 0
+	}
+	return diskServiceInterfaces.DiskSelfTestEntry{
+		Type:          entry.Type,
+		Status:        entry.Status,
+		RemainingPct:  entry.RemainingPct,
+		LifetimeHours: entry.LifetimeHours,
+		LBA:           lba,
+		LBAValid:      entry.LBAValid,
+		NSID:          nsid,
+		NSIDValid:     entry.NSIDValid,
+	}
 }
 
 func mapSelfTestStatusToInterface(status *smart.SelfTestStatus) diskServiceInterfaces.DiskSelfTestLog {
@@ -261,14 +303,7 @@ func mapSelfTestStatusToInterface(status *smart.SelfTestStatus) diskServiceInter
 		Entries:       make([]diskServiceInterfaces.DiskSelfTestEntry, len(status.Results)),
 	}
 	for i, e := range status.Results {
-		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
-			Type:          e.Type,
-			Status:        e.Status,
-			RemainingPct:  e.RemainingPct,
-			LifetimeHours: e.LifetimeHours,
-			LBA:           e.LBA,
-			NSID:          e.NSID,
-		}
+		result.Entries[i] = mapSelfTestEntryToInterface(e)
 	}
 	return result
 }
@@ -350,6 +385,21 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 	}
 
 	return 0, errors.New("unsupported SMART data type")
+}
+
+func (s *Service) formatWearOut(diskType string, smartData any) string {
+	switch strings.ToUpper(diskType) {
+	case "HDD":
+		return "N/A"
+	case "SSD", "NVME":
+		wearOut, err := s.GetWearOut(smartData)
+		if err != nil {
+			return "Unknown"
+		}
+		return fmt.Sprintf("%.2f", wearOut)
+	default:
+		return "Unknown"
+	}
 }
 
 func (s *Service) RunSelfTest(disk diskServiceInterfaces.DiskInfo, testType string) error {
@@ -553,14 +603,7 @@ func (s *Service) GetExtendedSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*
 		InProgress:    log.InProgress,
 	}
 	for i, e := range log.Entries {
-		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
-			Type:          e.Type,
-			Status:        e.Status,
-			RemainingPct:  e.RemainingPct,
-			LifetimeHours: e.LifetimeHours,
-			LBA:           e.LBA,
-			NSID:          e.NSID,
-		}
+		result.Entries[i] = mapSelfTestEntryToInterface(e)
 	}
 
 	return result, nil
@@ -603,14 +646,7 @@ func (s *Service) GetSelectiveSelfTestLog(disk diskServiceInterfaces.DiskInfo) (
 		InProgress:    log.InProgress,
 	}
 	for i, e := range log.Entries {
-		result.Entries[i] = diskServiceInterfaces.DiskSelfTestEntry{
-			Type:          e.Type,
-			Status:        e.Status,
-			RemainingPct:  e.RemainingPct,
-			LifetimeHours: e.LifetimeHours,
-			LBA:           e.LBA,
-			NSID:          e.NSID,
-		}
+		result.Entries[i] = mapSelfTestEntryToInterface(e)
 	}
 
 	return result, nil
