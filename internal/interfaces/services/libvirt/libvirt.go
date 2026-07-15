@@ -116,12 +116,13 @@ type LvDomain struct {
 }
 
 type SimpleList struct {
-	ID         uint                    `json:"id"`
-	RID        uint                    `json:"rid"`
-	Name       string                  `json:"name"`
-	State      libvirt.DomainState     `json:"state"`
-	VNCPort    uint                    `json:"vncPort"`
-	CPUPinning []vmModels.VMCPUPinning `json:"cpuPinning"`
+	ID                          uint                    `json:"id"`
+	RID                         uint                    `json:"rid"`
+	Name                        string                  `json:"name"`
+	State                       libvirt.DomainState     `json:"state"`
+	VNCPort                     uint                    `json:"vncPort"`
+	CPUPinning                  []vmModels.VMCPUPinning `json:"cpuPinning"`
+	HasEnabledFilesystemStorage bool                    `json:"hasEnabledFilesystemStorage"`
 }
 
 type SimpleTemplateList struct {

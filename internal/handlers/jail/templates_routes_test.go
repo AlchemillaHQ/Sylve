@@ -117,6 +117,18 @@ func TestPreflightStatusCodeMapping(t *testing.T) {
 	if got := preflightStatusCode(assertErr("invalid_ctid")); got != http.StatusBadRequest {
 		t.Fatalf("expected bad request, got %d", got)
 	}
+	if got := preflightStatusCode(assertErr("ctid_range_contains_used_values")); got != http.StatusConflict {
+		t.Fatalf("expected conflict for occupied CTID, got %d", got)
+	}
+	if got := preflightStatusCode(assertErr("guest_identity_inventory_conflict")); got != http.StatusConflict {
+		t.Fatalf("expected conflict for dirty inventory, got %d", got)
+	}
+	if got := preflightStatusCode(assertErr("guest_identity_inventory_unavailable")); got != http.StatusServiceUnavailable {
+		t.Fatalf("expected service unavailable, got %d", got)
+	}
+	if got := preflightStatusCode(assertErr("guest_identity_inventory_scan_failed")); got != http.StatusInternalServerError {
+		t.Fatalf("expected internal server error for local scan failure, got %d", got)
+	}
 }
 
 func TestListJailTemplatesSimpleHandler(t *testing.T) {

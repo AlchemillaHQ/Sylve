@@ -225,17 +225,17 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 					"recordsize": recordSize,
 				}),
 			)
-			case vmModels.VMStorageTypeZVol:
-				dataset, err = s.GZFS.ZFS.CreateVolume(
-					ctx,
-					datasetName,
-					uint64(storage.Size),
-					utils.MergeMaps(props, map[string]string{
-						"volblocksize": volblocksize,
-						"volmode":      "dev",
-						"sparse":       "on",
-					}),
-				)
+		case vmModels.VMStorageTypeZVol:
+			dataset, err = s.GZFS.ZFS.CreateVolume(
+				ctx,
+				datasetName,
+				uint64(storage.Size),
+				utils.MergeMaps(props, map[string]string{
+					"volblocksize": volblocksize,
+					"volmode":      "dev",
+					"sparse":       "on",
+				}),
+			)
 		}
 
 		if err != nil {
@@ -517,9 +517,8 @@ func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
-	err = s.WriteVMJson(rid)
-	if err != nil {
-		logger.L.Error().Err(err).Msg("Failed to write VM JSON after disk sync")
+	if err := s.WriteVMJson(rid); err != nil {
+		return fmt.Errorf("failed_to_write_vm_json_after_disk_sync: %w", err)
 	}
 
 	return nil
@@ -737,6 +736,9 @@ func cleanupFailedStorageMetadata(db *gorm.DB, storageID uint, storageDatasetID 
 }
 
 func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
+	if err := s.requireVMStorageTopologyMutable(req.RID); err != nil {
+		return err
+	}
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return err
 	}
@@ -1110,6 +1112,11 @@ func (s *Service) storageImportTx(
 		}
 
 		storage.Type = vmModels.VMStorageTypeDiskImage
+		// Downloaded media is replicated VM metadata, never a ZFS topology
+		// contributor. Ignore legacy/front-end pool hints at this boundary.
+		storage.Pool = ""
+		storage.DatasetID = nil
+		storage.Dataset = vmModels.VMStorageDataset{}
 		storage.Size = info.Size()
 		storage.DownloadUUID = req.UUID
 
@@ -1258,12 +1265,34 @@ func (s *Service) storageNewTx(
 		if err := tx.Save(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 		}
+	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeDiskImage {
+		imagePath, err := s.FindISOByUUID(req.UUID, true)
+		if err != nil {
+			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
+		}
+		info, err := os.Stat(imagePath)
+		if err != nil {
+			return fmt.Errorf("failed_to_stat_iso_path: %w", err)
+		}
+		storage.Type = vmModels.VMStorageTypeDiskImage
+		storage.Pool = ""
+		storage.DatasetID = nil
+		storage.Dataset = vmModels.VMStorageDataset{}
+		storage.Size = info.Size()
+		storage.DownloadUUID = req.UUID
+		if err := tx.Create(&storage).Error; err != nil {
+			return fmt.Errorf("failed_to_create_storage_record: %w", err)
+		}
+		createdStorageRecord = true
 	}
 
 	return hooks.syncVMDisks(vm.RID)
 }
 
 func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error {
+	if err := s.requireVMStorageTopologyMutable(req.RID); err != nil {
+		return err
+	}
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return err
 	}
@@ -1366,6 +1395,9 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 	var vm vmModels.VM
 	if err := s.DB.First(&vm, "id = ?", current.VMID).Error; err != nil {
 		return fmt.Errorf("failed_to_find_vm_record: %w", err)
+	}
+	if err := s.requireVMStorageTopologyMutable(vm.RID); err != nil {
+		return err
 	}
 	if err := s.requireVMMutationOwnership(vm.RID); err != nil {
 		return err
@@ -1478,6 +1510,12 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 
 	current.Name = req.Name
 	current.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
+	if current.Type == vmModels.VMStorageTypeDiskImage && current.DatasetID == nil {
+		// Normalize legacy UI payloads that persisted a pool on removable
+		// media. The pool never contributes a dataset for disk-image storage.
+		current.Pool = ""
+		current.Dataset = vmModels.VMStorageDataset{}
+	}
 	if current.Type == vmModels.VMStorageTypeFilesystem {
 		current.Emulation = vmModels.VirtIO9PStorageEmulation
 	}

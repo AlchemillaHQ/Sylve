@@ -9,6 +9,7 @@
 package zfsHandlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -67,6 +68,17 @@ type DatasetListResponse struct {
 	Message string          `json:"message"`
 	Error   string          `json:"error"`
 	Data    []*gzfs.Dataset `json:"data"`
+}
+
+func snapshotCreationErrorResponse(err error) (int, string) {
+	switch {
+	case errors.Is(err, zfs.ErrReservedSnapshotNamespace):
+		return http.StatusBadRequest, "snapshot_namespace_reserved"
+	case errors.Is(err, zfs.ErrSnapshotCreationBlocked):
+		return http.StatusConflict, "snapshot_creation_blocked"
+	default:
+		return http.StatusInternalServerError, "internal_server_error"
+	}
 }
 
 // @Summary Get all ZFS datasets
@@ -200,9 +212,10 @@ func CreateSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 		err := zfsService.CreateSnapshot(ctx, request.GUID, request.Name, request.Recursive)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			status, message := snapshotCreationErrorResponse(err)
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "internal_server_error",
+				Message: message,
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -406,9 +419,10 @@ func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 		err = zfsService.AddPeriodicSnapshot(ctx, request)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			status, message := snapshotCreationErrorResponse(err)
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "internal_server_error",
+				Message: message,
 				Error:   err.Error(),
 				Data:    nil,
 			})

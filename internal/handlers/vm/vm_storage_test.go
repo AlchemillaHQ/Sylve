@@ -10,6 +10,7 @@ package libvirtHandlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -19,15 +20,31 @@ import (
 )
 
 type mockVMStorageService struct {
-	attachFn      func(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error
-	updateFn      func(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error
-	detachFn      func(req libvirtServiceInterfaces.StorageDetachRequest) error
-	attachCalls   int
-	updateCalls   int
-	detachCalls   int
-	lastAttachReq *libvirtServiceInterfaces.StorageAttachRequest
-	lastUpdateReq *libvirtServiceInterfaces.StorageUpdateRequest
-	lastDetachReq *libvirtServiceInterfaces.StorageDetachRequest
+	topologyGuardFn func(rid uint) error
+	recordGuardFn   func(storageID int) error
+	attachFn        func(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error
+	updateFn        func(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error
+	detachFn        func(req libvirtServiceInterfaces.StorageDetachRequest) error
+	attachCalls     int
+	updateCalls     int
+	detachCalls     int
+	lastAttachReq   *libvirtServiceInterfaces.StorageAttachRequest
+	lastUpdateReq   *libvirtServiceInterfaces.StorageUpdateRequest
+	lastDetachReq   *libvirtServiceInterfaces.StorageDetachRequest
+}
+
+func (m *mockVMStorageService) RequireVMStorageTopologyMutable(rid uint) error {
+	if m.topologyGuardFn != nil {
+		return m.topologyGuardFn(rid)
+	}
+	return nil
+}
+
+func (m *mockVMStorageService) RequireVMStorageRecordTopologyMutable(storageID int) error {
+	if m.recordGuardFn != nil {
+		return m.recordGuardFn(storageID)
+	}
+	return nil
 }
 
 func (m *mockVMStorageService) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error {
@@ -262,5 +279,75 @@ func TestStorageUpdateRejectsUnsupportedEmulation(t *testing.T) {
 	}
 	if storageSvc.updateCalls != 0 {
 		t.Fatalf("expected StorageUpdate not to be called, got %d calls", storageSvc.updateCalls)
+	}
+}
+
+func TestStorageMutationGuardStopsServiceCalls(t *testing.T) {
+	t.Parallel()
+
+	guardErr := errors.New("replication_storage_topology_change_requires_policy_disabled")
+	tests := []struct {
+		name      string
+		method    string
+		path      string
+		body      []byte
+		configure func(*mockVMStorageService)
+		calls     func(*mockVMStorageService) int
+	}{
+		{
+			name: "attach", method: http.MethodPost, path: "/vm/storage/attach",
+			body:      []byte(`{"rid":101,"name":"disk","attachType":"new","storageType":"raw","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`),
+			configure: func(s *mockVMStorageService) { s.topologyGuardFn = func(uint) error { return guardErr } },
+			calls:     func(s *mockVMStorageService) int { return s.attachCalls },
+		},
+		{
+			name: "update", method: http.MethodPut, path: "/vm/storage/update",
+			body:      []byte(`{"id":44,"name":"disk","emulation":"virtio-blk","bootOrder":2}`),
+			configure: func(s *mockVMStorageService) { s.recordGuardFn = func(int) error { return guardErr } },
+			calls:     func(s *mockVMStorageService) int { return s.updateCalls },
+		},
+		{
+			name: "detach", method: http.MethodPost, path: "/vm/storage/detach",
+			body:      []byte(`{"rid":101,"storageId":44}`),
+			configure: func(s *mockVMStorageService) { s.topologyGuardFn = func(uint) error { return guardErr } },
+			calls:     func(s *mockVMStorageService) int { return s.detachCalls },
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			svc := &mockVMStorageService{}
+			tt.configure(svc)
+			r := newVMStorageRouter(svc)
+			rr := testutil.PerformJSONRequest(t, r, tt.method, tt.path, tt.body)
+			if rr.Code != http.StatusConflict {
+				t.Fatalf("expected 409, got %d body=%s", rr.Code, rr.Body.String())
+			}
+			resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
+			if resp.Message != "replication_storage_topology_change_requires_policy_disabled" {
+				t.Fatalf("unexpected message: %q", resp.Message)
+			}
+			if got := tt.calls(svc); got != 0 {
+				t.Fatalf("storage mutation reached service %d times", got)
+			}
+		})
+	}
+}
+
+func TestStorageMutationGuardLookupFailureIsServerError(t *testing.T) {
+	t.Parallel()
+	svc := &mockVMStorageService{
+		topologyGuardFn: func(uint) error { return errors.New("replication_topology_check_failed: database unavailable") },
+	}
+	r := newVMStorageRouter(svc)
+	rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/storage/detach", []byte(`{"rid":101,"storageId":44}`))
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
+	if resp.Message != "replication_topology_check_failed" {
+		t.Fatalf("unexpected message: %q", resp.Message)
 	}
 }

@@ -115,53 +115,6 @@ func TestReplicationGuestKey(t *testing.T) {
 	}
 }
 
-func TestParseReplicationGuestKey(t *testing.T) {
-	guestType, guestID, ok := parseReplicationGuestKey("vm:100")
-	if !ok || guestType != clusterModels.ReplicationGuestTypeVM || guestID != 100 {
-		t.Fatalf("expected vm/100, got %s/%d ok=%v", guestType, guestID, ok)
-	}
-
-	guestType, guestID, ok = parseReplicationGuestKey("jail:50")
-	if !ok || guestType != clusterModels.ReplicationGuestTypeJail || guestID != 50 {
-		t.Fatalf("expected jail/50, got %s/%d ok=%v", guestType, guestID, ok)
-	}
-
-	_, _, ok = parseReplicationGuestKey("")
-	if ok {
-		t.Fatal("empty key should not be ok")
-	}
-	_, _, ok = parseReplicationGuestKey("invalid")
-	if ok {
-		t.Fatal("invalid format should not be ok")
-	}
-	_, _, ok = parseReplicationGuestKey("unknown:100")
-	if ok {
-		t.Fatal("unknown guest type should not be ok")
-	}
-	_, _, ok = parseReplicationGuestKey("vm:0")
-	if ok {
-		t.Fatal("zero id should not be ok")
-	}
-}
-
-func TestReplicationGuestKeyRoundTrip(t *testing.T) {
-	cases := []struct {
-		guestType string
-		guestID   uint
-	}{
-		{clusterModels.ReplicationGuestTypeVM, 1},
-		{clusterModels.ReplicationGuestTypeJail, 9999},
-		{clusterModels.ReplicationGuestTypeVM, 65535},
-	}
-	for _, c := range cases {
-		key := replicationGuestKey(c.guestType, c.guestID)
-		gt, gid, ok := parseReplicationGuestKey(key)
-		if !ok || gt != c.guestType || gid != c.guestID {
-			t.Fatalf("round-trip failed: %s:%d -> %q -> %s:%d", c.guestType, c.guestID, key, gt, gid)
-		}
-	}
-}
-
 func TestTransitionPayloadFromPolicy(t *testing.T) {
 	payload := transitionPayloadFromPolicy(nil)
 	if payload.State != "" {
@@ -169,9 +122,9 @@ func TestTransitionPayloadFromPolicy(t *testing.T) {
 	}
 
 	policy := &clusterModels.ReplicationPolicy{
-		TransitionState:    clusterModels.ReplicationTransitionStateDemoting,
-		TransitionRunID:    "run-123",
-		TransitionReason:   "manual",
+		TransitionState:      clusterModels.ReplicationTransitionStateDemoting,
+		TransitionRunID:      "run-123",
+		TransitionReason:     "manual",
 		TransitionOwnerEpoch: 5,
 	}
 	payload = transitionPayloadFromPolicy(policy)
@@ -267,7 +220,7 @@ func TestSplitDatasetForTarget(t *testing.T) {
 		wantDataset string
 	}{
 		{"tank/data/vm-1", "tank", "data/vm-1"},
-		{"zroot", "zroot", ""},            // no slash -> root dataset
+		{"zroot", "zroot", ""}, // no slash -> root dataset
 		{"pool/ds", "pool", "ds"},
 		{"pool/a/b", "pool", "a/b"},
 	}
@@ -315,15 +268,25 @@ func TestReplicationRunnerNodeID(t *testing.T) {
 	}
 }
 
-func TestIsHAReplicationSnapshotShortName(t *testing.T) {
-	if !isHAReplicationSnapshotShortName("ha_2025-01-01T00:00:00") {
-		t.Fatal("ha_ prefix should match")
-	}
-	if isHAReplicationSnapshotShortName("sylve-BK-2025-01-01") {
-		t.Fatal("sylve-BK prefix should not match")
-	}
-	if isHAReplicationSnapshotShortName("") {
-		t.Fatal("empty should not match")
+func TestBackupJobToReqWithRunnerPreservesRecursive(t *testing.T) {
+	for _, recursive := range []bool{false, true} {
+		t.Run(fmt.Sprintf("recursive_%t", recursive), func(t *testing.T) {
+			job := &clusterModels.BackupJob{
+				Name:      "guest-backup",
+				TargetID:  7,
+				Mode:      clusterModels.BackupJobModeVM,
+				Recursive: recursive,
+				Enabled:   true,
+			}
+
+			req := backupJobToReqWithRunner(job, " node-b ")
+			if req.Recursive != recursive {
+				t.Fatalf("recursive = %v, want %v", req.Recursive, recursive)
+			}
+			if req.RunnerNodeID != "node-b" {
+				t.Fatalf("runner node = %q, want node-b", req.RunnerNodeID)
+			}
+		})
 	}
 }
 
@@ -443,24 +406,6 @@ func TestAcquireReleaseReplication(t *testing.T) {
 	s.releaseReplication(1)
 	s.releaseReplication(2)
 	s.releaseReplication(999) // releasing non-existent is no-op
-}
-
-func TestBuildOrphanHAReplicationPruneCandidates(t *testing.T) {
-	snapshots := []SnapshotInfo{
-		{Name: "pool/ds@ha_2025-01-01T00:00:00", ShortName: "ha_2025-01-01T00:00:00"},
-		{Name: "pool/ds@sylve-BK-2025-01-01", ShortName: "sylve-BK-2025-01-01"},
-		{Name: "pool/ds@ha_2025-01-02T00:00:00", ShortName: "ha_2025-01-02T00:00:00"},
-		{Name: "pool/ds@manual-snap", ShortName: "manual-snap"},
-	}
-
-	candidates := buildOrphanHAReplicationPruneCandidates(snapshots)
-	if len(candidates) != 2 {
-		t.Fatalf("expected 2 orphan HA candidates, got %d: %v", len(candidates), candidates)
-	}
-
-	if got := buildOrphanHAReplicationPruneCandidates(nil); len(got) != 0 {
-		t.Fatal("nil snapshots should return empty")
-	}
 }
 
 func TestStaleReplicationLineageDatasets(t *testing.T) {

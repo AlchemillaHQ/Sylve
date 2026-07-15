@@ -31,6 +31,7 @@ func newReplicationSchedulerTestDB(t *testing.T) *Service {
 		runningJobs:        make(map[uint]struct{}),
 		queuedJobs:         make(map[uint]struct{}),
 		poolDownMisses:     make(map[string]int),
+		failoverWarnings:   make(map[uint]map[string]struct{}),
 		runningWorkloadOp:  make(map[string]string),
 	}
 }
@@ -204,7 +205,7 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 		GuestID: 9101, SourceNodeID: localNodeID,
 		OwnerEpoch: 1, SourceMode: clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled: true, CronExpr: "* * * * *", NextRunAt: &past,
+		Enabled:      true, CronExpr: "* * * * *", NextRunAt: &past,
 	}
 	if err := clusterModels.UpsertReplicationPolicyTxn(db, p1, nil); err != nil {
 		t.Fatalf("seed p1: %v", err)
@@ -221,7 +222,7 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 		GuestID: 9202, SourceNodeID: localNodeID,
 		OwnerEpoch: 1, SourceMode: clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled: true, CronExpr: "0 0 * * *",
+		Enabled:      true, CronExpr: "0 0 * * *",
 	}
 	if err := clusterModels.UpsertReplicationPolicyTxn(db, p2, nil); err != nil {
 		t.Fatalf("seed p2: %v", err)
@@ -239,7 +240,7 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 		GuestID: 9303, SourceNodeID: localNodeID,
 		OwnerEpoch: 1, SourceMode: clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled: true, CronExpr: "0 0 * * *", NextRunAt: &future,
+		Enabled:      true, CronExpr: "0 0 * * *", NextRunAt: &future,
 	}
 	if err := clusterModels.UpsertReplicationPolicyTxn(db, p3, nil); err != nil {
 		t.Fatalf("seed p3: %v", err)
@@ -251,7 +252,7 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 		GuestID: 9404, SourceNodeID: localNodeID,
 		OwnerEpoch: 1, SourceMode: clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled: true, CronExpr: "not a valid cron",
+		Enabled:      true, CronExpr: "not a valid cron",
 	}
 	if err := clusterModels.UpsertReplicationPolicyTxn(db, p4, nil); err != nil {
 		t.Fatalf("seed p4: %v", err)
@@ -270,6 +271,7 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 		runningJobs:        make(map[uint]struct{}),
 		queuedJobs:         make(map[uint]struct{}),
 		poolDownMisses:     make(map[string]int),
+		failoverWarnings:   make(map[uint]map[string]struct{}),
 		runningWorkloadOp:  make(map[string]string),
 	}
 

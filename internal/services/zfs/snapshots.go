@@ -10,13 +10,16 @@ package zfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -32,6 +35,125 @@ const (
 	retentionGFS    retentionType = "gfs"
 )
 
+var (
+	ErrReservedSnapshotNamespace = errors.New("snapshot_namespace_reserved")
+	ErrSnapshotCreationBlocked   = errors.New("snapshot_creation_blocked")
+)
+
+var reservedUserSnapshotPrefixes = []string{"ha_", "bk_", "sylve-migrate-"}
+
+func validateUserSnapshotNamespace(name string) error {
+	name = strings.ToLower(strings.TrimSpace(name))
+	for _, prefix := range reservedUserSnapshotPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return fmt.Errorf("%w:%s", ErrReservedSnapshotNamespace, prefix)
+		}
+	}
+	return nil
+}
+
+func validatePeriodicSnapshotPrefix(prefix string) error {
+	if err := validateUserSnapshotNamespace(prefix); err != nil {
+		return err
+	}
+	// Periodic names append a dash. This also reserves the exact
+	// "sylve-migrate" prefix, whose generated names enter that namespace.
+	return validateUserSnapshotNamespace(prefix + "-")
+}
+
+func snapshotScopeContains(dataset, protectedRoot string, recursive bool) bool {
+	dataset = normalizedMutationDataset(dataset)
+	protectedRoot = normalizedMutationDataset(protectedRoot)
+	if dataset == "" || protectedRoot == "" {
+		return false
+	}
+	if dataset == protectedRoot || strings.HasPrefix(dataset, protectedRoot+"/") {
+		return true
+	}
+	return recursive && strings.HasPrefix(protectedRoot, dataset+"/")
+}
+
+func (s *Service) requireUserSnapshotCreationAllowed(
+	ctx context.Context,
+	dataset string,
+	recursive bool,
+) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("snapshot_creation_guard_unavailable")
+	}
+	dataset = normalizedMutationDataset(dataset)
+	if dataset == "" {
+		return fmt.Errorf("snapshot_creation_dataset_required")
+	}
+
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		var operations []clusterModels.ReplicationGuestOperation
+		if err := s.DB.Find(&operations).Error; err != nil {
+			return fmt.Errorf("snapshot_guest_operation_lookup_failed: %w", err)
+		}
+		guests := make([]clusterModels.ReplicationPolicy, 0, len(operations))
+		for _, operation := range operations {
+			guests = append(guests, clusterModels.ReplicationPolicy{
+				GuestType: operation.GuestType,
+				GuestID:   operation.GuestID,
+			})
+		}
+		roots, err := s.protectedReplicationDatasetRoots(guests)
+		if err != nil {
+			return err
+		}
+		for _, root := range roots {
+			if snapshotScopeContains(dataset, root, recursive) {
+				return fmt.Errorf("%w:guest_operation:%s", ErrSnapshotCreationBlocked, root)
+			}
+		}
+	}
+
+	var restore clusterModels.BackupEvent
+	result := s.DB.Select("id").
+		Where("mode = ? AND status = ?", "restore", "running").
+		Limit(1).Find(&restore)
+	if result.Error != nil {
+		return fmt.Errorf("snapshot_restore_lookup_failed: %w", result.Error)
+	}
+	if result.RowsAffected != 0 {
+		return fmt.Errorf("%w:restore:%d", ErrSnapshotCreationBlocked, restore.ID)
+	}
+
+	args := []string{"get", "-H", "-o", "name,property,value"}
+	if recursive {
+		args = append(args, "-r")
+	}
+	args = append(args, "-t", "filesystem,volume", "sylve:replication-role,readonly", dataset)
+	output, err := utils.RunCommandWithContext(ctx, "zfs", args...)
+	if err != nil {
+		return fmt.Errorf("snapshot_replication_provenance_lookup_failed: %w", err)
+	}
+	type provenanceState struct{ role, readonly string }
+	states := make(map[string]provenanceState)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+		state := states[fields[0]]
+		switch fields[1] {
+		case "sylve:replication-role":
+			state.role = fields[2]
+		case "readonly":
+			state.readonly = fields[2]
+		}
+		states[fields[0]] = state
+	}
+	for _, state := range states {
+		if strings.EqualFold(state.role, "standby") && state.readonly == "on" {
+			return fmt.Errorf("%w:ha_standby:%s", ErrSnapshotCreationBlocked, dataset)
+		}
+	}
+
+	return nil
+}
+
 type retentionValues struct {
 	KeepLast, MaxAgeDays              int
 	KeepHourly, KeepDaily, KeepWeekly int
@@ -41,9 +163,15 @@ type retentionValues struct {
 func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
+	if err := validateUserSnapshotNamespace(name); err != nil {
+		return err
+	}
 
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 	if err != nil {
+		return err
+	}
+	if err := s.requireUserSnapshotCreationAllowed(ctx, dataset.Name, recursive); err != nil {
 		return err
 	}
 
@@ -163,6 +291,10 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 }
 
 func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest) error {
+	if err := validatePeriodicSnapshotPrefix(req.Prefix); err != nil {
+		return err
+	}
+
 	var interval int
 	if req.Interval != nil {
 		interval = *req.Interval
@@ -214,9 +346,9 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 		seedLocal := utils.ComputeLocalBoundary(interval, time.Now())
 		name := req.Prefix + "-" + seedLocal.Format("2006-01-02-15-04")
 
-		ds, err := s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
-		if err != nil {
-			return err
+		if err := s.requireUserSnapshotCreationAllowed(ctx, ds.Name, recursive); err != nil {
+			logger.L.Debug().Err(err).Msgf("Skipping initial snapshot for job %s", snapshot.GUID)
+			return nil
 		}
 
 		full := ds.Name + "@" + name
@@ -226,10 +358,10 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 			isnap, err := ds.Snapshot(ctx, name, recursive)
 			if err != nil {
 				logger.L.Warn().Err(err).Msgf("Failed to create initial snapshot %s", full)
-			} else {
-				logger.L.Debug().Msgf("Initial boundary snapshot created: %s", full)
+				return nil
 			}
 
+			logger.L.Debug().Msgf("Initial boundary snapshot created: %s", full)
 			s.SignalDSChange(isnap.Pool, isnap.Name, "snapshot", "create")
 		}
 
@@ -564,6 +696,10 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 					if !shouldRun {
 						continue
 					}
+					if err := validatePeriodicSnapshotPrefix(job.Prefix); err != nil {
+						logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s with reserved prefix", job.GUID)
+						continue
+					}
 
 					boundaryLocal := runAtLocal
 					persistTime := runAtLocal.UTC()
@@ -584,6 +720,10 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 							logger.L.Debug().Err(err).Msgf("Failed to delete job %s", job.GUID)
 						}
 						logger.L.Debug().Msgf("Deleted job %s due to missing dataset", job.GUID)
+						continue
+					}
+					if err := s.requireUserSnapshotCreationAllowed(ctx, dataset.Name, job.Recursive); err != nil {
+						logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s", job.GUID)
 						continue
 					}
 

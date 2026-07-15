@@ -51,6 +51,34 @@ func TestSaveSSHKeyWritesTrimmedKeyWithTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestBuildSSHArgsDoesNotInventIdentityForPasswordlessTarget(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+	withoutKey := service.buildSSHArgs(&clusterModels.BackupTarget{ID: 42, SSHHost: "root@localhost"})
+	for _, arg := range withoutKey {
+		if arg == "-i" {
+			t.Fatalf("target without configured key received identity flag: %v", withoutKey)
+		}
+	}
+
+	withKey := service.buildSSHArgs(&clusterModels.BackupTarget{
+		ID:         42,
+		SSHHost:    "root@localhost",
+		SSHKeyPath: "/configured/key",
+	})
+	foundIdentity := false
+	for i := 0; i+1 < len(withKey); i++ {
+		if withKey[i] == "-i" && withKey[i+1] == "/configured/key" {
+			foundIdentity = true
+			break
+		}
+	}
+	if !foundIdentity {
+		t.Fatalf("configured key was omitted: %v", withKey)
+	}
+}
+
 func TestTemporarySSHKeyIsNotRemovedAsOrphan(t *testing.T) {
 	resetZeltaTestGlobals(t)
 	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")

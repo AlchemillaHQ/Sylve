@@ -36,6 +36,24 @@ func TestClassifyCreateJailError(t *testing.T) {
 			wantCode:   "jail_with_ctid_already_exists",
 		},
 		{
+			name:       "shared guest ID conflict",
+			err:        fmt.Errorf("guest_id_already_in_use: guest_id=801 node_id=node-a guest_type=vm"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "guest_id_already_in_use",
+		},
+		{
+			name:       "cluster inventory unavailable",
+			err:        fmt.Errorf("guest_identity_inventory_unavailable: remote node unavailable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "guest_identity_inventory_unavailable",
+		},
+		{
+			name:       "existing inventory conflict",
+			err:        fmt.Errorf("guest_identity_inventory_conflict: duplicate ID"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "guest_identity_inventory_conflict",
+		},
+		{
 			name:       "invalid base path is bad request",
 			err:        fmt.Errorf("base_is_not_a_directory"),
 			wantStatus: http.StatusBadRequest,

@@ -28,9 +28,258 @@ func newReplicationRouter(cS *cluster.Service) *gin.Engine {
 	r.DELETE("/cluster/replication/policies/:id", DeleteReplicationPolicy(cS, nil))
 	r.GET("/cluster/replication/events", ReplicationEvents(cS))
 	r.GET("/cluster/replication/events/:id", ReplicationEventByID(cS))
-	r.GET("/cluster/replication/receipts", ReplicationReceipts(cS))
-	r.POST("/cluster/replication/receipts", UpsertReplicationReceiptInternal(cS))
 	return r
+}
+
+func newReplicationInternalRouter(cS *cluster.Service) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/intra/replication-runtime-state", ReplicationPolicyRuntimeStateInternal(cS, nil))
+	r.POST("/intra/activate", ActivateReplicationPolicyInternal(cS, nil))
+	r.POST("/intra/demote", DemoteReplicationPolicyInternal(cS, nil))
+	r.POST("/intra/catchup", CatchupReplicationPolicyInternal(cS, nil))
+	r.POST("/intra/replication-target-readiness", UpdateReplicationTargetReadinessInternal(cS))
+	r.POST("/intra/cleanup-policy-delete", CleanupReplicationPolicyDeleteInternal(cS, nil))
+	r.POST("/intra/replication-guest-operation-status", ReplicationGuestOperationStatusInternal(cS))
+	return r
+}
+
+func TestReplicationGuestOperationStatusRequiresExactAppliedRow(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationGuestOperation{})
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 901,
+		Operation: clusterModels.ReplicationGuestOperationMigration,
+		State:     clusterModels.ReplicationGuestOperationCutover,
+		Token:     "migration:node-a:901", OwnerNodeID: "node-a", TargetNodeID: "node-b", TaskID: 901,
+		AcquiredAt: time.Now().UTC(),
+	}
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatalf("seed guest operation: %v", err)
+	}
+	r := newReplicationInternalRouter(&cluster.Service{DB: db})
+
+	exact := []byte(`{"guestType":"vm","guestId":901,"operation":"migration","state":"cutover","token":"migration:node-a:901","targetNodeId":"node-b"}`)
+	response := performJSONRequest(t, r, http.MethodPost, "/intra/replication-guest-operation-status", exact)
+	if response.Code != http.StatusOK {
+		t.Fatalf("exact applied row was rejected: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	stale := []byte(`{"guestType":"vm","guestId":901,"operation":"migration","state":"cutover","token":"stale-token","targetNodeId":"node-b"}`)
+	response = performJSONRequest(t, r, http.MethodPost, "/intra/replication-guest-operation-status", stale)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("stale token was accepted: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestReplicationInternalTransitionPayloadValidation(t *testing.T) {
+	r := newReplicationInternalRouter(nil)
+
+	invalid := []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "runtime state requires epoch and run",
+			path: "/intra/replication-runtime-state",
+			body: `{"policyId":1}`,
+		},
+		{
+			name: "activate requires desired running",
+			path: "/intra/activate",
+			body: `{"policyId":1,"ownerEpoch":2,"transitionRunId":"run-1"}`,
+		},
+		{
+			name: "demote requires transition run",
+			path: "/intra/demote",
+			body: `{"policyId":1,"ownerEpoch":2}`,
+		},
+		{
+			name: "catchup requires generation",
+			path: "/intra/catchup",
+			body: `{"policyId":1,"targetNodeId":"node-2","ownerEpoch":2,"transitionRunId":"run-1"}`,
+		},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := performJSONRequest(t, r, http.MethodPost, tt.path, []byte(tt.body))
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+			}
+		})
+	}
+
+	valid := []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "runtime state",
+			path: "/intra/replication-runtime-state",
+			body: `{"policyId":1,"ownerEpoch":2,"transitionRunId":"run-1"}`,
+		},
+		{
+			name: "activate preserves false desired state",
+			path: "/intra/activate",
+			body: `{"policyId":1,"ownerEpoch":2,"transitionRunId":"run-1","desiredRunning":false}`,
+		},
+		{
+			name: "demote",
+			path: "/intra/demote",
+			body: `{"policyId":1,"ownerEpoch":2,"transitionRunId":"run-1"}`,
+		},
+		{
+			name: "catchup",
+			path: "/intra/catchup",
+			body: `{"policyId":1,"targetNodeId":"node-2","ownerEpoch":2,"transitionRunId":"run-1","generationId":"gen-2"}`,
+		},
+	}
+	for _, tt := range valid {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := performJSONRequest(t, r, http.MethodPost, tt.path, []byte(tt.body))
+			if rr.Code != http.StatusServiceUnavailable {
+				t.Fatalf("expected validated request to reach unavailable service (503), got %d: %s", rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestReplicationDeleteCleanupInternalRequiresEpochAndService(t *testing.T) {
+	r := newReplicationInternalRouter(nil)
+
+	for _, body := range []string{
+		`{"policyId":1}`,
+		`{"expectedOwnerEpoch":2}`,
+		`{"policyId":1,"expectedOwnerEpoch":0}`,
+	} {
+		rr := performJSONRequest(t, r, http.MethodPost, "/intra/cleanup-policy-delete", []byte(body))
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for incomplete cleanup authority, got %d: %s", rr.Code, rr.Body.String())
+		}
+	}
+
+	rr := performJSONRequest(
+		t,
+		r,
+		http.MethodPost,
+		"/intra/cleanup-policy-delete",
+		[]byte(`{"policyId":1,"expectedOwnerEpoch":2}`),
+	)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected validated cleanup request to require the service, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestReplicationDeleteDoesNotRemoveMetadataWithoutCleanupService(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
+	policy := clusterModels.ReplicationPolicy{
+		ID:              19,
+		Name:            "delete-ack-barrier",
+		GuestType:       clusterModels.ReplicationGuestTypeVM,
+		GuestID:         901,
+		ActiveNodeID:    "node-1",
+		OwnerEpoch:      4,
+		Enabled:         true,
+		ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+		TransitionState: clusterModels.ReplicationTransitionStateNone,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+
+	cS := &cluster.Service{DB: db}
+	r := newReplicationRouter(cS)
+	rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/replication/policies/19", nil)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 without cleanup service, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var retained clusterModels.ReplicationPolicy
+	if err := db.First(&retained, policy.ID).Error; err != nil {
+		t.Fatalf("policy metadata was removed without cleanup acknowledgement: %v", err)
+	}
+	if retained.ProtectionState != clusterModels.ReplicationProtectionStateArmed {
+		t.Fatalf("policy lifecycle changed before cleanup was available: %s", retained.ProtectionState)
+	}
+}
+
+func TestReplicationTargetReadinessInternal(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
+	if err := db.Create(&clusterModels.ReplicationPolicy{
+		ID: 1, Name: "readiness", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 10,
+		ActiveNodeID: "node-1", OwnerEpoch: 7, Enabled: true,
+		ProtectionState: clusterModels.ReplicationProtectionStateInitializing,
+	}).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	if err := db.Create(&clusterModels.ReplicationPolicyTarget{
+		PolicyID: 1, NodeID: "node-2", Weight: 100,
+	}).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+
+	cS := &cluster.Service{DB: db}
+	r := newReplicationInternalRouter(cS)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	readyUntil := now.Add(time.Hour)
+	update := clusterModels.ReplicationTargetReadinessUpdate{
+		PolicyID: 1, NodeID: "node-2", ExpectedOwnerEpoch: 7, EvaluatedAt: now,
+		Ready: true, GenerationID: "gen-7", ManifestHash: "hash-7",
+		RequiredDatasetCount: 2, CompletedDatasetCount: 2,
+		LastVerifiedAt: &now, ReadyUntil: &readyUntil,
+	}
+	body, err := json.Marshal(update)
+	if err != nil {
+		t.Fatalf("marshal readiness: %v", err)
+	}
+
+	rr := performJSONRequest(t, r, http.MethodPost, "/intra/replication-target-readiness", body)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var target clusterModels.ReplicationPolicyTarget
+	if err := db.Where("policy_id = ? AND node_id = ?", 1, "node-2").First(&target).Error; err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if !target.Ready || target.OwnerEpoch != 7 || target.GenerationID != "gen-7" {
+		t.Fatalf("readiness was not persisted: %+v", target)
+	}
+
+	update.ExpectedOwnerEpoch = 6
+	update.GenerationID = "stale-generation"
+	body, err = json.Marshal(update)
+	if err != nil {
+		t.Fatalf("marshal stale readiness: %v", err)
+	}
+	rr = performJSONRequest(t, r, http.MethodPost, "/intra/replication-target-readiness", body)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for stale epoch, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	update.ExpectedOwnerEpoch = 7
+	update.NodeID = "node-missing"
+	update.Ready = false
+	update.GenerationID = ""
+	update.ManifestHash = ""
+	update.RequiredDatasetCount = 0
+	update.CompletedDatasetCount = 0
+	update.LastVerifiedAt = nil
+	update.ReadyUntil = nil
+	body, err = json.Marshal(update)
+	if err != nil {
+		t.Fatalf("marshal missing target readiness: %v", err)
+	}
+	rr = performJSONRequest(t, r, http.MethodPost, "/intra/replication-target-readiness", body)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing target, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = performJSONRequest(t, r, http.MethodPost, "/intra/replication-target-readiness", []byte(`{}`))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid update, got %d: %s", rr.Code, rr.Body.String())
+	}
 }
 
 func TestReplicationPoliciesHandlerGet(t *testing.T) {
@@ -123,53 +372,6 @@ func TestReplicationEventsHandlerGet(t *testing.T) {
 	}
 }
 
-func TestReplicationReceiptsHandlerGet(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationReceipt{}, &clusterModels.ReplicationPolicy{})
-	cS := &cluster.Service{DB: db}
-	r := newReplicationRouter(cS)
-
-	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/replication/receipts", nil)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	var resp handlerAPIResponse[[]clusterModels.ReplicationReceipt]
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if len(resp.Data) != 0 {
-		t.Fatalf("expected empty, got %d", len(resp.Data))
-	}
-
-	now := time.Now()
-	receipt := clusterModels.ReplicationReceipt{
-		ID: 100, PolicyID: 10, SourceNodeID: "node-1", TargetNodeID: "node-2",
-		Status: "success", LastAttemptAt: now,
-	}
-	if err := db.Create(&receipt).Error; err != nil {
-		t.Fatalf("failed to seed receipt: %v", err)
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/replication/receipts?policyId=10", nil)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if len(resp.Data) != 1 {
-		t.Fatalf("expected 1 receipt, got %d", len(resp.Data))
-	}
-
-	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/replication/receipts?policyId=0", nil)
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if len(resp.Data) != 1 {
-		t.Fatalf("expected 1 receipt with policyId=0 (no filter), got %d", len(resp.Data))
-	}
-}
-
 func TestReplicationEventByIDHandler(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationEvent{})
 	cS := &cluster.Service{DB: db}
@@ -202,47 +404,6 @@ func TestReplicationEventByIDHandler(t *testing.T) {
 	}
 	if resp.Message != "replication_event_fetched" {
 		t.Fatalf("expected replication_event_fetched, got %q", resp.Message)
-	}
-}
-
-func TestUpsertReplicationReceiptInternal(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationReceipt{})
-	cS := &cluster.Service{DB: db}
-	r := newReplicationRouter(cS)
-
-	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/replication/receipts", []byte(`{}`))
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for empty payload, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	now := time.Now()
-	receiptJSON, _ := json.Marshal(map[string]any{
-		"id":            100,
-		"policyId":      10,
-		"guestType":     "vm",
-		"guestId":       1,
-		"sourceNodeId":  "node-1",
-		"targetNodeId":  "node-2",
-		"status":        "success",
-		"lastAttemptAt": now.Format(time.RFC3339),
-	})
-	rr = performJSONRequest(t, r, http.MethodPost, "/cluster/replication/receipts", receiptJSON)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	var resp handlerAPIResponse[any]
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if resp.Message != "replication_receipt_upserted" {
-		t.Fatalf("expected replication_receipt_upserted, got %q", resp.Message)
-	}
-
-	var count int64
-	db.Model(&clusterModels.ReplicationReceipt{}).Where("id = 100").Count(&count)
-	if count != 1 {
-		t.Fatalf("expected receipt persisted, found %d", count)
 	}
 }
 

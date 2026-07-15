@@ -133,6 +133,14 @@
 		if (err.includes('insufficient_pool_space')) return 'Not enough space in selected pool';
 		if (err.includes('ctid_range_contains_used_values'))
 			return 'One or more CTIDs are already in use';
+		if (err.includes('guest_id_already_in_use'))
+			return 'One or more guest IDs are already used by a VM or jail';
+		if (err.includes('guest_identity_inventory_conflict'))
+			return 'Existing VM/jail ID conflicts must be resolved before creating a jail';
+		if (err.includes('guest_identity_inventory_unavailable'))
+			return 'Could not verify guest IDs on every cluster node. Check node health and retry';
+		if (err.includes('guest_identity_inventory_scan_failed'))
+			return 'Could not check VM and jail IDs. Check the server logs and retry';
 		if (err.includes('duplicate_ctids_requested')) return 'Duplicate CTIDs in request';
 		if (err.includes('invalid_ctid_range') || err.includes('invalid_ctid'))
 			return 'Invalid CTID range';

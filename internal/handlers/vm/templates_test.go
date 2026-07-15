@@ -108,6 +108,18 @@ func TestVMTemplatePreflightStatusCodeMapping(t *testing.T) {
 	if got := vmTemplatePreflightStatusCode(errText("invalid_rid")); got != http.StatusBadRequest {
 		t.Fatalf("expected bad request, got %d", got)
 	}
+	if got := vmTemplatePreflightStatusCode(errText("rid_range_contains_used_values")); got != http.StatusConflict {
+		t.Fatalf("expected conflict for occupied RID, got %d", got)
+	}
+	if got := vmTemplatePreflightStatusCode(errText("guest_identity_inventory_conflict")); got != http.StatusConflict {
+		t.Fatalf("expected conflict for dirty inventory, got %d", got)
+	}
+	if got := vmTemplatePreflightStatusCode(errText("guest_identity_inventory_unavailable")); got != http.StatusServiceUnavailable {
+		t.Fatalf("expected service unavailable, got %d", got)
+	}
+	if got := vmTemplatePreflightStatusCode(errText("guest_identity_inventory_scan_failed")); got != http.StatusInternalServerError {
+		t.Fatalf("expected internal server error for local scan failure, got %d", got)
+	}
 }
 
 func TestListVMTemplatesSimpleHandler(t *testing.T) {

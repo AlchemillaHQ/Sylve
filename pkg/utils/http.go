@@ -291,13 +291,20 @@ func HTTPPostJSONRead(url string, payload any, headers map[string]string) ([]byt
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, resp.StatusCode, fmt.Errorf("http error %d: %s", resp.StatusCode, string(b))
+		return b, resp.StatusCode, fmt.Errorf("http error %d: %s", resp.StatusCode, string(b))
 	}
 	return b, resp.StatusCode, nil
 }
 
 func HTTPGetJSONRead(url string, headers map[string]string) ([]byte, int, error) {
-	req, err := http.NewRequest("GET", url, nil)
+	return HTTPGetJSONReadContext(context.Background(), url, headers)
+}
+
+func HTTPGetJSONReadContext(ctx context.Context, url string, headers map[string]string) ([]byte, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err
 	}

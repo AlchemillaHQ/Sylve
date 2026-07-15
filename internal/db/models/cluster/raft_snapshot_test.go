@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
@@ -26,6 +27,8 @@ func allSnapshotModels() []any {
 		&ReplicationPolicy{},
 		&ReplicationPolicyTarget{},
 		&ReplicationLease{},
+		&ReplicationGuestOperation{},
+		&ReplicationGuestOperationReceipt{},
 		&ReplicationEvent{},
 		&ClusterSSHIdentity{},
 		&EncryptionKey{},
@@ -36,7 +39,6 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	sourceDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
 	fsmSrc := NewFSMDispatcher(sourceDB)
 	RegisterDefaultHandlers(fsmSrc)
-
 	if err := sourceDB.Create(&ClusterNote{ID: 1, Title: "note1", Content: "c1"}).Error; err != nil {
 		t.Fatalf("failed to seed cluster note: %v", err)
 	}
@@ -81,6 +83,22 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("failed to seed lease: %v", err)
 	}
+	if err := sourceDB.Create(&ReplicationGuestOperation{
+		GuestType: "jail", GuestID: 42, Operation: ReplicationGuestOperationMigration,
+		State: ReplicationGuestOperationPreCutover, Token: "migration:node-1:42",
+		OwnerNodeID: "node-1", TargetNodeID: "node-2", TaskID: 42, AcquiredAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("failed to seed guest operation: %v", err)
+	}
+	completedAt := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	if err := sourceDB.Create(&ReplicationGuestOperationReceipt{
+		Token: "migration:node-1:completed-41", GuestType: ReplicationGuestTypeVM,
+		GuestID: 41, Operation: ReplicationGuestOperationMigration,
+		OwnerNodeID: "node-1", TargetNodeID: "node-2", TaskID: 41,
+		AcquiredAt: completedAt.Add(-time.Minute), CompletedAt: completedAt,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed guest operation receipt: %v", err)
+	}
 
 	if err := sourceDB.Create(&ReplicationEvent{
 		ID: 600, EventType: "incremental", Status: "success",
@@ -119,11 +137,9 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if err := snap.Persist(writeCloser); err != nil {
 		t.Fatalf("Persist failed: %v", err)
 	}
-
 	destDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
 	fsmDest := NewFSMDispatcher(destDB)
 	RegisterDefaultHandlers(fsmDest)
-
 	if err := fsmDest.Restore(io.NopCloser(bytes.NewReader(buf.Bytes()))); err != nil {
 		t.Fatalf("Restore failed: %v", err)
 	}
@@ -176,6 +192,23 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("events mismatch: %+v", events)
 	}
 
+	var operations []ReplicationGuestOperation
+	destDB.Find(&operations)
+	if len(operations) != 1 || operations[0].Token != "migration:node-1:42" ||
+		operations[0].State != ReplicationGuestOperationPreCutover {
+		t.Fatalf("guest operations mismatch: %+v", operations)
+	}
+
+	var operationReceipts []ReplicationGuestOperationReceipt
+	destDB.Order("token ASC").Find(&operationReceipts)
+	if len(operationReceipts) != 1 || operationReceipts[0].Token != "migration:node-1:completed-41" ||
+		operationReceipts[0].Operation != ReplicationGuestOperationMigration ||
+		operationReceipts[0].GuestType != ReplicationGuestTypeVM || operationReceipts[0].GuestID != 41 ||
+		operationReceipts[0].OwnerNodeID != "node-1" || operationReceipts[0].TargetNodeID != "node-2" ||
+		operationReceipts[0].TaskID != 41 || !operationReceipts[0].CompletedAt.Equal(completedAt) {
+		t.Fatalf("guest operation receipts mismatch: %+v", operationReceipts)
+	}
+
 	var sshIds []ClusterSSHIdentity
 	destDB.Find(&sshIds)
 	if len(sshIds) != 1 || sshIds[0].NodeUUID != "node-1" {
@@ -193,7 +226,7 @@ type writerSnapSink struct {
 	buf *bytes.Buffer
 }
 
-func (w *writerSnapSink) Close() error         { return nil }
-func (w *writerSnapSink) Cancel() error        { return nil }
-func (w *writerSnapSink) ID() string           { return "test" }
+func (w *writerSnapSink) Close() error                { return nil }
+func (w *writerSnapSink) Cancel() error               { return nil }
+func (w *writerSnapSink) ID() string                  { return "test" }
 func (w *writerSnapSink) Write(p []byte) (int, error) { return w.buf.Write(p) }

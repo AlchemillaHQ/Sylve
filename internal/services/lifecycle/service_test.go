@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -28,6 +29,16 @@ import (
 func boolPtr(v bool) *bool {
 	return &v
 }
+
+type retryPendingTestError struct{}
+
+func (retryPendingTestError) Error() string               { return "retry pending" }
+func (retryPendingTestError) LifecycleRetryPending() bool { return true }
+
+type persistedResultTestError struct{}
+
+func (persistedResultTestError) Error() string                         { return "already persisted" }
+func (persistedResultTestError) LifecycleResultAlreadyPersisted() bool { return true }
 
 func newLifecycleTestService(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
@@ -130,6 +141,131 @@ func TestExecuteTaskUpdatesStatus(t *testing.T) {
 	}
 	if succeeded.Status != taskModels.LifecycleTaskStatusSuccess {
 		t.Fatalf("expected success status, got %s", succeeded.Status)
+	}
+}
+
+func TestExecuteTaskKeepsRecoverableMigrationRunning(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	s.SetMigrationExecutor(func(context.Context, uint) error { return retryPendingTestError{} })
+	task, _, err := s.createTask(
+		t.Context(), taskModels.GuestTypeVM, 440, "migrate",
+		taskModels.LifecycleTaskSourceUser, "tester", `{"targetNodeUuid":"node-b"}`, false,
+	)
+	if err != nil {
+		t.Fatalf("create migration task: %v", err)
+	}
+	if err := s.ExecuteTask(t.Context(), task.ID); err == nil {
+		t.Fatal("expected recovery-pending execution error")
+	}
+
+	var got taskModels.GuestLifecycleTask
+	if err := dbConn.First(&got, task.ID).Error; err != nil {
+		t.Fatalf("reload task: %v", err)
+	}
+	if got.Status != taskModels.LifecycleTaskStatusRunning || got.FinishedAt != nil {
+		t.Fatalf("recoverable migration became terminal: status=%q finishedAt=%v", got.Status, got.FinishedAt)
+	}
+	if got.Message != "migration_recovery_pending" || !strings.Contains(got.Error, "retry pending") {
+		t.Fatalf("unexpected recovery state: message=%q error=%q", got.Message, got.Error)
+	}
+}
+
+func TestRetryPendingDuplicateCannotOverwriteConcurrentMigrationSuccess(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	task, _, err := s.createTask(
+		t.Context(), taskModels.GuestTypeVM, 442, "migrate",
+		taskModels.LifecycleTaskSourceUser, "tester", `{"targetNodeUuid":"node-b"}`, false,
+	)
+	if err != nil {
+		t.Fatalf("create migration task: %v", err)
+	}
+	s.SetMigrationExecutor(func(context.Context, uint) error {
+		finishedAt := time.Now().UTC()
+		if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).Updates(map[string]any{
+			"status":      taskModels.LifecycleTaskStatusSuccess,
+			"message":     "migration_completed",
+			"finished_at": finishedAt,
+		}).Error; err != nil {
+			return err
+		}
+		return retryPendingTestError{}
+	})
+	if err := s.ExecuteTask(t.Context(), task.ID); err == nil {
+		t.Fatal("expected duplicate retry-pending result")
+	}
+	if err := dbConn.First(&task, task.ID).Error; err != nil {
+		t.Fatalf("reload task: %v", err)
+	}
+	if task.Status != taskModels.LifecycleTaskStatusSuccess || task.Message != "migration_completed" {
+		t.Fatalf("duplicate overwrote completed migration: status=%q message=%q", task.Status, task.Message)
+	}
+}
+
+func TestExecutionClaimCannotResurrectTerminalTask(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	task, _, err := s.createTask(
+		t.Context(), taskModels.GuestTypeVM, 443, "migrate",
+		taskModels.LifecycleTaskSourceUser, "tester", `{"targetNodeUuid":"node-b"}`, false,
+	)
+	if err != nil {
+		t.Fatalf("create migration task: %v", err)
+	}
+	finishedAt := time.Now().UTC()
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).Updates(map[string]any{
+		"status":      taskModels.LifecycleTaskStatusSuccess,
+		"message":     "migration_completed",
+		"finished_at": finishedAt,
+	}).Error; err != nil {
+		t.Fatalf("commit concurrent terminal result: %v", err)
+	}
+
+	claimed, err := s.claimTaskForExecution(t.Context(), task.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("claim stale delivery: %v", err)
+	}
+	if claimed {
+		t.Fatal("stale delivery claimed a terminal task")
+	}
+	if err := dbConn.First(&task, task.ID).Error; err != nil {
+		t.Fatalf("reload task: %v", err)
+	}
+	if task.Status != taskModels.LifecycleTaskStatusSuccess || task.Message != "migration_completed" {
+		t.Fatalf("terminal task was resurrected: status=%q message=%q", task.Status, task.Message)
+	}
+}
+
+func TestExecuteTaskPreservesMigrationCancellationResult(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	var taskID uint
+	task, _, err := s.createTask(
+		t.Context(), taskModels.GuestTypeJail, 441, "migrate",
+		taskModels.LifecycleTaskSourceUser, "tester", `{"targetNodeUuid":"node-b"}`, false,
+	)
+	if err != nil {
+		t.Fatalf("create migration task: %v", err)
+	}
+	taskID = task.ID
+	s.SetMigrationExecutor(func(context.Context, uint) error {
+		if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID).Updates(map[string]any{
+			"status":      taskModels.LifecycleTaskStatusFailed,
+			"message":     "migration_cancelled",
+			"error":       "cancelled_by_user",
+			"finished_at": time.Now().UTC(),
+		}).Error; err != nil {
+			return err
+		}
+		return persistedResultTestError{}
+	})
+	if err := s.ExecuteTask(t.Context(), task.ID); err == nil {
+		t.Fatal("expected persisted cancellation error")
+	}
+
+	var got taskModels.GuestLifecycleTask
+	if err := dbConn.First(&got, task.ID).Error; err != nil {
+		t.Fatalf("reload task: %v", err)
+	}
+	if got.Status != taskModels.LifecycleTaskStatusFailed || got.Message != "migration_cancelled" || got.Error != "cancelled_by_user" {
+		t.Fatalf("cancellation result was overwritten: status=%q message=%q error=%q", got.Status, got.Message, got.Error)
 	}
 }
 

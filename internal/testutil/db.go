@@ -11,6 +11,7 @@ package testutil
 import (
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -33,6 +34,12 @@ func NewSQLiteTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		if err := db.AutoMigrate(migrateModels...); err != nil {
 			t.Fatalf("failed to migrate test tables: %v", err)
 		}
+	}
+	if db.Migrator().HasTable("replication_policies") {
+		replicationguard.MarkPolicySchemaReady(db)
+	}
+	if db.Migrator().HasTable("replication_guest_operations") {
+		replicationguard.MarkGuestOperationSchemaReady(db)
 	}
 
 	return db

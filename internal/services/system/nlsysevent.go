@@ -40,11 +40,13 @@ func onZFSEvent(cSystem, cSubsystem, cType, cData *C.char) {
 		Raw:       "!system=" + system + " subsystem=" + subsystem + " type=" + evType + " | " + data,
 	}
 
-	logger.L.Debug().Str("system", system).
-		Str("subsystem", subsystem).
-		Str("type", evType).
-		Str("data", data).
-		Msg("Received ZFS event")
+	if shouldLogNetlinkEvent(ev) {
+		logger.L.Debug().Str("system", system).
+			Str("subsystem", subsystem).
+			Str("type", evType).
+			Str("data", data).
+			Msg("Received ZFS event")
+	}
 
 	for _, field := range strings.Fields(data) {
 		kv := strings.SplitN(field, "=", 2)

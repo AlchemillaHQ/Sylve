@@ -182,18 +182,40 @@ func TestExtractDatasetGuestID(t *testing.T) {
 	}
 }
 
-func TestRestoreLockIDFromDestination(t *testing.T) {
-	id1 := restoreLockIDFromDestination("tank/jails/42")
-	if id1 == 0 {
-		t.Fatal("should return non-zero")
+func TestRestoreDestinationLockSerializesOverlappingTrees(t *testing.T) {
+	svc := &Service{}
+	if acquired, holder := svc.acquireRestoreDestination("zroot/sylve"); !acquired || holder != "" {
+		t.Fatalf("acquire root = %v, %q", acquired, holder)
 	}
-	id2 := restoreLockIDFromDestination("tank/jails/42")
-	if id1 != id2 {
-		t.Fatal("same input should return same lock ID")
+	if acquired, holder := svc.acquireRestoreDestination("zroot/sylve/jails/100"); acquired || holder != "zroot/sylve" {
+		t.Fatalf("overlapping child acquire = %v, %q", acquired, holder)
 	}
-	id3 := restoreLockIDFromDestination("tank/virtual-machines/7")
-	if id1 == id3 {
-		t.Fatal("different destination should return different lock ID")
+	if acquired, holder := svc.acquireRestoreDestination("tank/independent"); !acquired || holder != "" {
+		t.Fatalf("independent acquire = %v, %q", acquired, holder)
+	}
+
+	svc.releaseRestoreDestination("zroot/sylve")
+	if acquired, holder := svc.acquireRestoreDestination("zroot/sylve/jails/100"); !acquired || holder != "" {
+		t.Fatalf("child acquire after release = %v, %q", acquired, holder)
+	}
+}
+
+func TestRestoreWorkloadIdentityInterlocksWithDatasetBackup(t *testing.T) {
+	svc := &Service{}
+	kind, id := restoreWorkloadIdentityForDataset("zroot/sylve")
+	if kind != clusterModels.BackupJobModeDataset || id != datasetHash("zroot/sylve") {
+		t.Fatalf("dataset restore identity = %q/%d", kind, id)
+	}
+	if acquired, _ := svc.acquireWorkloadOperation(kind, id, "backup_job:1"); !acquired {
+		t.Fatal("failed to acquire backup workload guard")
+	}
+	if acquired, holder := svc.acquireWorkloadOperation(kind, id, "restore_job:2"); acquired || holder != "backup_job:1" {
+		t.Fatalf("restore conflict = %v, %q", acquired, holder)
+	}
+
+	kind, id = restoreWorkloadIdentityForDataset("zroot/sylve/jails/100")
+	if kind != clusterModels.BackupJobModeJail || id != 100 {
+		t.Fatalf("jail restore identity = %q/%d", kind, id)
 	}
 }
 

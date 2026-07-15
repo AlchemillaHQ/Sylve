@@ -55,3 +55,40 @@ func TestShouldPersistNetlinkEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldLogNetlinkEvent(t *testing.T) {
+	tests := []struct {
+		name     string
+		event    *models.NetlinkEvent
+		expected bool
+	}{
+		{
+			name:     "nil event",
+			event:    nil,
+			expected: false,
+		},
+		{
+			name:     "history event suppressed",
+			event:    &models.NetlinkEvent{Type: "sysevent.fs.zfs.history_event"},
+			expected: false,
+		},
+		{
+			name:     "history event suppression is case-insensitive and trimmed",
+			event:    &models.NetlinkEvent{Type: "  SYSEVENT.FS.ZFS.HISTORY_EVENT  "},
+			expected: false,
+		},
+		{
+			name:     "state change remains visible",
+			event:    &models.NetlinkEvent{Type: "resource.fs.zfs.statechange"},
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldLogNetlinkEvent(tc.event); got != tc.expected {
+				t.Fatalf("expected %v, got %v", tc.expected, got)
+			}
+		})
+	}
+}

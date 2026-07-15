@@ -22,7 +22,6 @@ func TestRaftReplicationPolicyCRUDTwoNodes(t *testing.T) {
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationEvent{},
-		&clusterModels.ReplicationReceipt{},
 	)
 	defer cleanupClusterRaftTestNodes(t, nodes)
 
@@ -32,10 +31,10 @@ func TestRaftReplicationPolicyCRUDTwoNodes(t *testing.T) {
 		Policy: clusterModels.ReplicationPolicy{
 			ID: 1, Name: "raft-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 100, SourceNodeID: "node-1",
-			SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+			SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 			FailbackMode: clusterModels.ReplicationFailbackManual,
 			FailoverMode: clusterModels.ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 		},
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: "node-2", Weight: 100},
@@ -68,6 +67,7 @@ func TestRaftReplicationPolicyCRUDTwoNodes(t *testing.T) {
 	// update
 	payload.Policy.Name = "raft-policy-updated"
 	payload.Policy.FailoverMode = clusterModels.ReplicationFailoverAutoSafe
+	payload.ExpectedOwnerEpoch = 1
 	payload.Targets = []clusterModels.ReplicationPolicyTarget{
 		{NodeID: "node-2", Weight: 200},
 	}
@@ -96,6 +96,14 @@ func TestRaftReplicationPolicyCRUDTwoNodes(t *testing.T) {
 	})
 
 	// delete
+	if err := leader.service.UpdateReplicationPolicyProtectionState(
+		1,
+		1,
+		clusterModels.ReplicationProtectionStateDeleting,
+		false,
+	); err != nil {
+		t.Fatalf("mark policy deleting via raft: %v", err)
+	}
 	deleteRaw, _ := json.Marshal(map[string]any{"id": 1})
 	if err := leader.service.applyRaftCommand(clusterModels.Command{
 		Type: "replication_policy", Action: "delete", Data: deleteRaw,
@@ -129,10 +137,10 @@ func TestRaftReplicationPolicyThreeNodeFailover(t *testing.T) {
 		Policy: clusterModels.ReplicationPolicy{
 			ID: 1, Name: "before-failover", GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 100, SourceNodeID: "node-1",
-			SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+			SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 			FailbackMode: clusterModels.ReplicationFailbackManual,
 			FailoverMode: clusterModels.ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 		},
 	}
 	createRaw, _ := json.Marshal(payload)
@@ -173,10 +181,10 @@ func TestRaftReplicationPolicyThreeNodeFailover(t *testing.T) {
 		Policy: clusterModels.ReplicationPolicy{
 			ID: 2, Name: "after-failover", GuestType: clusterModels.ReplicationGuestTypeJail,
 			GuestID: 200, SourceNodeID: "node-2",
-			SourceMode: clusterModels.ReplicationSourceModePinned,
+			SourceMode:   clusterModels.ReplicationSourceModePinned,
 			FailbackMode: clusterModels.ReplicationFailbackAuto,
 			FailoverMode: clusterModels.ReplicationFailoverAutoSafe,
-			CronExpr: "0 */6 * * *", OwnerEpoch: 2,
+			CronExpr:     "0 */6 * * *", OwnerEpoch: 2,
 		},
 	}
 	createRaw2, _ := json.Marshal(payload2)
@@ -215,10 +223,19 @@ func TestRaftReplicationPolicyThreeNodeFailover(t *testing.T) {
 }
 
 func TestRaftReplicationLeaseUpsertReplication(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ReplicationLease{})
+	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
 	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&[]clusterModels.ReplicationPolicy{
+			{ID: 1, Name: "policy-1", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100, ActiveNodeID: "node-1", OwnerEpoch: 1, Enabled: true},
+			{ID: 2, Name: "policy-2", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 200, ActiveNodeID: "node-a", OwnerEpoch: 1, Enabled: true},
+			{ID: 3, Name: "policy-3", GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 300, ActiveNodeID: "node-b", OwnerEpoch: 1, Enabled: true},
+		}).Error; err != nil {
+			t.Fatalf("seed policies on %s: %v", node.id, err)
+		}
+	}
 
 	// upsert single
 	lease := clusterModels.ReplicationLease{
@@ -285,10 +302,10 @@ func TestRaftReplicationPolicyEnabledFalseClearsLeases(t *testing.T) {
 		Policy: clusterModels.ReplicationPolicy{
 			ID: 1, Name: "lease-test", GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 100, SourceNodeID: "node-1", Enabled: true,
-			SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+			SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 			FailbackMode: clusterModels.ReplicationFailbackManual,
 			FailoverMode: clusterModels.ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 		},
 	}
 	createRaw, _ := json.Marshal(payload)
@@ -309,6 +326,7 @@ func TestRaftReplicationPolicyEnabledFalseClearsLeases(t *testing.T) {
 
 	// update to disabled — FSM handler clears leases
 	payload.Policy.Enabled = false
+	payload.ExpectedOwnerEpoch = 1
 	updateRaw, _ := json.Marshal(payload)
 	if err := leader.service.applyRaftCommand(clusterModels.Command{
 		Type: "replication_policy", Action: "update", Data: updateRaw,
@@ -344,6 +362,115 @@ func TestRaftReplicationPolicyEnabledFalseClearsLeases(t *testing.T) {
 				return false
 			}
 			if !policy.Enabled {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func TestRaftReplicationOwnershipCommitAndTargetReadiness(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	now := time.Now().UTC()
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.ReplicationPolicy{
+			ID: 1, Name: "ownership", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
+			SourceNodeID: "node-1", ActiveNodeID: "node-1", OwnerEpoch: 1, Enabled: true,
+			ProtectionState: clusterModels.ReplicationProtectionStateSuspended,
+			TransitionState: clusterModels.ReplicationTransitionStateDemoting,
+			TransitionRunID: "run-raft", TransitionOwnerEpoch: 1,
+			TransitionSourceNodeID: "node-1", TransitionTargetNodeID: "node-2",
+		}).Error; err != nil {
+			t.Fatalf("seed policy on %s: %v", node.id, err)
+		}
+		if err := node.service.DB.Create(&clusterModels.ReplicationPolicyTarget{
+			PolicyID: 1, NodeID: "node-2", Weight: 100,
+		}).Error; err != nil {
+			t.Fatalf("seed target on %s: %v", node.id, err)
+		}
+		if err := node.service.DB.Create(&clusterModels.ReplicationLease{
+			PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
+			OwnerNodeID: "node-1", OwnerEpoch: 1, Version: 1,
+			ExpiresAt: now.Add(time.Hour),
+		}).Error; err != nil {
+			t.Fatalf("seed lease on %s: %v", node.id, err)
+		}
+	}
+
+	source := "node-2"
+	payload := clusterModels.ReplicationOwnershipTransitionPayload{
+		PolicyID: 1, ExpectedActiveNodeID: "node-1", ExpectedOwnerEpoch: 1,
+		ExpectedTransitionRunID: "run-raft", ActiveNodeID: "node-2",
+		SourceNodeID: &source, OwnerEpoch: 2, ReplaceTargets: true,
+		Targets: []clusterModels.ReplicationPolicyTarget{{NodeID: "node-1", Weight: 100}},
+		Lease: clusterModels.ReplicationLease{
+			PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
+			OwnerNodeID: "node-2", OwnerEpoch: 2, Version: 2,
+			ExpiresAt: now.Add(time.Hour),
+		},
+		Transition: clusterModels.ReplicationPolicyTransition{
+			State: clusterModels.ReplicationTransitionStatePromoting,
+			RunID: "run-raft", SourceNodeID: "node-1", TargetNodeID: "node-2", OwnerEpoch: 2,
+		},
+		ProtectionState: clusterModels.ReplicationProtectionStateSuspended,
+	}
+	if err := leader.service.CommitReplicationOwnershipTransition(payload, false); err != nil {
+		t.Fatalf("commit ownership through Raft: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "atomic ownership commit replication", func() bool {
+		for _, node := range nodes {
+			var policy clusterModels.ReplicationPolicy
+			if err := node.service.DB.Preload("Targets").First(&policy, 1).Error; err != nil {
+				return false
+			}
+			if policy.ActiveNodeID != "node-2" || policy.OwnerEpoch != 2 ||
+				policy.TransitionState != clusterModels.ReplicationTransitionStatePromoting ||
+				len(policy.Targets) != 1 || policy.Targets[0].NodeID != "node-1" {
+				return false
+			}
+			var lease clusterModels.ReplicationLease
+			if err := node.service.DB.Where("policy_id = ?", 1).First(&lease).Error; err != nil ||
+				lease.OwnerNodeID != "node-2" || lease.OwnerEpoch != 2 {
+				return false
+			}
+		}
+		return true
+	})
+	if err := leader.service.UpdateReplicationPolicyTransition(1, clusterModels.ReplicationPolicyTransition{
+		State: clusterModels.ReplicationTransitionStateCompleted,
+		RunID: "run-raft", SourceNodeID: "node-1", TargetNodeID: "node-2", OwnerEpoch: 2,
+	}); err != nil {
+		t.Fatalf("complete transition: %v", err)
+	}
+
+	verified := now.Add(time.Minute)
+	readyUntil := verified.Add(time.Hour)
+	if err := leader.service.UpdateReplicationTargetReadiness(clusterModels.ReplicationTargetReadinessUpdate{
+		PolicyID: 1, NodeID: "node-1", ExpectedOwnerEpoch: 2, Ready: true,
+		GenerationID: "generation-2", ManifestHash: "manifest-2",
+		RequiredDatasetCount: 1, CompletedDatasetCount: 1,
+		LastVerifiedAt: &verified, ReadyUntil: &readyUntil,
+	}, false); err != nil {
+		t.Fatalf("publish readiness through Raft: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "target readiness replication", func() bool {
+		for _, node := range nodes {
+			var policy clusterModels.ReplicationPolicy
+			if err := node.service.DB.Preload("Targets").First(&policy, 1).Error; err != nil {
+				return false
+			}
+			if policy.ProtectionState != clusterModels.ReplicationProtectionStateArmed ||
+				len(policy.Targets) != 1 || !policy.Targets[0].Ready ||
+				policy.Targets[0].GenerationID != "generation-2" {
 				return false
 			}
 		}

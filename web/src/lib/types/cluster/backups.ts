@@ -71,6 +71,8 @@ export const SnapshotInfoSchema = z.object({
 	refer: z.string(),
 	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
 	outOfBand: z.boolean().optional().default(false),
+	committed: z.boolean().optional().default(false),
+	legacy: z.boolean().optional().default(false),
 	childCount: z.number().int().nonnegative().default(0)
 });
 

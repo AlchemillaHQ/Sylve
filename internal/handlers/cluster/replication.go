@@ -127,9 +127,15 @@ func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 		}
 
 		if err := cS.ProposeReplicationPolicyUpdate(uint(id64), req, cS.Raft == nil); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			status := http.StatusBadRequest
+			message := "update_replication_policy_failed"
+			if strings.Contains(strings.ToLower(err.Error()), "transition_in_progress") {
+				status = http.StatusConflict
+				message = "policy_transition_in_progress"
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "update_replication_policy_failed",
+				Message: message,
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -162,26 +168,103 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 			return
 		}
 
-		if zS != nil {
-			if zS.IsPolicyTransitionRunning(uint(id64)) {
+		// Policy metadata must remain present until every node has acknowledged
+		// cleanup. Without the replication service there is no safe way to make
+		// that guarantee, so fail before moving the policy into deleting.
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_policy_delete_cleanup_unavailable",
+				Error:   "replication_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+
+		policy, policyErr := cS.GetReplicationPolicyByID(uint(id64))
+		if policyErr != nil {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status: "error", Message: "replication_policy_not_found", Error: policyErr.Error(), Data: nil,
+			})
+			return
+		}
+		switch strings.ToLower(strings.TrimSpace(policy.TransitionState)) {
+		case clusterModels.ReplicationTransitionStateDemoting,
+			clusterModels.ReplicationTransitionStateCatchup,
+			clusterModels.ReplicationTransitionStatePromoting,
+			clusterModels.ReplicationTransitionStateRollingBack:
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "policy_transition_in_progress", Error: "cannot_delete_policy_during_failover", Data: nil,
+			})
+			return
+		}
+		if policy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+			if err := cS.UpdateReplicationPolicyProtectionState(
+				policy.ID,
+				policy.OwnerEpoch,
+				clusterModels.ReplicationProtectionStateDeleting,
+				cS.Raft == nil,
+			); err != nil {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "policy_transition_in_progress",
-					Error:   "cannot_delete_policy_during_failover",
-					Data:    nil,
+					Status: "error", Message: "mark_replication_policy_deleting_failed", Error: err.Error(), Data: nil,
 				})
 				return
 			}
-			if cleanupErr := zS.CleanupReplicationPolicyDeleteBestEffort(c.Request.Context(), uint(id64)); cleanupErr != nil {
-				logger.L.Warn().
-					Uint("policy_id", uint(id64)).
-					Err(cleanupErr).
-					Msg("replication_policy_delete_cleanup_best_effort_failed")
+		}
+
+		deletingOwnerEpoch := policy.OwnerEpoch
+		if cleanupErr := zS.CleanupReplicationPolicyDeleteBestEffort(c.Request.Context(), uint(id64)); cleanupErr != nil {
+			logger.L.Warn().
+				Uint("policy_id", uint(id64)).
+				Uint64("owner_epoch", deletingOwnerEpoch).
+				Err(cleanupErr).
+				Msg("replication_policy_delete_cleanup_incomplete")
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_policy_delete_cleanup_incomplete",
+				Error:   cleanupErr.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		// Revalidate immediately before deleting the durable policy. This keeps
+		// a stale cleanup acknowledgement from authorizing deletion after an
+		// ownership epoch or lifecycle change.
+		policy, policyErr = cS.GetReplicationPolicyByID(uint(id64))
+		if policyErr != nil || policy.OwnerEpoch != deletingOwnerEpoch ||
+			policy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+			revalidationErr := "replication_policy_delete_revalidation_failed"
+			if policyErr != nil {
+				revalidationErr = policyErr.Error()
 			}
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_policy_delete_revalidation_failed",
+				Error:   revalidationErr,
+				Data:    nil,
+			})
+			return
 		}
 
 		if err := cS.ProposeReplicationPolicyDelete(uint(id64), cS.Raft == nil); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			status := http.StatusInternalServerError
+			lowerErr := strings.ToLower(err.Error())
+			switch {
+			case errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(lowerErr, "record not found"):
+				status = http.StatusNotFound
+			case strings.Contains(lowerErr, "transition"),
+				strings.Contains(lowerErr, "not_deleting"),
+				strings.Contains(lowerErr, "cas_conflict"):
+				status = http.StatusConflict
+			case strings.Contains(lowerErr, "not_leader"),
+				strings.Contains(lowerErr, "not the leader"),
+				strings.Contains(lowerErr, "leadership"),
+				strings.Contains(lowerErr, "quorum"),
+				strings.Contains(lowerErr, "timeout"):
+				status = http.StatusServiceUnavailable
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "delete_replication_policy_failed",
 				Error:   err.Error(),
@@ -466,34 +549,6 @@ func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func ReplicationReceipts(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		policyID := uint(0)
-		if q := c.Query("policyId"); q != "" {
-			if parsed, err := strconv.ParseUint(q, 10, 64); err == nil {
-				policyID = uint(parsed)
-			}
-		}
-
-		receipts, err := cS.ListReplicationReceipts(policyID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "list_replication_receipts_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[[]clusterModels.ReplicationReceipt]{
-			Status:  "success",
-			Message: "replication_receipts_listed",
-			Data:    receipts,
-		})
-	}
-}
-
 func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -623,37 +678,6 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 	}
 }
 
-func UpsertReplicationReceiptInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req clusterModels.ReplicationReceipt
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		if err := cS.UpsertLocalReplicationReceipt(req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "upsert_replication_receipt_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "replication_receipt_upserted",
-			Data:    nil,
-		})
-	}
-}
-
 func UpsertClusterSSHIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -712,23 +736,127 @@ func ReconcileClusterSSHNow(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func ActivateReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+type replicationRuntimeStateRequest struct {
+	PolicyID        uint   `json:"policyId"`
+	OwnerEpoch      uint64 `json:"ownerEpoch"`
+	TransitionRunID string `json:"transitionRunId"`
+}
+
+type replicationActivateRequest struct {
+	PolicyID        uint   `json:"policyId"`
+	OwnerEpoch      uint64 `json:"ownerEpoch"`
+	TransitionRunID string `json:"transitionRunId"`
+	DesiredRunning  *bool  `json:"desiredRunning"`
+}
+
+type replicationDemoteRequest struct {
+	PolicyID        uint   `json:"policyId"`
+	OwnerEpoch      uint64 `json:"ownerEpoch"`
+	TransitionRunID string `json:"transitionRunId"`
+}
+
+type replicationCatchupRequest struct {
+	PolicyID        uint   `json:"policyId"`
+	TargetNodeID    string `json:"targetNodeId"`
+	OwnerEpoch      uint64 `json:"ownerEpoch"`
+	TransitionRunID string `json:"transitionRunId"`
+	GenerationID    string `json:"generationId"`
+}
+
+func replicationControlErrorStatus(err error) int {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return http.StatusNotFound
+	}
+	lowerErr := strings.ToLower(err.Error())
+	if strings.Contains(lowerErr, "mismatch") ||
+		strings.Contains(lowerErr, "conflict") ||
+		strings.Contains(lowerErr, "stale") {
+		return http.StatusConflict
+	}
+	return http.StatusInternalServerError
+}
+
+func ReplicationPolicyRuntimeStateInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			PolicyID uint `json:"policyId"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+		var req replicationRuntimeStateRequest
+		if err := c.ShouldBindJSON(&req); err != nil ||
+			req.PolicyID == 0 || req.OwnerEpoch == 0 || strings.TrimSpace(req.TransitionRunID) == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
-				Error:   "policyId is required",
+				Error:   "policyId, ownerEpoch, and transitionRunId are required",
+				Data:    nil,
+			})
+			return
+		}
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
 				Data:    nil,
 			})
 			return
 		}
 
-		if err := zS.ActivateReplicationPolicy(c.Request.Context(), req.PolicyID); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		running, err := zS.ReplicationPolicyRuntimeState(
+			c.Request.Context(),
+			req.PolicyID,
+			req.OwnerEpoch,
+			strings.TrimSpace(req.TransitionRunID),
+		)
+		if err != nil {
+			c.JSON(replicationControlErrorStatus(err), internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_policy_runtime_state_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[map[string]bool]{
+			Status:  "success",
+			Message: "replication_policy_runtime_state_fetched",
+			Data: map[string]bool{
+				"running": running,
+			},
+		})
+	}
+}
+
+func ActivateReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req replicationActivateRequest
+		if err := c.ShouldBindJSON(&req); err != nil ||
+			req.PolicyID == 0 || req.OwnerEpoch == 0 || strings.TrimSpace(req.TransitionRunID) == "" ||
+			req.DesiredRunning == nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policyId, ownerEpoch, transitionRunId, and desiredRunning are required",
+				Data:    nil,
+			})
+			return
+		}
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.ActivateReplicationPolicyForTransition(
+			c.Request.Context(),
+			req.PolicyID,
+			req.OwnerEpoch,
+			strings.TrimSpace(req.TransitionRunID),
+			req.DesiredRunning,
+		); err != nil {
+			c.JSON(replicationControlErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "activate_replication_policy_failed",
 				Error:   err.Error(),
@@ -796,22 +924,34 @@ func RunReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.Ha
 
 func DemoteReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			PolicyID   uint   `json:"policyId"`
-			OwnerEpoch uint64 `json:"ownerEpoch"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+		var req replicationDemoteRequest
+		if err := c.ShouldBindJSON(&req); err != nil ||
+			req.PolicyID == 0 || req.OwnerEpoch == 0 || strings.TrimSpace(req.TransitionRunID) == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
-				Error:   "policyId is required",
+				Error:   "policyId, ownerEpoch, and transitionRunId are required",
+				Data:    nil,
+			})
+			return
+		}
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
 				Data:    nil,
 			})
 			return
 		}
 
-		if err := zS.DemoteReplicationPolicy(c.Request.Context(), req.PolicyID, req.OwnerEpoch); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		if err := zS.DemoteReplicationPolicyForTransition(
+			c.Request.Context(),
+			req.PolicyID,
+			req.OwnerEpoch,
+			strings.TrimSpace(req.TransitionRunID),
+		); err != nil {
+			c.JSON(replicationControlErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "demote_replication_policy_failed",
 				Error:   err.Error(),
@@ -830,12 +970,20 @@ func DemoteReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin
 
 func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "replication_service_unavailable", Error: "replication_service_unavailable",
+			})
+			return
+		}
 		var req struct {
 			GuestType      string `json:"guest_type"`
 			GuestID        uint   `json:"guest_id"`
 			NewOwnerNodeID string `json:"new_owner_node_id"`
+			OperationToken string `json:"operation_token"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 || strings.TrimSpace(req.NewOwnerNodeID) == "" {
+		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 ||
+			strings.TrimSpace(req.NewOwnerNodeID) == "" || strings.TrimSpace(req.OperationToken) == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
@@ -845,7 +993,9 @@ func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gi
 			return
 		}
 
-		if err := zS.MigrateGuestOwnership(c.Request.Context(), req.GuestType, req.GuestID, req.NewOwnerNodeID); err != nil {
+		if err := zS.MigrateGuestOwnership(
+			c.Request.Context(), req.GuestType, req.GuestID, req.NewOwnerNodeID, req.OperationToken,
+		); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "reassign_replication_owner_failed",
@@ -863,25 +1013,152 @@ func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gi
 	}
 }
 
-func CatchupReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func ReplicationGuestOperationInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			PolicyID     uint   `json:"policyId"`
+			Action       string `json:"action"`
+			GuestType    string `json:"guestType"`
+			GuestID      uint   `json:"guestId"`
+			Operation    string `json:"operation"`
+			Token        string `json:"token"`
+			OwnerNodeID  string `json:"ownerNodeId"`
 			TargetNodeID string `json:"targetNodeId"`
-			OwnerEpoch   uint64 `json:"ownerEpoch"`
+			TaskID       uint   `json:"taskId"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 || strings.TrimSpace(req.TargetNodeID) == "" {
+		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 ||
+			strings.TrimSpace(req.GuestType) == "" || strings.TrimSpace(req.Token) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_request", Error: "guestType, guestId, and token are required",
+			})
+			return
+		}
+		if cS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_service_unavailable", Error: "cluster_service_unavailable",
+			})
+			return
+		}
+
+		action := strings.ToLower(strings.TrimSpace(req.Action))
+		operation := strings.ToLower(strings.TrimSpace(req.Operation))
+		var err error
+		switch action {
+		case "acquire":
+			err = cS.AcquireReplicationGuestOperation(clusterModels.ReplicationGuestOperationAcquire{
+				GuestType: req.GuestType, GuestID: req.GuestID, Operation: operation,
+				Token: req.Token, OwnerNodeID: req.OwnerNodeID, TargetNodeID: req.TargetNodeID, TaskID: req.TaskID,
+			}, false)
+		case "seal", "abort", "complete":
+			payload := clusterModels.ReplicationGuestOperationTransition{
+				GuestType: req.GuestType, GuestID: req.GuestID, Operation: operation,
+				Token: req.Token, TargetNodeID: req.TargetNodeID,
+			}
+			switch action {
+			case "seal":
+				err = cS.SealReplicationGuestOperation(payload, false)
+			case "abort":
+				err = cS.AbortReplicationGuestOperation(payload, false)
+			case "complete":
+				err = cS.CompleteReplicationGuestOperation(payload, false)
+			}
+		default:
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_request", Error: "invalid replication guest operation action",
+			})
+			return
+		}
+		if err != nil {
+			c.JSON(replicationControlErrorStatus(err), internal.APIResponse[any]{
+				Status: "error", Message: "replication_guest_operation_failed", Error: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status: "success", Message: "replication_guest_operation_applied",
+		})
+	}
+}
+
+func ReplicationGuestOperationStatusInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			GuestType    string `json:"guestType"`
+			GuestID      uint   `json:"guestId"`
+			Operation    string `json:"operation"`
+			State        string `json:"state"`
+			Token        string `json:"token"`
+			TargetNodeID string `json:"targetNodeId"`
+		}
+		if cS == nil || cS.DB == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_service_unavailable", Error: "cluster_service_unavailable",
+			})
+			return
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 ||
+			strings.TrimSpace(req.GuestType) == "" || strings.TrimSpace(req.Token) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_request", Error: "guestType, guestId, and token are required",
+			})
+			return
+		}
+		var operation clusterModels.ReplicationGuestOperation
+		err := cS.DB.Where("guest_type = ? AND guest_id = ?", strings.TrimSpace(req.GuestType), req.GuestID).
+			First(&operation).Error
+		if err != nil || strings.TrimSpace(operation.Operation) != strings.TrimSpace(req.Operation) ||
+			strings.TrimSpace(operation.State) != strings.TrimSpace(req.State) ||
+			strings.TrimSpace(operation.Token) != strings.TrimSpace(req.Token) ||
+			strings.TrimSpace(operation.TargetNodeID) != strings.TrimSpace(req.TargetNodeID) {
+			detail := "replication_guest_operation_not_applied"
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				detail = err.Error()
+			}
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "replication_guest_operation_not_applied", Error: detail,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status: "success", Message: "replication_guest_operation_applied",
+		})
+	}
+}
+
+func CatchupReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req replicationCatchupRequest
+		if err := c.ShouldBindJSON(&req); err != nil ||
+			req.PolicyID == 0 || req.OwnerEpoch == 0 ||
+			strings.TrimSpace(req.TargetNodeID) == "" ||
+			strings.TrimSpace(req.TransitionRunID) == "" ||
+			strings.TrimSpace(req.GenerationID) == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
-				Error:   "policyId and targetNodeId are required",
+				Error:   "policyId, targetNodeId, ownerEpoch, transitionRunId, and generationId are required",
+				Data:    nil,
+			})
+			return
+		}
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
 				Data:    nil,
 			})
 			return
 		}
 
-		if err := zS.CatchupReplicationPolicyToNode(c.Request.Context(), req.PolicyID, req.TargetNodeID, req.OwnerEpoch); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		if err := zS.CatchupReplicationPolicyToNodeForTransition(
+			c.Request.Context(),
+			req.PolicyID,
+			strings.TrimSpace(req.TargetNodeID),
+			req.OwnerEpoch,
+			strings.TrimSpace(req.TransitionRunID),
+			strings.TrimSpace(req.GenerationID),
+		); err != nil {
+			c.JSON(replicationControlErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "catchup_replication_policy_failed",
 				Error:   err.Error(),
@@ -898,23 +1175,104 @@ func CatchupReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gi
 	}
 }
 
-func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func UpdateReplicationTargetReadinessInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			PolicyID uint `json:"policyId"`
+		if cS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_service_unavailable",
+				Error:   "cluster_service_unavailable",
+				Data:    nil,
+			})
+			return
 		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+		// Forward before binding so the leader receives the untouched request body.
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
+		var req clusterModels.ReplicationTargetReadinessUpdate
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
-				Error:   "policyId is required",
+				Error:   err.Error(),
 				Data:    nil,
 			})
 			return
 		}
 
-		if err := zS.CleanupReplicationPolicyDeleteLocalBestEffort(c.Request.Context(), req.PolicyID); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		if err := cS.UpdateReplicationTargetReadiness(req, cS.Raft == nil); err != nil {
+			status := http.StatusBadRequest
+			message := "update_replication_target_readiness_failed"
+			lowerErr := strings.ToLower(err.Error())
+			switch {
+			case errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(lowerErr, "record not found"):
+				status = http.StatusNotFound
+				message = "replication_target_readiness_not_found"
+			case strings.Contains(lowerErr, "cas_conflict") || strings.Contains(lowerErr, "stale"):
+				status = http.StatusConflict
+				message = "replication_target_readiness_conflict"
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: message,
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_target_readiness_updated",
+			Data:    nil,
+		})
+	}
+}
+
+func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			PolicyID           uint   `json:"policyId"`
+			ExpectedOwnerEpoch uint64 `json:"expectedOwnerEpoch"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 || req.ExpectedOwnerEpoch == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policyId and expectedOwnerEpoch are required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cleanup_replication_policy_delete_unavailable",
+				Error:   "replication_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.CleanupReplicationPolicyDeleteLocalBestEffort(
+			c.Request.Context(),
+			req.PolicyID,
+			req.ExpectedOwnerEpoch,
+		); err != nil {
+			status := http.StatusInternalServerError
+			lowerErr := strings.ToLower(err.Error())
+			switch {
+			case strings.Contains(lowerErr, "delete_cleanup_quiescing"):
+				status = http.StatusServiceUnavailable
+			case strings.Contains(lowerErr, "delete_authority"),
+				strings.Contains(lowerErr, "policy_not_deleting"):
+				status = http.StatusConflict
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "cleanup_replication_policy_delete_failed",
 				Error:   err.Error(),

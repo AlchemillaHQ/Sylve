@@ -15,6 +15,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/beevik/etree"
 	"gorm.io/gorm"
 )
 
@@ -145,5 +146,47 @@ func TestValidateCPUPins_DualSocketScenarioFromProductionPayload(t *testing.T) {
 
 	if err := validateCPUPins(db, req, 80, 2, 40); err != nil {
 		t.Fatalf("expected production dual-socket payload to be valid, got error: %v", err)
+	}
+}
+
+func TestUpdateRequestedCPUXMLUsesRequestedTopologyAndPersistedPins(t *testing.T) {
+	const currentXML = `<domain xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0">
+		<vcpu>2</vcpu>
+		<cpu><topology sockets="1" cores="2" threads="1"/></cpu>
+		<bhyve:commandline><bhyve:arg value="-p 0:0"/></bhyve:commandline>
+	</domain>`
+	req := libvirtServiceInterfaces.ModifyCPURequest{
+		CPUSockets: 2,
+		CPUCores:   3,
+		CPUThreads: 2,
+	}
+
+	updatedXML, err := (&Service{}).updateRequestedCPUXML(currentXML, req, nil)
+	if err != nil {
+		t.Fatalf("update requested CPU XML: %v", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(updatedXML); err != nil {
+		t.Fatalf("parse updated CPU XML: %v", err)
+	}
+	if got := strings.TrimSpace(doc.FindElement("//vcpu").Text()); got != "12" {
+		t.Fatalf("vcpu = %q, want 12", got)
+	}
+	topology := doc.FindElement("//cpu/topology")
+	if topology == nil {
+		t.Fatal("updated CPU topology is missing")
+	}
+	if got := topology.SelectAttrValue("sockets", ""); got != "2" {
+		t.Fatalf("sockets = %q, want 2", got)
+	}
+	if got := topology.SelectAttrValue("cores", ""); got != "3" {
+		t.Fatalf("cores = %q, want 3", got)
+	}
+	if got := topology.SelectAttrValue("threads", ""); got != "2" {
+		t.Fatalf("threads = %q, want 2", got)
+	}
+	if strings.Contains(updatedXML, "-p 0:0") {
+		t.Fatal("stale CPU pinning remained in updated XML")
 	}
 }

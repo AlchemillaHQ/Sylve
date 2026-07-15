@@ -9,207 +9,62 @@
 package migration
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestValidateMigration_SameTarget(t *testing.T) {
-	svc := &Service{DB: nil, Cluster: nil}
-
-	req := struct {
-		guestType      string
-		guestID        uint
-		targetNodeUUID string
+func TestCanonicalMigrationGuestDatasetUsesExactGuestIDBoundary(t *testing.T) {
+	tests := []struct {
+		name      string
+		dataset   string
+		guestType string
+		guestID   uint
+		want      bool
 	}{
-		guestType:      "vm",
-		guestID:        1,
-		targetNodeUUID: "same-node-uuid",
+		{name: "vm root", dataset: "zroot/sylve/virtual-machines/1", guestType: "vm", guestID: 1, want: true},
+		{name: "vm descendant", dataset: "zroot/sylve/virtual-machines/1/disk-0", guestType: "vm", guestID: 1, want: true},
+		{name: "vm root snapshot", dataset: "zroot/sylve/virtual-machines/1@snap", guestType: "vm", guestID: 1, want: true},
+		{name: "vm descendant snapshot", dataset: "zroot/sylve/virtual-machines/1/disk-0@snap", guestType: "vm", guestID: 1, want: true},
+		{name: "vm adjacent 10", dataset: "zroot/sylve/virtual-machines/10", guestType: "vm", guestID: 1, want: false},
+		{name: "vm adjacent 11 descendant", dataset: "zroot/sylve/virtual-machines/11/disk-0", guestType: "vm", guestID: 1, want: false},
+		{name: "vm textual prefix", dataset: "zroot/sylve/virtual-machines/1-old", guestType: "vm", guestID: 1, want: false},
+		{name: "vm noncanonical nesting", dataset: "zroot/archive/sylve/virtual-machines/1", guestType: "vm", guestID: 1, want: false},
+		{name: "jail root", dataset: "zroot/sylve/jails/1", guestType: "jail", guestID: 1, want: true},
+		{name: "jail descendant", dataset: "zroot/sylve/jails/1/root", guestType: "jail", guestID: 1, want: true},
+		{name: "jail adjacent 10", dataset: "zroot/sylve/jails/10", guestType: "jail", guestID: 1, want: false},
+		{name: "jail adjacent 11 descendant", dataset: "zroot/sylve/jails/11/root", guestType: "jail", guestID: 1, want: false},
+		{name: "remote jail endpoint", dataset: "backup-host:zroot/sylve/jails/1/active", guestType: "jail", guestID: 1, want: true},
+		{name: "wrong guest type", dataset: "zroot/sylve/jails/1", guestType: "vm", guestID: 1, want: false},
+		{name: "zero guest id", dataset: "zroot/sylve/virtual-machines/1", guestType: "vm", guestID: 0, want: false},
 	}
 
-	_ = req
-
-	if svc == nil {
-		t.Skip("nil service - validation requires setup")
-	}
-}
-
-func TestValidateMigration_EmptyTarget(t *testing.T) {
-	if false {
-		t.Log("validation tests require cluster service setup")
-	}
-}
-
-func TestCancelMigration_NotMigration(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestCancelMigration_NotAllowedPhase(t *testing.T) {
-	t.Run("cancel_during_final_sync", func(t *testing.T) {
-		if false {
-			t.Log("requires DB setup")
-		}
-	})
-}
-
-func TestGetActiveTaskForGuest_NoDB(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestResolveVMDatasets_NoDB(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestResolveJailDatasets_NoDB(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestBackupJobReferencesGuest_VM(t *testing.T) {
-	svc := &Service{}
-
-	job := clusterModels.BackupJob{
-		Mode:          clusterModels.BackupJobModeVM,
-		SourceDataset: "zroot/sylve/virtual-machines/123/disk-0",
-	}
-
-	if !svc.backupJobReferencesGuest(job, "vm", 123) {
-		t.Fatal("expected true for matching VM backup job")
-	}
-
-	job.SourceDataset = "zroot/sylve/virtual-machines/456/disk-0"
-	if svc.backupJobReferencesGuest(job, "vm", 123) {
-		t.Fatal("expected false for non-matching VM backup job")
-	}
-
-	job.Mode = clusterModels.BackupJobModeDataset
-	if svc.backupJobReferencesGuest(job, "vm", 123) {
-		t.Fatal("expected false for dataset mode job")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isCanonicalMigrationGuestDataset(test.dataset, test.guestType, test.guestID); got != test.want {
+				t.Fatalf("isCanonicalMigrationGuestDataset(%q, %q, %d) = %t, want %t", test.dataset, test.guestType, test.guestID, got, test.want)
+			}
+		})
 	}
 }
 
-func TestBackupJobReferencesGuest_Jail(t *testing.T) {
-	svc := &Service{}
-
-	job := clusterModels.BackupJob{
-		Mode:           clusterModels.BackupJobModeJail,
-		JailRootDataset: "zroot/sylve/jails/42/root",
-	}
-
-	if !svc.backupJobReferencesGuest(job, "jail", 42) {
-		t.Fatal("expected true for matching jail backup job")
-	}
-
-	job.JailRootDataset = "zroot/sylve/jails/99/root"
-	if svc.backupJobReferencesGuest(job, "jail", 42) {
-		t.Fatal("expected false for non-matching jail backup job")
-	}
-
-	job.Mode = clusterModels.BackupJobModeVM
-	if svc.backupJobReferencesGuest(job, "jail", 42) {
-		t.Fatal("expected false for VM mode job checking jail")
-	}
-}
-
-func TestMigrationPayloadRoundTrip(t *testing.T) {
-	mp := migrationPayload{
-		TargetNodeUUID:     "node-1",
-		TargetNodeHostname: "host-1",
-		Phase:              PhasePreflight,
-		PhaseMessage:       "validating",
-	}
-
-	b, err := marshalPayload(mp)
-	if err != nil {
-		t.Fatalf("marshal failed: %v", err)
-	}
-
-	restored, err := unmarshalPayload(b)
-	if err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	if restored.TargetNodeUUID != mp.TargetNodeUUID {
-		t.Fatalf("expected %q, got %q", mp.TargetNodeUUID, restored.TargetNodeUUID)
-	}
-	if restored.Phase != mp.Phase {
-		t.Fatalf("expected %q, got %q", mp.Phase, restored.Phase)
-	}
-	if restored.PhaseMessage != mp.PhaseMessage {
-		t.Fatalf("expected %q, got %q", mp.PhaseMessage, restored.PhaseMessage)
-	}
-}
-
-func marshalPayload(mp migrationPayload) (string, error) {
-	b, err := json.Marshal(mp)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-func unmarshalPayload(s string) (migrationPayload, error) {
-	var mp migrationPayload
-	err := json.Unmarshal([]byte(s), &mp)
-	return mp, err
-}
-
-func TestMigrationPhases(t *testing.T) {
-	phases := []string{
-		PhasePreflight,
-		PhaseInitialReplicaton,
-		PhaseStopSource,
-		PhaseFinalSync,
-		PhaseStartTarget,
-		PhasePolicyAdjustment,
-		PhaseFinalize,
-	}
-
-	for _, p := range phases {
-		if p == "" {
-			t.Fatal("empty phase name")
-		}
-	}
-}
-
-func TestCheckCancelled_NilDB(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestUpdateTaskPhase_NilDB(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestUpdateTaskFailed_NilDB(t *testing.T) {
-	t.Skip("requires DB setup")
-}
-
-func TestSnapshotPrefix(t *testing.T) {
-	if migrationSnapPrefix != "sylve-migrate" {
-		t.Fatalf("expected sylve-migrate, got %s", migrationSnapPrefix)
-	}
-}
-
-func TestErrorConstants(t *testing.T) {
-	errs := []error{
-		ErrMigrationInProgress,
-		ErrGuestActiveTransition,
-		ErrTargetNodeOffline,
-		ErrTargetNodeSame,
-		ErrTargetAlreadyHasGuest,
-		ErrTargetPoolMissing,
-		ErrSSHUnreachable,
-		ErrCancelNotAllowed,
-		ErrMigrationFailed,
-	}
-
-	for _, e := range errs {
-		if e == nil {
-			t.Fatal("nil error constant")
-		}
-		if e.Error() == "" {
-			t.Fatal("empty error message")
+func TestMigrationOwnedSnapshotMatchesOnlyGeneratedNames(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		want bool
+	}{
+		{name: "sylve-migrate-initial-1700000000", want: true},
+		{name: "sylve-migrate-final-1700000001", want: true},
+		{name: "sylve-migrate-pre-migration-1700000002", want: true},
+		{name: "sylve-migrate", want: false},
+		{name: "sylve-migrated-archive-1700000000", want: false},
+		{name: "sylve-migrate-user-1700000000", want: false},
+		{name: "sylve-migrate-final-not-a-time", want: false},
+		{name: "sylve-migrate-final-01700000001", want: false},
+	} {
+		if got := isMigrationOwnedSnapshot(test.name); got != test.want {
+			t.Errorf("isMigrationOwnedSnapshot(%q) = %v, want %v", test.name, got, test.want)
 		}
 	}
 }
@@ -265,6 +120,11 @@ func TestBackupEventReferencesGuest_VM(t *testing.T) {
 		t.Fatal("expected false for non-matching VM backup event")
 	}
 
+	event.SourceDataset = "zroot/sylve/virtual-machines/10/disk-0"
+	if svc.backupEventReferencesGuest(event, "vm", 1) {
+		t.Fatal("VM 1 must not match adjacent VM 10")
+	}
+
 	event.Mode = clusterModels.BackupJobModeDataset
 	event.SourceDataset = "zroot/sylve/virtual-machines/123/disk-0"
 	if svc.backupEventReferencesGuest(event, "vm", 123) {
@@ -294,6 +154,11 @@ func TestBackupEventReferencesGuest_Jail(t *testing.T) {
 	event.TargetEndpoint = "backup-host:pool/sylve/jails/99/active"
 	if svc.backupEventReferencesGuest(event, "jail", 42) {
 		t.Fatal("expected false for non-matching jail backup event")
+	}
+
+	event.TargetEndpoint = "backup-host:pool/sylve/jails/11/active"
+	if svc.backupEventReferencesGuest(event, "jail", 1) {
+		t.Fatal("jail 1 must not match adjacent jail 11")
 	}
 
 	event.Mode = clusterModels.BackupJobModeVM

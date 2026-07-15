@@ -297,13 +297,7 @@ func (s *Service) refreshLiveStates() ([]jailServiceInterfaces.State, error) {
 	return states, nil
 }
 
-func (s *Service) readJIDsByName() (map[string]int, error) {
-	cmd := exec.Command("/usr/sbin/jls", "--libxo", "json", "jid", "name")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run jls: %w", err)
-	}
-
+func parseJIDsByNameJSON(out []byte) (map[string]int, error) {
 	var jlsData struct {
 		JailInformation struct {
 			Jail []struct {
@@ -342,6 +336,22 @@ func (s *Service) readJIDsByName() (map[string]int, error) {
 	}
 
 	return jidByName, nil
+}
+
+func (s *Service) readJIDsByNameContext(ctx context.Context) (map[string]int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, "/usr/sbin/jls", "--libxo", "json", "jid", "name")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run jls: %w", err)
+	}
+	return parseJIDsByNameJSON(out)
+}
+
+func (s *Service) readJIDsByName() (map[string]int, error) {
+	return s.readJIDsByNameContext(context.Background())
 }
 
 func (s *Service) IsJailRunning(ctid uint) (bool, error) {

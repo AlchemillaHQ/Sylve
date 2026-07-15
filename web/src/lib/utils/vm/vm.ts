@@ -164,6 +164,14 @@ const vmCreateErrorMessageByCode: Record<string, string> = {
     invalid_iso_or_image_format: 'Invalid or unsupported ISO/image format. Verify the selected media file',
     invalid_vnc_bind_ip: 'VNC bind IP must be a valid IPv4 or IPv6 address',
     invalid_vm_name: 'Invalid VM name. Use a valid hostname-style name',
+    guest_id_already_in_use:
+        'This numeric guest ID is already used by a VM or jail. Choose a different ID',
+    guest_identity_inventory_conflict:
+        'Existing VM/jail ID conflicts must be resolved before creating another guest',
+    guest_identity_inventory_scan_failed:
+        'Could not check local VM and jail IDs. Check the server logs and retry',
+    guest_identity_inventory_unavailable:
+        'Could not verify guest IDs on every cluster node. Check node health and retry',
     iso_or_image_not_found: 'Selected ISO/image could not be found or resolved on disk',
     unsupported_download_type:
         'Selected media source type is unsupported. Re-import the image as HTTP/path/torrent download',

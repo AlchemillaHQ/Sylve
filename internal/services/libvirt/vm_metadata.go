@@ -17,6 +17,17 @@ import (
 	"gorm.io/gorm"
 )
 
+func deleteVMStorageRowsForLocalRetirement(tx *gorm.DB, vmIDs []uint) error {
+	if tx == nil {
+		return fmt.Errorf("vm_metadata_retirement_database_not_initialized")
+	}
+	// This path is called only after migration/replication has moved ownership
+	// away from the node. It removes stale local metadata, not guest topology.
+	return tx.Session(&gorm.Session{SkipHooks: true}).
+		Where("vm_id IN ?", vmIDs).
+		Delete(&vmModels.Storage{}).Error
+}
+
 func (s *Service) RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("libvirt_service_not_initialized")
@@ -82,7 +93,7 @@ func (s *Service) RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error {
 		if err := tx.Where("vm_id IN ?", vmIDs).Delete(&vmModels.Network{}).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_vm_networks_for_retire: %w", err)
 		}
-		if err := tx.Where("vm_id IN ?", vmIDs).Delete(&vmModels.Storage{}).Error; err != nil {
+		if err := deleteVMStorageRowsForLocalRetirement(tx, vmIDs); err != nil {
 			return fmt.Errorf("failed_to_delete_vm_storages_for_retire: %w", err)
 		}
 		if err := tx.Where("id IN ?", vmIDs).Delete(&vmModels.VM{}).Error; err != nil {
@@ -99,7 +110,8 @@ func (s *Service) RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error {
 			if refCount > 0 {
 				continue
 			}
-			if err := tx.Delete(&vmModels.VMStorageDataset{}, datasetID).Error; err != nil {
+			if err := tx.Session(&gorm.Session{SkipHooks: true}).
+				Delete(&vmModels.VMStorageDataset{}, datasetID).Error; err != nil {
 				return fmt.Errorf("failed_to_delete_vm_storage_dataset_%d: %w", datasetID, err)
 			}
 		}

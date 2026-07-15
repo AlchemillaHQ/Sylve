@@ -23,6 +23,8 @@ func TestClassifyBackupOutput(t *testing.T) {
 		{"up to date alt", "No datasets to backup, source and target are up-to-date", backupOutputUpToDate},
 		{"no source", "error: No source: tank/data does not exist", backupOutputBlockedNoSource},
 		{"no source snapshot", "error: No source snapshot found", backupOutputBlockedNoSourceSnapshot},
+		{"source snapshot creation failed", "source_snapshot_creation_failed: tank/data@bk_j1_x", backupOutputBlockedSourceSnapshot},
+		{"source snapshot verification failed", "source_snapshot_verification_failed: tank/data@bk_j1_x", backupOutputBlockedSourceSnapshot},
 		{"target diverged", "error: Target has diverged from source", backupOutputBlockedTargetDiverged},
 		{"target diverged alt", "Target diverged after last sync", backupOutputBlockedTargetDiverged},
 		{"target local writes", "error: Target has local writes preventing sync", backupOutputBlockedTargetLocalWrites},
@@ -47,6 +49,7 @@ func TestBackupOutputKindErrorCode(t *testing.T) {
 	}{
 		{backupOutputBlockedNoSource, backupErrorSourceMissing},
 		{backupOutputBlockedNoSourceSnapshot, backupErrorSourceSnapshotMissing},
+		{backupOutputBlockedSourceSnapshot, backupErrorSourceSnapshotFailed},
 		{backupOutputBlockedTargetLocalWrites, backupErrorTargetLocalWrites},
 		{backupOutputBlockedTargetDiverged, backupErrorTargetDiverged},
 		{backupOutputBlockedNoSnapshotDiverged, backupErrorTargetDiverged},

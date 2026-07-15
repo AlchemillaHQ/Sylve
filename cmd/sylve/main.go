@@ -265,7 +265,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	go zeltaS.StartBackupScheduler(qCtx)
 	go zeltaS.StartReplicationScheduler(qCtx)
-	go migrationSvc.StartSnapshotCleanupTicker(qCtx)
+	go migrationSvc.StartRecoveryTicker(qCtx)
 	go aS.ClearExpiredJWTTokens(qCtx)
 
 	gin.SetMode(gin.ReleaseMode)

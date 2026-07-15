@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/db"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -94,6 +94,7 @@ func (f *ZeltaClusterFixture) NewZeltaService() *Service {
 		runningJobs:        make(map[uint]struct{}),
 		queuedJobs:         make(map[uint]struct{}),
 		poolDownMisses:     make(map[string]int),
+		failoverWarnings:   make(map[uint]map[string]struct{}),
 		runningWorkloadOp:  make(map[string]string),
 	}
 }
@@ -176,7 +177,8 @@ func SetupZeltaClusterFixture(t *testing.T, nodeCount int) *ZeltaClusterFixture 
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationEvent{},
-		&clusterModels.ReplicationReceipt{},
+		&clusterModels.ReplicationGuestOperation{},
+		&clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
 	}

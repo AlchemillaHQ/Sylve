@@ -41,6 +41,14 @@ func vmTemplatePreflightStatusCode(err error) int {
 	switch {
 	case strings.Contains(msg, "replication_lease_not_owned"):
 		return http.StatusForbidden
+	case strings.Contains(msg, "guest_identity_inventory_unavailable"):
+		return http.StatusServiceUnavailable
+	case strings.Contains(msg, "guest_id_already_in_use"),
+		strings.Contains(msg, "guest_identity_inventory_conflict"),
+		strings.Contains(msg, "rid_range_contains_used_values"):
+		return http.StatusConflict
+	case strings.Contains(msg, "guest_identity_inventory_scan_failed"):
+		return http.StatusInternalServerError
 	case strings.Contains(msg, "failed_to_"), strings.Contains(msg, "replication_lease_check_failed"):
 		return http.StatusInternalServerError
 	default:

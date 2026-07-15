@@ -40,7 +40,15 @@ func preflightStatusCode(err error) int {
 	}
 
 	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "failed_to_") {
+	switch {
+	case strings.Contains(msg, "guest_identity_inventory_unavailable"):
+		return http.StatusServiceUnavailable
+	case strings.Contains(msg, "guest_id_already_in_use"),
+		strings.Contains(msg, "guest_identity_inventory_conflict"),
+		strings.Contains(msg, "ctid_range_contains_used_values"):
+		return http.StatusConflict
+	case strings.Contains(msg, "guest_identity_inventory_scan_failed"),
+		strings.Contains(msg, "failed_to_"):
 		return http.StatusInternalServerError
 	}
 

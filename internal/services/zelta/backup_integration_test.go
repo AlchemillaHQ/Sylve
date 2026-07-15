@@ -14,10 +14,12 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"encoding/json"
-	"os"
+	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	_ "github.com/mattn/go-sqlite3"
@@ -26,9 +28,9 @@ import (
 
 type fullBackupJailStub struct {
 	jailServiceInterfaces.JailServiceInterface
-	ctid     uint
-	ctErr    error
-	stopErr  error
+	ctid    uint
+	ctErr   error
+	stopErr error
 }
 
 func (s fullBackupJailStub) GetJailCTIDFromDataset(_ string) (uint, error) {
@@ -147,11 +149,23 @@ func TestGoqiteEnqueueAndReceive(t *testing.T) {
 
 func newBackupServiceForIntegration(t *testing.T) *Service {
 	t.Helper()
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupTarget{},
+		&clusterModels.BackupEvent{},
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+		&vmModels.Network{},
+		&vmModels.VMCPUPinning{},
+	)
 	return &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 }
@@ -163,8 +177,7 @@ func TestRunBackupJobZeltaBinaryNotInstalled(t *testing.T) {
 
 	ZeltaInstallDir = t.TempDir()
 	t.Cleanup(func() { ZeltaInstallDir = "" })
-	os.Setenv("PATH", t.TempDir())
-	defer os.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("PATH", t.TempDir())
 
 	err := svc.runBackupJob(context.Background(), &job)
 	if err == nil {
@@ -191,11 +204,10 @@ func TestRunBackupJobZeltaBinaryNotFoundSetsFailure(t *testing.T) {
 	err := svc.runBackupJob(context.Background(), &job)
 	if err == nil {
 		t.Skip("zelta binary found, skipping")
-	}
-
-	if err == nil {
+	} else {
 		t.Fatal("expected error")
 	}
+
 	updated := fetchJob(t, svc.DB, 201)
 	if updated.LastStatus != "failed" {
 		t.Fatalf("expected failed status when zelta not found, got %q", updated.LastStatus)
@@ -229,10 +241,23 @@ func TestRunBackupJobStopBeforeBackupWithoutJailService(t *testing.T) {
 	svc := newBackupServiceForIntegration(t)
 	svc.Jail = fullBackupJailStub{ctid: 42, ctErr: nil}
 	seedBackupTarget(t, svc.DB, 1, "t1")
+	jail := jailModels.Jail{CTID: 42, Name: "integration-jail", Type: jailModels.JailTypeFreeBSD}
+	if err := svc.DB.Create(&jail).Error; err != nil {
+		t.Fatalf("failed to seed registered jail: %v", err)
+	}
+	if err := svc.DB.Create(&jailModels.Storage{
+		JailID: jail.ID,
+		Pool:   "zroot",
+		GUID:   "integration-jail-root",
+		Name:   "Base Filesystem",
+		IsBase: true,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed registered jail storage: %v", err)
+	}
 
 	job := clusterModels.BackupJob{
 		ID: 400, Name: "jail-stop", Mode: "jail", TargetID: 1,
-		JailRootDataset: "zroot/jails/42", CronExpr: "0 0 * * *",
+		JailRootDataset: "zroot/sylve/jails/42", CronExpr: "0 0 * * *",
 		Enabled: true, StopBeforeBackup: true,
 	}
 	if err := svc.DB.Create(&job).Error; err != nil {
@@ -243,12 +268,14 @@ func TestRunBackupJobStopBeforeBackupWithoutJailService(t *testing.T) {
 
 	ZeltaInstallDir = t.TempDir()
 	t.Cleanup(func() { ZeltaInstallDir = "" })
-	os.Setenv("PATH", t.TempDir())
-	defer os.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("PATH", t.TempDir())
 
 	err := svc.runBackupJob(context.Background(), &loaded)
 	if err == nil {
 		t.Fatal("expected error from zelta binary not found")
+	}
+	if strings.Contains(err.Error(), "backup_job_safety_validation_failed") {
+		t.Fatalf("registered canonical jail failed runtime safety guard: %v", err)
 	}
 
 	updated := fetchJob(t, svc.DB, 400)
@@ -260,11 +287,23 @@ func TestRunBackupJobStopBeforeBackupWithoutJailService(t *testing.T) {
 func TestRunBackupJobVMWithZeltaBinaryMissing(t *testing.T) {
 	svc := newBackupServiceForIntegration(t)
 	seedBackupTarget(t, svc.DB, 1, "t1")
+	vm := vmModels.VM{RID: 42, Name: "integration-vm"}
+	if err := svc.DB.Create(&vm).Error; err != nil {
+		t.Fatalf("failed to seed registered VM: %v", err)
+	}
+	if err := svc.DB.Create(&vmModels.Storage{
+		VMID:   vm.ID,
+		Type:   vmModels.VMStorageTypeFilesystem,
+		Pool:   "zroot",
+		Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed registered VM storage: %v", err)
+	}
 
 	job := clusterModels.BackupJob{
 		ID: 500, Name: "vm-backup", Mode: "vm", TargetID: 1,
-		SourceDataset: "zroot/virtual-machines/42", CronExpr: "0 0 * * *",
-		Enabled: true,
+		SourceDataset: "zroot/sylve/virtual-machines/42", CronExpr: "0 0 * * *",
+		Enabled: true, Recursive: true,
 	}
 	if err := svc.DB.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)
@@ -274,11 +313,13 @@ func TestRunBackupJobVMWithZeltaBinaryMissing(t *testing.T) {
 
 	ZeltaInstallDir = t.TempDir()
 	t.Cleanup(func() { ZeltaInstallDir = "" })
-	os.Setenv("PATH", t.TempDir())
-	defer os.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("PATH", t.TempDir())
 
 	err := svc.runBackupJob(context.Background(), &loaded)
 	if err == nil {
 		t.Fatal("expected error from VM backup without zelta")
+	}
+	if strings.Contains(err.Error(), "backup_job_safety_validation_failed") {
+		t.Fatalf("registered canonical VM failed runtime safety guard: %v", err)
 	}
 }

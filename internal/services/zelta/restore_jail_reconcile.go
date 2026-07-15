@@ -22,6 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"gorm.io/gorm"
 )
@@ -36,11 +37,28 @@ type jailDevfsCleaner interface {
 	RemoveDevfsRulesForCTID(ctid uint) error
 }
 
+type jailMetadataWriter interface {
+	WriteJailJSON(ctid uint) error
+}
+
 func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset string) error {
 	return s.reconcileRestoredJailFromDatasetWithOptions(ctx, dataset, true)
 }
 
 func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, false)
+}
+
+func (s *Service) reconcileRestoredJailFromDatasetAsNew(ctx context.Context, dataset string, restoreNetwork bool) error {
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, true)
+}
+
+func (s *Service) reconcileRestoredJailFromDatasetMode(
+	ctx context.Context,
+	dataset string,
+	restoreNetwork bool,
+	strictAsNew bool,
+) error {
 	dataset = strings.TrimSpace(dataset)
 	if dataset == "" {
 		return nil
@@ -60,14 +78,17 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 	}
 	restored := &restoredMeta.Jail
 
-	if restored.CTID == 0 {
-		restored.CTID = fallbackCTID
-	}
+	rewriteRestoredJailMetadataIdentity(restoredMeta, fallbackCTID)
 	if restored.CTID == 0 {
 		return fmt.Errorf("restored_jail_ctid_missing")
 	}
+	if strictAsNew {
+		if err := s.writeJailMetadataToDisk(restoredMeta, mountPoint); err != nil {
+			return fmt.Errorf("failed_to_rewrite_restored_jail_metadata_identity: %w", err)
+		}
+	}
 
-	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork)
+	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork, strictAsNew)
 	if err != nil {
 		return err
 	}
@@ -78,6 +99,15 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 
 	if err := s.writeRestoredJailConfigFiles(reconciled, mountPoint); err != nil {
 		return err
+	}
+	if strictAsNew {
+		writer, ok := s.Jail.(jailMetadataWriter)
+		if !ok {
+			return fmt.Errorf("restored_jail_metadata_writer_unavailable")
+		}
+		if err := writer.WriteJailJSON(reconciled.CTID); err != nil {
+			return fmt.Errorf("failed_to_refresh_restored_jail_metadata: %w", err)
+		}
 	}
 
 	logger.L.Info().
@@ -91,6 +121,13 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 type restoredJailMetadata struct {
 	Jail      jailModels.Jail
 	Snapshots []jailModels.JailSnapshot
+}
+
+func rewriteRestoredJailMetadataIdentity(meta *restoredJailMetadata, ctid uint) {
+	if meta == nil || ctid == 0 {
+		return
+	}
+	meta.Jail.CTID = ctid
 }
 
 func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset string) (*restoredJailMetadata, string, error) {
@@ -145,6 +182,7 @@ func (s *Service) upsertRestoredJailState(
 	dataset string,
 	restoredMeta *restoredJailMetadata,
 	restoreNetwork bool,
+	strictAsNew bool,
 ) (*jailModels.Jail, error) {
 	if restoredMeta == nil {
 		return nil, fmt.Errorf("restored_jail_metadata_not_found")
@@ -183,7 +221,17 @@ func (s *Service) upsertRestoredJailState(
 
 	var reconciled jailModels.Jail
 	requiresStandardSwitchSync := false
-	err := s.DB.Transaction(func(tx *gorm.DB) error {
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if strictAsNew {
+			var vmCount int64
+			if err := tx.Model(&vmModels.VM{}).Where("rid = ?", ctid).Count(&vmCount).Error; err != nil {
+				return fmt.Errorf("failed_to_lookup_existing_vm_by_rid: %w", err)
+			}
+			if vmCount > 0 {
+				return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=vm", ctid)
+			}
+		}
+
 		var existing jailModels.Jail
 		existingFound := false
 		lookup := tx.Where("ct_id = ?", ctid).Limit(1).Find(&existing)
@@ -226,6 +274,9 @@ func (s *Service) upsertRestoredJailState(
 		}
 
 		if existingFound {
+			if strictAsNew {
+				return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=jail", ctid)
+			}
 			if err := tx.Model(&existing).Select(
 				"Name",
 				"Hostname",

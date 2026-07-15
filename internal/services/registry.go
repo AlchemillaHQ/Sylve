@@ -177,6 +177,12 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	mdnsService := NewService[mdns.Service](db)
 	iscsiService := NewService[iscsi.Service](db)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
+	libvirtService.(*libvirt.Service).SetGuestIdentityAvailabilityChecker(
+		clusterService.(*cluster.Service),
+	)
+	jailService.(*jail.Service).SetGuestIdentityAvailabilityChecker(
+		clusterService.(*cluster.Service),
+	)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
 	zeltaService := NewService[zelta.Service](db, telemetryDB, clusterService, jailService, networkService, libvirtService, gzfs)
 

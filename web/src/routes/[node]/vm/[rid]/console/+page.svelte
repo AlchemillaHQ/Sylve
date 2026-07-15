@@ -194,12 +194,33 @@
 		return `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`;
 	});
 
-	let vncLoading = $state(false);
-	function startVncLoading() {
-		if (!vm.current.vncEnabled) return;
-		vncLoading = true;
-		setTimeout(() => (vncLoading = false), 1500);
-	}
+    let vncLoading = $state(false);
+    let vncSettling = $state(false);
+
+    function startVncLoading() {
+        if (!vm.current.vncEnabled) return;
+        vncLoading = true;
+        vncSettling = true;
+
+        /* 
+            The below code is fucking ugly, I know..but I don't know how else we could get rid of the ugly fucking animation that shows when no VNC is just being mounted by Svelte, I have wasted way too much time on this already but feel free to take a crack at it, if you're reading this it's not a backend issue, do not touch the websocket <-> VNC bridge/proxy, if you do I will point at you and laugh.
+
+            Hours wasted counter -> 56
+
+            ^ Don't forget to increment when you're done.
+        */
+
+        // Don't mount the iframe until layout is stable
+        setTimeout(() => {
+            vncLoading = false;
+
+            // We keep the overlay up for a bit longer, even though iframe is mounted now,
+            // to hide noVNC's own connect animation/flicker
+            setTimeout(() => {
+                vncSettling = false;
+            }, 800);
+        }, 600);
+    }
 
 	let showConsoleToolbar = $derived(
 		!!domain.current &&
@@ -495,6 +516,22 @@
 		},
 		{ lazy: true }
 	);
+
+    let vncIframe = $state<HTMLIFrameElement | null>(null);
+        
+    function nudgeVncResize() {
+        // give layout a couple frames to settle, then poke the iframe
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                try {
+                    vncIframe?.contentWindow?.dispatchEvent(new Event('resize'));
+                    console.log("resize")
+                } catch {
+                    // cross-origin or not ready yet, ignore
+                }
+            });
+        });
+    }
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -574,20 +611,21 @@
 
 	{#if domain.current?.status !== 'Shutoff'}
 		{#if consoleType === 'vnc' && vm.current.vncEnabled}
-			<div class="relative flex min-h-0 w-full flex-1 flex-col">
-				<iframe
-					class="w-full flex-1 transition-opacity duration-500"
-					class:opacity-0={vncLoading}
-					class:opacity-100={!vncLoading}
-					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true&theme=${mode.current}`}
-					title="VM Console"
-				></iframe>
-				{#if vncLoading}
-					<div class="bg-background/50 absolute inset-0 z-10 flex items-center justify-center">
-						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
-					</div>
-				{/if}
-			</div>
+            <div class="relative flex min-h-0 w-full flex-1 flex-col">
+                {#if !vncLoading}
+                    <iframe
+                        class="w-full flex-1"
+                        src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true&theme=${mode.current}`}
+                        title="VM Console"
+                    ></iframe>
+                {/if}
+
+                {#if vncLoading || vncSettling}
+                    <div class="bg-background absolute inset-0 z-10 flex items-center justify-center">
+                        <span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+                    </div>
+                {/if}
+            </div>
 		{:else if consoleType === 'serial' && vm.current.serial}
 			<div class="flex min-h-0 w-full flex-1 flex-col">
 				{#if cState.current}

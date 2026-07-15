@@ -156,6 +156,14 @@ const jailCreateErrorMessageByCode: Record<string, string> = {
         'Selected base image path is not a directory. Re-extract the base/rootfs and retry.',
     base_path_does_not_exist: 'Selected base image could not be found on disk.',
     download_uuid_required: 'A base image is required to create a jail.',
+    guest_id_already_in_use:
+        'This numeric guest ID is already used by a VM or jail. Choose a different ID.',
+    guest_identity_inventory_conflict:
+        'Existing VM/jail ID conflicts must be resolved before creating another guest.',
+    guest_identity_inventory_scan_failed:
+        'Could not check local VM and jail IDs. Check the server logs and retry.',
+    guest_identity_inventory_unavailable:
+        'Could not verify guest IDs on every cluster node. Check node health and retry.',
     invalid_ct_id: 'Invalid jail ID. Use a value between 1 and 9999.',
     invalid_hostname: 'Invalid hostname.',
     invalid_ipv4_gateway: 'Invalid IPv4 gateway selection.',

@@ -226,7 +226,7 @@
 
 	let selectedRestoreTargetDatasetGroup = $derived.by(
 		() =>
-			filteredDatasetGroups.find((entry) => entry.representativeDataset === dataset) || null
+			restoreTargetDatasetGroups.find((entry) => entry.representativeDataset === dataset) || null
 	);
 
 	let selectedRestoreTargetDatasetKind = $derived(
@@ -268,14 +268,13 @@
 	let selectedSnapshotInfo = $derived(
 		snapshots.find((entry) => (entry.name || entry.shortName) === snapshot) || null
 	);
+	let legacyVMRestoreBlocked = $derived(
+		selectedRestoreTargetDatasetKind === 'vm' && !!selectedSnapshotInfo?.legacy
+	);
 
 	let hasOutOfBandSnapshots = $derived(
 		snapshots.some((entry) => !!entry.outOfBand || (entry.lineage || 'active') !== 'active')
 	);
-
-	function nodeLabelByID(nodeId: string): string {
-		return nodeNameById[nodeId] || nodeId;
-	}
 
 	async function loadRestoreClusterDetails(): Promise<ClusterDetails | null> {
 		loadingCluster = true;
@@ -292,45 +291,6 @@
 		} finally {
 			loadingCluster = false;
 		}
-	}
-
-	async function ensureGuestIDPlacementForRestore(
-		guestID: number,
-		restoreNodeID: string,
-		kind: 'jail' | 'vm'
-	): Promise<boolean> {
-		if (guestID <= 0) return true;
-		let details: ClusterDetails;
-		try {
-			const loaded = await loadRestoreClusterDetails();
-			if (!loaded) throw new Error('Failed to load cluster details');
-			details = loaded;
-		} catch (e: unknown) {
-			toast.error(
-				(e as { message?: string })?.message || 'Failed to validate cluster guest placement',
-				{ position: 'bottom-center' }
-			);
-			return false;
-		}
-
-		const registeredOn = details.nodes.filter((node) => (node.guestIDs || []).includes(guestID));
-		if (registeredOn.length === 0) return true;
-
-		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
-		if (conflicts.length === 0 && registeredOn.length === 1) return true;
-
-		const conflictLabels =
-			conflicts.length > 0
-				? conflicts.map((node) => nodeLabelByID(node.id)).join(', ')
-				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
-
-		toast.error(
-			`${kind === 'vm' ? 'VM' : 'Jail'} ${guestID} already exists on ${conflictLabels}.`,
-			{
-				position: 'bottom-center'
-			}
-		);
-		return false;
 	}
 
 	function resetState(close: boolean = true) {
@@ -523,6 +483,51 @@
 		snapshot = latest.name || latest.shortName;
 	}
 
+	function restoreFailureMessage(response: {
+		message?: string;
+		error?: string | string[];
+	}): string {
+		const error = Array.isArray(response.error) ? response.error.join(' ') : response.error || '';
+		const text = `${response.message || ''} ${error}`.toLowerCase();
+
+		if (
+			text.includes('restore_guest_destination_conflict') ||
+			text.includes('guest_id_already_in_use') ||
+			text.includes('guest_identity_inventory_conflict') ||
+			text.includes('restore_destination_guest_dataset_exists')
+		) {
+			return 'That RID/CTID or its destination artifacts already exist. Choose an unused ID or clean up the old guest first';
+		}
+		if (
+			text.includes('restore_guest_identity_unavailable') ||
+			text.includes('guest_identity_inventory_unavailable')
+		) {
+			return 'Could not verify the guest ID on every cluster node. Check node health and retry';
+		}
+		if (
+			text.includes('guest_identity_inventory_scan_failed') ||
+			text.includes('restore_destination_dataset_check_failed') ||
+			text.includes('restore_precheck_failed')
+		) {
+			return 'Could not safely validate the restore destination. Check server logs and retry';
+		}
+		if (
+			text.includes('restore_guest_destination_kind_mismatch') ||
+			text.includes('restore_guest_destination_must_be_canonical_root') ||
+			text.includes('restore_guest_destination_invalid')
+		) {
+			return 'Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108';
+		}
+		if (text.includes('backup_job_already_running')) {
+			return 'A restore for this destination is already running';
+		}
+		if (text.includes('restore_vm_legacy_snapshot_unsupported')) {
+			return 'Legacy VM restore points cannot prove that every disk root is complete';
+		}
+
+		return error || 'Failed to start restore';
+	}
+
 	async function triggerRestoreFromTarget() {
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId || !dataset || !snapshot) return;
@@ -543,26 +548,6 @@
 
 		restoring = true;
 		try {
-			const destinationGuest = parseGuestFromDatasetPath(destinationDataset);
-			const metadataGuest = jailMetadata?.ctId || vmMetadata?.rid || 0;
-			const guestID = destinationGuest.id || metadataGuest;
-			const guestKind: 'jail' | 'vm' =
-				destinationGuest.kind === 'vm' || (destinationGuest.kind === 'dataset' && !!vmMetadata?.rid)
-					? 'vm'
-					: 'jail';
-
-			if (guestID > 0) {
-				const allowed = await ensureGuestIDPlacementForRestore(
-					guestID,
-					restoreNodeId.trim(),
-					guestKind
-				);
-				if (!allowed) {
-					restoring = false;
-					return;
-				}
-			}
-
 			const response = await restoreBackupFromTarget(parsedTargetId, {
 				remoteDataset: dataset,
 				snapshot,
@@ -583,7 +568,7 @@
 			}
 
 			handleAPIError(response);
-			toast.error('Failed to start restore', { position: 'bottom-center' });
+			toast.error(restoreFailureMessage(response), { position: 'bottom-center' });
 		} catch (e: unknown) {
 			toast.error((e as { message?: string })?.message || 'Failed to start restore', {
 				position: 'bottom-center'
@@ -801,7 +786,20 @@
 					<span>Restore Warning</span>
 				</div>
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
-					<li>The destination dataset will be replaced if it already exists.</li>
+					{#if selectedRestoreTargetDatasetKind === 'vm' || selectedRestoreTargetDatasetKind === 'jail'}
+						<li>
+							Guest restores are create-only. The RID/CTID and canonical destination dataset
+							must not already exist.
+						</li>
+						{#if selectedRestoreTargetDatasetKind === 'vm'}
+							<li>
+								The selected VM root uses the destination pool. Any additional VM storage pools
+								keep their original pool names and must exist on the restore node.
+							</li>
+						{/if}
+					{:else}
+						<li>The destination dataset will be replaced if it already exists.</li>
+					{/if}
 					{#if selectedSnapshotInfo}
 						<li>
 							Selected backup date:
@@ -815,6 +813,12 @@
 								<code class="rounded bg-background px-1"
 									>{snapshotLineageLabel(selectedSnapshotInfo)}</code
 								>
+							</li>
+						{/if}
+						{#if selectedSnapshotInfo.legacy}
+							<li>
+								This restore point predates manifest commits. Legacy VM restore is blocked because
+								the complete disk-root set cannot be verified.
 							</li>
 						{/if}
 					{/if}
@@ -834,7 +838,11 @@
 					!restoreNodeId ||
 					!dataset ||
 					!snapshot ||
-					!destinationDataset.trim()}
+					!destinationDataset.trim() ||
+					legacyVMRestoreBlocked}
+				title={legacyVMRestoreBlocked
+					? 'Legacy VM restore points cannot prove that every disk root is complete'
+					: ''}
 				variant="destructive"
 			>
 				{#if restoring}

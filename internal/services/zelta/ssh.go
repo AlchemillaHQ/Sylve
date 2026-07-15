@@ -306,7 +306,10 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 	}
 
 	rootExists, _, err := s.remoteDatasetExists(ctx, target, backupRoot)
-	if err == nil && rootExists {
+	if err != nil {
+		return fmt.Errorf("backup_root_check_failed: %w", err)
+	}
+	if rootExists {
 		return nil
 	}
 
@@ -367,10 +370,13 @@ func (s *Service) remoteDatasetExists(ctx context.Context, target *clusterModels
 
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
+		if replicationDatasetMissingResult(output, err) {
+			return false, output, nil
+		}
 		return false, output, fmt.Errorf("%w (output: %q)", err, output)
 	}
 
-	return strings.TrimSpace(output) != "", output, nil
+	return replicationDatasetListedExactly(output, dataset), output, nil
 }
 
 func (s *Service) remoteZFSPoolExists(ctx context.Context, target *clusterModels.BackupTarget, pool string) (bool, string, error) {
@@ -428,7 +434,10 @@ func sshControlPath(target *clusterModels.BackupTarget, keyPath string) string {
 }
 
 func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
-	keyPath := s.resolvedSSHKeyPath(target)
+	keyPath := ""
+	if target != nil && (strings.TrimSpace(target.SSHKey) != "" || strings.TrimSpace(target.SSHKeyPath) != "") {
+		keyPath = s.resolvedSSHKeyPath(target)
+	}
 
 	args := []string{
 		"-n",

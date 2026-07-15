@@ -9,6 +9,7 @@
 package jailHandlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -33,6 +34,16 @@ type JailEditDescRequest struct {
 type JailEditNameRequest struct {
 	ID   uint   `json:"id" binding:"required"`
 	Name string `json:"name" binding:"required"`
+}
+
+type jailDeletionService interface {
+	CanMutateProtectedJail(ctID uint) (bool, error)
+	DeleteJailWithWarnings(
+		ctx context.Context,
+		ctID uint,
+		deleteMacs bool,
+		deleteRootFS bool,
+	) (jailServiceInterfaces.DeleteJailResult, error)
 }
 
 var jailCreateConflictCodes = map[string]struct{}{
@@ -113,6 +124,16 @@ func classifyCreateJailError(err error) (int, string) {
 	}
 
 	errText := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errText, "guest_identity_inventory_unavailable"):
+		return http.StatusServiceUnavailable, "guest_identity_inventory_unavailable"
+	case strings.Contains(errText, "guest_identity_inventory_scan_failed"):
+		return http.StatusInternalServerError, "guest_identity_inventory_scan_failed"
+	case strings.Contains(errText, "guest_identity_inventory_conflict"):
+		return http.StatusConflict, "guest_identity_inventory_conflict"
+	case strings.Contains(errText, "guest_id_already_in_use"):
+		return http.StatusConflict, "guest_id_already_in_use"
+	}
 	if strings.Contains(errText, "jail_with_ctid_") && strings.Contains(errText, "already_exists") {
 		return http.StatusConflict, "jail_with_ctid_already_exists"
 	}
@@ -459,7 +480,7 @@ func CreateJail(jailService *jail.Service) gin.HandlerFunc {
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail/{ctid} [delete]
-func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
+func DeleteJail(jailService jailDeletionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctid, berr := c.Params.Get("ctid")
 		if !berr || ctid == "" {
@@ -549,9 +570,18 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err = jailService.DeleteJail(ctx, uint(ctidInt), deleteMacs, deleteRootFs)
+		result, err := jailService.DeleteJailWithWarnings(ctx, uint(ctidInt), deleteMacs, deleteRootFs)
 
 		if err != nil {
+			if strings.Contains(err.Error(), "guest_delete_requires_replication_policy_removed") {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "guest_delete_requires_replication_policy_removed",
+					Data:    nil,
+					Error:   "guest_delete_requires_replication_policy_removed",
+				})
+				return
+			}
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_delete_jail",
@@ -561,10 +591,14 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		message := "jail_deleted"
+		if len(result.Warnings) > 0 {
+			message = "jail_deleted_with_warnings"
+		}
+		c.JSON(200, internal.APIResponse[jailServiceInterfaces.DeleteJailResult]{
 			Status:  "success",
-			Message: "jail_deleted",
-			Data:    nil,
+			Message: message,
+			Data:    result,
 			Error:   "",
 		})
 	}

@@ -9,6 +9,7 @@
 package libvirtHandlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -35,6 +36,18 @@ type VMEditDescRequest struct {
 type VMEditNameRequest struct {
 	RID  uint   `json:"rid" binding:"required"`
 	Name string `json:"name" binding:"required"`
+}
+
+type vmRemovalService interface {
+	PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, error)
+	ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context) ([]string, error)
+	RemoveVMWithWarnings(
+		rid uint,
+		cleanUpMacs bool,
+		deleteRawDisks bool,
+		deleteVolumes bool,
+		ctx context.Context,
+	) (libvirt.VMRemovalResult, error)
 }
 
 var vmCreateConflictCodes = map[string]struct{}{
@@ -158,6 +171,16 @@ func classifyCreateVMError(err error) (int, string) {
 	}
 
 	errText := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errText, "guest_identity_inventory_unavailable"):
+		return http.StatusServiceUnavailable, "guest_identity_inventory_unavailable"
+	case strings.Contains(errText, "guest_identity_inventory_scan_failed"):
+		return http.StatusInternalServerError, "guest_identity_inventory_scan_failed"
+	case strings.Contains(errText, "guest_identity_inventory_conflict"):
+		return http.StatusConflict, "guest_identity_inventory_conflict"
+	case strings.Contains(errText, "guest_id_already_in_use"):
+		return http.StatusConflict, "guest_id_already_in_use"
+	}
 
 	if strings.Contains(errText, "exists=true, allowed=false") {
 		return http.StatusBadRequest, "invalid_iso_or_image_format"
@@ -518,7 +541,7 @@ func CreateVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm/{id} [delete]
-func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
+func RemoveVM(libvirtService vmRemovalService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		vmID := c.Param("id")
 		if vmID == "" {
@@ -746,7 +769,13 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err = libvirtService.RemoveVM(uint(vmInt), deleteMacs, deleteRawDisks, deleteVolumes, ctx)
+		removalResult, err := libvirtService.RemoveVMWithWarnings(
+			uint(vmInt),
+			deleteMacs,
+			deleteRawDisks,
+			deleteVolumes,
+			ctx,
+		)
 
 		if err != nil {
 			if isVMNotFoundError(err) {
@@ -755,6 +784,15 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 					Message: "vm_not_found",
 					Data:    nil,
 					Error:   "vm_not_found",
+				})
+				return
+			}
+			if strings.Contains(err.Error(), "guest_delete_requires_replication_policy_removed") {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "guest_delete_requires_replication_policy_removed",
+					Data:    nil,
+					Error:   "guest_delete_requires_replication_policy_removed",
 				})
 				return
 			}
@@ -768,10 +806,15 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		message := "vm_removed"
+		if len(removalResult.Warnings) > 0 {
+			message = "vm_removed_with_warnings"
+		}
+
+		c.JSON(200, internal.APIResponse[libvirt.VMRemovalResult]{
 			Status:  "success",
-			Message: "vm_removed",
-			Data:    nil,
+			Message: message,
+			Data:    removalResult,
 			Error:   "",
 		})
 	}

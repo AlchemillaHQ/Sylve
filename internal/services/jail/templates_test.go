@@ -13,12 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/alchemillahq/gzfs"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -31,6 +31,20 @@ type fakeSystemService struct {
 	systemServiceInterfaces.SystemServiceInterface
 	pools []*gzfs.ZPool
 	err   error
+}
+
+type jailTemplateGuestIdentityCheckerStub struct {
+	batches [][]uint
+	err     error
+}
+
+func (s *jailTemplateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
+}
+
+func (s *jailTemplateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
+	s.batches = append(s.batches, append([]uint(nil), guestIDs...))
+	return s.err
 }
 
 func (f fakeSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
@@ -331,31 +345,59 @@ func TestPreflightTemplateTargetsRejectsVMRIDCollision(t *testing.T) {
 	}
 }
 
-func TestPreflightTemplateTargetsRejectsClusterGuestIDCollision(t *testing.T) {
+func TestPreflightTemplateTargetsUsesLiveGuestIDBatch(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t,
 		&jailModels.Jail{},
 		&vmModels.VM{},
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
 	)
-
-	if err := dbConn.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
-		t.Fatalf("failed to create cluster row: %v", err)
-	}
-	if err := dbConn.Create(&clusterModels.ClusterNode{
-		NodeUUID: "node-1",
-		GuestIDs: []uint{350},
-	}).Error; err != nil {
-		t.Fatalf("failed to create cluster node: %v", err)
-	}
-
+	checker := &jailTemplateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc := &Service{DB: dbConn}
-	err := svc.preflightTemplateTargets(context.Background(), jailModels.JailTemplate{}, []createTarget{
+	svc.SetGuestIdentityAvailabilityChecker(checker)
+	err := svc.preflightTemplateTargets(t.Context(), jailModels.JailTemplate{}, []createTarget{
 		{CTID: 350, Name: "j350", Pool: "zroot"},
+		{CTID: 351, Name: "j351", Pool: "zroot"},
 	})
 
-	if err == nil || !strings.Contains(err.Error(), "ctid_range_contains_used_values") {
-		t.Fatalf("expected ctid_range_contains_used_values, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("expected guest_id_already_in_use, got %v", err)
+	}
+	if len(checker.batches) != 1 || !reflect.DeepEqual(checker.batches[0], []uint{350, 351}) {
+		t.Fatalf("identity batches = %v, want one [350 351] batch", checker.batches)
+	}
+}
+
+func TestCreateJailsFromTemplateRechecksGuestIDsBeforeStorageWork(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t,
+		&jailModels.JailTemplate{},
+		&jailModels.Jail{},
+		&vmModels.VM{},
+	)
+	template := jailModels.JailTemplate{
+		Name:           "Template 360",
+		SourceJailName: "source-360",
+		Pool:           "zroot",
+		RootDataset:    "zroot/sylve/jails/templates/template-360",
+		Type:           jailModels.JailTypeFreeBSD,
+	}
+	if err := dbConn.Create(&template).Error; err != nil {
+		t.Fatalf("failed to seed jail template: %v", err)
+	}
+
+	checker := &jailTemplateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	svc := newTemplateTestService(t, dbConn, nil, "zroot")
+	svc.SetGuestIdentityAvailabilityChecker(checker)
+
+	err := svc.CreateJailsFromTemplate(t.Context(), template.ID, CreateFromTemplateRequest{
+		Mode: "single",
+		CTID: 360,
+		Name: "j360",
+		Pool: "zroot",
+	})
+	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("expected execution preflight failure, got %v", err)
+	}
+	if len(checker.batches) != 1 || !reflect.DeepEqual(checker.batches[0], []uint{360}) {
+		t.Fatalf("identity batches = %v, want one [360] execution batch", checker.batches)
 	}
 }
 
@@ -410,8 +452,6 @@ func TestPreflightCreateFromTemplateInsufficientPoolSpaceSingleAndMultiple(t *te
 			&jailModels.JailTemplate{},
 			&jailModels.Jail{},
 			&vmModels.VM{},
-			&clusterModels.Cluster{},
-			&clusterModels.ClusterNode{},
 		)
 
 		tpl := jailModels.JailTemplate{

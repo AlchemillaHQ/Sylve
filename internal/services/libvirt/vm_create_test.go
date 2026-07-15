@@ -52,6 +52,20 @@ type fakeVMCreateSystemService struct {
 	err   error
 }
 
+type vmCreateGuestIdentityCheckerStub struct {
+	guestIDs []uint
+	err      error
+}
+
+func (s *vmCreateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
+}
+
+func (s *vmCreateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
+	s.guestIDs = append(s.guestIDs, guestIDs...)
+	return s.err
+}
+
 func (f fakeVMCreateSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -238,6 +252,35 @@ func TestValidateCreate_FailsWhenStaleZFSDatasetsExistWithoutDBRows(t *testing.T
 	err := svc.validateCreate(req, context.Background())
 	if err == nil || !strings.Contains(err.Error(), "vm_create_stale_artifacts_detected") {
 		t.Fatalf("expected stale artifact error, got %v", err)
+	}
+}
+
+func TestCreateVMStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+	checker := &vmCreateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	svc.SetGuestIdentityAvailabilityChecker(checker)
+
+	req := testCreateRequest(516, 0)
+	vncEnabled := false
+	req.VNCEnabled = &vncEnabled
+	req.VNCBind = "127.0.0.1"
+	req.VNCPassword = ""
+	req.VNCResolution = ""
+
+	err := svc.CreateVM(req, context.Background())
+	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("guest identity rejection error = %v", err)
+	}
+	if len(checker.guestIDs) != 1 || checker.guestIDs[0] != 516 {
+		t.Fatalf("checked guest IDs = %v, want [516]", checker.guestIDs)
+	}
+	var count int64
+	if err := db.Model(&vmModels.VM{}).Count(&count).Error; err != nil {
+		t.Fatalf("count VMs: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("VM rows after rejected create = %d, want 0", count)
 	}
 }
 

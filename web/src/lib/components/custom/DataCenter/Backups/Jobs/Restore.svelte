@@ -265,6 +265,9 @@
 	let selectedSnapshotInfo = $derived.by(
 		() => snapshots.find((snapshot) => snapshot.name === selectedSnapshot) || null
 	);
+	let legacyVMRestoreBlocked = $derived(
+		selectedJob?.mode === 'vm' && !!selectedSnapshotInfo?.legacy
+	);
 
 	let hasOutOfBandSnapshots = $derived.by(() =>
 		snapshots.some(
@@ -421,6 +424,7 @@
 					</div>
 					<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 						<li>The current dataset is replaced in place with the selected restore point</li>
+						<li>All local snapshots of the replaced dataset are permanently removed</li>
 						<li>
 							Data from <code class="rounded bg-background px-1"
 								>{selectedSnapshotDate || selectedSnapshot}</code
@@ -431,6 +435,12 @@
 								This snapshot is from <code class="rounded bg-background px-1"
 									>{snapshotLineageLabel(selectedSnapshotInfo)}</code
 								> and may not be counted by active-lineage prune.
+							</li>
+						{/if}
+						{#if selectedSnapshotInfo?.legacy}
+							<li>
+								This is a legacy restore point created before manifest commits. Its complete dataset
+								set cannot be cryptographically verified; legacy VM restore points are blocked.
 							</li>
 						{/if}
 						{#if selectedSnapshotInfo?.childCount}
@@ -454,7 +464,10 @@
 			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button
 				onclick={triggerRestore}
-				disabled={!selectedSnapshot || restoring || loading || jobRunning}
+				disabled={!selectedSnapshot || restoring || loading || jobRunning || legacyVMRestoreBlocked}
+				title={legacyVMRestoreBlocked
+					? 'Legacy VM restore points cannot prove that every disk root is complete'
+					: ''}
 				variant="destructive"
 			>
 				{#if restoring}

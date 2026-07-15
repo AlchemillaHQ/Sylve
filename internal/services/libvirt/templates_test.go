@@ -10,12 +10,12 @@ package libvirt
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/alchemillahq/gzfs"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -28,6 +28,20 @@ type fakeVMTemplateSystemService struct {
 	systemServiceInterfaces.SystemServiceInterface
 	pools []*gzfs.ZPool
 	err   error
+}
+
+type vmTemplateGuestIdentityCheckerStub struct {
+	batches [][]uint
+	err     error
+}
+
+func (s *vmTemplateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
+}
+
+func (s *vmTemplateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
+	s.batches = append(s.batches, append([]uint(nil), guestIDs...))
+	return s.err
 }
 
 func (f fakeVMTemplateSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
@@ -169,10 +183,10 @@ func TestPreflightVMTemplateTargets(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t,
 		&vmModels.VM{},
 		&jailModels.Jail{},
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
 	)
+	checker := &vmTemplateGuestIdentityCheckerStub{}
 	svc := &Service{DB: dbConn}
+	svc.SetGuestIdentityAvailabilityChecker(checker)
 
 	if err := dbConn.Create(&vmModels.VM{RID: 200, Name: "existing-vm"}).Error; err != nil {
 		t.Fatalf("failed to seed vm: %v", err)
@@ -180,46 +194,54 @@ func TestPreflightVMTemplateTargets(t *testing.T) {
 	if err := dbConn.Create(&jailModels.Jail{CTID: 201, Name: "existing-jail", Type: jailModels.JailTypeFreeBSD}).Error; err != nil {
 		t.Fatalf("failed to seed jail: %v", err)
 	}
-	if err := dbConn.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
-		t.Fatalf("failed to seed cluster: %v", err)
-	}
-	if err := dbConn.Create(&clusterModels.ClusterNode{
-		NodeUUID: "node-1",
-		GuestIDs: []uint{202},
-	}).Error; err != nil {
-		t.Fatalf("failed to seed cluster node: %v", err)
-	}
-
 	t.Run("vm rid conflict", func(t *testing.T) {
-		err := svc.preflightVMTemplateTargets([]vmTemplateCreateTarget{{RID: 200, Name: "vm-200"}})
+		err := svc.preflightVMTemplateTargets(t.Context(), []vmTemplateCreateTarget{{RID: 200, Name: "vm-200"}})
 		if err == nil || !strings.Contains(err.Error(), "rid_range_contains_used_values") {
 			t.Fatalf("expected rid_range_contains_used_values, got %v", err)
 		}
 	})
 
 	t.Run("jail ctid conflict", func(t *testing.T) {
-		err := svc.preflightVMTemplateTargets([]vmTemplateCreateTarget{{RID: 201, Name: "vm-201"}})
+		err := svc.preflightVMTemplateTargets(t.Context(), []vmTemplateCreateTarget{{RID: 201, Name: "vm-201"}})
 		if err == nil || !strings.Contains(err.Error(), "rid_range_contains_used_values") {
 			t.Fatalf("expected rid_range_contains_used_values, got %v", err)
 		}
 	})
 
-	t.Run("cluster guest id conflict", func(t *testing.T) {
-		err := svc.preflightVMTemplateTargets([]vmTemplateCreateTarget{{RID: 202, Name: "vm-202"}})
-		if err == nil || !strings.Contains(err.Error(), "rid_range_contains_used_values") {
-			t.Fatalf("expected rid_range_contains_used_values, got %v", err)
+	t.Run("live guest ID conflict uses one batch", func(t *testing.T) {
+		checker.err = fmt.Errorf("guest_id_already_in_use")
+		before := len(checker.batches)
+		err := svc.preflightVMTemplateTargets(t.Context(), []vmTemplateCreateTarget{
+			{RID: 202, Name: "vm-202"},
+			{RID: 204, Name: "vm-204"},
+		})
+		if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
+			t.Fatalf("expected guest_id_already_in_use, got %v", err)
 		}
+		if len(checker.batches) != before+1 || !reflect.DeepEqual(checker.batches[before], []uint{202, 204}) {
+			t.Fatalf("identity batches = %v, want one [202 204] batch", checker.batches[before:])
+		}
+		checker.err = nil
+	})
+
+	t.Run("live inventory failure propagates", func(t *testing.T) {
+		checker.err = fmt.Errorf("guest_identity_inventory_unavailable")
+		err := svc.preflightVMTemplateTargets(t.Context(), []vmTemplateCreateTarget{{RID: 205, Name: "vm-205"}})
+		if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_unavailable") {
+			t.Fatalf("expected guest_identity_inventory_unavailable, got %v", err)
+		}
+		checker.err = nil
 	})
 
 	t.Run("name conflict", func(t *testing.T) {
-		err := svc.preflightVMTemplateTargets([]vmTemplateCreateTarget{{RID: 203, Name: "existing-vm"}})
+		err := svc.preflightVMTemplateTargets(t.Context(), []vmTemplateCreateTarget{{RID: 203, Name: "existing-vm"}})
 		if err == nil || !strings.Contains(err.Error(), "vm_name_already_in_use") {
 			t.Fatalf("expected vm_name_already_in_use, got %v", err)
 		}
 	})
 
 	t.Run("valid targets", func(t *testing.T) {
-		err := svc.preflightVMTemplateTargets([]vmTemplateCreateTarget{
+		err := svc.preflightVMTemplateTargets(t.Context(), []vmTemplateCreateTarget{
 			{RID: 303, Name: "api-303"},
 			{RID: 304, Name: "api-304"},
 		})
@@ -409,6 +431,40 @@ func TestCreateVMsFromTemplateStopsOnFirstFailure(t *testing.T) {
 	}
 	if len(calls) != 1 {
 		t.Fatalf("expected create to stop on first failure, calls=%d", len(calls))
+	}
+}
+
+func TestCreateVMsFromTemplateDoesNotCreateTargetsWhenExecutionPreflightFails(t *testing.T) {
+	svc := &Service{}
+	createCalls := 0
+
+	svc.preflightCreateVMTemplateFn = func(
+		context.Context,
+		uint,
+		libvirtServiceInterfaces.CreateFromTemplateRequest,
+	) (vmTemplateCreatePlan, error) {
+		return vmTemplateCreatePlan{}, fmt.Errorf("guest_id_already_in_use")
+	}
+	svc.createVMTemplateTargetFn = func(
+		context.Context,
+		vmModels.VMTemplate,
+		vmTemplateCreateTarget,
+		map[uint]string,
+		libvirtServiceInterfaces.CreateFromTemplateRequest,
+	) error {
+		createCalls++
+		return nil
+	}
+
+	err := svc.CreateVMsFromTemplate(context.Background(), 77, libvirtServiceInterfaces.CreateFromTemplateRequest{
+		Mode: "single",
+		RID:  501,
+	})
+	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("expected execution preflight failure, got %v", err)
+	}
+	if createCalls != 0 {
+		t.Fatalf("created %d targets after execution preflight failure", createCalls)
 	}
 }
 

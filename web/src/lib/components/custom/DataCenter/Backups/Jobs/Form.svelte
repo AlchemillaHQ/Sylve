@@ -497,6 +497,7 @@
 	);
 
 	let disableStopBeforeBackup = $state(false);
+	let disableRecursiveBackup = $state(false);
 
 	watch(
 		() => form.mode,
@@ -506,6 +507,12 @@
 				disableStopBeforeBackup = true;
 			} else {
 				disableStopBeforeBackup = false;
+			}
+			if (mode === 'vm') {
+				form.recursive = true;
+				disableRecursiveBackup = true;
+			} else {
+				disableRecursiveBackup = false;
 			}
 		}
 	);
@@ -631,6 +638,8 @@
 					label="Recursive backup"
 					bind:checked={form.recursive}
 					classes="flex items-center gap-2"
+					disabled={disableRecursiveBackup}
+					title={form.mode === 'vm' ? 'VM backups must include all child disk datasets' : ''}
 				/>
 
 				<CustomCheckbox

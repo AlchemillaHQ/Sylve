@@ -18,7 +18,7 @@
 	import { toast } from 'svelte-sonner';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-	import type { GFSStep } from '$lib/types/common';
+	import { parseGuestDeletionData, type GFSStep } from '$lib/types/common';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
@@ -182,16 +182,36 @@
 		modalState.loading.open = false;
 
 		if (result.status === 'error') {
-			toast.error('Error deleting jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			toast.error(
+				result.message === 'guest_delete_requires_replication_policy_removed'
+					? 'Remove the replication policy before deleting this jail'
+					: 'Error deleting jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
+			const deletionData = parseGuestDeletionData(result.data);
+			const cleanupWarnings = deletionData.warnings;
+			const retainedDatasets = deletionData.retainedDatasets;
 			await useSafeGoto(`/${storage.hostname}/summary`);
-			toast.success('Jail deleted', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			if (cleanupWarnings.length > 0) {
+				toast.warning(
+					`Jail deleted, but cleanup was incomplete${retainedDatasets.length > 0 ? `: ${retainedDatasets.join(', ')}` : ''}`,
+					{ duration: 8000, position: 'bottom-center' }
+				);
+			} else if (retainedDatasets.length > 0) {
+				toast.warning(`Jail deleted; root filesystem retained at ${retainedDatasets.join(', ')}`, {
+					duration: 8000,
+					position: 'bottom-center'
+				});
+			} else {
+				toast.success('Jail deleted', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			}
 		}
 	}
 
@@ -334,20 +354,20 @@
 					</Button>
 				{/if}
 
-			{#if availableNodeCount > 0}
-				<Button
-					onclick={() => (showMigrateModal = true)}
-					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
-				>
-					{#if isMigrationActive}
-						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin text-purple-500"></span>
-					{:else}
-						<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
-					{/if}
-					<span>Migrate</span>
-				</Button>
-			{/if}
+				{#if availableNodeCount > 0}
+					<Button
+						onclick={() => (showMigrateModal = true)}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						{#if isMigrationActive}
+							<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin text-purple-500"></span>
+						{:else}
+							<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
+						{/if}
+						<span>Migrate</span>
+					</Button>
+				{/if}
 				<SimpleSelect
 					options={[
 						{ label: 'Hourly', value: 'hourly' },
@@ -395,6 +415,12 @@
 						classes="flex items-center gap-2 mt-4"
 					></CustomCheckbox>
 				</div>
+				{#if !modalState.deleteRootFS}
+					<div class="mt-2 text-sm text-muted-foreground">
+						The root filesystem remains as unmanaged ZFS data and can block reuse of this CTID until
+						removed.
+					</div>
+				{/if}
 			</AlertDialogRaw.Description>
 		</AlertDialogRaw.Header>
 		<AlertDialogRaw.Footer>
@@ -421,7 +447,7 @@
 	guestId={ctId}
 	guestName={jail.current?.name || ''}
 	node={page.params.node || ''}
-	sourceNodeUuid={sourceNodeUuid}
+	{sourceNodeUuid}
 	onSuccess={(targetHostname: string) => {
 		if (targetHostname) {
 			goto(`/${targetHostname}/jail/${ctId}/summary`);

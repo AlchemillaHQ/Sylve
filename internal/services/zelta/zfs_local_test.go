@@ -10,6 +10,8 @@ package zelta
 
 import (
 	"context"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
@@ -64,6 +66,84 @@ func TestZFSLocalDatasetExists(t *testing.T) {
 	}
 	if exists {
 		t.Fatal("expected non-existent to not exist")
+	}
+}
+
+func TestRestoreStagingDatasetExistsFailsClosedWithDependentClone(t *testing.T) {
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+	ctx := context.Background()
+	staging := pool + "/live.restoring"
+	clone := pool + "/external-clone"
+	zfstest.EnsureDataset(t, client, staging)
+
+	for _, args := range [][]string{
+		{"snapshot", staging + "@preserve"},
+		{"clone", staging + "@preserve", clone},
+	} {
+		output, err := exec.Command("zfs", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("zfs %s: %v\noutput: %s", strings.Join(args, " "), err, output)
+		}
+	}
+
+	s := &Service{GZFS: client}
+	err := s.requireRestoreStagingDatasetAvailable(ctx, staging)
+	if err == nil {
+		t.Fatal("expected existing restore staging dataset to fail closed")
+	}
+	if !strings.Contains(err.Error(), "restore_staging_dataset_exists_requires_manual_cleanup") {
+		t.Fatalf("unexpected staging error: %v", err)
+	}
+
+	for _, dataset := range []string{staging, clone} {
+		exists, existsErr := s.localDatasetExists(ctx, dataset)
+		if existsErr != nil {
+			t.Fatalf("check %s: %v", dataset, existsErr)
+		}
+		if !exists {
+			t.Fatalf("%s was destroyed by staging preflight", dataset)
+		}
+	}
+	originOut, err := exec.Command("zfs", "get", "-H", "-o", "value", "origin", clone).CombinedOutput()
+	if err != nil {
+		t.Fatalf("read clone origin: %v\noutput: %s", err, originOut)
+	}
+	if got, want := strings.TrimSpace(string(originOut)), staging+"@preserve"; got != want {
+		t.Fatalf("clone origin = %q, want %q", got, want)
+	}
+}
+
+func TestRestoreBackupCleanupPreservesArchiveWithDependentClone(t *testing.T) {
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+	ctx := context.Background()
+	archive := pool + "/live_restore-backup-owned"
+	clone := pool + "/dependent-clone"
+	zfstest.EnsureDataset(t, client, archive+"/child")
+
+	for _, args := range [][]string{
+		{"snapshot", archive + "@preserve"},
+		{"clone", archive + "@preserve", clone},
+	} {
+		output, err := exec.Command("zfs", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("zfs %s: %v\noutput: %s", strings.Join(args, " "), err, output)
+		}
+	}
+
+	s := &Service{GZFS: client}
+	if err := s.cleanupRestoreBackupDataset(ctx, archive); err == nil {
+		t.Fatal("expected ordinary recursive cleanup to be blocked by the dependent clone")
+	}
+	for _, dataset := range []string{archive, archive + "/child", clone} {
+		exists, err := s.localDatasetExists(ctx, dataset)
+		if err != nil {
+			t.Fatalf("check %s: %v", dataset, err)
+		}
+		if !exists {
+			t.Fatalf("%s was destroyed despite the dependent-clone cleanup failure", dataset)
+		}
 	}
 }
 

@@ -10,11 +10,13 @@ package utils
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -173,31 +175,62 @@ func BridgeIfName(name string) string {
 	return ShortHash("syl" + name)
 }
 
-func IsPortInUse(port int) bool {
+func IsTCPPortInUse(port int) bool {
+	return isPortInUse("tcp", port)
+}
+
+func IsUDPPortInUse(port int) bool {
+	return isPortInUse("udp", port)
+}
+
+func isPortInUse(protocol string, port int) bool {
 	if port < 1 || port > 65535 {
 		return false
 	}
-	addr := fmt.Sprintf(":%d", port)
 
-	tcpLn, tcpErr := net.Listen("tcp", addr)
-	if tcpErr != nil {
-		return false
-	} else {
-		tcpLn.Close()
+	tryBind := func(network, address string) error {
+		if protocol == "tcp" {
+			listener, err := net.Listen(network, address)
+			if err == nil {
+				_ = listener.Close()
+			}
+			return err
+		}
+
+		connection, err := net.ListenPacket(network, address)
+		if err == nil {
+			_ = connection.Close()
+		}
+		return err
 	}
 
-	udpAddr, udpResErr := net.ResolveUDPAddr("udp", addr)
-	if udpResErr != nil {
-		return false
+	portText := strconv.Itoa(port)
+	ipv4Hosts := []string{"127.0.0.1"}
+	if addresses, err := net.InterfaceAddrs(); err == nil {
+		for _, address := range addresses {
+			ip, _, parseErr := net.ParseCIDR(address.String())
+			if parseErr == nil && ip != nil && ip.To4() != nil && !ip.IsUnspecified() {
+				ipv4Hosts = append(ipv4Hosts, ip.String())
+			}
+		}
+	}
+	ipv4Hosts = append(ipv4Hosts, "0.0.0.0")
+
+	for _, host := range ipv4Hosts {
+		if err := tryBind(protocol+"4", net.JoinHostPort(host, portText)); err != nil {
+			return true
+		}
 	}
 
-	udpConn, udpErr := net.ListenUDP("udp", udpAddr)
-	if udpErr != nil {
-		return false
-	} else {
-		udpConn.Close()
+	for _, host := range []string{"::1", "::"} {
+		err := tryBind(protocol+"6", net.JoinHostPort(host, portText))
+		if err != nil &&
+			!errors.Is(err, syscall.EAFNOSUPPORT) &&
+			!errors.Is(err, syscall.EPROTONOSUPPORT) &&
+			!errors.Is(err, syscall.EADDRNOTAVAIL) {
+			return true
+		}
 	}
-
 	return false
 }
 

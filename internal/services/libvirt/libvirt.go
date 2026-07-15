@@ -17,11 +17,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -48,6 +50,8 @@ type Service struct {
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
 
+	guestIdentityAvailabilityChecker clusterServiceInterfaces.GuestIdentityAvailabilityChecker
+
 	preflightCreateVMTemplateFn func(
 		ctx context.Context,
 		templateID uint,
@@ -62,6 +66,12 @@ type Service struct {
 	) error
 
 	GZFS *gzfs.Client
+}
+
+func (s *Service) SetGuestIdentityAvailabilityChecker(
+	checker clusterServiceInterfaces.GuestIdentityAvailabilityChecker,
+) {
+	s.guestIdentityAvailabilityChecker = checker
 }
 
 func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {
@@ -226,6 +236,14 @@ func (s *Service) WriteVMJson(rid uint) error {
 	}
 
 	for i := range vm.Storages {
+		if vm.Storages[i].Type == vmModels.VMStorageTypeDiskImage {
+			// Removable media is replicated as metadata inside vm.json, but a
+			// legacy pool hint must never make it a ZFS output root.
+			vm.Storages[i].Pool = ""
+			vm.Storages[i].DatasetID = nil
+			vm.Storages[i].Dataset = vmModels.VMStorageDataset{}
+			continue
+		}
 		if vm.Storages[i].Dataset.Name == "" {
 			continue
 		}
@@ -277,14 +295,8 @@ func (s *Service) WriteVMJson(rid uint) error {
 		return err
 	}
 
-	processedPools := make(map[string]bool)
-
-	for _, storage := range vm.Storages {
-		if storage.Pool == "" || processedPools[storage.Pool] {
-			continue
-		}
-
-		sylveDir := fmt.Sprintf("/%s/sylve/virtual-machines/%d/.sylve", storage.Pool, rid)
+	for _, pool := range vmJSONOutputPools(vm.Storages) {
+		sylveDir := fmt.Sprintf("/%s/sylve/virtual-machines/%d/.sylve", pool, rid)
 		vmJsonPath := filepath.Join(sylveDir, "vm.json")
 
 		if err := os.MkdirAll(sylveDir, 0755); err != nil {
@@ -304,8 +316,36 @@ func (s *Service) WriteVMJson(rid uint) error {
 			}
 		}
 
-		processedPools[storage.Pool] = true
 	}
 
 	return nil
+}
+
+func vmJSONOutputPools(storages []vmModels.Storage) []string {
+	seen := make(map[string]struct{})
+	pools := make([]string, 0, len(storages))
+	for _, storage := range storages {
+		if storage.Type == vmModels.VMStorageTypeDiskImage {
+			continue
+		}
+		pool := strings.TrimSpace(storage.Pool)
+		if pool == "" {
+			pool = strings.TrimSpace(storage.Dataset.Pool)
+		}
+		if pool == "" {
+			datasetName := strings.TrimSpace(storage.Dataset.Name)
+			if slash := strings.Index(datasetName, "/"); slash > 0 {
+				pool = strings.TrimSpace(datasetName[:slash])
+			}
+		}
+		if pool == "" {
+			continue
+		}
+		if _, exists := seen[pool]; exists {
+			continue
+		}
+		seen[pool] = struct{}{}
+		pools = append(pools, pool)
+	}
+	return pools
 }

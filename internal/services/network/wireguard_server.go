@@ -387,7 +387,7 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 		return err
 	}
 
-	if utils.IsPortInUse(int(req.Port)) {
+	if utils.IsUDPPortInUse(int(req.Port)) {
 		return fmt.Errorf("wireguard_port_already_in_use")
 	}
 
@@ -469,7 +469,7 @@ func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
 		return err
 	}
 
-	if req.Port != server.Port && utils.IsPortInUse(int(req.Port)) {
+	if req.Port != server.Port && utils.IsUDPPortInUse(int(req.Port)) {
 		return fmt.Errorf("wireguard_port_already_in_use")
 	}
 

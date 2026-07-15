@@ -28,6 +28,7 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -187,8 +188,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
+		&clusterModels.ReplicationGuestOperation{},
+		&clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ReplicationEvent{},
-		&clusterModels.ReplicationReceipt{},
 		&clusterModels.ClusterSSHIdentity{},
 		&clusterModels.EncryptionKey{},
 		&taskModels.GuestLifecycleTask{},
@@ -199,6 +201,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating database: %v", err)
 	}
+	replicationguard.MarkPolicySchemaReady(db)
+	replicationguard.MarkGuestOperationSchemaReady(db)
 
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
@@ -409,37 +413,6 @@ func setupWheelGroup(db *gorm.DB, rootUser *models.User) {
 
 	if err := db.Model(&grp).Association("Users").Append(rootUser); err != nil {
 		logger.L.Warn().Msgf("Failed to associate root with wheel: %v", err)
-	}
-}
-
-func ensureUserInSylveG(db *gorm.DB, username string) {
-	var grp models.Group
-	if err := db.Where("name = ?", "sylve_g").First(&grp).Error; err != nil {
-		return
-	}
-
-	var dbUser models.User
-	if err := db.Where("username = ?", username).First(&dbUser).Error; err != nil {
-		return
-	}
-
-	if err := system.AddUserToGroup(username, "sylve_g"); err != nil {
-		logger.L.Warn().Msgf("Failed to add %s to sylve_g unix group: %v", username, err)
-	}
-
-	var cnt int64
-	if err := db.Table("user_groups").
-		Where("user_id = ? AND group_id = ?", dbUser.ID, grp.ID).
-		Count(&cnt).Error; err != nil {
-		logger.L.Warn().Msgf("Failed to check sylve_g membership for %s: %v", username, err)
-		return
-	}
-	if cnt > 0 {
-		return
-	}
-
-	if err := db.Model(&grp).Association("Users").Append(&dbUser); err != nil {
-		logger.L.Warn().Msgf("Failed to associate %s with sylve_g: %v", username, err)
 	}
 }
 

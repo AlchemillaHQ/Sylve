@@ -2,12 +2,10 @@ import {
 	ReplicationEventProgressSchema,
 	ReplicationEventSchema,
 	ReplicationPolicySchema,
-	ReplicationReceiptSchema,
 	type ReplicationFailoverMode,
 	type ReplicationFailbackMode,
 	type ReplicationGuestType,
 	type ReplicationPolicy,
-	type ReplicationReceipt,
 	type ReplicationSourceMode
 } from '$lib/types/cluster/replication';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
@@ -99,19 +97,6 @@ export async function listReplicationEvents(
 	);
 }
 
-export async function listReplicationReceipts(policyId?: number): Promise<ReplicationReceipt[]> {
-	const params = new URLSearchParams();
-	if (policyId && policyId > 0) {
-		params.set('policyId', String(policyId));
-	}
-
-	const query = params.toString();
-	const path = query
-		? `/cluster/replication/receipts?${query}`
-		: '/cluster/replication/receipts';
-	return await apiRequest(path, z.array(ReplicationReceiptSchema), 'GET');
-}
-
 export async function getReplicationEvent(
 	id: number
 ): Promise<z.infer<typeof ReplicationEventSchema>> {
@@ -130,9 +115,5 @@ export async function getReplicationEventProgress(
 	if (params.toString()) {
 		url += `?${params.toString()}`;
 	}
-	return await apiRequest(
-		url,
-		ReplicationEventProgressSchema,
-		'GET'
-	);
+	return await apiRequest(url, ReplicationEventProgressSchema, 'GET');
 }

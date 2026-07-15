@@ -75,7 +75,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 					{ExitCode: 0},
 				},
 				"zfs list -H -o name -t filesystem -d 0 tank/backups": {
-					{ExitCode: 0},
+					{Stderr: "cannot open 'tank/backups': dataset does not exist\n", ExitCode: 1},
 					{Stdout: "tank/backups\n", ExitCode: 0},
 				},
 				"zpool list -H -o name tank": {
@@ -102,6 +102,36 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 			"zfs list -H -o name -t filesystem -d 0 tank/backups",
 			"zpool list -H -o name tank",
 			"zfs create -p tank/backups",
+			"zfs list -H -o name -t filesystem -d 0 tank/backups",
+		})
+	})
+
+	t.Run("dataset lookup transport failure fails closed", func(t *testing.T) {
+		h := newFakeSSHHarness(t)
+		h.SetScenario(fakeSSHScenario{
+			Responses: map[string][]fakeSSHResponse{
+				"zfs version": {
+					{ExitCode: 0},
+				},
+				"zfs list -H -o name -t filesystem -d 0 tank/backups": {
+					{Stderr: "ssh: connect to host target port 22: Connection refused\n", ExitCode: 255},
+				},
+			},
+		})
+
+		s := &Service{}
+		target := &clusterModels.BackupTarget{
+			SSHHost:    "user@target",
+			BackupRoot: "tank/backups",
+		}
+
+		err := s.ValidateTarget(context.Background(), target)
+		if err == nil || !strings.Contains(err.Error(), "backup_root_check_failed") {
+			t.Fatalf("expected backup_root_check_failed error, got %v", err)
+		}
+
+		assertFakeSSHCallSequence(t, h.Calls(), []string{
+			"zfs version",
 			"zfs list -H -o name -t filesystem -d 0 tank/backups",
 		})
 	})

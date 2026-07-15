@@ -1,17 +1,16 @@
-import { listReplicationPolicies, listReplicationReceipts } from '$lib/api/cluster/replication';
+import { listReplicationPolicies } from '$lib/api/cluster/replication';
 import { getClusterResources, getNodes } from '$lib/api/cluster/cluster';
 import { getSimpleJails } from '$lib/api/jail/jail';
 import { getSimpleVMs } from '$lib/api/vm/vm';
 import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
-import type { ReplicationPolicy, ReplicationReceipt } from '$lib/types/cluster/replication';
+import type { ReplicationPolicy } from '$lib/types/cluster/replication';
 import type { SimpleJail } from '$lib/types/jail/jail';
 import type { SimpleVm } from '$lib/types/vm/vm';
 import { cachedFetch } from '$lib/utils/http';
 
 export async function load() {
-	const [policies, receipts, nodes, resources, jails, vms] = await Promise.all([
+	const [policies, nodes, resources, jails, vms] = await Promise.all([
 		cachedFetch('replication-policies', async () => listReplicationPolicies(), 1000),
-		cachedFetch('replication-receipts', async () => listReplicationReceipts(), 1000),
 		cachedFetch('cluster-nodes', async () => getNodes(), 1000),
 		cachedFetch('cluster-resources', async () => getClusterResources(), 1000),
 		cachedFetch('simple-jails', async () => getSimpleJails(), 1000),
@@ -20,7 +19,6 @@ export async function load() {
 
 	return {
 		policies: policies as ReplicationPolicy[],
-		receipts: receipts as ReplicationReceipt[],
 		nodes: nodes as ClusterNode[],
 		resources: resources as NodeResource[],
 		jails: jails as SimpleJail[],

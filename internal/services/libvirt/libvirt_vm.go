@@ -511,17 +511,26 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 }
 
 func (s *Service) RemoveLvVm(rid uint) error {
+	s.crudMutex.Lock()
+	defer s.crudMutex.Unlock()
+	return s.removeLvVmWithoutCRUDLock(rid)
+}
+
+// removeLvVmWithoutCRUDLock requires the caller to hold crudMutex. VM deletion
+// uses it to keep runtime retirement and the following identity transaction in
+// the same critical section as snapshot mutations.
+func (s *Service) removeLvVmWithoutCRUDLock(rid uint) error {
 	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
-	s.crudMutex.Lock()
-	defer s.crudMutex.Unlock()
-
 	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	domainGone := false
 	if err != nil {
-		logger.L.Warn().Err(err).Msgf("Domain for VM RID %d not found, assuming already removed", rid)
+		if !libvirt.IsNotFound(err) {
+			return fmt.Errorf("failed_to_lookup_domain_for_removal: %w", err)
+		}
+		logger.L.Debug().Uint("rid", rid).Msg("vm_domain_already_absent")
 		domainGone = true
 	}
 
@@ -544,7 +553,11 @@ func (s *Service) RemoveLvVm(rid uint) error {
 
 	err = s.StopTPM(rid)
 	if err != nil {
-		logger.L.Error().Err(err).Msgf("Failed to stop TPM for VM RID %d", rid)
+		lower := strings.ToLower(err.Error())
+		if !strings.Contains(lower, "vm_not_found") && !strings.Contains(lower, "tpm_socket_not_found") {
+			return fmt.Errorf("failed_to_stop_tpm: %w", err)
+		}
+		logger.L.Debug().Err(err).Uint("rid", rid).Msg("vm_tpm_runtime_already_absent")
 	}
 
 	vmPath := filepath.Join(vmDir, strconv.Itoa(int(rid)))
@@ -776,12 +789,26 @@ func storageIDFromDataset(datasetName, prefix string) int {
 }
 
 func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
+	return s.lvVMAction(vm, action, "")
+}
+
+// LvVMActionForReplication authorizes exactly one persisted transition run.
+// Normal VM actions continue through the non-bypass ownership guard.
+func (s *Service) LvVMActionForReplication(vm vmModels.VM, action, transitionRunID string) error {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if transitionRunID == "" {
+		return fmt.Errorf("replication_transition_run_id_required")
+	}
+	return s.lvVMAction(vm, action, transitionRunID)
+}
+
+func (s *Service) lvVMAction(vm vmModels.VM, action, transitionRunID string) error {
 	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
 	if action == "start" || action == "stop" || action == "shutdown" || action == "reboot" {
-		allowed, err := s.canMutateProtectedVM(vm.RID)
+		allowed, err := s.canMutateProtectedVMForAction(vm.RID, action, transitionRunID)
 		if err != nil {
 			return fmt.Errorf("replication_lease_check_failed: %w", err)
 		}
@@ -792,6 +819,20 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
+
+	// The first guard can race with a transition that is persisted while this
+	// action waits for the hypervisor mutex. Re-check under the mutex so an
+	// action authorized just before Begin cannot complete after the transition
+	// runtime state has been captured.
+	if action == "start" || action == "stop" || action == "shutdown" || action == "reboot" {
+		allowed, err := s.canMutateProtectedVMForAction(vm.RID, action, transitionRunID)
+		if err != nil {
+			return fmt.Errorf("replication_lease_recheck_failed: %w", err)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+	}
 
 	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
 	if err != nil {
@@ -830,6 +871,30 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	return nil
 }
 
+// ReplicationVMRuntimeStateForTransition drains VM actions that were admitted
+// before the durable transition lock, then revalidates the exact run while
+// holding the same mutex used for all start/stop operations.
+func (s *Service) ReplicationVMRuntimeStateForTransition(rid uint, transitionRunID string) (bool, error) {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if rid == 0 || transitionRunID == "" {
+		return false, fmt.Errorf("replication_transition_runtime_state_input_invalid")
+	}
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+	allowed, err := s.canMutateProtectedVMForTransition(rid, transitionRunID)
+	if err != nil {
+		return false, fmt.Errorf("replication_lease_check_failed: %w", err)
+	}
+	if !allowed {
+		return false, fmt.Errorf("replication_lease_not_owned")
+	}
+	shutoff, err := s.IsDomainShutOff(rid)
+	if err != nil {
+		return false, err
+	}
+	return !shutoff, nil
+}
+
 func (s *Service) ForceStopVM(rid uint) error {
 	if err := s.requireConnection(); err != nil {
 		return err
@@ -852,14 +917,147 @@ func (s *Service) ForceStopVM(rid uint) error {
 	return nil
 }
 
-func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
-	return s.canMutateProtectedVM(rid)
+const emergencyVMRuntimeFenceMaxPasses = 3
+
+type emergencyVMRuntimeOps interface {
+	ListActiveDomains() ([]libvirt.Domain, error)
+	DestroyDomain(libvirt.Domain) error
+}
+
+type libvirtEmergencyVMRuntimeOps struct {
+	conn *libvirt.Libvirt
+}
+
+func (o libvirtEmergencyVMRuntimeOps) ListActiveDomains() ([]libvirt.Domain, error) {
+	if o.conn == nil {
+		return nil, fmt.Errorf("libvirt_connection_unavailable")
+	}
+	domains, _, err := o.conn.ConnectListAllDomains(1, libvirt.ConnectListDomainsActive)
+	return domains, err
+}
+
+func (o libvirtEmergencyVMRuntimeOps) DestroyDomain(domain libvirt.Domain) error {
+	if o.conn == nil {
+		return fmt.Errorf("libvirt_connection_unavailable")
+	}
+	return o.conn.DomainDestroy(domain)
+}
+
+func managedVMRuntimeRID(domainName string) (uint, bool) {
+	rawName := domainName
+	domainName = strings.TrimSpace(domainName)
+	if rawName != domainName {
+		return 0, false
+	}
+	parsed, err := strconv.ParseUint(domainName, 10, 64)
+	if err != nil || parsed == 0 || parsed > 9999 {
+		return 0, false
+	}
+	if strconv.FormatUint(parsed, 10) != domainName {
+		return 0, false
+	}
+	return uint(parsed), true
+}
+
+func managedActiveVMDomains(domains []libvirt.Domain) []libvirt.Domain {
+	managed := make([]libvirt.Domain, 0, len(domains))
+	seen := make(map[string]struct{}, len(domains))
+	for _, domain := range domains {
+		if _, ok := managedVMRuntimeRID(domain.Name); !ok {
+			continue
+		}
+		if _, ok := seen[domain.Name]; ok {
+			continue
+		}
+		seen[domain.Name] = struct{}{}
+		managed = append(managed, domain)
+	}
+	sort.Slice(managed, func(i, j int) bool { return managed[i].Name < managed[j].Name })
+	return managed
+}
+
+func emergencyStopAllManagedVMsWithOps(ops emergencyVMRuntimeOps) error {
+	if ops == nil {
+		return fmt.Errorf("emergency_vm_runtime_ops_unavailable")
+	}
+
+	var stopErrs []error
+	for pass := 0; pass < emergencyVMRuntimeFenceMaxPasses; pass++ {
+		domains, err := ops.ListActiveDomains()
+		if err != nil {
+			return errors.Join(
+				errors.Join(stopErrs...),
+				fmt.Errorf("list_active_managed_vm_runtimes_failed: %w", err),
+			)
+		}
+		managed := managedActiveVMDomains(domains)
+		if len(managed) == 0 {
+			// Final host-runtime observation is authoritative. A destroy RPC may
+			// have raced a shutdown and returned an error after the domain exited.
+			return nil
+		}
+		for _, domain := range managed {
+			if err := ops.DestroyDomain(domain); err != nil {
+				stopErrs = append(stopErrs, fmt.Errorf("destroy_managed_vm_runtime_%s_failed: %w", domain.Name, err))
+			}
+		}
+	}
+
+	domains, err := ops.ListActiveDomains()
+	if err != nil {
+		return errors.Join(
+			errors.Join(stopErrs...),
+			fmt.Errorf("verify_managed_vm_runtimes_stopped_failed: %w", err),
+		)
+	}
+	remaining := managedActiveVMDomains(domains)
+	if len(remaining) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(remaining))
+	for _, domain := range remaining {
+		names = append(names, domain.Name)
+	}
+	return errors.Join(
+		errors.Join(stopErrs...),
+		fmt.Errorf("managed_vm_runtimes_still_active: %s", strings.Join(names, ",")),
+	)
+}
+
+// EmergencyStopAllManagedVMs is a database-independent host-runtime fail-stop
+// used only when replication policy state cannot be read. It serializes against
+// every normal Sylve VM action and proves that no managed domain remains active.
+// go-libvirt's RPC API has no context-aware variant; ctx is carried for the
+// common watchdog capability and future connection-level cancellation.
+func (s *Service) EmergencyStopAllManagedVMs(ctx context.Context) error {
+	_ = ctx
+	if err := s.requireConnection(); err != nil {
+		return fmt.Errorf("emergency_vm_libvirt_connection_failed: %w", err)
+	}
+
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	return emergencyStopAllManagedVMsWithOps(libvirtEmergencyVMRuntimeOps{conn: s.conn()})
 }
 
 func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
+	return s.canMutateProtectedVMForTransition(rid, "")
+}
+
+func (s *Service) canMutateProtectedVMForTransition(rid uint, transitionRunID string) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {
 		return false, err
+	}
+	if strings.TrimSpace(transitionRunID) != "" {
+		return clusterService.CanNodeMutateProtectedGuestForTransition(
+			s.DB,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			strings.TrimSpace(nodeID),
+			transitionRunID,
+		)
 	}
 	return clusterService.CanNodeMutateProtectedGuest(
 		s.DB,
@@ -867,6 +1065,88 @@ func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
 		rid,
 		strings.TrimSpace(nodeID),
 	)
+}
+
+// canMutateProtectedVMForAction applies the narrow migration stop/start
+// exceptions to both checks in lvVMAction. The generic mutation guard would
+// otherwise reject every action while the durable guest-operation guard exists.
+func (s *Service) canMutateProtectedVMForAction(rid uint, action, transitionRunID string) (bool, error) {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if transitionRunID != "" {
+		return s.canMutateProtectedVMForTransition(rid, transitionRunID)
+	}
+
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		return false, err
+	}
+	return canNodePerformVMAction(s.DB, rid, action, strings.TrimSpace(nodeID))
+}
+
+func canNodePerformVMAction(db *gorm.DB, rid uint, action, nodeID string) (bool, error) {
+	switch strings.TrimSpace(action) {
+	case "stop":
+		return clusterService.CanNodeStopGuestForMigration(
+			db,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			nodeID,
+		)
+	case "start":
+		return clusterService.CanNodeStartProtectedGuest(
+			db,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			nodeID,
+		)
+	default:
+		return clusterService.CanNodeMutateProtectedGuest(
+			db,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			nodeID,
+		)
+	}
+}
+
+func (s *Service) requireVMStorageTopologyMutable(rid uint) error {
+	allowed, err := clusterService.CanMutateProtectedGuestStorageTopology(
+		s.DB,
+		clusterModels.ReplicationGuestTypeVM,
+		rid,
+	)
+	if err != nil {
+		return fmt.Errorf("replication_topology_check_failed: %w", err)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_storage_topology_change_requires_policy_disabled")
+	}
+	return nil
+}
+
+// RequireVMStorageTopologyMutable is the API-boundary guard used before any
+// storage operation can mutate ZFS state. Model hooks provide a second line of
+// defence for metadata writes, but they are necessarily too late for resizes
+// and other physical changes.
+func (s *Service) RequireVMStorageTopologyMutable(rid uint) error {
+	return s.requireVMStorageTopologyMutable(rid)
+}
+
+// RequireVMStorageRecordTopologyMutable resolves an update request's storage
+// row to its guest before applying the same protection guard.
+func (s *Service) RequireVMStorageRecordTopologyMutable(storageID int) error {
+	if storageID <= 0 {
+		return fmt.Errorf("invalid_storage_id")
+	}
+	var storage vmModels.Storage
+	if err := s.DB.Select("vm_id").First(&storage, storageID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_storage_record: %w", err)
+	}
+	var vm vmModels.VM
+	if err := s.DB.Select("rid").First(&vm, storage.VMID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_vm_record: %w", err)
+	}
+	return s.requireVMStorageTopologyMutable(vm.RID)
 }
 
 func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {

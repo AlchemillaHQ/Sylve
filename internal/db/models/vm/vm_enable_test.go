@@ -35,6 +35,28 @@ func TestStorageUnmarshalEnableRespectsExplicitValue(t *testing.T) {
 	}
 }
 
+func TestNetworkUnmarshalEnableDefaultsToTrue(t *testing.T) {
+	var network Network
+	if err := json.Unmarshal([]byte(`{"id":1,"switchId":2,"switchType":"standard"}`), &network); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if !network.Enable {
+		t.Fatal("expected enable=true when field is missing")
+	}
+}
+
+func TestNetworkUnmarshalEnableRespectsExplicitValue(t *testing.T) {
+	var network Network
+	if err := json.Unmarshal([]byte(`{"id":1,"switchId":2,"switchType":"standard","enable":false}`), &network); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if network.Enable {
+		t.Fatal("expected enable=false when field is explicitly false")
+	}
+}
+
 func TestVMTemplateStorageUnmarshalEnableDefaultsToTrue(t *testing.T) {
 	var storage VMTemplateStorage
 	if err := json.Unmarshal([]byte(`{"sourceStorageId":1,"type":"raw"}`), &storage); err != nil {

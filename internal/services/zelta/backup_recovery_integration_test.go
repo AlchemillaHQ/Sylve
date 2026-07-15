@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"gorm.io/gorm"
@@ -28,14 +30,6 @@ func dumpLatestBackupEvent(t *testing.T, db *gorm.DB) string {
 		return "(no backup event recorded)"
 	}
 	return ev.Output
-}
-
-func zfsCreateLegacyDataset(t *testing.T, name string) {
-	t.Helper()
-	cmd := exec.Command("zfs", "create", "-o", "canmount=noauto", "-o", "mountpoint=legacy", name)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("zfs create %s: %v\n%s", name, err, string(out))
-	}
 }
 
 func listActiveGenerations(t *testing.T, activeDataset string) []string {
@@ -61,11 +55,12 @@ func listActiveGenerations(t *testing.T, activeDataset string) []string {
 	return gens
 }
 
-func TestRunBackupJobRecoversFromForeignTargetSnapshotNoReseed(t *testing.T) {
+func TestRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotation(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping foreign-snapshot recovery integration test in short mode")
 	}
+	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -110,7 +105,7 @@ func TestRunBackupJobRecoversFromForeignTargetSnapshotNoReseed(t *testing.T) {
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 10)
 	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first backup failed (localhost ssh/zelta env not set up): %v", err)
+		t.Fatalf("first backup failed after integration prerequisites passed: %v", err)
 	}
 
 	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/foreign")
@@ -119,134 +114,44 @@ func TestRunBackupJobRecoversFromForeignTargetSnapshotNoReseed(t *testing.T) {
 		t.Fatalf("active target dataset %s missing after first backup", activeDS)
 	}
 
-	createZFSSnapshot(t, activeDS, "2026-06-26")
-	if !zfsDatasetExists(t, activeDS+"@2026-06-26") {
-		t.Fatalf("failed to plant foreign snapshot")
+	// Pre-c1 backups were identified only by the per-job name prefix. Preserve
+	// such a target-only point and let a new backup proceed.
+	legacySnapshotName := backupSnapshotPrefixForJob(loaded.ID) + "_legacy"
+	createZFSSnapshot(t, activeDS, legacySnapshotName)
+	if !zfsDatasetExists(t, activeDS+"@"+legacySnapshotName) {
+		t.Fatalf("failed to plant legacy snapshot")
+	}
+
+	// Force a topology rotation on the next run. The archived generation must
+	// retain the legacy point; it is tolerated for preflight, never deleted.
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/foreign/added")
+	if out, err := exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/foreign/added").CombinedOutput(); err != nil {
+		t.Fatalf("set added child mountpoint: %v\n%s", err, out)
 	}
 
 	svc.queuedJobs = make(map[uint]struct{})
 	svc.runningJobs = make(map[uint]struct{})
 	svc.runningWorkloadOp = make(map[string]string)
 	db.Model(&clusterModels.BackupJob{}).Where("id = ?", 10).Updates(map[string]interface{}{
-		"last_run_at": nil, "last_status": "", "last_error": "",
+		"recursive": true, "last_run_at": nil, "last_status": "", "last_error": "",
 	})
 	var loaded2 clusterModels.BackupJob
 	db.Preload("Target").First(&loaded2, 10)
 	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
-		t.Fatalf("second backup (after foreign snapshot) should succeed via recovery, got: %v\n--- last backup event output ---\n%s\n--- target snapshots ---\n%v",
+		t.Fatalf("second backup should tolerate the preserved legacy snapshot, got: %v\n--- last backup event output ---\n%s\n--- target snapshots ---\n%v",
 			err, dumpLatestBackupEvent(t, db), listZFSSnapshots(t, activeDS))
 	}
 
-	if zfsDatasetExists(t, activeDS+"@2026-06-26") {
-		t.Fatalf("foreign snapshot %s@2026-06-26 should have been neutralized", activeDS)
-	}
-
-	if gens := listActiveGenerations(t, activeDS); len(gens) != 0 {
-		t.Fatalf("expected no generation datasets (no reseed), got %v", gens)
-	}
-
-	var latest clusterModels.BackupEvent
-	if err := db.Order("id desc").First(&latest).Error; err == nil {
-		if strings.Contains(latest.Output, "auto_archived_target_dataset") {
-			t.Fatalf("backup should not have reseeded; output: %s", lastLines(latest.Output, 12))
-		}
-	}
-}
-
-func TestRunBackupJobTrimsExcessGenerations(t *testing.T) {
-	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping generation-GC integration test in short mode")
-	}
-
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
-	defer cleanup()
-
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/gen")
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
-
-	ctx := context.Background()
-	zfsBin, _ := exec.LookPath("zfs")
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/gen").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target").CombinedOutput()
-
-	extractZeltaToTemp(t)
-
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
-	svc := &Service{
-		DB:                db,
-		queuedJobs:        make(map[uint]struct{}),
-		runningJobs:       make(map[uint]struct{}),
-		runningWorkloadOp: make(map[string]string),
-		GZFS:              gzfsClient,
-	}
-
-	target := clusterModels.BackupTarget{
-		ID: 11, Name: "gen-target", SSHHost: "root@localhost",
-		BackupRoot: poolName + "/target", Enabled: true,
-	}
-	if err := db.Create(&target).Error; err != nil {
-		t.Fatalf("seed target: %v", err)
-	}
-	job := clusterModels.BackupJob{
-		ID: 11, Name: "gen-test", Mode: "dataset", TargetID: 11,
-		SourceDataset: poolName + "/source/gen",
-		PruneKeepLast: 7, PruneTarget: true,
-		CronExpr: "0 0 * * *", Enabled: true,
-	}
-	if err := db.Create(&job).Error; err != nil {
-		t.Fatalf("seed job: %v", err)
-	}
-
-	var loaded clusterModels.BackupJob
-	db.Preload("Target").First(&loaded, 11)
-	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first backup failed (localhost ssh/zelta env not set up): %v", err)
-	}
-
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/gen")
-	activeDS := poolName + "/target/" + destSuffix
-	if !zfsDatasetExists(t, activeDS) {
-		t.Fatalf("active target dataset %s missing after first backup", activeDS)
-	}
-
-	for _, tok := range []string{"1", "2", "3", "4"} {
-		zfsCreateLegacyDataset(t, activeDS+"_gen-"+tok)
-	}
-	if got := listActiveGenerations(t, activeDS); len(got) != 4 {
-		t.Fatalf("expected 4 seeded generations, got %v", got)
-	}
-
-	svc.queuedJobs = make(map[uint]struct{})
-	svc.runningJobs = make(map[uint]struct{})
-	svc.runningWorkloadOp = make(map[string]string)
-	db.Model(&clusterModels.BackupJob{}).Where("id = ?", 11).Updates(map[string]interface{}{
-		"last_run_at": nil, "last_status": "", "last_error": "",
-	})
-	var loaded2 clusterModels.BackupJob
-	db.Preload("Target").First(&loaded2, 11)
-	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
-		t.Fatalf("second backup failed: %v", err)
-	}
-
 	gens := listActiveGenerations(t, activeDS)
-	want := []string{activeDS + "_gen-3", activeDS + "_gen-4"}
-	if !equalStringSlices(gens, want) {
-		t.Fatalf("generation GC mismatch: got=%v want=%v (keep=%d)", gens, want, backupGenerationsToKeep)
+	if len(gens) != 1 {
+		t.Fatalf("expected one archived topology generation, got %v", gens)
 	}
-}
-
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+	if !zfsDatasetExists(t, gens[0]+"@"+legacySnapshotName) {
+		t.Fatalf("legacy snapshot was not preserved on archived generation %s", gens[0])
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
+	if zfsDatasetExists(t, activeDS+"@"+legacySnapshotName) {
+		t.Fatalf("legacy snapshot unexpectedly appeared on new active dataset %s", activeDS)
 	}
-	return true
 }
 
 func firstReplicatedChild(t *testing.T, activeDataset string) (string, bool) {
@@ -267,95 +172,12 @@ func firstReplicatedChild(t *testing.T, activeDataset string) (string, bool) {
 	return "", false
 }
 
-func TestRunBackupJobTrimsGenerationsWithPruneDisabled(t *testing.T) {
-	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping generation-GC (prune-disabled) integration test in short mode")
-	}
-
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
-	defer cleanup()
-
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/gen0")
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
-
-	ctx := context.Background()
-	zfsBin, _ := exec.LookPath("zfs")
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/gen0").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target").CombinedOutput()
-
-	extractZeltaToTemp(t)
-
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
-	svc := &Service{
-		DB:                db,
-		queuedJobs:        make(map[uint]struct{}),
-		runningJobs:       make(map[uint]struct{}),
-		runningWorkloadOp: make(map[string]string),
-		GZFS:              gzfsClient,
-	}
-
-	target := clusterModels.BackupTarget{
-		ID: 12, Name: "gen0-target", SSHHost: "root@localhost",
-		BackupRoot: poolName + "/target", Enabled: true,
-	}
-	if err := db.Create(&target).Error; err != nil {
-		t.Fatalf("seed target: %v", err)
-	}
-	job := clusterModels.BackupJob{
-		ID: 12, Name: "gen0-test", Mode: "dataset", TargetID: 12,
-		SourceDataset: poolName + "/source/gen0",
-		PruneKeepLast: 0, PruneTarget: false,
-		CronExpr: "0 0 * * *", Enabled: true,
-	}
-	if err := db.Create(&job).Error; err != nil {
-		t.Fatalf("seed job: %v", err)
-	}
-
-	var loaded clusterModels.BackupJob
-	db.Preload("Target").First(&loaded, 12)
-	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first backup failed (localhost ssh/zelta env not set up): %v", err)
-	}
-
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/gen0")
-	activeDS := poolName + "/target/" + destSuffix
-	if !zfsDatasetExists(t, activeDS) {
-		t.Fatalf("active target dataset %s missing after first backup", activeDS)
-	}
-
-	for _, tok := range []string{"1", "2", "3", "4"} {
-		zfsCreateLegacyDataset(t, activeDS+"_gen-"+tok)
-	}
-	if got := listActiveGenerations(t, activeDS); len(got) != 4 {
-		t.Fatalf("expected 4 seeded generations, got %v", got)
-	}
-
-	svc.queuedJobs = make(map[uint]struct{})
-	svc.runningJobs = make(map[uint]struct{})
-	svc.runningWorkloadOp = make(map[string]string)
-	db.Model(&clusterModels.BackupJob{}).Where("id = ?", 12).Updates(map[string]interface{}{
-		"last_run_at": nil, "last_status": "", "last_error": "",
-	})
-	var loaded2 clusterModels.BackupJob
-	db.Preload("Target").First(&loaded2, 12)
-	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
-		t.Fatalf("second backup failed: %v", err)
-	}
-
-	gens := listActiveGenerations(t, activeDS)
-	want := []string{activeDS + "_gen-3", activeDS + "_gen-4"}
-	if !equalStringSlices(gens, want) {
-		t.Fatalf("generation GC must run with PruneKeepLast=0: got=%v want=%v", gens, want)
-	}
-}
-
-func TestRunBackupJobRecursiveForeignSnapshotRecovery(t *testing.T) {
+func TestRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping recursive foreign-snapshot recovery integration test in short mode")
 	}
+	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -401,7 +223,7 @@ func TestRunBackupJobRecursiveForeignSnapshotRecovery(t *testing.T) {
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 13)
 	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first backup failed (localhost ssh/zelta env not set up): %v", err)
+		t.Fatalf("first recursive backup failed after integration prerequisites passed: %v", err)
 	}
 
 	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/rchild")
@@ -412,7 +234,7 @@ func TestRunBackupJobRecursiveForeignSnapshotRecovery(t *testing.T) {
 
 	childDS, ok := firstReplicatedChild(t, activeDS)
 	if !ok {
-		t.Skipf("backup did not replicate a child dataset under %s; recursion case N/A", activeDS)
+		t.Fatalf("recursive backup did not replicate a child dataset under %s", activeDS)
 	}
 
 	createZFSSnapshot(t, childDS, "2026-06-26")
@@ -428,40 +250,53 @@ func TestRunBackupJobRecursiveForeignSnapshotRecovery(t *testing.T) {
 	})
 	var loaded2 clusterModels.BackupJob
 	db.Preload("Target").First(&loaded2, 13)
-	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
-		t.Fatalf("recursive recovery backup should succeed, got: %v\n--- event ---\n%s", err, dumpLatestBackupEvent(t, db))
+	if err := svc.runBackupJob(ctx, &loaded2); err == nil || !strings.Contains(err.Error(), "backup_target_foreign_snapshots_present") {
+		t.Fatalf("recursive backup should fail closed, got: %v\n--- event ---\n%s", err, dumpLatestBackupEvent(t, db))
 	}
 
-	if zfsDatasetExists(t, childDS+"@2026-06-26") {
-		t.Fatalf("foreign snapshot on child %s should have been neutralized recursively", childDS)
+	if !zfsDatasetExists(t, childDS+"@2026-06-26") {
+		t.Fatalf("foreign snapshot on child %s was deleted", childDS)
 	}
 	if gens := listActiveGenerations(t, activeDS); len(gens) != 0 {
 		t.Fatalf("expected no generations (no reseed) after recursive recovery, got %v", gens)
 	}
 }
 
-func TestRunBackupJobVMForeignSnapshotRecovery(t *testing.T) {
+func TestRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping VM foreign-snapshot recovery integration test in short mode")
 	}
+	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
 	defer cleanup()
 
 	vmSource := poolName + "/sylve/virtual-machines/100"
+	vmChild := vmSource + "/disk0"
 	zfstest.EnsureDataset(t, gzfsClient, vmSource)
+	zfstest.EnsureDataset(t, gzfsClient, vmChild)
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
-	for _, ds := range []string{poolName + "/sylve", poolName + "/sylve/virtual-machines", vmSource, poolName + "/target"} {
+	for _, ds := range []string{poolName + "/sylve", poolName + "/sylve/virtual-machines", vmSource, vmChild, poolName + "/target"} {
 		exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", ds).CombinedOutput()
 	}
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupTarget{},
+		&clusterModels.BackupEvent{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+		&vmModels.Network{},
+		&vmModels.VMCPUPinning{},
+	)
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -477,10 +312,27 @@ func TestRunBackupJobVMForeignSnapshotRecovery(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	vm := vmModels.VM{RID: 100, Name: "backup-integration-vm"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed registered VM: %v", err)
+	}
+	vmDataset := vmModels.VMStorageDataset{Pool: poolName, Name: vmChild, GUID: "backup-integration-vm-disk"}
+	if err := db.Create(&vmDataset).Error; err != nil {
+		t.Fatalf("seed registered VM dataset: %v", err)
+	}
+	if err := db.Create(&vmModels.Storage{
+		VMID:      vm.ID,
+		Type:      vmModels.VMStorageTypeFilesystem,
+		Pool:      poolName,
+		Enable:    true,
+		DatasetID: &vmDataset.ID,
+	}).Error; err != nil {
+		t.Fatalf("seed registered VM storage: %v", err)
+	}
 	job := clusterModels.BackupJob{
 		ID: 14, Name: "vm-test", Mode: "vm", TargetID: 14,
 		SourceDataset: vmSource,
-		PruneKeepLast: 7, PruneTarget: true,
+		PruneKeepLast: 7, PruneTarget: true, Recursive: true,
 		CronExpr: "0 0 * * *", Enabled: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
@@ -490,13 +342,16 @@ func TestRunBackupJobVMForeignSnapshotRecovery(t *testing.T) {
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 14)
 	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first VM backup failed (localhost ssh/zelta env not set up): %v", err)
+		t.Fatalf("first VM backup failed after integration prerequisites passed: %v", err)
 	}
 
 	vmDestSuffix := svc.backupDestSuffixForVMSource("", vmSource)
 	activeDS := poolName + "/target/" + vmDestSuffix
 	if !zfsDatasetExists(t, activeDS) {
-		t.Skipf("VM target dataset %s not found after first backup; VM source mapping differs here", activeDS)
+		t.Fatalf("VM target dataset %s not found after first backup", activeDS)
+	}
+	if !zfsDatasetExists(t, activeDS+"/disk0") {
+		t.Fatalf("recursive VM backup omitted child disk dataset %s", activeDS+"/disk0")
 	}
 
 	createZFSSnapshot(t, activeDS, "2026-06-26")
@@ -512,23 +367,24 @@ func TestRunBackupJobVMForeignSnapshotRecovery(t *testing.T) {
 	})
 	var loaded2 clusterModels.BackupJob
 	db.Preload("Target").First(&loaded2, 14)
-	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
-		t.Fatalf("VM recovery backup should succeed, got: %v\n--- event ---\n%s", err, dumpLatestBackupEvent(t, db))
+	if err := svc.runBackupJob(ctx, &loaded2); err == nil || !strings.Contains(err.Error(), "backup_target_foreign_snapshots_present") {
+		t.Fatalf("VM backup should fail closed, got: %v\n--- event ---\n%s", err, dumpLatestBackupEvent(t, db))
 	}
 
-	if zfsDatasetExists(t, activeDS+"@2026-06-26") {
-		t.Fatalf("foreign snapshot on VM target %s should have been neutralized", activeDS)
+	if !zfsDatasetExists(t, activeDS+"@2026-06-26") {
+		t.Fatalf("foreign snapshot on VM target %s was deleted", activeDS)
 	}
 	if gens := listActiveGenerations(t, activeDS); len(gens) != 0 {
 		t.Fatalf("expected no generations (no reseed) after VM recovery, got %v", gens)
 	}
 }
 
-func TestRunBackupJobJailForeignSnapshotRecovery(t *testing.T) {
+func TestRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping jail foreign-snapshot recovery integration test in short mode")
 	}
+	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -545,7 +401,14 @@ func TestRunBackupJobJailForeignSnapshotRecovery(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupTarget{},
+		&clusterModels.BackupEvent{},
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+	)
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -561,6 +424,19 @@ func TestRunBackupJobJailForeignSnapshotRecovery(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	jail := jailModels.Jail{CTID: 42, Name: "backup-integration-jail", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("seed registered jail: %v", err)
+	}
+	if err := db.Create(&jailModels.Storage{
+		JailID: jail.ID,
+		Pool:   poolName,
+		GUID:   "backup-integration-jail-root",
+		Name:   "Base Filesystem",
+		IsBase: true,
+	}).Error; err != nil {
+		t.Fatalf("seed registered jail storage: %v", err)
+	}
 	job := clusterModels.BackupJob{
 		ID: 15, Name: "jail-test", Mode: "jail", TargetID: 15,
 		JailRootDataset: jailRoot,
@@ -575,13 +451,13 @@ func TestRunBackupJobJailForeignSnapshotRecovery(t *testing.T) {
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 15)
 	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first jail backup failed (localhost ssh/zelta env not set up): %v", err)
+		t.Fatalf("first jail backup failed after integration prerequisites passed: %v", err)
 	}
 
 	jailDestSuffix := svc.backupDestSuffixForJailSource("jails/42/j-test/active", jailRoot)
 	activeDS := poolName + "/target/" + jailDestSuffix
 	if !zfsDatasetExists(t, activeDS) {
-		t.Skipf("jail target dataset %s not found after first backup; mapping differs here", activeDS)
+		t.Fatalf("jail target dataset %s not found after first backup", activeDS)
 	}
 
 	createZFSSnapshot(t, activeDS, "2026-06-26")
@@ -597,12 +473,12 @@ func TestRunBackupJobJailForeignSnapshotRecovery(t *testing.T) {
 	})
 	var loaded2 clusterModels.BackupJob
 	db.Preload("Target").First(&loaded2, 15)
-	if err := svc.runBackupJob(ctx, &loaded2); err != nil {
-		t.Fatalf("jail recovery backup should succeed, got: %v\n--- event ---\n%s", err, dumpLatestBackupEvent(t, db))
+	if err := svc.runBackupJob(ctx, &loaded2); err == nil || !strings.Contains(err.Error(), "backup_target_foreign_snapshots_present") {
+		t.Fatalf("jail backup should fail closed, got: %v\n--- event ---\n%s", err, dumpLatestBackupEvent(t, db))
 	}
 
-	if zfsDatasetExists(t, activeDS+"@2026-06-26") {
-		t.Fatalf("foreign snapshot on jail target %s should have been neutralized", activeDS)
+	if !zfsDatasetExists(t, activeDS+"@2026-06-26") {
+		t.Fatalf("foreign snapshot on jail target %s was deleted", activeDS)
 	}
 	if gens := listActiveGenerations(t, activeDS); len(gens) != 0 {
 		t.Fatalf("expected no generations (no reseed) after jail recovery, got %v", gens)

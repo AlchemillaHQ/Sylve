@@ -11,6 +11,7 @@ package jail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
@@ -48,6 +50,8 @@ type Service struct {
 
 	ctx               context.Context
 	crudMutex         sync.Mutex
+	createMutex       sync.Mutex
+	actionMutex       sync.Mutex
 	networkUpdateChan chan int64
 
 	liveStateMutex     sync.RWMutex
@@ -58,12 +62,19 @@ type Service struct {
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
+	guestIdentityChecker      clusterServiceInterfaces.GuestIdentityAvailabilityChecker
 
 	usagePersistQueue   chan struct{}
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once
 
 	bootstrapActiveMu sync.Map
+}
+
+func (s *Service) SetGuestIdentityAvailabilityChecker(
+	checker clusterServiceInterfaces.GuestIdentityAvailabilityChecker,
+) {
+	s.guestIdentityChecker = checker
 }
 
 func NewJailService(
@@ -206,7 +217,11 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 		Preload("Networks.IPv6GwObj.Entries").
 		Preload("Networks.IPv6GwObj.Resolutions").
 		First(&jail, "ct_id = ?", ctId).Error; err != nil {
-		logger.L.Error().Err(err).Msgf("get_jail_by_ctid: failed to fetch jail with ct_id %d", ctId)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.L.Debug().Uint("ct_id", ctId).Msg("jail_not_found")
+		} else {
+			logger.L.Error().Err(err).Uint("ct_id", ctId).Msg("get_jail_by_ctid_failed")
+		}
 		return nil, fmt.Errorf("failed_to_fetch_jail_by_ctid: %w", err)
 	}
 
@@ -559,6 +574,12 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		return fmt.Errorf("start_order_must_be_greater_than_or_equal_to_0")
 	}
 
+	if s.guestIdentityChecker != nil {
+		if err := s.guestIdentityChecker.RequireGuestIDAvailable(ctx, *data.CTID); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -597,42 +618,85 @@ func isRetriableZFSDestroyError(err error) bool {
 	return isZFSDatasetBusyError(err) || isZFSDatasetDependentCloneError(err)
 }
 
-func (s *Service) stopJailBeforeDelete(ctID uint) {
-	if ctID == 0 {
-		return
+const jailDeleteStopTimeout = 10 * time.Second
+
+type jailDeletePlan struct {
+	jailID       uint
+	ctID         uint
+	rootDatasets []string
+	macIDs       []uint
+}
+
+type jailDeleteRuntime struct {
+	isRunning    func(uint) (bool, error)
+	stop         func(uint) error
+	removeConfig func(string) error
+	removeDevfs  func(uint) error
+}
+
+func (s *Service) hostJailDeleteRuntime() jailDeleteRuntime {
+	return jailDeleteRuntime{
+		isRunning: s.IsJailRunning,
+		stop: func(ctID uint) error {
+			return s.JailAction(int(ctID), "stop")
+		},
+		removeConfig: os.RemoveAll,
+		removeDevfs: func(ctID uint) error {
+			if config.IsDevFSDisabled() {
+				return nil
+			}
+			if _, err := os.Stat("/etc/devfs.rules"); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return fmt.Errorf("failed_to_stat_devfs_rules: %w", err)
+			}
+			return s.RemoveDevfsRulesForCTID(ctID)
+		},
+	}
+}
+
+func ensureJailStoppedForDelete(ctx context.Context, ctID uint, runtime jailDeleteRuntime) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if runtime.isRunning == nil || runtime.stop == nil {
+		return fmt.Errorf("jail_delete_runtime_not_initialized")
 	}
 
-	active, err := s.IsJailActive(ctID)
+	running, err := runtime.isRunning(ctID)
 	if err != nil {
-		logger.L.Debug().
-			Err(err).
-			Uint("ctid", ctID).
-			Msg("delete_jail: failed to check jail activity before delete")
-		return
+		return fmt.Errorf("failed_to_check_jail_runtime_before_delete: %w", err)
+	}
+	if !running {
+		return nil
 	}
 
-	if !active {
-		return
+	if err := runtime.stop(ctID); err != nil {
+		return fmt.Errorf("failed_to_stop_jail_before_delete: %w", err)
 	}
 
-	if err := s.JailAction(int(ctID), "stop"); err != nil {
-		logger.L.Warn().
-			Err(err).
-			Uint("ctid", ctID).
-			Msg("delete_jail: failed to stop jail before destroying root dataset")
-		return
-	}
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.NewTimer(jailDeleteStopTimeout)
+	defer timeout.Stop()
 
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		active, err = s.IsJailActive(ctID)
+	for {
+		running, err = runtime.isRunning(ctID)
 		if err != nil {
-			return
+			return fmt.Errorf("failed_to_verify_jail_stopped_before_delete: %w", err)
 		}
-		if !active {
-			return
+		if !running {
+			return nil
 		}
-		time.Sleep(250 * time.Millisecond)
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("jail_stop_verification_canceled: %w", ctx.Err())
+		case <-timeout.C:
+			return fmt.Errorf("jail_failed_to_stop_before_delete")
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -669,20 +733,6 @@ func (s *Service) destroyStorageDatasetForDelete(ctx context.Context, datasetNam
 		}
 
 		lastErr = err
-		if isRetriableZFSDestroyError(err) {
-			out, forceErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-R", "-f", datasetName)
-			if forceErr == nil {
-				return nil
-			}
-
-			combinedErr := fmt.Errorf("command execution failed: %v, output: %s", forceErr, strings.TrimSpace(out))
-			if isZFSDatasetMissingError(combinedErr) {
-				return nil
-			}
-
-			lastErr = fmt.Errorf("failed_to_force_destroy_storage_dataset: %w", combinedErr)
-		}
-
 		if attempt == maxAttempts || !isRetriableZFSDestroyError(lastErr) {
 			break
 		}
@@ -1632,6 +1682,9 @@ func resolveRawIP(ptr *int, raw string, tx *gorm.DB, objType, baseName string, a
 }
 
 func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) (err error) {
+	s.createMutex.Lock()
+	defer s.createMutex.Unlock()
+
 	if err = s.ValidateCreate(ctx, data); err != nil {
 		logger.L.Debug().Err(err).Msg("create_jail: validation failed")
 		return err
@@ -2050,104 +2103,322 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	return nil
 }
 
-func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error {
-	if ctId == 0 {
-		return fmt.Errorf("invalid_ct_id")
+func (s *Service) loadJailDeletePlan(ctx context.Context, ctID uint) (jailDeletePlan, error) {
+	plan := jailDeletePlan{ctID: ctID}
+	db := s.DB.WithContext(ctx)
+
+	var jail jailModels.Jail
+	if err := db.Model(&jailModels.Jail{}).
+		Select("id, ct_id").
+		Where("ct_id = ?", ctID).
+		Take(&jail).Error; err != nil {
+		return plan, fmt.Errorf("failed_to_fetch_jail_by_ctid: %w", err)
+	}
+	plan.jailID = jail.ID
+
+	var pools []string
+	if err := db.Model(&jailModels.Storage{}).
+		Where("jid = ? AND is_base = ?", jail.ID, true).
+		Pluck("pool", &pools).Error; err != nil {
+		return plan, fmt.Errorf("failed_to_collect_jail_root_pools_for_delete: %w", err)
 	}
 
-	jail, err := s.GetJailByCTID(ctId)
-	if err != nil {
-		return err
+	seenDatasets := make(map[string]struct{}, len(pools))
+	for _, pool := range pools {
+		pool = strings.Trim(strings.TrimSpace(pool), "/")
+		if pool == "" {
+			continue
+		}
+		dataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
+		if _, exists := seenDatasets[dataset]; exists {
+			continue
+		}
+		seenDatasets[dataset] = struct{}{}
+		plan.rootDatasets = append(plan.rootDatasets, dataset)
 	}
+	sort.Strings(plan.rootDatasets)
 
-	if deleteRootFS {
-		s.stopJailBeforeDelete(ctId)
+	if err := db.Model(&jailModels.Network{}).
+		Where("jid = ? AND mac_id IS NOT NULL", jail.ID).
+		Pluck("mac_id", &plan.macIDs).Error; err != nil {
+		return plan, fmt.Errorf("failed_to_collect_jail_mac_ids_for_delete: %w", err)
+	}
+	plan.macIDs = uniqueUintValues(plan.macIDs)
+	sort.Slice(plan.macIDs, func(i, j int) bool { return plan.macIDs[i] < plan.macIDs[j] })
 
-		if len(jail.Storages) > 0 {
-			for _, storage := range jail.Storages {
-				if !storage.IsBase {
-					continue
-				}
+	return plan, nil
+}
 
-				datasetName := fmt.Sprintf("%s/sylve/jails/%d", storage.Pool, ctId)
-				if err := s.destroyStorageDatasetForDelete(ctx, datasetName); err != nil {
-					return err
-				}
+func (s *Service) deleteJailDatabaseGraph(
+	ctx context.Context,
+	plan jailDeletePlan,
+	allowReplicationPolicy bool,
+) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if !allowReplicationPolicy {
+			if err := requireJailDeletionDetachedDB(tx, plan.ctID); err != nil {
+				return err
 			}
 		}
+		if err := tx.Where("jid = ?", plan.jailID).Delete(&jailModels.Network{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_networks: %w", err)
+		}
+		if err := tx.Where("jid = ?", plan.jailID).Delete(&jailModels.JailHooks{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_hooks: %w", err)
+		}
+		if err := tx.Where("jid = ?", plan.jailID).Delete(&jailModels.JailStats{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_stats: %w", err)
+		}
+		if err := tx.Where("jid = ?", plan.jailID).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_snapshots: %w", err)
+		}
+		storageDB := tx
+		if allowReplicationPolicy {
+			// Replication/migration retirement removes only stale local metadata.
+			// Its explicit caller has already handled ownership and storage; the
+			// normal topology hook must not reinterpret this as a user mutation.
+			storageDB = tx.Session(&gorm.Session{SkipHooks: true})
+		}
+		if err := storageDB.Where("jid = ?", plan.jailID).Delete(&jailModels.Storage{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_storages: %w", err)
+		}
+
+		result := tx.Where("id = ? AND ct_id = ?", plan.jailID, plan.ctID).Delete(&jailModels.Jail{})
+		if result.Error != nil {
+			return fmt.Errorf("failed_to_delete_jail: %w", result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("failed_to_delete_jail: jail_identity_changed")
+		}
+		return nil
+	})
+}
+
+func appendJailDeleteWarning(result *jailServiceInterfaces.DeleteJailResult, ctID uint, warning string, err error) {
+	if result == nil {
+		return
+	}
+	message := warning
+	if err != nil {
+		message = fmt.Sprintf("%s: %v", warning, err)
+		logger.L.Warn().Uint("ctid", ctID).Err(err).Msg(warning)
+	} else {
+		logger.L.Warn().Uint("ctid", ctID).Msg(warning)
+	}
+	result.Warnings = append(result.Warnings, message)
+}
+
+func (s *Service) cleanupDeletedJailMACObjects(
+	ctx context.Context,
+	plan jailDeletePlan,
+	result *jailServiceInterfaces.DeleteJailResult,
+) {
+	for _, macID := range plan.macIDs {
+		if s.NetworkService != nil {
+			used, _, err := s.NetworkService.IsObjectUsed(macID)
+			if err != nil {
+				appendJailDeleteWarning(
+					result,
+					plan.ctID,
+					fmt.Sprintf("mac_cleanup_incomplete: object_id=%d", macID),
+					err,
+				)
+				continue
+			}
+			if used {
+				appendJailDeleteWarning(
+					result,
+					plan.ctID,
+					fmt.Sprintf("mac_cleanup_incomplete: object_id=%d still_in_use", macID),
+					nil,
+				)
+				continue
+			}
+		}
+
+		err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("object_id = ?", macID).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_object_entries: %w", err)
+			}
+			if err := tx.Where("object_id = ?", macID).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_object_resolutions: %w", err)
+			}
+			if err := tx.Delete(&networkModels.Object{}, macID).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_object: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			appendJailDeleteWarning(
+				result,
+				plan.ctID,
+				fmt.Sprintf("mac_cleanup_incomplete: object_id=%d", macID),
+				err,
+			)
+		}
+	}
+}
+
+func (s *Service) DeleteJail(ctx context.Context, ctID uint, deleteMacs bool, deleteRootFS bool) error {
+	_, err := s.DeleteJailWithWarnings(ctx, ctID, deleteMacs, deleteRootFS)
+	return err
+}
+
+func (s *Service) DeleteJailWithWarnings(
+	ctx context.Context,
+	ctID uint,
+	deleteMacs bool,
+	deleteRootFS bool,
+) (jailServiceInterfaces.DeleteJailResult, error) {
+	return s.deleteJailWithRuntime(
+		ctx,
+		ctID,
+		deleteMacs,
+		deleteRootFS,
+		s.hostJailDeleteRuntime(),
+	)
+}
+
+// RetireJailLocalMetadata is the narrow internal path used after migration or
+// replication ownership has moved away from this node. Unlike a user delete,
+// it may remove stale local metadata while the cluster policy still exists.
+func (s *Service) RetireJailLocalMetadata(ctx context.Context, ctID uint, deleteMacs bool) error {
+	_, err := s.deleteJailWithRuntimeOptions(
+		ctx,
+		ctID,
+		deleteMacs,
+		false,
+		s.hostJailDeleteRuntime(),
+		true,
+	)
+	return err
+}
+
+func (s *Service) deleteJailWithRuntime(
+	ctx context.Context,
+	ctID uint,
+	deleteMacs bool,
+	deleteRootFS bool,
+	runtime jailDeleteRuntime,
+) (jailServiceInterfaces.DeleteJailResult, error) {
+	return s.deleteJailWithRuntimeOptions(
+		ctx,
+		ctID,
+		deleteMacs,
+		deleteRootFS,
+		runtime,
+		false,
+	)
+}
+
+func (s *Service) deleteJailWithRuntimeOptions(
+	ctx context.Context,
+	ctID uint,
+	deleteMacs bool,
+	deleteRootFS bool,
+	runtime jailDeleteRuntime,
+	allowReplicationPolicy bool,
+) (jailServiceInterfaces.DeleteJailResult, error) {
+	result := jailServiceInterfaces.DeleteJailResult{
+		Warnings:         make([]string, 0),
+		RetainedDatasets: make([]string, 0),
+	}
+	if ctID == 0 {
+		return result, fmt.Errorf("invalid_ct_id")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	s.crudMutex.Lock()
+	identityLocked := true
+	defer func() {
+		if identityLocked {
+			s.crudMutex.Unlock()
+		}
+	}()
+
+	if !allowReplicationPolicy {
+		if err := requireJailDeletionDetachedDB(s.DB.WithContext(ctx), ctID); err != nil {
+			return result, err
+		}
+	}
+
+	plan, err := s.loadJailDeletePlan(ctx, ctID)
+	if err != nil {
+		return result, err
+	}
+
+	if err := ensureJailStoppedForDelete(ctx, ctID, runtime); err != nil {
+		return result, err
+	}
+	if runtime.isRunning == nil || runtime.removeConfig == nil || runtime.removeDevfs == nil {
+		return result, fmt.Errorf("jail_delete_runtime_not_initialized")
 	}
 
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
-		return fmt.Errorf("failed_to_get_jails_path: %w", err)
+		return result, fmt.Errorf("failed_to_get_jails_path: %w", err)
 	}
+	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctID))
 
-	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctId))
-	if err := os.RemoveAll(jailDir); err != nil {
-		return fmt.Errorf("failed_to_remove_jail_directory: %w", err)
+	if err := func() error {
+		s.actionMutex.Lock()
+		defer s.actionMutex.Unlock()
+
+		running, err := runtime.isRunning(ctID)
+		if err != nil {
+			return fmt.Errorf("failed_to_revalidate_jail_runtime_before_delete: %w", err)
+		}
+		if running {
+			return fmt.Errorf("jail_became_active_before_delete")
+		}
+
+		if err := runtime.removeConfig(jailDir); err != nil {
+			return fmt.Errorf("failed_to_remove_jail_directory: %w", err)
+		}
+		if err := runtime.removeDevfs(ctID); err != nil {
+			return fmt.Errorf("failed_to_remove_jail_devfs_rules: %w", err)
+		}
+		if err := s.deleteJailDatabaseGraph(ctx, plan, allowReplicationPolicy); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return result, err
+	}
+	s.crudMutex.Unlock()
+	identityLocked = false
+
+	if deleteRootFS {
+		if len(plan.rootDatasets) == 0 {
+			appendJailDeleteWarning(
+				&result,
+				ctID,
+				fmt.Sprintf("storage_cleanup_incomplete: ctid=%d root_dataset_not_recorded", ctID),
+				nil,
+			)
+		}
+		for _, dataset := range plan.rootDatasets {
+			if err := s.destroyStorageDatasetForDelete(ctx, dataset); err != nil {
+				result.RetainedDatasets = append(result.RetainedDatasets, dataset)
+				appendJailDeleteWarning(
+					&result,
+					ctID,
+					fmt.Sprintf("storage_cleanup_incomplete: dataset=%s", dataset),
+					err,
+				)
+			}
+		}
+	} else {
+		result.RetainedDatasets = append(result.RetainedDatasets, plan.rootDatasets...)
 	}
 
 	if deleteMacs {
-		var usedMACS []uint
-
-		for _, network := range jail.Networks {
-			macId := network.MacID
-			if macId != nil {
-				usedMACS = append(usedMACS, *macId)
-			}
-		}
-
-		if len(usedMACS) > 0 {
-			tx := s.DB.Begin()
-
-			if err := tx.Where("object_id IN ?", usedMACS).
-				Delete(&networkModels.ObjectEntry{}).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_object_entries: %w", err)
-			}
-
-			if err := tx.Where("object_id IN ?", usedMACS).
-				Delete(&networkModels.ObjectResolution{}).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_object_resolutions: %w", err)
-			}
-
-			if err := tx.Delete(&networkModels.Object{}, usedMACS).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_objects: %w", err)
-			}
-
-			if err := tx.Commit().Error; err != nil {
-				return fmt.Errorf("failed_to_commit_cleanup: %w", err)
-			}
-		}
+		s.cleanupDeletedJailMACObjects(ctx, plan, &result)
 	}
 
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Network{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_networks: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailHooks{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_hooks: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailStats{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_stats: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_snapshots: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Storage{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_storages: %w", err)
-		}
-		if err := tx.Delete(&jail).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	return result, nil
 }
 
 func (s *Service) UpdateDescription(id uint, description string) error {

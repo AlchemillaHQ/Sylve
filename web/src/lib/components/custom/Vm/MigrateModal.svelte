@@ -9,6 +9,7 @@
 	import { formatMigrationReason, formatMigrationReasons } from '$lib/utils/migration-messages';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { ValidateResult } from '$lib/types/migration';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { getRecentLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { isAPIResponse } from '$lib/utils/http';
 	import { onMount } from 'svelte';
@@ -88,6 +89,40 @@
 	let currentPhase = $state('');
 	let targetHostname = $state('');
 	let sourceNode = $state('');
+	let cancellationRequested = $state(false);
+	let validationRequestGeneration = 0;
+
+	function cancellationAvailableInCurrentPhase(): boolean {
+		return (
+			currentPhase === '' || currentPhase === 'preflight' || currentPhase === 'initial_replication'
+		);
+	}
+
+	function migrationHasTerminalStatus(): boolean {
+		return (
+			migrationStatus === 'Migration completed successfully' ||
+			migrationStatus === 'Migration failed' ||
+			migrationStatus === 'Migration cancelled'
+		);
+	}
+
+	function isConfirmedCancellation(task: LifecycleTask): boolean {
+		return (
+			task.status === 'failed' &&
+			(task.error === 'cancelled_by_user' || task.message === 'migration_cancelled')
+		);
+	}
+
+	function handleConfirmedCancellation() {
+		stopPolling();
+		cancellationRequested = true;
+		migrationStatus = 'Migration cancelled';
+		error = '';
+		setTimeout(() => {
+			open = false;
+			resetState();
+		}, 2000);
+	}
 
 	watch(
 		() => open,
@@ -153,6 +188,16 @@
 				}
 			}
 
+			const cancelledTask = tasks.find(
+				(t) => t.action === 'migrate' && t.id === migrationTaskId && isConfirmedCancellation(t)
+			);
+			if (cancelledTask) {
+				sourceNode = hostname;
+				migrating = true;
+				handleConfirmedCancellation();
+				return;
+			}
+
 			// For in-progress migrations, resume the progress view.
 			const activeTask = tasks.find(
 				(t) => t.action === 'migrate' && (t.status === 'queued' || t.status === 'running')
@@ -160,6 +205,8 @@
 			if (activeTask) {
 				migrationTaskId = activeTask.id;
 				sourceNode = hostname;
+				cancellationRequested =
+					activeTask.overrideRequested || activeTask.message === 'cancellation_requested';
 
 				// Resolve target hostname from payload for post-migration redirect
 				try {
@@ -197,15 +244,18 @@
 	});
 
 	async function onTargetSelect(nodeUuid: string) {
-		if (nodeUuid === selectedNodeUuid && validation) return;
+		if (nodeUuid === selectedNodeUuid && (validation || validating)) return;
+		const requestGeneration = ++validationRequestGeneration;
 		selectedNodeUuid = nodeUuid;
 		error = '';
 		validation = null;
 		validating = true;
 
 		await sleep(1500);
+		if (requestGeneration !== validationRequestGeneration || nodeUuid !== selectedNodeUuid) return;
 
 		const result = await validateMigration(guestType, guestId, nodeUuid, node);
+		if (requestGeneration !== validationRequestGeneration || nodeUuid !== selectedNodeUuid) return;
 		if (isAPIResponse(result)) {
 			error = String(result.error || 'Validation failed');
 		} else {
@@ -269,6 +319,8 @@
 		}
 
 		migrationStatus = task.message || task.status;
+		cancellationRequested =
+			cancellationRequested || task.overrideRequested || task.message === 'cancellation_requested';
 		loading = false;
 
 		// Parse phase from payload
@@ -298,6 +350,8 @@
 				onSuccess(targetHostname);
 				resetState();
 			}, 2000);
+		} else if (isConfirmedCancellation(task)) {
+			handleConfirmedCancellation();
 		} else if (task.status === 'failed') {
 			stopPolling();
 			migrationStatus = 'Migration failed';
@@ -306,22 +360,23 @@
 	}
 
 	async function doCancelMigration() {
-		if (!migrationTaskId) return;
+		if (!migrationTaskId || cancellationRequested || !cancellationAvailableInCurrentPhase()) return;
 
 		const result = await cancelMigration(migrationTaskId, sourceNode || node);
 		if (!result || result.status !== 'success') {
-			error = String(result?.error || 'Cancel failed');
+			const cancelError = String(result?.error || 'Cancel failed');
+			error = cancelError.includes('cancel_not_allowed_in_current_phase')
+				? 'Cancellation is no longer available because migration cutover has started.'
+				: formatMigrationReason(cancelError);
 		} else {
-			stopPolling();
-			migrationStatus = 'Migration cancelled';
-			setTimeout(() => {
-				open = false;
-				resetState();
-			}, 2000);
+			cancellationRequested = true;
+			migrationStatus = 'cancellation_requested';
+			error = '';
 		}
 	}
 
 	function resetState() {
+		validationRequestGeneration++;
 		selectedNodeUuid = '';
 		validation = null;
 		loading = false;
@@ -333,6 +388,7 @@
 		currentPhase = '';
 		targetHostname = '';
 		sourceNode = '';
+		cancellationRequested = false;
 		stopPolling();
 	}
 
@@ -399,12 +455,17 @@
 		const phaseMessages: Record<string, string> = {
 			validating_migration_prerequisites: 'Validating prerequisites…',
 			replicating_datasets_to_target: 'Replicating datasets…',
+			revalidating_target_before_cutover: 'Revalidating target before cutover…',
 			stopping_guest_on_source: 'Stopping guest on source…',
 			performing_final_incremental_sync: 'Syncing final changes…',
 			starting_guest_on_target: 'Starting guest on target…',
+			importing_stopped_guest_on_target: 'Importing guest on target (kept stopped)…',
 			adjusting_cluster_policies: 'Adjusting cluster policies…',
 			cleaning_up_source_guest: 'Cleaning up source…',
 			finalizing_migration: 'Finalizing…',
+			migration_recovery_resuming: 'Resuming migration safely…',
+			migration_recovery_pending: 'Waiting to retry the migration safely…',
+			cancellation_requested: 'Cancellation requested…',
 			migration_cancelled: 'Cancelled',
 			migration_completed: 'Complete',
 			migration_failed: 'Failed'
@@ -508,7 +569,7 @@
 						</div>
 					{/if}
 
-					{#if migrationStatus && parseProgressPercent() < 0 && currentPhase !== 'initial_replication' && currentPhase !== 'final_sync'}
+					{#if migrationStatus && parseProgressPercent() < 0 && (cancellationRequested || (currentPhase !== 'initial_replication' && currentPhase !== 'final_sync'))}
 						<p class="text-center text-xs text-muted-foreground">
 							{formatStatus(migrationStatus)}
 						</p>
@@ -524,9 +585,14 @@
 			</ScrollArea>
 			<Dialog.Footer>
 				<Dialog.Close class={buttonVariants({ variant: 'outline' })}>Close</Dialog.Close>
-				{#if currentPhase && currentPhase !== 'finalize' && currentPhase !== 'cleanup_source' && migrationStatus !== 'Migration completed successfully' && migrationStatus !== 'Migration failed' && migrationStatus !== 'Migration cancelled'}
-					<Button variant="destructive" onclick={doCancelMigration} size="sm">
-						Cancel Migration
+				{#if cancellationAvailableInCurrentPhase() && !migrationHasTerminalStatus()}
+					<Button
+						variant="destructive"
+						onclick={doCancelMigration}
+						size="sm"
+						disabled={cancellationRequested}
+					>
+						{cancellationRequested ? 'Cancellation requested…' : 'Cancel Migration'}
 					</Button>
 				{/if}
 			</Dialog.Footer>

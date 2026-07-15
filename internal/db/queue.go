@@ -54,6 +54,17 @@ var (
 
 type QueueHandler[T any] func(ctx context.Context, payload T) error
 
+// QueueHandlerErrorPolicy controls what happens to a queue message when its
+// registered handler returns an error or panics. Existing registrations retry
+// by default; consume is opt-in for handlers that durably record an operational
+// failure and must treat one message as exactly one attempt.
+type QueueHandlerErrorPolicy uint8
+
+const (
+	QueueHandlerErrorRetry QueueHandlerErrorPolicy = iota
+	QueueHandlerErrorConsume
+)
+
 const (
 	queueLaneLifecycleID   = "lifecycle"
 	queueLaneDownloadsID   = "downloads"
@@ -177,6 +188,14 @@ func StartQueue(ctx context.Context) {
 }
 
 func QueueRegister(name string, fn func(ctx context.Context, body []byte) error) {
+	QueueRegisterWithPolicy(name, QueueHandlerErrorRetry, fn)
+}
+
+func QueueRegisterWithPolicy(
+	name string,
+	policy QueueHandlerErrorPolicy,
+	fn func(ctx context.Context, body []byte) error,
+) {
 	setupQueueMu.Lock()
 	defer setupQueueMu.Unlock()
 
@@ -196,12 +215,12 @@ func QueueRegister(name string, fn func(ctx context.Context, body []byte) error)
 		panic("default queue lane is not available")
 	}
 
-	runner.Register(name, fn)
+	runner.RegisterWithPolicy(name, policy, fn)
 
 	// Register every current job in the legacy lane too, so pending pre-lane messages still drain.
 	if laneID != queueLaneLegacyID {
 		if legacyRunner, ok := laneRunners[queueLaneLegacyID]; ok && legacyRunner != nil {
-			legacyRunner.Register(name, fn)
+			legacyRunner.RegisterWithPolicy(name, policy, fn)
 		}
 	}
 
@@ -209,7 +228,15 @@ func QueueRegister(name string, fn func(ctx context.Context, body []byte) error)
 }
 
 func QueueRegisterJSON[T any](name string, h QueueHandler[T]) {
-	QueueRegister(name, func(ctx context.Context, body []byte) error {
+	QueueRegisterJSONWithPolicy(name, QueueHandlerErrorRetry, h)
+}
+
+func QueueRegisterJSONWithPolicy[T any](
+	name string,
+	policy QueueHandlerErrorPolicy,
+	h QueueHandler[T],
+) {
+	QueueRegisterWithPolicy(name, policy, func(ctx context.Context, body []byte) error {
 		var v T
 		if err := json.Unmarshal(body, &v); err != nil {
 			return err

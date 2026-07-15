@@ -44,23 +44,37 @@ func zfsDatasetExists(t *testing.T, name string) bool {
 	return err == nil
 }
 
+func countSnapshotsForDatasetWithPrefix(snapshots []string, dataset, prefix string) int {
+	wantPrefix := normalizeDatasetPath(dataset) + "@" + strings.TrimPrefix(strings.TrimSpace(prefix), "@") + "_"
+	count := 0
+	for _, snapshot := range snapshots {
+		if strings.HasPrefix(strings.TrimSpace(snapshot), wantPrefix) {
+			count++
+		}
+	}
+	return count
+}
+
 func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
 		t.Skip("skipping prune integration test in short mode")
 	}
+	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup/child")
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
 
 	ctx := context.Background()
 	zfsBin, _ := exec.LookPath("zfs")
 	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source").CombinedOutput()
 	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/backup").CombinedOutput()
+	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/backup/child").CombinedOutput()
 	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target").CombinedOutput()
 
 	extractZeltaToTemp(t)
@@ -85,7 +99,7 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 	job := clusterModels.BackupJob{
 		ID: 2, Name: "prune-test", Mode: "dataset", TargetID: 2,
 		SourceDataset: poolName + "/source/backup",
-		CronExpr:      "0 0 * * *", Enabled: true,
+		CronExpr:      "0 0 * * *", Enabled: true, Recursive: true, PruneTarget: true,
 	}
 	if err := db.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)
@@ -99,22 +113,22 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 		var loaded clusterModels.BackupJob
 		db.Preload("Target").First(&loaded, 2)
 		if err := svc.runBackupJob(ctx, &loaded); err != nil {
-			t.Logf("backup %d failed: %v", i+1, err)
+			t.Fatalf("backup %d failed after integration prerequisites passed: %v", i+1, err)
 		}
 
 		time.Sleep(1 * time.Second)
 	}
 
 	beforeSnapshots := listZFSSnapshots(t, poolName+"/source/backup")
-	bkBefores := 0
-	for _, s := range beforeSnapshots {
-		if strings.Contains(s, "@bk_j") {
-			bkBefores++
-		}
-	}
+	snapshotPrefix := backupSnapshotPrefixForJob(job.ID)
+	bkBefores := countSnapshotsForDatasetWithPrefix(
+		beforeSnapshots,
+		poolName+"/source/backup",
+		snapshotPrefix,
+	)
 	t.Logf("before prune: %d bk snapshots (from %d runs)", bkBefores, 4)
 	if bkBefores <= 2 {
-		t.Skipf("expected > 2 bk snapshots from seeding runs (got %d); backup env (root@localhost ssh) likely not set up", bkBefores)
+		t.Fatalf("expected > 2 committed backup snapshots from seeding runs, got %d", bkBefores)
 	}
 
 	job.PruneKeepLast = 2
@@ -132,16 +146,115 @@ func TestRunBackupJobPruneAfterBackup(t *testing.T) {
 	}
 
 	afterSnapshots := listZFSSnapshots(t, poolName+"/source/backup")
-	bkAfter := 0
-	for _, s := range afterSnapshots {
-		if strings.Contains(s, "@bk_j") {
-			bkAfter++
-			t.Logf("  remaining bk snap: %s", s)
-		}
-	}
+	bkAfter := countSnapshotsForDatasetWithPrefix(
+		afterSnapshots,
+		poolName+"/source/backup",
+		snapshotPrefix,
+	)
 	t.Logf("after prune: %d bk snapshots (keep_last=2)", bkAfter)
 	if bkAfter != 2 {
 		t.Fatalf("expected exactly 2 bk snapshots after Keep-2 prune (Fix B), got %d", bkAfter)
+	}
+
+	localChildAfter := countSnapshotsForDatasetWithPrefix(
+		afterSnapshots,
+		poolName+"/source/backup/child",
+		snapshotPrefix,
+	)
+	if localChildAfter != 2 {
+		t.Fatalf("expected exactly 2 child source snapshots, got %d", localChildAfter)
+	}
+
+	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/backup")
+	remoteRoot := remoteActiveDatasetForSuffix(target.BackupRoot, destSuffix)
+	remoteSnapshots := listZFSSnapshots(t, remoteRoot)
+	for _, dataset := range []string{remoteRoot, remoteRoot + "/child"} {
+		if got := countSnapshotsForDatasetWithPrefix(remoteSnapshots, dataset, snapshotPrefix); got != 2 {
+			t.Fatalf("expected exactly 2 target snapshots on %s, got %d: %v", dataset, got, remoteSnapshots)
+		}
+	}
+}
+
+func TestRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping target-only committed snapshot integration test in short mode")
+	}
+	requireLocalhostBackupSSH(t)
+
+	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	defer cleanup()
+	source := poolName + "/source/retained"
+	zfstest.EnsureDataset(t, gzfsClient, source)
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
+
+	ctx := context.Background()
+	for _, dataset := range []string{poolName + "/source", source, poolName + "/target"} {
+		if output, err := exec.CommandContext(ctx, "zfs", "set", "mountpoint=legacy", dataset).CombinedOutput(); err != nil {
+			t.Fatalf("set mountpoint on %s: %v: %s", dataset, err, output)
+		}
+	}
+	extractZeltaToTemp(t)
+
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	svc := &Service{
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
+		runningWorkloadOp: make(map[string]string),
+		GZFS:              gzfsClient,
+	}
+	target := clusterModels.BackupTarget{
+		ID: 22, Name: "retained-target", SSHHost: "root@localhost",
+		BackupRoot: poolName + "/target", Enabled: true,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	job := clusterModels.BackupJob{
+		ID: 22, Name: "retained-test", Mode: "dataset", TargetID: target.ID,
+		SourceDataset: source, PruneKeepLast: 1, PruneTarget: false,
+		CronExpr: "0 0 * * *", Enabled: true,
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	run := func(attempt int) {
+		t.Helper()
+		svc.queuedJobs = make(map[uint]struct{})
+		svc.runningJobs = make(map[uint]struct{})
+		svc.runningWorkloadOp = make(map[string]string)
+		var loaded clusterModels.BackupJob
+		if err := db.Preload("Target").First(&loaded, job.ID).Error; err != nil {
+			t.Fatalf("load job %d: %v", attempt, err)
+		}
+		if err := svc.runBackupJob(ctx, &loaded); err != nil {
+			t.Fatalf("backup %d failed: %v\n%s", attempt, err, dumpLatestBackupEvent(t, db))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	run(1)
+	run(2)
+
+	prefix := backupSnapshotPrefixForJob(job.ID)
+	localSnapshots := listZFSSnapshots(t, source)
+	if got := countSnapshotsForDatasetWithPrefix(localSnapshots, source, prefix); got != 1 {
+		t.Fatalf("local keep-last did not create a target-only point: local_count=%d snapshots=%v", got, localSnapshots)
+	}
+	destSuffix := svc.backupDestSuffixForMode(job.Mode, "", source)
+	remoteRoot := remoteActiveDatasetForSuffix(target.BackupRoot, destSuffix)
+	remoteSnapshots := listZFSSnapshots(t, remoteRoot)
+	if got := countSnapshotsForDatasetWithPrefix(remoteSnapshots, remoteRoot, prefix); got != 2 {
+		t.Fatalf("target should retain both committed points: target_count=%d snapshots=%v", got, remoteSnapshots)
+	}
+
+	// The third preflight sees one snapshot that no longer exists locally. Its
+	// exact c1 commit and full manifest must prove it safe without prefix trust.
+	run(3)
+	remoteSnapshots = listZFSSnapshots(t, remoteRoot)
+	if got := countSnapshotsForDatasetWithPrefix(remoteSnapshots, remoteRoot, prefix); got != 3 {
+		t.Fatalf("third backup did not preserve target-only history: target_count=%d snapshots=%v", got, remoteSnapshots)
 	}
 }
 
@@ -150,6 +263,7 @@ func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping auto-reseed integration test in short mode")
 	}
+	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
 	defer zfsCleanup()
@@ -196,7 +310,7 @@ func TestRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 3)
 	if err := svc.runBackupJob(ctx, &loaded); err != nil {
-		t.Skipf("first backup failed (localhost ssh/zelta env not set up): %v", err)
+		t.Fatalf("first backup failed after integration prerequisites passed: %v", err)
 	}
 
 	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/reseed")

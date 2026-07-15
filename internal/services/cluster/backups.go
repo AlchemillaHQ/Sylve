@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -763,8 +764,8 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 		TargetID:         input.TargetID,
 		RunnerNodeID:     runnerNodeID,
 		Mode:             mode,
-		SourceDataset:    strings.TrimSpace(input.SourceDataset),
-		JailRootDataset:  strings.TrimSpace(input.JailRootDataset),
+		SourceDataset:    normalizeManagedGuestDatasetPath(input.SourceDataset),
+		JailRootDataset:  normalizeManagedGuestDatasetPath(input.JailRootDataset),
 		FriendlySrc:      "",
 		DestSuffix:       "",
 		PruneKeepLast:    input.PruneKeepLast,
@@ -788,7 +789,7 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 
 	if mode == clusterModels.BackupJobModeJail {
 		if job.JailRootDataset == "" {
-			job.JailRootDataset = "zroot/sylve/jails"
+			return nil, fmt.Errorf("jail_root_dataset_required")
 		}
 		job.SourceDataset = ""
 	}
@@ -798,6 +799,9 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 			return nil, fmt.Errorf("source_dataset_required")
 		}
 		job.JailRootDataset = ""
+	}
+	if err := s.ValidateBackupJobSafety(context.Background(), job); err != nil {
+		return nil, err
 	}
 
 	if job.StopBeforeBackup && mode == clusterModels.BackupJobModeDataset {

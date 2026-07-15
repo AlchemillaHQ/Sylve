@@ -12,6 +12,7 @@ import (
 	"compress/flate"
 	"context"
 	"errors"
+	"hash/crc32"
 	"io"
 	"net"
 	"net/http"
@@ -172,6 +173,7 @@ func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
 
 		wsConn.SetReadLimit(maxMessageSize)
 		metrics := &connectionMetrics{startTime: time.Now()}
+		backendChecksum := crc32.NewIEEE()
 
 		defer func() {
 			logger.L.Info().
@@ -181,6 +183,7 @@ func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
 				Dur("duration", time.Since(metrics.startTime)).
 				Uint64("rx", metrics.bytesReceived.Load()).
 				Uint64("tx", metrics.bytesSent.Load()).
+				Uint32("tx_crc32", backendChecksum.Sum32()).
 				Msg("VNC session ended")
 		}()
 
@@ -284,6 +287,7 @@ func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
 					return
 				}
 
+				_, _ = backendChecksum.Write(buf[:n])
 				metrics.addSent(n)
 			}
 		}()

@@ -17,10 +17,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/logger"
 )
-
-const backupGenerationsToKeep = 2
 
 type backupScope struct {
 	sourceDataset string
@@ -61,7 +58,6 @@ func snapshotGUIDKey(info SnapshotInfo) string {
 
 func latestCommonBackupSnapshot(local, remote []SnapshotInfo, snapPrefix string) (SnapshotInfo, bool) {
 	remoteGUIDs := make(map[string]struct{})
-	remoteShort := make(map[string]struct{})
 	for _, r := range remote {
 		short := strings.TrimPrefix(snapshotShortName(r), "@")
 		if !isBKSnapshotShortName(short, snapPrefix) {
@@ -69,9 +65,6 @@ func latestCommonBackupSnapshot(local, remote []SnapshotInfo, snapPrefix string)
 		}
 		if g := snapshotGUIDKey(r); g != "" {
 			remoteGUIDs[g] = struct{}{}
-		}
-		if short != "" {
-			remoteShort[short] = struct{}{}
 		}
 	}
 
@@ -83,18 +76,11 @@ func latestCommonBackupSnapshot(local, remote []SnapshotInfo, snapPrefix string)
 			continue
 		}
 
-		common := false
-		if g := snapshotGUIDKey(l); g != "" {
-			if _, ok := remoteGUIDs[g]; ok {
-				common = true
-			}
+		guid := snapshotGUIDKey(l)
+		if guid == "" {
+			continue
 		}
-		if !common && short != "" {
-			if _, ok := remoteShort[short]; ok {
-				common = true
-			}
-		}
-		if !common {
+		if _, common := remoteGUIDs[guid]; !common {
 			continue
 		}
 
@@ -104,112 +90,178 @@ func latestCommonBackupSnapshot(local, remote []SnapshotInfo, snapPrefix string)
 	return best, found
 }
 
-func foreignTargetSnapshots(local, remote []SnapshotInfo, snapPrefix string) []string {
-	sourceGUIDs := make(map[string]struct{})
-	sourceShort := make(map[string]struct{})
-	for _, l := range local {
-		if g := snapshotGUIDKey(l); g != "" {
-			sourceGUIDs[g] = struct{}{}
+func latestCommonBackupSnapshotsByDataset(
+	local []SnapshotInfo,
+	remote []SnapshotInfo,
+	localRoot string,
+	remoteRoot string,
+	snapPrefix string,
+) map[string]SnapshotInfo {
+	localRoot = normalizeDatasetPath(localRoot)
+	remoteRoot = normalizeDatasetPath(remoteRoot)
+	if localRoot == "" || remoteRoot == "" {
+		return map[string]SnapshotInfo{}
+	}
+
+	remoteGUIDsBySuffix := make(map[string]map[string]struct{})
+	for _, snapshot := range remote {
+		short := strings.TrimPrefix(snapshotShortName(snapshot), "@")
+		if !isBKSnapshotShortName(short, snapPrefix) {
+			continue
 		}
-		if short := strings.TrimPrefix(snapshotShortName(l), "@"); short != "" {
-			sourceShort[short] = struct{}{}
+		guid := snapshotGUIDKey(snapshot)
+		if guid == "" {
+			continue
+		}
+		dataset := snapshotDatasetName(snapshot.Name)
+		if dataset == "" {
+			dataset = normalizeDatasetPath(snapshot.Dataset)
+		}
+		if !datasetWithinRoot(remoteRoot, dataset) {
+			continue
+		}
+		suffix := relativeDatasetSuffix(remoteRoot, dataset)
+		guids := remoteGUIDsBySuffix[suffix]
+		if guids == nil {
+			guids = make(map[string]struct{})
+			remoteGUIDsBySuffix[suffix] = guids
+		}
+		guids[guid] = struct{}{}
+	}
+
+	bestByDataset := make(map[string]SnapshotInfo)
+	for _, snapshot := range local {
+		short := strings.TrimPrefix(snapshotShortName(snapshot), "@")
+		if !isBKSnapshotShortName(short, snapPrefix) {
+			continue
+		}
+		guid := snapshotGUIDKey(snapshot)
+		if guid == "" {
+			continue
+		}
+		dataset := snapshotDatasetName(snapshot.Name)
+		if dataset == "" {
+			dataset = normalizeDatasetPath(snapshot.Dataset)
+		}
+		if !datasetWithinRoot(localRoot, dataset) {
+			continue
+		}
+		suffix := relativeDatasetSuffix(localRoot, dataset)
+		remoteGUIDs := remoteGUIDsBySuffix[suffix]
+		if remoteGUIDs == nil {
+			continue
+		}
+		if _, common := remoteGUIDs[guid]; common {
+			bestByDataset[dataset] = snapshot
 		}
 	}
 
-	out := make([]string, 0)
-	for _, r := range remote {
-		short := strings.TrimPrefix(snapshotShortName(r), "@")
-		if short == "" {
-			continue
-		}
-		if isBKSnapshotShortName(short, snapPrefix) {
-			continue
-		}
-		if g := snapshotGUIDKey(r); g != "" {
-			if _, ok := sourceGUIDs[g]; ok {
-				continue
-			}
-		}
-		if _, ok := sourceShort[short]; ok {
-			continue
-		}
-		name := strings.TrimSpace(r.Name)
-		if isValidZFSSnapshotName(name) {
-			out = append(out, name)
-		}
-	}
-	return out
+	return bestByDataset
 }
 
-func generationDatasetToken(dataset string) (int64, bool) {
-	dataset = strings.TrimSpace(dataset)
-	idx := strings.LastIndex(dataset, "_gen-")
-	if idx < 0 {
-		return 0, false
+func foreignTargetSnapshots(
+	local, remote []SnapshotInfo,
+	sourceRoot, targetRoot string,
+	provenTargetSnapshots map[string]string,
+) []string {
+	sourceRoot = normalizeDatasetPath(sourceRoot)
+	targetRoot = normalizeDatasetPath(targetRoot)
+
+	// A GUID match is meaningful only at the corresponding dataset suffix. A
+	// global GUID set would allow a snapshot from one child to vouch for a
+	// different child, while a name match is not ownership proof at all.
+	sourceBySuffixAndGUID := make(map[string]struct{})
+	for _, snapshot := range local {
+		dataset := snapshotDatasetName(snapshot.Name)
+		if dataset == "" {
+			dataset = normalizeDatasetPath(snapshot.Dataset)
+		}
+		guid := snapshotGUIDKey(snapshot)
+		if guid == "" || !datasetWithinRoot(sourceRoot, dataset) {
+			continue
+		}
+		suffix := relativeDatasetSuffix(sourceRoot, dataset)
+		sourceBySuffixAndGUID[suffix+"\x00"+guid] = struct{}{}
 	}
-	token := dataset[idx+len("_gen-"):]
-	if dash := strings.IndexByte(token, '-'); dash >= 0 {
-		token = token[:dash]
+
+	foreign := make([]string, 0)
+	for _, snapshot := range remote {
+		name := strings.TrimSpace(snapshot.Name)
+		dataset := snapshotDatasetName(name)
+		if dataset == "" {
+			dataset = normalizeDatasetPath(snapshot.Dataset)
+		}
+		guid := snapshotGUIDKey(snapshot)
+		owned := false
+		if guid != "" && datasetWithinRoot(targetRoot, dataset) {
+			suffix := relativeDatasetSuffix(targetRoot, dataset)
+			_, owned = sourceBySuffixAndGUID[suffix+"\x00"+guid]
+		}
+		if !owned && guid != "" {
+			expectedGUID, proven := provenTargetSnapshots[name]
+			owned = proven && expectedGUID == guid
+		}
+		if owned {
+			continue
+		}
+		if name == "" {
+			name = "<unnamed-target-snapshot>"
+		}
+		foreign = append(foreign, name)
 	}
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return 0, false
-	}
-	v, err := strconv.ParseInt(token, 36, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return foreign
 }
 
-func staleBackupGenerationDatasets(activeDataset string, lineageDatasets []string, keepNewest int) []string {
-	activeDataset = normalizeDatasetPath(activeDataset)
-	if activeDataset == "" {
-		return nil
-	}
-	if keepNewest < 0 {
-		keepNewest = 0
+// filterToleratedLegacyTargetSnapshots removes pre-c1 snapshots that the old
+// backup protocol associated with this exact job scope by name from a
+// non-destructive foreign-snapshot preflight result. It does not produce
+// ownership proof and must never authorize retention cleanup or deletion.
+func filterToleratedLegacyTargetSnapshots(
+	job *clusterModels.BackupJob,
+	sourceRoot string,
+	targetRoot string,
+	scopes []backupScope,
+	foreign []string,
+) []string {
+	if job == nil || job.ID == 0 {
+		return foreign
 	}
 
-	genPrefix := activeDataset + "_gen-"
-	type gen struct {
-		dataset string
-		token   int64
-		hasTok  bool
+	sourceRoot = normalizeDatasetPath(sourceRoot)
+	targetRoot = normalizeDatasetPath(targetRoot)
+	backupRoot := normalizeDatasetPath(job.Target.BackupRoot)
+	if !datasetWithinRoot(backupRoot, targetRoot) {
+		return foreign
 	}
 
-	gens := make([]gen, 0)
-	for _, ds := range lineageDatasets {
-		ds = normalizeDatasetPath(ds)
-		if ds == "" || ds == activeDataset {
+	canonicalScope := false
+	for _, scope := range scopes {
+		if normalizeDatasetPath(scope.sourceDataset) != sourceRoot {
 			continue
 		}
-		if !strings.HasPrefix(ds, genPrefix) {
-			continue
+		expectedTarget := remoteActiveDatasetForSuffix(backupRoot, scope.destSuffix)
+		if expectedTarget == targetRoot {
+			canonicalScope = true
+			break
 		}
-		tok, ok := generationDatasetToken(ds)
-		gens = append(gens, gen{dataset: ds, token: tok, hasTok: ok})
+	}
+	if !canonicalScope {
+		return foreign
 	}
 
-	if len(gens) <= keepNewest {
-		return nil
-	}
-
-	sort.SliceStable(gens, func(i, j int) bool {
-		if gens[i].hasTok && gens[j].hasTok {
-			return gens[i].token > gens[j].token
+	jobPrefix := backupSnapshotPrefixForJob(job.ID)
+	remaining := make([]string, 0, len(foreign))
+	for _, candidate := range foreign {
+		name := strings.TrimSpace(candidate)
+		dataset := snapshotDatasetName(name)
+		shortName := strings.TrimPrefix(snapshotShortName(SnapshotInfo{Name: name}), "@")
+		_, c1, err := backupCommitJobIDFromSnapshot(shortName)
+		if !datasetWithinRoot(targetRoot, dataset) ||
+			!isBKSnapshotShortName(shortName, jobPrefix) || err != nil || c1 {
+			remaining = append(remaining, candidate)
 		}
-		if gens[i].hasTok != gens[j].hasTok {
-			return gens[i].hasTok
-		}
-		return gens[i].dataset > gens[j].dataset
-	})
-
-	stale := make([]string, 0, len(gens)-keepNewest)
-	for _, g := range gens[keepNewest:] {
-		stale = append(stale, g.dataset)
 	}
-	return stale
+	return remaining
 }
 
 func buildLocalRetentionPruneCandidates(snapshots []SnapshotInfo, keepCount int, protect map[string]struct{}, snapPrefix string) []string {
@@ -266,10 +318,11 @@ func buildLocalRetentionPruneCandidates(snapshots []SnapshotInfo, keepCount int,
 func (s *Service) localRetentionProtectSet(
 	ctx context.Context,
 	target *clusterModels.BackupTarget,
+	localRootDataset string,
 	remoteActiveDataset string,
 	snapPrefix string,
 	localSnapshots []SnapshotInfo,
-) map[string]struct{} {
+) (map[string]struct{}, error) {
 	protect := make(map[string]struct{})
 
 	newestPerDataset := make(map[string]SnapshotInfo)
@@ -291,70 +344,40 @@ func (s *Service) localRetentionProtectSet(
 
 	remoteActiveDataset = normalizeDatasetPath(remoteActiveDataset)
 	if target != nil && remoteActiveDataset != "" {
-		if remoteSnaps, err := s.listRemoteSnapshotsForDataset(ctx, target, remoteActiveDataset); err == nil {
-			if base, ok := latestCommonBackupSnapshot(localSnapshots, remoteSnaps, snapPrefix); ok {
-				if isValidZFSSnapshotName(base.Name) {
-					protect[base.Name] = struct{}{}
-				}
+		remoteSnaps, err := s.listRemoteSnapshotsForDatasetRecursive(ctx, target, remoteActiveDataset)
+		if err != nil {
+			return protect, fmt.Errorf("list_recursive_remote_retention_snapshots_failed: %w", err)
+		}
+		bases := latestCommonBackupSnapshotsByDataset(
+			localSnapshots,
+			remoteSnaps,
+			localRootDataset,
+			remoteActiveDataset,
+			snapPrefix,
+		)
+		for _, base := range bases {
+			if isValidZFSSnapshotName(base.Name) {
+				protect[base.Name] = struct{}{}
 			}
 		}
 	}
 
-	return protect
+	return protect, nil
 }
 
-func (s *Service) trimTargetBackupGenerations(
+func (s *Service) findForeignTargetSnapshots(
 	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	activeDataset string,
-	keepNewest int,
-) (int, error) {
-	activeDataset = normalizeDatasetPath(activeDataset)
-	if target == nil {
-		return 0, fmt.Errorf("target_required")
-	}
-	if activeDataset == "" {
-		return 0, fmt.Errorf("active_dataset_required")
-	}
-
-	lineage, err := s.listRemoteLineageDatasets(ctx, target, activeDataset)
-	if err != nil {
-		return 0, err
-	}
-
-	stale := staleBackupGenerationDatasets(activeDataset, lineage, keepNewest)
-	destroyed := 0
-	for _, ds := range stale {
-		ds = normalizeDatasetPath(ds)
-		if ds == "" || ds == activeDataset {
-			continue
-		}
-		if _, err := s.runTargetSSH(ctx, target, "zfs", "destroy", "-r", ds); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Str("ssh_host", target.SSHHost).
-				Str("dataset", ds).
-				Msg("backup_generation_destroy_failed")
-			continue
-		}
-		destroyed++
-	}
-
-	return destroyed, nil
-}
-
-func (s *Service) neutralizeForeignTargetSnapshots(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
+	job *clusterModels.BackupJob,
 	sourceDataset string,
 	activeDataset string,
-	snapPrefix string,
+	scopes []backupScope,
 ) ([]string, error) {
 	sourceDataset = normalizeDatasetPath(sourceDataset)
 	activeDataset = normalizeDatasetPath(activeDataset)
-	if target == nil || sourceDataset == "" || activeDataset == "" {
+	if job == nil || sourceDataset == "" || activeDataset == "" {
 		return nil, nil
 	}
+	target := &job.Target
 	if strings.TrimSpace(target.SSHHost) == "" {
 		return nil, nil
 	}
@@ -375,23 +398,50 @@ func (s *Service) neutralizeForeignTargetSnapshots(
 	if err != nil {
 		return nil, err
 	}
-
-	foreign := foreignTargetSnapshots(localSnaps, remoteSnaps, snapPrefix)
+	foreign := foreignTargetSnapshots(localSnaps, remoteSnaps, sourceDataset, activeDataset, nil)
 	if len(foreign) == 0 {
 		return nil, nil
 	}
 
-	logger.L.Info().
-		Str("ssh_host", target.SSHHost).
-		Str("active", activeDataset).
-		Strs("snapshots", foreign).
-		Msg("backup_destroying_foreign_target_snapshots")
-
-	if err := s.DestroyTargetSnapshotsByName(ctx, target, foreign); err != nil {
-		return nil, err
+	// A source-retention policy may have removed an old local c1 snapshot while
+	// the target intentionally retained it. Permit that target-only point only
+	// after revalidating its exact commit and complete manifest; never infer
+	// ownership from the bk_ prefix.
+	foreignSet := make(map[string]struct{}, len(foreign))
+	for _, name := range foreign {
+		foreignSet[name] = struct{}{}
+	}
+	unmatched := make([]SnapshotInfo, 0, len(foreign))
+	for _, snapshot := range remoteSnaps {
+		if _, ok := foreignSet[strings.TrimSpace(snapshot.Name)]; ok {
+			unmatched = append(unmatched, snapshot)
+		}
+	}
+	proofs, err := s.backupRetentionEligibleSnapshotProofs(
+		ctx,
+		job,
+		activeDataset,
+		unmatched,
+		scopes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("prove_target_only_backup_snapshots_failed: %w", err)
 	}
 
-	return foreign, nil
+	foreign = foreignTargetSnapshots(
+		localSnaps,
+		remoteSnaps,
+		sourceDataset,
+		activeDataset,
+		proofs.Target,
+	)
+	return filterToleratedLegacyTargetSnapshots(
+		job,
+		sourceDataset,
+		activeDataset,
+		scopes,
+		foreign,
+	), nil
 }
 
 func remoteActiveDatasetForSuffix(backupRoot, destSuffix string) string {

@@ -54,13 +54,13 @@ type CreateJailRequest struct {
 	DHCP  *bool `json:"dhcp"`
 	SLAAC *bool `json:"slaac"`
 
-	IPv4   *int `json:"ipv4"`
-	IPv4Gw *int `json:"ipv4Gw"`
+	IPv4      *int   `json:"ipv4"`
+	IPv4Gw    *int   `json:"ipv4Gw"`
 	IPv4Raw   string `json:"ipv4Raw"`
 	IPv4GwRaw string `json:"ipv4GwRaw"`
 
-	IPv6   *int `json:"ipv6"`
-	IPv6Gw *int `json:"ipv6Gw"`
+	IPv6      *int   `json:"ipv6"`
+	IPv6Gw    *int   `json:"ipv6Gw"`
 	IPv6Raw   string `json:"ipv6Raw"`
 	IPv6GwRaw string `json:"ipv6GwRaw"`
 
@@ -148,12 +148,19 @@ type EditJailNetworkRequest struct {
 	VLAN           *int   `json:"vlan"`
 }
 
+type DeleteJailResult struct {
+	Warnings         []string `json:"warnings"`
+	RetainedDatasets []string `json:"retainedDatasets"`
+}
+
 type JailServiceInterface interface {
 	JailAction(ctid int, action string) error
 	ForceStopJail(ctID uint) error
 	IsJailRunning(ctid uint) (bool, error)
 	GetJailCTIDFromDataset(dataset string) (uint, error)
 	DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error
+	DeleteJailWithWarnings(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) (DeleteJailResult, error)
+	RetireJailLocalMetadata(ctx context.Context, ctId uint, deleteMacs bool) error
 	StartStatsMonitoring(ctx context.Context)
 
 	StoreJailUsage() error

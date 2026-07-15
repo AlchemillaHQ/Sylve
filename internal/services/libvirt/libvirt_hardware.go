@@ -136,6 +136,14 @@ func (s *Service) updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cp
 	return out, nil
 }
 
+func (s *Service) updateRequestedCPUXML(
+	xml string,
+	req libvirtServiceInterfaces.ModifyCPURequest,
+	cpuPinning []vmModels.VMCPUPinning,
+) (string, error) {
+	return s.updateCPU(xml, req.CPUSockets, req.CPUCores, req.CPUThreads, cpuPinning)
+}
+
 func updateVNC(xml string, vncPort int, vncBind string, vncResolution string, vncPassword string, vncWait bool, vncEnabled bool) (string, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromString(xml); err != nil {
@@ -318,10 +326,6 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_validate_cpu_pins: %w", err)
 	}
 
-	vm.CPUCores = req.CPUCores
-	vm.CPUSockets = req.CPUSockets
-	vm.CPUThreads = req.CPUThreads
-
 	// Normalize the incoming pins (optional: sort for stable equality checks)
 	newPins := make([]vmModels.VMCPUPinning, 0, len(req.CPUPinning))
 	for _, p := range req.CPUPinning {
@@ -427,7 +431,10 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 	}
 
 	xml := string(domainXML)
-	updatedXML, err := s.updateCPU(xml, vm.CPUSockets, vm.CPUCores, vm.CPUThreads, vm.CPUPinning)
+	// The VM was reloaded above to compare the persisted configuration. Build
+	// XML from the requested topology and the newly persisted pins, not that
+	// stale pre-update record.
+	updatedXML, err := s.updateRequestedCPUXML(xml, req, newPins)
 	if err != nil {
 		return fmt.Errorf("failed_to_update_cpu_in_xml: %w", err)
 	}
@@ -580,7 +587,7 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 			return fmt.Errorf("vnc_port_already_in_use_by_another_vm")
 		}
 
-		if utils.IsPortInUse(vncPort) {
+		if utils.IsTCPPortInUse(vncPort) {
 			return fmt.Errorf("vnc_port_already_in_use_by_another_service")
 		}
 	}

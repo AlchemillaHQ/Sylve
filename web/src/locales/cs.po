@@ -447,7 +447,6 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
@@ -534,7 +533,7 @@ msgstr "Chybný požadavek"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Error"
 msgstr "Chyba"
 
@@ -593,7 +592,6 @@ msgstr "Akce"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -1097,7 +1095,6 @@ msgstr "Resetovat"
 #: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
-#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
@@ -3342,7 +3339,6 @@ msgstr ""
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Success"
 msgstr ""
@@ -3353,7 +3349,6 @@ msgstr ""
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3529,7 +3524,6 @@ msgstr ""
 msgid "OOB Restore"
 msgstr ""
 
-#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -3584,6 +3578,7 @@ msgid "Validation failed"
 msgstr ""
 
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Validating"
 msgstr ""
 
@@ -3627,7 +3622,6 @@ msgid "Failed to copy output"
 msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy"
@@ -3645,7 +3639,6 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Path"
 msgstr "Popis umístění"
 
@@ -3660,9 +3653,7 @@ msgstr ""
 
 #. 0: event.policyId
 #. 0: event.policyId
-#. 0: receipt.policyId
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Policy {0}"
 msgstr ""
@@ -3671,21 +3662,17 @@ msgstr ""
 msgid "Output"
 msgstr ""
 
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Target Receipts"
-msgstr ""
+#~ msgid "Target Receipts"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "No target-side receipts yet."
-msgstr ""
+#~ msgid "No target-side receipts yet."
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Last Attempt"
-msgstr ""
+#~ msgid "Last Attempt"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Last Success"
-msgstr ""
+#~ msgid "Last Success"
+#~ msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Replication Progress"
@@ -4011,13 +3998,11 @@ msgstr ""
 msgid "Behavior"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "HA State"
-msgstr ""
+#~ msgid "HA State"
+#~ msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
@@ -4445,10 +4430,8 @@ msgstr ""
 msgid "No failover or replication task is running right now."
 msgstr ""
 
-#. 0: convertDbTime(replicationActivity.current.updatedAt)
-#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
-msgid "Last updated: {0}"
-msgstr ""
+#~ msgid "Last updated: {0}"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
@@ -7648,9 +7631,8 @@ msgstr ""
 msgid "Failed to load cluster details"
 msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Failed to validate cluster guest placement"
-msgstr ""
+#~ msgid "Failed to validate cluster guest placement"
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "No backup targets available"
@@ -10043,6 +10025,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Saving..."
 msgstr ""
 
@@ -10409,6 +10392,7 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Pending"
 msgstr ""
@@ -13420,9 +13404,8 @@ msgstr ""
 msgid "Installed"
 msgstr ""
 
-#: src/routes/[node]/jail/[ctid]/+layout.svelte
-msgid "This will permanently delete the jail <0/> <1/>"
-msgstr ""
+#~ msgid "This will permanently delete the jail <0/> <1/>"
+#~ msgstr ""
 
 #. 0: title.replaceAll('Template', '')
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -14427,9 +14410,8 @@ msgstr ""
 msgid "Auto-detect node"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Synced"
-msgstr ""
+#~ msgid "Synced"
+#~ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Not targeted"
@@ -16300,4 +16282,208 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Notification - Dismiss All"
+msgstr ""
+
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Revalidating target before cutover…"
+msgstr ""
+
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Resuming migration safely…"
+msgstr ""
+
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Waiting to retry the migration safely…"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Ready"
+msgstr ""
+
+#. 0: convertDbTime(s.verifiedAt)
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Verified {0}"
+msgstr ""
+
+#. 0: convertDbTime(s.readyUntil)
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Ready until {0}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "One or more guest IDs are already used by a VM or jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Existing VM/jail ID conflicts must be resolved before creating a jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Could not verify guest IDs on every cluster node. Check node health and retry"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Could not check VM and jail IDs. Check the server logs and retry"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Existing VM/jail ID conflicts must be resolved before creating a VM"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Remove the replication policy before deleting this jail"
+msgstr ""
+
+#. 0: retainedDatasets.length > 0 ? `\\: ${retainedDatasets.join(', ')}` \\: ''
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Jail deleted, but cleanup was incomplete{0}"
+msgstr ""
+
+#. 0: retainedDatasets.join(', ')
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Jail deleted; root filesystem retained at {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "The root filesystem remains as unmanaged ZFS data and can block reuse of this CTID until removed."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "This will permanently delete the jail <0/> <1/> <2/>"
+msgstr ""
+
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Cancellation is no longer available because migration cutover has started."
+msgstr ""
+
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Importing guest on target (kept stopped)…"
+msgstr ""
+
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Cancellation requested…"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Remove the replication policy before deleting this VM"
+msgstr ""
+
+#. 0: retainedDatasets.length > 0 ? `\\: ${retainedDatasets.join(', ')}` \\: ''
+#. 0: retainedDatasets.length > 0 ? `\\: ${retainedDatasets.join(', ')}` \\: ''
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM deleted, but cleanup was incomplete{0}"
+msgstr ""
+
+#. 0: retainedDatasets.join(', ')
+#. 0: retainedDatasets.join(', ')
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM deleted; storage retained at {0}"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID until removed."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Filesystem storage cannot be imported"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Syncing"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Needs sync"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Unprotected"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Deleting"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Suspended"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Initializing"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Protected"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Protection"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy was saved, but this node could not confirm the updated list. The form remains open; retry Save or reload the page."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "All local snapshots of the replaced dataset are permanently removed"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "This is a legacy restore point created before manifest commits. Its complete dataset set cannot be cryptographically verified; legacy VM restore points are blocked."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Legacy VM restore points cannot prove that every disk root is complete"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "That RID/CTID or its destination artifacts already exist. Choose an unused ID or clean up the old guest first"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Could not verify the guest ID on every cluster node. Check node health and retry"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Could not safely validate the restore destination. Check server logs and retry"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "A restore for this destination is already running"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Guest restores are create-only. The RID/CTID and canonical destination dataset must not already exist."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "The selected VM root uses the destination pool. Any additional VM storage pools keep their original pool names and must exist on the restore node."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "This restore point predates manifest commits. Legacy VM restore is blocked because the complete disk-root set cannot be verified."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "VM backups must include all child disk datasets"
+msgstr ""
+
+#. 0: convertDbTime( replicationActivity.current.updatedAt )
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "Auto-refreshes every 5 seconds · Last updated: {0}"
 msgstr ""

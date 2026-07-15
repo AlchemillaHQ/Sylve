@@ -36,10 +36,14 @@ func TestFenceReplicationGuestDatasets(t *testing.T) {
 	ctx := context.Background()
 
 	// create datasets with VM naming pattern so findLocalGuestDatasets can match them
-	vmDS := pool + "/virtual-machines/100"
+	vmDS := pool + "/sylve/virtual-machines/100"
 	zfstest.EnsureDataset(t, client, vmDS)
+	if output, err := exec.Command("zfs", "snapshot", vmDS+"@ha_existing").CombinedOutput(); err != nil {
+		t.Fatalf("create existing replication snapshot: %v\n%s", err, output)
+	}
 
 	s := &Service{GZFS: client}
+	scopeLocalFilesystemDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
@@ -60,10 +64,11 @@ func TestFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	vmDS := pool + "/virtual-machines/200"
+	vmDS := pool + "/sylve/virtual-machines/200"
 	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
+	scopeLocalFilesystemDatasetsToPool(t, s, pool)
 
 	// fence once
 	policy := &clusterModels.ReplicationPolicy{
@@ -85,10 +90,11 @@ func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	jailDS := pool + "/jails/50"
+	jailDS := pool + "/sylve/jails/50"
 	zfstest.EnsureDataset(t, client, jailDS)
 
 	s := &Service{GZFS: client}
+	scopeLocalFilesystemDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 3, GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 50,
@@ -105,11 +111,12 @@ func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
 
 func TestFenceReplicationGuestDatasetsNoMatch(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	_, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	s := &Service{GZFS: client}
+	scopeLocalFilesystemDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 4, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 9999,
@@ -134,10 +141,11 @@ func TestUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	vmDS := pool + "/virtual-machines/300"
+	vmDS := pool + "/sylve/virtual-machines/300"
 	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
+	scopeLocalFilesystemDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 5, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 300,
@@ -164,11 +172,16 @@ func TestFindLocalGuestDatasets(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	zfstest.EnsureDataset(t, client, pool+"/virtual-machines/100")
-	zfstest.EnsureDataset(t, client, pool+"/virtual-machines/100/disk0")
-	zfstest.EnsureDataset(t, client, pool+"/jails/50")
+	zfstest.EnsureDataset(t, client, pool+"/sylve/virtual-machines/100")
+	zfstest.EnsureDataset(t, client, pool+"/sylve/virtual-machines/100/disk0")
+	zfstest.EnsureDataset(t, client, pool+"/sylve/jails/50")
+	// Similar-looking backup and numeric-alias paths must never be selected as
+	// active guest roots.
+	zfstest.EnsureDataset(t, client, pool+"/backups/virtual-machines/100")
+	zfstest.EnsureDataset(t, client, pool+"/sylve/virtual-machines/0100")
 
 	s := &Service{GZFS: client}
+	scopeLocalFilesystemDatasetsToPool(t, s, pool)
 
 	datasets, err := s.findLocalGuestDatasets(ctx, clusterModels.ReplicationGuestTypeVM, 100)
 	if err != nil {
@@ -176,6 +189,9 @@ func TestFindLocalGuestDatasets(t *testing.T) {
 	}
 	if len(datasets) == 0 {
 		t.Fatal("expected at least 1 dataset for VM 100")
+	}
+	if len(datasets) != 1 || datasets[0] != pool+"/sylve/virtual-machines/100" {
+		t.Fatalf("VM discovery included a noncanonical dataset: %#v", datasets)
 	}
 
 	datasets, err = s.findLocalGuestDatasets(ctx, clusterModels.ReplicationGuestTypeJail, 50)

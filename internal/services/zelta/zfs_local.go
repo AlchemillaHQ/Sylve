@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -46,6 +45,29 @@ func (s *Service) localDatasetExists(ctx context.Context, name string) (bool, er
 		return false, err
 	}
 	return ds != nil, nil
+}
+
+// requireRestoreStagingDatasetAvailable fails closed when a deterministic
+// restore staging path already exists. A name alone is not proof that the
+// dataset belongs to an abandoned Sylve operation, so callers must never
+// destroy it automatically.
+func (s *Service) requireRestoreStagingDatasetAvailable(ctx context.Context, name string) error {
+	name = normalizeDatasetPath(name)
+	if name == "" {
+		return fmt.Errorf("restore_staging_dataset_required")
+	}
+
+	exists, err := s.localDatasetExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("restore_staging_dataset_check_failed: %w", err)
+	}
+	if exists {
+		return fmt.Errorf(
+			"restore_staging_dataset_exists_requires_manual_cleanup: dataset=%s",
+			name,
+		)
+	}
+	return nil
 }
 
 func (s *Service) destroyLocalDataset(ctx context.Context, name string, recursive bool) error {
@@ -205,8 +227,6 @@ func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, desti
 	}
 
 	if destinationExists {
-		_ = s.unmountLocalDataset(ctx, destination)
-
 		token := compactNowToken()
 		for attempt := 0; attempt < 32; attempt++ {
 			candidate := restoreBackupDatasetCandidate(destination, token, attempt)
@@ -244,6 +264,34 @@ func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, desti
 	return backupDataset, nil
 }
 
+// promoteRestoredDatasetAsNew performs a create-only cutover. The ZFS rename
+// remains the final atomic guard: an existing or concurrently created
+// destination is never archived, replaced, or destroyed.
+func (s *Service) promoteRestoredDatasetAsNew(ctx context.Context, restorePath, destination string) error {
+	restorePath = normalizeRestoreDestinationDataset(restorePath)
+	destination = normalizeRestoreDestinationDataset(destination)
+	if restorePath == "" || destination == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
+
+	destinationExists, err := s.localDatasetExists(ctx, destination)
+	if err != nil {
+		return fmt.Errorf("restore_destination_dataset_check_failed: %w", err)
+	}
+	if destinationExists {
+		return fmt.Errorf("restore_destination_guest_dataset_exists: dataset=%s", destination)
+	}
+
+	if err := s.renameLocalDataset(ctx, restorePath, destination); err != nil {
+		if exists, existsErr := s.localDatasetExists(ctx, destination); existsErr == nil && exists {
+			return fmt.Errorf("restore_destination_guest_dataset_exists: dataset=%s", destination)
+		}
+		return fmt.Errorf("failed_to_promote_restored_guest_dataset: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) rollbackPromotedDataset(ctx context.Context, destination, backupDataset string) error {
 	destination = normalizeRestoreDestinationDataset(destination)
 	backupDataset = normalizeRestoreDestinationDataset(backupDataset)
@@ -251,22 +299,26 @@ func (s *Service) rollbackPromotedDataset(ctx context.Context, destination, back
 		return nil
 	}
 
-	destinationExists, err := s.localDatasetExists(ctx, destination)
-	if err != nil {
-		return err
-	}
-	if destinationExists {
-		if err := s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 500*time.Millisecond); err != nil {
-			return fmt.Errorf("failed_to_remove_failed_restored_dataset: %w", err)
-		}
-	}
-
+	// Prove the rollback archive still exists before removing the promoted
+	// destination. If the archive was externally moved or deleted, retain the
+	// only known-good dataset and fail closed for manual recovery.
 	backupExists, err := s.localDatasetExists(ctx, backupDataset)
 	if err != nil {
 		return err
 	}
 	if !backupExists {
 		return fmt.Errorf("restore_backup_dataset_missing: %s", backupDataset)
+	}
+
+	destinationExists, err := s.localDatasetExists(ctx, destination)
+	if err != nil {
+		return err
+	}
+	if destinationExists {
+		_ = s.unmountLocalDataset(ctx, destination)
+		if err := s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 500*time.Millisecond); err != nil {
+			return fmt.Errorf("failed_to_remove_failed_restored_dataset: %w", err)
+		}
 	}
 
 	if err := s.renameLocalDataset(ctx, backupDataset, destination); err != nil {
@@ -414,6 +466,9 @@ func (s *Service) listLocalVolumeDatasets(ctx context.Context) ([]string, error)
 }
 
 func (s *Service) listLocalFilesystemDatasets(ctx context.Context) ([]string, error) {
+	if s != nil && s.localFilesystemDatasetLister != nil {
+		return s.localFilesystemDatasetLister(ctx)
+	}
 	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
 		return nil, fmt.Errorf("gzfs_not_initialized")
 	}
@@ -478,38 +533,4 @@ func isLocalDatasetHasDependentClonesError(err error) bool {
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "dependent clones") ||
 		strings.Contains(lower, "filesystem has dependent clones")
-}
-
-// CleanupOrphanRestoreDatasets removes .restoring and _restore-backup-*
-// datasets left behind by interrupted restore operations.
-func (s *Service) CleanupOrphanRestoreDatasets(ctx context.Context) error {
-	datasets, err := s.listLocalFilesystemDatasets(ctx)
-	if err != nil {
-		return fmt.Errorf("list_datasets_for_orphan_cleanup_failed: %w", err)
-	}
-
-	var cleaned int
-	for _, ds := range datasets {
-		ds = normalizeDatasetPath(ds)
-		if ds == "" {
-			continue
-		}
-
-		if !strings.HasSuffix(ds, ".restoring") && !strings.Contains(ds, "_restore-backup-") {
-			continue
-		}
-
-		logger.L.Info().Str("dataset", ds).Msg("cleaning_up_orphan_restore_dataset")
-		if err := s.destroyLocalDatasetIncludingDependentsWithRetry(ctx, ds, 5, 500*time.Millisecond); err != nil {
-			logger.L.Warn().Err(err).Str("dataset", ds).Msg("failed_to_cleanup_orphan_restore_dataset")
-			continue
-		}
-		cleaned++
-	}
-
-	if cleaned > 0 {
-		logger.L.Info().Int("count", cleaned).Msg("cleaned_up_orphan_restore_datasets")
-	}
-
-	return nil
 }

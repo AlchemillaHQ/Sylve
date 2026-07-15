@@ -38,6 +38,8 @@ type Service struct {
 	AuthService serviceInterfaces.AuthServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
 
+	clusterJoinMu sync.Mutex
+
 	peerProbeMu            sync.Mutex
 	peerProbeFailureStreak map[string]int
 
@@ -45,18 +47,30 @@ type Service struct {
 	monitorOnce     sync.Once
 
 	clusterStartHook func(ip string) error
+
+	guestIdentityInventoryAPIForNode func(string, raft.ServerAddress) (string, error)
 }
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {
 	s.clusterStartHook = fn
 }
 
-func (s *Service) triggerClusterStart(ip string) {
-	if s.clusterStartHook != nil {
-		if err := s.clusterStartHook(ip); err != nil {
-			logger.L.Error().Err(err).Str("ip", ip).Msg("cluster_listener_start_failed")
+func (s *Service) triggerClusterStart(ip string) error {
+	if s.clusterStartHook == nil {
+		return nil
+	}
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := s.clusterStartHook(ip); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
 		}
 	}
+	return lastErr
 }
 
 func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
@@ -379,19 +393,43 @@ func (s *Service) ResyncClusterState() error {
 	return nil
 }
 
+func (s *Service) stopRaftRuntime() error {
+	stopErrors := make([]error, 0, 2)
+	if s.Raft != nil {
+		if err := s.Raft.Shutdown().Error(); err != nil {
+			stopErrors = append(stopErrors, fmt.Errorf("shutdown_raft: %w", err))
+		}
+		s.Raft = nil
+	}
+	if s.Transport != nil {
+		if err := s.Transport.Close(); err != nil {
+			stopErrors = append(stopErrors, fmt.Errorf("close_raft_transport: %w", err))
+		}
+		s.Transport = nil
+	}
+	s.RaftID = nil
+	return errors.Join(stopErrors...)
+}
+
 func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if s.Raft != nil {
 		return errors.New("raft_already_initialized")
 	}
-
+	localNodeID := s.guestIdentityInventoryLocalNodeID()
+	if localNodeID == "" {
+		return errors.New("local_node_id_unavailable")
+	}
+	localInventory, err := ScanLocalGuestIdentityInventory(s.DB, localNodeID)
+	if err != nil {
+		return fmt.Errorf("scan_local_guest_identity_inventory: %w", err)
+	}
+	if err := requireCleanGuestIdentityInventory(localInventory); err != nil {
+		return err
+	}
 	port := ClusterRaftPort
 
 	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
 		return err
-	}
-
-	if dir, _ := config.GetRaftPath(); hasExistingRaftState(dir) {
-		return errors.New("raft_state_already_exists")
 	}
 
 	var c clusterModels.Cluster
@@ -402,6 +440,9 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if c.Enabled {
 		return errors.New("cluster already exists")
 	}
+	if dir, _ := config.GetRaftPath(); hasExistingRaftState(dir) {
+		return errors.New("raft_state_already_exists")
+	}
 
 	bootstrap := true
 	newKey := c.Key
@@ -409,32 +450,13 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 		newKey = utils.GenerateRandomString(32)
 	}
 
-	if err := s.DB.Model(&c).Updates(map[string]any{
-		"enabled":        true,
-		"key":            newKey,
-		"raft_bootstrap": &bootstrap,
-		"raft_ip":        ip,
-		"raft_port":      port,
-	}).Error; err != nil {
+	if _, err := s.setupRaftAtIP(true, fsm, ip); err != nil {
 		return err
 	}
-
-	if _, err := s.SetupRaft(true, fsm); err != nil {
-		return err
-	}
-
-	s.triggerClusterStart(ip)
-
-	c.Enabled = true
-	c.Key = newKey
-	c.RaftBootstrap = &bootstrap
-	c.RaftIP = ip
-	c.RaftPort = port
 
 	becameLeader, leaderAddr, err := s.waitUntilLeader(raftLeaderWaitTimeout)
 	if err != nil {
-		logger.L.Warn().Err(err).Msg("Leader not elected yet; skipping immediate snapshot")
-		return nil
+		return fmt.Errorf("bootstrap_leader_election_failed: %w", err)
 	}
 
 	if becameLeader {
@@ -446,47 +468,98 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 			return fmt.Errorf("raft_snapshot_failed: %w", err)
 		}
 
-		if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
-			logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during cluster creation")
-		}
 	} else {
-		logger.L.Info().Str("leader", string(leaderAddr)).Msg("not leader after bootstrap; skipping local snapshot")
+		return fmt.Errorf("bootstrap_node_not_leader: leader=%s", string(leaderAddr))
+	}
+
+	// Persist clustered state only after Raft bootstrap, backfill, and snapshot
+	// have succeeded.
+	if err := s.DB.Model(&c).Updates(map[string]any{
+		"enabled":        true,
+		"key":            newKey,
+		"raft_bootstrap": &bootstrap,
+		"raft_ip":        ip,
+		"raft_port":      port,
+	}).Error; err != nil {
+		return err
+	}
+
+	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during cluster creation")
+	}
+
+	if err := s.triggerClusterStart(ip); err != nil {
+		logger.L.Error().Err(err).Str("ip", ip).Msg("cluster_listener_start_failed")
 	}
 
 	return nil
 }
 
-func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, clusterKey string) error {
+func (s *Service) rollbackJoinPreparation(
+	originalCluster clusterModels.Cluster,
+	originalNodeID string,
+) error {
+	rollbackErrors := make([]error, 0, 3)
+	if err := s.stopRaftRuntime(); err != nil {
+		rollbackErrors = append(rollbackErrors, err)
+	}
+	s.NodeID = originalNodeID
+	if err := s.DB.Save(&originalCluster).Error; err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore_cluster_record: %w", err))
+	}
+	if err := s.CleanRaftDir(); err != nil {
+		rollbackErrors = append(rollbackErrors, err)
+	}
+	return errors.Join(rollbackErrors...)
+}
+
+func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
 	if !utils.IsValidIP(ip) {
 		return errors.New("invalid_ip_address")
 	}
 
 	port := ClusterRaftPort
-
-	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
-		return fmt.Errorf("failed_to_bind_to_port: %v", err)
-	}
-
-	details, err := s.GetClusterDetails()
-	if err != nil {
+	var c clusterModels.Cluster
+	if err := s.DB.First(&c).Error; err != nil {
 		return err
 	}
-
-	if details.Cluster.Enabled {
+	if c.Enabled {
+		if c.RaftIP == ip &&
+			c.RaftPort == port &&
+			c.Key == clusterKey &&
+			s.Raft != nil &&
+			s.Raft.State() != raft.Shutdown {
+			if err := s.triggerClusterStart(ip); err != nil {
+				return fmt.Errorf("cluster_listener_start_failed: %w", err)
+			}
+			return nil
+		}
 		return fmt.Errorf("clustered_already")
 	}
 
 	if s.Raft != nil && s.Raft.State() != raft.Shutdown {
 		return errors.New("raft_already_initialized")
 	}
+	if s.Raft != nil || s.Transport != nil {
+		if err := s.stopRaftRuntime(); err != nil {
+			return fmt.Errorf("failed_to_stop_stale_raft_runtime: %w", err)
+		}
+	}
 
-	err = s.CleanRaftDir()
-	if err != nil {
+	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
+		return fmt.Errorf("failed_to_bind_to_port: %v", err)
+	}
+
+	if err := s.CleanRaftDir(); err != nil {
 		return err
 	}
 
-	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
+	originalCluster := c
+	originalNodeID := s.NodeID
+	if _, err := s.setupRaftAtIP(false, fsm, ip); err != nil {
+		if rollbackErr := s.rollbackJoinPreparation(originalCluster, originalNodeID); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("join_preparation_rollback_failed: %w", rollbackErr))
+		}
 		return err
 	}
 
@@ -494,26 +567,15 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, clusterKey string) erro
 	c.RaftPort = port
 	c.Enabled = true
 	c.Key = clusterKey
-
-	if err := s.DB.Save(&c).Error; err != nil {
-		return err
-	}
-
-	if err := s.ClearClusteredData(); err != nil {
-		return err
-	}
-
-	_, err = s.SetupRaft(false, fsm)
-	if err != nil {
-		c.RaftIP = ""
-		c.RaftPort = ClusterRaftPort
-		c.Enabled = false
-		c.Key = ""
-
-		if err := s.DB.Save(&c).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&c).Error; err != nil {
 			return err
 		}
-
+		return clearClusteredDataTx(tx)
+	}); err != nil {
+		if rollbackErr := s.rollbackJoinPreparation(originalCluster, originalNodeID); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("join_preparation_rollback_failed: %w", rollbackErr))
+		}
 		return err
 	}
 
@@ -521,132 +583,67 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, clusterKey string) erro
 		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during joiner startup")
 	}
 
-	s.triggerClusterStart(ip)
+	if err := s.triggerClusterStart(ip); err != nil {
+		return fmt.Errorf("cluster_listener_start_failed: %w", err)
+	}
+
+	return nil
+}
+
+func clearClusteredDataTx(tx *gorm.DB) error {
+	if err := tx.Exec("DELETE FROM cluster_notes").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_cluster_notes: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM cluster_options").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_cluster_options: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM backup_events").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_backup_events: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM backup_jobs").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_backup_jobs: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM backup_targets").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_backup_targets: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM replication_events").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_replication_events: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM replication_guest_operation_receipts").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_replication_guest_operation_receipts: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM replication_guest_operations").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_replication_guest_operations: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM replication_leases").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_replication_leases: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM replication_policy_targets").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_replication_policy_targets: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM replication_policies").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_replication_policies: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM cluster_ssh_identities").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_cluster_ssh_identities: %w", err)
+	}
 
 	return nil
 }
 
 func (s *Service) ClearClusteredData() error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("DELETE FROM cluster_notes").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_cluster_notes: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM cluster_options").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_cluster_options: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM backup_events").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_backup_events: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM backup_jobs").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_backup_jobs: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM backup_targets").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_backup_targets: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM replication_events").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_replication_events: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM replication_receipts").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_replication_receipts: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM replication_leases").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_replication_leases: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM replication_policy_targets").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_replication_policy_targets: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM replication_policies").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_replication_policies: %w", err)
-		}
-
-		if err := tx.Exec("DELETE FROM cluster_ssh_identities").Error; err != nil {
-			return fmt.Errorf("failed_to_clean_cluster_ssh_identities: %w", err)
-		}
-
-		return nil
-	})
-}
-
-func (s *Service) AcceptJoin(nodeID, nodeIp string, providedKey string) error {
-	details, err := s.GetClusterDetails()
-	if err != nil {
-		return err
-	}
-
-	if details.Cluster == nil {
-		return errors.New("cluster_not_found")
-	}
-
-	if details.Cluster.Key != providedKey {
-		return errors.New("invalid_cluster_key")
-	}
-
-	if s.Raft == nil {
-		return errors.New("raft_not_initialized")
-	}
-
-	if s.Raft.State() != raft.Leader {
-		addr, id := s.Raft.LeaderWithID()
-		return fmt.Errorf("not_leader; leader_addr=%s; leader_id=%s", string(addr), string(id))
-	}
-
-	fut := s.Raft.GetConfiguration()
-	if err := fut.Error(); err != nil {
-		return fmt.Errorf("get_config_failed: %w", err)
-	}
-
-	conf := fut.Configuration()
-	sid := raft.ServerID(nodeID)
-	saddr := raft.ServerAddress(RaftServerAddress(nodeIp))
-
-	localID := raft.ServerID(s.LocalNodeID())
-	if sid == localID {
-		return fmt.Errorf("joining_node_id_conflicts_with_leader")
-	}
-
-	for _, srv := range conf.Servers {
-		if srv.ID == sid {
-			if srv.Address == saddr && srv.Suffrage == raft.Voter {
-				return s.ResyncClusterState()
-			}
-
-			if srv.ID == localID {
-				return fmt.Errorf("joining_node_id_conflicts_with_leader")
-			}
-
-			rf := s.Raft.RemoveServer(srv.ID, 0, 0)
-			if err := rf.Error(); err != nil {
-				return fmt.Errorf("remove_existing_failed: %w", err)
-			}
-			break
-		}
-		if srv.Address == saddr && srv.ID != sid {
-			if srv.ID == localID {
-				return fmt.Errorf("joining_node_address_conflicts_with_leader")
-			}
-
-			rf := s.Raft.RemoveServer(srv.ID, 0, 0)
-			if err := rf.Error(); err != nil {
-				return fmt.Errorf("remove_conflicting_addr_failed: %w", err)
-			}
-		}
-	}
-
-	af := s.Raft.AddVoter(sid, saddr, 0, 0)
-	if err := af.Error(); err != nil {
-		return fmt.Errorf("add_voter_failed: %w", err)
-	}
-
-	return s.ResyncClusterState()
+	return s.DB.Transaction(clearClusteredDataTx)
 }
 
 func (s *Service) MarkClustered() error {

@@ -154,6 +154,18 @@
 		value: ''
 	});
 
+	function setDiskType(value: string) {
+		properties.diskType = value as StorageDiskType;
+		if (properties.diskType !== 'image') {
+			return;
+		}
+
+		properties.pool = '';
+		properties.rawPath = '';
+		zvolCombobox.value = '';
+		filesystemCombobox.value = '';
+	}
+
 	let filesystemDatasetOptions = $derived.by(() =>
 		datasets
 			.filter((dataset) => dataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM)
@@ -244,7 +256,13 @@
 		}
 
 		if (properties.type === 'import') {
-			if (properties.diskType === 'raw') {
+			const storageType = properties.diskType;
+			if (storageType === 'filesystem') {
+				toast.error('Filesystem storage cannot be imported', toastOptions);
+				return;
+			}
+
+			if (storageType === 'raw') {
 				if (!isValidAbsPath(properties.rawPath)) {
 					toast.error('Invalid disk path', toastOptions);
 					return;
@@ -256,7 +274,7 @@
 				if (!found || found.length !== 1) {
 					toast.error('Unable to find disk', toastOptions);
 				}
-			} else if (properties.diskType === 'zvol') {
+			} else if (storageType === 'zvol') {
 				if (!zvolCombobox.value) {
 					toast.error('Please select a ZFS Volume', toastOptions);
 					return;
@@ -269,9 +287,9 @@
 				vm.rid,
 				properties.name,
 				imageCombobox.value,
-				properties.diskType as 'raw' | 'zvol',
-				properties.diskType === 'raw' ? properties.rawPath : '',
-				properties.diskType === 'zvol' ? zvolCombobox.value : '',
+				storageType,
+				storageType === 'raw' ? properties.rawPath : '',
+				storageType === 'zvol' ? zvolCombobox.value : '',
 				properties.emulation === 'virtio-9p' ? 'ahci-hd' : properties.emulation,
 				properties.pool,
 				Number(properties.bootOrder)
@@ -521,7 +539,7 @@
 						...(properties.type !== 'new' ? [{ value: 'image', label: 'Image' }] : [])
 					]}
 					bind:value={properties.diskType}
-					onChange={(value) => (properties.diskType = value as StorageDiskType)}
+					onChange={setDiskType}
 				/>
 
 				<SimpleSelect

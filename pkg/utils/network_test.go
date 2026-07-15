@@ -9,6 +9,7 @@
 package utils
 
 import (
+	"net"
 	"os/exec"
 	"strings"
 	"testing"
@@ -206,16 +207,42 @@ func TestMiscNetworkValidation(t *testing.T) {
 	})
 }
 
-func TestIsPortInUse(t *testing.T) {
-	if IsPortInUse(0) {
+func TestProtocolPortInUse(t *testing.T) {
+	if IsTCPPortInUse(0) || IsUDPPortInUse(0) {
 		t.Fatal("expected false for invalid port")
 	}
 
-	// The current implementation always returns false; this assertion locks in
-	// existing behavior while still exercising the valid-port path.
-	if IsPortInUse(18080) {
-		t.Fatal("expected false for valid port in current implementation")
-	}
+	t.Run("tcp", func(t *testing.T) {
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen on test TCP port: %v", err)
+		}
+		defer listener.Close()
+
+		port := listener.Addr().(*net.TCPAddr).Port
+		if !IsTCPPortInUse(port) {
+			t.Fatalf("expected occupied TCP port %d to be detected", port)
+		}
+		if IsUDPPortInUse(port) {
+			t.Fatalf("TCP listener on port %d must not occupy UDP", port)
+		}
+	})
+
+	t.Run("udp", func(t *testing.T) {
+		listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+		if err != nil {
+			t.Fatalf("listen on test UDP port: %v", err)
+		}
+		defer listener.Close()
+
+		port := listener.LocalAddr().(*net.UDPAddr).Port
+		if !IsUDPPortInUse(port) {
+			t.Fatalf("expected occupied UDP port %d to be detected", port)
+		}
+		if IsTCPPortInUse(port) {
+			t.Fatalf("UDP listener on port %d must not occupy TCP", port)
+		}
+	})
 }
 
 func TestGetPortUserPIDValidationErrors(t *testing.T) {

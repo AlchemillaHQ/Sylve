@@ -15,17 +15,71 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
 
 func newRunBackupJobTestDB(t *testing.T) *Service {
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupTarget{},
+		&clusterModels.BackupEvent{},
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+		&vmModels.Network{},
+		&vmModels.VMCPUPinning{},
+	)
 	return &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
+	}
+}
+
+func seedRuntimeBackupGuardGuests(t *testing.T, db *gorm.DB) {
+	t.Helper()
+
+	jail := jailModels.Jail{CTID: 100, Name: "runtime-guard-jail", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("seed runtime jail: %v", err)
+	}
+	if err := db.Create(&jailModels.Storage{
+		JailID: jail.ID,
+		Pool:   "zroot",
+		GUID:   "runtime-jail-guid",
+		Name:   "Base Filesystem",
+		IsBase: true,
+	}).Error; err != nil {
+		t.Fatalf("seed runtime jail storage: %v", err)
+	}
+
+	vm := vmModels.VM{RID: 200, Name: "runtime-guard-vm"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed runtime VM: %v", err)
+	}
+	dataset := vmModels.VMStorageDataset{
+		Pool: "fast",
+		Name: "fast/sylve/virtual-machines/200/disk0",
+		GUID: "runtime-vm-guid",
+	}
+	if err := db.Create(&dataset).Error; err != nil {
+		t.Fatalf("seed runtime VM dataset: %v", err)
+	}
+	if err := db.Create(&vmModels.Storage{
+		VMID:      vm.ID,
+		Type:      vmModels.VMStorageTypeZVol,
+		Pool:      "fast",
+		Enable:    true,
+		DatasetID: &dataset.ID,
+	}).Error; err != nil {
+		t.Fatalf("seed runtime VM storage: %v", err)
 	}
 }
 
@@ -181,10 +235,109 @@ func TestRunBackupJobVMInvalidRID(t *testing.T) {
 	svc := newRunBackupJobTestDB(t)
 	seedBackupTarget(t, svc.DB, 1, "t1")
 	job := seedAndLoadJob(t, svc.DB, 108, "vm-bad-source", "vm", 1, "zroot/data/db")
+	job.Recursive = true
 
 	err := svc.runBackupJob(context.Background(), &job)
-	if err == nil || !strings.Contains(err.Error(), "invalid_vm_source_dataset") {
-		t.Fatalf("expected invalid_vm_source_dataset, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "vm_backup_requires_registered_canonical_root") {
+		t.Fatalf("expected canonical VM source rejection, got %v", err)
+	}
+}
+
+func TestRunBackupJobUnconditionallyEnforcesGuestBackupSafety(t *testing.T) {
+	tests := []struct {
+		name          string
+		mode          string
+		sourceDataset string
+		jailRoot      string
+		recursive     bool
+		wantError     string
+	}{
+		{
+			name:          "dataset mode rejects whole pool",
+			mode:          clusterModels.BackupJobModeDataset,
+			sourceDataset: "tank",
+			wantError:     "dataset_backup_source_reserved_managed_scope",
+		},
+		{
+			name:          "VM must be recursive",
+			mode:          clusterModels.BackupJobModeVM,
+			sourceDataset: "fast/sylve/virtual-machines/200",
+			wantError:     "vm_backup_requires_recursive",
+		},
+		{
+			name:          "VM mode rejects jail root",
+			mode:          clusterModels.BackupJobModeVM,
+			sourceDataset: "zroot/sylve/jails/100",
+			recursive:     true,
+			wantError:     "vm_backup_requires_registered_canonical_root",
+		},
+		{
+			name:          "VM mode rejects stale identity",
+			mode:          clusterModels.BackupJobModeVM,
+			sourceDataset: "fast/sylve/virtual-machines/999",
+			recursive:     true,
+			wantError:     "vm_backup_requires_registered_canonical_root",
+		},
+		{
+			name:      "jail mode rejects broad namespace",
+			mode:      clusterModels.BackupJobModeJail,
+			jailRoot:  "zroot/sylve/jails",
+			wantError: "jail_backup_requires_registered_canonical_root",
+		},
+		{
+			name:      "jail mode rejects stale identity",
+			mode:      clusterModels.BackupJobModeJail,
+			jailRoot:  "zroot/sylve/jails/999",
+			wantError: "jail_backup_requires_registered_canonical_root",
+		},
+		{
+			name:          "registered canonical VM passes safety guard",
+			mode:          clusterModels.BackupJobModeVM,
+			sourceDataset: "fast/sylve/virtual-machines/200",
+			recursive:     true,
+		},
+		{
+			name:     "registered canonical jail passes safety guard",
+			mode:     clusterModels.BackupJobModeJail,
+			jailRoot: "zroot/sylve/jails/100",
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc := newRunBackupJobTestDB(t)
+			seedRuntimeBackupGuardGuests(t, svc.DB)
+			target := seedBackupTarget(t, svc.DB, 1, "runtime-guard-target")
+			job := clusterModels.BackupJob{
+				ID:              uint(300 + i),
+				Name:            "runtime-guard-job",
+				Mode:            test.mode,
+				TargetID:        target.ID,
+				SourceDataset:   test.sourceDataset,
+				JailRootDataset: test.jailRoot,
+				Recursive:       test.recursive,
+				CronExpr:        "0 0 * * *",
+				Enabled:         true,
+			}
+			if err := svc.DB.Create(&job).Error; err != nil {
+				t.Fatalf("seed guarded job: %v", err)
+			}
+			var loaded clusterModels.BackupJob
+			if err := svc.DB.Preload("Target").First(&loaded, job.ID).Error; err != nil {
+				t.Fatalf("load guarded job: %v", err)
+			}
+
+			err := svc.runBackupJob(context.Background(), &loaded)
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("runtime error = %v, want substring %q", err, test.wantError)
+				}
+				return
+			}
+			if err != nil && strings.Contains(err.Error(), "backup_job_safety_validation_failed") {
+				t.Fatalf("canonical registered job failed safety guard: %v", err)
+			}
+		})
 	}
 }
 
@@ -215,8 +368,7 @@ func TestResolveVMBackupSourceDatasetsNilVM(t *testing.T) {
 	if err == nil {
 		t.Logf("resolveVMBackupSourceDatasets with nil VM/DB returned %v sources (no error)", len(sources))
 		return
-	}
-	if err != nil {
+	} else {
 		t.Logf("resolveVMBackupSourceDatasets returned error (expected): %v", err)
 	}
 }

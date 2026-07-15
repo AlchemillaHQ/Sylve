@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -36,6 +37,62 @@ type jailCreateTestSystemService struct {
 	systemServiceInterfaces.SystemServiceInterface
 	pools []*gzfs.ZPool
 	err   error
+}
+
+type jailCreateGuestIdentityCheckerStub struct {
+	guestIDs []uint
+	err      error
+}
+
+type blockingJailCreateGuestIdentityChecker struct {
+	mu            sync.Mutex
+	calls         int
+	firstEntered  chan struct{}
+	secondEntered chan struct{}
+	releaseFirst  chan struct{}
+}
+
+func newBlockingJailCreateGuestIdentityChecker() *blockingJailCreateGuestIdentityChecker {
+	return &blockingJailCreateGuestIdentityChecker{
+		firstEntered:  make(chan struct{}),
+		secondEntered: make(chan struct{}),
+		releaseFirst:  make(chan struct{}),
+	}
+}
+
+func (s *blockingJailCreateGuestIdentityChecker) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
+}
+
+func (s *blockingJailCreateGuestIdentityChecker) RequireGuestIDsAvailable(_ context.Context, _ []uint) error {
+	s.mu.Lock()
+	s.calls++
+	call := s.calls
+	s.mu.Unlock()
+
+	switch call {
+	case 1:
+		close(s.firstEntered)
+		<-s.releaseFirst
+	case 2:
+		close(s.secondEntered)
+	}
+	return nil
+}
+
+func (s *blockingJailCreateGuestIdentityChecker) callCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+func (s *jailCreateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
+}
+
+func (s *jailCreateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
+	s.guestIDs = append(s.guestIDs, guestIDs...)
+	return s.err
 }
 
 func (f jailCreateTestSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
@@ -411,6 +468,40 @@ func TestValidateCreate_FailsWhenStaleCTIDDatasetExists(t *testing.T) {
 	}
 }
 
+func TestCreateJailStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&utilitiesModels.Downloads{},
+	)
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, "tank")
+	checker := &jailCreateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	svc.SetGuestIdentityAvailabilityChecker(checker)
+
+	baseDir := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("create base directory: %v", err)
+	}
+	seedBaseDownload(t, db, "base-identity-conflict", baseDir)
+	req := jailCreateRequest(702, "tank", "base-identity-conflict")
+
+	err := svc.CreateJail(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("guest identity rejection error = %v", err)
+	}
+	if len(checker.guestIDs) != 1 || checker.guestIDs[0] != 702 {
+		t.Fatalf("checked guest IDs = %v, want [702]", checker.guestIDs)
+	}
+	runner.mu.Lock()
+	createCalls := runner.createCalls
+	runner.mu.Unlock()
+	if createCalls != 0 {
+		t.Fatalf("ZFS create calls after rejected jail create = %d, want 0", createCalls)
+	}
+	assertModelCount(t, db, &jailModels.Jail{}, 0, "")
+}
+
 func TestCreateJail_FailsWhenBaseIsNotDirectoryBeforeProvisioningSideEffects(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -505,6 +596,108 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 	}
 	if string(gotResolv) != resolvConf {
 		t.Fatalf("expected resolv.conf content %q, got %q", resolvConf, string(gotResolv))
+	}
+}
+
+func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&jailModels.Network{},
+		&jailModels.JailHooks{},
+		&jailModels.JailStats{},
+		&jailModels.JailSnapshot{},
+		&utilitiesModels.Downloads{},
+	)
+	tmp := t.TempDir()
+	poolDir := filepath.Join(tmp, "pool")
+	if err := os.MkdirAll(poolDir, 0755); err != nil {
+		t.Fatalf("create pool directory: %v", err)
+	}
+	baseDir := filepath.Join(tmp, "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("create base directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(baseDir, "README"), []byte("seed"), 0644); err != nil {
+		t.Fatalf("seed base content: %v", err)
+	}
+	seedBaseDownload(t, db, "base-concurrent-create", baseDir)
+
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, poolDir)
+	checker := newBlockingJailCreateGuestIdentityChecker()
+	svc.SetGuestIdentityAvailabilityChecker(checker)
+	var releaseOnce sync.Once
+	releaseFirst := func() {
+		releaseOnce.Do(func() { close(checker.releaseFirst) })
+	}
+	defer releaseFirst()
+
+	const ctid uint = 771
+	req := jailCreateRequest(ctid, poolDir, "base-concurrent-create")
+	req.Type = jailModels.JailTypeLinux
+	results := make(chan error, 2)
+
+	go func() {
+		results <- svc.CreateJail(context.Background(), req)
+	}()
+	select {
+	case <-checker.firstEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first create did not reach identity validation")
+	}
+
+	go func() {
+		results <- svc.CreateJail(context.Background(), req)
+	}()
+	select {
+	case <-checker.secondEntered:
+		releaseFirst()
+		t.Fatal("second create entered validation before first create completed")
+	case <-time.After(250 * time.Millisecond):
+	}
+	releaseFirst()
+
+	successes := 0
+	conflicts := 0
+	for range 2 {
+		select {
+		case err := <-results:
+			switch {
+			case err == nil:
+				successes++
+			case strings.Contains(err.Error(), "jail_with_ctid_already_exists"):
+				conflicts++
+			default:
+				t.Fatalf("unexpected concurrent create error: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("concurrent jail creates did not finish")
+		}
+	}
+
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent results: successes=%d conflicts=%d", successes, conflicts)
+	}
+	if checker.callCount() != 1 {
+		t.Fatalf("identity checks = %d, want 1", checker.callCount())
+	}
+	if runner.getCreateCalls() != 1 {
+		t.Fatalf("ZFS create calls = %d, want 1", runner.getCreateCalls())
+	}
+	runner.mu.Lock()
+	destroyCalls := runner.destroyCalls
+	runner.mu.Unlock()
+	if destroyCalls != 0 {
+		t.Fatalf("ZFS destroy calls = %d, want 0", destroyCalls)
+	}
+	assertModelCount(t, db, &jailModels.Jail{}, 1, "ct_id = ?", ctid)
+	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", poolDir, ctid)
+	if !runner.hasDataset(rootDataset) {
+		t.Fatalf("successful jail dataset %q was removed", rootDataset)
 	}
 }
 
@@ -797,13 +990,13 @@ func TestValidateCreateRejectsInvalidVLAN(t *testing.T) {
 	ctid := uint(780)
 	vlan := 5000
 	req := jailServiceInterfaces.CreateJailRequest{
-		Name:        fmt.Sprintf("jail-%d", ctid),
-		CTID:        &ctid,
-		Pool:        "tank",
-		Base:        "base-vlan-validate",
-		SwitchName:  "none",
-		Type:        jailModels.JailTypeFreeBSD,
-		VLAN:        &vlan,
+		Name:       fmt.Sprintf("jail-%d", ctid),
+		CTID:       &ctid,
+		Pool:       "tank",
+		Base:       "base-vlan-validate",
+		SwitchName: "none",
+		Type:       jailModels.JailTypeFreeBSD,
+		VLAN:       &vlan,
 	}
 
 	err := svc.ValidateCreate(context.Background(), req)

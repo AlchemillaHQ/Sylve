@@ -36,7 +36,7 @@
 	import { storage } from '$lib';
 	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
 	import { getContext } from 'svelte';
-	import type { APIResponse, GFSStep } from '$lib/types/common';
+	import { parseGuestDeletionData, type APIResponse, type GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import {
@@ -348,11 +348,20 @@
 		if (result.status === 'error') {
 			isDeleteInFlight = false;
 			await Promise.all([vm.refetch(), domain.refetch(), stats.refetch()]);
-			toast.error(wasPurgeOnly ? 'Error removing VM entry' : wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			toast.error(
+				result.message === 'guest_delete_requires_replication_policy_removed'
+					? 'Remove the replication policy before deleting this VM'
+					: wasPurgeOnly
+						? 'Error removing VM entry'
+						: wasForceDelete
+							? 'Error force deleting VM'
+							: 'Error deleting VM',
+				{ duration: 5000, position: 'bottom-center' }
+			);
 		} else if (result.status === 'success') {
+			const deletionData = parseGuestDeletionData(result.data);
+			const cleanupWarnings = deletionData.warnings;
+			const retainedDatasets = deletionData.retainedDatasets;
 			await useSafeGoto(
 				resolve('/[node]/summary', {
 					node: data.node
@@ -371,6 +380,16 @@
 			} else if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
 					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (!wasForceDelete && cleanupWarnings.length > 0) {
+				toast.warning(
+					`VM deleted, but cleanup was incomplete${retainedDatasets.length > 0 ? `: ${retainedDatasets.join(', ')}` : ''}`,
+					{ duration: 8000, position: 'bottom-center' }
+				);
+			} else if (!wasForceDelete && retainedDatasets.length > 0) {
+				toast.warning(`VM deleted; storage retained at ${retainedDatasets.join(', ')}`, {
+					duration: 8000,
 					position: 'bottom-center'
 				});
 			} else {
@@ -643,7 +662,12 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<SpanWithIcon icon="icon-[mdi--alert-octagon]" size="h-4 w-4" gap="gap-1" title="Force Delete" />
+			<SpanWithIcon
+				icon="icon-[mdi--alert-octagon]"
+				size="h-4 w-4"
+				gap="gap-1"
+				title="Force Delete"
+			/>
 		</Button>
 	{:else if type === 'remove-orphan' && !shouldHideActionButtons && isOrphanState}
 		<Button
@@ -651,7 +675,12 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<SpanWithIcon icon="icon-[mdi--delete-sweep]" size="h-4 w-4" gap="gap-1" title="Remove stale entry" />
+			<SpanWithIcon
+				icon="icon-[mdi--delete-sweep]"
+				size="h-4 w-4"
+				gap="gap-1"
+				title="Remove stale entry"
+			/>
 		</Button>
 	{:else if type === 'force-stop' && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
@@ -948,8 +977,8 @@
 					<span class="font-semibold">{modalState?.title}.</span>
 					{#if modalState.forceDelete}
 						<div class="mt-2 text-sm">
-							Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and
-							VM network objects. Partial failures will be tolerated.
+							Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records,
+							and VM network objects. Partial failures will be tolerated.
 						</div>
 					{:else}
 						<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">
@@ -971,6 +1000,12 @@
 								classes="flex items-center gap-2 mt-3"
 							></CustomCheckbox>
 						</div>
+						{#if !modalState.deleteRAWDisks || !modalState.deleteVolumes}
+							<div class="mt-2 text-sm text-muted-foreground">
+								Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID
+								until removed.
+							</div>
+						{/if}
 					{/if}
 				{/if}
 			</AlertDialogRaw.Description>
@@ -1046,7 +1081,7 @@
 	guestId={Number(data.rid)}
 	guestName={vm.current.name || ''}
 	node={data.node}
-	sourceNodeUuid={sourceNodeUuid}
+	{sourceNodeUuid}
 	onSuccess={(targetHostname: string) => {
 		if (targetHostname) {
 			goto(`/${targetHostname}/vm/${data.rid}/summary`);

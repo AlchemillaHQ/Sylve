@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => ({
             emitFile: true
         })
     ].filter(Boolean),
+    optimizeDeps: {
+        exclude: ['@battlefieldduck/xterm-svelte']
+    },
     build: {
         target: 'esnext'
     }

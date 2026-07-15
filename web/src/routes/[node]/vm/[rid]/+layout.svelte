@@ -20,6 +20,7 @@
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
+	import { parseGuestDeletionData } from '$lib/types/common';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
@@ -207,17 +208,22 @@
 			isDeleteInFlight = false;
 			await refreshVmDomain();
 			toast.error(
-				wasPurgeOnly
-					? 'Error removing VM entry'
-					: wasForceDelete
-						? 'Error force deleting VM'
-						: 'Error deleting VM',
+				result.message === 'guest_delete_requires_replication_policy_removed'
+					? 'Remove the replication policy before deleting this VM'
+					: wasPurgeOnly
+						? 'Error removing VM entry'
+						: wasForceDelete
+							? 'Error force deleting VM'
+							: 'Error deleting VM',
 				{
 					duration: 5000,
 					position: 'bottom-center'
 				}
 			);
 		} else if (result.status === 'success') {
+			const deletionData = parseGuestDeletionData(result.data);
+			const cleanupWarnings = deletionData.warnings;
+			const retainedDatasets = deletionData.retainedDatasets;
 			await useSafeGoto(`/${storage.hostname}/summary`);
 			if (wasPurgeOnly && result.message === 'vm_registration_purged_with_warnings') {
 				toast.warning('VM entry removed with warnings; datasets preserved', {
@@ -232,6 +238,16 @@
 			} else if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
 					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (!wasForceDelete && cleanupWarnings.length > 0) {
+				toast.warning(
+					`VM deleted, but cleanup was incomplete${retainedDatasets.length > 0 ? `: ${retainedDatasets.join(', ')}` : ''}`,
+					{ duration: 8000, position: 'bottom-center' }
+				);
+			} else if (!wasForceDelete && retainedDatasets.length > 0) {
+				toast.warning(`VM deleted; storage retained at ${retainedDatasets.join(', ')}`, {
+					duration: 8000,
 					position: 'bottom-center'
 				});
 			} else {
@@ -598,6 +614,12 @@
 								classes="flex items-center gap-2 mt-3"
 							></CustomCheckbox>
 						</div>
+						{#if !modalState.deleteRAWDisks || !modalState.deleteVolumes}
+							<div class="mt-2 text-sm text-muted-foreground">
+								Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID
+								until removed.
+							</div>
+						{/if}
 					{/if}
 				{/if}
 			</AlertDialogRaw.Description>

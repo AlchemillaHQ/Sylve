@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -29,7 +30,40 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) (err error) {
+func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
+	switch strings.TrimSpace(strings.ToLower(string(value))) {
+	case string(vmModels.VMBootROMNone):
+		return vmModels.VMBootROMNone
+	case string(vmModels.VMBootROMUBoot):
+		return vmModels.VMBootROMUBoot
+	case "":
+		if runtime.GOARCH == "arm64" {
+			return vmModels.VMBootROMUBoot
+		}
+		return vmModels.VMBootROMUEFI
+	default:
+		return vmModels.VMBootROMUEFI
+	}
+}
+
+func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", restoreNetwork, false)
+}
+
+func (s *Service) reconcileRestoredVMFromDatasetAsNew(
+	ctx context.Context,
+	dataset, sourcePrimaryRoot string,
+	restoreNetwork bool,
+) error {
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, sourcePrimaryRoot, restoreNetwork, true)
+}
+
+func (s *Service) reconcileRestoredVMFromDataset(
+	ctx context.Context,
+	dataset, sourcePrimaryRoot string,
+	restoreNetwork bool,
+	strictAsNew bool,
+) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L.Error().
@@ -55,15 +89,24 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	restored := &restoredMeta.VM
-	if restored == nil {
+	if restoredMeta == nil {
 		return fmt.Errorf("restored_vm_metadata_not_found")
 	}
-	if restored.RID == 0 {
-		restored.RID = fallbackRID
+	restored := &restoredMeta.VM
+	sourceRID := restored.RID
+	if sourceRID == 0 {
+		sourceRID = fallbackRID
 	}
+	restored.RID = fallbackRID
 	if restored.RID == 0 {
 		return fmt.Errorf("restored_vm_rid_missing")
+	}
+	if strictAsNew {
+		rewriteRestoredVMMetadataIdentity(restoredMeta, fallbackRID)
+		rebaseRestoredVMMetadataRoot(restoredMeta, sourcePrimaryRoot, dataset)
+		if err := s.writeVMMetadataToDataset(ctx, dataset, restoredMeta); err != nil {
+			return fmt.Errorf("failed_to_rewrite_restored_vm_metadata_identity: %w", err)
+		}
 	}
 
 	rid := restored.RID
@@ -85,12 +128,7 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 	if strings.TrimSpace(string(restored.TimeOffset)) == "" {
 		restored.TimeOffset = vmModels.TimeOffsetUTC
 	}
-	switch strings.TrimSpace(strings.ToLower(string(restored.BootROM))) {
-	case string(vmModels.VMBootROMNone):
-		restored.BootROM = vmModels.VMBootROMNone
-	default:
-		restored.BootROM = vmModels.VMBootROMUEFI
-	}
+	restored.BootROM = normalizeRestoredVMBootROM(restored.BootROM)
 
 	restored.ID = 0
 	restored.CreatedAt = restored.CreatedAt.UTC().AddDate(-1000, 0, 0)
@@ -104,7 +142,17 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 	requiresSwitchSync := false
 	reconciledVMID := uint(0)
 
-	err = s.DB.Transaction(func(tx *gorm.DB) error {
+	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if strictAsNew {
+			var jailCount int64
+			if err := tx.Model(&jailModels.Jail{}).Where("ct_id = ?", rid).Count(&jailCount).Error; err != nil {
+				return fmt.Errorf("failed_to_lookup_existing_jail_by_ctid: %w", err)
+			}
+			if jailCount > 0 {
+				return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=jail", rid)
+			}
+		}
+
 		normalizedStorages, err := s.normalizeRestoredVMStorages(ctx, tx, rid, restored.Storages)
 		if err != nil {
 			return err
@@ -163,6 +211,9 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		}
 
 		if existingFound {
+			if strictAsNew {
+				return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=vm", rid)
+			}
 			if err := tx.Model(&existing).Select(
 				"Name",
 				"Description",
@@ -278,11 +329,13 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 	}
 
 	if s.VM != nil {
-		if err := s.VM.RemoveLvVm(rid); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("rid", rid).
-				Msg("failed_to_remove_existing_vm_domain_before_restore_reconcile")
+		if !strictAsNew {
+			if err := s.VM.RemoveLvVm(rid); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("rid", rid).
+					Msg("failed_to_remove_existing_vm_domain_before_restore_reconcile")
+			}
 		}
 
 		cloudInitData := restored.CloudInitData
@@ -339,7 +392,7 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 			return fmt.Errorf("failed_to_rebuild_restored_vm_domain: %w", err)
 		}
 
-		if err := s.restoreVMRuntimeArtifactsFromDataset(ctx, dataset, rid); err != nil {
+		if err := s.restoreVMRuntimeArtifactsFromDataset(ctx, dataset, sourceRID, rid); err != nil {
 			return fmt.Errorf("failed_to_restore_vm_runtime_artifacts: %w", err)
 		}
 
@@ -357,6 +410,9 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		}
 
 		if err := s.VM.WriteVMJson(rid); err != nil {
+			if strictAsNew {
+				return fmt.Errorf("failed_to_write_restored_vm_metadata: %w", err)
+			}
 			logger.L.Warn().
 				Err(err).
 				Uint("rid", rid).
@@ -370,6 +426,188 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		Msg("restored_vm_reconciled")
 
 	return nil
+}
+
+func rewriteVMDatasetGuestID(dataset string, rid uint) string {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" || rid == 0 {
+		return dataset
+	}
+
+	parts := strings.Split(dataset, "/")
+	for idx := 0; idx+1 < len(parts); idx++ {
+		if parts[idx] != "virtual-machines" || extractDatasetGuestID(parts[idx+1]) == 0 {
+			continue
+		}
+		parts[idx+1] = strconv.FormatUint(uint64(rid), 10)
+	}
+
+	return normalizeDatasetPath(strings.Join(parts, "/"))
+}
+
+func rewriteRestoredVMMetadataIdentity(meta *restoredVMMetadata, rid uint) {
+	if meta == nil || rid == 0 {
+		return
+	}
+
+	meta.VM.RID = rid
+	for idx := range meta.VM.Storages {
+		storage := &meta.VM.Storages[idx]
+		storage.Dataset.Name = rewriteVMDatasetGuestID(storage.Dataset.Name, rid)
+		if storage.Dataset.Name != "" {
+			pool := strings.Split(storage.Dataset.Name, "/")[0]
+			if strings.TrimSpace(pool) != "" {
+				storage.Pool = pool
+				storage.Dataset.Pool = pool
+			}
+		}
+	}
+	for idx := range meta.Snapshots {
+		snapshot := &meta.Snapshots[idx]
+		snapshot.RID = rid
+		snapshot.VMID = 0
+		for rootIdx := range snapshot.RootDatasets {
+			snapshot.RootDatasets[rootIdx] = rewriteVMDatasetGuestID(
+				snapshot.RootDatasets[rootIdx],
+				rid,
+			)
+		}
+	}
+}
+
+func rebaseRestoredVMMetadataRoot(
+	meta *restoredVMMetadata,
+	sourceRoot, destinationRoot string,
+) {
+	if meta == nil || meta.VM.RID == 0 {
+		return
+	}
+
+	sourceRoot = rewriteVMDatasetGuestID(vmDatasetRoot(sourceRoot), meta.VM.RID)
+	destinationRoot = vmDatasetRoot(destinationRoot)
+	if destinationRoot == "" {
+		return
+	}
+	sourcePool := vmRootPool(sourceRoot)
+	destinationPool := vmRootPool(destinationRoot)
+
+	withinSource := func(dataset string) bool {
+		dataset = normalizeDatasetPath(dataset)
+		return sourceRoot != "" && (dataset == sourceRoot || strings.HasPrefix(dataset, sourceRoot+"/"))
+	}
+	matchesMetadata := false
+	for _, storage := range meta.VM.Storages {
+		if withinSource(storage.Dataset.Name) ||
+			(storage.Type != vmModels.VMStorageTypeDiskImage &&
+				strings.TrimSpace(storage.Dataset.Name) == "" &&
+				sourcePool != "" &&
+				strings.TrimSpace(storage.Pool) == sourcePool) {
+			matchesMetadata = true
+			break
+		}
+	}
+	if !matchesMetadata {
+		for _, snapshot := range meta.Snapshots {
+			for _, root := range snapshot.RootDatasets {
+				if withinSource(root) {
+					matchesMetadata = true
+					break
+				}
+			}
+		}
+	}
+	if !matchesMetadata {
+		if sourcePool != "" {
+			return
+		}
+		candidateRoots := make(map[string]struct{})
+		addCandidateRoot := func(root string) {
+			root = vmDatasetRoot(root)
+			if root != "" {
+				candidateRoots[root] = struct{}{}
+			}
+		}
+		for _, storage := range meta.VM.Storages {
+			if storage.Type == vmModels.VMStorageTypeDiskImage {
+				continue
+			}
+			if strings.TrimSpace(storage.Dataset.Name) != "" {
+				addCandidateRoot(storage.Dataset.Name)
+				continue
+			}
+			if pool := strings.TrimSpace(storage.Pool); pool != "" {
+				addCandidateRoot(fmt.Sprintf(
+					"%s/sylve/virtual-machines/%d",
+					pool,
+					meta.VM.RID,
+				))
+			}
+		}
+		for _, snapshot := range meta.Snapshots {
+			for _, root := range snapshot.RootDatasets {
+				addCandidateRoot(root)
+			}
+		}
+		if len(candidateRoots) != 1 {
+			return
+		}
+		for root := range candidateRoots {
+			sourceRoot = root
+		}
+		sourcePool = vmRootPool(sourceRoot)
+	}
+	if sourceRoot == "" || sourceRoot == destinationRoot {
+		return
+	}
+
+	rebase := func(dataset string) string {
+		dataset = normalizeDatasetPath(dataset)
+		if dataset == sourceRoot {
+			return destinationRoot
+		}
+		if strings.HasPrefix(dataset, sourceRoot+"/") {
+			return destinationRoot + strings.TrimPrefix(dataset, sourceRoot)
+		}
+		return dataset
+	}
+
+	for idx := range meta.VM.Storages {
+		storage := &meta.VM.Storages[idx]
+		if strings.TrimSpace(storage.Dataset.Name) == "" {
+			if storage.Type != vmModels.VMStorageTypeDiskImage &&
+				sourcePool != "" &&
+				destinationPool != "" &&
+				strings.TrimSpace(storage.Pool) == sourcePool {
+				storage.Pool = destinationPool
+				storage.Dataset.Pool = destinationPool
+			}
+			continue
+		}
+		storage.Dataset.Name = rebase(storage.Dataset.Name)
+		if storage.Dataset.Name != "" {
+			pool := strings.Split(storage.Dataset.Name, "/")[0]
+			storage.Pool = pool
+			storage.Dataset.Pool = pool
+		}
+	}
+	for idx := range meta.Snapshots {
+		for rootIdx := range meta.Snapshots[idx].RootDatasets {
+			meta.Snapshots[idx].RootDatasets[rootIdx] = rebase(
+				meta.Snapshots[idx].RootDatasets[rootIdx],
+			)
+		}
+	}
+}
+
+func vmRootPool(root string) string {
+	parts := strings.Split(vmDatasetRoot(root), "/")
+	if len(parts) != 4 || parts[1] != "sylve" || parts[2] != "virtual-machines" {
+		return ""
+	}
+	if extractDatasetGuestID(parts[3]) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
 }
 
 func (s *Service) normalizeRestoredVMStorages(
@@ -397,7 +635,11 @@ func (s *Service) normalizeRestoredVMStorages(
 		}
 
 		if cleaned.Type == vmModels.VMStorageTypeDiskImage {
+			// Downloaded media remains replicated metadata, not a restored ZFS
+			// topology edge. Discard stale pool/dataset hints from older vm.json.
+			cleaned.Pool = ""
 			cleaned.DatasetID = nil
+			cleaned.Dataset = vmModels.VMStorageDataset{}
 			out = append(out, cleaned)
 			continue
 		}
@@ -488,8 +730,12 @@ func (s *Service) normalizeRestoredVMNetworks(
 		return []vmModels.Network{}, false, nil
 	}
 
+	type networkSettings struct {
+		emulation string
+		enabled   bool
+	}
 	jailLike := make([]jailModels.Network, 0, len(networks))
-	emulationByName := make(map[string]string)
+	settingsByName := make(map[string]networkSettings)
 
 	for idx, network := range networks {
 		name := fmt.Sprintf("restored-vm-%d-network-%d", rid, idx+1)
@@ -497,7 +743,7 @@ func (s *Service) normalizeRestoredVMNetworks(
 		if emulation == "" {
 			emulation = "virtio"
 		}
-		emulationByName[name] = emulation
+		settingsByName[name] = networkSettings{emulation: emulation, enabled: network.Enable}
 
 		jailLike = append(jailLike, jailModels.Network{
 			Name:           name,
@@ -517,7 +763,19 @@ func (s *Service) normalizeRestoredVMNetworks(
 
 	out := make([]vmModels.Network, 0, len(normalized))
 	for _, net := range normalized {
-		emulation := emulationByName[net.Name]
+		settings := settingsByName[net.Name]
+		if settings.emulation == "" {
+			// The jail-network helper may suffix its transient name to avoid a
+			// collision. VM networks do not persist that name, so recover the
+			// original settings from the generated-name prefix.
+			for originalName, candidate := range settingsByName {
+				if strings.HasPrefix(net.Name, originalName+"-") {
+					settings = candidate
+					break
+				}
+			}
+		}
+		emulation := settings.emulation
 		if emulation == "" {
 			emulation = "virtio"
 		}
@@ -527,6 +785,7 @@ func (s *Service) normalizeRestoredVMNetworks(
 			SwitchType: net.SwitchType,
 			MacID:      net.MacID,
 			Emulation:  emulation,
+			Enable:     settings.enabled,
 		})
 	}
 
@@ -726,8 +985,34 @@ func (s *Service) readLocalDatasetMetadataFile(ctx context.Context, dataset stri
 	return strings.TrimSpace(string(raw)), nil
 }
 
-func (s *Service) restoreVMRuntimeArtifactsFromDataset(ctx context.Context, dataset string, rid uint) error {
-	if rid == 0 {
+type vmRuntimeArtifactName struct {
+	Source      string
+	Destination string
+}
+
+func vmRuntimeArtifactNames(sourceRID, destinationRID uint) []vmRuntimeArtifactName {
+	if destinationRID == 0 {
+		return nil
+	}
+	if sourceRID == 0 {
+		sourceRID = destinationRID
+	}
+
+	source := strconv.FormatUint(uint64(sourceRID), 10)
+	destination := strconv.FormatUint(uint64(destinationRID), 10)
+	return []vmRuntimeArtifactName{
+		{Source: source + "_vars.fd", Destination: destination + "_vars.fd"},
+		{Source: source + "_tpm.log", Destination: destination + "_tpm.log"},
+		{Source: source + "_tpm.state", Destination: destination + "_tpm.state"},
+	}
+}
+
+func (s *Service) restoreVMRuntimeArtifactsFromDataset(
+	ctx context.Context,
+	dataset string,
+	sourceRID, destinationRID uint,
+) error {
+	if destinationRID == 0 {
 		return nil
 	}
 
@@ -741,52 +1026,48 @@ func (s *Service) restoreVMRuntimeArtifactsFromDataset(ctx context.Context, data
 		return fmt.Errorf("failed_to_get_vms_path: %w", err)
 	}
 
-	configDir := filepath.Join(vmDir, strconv.Itoa(int(rid)))
+	configDir := filepath.Join(vmDir, strconv.Itoa(int(destinationRID)))
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed_to_create_vm_config_dir: %w", err)
 	}
 
-	artifactNames := []string{
-		fmt.Sprintf("%d_vars.fd", rid),
-		fmt.Sprintf("%d_tpm.log", rid),
-		fmt.Sprintf("%d_tpm.state", rid),
-	}
+	artifactNames := vmRuntimeArtifactNames(sourceRID, destinationRID)
 
 	copied := make([]string, 0, len(artifactNames))
 	for _, artifactName := range artifactNames {
-		relativePath := filepath.Join(".sylve", artifactName)
+		relativePath := filepath.Join(".sylve", artifactName.Source)
 		artifactCopied := false
 
 		for _, candidate := range candidates {
 			data, found, readErr := s.readLocalDatasetMetadataBytes(ctx, candidate, relativePath)
 			if readErr != nil {
-				return fmt.Errorf("failed_to_read_vm_artifact_%s_from_%s: %w", artifactName, candidate, readErr)
+				return fmt.Errorf("failed_to_read_vm_artifact_%s_from_%s: %w", artifactName.Source, candidate, readErr)
 			}
 			if !found {
 				continue
 			}
 
-			dstPath := filepath.Join(configDir, artifactName)
+			dstPath := filepath.Join(configDir, artifactName.Destination)
 			if err := os.WriteFile(dstPath, data, 0644); err != nil {
-				return fmt.Errorf("failed_to_write_vm_artifact_%s: %w", artifactName, err)
+				return fmt.Errorf("failed_to_write_vm_artifact_%s: %w", artifactName.Destination, err)
 			}
 
 			artifactCopied = true
-			copied = append(copied, artifactName)
+			copied = append(copied, artifactName.Destination)
 			break
 		}
 
 		if !artifactCopied {
 			logger.L.Debug().
-				Uint("rid", rid).
-				Str("artifact", artifactName).
+				Uint("rid", destinationRID).
+				Str("artifact", artifactName.Source).
 				Msg("restored_vm_artifact_not_found_in_dataset_metadata")
 		}
 	}
 
 	if len(copied) > 0 {
 		logger.L.Info().
-			Uint("rid", rid).
+			Uint("rid", destinationRID).
 			Strs("artifacts", copied).
 			Msg("restored_vm_runtime_artifacts")
 	}

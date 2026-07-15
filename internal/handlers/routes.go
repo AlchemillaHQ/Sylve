@@ -168,7 +168,10 @@ func RegisterRoutes(r *gin.Engine,
 			pools.PATCH("", zfsHandlers.EditPool(infoService, zfsService))
 			pools.GET("/:guid/status", zfsHandlers.GetPoolStatus(zfsService))
 			pools.POST("/:guid/scrub", zfsHandlers.ScrubPool(infoService, zfsService))
-			pools.DELETE("/:guid", zfsHandlers.DeletePool(infoService, zfsService))
+			pools.DELETE("/:guid",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardPoolGUID),
+				zfsHandlers.DeletePool(infoService, zfsService),
+			)
 			pools.PATCH("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
 			pools.POST("/:guid/detach", zfsHandlers.DetachDevice(infoService, zfsService))
 		}
@@ -179,8 +182,14 @@ func RegisterRoutes(r *gin.Engine,
 			datasets.GET("/paginated", zfsHandlers.GetPaginatedDatasets(zfsService))
 
 			datasets.POST("/snapshot", zfsHandlers.CreateSnapshot(zfsService))
-			datasets.POST("/snapshot/rollback", zfsHandlers.RollbackSnapshot(zfsService))
-			datasets.DELETE("/snapshot/:guid", zfsHandlers.DeleteSnapshot(zfsService))
+			datasets.POST("/snapshot/rollback",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardRollbackSnapshot),
+				zfsHandlers.RollbackSnapshot(zfsService),
+			)
+			datasets.DELETE("/snapshot/:guid",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardDatasetGUID),
+				zfsHandlers.DeleteSnapshot(zfsService),
+			)
 
 			datasets.GET("/snapshot/periodic", zfsHandlers.GetPeriodicSnapshots(zfsService))
 			datasets.POST("/snapshot/periodic", zfsHandlers.CreatePeriodicSnapshot(zfsService))
@@ -188,17 +197,44 @@ func RegisterRoutes(r *gin.Engine,
 
 			datasets.DELETE("/snapshot/periodic/:guid", zfsHandlers.DeletePeriodicSnapshot(zfsService))
 
-			datasets.POST("/filesystem", zfsHandlers.CreateFilesystem(zfsService))
-			datasets.PATCH("/filesystem", zfsHandlers.EditFilesystem(zfsService))
-			datasets.DELETE("/filesystem/:guid", zfsHandlers.DeleteFilesystem(zfsService))
+			datasets.POST("/filesystem",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardCreateFilesystem),
+				zfsHandlers.CreateFilesystem(zfsService),
+			)
+			datasets.PATCH("/filesystem",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardEditFilesystem),
+				zfsHandlers.EditFilesystem(zfsService),
+			)
+			datasets.DELETE("/filesystem/:guid",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardDatasetGUID),
+				zfsHandlers.DeleteFilesystem(zfsService),
+			)
 
-			datasets.POST("/volume", zfsHandlers.CreateVolume(zfsService))
-			datasets.PATCH("/volume", zfsHandlers.EditVolume(zfsService))
-			datasets.POST("/volume/flash", zfsHandlers.FlashVolume(zfsService))
-			datasets.DELETE("/volume/:guid", zfsHandlers.DeleteVolume(zfsService))
+			datasets.POST("/volume",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardCreateVolume),
+				zfsHandlers.CreateVolume(zfsService),
+			)
+			datasets.PATCH("/volume",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardEditVolume),
+				zfsHandlers.EditVolume(zfsService),
+			)
+			datasets.POST("/volume/flash",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardFlashVolume),
+				zfsHandlers.FlashVolume(zfsService),
+			)
+			datasets.DELETE("/volume/:guid",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardDatasetGUID),
+				zfsHandlers.DeleteVolume(zfsService),
+			)
 
-			datasets.POST("/bulk-delete", zfsHandlers.BulkDeleteDataset(zfsService))
-			datasets.POST("/bulk-delete-by-names", zfsHandlers.BulkDeleteDatasetsByName(zfsService))
+			datasets.POST("/bulk-delete",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardBulkGUIDs),
+				zfsHandlers.BulkDeleteDataset(zfsService),
+			)
+			datasets.POST("/bulk-delete-by-names",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardBulkNames),
+				zfsHandlers.BulkDeleteDatasetsByName(zfsService),
+			)
 		}
 	}
 
@@ -409,12 +445,22 @@ func RegisterRoutes(r *gin.Engine,
 		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
 		vm.GET("/snapshots/:id", vmHandlers.ListVMSnapshots(libvirtService))
 		vm.POST("/snapshots/:id", vmHandlers.CreateVMSnapshot(libvirtService))
-		vm.POST("/snapshots/rollback/:id/:snapshotId", vmHandlers.RollbackVMSnapshot(libvirtService))
-		vm.DELETE("/snapshots/:id/:snapshotId", vmHandlers.DeleteVMSnapshot(libvirtService))
+		vm.POST("/snapshots/rollback/:id/:snapshotId",
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+			vmHandlers.RollbackVMSnapshot(libvirtService),
+		)
+		vm.DELETE("/snapshots/:id/:snapshotId",
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+			vmHandlers.DeleteVMSnapshot(libvirtService),
+		)
 		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
-		vm.DELETE("/:id", vmHandlers.RemoveVM(libvirtService))
+		vm.DELETE("/:id",
+			vmHandlers.RequireVMDeletionDetached(libvirtService, "id"),
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+			vmHandlers.RemoveVM(libvirtService),
+		)
 		vm.GET("/domain/:rid", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
 		vm.GET("/logs/:rid", vmHandlers.GetVMLogs(libvirtService))
 		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
@@ -471,8 +517,14 @@ func RegisterRoutes(r *gin.Engine,
 		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
 		jail.GET("/snapshots/:id", jailHandlers.ListJailSnapshots(jailService))
 		jail.POST("/snapshots/:id", jailHandlers.CreateJailSnapshot(jailService))
-		jail.POST("/snapshots/rollback/:id/:snapshotId", jailHandlers.RollbackJailSnapshot(jailService))
-		jail.DELETE("/snapshots/:id/:snapshotId", jailHandlers.DeleteJailSnapshot(jailService))
+		jail.POST("/snapshots/rollback/:id/:snapshotId",
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "id"),
+			jailHandlers.RollbackJailSnapshot(jailService),
+		)
+		jail.DELETE("/snapshots/:id/:snapshotId",
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "id"),
+			jailHandlers.DeleteJailSnapshot(jailService),
+		)
 		jail.POST("/migrate/:ctId", migrationHandlers.MigrateJail(migrationService, lifecycleService))
 		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
@@ -484,7 +536,11 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/resource-limits/:ctId", jailHandlers.UpdateResourceLimits(jailService))
 
 		jail.POST("", jailHandlers.CreateJail(jailService))
-		jail.DELETE("/:ctid", jailHandlers.DeleteJail(jailService))
+		jail.DELETE("/:ctid",
+			jailHandlers.RequireJailDeletionDetached(jailService, "ctid"),
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
+			jailHandlers.DeleteJail(jailService),
+		)
 
 		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket(jailService))
 		jail.PUT("/network/inheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
@@ -614,13 +670,17 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
+		intraCluster.GET("/guest-identity-inventory", clusterHandlers.GuestIdentityInventoryInternal(clusterService))
 		intraCluster.POST("/run", clusterHandlers.RunReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-runtime-state", clusterHandlers.ReplicationPolicyRuntimeStateInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-target-readiness", clusterHandlers.UpdateReplicationTargetReadinessInternal(clusterService))
 		intraCluster.POST("/replication-reassign-owner", clusterHandlers.ReassignReplicationOwnerInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-guest-operation", clusterHandlers.ReplicationGuestOperationInternal(clusterService))
+		intraCluster.POST("/replication-guest-operation-status", clusterHandlers.ReplicationGuestOperationStatusInternal(clusterService))
 		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
-		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
 		intraCluster.POST("/replication-failover-enqueue", clusterHandlers.EnqueueFailoverInternal(zeltaService))
 		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
 		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
@@ -702,7 +762,6 @@ func RegisterRoutes(r *gin.Engine,
 		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
 		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))
 		clusterReplication.GET("/events/:id/progress", clusterHandlers.ReplicationEventProgressByID(clusterService, zeltaService))
-		clusterReplication.GET("/receipts", clusterHandlers.ReplicationReceipts(clusterService))
 	}
 
 	vnc := api.Group("/vnc")

@@ -10,11 +10,12 @@ package clusterModels
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
 func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationEvent{}, &ReplicationReceipt{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationEvent{})
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
 
@@ -23,10 +24,10 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 			Policy: ReplicationPolicy{
 				ID: 1, Name: "test-policy", GuestType: ReplicationGuestTypeVM,
 				GuestID: 100, SourceNodeID: "node-1",
-				SourceMode: ReplicationSourceModeFollowActive,
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 			Targets: []ReplicationPolicyTarget{
 				{NodeID: "node-2", Weight: 100},
@@ -74,10 +75,10 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 			Policy: ReplicationPolicy{
 				ID: 1, Name: "disabled-policy", GuestType: ReplicationGuestTypeVM,
 				GuestID: 100, Enabled: false,
-				SourceMode: ReplicationSourceModeFollowActive,
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 		})
 		if err := applyFSMCommand(t, fsm2, Command{
@@ -95,7 +96,7 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("update change guest and mode", func(t *testing.T) {
+	t.Run("update changes config but preserves guest identity and ownership", func(t *testing.T) {
 		db3 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{})
 		fsm3 := NewFSMDispatcher(db3)
 		RegisterDefaultHandlers(fsm3)
@@ -105,10 +106,10 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 			Policy: ReplicationPolicy{
 				ID: 1, Name: "original", GuestType: ReplicationGuestTypeVM,
 				GuestID: 100, SourceNodeID: "node-1",
-				SourceMode: ReplicationSourceModeFollowActive,
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 		})
 		if err := applyFSMCommand(t, fsm3, Command{
@@ -117,16 +118,18 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 			t.Fatalf("seed create: %v", err)
 		}
 
-		// update
+		// A policy edit may change ordinary configuration, but identity and
+		// ownership are immutable through this command.
 		updateRaw, _ := json.Marshal(ReplicationPolicyPayload{
 			Policy: ReplicationPolicy{
-				ID: 1, Name: "updated", GuestType: ReplicationGuestTypeJail,
-				GuestID: 200, SourceNodeID: "node-5",
-				SourceMode: ReplicationSourceModePinned,
+				ID: 1, Name: "updated", GuestType: ReplicationGuestTypeVM,
+				GuestID: 100, SourceNodeID: "node-5", ActiveNodeID: "stale-node",
+				SourceMode:   ReplicationSourceModePinned,
 				FailbackMode: ReplicationFailbackAuto,
 				FailoverMode: ReplicationFailoverAutoSafe,
-				CronExpr: "0 */6 * * *", OwnerEpoch: 2,
+				CronExpr:     "0 */6 * * *", OwnerEpoch: 999,
 			},
+			ExpectedOwnerEpoch: 1,
 		})
 		if err := applyFSMCommand(t, fsm3, Command{
 			Type: "replication_policy", Action: "update", Data: updateRaw,
@@ -141,7 +144,7 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		if policy.Name != "updated" {
 			t.Fatalf("name not updated: %q", policy.Name)
 		}
-		if policy.GuestType != ReplicationGuestTypeJail || policy.GuestID != 200 {
+		if policy.GuestType != ReplicationGuestTypeVM || policy.GuestID != 100 {
 			t.Fatalf("guest not updated: type=%q id=%d", policy.GuestType, policy.GuestID)
 		}
 		if policy.SourceMode != ReplicationSourceModePinned {
@@ -153,8 +156,23 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		if policy.FailoverMode != ReplicationFailoverAutoSafe {
 			t.Fatalf("failover not updated: %q", policy.FailoverMode)
 		}
-		if policy.OwnerEpoch != 2 {
-			t.Fatalf("owner epoch not updated: %d", policy.OwnerEpoch)
+		if policy.OwnerEpoch != 1 || policy.ActiveNodeID != "" {
+			t.Fatalf("ownership was overwritten: active=%q epoch=%d", policy.ActiveNodeID, policy.OwnerEpoch)
+		}
+
+		immutableRaw, _ := json.Marshal(ReplicationPolicyPayload{
+			Policy: ReplicationPolicy{
+				ID: 1, Name: "invalid", GuestType: ReplicationGuestTypeJail,
+				GuestID: 200, SourceNodeID: "node-5", SourceMode: ReplicationSourceModePinned,
+				FailbackMode: ReplicationFailbackAuto, FailoverMode: ReplicationFailoverAutoSafe,
+				CronExpr: "0 */6 * * *", OwnerEpoch: 1,
+			},
+			ExpectedOwnerEpoch: 1,
+		})
+		if err := applyFSMCommand(t, fsm3, Command{
+			Type: "replication_policy", Action: "update", Data: immutableRaw,
+		}); err == nil || !strings.Contains(err.Error(), "guest_identity_immutable") {
+			t.Fatalf("expected immutable guest rejection, got %v", err)
 		}
 	})
 
@@ -166,11 +184,11 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		createRaw, _ := json.Marshal(ReplicationPolicyPayload{
 			Policy: ReplicationPolicy{
 				ID: 1, Name: "target-test", GuestType: ReplicationGuestTypeVM,
-				GuestID: 100,
-				SourceMode: ReplicationSourceModeFollowActive,
+				GuestID:      100,
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 			Targets: []ReplicationPolicyTarget{
 				{NodeID: "node-1", Weight: 100},
@@ -187,15 +205,16 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		updateRaw, _ := json.Marshal(ReplicationPolicyPayload{
 			Policy: ReplicationPolicy{
 				ID: 1, Name: "target-test", GuestType: ReplicationGuestTypeVM,
-				GuestID: 100,
-				SourceMode: ReplicationSourceModeFollowActive,
+				GuestID:      100,
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 			Targets: []ReplicationPolicyTarget{
 				{NodeID: "node-3", Weight: 200},
 			},
+			ExpectedOwnerEpoch: 1,
 		})
 		if err := applyFSMCommand(t, fsm4, Command{
 			Type: "replication_policy", Action: "update", Data: updateRaw,
@@ -216,7 +235,7 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 	})
 
 	t.Run("delete existing policy with cascade cleanup", func(t *testing.T) {
-		db5 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationEvent{}, &ReplicationReceipt{})
+		db5 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationEvent{})
 		fsm5 := NewFSMDispatcher(db5)
 		RegisterDefaultHandlers(fsm5)
 
@@ -224,11 +243,11 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		createRaw, _ := json.Marshal(ReplicationPolicyPayload{
 			Policy: ReplicationPolicy{
 				ID: 1, Name: "delete-test", GuestType: ReplicationGuestTypeVM,
-				GuestID: 100,
-				SourceMode: ReplicationSourceModeFollowActive,
+				GuestID:      100,
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 			Targets: []ReplicationPolicyTarget{{NodeID: "node-1", Weight: 100}},
 		})
@@ -250,11 +269,9 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		}).Error; err != nil {
 			t.Fatalf("seed event: %v", err)
 		}
-		if err := db5.Create(&ReplicationReceipt{
-			PolicyID: 1, GuestType: ReplicationGuestTypeVM, GuestID: 100,
-			SourceNodeID: "node-1", TargetNodeID: "node-2", Status: "success",
-		}).Error; err != nil {
-			t.Fatalf("seed receipt: %v", err)
+		if err := db5.Model(&ReplicationPolicy{}).Where("id = ?", 1).
+			Update("protection_state", ReplicationProtectionStateDeleting).Error; err != nil {
+			t.Fatalf("mark deleting: %v", err)
 		}
 
 		deleteRaw, _ := json.Marshal(map[string]any{"id": 1})
@@ -284,11 +301,6 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		db5.Model(&ReplicationEvent{}).Count(&evtCount)
 		if evtCount != 0 {
 			t.Fatalf("expected 0 events, got %d", evtCount)
-		}
-		var recCount int64
-		db5.Model(&ReplicationReceipt{}).Count(&recCount)
-		if recCount != 0 {
-			t.Fatalf("expected 0 receipts, got %d", recCount)
 		}
 	})
 
@@ -320,11 +332,11 @@ func TestFSMDispatcherReplicationPolicyMissingTargets(t *testing.T) {
 	raw, _ := json.Marshal(ReplicationPolicyPayload{
 		Policy: ReplicationPolicy{
 			ID: 1, Name: "no-targets", GuestType: ReplicationGuestTypeVM,
-			GuestID: 100,
-			SourceMode: ReplicationSourceModeFollowActive,
+			GuestID:      100,
+			SourceMode:   ReplicationSourceModeFollowActive,
 			FailbackMode: ReplicationFailbackManual,
 			FailoverMode: ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 		},
 	})
 	if err := applyFSMCommand(t, fsm, Command{
@@ -354,11 +366,11 @@ func TestFSMDispatcherReplicationPolicyDuplicateNames(t *testing.T) {
 		raw, _ := json.Marshal(ReplicationPolicyPayload{
 			Policy: ReplicationPolicy{
 				ID: id, Name: name, GuestType: ReplicationGuestTypeVM,
-				GuestID: uint(id * 100),
-				SourceMode: ReplicationSourceModeFollowActive,
+				GuestID:      uint(id * 100),
+				SourceMode:   ReplicationSourceModeFollowActive,
 				FailbackMode: ReplicationFailbackManual,
 				FailoverMode: ReplicationFailoverManual,
-				CronExpr: "* * * * *", OwnerEpoch: 1,
+				CronExpr:     "* * * * *", OwnerEpoch: 1,
 			},
 		})
 		return applyFSMCommand(t, fsm, Command{

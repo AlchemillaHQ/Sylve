@@ -61,7 +61,19 @@ func (s *Service) initRaftTransport(raftIP string) (*raft.NetworkTransport, erro
 }
 
 func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
-	if config.ParsedConfig.Raft.Reset {
+	return s.setupRaft(bootstrap, fsm)
+}
+
+func (s *Service) setupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
+	var c clusterModels.Cluster
+	if err := s.DB.First(&c).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
+	}
+	return s.setupRaftAtIP(bootstrap, fsm, c.RaftIP)
+}
+
+func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*raft.Raft, error) {
+	if config.ParsedConfig != nil && config.ParsedConfig.Raft.Reset {
 		if err := s.CleanRaftDir(); err != nil {
 			return nil, fmt.Errorf("failed_to_clean_raft_dir: %w", err)
 		}
@@ -79,12 +91,7 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("unable_to_get_node_detail")
 	}
 
-	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
-		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
-	}
-
-	if err := network.TryBindToPort(c.RaftIP, ClusterRaftPort, "tcp"); err != nil {
+	if err := network.TryBindToPort(raftIP, ClusterRaftPort, "tcp"); err != nil {
 		return nil, fmt.Errorf("failed_to_bind_raft_port: %v", err)
 	}
 
@@ -107,31 +114,35 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, err
 	}
 
-	t, err := s.initRaftTransport(c.RaftIP)
+	t, err := s.initRaftTransport(raftIP)
 	if err != nil {
 		return nil, err
 	}
 
-	raftAddr := raft.ServerAddress(RaftServerAddress(c.RaftIP))
-	s.RaftID = &raftAddr
-	s.NodeID = detail.NodeID
-	s.Transport = t
-
-	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, s.Transport)
+	raftAddr := raft.ServerAddress(RaftServerAddress(raftIP))
+	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, t)
 	if err != nil {
+		_ = t.Close()
 		return nil, fmt.Errorf("failed_to_create_raft: %v", err)
 	}
 
 	if bootstrap {
-		cfg := raft.Configuration{
+		bootstrapConfig := raft.Configuration{
 			Servers: []raft.Server{{
 				ID:      raft.ServerID(detail.NodeID),
-				Address: s.Transport.LocalAddr(),
+				Address: t.LocalAddr(),
 			}},
 		}
-		r.BootstrapCluster(cfg)
+		if err := r.BootstrapCluster(bootstrapConfig).Error(); err != nil {
+			_ = r.Shutdown().Error()
+			_ = t.Close()
+			return nil, fmt.Errorf("failed_to_bootstrap_raft: %w", err)
+		}
 	}
 
+	s.RaftID = &raftAddr
+	s.NodeID = detail.NodeID
+	s.Transport = t
 	s.Raft = r
 
 	return r, nil
@@ -169,7 +180,7 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	raftDir, _ := config.GetRaftPath()
 	if hasExistingRaftState(raftDir) {
 		logger.L.Info().Msg("Found existing Raft state; starting Raft (non-bootstrap restore).")
-		_, err := s.SetupRaft(false, fsm)
+		_, err := s.setupRaft(false, fsm)
 		if err != nil {
 			return err
 		}
@@ -183,7 +194,7 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 		logger.L.Info().Msg("Starting Raft in non-bootstrap mode (clustered follower).")
 	}
 
-	_, err := s.SetupRaft(bootstrap, fsm)
+	_, err := s.setupRaft(bootstrap, fsm)
 	if err != nil {
 		return err
 	}
@@ -192,6 +203,12 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 }
 
 func (s *Service) RemovePeer(id raft.ServerID) error {
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}

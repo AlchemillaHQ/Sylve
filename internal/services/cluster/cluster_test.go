@@ -144,7 +144,8 @@ func TestClearClusteredData(t *testing.T) {
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.ReplicationEvent{},
-		&clusterModels.ReplicationReceipt{},
+		&clusterModels.ReplicationGuestOperation{},
+		&clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationPolicy{},
@@ -164,19 +165,19 @@ func TestClearClusteredData(t *testing.T) {
 	seedDB("backup_jobs", map[string]any{"id": 1, "name": "job1", "target_id": 1, "mode": "dataset", "cron_expr": "* * * * *"})
 	seedDB("backup_targets", map[string]any{"id": 1, "name": "target1", "ssh_host": "host", "backup_root": "tank/bk"})
 	seedDB("replication_events", map[string]any{"id": 1, "event_type": "run", "status": "success"})
-	seedDB("replication_receipts", map[string]any{"id": 1, "policy_id": 1, "guest_type": "vm", "guest_id": 1, "source_node_id": "n1", "target_node_id": "n2", "status": "success", "last_attempt_at": time.Now()})
+	seedDB("replication_guest_operations", map[string]any{"guest_type": "vm", "guest_id": 1, "operation": "migration", "state": "active", "token": "migration:n1:1", "owner_node_id": "n1", "target_node_id": "n2", "task_id": 1, "acquired_at": time.Now().Add(-time.Minute)})
+	seedDB("replication_guest_operation_receipts", map[string]any{"token": "migration:n1:1", "guest_type": "vm", "guest_id": 1, "operation": "migration", "owner_node_id": "n1", "target_node_id": "n2", "task_id": 1, "acquired_at": time.Now().Add(-time.Minute), "completed_at": time.Now()})
 	seedDB("replication_leases", map[string]any{"id": 1, "policy_id": 1, "guest_type": "vm", "guest_id": 1, "owner_node_id": "n1", "owner_epoch": 1, "expires_at": time.Now().Add(time.Hour)})
 	seedDB("replication_policies", map[string]any{"id": 1, "name": "pol1", "guest_type": "vm", "guest_id": 1, "cron_expr": "* * * * *", "owner_epoch": 1})
 	seedDB("replication_policy_targets", map[string]any{"id": 1, "policy_id": 1, "node_id": "n2", "weight": 100})
 	seedDB("cluster_ssh_identities", map[string]any{"id": 1, "node_uuid": "uuid-1", "ssh_host": "h1", "public_key": "k1"})
-
 	if err := s.ClearClusteredData(); err != nil {
 		t.Fatalf("ClearClusteredData failed: %v", err)
 	}
 
 	tables := []string{
 		"cluster_notes", "cluster_options", "backup_events", "backup_jobs",
-		"backup_targets", "replication_events", "replication_receipts", "replication_leases",
+		"backup_targets", "replication_events", "replication_guest_operations", "replication_guest_operation_receipts", "replication_leases",
 		"replication_policy_targets", "replication_policies", "cluster_ssh_identities",
 	}
 	for _, table := range tables {
@@ -283,10 +284,10 @@ func TestBackfillPreClusterState(t *testing.T) {
 	seedDB.Create(&clusterModels.ReplicationPolicy{
 		ID: 30, Name: "rep-pol", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 100, SourceNodeID: "node-1",
-		SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailbackMode: clusterModels.ReplicationFailbackManual,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr: "* * * * *", OwnerEpoch: 1, Enabled: true,
+		CronExpr:     "* * * * *", OwnerEpoch: 1, Enabled: true,
 	})
 	seedDB.Create(&clusterModels.ReplicationPolicyTarget{
 		PolicyID: 30, NodeID: "node-2", Weight: 100,

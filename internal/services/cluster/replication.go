@@ -10,6 +10,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
@@ -24,8 +26,16 @@ import (
 )
 
 const (
-	DefaultReplicationLeaseTTL    = 10 * time.Second
-	DefaultReplicationRenewWindow = 3 * time.Second
+	DefaultReplicationLeaseTTL                = 10 * time.Second
+	DefaultReplicationRenewWindow             = 3 * time.Second
+	ReplicationVMFilesystemStorageUnsupported = vmModels.ReplicationFilesystemStorageUnsupported
+)
+
+type replicationPolicyMutationIntent string
+
+const (
+	replicationPolicyMutationCreate replicationPolicyMutationIntent = "create"
+	replicationPolicyMutationUpdate replicationPolicyMutationIntent = "update"
 )
 
 func (s *Service) ListReplicationPolicies() ([]clusterModels.ReplicationPolicy, error) {
@@ -60,16 +70,12 @@ func (s *Service) GetReplicationPolicyByID(id uint) (*clusterModels.ReplicationP
 }
 
 func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.ReplicationPolicyReq, bypassRaft bool) error {
-	id := uint(0)
-	var err error
-	if !bypassRaft {
-		id, err = s.newRaftObjectID("replication_policies")
-		if err != nil {
-			return fmt.Errorf("new_replication_policy_id_failed: %w", err)
-		}
+	id, err := s.newRaftObjectID("replication_policies")
+	if err != nil {
+		return fmt.Errorf("new_replication_policy_id_failed: %w", err)
 	}
 
-	policy, targets, err := s.buildReplicationPolicy(id, input)
+	policy, targets, err := s.buildReplicationPolicy(id, input, replicationPolicyMutationCreate)
 	if err != nil {
 		return err
 	}
@@ -98,19 +104,21 @@ func (s *Service) ProposeReplicationPolicyUpdate(id uint, input clusterServiceIn
 		return fmt.Errorf("invalid_policy_id")
 	}
 
-	policy, targets, err := s.buildReplicationPolicy(id, input)
+	policy, targets, err := s.buildReplicationPolicy(id, input, replicationPolicyMutationUpdate)
 	if err != nil {
 		return err
 	}
 
+	payload := clusterModels.ReplicationPolicyPayload{
+		Policy:             *policy,
+		Targets:            targets,
+		ExpectedOwnerEpoch: policy.OwnerEpoch,
+	}
 	if bypassRaft {
-		return clusterModels.UpsertReplicationPolicyTxn(s.DB, policy, targets)
+		return clusterModels.UpdateReplicationPolicyTxn(s.DB, &payload)
 	}
 
-	data, err := json.Marshal(clusterModels.ReplicationPolicyPayload{
-		Policy:  *policy,
-		Targets: targets,
-	})
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_replication_policy_payload: %w", err)
 	}
@@ -135,21 +143,7 @@ func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error
 	}
 
 	if bypassRaft {
-		return s.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationPolicyTarget{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationLease{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationEvent{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationReceipt{}).Error; err != nil {
-				return err
-			}
-			return tx.Delete(&clusterModels.ReplicationPolicy{}, id).Error
-		})
+		return clusterModels.DeleteReplicationPolicyTxn(s.DB, id)
 	}
 
 	data, err := json.Marshal(struct {
@@ -220,7 +214,17 @@ func (s *Service) guestExistsInCluster(guestType string, guestID uint) (bool, er
 	return nodeID != "", nil
 }
 
-func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces.ReplicationPolicyReq) (*clusterModels.ReplicationPolicy, []clusterModels.ReplicationPolicyTarget, error) {
+func (s *Service) buildReplicationPolicy(
+	id uint,
+	input clusterServiceInterfaces.ReplicationPolicyReq,
+	intent replicationPolicyMutationIntent,
+) (*clusterModels.ReplicationPolicy, []clusterModels.ReplicationPolicyTarget, error) {
+	if intent != replicationPolicyMutationCreate && intent != replicationPolicyMutationUpdate {
+		return nil, nil, fmt.Errorf("invalid_replication_policy_mutation_intent")
+	}
+	if id == 0 {
+		return nil, nil, fmt.Errorf("invalid_policy_id")
+	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return nil, nil, fmt.Errorf("name_required")
@@ -238,15 +242,24 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		return nil, nil, fmt.Errorf("guest_id_required")
 	}
 
-	// On create (id == 0) verify the guest exists somewhere in the cluster.
-	// On update the policy already exists and the guest was verified at creation;
-	// skipping the check is essential for failover: the source node hosting the
-	// guest may be offline, making live HTTP aggregation unable to find it.
-	if id == 0 {
-		if found, err := s.guestExistsInCluster(guestType, input.GuestID); err != nil {
+	var resolvedCreateOwner string
+	var resourceSnapshot []clusterServiceInterfaces.NodeResources
+	resourceSnapshotLoaded := false
+	if intent == replicationPolicyMutationCreate {
+		resources, err := s.Resources()
+		if err != nil {
 			return nil, nil, fmt.Errorf("failed_to_verify_guest: %w", err)
-		} else if !found {
+		}
+		resourceSnapshot = resources
+		resourceSnapshotLoaded = true
+		owners := replicationGuestOwnerMatches(resources, guestType, input.GuestID)
+		switch len(owners) {
+		case 0:
 			return nil, nil, fmt.Errorf("guest_not_found")
+		case 1:
+			resolvedCreateOwner = owners[0]
+		default:
+			return nil, nil, fmt.Errorf("guest_owner_ambiguous")
 		}
 	}
 
@@ -269,9 +282,19 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	sourceNodeID := strings.TrimSpace(input.SourceNodeID)
 	var existingByID clusterModels.ReplicationPolicy
 	existingByIDFound := false
-	if id > 0 {
+	if intent == replicationPolicyMutationUpdate {
 		if err := s.DB.First(&existingByID, id).Error; err == nil {
 			existingByIDFound = true
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, fmt.Errorf("replication_policy_not_found")
+		} else {
+			return nil, nil, fmt.Errorf("failed_to_load_replication_policy: %w", err)
+		}
+		if existingByID.GuestType != guestType || existingByID.GuestID != input.GuestID {
+			return nil, nil, fmt.Errorf("replication_policy_guest_identity_immutable")
+		}
+		if existingByID.ProtectionState == clusterModels.ReplicationProtectionStateDeleting {
+			return nil, nil, fmt.Errorf("replication_policy_deleting")
 		}
 	}
 
@@ -289,6 +312,9 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	if sourceMode == clusterModels.ReplicationSourceModePinned {
+		if sourceNodeID == "" && existingByIDFound {
+			sourceNodeID = strings.TrimSpace(existingByID.SourceNodeID)
+		}
 		if sourceNodeID == "" {
 			return nil, nil, fmt.Errorf("source_node_required_for_pinned_mode")
 		}
@@ -298,6 +324,11 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	if sourceMode == clusterModels.ReplicationSourceModeFollowActive {
+		if intent == replicationPolicyMutationCreate {
+			sourceNodeID = resolvedCreateOwner
+		} else if sourceNodeID == "" {
+			sourceNodeID = strings.TrimSpace(existingByID.SourceNodeID)
+		}
 		if sourceNodeID == "" {
 			resolvedOwner, err := s.ResolveReplicationGuestOwnerNode(guestType, input.GuestID)
 			if err != nil {
@@ -319,8 +350,33 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	enabled := true
+	if existingByIDFound {
+		enabled = existingByID.Enabled
+	}
 	if input.Enabled != nil {
 		enabled = *input.Enabled
+	}
+	if enabled && guestType == clusterModels.ReplicationGuestTypeVM {
+		if !resourceSnapshotLoaded {
+			resources, err := s.Resources()
+			if err != nil {
+				return nil, nil, fmt.Errorf("replication_vm_storage_eligibility_unavailable: %w", err)
+			}
+			resourceSnapshot = resources
+			resourceSnapshotLoaded = true
+		}
+		ownerNodeID := resolvedCreateOwner
+		if ownerNodeID == "" && existingByIDFound {
+			ownerNodeID = strings.TrimSpace(existingByID.ActiveNodeID)
+			if ownerNodeID == "" {
+				ownerNodeID = strings.TrimSpace(existingByID.SourceNodeID)
+			}
+		}
+		if err := requireReplicationVMStorageEligibility(
+			resourceSnapshot, ownerNodeID, input.GuestID,
+		); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	cronExpr := strings.TrimSpace(input.CronExpr)
@@ -336,7 +392,7 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		}
 	}
 
-	activeNodeID := sourceNodeID
+	activeNodeID := resolvedCreateOwner
 	ownerEpoch := uint64(1)
 	if existingByIDFound {
 		previousActiveNodeID := strings.TrimSpace(existingByID.ActiveNodeID)
@@ -347,11 +403,18 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 			ownerEpoch = existingByID.OwnerEpoch
 		}
 	}
-	if overrideActiveNodeID := strings.TrimSpace(input.ActiveNodeID); overrideActiveNodeID != "" {
-		activeNodeID = overrideActiveNodeID
+	if activeNodeID == "" {
+		return nil, nil, fmt.Errorf("guest_owner_node_not_found")
 	}
-	if input.OwnerEpoch > 0 {
-		ownerEpoch = input.OwnerEpoch
+
+	protectionState := clusterModels.ReplicationProtectionStateInitializing
+	if !enabled {
+		protectionState = clusterModels.ReplicationProtectionStateUnprotected
+	} else if existingByIDFound {
+		protectionState = existingByID.ProtectionState
+		if !existingByID.Enabled {
+			protectionState = clusterModels.ReplicationProtectionStateInitializing
+		}
 	}
 
 	crashRecovery := resolveOptional(existingByIDFound, existingByID.CrashRecovery, input.CrashRecovery, true)
@@ -373,6 +436,7 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		FailoverMode:    failoverMode,
 		CronExpr:        cronExpr,
 		Enabled:         enabled,
+		ProtectionState: protectionState,
 		CrashRecovery:   crashRecovery,
 		CrashRestartMax: crashRestartMax,
 		PoolHealthCheck: poolHealthCheck,
@@ -397,6 +461,10 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		policy.TransitionPromotedAt = existingByID.TransitionPromotedAt
 		policy.TransitionCompletedAt = existingByID.TransitionCompletedAt
 		policy.TransitionError = existingByID.TransitionError
+		policy.TransitionAllowUnsafe = existingByID.TransitionAllowUnsafe
+		policy.TransitionMovePinnedSource = existingByID.TransitionMovePinnedSource
+		policy.TransitionTriggerValidationRun = existingByID.TransitionTriggerValidationRun
+		policy.TransitionOriginalRunning = existingByID.TransitionOriginalRunning
 	}
 
 	var existing clusterModels.ReplicationPolicy
@@ -425,6 +493,11 @@ func (s *Service) ResolveReplicationGuestOwnerNode(guestType string, guestID uin
 		return "", fmt.Errorf("invalid_guest_type")
 	}
 
+	matches, err := s.resolveReplicationGuestOwnerMatches(guestType, guestID)
+	if err != nil {
+		return "", err
+	}
+
 	statusByNode := map[string]string{}
 	nodes, err := s.Nodes()
 	if err == nil {
@@ -433,11 +506,40 @@ func (s *Service) ResolveReplicationGuestOwnerNode(guestType string, guestID uin
 		}
 	}
 
-	resources, err := s.Resources()
-	if err != nil {
-		return "", fmt.Errorf("resolve_guest_owner_resources_failed: %w", err)
+	if len(matches) == 0 {
+		return "", nil
 	}
 
+	online := make([]string, 0, len(matches))
+	for _, nodeID := range matches {
+		if status, ok := statusByNode[nodeID]; ok && status == "online" {
+			online = append(online, nodeID)
+		}
+	}
+
+	if len(online) > 0 {
+		sort.Strings(online)
+		return online[0], nil
+	}
+
+	sort.Strings(matches)
+	return matches[0], nil
+}
+
+func (s *Service) resolveReplicationGuestOwnerMatches(guestType string, guestID uint) ([]string, error) {
+	resources, err := s.Resources()
+	if err != nil {
+		return nil, fmt.Errorf("resolve_guest_owner_resources_failed: %w", err)
+	}
+	return replicationGuestOwnerMatches(resources, guestType, guestID), nil
+}
+
+func replicationGuestOwnerMatches(
+	resources []clusterServiceInterfaces.NodeResources,
+	guestType string,
+	guestID uint,
+) []string {
+	seen := make(map[string]struct{}, len(resources))
 	matches := make([]string, 0, len(resources))
 	for _, node := range resources {
 		nodeID := strings.TrimSpace(node.NodeUUID)
@@ -464,28 +566,47 @@ func (s *Service) ResolveReplicationGuestOwnerNode(guestType string, guestID uin
 		}
 
 		if found {
-			matches = append(matches, nodeID)
+			if _, exists := seen[nodeID]; !exists {
+				seen[nodeID] = struct{}{}
+				matches = append(matches, nodeID)
+			}
 		}
 	}
-
-	if len(matches) == 0 {
-		return "", nil
-	}
-
-	online := make([]string, 0, len(matches))
-	for _, nodeID := range matches {
-		if status, ok := statusByNode[nodeID]; ok && status == "online" {
-			online = append(online, nodeID)
-		}
-	}
-
-	if len(online) > 0 {
-		sort.Strings(online)
-		return online[0], nil
-	}
-
 	sort.Strings(matches)
-	return matches[0], nil
+	return matches
+}
+
+func requireReplicationVMStorageEligibility(
+	resources []clusterServiceInterfaces.NodeResources,
+	ownerNodeID string,
+	rid uint,
+) error {
+	ownerNodeID = strings.TrimSpace(ownerNodeID)
+	if ownerNodeID == "" || rid == 0 {
+		return fmt.Errorf("replication_vm_storage_eligibility_unavailable")
+	}
+	found := false
+	for _, node := range resources {
+		if strings.TrimSpace(node.NodeUUID) != ownerNodeID {
+			continue
+		}
+		for _, vm := range node.VMs {
+			if vm.RID != rid {
+				continue
+			}
+			if found {
+				return fmt.Errorf("replication_vm_storage_eligibility_ambiguous")
+			}
+			found = true
+			if vm.HasEnabledFilesystemStorage {
+				return fmt.Errorf(ReplicationVMFilesystemStorageUnsupported)
+			}
+		}
+	}
+	if !found {
+		return fmt.Errorf("replication_vm_storage_eligibility_unavailable")
+	}
+	return nil
 }
 
 func (s *Service) buildReplicationTargets(policyID uint, input []clusterServiceInterfaces.ReplicationPolicyTargetReq) ([]clusterModels.ReplicationPolicyTarget, error) {
@@ -606,12 +727,25 @@ func (s *Service) DeleteReplicationLease(policyID uint, bypassRaft bool) error {
 	})
 }
 
+func (s *Service) requireReplicationRaftLeader() error {
+	if s == nil || s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	if s.Raft.State() != raft.Leader {
+		return fmt.Errorf("not_leader")
+	}
+	return nil
+}
+
 func (s *Service) UpdateReplicationPolicyTransition(
 	policyID uint,
 	transition clusterModels.ReplicationPolicyTransition,
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
 	}
 
 	data, err := json.Marshal(struct {
@@ -627,6 +761,197 @@ func (s *Service) UpdateReplicationPolicyTransition(
 
 	return s.applyRaftCommand(clusterModels.Command{
 		Type:   "replication_policy_transition",
+		Action: "update",
+		Data:   data,
+	})
+}
+
+// BeginReplicationPolicyTransition durably acquires a policy transition lock.
+// The same RunID may be replayed, while a competing RunID is rejected until
+// the persisted transition reaches a terminal state.
+func (s *Service) BeginReplicationPolicyTransition(
+	begin clusterModels.ReplicationPolicyTransitionBegin,
+	bypassRaft bool,
+) error {
+	if bypassRaft {
+		return clusterModels.BeginReplicationPolicyTransitionTxn(s.DB, &begin)
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(begin)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_policy_transition_begin: %w", err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_policy_transition",
+		Action: "begin",
+		Data:   data,
+	})
+}
+
+// CommitReplicationOwnershipTransition performs the ownership cutover as one
+// Raft/FSM transaction. Callers must first persist the transition run and pass
+// its run ID in ExpectedTransitionRunID.
+func (s *Service) CommitReplicationOwnershipTransition(
+	payload clusterModels.ReplicationOwnershipTransitionPayload,
+	bypassRaft bool,
+) error {
+	if bypassRaft {
+		return clusterModels.ApplyReplicationOwnershipTransitionTxn(s.DB, &payload)
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_ownership_transition: %w", err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_ownership_transition",
+		Action: "commit",
+		Data:   data,
+	})
+}
+
+func (s *Service) ReassignDisabledReplicationPolicyOwner(
+	payload clusterModels.ReplicationDisabledOwnerReassignment,
+	bypassRaft bool,
+) error {
+	if bypassRaft {
+		return clusterModels.ReassignDisabledReplicationPolicyOwnerTxn(s.DB, &payload)
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_disabled_replication_owner_reassignment: %w", err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type: "replication_ownership_transition", Action: "reassign_disabled", Data: data,
+	})
+}
+
+func (s *Service) AcquireReplicationGuestOperation(
+	payload clusterModels.ReplicationGuestOperationAcquire,
+	bypassRaft bool,
+) error {
+	if payload.AcquiredAt.IsZero() {
+		payload.AcquiredAt = time.Now().UTC()
+	}
+	if bypassRaft {
+		return clusterModels.AcquireReplicationGuestOperationTxn(s.DB, &payload)
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_guest_operation_acquire: %w", err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type: "replication_guest_operation", Action: "acquire", Data: data,
+	})
+}
+
+func (s *Service) applyReplicationGuestOperationTransition(
+	action string,
+	payload clusterModels.ReplicationGuestOperationTransition,
+	bypassRaft bool,
+) error {
+	if (action == "seal" || action == "complete") && payload.OccurredAt.IsZero() {
+		payload.OccurredAt = time.Now().UTC()
+	}
+	if bypassRaft {
+		switch action {
+		case "seal":
+			return clusterModels.SealReplicationGuestOperationTxn(s.DB, &payload)
+		case "abort":
+			return clusterModels.AbortReplicationGuestOperationTxn(s.DB, &payload)
+		case "complete":
+			return clusterModels.CompleteReplicationGuestOperationTxn(s.DB, &payload)
+		default:
+			return fmt.Errorf("invalid_replication_guest_operation_action")
+		}
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_guest_operation_%s: %w", action, err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type: "replication_guest_operation", Action: action, Data: data,
+	})
+}
+
+func (s *Service) SealReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition, bypassRaft bool) error {
+	return s.applyReplicationGuestOperationTransition("seal", payload, bypassRaft)
+}
+
+func (s *Service) AbortReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition, bypassRaft bool) error {
+	return s.applyReplicationGuestOperationTransition("abort", payload, bypassRaft)
+}
+
+func (s *Service) CompleteReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition, bypassRaft bool) error {
+	return s.applyReplicationGuestOperationTransition("complete", payload, bypassRaft)
+}
+
+// UpdateReplicationTargetReadiness publishes a verified per-target generation
+// through Raft. ExpectedOwnerEpoch rejects late results from an old owner.
+func (s *Service) UpdateReplicationTargetReadiness(
+	update clusterModels.ReplicationTargetReadinessUpdate,
+	bypassRaft bool,
+) error {
+	if update.EvaluatedAt.IsZero() {
+		update.EvaluatedAt = time.Now().UTC()
+	}
+	if bypassRaft {
+		return clusterModels.UpdateReplicationTargetReadinessTxn(s.DB, &update)
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_target_readiness: %w", err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_target_readiness",
+		Action: "update",
+		Data:   data,
+	})
+}
+
+func (s *Service) UpdateReplicationPolicyProtectionState(
+	policyID uint,
+	expectedOwnerEpoch uint64,
+	state string,
+	bypassRaft bool,
+) error {
+	update := clusterModels.ReplicationPolicyProtectionStateUpdate{
+		PolicyID:           policyID,
+		ExpectedOwnerEpoch: expectedOwnerEpoch,
+		State:              state,
+	}
+	if bypassRaft {
+		return clusterModels.UpdateReplicationPolicyProtectionStateTxn(s.DB, &update)
+	}
+	if err := s.requireReplicationRaftLeader(); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_policy_protection_state: %w", err)
+	}
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_policy_protection_state",
 		Action: "update",
 		Data:   data,
 	})
@@ -681,170 +1006,6 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 		return nil, err
 	}
 	return events, nil
-}
-
-func (s *Service) ListReplicationReceipts(policyID uint) ([]clusterModels.ReplicationReceipt, error) {
-	type receiptWithCron struct {
-		clusterModels.ReplicationReceipt
-		CronExpr string `gorm:"column:cron_expr"`
-	}
-
-	query := s.DB.Table("replication_receipts").
-		Select("replication_receipts.*, replication_policies.cron_expr").
-		Joins("LEFT JOIN replication_policies ON replication_policies.id = replication_receipts.policy_id").
-		Order("replication_receipts.last_attempt_at DESC")
-
-	if policyID > 0 {
-		query = query.Where("replication_receipts.policy_id = ?", policyID)
-	}
-
-	var rows []receiptWithCron
-	if err := query.Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		return []clusterModels.ReplicationReceipt{}, nil
-	}
-
-	receipts := make([]clusterModels.ReplicationReceipt, len(rows))
-	for i, row := range rows {
-		receipts[i] = row.ReplicationReceipt
-		windowSeconds, err := replicationFreshnessWindowSeconds(row.CronExpr)
-		if err == nil && windowSeconds > 0 {
-			value := windowSeconds
-			receipts[i].FreshnessWindowSec = &value
-		}
-	}
-
-	return receipts, nil
-}
-
-func (s *Service) UpsertLocalReplicationReceipt(receipt clusterModels.ReplicationReceipt) error {
-	if receipt.PolicyID == 0 {
-		return fmt.Errorf("invalid_policy_id")
-	}
-	if receipt.LastAttemptAt.IsZero() {
-		return fmt.Errorf("replication_receipt_last_attempt_required")
-	}
-	if strings.TrimSpace(strings.ToLower(receipt.Status)) == "success" && receipt.LastSuccessAt == nil {
-		lastSuccessAt := receipt.LastAttemptAt
-		receipt.LastSuccessAt = &lastSuccessAt
-	}
-	return clusterModels.UpsertReplicationReceiptTxn(s.DB, &receipt)
-}
-
-func (s *Service) DeleteLocalReplicationReceiptsByPolicy(policyID uint) error {
-	if policyID == 0 {
-		return fmt.Errorf("invalid_policy_id")
-	}
-	return s.DB.Where("policy_id = ?", policyID).Delete(&clusterModels.ReplicationReceipt{}).Error
-}
-
-func (s *Service) PruneLocalReplicationReceipts(localNodeID string) error {
-	localNodeID = strings.TrimSpace(localNodeID)
-
-	query := s.DB.Model(&clusterModels.ReplicationReceipt{})
-	if localNodeID != "" {
-		query = query.Where("target_node_id = ?", localNodeID)
-	}
-
-	var receipts []clusterModels.ReplicationReceipt
-	if err := query.Find(&receipts).Error; err != nil {
-		return err
-	}
-	if len(receipts) == 0 {
-		return nil
-	}
-
-	policyIDSet := make(map[uint]struct{}, len(receipts))
-	for _, receipt := range receipts {
-		if receipt.PolicyID > 0 {
-			policyIDSet[receipt.PolicyID] = struct{}{}
-		}
-	}
-
-	policyIDs := make([]uint, 0, len(policyIDSet))
-	for id := range policyIDSet {
-		policyIDs = append(policyIDs, id)
-	}
-
-	var policies []clusterModels.ReplicationPolicy
-	if len(policyIDs) > 0 {
-		if err := s.DB.Preload("Targets").Where("id IN ?", policyIDs).Find(&policies).Error; err != nil {
-			return err
-		}
-	}
-
-	targetSetByPolicy := make(map[uint]map[string]struct{}, len(policies))
-	for _, policy := range policies {
-		targetSet := make(map[string]struct{}, len(policy.Targets))
-		for _, target := range policy.Targets {
-			targetID := strings.TrimSpace(target.NodeID)
-			if targetID == "" {
-				continue
-			}
-			targetSet[targetID] = struct{}{}
-		}
-		targetSetByPolicy[policy.ID] = targetSet
-	}
-
-	staleIDs := make([]uint, 0)
-	for _, receipt := range receipts {
-		if localNodeID != "" && strings.TrimSpace(receipt.TargetNodeID) != localNodeID {
-			staleIDs = append(staleIDs, receipt.ID)
-			continue
-		}
-
-		targetSet, policyExists := targetSetByPolicy[receipt.PolicyID]
-		if !policyExists {
-			staleIDs = append(staleIDs, receipt.ID)
-			continue
-		}
-		if _, ok := targetSet[strings.TrimSpace(receipt.TargetNodeID)]; !ok {
-			staleIDs = append(staleIDs, receipt.ID)
-		}
-	}
-
-	if len(staleIDs) == 0 {
-		return nil
-	}
-
-	return s.DB.Where("id IN ?", staleIDs).Delete(&clusterModels.ReplicationReceipt{}).Error
-}
-
-func replicationFreshnessWindowSeconds(cronExpr string) (int64, error) {
-	spec := strings.TrimSpace(cronExpr)
-	if spec == "" {
-		return 0, fmt.Errorf("cron_expr_required")
-	}
-
-	schedule, err := cron.ParseStandard(spec)
-	if err != nil {
-		return 0, err
-	}
-
-	anchor := time.Now().UTC()
-	first := schedule.Next(anchor)
-	second := schedule.Next(first)
-	if !second.After(first) {
-		return 0, fmt.Errorf("invalid_cron_interval")
-	}
-
-	window := second.Sub(first) * 2
-	if window <= 0 {
-		return 0, fmt.Errorf("invalid_cron_interval")
-	}
-
-	windowSeconds := int64(window / time.Second)
-
-	// Enforce a minimum floor so frequent cron patterns (e.g. every
-	// minute) don't produce unreasonably tight freshness windows.
-	const minFreshnessSeconds = 600 // 10 minutes
-	if windowSeconds < minFreshnessSeconds {
-		windowSeconds = minFreshnessSeconds
-	}
-
-	return windowSeconds, nil
 }
 
 func (s *Service) GetReplicationEventByID(id uint) (*clusterModels.ReplicationEvent, error) {
@@ -953,6 +1114,24 @@ func (s *Service) CanLocalNodeStartProtectedGuest(guestType string, guestID uint
 		return false, fmt.Errorf("local_node_id_unavailable")
 	}
 	return CanNodeStartProtectedGuest(s.DB, guestType, guestID, strings.TrimSpace(detail.NodeID))
+}
+
+func (s *Service) CanLocalNodeStartProtectedGuestForTransition(
+	guestType string,
+	guestID uint,
+	transitionRunID string,
+) (bool, error) {
+	detail := s.Detail()
+	if detail == nil || strings.TrimSpace(detail.NodeID) == "" {
+		return false, fmt.Errorf("local_node_id_unavailable")
+	}
+	return CanNodeStartProtectedGuestForTransition(
+		s.DB,
+		guestType,
+		guestID,
+		strings.TrimSpace(detail.NodeID),
+		transitionRunID,
+	)
 }
 
 func (s *Service) LocalNodeID() string {

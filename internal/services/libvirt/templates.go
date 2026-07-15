@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -117,17 +116,6 @@ func (s *Service) ensureDatasetPath(ctx context.Context, dataset string) error {
 	}
 
 	return nil
-}
-
-func (s *Service) isClusterEnabled() (bool, error) {
-	var cluster clusterModels.Cluster
-	if err := s.DB.Select("enabled").First(&cluster).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed_to_get_cluster_state: %w", err)
-	}
-	return cluster.Enabled, nil
 }
 
 func (s *Service) checkPoolCapacity(ctx context.Context, pool string, requiredBytes uint64) error {
@@ -323,7 +311,7 @@ func (s *Service) getNextFreeVNCPort() (int, error) {
 		if _, exists := used[port]; exists {
 			continue
 		}
-		if utils.IsPortInUse(port) {
+		if utils.IsTCPPortInUse(port) {
 			continue
 		}
 		return port, nil
@@ -504,7 +492,7 @@ func (s *Service) resolveVMTemplateStoragePools(
 	return poolByStorageID, nil
 }
 
-func (s *Service) preflightVMTemplateTargets(targets []vmTemplateCreateTarget) error {
+func (s *Service) preflightVMTemplateTargets(ctx context.Context, targets []vmTemplateCreateTarget) error {
 	if len(targets) == 0 {
 		return fmt.Errorf("no_targets")
 	}
@@ -558,29 +546,9 @@ func (s *Service) preflightVMTemplateTargets(targets []vmTemplateCreateTarget) e
 		return fmt.Errorf("vm_name_already_in_use")
 	}
 
-	clusterEnabled, err := s.isClusterEnabled()
-	if err != nil {
-		return err
-	}
-	if !clusterEnabled {
-		return nil
-	}
-
-	var nodes []clusterModels.ClusterNode
-	if err := s.DB.Select("guest_ids").Find(&nodes).Error; err != nil {
-		return fmt.Errorf("failed_to_check_cluster_guest_ids: %w", err)
-	}
-
-	usedGuestIDs := make(map[uint]struct{})
-	for _, node := range nodes {
-		for _, id := range node.GuestIDs {
-			usedGuestIDs[id] = struct{}{}
-		}
-	}
-
-	for _, rid := range rids {
-		if _, exists := usedGuestIDs[rid]; exists {
-			return fmt.Errorf("rid_range_contains_used_values")
+	if s.guestIdentityAvailabilityChecker != nil {
+		if err := s.guestIdentityAvailabilityChecker.RequireGuestIDsAvailable(ctx, rids); err != nil {
+			return err
 		}
 	}
 
@@ -699,7 +667,7 @@ func (s *Service) preflightCreateVMsFromTemplate(
 		return plan, err
 	}
 
-	if err := s.preflightVMTemplateTargets(targets); err != nil {
+	if err := s.preflightVMTemplateTargets(ctx, targets); err != nil {
 		return plan, err
 	}
 

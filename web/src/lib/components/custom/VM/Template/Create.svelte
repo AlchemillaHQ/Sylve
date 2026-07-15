@@ -172,6 +172,14 @@
 			return 'Template has no cloneable storage';
 		if (err.includes('rid_range_contains_used_values'))
 			return 'One or more RIDs are already in use';
+		if (err.includes('guest_id_already_in_use'))
+			return 'One or more guest IDs are already used by a VM or jail';
+		if (err.includes('guest_identity_inventory_conflict'))
+			return 'Existing VM/jail ID conflicts must be resolved before creating a VM';
+		if (err.includes('guest_identity_inventory_unavailable'))
+			return 'Could not verify guest IDs on every cluster node. Check node health and retry';
+		if (err.includes('guest_identity_inventory_scan_failed'))
+			return 'Could not check VM and jail IDs. Check the server logs and retry';
 		if (err.includes('vm_name_already_in_use')) return 'One or more VM names are already in use';
 		if (err.includes('invalid_rid') || err.includes('invalid_rid_range'))
 			return 'Invalid RID or RID range';

@@ -9,7 +9,9 @@
 package zelta
 
 import (
+	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -61,6 +63,48 @@ func TestReplicationGuestDriver(t *testing.T) {
 	_, err = s.replicationGuestDriver("invalid")
 	if err == nil {
 		t.Fatal("expected error for invalid guest type")
+	}
+}
+
+func TestRequireSupportedReplicationVMStorages(t *testing.T) {
+	if err := requireSupportedReplicationVMStorages([]vmModels.Storage{
+		{Type: vmModels.VMStorageTypeZVol, Enable: true},
+		{Type: vmModels.VMStorageTypeFilesystem, Enable: false},
+	}); err != nil {
+		t.Fatalf("disabled filesystem storage was rejected: %v", err)
+	}
+	if err := requireSupportedReplicationVMStorages([]vmModels.Storage{
+		{Type: vmModels.VMStorageTypeFilesystem, Enable: true},
+	}); !errors.Is(err, errReplicationVMFilesystemStorageUnsupported) {
+		t.Fatalf("enabled filesystem storage returned %v", err)
+	}
+}
+
+func TestVMReplicationSourcesIgnoreLegacyISOPool(t *testing.T) {
+	service := newTestZeltaService(newZeltaServiceTestDB(t))
+	service.localFilesystemDatasetLister = func(context.Context) ([]string, error) {
+		return []string{
+			"tank/sylve/virtual-machines/107",
+			"stale/sylve/virtual-machines/107",
+		}, nil
+	}
+	driver := vmReplicationGuestDriver{service: service}
+	sources, err := driver.replicationSourceDatasets(context.Background(), &vmModels.VM{
+		RID: 107,
+		Storages: []vmModels.Storage{
+			{Type: vmModels.VMStorageTypeRaw, Pool: "tank", Enable: true},
+			{
+				Type: vmModels.VMStorageTypeDiskImage, Pool: "stale", Enable: true,
+				DownloadUUID: "iso-107", Emulation: vmModels.AHCICDStorageEmulation,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("discover VM replication sources: %v", err)
+	}
+	want := []string{"tank/sylve/virtual-machines/107"}
+	if !reflect.DeepEqual(sources, want) {
+		t.Fatalf("replication sources = %v, want %v", sources, want)
 	}
 }
 

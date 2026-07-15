@@ -12,7 +12,7 @@ export async function storageImport(
     rid: number,
     name: string,
     downloadUUID: string,
-    storageType: 'zvol' | 'raw',
+    storageType: 'zvol' | 'raw' | 'image',
     rawPath: string,
     dataset: string,
     emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
@@ -24,11 +24,15 @@ export async function storageImport(
         name,
         downloadUUID,
         attachType: 'import',
-        rawPath: storageType === 'zvol' ? '' : rawPath,
-        dataset: storageType === 'zvol' ? dataset : '',
+        ...(storageType === 'image'
+            ? {}
+            : {
+                  rawPath: storageType === 'zvol' ? '' : rawPath,
+                  dataset: storageType === 'zvol' ? dataset : '',
+                  pool
+              }),
         emulation,
         storageType,
-        pool,
         bootOrder
     });
 }

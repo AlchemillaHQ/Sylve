@@ -9,12 +9,46 @@
 package utils
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestHTTPGetJSONReadContextHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := HTTPGetJSONReadContext(ctx, "https://127.0.0.1:1", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+}
+
+func TestHTTPPostJSONReadReturnsErrorResponseBody(t *testing.T) {
+	wantBody := []byte(`{"status":"error","message":"conflict","data":{"guestId":100}}`)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write(wantBody)
+	}))
+	defer server.Close()
+
+	body, status, err := HTTPPostJSONRead(server.URL, map[string]any{"request": true}, nil)
+	if err == nil {
+		t.Fatal("expected non-2xx HTTP error")
+	}
+	if status != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", status, http.StatusConflict)
+	}
+	if !bytes.Equal(body, wantBody) {
+		t.Fatalf("body = %q, want %q", body, wantBody)
+	}
+}
 
 func TestGetTokenFromHeader(t *testing.T) {
 	tests := []struct {

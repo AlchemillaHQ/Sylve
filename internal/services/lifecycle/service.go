@@ -39,13 +39,21 @@ const (
 )
 
 var (
-	ErrTaskInProgress = errors.New("lifecycle_task_in_progress")
-	ErrInvalidGuest   = errors.New("invalid_guest_type")
-	ErrInvalidAction  = errors.New("invalid_action")
+	ErrTaskInProgress  = errors.New("lifecycle_task_in_progress")
+	ErrInvalidGuest    = errors.New("invalid_guest_type")
+	ErrInvalidAction   = errors.New("invalid_action")
 	ErrMigrationActive = errors.New("migration_in_progress")
 )
 
 var errGuestAlreadyRunning = errors.New("guest_already_running")
+
+type lifecycleRetryPending interface {
+	LifecycleRetryPending() bool
+}
+
+type lifecycleResultAlreadyPersisted interface {
+	LifecycleResultAlreadyPersisted() bool
+}
 
 type guestLifecycleExecPayload struct {
 	TaskID uint `json:"taskId"`
@@ -313,23 +321,36 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	}
 
 	now := time.Now().UTC()
-	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).Updates(map[string]any{
-		"status":     taskModels.LifecycleTaskStatusRunning,
-		"started_at": now,
-		"message":    "running",
-	}).Error; err != nil {
+	claimed, err := s.claimTaskForExecution(ctx, task.ID, now)
+	if err != nil {
 		return err
+	}
+	if !claimed {
+		// The row became terminal after our initial read. A stale queue delivery
+		// must not resurrect it by writing running over the committed result.
+		return nil
 	}
 
 	runErr := s.executeGuestAction(ctx, task)
 	finishedAt := time.Now().UTC()
+	var resultAlreadyPersisted lifecycleResultAlreadyPersisted
+	preserveResult := runErr != nil && errors.As(runErr, &resultAlreadyPersisted) &&
+		resultAlreadyPersisted.LifecycleResultAlreadyPersisted()
 
 	updates := map[string]any{
 		"finished_at": finishedAt,
 	}
+	retryPendingResult := false
 
 	if runErr != nil {
-		if errors.Is(runErr, errGuestAlreadyRunning) {
+		var retryPending lifecycleRetryPending
+		if errors.As(runErr, &retryPending) && retryPending.LifecycleRetryPending() {
+			retryPendingResult = true
+			updates["status"] = taskModels.LifecycleTaskStatusRunning
+			updates["finished_at"] = nil
+			updates["message"] = "migration_recovery_pending"
+			updates["error"] = runErr.Error()
+		} else if errors.Is(runErr, errGuestAlreadyRunning) {
 			updates["status"] = taskModels.LifecycleTaskStatusSuccess
 			updates["message"] = "already_running"
 			updates["error"] = ""
@@ -344,8 +365,20 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 		updates["error"] = ""
 	}
 
-	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).Updates(updates).Error; err != nil {
-		return err
+	if !preserveResult {
+		query := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID)
+		if retryPendingResult {
+			// A duplicate delivery can observe the same migration worker as busy.
+			// Do not let its retry-pending result overwrite success/failure that
+			// the active execution commits concurrently.
+			query = query.Where("status IN ?", []string{
+				taskModels.LifecycleTaskStatusQueued,
+				taskModels.LifecycleTaskStatusRunning,
+			})
+		}
+		if err := query.Updates(updates).Error; err != nil {
+			return err
+		}
 	}
 
 	if s.TelemetryDB != nil {
@@ -365,6 +398,22 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	}
 
 	return runErr
+}
+
+func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, startedAt time.Time) (bool, error) {
+	result := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).
+		Where("id = ? AND status IN ?", taskID, []string{
+			taskModels.LifecycleTaskStatusQueued,
+			taskModels.LifecycleTaskStatusRunning,
+		}).Updates(map[string]any{
+		"status":     taskModels.LifecycleTaskStatusRunning,
+		"started_at": startedAt,
+		"message":    "running",
+	})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestLifecycleTask) error {

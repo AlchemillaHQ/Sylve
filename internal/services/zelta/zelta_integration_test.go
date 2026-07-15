@@ -28,11 +28,11 @@ func TestSchedulerTickThreeNodeHAEligible(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 100, Name: "ha-eligible", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 1000, SourceNodeID: fx.LocalNodeID,
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled:     true, CronExpr: "* * * * *",
-		NextRunAt:   &past,
+		Enabled:      true, CronExpr: "* * * * *",
+		NextRunAt: &past,
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: "node-2", Weight: 100},
 			{NodeID: "node-3", Weight: 50},
@@ -73,11 +73,11 @@ func TestSchedulerTickOneNodeHAIneligible(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 200, Name: "ha-ineligible", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 2000, SourceNodeID: fx.LocalNodeID,
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled:     true, CronExpr: "* * * * *",
-		NextRunAt:   &past,
+		Enabled:      true, CronExpr: "* * * * *",
+		NextRunAt: &past,
 	}
 	fx.SeedPolicy(policy)
 	fx.SeedLease(&clusterModels.ReplicationLease{
@@ -113,10 +113,10 @@ func TestFailoverControllerTickNoPoliciesNeedingFailover(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 300, Name: "healthy", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 3000, SourceNodeID: fx.LocalNodeID,
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled:     true, CronExpr: "* * * * *",
+		Enabled:      true, CronExpr: "* * * * *",
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: fx.LocalNodeID, Weight: 100},
 			{NodeID: "node-3", Weight: 50},
@@ -312,10 +312,10 @@ func TestLeaderLossAndReElection(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 5001, Name: "before-failover-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 5001, SourceNodeID: "node-2",
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled:     true, CronExpr: "* * * * *",
+		Enabled:      true, CronExpr: "* * * * *",
 	}
 	fx.SeedPolicy(policy)
 
@@ -368,10 +368,10 @@ func TestDownMissesTriggersFailoverDecision(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID: pid, Name: "failover-target", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 6001, SourceNodeID: "node-2",
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverAutoSafe,
-		Enabled:     true, CronExpr: "* * * * *",
+		Enabled:      true, CronExpr: "* * * * *",
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: fx.LocalNodeID, Weight: 100},
 		},
@@ -411,10 +411,10 @@ func TestFailoverControllerIncrementsDownMissForOfflineOwner(t *testing.T) {
 		ID: pid, Name: "auto-failover-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 7001, SourceNodeID: "node-2",
 		ActiveNodeID: "node-2",
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverAutoSafe,
-		Enabled:     true, CronExpr: "* * * * *",
+		Enabled:      true, CronExpr: "* * * * *",
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: fx.LocalNodeID, Weight: 100},
 			{NodeID: "node-3", Weight: 50},
@@ -442,6 +442,73 @@ func TestFailoverControllerIncrementsDownMissForOfflineOwner(t *testing.T) {
 	}
 }
 
+func TestAutoSafeNodeDownWarningIsDeduplicatedUntilRecovery(t *testing.T) {
+	fx := SetupZeltaClusterFixture(t, 3)
+	defer fx.Cleanup()
+
+	svc := fx.NewZeltaService()
+	now := time.Now().UTC()
+	pid := uint(7002)
+	defer svc.replicationCountersDelete(pid)
+
+	policy := &clusterModels.ReplicationPolicy{
+		ID: pid, Name: "auto-safe-warning-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 7002, SourceNodeID: "node-2", ActiveNodeID: "node-2",
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
+		FailoverMode: clusterModels.ReplicationFailoverAutoSafe,
+		Enabled:      true, CronExpr: "* * * * *",
+		Targets: []clusterModels.ReplicationPolicyTarget{
+			{NodeID: fx.LocalNodeID, Weight: 100},
+			{NodeID: "node-3", Weight: 50},
+		},
+	}
+	fx.SeedPolicy(policy)
+	fx.SeedLease(&clusterModels.ReplicationLease{
+		PolicyID: pid, GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 7002, OwnerNodeID: "node-2", OwnerEpoch: 1,
+		ExpiresAt: now.Add(time.Hour),
+	})
+
+	fx.SetNodeStatus("node-2", "offline")
+	svc.downMissesSet(pid, uint64(replicationFailoverDownMissLimit-1))
+	if err := svc.runFailoverControllerTick(context.Background()); err != nil {
+		t.Fatalf("first failover tick: %v", err)
+	}
+	if err := svc.runFailoverControllerTick(context.Background()); err != nil {
+		t.Fatalf("second failover tick: %v", err)
+	}
+
+	var count int64
+	if err := fx.DB.Model(&clusterModels.ReplicationEvent{}).
+		Where("policy_id = ? AND message = ?", pid, "node_down_auto_safe_blocked_owner_unreachable").
+		Count(&count).Error; err != nil {
+		t.Fatalf("count warning events: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("warning event count during one outage = %d, want 1", count)
+	}
+
+	fx.SetNodeStatus("node-2", "online")
+	if err := svc.runFailoverControllerTick(context.Background()); err != nil {
+		t.Fatalf("owner recovery tick: %v", err)
+	}
+	fx.SetNodeStatus("node-2", "offline")
+	svc.downMissesSet(pid, uint64(replicationFailoverDownMissLimit-1))
+	if err := svc.runFailoverControllerTick(context.Background()); err != nil {
+		t.Fatalf("new outage tick: %v", err)
+	}
+
+	if err := fx.DB.Model(&clusterModels.ReplicationEvent{}).
+		Where("policy_id = ? AND message = ?", pid, "node_down_auto_safe_blocked_owner_unreachable").
+		Count(&count).Error; err != nil {
+		t.Fatalf("count warning events after recovery: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("warning event count across two outages = %d, want 2", count)
+	}
+}
+
 func TestFailoverControllerManualModeDoesNotAutoFailover(t *testing.T) {
 	fx := SetupZeltaClusterFixture(t, 3)
 	defer fx.Cleanup()
@@ -454,10 +521,10 @@ func TestFailoverControllerManualModeDoesNotAutoFailover(t *testing.T) {
 		ID: pid, Name: "manual-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 8001, SourceNodeID: "node-2",
 		ActiveNodeID: "node-2",
-		OwnerEpoch:  1,
-		SourceMode:  clusterModels.ReplicationSourceModeFollowActive,
+		OwnerEpoch:   1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		Enabled:     true, CronExpr: "* * * * *",
+		Enabled:      true, CronExpr: "* * * * *",
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: fx.LocalNodeID, Weight: 100},
 		},

@@ -282,42 +282,6 @@ func isBenignPipeReadError(err error) bool {
 		strings.Contains(lower, "use of closed file")
 }
 
-func (s *Service) BackupWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
-	extraEnv := s.buildZeltaEnv(target)
-	return runZeltaWithEnv(ctx, extraEnv, "backup", "--json", "--incremental", "--snapshot", "--snap-name", zeltaSnapshotName("bk"), sourceDataset, zeltaEndpoint)
-}
-
-func (s *Service) MatchWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
-	extraEnv := s.buildZeltaEnv(target)
-	return runZeltaWithEnv(ctx, extraEnv, "match", sourceDataset, zeltaEndpoint)
-}
-
-func (s *Service) RotateWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
-	return s.RotateWithTargetAndPrefix(ctx, target, sourceDataset, destSuffix, "bk")
-}
-
-func (s *Service) RotateWithTargetAndPrefix(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	sourceDataset, destSuffix string,
-	snapPrefix string,
-) (string, error) {
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
-	extraEnv := s.buildZeltaEnv(target)
-	return runZeltaWithEnv(
-		ctx,
-		extraEnv,
-		"rotate",
-		"--json",
-		"--snap-name",
-		zeltaSnapshotName(snapPrefix),
-		sourceDataset,
-		zeltaEndpoint,
-	)
-}
-
 func (s *Service) PruneCandidatesWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string, keepLast int) ([]string, string, error) {
 	if keepLast < 0 {
 		return nil, "", fmt.Errorf("invalid_prune_keep_last")
@@ -403,31 +367,6 @@ func (s *Service) DestroySnapshots(ctx context.Context, snapshots []string) erro
 	return nil
 }
 
-func (s *Service) DestroyTargetSnapshots(ctx context.Context, target *clusterModels.BackupTarget, sourceSnapshots []string, sourceRoot, targetRoot string) error {
-	for _, sourceSnapshot := range sourceSnapshots {
-		targetSnapshot, err := mapSourceSnapshotToTarget(sourceSnapshot, sourceRoot, targetRoot)
-		if err != nil {
-			return err
-		}
-
-		sshArgs := s.buildSSHArgs(target)
-		sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", targetSnapshot)
-		out, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
-		if err != nil {
-			if isRemoteSubcommandBlocked(out) {
-				logger.L.Warn().
-					Str("ssh_host", target.SSHHost).
-					Str("snapshot", targetSnapshot).
-					Msg("remote_zfs_destroy_not_permitted_skipped")
-				continue
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clusterModels.BackupTarget, targetSnapshots []string) error {
 	for _, targetSnapshot := range targetSnapshots {
 		snap := strings.TrimSpace(targetSnapshot)
@@ -478,31 +417,4 @@ func parsePruneCandidateLine(line string) string {
 	}
 
 	return name
-}
-
-func mapSourceSnapshotToTarget(sourceSnapshot, sourceRoot, targetRoot string) (string, error) {
-	sourceSnapshot = strings.TrimSpace(sourceSnapshot)
-	if !isValidZFSSnapshotName(sourceSnapshot) {
-		return "", fmt.Errorf("invalid_source_snapshot")
-	}
-
-	at := strings.LastIndex(sourceSnapshot, "@")
-	if at <= 0 || at >= len(sourceSnapshot)-1 {
-		return "", fmt.Errorf("invalid_source_snapshot")
-	}
-
-	sourceDataset := sourceSnapshot[:at]
-	snapshotName := sourceSnapshot[at+1:]
-
-	if sourceDataset == sourceRoot {
-		return targetRoot + "@" + snapshotName, nil
-	}
-
-	prefix := sourceRoot + "/"
-	if strings.HasPrefix(sourceDataset, prefix) {
-		suffix := strings.TrimPrefix(sourceDataset, sourceRoot)
-		return targetRoot + suffix + "@" + snapshotName, nil
-	}
-
-	return "", fmt.Errorf("source_snapshot_outside_root")
 }

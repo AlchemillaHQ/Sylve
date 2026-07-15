@@ -599,3 +599,85 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestRestoreFromTargetEnqueueError(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantStatus  int
+		wantMessage string
+	}{
+		{
+			name:        "job already running",
+			err:         errors.New("backup_job_already_running"),
+			wantStatus:  http.StatusConflict,
+			wantMessage: "backup_job_already_running",
+		},
+		{
+			name:        "guest ID occupied",
+			err:         errors.New("guest_id_already_in_use: 100"),
+			wantStatus:  http.StatusConflict,
+			wantMessage: "restore_guest_destination_conflict",
+		},
+		{
+			name:        "destination dataset exists",
+			err:         errors.New("restore_destination_guest_dataset_exists"),
+			wantStatus:  http.StatusConflict,
+			wantMessage: "restore_guest_destination_conflict",
+		},
+		{
+			name:        "inventory unavailable",
+			err:         errors.New("guest_identity_inventory_unavailable: node offline"),
+			wantStatus:  http.StatusServiceUnavailable,
+			wantMessage: "restore_guest_identity_unavailable",
+		},
+		{
+			name:        "inventory scan failed",
+			err:         errors.New("guest_identity_inventory_scan_failed"),
+			wantStatus:  http.StatusInternalServerError,
+			wantMessage: "restore_precheck_failed",
+		},
+		{
+			name:        "destination ZFS check failed",
+			err:         errors.New("restore_destination_dataset_check_failed"),
+			wantStatus:  http.StatusInternalServerError,
+			wantMessage: "restore_precheck_failed",
+		},
+		{
+			name:        "guest kind mismatch",
+			err:         errors.New("restore_guest_destination_kind_mismatch"),
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "restore_guest_destination_invalid",
+		},
+		{
+			name:        "non-canonical destination",
+			err:         errors.New("restore_guest_destination_must_be_canonical_root"),
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "restore_guest_destination_invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotStatus, gotMessage := restoreFromTargetEnqueueError(tt.err)
+			if gotStatus != tt.wantStatus || gotMessage != tt.wantMessage {
+				t.Fatalf(
+					"restoreFromTargetEnqueueError() = (%d, %q), want (%d, %q)",
+					gotStatus,
+					gotMessage,
+					tt.wantStatus,
+					tt.wantMessage,
+				)
+			}
+		})
+	}
+}
+
+func TestHasForwardedRestoreResponse(t *testing.T) {
+	if !hasForwardedRestoreResponse([]byte(`{"status":"error"}`), http.StatusConflict) {
+		t.Fatal("expected remote conflict response to be preserved")
+	}
+	if hasForwardedRestoreResponse(nil, 0) {
+		t.Fatal("transport failure without a response must not be preserved")
+	}
+}

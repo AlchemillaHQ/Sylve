@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { getNodes } from '$lib/api/cluster/cluster';
 	import { listReplicationEvents, listReplicationPolicies } from '$lib/api/cluster/replication';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import type { ReplicationEvent } from '$lib/types/cluster/replication';
+	import type { ReplicationEvent, ReplicationPolicy } from '$lib/types/cluster/replication';
 	import { convertDbTime } from '$lib/utils/time';
 	import { storage } from '$lib';
 	import { resource, useInterval } from 'runed';
@@ -59,6 +60,57 @@
 		return events.filter((event) => isReplicationEventInProgress(event));
 	}
 
+	function compactNodeLabel(value: string, nodeNameById: Record<string, string>): string {
+		const nodeId = String(value || '').trim();
+		if (!nodeId) return '-';
+		const hostname = nodeNameById[nodeId];
+		if (hostname) return hostname;
+		return nodeId.length > 12 ? `${nodeId.slice(0, 8)}...` : nodeId;
+	}
+
+	function eventPath(
+		event: ReplicationEvent,
+		policy: ReplicationPolicy | undefined,
+		nodeNameById: Record<string, string>
+	): string {
+		const sourceNodeId = String(
+			event.sourceNodeId || policy?.activeNodeId || policy?.sourceNodeId || ''
+		).trim();
+		const directTargetNodeId = String(event.targetNodeId || '').trim();
+
+		let targetNodeIds: string[] = [];
+		if (directTargetNodeId) {
+			targetNodeIds = [directTargetNodeId];
+		} else if (event.eventType === 'replication' && policy) {
+			targetNodeIds = policy.targets
+				.slice()
+				.sort((a, b) => b.weight - a.weight || a.nodeId.localeCompare(b.nodeId))
+				.map((target) => String(target.nodeId || '').trim());
+		}
+
+		const destinations = Array.from(
+			new Set(targetNodeIds.filter((nodeId) => nodeId && nodeId !== sourceNodeId))
+		).map((nodeId) => compactNodeLabel(nodeId, nodeNameById));
+
+		const destinationLabel =
+			destinations.length > 0
+				? destinations.join(', ')
+				: event.eventType === 'replication' && !directTargetNodeId
+					? 'policy targets'
+					: '-';
+
+		return `${compactNodeLabel(sourceNodeId, nodeNameById)} → ${destinationLabel}`;
+	}
+
+	function eventMessageLabel(value: string): string {
+		const message = String(value || '')
+			.trim()
+			.replace(/[_-]+/g, ' ')
+			.replace(/\s+/g, ' ');
+		if (!message) return '-';
+		return message.charAt(0).toUpperCase() + message.slice(1);
+	}
+
 	let replicationModalOpen = $state(false);
 
 	// svelte-ignore state_referenced_locally
@@ -66,23 +118,35 @@
 		() => 'header-replication-activity',
 		async () => {
 			try {
-				const [policies, events] = await Promise.all([
+				const [policies, events, nodes] = await Promise.all([
 					listReplicationPolicies(),
-					listReplicationEvents(200)
+					listReplicationEvents(200),
+					getNodes().catch(() => [])
 				]);
+				const policyById: Record<number, ReplicationPolicy> = {};
 				const policyNameById: Record<number, string> = {};
 				for (const policy of policies) {
+					policyById[policy.id] = policy;
 					policyNameById[policy.id] = policy.name;
+				}
+				const nodeNameById: Record<string, string> = {};
+				for (const node of nodes) {
+					nodeNameById[node.nodeUUID] = node.hostname || node.nodeUUID;
 				}
 
 				const running = filterInProgressReplicationEvents(events)
 					.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
-					.map((event) => ({
-						...event,
-						policyName: event.policyId
-							? (policyNameById[event.policyId] ?? `Policy ${event.policyId}`)
-							: '-'
-					}));
+					.map((event) => {
+						const policy = event.policyId ? policyById[event.policyId] : undefined;
+						return {
+							...event,
+							policyName: event.policyId
+								? (policyNameById[event.policyId] ?? `Policy ${event.policyId}`)
+								: '-',
+							path: eventPath(event, policy, nodeNameById),
+							messageLabel: eventMessageLabel(event.message || '')
+						};
+					});
 
 				return {
 					available: true,
@@ -118,12 +182,6 @@
 		return value || 'Event';
 	}
 
-	function compactNodeLabel(value: string): string {
-		const nodeId = String(value || '').trim();
-		if (!nodeId) return '-';
-		return nodeId.length > 12 ? `${nodeId.slice(0, 8)}...` : nodeId;
-	}
-
 	function inProgressLabel(status: string): string {
 		switch (
 			String(status || '')
@@ -147,13 +205,6 @@
 	useInterval(5000, {
 		callback: () => {
 			if (!storage.visible) return;
-			if (
-				!replicationModalOpen &&
-				!replicationActivity.current.available &&
-				runningReplicationCount === 0
-			) {
-				return;
-			}
 			replicationActivity.refetch();
 		}
 	});
@@ -210,13 +261,11 @@
 							<div>Workload</div>
 							<div class="text-right">{event.guestType || 'guest'} {event.guestId || 0}</div>
 							<div>Path</div>
-							<div class="text-right">
-								{compactNodeLabel(event.sourceNodeId)} -> {compactNodeLabel(event.targetNodeId)}
-							</div>
+							<div class="text-right">{event.path}</div>
 							<div>Started</div>
 							<div class="text-right">{convertDbTime(event.startedAt)}</div>
 							<div>Message</div>
-							<div class="text-right">{event.message || '-'}</div>
+							<div class="text-right">{event.messageLabel}</div>
 						</div>
 					</div>
 				{/each}
@@ -225,17 +274,10 @@
 
 		{#if replicationActivity.current.updatedAt}
 			<div class="text-xs text-muted-foreground">
-				Last updated: {convertDbTime(replicationActivity.current.updatedAt)}
+				Auto-refreshes every 5 seconds · Last updated: {convertDbTime(
+					replicationActivity.current.updatedAt
+				)}
 			</div>
 		{/if}
-
-		<Dialog.Footer>
-			<Button variant="outline" class="h-7" onclick={() => replicationActivity.refetch()}
-				>Refresh</Button
-			>
-			<Button variant="outline" class="h-7" onclick={() => (replicationModalOpen = false)}
-				>Close</Button
-			>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

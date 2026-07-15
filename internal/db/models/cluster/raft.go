@@ -76,17 +76,19 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 	return nil
 }
 
-// ClusterSnapshot represents the state that will be snapshotted/restored
+// ClusterSnapshot represents the state that will be snapshotted/restored.
 type ClusterSnapshot struct {
-	Notes               []ClusterNote                    `json:"notes"`
-	Options             []ClusterOption                  `json:"options"`
-	BackupTargets       []BackupTargetReplicationPayload `json:"backupTargets"`
-	BackupJobs          []BackupJob                      `json:"backupJobs"`
-	ReplicationPolicies []ReplicationPolicyPayload       `json:"replicationPolicies"`
-	ReplicationLeases   []ReplicationLease               `json:"replicationLeases"`
-	ReplicationEvents   []ReplicationEvent               `json:"replicationEvents"`
-	SSHIdentities       []ClusterSSHIdentity             `json:"sshIdentities"`
-	EncryptionKeys      []EncryptionKey                  `json:"encryptionKeys"`
+	Notes                  []ClusterNote                      `json:"notes"`
+	Options                []ClusterOption                    `json:"options"`
+	BackupTargets          []BackupTargetReplicationPayload   `json:"backupTargets"`
+	BackupJobs             []BackupJob                        `json:"backupJobs"`
+	ReplicationPolicies    []ReplicationPolicyPayload         `json:"replicationPolicies"`
+	ReplicationLeases      []ReplicationLease                 `json:"replicationLeases"`
+	GuestOperations        []ReplicationGuestOperation        `json:"guestOperations"`
+	GuestOperationReceipts []ReplicationGuestOperationReceipt `json:"guestOperationReceipts"`
+	ReplicationEvents      []ReplicationEvent                 `json:"replicationEvents"`
+	SSHIdentities          []ClusterSSHIdentity               `json:"sshIdentities"`
+	EncryptionKeys         []EncryptionKey                    `json:"encryptionKeys"`
 	// We can add more tables here as needed
 }
 
@@ -123,6 +125,12 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 		})
 	}
 	if err := f.DB.Order("id ASC").Find(&snap.ReplicationLeases).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("guest_type ASC, guest_id ASC").Find(&snap.GuestOperations).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("token ASC").Find(&snap.GuestOperationReceipts).Error; err != nil {
 		return nil, err
 	}
 	if err := f.DB.Order("id ASC").Find(&snap.ReplicationEvents).Error; err != nil {
@@ -172,7 +180,6 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	if err := json.NewDecoder(rc).Decode(&snap); err != nil {
 		return err
 	}
-
 	return f.DB.Transaction(func(tx *gorm.DB) error {
 		type restoreSet struct {
 			table string
@@ -185,32 +192,39 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
-
 		deleteSets := []restoreSet{
 			{"replication_events", snap.ReplicationEvents, 500},
+			{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
+			{"replication_guest_operations", snap.GuestOperations, 500},
 			{"replication_leases", snap.ReplicationLeases, 500},
 			{"replication_policy_targets", replicationTargets, 500},
 			{"replication_policies", replicationPolicies, 500},
-			{"cluster_ssh_identities", snap.SSHIdentities, 200},
-			{"encryption_keys", snap.EncryptionKeys, 200},
-			{"backup_jobs", snap.BackupJobs, 500},
-			{"backup_targets", backupTargets, 200},
-			{"cluster_notes", snap.Notes, 500},
-			{"cluster_options", snap.Options, 100},
 		}
+		deleteSets = append(deleteSets,
+			restoreSet{"cluster_ssh_identities", snap.SSHIdentities, 200},
+			restoreSet{"encryption_keys", snap.EncryptionKeys, 200},
+			restoreSet{"backup_jobs", snap.BackupJobs, 500},
+			restoreSet{"backup_targets", backupTargets, 200},
+			restoreSet{"cluster_notes", snap.Notes, 500},
+			restoreSet{"cluster_options", snap.Options, 100},
+		)
 
 		createSets := []restoreSet{
 			{"cluster_ssh_identities", snap.SSHIdentities, 200},
 			{"encryption_keys", snap.EncryptionKeys, 200},
-			{"replication_policies", replicationPolicies, 500},
-			{"replication_policy_targets", replicationTargets, 500},
-			{"replication_leases", snap.ReplicationLeases, 500},
-			{"replication_events", snap.ReplicationEvents, 500},
-			{"backup_targets", backupTargets, 200},
-			{"backup_jobs", snap.BackupJobs, 500},
-			{"cluster_notes", snap.Notes, 500},
-			{"cluster_options", snap.Options, 100},
 		}
+		createSets = append(createSets,
+			restoreSet{"replication_policies", replicationPolicies, 500},
+			restoreSet{"replication_policy_targets", replicationTargets, 500},
+			restoreSet{"replication_leases", snap.ReplicationLeases, 500},
+			restoreSet{"replication_guest_operations", snap.GuestOperations, 500},
+			restoreSet{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
+			restoreSet{"replication_events", snap.ReplicationEvents, 500},
+			restoreSet{"backup_targets", backupTargets, 200},
+			restoreSet{"backup_jobs", snap.BackupJobs, 500},
+			restoreSet{"cluster_notes", snap.Notes, 500},
+			restoreSet{"cluster_options", snap.Options, 100},
+		)
 
 		for _, s := range deleteSets {
 			if err := tx.Exec("DELETE FROM " + s.table).Error; err != nil {
@@ -226,6 +240,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 				}
 			}
 		}
+
 		return nil
 	})
 }
@@ -360,7 +375,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				"prune_keep_last":    job.PruneKeepLast,
 				"prune_target":       job.PruneTarget,
 				"stop_before_backup": job.StopBeforeBackup,
-				"recursive":         job.Recursive,
+				"recursive":          job.Recursive,
 				"cron_expr":          job.CronExpr,
 				"enabled":            job.Enabled,
 				"next_run_at":        job.NextRunAt,
@@ -480,10 +495,21 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
 			}
-			if !payload.Policy.Enabled {
-				_ = db.Where("policy_id = ?", payload.Policy.ID).Delete(&ReplicationLease{}).Error
-			}
-			return upsertReplicationPolicy(db, &payload.Policy, payload.Targets)
+			return db.Transaction(func(tx *gorm.DB) error {
+				var err error
+				if action == "create" {
+					err = upsertReplicationPolicy(tx, &payload.Policy, payload.Targets)
+				} else {
+					err = updateReplicationPolicy(tx, &payload)
+				}
+				if err != nil {
+					return err
+				}
+				if !payload.Policy.Enabled && tx.Migrator().HasTable(&ReplicationLease{}) {
+					return tx.Where("policy_id = ?", payload.Policy.ID).Delete(&ReplicationLease{}).Error
+				}
+				return nil
+			})
 		case "delete":
 			var payload struct {
 				ID uint `json:"id"`
@@ -494,27 +520,13 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if payload.ID == 0 {
 				return nil
 			}
-			return db.Transaction(func(tx *gorm.DB) error {
-				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationPolicyTarget{}).Error; err != nil {
-					return err
-				}
-				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationLease{}).Error; err != nil {
-					return err
-				}
-				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationEvent{}).Error; err != nil {
-					return err
-				}
-				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationReceipt{}).Error; err != nil {
-					return err
-				}
-				return tx.Delete(&ReplicationPolicy{}, payload.ID).Error
-			})
+			return DeleteReplicationPolicyTxn(db, payload.ID)
 		case "state_update":
 			var payload struct {
-				ID         uint    `json:"id"`
+				ID         uint       `json:"id"`
 				LastRunAt  *time.Time `json:"lastRunAt"`
-				LastStatus string  `json:"lastStatus"`
-				LastError  string  `json:"lastError"`
+				LastStatus string     `json:"lastStatus"`
+				LastError  string     `json:"lastError"`
 				NextRunAt  *time.Time `json:"nextRunAt"`
 			}
 			if err := json.Unmarshal(raw, &payload); err != nil {
@@ -572,8 +584,45 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 	})
 
+	fsm.Register("replication_guest_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "acquire":
+			var payload ReplicationGuestOperationAcquire
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return acquireReplicationGuestOperation(db, &payload)
+		case "seal":
+			var payload ReplicationGuestOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return sealReplicationGuestOperation(db, &payload)
+		case "abort":
+			var payload ReplicationGuestOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return abortReplicationGuestOperation(db, &payload)
+		case "complete":
+			var payload ReplicationGuestOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return completeReplicationGuestOperation(db, &payload)
+		default:
+			return nil
+		}
+	})
+
 	fsm.Register("replication_policy_transition", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "begin":
+			var payload ReplicationPolicyTransitionBegin
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return beginReplicationPolicyTransition(db, &payload)
 		case "update":
 			var payload struct {
 				PolicyID   uint                        `json:"policyId"`
@@ -583,6 +632,51 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return upsertReplicationPolicyTransition(db, payload.PolicyID, &payload.Transition)
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("replication_ownership_transition", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "commit":
+			var payload ReplicationOwnershipTransitionPayload
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return applyReplicationOwnershipTransition(db, &payload)
+		case "reassign_disabled":
+			var payload ReplicationDisabledOwnerReassignment
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return reassignDisabledReplicationPolicyOwner(db, &payload)
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("replication_target_readiness", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "update":
+			var payload ReplicationTargetReadinessUpdate
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return updateReplicationTargetReadiness(db, &payload)
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("replication_policy_protection_state", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "update":
+			var payload ReplicationPolicyProtectionStateUpdate
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return updateReplicationPolicyProtectionState(db, &payload)
 		default:
 			return nil
 		}

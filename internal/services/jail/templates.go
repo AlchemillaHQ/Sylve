@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -166,18 +165,6 @@ func (s *Service) validateCreateTargetPool(ctx context.Context, pool string) err
 	}
 
 	return fmt.Errorf("pool_not_found")
-}
-
-func (s *Service) isClusterEnabled() (bool, error) {
-	var cluster clusterModels.Cluster
-	if err := s.DB.Select("enabled").First(&cluster).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed_to_get_cluster_state: %w", err)
-	}
-
-	return cluster.Enabled, nil
 }
 
 func (s *Service) buildTemplateNetworks(networks []jailModels.Network) []jailModels.JailTemplateNetwork {
@@ -558,27 +545,9 @@ func (s *Service) preflightTemplateTargets(ctx context.Context, template jailMod
 		return fmt.Errorf("ctid_range_contains_used_values")
 	}
 
-	enabled, err := s.isClusterEnabled()
-	if err != nil {
-		return err
-	}
-	if enabled {
-		var nodes []clusterModels.ClusterNode
-		if err := s.DB.Select("guest_ids").Find(&nodes).Error; err != nil {
-			return fmt.Errorf("failed_to_check_cluster_guest_ids: %w", err)
-		}
-
-		usedGuestIDSet := make(map[uint]struct{})
-		for _, node := range nodes {
-			for _, id := range node.GuestIDs {
-				usedGuestIDSet[id] = struct{}{}
-			}
-		}
-
-		for _, ctid := range ctids {
-			if _, exists := usedGuestIDSet[ctid]; exists {
-				return fmt.Errorf("ctid_range_contains_used_values")
-			}
+	if s.guestIdentityChecker != nil {
+		if err := s.guestIdentityChecker.RequireGuestIDsAvailable(ctx, ctids); err != nil {
+			return err
 		}
 	}
 
@@ -901,6 +870,9 @@ func (s *Service) PreflightCreateJailsFromTemplate(ctx context.Context, template
 }
 
 func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error {
+	s.createMutex.Lock()
+	defer s.createMutex.Unlock()
+
 	template, targets, err := s.preflightCreateJailsFromTemplate(ctx, templateID, req)
 	if err != nil {
 		return err

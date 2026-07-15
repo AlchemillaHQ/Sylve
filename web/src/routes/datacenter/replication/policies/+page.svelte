@@ -4,7 +4,6 @@
 		deleteReplicationPolicy,
 		failoverReplicationPolicy,
 		listReplicationPolicies,
-		listReplicationReceipts,
 		runReplicationPolicy,
 		updateReplicationPolicy,
 		type ReplicationPolicyInput,
@@ -24,21 +23,21 @@
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
-	import type { ReplicationPolicy, ReplicationReceipt } from '$lib/types/cluster/replication';
+	import type { ReplicationPolicy } from '$lib/types/cluster/replication';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { resource, watch } from 'runed';
+	import { watch } from 'runed';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		policies: ReplicationPolicy[];
-		receipts: ReplicationReceipt[];
 		nodes: ClusterNode[];
 		resources: NodeResource[];
 		jails: SimpleJail[];
@@ -48,6 +47,53 @@
 	type EditableTarget = {
 		nodeId: string;
 		weight: string;
+	};
+
+	type PolicyTargetSyncState = 'active' | 'ready' | 'failed' | 'stale' | 'pending' | 'untargeted';
+	type PolicyTargetSync = {
+		nodeId: string;
+		label: string;
+		weight?: number;
+		state: PolicyTargetSyncState;
+		dotColor: string;
+		statusLabel: string;
+		verifiedAt?: string;
+		readyUntil?: string;
+		datasetProgress?: string;
+		detail?: string;
+	};
+	type PolicyTargetSyncDetails = Partial<
+		Pick<PolicyTargetSync, 'verifiedAt' | 'readyUntil' | 'datasetProgress' | 'detail'>
+	>;
+	type PolicyProtectionLabel =
+		| 'Unprotected'
+		| 'Blocked'
+		| 'Deleting'
+		| 'Suspended'
+		| 'Failed'
+		| 'Degraded'
+		| 'Initializing'
+		| 'Protected'
+		| 'Eligible';
+
+	const targetSyncColors: Record<PolicyTargetSyncState, string> = {
+		active: '#3b82f6',
+		ready: '#22c55e',
+		failed: '#ef4444',
+		stale: '#f59e0b',
+		pending: '#6b7280',
+		untargeted: '#9ca3af'
+	};
+	const protectionStyles: Record<PolicyProtectionLabel, { icon: string; className: string }> = {
+		Unprotected: { icon: 'mdi:shield-off-outline', className: 'text-gray-500' },
+		Blocked: { icon: 'mdi:alert-octagon', className: 'text-red-500' },
+		Deleting: { icon: 'mdi:delete-clock', className: 'text-amber-500' },
+		Suspended: { icon: 'mdi:pause-circle-outline', className: 'text-blue-500' },
+		Failed: { icon: 'mdi:close-circle', className: 'text-red-500' },
+		Degraded: { icon: 'mdi:alert-circle-outline', className: 'text-amber-500' },
+		Initializing: { icon: 'mdi:progress-clock', className: 'text-blue-500' },
+		Protected: { icon: 'mdi:shield-check', className: 'text-green-500' },
+		Eligible: { icon: 'mdi:check-circle', className: 'text-green-500' }
 	};
 
 	type PolicyStep = 'workload' | 'failover' | 'targets' | 'advanced' | 'review';
@@ -61,6 +107,8 @@
 	};
 
 	const FORCE_RECOVERY_CONFIRM_TEXT = 'FORCE';
+	const POLICY_SAVE_REFRESH_ATTEMPTS = 6;
+	const POLICY_SAVE_REFRESH_DELAY_MS = 250;
 
 	function failoverModeOptions(ownerOnline: boolean): FailoverModeOption[] {
 		const options: FailoverModeOption[] = [];
@@ -277,9 +325,10 @@
 		},
 		{
 			value: 'auto_safe',
-			title: 'Automatic safe move',
-			description: 'Automatically move after a safe demote and sync.',
-			impact: 'Protects data first, then promotes a target.'
+			title: 'Automatic safe handoff',
+			description: 'Automatically hand off only while the active server is reachable.',
+			impact:
+				'If the active server is unreachable, wait for it to return or force recovery manually.'
 		},
 		{
 			value: 'auto_force',
@@ -306,42 +355,66 @@
 	let activeRows: Row[] | null = $state(null);
 	let deleteModalOpen = $state(false);
 	let failoverModalOpen = $state(false);
+	let policySaving = $state(false);
 	let jailsLoading = $state(false);
 	let vmsLoading = $state(false);
 	let jailsLoadedForNode = $state('');
 	let vmsLoadedForNode = $state('');
+	let freshnessNow = $state(Date.now());
+	let periodicRefreshRunning = false;
+	let policyRefreshGeneration = 0;
 
 	// svelte-ignore state_referenced_locally
-	let policies = resource(
-		() => 'replication-policies',
-		async () => {
-			const res = await listReplicationPolicies();
-			updateCache('replication-policies', res);
-			return res;
-		},
-		{ initialValue: data.policies }
-	);
+	let policies = $state<ReplicationPolicy[]>(data.policies);
 
-	// svelte-ignore state_referenced_locally
-	let receipts = resource(
-		() => 'replication-receipts-policies',
-		async () => {
-			const res = await listReplicationReceipts();
-			updateCache('replication-receipts', res);
-			return res;
-		},
-		{ initialValue: data.receipts || [] }
-	);
+	async function refreshPolicyList() {
+		const generation = ++policyRefreshGeneration;
+		const refreshedPolicies = await listReplicationPolicies();
+		if (generation !== policyRefreshGeneration) return;
+
+		updateCache('replication-policies', refreshedPolicies);
+		policies = refreshedPolicies;
+	}
 
 	watch(
 		() => reload,
 		(value) => {
 			if (!value) return;
-			policies.refetch();
-			receipts.refetch();
+			void refreshPolicyList().catch(() => undefined);
 			reload = false;
 		}
 	);
+
+	onMount(() => {
+		const timer = window.setInterval(() => {
+			freshnessNow = Date.now();
+			if (periodicRefreshRunning || policySaving) return;
+
+			periodicRefreshRunning = true;
+			const generation = policyRefreshGeneration;
+			const previousPolicies = policies;
+			void listReplicationPolicies()
+				.then((refreshedPolicies) => {
+					if (generation !== policyRefreshGeneration || policySaving) return;
+
+					// Array API failures collapse to an empty array. Do not blank a healthy
+					// table during background polling when we cannot distinguish that from
+					// a legitimate remote deletion; an explicit reload can reconcile deletions.
+					if (previousPolicies.length > 0 && refreshedPolicies?.length === 0) {
+						return;
+					}
+
+					updateCache('replication-policies', refreshedPolicies);
+					policies = refreshedPolicies;
+				})
+				.catch(() => undefined)
+				.finally(() => {
+					periodicRefreshRunning = false;
+				});
+		}, 30_000);
+
+		return () => window.clearInterval(timer);
+	});
 
 	let selectedPolicyId = $derived.by(() => {
 		if (!activeRows || activeRows.length !== 1) return 0;
@@ -416,12 +489,12 @@
 
 	let selectedPolicyName = $derived.by(() => {
 		if (selectedPolicyId === 0) return '';
-		return policies.current.find((policy) => policy.id === selectedPolicyId)?.name || '';
+		return policies.find((policy) => policy.id === selectedPolicyId)?.name || '';
 	});
 
 	let selectedPolicy = $derived.by(() => {
 		if (selectedPolicyId === 0) return null;
-		return policies.current.find((policy) => policy.id === selectedPolicyId) || null;
+		return policies.find((policy) => policy.id === selectedPolicyId) || null;
 	});
 
 	let nodeNameByID = $derived.by(() => {
@@ -438,6 +511,19 @@
 		const known = nodeNameByID[value];
 		if (known) return known;
 		return value.length > 12 ? `${value.slice(0, 8)}...` : value;
+	}
+
+	function escapeHtml(value: unknown): string {
+		return String(value ?? '').replace(/[&<>"']/g, (character) => {
+			const entities: Record<string, string> = {
+				'&': '&amp;',
+				'<': '&lt;',
+				'>': '&gt;',
+				'"': '&quot;',
+				"'": '&#39;'
+			};
+			return entities[character] || character;
+		});
 	}
 
 	function scheduleLabel(cronExpr: string): string {
@@ -458,7 +544,7 @@
 
 	function failoverModeSummary(failoverMode: string): string {
 		if (failoverMode === 'auto_force') return 'Auto force recovery';
-		if (failoverMode === 'auto_safe') return 'Auto safe move';
+		if (failoverMode === 'auto_safe') return 'Auto safe handoff';
 		return 'Manual moves only';
 	}
 
@@ -466,108 +552,212 @@
 		return failbackMode === 'auto' ? 'Auto move back' : 'Manual move back';
 	}
 
+	function pendingReadinessLabel(reason: string): string {
+		const normalized = String(reason || '')
+			.trim()
+			.toLowerCase();
+		if (!normalized) return '';
+		if (
+			normalized === 'replication_generation_commit_in_progress' ||
+			normalized.endsWith('_in_progress')
+		) {
+			return 'Syncing';
+		}
+		if (
+			normalized === 'awaiting_post_transition_validation' ||
+			(normalized.startsWith('awaiting_') && normalized.endsWith('_validation'))
+		) {
+			return 'Validating';
+		}
+		if (normalized.endsWith('_requires_validation')) {
+			return 'Needs sync';
+		}
+		return '';
+	}
+
 	function policyModeSummary(policy: ReplicationPolicy): string {
 		return `${failoverModeSummary(policy.failoverMode)} | ${sourceModeSummary(policy.sourceMode)} | ${failbackModeSummary(policy.failbackMode)}`;
 	}
 
-	let receiptsByPolicyID = $derived.by(() => {
-		const out: Record<number, ReplicationReceipt[]> = {};
-		for (const receipt of receipts.current || []) {
-			const policyID = Number(receipt.policyId || 0);
-			if (!Number.isFinite(policyID) || policyID <= 0) continue;
-			if (!out[policyID]) out[policyID] = [];
-			out[policyID].push(receipt);
-		}
-		return out;
-	});
+	function makeTargetSync(
+		nodeId: string,
+		label: string,
+		weight: number | undefined,
+		state: PolicyTargetSyncState,
+		statusLabel: string,
+		details: PolicyTargetSyncDetails = {}
+	): PolicyTargetSync {
+		return {
+			nodeId,
+			label,
+			weight,
+			state,
+			statusLabel,
+			dotColor: targetSyncColors[state],
+			...details
+		};
+	}
 
-	function resolvePolicyTargetSync(policy: ReplicationPolicy) {
+	function resolvePolicyTargetSync(policy: ReplicationPolicy): PolicyTargetSync[] {
 		const ownerNodeID = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
-		const targetSet = new Set(
-			(policy.targets || [])
-				.map((t) => String(t.nodeId || '').trim())
-				.filter((id) => id.length > 0)
+		const orderedTargets = [...(policy.targets || [])].sort(
+			(a, b) => Number(b.weight || 0) - Number(a.weight || 0)
 		);
+		const configuredTargetIDs = orderedTargets
+			.map((target) => String(target.nodeId || '').trim())
+			.filter((id) => id.length > 0);
+		const targetSet = new Set(configuredTargetIDs);
 		const targetWeightByID: Record<string, number> = {};
+		const targetByID: Record<string, (typeof orderedTargets)[number]> = {};
 		for (const t of policy.targets || []) {
 			const id = String(t.nodeId || '').trim();
-			if (id) targetWeightByID[id] = Number(t.weight) || 0;
+			if (!id) continue;
+			targetWeightByID[id] = Number(t.weight) || 0;
+			targetByID[id] = t;
 		}
 
-		const receiptsForPolicy = receiptsByPolicyID[policy.id] || [];
-		const receiptByTargetID: Record<string, ReplicationReceipt> = {};
-		for (const receipt of receiptsForPolicy) {
-			const targetID = String(receipt.targetNodeId || '').trim();
-			if (!targetID || !targetSet.has(targetID)) continue;
-			const existing = receiptByTargetID[targetID];
-			if (!existing) {
-				receiptByTargetID[targetID] = receipt;
-				continue;
-			}
-			const existingAt = Date.parse(existing.lastAttemptAt || '');
-			const candidateAt = Date.parse(receipt.lastAttemptAt || '');
-			if (
-				!Number.isFinite(existingAt) ||
-				(Number.isFinite(candidateAt) && candidateAt > existingAt)
-			) {
-				receiptByTargetID[targetID] = receipt;
-			}
-		}
-
-		const now = Date.now();
-		const allNodeIDs = nodes.map((n) => n.nodeUUID);
+		const now = freshnessNow;
+		const allNodeIDs = Array.from(
+			new Set(
+				[ownerNodeID, ...configuredTargetIDs, ...nodes.map((node) => node.nodeUUID)].filter(
+					(nodeID) => nodeID.length > 0
+				)
+			)
+		);
 
 		return allNodeIDs.map((nodeID) => {
 			const label = compactNodeLabel(nodeID);
 
 			if (nodeID === ownerNodeID) {
-				return {
-					nodeId: nodeID,
+				return makeTargetSync(
+					nodeID,
 					label,
-					weight: targetWeightByID[nodeID] ?? undefined,
-					state: 'active' as const,
-					dotColor: '#3b82f6'
-				};
+					targetWeightByID[nodeID] ?? undefined,
+					'active',
+					'Active'
+				);
 			}
 
 			if (!targetSet.has(nodeID)) {
-				return {
-					nodeId: nodeID,
-					label,
-					weight: undefined,
-					state: 'untargeted' as const,
-					dotColor: '#9ca3af'
-				};
+				return makeTargetSync(nodeID, label, undefined, 'untargeted', 'Not targeted');
 			}
 
 			const weight = targetWeightByID[nodeID];
-			const receipt = receiptByTargetID[nodeID];
-			if (!receipt) {
-				return { nodeId: nodeID, label, weight, state: 'never' as const, dotColor: '#9ca3af' };
+			const target = targetByID[nodeID];
+			const lastError = String(target?.lastError || '').trim();
+			const lastVerifiedAt = String(target?.lastVerifiedAt || '').trim();
+			const readyUntil = String(target?.readyUntil || '').trim();
+			const lastVerifiedAtMs = Date.parse(lastVerifiedAt);
+			const readyUntilMs = Date.parse(readyUntil);
+			const requiredDatasetCount = Number(target?.requiredDatasetCount || 0);
+			const completedDatasetCount = Number(target?.completedDatasetCount || 0);
+			const datasetProgress =
+				requiredDatasetCount > 0
+					? `${completedDatasetCount}/${requiredDatasetCount} datasets`
+					: undefined;
+			const targetHasReadiness = Boolean(
+				target?.ready ||
+				String(target?.generationId || '').trim() ||
+				lastVerifiedAt ||
+				readyUntil ||
+				lastError ||
+				requiredDatasetCount > 0 ||
+				completedDatasetCount > 0
+			);
+			const targetGenerationReady = Boolean(
+				target?.ready &&
+				String(target.generationId || '').trim() &&
+				Number(target.ownerEpoch || 0) === Number(policy.ownerEpoch || 0) &&
+				requiredDatasetCount > 0 &&
+				completedDatasetCount === requiredDatasetCount &&
+				Number.isFinite(lastVerifiedAtMs) &&
+				Number.isFinite(readyUntilMs) &&
+				readyUntilMs > now
+			);
+			const pendingLabel = pendingReadinessLabel(lastError);
+			const readinessDetails: PolicyTargetSyncDetails = {
+				verifiedAt: lastVerifiedAt || undefined,
+				readyUntil: readyUntil || undefined,
+				datasetProgress
+			};
+
+			if (pendingLabel) {
+				return makeTargetSync(nodeID, label, weight, 'pending', pendingLabel, {
+					...readinessDetails,
+					detail: lastError
+				});
 			}
 
-			const status = String(receipt.status || '').trim().toLowerCase();
-			if (status === 'failed') {
-				return { nodeId: nodeID, label, weight, state: 'failed' as const, dotColor: '#ef4444' };
+			if (lastError) {
+				return makeTargetSync(nodeID, label, weight, 'failed', 'Error', {
+					...readinessDetails,
+					detail: lastError
+				});
 			}
 
-			const lastSuccessAt = Date.parse(receipt.lastSuccessAt || '');
-			const freshnessWindowSeconds = Number(receipt.freshnessWindowSeconds || 0);
+			if (targetGenerationReady) {
+				return makeTargetSync(nodeID, label, weight, 'ready', 'Ready', readinessDetails);
+			}
+
 			if (
-				!Number.isFinite(lastSuccessAt) ||
-				!Number.isFinite(freshnessWindowSeconds) ||
-				freshnessWindowSeconds <= 0
+				targetHasReadiness &&
+				(Number.isFinite(lastVerifiedAtMs) ||
+					(target?.ready && Number.isFinite(readyUntilMs) && readyUntilMs <= now))
 			) {
-				return { nodeId: nodeID, label, weight, state: 'stale' as const, dotColor: '#f59e0b' };
+				return makeTargetSync(nodeID, label, weight, 'stale', 'Stale', readinessDetails);
 			}
 
-			const ageSeconds = (now - lastSuccessAt) / 1000;
-			if (ageSeconds > freshnessWindowSeconds) {
-				return { nodeId: nodeID, label, weight, state: 'stale' as const, dotColor: '#f59e0b' };
+			if (targetHasReadiness) {
+				return makeTargetSync(nodeID, label, weight, 'pending', 'Pending', readinessDetails);
 			}
 
-			return { nodeId: nodeID, label, weight, state: 'ok' as const, dotColor: '#22c55e' };
+			return makeTargetSync(nodeID, label, weight, 'pending', 'Pending');
 		});
+	}
+
+	function resolvePolicyProtection(
+		policy: ReplicationPolicy,
+		targetSync: PolicyTargetSync[]
+	): PolicyProtectionLabel {
+		if (!policy.enabled) return 'Unprotected';
+		if (!policy.haEligible) return 'Blocked';
+
+		const protectionState = String(policy.protectionState || '')
+			.trim()
+			.toLowerCase();
+		if (protectionState === 'deleting') return 'Deleting';
+		if (protectionState === 'suspended') return 'Suspended';
+		if (protectionState === 'unprotected') return 'Unprotected';
+
+		const lastStatus = String(policy.lastStatus || '')
+			.trim()
+			.toLowerCase();
+		if (lastStatus === 'blocked') return 'Blocked';
+		if (lastStatus === 'failed') return 'Failed';
+
+		const targetStates = targetSync
+			.filter((target) => target.state !== 'active' && target.state !== 'untargeted')
+			.map((target) => target.state);
+		if (
+			lastStatus === 'degraded' ||
+			policy.haDegraded ||
+			protectionState === 'degraded' ||
+			targetStates.some((state) => state === 'failed' || state === 'stale')
+		) {
+			return 'Degraded';
+		}
+		if (
+			protectionState === 'initializing' ||
+			targetStates.length === 0 ||
+			targetStates.some((state) => state === 'pending')
+		) {
+			return 'Initializing';
+		}
+		if (protectionState === 'armed' || targetStates.every((state) => state === 'ready')) {
+			return 'Protected';
+		}
+
+		return 'Eligible';
 	}
 
 	let nodeOptions = $derived.by(() =>
@@ -605,7 +795,7 @@
 		const policy = selectedPolicy;
 		if (!policy) {
 			return [
-				{ value: '', label: 'Auto-pick the best target from policy priority' },
+				{ value: '', label: 'Auto-pick the best eligible target' },
 				...nodeOptions
 			];
 		}
@@ -620,7 +810,7 @@
 			(option) => configuredTargets.has(option.value) && isOnlineNode(option.value)
 		);
 		return [
-			{ value: '', label: 'Auto-pick the best target from policy priority' },
+			{ value: '', label: 'Auto-pick the best eligible target' },
 			...scopedOptions
 		];
 	});
@@ -692,7 +882,11 @@
 				}
 
 				const transitionState = String(row.transitionState || 'none');
-				if (transitionState !== 'none' && transitionState !== 'completed' && transitionState !== 'failed') {
+				if (
+					transitionState !== 'none' &&
+					transitionState !== 'completed' &&
+					transitionState !== 'failed'
+				) {
 					const phaseLabels: Record<string, string> = {
 						demoting: 'Demoting',
 						catchup: 'Catching Up',
@@ -741,63 +935,55 @@
 		{ field: 'mode', title: 'Behavior', width: 320, minWidth: 240 },
 		{
 			field: 'haState',
-			title: 'HA State',
+			title: 'Protection',
 			width: 150,
 			minWidth: 130,
 			formatter: (cell: CellComponent) => {
-				const row = cell.getRow().getData() as {
-					haEligible: boolean;
-					haDegraded: boolean;
-					haLabel: string;
-				};
-				if (!row.haEligible) {
-					return renderWithIcon('mdi:alert-octagon', row.haLabel || 'Blocked', 'text-red-500');
-				}
-				if (row.haDegraded) {
-					return renderWithIcon(
-						'mdi:alert-circle-outline',
-						row.haLabel || 'Degraded',
-						'text-amber-500'
-					);
-				}
-				return renderWithIcon('mdi:check-circle', row.haLabel || 'Eligible', 'text-green-500');
+				const label = String(cell.getValue() || 'Eligible') as PolicyProtectionLabel;
+				const style = protectionStyles[label] || protectionStyles.Eligible;
+				return renderWithIcon(style.icon, label, style.className);
 			}
 		},
 		{
 			field: 'targets',
 			title: 'Targets',
-			width: 320,
-			minWidth: 220,
+			width: 430,
+			minWidth: 300,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData() as {
-					nodeSyncStatuses: Array<{
-						nodeId: string;
-						label: string;
-						weight?: number;
-						state: string;
-						dotColor: string;
-					}>;
+					nodeSyncStatuses: PolicyTargetSync[];
 				};
 				const statuses = row.nodeSyncStatuses;
 				if (!statuses || !statuses.length) return '-';
 
-				const stateLabels: Record<string, string> = {
-					active: 'Active',
-					ok: 'Synced',
-					failed: 'Failed',
-					stale: 'Stale',
-					never: 'Pending',
-					untargeted: 'Not targeted'
+				const stateClasses: Record<PolicyTargetSyncState, string> = {
+					active: 'text-blue-500',
+					ready: 'text-green-600',
+					failed: 'text-red-500',
+					stale: 'text-amber-600',
+					pending: 'text-muted-foreground',
+					untargeted: 'text-muted-foreground'
 				};
 
 				const tracked = statuses.filter((s) => s.state !== 'untargeted');
 				const untargeted = statuses.filter((s) => s.state === 'untargeted');
 
 				const nodeHtml = (s: (typeof statuses)[number]) => {
-					const humanState = stateLabels[s.state] || s.state;
-					const suffix =
-						s.weight !== undefined ? `${s.label} (${s.weight})` : s.label;
-					return `<span class="inline-flex items-center gap-0.5" title="${s.label}: ${humanState}"><span class="shrink-0 inline-block rounded-full" style="width:8px;height:8px;background-color:${s.dotColor}"></span><span>${suffix}</span></span>`;
+					const nodeLabel = s.weight !== undefined ? `${s.label} (${s.weight})` : s.label;
+					const verifiedLabel = s.verifiedAt ? `Verified ${convertDbTime(s.verifiedAt)}` : '';
+					const readyUntilLabel = s.readyUntil ? `Ready until ${convertDbTime(s.readyUntil)}` : '';
+					const secondaryLabel = verifiedLabel || s.datasetProgress || '';
+					const tooltip = [
+						`${s.label}: ${s.statusLabel}`,
+						verifiedLabel,
+						readyUntilLabel,
+						s.datasetProgress || '',
+						s.detail || ''
+					]
+						.filter(Boolean)
+						.join(' | ');
+					const stateClass = stateClasses[s.state] || 'text-muted-foreground';
+					return `<span class="inline-flex min-w-[140px] flex-col gap-0.5 rounded border px-1.5 py-1" title="${escapeHtml(tooltip)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-2 w-2 shrink-0 rounded-full" style="background-color:${s.dotColor}"></span><span>${escapeHtml(nodeLabel)}</span><span class="${stateClass} text-xs">${escapeHtml(s.statusLabel)}</span></span>${secondaryLabel ? `<span class="text-muted-foreground pl-3 text-[11px]">${escapeHtml(secondaryLabel)}</span>` : ''}</span>`;
 				};
 
 				let parts = tracked.map(nodeHtml);
@@ -808,7 +994,7 @@
 					);
 				}
 
-				return `<span class="inline-flex items-center gap-1.5 flex-wrap">${parts.join('')}</span>`;
+				return `<span class="inline-flex flex-wrap items-center gap-1.5">${parts.join('')}</span>`;
 			}
 		},
 		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
@@ -835,7 +1021,7 @@
 	];
 
 	let tableData = $derived.by(() => ({
-		rows: policies.current.map((policy) => {
+		rows: policies.map((policy) => {
 			const workloadLabel =
 				policy.guestType === 'jail' ? `Jail ${policy.guestId}` : `VM ${policy.guestId}`;
 			const sourceNode = policy.activeNodeId || policy.sourceNodeId || '';
@@ -845,9 +1031,7 @@
 					?.map((target) => `${compactNodeLabel(target.nodeId)} (${target.weight})`)
 					.join(' | ') || '-';
 			const targetSync = resolvePolicyTargetSync(policy);
-			const haEligible = Boolean(policy.haEligible);
-			const haDegraded = Boolean(policy.haDegraded);
-			const haLabel = !haEligible ? 'Blocked' : haDegraded ? 'Degraded' : 'Eligible';
+			const protection = resolvePolicyProtection(policy, targetSync);
 
 			return {
 				id: policy.id,
@@ -858,10 +1042,9 @@
 				workload: workloadLabel,
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
-				haState: haLabel,
-				haEligible,
+				haState: protection,
+				haEligible: Boolean(policy.haEligible),
 				haDegraded: policy.haDegraded,
-				haLabel,
 				targets: targetsLabel,
 				nodeSyncStatuses: targetSync,
 				schedule: scheduleLabel(policy.cronExpr),
@@ -906,7 +1089,7 @@
 
 	async function openEditPolicy() {
 		if (selectedPolicyId === 0) return;
-		const policy = policies.current.find((entry) => entry.id === selectedPolicyId);
+		const policy = policies.find((entry) => entry.id === selectedPolicyId);
 		if (!policy) return;
 
 		policyStep = 'workload';
@@ -1134,27 +1317,119 @@
 		};
 	}
 
-	async function savePolicy() {
-		const payload = buildPolicyPayload();
-		if (!payload) return;
+	function policyMatchesSavedInput(
+		policy: ReplicationPolicy,
+		payload: ReplicationPolicyInput
+	): boolean {
+		const actualTargets = [...(policy.targets || [])]
+			.map((target) => `${String(target.nodeId || '').trim()}:${Number(target.weight || 0)}`)
+			.sort();
+		const expectedTargets = [...payload.targets]
+			.map((target) => `${String(target.nodeId || '').trim()}:${Number(target.weight || 0)}`)
+			.sort();
+		const pinnedSourceMatches =
+			payload.sourceMode !== 'pinned_primary' ||
+			String(policy.sourceNodeId || '').trim() === String(payload.sourceNodeId || '').trim();
 
-		const result = policyModal.edit
-			? await updateReplicationPolicy(selectedPolicyId, payload)
-			: await createReplicationPolicy(payload);
+		return (
+			policy.name === payload.name &&
+			String(policy.description || '') === String(payload.description || '') &&
+			policy.guestType === payload.guestType &&
+			Number(policy.guestId) === Number(payload.guestId) &&
+			policy.sourceMode === payload.sourceMode &&
+			pinnedSourceMatches &&
+			policy.failbackMode === payload.failbackMode &&
+			policy.failoverMode === payload.failoverMode &&
+			String(policy.cronExpr || '').trim() === String(payload.cronExpr || '').trim() &&
+			policy.enabled === payload.enabled &&
+			policy.crashRecovery === payload.crashRecovery &&
+			Number(policy.crashRestartMax) === Number(payload.crashRestartMax) &&
+			policy.poolHealthCheck === payload.poolHealthCheck &&
+			Number(policy.poolCapacityPct) === Number(payload.poolCapacityPct) &&
+			actualTargets.length === expectedTargets.length &&
+			actualTargets.every((target, index) => target === expectedTargets[index])
+		);
+	}
 
-		if (result.status === 'success') {
-			toast.success(policyModal.edit ? 'Policy updated' : 'Policy created', {
-				position: 'bottom-center'
-			});
-			reload = true;
-			resetPolicyModal();
-			return;
+	async function refetchSavedPolicy(
+		editingPolicy: boolean,
+		policyID: number,
+		payload: ReplicationPolicyInput,
+		generation: number
+	): Promise<ReplicationPolicy[] | null> {
+		for (let attempt = 0; attempt < POLICY_SAVE_REFRESH_ATTEMPTS; attempt += 1) {
+			try {
+				const refreshedPolicies = await listReplicationPolicies();
+				if (generation !== policyRefreshGeneration) return null;
+
+				const refreshedPolicy = refreshedPolicies.find((policy) =>
+					editingPolicy ? policy.id === policyID : policyMatchesSavedInput(policy, payload)
+				);
+				if (refreshedPolicy && policyMatchesSavedInput(refreshedPolicy, payload)) {
+					return refreshedPolicies;
+				}
+			} catch {
+				// Retry transient list failures within the same bounded confirmation window.
+			}
+
+			if (attempt < POLICY_SAVE_REFRESH_ATTEMPTS - 1) {
+				await new Promise<void>((resolve) =>
+					window.setTimeout(resolve, POLICY_SAVE_REFRESH_DELAY_MS)
+				);
+			}
 		}
 
-		handleAPIError(result);
-		toast.error(userPolicySaveErrorMessage(result.message || '', result.error || ''), {
-			position: 'bottom-center'
-		});
+		return null;
+	}
+
+	async function savePolicy() {
+		if (policySaving) return;
+		const payload = buildPolicyPayload();
+		if (!payload) return;
+		const editingPolicy = policyModal.edit;
+		const policyID = selectedPolicyId;
+		const previousPolicies = policies;
+
+		policySaving = true;
+		const saveGeneration = ++policyRefreshGeneration;
+		try {
+			const result = editingPolicy
+				? await updateReplicationPolicy(policyID, payload)
+				: await createReplicationPolicy(payload);
+
+			if (result.status === 'success') {
+				const refreshedPolicies = await refetchSavedPolicy(
+					editingPolicy,
+					policyID,
+					payload,
+					saveGeneration
+				);
+				if (!refreshedPolicies) {
+					policies = previousPolicies;
+					toast.warning(
+						'Policy was saved, but this node could not confirm the updated list. The form remains open; retry Save or reload the page.',
+						{ position: 'bottom-center' }
+					);
+					return;
+				}
+
+				updateCache('replication-policies', refreshedPolicies);
+				policies = refreshedPolicies;
+
+				toast.success(editingPolicy ? 'Policy updated' : 'Policy created', {
+					position: 'bottom-center'
+				});
+				resetPolicyModal();
+				return;
+			}
+
+			handleAPIError(result);
+			toast.error(userPolicySaveErrorMessage(result.message || '', result.error || ''), {
+				position: 'bottom-center'
+			});
+		} finally {
+			policySaving = false;
+		}
 	}
 
 	async function removePolicy() {
@@ -1310,7 +1585,13 @@
 			size="sm"
 			variant="outline"
 			class="h-6"
-			disabled={Boolean(selectedPolicy && (!selectedPolicy.haEligible || (selectedPolicy.transitionState !== 'none' && selectedPolicy.transitionState !== 'completed' && selectedPolicy.transitionState !== 'failed')))}
+			disabled={Boolean(
+				selectedPolicy &&
+				(!selectedPolicy.haEligible ||
+					(selectedPolicy.transitionState !== 'none' &&
+						selectedPolicy.transitionState !== 'completed' &&
+						selectedPolicy.transitionState !== 'failed'))
+			)}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--swap-horizontal-bold] mr-1 h-4 w-4"></span>
@@ -1325,7 +1606,13 @@
 			size="sm"
 			variant="outline"
 			class="h-6"
-			disabled={Boolean(selectedPolicy && (!selectedPolicy.haEligible || (selectedPolicy.transitionState !== 'none' && selectedPolicy.transitionState !== 'completed' && selectedPolicy.transitionState !== 'failed')))}
+			disabled={Boolean(
+				selectedPolicy &&
+				(!selectedPolicy.haEligible ||
+					(selectedPolicy.transitionState !== 'none' &&
+						selectedPolicy.transitionState !== 'completed' &&
+						selectedPolicy.transitionState !== 'failed'))
+			)}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
@@ -1494,9 +1781,9 @@
 					<Tabs.Content value="failover" class="space-y-3">
 						<div class="rounded-md border p-2.5">
 							<div class="mb-2">
-								<p class="text-sm font-medium">If the active server goes down</p>
+								<p class="text-sm font-medium">Automatic recovery behavior</p>
 								<p class="text-muted-foreground text-xs">
-									Choose what should happen automatically.
+									Choose when Sylve may move the workload without an administrator.
 								</p>
 							</div>
 							<RadioGroup.Root bind:value={policyModal.failoverMode} class="gap-2">
@@ -1544,7 +1831,8 @@
 								<div>
 									<p class="text-sm font-medium">Target servers</p>
 									<p class="text-muted-foreground text-xs">
-										Higher priority gets picked first when auto-selecting a target.
+									Forced recovery prefers the freshest complete replica. Priority drives normal
+									auto-selection and breaks freshness ties.
 									</p>
 									<p class="text-muted-foreground mt-1 text-xs">
 										{policyModal.targets.length}/{maxTargetRows} targets configured
@@ -1682,7 +1970,8 @@
 							<div class="mb-2">
 								<p class="text-sm font-medium">Crash recovery</p>
 								<p class="text-muted-foreground text-xs">
-									Detect crashed guests and restart locally. After repeated failures, initiate failover.
+									Detect crashed guests and restart locally. After repeated failures, initiate
+									failover.
 								</p>
 							</div>
 							<CustomCheckbox
@@ -1704,9 +1993,14 @@
 						<div class="rounded-md border p-2.5 space-y-2">
 							<div class="mb-2">
 								<p class="text-sm font-medium">Pool health monitoring</p>
-								<p class="text-muted-foreground text-xs">
-									Monitor ZFS pool health and capacity. Trigger failover if the pool becomes unhealthy or full.
-								</p>
+							<p class="text-muted-foreground text-xs">
+								Monitor ZFS pool health and capacity. Trigger failover if the pool becomes
+								unhealthy or full.
+							</p>
+							<p class="mt-1 text-xs text-amber-300">
+								An unhealthy pool uses force recovery and may lose the newest writes. Capacity
+								pressure uses a safe handoff.
+							</p>
 							</div>
 							<CustomCheckbox
 								label="Monitor ZFS pool health"
@@ -1790,12 +2084,14 @@
 		</div>
 
 		<Dialog.Footer class="flex items-center justify-between">
-			<Button variant="outline" onclick={resetPolicyModal}>Cancel</Button>
+			<Button variant="outline" onclick={resetPolicyModal} disabled={policySaving}>Cancel</Button>
 			<div class="flex items-center gap-2">
 				{#if !isLastPolicyStep}
-					<Button onclick={goToNextPolicyStep}>Next</Button>
+					<Button onclick={goToNextPolicyStep} disabled={policySaving}>Next</Button>
 				{:else}
-					<Button onclick={savePolicy}>Save</Button>
+					<Button onclick={savePolicy} disabled={policySaving}>
+						{policySaving ? 'Saving...' : 'Save'}
+					</Button>
 				{/if}
 			</div>
 		</Dialog.Footer>

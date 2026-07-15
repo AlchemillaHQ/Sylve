@@ -29,11 +29,12 @@ func TestReplicationPolicyEffectiveRunner(t *testing.T) {
 	tests := []struct {
 		name, mode, sourceNodeID, activeNodeID, want string
 	}{
-		{"pinned uses source node", clusterModels.ReplicationSourceModePinned, "node-1", "node-2", "node-1"},
+		{"pinned uses active owner", clusterModels.ReplicationSourceModePinned, "node-1", "node-2", "node-2"},
 		{"follow_active prefers active", clusterModels.ReplicationSourceModeFollowActive, "node-1", "node-2", "node-2"},
 		{"follow_active no active falls back to source", clusterModels.ReplicationSourceModeFollowActive, "node-1", "", "node-1"},
 		{"follow_active empty both returns empty", clusterModels.ReplicationSourceModeFollowActive, "", "", ""},
-		{"pinned empty source returns empty", clusterModels.ReplicationSourceModePinned, "", "node-2", ""},
+		{"pinned empty source still uses active owner", clusterModels.ReplicationSourceModePinned, "", "node-2", "node-2"},
+		{"pinned without active falls back to preferred source", clusterModels.ReplicationSourceModePinned, "node-1", "", "node-1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,10 +170,10 @@ func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 1, Name: "ha-test", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 100, SourceNodeID: "node-1",
-		SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailbackMode: clusterModels.ReplicationFailbackManual,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr: "* * * * *", OwnerEpoch: 1,
+		CronExpr:     "* * * * *", OwnerEpoch: 1,
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: "node-2", Weight: 100},
 		},
@@ -210,10 +211,10 @@ func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 		policyNoTargets := &clusterModels.ReplicationPolicy{
 			Name: "no-targets", GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 200, SourceNodeID: "node-1",
-			SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+			SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 			FailbackMode: clusterModels.ReplicationFailbackManual,
 			FailoverMode: clusterModels.ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 		}
 		snapshot := makeRuntimeSnapshot(3, 3)
 		snapshot.QuorumAvailable = true
@@ -232,10 +233,10 @@ func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 		policySelfTarget := &clusterModels.ReplicationPolicy{
 			Name: "self-target", GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 300, SourceNodeID: "node-1",
-			SourceMode: clusterModels.ReplicationSourceModePinned,
+			SourceMode:   clusterModels.ReplicationSourceModePinned,
 			FailbackMode: clusterModels.ReplicationFailbackManual,
 			FailoverMode: clusterModels.ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 			Targets: []clusterModels.ReplicationPolicyTarget{
 				{NodeID: "node-1", Weight: 100}, // same as source
 			},
@@ -271,10 +272,10 @@ func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 		policyFA := &clusterModels.ReplicationPolicy{
 			Name: "fa", GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 400, ActiveNodeID: "node-3",
-			SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+			SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 			FailbackMode: clusterModels.ReplicationFailbackManual,
 			FailoverMode: clusterModels.ReplicationFailoverManual,
-			CronExpr: "* * * * *", OwnerEpoch: 1,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
 			Targets: []clusterModels.ReplicationPolicyTarget{
 				{NodeID: "node-2", Weight: 100},
 				{NodeID: "node-3", Weight: 50},
@@ -314,7 +315,7 @@ func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 		snapshot := makeRuntimeSnapshot(3, 1)
 		snapshot.QuorumAvailable = false
 		eval := s.evaluateReplicationPolicyHA(policy, ReplicationPolicyHAEvalOptions{
-			RuntimeSnapshot:  &snapshot,
+			RuntimeSnapshot:   &snapshot,
 			SkipRuntimeChecks: true,
 		})
 		if !eval.Eligible {
@@ -333,10 +334,10 @@ func TestEvaluateReplicationPolicyHAWithTargetsOverride(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		Name: "override-test", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 100, SourceNodeID: "node-1",
-		SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailbackMode: clusterModels.ReplicationFailbackManual,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr: "* * * * *", OwnerEpoch: 1,
+		CronExpr:     "* * * * *", OwnerEpoch: 1,
 		Targets: []clusterModels.ReplicationPolicyTarget{}, // policy has no targets
 	}
 
@@ -357,10 +358,10 @@ func TestEvaluateReplicationPolicyTransitionHA(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		Name: "transition-test", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 100, SourceNodeID: "node-1", ActiveNodeID: "node-1",
-		SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailbackMode: clusterModels.ReplicationFailbackManual,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr: "* * * * *", OwnerEpoch: 1,
+		CronExpr:     "* * * * *", OwnerEpoch: 1,
 		Targets: []clusterModels.ReplicationPolicyTarget{
 			{NodeID: "node-2", Weight: 100},
 			{NodeID: "node-3", Weight: 50},

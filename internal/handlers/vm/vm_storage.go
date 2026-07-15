@@ -10,6 +10,8 @@ package libvirtHandlers
 
 import (
 	"context"
+	"net/http"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -18,9 +20,23 @@ import (
 )
 
 type vmStorageService interface {
+	RequireVMStorageTopologyMutable(rid uint) error
+	RequireVMStorageRecordTopologyMutable(storageID int) error
 	StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error
 	StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error
 	StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error
+}
+
+func writeVMStorageTopologyGuardError(c *gin.Context, err error) {
+	if strings.Contains(err.Error(), "replication_storage_topology_change_requires_policy_disabled") {
+		c.JSON(http.StatusConflict, internal.APIResponse[any]{
+			Status: "error", Message: "replication_storage_topology_change_requires_policy_disabled", Error: err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		Status: "error", Message: "replication_topology_check_failed", Error: err.Error(),
+	})
 }
 
 // @Summary Detach Storage from a Virtual Machine
@@ -43,6 +59,10 @@ func StorageDetach(libvirtService vmStorageService) gin.HandlerFunc {
 				Data:    nil,
 				Error:   "invalid_request: " + err.Error(),
 			})
+			return
+		}
+		if err := libvirtService.RequireVMStorageTopologyMutable(req.RID); err != nil {
+			writeVMStorageTopologyGuardError(c, err)
 			return
 		}
 
@@ -87,6 +107,10 @@ func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
 			})
 			return
 		}
+		if err := libvirtService.RequireVMStorageTopologyMutable(req.RID); err != nil {
+			writeVMStorageTopologyGuardError(c, err)
+			return
+		}
 
 		ctx := c.Request.Context()
 
@@ -129,6 +153,10 @@ func StorageUpdate(libvirtService vmStorageService) gin.HandlerFunc {
 				Data:    nil,
 				Error:   "invalid_request: " + err.Error(),
 			})
+			return
+		}
+		if err := libvirtService.RequireVMStorageRecordTopologyMutable(req.ID); err != nil {
+			writeVMStorageTopologyGuardError(c, err)
 			return
 		}
 

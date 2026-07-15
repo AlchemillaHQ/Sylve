@@ -45,6 +45,24 @@ func TestClassifyCreateVMError(t *testing.T) {
 			wantCode:   "rid_or_name_already_in_use",
 		},
 		{
+			name:       "shared guest ID conflict",
+			err:        fmt.Errorf("guest_id_already_in_use: guest_id=801 node_id=node-a guest_type=jail"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "guest_id_already_in_use",
+		},
+		{
+			name:       "cluster inventory unavailable",
+			err:        fmt.Errorf("guest_identity_inventory_unavailable: remote node unavailable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "guest_identity_inventory_unavailable",
+		},
+		{
+			name:       "existing inventory conflict",
+			err:        fmt.Errorf("guest_identity_inventory_conflict: duplicate ID"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "guest_identity_inventory_conflict",
+		},
+		{
 			name:       "libvirt domain already exists maps to vm id exists",
 			err:        fmt.Errorf("failed_to_create_lv_vm: failed to define VM domain: domain '801' already exists"),
 			wantStatus: http.StatusConflict,

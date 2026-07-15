@@ -27,3 +27,12 @@ func shouldPersistNetlinkEvent(ev *models.NetlinkEvent) bool {
 	eventType := strings.TrimSpace(strings.ToLower(ev.Type))
 	return eventType == zfsHistoryEventType || eventType == zfsStateChangeType
 }
+
+func shouldLogNetlinkEvent(ev *models.NetlinkEvent) bool {
+	if ev == nil {
+		return false
+	}
+
+	eventType := strings.TrimSpace(strings.ToLower(ev.Type))
+	return eventType != zfsHistoryEventType
+}

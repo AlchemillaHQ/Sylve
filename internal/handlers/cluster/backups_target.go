@@ -505,6 +505,37 @@ func BackupTargetDatasetVMMetadata(zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
+func restoreFromTargetEnqueueError(err error) (int, string) {
+	if err == nil {
+		return http.StatusBadRequest, "restore_enqueue_failed"
+	}
+
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "backup_job_already_running"):
+		return http.StatusConflict, "backup_job_already_running"
+	case strings.Contains(message, "guest_id_already_in_use"),
+		strings.Contains(message, "guest_identity_inventory_conflict"),
+		strings.Contains(message, "restore_destination_guest_dataset_exists"):
+		return http.StatusConflict, "restore_guest_destination_conflict"
+	case strings.Contains(message, "guest_identity_inventory_unavailable"):
+		return http.StatusServiceUnavailable, "restore_guest_identity_unavailable"
+	case strings.Contains(message, "guest_identity_inventory_scan_failed"),
+		strings.Contains(message, "restore_destination_dataset_check_failed"):
+		return http.StatusInternalServerError, "restore_precheck_failed"
+	case strings.Contains(message, "restore_guest_destination_kind_mismatch"),
+		strings.Contains(message, "restore_guest_destination_must_be_canonical_root"),
+		strings.Contains(message, "invalid_guest_id"):
+		return http.StatusBadRequest, "restore_guest_destination_invalid"
+	default:
+		return http.StatusBadRequest, "restore_enqueue_failed"
+	}
+}
+
+func hasForwardedRestoreResponse(body []byte, statusCode int) bool {
+	return statusCode >= http.StatusBadRequest && len(body) > 0
+}
+
 func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -579,26 +610,6 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			restoreNetwork = *req.RestoreNetwork
 		}
 
-		_, guestID := extractGuestFromDatasetPath(req.DestinationDataset)
-		if guestID > 0 {
-			if err := validateGuestIDRestorePlacement(cS, guestID, restoreNodeID); err != nil {
-				status := http.StatusConflict
-				message := "restore_guest_id_conflict"
-				if strings.Contains(err.Error(), "load_cluster_details_failed") {
-					status = http.StatusInternalServerError
-					message = "restore_precheck_failed"
-				}
-
-				c.JSON(status, internal.APIResponse[any]{
-					Status:  "error",
-					Message: message,
-					Error:   err.Error(),
-					Data:    nil,
-				})
-				return
-			}
-		}
-
 		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
 			body, statusCode, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
 				"remoteDataset":       strings.TrimSpace(req.RemoteDataset),
@@ -610,6 +621,10 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 				"encryptionKeyFormat": req.EncryptionKeyFormat,
 			})
 			if err != nil {
+				if hasForwardedRestoreResponse(body, statusCode) {
+					c.Data(statusCode, "application/json", body)
+					return
+				}
 				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "restore_remote_node_forward_failed",
@@ -641,12 +656,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			req.DestinationDataset,
 			restoreNetwork,
 		); err != nil {
-			status := http.StatusBadRequest
-			msg := "restore_enqueue_failed"
-			if strings.Contains(err.Error(), "already_running") {
-				status = http.StatusConflict
-				msg = "backup_job_already_running"
-			}
+			status, msg := restoreFromTargetEnqueueError(err)
 			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
 				Message: msg,

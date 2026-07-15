@@ -355,12 +355,13 @@ func (s *Service) buildReplicationHARuntimeSnapshot() replicationHARuntimeSnapsh
 }
 
 func replicationPolicyEffectiveRunner(sourceMode, sourceNodeID, activeNodeID string) string {
-	mode := strings.ToLower(strings.TrimSpace(sourceMode))
+	_ = strings.ToLower(strings.TrimSpace(sourceMode))
 	sourceNodeID = strings.TrimSpace(sourceNodeID)
 	activeNodeID = strings.TrimSpace(activeNodeID)
-	if mode == clusterModels.ReplicationSourceModePinned {
-		return sourceNodeID
-	}
+	// The active owner is the only node allowed to read and replicate a
+	// protected guest. In pinned-primary mode SourceNodeID is the preferred
+	// failback destination; it must not keep running replication after the
+	// workload has failed over to another node.
 	if activeNodeID != "" {
 		return activeNodeID
 	}
