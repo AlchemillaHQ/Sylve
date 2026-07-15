@@ -31,6 +31,16 @@ func (s stubVMService) IsDomainShutOff(_ uint) (bool, error) {
 	return s.shutOff, s.shutOffErr
 }
 
+type retirementVMStub struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	retired bool
+}
+
+func (s *retirementVMStub) RetireVMLocalMetadata(_ uint, _ bool) error {
+	s.retired = true
+	return nil
+}
+
 type stubJailService struct {
 	jailServiceInterfaces.JailServiceInterface
 	running    bool
@@ -130,6 +140,43 @@ func TestVMReplicationSourcesIgnoreRetainedGenerations(t *testing.T) {
 	want := []string{"zroot/sylve/virtual-machines/107"}
 	if !reflect.DeepEqual(sources, want) {
 		t.Fatalf("replication sources = %v, want %v", sources, want)
+	}
+}
+
+func TestSelfFencePreservesMigrationCutoverTargetRegistration(t *testing.T) {
+	db := newZeltaServiceTestDB(t, &vmModels.VM{}, &clusterModels.ReplicationGuestOperation{})
+	if err := db.Create(&vmModels.VM{RID: 107, Name: "migration-target"}).Error; err != nil {
+		t.Fatalf("create VM registration: %v", err)
+	}
+	if err := db.Create(&clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeVM,
+		GuestID:      107,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationCutover,
+		Token:        "migration:source:1",
+		OwnerNodeID:  "node-a",
+		TargetNodeID: "node-b",
+	}).Error; err != nil {
+		t.Fatalf("create migration cutover operation: %v", err)
+	}
+
+	vm := &retirementVMStub{}
+	service := &Service{DB: db, VM: vm}
+	service.selfFenceReplicationPolicy(context.Background(), &clusterModels.ReplicationPolicy{
+		ID:        1,
+		GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID:   107,
+	}, "node-b", "node-a", replicationFenceReasonPolicyOwnerMismatch, true)
+
+	if vm.retired {
+		t.Fatal("migration cutover target VM registration was retired")
+	}
+	var count int64
+	if err := db.Model(&vmModels.VM{}).Where("rid = ?", 107).Count(&count).Error; err != nil {
+		t.Fatalf("count VM registrations: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("VM registration count = %d, want 1", count)
 	}
 }
 

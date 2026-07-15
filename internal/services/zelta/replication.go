@@ -31,6 +31,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
@@ -8765,6 +8766,18 @@ func (s *Service) selfFenceReplicationPolicy(
 	if policy == nil || policy.ID == 0 {
 		return
 	}
+	cutoverTarget, cutoverErr := s.isLocalMigrationCutoverTarget(ctx, policy.GuestType, policy.GuestID, localNodeID)
+	if cutoverErr != nil {
+		logger.L.Warn().
+			Err(cutoverErr).
+			Uint("policy_id", policy.ID).
+			Uint("guest_id", policy.GuestID).
+			Msg("replication_self_fence_migration_cutover_check_failed")
+	} else if cutoverTarget {
+		// The target has a durable cutover permit and may already have imported
+		// the VM before the policy ownership update reaches this node.
+		return
+	}
 	if !requireRegistration {
 		if err := s.emergencyStopReplicationGuest(policy.GuestType, policy.GuestID); err != nil {
 			logger.L.Error().Err(err).
@@ -8806,6 +8819,33 @@ func (s *Service) selfFenceReplicationPolicy(
 			Str("reason", fenceReason).
 			Msg("replication_self_fence_dataset_fencing_failed")
 	}
+}
+
+func (s *Service) isLocalMigrationCutoverTarget(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	localNodeID string,
+) (bool, error) {
+	if s == nil || s.DB == nil || guestID == 0 || !replicationguard.GuestOperationSchemaReady(s.DB) {
+		return false, nil
+	}
+
+	var operation clusterModels.ReplicationGuestOperation
+	result := s.DB.WithContext(ctx).
+		Where("guest_type = ? AND guest_id = ?", strings.TrimSpace(guestType), guestID).
+		Limit(1).
+		Find(&operation)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, nil
+	}
+
+	return operation.Operation == clusterModels.ReplicationGuestOperationMigration &&
+		operation.State == clusterModels.ReplicationGuestOperationCutover &&
+		strings.TrimSpace(operation.TargetNodeID) == strings.TrimSpace(localNodeID), nil
 }
 
 func (s *Service) replicationGuestRegistrationStatus(guestType string, guestID uint) (bool, error) {
@@ -9861,6 +9901,36 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 		if running {
 			s.crashMissesReset(policy.ID)
 			continue
+		}
+
+		if policy.GuestType == clusterModels.ReplicationGuestTypeVM {
+			vm, lookupErr := s.findVMByRID(policy.GuestID)
+			if lookupErr != nil {
+				logger.L.Warn().
+					Err(lookupErr).
+					Uint("policy_id", policy.ID).
+					Uint("guest_id", policy.GuestID).
+					Msg("replication_crash_recovery_vm_registration_check_failed")
+				continue
+			}
+			if vm == nil {
+				// The active owner still has the replicated dataset, so restore its
+				// local VM registration before considering a cross-node failover.
+				logger.L.Warn().
+					Uint("policy_id", policy.ID).
+					Uint("guest_id", policy.GuestID).
+					Msg("replication_crash_recovery_rehydrating_missing_vm_registration")
+				if err := s.activateReplicationVM(ctx, policy.GuestID, "", true); err != nil {
+					logger.L.Warn().
+						Err(err).
+						Uint("policy_id", policy.ID).
+						Uint("guest_id", policy.GuestID).
+						Msg("replication_crash_recovery_vm_registration_rehydrate_failed")
+					continue
+				}
+				s.crashMissesReset(policy.ID)
+				continue
+			}
 		}
 
 		crashLimit := policy.CrashRestartMax
