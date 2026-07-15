@@ -14,6 +14,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 )
 
 func TestCleanupStaleEventsSkipsActiveAndRecentlyHeartbeatingEvents(t *testing.T) {
@@ -163,6 +164,72 @@ func TestBackupEventHeartbeatUpdatesTimestamp(t *testing.T) {
 		t.Fatalf("failed to reload heartbeat event after timeout: %v", err)
 	}
 	t.Fatalf("expected heartbeat to update timestamp beyond %s, got %s", oldUpdatedAt, current.UpdatedAt)
+}
+
+func TestReconcileBackupRunAuditsFinalizesCompletedRun(t *testing.T) {
+	database := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
+	telemetry := newZeltaServiceTestDB(t, &infoModels.AuditRecord{})
+	service := NewService(database, telemetry, nil, nil, nil, nil, nil)
+	completedAt := time.Now().UTC()
+	target := clusterModels.BackupTarget{ID: 1, Name: "target", SSHHost: "host", BackupRoot: "pool/backups"}
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	job := clusterModels.BackupJob{
+		ID:         101,
+		Name:       "failed backup",
+		TargetID:   target.ID,
+		Mode:       clusterModels.BackupJobModeDataset,
+		CronExpr:   "0 * * * *",
+		LastRunAt:  &completedAt,
+		LastStatus: "failed",
+		LastError:  "backup_target_unreachable",
+	}
+	if err := database.Create(&job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	staleAudit := infoModels.AuditRecord{
+		AsyncJobID:   &job.ID,
+		AsyncJobType: "backup_job_run",
+		Status:       "pending",
+		Action:       "{}",
+	}
+	if err := telemetry.Create(&staleAudit).Error; err != nil {
+		t.Fatalf("create stale audit: %v", err)
+	}
+	if err := telemetry.Model(&staleAudit).UpdateColumn("created_at", completedAt.Add(-time.Second)).Error; err != nil {
+		t.Fatalf("set stale audit timestamp: %v", err)
+	}
+
+	freshAudit := infoModels.AuditRecord{
+		AsyncJobID:   &job.ID,
+		AsyncJobType: "backup_job_run",
+		Status:       "pending",
+		Action:       "{}",
+	}
+	if err := telemetry.Create(&freshAudit).Error; err != nil {
+		t.Fatalf("create fresh audit: %v", err)
+	}
+	if err := telemetry.Model(&freshAudit).UpdateColumn("created_at", completedAt.Add(time.Second)).Error; err != nil {
+		t.Fatalf("set fresh audit timestamp: %v", err)
+	}
+
+	if err := service.ReconcileBackupRunAudits(); err != nil {
+		t.Fatalf("reconcile backup audits: %v", err)
+	}
+	if err := telemetry.First(&staleAudit, staleAudit.ID).Error; err != nil {
+		t.Fatalf("reload stale audit: %v", err)
+	}
+	if staleAudit.Status != "failed" || staleAudit.Error != "backup_target_unreachable" {
+		t.Fatalf("stale audit was not finalized: %+v", staleAudit)
+	}
+	if err := telemetry.First(&freshAudit, freshAudit.ID).Error; err != nil {
+		t.Fatalf("reload fresh audit: %v", err)
+	}
+	if freshAudit.Status != "pending" {
+		t.Fatalf("fresh audit was incorrectly finalized: %+v", freshAudit)
+	}
 }
 
 func TestJobReservationPreventsDuplicateQueueing(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -540,6 +541,23 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	defer s.releaseJob(job.ID)
+	backupEventCreated := false
+	defer func() {
+		if backupEventCreated || s.TelemetryDB == nil {
+			return
+		}
+
+		auditStatus := "success"
+		errMsg := ""
+		if resultErr != nil {
+			auditStatus = "failed"
+			errMsg = resultErr.Error()
+		}
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_job_run", job.ID, auditStatus, errMsg, map[string]any{
+			"status": auditStatus,
+			"error":  errMsg,
+		})
+	}()
 
 	jobGuestType, jobGuestID := backupJobGuestIdentity(job)
 
@@ -805,6 +823,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
+	backupEventCreated = true
 	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 
 	logger.L.Info().
@@ -2172,6 +2191,62 @@ func (s *Service) CleanupStaleEvents(_ context.Context, maxAge time.Duration) er
 		"error":        "process_crashed_or_restarted",
 		"completed_at": time.Now().UTC(),
 	}).Error
+}
+
+func (s *Service) ReconcileBackupRunAudits() error {
+	if s == nil || s.DB == nil || s.TelemetryDB == nil {
+		return nil
+	}
+
+	var pendingAudits []infoModels.AuditRecord
+	if err := s.TelemetryDB.
+		Where("async_job_type = ? AND status = ? AND async_job_id IS NOT NULL", "backup_job_run", "pending").
+		Find(&pendingAudits).Error; err != nil {
+		return err
+	}
+
+	jobIDs := make([]uint, 0, len(pendingAudits))
+	seenJobIDs := make(map[uint]struct{}, len(pendingAudits))
+	for _, audit := range pendingAudits {
+		if audit.AsyncJobID == nil || *audit.AsyncJobID == 0 {
+			continue
+		}
+		if _, exists := seenJobIDs[*audit.AsyncJobID]; exists {
+			continue
+		}
+		seenJobIDs[*audit.AsyncJobID] = struct{}{}
+		jobIDs = append(jobIDs, *audit.AsyncJobID)
+	}
+	if len(jobIDs) == 0 {
+		return nil
+	}
+
+	var jobs []clusterModels.BackupJob
+	if err := s.DB.Where("id IN ?", jobIDs).Find(&jobs).Error; err != nil {
+		return err
+	}
+
+	for _, job := range jobs {
+		status := strings.ToLower(strings.TrimSpace(job.LastStatus))
+		if job.LastRunAt == nil || (status != "success" && status != "failed") {
+			continue
+		}
+
+		db.FinalizeAsyncAuditRecordsBefore(
+			s.TelemetryDB,
+			"backup_job_run",
+			job.ID,
+			status,
+			job.LastError,
+			map[string]any{
+				"status": status,
+				"error":  job.LastError,
+			},
+			*job.LastRunAt,
+		)
+	}
+
+	return nil
 }
 
 func (s *Service) touchBackupEvent(eventID uint) error {

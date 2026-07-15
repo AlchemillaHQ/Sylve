@@ -15,6 +15,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -198,6 +199,35 @@ func TestRunBackupJobSetsLastRunAtOnFailure(t *testing.T) {
 	}
 	if updated.LastError == "" {
 		t.Fatal("expected LastError to be set")
+	}
+}
+
+func TestRunBackupJobFinalizesAuditBeforeEventCreation(t *testing.T) {
+	svc := newRunBackupJobTestDB(t)
+	svc.TelemetryDB = testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	seedBackupTarget(t, svc.DB, 1, "t1")
+	job := seedAndLoadJob(t, svc.DB, 1000, "missing-source", "dataset", 1, "")
+
+	audit := infoModels.AuditRecord{
+		AsyncJobID:   &job.ID,
+		AsyncJobType: "backup_job_run",
+		Status:       "pending",
+		Action:       "{}",
+	}
+	if err := svc.TelemetryDB.Create(&audit).Error; err != nil {
+		t.Fatalf("create pending audit: %v", err)
+	}
+
+	err := svc.runBackupJob(context.Background(), &job)
+	if err == nil || !strings.Contains(err.Error(), "source_dataset_required") {
+		t.Fatalf("expected source dataset error, got %v", err)
+	}
+
+	if err := svc.TelemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload audit: %v", err)
+	}
+	if audit.Status != "failed" || !strings.Contains(audit.Error, "source_dataset_required") {
+		t.Fatalf("pre-event audit was not finalized: %+v", audit)
 	}
 }
 

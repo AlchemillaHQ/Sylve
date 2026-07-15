@@ -161,10 +161,16 @@
 		clusterDetails = null;
 
 		try {
-			const [items, events] = await Promise.all([
+			const [snapshotResult, events] = await Promise.all([
 				listBackupJobSnapshots(selectedJob.id),
 				getBackupEvents(5, selectedJob.id)
 			]);
+			if (snapshotResult.error) {
+				error = snapshotResult.error;
+				return;
+			}
+
+			const items = snapshotResult.snapshots;
 			jobRunning =
 				events.some((e) => e.status === 'running' && !e.completedAt) ||
 				selectedJob.lastStatus === 'running';
@@ -282,7 +288,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-5" showCloseButton={true}>
+	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-6" showCloseButton={true}>
 		<Dialog.Header>
 			<Dialog.Title>
 				<SpanWithIcon
@@ -308,7 +314,12 @@
 				</div>
 			{:else if error}
 				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-500">
-					<p class="font-medium">Failed to load snapshots</p>
+					<SpanWithIcon
+						icon="icon-[mdi--alert-circle-outline]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Failed to load snapshots"
+					/>
 					<p class="mt-1">{error}</p>
 				</div>
 			{:else if snapshots.length === 0}
@@ -403,18 +414,18 @@
 				{/if}
 
 				{#if selectedSnapshotInfo?.encrypted || selectedJob?.encrypted}
-				<div class="space-y-1">
-					<CustomValueInput
-						label="Encryption Passphrase (Optional)"
-						placeholder="Required only when the key is not already registered"
-						type="password"
-						bind:value={encryptionKey}
-						classes="space-y-1"
-					/>
-					<p class="text-xs text-muted-foreground">
-						A supplied passphrase is saved in the cluster key store for automated recovery.
-					</p>
-				</div>
+					<div class="space-y-1">
+						<CustomValueInput
+							label="Encryption Passphrase (Optional)"
+							placeholder="Required only when the key is not already registered"
+							type="password"
+							bind:value={encryptionKey}
+							classes="space-y-1"
+						/>
+						<p class="text-xs text-muted-foreground">
+							A supplied passphrase is saved in the cluster key store for automated recovery.
+						</p>
+					</div>
 				{/if}
 
 				<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
@@ -449,8 +460,8 @@
 									{selectedSnapshotInfo.childCount} child dataset(s) on target will be restored recursively.
 								{:else}
 									{selectedSnapshotInfo.childCount} child dataset(s) on target. Only the selected dataset
-									will be restored. Enable "Recursive backup" in the job config or use
-									OOB Restore to recover children separately.
+									will be restored. Enable "Recursive backup" in the job config or use OOB Restore to
+									recover children separately.
 								{/if}
 							</li>
 						{/if}
@@ -461,7 +472,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button
 				onclick={triggerRestore}
 				disabled={!selectedSnapshot || restoring || loading || jobRunning || legacyVMRestoreBlocked}

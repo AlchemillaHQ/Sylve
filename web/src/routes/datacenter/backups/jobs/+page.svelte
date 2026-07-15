@@ -10,6 +10,7 @@
 	import OOBRestore from '$lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte';
 	import Restore from '$lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import ValueViewer from '$lib/components/custom/Dialog/ValueViewer.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -90,6 +91,8 @@
 	let restoreModalOpen = $state(false);
 	let restoreTargetModalOpen = $state(false);
 	let deleteModalOpen = $state(false);
+	let errorModal = $state({ open: false, title: '', value: '' });
+	let canViewError = $derived(Boolean(selectedJob?.lastError.trim()));
 
 	function parseGuestFromDatasetPath(dataset: string): BackupGuestRef {
 		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
@@ -133,10 +136,9 @@
 			field: 'status',
 			title: 'Status',
 			formatter: (cell: CellComponent) => {
-				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string; lastError: string };
+				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string };
 				const enabled = row.enabled;
 				const lastStatus = row.lastStatus;
-				const lastError = (row.lastError || '').trim();
 				const icons = [];
 
 				if (!enabled) {
@@ -148,7 +150,7 @@
 				if (lastStatus === 'success') {
 					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
 				} else if (lastStatus === 'failed') {
-					icons.push(renderWithIcon('mdi:close-circle', lastError || 'Failed', 'text-red-500'));
+					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
 				} else if (lastStatus === 'running') {
 					icons.push(renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500'));
 				}
@@ -283,6 +285,16 @@
 		restoreModalOpen = true;
 	}
 
+	function openErrorModal() {
+		if (!selectedJob) return;
+		const error = selectedJob.lastError.trim();
+		if (!error) return;
+
+		errorModal.title = `${selectedJob.name} Error`;
+		errorModal.value = error;
+		errorModal.open = true;
+	}
+
 	async function removeJob() {
 		if (!selectedJobId) return;
 		const response = await deleteBackupJob(selectedJobId);
@@ -342,6 +354,17 @@
 				/>
 			</Button>
 		{/if}
+
+		{#if type === 'error' && canViewError}
+			<Button onclick={openErrorModal} size="sm" variant="outline" class="h-6.5">
+				<SpanWithIcon
+					icon="icon-[mdi--alert-circle-outline]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="View Error"
+				/>
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -365,6 +388,7 @@
 		{@render button('delete')}
 		{@render button('run')}
 		{@render button('restore')}
+		{@render button('error')}
 
 		<Button
 			onclick={() => (restoreTargetModalOpen = true)}
@@ -424,3 +448,5 @@
 		}
 	}}
 />
+
+<ValueViewer bind:open={errorModal.open} title={errorModal.title} value={errorModal.value} />

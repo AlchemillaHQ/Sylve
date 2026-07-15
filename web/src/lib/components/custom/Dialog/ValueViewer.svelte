@@ -25,7 +25,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="flex w-[90vw] max-w-xl flex-col p-5"
+		class="flex w-[90vw] max-w-xl flex-col p-6"
 		showCloseButton={true}
 		onClose={() => (open = false)}
 		onInteractOutside={() => (open = false)}

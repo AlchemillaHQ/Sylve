@@ -17,7 +17,7 @@ import {
     type SnapshotInfo
 } from '$lib/types/cluster/backups';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequest, isAPIResponse } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export type BackupTargetInput = {
@@ -54,6 +54,11 @@ export type RestoreFromTargetInput = {
     restoreNetwork?: boolean;
     encryptionKey?: string;
     encryptionKeyFormat?: 'passphrase';
+};
+
+export type BackupJobSnapshotsResult = {
+    snapshots: SnapshotInfo[];
+    error: string;
 };
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {
@@ -165,12 +170,30 @@ export async function getBackupEventProgress(
     );
 }
 
-export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInfo[]> {
-    return await apiRequest(
+export async function listBackupJobSnapshots(jobId: number): Promise<BackupJobSnapshotsResult> {
+    const response = await apiRequest(
         `/cluster/backups/jobs/${jobId}/snapshots`,
         z.array(SnapshotInfoSchema),
-        'GET'
+        'GET',
+        undefined,
+        { raw: true }
     );
+
+    if (!isAPIResponse(response)) {
+        return { snapshots: [], error: 'Failed to load snapshots from the backup target' };
+    }
+
+    if (response.status === 'error') {
+        const error = Array.isArray(response.error) ? response.error.join(' ') : response.error;
+        return { snapshots: [], error: error || response.message || 'Failed to load snapshots' };
+    }
+
+    const snapshots = z.array(SnapshotInfoSchema).safeParse(response.data);
+    if (!snapshots.success) {
+        return { snapshots: [], error: 'Invalid snapshot response from the backup target' };
+    }
+
+    return { snapshots: snapshots.data, error: '' };
 }
 
 export async function restoreBackupJob(

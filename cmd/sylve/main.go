@@ -261,6 +261,9 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_events_after_restart")
 	}
+	if err := zeltaS.ReconcileBackupRunAudits(); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_run_audits_after_restart")
+	}
 
 	if err := zelta.EnsureZeltaInstalled(); err != nil {
 		logger.L.Error().Err(err).Msg("Failed to install Zelta; skipping Zelta schedulers")

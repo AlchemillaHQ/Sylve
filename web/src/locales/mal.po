@@ -1836,7 +1836,6 @@ msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -16522,4 +16521,8 @@ msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Last Verified"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "View Error"
 msgstr ""

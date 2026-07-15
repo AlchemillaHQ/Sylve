@@ -588,7 +588,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full max-w-2xl! overflow-hidden p-5" showCloseButton={true}>
+	<Dialog.Content class="w-full max-w-2xl! overflow-hidden p-6" showCloseButton={true}>
 		<Dialog.Header>
 			<Dialog.Title>
 				<SpanWithIcon
