@@ -258,6 +258,9 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
 	}
+	if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_events_after_restart")
+	}
 
 	if err := zelta.EnsureZeltaInstalled(); err != nil {
 		logger.L.Error().Err(err).Msg("Failed to install Zelta; skipping Zelta schedulers")

@@ -24,7 +24,8 @@ func TestFSMDispatcherReplicationEventCommands(t *testing.T) {
 		now := time.Now()
 		raw, _ := json.Marshal(ReplicationEvent{
 			ID: 1, PolicyID: ptr[uint](1), EventType: "run", Status: "running",
-			SourceNodeID: "node-1", TargetNodeID: "node-2",
+			TransitionRunID: "transition-1",
+			SourceNodeID:    "node-1", TargetNodeID: "node-2",
 			GuestType: ReplicationGuestTypeVM, GuestID: 100,
 			StartedAt: now,
 		})
@@ -40,6 +41,9 @@ func TestFSMDispatcherReplicationEventCommands(t *testing.T) {
 		}
 		if event.EventType != "run" || event.Status != "running" {
 			t.Fatalf("event mismatch: type=%q status=%q", event.EventType, event.Status)
+		}
+		if event.TransitionRunID != "transition-1" {
+			t.Fatalf("transition run ID mismatch: %q", event.TransitionRunID)
 		}
 		if event.SourceNodeID != "node-1" || event.TargetNodeID != "node-2" {
 			t.Fatalf("node mismatch: src=%q tgt=%q", event.SourceNodeID, event.TargetNodeID)
@@ -64,7 +68,7 @@ func TestFSMDispatcherReplicationEventCommands(t *testing.T) {
 	t.Run("update existing event via OnConflict upsert", func(t *testing.T) {
 		raw, _ := json.Marshal(ReplicationEvent{
 			ID: 1, PolicyID: ptr[uint](2), EventType: "run", Status: "success",
-			Message: "completed successfully",
+			TransitionRunID: "transition-1", Message: "completed successfully",
 		})
 		if err := applyFSMCommand(t, fsm, Command{
 			Type: "replication_event", Action: "update", Data: raw,
@@ -82,6 +86,34 @@ func TestFSMDispatcherReplicationEventCommands(t *testing.T) {
 		}
 		if event.PolicyID == nil || *event.PolicyID != 2 {
 			t.Fatalf("policy_id not updated")
+		}
+		if event.TransitionRunID != "transition-1" {
+			t.Fatalf("transition run ID was not preserved: %q", event.TransitionRunID)
+		}
+	})
+
+	t.Run("backfill legacy event transition run ID", func(t *testing.T) {
+		legacy := ReplicationEvent{
+			ID: 3, PolicyID: ptr[uint](3), EventType: "failover", Status: "promoting",
+			StartedAt: time.Now().UTC(),
+		}
+		if err := db.Create(&legacy).Error; err != nil {
+			t.Fatalf("create legacy event: %v", err)
+		}
+		legacy.TransitionRunID = "transition-legacy"
+		raw, _ := json.Marshal(legacy)
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "replication_event", Action: "update", Data: raw,
+		}); err != nil {
+			t.Fatalf("backfill failed: %v", err)
+		}
+
+		var stored ReplicationEvent
+		if err := db.First(&stored, legacy.ID).Error; err != nil {
+			t.Fatalf("load backfilled event: %v", err)
+		}
+		if stored.TransitionRunID != "transition-legacy" {
+			t.Fatalf("transition run ID was not backfilled: %q", stored.TransitionRunID)
 		}
 	})
 

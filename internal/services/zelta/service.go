@@ -74,6 +74,7 @@ type Service struct {
 	Network     networkServiceInterfaces.NetworkServiceInterface
 	VM          libvirtServiceInterfaces.LibvirtServiceInterface
 	GZFS        *gzfs.Client
+	startedAt   time.Time
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -135,6 +136,7 @@ func NewService(
 		Network:                   networkService,
 		VM:                        vmService,
 		GZFS:                      gzfsClient,
+		startedAt:                 time.Now().UTC(),
 		runningJobs:               make(map[uint]struct{}),
 		queuedJobs:                make(map[uint]struct{}),
 		runningReplication:        make(map[uint]struct{}),

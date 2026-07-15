@@ -32,32 +32,123 @@
 		);
 	}
 
-	function isReplicationEventInProgress(
-		event: Pick<ReplicationEvent, 'eventType' | 'status' | 'message'>
+	function parsedTime(value: string | null | undefined): number | null {
+		if (!value) return null;
+		const parsed = Date.parse(value);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	function isCompatibleLegacyFailoverEvent(
+		event: ReplicationEvent,
+		policy: ReplicationPolicy
 	): boolean {
+		const eventSource = String(event.sourceNodeId || '').trim();
+		const eventTarget = String(event.targetNodeId || '').trim();
+		const transitionSource = String(policy.transitionSourceNodeId || '').trim();
+		const transitionTarget = String(policy.transitionTargetNodeId || '').trim();
+		if (
+			eventSource &&
+			eventTarget &&
+			transitionSource &&
+			transitionTarget &&
+			!((eventSource === transitionSource && eventTarget === transitionTarget) ||
+				(eventSource === transitionTarget && eventTarget === transitionSource))
+		) {
+			return false;
+		}
+
+		const eventStartedAt = parsedTime(event.startedAt);
+		const transitionRequestedAt = parsedTime(policy.transitionRequestedAt);
+		const transitionCompletedAt = parsedTime(policy.transitionCompletedAt);
+		if (eventStartedAt !== null && transitionRequestedAt !== null && eventStartedAt < transitionRequestedAt) {
+			return false;
+		}
+		if (eventStartedAt !== null && transitionCompletedAt !== null && eventStartedAt > transitionCompletedAt) {
+			return false;
+		}
+		return true;
+	}
+
+	function isReplicationEventInProgress(
+		event: ReplicationEvent,
+		policy?: ReplicationPolicy,
+		legacyCandidateCount: number = 1
+	): boolean {
+		if (event.completedAt) return false;
+
 		const eventType = String(event.eventType || '')
 			.trim()
 			.toLowerCase();
-		if (eventType !== 'replication' && eventType !== 'failover') {
-			return false;
-		}
+		if (eventType !== 'replication' && eventType !== 'failover') return false;
 
 		const status = String(event.status || '')
 			.trim()
 			.toLowerCase();
-		if (IN_PROGRESS_STATUSES.has(status)) {
-			return true;
+		const statusInProgress =
+			IN_PROGRESS_STATUSES.has(status) ||
+			((status === 'demoting' || status === 'running') && hasCatchupHint(event.message || ''));
+		if (!statusInProgress) return false;
+		if (!policy) return true;
+
+		if (eventType === 'failover') {
+			const transitionState = String(policy.transitionState || '')
+				.trim()
+				.toLowerCase();
+			if (
+				policy.transitionCompletedAt ||
+				transitionState === 'none' ||
+				transitionState === 'completed' ||
+				transitionState === 'failed'
+			) {
+				return false;
+			}
+
+			const eventRunId = String(event.transitionRunId || '').trim();
+			const policyRunId = String(policy.transitionRunId || '').trim();
+			if (eventRunId && policyRunId && eventRunId !== policyRunId) return false;
+			if (!eventRunId) {
+				if (legacyCandidateCount !== 1 || !isCompatibleLegacyFailoverEvent(event, policy)) return false;
+			}
 		}
 
-		if ((status === 'demoting' || status === 'running') && hasCatchupHint(event.message || '')) {
-			return true;
+		if (eventType === 'replication') {
+			const eventStartedAt = parsedTime(event.startedAt);
+			const lastRunAt = parsedTime(policy.lastRunAt);
+			if (eventStartedAt !== null && lastRunAt !== null && lastRunAt >= eventStartedAt) {
+				return false;
+			}
 		}
 
-		return false;
+		return true;
 	}
 
-	function filterInProgressReplicationEvents(events: ReplicationEvent[]): ReplicationEvent[] {
-		return events.filter((event) => isReplicationEventInProgress(event));
+	function filterInProgressReplicationEvents(
+		events: ReplicationEvent[],
+		policyById: Record<number, ReplicationPolicy>
+	): ReplicationEvent[] {
+		const legacyCandidatesByPolicy: Record<number, number> = {};
+		for (const event of events) {
+			const policy = event.policyId ? policyById[event.policyId] : undefined;
+			if (
+				event.policyId &&
+				policy &&
+				String(event.eventType || '').toLowerCase() === 'failover' &&
+				!String(event.transitionRunId || '').trim() &&
+				!event.completedAt &&
+				IN_PROGRESS_STATUSES.has(String(event.status || '').trim().toLowerCase()) &&
+				isCompatibleLegacyFailoverEvent(event, policy)
+			) {
+				legacyCandidatesByPolicy[event.policyId] =
+					(legacyCandidatesByPolicy[event.policyId] || 0) + 1;
+			}
+		}
+		return events.filter((event) => {
+			const policy = event.policyId ? policyById[event.policyId] : undefined;
+			const legacyCandidateCount = event.policyId
+				? (legacyCandidatesByPolicy[event.policyId] ?? 1)
+				: 1;
+			return isReplicationEventInProgress(event, policy, legacyCandidateCount);
+		});
 	}
 
 	function compactNodeLabel(value: string, nodeNameById: Record<string, string>): string {
@@ -134,7 +225,7 @@
 					nodeNameById[node.nodeUUID] = node.hostname || node.nodeUUID;
 				}
 
-				const running = filterInProgressReplicationEvents(events)
+				const running = filterInProgressReplicationEvents(events, policyById)
 					.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
 					.map((event) => {
 						const policy = event.policyId ? policyById[event.policyId] : undefined;

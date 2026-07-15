@@ -289,7 +289,7 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 
 	t.Run("create bypass with assigned ID", func(t *testing.T) {
 		id, err := s.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-			ID: 100, EventType: "run", Status: "running",
+			ID: 100, TransitionRunID: "transition-100", EventType: "run", Status: "running",
 		}, true)
 		if err != nil {
 			t.Fatalf("create: %v", err)
@@ -301,7 +301,7 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 
 	t.Run("update bypass", func(t *testing.T) {
 		id, err := s.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-			ID: 100, EventType: "run", Status: "success", Message: "done",
+			ID: 100, TransitionRunID: "transition-100", EventType: "run", Status: "success", Message: "done",
 		}, true)
 		if err != nil {
 			t.Fatalf("update: %v", err)
@@ -311,7 +311,7 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 		}
 		var event clusterModels.ReplicationEvent
 		db.First(&event, 100)
-		if event.Status != "success" || event.Message != "done" {
+		if event.Status != "success" || event.Message != "done" || event.TransitionRunID != "transition-100" {
 			t.Fatalf("not updated: status=%q msg=%q", event.Status, event.Message)
 		}
 	})

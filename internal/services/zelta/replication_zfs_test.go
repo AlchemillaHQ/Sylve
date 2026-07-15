@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -27,6 +28,177 @@ func zfsGetProperty(t *testing.T, dataset, prop string) string {
 		t.Fatalf("zfs get %s %s: %v\noutput: %s", prop, dataset, err, string(out))
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func setReplicationTestTreeReadonly(t *testing.T, root, value string) {
+	t.Helper()
+	output, err := exec.Command(
+		"zfs", "list", "-H", "-o", "name", "-r", "-t", "filesystem,volume", root,
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("list replication test tree %s: %v\n%s", root, err, output)
+	}
+	for _, dataset := range strings.Fields(string(output)) {
+		setOutput, setErr := exec.Command("zfs", "set", "readonly="+value, dataset).CombinedOutput()
+		if setErr != nil {
+			t.Fatalf("set readonly=%s on %s: %v\n%s", value, dataset, setErr, setOutput)
+		}
+	}
+}
+
+func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	tests := []struct {
+		name      string
+		guestType string
+		guestID   uint
+		childName string
+		volume    bool
+	}{
+		{name: "vm with zvol", guestType: clusterModels.ReplicationGuestTypeVM, guestID: 910, childName: "zvol-1", volume: true},
+		{name: "jail with child filesystem", guestType: clusterModels.ReplicationGuestTypeJail, guestID: 911, childName: "data"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool, client, cleanup := zfstest.Pool(t)
+			defer cleanup()
+			root := pool + "/sylve/"
+			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
+				root += "virtual-machines/"
+			} else {
+				root += "jails/"
+			}
+			root += strconv.FormatUint(uint64(tt.guestID), 10)
+			child := root + "/" + tt.childName
+			zfstest.EnsureDataset(t, client, root)
+			if tt.volume {
+				zfstest.EnsureVolume(t, client, child, 8)
+			} else {
+				zfstest.EnsureDataset(t, client, child)
+			}
+
+			service := &Service{GZFS: client}
+			scopeLocalFilesystemDatasetsToPool(t, service, pool)
+			generationID := "replication-validator-" + strconv.FormatUint(uint64(tt.guestID), 10)
+			snapshotName, err := replicationGenerationSnapshotName(generationID)
+			if err != nil {
+				t.Fatalf("generation snapshot name: %v", err)
+			}
+			if output, err := exec.Command("zfs", "snapshot", "-r", root+"@"+snapshotName).CombinedOutput(); err != nil {
+				t.Fatalf("create generation snapshot: %v\n%s", err, output)
+			}
+			snapshotGUID := zfsGetProperty(t, root+"@"+snapshotName, "guid")
+			policyID := uint(700 + tt.guestID)
+			ownerEpoch := uint64(4)
+			sourceRoot := pool + "/source/" + strconv.FormatUint(uint64(tt.guestID), 10)
+			setRealZFSProperties(t, root, replicationProvenanceProperties(
+				ReplicationZFSTransferOptions{
+					PolicyID: policyID, RunID: generationID, OwnerEpoch: ownerEpoch,
+					SnapshotName: snapshotName, SnapshotGUID: snapshotGUID,
+				},
+				sourceRoot,
+				root,
+				replicationStateReady,
+			))
+			manifest, err := service.replicationSnapshotTreeManifestLocal(
+				context.Background(), root, sourceRoot, snapshotName,
+			)
+			if err != nil {
+				t.Fatalf("build generation manifest: %v", err)
+			}
+			policy := &clusterModels.ReplicationPolicy{
+				ID: policyID, GuestType: tt.guestType, GuestID: tt.guestID,
+				TransitionGenerationID: generationID, TransitionGenerationOwnerEpoch: ownerEpoch,
+				TransitionGenerationRootCount: 1,
+				TransitionGenerationManifest:  replicationSnapshotManifestHash(policyID, ownerEpoch, generationID, manifest),
+			}
+			setReplicationTestTreeReadonly(t, root, "on")
+
+			if err := service.validateReplicationTransitionGenerationForActivation(context.Background(), policy, "on"); err != nil {
+				t.Fatalf("valid %s generation rejected: %v", tt.guestType, err)
+			}
+			if output, err := exec.Command("zfs", "set", "readonly=off", child).CombinedOutput(); err != nil {
+				t.Fatalf("make child writable: %v\n%s", err, output)
+			}
+			if err := service.validateReplicationTransitionGenerationForActivation(context.Background(), policy, "on"); err == nil || !strings.Contains(err.Error(), "replication_transition_generation_readonly_mismatch_") {
+				t.Fatalf("writable %s child was not rejected: %v", tt.guestType, err)
+			}
+		})
+	}
+}
+
+func TestValidateAlreadyRunningReplicationActivationIgnoresSnapshots(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	tests := []struct {
+		name      string
+		guestType string
+		guestID   uint
+		childName string
+		volume    bool
+	}{
+		{name: "vm with zvol", guestType: clusterModels.ReplicationGuestTypeVM, guestID: 920, childName: "zvol-1", volume: true},
+		{name: "jail with child filesystem", guestType: clusterModels.ReplicationGuestTypeJail, guestID: 921, childName: "data"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool, client, cleanup := zfstest.Pool(t)
+			defer cleanup()
+			root := pool + "/sylve/"
+			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
+				root += "virtual-machines/"
+			} else {
+				root += "jails/"
+			}
+			root += strconv.FormatUint(uint64(tt.guestID), 10)
+			child := root + "/" + tt.childName
+			zfstest.EnsureDataset(t, client, root)
+			if tt.volume {
+				zfstest.EnsureVolume(t, client, child, 8)
+			} else {
+				zfstest.EnsureDataset(t, client, child)
+			}
+			if output, err := exec.Command("zfs", "snapshot", "-r", root+"@ha_existing").CombinedOutput(); err != nil {
+				t.Fatalf("create recursive snapshot: %v\n%s", err, output)
+			}
+
+			database := newZeltaServiceTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
+				if err := database.Create(&vmModels.VM{RID: tt.guestID, Name: tt.name}).Error; err != nil {
+					t.Fatalf("register VM: %v", err)
+				}
+			} else {
+				if err := database.Create(&jailModels.Jail{CTID: tt.guestID, Name: tt.name}).Error; err != nil {
+					t.Fatalf("register jail: %v", err)
+				}
+			}
+			service := newTestZeltaService(database)
+			service.GZFS = client
+			scopeLocalFilesystemDatasetsToPool(t, service, pool)
+			policyID := uint(800 + tt.guestID)
+			setRealZFSProperties(t, root, map[string]string{
+				replicationPropertyPolicyID: strconv.FormatUint(uint64(policyID), 10),
+				replicationPropertyRole:     replicationRoleStandby,
+				replicationPropertyState:    replicationStateReady,
+			})
+			setReplicationTestTreeReadonly(t, root, "off")
+			policy := &clusterModels.ReplicationPolicy{
+				ID: policyID, GuestType: tt.guestType, GuestID: tt.guestID,
+				TransitionState: clusterModels.ReplicationTransitionStateCompleted,
+			}
+
+			if err := service.validateAlreadyRunningReplicationActivation(context.Background(), policy); err != nil {
+				t.Fatalf("valid running %s rejected because snapshots exist: %v", tt.guestType, err)
+			}
+			if output, err := exec.Command("zfs", "set", "readonly=on", child).CombinedOutput(); err != nil {
+				t.Fatalf("make child readonly: %v\n%s", err, output)
+			}
+			if err := service.validateAlreadyRunningReplicationActivation(context.Background(), policy); err == nil || !strings.Contains(err.Error(), "replication_running_dataset_not_writable_") {
+				t.Fatalf("readonly %s child was not rejected: %v", tt.guestType, err)
+			}
+		})
+	}
 }
 
 func TestFenceReplicationGuestDatasets(t *testing.T) {

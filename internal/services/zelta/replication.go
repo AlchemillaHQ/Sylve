@@ -60,20 +60,22 @@ const (
 	replicationLeaseExpirySafetyMargin = 30 * time.Second
 	replicationLowPoolCapacityPercent  = 90
 
-	replicationEventStatusRunning   = "running"
-	replicationEventStatusDemoting  = "demoting"
-	replicationEventStatusPromoting = "promoting"
-	replicationEventStatusActive    = "active"
-	replicationEventStatusSuccess   = "success"
-	replicationEventStatusFailed    = "failed"
-	replicationEventStatusDegraded  = "degraded"
+	replicationEventStatusRunning     = "running"
+	replicationEventStatusDemoting    = "demoting"
+	replicationEventStatusPromoting   = "promoting"
+	replicationEventStatusActive      = "active"
+	replicationEventStatusSuccess     = "success"
+	replicationEventStatusFailed      = "failed"
+	replicationEventStatusDegraded    = "degraded"
+	replicationEventStatusInterrupted = "interrupted"
 
 	replicationFailoverRequestSafe  = "safe"
 	replicationFailoverRequestForce = "force"
 
-	replicationControlDefaultTimeout  = 30 * time.Second
-	replicationControlCatchupTimeout  = 2 * time.Hour
-	replicationPromotionRollbackAfter = 2 * time.Minute
+	replicationControlDefaultTimeout       = 30 * time.Second
+	replicationControlCatchupTimeout       = 2 * time.Hour
+	replicationPromotionRollbackAfter      = 2 * time.Minute
+	replicationTerminalEventRecreateWindow = 10 * time.Minute
 
 	replicationControlForwardAttempts = 3
 	replicationControlForwardBackoff  = 500 * time.Millisecond
@@ -529,6 +531,9 @@ func (s *Service) StartReplicationScheduler(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := s.ReconcileReplicationEventsAfterRestart(); err != nil {
+		logger.L.Warn().Err(err).Msg("replication_orphaned_event_cleanup_failed")
+	}
 
 	// Lease publication and local fencing deliberately have independent
 	// loops.  A catch-up may legitimately block for hours; it must never
@@ -550,6 +555,86 @@ func (s *Service) StartReplicationScheduler(ctx context.Context) {
 
 	<-ctx.Done()
 	workers.Wait()
+}
+
+func (s *Service) ReconcileReplicationEventsAfterRestart() error {
+	if s == nil || s.Cluster == nil {
+		return nil
+	}
+	startupCutoff := s.startedAt
+	if startupCutoff.IsZero() {
+		startupCutoff = s.now().UTC()
+	}
+	return s.interruptOrphanedLocalReplicationEvents(
+		startupCutoff,
+		strings.TrimSpace(s.Cluster.LocalNodeID()),
+	)
+}
+
+func (s *Service) interruptOrphanedLocalReplicationEvents(startupCutoff time.Time, localNodeID string) error {
+	if s == nil || s.DB == nil || strings.TrimSpace(localNodeID) == "" {
+		return nil
+	}
+
+	query := s.DB.Model(&clusterModels.ReplicationEvent{}).
+		Where("event_type = ? AND status = ? AND completed_at IS NULL", "replication", replicationEventStatusRunning).
+		Where("source_node_id = ? AND started_at < ?", strings.TrimSpace(localNodeID), startupCutoff.UTC())
+	var orphaned []clusterModels.ReplicationEvent
+	if err := query.Find(&orphaned).Error; err != nil {
+		return err
+	}
+
+	if len(orphaned) > 0 {
+		completedAt := s.now().UTC()
+		eventIDs := make([]uint, 0, len(orphaned))
+		for i := range orphaned {
+			eventIDs = append(eventIDs, orphaned[i].ID)
+		}
+		result := s.DB.Model(&clusterModels.ReplicationEvent{}).Where("id IN ?", eventIDs).Updates(map[string]any{
+			"status":       replicationEventStatusInterrupted,
+			"message":      "replication_run_interrupted",
+			"error":        "process_crashed_or_restarted",
+			"completed_at": completedAt,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		s.emitLeftPanelRefresh("replication_orphaned_events_interrupted")
+	}
+
+	if s.TelemetryDB == nil {
+		return nil
+	}
+	var interrupted []clusterModels.ReplicationEvent
+	if err := s.DB.
+		Where("event_type = ? AND status = ? AND error = ? AND source_node_id = ? AND started_at < ?",
+			"replication", replicationEventStatusInterrupted, "process_crashed_or_restarted",
+			strings.TrimSpace(localNodeID), startupCutoff.UTC()).
+		Find(&interrupted).Error; err != nil {
+		return err
+	}
+	eventsByPolicy := make(map[uint][]uint)
+	for i := range interrupted {
+		if interrupted[i].PolicyID != nil {
+			eventsByPolicy[*interrupted[i].PolicyID] = append(eventsByPolicy[*interrupted[i].PolicyID], interrupted[i].ID)
+		}
+	}
+	for policyID, eventIDs := range eventsByPolicy {
+		db.FinalizeAsyncAuditRecordsBefore(
+			s.TelemetryDB,
+			"replication_policy_run",
+			policyID,
+			"failed",
+			"process_crashed_or_restarted",
+			map[string]any{
+				"eventIds": eventIDs,
+				"status":   replicationEventStatusInterrupted,
+				"error":    "process_crashed_or_restarted",
+			},
+			startupCutoff,
+		)
+	}
+	return nil
 }
 
 func runReplicationPeriodicLoop(ctx context.Context, interval time.Duration, operation func(context.Context)) {
@@ -821,6 +906,320 @@ func transitionPayloadFromPolicy(policy *clusterModels.ReplicationPolicy) cluste
 		GenerationManifest:   strings.TrimSpace(policy.TransitionGenerationManifest),
 		GenerationRootCount:  policy.TransitionGenerationRootCount,
 	}
+}
+
+func (s *Service) findReplicationTransitionEvent(
+	policyID uint,
+	transitionRunID string,
+	requestedAt *time.Time,
+	completedAt *time.Time,
+	sourceNodeID string,
+	targetNodeID string,
+) (*clusterModels.ReplicationEvent, error) {
+	if s == nil || s.DB == nil || policyID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if transitionRunID != "" {
+		var event clusterModels.ReplicationEvent
+		err := s.DB.
+			Where("policy_id = ? AND event_type = ? AND transition_run_id = ? AND completed_at IS NULL",
+				policyID, "failover", transitionRunID).
+			Order("started_at DESC").
+			First(&event).Error
+		if err == nil {
+			return &event, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	if requestedAt == nil || requestedAt.IsZero() {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	sourceNodeID = strings.TrimSpace(sourceNodeID)
+	targetNodeID = strings.TrimSpace(targetNodeID)
+	legacyQuery := func() *gorm.DB {
+		query := s.DB.
+			Where("policy_id = ? AND event_type = ? AND COALESCE(transition_run_id, '') = '' AND completed_at IS NULL",
+				policyID, "failover")
+		if sourceNodeID != "" && targetNodeID != "" {
+			query = query.Where(
+				"((source_node_id = ? AND target_node_id = ?) OR (source_node_id = ? AND target_node_id = ?))",
+				sourceNodeID, targetNodeID, targetNodeID, sourceNodeID,
+			)
+		}
+		return query
+	}
+
+	var candidates []clusterModels.ReplicationEvent
+	delayedQuery := legacyQuery().Where("started_at >= ?", requestedAt.UTC())
+	if completedAt != nil && !completedAt.IsZero() {
+		delayedQuery = delayedQuery.Where("started_at <= ?", completedAt.UTC())
+	}
+	err := delayedQuery.
+		Order("started_at ASC").
+		Limit(2).
+		Find(&candidates).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(candidates) != 1 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &candidates[0], nil
+}
+
+func replicationTransitionHasFailoverIntent(policy *clusterModels.ReplicationPolicy) bool {
+	if policy == nil {
+		return false
+	}
+	reason := strings.ToLower(strings.TrimSpace(policy.TransitionReason))
+	runID := strings.ToLower(strings.TrimSpace(policy.TransitionRunID))
+	return strings.Contains(reason, "failover") ||
+		strings.Contains(reason, "failback") ||
+		strings.HasPrefix(reason, "node_down_") ||
+		strings.HasPrefix(runID, "failover-") ||
+		strings.HasPrefix(runID, "auto-failback-")
+}
+
+func (s *Service) ensureReplicationTransitionEvent(
+	policy *clusterModels.ReplicationPolicy,
+	transitionRunID string,
+	startedAt time.Time,
+	sourceNodeID string,
+	targetNodeID string,
+	status string,
+	message string,
+) (*clusterModels.ReplicationEvent, error) {
+	if policy == nil || policy.ID == 0 || s == nil || s.Cluster == nil {
+		return nil, fmt.Errorf("replication_transition_event_context_unavailable")
+	}
+
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	startedAt = startedAt.UTC()
+	if event, err := s.findReplicationTransitionEvent(
+		policy.ID, transitionRunID, &startedAt, nil, sourceNodeID, targetNodeID,
+	); err == nil {
+		event.TransitionRunID = transitionRunID
+		return event, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	event := clusterModels.ReplicationEvent{
+		PolicyID:        &policy.ID,
+		TransitionRunID: transitionRunID,
+		EventType:       "failover",
+		Status:          status,
+		Message:         message,
+		SourceNodeID:    strings.TrimSpace(sourceNodeID),
+		TargetNodeID:    strings.TrimSpace(targetNodeID),
+		GuestType:       policy.GuestType,
+		GuestID:         policy.GuestID,
+		StartedAt:       startedAt,
+	}
+	eventID, err := s.Cluster.CreateOrUpdateReplicationEvent(event, false)
+	if err != nil {
+		return nil, err
+	}
+	event.ID = eventID
+	return &event, nil
+}
+
+func replicationTransitionEventStatus(state string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case clusterModels.ReplicationTransitionStateDemoting,
+		clusterModels.ReplicationTransitionStateCatchup:
+		return replicationEventStatusDemoting
+	case clusterModels.ReplicationTransitionStatePromoting,
+		clusterModels.ReplicationTransitionStateRollingBack:
+		return replicationEventStatusPromoting
+	case clusterModels.ReplicationTransitionStateCompleted:
+		return replicationEventStatusActive
+	case clusterModels.ReplicationTransitionStateFailed:
+		return replicationEventStatusFailed
+	default:
+		return ""
+	}
+}
+
+func (s *Service) reconcileReplicationTransitionEvent(
+	policy *clusterModels.ReplicationPolicy,
+	recoveryErr error,
+) error {
+	if policy == nil || policy.ID == 0 || s == nil || s.Cluster == nil {
+		return nil
+	}
+
+	state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
+	status := replicationTransitionEventStatus(state)
+	if status == "" {
+		return nil
+	}
+	event, err := s.findReplicationTransitionEvent(
+		policy.ID,
+		policy.TransitionRunID,
+		policy.TransitionRequestedAt,
+		policy.TransitionCompletedAt,
+		policy.TransitionSourceNodeID,
+		policy.TransitionTargetNodeID,
+	)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		var existing int64
+		if runID := strings.TrimSpace(policy.TransitionRunID); runID != "" {
+			if countErr := s.DB.Model(&clusterModels.ReplicationEvent{}).
+				Where("policy_id = ? AND event_type = ? AND transition_run_id = ?", policy.ID, "failover", runID).
+				Count(&existing).Error; countErr != nil {
+				return countErr
+			}
+		}
+		if existing > 0 || !replicationTransitionHasFailoverIntent(policy) {
+			return nil
+		}
+		if policy.TransitionRequestedAt != nil && policy.TransitionCompletedAt != nil {
+			legacyQuery := s.DB.Model(&clusterModels.ReplicationEvent{}).
+				Where("policy_id = ? AND event_type = ? AND COALESCE(transition_run_id, '') = ''",
+					policy.ID, "failover").
+				Where("started_at >= ? AND started_at <= ?",
+					policy.TransitionRequestedAt.UTC(), policy.TransitionCompletedAt.UTC())
+			sourceNodeID := strings.TrimSpace(policy.TransitionSourceNodeID)
+			targetNodeID := strings.TrimSpace(policy.TransitionTargetNodeID)
+			if sourceNodeID != "" && targetNodeID != "" {
+				legacyQuery = legacyQuery.Where(
+					"((source_node_id = ? AND target_node_id = ?) OR (source_node_id = ? AND target_node_id = ?))",
+					sourceNodeID, targetNodeID, targetNodeID, sourceNodeID,
+				)
+			}
+			var legacyCount int64
+			if countErr := legacyQuery.Count(&legacyCount).Error; countErr != nil {
+				return countErr
+			}
+			if legacyCount > 0 {
+				return nil
+			}
+		}
+		if policy.TransitionCompletedAt == nil || strings.TrimSpace(policy.TransitionRunID) == "" ||
+			(state != clusterModels.ReplicationTransitionStateCompleted && state != clusterModels.ReplicationTransitionStateFailed) {
+			return nil
+		}
+		completedAt := policy.TransitionCompletedAt.UTC()
+		age := s.now().UTC().Sub(completedAt)
+		if age < 0 || age > replicationTerminalEventRecreateWindow {
+			return nil
+		}
+		sourceNodeID := strings.TrimSpace(policy.TransitionSourceNodeID)
+		targetNodeID := strings.TrimSpace(policy.TransitionTargetNodeID)
+		if strings.Contains(strings.ToLower(policy.TransitionReason), "rollback") {
+			sourceNodeID, targetNodeID = targetNodeID, sourceNodeID
+		}
+		startedAt := completedAt
+		if policy.TransitionRequestedAt != nil {
+			startedAt = policy.TransitionRequestedAt.UTC()
+		}
+		message := strings.TrimSpace(policy.TransitionReason) + "_active"
+		errMsg := ""
+		if state == clusterModels.ReplicationTransitionStateFailed {
+			message = strings.TrimSpace(policy.TransitionError)
+			if message == "" {
+				message = "transition_failed"
+			}
+			errMsg = message
+		}
+		missing := clusterModels.ReplicationEvent{
+			PolicyID:        &policy.ID,
+			TransitionRunID: strings.TrimSpace(policy.TransitionRunID),
+			EventType:       "failover",
+			Status:          status,
+			Message:         message,
+			Error:           errMsg,
+			SourceNodeID:    sourceNodeID,
+			TargetNodeID:    targetNodeID,
+			GuestType:       policy.GuestType,
+			GuestID:         policy.GuestID,
+			StartedAt:       startedAt,
+			CompletedAt:     &completedAt,
+		}
+		eventID, createErr := s.Cluster.CreateOrUpdateReplicationEvent(missing, false)
+		if createErr != nil {
+			return createErr
+		}
+		if s.TelemetryDB != nil {
+			auditStatus := "success"
+			if state == clusterModels.ReplicationTransitionStateFailed {
+				auditStatus = "failed"
+			}
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "replication_policy_failover", policy.ID, auditStatus, errMsg, map[string]any{
+				"eventId": eventID,
+				"status":  auditStatus,
+				"error":   errMsg,
+			})
+		}
+		s.emitLeftPanelRefresh(fmt.Sprintf("replication_transition_event_recreated_%d", eventID))
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	event.TransitionRunID = strings.TrimSpace(policy.TransitionRunID)
+	event.Status = status
+
+	reason := strings.TrimSpace(policy.TransitionReason)
+	switch state {
+	case clusterModels.ReplicationTransitionStateCompleted:
+		event.Message = reason + "_active"
+		event.Error = ""
+		completedAt := s.now().UTC()
+		if policy.TransitionCompletedAt != nil {
+			completedAt = policy.TransitionCompletedAt.UTC()
+		}
+		event.CompletedAt = &completedAt
+	case clusterModels.ReplicationTransitionStateFailed:
+		result := strings.TrimSpace(policy.TransitionError)
+		if result == "" {
+			result = "transition_failed"
+		}
+		event.Message = result
+		if strings.TrimSpace(event.Error) == "" {
+			event.Error = result
+		} else if !strings.Contains(event.Error, result) {
+			event.Error += "; transition_result: " + result
+		}
+		completedAt := s.now().UTC()
+		if policy.TransitionCompletedAt != nil {
+			completedAt = policy.TransitionCompletedAt.UTC()
+		}
+		event.CompletedAt = &completedAt
+	default:
+		if recoveryErr == nil {
+			return nil
+		}
+		event.Message = reason + "_recovery_pending"
+		event.Error = recoveryErr.Error()
+	}
+
+	if _, err := s.Cluster.CreateOrUpdateReplicationEvent(*event, false); err != nil {
+		return err
+	}
+	if event.CompletedAt != nil && s.TelemetryDB != nil {
+		auditStatus := "success"
+		errMsg := ""
+		if state == clusterModels.ReplicationTransitionStateFailed {
+			auditStatus = "failed"
+			errMsg = event.Error
+		}
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "replication_policy_failover", policy.ID, auditStatus, errMsg, map[string]any{
+			"eventId": event.ID,
+			"status":  auditStatus,
+			"error":   errMsg,
+		})
+	}
+	s.emitLeftPanelRefresh(fmt.Sprintf("replication_transition_event_reconciled_%d", event.ID))
+	return nil
 }
 
 func (s *Service) failPolicyTransition(policy *clusterModels.ReplicationPolicy, transitionErr error) error {
@@ -1258,15 +1657,59 @@ func (s *Service) runTransitionRecoveryTick(ctx context.Context) error {
 	}
 	for i := range policies {
 		policy := policies[i]
-		if !transitionStateInProgress(policy.TransitionState) {
+		state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
+		if !transitionStateInProgress(state) {
+			if state == clusterModels.ReplicationTransitionStateCompleted ||
+				state == clusterModels.ReplicationTransitionStateFailed {
+				if err := s.reconcileReplicationTransitionEvent(&policy, nil); err != nil {
+					logger.L.Warn().Err(err).
+						Uint("policy_id", policy.ID).
+						Msg("replication_terminal_transition_event_reconcile_failed")
+				}
+			}
 			continue
 		}
 		if !s.acquirePolicyTransition(policy.ID) {
 			continue
 		}
 
+		startedAt := s.now().UTC()
+		if policy.TransitionRequestedAt != nil {
+			startedAt = policy.TransitionRequestedAt.UTC()
+		}
+		sourceNodeID := policy.TransitionSourceNodeID
+		targetNodeID := policy.TransitionTargetNodeID
+		if state == clusterModels.ReplicationTransitionStateRollingBack {
+			sourceNodeID, targetNodeID = targetNodeID, sourceNodeID
+		}
+		if _, ensureErr := s.ensureReplicationTransitionEvent(
+			&policy,
+			policy.TransitionRunID,
+			startedAt,
+			sourceNodeID,
+			targetNodeID,
+			replicationTransitionEventStatus(state),
+			strings.TrimSpace(policy.TransitionReason)+"_recovery_pending",
+		); ensureErr != nil {
+			logger.L.Warn().Err(ensureErr).
+				Uint("policy_id", policy.ID).
+				Msg("replication_transition_recovery_event_ensure_failed")
+		}
+
 		resumeErr := s.resumePolicyTransition(ctx, &policy)
 		s.releasePolicyTransition(policy.ID)
+		if latest, latestErr := s.Cluster.GetReplicationPolicyByID(policy.ID); latestErr == nil && latest != nil {
+			policy = *latest
+		} else if latestErr != nil {
+			logger.L.Warn().Err(latestErr).
+				Uint("policy_id", policy.ID).
+				Msg("replication_transition_recovery_policy_reload_failed")
+		}
+		if reconcileErr := s.reconcileReplicationTransitionEvent(&policy, resumeErr); reconcileErr != nil {
+			logger.L.Warn().Err(reconcileErr).
+				Uint("policy_id", policy.ID).
+				Msg("replication_transition_recovery_event_reconcile_failed")
+		}
 		if resumeErr != nil {
 			logger.L.Warn().
 				Err(resumeErr).
@@ -4883,41 +5326,53 @@ func (s *Service) runPolicyOwnershipTransition(
 		return replicationPolicyHAError(transitionEval)
 	}
 
+	transitionRunID := strings.TrimSpace(options.RunID)
+	if transitionRunID == "" {
+		transitionRunID = fmt.Sprintf("%d-%s", policy.ID, compactNowToken())
+	}
 	eventStartedAt := s.now().UTC()
-	eventID, _ := s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-		PolicyID:     &policy.ID,
-		EventType:    "failover",
-		Status:       replicationEventStatusDemoting,
-		Message:      reason + "_demoting",
-		SourceNodeID: previousOwner,
-		TargetNodeID: targetNodeID,
-		GuestType:    policy.GuestType,
-		GuestID:      policy.GuestID,
-		StartedAt:    eventStartedAt,
-	}, false)
+	if strings.TrimSpace(policy.TransitionRunID) == transitionRunID &&
+		transitionStateInProgress(policy.TransitionState) && policy.TransitionRequestedAt != nil {
+		eventStartedAt = policy.TransitionRequestedAt.UTC()
+	}
+	var transitionEvent *clusterModels.ReplicationEvent
+	ensureTransitionEvent := func() {
+		if transitionEvent != nil {
+			return
+		}
+		event, eventErr := s.ensureReplicationTransitionEvent(
+			policy,
+			transitionRunID,
+			eventStartedAt,
+			previousOwner,
+			targetNodeID,
+			replicationEventStatusDemoting,
+			reason+"_demoting",
+		)
+		if eventErr != nil {
+			logger.L.Warn().Err(eventErr).
+				Uint("policy_id", policy.ID).
+				Str("transition_run_id", transitionRunID).
+				Msg("replication_transition_event_ensure_failed")
+			return
+		}
+		transitionEvent = event
+	}
 	updateTransitionEvent := func(status, message string, transitionErr error, completed bool) {
-		if eventID == 0 {
+		if transitionEvent == nil || transitionEvent.ID == 0 {
 			return
 		}
 
-		event := clusterModels.ReplicationEvent{
-			ID:           eventID,
-			PolicyID:     &policy.ID,
-			EventType:    "failover",
-			Status:       status,
-			Message:      message,
-			SourceNodeID: previousOwner,
-			TargetNodeID: targetNodeID,
-			GuestType:    policy.GuestType,
-			GuestID:      policy.GuestID,
-			StartedAt:    eventStartedAt,
-		}
+		transitionEvent.TransitionRunID = transitionRunID
+		transitionEvent.Status = status
+		transitionEvent.Message = message
+		transitionEvent.Error = ""
 		if transitionErr != nil {
-			event.Error = transitionErr.Error()
+			transitionEvent.Error = transitionErr.Error()
 		}
 		if completed {
 			completedAt := time.Now().UTC()
-			event.CompletedAt = &completedAt
+			transitionEvent.CompletedAt = &completedAt
 
 			if s.TelemetryDB != nil {
 				auditStatus := "success"
@@ -4927,19 +5382,20 @@ func (s *Service) runPolicyOwnershipTransition(
 					errMsg = transitionErr.Error()
 				}
 				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "replication_policy_failover", policy.ID, auditStatus, errMsg, map[string]any{
-					"eventId": eventID,
+					"eventId": transitionEvent.ID,
 					"status":  auditStatus,
 					"error":   errMsg,
 				})
 			}
 		}
-		_, _ = s.Cluster.CreateOrUpdateReplicationEvent(event, false)
+		if _, err := s.Cluster.CreateOrUpdateReplicationEvent(*transitionEvent, false); err != nil {
+			logger.L.Warn().Err(err).
+				Uint("policy_id", policy.ID).
+				Uint("event_id", transitionEvent.ID).
+				Msg("replication_transition_event_update_failed")
+		}
 	}
 
-	transitionRunID := strings.TrimSpace(options.RunID)
-	if transitionRunID == "" {
-		transitionRunID = fmt.Sprintf("%d-%s", policy.ID, compactNowToken())
-	}
 	transition := clusterModels.ReplicationPolicyTransition{
 		State:                clusterModels.ReplicationTransitionStateDemoting,
 		RunID:                transitionRunID,
@@ -5211,7 +5667,49 @@ func (s *Service) runPolicyOwnershipTransition(
 		},
 		false,
 	); err != nil {
-		updateTransitionEvent(replicationEventStatusFailed, reason+"_transition_checkpoint_failed", err, true)
+		completedAt := s.now().UTC()
+		failedEvent, findErr := s.findReplicationTransitionEvent(
+			policy.ID,
+			transitionRunID,
+			&eventStartedAt,
+			&completedAt,
+			previousOwner,
+			targetNodeID,
+		)
+		if errors.Is(findErr, gorm.ErrRecordNotFound) {
+			failedEvent = &clusterModels.ReplicationEvent{
+				PolicyID:        &policy.ID,
+				TransitionRunID: transitionRunID,
+				EventType:       "failover",
+				SourceNodeID:    previousOwner,
+				TargetNodeID:    targetNodeID,
+				GuestType:       policy.GuestType,
+				GuestID:         policy.GuestID,
+				StartedAt:       eventStartedAt,
+			}
+		} else if findErr != nil {
+			logger.L.Warn().Err(findErr).
+				Uint("policy_id", policy.ID).
+				Msg("replication_rejected_transition_event_lookup_failed")
+		}
+		if failedEvent != nil {
+			failedEvent.TransitionRunID = transitionRunID
+			failedEvent.Status = replicationEventStatusFailed
+			failedEvent.Message = reason + "_transition_checkpoint_failed"
+			failedEvent.Error = err.Error()
+			failedEvent.CompletedAt = &completedAt
+			if eventID, eventErr := s.Cluster.CreateOrUpdateReplicationEvent(*failedEvent, false); eventErr != nil {
+				logger.L.Warn().Err(eventErr).
+					Uint("policy_id", policy.ID).
+					Msg("replication_rejected_transition_event_create_failed")
+			} else if s.TelemetryDB != nil {
+				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "replication_policy_failover", policy.ID, "failed", err.Error(), map[string]any{
+					"eventId": eventID,
+					"status":  "failed",
+					"error":   err.Error(),
+				})
+			}
+		}
 		return err
 	}
 	policy.ProtectionState = clusterModels.ReplicationProtectionStateSuspended
@@ -5230,6 +5728,7 @@ func (s *Service) runPolicyOwnershipTransition(
 	policy.TransitionGenerationOwnerEpoch = transition.GenerationOwnerEpoch
 	policy.TransitionGenerationManifest = transition.GenerationManifest
 	policy.TransitionGenerationRootCount = transition.GenerationRootCount
+	ensureTransitionEvent()
 
 	if transition.OriginalRunning == nil {
 		// Unknown runtime state must never be interpreted as permission to
@@ -7467,6 +7966,8 @@ func (s *Service) validateAlreadyRunningReplicationActivation(
 			"-o",
 			"value",
 			"-r",
+			"-t",
+			"filesystem,volume",
 			"readonly",
 			dataset,
 		)
@@ -7586,6 +8087,8 @@ func (s *Service) validateReplicationTransitionGenerationForActivation(
 			"-o",
 			"value",
 			"-r",
+			"-t",
+			"filesystem,volume",
 			"readonly",
 			dataset,
 		)

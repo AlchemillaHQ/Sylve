@@ -746,6 +746,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				Columns: []clause.Column{{Name: "id"}},
 				DoUpdates: clause.AssignmentColumns([]string{
 					"policy_id",
+					"transition_run_id",
 					"event_type",
 					"status",
 					"message",

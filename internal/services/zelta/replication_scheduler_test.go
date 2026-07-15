@@ -130,7 +130,7 @@ func setupRaftClusterService(t *testing.T) (*cluster.Service, string, func()) {
 
 	localNodeID, err := utils.GetSystemUUID()
 	if err != nil {
-		t.Fatalf("GetSystemUUID: %v", err)
+		localNodeID = "test-node"
 	}
 	localNodeID = strings.TrimSpace(localNodeID)
 

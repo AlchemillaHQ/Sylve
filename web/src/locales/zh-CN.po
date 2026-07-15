@@ -153,6 +153,7 @@ msgid "Pools"
 msgstr "存储池"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Datasets"
 msgstr "数据集"
 
@@ -533,6 +534,7 @@ msgstr "错误请求"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Error"
 msgstr "错误"
@@ -592,6 +594,7 @@ msgstr "操作"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3350,6 +3353,7 @@ msgstr "成功"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failed"
@@ -3578,6 +3582,7 @@ msgid "Validation failed"
 msgstr "验证失败"
 
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Validating"
 msgstr "正在验证"
@@ -3622,6 +3627,7 @@ msgid "Failed to copy output"
 msgstr "复制输出失败"
 
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy"
@@ -3639,6 +3645,7 @@ msgstr "工作负载"
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Path"
 msgstr "路径"
 
@@ -3653,7 +3660,9 @@ msgstr "已完成"
 
 #. 0: event.policyId
 #. 0: event.policyId
+#. 0: row.policy.id
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Policy {0}"
 msgstr "策略 {0}"
@@ -3851,17 +3860,14 @@ msgstr "活动节点宕机时不会自动移动。"
 msgid "An admin chooses when and where to move the workload."
 msgstr "由管理员选择移动工作负载的时间和位置。"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Automatic safe move"
-msgstr "自动安全移动"
+#~ msgid "Automatic safe move"
+#~ msgstr "自动安全移动"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Automatically move after a safe demote and sync."
-msgstr "在安全降级和同步后自动移动。"
+#~ msgid "Automatically move after a safe demote and sync."
+#~ msgstr "在安全降级和同步后自动移动。"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Protects data first, then promotes a target."
-msgstr "先保护数据，然后提升目标。"
+#~ msgid "Protects data first, then promotes a target."
+#~ msgstr "先保护数据，然后提升目标。"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Automatic force recovery"
@@ -3938,9 +3944,8 @@ msgstr "跟随当前活动节点"
 msgid "Auto force recovery"
 msgstr "自动强制恢复"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Auto safe move"
-msgstr "自动安全移动"
+#~ msgid "Auto safe move"
+#~ msgstr "自动安全移动"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Manual moves only"
@@ -3971,14 +3976,13 @@ msgstr "手动移回"
 msgid "Never"
 msgstr "从不"
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Stale"
 msgstr "过期"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Auto-pick the best target from policy priority"
-msgstr "根据策略优先级自动挑选最佳目标"
+#~ msgid "Auto-pick the best target from policy priority"
+#~ msgstr "根据策略优先级自动挑选最佳目标"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "No online target server is currently available for this policy."
@@ -4142,13 +4146,11 @@ msgstr "选择虚拟机"
 msgid "Choose Jail"
 msgstr "选择 Jail"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "If the active server goes down"
-msgstr "如果活动服务器宕机"
+#~ msgid "If the active server goes down"
+#~ msgstr "如果活动服务器宕机"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Choose what should happen automatically."
-msgstr "选择应自动发生的情况。"
+#~ msgid "Choose what should happen automatically."
+#~ msgstr "选择应自动发生的情况。"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "I understand automatic force recovery can lose the newest writes."
@@ -4158,9 +4160,8 @@ msgstr "我理解自动强制恢复可能会丢失最新的写入。"
 msgid "Target servers"
 msgstr "目标服务器"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Higher priority gets picked first when auto-selecting a target."
-msgstr "自动选择目标时，优先级越高越先被选中。"
+#~ msgid "Higher priority gets picked first when auto-selecting a target."
+#~ msgstr "自动选择目标时，优先级越高越先被选中。"
 
 #. 0: policyModal.targets.length; 1: maxTargetRows
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -10386,6 +10387,7 @@ msgstr "错误: {0}"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Pending"
@@ -16271,6 +16273,7 @@ msgstr ""
 msgid "Waiting to retry the migration safely…"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Ready"
 msgstr ""
@@ -16371,10 +16374,12 @@ msgstr ""
 msgid "Filesystem storage cannot be imported"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Syncing"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Needs sync"
 msgstr ""
@@ -16461,4 +16466,57 @@ msgstr ""
 #. 0: convertDbTime( replicationActivity.current.updatedAt )
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 msgid "Auto-refreshes every 5 seconds · Last updated: {0}"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatic safe handoff"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatically hand off only while the active server is reachable."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "If the active server is unreachable, wait for it to return or force recovery manually."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto safe handoff"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto-pick the best eligible target"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatic recovery behavior"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose when Sylve may move the workload without an administrator."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Forced recovery prefers the freshest complete replica. Priority drives normal auto-selection and breaks freshness ties."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "An unhealthy pool uses force recovery and may lose the newest writes. Capacity pressure uses a safe handoff."
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Incomplete"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target Results"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "No replication targets match this filter."
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Last Verified"
 msgstr ""

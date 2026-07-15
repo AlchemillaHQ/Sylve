@@ -166,7 +166,7 @@ func TestCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 
 	staged, output, err := service.ReplicationZFSSendStaged(ctx, target, source, "guest", opts, nil)
 	if err != nil {
-		readonlyState, _ := exec.Command("zfs", "get", "-H", "-o", "name,value,source", "-r", "readonly", staged.StagingDataset).CombinedOutput()
+		readonlyState, _ := exec.Command("zfs", "get", "-H", "-o", "name,value,source", "-r", "-t", "filesystem,volume", "readonly", staged.StagingDataset).CombinedOutput()
 		t.Fatalf("first staged replication failed: %v\n%s\nreadonly state:\n%s", err, output, readonlyState)
 	}
 	if !realZFSDatasetExists(t, targetRoot) {

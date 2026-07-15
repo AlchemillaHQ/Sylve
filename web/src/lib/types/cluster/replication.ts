@@ -69,6 +69,7 @@ export const ReplicationPolicySchema = z.object({
 export const ReplicationEventSchema = z.object({
 	id: z.number().int(),
 	policyId: z.number().int().nullable().optional(),
+	transitionRunId: z.string().optional().default(''),
 	eventType: z.string(),
 	status: z.string(),
 	message: z.string().optional().default(''),

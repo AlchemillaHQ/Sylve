@@ -229,21 +229,22 @@ type ReplicationGuestOperationTransition struct {
 }
 
 type ReplicationEvent struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	PolicyID     *uint      `gorm:"index" json:"policyId"`
-	EventType    string     `gorm:"index;not null" json:"eventType"`
-	Status       string     `gorm:"index;not null" json:"status"`
-	Message      string     `json:"message"`
-	Error        string     `gorm:"type:text" json:"error"`
-	Output       string     `gorm:"type:text" json:"output"`
-	SourceNodeID string     `gorm:"index" json:"sourceNodeId"`
-	TargetNodeID string     `gorm:"index" json:"targetNodeId"`
-	GuestType    string     `gorm:"index" json:"guestType"`
-	GuestID      uint       `gorm:"index" json:"guestId"`
-	StartedAt    time.Time  `gorm:"index" json:"startedAt"`
-	CompletedAt  *time.Time `json:"completedAt"`
-	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	PolicyID        *uint      `gorm:"index" json:"policyId"`
+	TransitionRunID string     `gorm:"not null;default:'';index" json:"transitionRunId"`
+	EventType       string     `gorm:"index;not null" json:"eventType"`
+	Status          string     `gorm:"index;not null" json:"status"`
+	Message         string     `json:"message"`
+	Error           string     `gorm:"type:text" json:"error"`
+	Output          string     `gorm:"type:text" json:"output"`
+	SourceNodeID    string     `gorm:"index" json:"sourceNodeId"`
+	TargetNodeID    string     `gorm:"index" json:"targetNodeId"`
+	GuestType       string     `gorm:"index" json:"guestType"`
+	GuestID         uint       `gorm:"index" json:"guestId"`
+	StartedAt       time.Time  `gorm:"index" json:"startedAt"`
+	CompletedAt     *time.Time `json:"completedAt"`
+	CreatedAt       time.Time  `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt       time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 type ClusterSSHIdentity struct {

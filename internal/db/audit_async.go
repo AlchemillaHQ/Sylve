@@ -17,6 +17,31 @@ import (
 )
 
 func FinalizeAsyncAuditRecord(telemetryDB *gorm.DB, jobType string, jobID uint, status string, errMsg string, response interface{}) {
+	finalizeAsyncAuditRecords(telemetryDB, jobType, jobID, status, errMsg, response, nil)
+}
+
+func FinalizeAsyncAuditRecordsBefore(
+	telemetryDB *gorm.DB,
+	jobType string,
+	jobID uint,
+	status string,
+	errMsg string,
+	response interface{},
+	createdBefore time.Time,
+) {
+	createdBefore = createdBefore.UTC()
+	finalizeAsyncAuditRecords(telemetryDB, jobType, jobID, status, errMsg, response, &createdBefore)
+}
+
+func finalizeAsyncAuditRecords(
+	telemetryDB *gorm.DB,
+	jobType string,
+	jobID uint,
+	status string,
+	errMsg string,
+	response interface{},
+	createdBefore *time.Time,
+) {
 	if telemetryDB == nil {
 		return
 	}
@@ -25,10 +50,18 @@ func FinalizeAsyncAuditRecord(telemetryDB *gorm.DB, jobType string, jobID uint, 
 	if jobType != "" {
 		query = query.Where("async_job_type = ?", jobType)
 	}
-
 	var records []infoModels.AuditRecord
 	if err := query.Order("created_at DESC").Find(&records).Error; err != nil {
 		return
+	}
+	if createdBefore != nil {
+		filtered := records[:0]
+		for i := range records {
+			if records[i].CreatedAt.UTC().Before(*createdBefore) {
+				filtered = append(filtered, records[i])
+			}
+		}
+		records = filtered
 	}
 
 	if len(records) == 0 {

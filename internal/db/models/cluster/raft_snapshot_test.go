@@ -102,7 +102,8 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	if err := sourceDB.Create(&ReplicationEvent{
 		ID: 600, EventType: "incremental", Status: "success",
-		SourceNodeID: "node-1", TargetNodeID: "node-2",
+		TransitionRunID: "transition-snapshot",
+		SourceNodeID:    "node-1", TargetNodeID: "node-2",
 	}).Error; err != nil {
 		t.Fatalf("failed to seed replication event: %v", err)
 	}
@@ -188,7 +189,7 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	var events []ReplicationEvent
 	destDB.Find(&events)
-	if len(events) != 1 || events[0].Status != "success" {
+	if len(events) != 1 || events[0].Status != "success" || events[0].TransitionRunID != "transition-snapshot" {
 		t.Fatalf("events mismatch: %+v", events)
 	}
 
