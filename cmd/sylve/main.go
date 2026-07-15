@@ -260,11 +260,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	}
 
 	if err := zelta.EnsureZeltaInstalled(); err != nil {
-		logger.L.Error().Err(err).Msg("Failed to install Zelta")
+		logger.L.Error().Err(err).Msg("Failed to install Zelta; skipping Zelta schedulers")
+	} else {
+		go zeltaS.StartBackupScheduler(qCtx)
+		go zeltaS.StartReplicationScheduler(qCtx)
 	}
 
-	go zeltaS.StartBackupScheduler(qCtx)
-	go zeltaS.StartReplicationScheduler(qCtx)
 	go migrationSvc.StartRecoveryTicker(qCtx)
 	go aS.ClearExpiredJWTTokens(qCtx)
 

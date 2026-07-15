@@ -65,13 +65,6 @@ func EnsureZeltaInstalled() error {
 	binDir := filepath.Join(zeltaInstallDir, "bin")
 	shareDir := filepath.Join(zeltaInstallDir, "share", "zelta")
 
-	zeltaBin := filepath.Join(binDir, "zelta")
-	if _, err := os.Stat(zeltaBin); err == nil {
-		return nil
-	}
-
-	logger.L.Info().Msg("extracting_embedded_zelta_scripts")
-
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return fmt.Errorf("create_zelta_bin_dir: %w", err)
 	}
@@ -79,46 +72,58 @@ func EnsureZeltaInstalled() error {
 		return fmt.Errorf("create_zelta_share_dir: %w", err)
 	}
 
-	binEntries, err := zeltaFS.ReadDir("zelta/bin")
+	binChanged, err := syncEmbeddedZeltaFiles("zelta/bin", binDir, 0755)
 	if err != nil {
-		return fmt.Errorf("read_zelta_bin_entries: %w", err)
+		return err
 	}
-
-	for _, entry := range binEntries {
-		if entry.IsDir() {
-			continue
-		}
-		data, err := zeltaFS.ReadFile("zelta/bin/" + entry.Name())
-		if err != nil {
-			return fmt.Errorf("read_zelta_bin_%s: %w", entry.Name(), err)
-		}
-		dst := filepath.Join(binDir, entry.Name())
-		if err := os.WriteFile(dst, data, 0755); err != nil {
-			return fmt.Errorf("write_zelta_bin_%s: %w", entry.Name(), err)
-		}
-	}
-
-	shareEntries, err := zeltaFS.ReadDir("zelta/share/zelta")
+	shareChanged, err := syncEmbeddedZeltaFiles("zelta/share/zelta", shareDir, 0644)
 	if err != nil {
-		return fmt.Errorf("read_zelta_share_entries: %w", err)
+		return err
 	}
 
-	for _, entry := range shareEntries {
-		if entry.IsDir() {
-			continue
-		}
-		data, err := zeltaFS.ReadFile("zelta/share/zelta/" + entry.Name())
-		if err != nil {
-			return fmt.Errorf("read_zelta_share_%s: %w", entry.Name(), err)
-		}
-		dst := filepath.Join(shareDir, entry.Name())
-		if err := os.WriteFile(dst, data, 0644); err != nil {
-			return fmt.Errorf("write_zelta_share_%s: %w", entry.Name(), err)
-		}
+	if binChanged || shareChanged {
+		logger.L.Info().Str("path", zeltaInstallDir).Msg("zelta_scripts_synced")
 	}
-
-	logger.L.Info().Str("path", zeltaInstallDir).Msg("zelta_scripts_extracted")
 	return nil
+}
+
+func syncEmbeddedZeltaFiles(sourceDir, destinationDir string, perm os.FileMode) (bool, error) {
+	entries, err := zeltaFS.ReadDir(sourceDir)
+	if err != nil {
+		return false, fmt.Errorf("read_zelta_entries_%s: %w", sourceDir, err)
+	}
+
+	changed := false
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		source := filepath.Join(sourceDir, entry.Name())
+		data, err := zeltaFS.ReadFile(source)
+		if err != nil {
+			return false, fmt.Errorf("read_zelta_file_%s: %w", source, err)
+		}
+
+		destination := filepath.Join(destinationDir, entry.Name())
+		installed, readErr := os.ReadFile(destination)
+		if readErr == nil && bytes.Equal(installed, data) {
+			if info, statErr := os.Stat(destination); statErr == nil && info.Mode().Perm() == perm {
+				continue
+			} else if statErr != nil {
+				return false, fmt.Errorf("stat_zelta_file_%s: %w", destination, statErr)
+			}
+		} else if readErr != nil && !os.IsNotExist(readErr) {
+			return false, fmt.Errorf("read_installed_zelta_file_%s: %w", destination, readErr)
+		}
+
+		if err := utils.AtomicWriteFile(destination, data, perm); err != nil {
+			return false, fmt.Errorf("write_zelta_file_%s: %w", destination, err)
+		}
+		changed = true
+	}
+
+	return changed, nil
 }
 
 func zeltaBinPath() string {

@@ -9,6 +9,7 @@
 package zelta
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -49,6 +50,32 @@ func TestZeltaBinaryExtractsAndRuns(t *testing.T) {
 	out, _ := cmd.CombinedOutput()
 	if len(out) == 0 && cmd.ProcessState != nil && !cmd.ProcessState.Success() {
 		t.Logf("zelta --help produced no output but ran (exit: %d)", cmd.ProcessState.ExitCode())
+	}
+}
+
+func TestEnsureZeltaInstalledRefreshesChangedEmbeddedAssets(t *testing.T) {
+	dir := extractZeltaToTemp(t)
+	const asset = "zelta/share/zelta/zelta-common.awk"
+
+	expected, err := zeltaFS.ReadFile(asset)
+	if err != nil {
+		t.Fatalf("failed to read embedded asset: %v", err)
+	}
+
+	installed := filepath.Join(dir, "share", "zelta", "zelta-common.awk")
+	if err := os.WriteFile(installed, []byte("stale asset\n"), 0644); err != nil {
+		t.Fatalf("failed to replace installed asset: %v", err)
+	}
+	if err := EnsureZeltaInstalled(); err != nil {
+		t.Fatalf("failed to refresh zelta assets: %v", err)
+	}
+
+	actual, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatalf("failed to read refreshed asset: %v", err)
+	}
+	if !bytes.Equal(actual, expected) {
+		t.Fatal("installed asset was not refreshed from the embedded copy")
 	}
 }
 

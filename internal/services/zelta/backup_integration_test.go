@@ -203,14 +203,15 @@ func TestRunBackupJobZeltaBinaryNotFoundSetsFailure(t *testing.T) {
 
 	err := svc.runBackupJob(context.Background(), &job)
 	if err == nil {
-		t.Skip("zelta binary found, skipping")
-	} else {
-		t.Fatal("expected error")
+		t.Fatal("expected error when zelta binary is missing")
 	}
 
 	updated := fetchJob(t, svc.DB, 201)
 	if updated.LastStatus != "failed" {
 		t.Fatalf("expected failed status when zelta not found, got %q", updated.LastStatus)
+	}
+	if updated.LastError == "" {
+		t.Fatal("expected LastError to be set")
 	}
 }
 

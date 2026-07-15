@@ -33,6 +33,13 @@ type wireGuardFirewallSnapshot struct {
 	NAT     []networkModels.FirewallNATRule
 }
 
+func (s *Service) isWireGuardUDPPortInUse(port int) bool {
+	if s.wireGuardUDPPortInUse != nil {
+		return s.wireGuardUDPPortInUse(port)
+	}
+	return utils.IsUDPPortInUse(port)
+}
+
 func normalizeWireGuardManagedInterface(value string) string {
 	return strings.TrimSpace(value)
 }
@@ -387,7 +394,7 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 		return err
 	}
 
-	if utils.IsUDPPortInUse(int(req.Port)) {
+	if s.isWireGuardUDPPortInUse(int(req.Port)) {
 		return fmt.Errorf("wireguard_port_already_in_use")
 	}
 
@@ -469,7 +476,7 @@ func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
 		return err
 	}
 
-	if req.Port != server.Port && utils.IsUDPPortInUse(int(req.Port)) {
+	if req.Port != server.Port && s.isWireGuardUDPPortInUse(int(req.Port)) {
 		return fmt.Errorf("wireguard_port_already_in_use")
 	}
 

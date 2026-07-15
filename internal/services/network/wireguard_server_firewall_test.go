@@ -9,6 +9,7 @@
 package network
 
 import (
+	"net"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -48,6 +49,7 @@ func TestWireGuardServerSyncsManagedHiddenFirewallRules(t *testing.T) {
 	)
 	seedWireGuardServiceEnabled(t, db)
 	stubWireGuardServerRuntime(t)
+	svc.wireGuardUDPPortInUse = func(int) bool { return false }
 
 	if err := svc.InitWireGuardServer(&InitWireGuardServerRequest{
 		Port:                    61820,
@@ -120,5 +122,28 @@ func TestWireGuardServerSyncsManagedHiddenFirewallRules(t *testing.T) {
 	}
 	if natCount != 0 {
 		t.Fatalf("expected managed nat rule deletion after disable, got count=%d", natCount)
+	}
+}
+
+func TestWireGuardServerInitRejectsOccupiedUDPPort(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&models.BasicSettings{},
+		&networkModels.WireGuardServer{},
+	)
+	seedWireGuardServiceEnabled(t, db)
+
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	if err != nil {
+		t.Fatalf("failed to reserve UDP port: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	port := listener.LocalAddr().(*net.UDPAddr).Port
+	err = svc.InitWireGuardServer(&InitWireGuardServerRequest{
+		Port:      uint(port),
+		Addresses: []string{"172.29.100.1/24"},
+	})
+	if err == nil || err.Error() != "wireguard_port_already_in_use" {
+		t.Fatalf("expected occupied UDP port to be rejected, got %v", err)
 	}
 }

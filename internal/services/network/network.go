@@ -78,6 +78,7 @@ type Service struct {
 	wgServerCache             *wgServerMetricsCache
 	wgClientMetricsCache      map[uint]*wgClientMetricsCache
 	listSnapshotMigrationOnce sync.Once
+	wireGuardUDPPortInUse     func(port int) bool
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)
