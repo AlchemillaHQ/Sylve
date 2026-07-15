@@ -1,4 +1,5 @@
 <!-- 
+<span class="icon-[mdi--shield-off-outline]"></span>
 <span class="icon-[mdi--package-variant-closed]"></span>
 <span class="icon-[mdi--format-list-bulleted]"></span>
 <span class="icon-[mdi--broadcast]"></span>

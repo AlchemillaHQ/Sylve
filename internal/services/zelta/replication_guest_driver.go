@@ -196,6 +196,9 @@ func (d vmReplicationGuestDriver) replicationSourceDatasets(ctx context.Context,
 	localDatasets, listErr := d.service.listLocalFilesystemDatasets(ctx)
 	if listErr == nil {
 		for _, dataset := range localDatasets {
+			if isReplicationLineageDatasetPath(dataset) {
+				continue
+			}
 			kind, rid := inferRestoreDatasetKind(dataset)
 			if kind != clusterModels.ReplicationGuestTypeVM || rid != vm.RID || vmDatasetRoot(dataset) != dataset {
 				continue

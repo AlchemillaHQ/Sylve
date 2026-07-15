@@ -114,15 +114,6 @@
 					{dataset}@{snapshot?.prefix}
 				</Dialog.Description>
 			</Dialog.Header>
-
-			<Dialog.Close
-				class="flex h-5 w-5 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				onclick={() => {
-					open = false;
-				}}
-			>
-				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
-			</Dialog.Close>
 		</div>
 
 		<div class="flex flex-row gap-2">

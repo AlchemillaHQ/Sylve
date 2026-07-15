@@ -1114,7 +1114,6 @@ msgstr "Zurücksetzen"
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -1848,7 +1847,6 @@ msgstr "Sind Sie sicher?"
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -1863,7 +1861,6 @@ msgstr "Sind Sie sicher?"
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
 msgstr "Abbrechen"
@@ -4210,9 +4207,8 @@ msgstr "Automatisch zurück zum bevorzugten primären Knoten wechseln"
 #~ msgid "Sync schedule (cron)"
 #~ msgstr "Sync-Zeitplan (cron)"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Policy enabled"
-msgstr "Richtlinie aktiviert"
+#~ msgid "Policy enabled"
+#~ msgstr "Richtlinie aktiviert"
 
 #. 0: humanCron
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -4615,6 +4611,7 @@ msgstr "Benutzerdefinierte Jail-Lebenszyklus-Hooks (exec.*-Skripte)"
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enable"
 msgstr "Aktivieren"
 
@@ -16525,4 +16522,13 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "View Error"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "HA Snapshots"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "msgid"
 msgstr ""

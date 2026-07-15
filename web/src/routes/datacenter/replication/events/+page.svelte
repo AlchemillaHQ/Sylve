@@ -25,6 +25,7 @@
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		policies: ReplicationPolicy[];
@@ -267,7 +268,6 @@
 		error: ''
 	});
 
-	// svelte-ignore state_referenced_locally
 	let progressEvent = resource(
 		[() => progressModal.open, () => progressEventId],
 		async ([open, eventId]) => {
@@ -278,8 +278,9 @@
 				const res = await getReplicationEventProgress(eventId, nodeId || undefined);
 				progressModal.error = '';
 				return res;
-			} catch (error: any) {
-				progressModal.error = error?.message || 'Failed to load progress';
+			} catch (error: unknown) {
+				const err = error as { message?: string } | null | undefined;
+				progressModal.error = err?.message || 'Failed to load progress';
 				return null;
 			}
 		},
@@ -612,10 +613,7 @@
 									<td class="p-2">
 										{row.target.lastVerifiedAt ? convertDbTime(row.target.lastVerifiedAt) : '-'}
 									</td>
-									<td
-										class="max-w-[320px] truncate p-2"
-										title={row.target.lastError || ''}
-									>
+									<td class="max-w-[320px] truncate p-2" title={row.target.lastError || ''}>
 										{row.target.lastError || '-'}
 									</td>
 								</tr>
@@ -639,7 +637,14 @@
 <Dialog.Root bind:open={progressModal.open}>
 	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-6">
 		<Dialog.Header>
-			<Dialog.Title>Replication Progress</Dialog.Title>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--progress-clock]"
+					title="Replication Progress"
+					size="w-4 h-4"
+					gap="gap-2"
+				/>
+			</Dialog.Title>
 		</Dialog.Header>
 
 		{#if progressModal.error}

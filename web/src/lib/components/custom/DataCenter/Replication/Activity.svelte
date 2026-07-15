@@ -7,6 +7,7 @@
 	import { convertDbTime } from '$lib/utils/time';
 	import { storage } from '$lib';
 	import { resource, useInterval } from 'runed';
+	import SpanWithIcon from '../../SpanWithIcon.svelte';
 
 	const IN_PROGRESS_STATUSES = new Set([
 		'running',
@@ -51,8 +52,10 @@
 			eventTarget &&
 			transitionSource &&
 			transitionTarget &&
-			!((eventSource === transitionSource && eventTarget === transitionTarget) ||
-				(eventSource === transitionTarget && eventTarget === transitionSource))
+			!(
+				(eventSource === transitionSource && eventTarget === transitionTarget) ||
+				(eventSource === transitionTarget && eventTarget === transitionSource)
+			)
 		) {
 			return false;
 		}
@@ -60,10 +63,18 @@
 		const eventStartedAt = parsedTime(event.startedAt);
 		const transitionRequestedAt = parsedTime(policy.transitionRequestedAt);
 		const transitionCompletedAt = parsedTime(policy.transitionCompletedAt);
-		if (eventStartedAt !== null && transitionRequestedAt !== null && eventStartedAt < transitionRequestedAt) {
+		if (
+			eventStartedAt !== null &&
+			transitionRequestedAt !== null &&
+			eventStartedAt < transitionRequestedAt
+		) {
 			return false;
 		}
-		if (eventStartedAt !== null && transitionCompletedAt !== null && eventStartedAt > transitionCompletedAt) {
+		if (
+			eventStartedAt !== null &&
+			transitionCompletedAt !== null &&
+			eventStartedAt > transitionCompletedAt
+		) {
 			return false;
 		}
 		return true;
@@ -107,7 +118,8 @@
 			const policyRunId = String(policy.transitionRunId || '').trim();
 			if (eventRunId && policyRunId && eventRunId !== policyRunId) return false;
 			if (!eventRunId) {
-				if (legacyCandidateCount !== 1 || !isCompatibleLegacyFailoverEvent(event, policy)) return false;
+				if (legacyCandidateCount !== 1 || !isCompatibleLegacyFailoverEvent(event, policy))
+					return false;
 			}
 		}
 
@@ -135,7 +147,11 @@
 				String(event.eventType || '').toLowerCase() === 'failover' &&
 				!String(event.transitionRunId || '').trim() &&
 				!event.completedAt &&
-				IN_PROGRESS_STATUSES.has(String(event.status || '').trim().toLowerCase()) &&
+				IN_PROGRESS_STATUSES.has(
+					String(event.status || '')
+						.trim()
+						.toLowerCase()
+				) &&
 				isCompatibleLegacyFailoverEvent(event, policy)
 			) {
 				legacyCandidatesByPolicy[event.policyId] =
@@ -204,7 +220,6 @@
 
 	let replicationModalOpen = $state(false);
 
-	// svelte-ignore state_referenced_locally
 	let replicationActivity = resource(
 		() => 'header-replication-activity',
 		async () => {
@@ -245,12 +260,12 @@
 					updatedAt: new Date().toISOString(),
 					error: ''
 				};
-			} catch (error: any) {
+			} catch (error: unknown) {
 				return {
 					available: false,
 					running: [],
 					updatedAt: new Date().toISOString(),
-					error: error?.message || 'Failed to load replication activity'
+					error: (error as Error)?.message || 'Failed to load replication activity'
 				};
 			}
 		},
@@ -325,9 +340,16 @@
 {/if}
 
 <Dialog.Root bind:open={replicationModalOpen}>
-	<Dialog.Content class="w-[90%] max-w-2xl overflow-hidden p-5">
+	<Dialog.Content class="w-[90%] max-w-2xl overflow-hidden p-6">
 		<Dialog.Header>
-			<Dialog.Title>Replication Activity</Dialog.Title>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--progress-clock]"
+					title="Replication Activity"
+					size="w-4 h-4"
+					gap="gap-2"
+				/>
+			</Dialog.Title>
 		</Dialog.Header>
 
 		{#if !replicationActivity.current.available && replicationActivity.current.error}

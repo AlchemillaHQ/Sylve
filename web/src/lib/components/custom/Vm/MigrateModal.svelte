@@ -584,7 +584,6 @@
 				</div>
 			</ScrollArea>
 			<Dialog.Footer>
-				<Dialog.Close class={buttonVariants({ variant: 'outline' })}>Close</Dialog.Close>
 				{#if cancellationAvailableInCurrentPhase() && !migrationHasTerminalStatus()}
 					<Button
 						variant="destructive"

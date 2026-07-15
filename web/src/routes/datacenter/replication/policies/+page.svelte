@@ -794,10 +794,7 @@
 	let failoverTargetOptions = $derived.by(() => {
 		const policy = selectedPolicy;
 		if (!policy) {
-			return [
-				{ value: '', label: 'Auto-pick the best eligible target' },
-				...nodeOptions
-			];
+			return [{ value: '', label: 'Auto-pick the best eligible target' }, ...nodeOptions];
 		}
 
 		const ownerNodeID = (policy.activeNodeId || policy.sourceNodeId || '').trim();
@@ -809,10 +806,7 @@
 		const scopedOptions = nodeOptions.filter(
 			(option) => configuredTargets.has(option.value) && isOnlineNode(option.value)
 		);
-		return [
-			{ value: '', label: 'Auto-pick the best eligible target' },
-			...scopedOptions
-		];
+		return [{ value: '', label: 'Auto-pick the best eligible target' }, ...scopedOptions];
 	});
 	let failoverTargetHint = $derived.by(() => {
 		if (!selectedPolicy) return '';
@@ -983,7 +977,7 @@
 						.filter(Boolean)
 						.join(' | ');
 					const stateClass = stateClasses[s.state] || 'text-muted-foreground';
-					return `<span class="inline-flex min-w-[140px] flex-col gap-0.5 rounded border px-1.5 py-1" title="${escapeHtml(tooltip)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-2 w-2 shrink-0 rounded-full" style="background-color:${s.dotColor}"></span><span>${escapeHtml(nodeLabel)}</span><span class="${stateClass} text-xs">${escapeHtml(s.statusLabel)}</span></span>${secondaryLabel ? `<span class="text-muted-foreground pl-3 text-[11px]">${escapeHtml(secondaryLabel)}</span>` : ''}</span>`;
+					return `<span class="inline-flex min-w-[140px] flex-col gap-0.5 rounded border px-1.5 py-1.5" title="${escapeHtml(tooltip)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-2 w-2 shrink-0 rounded-full" style="background-color:${s.dotColor}"></span><span>${escapeHtml(nodeLabel)}</span><span class="${stateClass} text-xs mt-0.5">${escapeHtml(s.statusLabel)}</span></span>${secondaryLabel ? `<span class="text-muted-foreground pl-3 text-[11px]">${escapeHtml(secondaryLabel)}</span>` : ''}</span>`;
 				};
 
 				let parts = tracked.map(nodeHtml);
@@ -1775,6 +1769,11 @@
 												: ''}
 								/>
 							</div>
+							<CustomCheckbox
+								label="Enable"
+								bind:checked={policyModal.enabled}
+								classes="flex items-center gap-2 mt-4"
+							/>
 						</div>
 					</Tabs.Content>
 
@@ -1831,8 +1830,8 @@
 								<div>
 									<p class="text-sm font-medium">Target servers</p>
 									<p class="text-muted-foreground text-xs">
-									Forced recovery prefers the freshest complete replica. Priority drives normal
-									auto-selection and breaks freshness ties.
+										Forced recovery prefers the freshest complete replica. Priority drives normal
+										auto-selection and breaks freshness ties.
 									</p>
 									<p class="text-muted-foreground mt-1 text-xs">
 										{policyModal.targets.length}/{maxTargetRows} targets configured
@@ -1959,11 +1958,6 @@
 									? `Current schedule: ${humanCron}.`
 									: 'Enter a valid cron schedule, for example: */15 * * * *'}
 							</p>
-							<CustomCheckbox
-								label="Policy enabled"
-								bind:checked={policyModal.enabled}
-								classes="mt-3 flex items-center gap-2"
-							/>
 						</div>
 
 						<div class="rounded-md border p-2.5 space-y-2">
@@ -1993,14 +1987,14 @@
 						<div class="rounded-md border p-2.5 space-y-2">
 							<div class="mb-2">
 								<p class="text-sm font-medium">Pool health monitoring</p>
-							<p class="text-muted-foreground text-xs">
-								Monitor ZFS pool health and capacity. Trigger failover if the pool becomes
-								unhealthy or full.
-							</p>
-							<p class="mt-1 text-xs text-amber-300">
-								An unhealthy pool uses force recovery and may lose the newest writes. Capacity
-								pressure uses a safe handoff.
-							</p>
+								<p class="text-muted-foreground text-xs">
+									Monitor ZFS pool health and capacity. Trigger failover if the pool becomes
+									unhealthy or full.
+								</p>
+								<p class="mt-1 text-xs text-amber-300">
+									An unhealthy pool uses force recovery and may lose the newest writes. Capacity
+									pressure uses a safe handoff.
+								</p>
 							</div>
 							<CustomCheckbox
 								label="Monitor ZFS pool health"
@@ -2084,7 +2078,6 @@
 		</div>
 
 		<Dialog.Footer class="flex items-center justify-between">
-			<Button variant="outline" onclick={resetPolicyModal} disabled={policySaving}>Cancel</Button>
 			<div class="flex items-center gap-2">
 				{#if !isLastPolicyStep}
 					<Button onclick={goToNextPolicyStep} disabled={policySaving}>Next</Button>

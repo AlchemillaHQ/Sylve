@@ -108,6 +108,31 @@ func TestVMReplicationSourcesIgnoreLegacyISOPool(t *testing.T) {
 	}
 }
 
+func TestVMReplicationSourcesIgnoreRetainedGenerations(t *testing.T) {
+	service := newTestZeltaService(newZeltaServiceTestDB(t))
+	service.localFilesystemDatasetLister = func(context.Context) ([]string, error) {
+		return []string{
+			"zroot/sylve/virtual-machines/107",
+			"zroot/sylve/virtual-machines/107_previous-replication-6633921964961922-mrmb3i63-2",
+			"zroot/sylve/virtual-machines/107_previous-replication-6633921964961922-mrmb9yr1-2",
+		}, nil
+	}
+	driver := vmReplicationGuestDriver{service: service}
+	sources, err := driver.replicationSourceDatasets(context.Background(), &vmModels.VM{
+		RID: 107,
+		Storages: []vmModels.Storage{
+			{Type: vmModels.VMStorageTypeZVol, Pool: "zroot", Enable: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("discover VM replication sources: %v", err)
+	}
+	want := []string{"zroot/sylve/virtual-machines/107"}
+	if !reflect.DeepEqual(sources, want) {
+		t.Fatalf("replication sources = %v, want %v", sources, want)
+	}
+}
+
 func TestIsReplicationGuestRunning(t *testing.T) {
 	t.Run("vm running", func(t *testing.T) {
 		s := &Service{VM: stubVMService{shutOff: false}}

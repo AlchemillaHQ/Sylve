@@ -166,13 +166,22 @@
 		{ value: 'bk_j', label: 'Backups' },
 		{ value: 'svms_', label: 'VM Snapshots' },
 		{ value: 'sjs_', label: 'Jail Snapshots' },
-		{ value: '_template', label: 'Templates' }
+		{ value: '_template', label: 'Templates' },
+		{ value: 'ha_', label: 'HA Snapshots' }
 	];
 
 	const persistedNameFilter = new PersistedState<string[]>(
 		'snapshots-name-filter',
 		nameFilterDefaults.map((d) => d.value)
 	);
+	const legacyNameFilterDefaults = nameFilterDefaults.slice(0, -1).map((d) => d.value);
+
+	if (
+		legacyNameFilterDefaults.every((value) => persistedNameFilter.current.includes(value)) &&
+		!persistedNameFilter.current.includes('ha_')
+	) {
+		persistedNameFilter.current = [...persistedNameFilter.current, 'ha_'];
+	}
 
 	const defaultValues = new Set(nameFilterDefaults.map((d) => d.value));
 	const customEntries = persistedNameFilter.current
