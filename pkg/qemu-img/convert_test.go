@@ -25,7 +25,7 @@ func TestConvertValidationErrors(t *testing.T) {
 
 func TestConvertRejectsUnsupportedSourceFormat(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:    "qemu-img",
+		cmd:    "/usr/local/bin/qemu-img",
 		args:   []string{"info", "--output=json", "/tmp/in.img"},
 		stdout: `{"format":"unknownfmt"}`,
 	}}}
@@ -43,7 +43,7 @@ func TestConvertRejectsUnsupportedSourceFormat(t *testing.T) {
 
 func TestConvertRejectsWhenAlreadyTargetFormat(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:    "qemu-img",
+		cmd:    "/usr/local/bin/qemu-img",
 		args:   []string{"info", "--output=json", "/tmp/in.qcow2"},
 		stdout: `{"format":"qcow2"}`,
 	}}}
@@ -62,12 +62,12 @@ func TestConvertRejectsWhenAlreadyTargetFormat(t *testing.T) {
 func TestConvertSuccess(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{
 		{
-			cmd:    "qemu-img",
+			cmd:    "/usr/local/bin/qemu-img",
 			args:   []string{"info", "--output=json", "/tmp/in.qcow2"},
 			stdout: `{"format":"qcow2"}`,
 		},
 		{
-			cmd:  "qemu-img",
+			cmd:  "/usr/local/bin/qemu-img",
 			args: []string{"convert", "-f", "qcow2", "-O", "raw", "/tmp/in.qcow2", "/tmp/out.raw"},
 		},
 	}}
@@ -82,12 +82,12 @@ func TestConvertSuccess(t *testing.T) {
 func TestConvertPropagatesConvertFailure(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{
 		{
-			cmd:    "qemu-img",
+			cmd:    "/usr/local/bin/qemu-img",
 			args:   []string{"info", "--output=json", "/tmp/in.qcow2"},
 			stdout: `{"format":"qcow2"}`,
 		},
 		{
-			cmd:    "qemu-img",
+			cmd:    "/usr/local/bin/qemu-img",
 			args:   []string{"convert", "-f", "qcow2", "-O", "raw", "/tmp/in.qcow2", "/tmp/out.raw"},
 			stderr: "permission denied\n",
 			err:    errors.New("exit status 1"),

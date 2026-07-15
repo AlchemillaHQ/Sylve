@@ -56,7 +56,7 @@ func (q *qimg) Convert(src, dst string, outFmt DiskFormat) error {
 		dst,
 	}
 
-	if _, err := q.run(nil, nil, "qemu-img", args...); err != nil {
+	if _, err := q.run(nil, nil, qemuImgPath, args...); err != nil {
 		return fmt.Errorf(
 			"convert %q -> %q (srcFmt=%s, outFmt=%s) failed: %w",
 			src, dst, srcFmt, outFmt, err,
