@@ -47,7 +47,14 @@ func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
 }
 
 func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
-	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", restoreNetwork, false)
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", restoreNetwork, false, false)
+}
+
+// reconcileRestoredVMFromDatasetForOwnerRecovery rebuilds a registration that
+// was retired on the active owner. Its caller has already proven the owner
+// lease, so the restored storage rows are not a user topology change.
+func (s *Service) reconcileRestoredVMFromDatasetForOwnerRecovery(ctx context.Context, dataset string) error {
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", true, false, true)
 }
 
 func (s *Service) reconcileRestoredVMFromDatasetAsNew(
@@ -55,7 +62,7 @@ func (s *Service) reconcileRestoredVMFromDatasetAsNew(
 	dataset, sourcePrimaryRoot string,
 	restoreNetwork bool,
 ) error {
-	return s.reconcileRestoredVMFromDataset(ctx, dataset, sourcePrimaryRoot, restoreNetwork, true)
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, sourcePrimaryRoot, restoreNetwork, true, false)
 }
 
 func (s *Service) reconcileRestoredVMFromDataset(
@@ -63,6 +70,7 @@ func (s *Service) reconcileRestoredVMFromDataset(
 	dataset, sourcePrimaryRoot string,
 	restoreNetwork bool,
 	strictAsNew bool,
+	recoverOwnerRegistration bool,
 ) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -264,7 +272,11 @@ func (s *Service) reconcileRestoredVMFromDataset(
 		if err := tx.Where("vm_id = ?", reconciledVMID).Delete(&vmModels.Network{}).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_restored_vm_networks: %w", err)
 		}
-		if err := tx.Where("vm_id = ?", reconciledVMID).Delete(&vmModels.Storage{}).Error; err != nil {
+		storageTx := tx
+		if recoverOwnerRegistration {
+			storageTx = tx.Session(&gorm.Session{SkipHooks: true})
+		}
+		if err := storageTx.Where("vm_id = ?", reconciledVMID).Delete(&vmModels.Storage{}).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_restored_vm_storages: %w", err)
 		}
 
@@ -287,7 +299,7 @@ func (s *Service) reconcileRestoredVMFromDataset(
 			normalizedStorages[i].VMID = reconciledVMID
 		}
 		if len(normalizedStorages) > 0 {
-			if err := tx.Create(&normalizedStorages).Error; err != nil {
+			if err := storageTx.Create(&normalizedStorages).Error; err != nil {
 				return fmt.Errorf("failed_to_insert_restored_vm_storages: %w", err)
 			}
 		}

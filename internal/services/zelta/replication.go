@@ -8211,6 +8211,16 @@ func (s *Service) activateReplicationVM(
 	transitionRunID string,
 	desiredRunning bool,
 ) error {
+	return s.activateReplicationVMWithRegistrationRecovery(ctx, rid, transitionRunID, desiredRunning, false)
+}
+
+func (s *Service) activateReplicationVMWithRegistrationRecovery(
+	ctx context.Context,
+	rid uint,
+	transitionRunID string,
+	desiredRunning bool,
+	recoverMissingRegistration bool,
+) error {
 	running, stateErr := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, rid)
 	if stateErr != nil {
 		return fmt.Errorf("check_vm_state_before_activation_failed: %w", stateErr)
@@ -8250,9 +8260,15 @@ func (s *Service) activateReplicationVM(
 		}
 	}
 	reconcileCtx := clusterModels.WithReplicationTransitionRun(ctx, transitionRunID)
-	if err := s.reconcileRestoredVMFromDatasetWithOptions(reconcileCtx, datasets[0], true); err != nil {
+	var reconcileErr error
+	if recoverMissingRegistration {
+		reconcileErr = s.reconcileRestoredVMFromDatasetForOwnerRecovery(reconcileCtx, datasets[0])
+	} else {
+		reconcileErr = s.reconcileRestoredVMFromDatasetWithOptions(reconcileCtx, datasets[0], true)
+	}
+	if reconcileErr != nil {
 		s.cleanupOrphanedVMRegistration(rid)
-		return err
+		return reconcileErr
 	}
 	vm, err := s.findVMByRID(rid)
 	if err != nil {
@@ -9920,7 +9936,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 					Uint("policy_id", policy.ID).
 					Uint("guest_id", policy.GuestID).
 					Msg("replication_crash_recovery_rehydrating_missing_vm_registration")
-				if err := s.activateReplicationVM(ctx, policy.GuestID, "", true); err != nil {
+				if err := s.activateReplicationVMWithRegistrationRecovery(ctx, policy.GuestID, "", true, true); err != nil {
 					logger.L.Warn().
 						Err(err).
 						Uint("policy_id", policy.ID).
