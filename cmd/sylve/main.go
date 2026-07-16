@@ -189,7 +189,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	libvirtSvc.SetLeftPanelRefreshEmitter(refreshEmitter)
 
 	uS.RegisterJobs()
-	zS.RegisterJobs()
 	zeltaS.RegisterJobs()
 	lifecycleSvc.RegisterJobs()
 	dS.(*disk.Service).RegisterJobs()
@@ -236,7 +235,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go sysS.StartNetlinkWatcher(qCtx)
 		sysS.StartDiskSmartMonitor(qCtx)
 		go dS.(*disk.Service).StartSelfTestScheduler(qCtx)
-		go sysS.NetlinkEventsCleaner(qCtx)
 
 		if libvirtSvc.IsVirtualizationEnabled() {
 			go libvirtSvc.StartLifecycleWatcher(qCtx)

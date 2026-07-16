@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"gorm.io/gorm"
 )
 
 func (s *Service) checkPoolUsage(poolName string) error {
@@ -118,7 +120,12 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	}
 
 	basicSettings.Pools = pools
-	return s.DB.Save(&basicSettings).Error
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&basicSettings).Error; err != nil {
+			return err
+		}
+		return db.InvalidateZFSCaches(tx)
+	})
 }
 
 func (s *Service) ToggleDHCPServer(enable bool) error {

@@ -36,7 +36,6 @@ type ZfsServiceInterface interface {
 	StoreStats()
 	RemoveNonExistentPools()
 	Cron(ctx context.Context)
-	RegisterJobs()
 
 	CreateFilesystem(ctx context.Context, name string, props map[string]string) error
 	EditFilesystem(ctx context.Context, guid string, props map[string]string) error

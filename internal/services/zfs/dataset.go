@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
@@ -245,15 +244,15 @@ func (s *Service) RefreshDatasets(
 
 	cacheKey := fmt.Sprintf("zfs:datasets:%s:v1", datasetType)
 
-	if b, err := MsgpackEncode(datasets); err == nil {
-		err = db.SetValue(cacheKey, b, ttl)
-		if err != nil {
-			logger.L.Debug().Msg("ZFS datasets cache setting failed")
-		} else {
-			logger.L.Debug().Msgf("ZFS datasets cache refreshed %d items", len(datasets))
-		}
+	b, err := MsgpackEncode(datasets)
+	if err != nil {
+		return fmt.Errorf("failed to encode %s datasets cache: %w", datasetType, err)
+	}
+	if err := db.SetValue(cacheKey, b, ttl); err != nil {
+		return fmt.Errorf("failed to store %s datasets cache: %w", datasetType, err)
 	}
 
+	logger.L.Debug().Msgf("ZFS datasets cache refreshed %d items", len(datasets))
 	return nil
 }
 
@@ -387,21 +386,8 @@ func (s *Service) GetPaginatedDatasets(
 	}, nil
 }
 
-func (s *Service) SignalDSChange(pool, name, t, action string) {
-	enqueueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if t != "generic-dataset" && t != "snapshot" {
-		logger.L.Debug().Msg("Error signalling dataset change via queue, wrong type requested")
-		return
+func (s *Service) SignalDSChange(_, _, kind, _ string) {
+	if err := s.invalidateCache(context.Background(), kind); err != nil {
+		logger.L.Error().Err(err).Str("kind", kind).Msg("Failed to invalidate ZFS datasets cache")
 	}
-
-	job := zfsServiceInterfaces.ZFSHistoryBatchJob{
-		Pool:     pool,
-		Kind:     t,
-		Datasets: []string{name},
-		Actions:  []string{action},
-	}
-
-	_ = db.EnqueueJSON(enqueueCtx, "zfs_history_batch", job)
 }

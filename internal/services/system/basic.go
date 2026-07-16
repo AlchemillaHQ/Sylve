@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -151,7 +152,12 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 	basicSettings.Initialized = true
 	basicSettings.Restarted = false
 
-	if err := s.DB.Create(&basicSettings).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&basicSettings).Error; err != nil {
+			return err
+		}
+		return db.InvalidateZFSCaches(tx)
+	}); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return []error{fmt.Errorf("system_already_initialized")}
 		}

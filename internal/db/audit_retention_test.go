@@ -16,6 +16,14 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
+func TestAuditRecordCreatedAtIndex(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+
+	if !db.Migrator().HasIndex(&infoModels.AuditRecord{}, "CreatedAt") {
+		t.Fatal("expected audit record created_at index")
+	}
+}
+
 func TestEnforceAuditRecordRetentionHardCapKeepsNewest(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
 

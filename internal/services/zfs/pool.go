@@ -17,22 +17,14 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/pkg/disk"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"gorm.io/gorm"
 )
-
-func (s *Service) IsPoolAllowed(pool string) bool {
-	var basicSettings models.BasicSettings
-
-	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return false
-	}
-
-	return slices.Contains(basicSettings.Pools, pool)
-}
 
 func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error) {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
@@ -177,7 +169,12 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		basicSettings.Pools = append(basicSettings.Pools, req.Name)
 	}
 
-	if err := s.DB.Save(&basicSettings).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&basicSettings).Error; err != nil {
+			return err
+		}
+		return db.InvalidateZFSCaches(tx)
+	}); err != nil {
 		return fmt.Errorf("failed_to_update_basic_settings: %v", err)
 	}
 

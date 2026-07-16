@@ -11,7 +11,7 @@ package system
 import (
 	"strings"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/db"
 )
 
 const (
@@ -19,7 +19,14 @@ const (
 	zfsStateChangeType  = "resource.fs.zfs.statechange"
 )
 
-func shouldPersistNetlinkEvent(ev *models.NetlinkEvent) bool {
+type zfsEvent struct {
+	System    string
+	Subsystem string
+	Type      string
+	Attrs     map[string]string
+}
+
+func shouldProcessNetlinkEvent(ev *zfsEvent) bool {
 	if ev == nil {
 		return false
 	}
@@ -28,7 +35,39 @@ func shouldPersistNetlinkEvent(ev *models.NetlinkEvent) bool {
 	return eventType == zfsHistoryEventType || eventType == zfsStateChangeType
 }
 
-func shouldLogNetlinkEvent(ev *models.NetlinkEvent) bool {
+func zfsCacheInvalidationKind(ev *zfsEvent) (string, bool) {
+	if ev == nil || strings.TrimSpace(strings.ToLower(ev.Type)) != zfsHistoryEventType {
+		return "", false
+	}
+
+	if strings.Contains(ev.Attrs["history_dsname"], "@") {
+		return db.ZFSCacheKindSnapshot, true
+	}
+
+	return db.ZFSCacheKindGenericDataset, true
+}
+
+func zfsEventPool(ev *zfsEvent) (string, bool) {
+	if ev == nil {
+		return "", false
+	}
+
+	if pool := strings.TrimSpace(ev.Attrs["pool"]); pool != "" {
+		return pool, true
+	}
+
+	dataset := strings.TrimSpace(ev.Attrs["history_dsname"])
+	if dataset == "" {
+		return "", false
+	}
+	if separator := strings.IndexAny(dataset, "/@"); separator > 0 {
+		return dataset[:separator], true
+	}
+
+	return dataset, true
+}
+
+func shouldLogNetlinkEvent(ev *zfsEvent) bool {
 	if ev == nil {
 		return false
 	}

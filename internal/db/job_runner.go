@@ -238,7 +238,7 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		}
 		duration := time.Since(before)
-		r.log.Info("Ran job", "name", qm.Name, "id", m.ID, "duration", duration)
+		r.log.Info("Ran job", "name", qm.Name, "id", m.ID, "duration", duration.String())
 
 		if err := r.deleteMessage(m.ID); err != nil {
 			r.log.Info("Error deleting job from queue, it will be retried", "name", qm.Name, "id", m.ID, "error", err)

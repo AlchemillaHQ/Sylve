@@ -22,7 +22,7 @@ import (
 
 const zfsStateChangeEventType = "resource.fs.zfs.statechange"
 
-func (s *Service) emitPoolStateNotification(ctx context.Context, ev *models.NetlinkEvent) {
+func (s *Service) emitPoolStateNotification(ctx context.Context, ev *zfsEvent) {
 	if !shouldHandleZFSStateChangeEvent(ev) {
 		return
 	}
@@ -50,7 +50,7 @@ func (s *Service) emitPoolStateNotification(ctx context.Context, ev *models.Netl
 	}
 }
 
-func (s *Service) buildPoolStateChangeNotification(ctx context.Context, ev *models.NetlinkEvent) (notifier.EventInput, bool, error) {
+func (s *Service) buildPoolStateChangeNotification(ctx context.Context, ev *zfsEvent) (notifier.EventInput, bool, error) {
 	if s == nil || s.GZFS == nil {
 		return notifier.EventInput{}, false, fmt.Errorf("gzfs_client_not_initialized")
 	}
@@ -88,7 +88,7 @@ func (s *Service) buildPoolStateChangeNotification(ctx context.Context, ev *mode
 	return buildPoolStateNotificationInput(poolName, state, ev.Attrs), true, nil
 }
 
-func shouldHandleZFSStateChangeEvent(ev *models.NetlinkEvent) bool {
+func shouldHandleZFSStateChangeEvent(ev *zfsEvent) bool {
 	if ev == nil {
 		return false
 	}

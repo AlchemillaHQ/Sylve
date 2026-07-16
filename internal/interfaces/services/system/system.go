@@ -28,7 +28,6 @@ type SystemServiceInterface interface {
 	ReapplyStoredTunables() error
 
 	StartNetlinkWatcher(ctx context.Context)
-	NetlinkEventsCleaner(ctx context.Context)
 	StartDiskSmartMonitor(ctx context.Context)
 
 	Traverse(path string) ([]FileNode, error)

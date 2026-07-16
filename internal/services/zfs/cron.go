@@ -10,17 +10,11 @@ package zfs
 
 import (
 	"context"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
-	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
-	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) StoreStats() {
@@ -145,49 +139,22 @@ func (s *Service) RemoveNonExistentPools() {
 			Msg("zfs_cron: deleted non-existent pool entries")
 	}
 
-	go func() {
-		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer refreshCancel()
-
-		if err := s.RefreshDatasetsCache(refreshCtx); err != nil {
-			logger.L.Debug().Err(err).Msg("zfs_cron: failed to refresh datasets cache")
-		}
-	}()
-}
-
-func (s *Service) RefreshDatasetsCache(ctx context.Context) error {
-	for _, t := range []gzfs.DatasetType{
-		gzfs.DatasetTypeFilesystem,
-		gzfs.DatasetTypeVolume,
-		gzfs.DatasetTypeSnapshot,
-	} {
-		if err := s.RefreshDatasets(ctx, t, 604800); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) RegisterJobs() {
-	db.QueueRegisterJSON[zfsServiceInterfaces.ZFSHistoryBatchJob](
-		"zfs_history_batch",
-		s.HandleZFSHistoryBatch,
-	)
+	s.SignalDSChange("", "", db.ZFSCacheKindGenericDataset, "remove_nonexistent_pool")
+	s.SignalDSChange("", "", db.ZFSCacheKindSnapshot, "remove_nonexistent_pool")
 }
 
 func (s *Service) Cron(ctx context.Context) {
 	tickerFast := time.NewTicker(10 * time.Second)
 	tickerSlow := time.NewTicker(10 * time.Minute)
-	tickerJob := time.NewTicker(5 * time.Second)
 
 	defer tickerFast.Stop()
 	defer tickerSlow.Stop()
-	defer tickerJob.Stop()
 
+	s.SignalDSChange("", "", db.ZFSCacheKindGenericDataset, "startup")
+	s.SignalDSChange("", "", db.ZFSCacheKindSnapshot, "startup")
+	go s.runCacheInvalidationWorker(ctx)
 	s.StoreStats()
 	s.RemoveNonExistentPools()
-	s.RefreshDatasetsCache(ctx)
-	s.NetlinkJobQueuer(ctx)
 
 	for {
 		select {
@@ -198,186 +165,6 @@ func (s *Service) Cron(ctx context.Context) {
 			s.StoreStats()
 		case <-tickerSlow.C:
 			s.RemoveNonExistentPools()
-		case <-tickerJob.C:
-			s.NetlinkJobQueuer(ctx)
 		}
 	}
-}
-
-func (s *Service) NetlinkJobQueuer(ctx context.Context) {
-	const batchSize = 500
-
-	var events []models.NetlinkEvent
-
-	if err := s.DB.
-		Where("processed = ?", false).
-		Where("system = ?", "ZFS").
-		Where("type = ?", "sysevent.fs.zfs.history_event").
-		Order("created_at").
-		Limit(batchSize).
-		Find(&events).Error; err != nil {
-
-		logger.L.Debug().Err(err).Msg("netlink_job_queuer: failed to load netlink events")
-		return
-	}
-
-	if len(events) == 0 {
-		return
-	}
-
-	type bucket struct {
-		EventIDs []uint
-		Datasets map[string]struct{}
-		Actions  map[string]struct{}
-		MinTXG   uint64
-		MaxTXG   uint64
-		Pool     string
-		Kind     string
-	}
-
-	buckets := make(map[string]*bucket)
-	var processedIDs []uint
-
-	for _, ev := range events {
-		attrs := ev.Attrs
-
-		ds := attrs["history_dsname"]
-		action := attrs["history_internal_name"]
-
-		pool := attrs["pool"]
-		// Some nlsysevent payloads may omit explicit pool and only include dataset name.
-		// Fall back to the dataset prefix ("pool/dataset" -> "pool") to avoid dropping valid events.
-		if pool == "" && ds != "" {
-			if idx := strings.Index(ds, "/"); idx > 0 {
-				pool = ds[:idx]
-			} else if idx := strings.Index(ds, "@"); idx > 0 {
-				pool = ds[:idx]
-			} else {
-				pool = ds
-			}
-		}
-
-		if pool == "" {
-			logger.L.Debug().
-				Uint("event_id", ev.ID).
-				Str("type", ev.Type).
-				Interface("attrs", attrs).
-				Msg("netlink_job_queuer: dropping event with no pool")
-			processedIDs = append(processedIDs, ev.ID)
-			continue
-		}
-
-		if !s.IsPoolAllowed(pool) {
-			logger.L.Debug().
-				Uint("event_id", ev.ID).
-				Str("pool", pool).
-				Msg("netlink_job_queuer: dropping event for disallowed pool")
-			processedIDs = append(processedIDs, ev.ID)
-			continue
-		}
-
-		txgStr := attrs["history_txg"]
-		txg, _ := strconv.ParseUint(txgStr, 10, 64)
-
-		kind := "generic-dataset"
-		if strings.Contains(ds, "@") {
-			kind = "snapshot"
-		}
-
-		bKey := kind + "|" + pool
-		b, exists := buckets[bKey]
-		if !exists {
-			b = &bucket{
-				Datasets: make(map[string]struct{}),
-				Actions:  make(map[string]struct{}),
-				Pool:     pool,
-				Kind:     kind,
-			}
-			buckets[bKey] = b
-		}
-
-		b.EventIDs = append(b.EventIDs, ev.ID)
-		b.Datasets[ds] = struct{}{}
-		b.Actions[action] = struct{}{}
-
-		if b.MinTXG == 0 || txg < b.MinTXG {
-			b.MinTXG = txg
-		}
-		if txg > b.MaxTXG {
-			b.MaxTXG = txg
-		}
-	}
-
-	for _, b := range buckets {
-		if len(b.EventIDs) == 0 {
-			continue
-		}
-
-		job := zfsServiceInterfaces.ZFSHistoryBatchJob{
-			Pool:     b.Pool,
-			Kind:     b.Kind,
-			EventIDs: b.EventIDs,
-			Datasets: utils.MapKeys(b.Datasets),
-			Actions:  utils.MapKeys(b.Actions),
-			MinTXG:   strconv.FormatUint(b.MinTXG, 10),
-			MaxTXG:   strconv.FormatUint(b.MaxTXG, 10),
-		}
-
-		enqueueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := db.EnqueueJSON(enqueueCtx, "zfs_history_batch", job)
-		cancel()
-
-		if err != nil {
-			logger.L.Error().
-				Err(err).
-				Str("dataset_type", b.Kind).
-				Str("pool", b.Pool).
-				Msg("netlink_job_queuer: failed to enqueue batch job")
-			continue
-		}
-
-		processedIDs = append(processedIDs, b.EventIDs...)
-	}
-
-	if len(processedIDs) > 0 {
-		if err := s.DB.
-			Model(&models.NetlinkEvent{}).
-			Where("id IN ?", processedIDs).
-			Update("processed", true).Error; err != nil {
-
-			logger.L.Debug().Err(err).Msg("netlink_job_queuer: failed to mark events processed")
-		}
-	}
-}
-
-func (s *Service) HandleZFSHistoryBatch(
-	ctx context.Context,
-	job zfsServiceInterfaces.ZFSHistoryBatchJob,
-) error {
-	logger.L.Info().
-		Str("pool", job.Pool).
-		Str("kind", job.Kind).
-		Int("events", len(job.EventIDs)).
-		Msg("Processing ZFS history batch")
-
-	switch job.Kind {
-	case "snapshot":
-		err := s.RefreshDatasets(ctx, gzfs.DatasetTypeSnapshot, 604800)
-		if err != nil {
-			return err
-		}
-
-	case "generic-dataset":
-		err := s.RefreshDatasets(ctx, gzfs.DatasetTypeFilesystem, 604800)
-		if err != nil {
-			return err
-		}
-
-		return s.RefreshDatasets(ctx, gzfs.DatasetTypeVolume, 604800)
-
-	default:
-		return nil
-	}
-
-	return nil
 }

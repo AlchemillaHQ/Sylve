@@ -20,6 +20,28 @@ import (
 	"maragu.dev/goqite"
 )
 
+type recordedJobLog struct {
+	message string
+	args    []any
+}
+
+type recordingJobLogger struct {
+	mu   sync.Mutex
+	logs []recordedJobLog
+}
+
+func (l *recordingJobLogger) Info(message string, args ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.logs = append(l.logs, recordedJobLog{message: message, args: append([]any(nil), args...)})
+}
+
+func (l *recordingJobLogger) snapshot() []recordedJobLog {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]recordedJobLog(nil), l.logs...)
+}
+
 func newJobRunnerErrorPolicyTestHarness(t *testing.T) (*sql.DB, *goqite.Queue, *jobRunner) {
 	t.Helper()
 
@@ -87,6 +109,39 @@ func TestJobRunnerHandlerErrorRetriesByDefault(t *testing.T) {
 	if attempts != 2 || queuedMessageCount(t, sqlDB) != 1 {
 		t.Fatalf("default policy did not retry: attempts=%d queued=%d", attempts, queuedMessageCount(t, sqlDB))
 	}
+}
+
+func TestJobRunnerLogsHumanReadableDuration(t *testing.T) {
+	_, queue, runner := newJobRunnerErrorPolicyTestHarness(t)
+	log := &recordingJobLogger{}
+	runner.log = log
+	runner.Register("duration-job", func(context.Context, []byte) error { return nil })
+	if err := createJobMessage(context.Background(), queue, "duration-job", nil); err != nil {
+		t.Fatalf("enqueue duration job: %v", err)
+	}
+
+	runOneQueuedJobAttempt(t, runner)
+
+	for _, entry := range log.snapshot() {
+		if entry.message != "Ran job" {
+			continue
+		}
+		for i := 0; i+1 < len(entry.args); i += 2 {
+			if entry.args[i] != "duration" {
+				continue
+			}
+			duration, ok := entry.args[i+1].(string)
+			if !ok {
+				t.Fatalf("duration type = %T, want string", entry.args[i+1])
+			}
+			if _, err := time.ParseDuration(duration); err != nil {
+				t.Fatalf("duration %q is not human-readable: %v", duration, err)
+			}
+			return
+		}
+	}
+
+	t.Fatal("Ran job log did not contain a duration")
 }
 
 func TestJobRunnerHandlerErrorConsumeDeletesMessage(t *testing.T) {

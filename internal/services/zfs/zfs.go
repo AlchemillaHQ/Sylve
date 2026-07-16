@@ -26,20 +26,24 @@ import (
 var _ zfsServiceInterfaces.ZfsServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB          *gorm.DB
-	TelemetryDB *gorm.DB
-	GZFS        *gzfs.Client
-	Libvirt     libvirtServiceInterfaces.LibvirtServiceInterface
-	syncMutex   *sync.Mutex
+	DB                        *gorm.DB
+	TelemetryDB               *gorm.DB
+	GZFS                      *gzfs.Client
+	Libvirt                   libvirtServiceInterfaces.LibvirtServiceInterface
+	syncMutex                 *sync.Mutex
+	cacheInvalidationMutex    sync.Mutex
+	cacheInvalidationSequence uint64
+	pendingCacheInvalidations map[string]uint64
 }
 
 func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
 	return &Service{
-		DB:          db,
-		TelemetryDB: telemetryDB,
-		GZFS:        gzfsClient,
-		Libvirt:     libvirt,
-		syncMutex:   &sync.Mutex{},
+		DB:                        db,
+		TelemetryDB:               telemetryDB,
+		GZFS:                      gzfsClient,
+		Libvirt:                   libvirt,
+		syncMutex:                 &sync.Mutex{},
+		pendingCacheInvalidations: make(map[string]uint64, 2),
 	}
 }
 

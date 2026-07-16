@@ -134,7 +134,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&models.PassedThroughIDs{},
 		&models.Triggers{},
-		&models.NetlinkEvent{},
+		&models.ZFSCacheInvalidation{},
 		&models.SystemTunable{},
 
 		&networkModels.Object{},

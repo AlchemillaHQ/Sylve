@@ -18,7 +18,7 @@ import (
 )
 
 func TestInitializeSerializesConcurrentRequests(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &models.ZFSCacheInvalidation{})
 	service := &Service{DB: db}
 	request := systemServiceInterfaces.InitializeRequest{
 		Pools:    []string{},

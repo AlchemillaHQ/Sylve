@@ -21,28 +21,50 @@ import (
 const auditRetentionInterval = 6 * time.Hour
 
 func (s *Service) StoreStats() {
-	tx := s.telemetryDB().Begin()
-
+	var cpuRow *infoModels.CPU
 	if c, err := s.GetCPUInfo(true); err == nil {
-		tx.Create(&infoModels.CPU{Usage: c.Usage})
+		cpuRow = &infoModels.CPU{Usage: c.Usage}
 	} else {
 		logger.L.Err(err).Msg("Failed to get CPU stats")
 	}
 
+	var ramRow *infoModels.RAM
 	if r, err := s.GetRAMInfo(); err == nil {
-		tx.Create(&infoModels.RAM{Usage: r.UsedPercent})
+		ramRow = &infoModels.RAM{Usage: r.UsedPercent}
 	} else {
 		logger.L.Err(err).Msg("Failed to get RAM stats")
 	}
 
+	var swapRow *infoModels.Swap
 	if sw, err := s.GetSwapInfo(); err == nil {
-		tx.Create(&infoModels.Swap{Usage: sw.UsedPercent})
+		swapRow = &infoModels.Swap{Usage: sw.UsedPercent}
 	} else {
 		logger.L.Err(err).Msg("Failed to get Swap stats")
 	}
 
-	if err := tx.Commit().Error; err != nil {
-		logger.L.Err(err).Msg("Failed to commit stats transaction")
+	if cpuRow == nil && ramRow == nil && swapRow == nil {
+		return
+	}
+
+	if err := s.telemetryDB().Transaction(func(tx *gorm.DB) error {
+		if cpuRow != nil {
+			if err := tx.Create(cpuRow).Error; err != nil {
+				return err
+			}
+		}
+		if ramRow != nil {
+			if err := tx.Create(ramRow).Error; err != nil {
+				return err
+			}
+		}
+		if swapRow != nil {
+			if err := tx.Create(swapRow).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		logger.L.Err(err).Msg("Failed to store system stats")
 	}
 }
 

@@ -23,7 +23,7 @@ type AuditRecord struct {
 	Action    string        `json:"action"`
 	Duration  time.Duration `json:"duration"`
 	Status    string        `json:"status"`
-	CreatedAt time.Time     `json:"createdAt" gorm:"autoCreateTime"`
+	CreatedAt time.Time     `json:"createdAt" gorm:"autoCreateTime;index"`
 	UpdatedAt time.Time     `json:"updatedAt" gorm:"autoUpdateTime"`
 
 	AsyncJobID   *uint  `json:"asyncJobId" gorm:"index"`

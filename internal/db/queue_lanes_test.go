@@ -24,7 +24,6 @@ func TestResolveQueueLane(t *testing.T) {
 		{name: "zelta backup", job: "zelta-backup-run", expected: queueLaneZeltaID},
 		{name: "zelta restore", job: "zelta-restore-run", expected: queueLaneZeltaID},
 		{name: "zelta replication", job: "zelta-replication-run", expected: queueLaneZeltaID},
-		{name: "zfs maintenance", job: "zfs_history_batch", expected: queueLaneMaintenanceID},
 		{name: "disk smart maintenance", job: "disk-smart-scheduler-tick", expected: queueLaneMaintenanceID},
 		{name: "fallback", job: "some-custom-job", expected: queueLaneDefaultID},
 		{name: "normalized", job: "  UTILS-DOWNLOAD-SYNC  ", expected: queueLaneDownloadsID},

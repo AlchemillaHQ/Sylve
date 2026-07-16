@@ -13,16 +13,15 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/gzfs"
-	"github.com/alchemillahq/sylve/internal/db/models"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 )
 
 func TestShouldHandleZFSStateChangeEvent(t *testing.T) {
-	if !shouldHandleZFSStateChangeEvent(&models.NetlinkEvent{Type: "resource.fs.zfs.statechange"}) {
+	if !shouldHandleZFSStateChangeEvent(&zfsEvent{Type: "resource.fs.zfs.statechange"}) {
 		t.Fatalf("expected_statechange_event_to_be_handled")
 	}
 
-	if shouldHandleZFSStateChangeEvent(&models.NetlinkEvent{Type: "sysevent.fs.zfs.vdev_online"}) {
+	if shouldHandleZFSStateChangeEvent(&zfsEvent{Type: "sysevent.fs.zfs.vdev_online"}) {
 		t.Fatalf("expected_non_statechange_event_to_be_ignored")
 	}
 }

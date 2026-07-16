@@ -17,13 +17,11 @@ import "C"
 import (
 	"context"
 	"strings"
-	"time"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
-var zfsEventsChan = make(chan *models.NetlinkEvent, 1024)
+var zfsEventsChan = make(chan *zfsEvent, 1024)
 
 //export onZFSEvent
 func onZFSEvent(cSystem, cSubsystem, cType, cData *C.char) {
@@ -32,12 +30,11 @@ func onZFSEvent(cSystem, cSubsystem, cType, cData *C.char) {
 	evType := C.GoString(cType)
 	data := C.GoString(cData)
 
-	ev := &models.NetlinkEvent{
+	ev := &zfsEvent{
 		System:    system,
 		Subsystem: subsystem,
 		Type:      evType,
 		Attrs:     make(map[string]string),
-		Raw:       "!system=" + system + " subsystem=" + subsystem + " type=" + evType + " | " + data,
 	}
 
 	if shouldLogNetlinkEvent(ev) {
@@ -57,6 +54,9 @@ func onZFSEvent(cSystem, cSubsystem, cType, cData *C.char) {
 		key := kv[0]
 		val := strings.Trim(kv[1], "\"")
 		ev.Attrs[key] = val
+	}
+	if !shouldProcessNetlinkEvent(ev) {
+		return
 	}
 
 	select {
@@ -79,57 +79,5 @@ func (s *Service) StartNetlinkWatcher(ctx context.Context) {
 		}
 	}()
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				logger.L.Debug().Msg("Stopped Netlink consumer loop")
-				return
-			case ev := <-zfsEventsChan:
-				if !shouldPersistNetlinkEvent(ev) {
-					continue
-				}
-
-				if err := s.DB.Create(ev).Error; err != nil {
-					logger.L.Error().Err(err).Msg("Failed to insert Netlink ZFS event")
-				}
-				s.emitPoolStateNotification(ctx, ev)
-			}
-		}
-	}()
-}
-
-func (s *Service) NetlinkEventsCleaner(ctx context.Context) {
-	cleanup := func() {
-		cutoff := time.Now().Add(-24 * time.Hour)
-
-		res := s.DB.Unscoped().
-			Where("created_at < ?", cutoff).
-			Delete(&models.NetlinkEvent{})
-
-		if res.Error != nil {
-			logger.L.Error().
-				Err(res.Error).
-				Msg("netlink cleanup failed")
-		} else if res.RowsAffected > 0 {
-			logger.L.Debug().Int64("count", res.RowsAffected).Msg("Pruned old ZFS events")
-		}
-	}
-
-	go func() {
-		cleanup()
-
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				logger.L.Debug().Msg("Stopped Netlink events cleaner")
-				return
-			case <-ticker.C:
-				cleanup()
-			}
-		}
-	}()
+	go s.consumeZFSEvents(ctx, zfsEventsChan, netlinkInvalidationFlushInterval)
 }

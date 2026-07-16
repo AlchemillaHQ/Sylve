@@ -27,6 +27,9 @@ func Fixups(db *gorm.DB) error {
 	if err := enforceBasicSettingsSingleton(db); err != nil {
 		return err
 	}
+	if err := replaceLegacyNetlinkEvents(db); err != nil {
+		return err
+	}
 
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
@@ -47,6 +50,38 @@ func Fixups(db *gorm.DB) error {
 	cleanupStaleAvahi(db)
 
 	return nil
+}
+
+func replaceLegacyNetlinkEvents(db *gorm.DB) error {
+	const name = "replace_netlink_events_with_zfs_cache_invalidations_1"
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).
+			Where("name = ?", name).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking netlink replacement migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		if err := InvalidateZFSCaches(tx); err != nil {
+			return fmt.Errorf("failed seeding zfs cache invalidations: %w", err)
+		}
+
+		if tx.Migrator().HasTable("netlink_events") {
+			if err := tx.Migrator().DropTable("netlink_events"); err != nil {
+				return fmt.Errorf("failed dropping legacy netlink_events table: %w", err)
+			}
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording netlink replacement migration: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func enforceBasicSettingsSingleton(db *gorm.DB) error {
