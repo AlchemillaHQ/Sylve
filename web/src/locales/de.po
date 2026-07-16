@@ -454,6 +454,9 @@ msgstr "Jail - Beschreibung aktualisieren"
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "Jail"
 
@@ -2476,6 +2479,7 @@ msgstr "Metrik"
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Active"
 msgstr "Aktiv"
 
@@ -3327,10 +3331,8 @@ msgstr "Fehler konnte nicht kopiert werden"
 
 #. 0: task.guestId
 #. 0: jailMatch[1]
-#. 0: policy.guestId
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail {0}"
 msgstr "Jail {0}"
 
@@ -3445,12 +3447,10 @@ msgstr "Ereignisfortschritt <0/>"
 msgid "Transfer"
 msgstr "Übertragung"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Moved"
 msgstr "Verschoben"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Total"
 msgstr "Gesamt"
@@ -3465,10 +3465,8 @@ msgstr "Fortschritt"
 msgid "Loading progress..."
 msgstr "Fortschritt wird geladen..."
 
-#. 0: errorModal.id
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "#{0} Event - Error Details"
-msgstr "Ereignis #{0} - Fehlerdetails"
+#~ msgid "#{0} Event - Error Details"
+#~ msgstr "Ereignis #{0} - Fehlerdetails"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Dest Suffix"
@@ -3528,7 +3526,6 @@ msgstr "OOB-Wiederherstellung"
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Refresh"
 msgstr "Aktualisieren"
 
@@ -3578,6 +3575,9 @@ msgid "Validation failed"
 msgstr "Validierung fehlgeschlagen"
 
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Validating"
@@ -4005,6 +4005,7 @@ msgstr "Verhalten"
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Degraded"
 msgstr "Beeinträchtigt"
 
@@ -4020,9 +4021,8 @@ msgstr "Geeignet"
 msgid "Next Run"
 msgstr "Nächste Ausführung"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "You cannot add more targets than available cluster nodes."
-msgstr "Sie können nicht mehr Ziele hinzufügen als Cluster-Knoten verfügbar sind."
+#~ msgid "You cannot add more targets than available cluster nodes."
+#~ msgstr "Sie können nicht mehr Ziele hinzufügen als Cluster-Knoten verfügbar sind."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Each target server can be added only once."
@@ -16374,10 +16374,20 @@ msgid "Filesystem storage cannot be imported"
 msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Syncing"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Needs sync"
@@ -16496,9 +16506,8 @@ msgstr ""
 msgid "Choose when Sylve may move the workload without an administrator."
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Forced recovery prefers the freshest complete replica. Priority drives normal auto-selection and breaks freshness ties."
-msgstr ""
+#~ msgid "Forced recovery prefers the freshest complete replica. Priority drives normal auto-selection and breaks freshness ties."
+#~ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "An unhealthy pool uses force recovery and may lose the newest writes. Capacity pressure uses a safe handoff."
@@ -16529,6 +16538,95 @@ msgid "HA Snapshots"
 msgstr ""
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "msgid"
+msgstr ""
+
+#~ msgid "Failed to up"
+#~ msgstr ""
+
+#~ msgid "B"
+#~ msgstr ""
+
+#. 0: s.weight
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Priority {0}"
+msgstr ""
+
+#~ msgid "Freshest replica wins; priority breaks ties."
+#~ msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Forced recovery selects the freshest complete replica; priority breaks ties."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "You cannot add more targets than available remote cluster nodes."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "The active workload node cannot be a replication target."
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target is offline"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Cluster SSH identity is missing"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target readiness was invalidated"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "VM filesystem storage is not supported"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "VM metadata refresh failed"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Could not prepare target for replication"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Could not prepare target commit"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Could not update target readiness"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target read-only protection is required"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Could not apply target read-only protection"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target diverged and requires reseeding"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Could not inspect target dataset"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Finalizing"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Transferred"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Stream estimate"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Transfer complete. Verifying and committing the backup."
 msgstr ""

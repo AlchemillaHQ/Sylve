@@ -23,6 +23,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -882,6 +883,11 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	}
 
 	rid := *data.RID
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		if err := s.requireVMMutationOwnership(rid); err != nil {
+			return err
+		}
+	}
 	autoCreatedMACIDs := make([]uint, 0, 1)
 	cleanupRIDArtifacts := false
 

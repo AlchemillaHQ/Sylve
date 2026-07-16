@@ -236,6 +236,51 @@ func TestRunBackupSchedulerTickSkipsFutureJob(t *testing.T) {
 	}
 }
 
+func TestAdvanceBackupJobScheduleAfterRestorePreventsImmediateBackup(t *testing.T) {
+	svc := newSchedulerTestDB(t)
+	target := clusterModels.BackupTarget{ID: 1, Name: "t1", SSHHost: "localhost", BackupRoot: "/backup"}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatalf("failed to seed target: %v", err)
+	}
+
+	before := time.Now().UTC()
+	pastDue := before.Add(-time.Hour)
+	lastRun := before.Add(-time.Minute)
+	job := clusterModels.BackupJob{
+		ID: 7, Name: "restored-job", TargetID: 1, Mode: "dataset",
+		CronExpr: "0 0 * * *", Enabled: true, NextRunAt: &pastDue,
+		LastRunAt: &lastRun, LastStatus: "success",
+	}
+	if err := svc.DB.Create(&job).Error; err != nil {
+		t.Fatalf("failed to seed job: %v", err)
+	}
+
+	if err := svc.advanceBackupJobScheduleAfterRestore(&job); err != nil {
+		t.Fatalf("advance schedule after restore: %v", err)
+	}
+	if job.NextRunAt == nil || !job.NextRunAt.After(before) {
+		t.Fatalf("next run should be after restore completion, got %v", job.NextRunAt)
+	}
+
+	var updated clusterModels.BackupJob
+	if err := svc.DB.First(&updated, job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if updated.NextRunAt == nil || !updated.NextRunAt.After(before) {
+		t.Fatalf("persisted next run should be in the future, got %v", updated.NextRunAt)
+	}
+	if updated.LastRunAt == nil || !updated.LastRunAt.Equal(lastRun) || updated.LastStatus != "success" {
+		t.Fatalf("restore schedule update changed runtime result: %+v", updated)
+	}
+
+	if err := svc.runBackupSchedulerTick(context.Background()); err != nil {
+		t.Fatalf("scheduler tick failed: %v", err)
+	}
+	if _, queued := svc.queuedJobs[job.ID]; queued {
+		t.Fatal("restored job with a future next run should not be queued")
+	}
+}
+
 func TestRunBackupSchedulerTickCatchesUpStalledJob(t *testing.T) {
 	svc := newSchedulerTestDB(t)
 

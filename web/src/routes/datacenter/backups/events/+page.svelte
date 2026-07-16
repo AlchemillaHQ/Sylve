@@ -22,6 +22,7 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import { getJails } from '$lib/api/jail/jail';
 	import type { Jail, JailStorage } from '$lib/types/jail/jail';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	let filterJobId = $state('');
 	let reload = $state(false);
@@ -293,6 +294,11 @@
 		}
 	}
 
+	function iconClass(icon: string): string {
+		const [set, name] = icon.split(':');
+		return set && name ? `icon-[${set}--${name}]` : '';
+	}
+
 	function selectedRowId(): number {
 		if (!activeRows || activeRows.length !== 1) return 0;
 		const parsed = Number(activeRows[0].id);
@@ -313,9 +319,9 @@
 	});
 
 	const progressEvent = resource(
-		[() => progressEventId, () => progressNodeId, () => progressModal.open],
-		async ([eventId, nodeId, open]) => {
-			if (!open || eventId <= 0) return null;
+		[() => progressEventId, () => progressNodeId],
+		async ([eventId, nodeId]) => {
+			if (eventId <= 0) return null;
 
 			try {
 				const res = await getBackupEventProgress(eventId, nodeId);
@@ -406,14 +412,22 @@
 		await progressEvent.refetch();
 	}
 
+	let closeTimeout: ReturnType<typeof setTimeout> | null = null;
+
 	watch(
 		() => progressModal.open,
 		(open) => {
 			if (!open) {
-				progressEventId = 0;
-				progressNodeId = '';
-				progressModal.error = '';
 				activeRows = null;
+				closeTimeout = setTimeout(() => {
+					progressEventId = 0;
+					progressNodeId = '';
+					progressModal.error = '';
+					closeTimeout = null;
+				}, 200);
+			} else if (closeTimeout) {
+				clearTimeout(closeTimeout);
+				closeTimeout = null;
 			}
 		}
 	);
@@ -658,7 +672,10 @@
 			{@const event = progressEvent.current.event}
 			{@const source = compactEventEndpoint(event.sourceDataset, jails, true)}
 			{@const target = compactEventEndpoint(event.targetEndpoint, jails, false)}
-			{@const status = eventStatusMeta(event.status)}
+			{@const finalizing = progressEvent.current.phase === 'finalizing'}
+			{@const status = finalizing
+				? { icon: 'mdi:sync', label: 'Finalizing', className: 'text-blue-500' }
+				: eventStatusMeta(event.status)}
 			<div class="grid gap-4 py-2 text-sm">
 				<div class="overflow-hidden rounded-md border bg-background">
 					<table class="w-full text-sm">
@@ -667,7 +684,7 @@
 								<td class="p-2 text-muted-foreground">Status</td>
 								<td class="p-2 text-right">
 									<span class={`inline-flex items-center gap-1 ${status.className}`}>
-										<span class={status.icon + ' h-4 w-4'}></span>
+										<span class={iconClass(status.icon) + ' h-4 w-4'}></span>
 										<span>{status.label}</span>
 									</span>
 								</td>
@@ -707,7 +724,7 @@
 						<table class="w-full text-sm">
 							<tbody>
 								<tr class="border-b">
-									<td class="p-2 text-muted-foreground">Moved</td>
+									<td class="p-2 text-muted-foreground">Transferred</td>
 									<td class="p-2 text-right">
 										{#if progressEvent.current.movedBytes !== null && progressEvent.current.movedBytes !== undefined}
 											{formatBytesBinary(progressEvent.current.movedBytes)}
@@ -717,7 +734,7 @@
 									</td>
 								</tr>
 								<tr class="border-b">
-									<td class="p-2 text-muted-foreground">Total</td>
+									<td class="p-2 text-muted-foreground">Stream estimate</td>
 									<td class="p-2 text-right">
 										{#if progressEvent.current.totalBytes !== null && progressEvent.current.totalBytes !== undefined}
 											{formatBytesBinary(progressEvent.current.totalBytes)}
@@ -737,6 +754,11 @@
 					</div>
 
 					<Progress value={progressNumber} max={100} class="h-2 w-full" />
+					{#if finalizing}
+						<p class="mt-2 text-xs text-muted-foreground">
+							Transfer complete. Verifying and committing the backup.
+						</p>
+					{/if}
 				</div>
 			</div>
 		{:else}
@@ -748,13 +770,17 @@
 <Dialog.Root bind:open={errorModal.open}>
 	<Dialog.Content class="p-5" showCloseButton={true}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center gap-2">
-				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 text-red-500"></span>
-				<span>#{errorModal.id} Event - Error Details</span>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--alert-circle-outline]"
+					size="h-5 w-5"
+					title={`#${errorModal.id} Event - Error Details`}
+					gap="gap-2 mt-1"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="mt-3 max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
+		<div class="max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
 			<pre class="m-0 whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
 		</div>
 

@@ -293,6 +293,15 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "jail_not_found"})
 			return
 		}
+		allowed, guardErr := jailService.CanMutateProtectedJail(uint(ctidInt))
+		if guardErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "jail_mutation_guard_unavailable"})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusConflict, gin.H{"error": "restore_in_progress"})
+			return
+		}
 
 		conn, err := WSUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {

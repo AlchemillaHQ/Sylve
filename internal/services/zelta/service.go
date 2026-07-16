@@ -100,16 +100,17 @@ type Service struct {
 	runtimeMu    sync.RWMutex
 	runtimeClock replicationRuntimeClock
 
-	// localFilesystemDatasetLister is an integration-test seam. Production
-	// leaves it nil and enumerates every local filesystem through gzfs. Tests
-	// that exercise the cold-start fail-stop path must scope enumeration to
-	// their disposable pool so they cannot fence unrelated host datasets.
+	// Local dataset seams keep host-level ZFS tests scoped to disposable pools.
+	// Production leaves them nil and uses gzfs directly.
 	localFilesystemDatasetLister func(context.Context) ([]string, error)
+	localDatasetUnmounter        func(context.Context, string, bool) error
+	localDatasetMounter          func(context.Context, string) error
 }
 
 type BackupEventProgress struct {
 	Event           *clusterModels.BackupEvent `json:"event"`
 	ProgressDataset string                     `json:"progressDataset"`
+	Phase           string                     `json:"phase"`
 	MovedBytes      *uint64                    `json:"movedBytes"`
 	TotalBytes      *uint64                    `json:"totalBytes"`
 	ProgressPercent *float64                   `json:"progressPercent"`
@@ -1202,6 +1203,12 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	if runErr == nil {
+		const phase = "backup_phase: finalizing"
+		output = appendOutput(output, phase)
+		if appendErr := s.AppendBackupEventOutput(event.ID, phase); appendErr != nil {
+			logger.L.Warn().Uint("event_id", event.ID).Err(appendErr).Msg("append_backup_event_phase_failed")
+		}
+
 		if successfulSnapshotName == "" {
 			runErr = fmt.Errorf("backup_completed_without_verified_snapshot")
 		} else if _, commitErr := s.commitBackupSnapshot(ctx, job, successfulSnapshotName, backupScopes); commitErr != nil {
@@ -1949,11 +1956,12 @@ func (s *Service) forwardBackupJobStateToLeader(update cluster.BackupJobRuntimeS
 	}
 
 	payload := map[string]any{
-		"jobId":      update.JobID,
-		"lastRunAt":  update.LastRunAt,
-		"lastStatus": update.LastStatus,
-		"lastError":  update.LastError,
-		"nextRunAt":  update.NextRunAt,
+		"jobId":       update.JobID,
+		"lastRunAt":   update.LastRunAt,
+		"lastStatus":  update.LastStatus,
+		"lastError":   update.LastError,
+		"nextRunAt":   update.NextRunAt,
+		"nextRunOnly": update.NextRunOnly,
 	}
 
 	return s.forwardReplicationPolicyControl(leaderNodeID, "backup-job-state", payload, 5*time.Second)
@@ -2048,6 +2056,7 @@ func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupE
 	out := &BackupEventProgress{
 		Event:      event,
 		TotalBytes: parseTotalBytesFromOutput(event.Output),
+		Phase:      backupEventProgressPhase(event.Output),
 	}
 	out.MovedBytes = parseMovedBytesFromOutput(event.Output)
 
@@ -2104,6 +2113,11 @@ func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupE
 	if out.TotalBytes != nil && out.MovedBytes != nil && *out.TotalBytes > 0 && *out.MovedBytes > *out.TotalBytes {
 		capped := *out.TotalBytes
 		out.MovedBytes = &capped
+	}
+	if out.Phase == "finalizing" && out.TotalBytes != nil {
+		// Zelta emits its replication-size JSON only after send/receive exits.
+		// Later verification and commit work can still keep the event running.
+		out.MovedBytes = out.TotalBytes
 	}
 
 	if out.TotalBytes != nil && out.MovedBytes != nil && *out.TotalBytes > 0 {

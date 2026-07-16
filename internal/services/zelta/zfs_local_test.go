@@ -269,6 +269,18 @@ func TestIsLocalDatasetBusyError(t *testing.T) {
 	}
 }
 
+func TestIsLocalDatasetNotMountedError(t *testing.T) {
+	if isLocalDatasetNotMountedError(nil) {
+		t.Fatal("nil should not be not-mounted")
+	}
+	if !isLocalDatasetNotMountedError(errFromStr("filesystem is not currently mounted")) {
+		t.Fatal("not-currently-mounted error should be detected")
+	}
+	if isLocalDatasetNotMountedError(errFromStr("dataset is busy")) {
+		t.Fatal("busy error should not be not-mounted")
+	}
+}
+
 func TestIsLocalDatasetHasDependentClonesError(t *testing.T) {
 	if isLocalDatasetHasDependentClonesError(nil) {
 		t.Fatal("nil should not be clones error")

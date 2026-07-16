@@ -21,6 +21,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -1269,6 +1270,13 @@ func (s *Service) CreateVMsFromTemplate(ctx context.Context, templateID uint, re
 	plan, err := preflightFn(ctx, templateID, req)
 	if err != nil {
 		return err
+	}
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		for _, target := range plan.Targets {
+			if err := s.requireVMMutationOwnership(target.RID); err != nil {
+				return err
+			}
+		}
 	}
 
 	createTargetFn := s.createVMFromTemplateTarget

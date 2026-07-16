@@ -21,6 +21,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -528,6 +529,17 @@ func (s *Service) preflightTemplateTargets(ctx context.Context, template jailMod
 
 		ctids = append(ctids, t.CTID)
 		names = append(names, name)
+	}
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		for _, ctID := range ctids {
+			allowed, leaseErr := s.canMutateProtectedJail(ctID)
+			if leaseErr != nil {
+				return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+			}
+			if !allowed {
+				return fmt.Errorf("replication_lease_not_owned")
+			}
+		}
 	}
 
 	var existingCount int64

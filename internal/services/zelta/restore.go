@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -248,10 +249,6 @@ func (s *Service) runRestoreJob(
 	if err := s.ensureLocalPoolExists(ctx, destinationRoot); err != nil {
 		return fmt.Errorf("restore_preflight_pool_check_failed: %w", err)
 	}
-	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
-		return fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
-	}
-
 	event := clusterModels.BackupEvent{
 		JobID:          &job.ID,
 		Mode:           "restore",
@@ -265,6 +262,50 @@ func (s *Service) runRestoreJob(
 	}
 	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 	defer stopHeartbeat()
+	// Verify the replication lease before the restore operation itself becomes
+	// the durable guest-wide exclusion lock.
+	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 && s.Cluster != nil {
+		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
+		if leaseErr != nil {
+			restoreErr := fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
+			s.finalizeRestoreEvent(&event, restoreErr, "")
+			return restoreErr
+		}
+		if !allowed {
+			restoreErr := fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
+			s.finalizeRestoreEvent(&event, restoreErr, "")
+			return restoreErr
+		}
+	}
+	var jailRestoreFence *restoreGuestFence
+	jailSafeToRestart := true
+	if job.Mode == clusterModels.BackupJobModeJail {
+		jailRestoreFence, err = s.acquireJailRestoreFence(ctx, sourceDataset, event.ID)
+		if err != nil {
+			restoreErr := fmt.Errorf("acquire_jail_restore_fence_failed: %w", err)
+			s.finalizeRestoreEvent(&event, restoreErr, "")
+			return restoreErr
+		}
+		defer func() {
+			if jailRestoreFence == nil || retErr == nil {
+				return
+			}
+			if releaseErr := jailRestoreFence.release(); releaseErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("release_jail_restore_fence_failed: %w", releaseErr))
+				return
+			}
+			if jailRestoreFence.wasRunning && jailSafeToRestart {
+				if restartErr := s.Jail.JailAction(int(jailRestoreFence.guestID), "start"); restartErr != nil {
+					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
+				}
+			}
+		}()
+	}
+	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
+		restoreErr := fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
+		s.finalizeRestoreEvent(&event, restoreErr, "")
+		return restoreErr
+	}
 
 	logger.L.Info().
 		Uint("job_id", job.ID).
@@ -275,22 +316,6 @@ func (s *Service) runRestoreJob(
 
 	var restoreErr error
 	var output string
-
-	// Verify the replication lease before pulling data.
-	// The restore replaces the guest's dataset — must hold the lease.
-	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 && s.Cluster != nil {
-		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
-		if leaseErr != nil {
-			restoreErr = fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
-		}
-		if !allowed {
-			restoreErr = fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
-		}
-	}
 
 	// Step 1: Pull from remote backup@snapshot → temp dataset using zelta.
 	// A pre-existing staging dataset is never inferred to be ours and destroyed;
@@ -382,15 +407,12 @@ func (s *Service) runRestoreJob(
 		_ = s.ensureLocalFilesystemPath(ctx, parent)
 	}
 
-	// Step 4: Promote restored temp dataset into place. An existing jail is
-	// quiesced only at this final boundary, after every receive and manifest
-	// preflight has passed. Identity/state/stop failures abort without touching
-	// the live dataset, and a failed transactional promotion restores a jail
-	// stopped by this attempt to its original running state.
+	// Step 4: Promote the staged dataset into place. A jail was stopped before
+	// staging began and remains fenced until this restore is fully finalized.
 	backupDataset := ""
 	var promoteErr error
 	if job.Mode == clusterModels.BackupJobModeJail && destinationExisted {
-		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(sourceDataset)
+		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(ctx, sourceDataset)
 		if quiesceErr != nil {
 			restoreErr = s.cleanupOwnedRestoreStagingAfterError(
 				restorePath,
@@ -406,6 +428,7 @@ func (s *Service) runRestoreJob(
 			if restartErr == nil {
 				return
 			}
+			jailSafeToRestart = false
 			if strings.TrimSpace(output) == "" {
 				output = restartErr.Error()
 			} else {
@@ -516,6 +539,23 @@ func (s *Service) runRestoreJob(
 				Msg("failed_to_cleanup_restore_backup_dataset")
 		}
 	}
+	if scheduleErr := s.advanceBackupJobScheduleAfterRestore(job); scheduleErr != nil {
+		warning := fmt.Sprintf("restore_backup_schedule_advance_failed: %v", scheduleErr)
+		if strings.TrimSpace(output) == "" {
+			output = warning
+		} else {
+			output = strings.TrimRight(output, "\n") + "\n" + warning
+		}
+		logger.L.Warn().Err(scheduleErr).Uint("job_id", job.ID).Msg("failed_to_advance_backup_schedule_after_restore")
+	}
+	if jailRestoreFence != nil {
+		if releaseErr := jailRestoreFence.release(); releaseErr != nil {
+			restoreErr = fmt.Errorf("release_jail_restore_fence_failed: %w", releaseErr)
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+			return restoreErr
+		}
+		jailRestoreFence = nil
+	}
 
 	s.finalizeRestoreEvent(&event, nil, output)
 
@@ -525,6 +565,191 @@ func (s *Service) runRestoreJob(
 		Str("dataset", sourceDataset).
 		Msg("zelta_restore_completed")
 
+	return nil
+}
+
+type restoreGuestFence struct {
+	service    *Service
+	guestType  string
+	guestID    uint
+	token      string
+	wasRunning bool
+}
+
+func (s *Service) acquireJailRestoreFence(ctx context.Context, dataset string, eventID uint) (*restoreGuestFence, error) {
+	if s == nil || s.Jail == nil || s.DB == nil {
+		return nil, fmt.Errorf("jail_restore_fence_service_unavailable")
+	}
+	ctID, err := s.Jail.GetJailCTIDFromDataset(dataset)
+	if err != nil {
+		return nil, fmt.Errorf("jail_restore_fence_identity_lookup_failed: %w", err)
+	}
+	if ctID == 0 {
+		return nil, fmt.Errorf("jail_restore_fence_identity_invalid")
+	}
+	fence, err := s.acquireRestoreGuestFence(ctx, clusterModels.ReplicationGuestTypeJail, ctID, eventID)
+	if err != nil || fence == nil {
+		return fence, err
+	}
+
+	fence.wasRunning, err = s.Jail.IsJailRunning(ctID)
+	if err != nil {
+		_ = fence.release()
+		return nil, fmt.Errorf("jail_restore_fence_state_check_failed: %w", err)
+	}
+	if !fence.wasRunning {
+		return fence, nil
+	}
+	if err := s.Jail.ForceStopJail(ctID); err != nil {
+		_ = fence.release()
+		return nil, fmt.Errorf("jail_restore_fence_stop_failed: %w", err)
+	}
+	if err := s.waitForJailRestoreStopped(ctx, ctID); err != nil {
+		_ = fence.release()
+		return nil, err
+	}
+	return fence, nil
+}
+
+func (s *Service) acquireVMRestoreFence(ctx context.Context, rid, eventID uint) (*restoreGuestFence, error) {
+	if s == nil || s.VM == nil || s.DB == nil {
+		return nil, fmt.Errorf("vm_restore_fence_service_unavailable")
+	}
+	fence, err := s.acquireRestoreGuestFence(ctx, clusterModels.ReplicationGuestTypeVM, rid, eventID)
+	if err != nil || fence == nil {
+		return fence, err
+	}
+
+	shutOff, err := s.VM.IsDomainShutOff(rid)
+	if err != nil {
+		if isVMDomainNotFoundError(err) {
+			return fence, nil
+		}
+		_ = fence.release()
+		return nil, fmt.Errorf("vm_restore_fence_state_check_failed: %w", err)
+	}
+	if shutOff {
+		return fence, nil
+	}
+	fence.wasRunning = true
+	if err := s.VM.ForceStopVM(rid); err != nil {
+		_ = fence.release()
+		return nil, fmt.Errorf("vm_restore_fence_stop_failed: %w", err)
+	}
+	shutOff, err = s.VM.IsDomainShutOff(rid)
+	if err != nil || !shutOff {
+		_ = fence.release()
+		if err != nil {
+			return nil, fmt.Errorf("vm_restore_fence_stop_check_failed: %w", err)
+		}
+		return nil, fmt.Errorf("vm_restore_fence_stop_incomplete")
+	}
+	return fence, nil
+}
+
+func (s *Service) acquireRestoreGuestFence(
+	ctx context.Context,
+	guestType string,
+	guestID, eventID uint,
+) (*restoreGuestFence, error) {
+	if s == nil || s.DB == nil || guestID == 0 {
+		return nil, fmt.Errorf("restore_fence_input_invalid")
+	}
+	if !replicationguard.GuestOperationSchemaReady(s.DB) {
+		return nil, nil
+	}
+	ownerNodeID := s.localNodeID()
+	if ownerNodeID == "" {
+		ownerNodeID = "local"
+	}
+	fence := &restoreGuestFence{
+		service:   s,
+		guestType: guestType,
+		guestID:   guestID,
+		token:     fmt.Sprintf("restore:%s:%d:%s", ownerNodeID, eventID, compactNowToken()),
+	}
+	acquire := clusterModels.ReplicationGuestOperationAcquire{
+		GuestType:   guestType,
+		GuestID:     guestID,
+		Operation:   clusterModels.ReplicationGuestOperationRestore,
+		Token:       fence.token,
+		OwnerNodeID: ownerNodeID,
+		TaskID:      eventID,
+		AcquiredAt:  time.Now().UTC(),
+	}
+	transition := clusterModels.ReplicationGuestOperationTransition{
+		GuestType: guestType,
+		GuestID:   guestID,
+		Operation: clusterModels.ReplicationGuestOperationRestore,
+		Token:     fence.token,
+	}
+	var err error
+	if s.Cluster != nil && s.Cluster.Raft != nil {
+		err = s.applyGuestMigrationInterlock(ctx, "acquire", acquire, transition)
+	} else if s.Cluster != nil {
+		err = s.Cluster.AcquireReplicationGuestOperation(acquire, true)
+	} else {
+		err = clusterModels.AcquireReplicationGuestOperationTxn(s.DB, &acquire)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return fence, nil
+}
+
+func (f *restoreGuestFence) release() error {
+	if f == nil || f.service == nil {
+		return nil
+	}
+	transition := clusterModels.ReplicationGuestOperationTransition{
+		GuestType: f.guestType,
+		GuestID:   f.guestID,
+		Operation: clusterModels.ReplicationGuestOperationRestore,
+		Token:     f.token,
+	}
+	ctx, cancel := restoreRecoveryContext()
+	defer cancel()
+	if f.service.Cluster != nil && f.service.Cluster.Raft != nil {
+		return f.service.applyGuestMigrationInterlock(ctx, "abort", clusterModels.ReplicationGuestOperationAcquire{}, transition)
+	}
+	if f.service.Cluster != nil {
+		return f.service.Cluster.AbortReplicationGuestOperation(transition, true)
+	}
+	return clusterModels.AbortReplicationGuestOperationTxn(f.service.DB, &transition)
+}
+
+// advanceBackupJobScheduleAfterRestore prevents an overdue pre-restore
+// schedule from immediately starting another backup when the restore releases
+// the job lock.
+func (s *Service) advanceBackupJobScheduleAfterRestore(job *clusterModels.BackupJob) error {
+	if job == nil || job.ID == 0 {
+		return fmt.Errorf("backup_job_required")
+	}
+	if !job.Enabled {
+		return nil
+	}
+
+	nextRunAt, err := nextRunTime(job.CronExpr, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("next_backup_run: %w", err)
+	}
+
+	update := cluster.BackupJobRuntimeStateUpdate{
+		JobID:       job.ID,
+		NextRunAt:   &nextRunAt,
+		NextRunOnly: true,
+	}
+	if s.syncBackupJobRuntimeState(update) {
+		job.NextRunAt = &nextRunAt
+		return nil
+	}
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("backup_job_database_unavailable")
+	}
+	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextRunAt).Error; err != nil {
+		return fmt.Errorf("update_next_backup_run: %w", err)
+	}
+	job.NextRunAt = &nextRunAt
 	return nil
 }
 

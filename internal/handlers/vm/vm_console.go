@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -276,147 +277,158 @@ func (sm *VMSessionManager) KillSession(sessionID string) {
 	}
 }
 
-func HandleLibvirtTerminalWebsocket(c *gin.Context) {
-	rid := c.Query("rid")
-	if rid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "rid is required"})
-		return
-	}
+func HandleLibvirtTerminalWebsocket(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
+		if rid == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "rid is required"})
+			return
+		}
 
-	baudRate := c.DefaultQuery("baudrate", "115200")
-	ridInt, err := strconv.Atoi(rid)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rid"})
-		return
-	}
+		baudRate := c.DefaultQuery("baudrate", "115200")
+		ridInt, err := strconv.Atoi(rid)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rid"})
+			return
+		}
+		allowed, guardErr := libvirtService.CanMutateProtectedVM(uint(ridInt))
+		if guardErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "vm_mutation_guard_unavailable"})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusConflict, gin.H{"error": "restore_in_progress"})
+			return
+		}
 
-	conn, err := VMWSUpgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		logger.L.Error().Err(err).Msg("websocket upgrade failed")
-		return
-	}
+		conn, err := VMWSUpgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			logger.L.Error().Err(err).Msg("websocket upgrade failed")
+			return
+		}
 
-	conn.SetReadLimit(vmWSReadLimit)
-	_ = conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
-	conn.SetPongHandler(func(string) error {
-		return conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
-	})
+		conn.SetReadLimit(vmWSReadLimit)
+		_ = conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
+		})
 
-	sessionID := "vm-console-" + rid
-	session, err := GlobalVMSessionManager.GetOrCreateSession(sessionID, ridInt, baudRate)
-	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("Error connecting to console: "+err.Error()))
-		_ = conn.Close()
-		return
-	}
+		sessionID := "vm-console-" + rid
+		session, err := GlobalVMSessionManager.GetOrCreateSession(sessionID, ridInt, baudRate)
+		if err != nil {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("Error connecting to console: "+err.Error()))
+			_ = conn.Close()
+			return
+		}
 
-	observer := &VMObserver{Conn: conn}
-	if err := session.AddObserver(observer); err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("Session unavailable"))
-		_ = conn.Close()
-		return
-	}
+		observer := &VMObserver{Conn: conn}
+		if err := session.AddObserver(observer); err != nil {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("Session unavailable"))
+			_ = conn.Close()
+			return
+		}
 
-	if err := session.ReplayHistory(observer); err != nil {
-		session.RemoveObserver(observer)
-		return
-	}
+		if err := session.ReplayHistory(observer); err != nil {
+			session.RemoveObserver(observer)
+			return
+		}
 
-	defer session.RemoveObserver(observer)
+		defer session.RemoveObserver(observer)
 
-	done := make(chan struct{})
-	defer close(done)
+		done := make(chan struct{})
+		defer close(done)
 
-	go func() {
-		ticker := time.NewTicker(vmWSPingPeriod)
-		defer ticker.Stop()
+		go func() {
+			ticker := time.NewTicker(vmWSPingPeriod)
+			defer ticker.Stop()
 
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(vmWSWriteTimeout)); err != nil {
+			for {
+				select {
+				case <-done:
 					return
-				}
-			}
-		}
-	}()
-
-	for {
-		messageType, reader, err := conn.NextReader()
-		if err != nil {
-			return
-		}
-
-		if messageType != websocket.BinaryMessage {
-			logger.L.Warn().Int("message_type", messageType).Str("session", sessionID).Msg("rejected non-binary websocket frame")
-			return
-		}
-
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to read websocket frame")
-			return
-		}
-
-		if len(data) == 0 {
-			continue
-		}
-
-		switch data[0] {
-		case vmControlInput:
-			if len(data) == 1 {
-				continue
-			}
-			if _, err := session.Pty.Write(data[1:]); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to write serial input to PTY")
-				return
-			}
-
-		case vmControlResize:
-			if len(data) == 1 {
-				continue
-			}
-
-			var ws WindowSize
-			if err := json.Unmarshal(data[1:], &ws); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("invalid resize payload")
-				continue
-			}
-
-			if ws.Rows == 0 || ws.Cols == 0 {
-				logger.L.Warn().Str("session", sessionID).Msg("ignored zero-sized resize payload")
-				continue
-			}
-
-			if err := pty.Setsize(session.Pty, &pty.Winsize{
-				Rows: ws.Rows,
-				Cols: ws.Cols,
-				X:    ws.X,
-				Y:    ws.Y,
-			}); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to resize PTY")
-			}
-
-		case vmControlKill:
-			if len(data) > 1 {
-				var killMsg struct {
-					Kill string `json:"kill"`
-				}
-				if err := json.Unmarshal(data[1:], &killMsg); err == nil {
-					if killMsg.Kill != "" && killMsg.Kill != sessionID {
-						continue
+				case <-ticker.C:
+					if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(vmWSWriteTimeout)); err != nil {
+						return
 					}
 				}
 			}
+		}()
 
-			GlobalVMSessionManager.KillSession(sessionID)
-			return
+		for {
+			messageType, reader, err := conn.NextReader()
+			if err != nil {
+				return
+			}
 
-		default:
-			logger.L.Warn().Uint8("control", data[0]).Str("session", sessionID).Msg("rejected unknown websocket control byte")
-			return
+			if messageType != websocket.BinaryMessage {
+				logger.L.Warn().Int("message_type", messageType).Str("session", sessionID).Msg("rejected non-binary websocket frame")
+				return
+			}
+
+			data, err := io.ReadAll(reader)
+			if err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to read websocket frame")
+				return
+			}
+
+			if len(data) == 0 {
+				continue
+			}
+
+			switch data[0] {
+			case vmControlInput:
+				if len(data) == 1 {
+					continue
+				}
+				if _, err := session.Pty.Write(data[1:]); err != nil {
+					logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to write serial input to PTY")
+					return
+				}
+
+			case vmControlResize:
+				if len(data) == 1 {
+					continue
+				}
+
+				var ws WindowSize
+				if err := json.Unmarshal(data[1:], &ws); err != nil {
+					logger.L.Warn().Err(err).Str("session", sessionID).Msg("invalid resize payload")
+					continue
+				}
+
+				if ws.Rows == 0 || ws.Cols == 0 {
+					logger.L.Warn().Str("session", sessionID).Msg("ignored zero-sized resize payload")
+					continue
+				}
+
+				if err := pty.Setsize(session.Pty, &pty.Winsize{
+					Rows: ws.Rows,
+					Cols: ws.Cols,
+					X:    ws.X,
+					Y:    ws.Y,
+				}); err != nil {
+					logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to resize PTY")
+				}
+
+			case vmControlKill:
+				if len(data) > 1 {
+					var killMsg struct {
+						Kill string `json:"kill"`
+					}
+					if err := json.Unmarshal(data[1:], &killMsg); err == nil {
+						if killMsg.Kill != "" && killMsg.Kill != sessionID {
+							continue
+						}
+					}
+				}
+
+				GlobalVMSessionManager.KillSession(sessionID)
+				return
+
+			default:
+				logger.L.Warn().Uint8("control", data[0]).Str("session", sessionID).Msg("rejected unknown websocket control byte")
+				return
+			}
 		}
 	}
 }

@@ -53,6 +53,9 @@ const (
 	ReplicationProtectionStateDeleting     = "deleting"
 
 	ReplicationGuestOperationMigration = "migration"
+	// ReplicationGuestOperationRestore blocks management-plane mutations while
+	// a jail's on-disk state is being replaced from a backup.
+	ReplicationGuestOperationRestore = "restore"
 	// ReplicationGuestOperationEmergencyRestore is a short-lived, exact-token
 	// exclusion lock used while a node reverses its own cold-start readonly
 	// fence.  It deliberately shares the guest-wide lock table with migration,
@@ -390,7 +393,8 @@ func acquireReplicationGuestOperation(db *gorm.DB, payload *ReplicationGuestOper
 	payload.OwnerNodeID = strings.TrimSpace(payload.OwnerNodeID)
 	payload.TargetNodeID = strings.TrimSpace(payload.TargetNodeID)
 	if payload.Operation != ReplicationGuestOperationMigration &&
-		payload.Operation != ReplicationGuestOperationEmergencyRestore {
+		payload.Operation != ReplicationGuestOperationEmergencyRestore &&
+		payload.Operation != ReplicationGuestOperationRestore {
 		return fmt.Errorf("invalid_replication_guest_operation")
 	}
 	if payload.Token == "" || payload.OwnerNodeID == "" || payload.AcquiredAt.IsZero() {
@@ -407,6 +411,10 @@ func acquireReplicationGuestOperation(db *gorm.DB, payload *ReplicationGuestOper
 	case ReplicationGuestOperationEmergencyRestore:
 		if payload.TargetNodeID != "" || payload.TaskID != 0 {
 			return fmt.Errorf("replication_emergency_restore_scope_invalid")
+		}
+	case ReplicationGuestOperationRestore:
+		if payload.TargetNodeID != "" || payload.TaskID == 0 {
+			return fmt.Errorf("replication_restore_scope_invalid")
 		}
 	}
 	payload.AcquiredAt = payload.AcquiredAt.UTC()
@@ -429,8 +437,10 @@ func acquireReplicationGuestOperation(db *gorm.DB, payload *ReplicationGuestOper
 			return err
 		}
 
-		if err := requireReplicationGuestQuiescentForMigration(tx, payload.GuestType, payload.GuestID); err != nil {
-			return err
+		if payload.Operation == ReplicationGuestOperationMigration {
+			if err := requireReplicationGuestQuiescentForMigration(tx, payload.GuestType, payload.GuestID); err != nil {
+				return err
+			}
 		}
 
 		return tx.Create(&ReplicationGuestOperation{
@@ -459,7 +469,8 @@ func normalizeReplicationGuestOperationTransition(payload *ReplicationGuestOpera
 	payload.Operation = strings.ToLower(strings.TrimSpace(payload.Operation))
 	payload.Token = strings.TrimSpace(payload.Token)
 	if (payload.Operation != ReplicationGuestOperationMigration &&
-		payload.Operation != ReplicationGuestOperationEmergencyRestore) || payload.Token == "" {
+		payload.Operation != ReplicationGuestOperationEmergencyRestore &&
+		payload.Operation != ReplicationGuestOperationRestore) || payload.Token == "" {
 		return fmt.Errorf("replication_guest_operation_identity_required")
 	}
 	payload.TargetNodeID = strings.TrimSpace(payload.TargetNodeID)

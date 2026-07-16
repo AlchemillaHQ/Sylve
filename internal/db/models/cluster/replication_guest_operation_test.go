@@ -167,6 +167,53 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 	}
 }
 
+func TestReplicationGuestOperationRestoreBlocksMutationsAndReleases(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
+		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
+	)
+	now := time.Now().UTC()
+	policy := replicationGuestOperationPolicy(1, 101, true)
+	policy.GuestType = ReplicationGuestTypeJail
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("create enabled policy: %v", err)
+	}
+	if err := db.Create(&ReplicationLease{
+		PolicyID: policy.ID, OwnerNodeID: "node-a", OwnerEpoch: 1,
+		GuestType: ReplicationGuestTypeJail, GuestID: 101, ExpiresAt: now.Add(time.Hour),
+	}).Error; err != nil {
+		t.Fatalf("create lease: %v", err)
+	}
+
+	acquire := ReplicationGuestOperationAcquire{
+		GuestType: ReplicationGuestTypeJail, GuestID: 101, Operation: ReplicationGuestOperationRestore,
+		Token: "restore:node-a:88", OwnerNodeID: "node-a", TaskID: 88, AcquiredAt: now,
+	}
+	if err := AcquireReplicationGuestOperationTxn(db, &acquire); err != nil {
+		t.Fatalf("acquire restore guard: %v", err)
+	}
+	if err := UpdateReplicationPolicyTxn(db, &ReplicationPolicyPayload{
+		Policy: policy, ExpectedOwnerEpoch: policy.OwnerEpoch,
+	}); err == nil || !strings.Contains(err.Error(), "guest_operation_in_progress") {
+		t.Fatalf("policy update committed during restore: %v", err)
+	}
+
+	release := ReplicationGuestOperationTransition{
+		GuestType: ReplicationGuestTypeJail, GuestID: 101, Operation: ReplicationGuestOperationRestore,
+		Token: acquire.Token,
+	}
+	if err := AbortReplicationGuestOperationTxn(db, &release); err != nil {
+		t.Fatalf("release restore guard: %v", err)
+	}
+	var operationCount int64
+	if err := db.Model(&ReplicationGuestOperation{}).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count guards: %v", err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("released restore guard was retained: %d", operationCount)
+	}
+}
+
 func TestReplicationGuestOperationEnableWinsRaftOrder(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},

@@ -13,10 +13,61 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 )
+
+func fileExplorerPathOverlaps(path, root string) bool {
+	path = filepath.Clean(path)
+	root = filepath.Clean(root)
+	for _, pair := range [][2]string{{path, root}, {root, path}} {
+		rel, err := filepath.Rel(pair[1], pair[0])
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// EnsureFileExplorerMutationAllowed blocks writes that could alter a jail
+// whose dataset is being replaced by a restore. Read-only explorer operations
+// intentionally do not call this method.
+func (s *Service) EnsureFileExplorerMutationAllowed(paths ...string) error {
+	if s == nil || s.DB == nil || !replicationguard.GuestOperationSchemaReady(s.DB) {
+		return nil
+	}
+	var operations []clusterModels.ReplicationGuestOperation
+	if err := s.DB.Where("guest_type = ? AND operation = ?", clusterModels.ReplicationGuestTypeJail, clusterModels.ReplicationGuestOperationRestore).Find(&operations).Error; err != nil {
+		return fmt.Errorf("restore_fence_lookup_failed: %w", err)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return fmt.Errorf("restore_fence_jails_path_failed: %w", err)
+	}
+	for _, operation := range operations {
+		jailRoot := filepath.Join(jailsPath, strconv.FormatUint(uint64(operation.GuestID), 10))
+		for _, path := range paths {
+			if path == "" {
+				continue
+			}
+			if !filepath.IsAbs(path) {
+				path = "/" + path
+			}
+			if fileExplorerPathOverlaps(path, jailRoot) {
+				return fmt.Errorf("restore_in_progress: ctid=%d", operation.GuestID)
+			}
+		}
+	}
+	return nil
+}
 
 func (s *Service) Traverse(path string) ([]systemServiceInterfaces.FileNode, error) {
 	if path == "" {
@@ -71,6 +122,9 @@ func (s *Service) AddFileOrFolder(path string, name string, isFolder bool) error
 	}
 
 	fullPath := filepath.Join(path, name)
+	if err := s.EnsureFileExplorerMutationAllowed(fullPath); err != nil {
+		return err
+	}
 
 	if _, err := os.Stat(fullPath); err == nil {
 		return fmt.Errorf("file or folder already exists: %s", fullPath)
@@ -100,6 +154,9 @@ func (s *Service) DeleteFileOrFolder(path string) error {
 	if !filepath.IsAbs(path) {
 		path = "/" + path
 	}
+	if err := s.EnsureFileExplorerMutationAllowed(path); err != nil {
+		return err
+	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("file or folder does not exist: %s", path)
@@ -125,6 +182,9 @@ func (s *Service) DeleteFilesOrFolders(paths []string) error {
 
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			return fmt.Errorf("file or folder does not exist: %s", absPath)
+		}
+		if err := s.EnsureFileExplorerMutationAllowed(absPath); err != nil {
+			return err
 		}
 	}
 
@@ -156,6 +216,9 @@ func (s *Service) RenameFileOrFolder(oldPath string, newName string) error {
 	}
 
 	newPath := filepath.Join(filepath.Dir(oldPath), newName)
+	if err := s.EnsureFileExplorerMutationAllowed(oldPath, newPath); err != nil {
+		return err
+	}
 
 	if _, err := os.Stat(newPath); err == nil {
 		return fmt.Errorf("file or folder already exists: %s", newPath)
@@ -224,6 +287,13 @@ func (s *Service) CopyOrMoveFileOrFolder(source, destination string, move bool) 
 	if !filepath.IsAbs(source) || !filepath.IsAbs(destination) {
 		return fmt.Errorf("both source and destination must be absolute paths")
 	}
+	guardedPaths := []string{destination}
+	if move {
+		guardedPaths = append(guardedPaths, source)
+	}
+	if err := s.EnsureFileExplorerMutationAllowed(guardedPaths...); err != nil {
+		return err
+	}
 
 	info, err := os.Stat(source)
 	if err != nil {
@@ -262,6 +332,13 @@ func (s *Service) CopyOrMoveFilesOrFolders(pairs [][2]string, move bool) error {
 		}
 		if !filepath.IsAbs(source) || !filepath.IsAbs(dest) {
 			return fmt.Errorf("both source and destination must be absolute paths")
+		}
+		guardedPaths := []string{dest}
+		if move {
+			guardedPaths = append(guardedPaths, source)
+		}
+		if err := s.EnsureFileExplorerMutationAllowed(guardedPaths...); err != nil {
+			return err
 		}
 
 		if _, err := os.Stat(source); os.IsNotExist(err) {

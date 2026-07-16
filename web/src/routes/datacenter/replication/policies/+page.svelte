@@ -72,6 +72,7 @@
 		| 'Suspended'
 		| 'Failed'
 		| 'Degraded'
+		| 'Syncing'
 		| 'Initializing'
 		| 'Protected'
 		| 'Eligible';
@@ -91,6 +92,7 @@
 		Suspended: { icon: 'mdi:pause-circle-outline', className: 'text-blue-500' },
 		Failed: { icon: 'mdi:close-circle', className: 'text-red-500' },
 		Degraded: { icon: 'mdi:alert-circle-outline', className: 'text-amber-500' },
+		Syncing: { icon: 'mdi:progress-clock', className: 'text-blue-500' },
 		Initializing: { icon: 'mdi:progress-clock', className: 'text-blue-500' },
 		Protected: { icon: 'mdi:shield-check', className: 'text-green-500' },
 		Eligible: { icon: 'mdi:check-circle', className: 'text-green-500' }
@@ -464,12 +466,21 @@
 
 	let isFirstPolicyStep = $derived.by(() => policyStepIndex === 0);
 	let isLastPolicyStep = $derived.by(() => policyStepIndex === policySteps.length - 1);
-	let maxTargetRows = $derived.by(() => Math.max(1, nodes.length));
+	let maxTargetRows = $derived.by(() => {
+		const workloadNodeID = String(policyModal.workloadNodeId || '').trim();
+		return Math.max(1, nodes.length - (workloadNodeID ? 1 : 0));
+	});
 	let canAddTargetRow = $derived.by(() => policyModal.targets.length < maxTargetRows);
 	let reviewWorkload = $derived.by(() => {
 		const guestId = String(policyModal.guestId || '').trim();
 		if (!guestId) return 'None';
-		return `${policyModal.guestType.toUpperCase()} ${guestId}`;
+		const id = Number.parseInt(guestId, 10);
+		const name =
+			policyModal.guestType === 'jail'
+				? jails.find((jail) => jail.ctId === id)?.name
+				: vms.find((vm) => vm.rid === id)?.name;
+		const type = policyModal.guestType === 'jail' ? 'Jail' : 'VM';
+		return name ? `${type} ${guestId} - ${name}` : `${type} ${guestId}`;
 	});
 	let reviewSchedule = $derived.by(() => {
 		const cron = String(policyModal.cronExpr || '').trim();
@@ -653,7 +664,7 @@
 			const completedDatasetCount = Number(target?.completedDatasetCount || 0);
 			const datasetProgress =
 				requiredDatasetCount > 0
-					? `${completedDatasetCount}/${requiredDatasetCount} datasets`
+					? `${completedDatasetCount}/${requiredDatasetCount} ${requiredDatasetCount === 1 ? 'dataset' : 'datasets'}`
 					: undefined;
 			const targetHasReadiness = Boolean(
 				target?.ready ||
@@ -729,23 +740,26 @@
 		if (protectionState === 'suspended') return 'Suspended';
 		if (protectionState === 'unprotected') return 'Unprotected';
 
+		const targetStates = targetSync
+			.filter((target) => target.state !== 'active' && target.state !== 'untargeted')
+			.map((target) => target.state);
+		const syncing = targetSync.some(
+			(target) => target.state === 'pending' && target.statusLabel === 'Syncing'
+		);
+		if (
+			policy.haDegraded ||
+			targetStates.some((state) => state === 'failed' || state === 'stale')
+		) {
+			return 'Degraded';
+		}
+		if (syncing) return 'Syncing';
+
 		const lastStatus = String(policy.lastStatus || '')
 			.trim()
 			.toLowerCase();
 		if (lastStatus === 'blocked') return 'Blocked';
 		if (lastStatus === 'failed') return 'Failed';
-
-		const targetStates = targetSync
-			.filter((target) => target.state !== 'active' && target.state !== 'untargeted')
-			.map((target) => target.state);
-		if (
-			lastStatus === 'degraded' ||
-			policy.haDegraded ||
-			protectionState === 'degraded' ||
-			targetStates.some((state) => state === 'failed' || state === 'stale')
-		) {
-			return 'Degraded';
-		}
+		if (lastStatus === 'degraded' || protectionState === 'degraded') return 'Degraded';
 		if (
 			protectionState === 'initializing' ||
 			targetStates.length === 0 ||
@@ -855,6 +869,18 @@
 		return jailByNode[nodeId] || [];
 	});
 
+	function policyWorkloadLabel(policy: ReplicationPolicy): string {
+		const type = policy.guestType === 'jail' ? 'Jail' : 'VM';
+		const id = policy.guestId;
+		const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+		const resource = data.resources.find((candidate) => candidate.nodeUUID === nodeId);
+		const name =
+			policy.guestType === 'jail'
+				? resource?.jails?.find((jail) => jail.ctId === id)?.name
+				: resource?.vms?.find((vm) => vm.rid === id)?.name;
+		return name ? `${type} ${id} - ${name}` : `${type} ${id}`;
+	}
+
 	const policyColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
@@ -867,6 +893,7 @@
 					enabled: boolean;
 					lastStatus: string;
 					transitionState: string;
+					isSyncing: boolean;
 				};
 				const icons = [];
 				if (row.enabled) {
@@ -897,7 +924,9 @@
 				}
 
 				const lastStatus = String(row.lastStatus || '').toLowerCase();
-				if (lastStatus === 'success') {
+				if (row.isSyncing) {
+					icons.push(renderWithIcon('mdi:progress-clock', 'Syncing', 'text-blue-500'));
+				} else if (lastStatus === 'success') {
 					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
 				} else if (lastStatus === 'failed') {
 					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
@@ -916,8 +945,8 @@
 		{
 			field: 'workload',
 			title: 'Workload',
-			width: 120,
-			minWidth: 110,
+			width: 240,
+			minWidth: 160,
 			formatter: (cell: CellComponent) => {
 				const data = cell.getRow().getData();
 				const icon =
@@ -950,45 +979,29 @@
 				const statuses = row.nodeSyncStatuses;
 				if (!statuses || !statuses.length) return '-';
 
-				const stateClasses: Record<PolicyTargetSyncState, string> = {
-					active: 'text-blue-500',
-					ready: 'text-green-600',
-					failed: 'text-red-500',
-					stale: 'text-amber-600',
-					pending: 'text-muted-foreground',
-					untargeted: 'text-muted-foreground'
-				};
-
 				const tracked = statuses.filter((s) => s.state !== 'untargeted');
-				const untargeted = statuses.filter((s) => s.state === 'untargeted');
 
 				const nodeHtml = (s: (typeof statuses)[number]) => {
-					const nodeLabel = s.weight !== undefined ? `${s.label} (${s.weight})` : s.label;
+					const roleLabel = s.state === 'active' ? 'Active' : s.statusLabel;
+					const priorityLabel = s.weight !== undefined ? `Priority ${s.weight}` : '';
 					const verifiedLabel = s.verifiedAt ? `Verified ${convertDbTime(s.verifiedAt)}` : '';
 					const readyUntilLabel = s.readyUntil ? `Ready until ${convertDbTime(s.readyUntil)}` : '';
-					const secondaryLabel = verifiedLabel || s.datasetProgress || '';
+					const progressLabel = s.datasetProgress || '';
 					const tooltip = [
-						`${s.label}: ${s.statusLabel}`,
+						`${s.label}: ${roleLabel}`,
+						priorityLabel,
 						verifiedLabel,
 						readyUntilLabel,
-						s.datasetProgress || '',
+						progressLabel,
 						s.detail || ''
 					]
 						.filter(Boolean)
 						.join(' | ');
-					const stateClass = stateClasses[s.state] || 'text-muted-foreground';
-					return `<span class="inline-flex min-w-[140px] flex-col gap-0.5 rounded border px-1.5 py-1.5" title="${escapeHtml(tooltip)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-2 w-2 shrink-0 rounded-full" style="background-color:${s.dotColor}"></span><span>${escapeHtml(nodeLabel)}</span><span class="${stateClass} text-xs mt-0.5">${escapeHtml(s.statusLabel)}</span></span>${secondaryLabel ? `<span class="text-muted-foreground pl-3 text-[11px]">${escapeHtml(secondaryLabel)}</span>` : ''}</span>`;
+					const summaryLabel = progressLabel || roleLabel;
+					return `<span class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs" title="${escapeHtml(tooltip)}"><span class="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full" style="background-color:${s.dotColor}"></span><span class="font-medium leading-none">${escapeHtml(s.label)}</span>${s.weight !== undefined ? `<span class="leading-none">(${s.weight})</span>` : ''}<span class="text-muted-foreground leading-none">- ${escapeHtml(summaryLabel)}</span></span>`;
 				};
 
-				let parts = tracked.map(nodeHtml);
-
-				if (untargeted.length > 0) {
-					parts.push(
-						`<span class="inline-flex items-center gap-0.5 text-muted-foreground" title="${untargeted.length} node${untargeted.length > 1 ? 's' : ''} not targeted">+${untargeted.length}</span>`
-					);
-				}
-
-				return `<span class="inline-flex flex-wrap items-center gap-1.5">${parts.join('')}</span>`;
+				return `<span class="inline-flex flex-wrap items-center gap-1.5">${tracked.map(nodeHtml).join('')}</span>`;
 			}
 		},
 		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
@@ -1016,8 +1029,6 @@
 
 	let tableData = $derived.by(() => ({
 		rows: policies.map((policy) => {
-			const workloadLabel =
-				policy.guestType === 'jail' ? `Jail ${policy.guestId}` : `VM ${policy.guestId}`;
 			const sourceNode = policy.activeNodeId || policy.sourceNodeId || '';
 			const sourceLabel = compactNodeLabel(sourceNode);
 			const targetsLabel =
@@ -1033,7 +1044,7 @@
 				enabled: policy.enabled,
 				name: policy.name,
 				guestType: policy.guestType,
-				workload: workloadLabel,
+				workload: policyWorkloadLabel(policy),
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
 				haState: protection,
@@ -1043,6 +1054,9 @@
 				nodeSyncStatuses: targetSync,
 				schedule: scheduleLabel(policy.cronExpr),
 				lastStatus: policy.lastStatus,
+				isSyncing: targetSync.some(
+					(target) => target.state === 'pending' && target.statusLabel === 'Syncing'
+				),
 				transitionState: policy.transitionState,
 				lastRunAt: policy.lastRunAt,
 				nextRunAt: policy.nextRunAt
@@ -1052,7 +1066,6 @@
 	}));
 
 	function resetPolicyModal() {
-		policyModal.open = false;
 		policyStep = 'workload';
 		policyModal.edit = false;
 		policyModal.name = '';
@@ -1076,7 +1089,6 @@
 
 	function openCreatePolicy() {
 		resetPolicyModal();
-		policyStep = 'workload';
 		policyModal.open = true;
 		void loadVMsForNode();
 	}
@@ -1164,12 +1176,12 @@
 	}
 
 	function closePolicyModal() {
-		resetPolicyModal();
+		policyModal.open = false;
 	}
 
 	function addTargetRow() {
 		if (!canAddTargetRow) {
-			toast.error('You cannot add more targets than available cluster nodes.', {
+			toast.error('You cannot add more targets than available remote cluster nodes.', {
 				position: 'bottom-center'
 			});
 			return;
@@ -1178,12 +1190,15 @@
 	}
 
 	function targetOptionsFor(index: number) {
+		const workloadNodeID = String(policyModal.workloadNodeId || '').trim();
 		const selectedElsewhere = new Set(
 			policyModal.targets
 				.map((target, idx) => (idx === index ? '' : String(target.nodeId || '').trim()))
 				.filter((value) => value.length > 0)
 		);
-		return nodeOptions.filter((option) => !selectedElsewhere.has(option.value));
+		return nodeOptions.filter(
+			(option) => option.value !== workloadNodeID && !selectedElsewhere.has(option.value)
+		);
 	}
 
 	function goToNextPolicyStep() {
@@ -1211,6 +1226,12 @@
 			const nodeId = target.nodeId.trim();
 			if (!nodeId) {
 				continue;
+			}
+			if (nodeId === String(policyModal.workloadNodeId || '').trim()) {
+				toast.error('The active workload node cannot be a replication target.', {
+					position: 'bottom-center'
+				});
+				return null;
 			}
 			if (seen.has(nodeId)) {
 				toast.error('Each target server can be added only once.', { position: 'bottom-center' });
@@ -1413,7 +1434,7 @@
 				toast.success(editingPolicy ? 'Policy updated' : 'Policy created', {
 					position: 'bottom-center'
 				});
-				resetPolicyModal();
+				closePolicyModal();
 				return;
 			}
 
@@ -1826,21 +1847,20 @@
 
 					<Tabs.Content value="targets" class="space-y-3">
 						<div class="rounded-md border p-2.5">
-							<div class="mb-2 flex items-center justify-between">
-								<div>
+							<div class="mb-2 flex items-start justify-between gap-3">
+								<div class="min-w-0">
 									<p class="text-sm font-medium">Target servers</p>
 									<p class="text-muted-foreground text-xs">
-										Forced recovery prefers the freshest complete replica. Priority drives normal
-										auto-selection and breaks freshness ties.
+										Forced recovery selects the freshest complete replica; priority breaks ties.
 									</p>
 									<p class="text-muted-foreground mt-1 text-xs">
 										{policyModal.targets.length}/{maxTargetRows} targets configured
 									</p>
 								</div>
-								<Button
-									size="sm"
-									variant="outline"
-									class="h-6"
+									<Button
+										size="sm"
+										variant="outline"
+										class="h-6 shrink-0"
 									onclick={addTargetRow}
 									disabled={!canAddTargetRow}
 								>
@@ -1875,11 +1895,11 @@
 										<Button
 											size="sm"
 											variant="outline"
-											class="h-8"
+											class="h-9 w-9 shrink-0"
 											disabled={policyModal.targets.length <= 1}
 											onclick={() => removeTargetRow(idx)}
 										>
-											<span class="icon-[mdi--delete] h-4 w-4"></span>
+											<span class="icon-[mdi--delete] h-5 w-5"></span>
 										</Button>
 									</div>
 								{/each}

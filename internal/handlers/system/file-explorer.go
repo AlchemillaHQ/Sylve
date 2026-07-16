@@ -531,6 +531,12 @@ func UploadFile(systemService *system.Service) gin.HandlerFunc {
 		defer os.Remove(tempPath)
 
 		finalPath := filepath.Join(destPath, filepath.Base(fileHeader.Filename))
+		if err := systemService.EnsureFileExplorerMutationAllowed(finalPath); err != nil {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "restore_in_progress", Error: err.Error(), Data: nil,
+			})
+			return
+		}
 
 		if _, err := os.Stat(finalPath); err == nil {
 			c.JSON(http.StatusConflict, internal.APIResponse[any]{
@@ -600,6 +606,12 @@ func DeleteUpload(systemService *system.Service) gin.HandlerFunc {
 		}
 
 		path := req.Data.Path
+		if err := systemService.EnsureFileExplorerMutationAllowed(path); err != nil {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "restore_in_progress", Error: err.Error(), Data: nil,
+			})
+			return
+		}
 
 		info, err := os.Stat(path)
 		if err != nil {

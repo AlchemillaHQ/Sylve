@@ -194,6 +194,7 @@ func startJoinLeaderTLSStub(t *testing.T, handler http.Handler) string {
 		_ = server.Listener.Close()
 		server.Listener = listener
 		server.EnableHTTP2 = false
+		server.Config.SetKeepAlivesEnabled(false)
 		server.StartTLS()
 		t.Cleanup(server.Close)
 		return candidate.host

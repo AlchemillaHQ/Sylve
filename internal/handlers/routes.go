@@ -493,7 +493,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/tpm/:rid", vmHandlers.ModifyTPM(libvirtService))
 		vm.GET("/qga/:rid", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
 
-		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
+		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
 	}
 
 	jail := api.Group("/jail")

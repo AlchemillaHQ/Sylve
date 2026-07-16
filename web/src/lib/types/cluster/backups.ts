@@ -56,6 +56,7 @@ export const BackupEventSchema = z.object({
 export const BackupEventProgressSchema = z.object({
 	event: BackupEventSchema,
 	progressDataset: z.string().optional().default(''),
+	phase: z.string().optional().default(''),
 	movedBytes: z.number().nullable().optional(),
 	totalBytes: z.number().nullable().optional(),
 	progressPercent: z.number().nullable().optional()

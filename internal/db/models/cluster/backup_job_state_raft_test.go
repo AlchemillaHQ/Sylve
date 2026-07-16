@@ -62,6 +62,29 @@ func TestFSMDispatcherBackupJobStateCommands(t *testing.T) {
 		}
 	})
 
+	t.Run("update next run only", func(t *testing.T) {
+		nextRun := time.Now().UTC().Add(48 * time.Hour).Truncate(time.Second)
+		raw, _ := json.Marshal(map[string]any{
+			"jobId":       1,
+			"nextRunAt":   nextRun,
+			"nextRunOnly": true,
+		})
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job_state", Action: "update", Data: raw,
+		}); err != nil {
+			t.Fatalf("next-run-only update failed: %v", err)
+		}
+
+		var job BackupJob
+		db.First(&job, 1)
+		if job.NextRunAt == nil || !job.NextRunAt.Equal(nextRun) {
+			t.Fatalf("next_run_at mismatch: %v", job.NextRunAt)
+		}
+		if job.LastStatus != "success" || job.LastRunAt == nil {
+			t.Fatalf("next-run-only update changed runtime result: %+v", job)
+		}
+	})
+
 	t.Run("update status=success", func(t *testing.T) {
 		raw, _ := json.Marshal(map[string]any{"jobId": 1, "lastStatus": "success"})
 		if err := applyFSMCommand(t, fsm, Command{

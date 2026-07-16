@@ -5,27 +5,32 @@
 package zelta
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 type restoreJailLifecycleStub struct {
 	jailServiceInterfaces.JailServiceInterface
 
-	ctID       uint
-	lookupErr  error
-	running    bool
-	stateErr   error
-	stopErr    error
-	restartErr error
-	steps      []string
+	ctID             uint
+	lookupErr        error
+	running          bool
+	stateErr         error
+	stopErr          error
+	stopKeepsRunning bool
+	restartErr       error
+	steps            []string
 }
 
 func (s *restoreJailLifecycleStub) GetJailCTIDFromDataset(string) (uint, error) {
@@ -41,9 +46,79 @@ func (s *restoreJailLifecycleStub) IsJailRunning(uint) (bool, error) {
 func (s *restoreJailLifecycleStub) JailAction(_ int, action string) error {
 	s.steps = append(s.steps, action)
 	if action == "stop" {
+		if s.stopErr == nil && !s.stopKeepsRunning {
+			s.running = false
+		}
 		return s.stopErr
 	}
+	if s.restartErr == nil {
+		s.running = true
+	}
 	return s.restartErr
+}
+
+func (s *restoreJailLifecycleStub) ForceStopJail(uint) error {
+	s.steps = append(s.steps, "force-stop")
+	if s.stopErr == nil && !s.stopKeepsRunning {
+		s.running = false
+	}
+	return s.stopErr
+}
+
+func newRestoreJailLifecycleService(stub *restoreJailLifecycleStub) *Service {
+	return &Service{
+		Jail: stub,
+		localDatasetUnmounter: func(_ context.Context, _ string, force bool) error {
+			if force {
+				return errors.New("restore_cutover_must_not_force_unmount")
+			}
+			return nil
+		},
+		localDatasetMounter: func(context.Context, string) error {
+			return nil
+		},
+	}
+}
+
+func TestJailRestoreFenceStopsAndBlocksMutations(t *testing.T) {
+	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
+	svc := newRestoreJailLifecycleService(stub)
+	svc.DB = testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationGuestOperation{})
+
+	fence, err := svc.acquireJailRestoreFence(t.Context(), "tank/sylve/jails/42", 9)
+	if err != nil {
+		t.Fatalf("acquire jail restore fence: %v", err)
+	}
+	if fence == nil || !fence.wasRunning || fence.guestID != 42 {
+		t.Fatalf("expected running jail fence, got %+v", fence)
+	}
+	if stub.running {
+		t.Fatal("restore fence did not stop the jail")
+	}
+
+	allowed, err := clusterService.CanNodeMutateProtectedGuest(
+		svc.DB,
+		clusterModels.ReplicationGuestTypeJail,
+		42,
+		"node-a",
+	)
+	if err != nil {
+		t.Fatalf("check mutation guard: %v", err)
+	}
+	if allowed {
+		t.Fatal("restore fence allowed a concurrent mutation")
+	}
+	if err := fence.release(); err != nil {
+		t.Fatalf("release jail restore fence: %v", err)
+	}
+
+	var count int64
+	if err := svc.DB.Model(&clusterModels.ReplicationGuestOperation{}).Count(&count).Error; err != nil {
+		t.Fatalf("count restore fences: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("released restore fence was retained: %d", count)
+	}
 }
 
 func TestRunInPlaceJailRestoreCutoverBlocksUnsafeLifecycleStates(t *testing.T) {
@@ -84,7 +159,7 @@ func TestRunInPlaceJailRestoreCutoverBlocksUnsafeLifecycleStates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cutoverCalls := 0
-			_, err := (&Service{Jail: tt.stub}).runInPlaceJailRestoreCutover(
+			_, err := newRestoreJailLifecycleService(tt.stub).runInPlaceJailRestoreCutover(
 				"tank/sylve/jails/42",
 				func() (string, error) {
 					cutoverCalls++
@@ -110,7 +185,7 @@ func TestRunInPlaceJailRestoreCutoverPreservesOriginalRunningStateOnFailure(t *t
 	t.Run("initially stopped remains stopped", func(t *testing.T) {
 		stub := &restoreJailLifecycleStub{ctID: 42}
 		primary := errors.New("cutover failed")
-		_, err := (&Service{Jail: stub}).runInPlaceJailRestoreCutover(
+		_, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
 			"tank/sylve/jails/42",
 			func() (string, error) {
 				stub.steps = append(stub.steps, "cutover")
@@ -129,7 +204,7 @@ func TestRunInPlaceJailRestoreCutoverPreservesOriginalRunningStateOnFailure(t *t
 	t.Run("running jail is restarted", func(t *testing.T) {
 		stub := &restoreJailLifecycleStub{ctID: 42, running: true}
 		primary := errors.New("cutover failed")
-		_, err := (&Service{Jail: stub}).runInPlaceJailRestoreCutover(
+		_, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
 			"tank/sylve/jails/42",
 			func() (string, error) {
 				stub.steps = append(stub.steps, "cutover")
@@ -139,7 +214,7 @@ func TestRunInPlaceJailRestoreCutoverPreservesOriginalRunningStateOnFailure(t *t
 		if !errors.Is(err, primary) {
 			t.Fatalf("cutover error was not preserved: %v", err)
 		}
-		want := []string{"lookup", "state", "stop", "cutover", "start"}
+		want := []string{"lookup", "state", "stop", "state", "cutover", "start"}
 		if !reflect.DeepEqual(stub.steps, want) {
 			t.Fatalf("steps = %v, want %v", stub.steps, want)
 		}
@@ -149,7 +224,7 @@ func TestRunInPlaceJailRestoreCutoverPreservesOriginalRunningStateOnFailure(t *t
 		primary := errors.New("cutover failed")
 		restart := errors.New("restart failed")
 		stub := &restoreJailLifecycleStub{ctID: 42, running: true, restartErr: restart}
-		_, err := (&Service{Jail: stub}).runInPlaceJailRestoreCutover(
+		_, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
 			"tank/sylve/jails/42",
 			func() (string, error) {
 				stub.steps = append(stub.steps, "cutover")
@@ -160,7 +235,7 @@ func TestRunInPlaceJailRestoreCutoverPreservesOriginalRunningStateOnFailure(t *t
 			!strings.Contains(err.Error(), "restore_jail_restart_failed") {
 			t.Fatalf("joined error = %v", err)
 		}
-		want := []string{"lookup", "state", "stop", "cutover", "start"}
+		want := []string{"lookup", "state", "stop", "state", "cutover", "start"}
 		if !reflect.DeepEqual(stub.steps, want) {
 			t.Fatalf("steps = %v, want %v", stub.steps, want)
 		}
@@ -171,7 +246,7 @@ func TestRunInPlaceJailRestoreCutoverSuccessLeavesJailStopped(t *testing.T) {
 	t.Parallel()
 
 	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
-	backup, err := (&Service{Jail: stub}).runInPlaceJailRestoreCutover(
+	backup, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
 		"tank/sylve/jails/42",
 		func() (string, error) {
 			stub.steps = append(stub.steps, "cutover")
@@ -184,7 +259,7 @@ func TestRunInPlaceJailRestoreCutoverSuccessLeavesJailStopped(t *testing.T) {
 	if backup != "tank/sylve/jails/42_restore-backup-test" {
 		t.Fatalf("backup dataset = %q", backup)
 	}
-	want := []string{"lookup", "state", "stop", "cutover"}
+	want := []string{"lookup", "state", "stop", "state", "cutover"}
 	if !reflect.DeepEqual(stub.steps, want) {
 		t.Fatalf("steps = %v, want %v", stub.steps, want)
 	}
@@ -194,7 +269,7 @@ func TestJailRestoreRuntimeGuardSpansFailuresAfterCutover(t *testing.T) {
 	t.Parallel()
 
 	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
-	guard, err := (&Service{Jail: stub}).prepareInPlaceJailRestore("tank/sylve/jails/42")
+	guard, err := newRestoreJailLifecycleService(stub).prepareInPlaceJailRestore(t.Context(), "tank/sylve/jails/42")
 	if err != nil {
 		t.Fatalf("prepare jail restore: %v", err)
 	}
@@ -209,7 +284,112 @@ func TestJailRestoreRuntimeGuardSpansFailuresAfterCutover(t *testing.T) {
 	if restartErr != nil || !errors.Is(joined, primary) {
 		t.Fatalf("second restore running state: joined=%v restart=%v", joined, restartErr)
 	}
-	want := []string{"lookup", "state", "stop", "cutover", "properties", "activation-failed", "start"}
+	want := []string{"lookup", "state", "stop", "state", "cutover", "properties", "activation-failed", "start"}
+	if !reflect.DeepEqual(stub.steps, want) {
+		t.Fatalf("steps = %v, want %v", stub.steps, want)
+	}
+}
+
+func TestJailRestoreRuntimeGuardRemountsBeforeRestart(t *testing.T) {
+	t.Parallel()
+
+	var steps []string
+	guard := &restoreRuntimeGuard{
+		guestType: "jail",
+		guestID:   42,
+		dataset:   "tank/sylve/jails/42",
+		remount: func() error {
+			steps = append(steps, "mount")
+			return nil
+		},
+		restart: func() error {
+			steps = append(steps, "start")
+			return nil
+		},
+	}
+
+	primary := errors.New("cutover failed")
+	joined, restartErr := guard.restoreAfterFailure(primary)
+	if restartErr != nil || !errors.Is(joined, primary) {
+		t.Fatalf("restore result: joined=%v restart=%v", joined, restartErr)
+	}
+	if want := []string{"mount", "start"}; !reflect.DeepEqual(steps, want) {
+		t.Fatalf("steps = %v, want %v", steps, want)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreWaitsForStopAndUsesNormalUnmount(t *testing.T) {
+	t.Parallel()
+
+	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
+	var unmountForces []bool
+	service := newRestoreJailLifecycleService(stub)
+	service.localDatasetUnmounter = func(_ context.Context, _ string, force bool) error {
+		unmountForces = append(unmountForces, force)
+		return nil
+	}
+
+	guard, err := service.prepareInPlaceJailRestore(t.Context(), "tank/sylve/jails/42")
+	if err != nil {
+		t.Fatalf("prepareInPlaceJailRestore: %v", err)
+	}
+	if guard == nil {
+		t.Fatal("expected restore guard")
+	}
+	if !reflect.DeepEqual(unmountForces, []bool{false}) {
+		t.Fatalf("unmount force values = %v, want [false]", unmountForces)
+	}
+	want := []string{"lookup", "state", "stop", "state"}
+	if !reflect.DeepEqual(stub.steps, want) {
+		t.Fatalf("steps = %v, want %v", stub.steps, want)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreRestartsAfterBusyUnmount(t *testing.T) {
+	t.Parallel()
+
+	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
+	service := newRestoreJailLifecycleService(stub)
+	service.localDatasetUnmounter = func(context.Context, string, bool) error {
+		return errors.New("pool or dataset is busy")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
+	defer cancel()
+
+	guard, err := service.prepareInPlaceJailRestore(ctx, "tank/sylve/jails/42")
+	if guard != nil {
+		t.Fatal("busy unmount must not return a restore guard")
+	}
+	if err == nil || !strings.Contains(err.Error(), "restore_jail_dataset_busy") {
+		t.Fatalf("error = %v, want restore_jail_dataset_busy", err)
+	}
+	want := []string{"lookup", "state", "stop", "state", "start"}
+	if !reflect.DeepEqual(stub.steps, want) {
+		t.Fatalf("steps = %v, want %v", stub.steps, want)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreRestartsAfterStopTimeout(t *testing.T) {
+	t.Parallel()
+
+	stub := &restoreJailLifecycleStub{ctID: 42, running: true, stopKeepsRunning: true}
+	service := newRestoreJailLifecycleService(stub)
+	service.localDatasetUnmounter = func(context.Context, string, bool) error {
+		t.Fatal("unmount must not run while jail remains active")
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
+	defer cancel()
+
+	guard, err := service.prepareInPlaceJailRestore(ctx, "tank/sylve/jails/42")
+	if guard != nil {
+		t.Fatal("stop failure must not return a restore guard")
+	}
+	if err == nil || !strings.Contains(err.Error(), "restore_jail_stop_timeout") {
+		t.Fatalf("error = %v, want restore_jail_stop_timeout", err)
+	}
+	want := []string{"lookup", "state", "stop", "state", "start"}
 	if !reflect.DeepEqual(stub.steps, want) {
 		t.Fatalf("steps = %v, want %v", stub.steps, want)
 	}
@@ -243,6 +423,49 @@ func (s *restoreVMLifecycleStub) IsDomainShutOff(uint) (bool, error) {
 func (s *restoreVMLifecycleStub) LvVMAction(_ vmModels.VM, action string) error {
 	s.actions = append(s.actions, action)
 	return s.actionErr[action]
+}
+
+func (s *restoreVMLifecycleStub) ForceStopVM(uint) error {
+	s.actions = append(s.actions, "force-stop")
+	return s.actionErr["force-stop"]
+}
+
+func TestVMRestoreFenceStopsAndBlocksMutations(t *testing.T) {
+	vmStub := &restoreVMLifecycleStub{
+		shutOffStates: []bool{false, true},
+		actionErr:     make(map[string]error),
+	}
+	svc := &Service{
+		DB: testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationGuestOperation{}),
+		VM: vmStub,
+	}
+
+	fence, err := svc.acquireVMRestoreFence(t.Context(), 42, 9)
+	if err != nil {
+		t.Fatalf("acquire VM restore fence: %v", err)
+	}
+	if fence == nil || !fence.wasRunning || fence.guestID != 42 {
+		t.Fatalf("expected running VM fence, got %+v", fence)
+	}
+	if want := []string{"force-stop"}; !reflect.DeepEqual(vmStub.actions, want) {
+		t.Fatalf("VM actions = %v, want %v", vmStub.actions, want)
+	}
+
+	allowed, err := clusterService.CanNodeMutateProtectedGuest(
+		svc.DB,
+		clusterModels.ReplicationGuestTypeVM,
+		42,
+		"node-a",
+	)
+	if err != nil {
+		t.Fatalf("check mutation guard: %v", err)
+	}
+	if allowed {
+		t.Fatal("restore fence allowed a concurrent VM mutation")
+	}
+	if err := fence.release(); err != nil {
+		t.Fatalf("release VM restore fence: %v", err)
+	}
 }
 
 func TestVMRestoreRuntimeGuardRestoresRunningStateAfterLaterFailure(t *testing.T) {

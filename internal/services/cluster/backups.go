@@ -60,12 +60,13 @@ type BackupJobInput struct {
 // BackupJobRuntimeStateUpdate carries runtime-only fields that should be
 // synchronized cluster-wide after a backup run finishes.
 type BackupJobRuntimeStateUpdate struct {
-	JobID      uint       `json:"jobId"`
-	LastRunAt  *time.Time `json:"lastRunAt"`
-	LastStatus string     `json:"lastStatus"`
-	LastError  string     `json:"lastError"`
-	NextRunAt  *time.Time `json:"nextRunAt"`
-	Encrypted  bool       `json:"encrypted"`
+	JobID       uint       `json:"jobId"`
+	LastRunAt   *time.Time `json:"lastRunAt"`
+	LastStatus  string     `json:"lastStatus"`
+	LastError   string     `json:"lastError"`
+	NextRunAt   *time.Time `json:"nextRunAt"`
+	Encrypted   bool       `json:"encrypted"`
+	NextRunOnly bool       `json:"nextRunOnly,omitempty"`
 }
 
 type BackupJobFriendlySourceUpdate struct {
@@ -298,6 +299,27 @@ func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {
 func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate, bypassRaft bool) error {
 	if update.JobID == 0 {
 		return fmt.Errorf("invalid_job_id")
+	}
+	if update.NextRunOnly {
+		if bypassRaft {
+			return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Update("next_run_at", update.NextRunAt).Error
+		}
+		if s.Raft == nil {
+			return fmt.Errorf("raft_not_initialized")
+		}
+		if s.Raft.State() != raft.Leader {
+			return fmt.Errorf("not_leader")
+		}
+
+		data, err := json.Marshal(update)
+		if err != nil {
+			return fmt.Errorf("failed_to_marshal_backup_job_state_payload: %w", err)
+		}
+		return s.applyRaftCommand(clusterModels.Command{
+			Type:   "backup_job_state",
+			Action: "update",
+			Data:   data,
+		})
 	}
 
 	status := strings.TrimSpace(strings.ToLower(update.LastStatus))

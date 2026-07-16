@@ -1045,6 +1045,10 @@ func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
 	return s.canMutateProtectedVMForTransition(rid, "")
 }
 
+func (s *Service) CanMutateProtectedVM(rid uint) (bool, error) {
+	return s.canMutateProtectedVM(rid)
+}
+
 func (s *Service) canMutateProtectedVMForTransition(rid uint, transitionRunID string) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {

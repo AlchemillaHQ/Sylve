@@ -35,7 +35,9 @@
 		{ initialValue: null as ClusterDetails | null }
 	);
 
-	let clusterEnabled = $derived(clusterDetails.current?.cluster?.enabled === true);
+	let clusterEnabled = $derived(
+		clusterDetails.current?.cluster?.enabled ?? Boolean(storage.clusterToken)
+	);
 
 	let nodeItems: NodeItem[] = $derived.by(() => {
 		const items: NodeItem[] = [

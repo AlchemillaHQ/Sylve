@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -207,6 +208,8 @@ func (s *Service) ForceStopJail(ctID uint) error {
 	if ctIDInt <= 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
 
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
@@ -414,6 +417,20 @@ func (s *Service) EmergencyStopAllManagedJails(ctx context.Context) error {
 
 func (s *Service) canMutateProtectedJail(ctID uint) (bool, error) {
 	return s.canMutateProtectedJailForTransition(ctID, "")
+}
+
+func (s *Service) jailRestoreInProgress(ctID uint) (bool, error) {
+	if s == nil || s.DB == nil || !replicationguard.GuestOperationSchemaReady(s.DB) {
+		return false, nil
+	}
+	var operation clusterModels.ReplicationGuestOperation
+	result := s.DB.Where("guest_type = ? AND guest_id = ?", clusterModels.ReplicationGuestTypeJail, ctID).
+		Limit(1).
+		Find(&operation)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected != 0 && operation.Operation == clusterModels.ReplicationGuestOperationRestore, nil
 }
 
 func (s *Service) canMutateProtectedJailForTransition(ctID uint, transitionRunID string) (bool, error) {

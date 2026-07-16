@@ -511,6 +511,13 @@ func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
 }
 
 func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
+	restoring, err := s.jailRestoreInProgress(ctId)
+	if err != nil {
+		return fmt.Errorf("restore_fence_check_failed: %w", err)
+	}
+	if restoring {
+		return fmt.Errorf("restore_in_progress")
+	}
 	mountPoint, err := s.GetJailBaseMountPoint(ctId)
 	if err != nil {
 		return err
@@ -678,25 +685,25 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n", epairB, mac))
 					preStartBuilder.WriteString("\n")
 
-				bridgeName, err := s.NetworkService.GetBridgeNameByIDType(n.SwitchID, n.SwitchType)
-				if err != nil {
-					return fmt.Errorf("failed to get bridge name: %w", err)
-				}
+					bridgeName, err := s.NetworkService.GetBridgeNameByIDType(n.SwitchID, n.SwitchType)
+					if err != nil {
+						return fmt.Errorf("failed to get bridge name: %w", err)
+					}
 
-				if n.VLAN != nil && *n.VLAN > 0 {
-					vlanIface := fmt.Sprintf("%s.%d", epairA, *n.VLAN)
-					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s > /dev/null 2>&1; then\n", vlanIface))
-					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig vlan create vlandev %s vlan %d name %s group svm-vlan up\n", epairA, *n.VLAN, vlanIface))
-					preStartBuilder.WriteString("fi\n")
-					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, vlanIface))
-					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, vlanIface))
-					preStartBuilder.WriteString("fi\n")
-				} else {
-					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, epairA))
-					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, epairA))
-					preStartBuilder.WriteString("fi\n")
-				}
-				preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
+					if n.VLAN != nil && *n.VLAN > 0 {
+						vlanIface := fmt.Sprintf("%s.%d", epairA, *n.VLAN)
+						preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s > /dev/null 2>&1; then\n", vlanIface))
+						preStartBuilder.WriteString(fmt.Sprintf("\tifconfig vlan create vlandev %s vlan %d name %s group svm-vlan up\n", epairA, *n.VLAN, vlanIface))
+						preStartBuilder.WriteString("fi\n")
+						preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, vlanIface))
+						preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, vlanIface))
+						preStartBuilder.WriteString("fi\n")
+					} else {
+						preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, epairA))
+						preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, epairA))
+						preStartBuilder.WriteString("fi\n")
+					}
+					preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
 				}
 
 				if jail.Type == jailModels.JailTypeLinux {

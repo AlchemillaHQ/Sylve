@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"sort"
@@ -873,6 +874,24 @@ func (s *Service) runRestoreFromTargetVM(
 			return fmt.Errorf("restore_vm_manifest_mismatch")
 		}
 	}
+	vmRestoreFence, err := s.acquireVMRestoreFence(ctx, destRID, event.ID)
+	if err != nil {
+		return fmt.Errorf("acquire_vm_restore_fence_failed: %w", err)
+	}
+	defer func() {
+		if vmRestoreFence == nil || retErr == nil {
+			return
+		}
+		if releaseErr := vmRestoreFence.release(); releaseErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("release_vm_restore_fence_failed: %w", releaseErr))
+			return
+		}
+		if vmRestoreFence.wasRunning {
+			if restartErr := s.startVMIfPresent(vmRestoreFence.guestID); restartErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("restore_vm_restart_failed: %w", restartErr))
+			}
+		}
+	}()
 	for _, plan := range rootPlans {
 		identity := newRestoreStagingIdentity(jobID, target.ID, plan.destination)
 		if err := s.prepareRestoreStagingDataset(ctx, plan.destination+".restoring", identity); err != nil {
@@ -1009,6 +1028,12 @@ func (s *Service) runRestoreFromTargetVM(
 				Str("backup_dataset", entry.backup).
 				Msg("failed_to_cleanup_vm_restore_backup_dataset")
 		}
+	}
+	if vmRestoreFence != nil {
+		if releaseErr := vmRestoreFence.release(); releaseErr != nil {
+			return fmt.Errorf("release_vm_restore_fence_failed: %w", releaseErr)
+		}
+		vmRestoreFence = nil
 	}
 
 	return nil
@@ -1150,9 +1175,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	remoteEndpoint := target.SSHHost + ":" + remoteDataset + snapshot
 	restorePath := destinationDataset + ".restoring"
 	stagingIdentity := newRestoreStagingIdentity(jobID, target.ID, destinationDataset)
-	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
-		return "", fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
-	}
+	destinationKind, destinationGuestID := inferRestoreDatasetKind(destinationDataset)
 
 	activeEventID := uint(0)
 	ownsEvent := false
@@ -1205,6 +1228,35 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			destinationDataset,
 			err,
 		))
+	}
+	var jailRestoreFence *restoreGuestFence
+	jailSafeToRestart := true
+	if destinationKind == clusterModels.BackupJobModeJail {
+		jailRestoreFence, err = s.acquireJailRestoreFence(ctx, destinationDataset, activeEventID)
+		if err != nil {
+			restoreErr = fmt.Errorf("acquire_jail_restore_fence_failed: %w", err)
+			recordRestoreFailure(restoreErr)
+			return "", restoreErr
+		}
+		defer func() {
+			if jailRestoreFence == nil || retErr == nil {
+				return
+			}
+			if releaseErr := jailRestoreFence.release(); releaseErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("release_jail_restore_fence_failed: %w", releaseErr))
+				return
+			}
+			if jailRestoreFence.wasRunning && jailSafeToRestart {
+				if restartErr := s.Jail.JailAction(int(jailRestoreFence.guestID), "start"); restartErr != nil {
+					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
+				}
+			}
+		}()
+	}
+	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
+		restoreErr = fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
+		recordRestoreFailure(restoreErr)
+		return "", restoreErr
 	}
 
 	if !ownsEvent {
@@ -1271,7 +1323,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		return "", restoreErr
 	}
 
-	destinationKind, destinationGuestID := inferRestoreDatasetKind(destinationDataset)
 	isJailDestination := destinationKind == clusterModels.BackupJobModeJail
 	isGuestDestination := isJailDestination || destinationKind == clusterModels.BackupJobModeVM
 	if destinationKind == clusterModels.BackupJobModeDataset {
@@ -1330,7 +1381,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	if strictAsNew {
 		renameErr = s.promoteRestoredDatasetAsNew(ctx, restorePath, destinationDataset)
 	} else if isJailDestination && destExists {
-		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(destinationDataset)
+		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(ctx, destinationDataset)
 		if quiesceErr != nil {
 			restoreErr = s.cleanupOwnedRestoreStagingAfterError(
 				restorePath,
@@ -1348,6 +1399,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			var restartErr error
 			retErr, restartErr = jailRuntimeGuard.restoreAfterFailure(retErr)
 			if restartErr != nil {
+				jailSafeToRestart = false
 				recordRestoreFailure(retErr)
 			}
 		}()
@@ -1476,6 +1528,14 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		} else {
 			backupDataset = ""
 		}
+	}
+	if jailRestoreFence != nil {
+		if releaseErr := jailRestoreFence.release(); releaseErr != nil {
+			restoreErr = fmt.Errorf("release_jail_restore_fence_failed: %w", releaseErr)
+			recordRestoreFailure(restoreErr)
+			return "", restoreErr
+		}
+		jailRestoreFence = nil
 	}
 
 	if ownsEvent {

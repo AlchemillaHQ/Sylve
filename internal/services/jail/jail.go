@@ -27,6 +27,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
@@ -1691,6 +1692,15 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	ctid := *data.CTID
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		allowed, leaseErr := s.canMutateProtectedJail(ctid)
+		if leaseErr != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+	}
 	autoCreatedIDs := make([]uint, 0, 5)
 
 	defer func() {
@@ -2328,6 +2338,15 @@ func (s *Service) deleteJailWithRuntimeOptions(
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if !allowReplicationPolicy && replicationguard.GuestOperationSchemaReady(s.DB) {
+		allowed, leaseErr := s.canMutateProtectedJail(ctID)
+		if leaseErr != nil {
+			return result, fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return result, fmt.Errorf("replication_lease_not_owned")
+		}
 	}
 
 	s.crudMutex.Lock()

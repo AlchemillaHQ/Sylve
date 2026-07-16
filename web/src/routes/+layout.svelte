@@ -89,21 +89,26 @@
 				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
 			}
 
-			await sleep(1500);
-			loading.throbber = false;
+			const minimumThrobberDelay = sleep(1500);
 
-			const basicSettings = await getLocalBasicSettings();
+			try {
+				const basicSettings = await getLocalBasicSettings();
 
-			if (isAPIResponse(basicSettings)) {
-				console.error('Failed to fetch basic settings:', basicSettings);
-				return;
+				if (isAPIResponse(basicSettings)) {
+					console.error('Failed to fetch basic settings:', basicSettings);
+				} else {
+					setEnabledServicesForHostname(
+						storage.localHostname || storage.hostname,
+						basicSettings.services
+					);
+					syncActiveEnabledServices(page.url.pathname);
+				}
+			} catch (error) {
+				console.error('Failed to fetch basic settings:', error);
+			} finally {
+				await minimumThrobberDelay;
+				loading.throbber = false;
 			}
-
-			setEnabledServicesForHostname(
-				storage.localHostname || storage.hostname,
-				basicSettings.services
-			);
-			syncActiveEnabledServices(page.url.pathname);
 		} else {
 			stopSSEEvents();
 			storage.token = '';
@@ -333,6 +338,7 @@
 			<div transition:fade|global={{ duration: 400 }}>
 				<ProgressBar
 					id="top-loader"
+					viewTransitionName="top-loader"
 					class={mode.current === 'dark' ? 'text-white' : 'text-green-500'}
 					zIndex={9999}
 					bind:busy
@@ -385,6 +391,25 @@
 <style>
 	:global(#top-loader) {
 		height: 0.5px !important;
+	}
+
+	:global(#top-loader .svelte-progress-bar-leader) {
+		display: none;
+	}
+
+	:global(::view-transition-group(top-loader-bar)),
+	:global(::view-transition-old(top-loader-bar)),
+	:global(::view-transition-new(top-loader-bar)) {
+		animation: none;
+	}
+
+	:global(::view-transition-old(top-loader-bar)),
+	:global(::view-transition-new(top-loader-bar)) {
+		width: 100%;
+		height: 100%;
+		object-fit: fill;
+		overflow: clip;
+		mix-blend-mode: normal;
 	}
 
 	:global(::view-transition-old(root)),

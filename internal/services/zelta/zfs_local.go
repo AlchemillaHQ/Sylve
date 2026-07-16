@@ -338,6 +338,18 @@ func (s *Service) cleanupRestoreBackupDataset(ctx context.Context, backupDataset
 }
 
 func (s *Service) unmountLocalDataset(ctx context.Context, name string) error {
+	return s.unmountLocalDatasetWithForce(ctx, name, true)
+}
+
+func (s *Service) unmountLocalDatasetNormally(ctx context.Context, name string) error {
+	return s.unmountLocalDatasetWithForce(ctx, name, false)
+}
+
+func (s *Service) unmountLocalDatasetWithForce(ctx context.Context, name string, force bool) error {
+	if s != nil && s.localDatasetUnmounter != nil {
+		return s.localDatasetUnmounter(ctx, name, force)
+	}
+
 	ds, err := s.getLocalDataset(ctx, name)
 	if err != nil {
 		return err
@@ -346,10 +358,14 @@ func (s *Service) unmountLocalDataset(ctx context.Context, name string) error {
 		return nil
 	}
 
-	return ds.Unmount(ctx, true)
+	return ds.Unmount(ctx, force)
 }
 
 func (s *Service) mountLocalDataset(ctx context.Context, name string) error {
+	if s != nil && s.localDatasetMounter != nil {
+		return s.localDatasetMounter(ctx, name)
+	}
+
 	ds, err := s.getLocalDataset(ctx, name)
 	if err != nil {
 		return err
@@ -523,6 +539,16 @@ func isLocalDatasetBusyError(err error) bool {
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "dataset is busy") ||
 		strings.Contains(lower, "resource busy")
+}
+
+func isLocalDatasetNotMountedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "not currently mounted") ||
+		strings.Contains(lower, "not mounted")
 }
 
 func isLocalDatasetHasDependentClonesError(err error) bool {

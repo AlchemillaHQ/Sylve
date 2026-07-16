@@ -4,6 +4,8 @@
 		listReplicationEvents,
 		listReplicationPolicies
 	} from '$lib/api/cluster/replication';
+	import { getJails } from '$lib/api/jail/jail';
+	import { getVMs } from '$lib/api/vm/vm';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -132,6 +134,66 @@
 		return value.length > 12 ? `${value.slice(0, 8)}...` : value;
 	}
 
+	function workloadKey(guestType: string, guestId: number): string {
+		return `${guestType}:${guestId}`;
+	}
+
+	let workloadNames = resource(
+		() =>
+			policies.current
+				.map((policy) => {
+					const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+					return `${policy.guestType}:${policy.guestId}:${nodeNameByID[nodeId] || ''}`;
+				})
+				.sort()
+				.join('|'),
+		async () => {
+			const workloadsByNode = new Map<string, { guestType: string; guestId: number }[]>();
+			for (const policy of policies.current) {
+				const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+				const hostname = nodeNameByID[nodeId];
+				if (!hostname) continue;
+				const workloads = workloadsByNode.get(hostname) || [];
+				workloads.push({ guestType: policy.guestType, guestId: policy.guestId });
+				workloadsByNode.set(hostname, workloads);
+			}
+
+			const names: Record<string, string> = {};
+			await Promise.all(
+				Array.from(workloadsByNode.entries()).map(async ([hostname, workloads]) => {
+					const needsVMs = workloads.some((workload) => workload.guestType === 'vm');
+					const needsJails = workloads.some((workload) => workload.guestType === 'jail');
+					if (needsVMs) {
+						try {
+							for (const vm of await getVMs(hostname)) {
+								names[workloadKey('vm', vm.rid)] = vm.name;
+							}
+						} catch {
+							// Keep ID-only labels when this node cannot be reached.
+						}
+					}
+					if (needsJails) {
+						try {
+							for (const jail of await getJails(hostname)) {
+								names[workloadKey('jail', jail.ctId)] = jail.name;
+							}
+						} catch {
+							// Keep ID-only labels when this node cannot be reached.
+						}
+					}
+				})
+			);
+			return names;
+		},
+		{ initialValue: {} as Record<string, string> }
+	);
+
+	function workloadLabel(guestType: string, guestId: number): string {
+		const type = guestType === 'jail' ? 'Jail' : 'VM';
+		const name = workloadNames.current[workloadKey(guestType, guestId)];
+		return name ? `${type} ${guestId} - ${name}` : `${type} ${guestId}`;
+	}
+
 	function eventPath(event: ReplicationEvent): string {
 		const policy = event.policyId ? policyByID[event.policyId] : undefined;
 		const sourceNodeId = String(
@@ -172,6 +234,78 @@
 		return message.charAt(0).toUpperCase() + message.slice(1);
 	}
 
+	function iconClass(icon: string): string {
+		const [set, name] = icon.split(':');
+		return set && name ? `icon-[${set}--${name}]` : '';
+	}
+
+	type TargetReasonPresentation = {
+		label: string;
+		readiness?: boolean;
+	};
+
+	const targetReasonPresentations: Record<string, TargetReasonPresentation> = {
+		replication_generation_attempt_in_progress: { label: 'Syncing', readiness: true },
+		replication_generation_commit_in_progress: { label: 'Syncing', readiness: true },
+		awaiting_post_transition_validation: { label: 'Validating', readiness: true },
+		replication_target_offline: { label: 'Target is offline' },
+		replication_target_ssh_identity_missing: { label: 'Cluster SSH identity is missing' },
+		replication_target_invalidated: { label: 'Target readiness was invalidated' },
+		replication_vm_filesystem_storage_not_supported: {
+			label: 'VM filesystem storage is not supported'
+		},
+		replication_vm_metadata_refresh_failed: { label: 'VM metadata refresh failed' },
+		replication_target_pre_transfer_readiness_invalidation_failed: {
+			label: 'Could not prepare target for replication'
+		},
+		clear_replication_target_readiness_before_commit_failed: {
+			label: 'Could not prepare target commit'
+		},
+		publish_replication_target_readiness_failed: { label: 'Could not update target readiness' },
+		replication_target_readonly_hardening_required: {
+			label: 'Target read-only protection is required'
+		},
+		replication_target_readonly_hardening_failed: {
+			label: 'Could not apply target read-only protection'
+		},
+		replication_target_diverged_requires_staged_reseed: {
+			label: 'Target diverged and requires reseeding'
+		},
+		replication_target_dataset_lookup_failed: { label: 'Could not inspect target dataset' }
+	};
+
+	function targetReasonPresentation(value: string): TargetReasonPresentation {
+		const reason = String(value || '').trim();
+		if (!reason) return { label: '' };
+
+		const separator = reason.indexOf(':');
+		const code = (separator === -1 ? reason : reason.slice(0, separator)).trim().toLowerCase();
+		const detail = separator === -1 ? '' : reason.slice(separator + 1).trim();
+		const presentation = targetReasonPresentations[code];
+		if (presentation) {
+			return {
+				...presentation,
+				label: detail ? `${presentation.label}: ${detail}` : presentation.label
+			};
+		}
+		if (code.endsWith('_in_progress')) return { label: 'Syncing', readiness: true };
+		if (code.startsWith('awaiting_') && code.endsWith('_validation')) {
+			return { label: 'Validating', readiness: true };
+		}
+		if (code.endsWith('_requires_validation')) return { label: 'Needs sync', readiness: true };
+		return { label: eventMessageLabel(reason) };
+	}
+
+	function targetReadinessLabel(value: string): string {
+		const presentation = targetReasonPresentation(value);
+		return presentation.readiness ? presentation.label : '';
+	}
+
+	function targetErrorLabel(value: string): string {
+		const presentation = targetReasonPresentation(value);
+		return presentation.readiness ? '-' : presentation.label || '-';
+	}
+
 	function targetStatusMeta(target: ReplicationPolicy['targets'][number]): {
 		icon: string;
 		label: string;
@@ -184,21 +318,19 @@
 			}
 			return { icon: 'mdi:check-circle', label: 'Ready', className: 'text-green-500' };
 		}
+		const readinessLabel = targetReadinessLabel(target.lastError || '');
+		if (readinessLabel === 'Syncing') {
+			return { icon: 'mdi:sync', label: 'Syncing', className: 'text-blue-500' };
+		}
+		if (readinessLabel === 'Validating') {
+			return { icon: 'mdi:shield-sync-outline', label: 'Validating', className: 'text-blue-500' };
+		}
+		if (readinessLabel === 'Needs sync') {
+			return { icon: 'mdi:sync-alert', label: 'Needs sync', className: 'text-amber-500' };
+		}
 		const reason = String(target.lastError || '')
 			.trim()
 			.toLowerCase();
-		if (reason === 'replication_generation_commit_in_progress' || reason.endsWith('_in_progress')) {
-			return { icon: 'mdi:sync', label: 'Syncing', className: 'text-blue-500' };
-		}
-		if (
-			reason === 'awaiting_post_transition_validation' ||
-			(reason.startsWith('awaiting_') && reason.endsWith('_validation'))
-		) {
-			return { icon: 'mdi:shield-sync-outline', label: 'Validating', className: 'text-blue-500' };
-		}
-		if (reason.endsWith('_requires_validation')) {
-			return { icon: 'mdi:sync-alert', label: 'Needs sync', className: 'text-amber-500' };
-		}
 		if (reason) {
 			return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
 		}
@@ -435,8 +567,8 @@
 		{
 			field: 'workload',
 			title: 'Workload',
-			width: 130,
-			minWidth: 115,
+			width: 240,
+			minWidth: 160,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData();
 				const icon =
@@ -472,7 +604,7 @@
 			eventType: event.eventType,
 			policy: event.policyId ? (policyNameByID[event.policyId] ?? `Policy ${event.policyId}`) : '-',
 			guestType: event.guestType,
-			workload: `${event.guestType || 'guest'} ${event.guestId || 0}`,
+			workload: workloadLabel(event.guestType || '', event.guestId || 0),
 			path: eventPath(event),
 			message: eventMessageLabel(event.message || ''),
 			startedAt: event.startedAt,
@@ -566,10 +698,7 @@
 		</Button>
 
 		<Button size="sm" variant="outline" class="ml-auto h-6" onclick={() => (reload = true)}>
-			<div class="flex items-center">
-				<span class="icon-[mdi--refresh] mr-1 h-4 w-4"></span>
-				<span>Refresh</span>
-			</div>
+			<span class="icon-[mdi--refresh] h-4 w-4"></span>
 		</Button>
 	</div>
 
@@ -603,7 +732,7 @@
 									</td>
 									<td class="p-2">
 										<span class={`inline-flex items-center gap-1 ${status.className}`}>
-											<span class={status.icon + ' h-4 w-4'}></span>
+											<span class={iconClass(status.icon) + ' h-4 w-4'}></span>
 											<span>{status.label}</span>
 										</span>
 									</td>
@@ -613,8 +742,11 @@
 									<td class="p-2">
 										{row.target.lastVerifiedAt ? convertDbTime(row.target.lastVerifiedAt) : '-'}
 									</td>
-									<td class="max-w-[320px] truncate p-2" title={row.target.lastError || ''}>
-										{row.target.lastError || '-'}
+									<td
+										class="max-w-[320px] truncate p-2"
+										title={targetErrorLabel(row.target.lastError || '')}
+									>
+										{targetErrorLabel(row.target.lastError || '')}
 									</td>
 								</tr>
 							{/each}
@@ -665,7 +797,7 @@
 					<div class="flex justify-between">
 						<span>Status</span>
 						<span class="inline-flex items-center gap-1">
-							<span class={sm.icon + ' h-4 w-4'}></span>
+							<span class={iconClass(sm.icon) + ' h-4 w-4'}></span>
 							<span class={sm.className}>{terminated ? 'Completed' : sm.label}</span>
 						</span>
 					</div>

@@ -343,6 +343,17 @@
 	);
 
 	watch(
+		() => parentActiveRow,
+		(rows) => {
+			if (!table || !tableInitialized) return;
+			const selected = table.getSelectedRows();
+			if ((!rows || rows.length === 0) && selected.length > 0) {
+				table.deselectRow();
+			}
+		}
+	);
+
+	watch(
 		() => reload,
 		(newReload) => {
 			if (newReload) {

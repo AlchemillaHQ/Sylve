@@ -184,6 +184,25 @@ func TestBackupEventProgressByIDHandler(t *testing.T) {
 	if resp.Data.TotalBytes == nil || *resp.Data.TotalBytes != 100000000 {
 		t.Fatalf("expected total bytes 100000000, got %v", resp.Data.TotalBytes)
 	}
+
+	db.Create(&clusterModels.BackupEvent{
+		ID: 3, Status: "running", Mode: "backup",
+		Output: "{\"replicationSize\": \"100000000\"}\nbackup_phase: finalizing\n",
+	})
+
+	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/3/progress", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for finalizing event, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if resp.Data.Phase != "finalizing" {
+		t.Fatalf("expected finalizing phase, got %q", resp.Data.Phase)
+	}
+	if resp.Data.MovedBytes == nil || *resp.Data.MovedBytes != 100000000 {
+		t.Fatalf("expected completed transfer bytes, got %v", resp.Data.MovedBytes)
+	}
 }
 
 func TestBackupEventsRemoteHandler(t *testing.T) {

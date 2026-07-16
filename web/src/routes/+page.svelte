@@ -279,6 +279,13 @@
 <span class="icon-[mdi--clipboard-list-outline]"></span>
 <span class="icon-[mdi--help-circle-outline]"></span>
 <span class="icon-[mdi--check-decagram]"></span>
+<span class="icon-[mdi--clock-alert-outline]"></span>
+<span class="icon-[mdi--clock-outline]"></span>
+<span class="icon-[mdi--sync]"></span>
+<span class="icon-[mdi--shield-sync-outline]"></span>
+<span class="icon-[mdi--sync-alert]"></span>
+<span class="icon-[mdi--arrow-collapse-right]"></span>
+<span class="icon-[mdi--arrow-expand-right]"></span>
 <span class="icon-[mdi--layers-outline]"></span>
 <span class="icon-[mdi--file-tree-outline]"></span>
 <span class="icon-[icon-park-outline--prison]"></span>
