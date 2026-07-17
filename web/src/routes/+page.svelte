@@ -1,4 +1,6 @@
 <!-- 
+<span class="icon-[mdi--arrow-down-bold-circle-outline]"></span>
+<span class="icon-[mdi--arrow-up-bold-circle-outline]"></span>
 <span class="icon-[mdi--shield-off-outline]"></span>
 <span class="icon-[mdi--package-variant-closed]"></span>
 <span class="icon-[mdi--format-list-bulleted]"></span>

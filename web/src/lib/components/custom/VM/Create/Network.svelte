@@ -39,14 +39,7 @@
 			]
 		},
 		mac: {
-			open: false,
-			value: '0'
-		}
-	});
-
-	$effect(() => {
-		if (comboBoxes.mac.value) {
-			mac = comboBoxes.mac.value;
+			open: false
 		}
 	});
 </script>
@@ -74,13 +67,13 @@
 	<RadioGroup.Root bind:value={nwSwitch} class="border p-2">
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
 			{#if switches && switches.standard}
-				{#each switches.standard ?? [] as sw}
+				{#each switches.standard ?? [] as sw (sw.id)}
 					{@render radioItem(sw.id, sw.name, 'standard')}
 				{/each}
 			{/if}
 
 			{#if switches && switches.manual}
-				{#each switches.manual ?? [] as sw}
+				{#each switches.manual ?? [] as sw (sw.id)}
 					{@render radioItem(sw.id, sw.name, 'manual')}
 				{/each}
 			{/if}
@@ -104,7 +97,7 @@
 			<CustomComboBox
 				bind:open={comboBoxes.mac.open}
 				label="MAC Address"
-				bind:value={comboBoxes.mac.value}
+				bind:value={mac}
 				data={generateMACOptions(usableMacs)}
 				classes="flex-1 space-y-1"
 				placeholder="Select MAC address"

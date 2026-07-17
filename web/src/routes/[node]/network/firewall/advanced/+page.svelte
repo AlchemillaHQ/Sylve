@@ -13,6 +13,7 @@
 	import { cn } from '$lib/utils';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		advancedSettings: FirewallAdvancedSettings | APIResponse;
@@ -241,7 +242,13 @@
 			aria-label="Advanced settings sections"
 		>
 			<div class="text-muted-foreground mb-1 px-2 text-xs font-medium uppercase tracking-wider">
-				Editable Sections
+				<!-- Editable Sections -->
+				<SpanWithIcon
+					icon="icon-[mdi--pencil]"
+					title="Editable Sections"
+					size="w-4 h-4"
+					gap="gap-2"
+				/>
 			</div>
 			{#each sections as section (section.id)}
 				<button

@@ -208,6 +208,7 @@
 		name="tt-vm-storage"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={true}
+		initialSort={[{ column: 'bootorder', dir: 'asc' }]}
 		bind:query
 	/>
 </div>
