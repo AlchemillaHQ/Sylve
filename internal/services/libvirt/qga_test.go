@@ -10,9 +10,12 @@ package libvirt
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
+
+	"github.com/digitalocean/go-libvirt"
 )
 
 func TestQGACallRawSuccess(t *testing.T) {
@@ -144,4 +147,55 @@ func TestQGACallRawSendsArguments(t *testing.T) {
 	}
 
 	<-done
+}
+
+func TestDecodeQGAResponse(t *testing.T) {
+	response, err := decodeQGAResponse([]byte(`{"return":{"version":"9.0.0"}}`))
+	if err != nil {
+		t.Fatalf("decodeQGAResponse returned error: %v", err)
+	}
+	if string(response) != `{"version":"9.0.0"}` {
+		t.Fatalf("unexpected response: %s", response)
+	}
+}
+
+func TestDecodeQGAResponsePropagatesAgentError(t *testing.T) {
+	_, err := decodeQGAResponse([]byte(`{"error":{"class":"CommandNotFound","desc":"unknown command"}}`))
+	if err == nil || !strings.Contains(err.Error(), "qga_error_CommandNotFound") {
+		t.Fatalf("expected QGA protocol error, got: %v", err)
+	}
+}
+
+func TestDecodeQGAResponseRejectsMissingReturnAndAcceptsExplicitNull(t *testing.T) {
+	if _, err := decodeQGAResponse([]byte(`{}`)); err == nil {
+		t.Fatal("expected response without return or error to fail")
+	}
+
+	response, err := decodeQGAResponse([]byte(`{"return":null}`))
+	if err != nil {
+		t.Fatalf("expected explicit null return to succeed: %v", err)
+	}
+	if string(response) != "null" {
+		t.Fatalf("unexpected explicit null response: %s", response)
+	}
+}
+
+func TestIsQGAProtocolErrorRecognizesLibvirtAgentFailure(t *testing.T) {
+	err := fmt.Errorf("failed_to_run_qga_command: %w", libvirt.Error{
+		Code:    uint32(libvirt.ErrAgentCommandFailed),
+		Message: "guest agent command failed",
+	})
+	if !isQGAProtocolError(err) {
+		t.Fatalf("expected libvirt agent command failure to be recognized: %v", err)
+	}
+}
+
+func TestIsLibvirtErrorNumberRejectsOtherErrors(t *testing.T) {
+	err := libvirt.Error{Code: uint32(libvirt.ErrArgumentUnsupported), Message: "agent is not configured"}
+	if !isLibvirtErrorNumber(err, libvirt.ErrArgumentUnsupported) {
+		t.Fatalf("expected matching libvirt error number: %v", err)
+	}
+	if isLibvirtErrorNumber(err, libvirt.ErrAgentCommandFailed) {
+		t.Fatalf("did not expect different libvirt error number to match: %v", err)
+	}
 }

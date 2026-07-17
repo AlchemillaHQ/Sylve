@@ -34,6 +34,8 @@ import (
 
 var _ libvirtServiceInterfaces.LibvirtServiceInterface = (*Service)(nil)
 
+const minimumLibvirtVersion uint64 = 12_005_000
+
 type Service struct {
 	DB *gorm.DB
 
@@ -107,13 +109,23 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 }
 
 func (s *Service) CheckVersion() error {
-	conn, err := s.ensureConnection()
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.ConnectGetLibVersion()
+	_, err := s.ensureConnection()
 	return err
+}
+
+func validateLibvirtVersion(version uint64) error {
+	if version >= minimumLibvirtVersion {
+		return nil
+	}
+	return fmt.Errorf(
+		"unsupported_libvirt_version: requires >= %s, found %s",
+		formatLibvirtVersion(minimumLibvirtVersion),
+		formatLibvirtVersion(version),
+	)
+}
+
+func formatLibvirtVersion(version uint64) string {
+	return fmt.Sprintf("%d.%d.%d", version/1_000_000, (version/1_000)%1_000, version%1_000)
 }
 
 func (s *Service) IsVirtualizationEnabled() bool {
@@ -178,6 +190,10 @@ func (s *Service) connect() (*libvirt.Libvirt, uint64, error) {
 		_ = conn.Disconnect()
 		return nil, 0, fmt.Errorf("failed_to_retrieve_libvirt_version: %w", err)
 	}
+	if err := validateLibvirtVersion(version); err != nil {
+		_ = conn.Disconnect()
+		return nil, 0, err
+	}
 
 	return conn, version, nil
 }
@@ -189,7 +205,10 @@ func (s *Service) ensureConnection() (*libvirt.Libvirt, error) {
 
 	conn := s.conn()
 	if conn != nil {
-		if _, err := conn.ConnectGetLibVersion(); err == nil {
+		if version, err := conn.ConnectGetLibVersion(); err == nil {
+			if err := validateLibvirtVersion(version); err != nil {
+				return nil, err
+			}
 			return conn, nil
 		}
 	}
@@ -203,7 +222,10 @@ func (s *Service) reconnect() (*libvirt.Libvirt, error) {
 
 	current := s.conn()
 	if current != nil {
-		if _, err := current.ConnectGetLibVersion(); err == nil {
+		if version, err := current.ConnectGetLibVersion(); err == nil {
+			if err := validateLibvirtVersion(version); err != nil {
+				return nil, err
+			}
 			return current, nil
 		}
 	}

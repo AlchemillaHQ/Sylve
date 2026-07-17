@@ -104,6 +104,7 @@ type LibvirtServiceInterface interface {
 	MigrateVNCToNativeFormat() error
 	MigrateIgnoreUMSRToNativeFormat() error
 	MigrateVirtio9PToNativeFormat() error
+	MigrateQemuGuestAgentToNativeFormat() error
 }
 
 type LvDomain struct {
@@ -289,18 +290,38 @@ type Serial struct {
 }
 
 type Address struct {
-	Type     string `xml:"type,attr,omitempty"`
-	Domain   string `xml:"domain,attr,omitempty"`
-	Bus      string `xml:"bus,attr,omitempty"`
-	Slot     string `xml:"slot,attr,omitempty"`
-	Function string `xml:"function,attr,omitempty"`
+	Type       string `xml:"type,attr,omitempty"`
+	Domain     string `xml:"domain,attr,omitempty"`
+	Bus        string `xml:"bus,attr,omitempty"`
+	Slot       string `xml:"slot,attr,omitempty"`
+	Function   string `xml:"function,attr,omitempty"`
+	Controller string `xml:"controller,attr,omitempty"`
+	Port       string `xml:"port,attr,omitempty"`
 }
 
 type Controller struct {
 	Type    string   `xml:"type,attr"`
 	Index   *int     `xml:"index,attr,omitempty"`
 	Model   string   `xml:"model,attr,omitempty"`
+	Ports   int      `xml:"ports,attr,omitempty"`
 	Address *Address `xml:"address,omitempty"`
+}
+
+type ChannelSource struct {
+	Mode string `xml:"mode,attr"`
+	Path string `xml:"path,attr"`
+}
+
+type ChannelTarget struct {
+	Type string `xml:"type,attr"`
+	Name string `xml:"name,attr"`
+}
+
+type Channel struct {
+	Type    string        `xml:"type,attr"`
+	Source  ChannelSource `xml:"source"`
+	Target  ChannelTarget `xml:"target"`
+	Address Address       `xml:"address"`
 }
 
 type GraphicsListen struct {
@@ -353,6 +374,7 @@ type Devices struct {
 	Controllers []Controller `xml:"controller,omitempty"`
 	Inputs      []Input      `xml:"input,omitempty"`
 	Serials     []Serial     `xml:"serial,omitempty"`
+	Channels    []Channel    `xml:"channel,omitempty"`
 	Filesystems []Filesystem `xml:"filesystem,omitempty"`
 	Graphics    *Graphics    `xml:"graphics,omitempty"`
 	Video       *Video       `xml:"video,omitempty"`

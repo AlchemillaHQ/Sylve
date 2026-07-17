@@ -569,70 +569,18 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
 
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xml); err != nil {
-		return fmt.Errorf("failed_to_parse_xml: %w", err)
-	}
-
-	root := doc.Root()
-	if root == nil {
-		return fmt.Errorf("invalid_domain_xml: root_missing")
-	}
-
-	bhyveCmdEl := doc.FindElement("//bhyve:commandline")
-	if bhyveCmdEl == nil {
-		bhyveCmdEl = root.CreateElement("bhyve:commandline")
-	}
-
-	for {
-		found := false
-		children := bhyveCmdEl.ChildElements()
-		for _, el := range children {
-			if el.Tag == "bhyve:arg" || el.Tag == "arg" {
-				if a := el.SelectAttr("value"); a != nil && strings.Contains(a.Value, "org.qemu.guest_agent.0=") {
-					bhyveCmdEl.RemoveChild(el)
-					found = true
-					break
-				}
-			}
-		}
-		if !found {
-			break
-		}
-	}
-
+	socketPath := ""
 	if enabled {
 		dataPath, err := s.GetVMConfigDirectory(vm.RID)
 		if err != nil {
 			return fmt.Errorf("failed_to_get_vm_data_path: %w", err)
 		}
-
-		used := parseUsedIndicesFromElement(bhyveCmdEl)
-		index := 10
-		for index < 30 && used[index] {
-			index++
-		}
-		if index >= 30 {
-			return fmt.Errorf("no_free_indices_available_for_qemu_guest_agent")
-		}
-
-		qgaArg := fmt.Sprintf("-s %d:0,virtio-console,org.qemu.guest_agent.0=%s",
-			index,
-			filepath.Join(dataPath, "qga.sock"),
-		)
-
-		argEl := etree.NewElement("bhyve:arg")
-		argEl.CreateAttr("value", qgaArg)
-		bhyveCmdEl.AddChild(argEl)
+		socketPath = filepath.Join(dataPath, "qga.sock")
 	}
 
-	out, err := doc.WriteToString()
+	out, err := updateQemuGuestAgentXML(xml, socketPath, enabled)
 	if err != nil {
-		return fmt.Errorf("failed_to_serialize_xml: %w", err)
-	}
-
-	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
-		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+		return err
 	}
 
 	if _, err := s.conn().DomainDefineXML(out); err != nil {

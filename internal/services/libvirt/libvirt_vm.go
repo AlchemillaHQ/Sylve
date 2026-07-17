@@ -201,15 +201,8 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	if vm.QemuGuestAgent {
-		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
-			sIndex,
-			filepath.Join(vmPath, "qga.sock"),
-		)
-		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-			{
-				Value: qgaArg,
-			},
-		})
+		devices.Controllers = append(devices.Controllers, qgaVirtioSerialController(sIndex))
+		devices.Channels = append(devices.Channels, qgaChannel(filepath.Join(vmPath, "qga.sock")))
 		sIndex++
 	}
 
@@ -1166,6 +1159,9 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	if state == 1 {
 		return nil
 	}
+	if _, err := s.ensureQemuGuestAgentNativeXML(*domain, vm); err != nil {
+		return fmt.Errorf("failed_to_ensure_native_qga_xml: %w", err)
+	}
 
 	if err := s.StartTPM(); err != nil {
 		return fmt.Errorf("failed_to_start_tpm: %w", err)
@@ -1229,7 +1225,7 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 
 	logger.L.Debug().Uint("rid", vm.RID).Msg("attempting libvirt ACPI shutdown")
 
-	if err := s.conn().DomainShutdown(*domain); err != nil {
+	if err := s.conn().DomainShutdownFlags(*domain, libvirt.DomainShutdownSignal); err != nil {
 		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
 	}
 
@@ -1337,6 +1333,24 @@ func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	}
 	if state != 1 {
 		return fmt.Errorf("domain_not_running_for_reboot")
+	}
+
+	if vm.QemuGuestAgent {
+		domainXML, xmlErr := s.conn().DomainGetXMLDesc(*domain, 0)
+		if xmlErr != nil {
+			logger.L.Warn().Err(xmlErr).Uint("rid", vm.RID).Msg("failed to inspect live QGA XML, using cold reboot")
+		} else {
+			nativeReboot, inspectErr := qgaXMLSupportsNativeReboot(domainXML)
+			if inspectErr != nil {
+				logger.L.Warn().Err(inspectErr).Uint("rid", vm.RID).Msg("failed to parse live QGA XML, using cold reboot")
+			} else if nativeReboot {
+				logger.L.Debug().Uint("rid", vm.RID).Msg("requesting native libvirt reboot (QGA preferred)")
+				if rebootErr := s.conn().DomainReboot(*domain, libvirt.DomainRebootDefault); rebootErr != nil {
+					return fmt.Errorf("native_libvirt_reboot_failed: %w", rebootErr)
+				}
+				return nil
+			}
+		}
 	}
 
 	logger.L.Debug().Uint("rid", vm.RID).Msg("rebooting VM via shutdown + start (QGA shutdown preferred if available)")

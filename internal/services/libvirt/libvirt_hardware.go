@@ -267,12 +267,10 @@ func updatePassthrough(xml string, pciDevices []string, passedThroughIds []model
 		}
 	}
 
-	startIdx, err := findLowestIndex(xml)
-	if err != nil {
-		return "", fmt.Errorf("failed to find starting slot index: %w", err)
-	}
+	usedIndices := parseUsedIndicesFromDocument(doc)
+	currentIndex := 10
 
-	for i, devID := range pciDevices {
+	for _, devID := range pciDevices {
 		pid := ""
 
 		for _, ptID := range passedThroughIds {
@@ -287,7 +285,16 @@ func updatePassthrough(xml string, pciDevices []string, passedThroughIds []model
 			}
 		}
 
-		idx := startIdx + i
+		for currentIndex < 30 && usedIndices[currentIndex] {
+			currentIndex++
+		}
+		if currentIndex >= 30 {
+			return "", fmt.Errorf("all indices 10-29 are in use")
+		}
+
+		idx := currentIndex
+		usedIndices[idx] = true
+		currentIndex++
 		arg := bhyveCL.CreateElement("bhyve:arg")
 		arg.CreateAttr("value", fmt.Sprintf("-s %d:0,passthru,%s", idx, pid))
 	}
@@ -717,52 +724,6 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 	return nil
 }
 
-func findLowestIndex(xml string) (int, error) {
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xml); err != nil {
-		return -1, fmt.Errorf("failed to parse XML: %w", err)
-	}
-	bhyveCommandline := doc.FindElement("//commandline")
-	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
-		fmt.Println("i1", 10)
-		return 10, nil
-	}
-
-	usedIndices := make(map[int]bool)
-	for _, arg := range bhyveCommandline.ChildElements() {
-		valueAttr := arg.SelectAttr("value")
-		if valueAttr == nil {
-			continue
-		}
-
-		value := valueAttr.Value
-		if len(value) >= 2 && value[0:2] == "-s" {
-			parts := strings.Fields(value)
-			if len(parts) >= 2 {
-				indexPart := parts[1]
-				sepIndex := strings.IndexAny(indexPart, ":,")
-				if sepIndex > 0 {
-					indexStr := indexPart[0:sepIndex] // "10"
-					if index, err := strconv.Atoi(indexStr); err == nil {
-						usedIndices[index] = true
-					}
-				}
-			}
-		}
-	}
-
-	fmt.Println(usedIndices)
-
-	for i := 10; i < 30; i++ {
-		if !usedIndices[i] {
-			fmt.Println("i2", i)
-			return i, nil
-		}
-	}
-
-	return -1, fmt.Errorf("all indices 10-29 are in use")
-}
-
 func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
 	used := make(map[int]bool)
 	if bhyveCommandline == nil {
@@ -790,6 +751,39 @@ func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
 				}
 			}
 		}
+	}
+
+	return used
+}
+
+func parseUsedIndicesFromDocument(doc *etree.Document) map[int]bool {
+	used := make(map[int]bool)
+	if doc == nil {
+		return used
+	}
+
+	for _, commandline := range doc.FindElements("//commandline") {
+		if commandline.Space != "bhyve" {
+			continue
+		}
+		for index := range parseUsedIndicesFromElement(commandline) {
+			used[index] = true
+		}
+	}
+
+	for _, address := range doc.FindElements("//address") {
+		if address.SelectAttrValue("type", "") != "pci" {
+			continue
+		}
+		slot := strings.TrimSpace(address.SelectAttrValue("slot", ""))
+		if slot == "" {
+			continue
+		}
+		index, err := strconv.ParseInt(slot, 0, 32)
+		if err != nil {
+			continue
+		}
+		used[int(index)] = true
 	}
 
 	return used

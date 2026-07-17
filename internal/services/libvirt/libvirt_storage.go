@@ -393,7 +393,7 @@ func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
 
 	argValues := []string{}
 
-	used := parseUsedIndicesFromElement(bhyveCommandline)
+	used := parseUsedIndicesFromDocument(doc)
 	currentIndex := 10
 
 	for _, storage := range storages {
