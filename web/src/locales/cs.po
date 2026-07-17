@@ -528,10 +528,14 @@ msgstr "Přihlášení – vytvořit"
 msgid "Started"
 msgstr "Spuštěno"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Bad Request"
 msgstr "Chybný požadavek"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -550,6 +554,8 @@ msgstr "Doba startu"
 msgid "End Time"
 msgstr "Doba konce"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -578,6 +584,8 @@ msgstr "Uživatel"
 msgid "Action"
 msgstr "Akce"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -606,13 +614,11 @@ msgstr "Akce"
 msgid "Status"
 msgstr "Stav"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "No response"
-msgstr "Žádná odezva"
+#~ msgid "No response"
+#~ msgstr "Žádná odezva"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Copied response to clipboard"
-msgstr ""
+#~ msgid "Copied response to clipboard"
+#~ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
@@ -1371,6 +1377,7 @@ msgid "Staging"
 msgstr "Dočasné úložiště"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
@@ -1972,6 +1979,7 @@ msgstr "<0/> Otevřít"
 msgid "<0/> Download"
 msgstr "<0/> Stáhnout"
 
+#: src/lib/components/custom/Dialog/DetailBlock.svelte
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "<0/> Copy"
@@ -3646,6 +3654,7 @@ msgid "Path"
 msgstr "Popis umístění"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Message"
 msgstr ""
@@ -4385,6 +4394,7 @@ msgid "Select Type"
 msgstr "Vybrat typ"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "Koncový bod"
@@ -6036,7 +6046,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -10636,9 +10646,8 @@ msgstr ""
 msgid "Quick"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Copied action to clipboard"
-msgstr ""
+#~ msgid "Copied action to clipboard"
+#~ msgstr ""
 
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
@@ -10932,7 +10941,9 @@ msgstr ""
 msgid "Rule"
 msgstr ""
 
+#: src/lib/components/custom/Dialog/DetailBlock.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/stores/error-details.svelte.ts
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Details"
@@ -13724,6 +13735,7 @@ msgstr ""
 msgid "All Unix users are either already registered in Sylve or reserved by the system."
 msgstr ""
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "In Progress"
 msgstr ""
@@ -16651,4 +16663,148 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer complete. Verifying and committing the backup."
+msgstr ""
+
+#. 0: record.resolvedAction
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "View request details for {0}"
+msgstr ""
+
+#. 0: record.resolvedAction
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "View response details for {0}"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Error Details"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+#: src/lib/stores/error-details.svelte.ts
+msgid "The request could not be completed."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Close error details"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "HTTP Status"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Method"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Occurred"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "API Request"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Errors"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Raw Response"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+msgid "Error details"
+msgstr ""
+
+#. 0: copyLabel.toLowerCase()
+#: src/lib/components/custom/Dialog/DetailBlock.svelte
+msgid "Failed to copy {0}"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Audit Record Details"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request and response details"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Close audit record details"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Record ID"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Duration"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Actor"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Timeline"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "to"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Query"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request Payload"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request payload"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No request payload was recorded."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Response"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Recorded Error"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Response Payload"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No response or error was recorded."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Raw Audit Record"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Audit record"
+msgstr ""
+
+#. 0: formatted
+#: src/lib/components/custom/Vm/MigrateModal.svelte
+msgid "Migrat"
+msgstr ""
+
+#. 0: selectedSnapshotInfo.childCount
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
 msgstr ""

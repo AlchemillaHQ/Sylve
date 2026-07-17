@@ -14,6 +14,7 @@ import { storage } from '$lib';
 import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
+import { showErrorToast, stageErrorDetail } from '$lib/stores/error-details.svelte';
 
 export let ENDPOINT: string;
 export let API_ENDPOINT: string;
@@ -294,6 +295,13 @@ export function handleAxiosError(error: unknown): void {
         const responseData = axiosError.response.data as { message?: string } | undefined;
         const errorMessage =
             responseData?.message || axiosError.message || 'An error occurred';
+        if (axiosError.response.status !== 401) {
+            stageErrorDetail(axiosError.response.data, {
+                method: axiosError.request?.method,
+                path: axiosError.request?.url,
+                httpStatus: axiosError.response.status
+            });
+        }
         console.error(
             JSON.stringify({
                 status: axiosError.response.status,
@@ -302,6 +310,17 @@ export function handleAxiosError(error: unknown): void {
             })
         );
     } else if (axiosError.request) {
+        stageErrorDetail(
+            {
+                status: 'error',
+                message: 'No response from server',
+                error: axiosError.message
+            },
+            {
+                method: axiosError.request.method,
+                path: axiosError.request.url
+            }
+        );
         console.error('No response:', axiosError.request);
     }
 }
@@ -317,7 +336,7 @@ export function handleAPIResponse(
 ): void {
     if (response.status === 'error') {
         console.error(response);
-        toast.error(messages.error || 'Operation failed', {
+        showErrorToast(messages.error || 'Operation failed', response, {
             position: 'bottom-center'
         });
     }

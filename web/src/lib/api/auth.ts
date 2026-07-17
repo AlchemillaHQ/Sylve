@@ -106,7 +106,11 @@ export async function login(
         }
 
         const data = (responseData || {}) as APIResponse;
-        handleAPIError(data);
+        handleAPIError(data, {
+            method: 'POST',
+            path: '/api/auth/login',
+            httpStatus: response.status
+        });
 
         if (data.error) {
             if (data.error.includes('only_admin_allowed')) {
@@ -178,7 +182,11 @@ export async function loginWithPasskey(remember: boolean): Promise<boolean> {
         const beginData = await parseJSONResponse(beginResponse);
         if (beginResponse.status !== 200 || !beginData?.data?.requestId || !beginData?.data?.publicKey) {
             const data = (beginData || {}) as APIResponse;
-            handleAPIError(data);
+            handleAPIError(data, {
+                method: 'POST',
+                path: '/api/auth/passkeys/login/begin',
+                httpStatus: beginResponse.status
+            });
             toast.error('Passkey login could not be started', {
                 position: 'bottom-center'
             });
@@ -213,7 +221,11 @@ export async function loginWithPasskey(remember: boolean): Promise<boolean> {
         }
 
         const data = (finishData || {}) as APIResponse;
-        handleAPIError(data);
+        handleAPIError(data, {
+            method: 'POST',
+            path: '/api/auth/passkeys/login/finish',
+            httpStatus: finishResponse.status
+        });
         if (data.error && typeof data.error === 'string' && data.error.includes('only_admin_allowed')) {
             toast.error('Only admin users can log in', {
                 position: 'bottom-center'

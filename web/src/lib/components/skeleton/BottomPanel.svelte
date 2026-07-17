@@ -6,17 +6,18 @@
 	import { getActiveLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import AuditDetailModal from '$lib/components/custom/Dialog/AuditDetailModal.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
-	import { toast } from 'svelte-sonner';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { fade } from 'svelte/transition';
 
@@ -24,6 +25,9 @@
 		clustered?: boolean;
 		onLifecycleActiveChange?: (active: boolean) => void;
 	}
+
+	type AuditDetailSection = 'request' | 'response';
+	type ResolvedAuditRecord = AuditRecord & { resolvedAction: string };
 
 	let { clustered = false, onLifecycleActiveChange }: Props = $props();
 
@@ -638,6 +642,22 @@
 		return `${lifecycleActionLabel(task.action)} - ${lifecycleGuestLabel(task)}`;
 	}
 
+	let auditDetailModal = $state<{
+		open: boolean;
+		record: ResolvedAuditRecord | null;
+		section: AuditDetailSection;
+	}>({
+		open: false,
+		record: null,
+		section: 'response'
+	});
+
+	function openAuditDetails(record: ResolvedAuditRecord, section: AuditDetailSection) {
+		auditDetailModal.record = $state.snapshot(record);
+		auditDetailModal.section = section;
+		auditDetailModal.open = true;
+	}
+
 	export function formatStatus(status: string): string {
 		switch (status) {
 			case 'started':
@@ -683,7 +703,7 @@
 
 			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
 				<Table.Root class="w-full table-auto border-collapse">
-					<Table.Header class="bg-background sticky top-0 z-50">
+					<Table.Header class="bg-background sticky top-0 z-10">
 						<Table.Row class="dark:hover:bg-background ">
 							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
 								>Start Time</Table.Head
@@ -733,58 +753,38 @@
 								<Table.Cell class="text-wrap px-4 py-2"
 									>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
 								>
-								<Table.Cell
-									class="text-wrap px-4 py-2"
-									title={JSON.stringify(record.action.body)}
-									onclick={() => {
-										try {
-											navigator.clipboard.writeText(
-												record.action.body
-													? JSON.stringify(record.action.body)
-													: record.resolvedAction
-											);
-											toast.success('Copied action to clipboard', {
-												position: 'bottom-center'
-											});
-										} catch (e) {
-											console.log('Error copying action to clipboard', e);
-										}
-									}}>{record.resolvedAction}</Table.Cell
-								>
-								<Table.Cell
-									class="text-wrap px-4 py-2"
-									title={record.action?.response != null
-										? typeof record.action.response === 'string'
-											? record.action.response
-											: JSON.stringify(record.action.response)
-										: 'No response'}
-									onclick={() => {
-										if (record.action?.response != null && record.action.response) {
-											try {
-												const data = JSON.stringify(record.action.response);
-												navigator.clipboard.writeText(data || '');
-
-												toast.success('Copied response to clipboard', {
-													position: 'bottom-center'
-												});
-											} catch (e) {
-												console.log('Error copying resposnse to clipboard', e);
-											}
-										}
-									}}
-								>
-									<div class="flex items-center gap-1">
-										{#if record.status === 'pending'}
-											<span
-												class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
-											></span>
-										{:else if record.status === 'failed'}
-											<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
-										{/if}
-										<span class={record.status === 'failed' ? 'text-destructive' : ''}>
-											{formatStatus(record.status)}
-										</span>
-									</div>
+								<Table.Cell class="p-0">
+									<button
+										type="button"
+										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										aria-label={`View request details for ${record.resolvedAction}`}
+										onclick={() => openAuditDetails(record, 'request')}
+									>
+										{record.resolvedAction}
+									</button>
+								</Table.Cell>
+								<Table.Cell class="p-0">
+									<button
+										type="button"
+										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										aria-label={`View response details for ${record.resolvedAction}`}
+										onclick={() => openAuditDetails(record, 'response')}
+									>
+										<div class="flex items-center gap-1">
+											{#if record.status === 'pending'}
+												<span
+													class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
+												></span>
+											{:else if record.status === 'failed'}
+												<span
+													class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"
+												></span>
+											{/if}
+											<span class={record.status === 'failed' ? 'text-destructive' : ''}>
+												{formatStatus(record.status)}
+											</span>
+										</div>
+									</button>
 								</Table.Cell>
 							</Table.Row>
 						{/each}
@@ -794,6 +794,12 @@
 		</div>
 	</Tabs.Content>
 </Tabs.Root>
+
+<AuditDetailModal
+	bind:open={auditDetailModal.open}
+	record={auditDetailModal.record}
+	initialSection={auditDetailModal.section}
+/>
 
 <style>
 	:global([data-slot='table-container']) {

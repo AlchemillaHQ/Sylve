@@ -17,6 +17,7 @@ export const APIResponseSchema = z
 		error: z.union([z.string(), z.array(z.string())]).optional(),
 		data: z.unknown().optional()
 	})
+	.passthrough()
 	.describe('APIResponseSchema');
 
 export const GuestDeletionDataSchema = z.object({

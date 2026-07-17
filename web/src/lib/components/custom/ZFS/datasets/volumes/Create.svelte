@@ -156,10 +156,10 @@
 		reload = true;
 
 		if (response.error) {
+			handleAPIError(response);
 			toast.error('Failed to create volume', {
 				position: 'bottom-center'
 			});
-			handleAPIError(response);
 			return;
 		}
 

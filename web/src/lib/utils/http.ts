@@ -15,6 +15,12 @@ import { reload } from '$lib/stores/api.svelte';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { z } from 'zod/v4';
 import { kvStorage } from '$lib/types/db';
+import {
+    type ErrorRequestContext,
+    registerErrorContext,
+    reportAPIError,
+    stageErrorDetail
+} from '$lib/stores/error-details.svelte';
 
 export type APIRequestOptions = {
     raw?: boolean;
@@ -62,6 +68,12 @@ export async function apiRequest<T extends z.ZodType>(
 
         const response = await api.request({ ...config, validateStatus: () => true });
         const apiResponse = APIResponseSchema.safeParse(response.data);
+        const errorContext = {
+            method,
+            path: endpoint,
+            httpStatus: response.status,
+            node: options?.hostname || storage.hostname || undefined
+        };
 
         if (apiResponse.data) {
             if (apiResponse.data.status && apiResponse.data.status === 'error') {
@@ -69,17 +81,27 @@ export async function apiRequest<T extends z.ZodType>(
                     storage.clusterToken = '';
                     return apiRequest(endpoint, schema, method, body, options);
                 }
+
+                registerErrorContext(apiResponse.data, errorContext);
+                stageErrorDetail(apiResponse.data, errorContext);
+                setReloadFlag();
+                if (options?.raw) return apiResponse.data as z.infer<T>;
+                return getDefaultValue(schema, apiResponse.data);
             }
         }
 
         /* Couldn't parse response data into APIResponse so we'll just return the data? */
         if (!apiResponse.success) {
             setReloadFlag();
-            if (apiResponse.data) {
-                return getDefaultValue(schema, { status: 'error' });
-            }
-
-            return null as z.infer<T>;
+            const invalidResponse: APIResponse = {
+                status: 'error',
+                message: 'Invalid response format',
+                error: 'The server response did not match the expected API format.',
+                data: response.data
+            };
+            registerErrorContext(invalidResponse, errorContext);
+            stageErrorDetail(invalidResponse, errorContext);
+            return getDefaultValue(schema, invalidResponse);
         }
 
         /* Caller asked for a raw response */
@@ -105,7 +127,19 @@ export async function apiRequest<T extends z.ZodType>(
     } catch (error) {
         setReloadFlag();
         console.error('API Request Error', error);
-        return getDefaultValue(schema, { status: 'error' });
+        const failedResponse: APIResponse = {
+            status: 'error',
+            message: 'Request failed',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+        const errorContext = {
+            method,
+            path: endpoint,
+            node: options?.hostname || storage.hostname || undefined
+        };
+        registerErrorContext(failedResponse, errorContext);
+        stageErrorDetail(failedResponse, errorContext);
+        return getDefaultValue(schema, failedResponse);
     }
 }
 
@@ -190,10 +224,14 @@ export function isAPIResponse(obj: any): obj is APIResponse {
     return (
         obj &&
         typeof obj.status === 'string' &&
-        (typeof obj.message === 'string' || typeof obj.error === 'string')
+        (typeof obj.message === 'string' ||
+            typeof obj.error === 'string' ||
+            Array.isArray(obj.error))
     );
 }
 
-export function handleAPIError(result: APIResponse): void {
+export function handleAPIError(result: APIResponse, context?: ErrorRequestContext): void {
     console.error('API Error', result);
+    if (context) registerErrorContext(result, context);
+    reportAPIError(result);
 }

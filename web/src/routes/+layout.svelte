@@ -44,6 +44,7 @@
 	} from '$lib/utils/enabled-services';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { isAPIResponse } from '$lib/utils/http.js';
+	import ErrorDetailModal from '$lib/components/custom/Dialog/ErrorDetailModal.svelte';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -316,6 +317,7 @@
 <svelte:document onkeydown={handleCommandKeydown} />
 
 <Toaster />
+<ErrorDetailModal />
 <ModeWatcher />
 
 <Tooltip.Provider>
