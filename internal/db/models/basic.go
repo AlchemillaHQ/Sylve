@@ -22,6 +22,23 @@ const (
 	Mdns           AvailableService = "mdns"
 )
 
+func IsAvailableService(service AvailableService) bool {
+	switch service {
+	case DHCPServer,
+		Jails,
+		SambaServer,
+		Virtualization,
+		WoLServer,
+		Firewall,
+		WireGuard,
+		ISCSI,
+		Mdns:
+		return true
+	default:
+		return false
+	}
+}
+
 type BasicSettings struct {
 	ID          uint               `json:"id" gorm:"primaryKey;autoIncrement"`
 	Pools       []string           `json:"pools" gorm:"serializer:json;type:json"`

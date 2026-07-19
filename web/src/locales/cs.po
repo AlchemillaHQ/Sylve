@@ -2113,7 +2113,6 @@ msgstr "Vybrat fondy"
 msgid "Services"
 msgstr "Služby"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2125,7 +2124,6 @@ msgstr "Služby"
 msgid "Virtualization"
 msgstr "Virtualizace"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2139,7 +2137,6 @@ msgstr "Virtualizace"
 msgid "Jails"
 msgstr "Jail prostředí"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2149,7 +2146,6 @@ msgstr "Jail prostředí"
 msgid "Samba Server"
 msgstr "Samba server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2161,30 +2157,26 @@ msgstr "Samba server"
 msgid "DHCP Server"
 msgstr "DHCP server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
-msgid "WOL Server"
-msgstr "WoL server"
+#~ msgid "WOL Server"
+#~ msgstr "WoL server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
-msgid "We've hit errors during initialization"
-msgstr ""
+#~ msgid "We've hit errors during initialization"
+#~ msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Initialize"
 msgstr "Inicializovat"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "System is restarting…"
-msgstr "Systém se restartuje…"
+#~ msgid "System is restarting…"
+#~ msgstr "Systém se restartuje…"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is back online"
 msgstr "Systém je opět dostupný"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "System did not come back online in time"
-msgstr "Systém se včas nevrátil do stavu dostupnosti"
+#~ msgid "System did not come back online in time"
+#~ msgstr "Systém se včas nevrátil do stavu dostupnosti"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "Setup Complete"
@@ -6046,7 +6038,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -10135,7 +10127,6 @@ msgstr ""
 msgid "Read-only share"
 msgstr ""
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -11016,7 +11007,6 @@ msgstr ""
 #~ msgid "WireGuard Clients"
 #~ msgstr ""
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -12182,6 +12172,7 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Retry"
 msgstr ""
@@ -16799,12 +16790,64 @@ msgstr ""
 msgid "Audit record"
 msgstr ""
 
-#. 0: formatted
-#: src/lib/components/custom/Vm/MigrateModal.svelte
-msgid "Migrat"
+#~ msgid "Migrat"
+#~ msgstr ""
+
+#~ msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
+#~ msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Unable to load ZFS pools"
 msgstr ""
 
-#. 0: selectedSnapshotInfo.childCount
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization failed"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization was accepted, but its status could not be verified. Check the status again."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization has not been confirmed yet. Check the status again."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Loading existing ZFS pools..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Existing ZFS pools could not be loaded. You can continue without one."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "No existing pools were found. You can continue and create one later in Sylve."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization needs attention"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initializing..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Checking status..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Check status"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Failed to request a system reboot"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System is restarting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System did not come back online in time. You can try again."
 msgstr ""

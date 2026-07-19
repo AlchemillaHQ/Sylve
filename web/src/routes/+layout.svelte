@@ -93,16 +93,18 @@
 			const minimumThrobberDelay = sleep(1500);
 
 			try {
-				const basicSettings = await getLocalBasicSettings();
+				if (initialized && rebooted) {
+					const basicSettings = await getLocalBasicSettings();
 
-				if (isAPIResponse(basicSettings)) {
-					console.error('Failed to fetch basic settings:', basicSettings);
-				} else {
-					setEnabledServicesForHostname(
-						storage.localHostname || storage.hostname,
-						basicSettings.services
-					);
-					syncActiveEnabledServices(page.url.pathname);
+					if (isAPIResponse(basicSettings)) {
+						console.error('Failed to fetch basic settings:', basicSettings);
+					} else {
+						setEnabledServicesForHostname(
+							storage.localHostname || storage.hostname,
+							basicSettings.services
+						);
+						syncActiveEnabledServices(page.url.pathname);
+					}
 				}
 			} catch (error) {
 				console.error('Failed to fetch basic settings:', error);
@@ -142,44 +144,49 @@
 				loading.initialization = true;
 
 				try {
-					[initialized, rebooted] = await isInitialized();
-				} catch (error) {
-					console.error('Initialization check error:', error);
-					initialized = false;
-					rebooted = false;
+					try {
+						[initialized, rebooted] = await isInitialized();
+					} catch (error) {
+						console.error('Initialization check error:', error);
+						initialized = false;
+						rebooted = false;
+					}
+
+					await useSafeGoto(resolve('/'));
+
+					if (!initialized || !rebooted) {
+						return;
+					}
+
+					const basicSettings = await getLocalBasicSettings();
+					if (isAPIResponse(basicSettings)) {
+						console.error('Failed to fetch basic settings:', basicSettings);
+						return;
+					}
+
+					setEnabledServicesForHostname(
+						storage.localHostname || storage.hostname,
+						basicSettings.services
+					);
+					syncActiveEnabledServices(page.url.pathname);
+
+					let target = toLoginPath;
+
+					if (!target) {
+						target = page.url.pathname;
+					}
+
+					if (target === '/') {
+						target = resolve('/datacenter/summary');
+					}
+
+					await preloadData(target);
+					await useSafeGoto(target, { replaceState: true });
+				} finally {
+					loading.initialization = false;
+					await sleep(1500);
+					loading.throbber = false;
 				}
-
-				await useSafeGoto(resolve('/'));
-
-				loading.initialization = false;
-
-				const basicSettings = await getLocalBasicSettings();
-				if (isAPIResponse(basicSettings)) {
-					console.error('Failed to fetch basic settings:', basicSettings);
-					return;
-				}
-
-				setEnabledServicesForHostname(
-					storage.localHostname || storage.hostname,
-					basicSettings.services
-				);
-				syncActiveEnabledServices(page.url.pathname);
-
-				let target = toLoginPath;
-
-				if (!target) {
-					target = page.url.pathname;
-				}
-
-				if (target === '/') {
-					target = resolve('/datacenter/summary');
-				}
-
-				await preloadData(target);
-				await useSafeGoto(target, { replaceState: true });
-
-				await sleep(1500);
-				loading.throbber = false;
 				return;
 			} else {
 				isError = true;
@@ -211,42 +218,47 @@
 				loading.initialization = true;
 
 				try {
-					[initialized, rebooted] = await isInitialized();
-				} catch (error) {
-					console.error('Initialization check error:', error);
-					initialized = false;
-					rebooted = false;
+					try {
+						[initialized, rebooted] = await isInitialized();
+					} catch (error) {
+						console.error('Initialization check error:', error);
+						initialized = false;
+						rebooted = false;
+					}
+
+					await useSafeGoto(resolve('/'));
+
+					if (!initialized || !rebooted) {
+						return;
+					}
+
+					const basicSettings = await getLocalBasicSettings();
+					if (isAPIResponse(basicSettings)) {
+						console.error('Failed to fetch basic settings:', basicSettings);
+						return;
+					}
+
+					setEnabledServicesForHostname(
+						storage.localHostname || storage.hostname,
+						basicSettings.services
+					);
+					syncActiveEnabledServices(page.url.pathname);
+
+					let target = toLoginPath;
+					if (!target) {
+						target = page.url.pathname;
+					}
+					if (target === '/') {
+						target = resolve('/datacenter/summary');
+					}
+
+					await preloadData(target);
+					await useSafeGoto(target, { replaceState: true });
+				} finally {
+					loading.initialization = false;
+					await sleep(1500);
+					loading.throbber = false;
 				}
-
-				await useSafeGoto(resolve('/'));
-
-				loading.initialization = false;
-
-				const basicSettings = await getLocalBasicSettings();
-				if (isAPIResponse(basicSettings)) {
-					console.error('Failed to fetch basic settings:', basicSettings);
-					return;
-				}
-
-				setEnabledServicesForHostname(
-					storage.localHostname || storage.hostname,
-					basicSettings.services
-				);
-				syncActiveEnabledServices(page.url.pathname);
-
-				let target = toLoginPath;
-				if (!target) {
-					target = page.url.pathname;
-				}
-				if (target === '/') {
-					target = resolve('/datacenter/summary');
-				}
-
-				await preloadData(target);
-				await useSafeGoto(target, { replaceState: true });
-
-				await sleep(1500);
-				loading.throbber = false;
 				return;
 			} else {
 				isError = true;

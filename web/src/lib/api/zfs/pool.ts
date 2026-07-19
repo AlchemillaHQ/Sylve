@@ -12,6 +12,13 @@ import {
 	type ZpoolStatusPool
 } from '$lib/types/zfs/pool';
 import { apiRequest } from '$lib/utils/http';
+import { z } from 'zod/v4';
+
+const PoolsResponseSchema = APIResponseSchema.extend({
+	data: ZpoolSchema.array().nullable().optional()
+});
+
+export type PoolsResponse = z.infer<typeof PoolsResponseSchema>;
 
 export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
 	return await apiRequest(`/zfs/pools/${guid}/status`, ZPoolStatusPoolSchema, 'GET');
@@ -20,6 +27,25 @@ export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
 export async function getPools(all?: boolean, hostname?: string): Promise<Zpool[]> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
 	return await apiRequest(url, ZpoolSchema.array(), 'GET', undefined, { hostname });
+}
+
+export async function getPoolsResponse(all?: boolean, hostname?: string): Promise<PoolsResponse> {
+	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
+	const response = await apiRequest(url, PoolsResponseSchema, 'GET', undefined, {
+		hostname,
+		raw: true
+	});
+	const parsed = PoolsResponseSchema.safeParse(response);
+
+	if (parsed.success) {
+		return parsed.data;
+	}
+
+	return {
+		status: 'error',
+		message: 'Invalid pools response',
+		error: 'The server response did not match the expected pools format.'
+	};
 }
 
 export async function getPoolsDiskUsage(): Promise<number> {

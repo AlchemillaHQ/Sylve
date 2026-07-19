@@ -9,8 +9,11 @@
  */
 
 import { z } from 'zod/v4';
+import { APIResponseSchema } from '$lib/types/common';
 
-export const InitializeSchema = z.array(z.string());
+export const InitializeResponseSchema = APIResponseSchema.extend({
+	data: z.array(z.string()).nullable().optional()
+});
 
 export const BasicSettingsSchema = z.object({
 	pools: z.array(z.string()),
@@ -18,5 +21,5 @@ export const BasicSettingsSchema = z.object({
 	initialized: z.boolean()
 });
 
-export type Initialize = z.infer<typeof InitializeSchema>;
+export type InitializeResponse = z.infer<typeof InitializeResponseSchema>;
 export type BasicSettings = z.infer<typeof BasicSettingsSchema>;

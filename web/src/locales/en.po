@@ -2113,7 +2113,6 @@ msgstr "Select Pools"
 msgid "Services"
 msgstr "Services"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2125,7 +2124,6 @@ msgstr "Services"
 msgid "Virtualization"
 msgstr "Virtualization"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2139,7 +2137,6 @@ msgstr "Virtualization"
 msgid "Jails"
 msgstr "Jails"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2149,7 +2146,6 @@ msgstr "Jails"
 msgid "Samba Server"
 msgstr "Samba Server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2161,30 +2157,26 @@ msgstr "Samba Server"
 msgid "DHCP Server"
 msgstr "DHCP Server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
-msgid "WOL Server"
-msgstr "WOL Server"
+#~ msgid "WOL Server"
+#~ msgstr "WOL Server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
-msgid "We've hit errors during initialization"
-msgstr "We've hit errors during initialization"
+#~ msgid "We've hit errors during initialization"
+#~ msgstr "We've hit errors during initialization"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Initialize"
 msgstr "Initialize"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "System is restarting…"
-msgstr "System is restarting…"
+#~ msgid "System is restarting…"
+#~ msgstr "System is restarting…"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is back online"
 msgstr "System is back online"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "System did not come back online in time"
-msgstr "System did not come back online in time"
+#~ msgid "System did not come back online in time"
+#~ msgstr "System did not come back online in time"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "Setup Complete"
@@ -6046,8 +6038,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -10132,7 +10124,6 @@ msgstr "Select ZFS filesystem"
 msgid "Read-only share"
 msgstr "Read-only share"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -11013,7 +11004,6 @@ msgstr "WireGuard Server"
 #~ msgid "WireGuard Clients"
 #~ msgstr "WireGuard Clients"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -12179,6 +12169,7 @@ msgstr "Unknown error"
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Retry"
 msgstr "Retry"
@@ -16800,12 +16791,64 @@ msgstr "Raw Audit Record"
 msgid "Audit record"
 msgstr "Audit record"
 
-#. 0: formatted
-#: src/lib/components/custom/Vm/MigrateModal.svelte
-msgid "Migrat"
-msgstr "Migrat"
+#~ msgid "Migrat"
+#~ msgstr "Migrat"
 
-#. 0: selectedSnapshotInfo.childCount
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
-msgstr "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
+#~ msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
+#~ msgstr "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config o"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Unable to load ZFS pools"
+msgstr "Unable to load ZFS pools"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization failed"
+msgstr "Initialization failed"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization was accepted, but its status could not be verified. Check the status again."
+msgstr "Initialization was accepted, but its status could not be verified. Check the status again."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization has not been confirmed yet. Check the status again."
+msgstr "Initialization has not been confirmed yet. Check the status again."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Loading existing ZFS pools..."
+msgstr "Loading existing ZFS pools..."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Existing ZFS pools could not be loaded. You can continue without one."
+msgstr "Existing ZFS pools could not be loaded. You can continue without one."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "No existing pools were found. You can continue and create one later in Sylve."
+msgstr "No existing pools were found. You can continue and create one later in Sylve."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initialization needs attention"
+msgstr "Initialization needs attention"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Initializing..."
+msgstr "Initializing..."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Checking status..."
+msgstr "Checking status..."
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "Check status"
+msgstr "Check status"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Failed to request a system reboot"
+msgstr "Failed to request a system reboot"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System is restarting..."
+msgstr "System is restarting..."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System did not come back online in time. You can try again."
+msgstr "System did not come back online in time. You can try again."

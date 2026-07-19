@@ -9,18 +9,37 @@
  */
 
 import {
-	InitializeSchema,
-	type Initialize,
+	InitializeResponseSchema,
+	type InitializeResponse,
 	BasicSettingsSchema,
 	type BasicSettings
 } from '$lib/types/basic';
 import { apiRequest } from '$lib/utils/http';
 
-export async function initialize(pools: string[], services: string[]): Promise<Initialize> {
-	return await apiRequest('/basic/initialize', InitializeSchema, 'POST', {
-		pools,
-		services
-	});
+export async function initialize(pools: string[], services: string[]): Promise<InitializeResponse> {
+	const response = await apiRequest(
+		'/basic/initialize',
+		InitializeResponseSchema,
+		'POST',
+		{
+			pools,
+			services
+		},
+		{
+			raw: true
+		}
+	);
+	const parsed = InitializeResponseSchema.safeParse(response);
+
+	if (parsed.success) {
+		return parsed.data;
+	}
+
+	return {
+		status: 'error',
+		message: 'Invalid initialization response',
+		error: 'The server response did not match the expected initialization format.'
+	};
 }
 
 export async function getBasicSettings(hostname?: string): Promise<BasicSettings> {

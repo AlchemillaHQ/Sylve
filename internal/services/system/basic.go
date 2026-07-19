@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
@@ -21,6 +22,45 @@ import (
 
 	"gorm.io/gorm"
 )
+
+func normalizeInitializeRequest(req systemServiceInterfaces.InitializeRequest) (systemServiceInterfaces.InitializeRequest, []error) {
+	normalized := systemServiceInterfaces.InitializeRequest{
+		Pools:    make([]string, 0, len(req.Pools)),
+		Services: make([]models.AvailableService, 0, len(req.Services)),
+	}
+
+	seenPools := make(map[string]struct{}, len(req.Pools))
+	for _, pool := range req.Pools {
+		pool = strings.TrimSpace(pool)
+		if pool == "" {
+			continue
+		}
+		if _, exists := seenPools[pool]; exists {
+			continue
+		}
+
+		seenPools[pool] = struct{}{}
+		normalized.Pools = append(normalized.Pools, pool)
+	}
+
+	seenServices := make(map[models.AvailableService]struct{}, len(req.Services))
+	var validationErrors []error
+	for _, service := range req.Services {
+		if !models.IsAvailableService(service) {
+			validationErrors = append(validationErrors, fmt.Errorf("unsupported_service_%s", service))
+			continue
+		}
+		if _, exists := seenServices[service]; exists {
+			validationErrors = append(validationErrors, fmt.Errorf("duplicate_service_%s", service))
+			continue
+		}
+
+		seenServices[service] = struct{}{}
+		normalized.Services = append(normalized.Services, service)
+	}
+
+	return normalized, validationErrors
+}
 
 func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	var basicSettings models.BasicSettings
@@ -46,6 +86,12 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.InitializeRequest) []error {
 	s.initMutex.Lock()
 	defer s.initMutex.Unlock()
+
+	normalizedReq, validationErrors := normalizeInitializeRequest(req)
+	if len(validationErrors) > 0 {
+		return validationErrors
+	}
+	req = normalizedReq
 
 	var basicSettings models.BasicSettings
 	err := s.DB.First(&basicSettings).Error

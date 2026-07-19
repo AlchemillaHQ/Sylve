@@ -2,35 +2,18 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { toast } from 'svelte-sonner';
 	import { mode } from 'mode-watcher';
-	import { getBasicHealth, rebootSystem } from '$lib/api/system/system';
-	import { goto } from '$app/navigation';
+	import { probeBasicHealth, rebootSystem } from '$lib/api/system/system';
+	import { handleAPIError } from '$lib/utils/http';
 
 	let rebootInitiated = $state(false);
 
 	async function waitForRebootCycle({ intervalMs = 2000, timeoutMs = 60 * 60 * 1000 } = {}) {
 		const start = Date.now();
-		let wentDown = false;
 
 		while (Date.now() - start < timeoutMs) {
-			try {
-				const health = await getBasicHealth();
-
-				if (!health || ('status' in health && health.status === 'error')) {
-					throw new Error('System is down');
-				}
-
-				if (!wentDown) {
-					// still up → wait for it to go down
-					await new Promise((r) => setTimeout(r, intervalMs));
-					continue;
-				}
-
-				if (health?.initialized === true && health?.restarted === true) {
-					return true; // back up AFTER going down
-				}
-			} catch {
-				// request failed → system is down
-				wentDown = true;
+			const health = await probeBasicHealth();
+			if (health?.initialized === true && health.restarted === true) {
+				return true;
 			}
 
 			await new Promise((r) => setTimeout(r, intervalMs));
@@ -40,27 +23,30 @@
 	}
 
 	async function handleReboot() {
+		if (rebootInitiated) return;
 		rebootInitiated = true;
 
 		try {
-			await rebootSystem();
+			const response = await rebootSystem();
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to request a system reboot', { position: 'bottom-center' });
+				rebootInitiated = false;
+				return;
+			}
+
+			toast.info('System is restarting...', { position: 'bottom-center' });
+			await waitForRebootCycle();
+			toast.success('System is back online', { position: 'bottom-center' });
+			setTimeout(() => {
+				window.location.href = '/datacenter/summary';
+			}, 1000);
 		} catch {
-			// no-op
+			toast.error('System did not come back online in time. You can try again.', {
+				position: 'bottom-center'
+			});
+			rebootInitiated = false;
 		}
-
-		const rebootPromise = waitForRebootCycle();
-
-		toast.promise(rebootPromise, {
-			loading: 'System is restarting…',
-			success: () => {
-				setTimeout(() => {
-					window.location.href = '/datacenter/summary';
-				}, 1000);
-				return 'System is back online';
-			},
-			error: 'System did not come back online in time',
-			position: 'bottom-center'
-		});
 	}
 </script>
 

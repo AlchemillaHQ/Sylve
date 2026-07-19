@@ -10,12 +10,72 @@ package system
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestNormalizeInitializeRequestAllowsEmptyConfiguration(t *testing.T) {
+	normalized, errs := normalizeInitializeRequest(systemServiceInterfaces.InitializeRequest{})
+	if len(errs) != 0 {
+		t.Fatalf("expected empty configuration to be valid, got %v", errs)
+	}
+	if len(normalized.Pools) != 0 {
+		t.Fatalf("expected no pools, got %v", normalized.Pools)
+	}
+	if len(normalized.Services) != 0 {
+		t.Fatalf("expected no services, got %v", normalized.Services)
+	}
+}
+
+func TestNormalizeInitializeRequestAcceptsAllServices(t *testing.T) {
+	services := []models.AvailableService{
+		models.Virtualization,
+		models.Jails,
+		models.DHCPServer,
+		models.SambaServer,
+		models.WoLServer,
+		models.Firewall,
+		models.WireGuard,
+		models.ISCSI,
+		models.Mdns,
+	}
+
+	normalized, errs := normalizeInitializeRequest(systemServiceInterfaces.InitializeRequest{
+		Pools:    []string{" tank ", "", "tank", "zroot"},
+		Services: services,
+	})
+	if len(errs) != 0 {
+		t.Fatalf("expected all supported services to be valid, got %v", errs)
+	}
+	if !slices.Equal(normalized.Pools, []string{"tank", "zroot"}) {
+		t.Fatalf("expected normalized pools, got %v", normalized.Pools)
+	}
+	if !slices.Equal(normalized.Services, services) {
+		t.Fatalf("expected services to be preserved, got %v", normalized.Services)
+	}
+}
+
+func TestNormalizeInitializeRequestRejectsDuplicateAndUnknownServices(t *testing.T) {
+	normalized, errs := normalizeInitializeRequest(systemServiceInterfaces.InitializeRequest{
+		Services: []models.AvailableService{models.Mdns, models.Mdns, "unknown"},
+	})
+	if len(errs) != 2 {
+		t.Fatalf("expected duplicate and unknown service errors, got %v", errs)
+	}
+	if errs[0].Error() != "duplicate_service_mdns" {
+		t.Fatalf("unexpected duplicate service error: %v", errs[0])
+	}
+	if errs[1].Error() != "unsupported_service_unknown" {
+		t.Fatalf("unexpected unknown service error: %v", errs[1])
+	}
+	if !slices.Equal(normalized.Services, []models.AvailableService{models.Mdns}) {
+		t.Fatalf("expected only the first valid service, got %v", normalized.Services)
+	}
+}
 
 func TestInitializeSerializesConcurrentRequests(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &models.ZFSCacheInvalidation{})
