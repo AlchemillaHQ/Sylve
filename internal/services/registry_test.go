@@ -43,6 +43,9 @@ func TestNewServiceRegistryReusesNetworkServiceInstance(t *testing.T) {
 
 	mainDB := newRegistryTestDB(t)
 	registry := NewServiceRegistry(mainDB, mainDB)
+	if registry.DynamicDNSService == nil {
+		t.Fatal("expected dynamic DNS service to be registered")
+	}
 
 	apiNetwork, ok := registry.NetworkService.(*networkService.Service)
 	if !ok {

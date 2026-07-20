@@ -24,6 +24,7 @@ import (
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
+	dynamicDNSHandlers "github.com/alchemillahq/sylve/internal/handlers/dynamicdns"
 	eventsHandlers "github.com/alchemillahq/sylve/internal/handlers/events"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
 	iscsiHandlers "github.com/alchemillahq/sylve/internal/handlers/iscsi"
@@ -43,6 +44,7 @@ import (
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskService "github.com/alchemillahq/sylve/internal/services/disk"
+	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -92,6 +94,7 @@ func RegisterRoutes(r *gin.Engine,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
 	mdnsService *mdns.Service,
+	dynamicDNSService *dynamicdns.Service,
 	iscsiService *iscsi.Service,
 	jailService *jail.Service,
 	lifecycleService *lifecycle.Service,
@@ -266,6 +269,18 @@ func RegisterRoutes(r *gin.Engine,
 		mdnsGroup.POST("/records", mdnsHandlers.CreateRecord(mdnsService))
 		mdnsGroup.PUT("/records/:id", mdnsHandlers.UpdateRecord(mdnsService))
 		mdnsGroup.DELETE("/records/:id", mdnsHandlers.DeleteRecord(mdnsService))
+	}
+
+	dynamicDNSGroup := api.Group("/dynamic-dns")
+	dynamicDNSGroup.Use(middleware.EnsureAuthenticated(authService))
+	dynamicDNSGroup.Use(EnsureCorrectHost(db, authService))
+	dynamicDNSGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		dynamicDNSGroup.GET("/entries", dynamicDNSHandlers.ListEntries(dynamicDNSService))
+		dynamicDNSGroup.POST("/entries", dynamicDNSHandlers.CreateEntry(dynamicDNSService))
+		dynamicDNSGroup.PUT("/entries/:id", dynamicDNSHandlers.UpdateEntry(dynamicDNSService))
+		dynamicDNSGroup.DELETE("/entries/:id", dynamicDNSHandlers.DeleteEntry(dynamicDNSService))
+		dynamicDNSGroup.POST("/entries/:id/sync", dynamicDNSHandlers.SyncEntry(dynamicDNSService))
 	}
 
 	iscsiGroup := api.Group("/iscsi")

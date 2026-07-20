@@ -173,6 +173,8 @@
 		'/api/info/notes/bulk-delete': 'Notes - Bulk Delete',
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',
+		'/api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
+		'/api/dynamic-dns/entries': 'Dynamic DNS Entry',
 		'/api/vnc': 'VNC',
 		'/api/info/terminal': 'Host Terminal - Session',
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',

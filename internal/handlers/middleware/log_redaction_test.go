@@ -17,6 +17,7 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 	}{
 		{path: "/api/auth/login", want: true},
 		{path: "/api/cluster/join", want: true},
+		{path: "/api/dynamic-dns/entries", want: true},
 		{path: "/api/utilities/downloads/signed-url", want: true},
 		{path: "/api/zfs/pools", want: false},
 	}

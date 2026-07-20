@@ -1,4 +1,6 @@
 <!-- 
+<span class="icon-[simple-icons--cloudflare]"></span>
+<span class="icon-[simple-icons--namecheap]"></span>
 <span class="icon-[mdi--arrow-down-bold-circle-outline]"></span>
 <span class="icon-[mdi--arrow-up-bold-circle-outline]"></span>
 <span class="icon-[mdi--shield-off-outline]"></span>
@@ -38,6 +40,8 @@
 <span class="icon-[meteor-icons--language]"></span>
 <span class="icon-[bi--ethernet]"></span>
 <span class="icon-[mdi--ethernet]"></span>
+<span class="icon-[mdi--ip]"></span>
+<span class="icon-[mdi--radar]"></span>
 <span class="icon-[material-symbols--menu-rounded]"></span>
 <span class="icon-[garden--terminal-cli-stroke-16]"></span>
 <span class="icon-[material-symbols--monitor-outline-rounded]"></span>

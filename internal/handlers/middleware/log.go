@@ -52,6 +52,7 @@ func shouldRedactAuditPayload(path string) bool {
 
 	return strings.HasPrefix(path, "/api/auth/login") ||
 		strings.HasPrefix(path, "/api/auth/passkeys/") ||
+		strings.HasPrefix(path, "/api/dynamic-dns/") ||
 		(strings.HasPrefix(path, "/api/cluster/") && !strings.HasPrefix(path, "/api/cluster/backups/")) ||
 		path == "/api/utilities/downloads/signed-url"
 }

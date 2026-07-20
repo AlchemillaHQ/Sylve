@@ -159,6 +159,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	lvS := serviceRegistry.LibvirtService
 	smbS := serviceRegistry.SambaService
 	mdS := serviceRegistry.MdnsService
+	ddnsS := serviceRegistry.DynamicDNSService
 	iscsiSvc := serviceRegistry.ISCSIService.(*iscsi.Service)
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
@@ -214,6 +215,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	}
 
 	go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
+	go ddnsS.StartWorker(qCtx)
 
 	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
 		var settings dbModels.BasicSettings
@@ -297,6 +299,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		libvirtSvc,
 		smbS.(*samba.Service),
 		mdS.(*mdns.Service),
+		ddnsS,
 		iscsiSvc,
 		jailSvc,
 		lifecycleSvc,

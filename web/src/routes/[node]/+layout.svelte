@@ -299,6 +299,17 @@
 					}
 				]
 			},
+			{
+				label: 'Services',
+				icon: 'material-symbols--design-services-outline-rounded',
+				children: [
+					{
+						label: 'Dynamic DNS',
+						icon: 'mdi--dns',
+						href: `/${node}/services/dynamic-dns`
+					}
+				]
+			},
 
 			{
 				label: 'Settings',

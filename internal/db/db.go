@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -172,6 +173,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&mdnsModels.MdnsSettings{},
 		&mdnsModels.MdnsRecord{},
+
+		&dynamicDNSModels.Entry{},
 
 		&iscsiModels.ISCSIInitiator{},
 		&iscsiModels.ISCSITarget{},

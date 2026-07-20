@@ -120,7 +120,9 @@ msgstr "Switches"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "Manual"
 msgstr "Manual"
 
@@ -539,6 +541,7 @@ msgstr "Bad Request"
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -591,6 +594,7 @@ msgstr "Action"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -961,6 +965,7 @@ msgstr "View"
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -1005,6 +1010,7 @@ msgstr "Delete"
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
@@ -1053,6 +1059,7 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
@@ -1183,6 +1190,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Config.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
@@ -1496,8 +1504,10 @@ msgstr "Unable to load charts."
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/MDNS/Config.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
 msgstr "Hostname"
@@ -1617,6 +1627,7 @@ msgstr "Admin"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -1745,6 +1756,7 @@ msgstr "Leader Node"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/Dialog/ValueViewer.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -1856,6 +1868,7 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -2085,6 +2098,7 @@ msgstr "First Modified"
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
@@ -2110,6 +2124,7 @@ msgid "Select Pools"
 msgstr "Select Pools"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Services"
 msgstr "Services"
@@ -2674,9 +2689,12 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2725,6 +2743,8 @@ msgstr "Enabled"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2786,6 +2806,7 @@ msgstr "Failed to update ZFS Pools"
 msgid "ZFS Pools updated"
 msgstr "ZFS Pools updated"
 
+#. 0: editingEntry.hostname
 #. 0: title
 #. 0: title
 #. 0: title
@@ -2798,6 +2819,7 @@ msgstr "ZFS Pools updated"
 #. 0: title
 #. 0: title
 #. 0: title
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -3318,11 +3340,13 @@ msgstr "Delete RAW Disk(s)"
 msgid "Delete Volume(s)"
 msgstr "Delete Volume(s)"
 
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr "Error copied to clipboard"
 
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
@@ -3369,9 +3393,11 @@ msgstr "Failed to load event progress"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -3522,6 +3548,7 @@ msgid "OOB Restore"
 msgstr "OOB Restore"
 
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -4802,6 +4829,7 @@ msgstr "IPv4 Network"
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "IPv4"
 msgstr "IPv4"
 
@@ -4843,6 +4871,7 @@ msgstr "IPv6 Network"
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "IPv6"
 msgstr "IPv6"
 
@@ -5157,6 +5186,7 @@ msgstr "Select Switch"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "IPv4 Address"
 msgstr "IPv4 Address"
 
@@ -5165,6 +5195,7 @@ msgstr "IPv4 Address"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "IPv6 Address"
 msgstr "IPv6 Address"
 
@@ -6245,8 +6276,11 @@ msgstr "Version ID"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "Interface"
 msgstr "Interface"
 
@@ -8684,6 +8718,8 @@ msgstr "Populate DNS Resolver Configuration"
 #~ msgstr "Predefined Configurations"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "Cloudflare"
 msgstr "Cloudflare"
 
@@ -10020,6 +10056,7 @@ msgstr "This VM is owned by another node right now"
 #~ msgstr "VM name"
 
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Saving..."
 msgstr "Saving..."
@@ -10386,6 +10423,7 @@ msgstr "Error: {0}"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -11457,6 +11495,7 @@ msgstr "Next Hop Mode"
 
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "Select interface"
 msgstr "Select interface"
 
@@ -13459,7 +13498,9 @@ msgstr "Path: {0}"
 msgid "This will delete {0}"
 msgstr "This will delete {0}"
 
+#. 0: entry.hostname
 #. NaN: activeRow?.name
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Failed to delete {0}"
 msgstr "Failed to delete {0}"
@@ -16562,9 +16603,8 @@ msgstr "View Error"
 msgid "HA Snapshots"
 msgstr "HA Snapshots"
 
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "msgid"
-msgstr "msgid"
+#~ msgid "msgid"
+#~ msgstr "msgid"
 
 #~ msgid "Failed to up"
 #~ msgstr "Failed to up"
@@ -16872,3 +16912,283 @@ msgstr "Disable anyway"
 #: src/lib/components/custom/Samba/Config.svelte
 msgid "Samba configuration updated; mDNS discovery enabled"
 msgstr "Samba configuration updated; mDNS discovery enabled"
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Dynamic DNS"
+msgstr "Dynamic DNS"
+
+#~ msgid "STUN public address"
+#~ msgstr "STUN public address"
+
+#~ msgid "Network interface"
+#~ msgstr "Network interface"
+
+#~ msgid "Manual address"
+#~ msgstr "Manual address"
+
+#~ msgid "Failed to refresh Dynamic DNS entries"
+#~ msgstr "Failed to refresh Dynamic DNS entries"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Hostname is required"
+msgstr "Hostname is required"
+
+#~ msgid "Cloudflare API token is required"
+#~ msgstr "Cloudflare API token is required"
+
+#. 0: isEditing ? 'update' \\: 'create'
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Failed to {0} Dynamic DNS entry"
+msgstr "Failed to {0} Dynamic DNS entry"
+
+#. 0: isEditing ? 'updated' \\: 'created'
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Dynamic DNS entry {0}"
+msgstr "Dynamic DNS entry {0}"
+
+#. 0: entry.hostname
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Failed to sync {0}"
+msgstr "Failed to sync {0}"
+
+#. 0: result.hostname
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Sync for {0} finished with errors"
+msgstr "Sync for {0} finished with errors"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Dynamic DNS entry deleted"
+msgstr "Dynamic DNS entry deleted"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Up to date"
+msgstr "Up to date"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Partial"
+msgstr "Partial"
+
+#~ msgid "Not synced"
+#~ msgstr "Not synced"
+
+#~ msgid "Keep Cloudflare DNS records aligned with this node's current IPv4 and IPv6 addresses."
+#~ msgstr "Keep Cloudflare DNS records aligned with this node's current IPv4 and IPv6 addresses."
+
+#~ msgid "<0/> Add record"
+#~ msgstr "<0/> Add record"
+
+#~ msgid "<0>Cloudflare token:</0> Use a scoped API token with <1/> and <2/>. Tokens are never returned by the API or written to audit logs."
+#~ msgstr "<0>Cloudflare token:</0> Use a scoped API token with <1/> and <2/>. Tokens are never returned by the API or written to audit logs."
+
+#~ msgid "No Dynamic DNS records"
+#~ msgstr "No Dynamic DNS records"
+
+#~ msgid "Add a hostname to start keeping its DNS address current from this node."
+#~ msgstr "Add a hostname to start keeping its DNS address current from this node."
+
+#~ msgid "Add first record"
+#~ msgstr "Add first record"
+
+#~ msgid "Dynamic DNS entries"
+#~ msgstr "Dynamic DNS entries"
+
+#~ msgid "Cloudflare via {0} every {1} minutes"
+#~ msgstr "Cloudflare via {0} every {1} minutes"
+
+#~ msgid "Sync {0}"
+#~ msgstr "Sync {0}"
+
+#~ msgid "Delete {0}"
+#~ msgstr "Delete {0}"
+
+#~ msgid "Last sync"
+#~ msgstr "Last sync"
+
+#~ msgid "Resolved addresses"
+#~ msgstr "Resolved addresses"
+
+#~ msgid "Add Dynamic DNS record"
+#~ msgstr "Add Dynamic DNS record"
+
+#~ msgid "Edit Dynamic DNS record"
+#~ msgstr "Edit Dynamic DNS record"
+
+#~ msgid "Cloudflare automatically updates all exact record matches, or creates a record when none exists."
+#~ msgstr "Cloudflare automatically updates all exact record matches, or creates a record when none exists."
+
+#~ msgid "Record type"
+#~ msgstr "Record type"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "IPv4 (A)"
+msgstr "IPv4 (A)"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "IPv6 (AAAA)"
+msgstr "IPv6 (AAAA)"
+
+#~ msgid "IPv4 and IPv6"
+#~ msgstr "IPv4 and IPv6"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Provider"
+msgstr "Provider"
+
+#~ msgid "Update interval (minutes)"
+#~ msgstr "Update interval (minutes)"
+
+#~ msgid "Cloudflare API token"
+#~ msgstr "Cloudflare API token"
+
+#~ msgid "Paste a scoped API token"
+#~ msgstr "Paste a scoped API token"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Leave blank to keep the configured token"
+msgstr "Leave blank to keep the configured token"
+
+#~ msgid "The token is verified before the record is saved."
+#~ msgstr "The token is verified before the record is saved."
+
+#~ msgid "Address source"
+#~ msgstr "Address source"
+
+#~ msgid "Select an interface"
+#~ msgstr "Select an interface"
+
+#~ msgid "Uses the first global IPv4 and IPv6 address configured on this interface."
+#~ msgstr "Uses the first global IPv4 and IPv6 address configured on this interface."
+
+#~ msgid "IPv4 address"
+#~ msgstr "IPv4 address"
+
+#~ msgid "IPv6 address"
+#~ msgstr "IPv6 address"
+
+#~ msgid "Supply the address family selected above. BOTH can use either family and reports a partial result when one is absent."
+#~ msgstr "Supply the address family selected above. BOTH can use either family and reports a partial result when one is absent."
+
+#~ msgid "STUN server"
+#~ msgstr "STUN server"
+
+#~ msgid "STUN discovers the public address independently over IPv4 and IPv6."
+#~ msgstr "STUN discovers the public address independently over IPv4 and IPv6."
+
+#~ msgid "Enable automatic updates"
+#~ msgstr "Enable automatic updates"
+
+#~ msgid "Disabled entries can still be synchronized manually."
+#~ msgstr "Disabled entries can still be synchronized manually."
+
+#~ msgid "<0/> Saving"
+#~ msgstr "<0/> Saving"
+
+#~ msgid "Save record"
+#~ msgstr "Save record"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Dynamic DNS entry"
+msgstr "Dynamic DNS entry"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Last Sync"
+msgstr "Last Sync"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Last Error"
+msgstr "Last Error"
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Sync"
+msgstr "Sync"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "IPv4 + IPv6"
+msgstr "IPv4 + IPv6"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Select a network interface"
+msgstr "Select a network interface"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Provide an address for the selected record type"
+msgstr "Provide an address for the selected record type"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Add Dynamic DNS Entry"
+msgstr "Add Dynamic DNS Entry"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Record Type"
+msgstr "Record Type"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Interval (minutes)"
+msgstr "Interval (minutes)"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Cloudflare API Token"
+msgstr "Cloudflare API Token"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Paste API token"
+msgstr "Paste API token"
+
+#~ msgid "Address Source"
+#~ msgstr "Address Source"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "STUN Server"
+msgstr "STUN Server"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Namecheap"
+msgstr "Namecheap"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Namecheap Dynamic DNS Password"
+msgstr "Namecheap Dynamic DNS Password"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Paste Dynamic DNS password"
+msgstr "Paste Dynamic DNS password"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Leave blank to keep the configured password"
+msgstr "Leave blank to keep the configured password"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Namecheap domain is required"
+msgstr "Namecheap domain is required"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Namecheap Domain"
+msgstr "Namecheap Domain"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Use the exact domain name shown in your Namecheap account."
+msgstr "Use the exact domain name shown in your Namecheap account."
+
+#. 0: iface.name
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "WireGuard Server ({0})"
+msgstr "WireGuard Server ({0})"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Update interval must be a whole number between 1 and 1440 minutes"
+msgstr "Update interval must be a whole number between 1 and 1440 minutes"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Whole minutes, from 1 to 1440."
+msgstr "Whole minutes, from 1 to 1440."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Dynamic DNS Entry - Sync"
+msgstr "Dynamic DNS Entry - Sync"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Dynamic DNS Entry"
+msgstr "Dynamic DNS Entry"

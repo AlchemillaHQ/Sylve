@@ -25,6 +25,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/disk"
+	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -44,23 +45,24 @@ import (
 )
 
 type ServiceRegistry struct {
-	AuthService      serviceInterfaces.AuthServiceInterface
-	StartupService   serviceInterfaces.StartupServiceInterface
-	InfoService      infoServiceInterfaces.InfoServiceInterface
-	ZfsService       zfsServiceInterfaces.ZfsServiceInterface
-	DiskService      diskServiceInterfaces.DiskServiceInterface
-	NetworkService   networkServiceInterfaces.NetworkServiceInterface
-	LibvirtService   libvirtServiceInterfaces.LibvirtServiceInterface
-	UtilitiesService utilitiesServiceInterfaces.UtilitiesServiceInterface
-	SystemService    systemServiceInterfaces.SystemServiceInterface
-	SambaService     sambaServiceInterfaces.SambaServiceInterface
-	ISCSIService     iscsiServiceInterfaces.ISCSIServiceInterface
-	JailService      jailServiceInterfaces.JailServiceInterface
-	ClusterService   clusterServiceInterfaces.ClusterServiceInterface
-	MdnsService      mdnsServiceInterfaces.MdnsServiceInterface
-	ZeltaService     *zelta.Service
-	MigrationService *migration.Service
-	GzfsClient       *gzfs.Client
+	AuthService       serviceInterfaces.AuthServiceInterface
+	StartupService    serviceInterfaces.StartupServiceInterface
+	InfoService       infoServiceInterfaces.InfoServiceInterface
+	ZfsService        zfsServiceInterfaces.ZfsServiceInterface
+	DiskService       diskServiceInterfaces.DiskServiceInterface
+	NetworkService    networkServiceInterfaces.NetworkServiceInterface
+	LibvirtService    libvirtServiceInterfaces.LibvirtServiceInterface
+	UtilitiesService  utilitiesServiceInterfaces.UtilitiesServiceInterface
+	SystemService     systemServiceInterfaces.SystemServiceInterface
+	SambaService      sambaServiceInterfaces.SambaServiceInterface
+	ISCSIService      iscsiServiceInterfaces.ISCSIServiceInterface
+	JailService       jailServiceInterfaces.JailServiceInterface
+	ClusterService    clusterServiceInterfaces.ClusterServiceInterface
+	MdnsService       mdnsServiceInterfaces.MdnsServiceInterface
+	DynamicDNSService *dynamicdns.Service
+	ZeltaService      *zelta.Service
+	MigrationService  *migration.Service
+	GzfsClient        *gzfs.Client
 }
 
 func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
@@ -175,6 +177,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	utilitiesService := NewService[utilities.Service](db, telemetryDB, libvirtService, jailService)
 	sambaService := NewService[samba.Service](db, telemetryDB, zfsService, gzfs)
 	mdnsService := NewService[mdns.Service](db)
+	dynamicDNSService := dynamicdns.NewService(db)
 	iscsiService := NewService[iscsi.Service](db)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
 	libvirtService.(*libvirt.Service).SetGuestIdentityAvailabilityChecker(
@@ -206,22 +209,23 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	)
 
 	return &ServiceRegistry{
-		AuthService:      authService.(serviceInterfaces.AuthServiceInterface),
-		StartupService:   NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService, clusterService, iscsiService, mdnsService).(*startup.Service),
-		InfoService:      infoService.(infoServiceInterfaces.InfoServiceInterface),
-		ZfsService:       zfsService.(*zfs.Service),
-		DiskService:      diskService.(*disk.Service),
-		NetworkService:   networkService.(networkServiceInterfaces.NetworkServiceInterface),
-		LibvirtService:   libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
-		UtilitiesService: utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),
-		SystemService:    systemService.(systemServiceInterfaces.SystemServiceInterface),
-		SambaService:     sambaService.(sambaServiceInterfaces.SambaServiceInterface),
-		ISCSIService:     iscsiService.(iscsiServiceInterfaces.ISCSIServiceInterface),
-		JailService:      jailService.(jailServiceInterfaces.JailServiceInterface),
-		ClusterService:   clusterService.(clusterServiceInterfaces.ClusterServiceInterface),
-		MdnsService:      mdnsSvc,
-		ZeltaService:     zeltaService.(*zelta.Service),
-		MigrationService: migrationService,
-		GzfsClient:       gzfs,
+		AuthService:       authService.(serviceInterfaces.AuthServiceInterface),
+		StartupService:    NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService, clusterService, iscsiService, mdnsService).(*startup.Service),
+		InfoService:       infoService.(infoServiceInterfaces.InfoServiceInterface),
+		ZfsService:        zfsService.(*zfs.Service),
+		DiskService:       diskService.(*disk.Service),
+		NetworkService:    networkService.(networkServiceInterfaces.NetworkServiceInterface),
+		LibvirtService:    libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
+		UtilitiesService:  utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),
+		SystemService:     systemService.(systemServiceInterfaces.SystemServiceInterface),
+		SambaService:      sambaService.(sambaServiceInterfaces.SambaServiceInterface),
+		ISCSIService:      iscsiService.(iscsiServiceInterfaces.ISCSIServiceInterface),
+		JailService:       jailService.(jailServiceInterfaces.JailServiceInterface),
+		ClusterService:    clusterService.(clusterServiceInterfaces.ClusterServiceInterface),
+		MdnsService:       mdnsSvc,
+		DynamicDNSService: dynamicDNSService,
+		ZeltaService:      zeltaService.(*zelta.Service),
+		MigrationService:  migrationService,
+		GzfsClient:        gzfs,
 	}
 }
