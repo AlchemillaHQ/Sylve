@@ -70,7 +70,7 @@
 			open = false;
 			properties = options;
 
-			await logOut('Login required after initializing cluster');
+			await logOut('Login required after initializing cluster', { clearBrowserState: true });
 		}
 	}
 </script>

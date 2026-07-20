@@ -236,7 +236,7 @@
 			}
 
 			modals.reset.open = false;
-			await logOut('Login required after cluster reset');
+			await logOut('Login required after cluster reset', { clearBrowserState: true });
 		},
 		onCancel: () => {
 			modals.reset.open = false;

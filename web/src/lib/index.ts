@@ -86,3 +86,12 @@ export function getDB(): SylveDB {
 
     return _db;
 }
+
+export async function deleteDB(): Promise<void> {
+    if (_db) {
+        _db.close();
+        _db = null;
+    }
+
+    await Dexie.delete('sylve-db');
+}

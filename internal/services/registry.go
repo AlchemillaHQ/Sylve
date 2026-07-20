@@ -191,6 +191,8 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	sysSvc := systemService.(*system.Service)
 
 	sambaSvc.OnConfigChange = mdnsSvc.Rebuild
+	sambaSvc.EnsureMdnsEnabled = sysSvc.EnsureMdnsEnabled
+	sambaSvc.WithServiceSettingsLock = sysSvc.WithServiceSettingsLock
 	sysSvc.MdnsRebuild = mdnsSvc.Rebuild
 
 	migrationService := migration.NewService(

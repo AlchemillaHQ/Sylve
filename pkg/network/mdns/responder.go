@@ -19,6 +19,7 @@ type Responder interface {
 	Remove(srv ServiceHandle)
 	Respond(ctx context.Context) error
 	Debug(ctx context.Context, fn ReadFunc)
+	Close()
 }
 
 type responder struct {
@@ -33,6 +34,7 @@ type responder struct {
 	random    *rand.Rand
 	upIfaces  []string
 	watcher   LinkWatcher
+	probe     func(context.Context, Service) (Service, error)
 }
 
 func NewResponder() (Responder, error) {
@@ -55,6 +57,7 @@ func newResponder(conn MDNSConn) *responder {
 		mutex:     &sync.Mutex{},
 		random:    rand.New(rand.NewSource(time.Now().UnixNano())),
 		upIfaces:  []string{},
+		probe:     ProbeService,
 	}
 }
 
@@ -91,6 +94,8 @@ func (r *responder) Add(srv Service) (ServiceHandle, error) {
 }
 
 func (r *responder) Respond(ctx context.Context) error {
+	defer r.Close()
+
 	r.mutex.Lock()
 	err := func() error {
 		r.isRunning = true
@@ -112,11 +117,33 @@ func (r *responder) Respond(ctx context.Context) error {
 		return err
 	}
 
+	watchCtx, stopWatcher := context.WithCancel(ctx)
+	defer stopWatcher()
+
+	var watcherWG sync.WaitGroup
 	if r.watcher != nil {
-		go r.handleLinkUpdates(ctx)
+		watcherWG.Add(1)
+		go func() {
+			defer watcherWG.Done()
+			r.handleLinkUpdates(watchCtx)
+		}()
 	}
 
-	return r.respond(ctx)
+	err = r.respond(ctx)
+	stopWatcher()
+	watcherWG.Wait()
+	return err
+}
+
+func (r *responder) Close() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.isRunning {
+		r.unannounce(services(r.managed))
+		r.isRunning = false
+	}
+	r.conn.Close()
 }
 
 func (r *responder) handleLinkUpdates(ctx context.Context) {
@@ -125,18 +152,10 @@ func (r *responder) handleLinkUpdates(ctx context.Context) {
 		return
 	}
 
-	for {
-		select {
-		case _, ok := <-ch:
-			if !ok {
-				return
-			}
-			r.mutex.Lock()
-			r.announce(services(r.managed))
-			r.mutex.Unlock()
-		case <-ctx.Done():
-			return
-		}
+	for range ch {
+		r.mutex.Lock()
+		r.announce(services(r.managed))
+		r.mutex.Unlock()
 	}
 }
 
@@ -180,7 +199,7 @@ func (r *responder) register(ctx context.Context, srv Service) (Service, error) 
 		return srv, fmt.Errorf("cannot register service when responder is not responding")
 	}
 
-	probed, err := ProbeService(ctx, srv)
+	probed, err := r.probe(ctx, srv)
 	if err != nil {
 		return srv, err
 	}
@@ -223,9 +242,6 @@ func (r *responder) respond(ctx context.Context) error {
 			r.mutex.Unlock()
 
 		case <-ctx.Done():
-			r.unannounce(services(r.managed))
-			r.conn.Close()
-			r.isRunning = false
 			return ctx.Err()
 		}
 	}

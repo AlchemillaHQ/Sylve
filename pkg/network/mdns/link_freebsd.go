@@ -3,6 +3,7 @@
 package dnssd
 
 /*
+extern void prepare_ifnet_watcher(void);
 extern int start_ifnet_watcher(void);
 extern void stop_ifnet_watcher(void);
 */
@@ -26,7 +27,8 @@ func onIFNETEvent(cSystem, cSubsystem, cType, cData *C.char) {
 }
 
 type freebsdLinkWatcher struct {
-	started bool
+	started   bool
+	startDone chan struct{}
 }
 
 func newPlatformLinkWatcher() LinkWatcher {
@@ -36,11 +38,11 @@ func newPlatformLinkWatcher() LinkWatcher {
 func (w *freebsdLinkWatcher) Subscribe(ctx context.Context) (<-chan LinkUpdate, error) {
 	if !w.started {
 		w.started = true
+		w.startDone = make(chan struct{})
+		C.prepare_ifnet_watcher()
 		go func() {
-			res := C.start_ifnet_watcher()
-			if res != 0 {
-				return
-			}
+			defer close(w.startDone)
+			C.start_ifnet_watcher()
 		}()
 	}
 
@@ -48,6 +50,12 @@ func (w *freebsdLinkWatcher) Subscribe(ctx context.Context) (<-chan LinkUpdate, 
 
 	go func() {
 		defer close(ch)
+		defer func() {
+			C.stop_ifnet_watcher()
+			if w.startDone != nil {
+				<-w.startDone
+			}
+		}()
 
 		for {
 			select {
@@ -58,7 +66,6 @@ func (w *freebsdLinkWatcher) Subscribe(ctx context.Context) (<-chan LinkUpdate, 
 					return
 				}
 			case <-ctx.Done():
-				C.stop_ifnet_watcher()
 				return
 			}
 		}

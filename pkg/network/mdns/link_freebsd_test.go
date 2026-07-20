@@ -35,19 +35,19 @@ func TestFreeBSDIFNETWatcherLifecycle(t *testing.T) {
 	// Cancel context to trigger watcher stop.
 	cancel()
 
-	// Channel should close after watcher stops.
-	select {
-	case _, ok := <-ch:
-		if !ok {
-			t.Log("channel closed cleanly after cancel")
-		} else {
-			t.Log("received final event before close")
+	// The channel may contain a final buffered event, but it must close.
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				t.Log("channel closed cleanly after cancel")
+				return
+			}
+		case <-deadline:
+			t.Fatal("channel did not close within 5s of context cancel")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("channel did not close within 5s of context cancel")
 	}
-
-	t.Log("IFNET watcher lifecycle test passed")
 }
 
 func TestFreeBSDIFNETWatcherWithTapInterface(t *testing.T) {

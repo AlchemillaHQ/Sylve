@@ -1812,6 +1812,7 @@ msgstr "退出登录"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -2820,9 +2821,7 @@ msgid "Toggle {0}"
 msgstr "切换 {0}"
 
 #. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
-#. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "您即将 {0} {1}，{2}您将需要重启 Sylve 或主机系统以使更改生效"
 
@@ -16825,4 +16824,25 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System did not come back online in time. You can try again."
+msgstr ""
+
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "Disabling mDNS Discovery immediately stops Bonjour discovery, including discovery of any Samba Apple and Time Machine shares."
+msgstr ""
+
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "Enabling mDNS Discovery immediately publishes existing managed and custom records."
+msgstr ""
+
+#. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "You are about to {0} {1}.{2} You will have to restart Sylve and/or the host system for changes to take effect."
+msgstr ""
+
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "Disable anyway"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Config.svelte
+msgid "Samba configuration updated; mDNS discovery enabled"
 msgstr ""

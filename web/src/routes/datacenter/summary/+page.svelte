@@ -12,7 +12,7 @@
 	import type { PoolsDiskUsage } from '$lib/types/zfs/pool';
 	import { reload } from '$lib/stores/api.svelte';
 	import { getQuorumStatus } from '$lib/utils/cluster';
-	import { updateCache } from '$lib/utils/http';
+	import { removeCache, updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
 	import { formatBytesBinary } from '$lib/utils/bytes';
@@ -33,18 +33,20 @@
 		null
 	);
 
-	// svelte-ignore state_referenced_locally
-	let nodes = resource(
-		() => 'cluster-nodes',
-		async (key, prevKey, { signal }) => {
-			const result = await getNodes();
-			updateCache('cluster-nodes', result);
-			return result;
-		},
-		{
-			initialValue: data.nodes
-		}
-	);
+	function hasCompleteClusterNodeSnapshot(
+		details: ClusterDetails | null | undefined,
+		clusterNodes: ClusterNode[]
+	): boolean {
+		if (!details?.cluster?.enabled) return true;
+
+		const raftNodes = details.nodes ?? [];
+		return (
+			raftNodes.length > 0 &&
+			raftNodes.every((raftNode) =>
+				clusterNodes.some((clusterNode) => clusterNode.nodeUUID === raftNode.id)
+			)
+		);
+	}
 
 	// svelte-ignore state_referenced_locally
 	let clusterDetails = resource(
@@ -56,6 +58,23 @@
 		},
 		{
 			initialValue: data.details
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const result = await getNodes();
+			if (hasCompleteClusterNodeSnapshot(clusterDetails.current, result)) {
+				await updateCache('cluster-nodes', result);
+			} else {
+				await removeCache('cluster-nodes');
+			}
+			return result;
+		},
+		{
+			initialValue: data.nodes
 		}
 	);
 
@@ -203,27 +222,44 @@
 		}
 	);
 
-	async function refetchSummaryData() {
-		await Promise.all([
-			nodes.refetch(),
-			clusterDetails.refetch(),
-			cpuInfo.refetch(),
-			ramInfo.refetch(),
-			diskInfo.refetch()
-		]);
+	async function refetchClusterSnapshot() {
+		await clusterDetails.refetch();
+		await nodes.refetch();
 	}
 
 	onMount(() => {
 		lazyArc = import('$lib/components/custom/Charts/Arc.svelte');
 
-		const recoveryTimer = setTimeout(() => {
-			if ((clusterDetails.current?.cluster?.enabled ?? false) && nodes.current.length === 0) {
-				void refetchSummaryData();
+		let active = true;
+		let attempts = 0;
+		let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+
+		const recoverClusterSnapshot = async () => {
+			if (!active || hasCompleteClusterNodeSnapshot(clusterDetails.current, nodes.current)) return;
+
+			attempts += 1;
+			await refetchClusterSnapshot();
+
+			if (
+				!active ||
+				hasCompleteClusterNodeSnapshot(clusterDetails.current, nodes.current) ||
+				attempts >= 8
+			) {
+				return;
 			}
-		}, 1200);
+
+			recoveryTimer = setTimeout(() => {
+				void recoverClusterSnapshot();
+			}, 1000);
+		};
+
+		recoveryTimer = setTimeout(() => {
+			void recoverClusterSnapshot();
+		}, 500);
 
 		return () => {
-			clearTimeout(recoveryTimer);
+			active = false;
+			if (recoveryTimer) clearTimeout(recoveryTimer);
 		};
 	});
 

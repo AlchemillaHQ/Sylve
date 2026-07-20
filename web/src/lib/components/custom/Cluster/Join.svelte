@@ -94,7 +94,7 @@
 				position: 'bottom-center'
 			});
 
-			await logOut('Login required after joining cluster');
+			await logOut('Login required after joining cluster', { clearBrowserState: true });
 		} else {
 			toast.error('No Node ID available', {
 				position: 'bottom-center'

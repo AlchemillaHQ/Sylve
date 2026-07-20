@@ -27,6 +27,7 @@ type Service struct {
 	initMutex               sync.Mutex
 	syncMutex               sync.Mutex
 	achMutex                sync.Mutex
+	serviceSettingsMutex    sync.Mutex
 	GZFS                    *gzfs.Client
 	DiskService             diskServiceInterfaces.DiskServiceInterface
 	diskSmartConfigMu       sync.RWMutex

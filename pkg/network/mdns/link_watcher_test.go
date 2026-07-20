@@ -12,6 +12,10 @@ type mockLinkWatcher struct {
 }
 
 func (w *mockLinkWatcher) Subscribe(ctx context.Context) (<-chan LinkUpdate, error) {
+	go func() {
+		<-ctx.Done()
+		close(w.ch)
+	}()
 	return w.ch, nil
 }
 

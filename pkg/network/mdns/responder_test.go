@@ -2,11 +2,60 @@ package dnssd
 
 import (
 	"context"
-	"github.com/miekg/dns"
+	"errors"
 	"net"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/miekg/dns"
 )
+
+type closeTrackingConn struct {
+	*testConn
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+func newCloseTrackingConn() *closeTrackingConn {
+	return &closeTrackingConn{
+		testConn: newTestConn(),
+		closed:   make(chan struct{}),
+	}
+}
+
+func (c *closeTrackingConn) Close() {
+	c.closeOnce.Do(func() { close(c.closed) })
+}
+
+func TestRespondClosesConnectionAfterRegistrationFailure(t *testing.T) {
+	conn := newCloseTrackingConn()
+	responder := newResponder(conn)
+	responder.probe = func(context.Context, Service) (Service, error) {
+		return Service{}, errors.New("probe failed")
+	}
+
+	service, err := NewService(Config{Name: "Test", Type: "_test._tcp", Port: 1234})
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	if _, err := responder.Add(service); err != nil {
+		t.Fatalf("failed to add service: %v", err)
+	}
+
+	if err := responder.Respond(context.Background()); err == nil {
+		t.Fatal("expected registration failure")
+	}
+
+	select {
+	case <-conn.closed:
+	case <-time.After(time.Second):
+		t.Fatal("responder connection was not closed")
+	}
+	if responder.isRunning {
+		t.Fatal("responder remained marked as running")
+	}
+}
 
 func TestRemove(t *testing.T) {
 	cfg := Config{

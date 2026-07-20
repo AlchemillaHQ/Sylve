@@ -31,12 +31,13 @@ var _ mdnsInterfaces.MdnsServiceInterface = (*Service)(nil)
 var recordTypePattern = regexp.MustCompile(`^_[a-z0-9-]+\._(tcp|udp)$`)
 
 type Service struct {
-	DB         *gorm.DB
-	mu         sync.Mutex
-	responder  dnssd.Responder
-	handles    []dnssd.ServiceHandle
-	cancelFunc context.CancelFunc
-	wg         sync.WaitGroup
+	DB               *gorm.DB
+	mu               sync.Mutex
+	responder        dnssd.Responder
+	responderFactory func() (dnssd.Responder, error)
+	handles          []dnssd.ServiceHandle
+	cancelFunc       context.CancelFunc
+	wg               sync.WaitGroup
 }
 
 func NewService(db *gorm.DB) mdnsInterfaces.MdnsServiceInterface {
@@ -89,6 +90,21 @@ func (s *Service) rebuildLocked() error {
 
 func (s *Service) gatherManagedRecords() ([]mdnsInterfaces.MdnsRecordWithManaged, error) {
 	var records []mdnsInterfaces.MdnsRecordWithManaged
+	var basicSettings models.BasicSettings
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return nil, err
+	}
+
+	sambaEnabled := false
+	for _, service := range basicSettings.Services {
+		if service == models.SambaServer {
+			sambaEnabled = true
+			break
+		}
+	}
+	if !sambaEnabled {
+		return records, nil
+	}
 
 	host, _ := os.Hostname()
 
@@ -227,28 +243,17 @@ func (s *Service) publishLocked(records []mdnsInterfaces.MdnsRecordWithManaged, 
 		})
 	}
 
-	wasRunning := s.cancelFunc != nil
+	s.stopResponderLocked()
 
-	if wasRunning {
-		s.cancelFunc()
-		s.cancelFunc = nil
-		s.wg.Wait()
+	factory := s.responderFactory
+	if factory == nil {
+		factory = dnssd.NewResponder
 	}
-
-	if s.responder != nil {
-		for _, h := range s.handles {
-			s.responder.Remove(h)
-		}
-		s.handles = nil
+	rp, err := factory()
+	if err != nil {
+		return fmt.Errorf("failed to create responder: %w", err)
 	}
-
-	if !wasRunning {
-		rp, err := dnssd.NewResponder()
-		if err != nil {
-			return fmt.Errorf("failed to create responder: %w", err)
-		}
-		s.responder = rp
-	}
+	s.responder = rp
 
 	for _, cfg := range configs {
 		sv, err := dnssd.NewService(cfg)
@@ -263,25 +268,31 @@ func (s *Service) publishLocked(records []mdnsInterfaces.MdnsRecordWithManaged, 
 		}
 		s.handles = append(s.handles, hdl)
 	}
-
-	if len(s.handles) > 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		s.cancelFunc = cancel
-
-		rp := s.responder
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			if err := rp.Respond(ctx); err != nil && ctx.Err() == nil {
-				logger.L.Warn().Err(err).Msg("mdns responder exited with error")
-			}
-		}()
+	if len(s.handles) == 0 {
+		s.stopResponderLocked()
+		return fmt.Errorf("failed to add any mdns records to the responder")
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancelFunc = cancel
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := rp.Respond(ctx); err != nil && ctx.Err() == nil {
+			logger.L.Warn().Err(err).Msg("mdns responder exited with error")
+		}
+	}()
 
 	return nil
 }
 
 func (s *Service) unpublishLocked() error {
+	s.stopResponderLocked()
+	return nil
+}
+
+func (s *Service) stopResponderLocked() {
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 		s.cancelFunc = nil
@@ -289,14 +300,10 @@ func (s *Service) unpublishLocked() error {
 	}
 
 	if s.responder != nil {
-		for _, h := range s.handles {
-			s.responder.Remove(h)
-		}
-		s.handles = nil
+		s.responder.Close()
 		s.responder = nil
 	}
-
-	return nil
+	s.handles = nil
 }
 
 func (s *Service) GetSettings() (mdnsModels.MdnsSettings, error) {

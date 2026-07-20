@@ -14,6 +14,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"gorm.io/gorm"
 )
 
 func hasService(services []models.AvailableService, wanted models.AvailableService) bool {
@@ -24,6 +25,42 @@ func hasService(services []models.AvailableService, wanted models.AvailableServi
 	}
 
 	return false
+}
+
+func TestEnsureMdnsEnabledIsIdempotent(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := db.Create(&models.BasicSettings{
+		Services: []models.AvailableService{models.SambaServer},
+	}).Error; err != nil {
+		t.Fatalf("failed to create basic settings: %v", err)
+	}
+
+	service := &Service{DB: db}
+	if err := service.WithServiceSettingsLock(func() error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			if err := service.EnsureMdnsEnabled(tx); err != nil {
+				return err
+			}
+			return service.EnsureMdnsEnabled(tx)
+		})
+	}); err != nil {
+		t.Fatalf("failed to ensure mDNS is enabled: %v", err)
+	}
+
+	var current models.BasicSettings
+	if err := db.First(&current).Error; err != nil {
+		t.Fatalf("failed to load basic settings: %v", err)
+	}
+
+	mdnsCount := 0
+	for _, enabledService := range current.Services {
+		if enabledService == models.Mdns {
+			mdnsCount++
+		}
+	}
+	if mdnsCount != 1 {
+		t.Fatalf("expected one mDNS service entry, got %d", mdnsCount)
+	}
 }
 
 func TestServiceToggleMdnsRebuildsAfterPersistingState(t *testing.T) {

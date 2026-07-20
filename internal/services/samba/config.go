@@ -22,6 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
+	"gorm.io/gorm"
 )
 
 const (
@@ -35,10 +36,12 @@ const (
 )
 
 var (
-	sambaRunCommand      = utils.RunCommand
-	sambaConfigFilePath  = "/usr/local/etc/smb4.conf"
-	sambaTestparmPath    = "/usr/local/bin/testparm"
-	sambaAtomicWriteFile = utils.AtomicWriteFile
+	sambaRunCommand        = utils.RunCommand
+	sambaSupportedCharsets = utils.GetSupportedCharsets
+	sambaGetInterface      = iface.Get
+	sambaConfigFilePath    = "/usr/local/etc/smb4.conf"
+	sambaTestparmPath      = "/usr/local/bin/testparm"
+	sambaAtomicWriteFile   = utils.AtomicWriteFile
 )
 
 var allowedSambaAuditOperations = map[string]struct{}{
@@ -119,7 +122,7 @@ func (s *Service) SetGlobalConfig(
 		interfaces = "lo0"
 	}
 
-	supportedCharsets := utils.GetSupportedCharsets()
+	supportedCharsets := sambaSupportedCharsets()
 
 	if !utils.StringInSlice(unixCharset, supportedCharsets) {
 		return fmt.Errorf("unsupported unixCharset: %s", unixCharset)
@@ -138,7 +141,7 @@ func (s *Service) SetGlobalConfig(
 
 	for _, eIface := range interfacesList {
 		eIface = strings.TrimSpace(eIface)
-		_, err := iface.Get(eIface)
+		_, err := sambaGetInterface(eIface)
 		if err != nil && !strings.Contains(err.Error(), "not found") {
 			return fmt.Errorf("invalid interface '%s': %w", eIface, err)
 		} else if err != nil && strings.Contains(err.Error(), "not found") {
@@ -153,23 +156,58 @@ func (s *Service) SetGlobalConfig(
 		interfaces = "lo0"
 	}
 
-	var settings sambaModels.SambaSettings
-	if err := s.DB.First(&settings).Error; err != nil {
-		return fmt.Errorf("failed to retrieve Samba settings: %w", err)
+	update := func() error {
+		return s.DB.Transaction(func(tx *gorm.DB) error {
+			var settings sambaModels.SambaSettings
+			if err := tx.First(&settings).Error; err != nil {
+				return fmt.Errorf("failed to retrieve Samba settings: %w", err)
+			}
+
+			enableMdns := !settings.AppleExtensions && appleExtensions
+
+			settings.UnixCharset = unixCharset
+			settings.Workgroup = workgroup
+			settings.ServerString = serverString
+			settings.Interfaces = interfaces
+			settings.BindInterfacesOnly = bindInterfacesOnly
+			settings.AppleExtensions = appleExtensions
+
+			if err := tx.Save(&settings).Error; err != nil {
+				return fmt.Errorf("failed to update Samba settings: %w", err)
+			}
+
+			if enableMdns {
+				if s.EnsureMdnsEnabled == nil {
+					return fmt.Errorf("mdns service dependency is unavailable")
+				}
+				if err := s.EnsureMdnsEnabled(tx); err != nil {
+					return fmt.Errorf("failed to enable mdns for Apple extensions: %w", err)
+				}
+			}
+
+			transactionalService := &Service{
+				DB:   tx,
+				GZFS: s.GZFS,
+			}
+			return sambaWriteConfig(transactionalService, ctx, true)
+		})
 	}
 
-	settings.UnixCharset = unixCharset
-	settings.Workgroup = workgroup
-	settings.ServerString = serverString
-	settings.Interfaces = interfaces
-	settings.BindInterfacesOnly = bindInterfacesOnly
-	settings.AppleExtensions = appleExtensions
-
-	if err := s.DB.Save(&settings).Error; err != nil {
-		return fmt.Errorf("failed to update Samba settings: %w", err)
+	if s.WithServiceSettingsLock != nil {
+		if err := s.WithServiceSettingsLock(update); err != nil {
+			return err
+		}
+	} else if err := update(); err != nil {
+		return err
 	}
 
-	return s.WriteConfig(ctx, true)
+	if s.OnConfigChange != nil {
+		if err := s.OnConfigChange(); err != nil {
+			return fmt.Errorf("mdns rebuild failed after samba config change: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) hasGuestOnlyShares() (bool, error) {

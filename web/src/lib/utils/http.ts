@@ -29,6 +29,14 @@ export type APIRequestOptions = {
     skipAuditLog?: boolean;
 };
 
+let cacheWritesSuspended = false;
+
+// A full browser reset reloads the module after storage is cleared. Until then,
+// ignore late requests from the outgoing session so they cannot recreate cache entries.
+export function suspendAPICacheWrites(): void {
+    cacheWritesSuspended = true;
+}
+
 function getScopedCacheKey(key: string): string {
     if (!browser) {
         return key;
@@ -162,9 +170,9 @@ export async function cachedFetch<T>(
 ): Promise<T> {
     const scopedKey = getScopedCacheKey(key);
     const now = Date.now();
-    const entry = await kvStorage.getItem<T>(scopedKey);
+    const entry = cacheWritesSuspended ? null : await kvStorage.getItem<T>(scopedKey);
 
-    if (entry && entry.data !== null) {
+    if (!cacheWritesSuspended && entry && entry.data !== null) {
         const isFresh = now - entry.timestamp < duration;
         const data = entry.data;
 
@@ -187,11 +195,12 @@ export async function cachedFetch<T>(
     const data = await fetchFunction();
 
     if (
-        !data ||
-        typeof data !== 'object' ||
-        !('status' in data) ||
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (data as any).status !== 'error'
+        !cacheWritesSuspended &&
+        (!data ||
+            typeof data !== 'object' ||
+            !('status' in data) ||
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (data as any).status !== 'error')
     ) {
         await kvStorage.setItem(scopedKey, data);
     }
@@ -200,6 +209,8 @@ export async function cachedFetch<T>(
 }
 
 export async function getCache<T>(key: string): Promise<T | null> {
+    if (cacheWritesSuspended) return null;
+
     const scopedKey = getScopedCacheKey(key);
     try {
         const entry = await kvStorage.getItem<T>(scopedKey);
@@ -211,11 +222,25 @@ export async function getCache<T>(key: string): Promise<T | null> {
 }
 
 export async function updateCache<T>(key: string, obj: T): Promise<void> {
+    if (cacheWritesSuspended) return;
+
     const scopedKey = getScopedCacheKey(key);
     try {
+        if (cacheWritesSuspended) return;
         await kvStorage.setItem(scopedKey, obj);
     } catch (error) {
         console.error(`Failed to update cached data for key "${scopedKey}"`, error);
+    }
+}
+
+export async function removeCache(key: string): Promise<void> {
+    if (cacheWritesSuspended) return;
+
+    const scopedKey = getScopedCacheKey(key);
+    try {
+        await kvStorage.removeItem(scopedKey);
+    } catch (error) {
+        console.error(`Failed to remove cached data for key "${scopedKey}"`, error);
     }
 }
 

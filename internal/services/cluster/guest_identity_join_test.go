@@ -231,6 +231,14 @@ func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
 	}
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
 
+	var clusterNodes []clusterModels.ClusterNode
+	if err := leader.service.DB.Find(&clusterNodes).Error; err != nil {
+		t.Fatalf("load populated cluster nodes: %v", err)
+	}
+	if len(clusterNodes) != 2 {
+		t.Fatalf("expected immediate node population after join, got %d nodes", len(clusterNodes))
+	}
+
 	beforeRetry := raftConfigurationForGuestIdentityJoinTest(t, leader)
 	if err := leader.service.AcceptJoinInventory(
 		context.Background(), joinerID, joinerIP, guestIdentityJoinTestKey, joinerReport,

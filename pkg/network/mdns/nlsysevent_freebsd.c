@@ -10,17 +10,23 @@
 
 #if __FreeBSD_version >= 1500000
 
+#include <errno.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netlink/netlink_snl.h>
 #include <netlink/netlink_snl_generic.h>
 #include <netlink/netlink_sysevent.h>
 #include <string.h>
 #include <stdbool.h>
-#include <unistd.h>
+#include <stdatomic.h>
 
 #include "_cgo_export.h"
 
-static int watcher_fd = -1;
+static atomic_bool watcher_stop_requested = ATOMIC_VAR_INIT(false);
+
+void prepare_ifnet_watcher(void) {
+    atomic_store(&watcher_stop_requested, false);
+}
 
 struct group {
     bool     found;
@@ -48,37 +54,55 @@ static inline struct group get_group_id(struct snl_state *state, const char *fam
 }
 
 int start_ifnet_watcher(void) {
+    if (atomic_load(&watcher_stop_requested)) {
+        return 0;
+    }
+
     struct snl_state state[1];
     if (!snl_init(state, NETLINK_GENERIC)) {
         return -1;
     }
 
-    watcher_fd = state->fd;
+    int result = 0;
+    const struct timeval timeout = {
+        .tv_sec = 0,
+        .tv_usec = 500000,
+    };
+    if (setsockopt(state->fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
+        result = -2;
+        goto out;
+    }
+
+    if (atomic_load(&watcher_stop_requested)) {
+        goto out;
+    }
 
     struct group grp = get_group_id(state, "nlsysevent", "IFNET");
     if (grp.error || !grp.found) {
-        close(watcher_fd);
-        watcher_fd = -1;
-        return -2;
+        result = atomic_load(&watcher_stop_requested) ? 0 : -3;
+        goto out;
     }
 
     uint32_t group_id = grp.group_id;
     if (setsockopt(state->fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &group_id, sizeof(group_id))) {
-        close(watcher_fd);
-        watcher_fd = -1;
-        return -3;
+        result = atomic_load(&watcher_stop_requested) ? 0 : -4;
+        goto out;
     }
 
-    struct nlmsghdr *hdr = snl_read_message(state);
-    if (!hdr || hdr->nlmsg_type != NLMSG_ERROR) {
-        close(watcher_fd);
-        watcher_fd = -1;
-        return -4;
-    }
-
-    while (1) {
-        hdr = snl_read_message(state);
-        if (!hdr) break;
+    while (!atomic_load(&watcher_stop_requested)) {
+        errno = 0;
+        struct nlmsghdr *hdr = snl_read_message(state);
+        int saved_errno = errno;
+        if (!hdr) {
+            if (atomic_load(&watcher_stop_requested)) {
+                break;
+            }
+            if (saved_errno == EAGAIN || saved_errno == EWOULDBLOCK) {
+                continue;
+            }
+            result = -5;
+            break;
+        }
 
         if (hdr->nlmsg_type == NLMSG_ERROR) continue;
         if (hdr->nlmsg_type != grp.family_id) continue;
@@ -105,15 +129,13 @@ int start_ifnet_watcher(void) {
         }
     }
 
-    watcher_fd = -1;
-    return 0;
+out:
+    snl_free(state);
+    return result;
 }
 
 void stop_ifnet_watcher(void) {
-    if (watcher_fd >= 0) {
-        close(watcher_fd);
-        watcher_fd = -1;
-    }
+    atomic_store(&watcher_stop_requested, true);
 }
 
 #else /* FreeBSD < 15 */
@@ -121,6 +143,8 @@ void stop_ifnet_watcher(void) {
 int start_ifnet_watcher(void) {
     return -99;
 }
+
+void prepare_ifnet_watcher(void) { }
 
 void stop_ifnet_watcher(void) { }
 

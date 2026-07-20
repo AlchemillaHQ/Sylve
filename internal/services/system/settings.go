@@ -58,6 +58,9 @@ func (s *Service) checkPoolUsage(poolName string) error {
 }
 
 func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
+	s.serviceSettingsMutex.Lock()
+	defer s.serviceSettingsMutex.Unlock()
+
 	var basicSettings models.BasicSettings
 	if err := s.DB.First(&basicSettings).Error; err != nil {
 		return err
@@ -148,7 +151,32 @@ func (s *Service) ToggleDHCPServer(enable bool) error {
 	return nil
 }
 
+func (s *Service) EnsureMdnsEnabled(tx *gorm.DB) error {
+	var basicSettings models.BasicSettings
+	if err := tx.First(&basicSettings).Error; err != nil {
+		return err
+	}
+
+	for _, service := range basicSettings.Services {
+		if service == models.Mdns {
+			return nil
+		}
+	}
+
+	basicSettings.Services = append(basicSettings.Services, models.Mdns)
+	return tx.Save(&basicSettings).Error
+}
+
+func (s *Service) WithServiceSettingsLock(update func() error) error {
+	s.serviceSettingsMutex.Lock()
+	defer s.serviceSettingsMutex.Unlock()
+	return update()
+}
+
 func (s *Service) ServiceToggle(service models.AvailableService) error {
+	s.serviceSettingsMutex.Lock()
+	defer s.serviceSettingsMutex.Unlock()
+
 	var basicSettings models.BasicSettings
 	if err := s.DB.First(&basicSettings).Error; err != nil {
 		return err

@@ -216,7 +216,10 @@ func (s *Service) AcceptJoinInventory(
 		return err
 	}
 	if alreadyVoter {
-		return s.ResyncClusterState()
+		if err := s.ResyncClusterState(); err != nil {
+			return err
+		}
+		return s.PopulateClusterNodes()
 	}
 
 	serverID := raft.ServerID(strings.TrimSpace(nodeID))
@@ -225,5 +228,11 @@ func (s *Service) AcceptJoinInventory(
 		return fmt.Errorf("add_voter_failed: %w", err)
 	}
 
-	return s.ResyncClusterState()
+	if err := s.ResyncClusterState(); err != nil {
+		return err
+	}
+
+	// Do not make the joining node wait for the normal monitor interval before
+	// it receives the initial node-health snapshot.
+	return s.PopulateClusterNodes()
 }

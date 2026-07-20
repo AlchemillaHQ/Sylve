@@ -9,12 +9,13 @@
  */
 
 import { browser } from '$app/environment';
-import { storage } from '$lib';
+import { deleteDB, storage } from '$lib';
+import { stopSSEEvents } from '$lib/api/events';
 import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { JWTClaims } from '$lib/types/auth';
 import type { APIResponse } from '$lib/types/common';
 import { kvStorage } from '$lib/types/db';
-import { handleAPIError } from '$lib/utils/http';
+import { handleAPIError, suspendAPICacheWrites } from '$lib/utils/http';
 import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
 import { sha256 } from '$lib/utils/string';
 import { toast } from 'svelte-sonner';
@@ -51,6 +52,36 @@ async function clearCachedAPIData() {
         await kvStorage.clear();
     } catch (error) {
         console.warn('Failed to clear cached API data', error);
+    }
+}
+
+async function clearBrowserState() {
+    suspendAPICacheWrites();
+    stopSSEEvents();
+
+    storage.reset();
+
+    try {
+        localStorage.clear();
+        sessionStorage.clear();
+    } catch (error) {
+        console.warn('Failed to clear browser storage', error);
+    }
+
+    await clearCachedAPIData();
+
+    try {
+        await deleteDB();
+    } catch (error) {
+        console.warn('Failed to delete browser database', error);
+    }
+
+    if (typeof caches === 'undefined') return;
+
+    try {
+        await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
+    } catch (error) {
+        console.warn('Failed to clear browser cache storage', error);
     }
 }
 
@@ -339,11 +370,12 @@ export async function isClusterTokenValid(): Promise<boolean> {
     return false;
 }
 
-export async function logOut(message?: string) {
+export async function logOut(message?: string, options: { clearBrowserState?: boolean } = {}) {
     const token = storage.token;
 
     if (token) {
         storage.oldToken = token;
+        void revokeJWT(token);
     }
 
     storage.token = '';
@@ -362,6 +394,12 @@ export async function logOut(message?: string) {
         localStorage.removeItem('clusterToken');
     }
 
+    if (options.clearBrowserState && browser) {
+        await clearBrowserState();
+        window.location.replace('/');
+        return;
+    }
+
     await clearCachedAPIData();
 
     if (message) {
@@ -378,20 +416,22 @@ export async function logOut(message?: string) {
     });
 }
 
-export async function revokeJWT() {
-    try {
-        const oldtoken = storage.oldToken;
-        if (oldtoken) {
-            await fetch('/api/auth/logout', {
-                headers: {
-                    Authorization: `Bearer ${oldtoken}`
-                }
-            });
+export async function revokeJWT(token = storage.oldToken) {
+    if (!token) return;
 
-            storage.oldToken = '';
-        }
+    try {
+        await fetch('/api/auth/logout', {
+            headers: {
+                Authorization: `Bearer ${token}`
+            },
+            keepalive: true
+        });
     } catch (_e: unknown) {
         console.error('Failed to revoke JWT');
+    } finally {
+        if (storage.oldToken === token) {
+            storage.oldToken = '';
+        }
     }
 }
 

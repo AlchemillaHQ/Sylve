@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { updateSambaConfig } from '$lib/api/samba/config';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -8,6 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SambaConfig } from '$lib/types/samba/config';
+	import { loadEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 
@@ -48,6 +50,7 @@
 	let properties = $state(options);
 
 	async function saveConfig() {
+		const enablingAppleExtensions = !sambaConfig.appleExtensions && properties.appleExtensions;
 		const response = await updateSambaConfig({
 			unixCharset: properties.unixCharset,
 			workgroup: properties.workgroup,
@@ -60,12 +63,24 @@
 		reload = true;
 
 		if (response.error) {
+			if (enablingAppleExtensions) {
+				await loadEnabledServicesForHostname(page.params.node);
+			}
 			handleAPIError(response);
 			toast.error('Failed to update Samba configuration', { position: 'bottom-center' });
 			return;
 		}
 
-		toast.success('Samba configuration updated', { position: 'bottom-center' });
+		if (enablingAppleExtensions) {
+			await loadEnabledServicesForHostname(page.params.node);
+		}
+
+		toast.success(
+			enablingAppleExtensions
+				? 'Samba configuration updated; mDNS discovery enabled'
+				: 'Samba configuration updated',
+			{ position: 'bottom-center' }
+		);
 		open = false;
 	}
 </script>

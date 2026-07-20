@@ -16,8 +16,8 @@ import (
 	"github.com/alchemillahq/gzfs"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
-	"github.com/alchemillahq/sylve/internal/logger"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 
 	"gorm.io/gorm"
 )
@@ -25,11 +25,13 @@ import (
 var _ sambaServiceInterfaces.SambaServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB              *gorm.DB
-	TelemetryDB     *gorm.DB
-	ZFS             zfsServiceInterfaces.ZfsServiceInterface
-	GZFS            *gzfs.Client
-	OnConfigChange  func() error
+	DB                      *gorm.DB
+	TelemetryDB             *gorm.DB
+	ZFS                     zfsServiceInterfaces.ZfsServiceInterface
+	GZFS                    *gzfs.Client
+	OnConfigChange          func() error
+	EnsureMdnsEnabled       func(*gorm.DB) error
+	WithServiceSettingsLock func(func() error) error
 
 	auditFileOffset int64
 	auditFileMu     sync.Mutex

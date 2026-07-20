@@ -43,11 +43,11 @@
 	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'system-basic-settings',
-		async (key) => {
+		async (key, _previousKey, { data: previousSettings }) => {
 			const results = await getBasicSettings();
 			if (isAPIResponse(results)) {
 				handleAPIError(results);
-				return data.basicSettings;
+				return previousSettings ?? data.basicSettings;
 			}
 
 			setEnabledServicesForHostname(storage.hostname, results.services);
@@ -152,40 +152,31 @@
 			values: basicSettings.current.pools.join(',')
 		},
 		'dhcp-server': {
-			open: false,
-			enabled: basicSettings.current.services.includes('dhcp-server')
+			open: false
 		},
 		'wol-server': {
-			open: false,
-			enabled: basicSettings.current.services.includes('wol-server')
+			open: false
 		},
 		'samba-server': {
-			open: false,
-			enabled: basicSettings.current.services.includes('samba-server')
+			open: false
 		},
 		virtualization: {
-			open: false,
-			enabled: basicSettings.current.services.includes('virtualization')
+			open: false
 		},
 		jails: {
-			open: false,
-			enabled: basicSettings.current.services.includes('jails')
+			open: false
 		},
 		firewall: {
-			open: false,
-			enabled: basicSettings.current.services.includes('firewall')
+			open: false
 		},
 		wireguard: {
-			open: false,
-			enabled: basicSettings.current.services.includes('wireguard')
+			open: false
 		},
 		iscsi: {
-			open: false,
-			enabled: basicSettings.current.services.includes('iscsi')
+			open: false
 		},
 		mdns: {
-			open: false,
-			enabled: basicSettings.current.services.includes('mdns')
+			open: false
 		}
 	});
 
@@ -331,29 +322,37 @@
 		| 'firewall'
 		| 'wireguard'
 		| 'iscsi'
-		| 'mdns',
-	enabled: boolean
+		| 'mdns'
 )}
+	{@const enabled = basicSettings.current.services.includes(serviceKey)}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
 	{@const hasNetworkWarning = serviceName === 'DHCP Server' || serviceName === 'Firewall'}
 	{@const displayName = needsArticle ? `the ${serviceName}` : serviceName}
-	{@const networkWarning = hasNetworkWarning ? 'this may affect network configurations, ' : ''}
+	{@const networkWarning = hasNetworkWarning ? ' This may affect network configuration.' : ''}
+	{@const mdnsTitle = enabled
+		? 'Disabling mDNS Discovery immediately stops Bonjour discovery, including discovery of any Samba Apple and Time Machine shares.'
+		: 'Enabling mDNS Discovery immediately publishes existing managed and custom records.'}
 
 	<AlertDialog
 		bind:open={modals[serviceKey].open}
 		names={{ parent: serviceName, element: '' }}
-		customTitle={`You are about to ${enabled ? 'disable' : 'enable'} ${displayName}, ${networkWarning}you will have to restart Sylve and or the host system for changes to take effect`}
+		customTitle={serviceKey === 'mdns'
+			? mdnsTitle
+			: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
+		confirmLabel={serviceKey === 'mdns' && enabled ? 'Disable anyway' : 'Continue'}
 		actions={{
 			onConfirm: async () => {
+				const wasEnabled = enabled;
 				const toggled = await toggleService(serviceKey as AvailableService);
-				reload = true;
 
 				if (toggled.status === 'success') {
-					modals[serviceKey].enabled = !modals[serviceKey].enabled;
-					toast.success(
-						`${serviceName} ${modals[serviceKey].enabled ? 'enabled' : 'disabled'}`,
-						toastOpts
-					);
+					const services = wasEnabled
+						? basicSettings.current.services.filter((service) => service !== serviceKey)
+						: [...new Set([...basicSettings.current.services, serviceKey])];
+					basicSettings.mutate({ ...basicSettings.current, services });
+					setEnabledServicesForHostname(storage.hostname, services);
+					reload = true;
+					toast.success(`${serviceName} ${wasEnabled ? 'disabled' : 'enabled'}`, toastOpts);
 					modals[serviceKey].open = false;
 				} else {
 					handleAPIError(toggled);
@@ -395,12 +394,12 @@
 	bind:loading
 />
 
-{@render serviceToggleDialog('DHCP Server', 'dhcp-server', modals['dhcp-server'].enabled)}
-{@render serviceToggleDialog('WoL Server', 'wol-server', modals['wol-server'].enabled)}
-{@render serviceToggleDialog('Samba Server', 'samba-server', modals['samba-server'].enabled)}
-{@render serviceToggleDialog('Virtualization', 'virtualization', modals['virtualization'].enabled)}
-{@render serviceToggleDialog('Jails', 'jails', modals['jails'].enabled)}
-{@render serviceToggleDialog('Firewall', 'firewall', modals['firewall'].enabled)}
-{@render serviceToggleDialog('WireGuard', 'wireguard', modals['wireguard'].enabled)}
-{@render serviceToggleDialog('iSCSI', 'iscsi', modals['iscsi'].enabled)}
-{@render serviceToggleDialog('mDNS Discovery', 'mdns', modals.mdns.enabled)}
+{@render serviceToggleDialog('DHCP Server', 'dhcp-server')}
+{@render serviceToggleDialog('WoL Server', 'wol-server')}
+{@render serviceToggleDialog('Samba Server', 'samba-server')}
+{@render serviceToggleDialog('Virtualization', 'virtualization')}
+{@render serviceToggleDialog('Jails', 'jails')}
+{@render serviceToggleDialog('Firewall', 'firewall')}
+{@render serviceToggleDialog('WireGuard', 'wireguard')}
+{@render serviceToggleDialog('iSCSI', 'iscsi')}
+{@render serviceToggleDialog('mDNS Discovery', 'mdns')}
