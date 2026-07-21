@@ -599,7 +599,10 @@ func TestParseLabeledRuleCountersMapsRuleNumberZero(t *testing.T) {
 }
 
 func TestGetFirewallTrafficRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallTrafficRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallTrafficRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	rule := networkModels.FirewallTrafficRule{
 		ID:        501,
@@ -619,8 +622,8 @@ func TestGetFirewallTrafficRuleCountersReturnsZerosWhenPFUnavailable(t *testing.
 
 	previousRunCommand := firewallRunCommand
 	firewallRunCommand = func(command string, args ...string) (string, error) {
-		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
-			return "", fmt.Errorf("pf disabled")
+		if command == "/sbin/pfctl" && len(args) == 3 && args[0] == "-a" {
+			return "", fmt.Errorf("pf unavailable")
 		}
 		return "", nil
 	}
@@ -644,7 +647,10 @@ func TestGetFirewallTrafficRuleCountersReturnsZerosWhenPFUnavailable(t *testing.
 }
 
 func TestGetFirewallTrafficRuleCountersParsesPFOutput(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallTrafficRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallTrafficRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	ruleA := networkModels.FirewallTrafficRule{
 		ID:        601,
@@ -742,7 +748,10 @@ func TestParseNATRuleCountersFromPFAggregatesByLabel(t *testing.T) {
 }
 
 func TestGetFirewallNATRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallNATRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallNATRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	rule := networkModels.FirewallNATRule{
 		ID:               701,
@@ -763,8 +772,8 @@ func TestGetFirewallNATRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
 
 	previousRunCommand := firewallRunCommand
 	firewallRunCommand = func(command string, args ...string) (string, error) {
-		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
-			return "", fmt.Errorf("pf disabled")
+		if command == "/sbin/pfctl" && len(args) == 3 && args[0] == "-a" {
+			return "", fmt.Errorf("pf unavailable")
 		}
 		return "", nil
 	}
@@ -788,7 +797,10 @@ func TestGetFirewallNATRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
 }
 
 func TestGetFirewallNATRuleCountersParsesPFOutput(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallNATRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallNATRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	ruleA := networkModels.FirewallNATRule{
 		ID:               801,

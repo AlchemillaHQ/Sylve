@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -296,14 +295,8 @@ func (s *Service) GetFirewallTrafficRuleCounters() ([]networkServiceInterfaces.F
 		return []networkServiceInterfaces.FirewallTrafficRuleCounter{}, nil
 	}
 
-	updatedAt := time.Now().UTC()
-	totalsByRuleID := make(map[uint]trafficRuleCounterTotals)
-
-	if s.isPFEnabled() {
-		if totals, _, pfErr := s.collectTrafficCountersFromPF(); pfErr == nil {
-			totalsByRuleID = totals
-		}
-	}
+	s.ensureFirewallCountersFresh()
+	totalsByRuleID, updatedAt := s.cumulativeCounterTotalsByType("traffic")
 
 	counters := make([]networkServiceInterfaces.FirewallTrafficRuleCounter, 0, len(rules))
 	for _, rule := range rules {
@@ -1873,7 +1866,11 @@ func (s *Service) ApplyFirewallConfig() error {
 		return err
 	}
 
-	s.flushFirewallCounterDeltas()
+	s.firewallCounterSampleMutex.Lock()
+	defer s.firewallCounterSampleMutex.Unlock()
+
+	s.sampleFirewallCountersLocked()
+	s.flushFirewallCounterDeltasLocked()
 	s.updateFirewallRuleNames()
 
 	_, _ = firewallRunCommand("/sbin/pfctl", "-a", "sylve/object-tables", "-F", "Tables")
@@ -1882,12 +1879,14 @@ func (s *Service) ApplyFirewallConfig() error {
 		if err := system.ServiceAction("pf", "onereload"); err != nil {
 			return err
 		}
+		s.resetFirewallCounterBaselines()
 		return s.loadFirewallObjectTableEntries(objectTables)
 	}
 
 	if err := system.ServiceAction("pf", "onestart"); err != nil {
 		return err
 	}
+	s.resetFirewallCounterBaselines()
 	return s.loadFirewallObjectTableEntries(objectTables)
 }
 

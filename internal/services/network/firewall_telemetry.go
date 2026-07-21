@@ -26,6 +26,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -69,10 +71,11 @@ type firewallTelemetryRuntime struct {
 	trafficRuleNumbers map[int]uint
 	natRuleNumbers     map[int]uint
 
-	countersUpdatedAt time.Time
-	countersAvailable bool
-	countersError     string
-	countersLastWarn  string
+	countersUpdatedAt  time.Time
+	countersAvailable  bool
+	countersError      string
+	countersLastWarn   string
+	counterStateLoaded bool
 
 	liveHits         []networkServiceInterfaces.FirewallLiveHitEvent
 	liveCursor       int64
@@ -112,6 +115,101 @@ func (s *Service) getFirewallTelemetryRuntime() *firewallTelemetryRuntime {
 		}
 	})
 	return s.firewallTelemetry
+}
+
+func (s *Service) loadFirewallCounterState() {
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.RLock()
+	loaded := rt.counterStateLoaded
+	rt.mu.RUnlock()
+	if loaded {
+		return
+	}
+
+	s.firewallCounterStateMutex.Lock()
+	defer s.firewallCounterStateMutex.Unlock()
+
+	rt.mu.RLock()
+	loaded = rt.counterStateLoaded
+	rt.mu.RUnlock()
+	if loaded {
+		return
+	}
+
+	if s.TelemetryDB == nil {
+		rt.mu.Lock()
+		rt.counterStateLoaded = true
+		rt.mu.Unlock()
+		return
+	}
+
+	var persisted []infoModels.FirewallRuleCounterTotal
+	if err := s.TelemetryDB.Find(&persisted).Error; err != nil {
+		logger.L.Warn().Err(err).Msg("failed to load persisted firewall counters")
+		return
+	}
+
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.counterStateLoaded {
+		return
+	}
+	for _, counter := range persisted {
+		key := firewallCounterKey{RuleType: counter.RuleType, RuleID: counter.RuleID}
+		rt.totals[key] = trafficRuleCounterTotals{
+			Packets: counter.Packets,
+			Bytes:   counter.Bytes,
+		}
+		rt.lastPF[key] = trafficRuleCounterTotals{
+			Packets: counter.LastPFPackets,
+			Bytes:   counter.LastPFBytes,
+		}
+		rt.lastFlushed[key] = trafficRuleCounterTotals{
+			Packets: counter.Packets,
+			Bytes:   counter.Bytes,
+		}
+	}
+	rt.counterStateLoaded = true
+}
+
+func accumulateFirewallCounterTotal(rt *firewallTelemetryRuntime, key firewallCounterKey, current trafficRuleCounterTotals) {
+	last := rt.lastPF[key]
+	delta := trafficRuleCounterTotals{}
+	if current.Packets >= last.Packets {
+		delta.Packets = current.Packets - last.Packets
+	} else {
+		// PF reloaded and replaced the rule counters.
+		delta.Packets = current.Packets
+	}
+	if current.Bytes >= last.Bytes {
+		delta.Bytes = current.Bytes - last.Bytes
+	} else {
+		delta.Bytes = current.Bytes
+	}
+
+	total := rt.totals[key]
+	rt.totals[key] = trafficRuleCounterTotals{
+		Packets: total.Packets + delta.Packets,
+		Bytes:   total.Bytes + delta.Bytes,
+	}
+	rt.lastPF[key] = current
+}
+
+func (s *Service) resetFirewallCounterBaselines() {
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.Lock()
+	for key := range rt.lastPF {
+		rt.lastPF[key] = trafficRuleCounterTotals{}
+	}
+	rt.mu.Unlock()
+
+	if s.TelemetryDB == nil {
+		return
+	}
+	if err := s.TelemetryDB.Model(&infoModels.FirewallRuleCounterTotal{}).Where("1 = 1").
+		Updates(map[string]any{"last_pf_packets": 0, "last_pf_bytes": 0}).Error; err != nil {
+		logger.L.Warn().Err(err).Msg("failed to reset persisted PF counter baselines")
+	}
 }
 
 func (s *Service) SetFirewallServiceEnabledForTelemetry(enabled bool) {
@@ -248,6 +346,13 @@ func (s *Service) updateFirewallRuleNames() {
 }
 
 func (s *Service) sampleFirewallCounters() {
+	s.firewallCounterSampleMutex.Lock()
+	defer s.firewallCounterSampleMutex.Unlock()
+	s.sampleFirewallCountersLocked()
+}
+
+func (s *Service) sampleFirewallCountersLocked() {
+	s.loadFirewallCounterState()
 	rt := s.getFirewallTelemetryRuntime()
 
 	now := time.Now().UTC()
@@ -304,25 +409,7 @@ func (s *Service) sampleFirewallCounters() {
 
 	rt.mu.Lock()
 	for key, newAbs := range combined {
-		last := rt.lastPF[key]
-		var d trafficRuleCounterTotals
-		if newAbs.Packets >= last.Packets {
-			d.Packets = newAbs.Packets - last.Packets
-		} else {
-			// PF counter reset (reload): treat new absolute as delta
-			d.Packets = newAbs.Packets
-		}
-		if newAbs.Bytes >= last.Bytes {
-			d.Bytes = newAbs.Bytes - last.Bytes
-		} else {
-			d.Bytes = newAbs.Bytes
-		}
-		existing := rt.totals[key]
-		rt.totals[key] = trafficRuleCounterTotals{
-			Packets: existing.Packets + d.Packets,
-			Bytes:   existing.Bytes + d.Bytes,
-		}
-		rt.lastPF[key] = newAbs
+		accumulateFirewallCounterTotal(rt, key, newAbs)
 	}
 	if trafficRuleNumbers != nil {
 		rt.trafficRuleNumbers = trafficRuleNumbers
@@ -370,10 +457,29 @@ func (s *Service) cumulativeCounterTotalsByType(ruleType string) (map[uint]traff
 	return out, updatedAt
 }
 
+func (s *Service) ensureFirewallCountersFresh() {
+	s.loadFirewallCounterState()
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.RLock()
+	updatedAt := rt.countersUpdatedAt
+	rt.mu.RUnlock()
+	if !updatedAt.IsZero() && time.Since(updatedAt) < firewallCounterSampleInterval {
+		return
+	}
+	s.sampleFirewallCounters()
+}
+
 func (s *Service) flushFirewallCounterDeltas() {
+	s.firewallCounterSampleMutex.Lock()
+	defer s.firewallCounterSampleMutex.Unlock()
+	s.flushFirewallCounterDeltasLocked()
+}
+
+func (s *Service) flushFirewallCounterDeltasLocked() {
 	if s.TelemetryDB == nil {
 		return
 	}
+	s.loadFirewallCounterState()
 
 	rt := s.getFirewallTelemetryRuntime()
 
@@ -385,6 +491,10 @@ func (s *Service) flushFirewallCounterDeltas() {
 	lastFlushed := make(map[firewallCounterKey]trafficRuleCounterTotals, len(rt.lastFlushed))
 	for k, v := range rt.lastFlushed {
 		lastFlushed[k] = v
+	}
+	lastPF := make(map[firewallCounterKey]trafficRuleCounterTotals, len(rt.lastPF))
+	for k, v := range rt.lastPF {
+		lastPF[k] = v
 	}
 	rt.mu.RUnlock()
 
@@ -409,16 +519,44 @@ func (s *Service) flushFirewallCounterDeltas() {
 		}
 	}
 
-	if len(rows) > 0 {
-		if err := s.TelemetryDB.CreateInBatches(&rows, 200).Error; err != nil {
-			logger.L.Warn().Err(err).Msg("failed to persist firewall counter deltas")
-			return
-		}
+	totals := make([]infoModels.FirewallRuleCounterTotal, 0, len(currentTotals))
+	for key, total := range currentTotals {
+		raw := lastPF[key]
+		totals = append(totals, infoModels.FirewallRuleCounterTotal{
+			RuleType:      key.RuleType,
+			RuleID:        key.RuleID,
+			Packets:       total.Packets,
+			Bytes:         total.Bytes,
+			LastPFPackets: raw.Packets,
+			LastPFBytes:   raw.Bytes,
+		})
 	}
 
 	cutoff := time.Now().UTC().Add(-firewallTelemetryRetention)
-	if err := s.TelemetryDB.Where("created_at < ?", cutoff).Delete(&infoModels.FirewallRuleDelta{}).Error; err != nil {
-		logger.L.Warn().Err(err).Msg("failed to prune firewall telemetry deltas")
+	if err := s.TelemetryDB.Transaction(func(tx *gorm.DB) error {
+		if len(rows) > 0 {
+			if err := tx.CreateInBatches(&rows, 200).Error; err != nil {
+				return err
+			}
+		}
+		if len(totals) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "rule_type"}, {Name: "rule_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"packets",
+					"bytes",
+					"last_pf_packets",
+					"last_pf_bytes",
+					"updated_at",
+				}),
+			}).CreateInBatches(&totals, 200).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Where("created_at < ?", cutoff).Delete(&infoModels.FirewallRuleDelta{}).Error
+	}); err != nil {
+		logger.L.Warn().Err(err).Msg("failed to persist firewall counters")
+		return
 	}
 
 	rt.mu.Lock()
@@ -879,6 +1017,7 @@ func (s *Service) runFirewallCounterFlusher(ctx context.Context) {
 
 func (s *Service) StartFirewallMonitor(ctx context.Context) {
 	_ = s.getFirewallTelemetryRuntime()
+	s.loadFirewallCounterState()
 	s.SetFirewallServiceEnabledForTelemetry(s.IsFirewallServiceEnabled())
 
 	s.firewallMonOnce.Do(func() {
@@ -899,14 +1038,8 @@ func (s *Service) GetFirewallNATRuleCounters() ([]networkServiceInterfaces.Firew
 		return []networkServiceInterfaces.FirewallNATRuleCounter{}, nil
 	}
 
-	updatedAt := time.Now().UTC()
-	totalsByRuleID := make(map[uint]trafficRuleCounterTotals)
-
-	if s.isPFEnabled() {
-		if totals, _, pfErr := s.collectNATCountersFromPF(); pfErr == nil {
-			totalsByRuleID = totals
-		}
-	}
+	s.ensureFirewallCountersFresh()
+	totalsByRuleID, updatedAt := s.cumulativeCounterTotalsByType("nat")
 
 	counters := make([]networkServiceInterfaces.FirewallNATRuleCounter, 0, len(rules))
 	for _, rule := range rules {
