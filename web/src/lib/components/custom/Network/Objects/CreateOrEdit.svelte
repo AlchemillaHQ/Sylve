@@ -272,6 +272,7 @@
 
 	/* svelte-ignore state_referenced_locally */
 	let properties = $state(options);
+	let saving = $state(false);
 
 	async function basicTests() {
 		let error = '';
@@ -565,16 +566,20 @@
 	}
 
 	async function create() {
+		if (saving) return;
+
 		const values = await basicTests();
 		if (!values) {
 			return;
 		}
 
 		let oType = getOType();
+		saving = true;
 
 		const response = (await createNetworkObject(properties.name, oType, values as string[])) as
 			| APIResponse
 			| number;
+		saving = false;
 
 		if (typeof response !== 'number') {
 			handleAPIError(response);
@@ -607,12 +612,15 @@
 	}
 
 	async function editObject() {
+		if (saving) return;
+
 		const values = await basicTests();
 		if (!values) {
 			return;
 		}
 
 		let oType = getOType();
+		saving = true;
 
 		const response = await updateNetworkObject(
 			editingObject?.id || 0,
@@ -620,6 +628,7 @@
 			oType,
 			values as string[]
 		);
+		saving = false;
 
 		if (response.error) {
 			handleAPIError(response);
@@ -805,9 +814,23 @@
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
 				{#if edit}
-					<Button onclick={editObject} type="submit" size="sm">Save</Button>
+					<Button onclick={editObject} type="submit" size="sm" disabled={saving}>
+						{#if saving}
+							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+							<span>Saving...</span>
+						{:else}
+							Save
+						{/if}
+					</Button>
 				{:else}
-					<Button onclick={create} type="submit" size="sm">Create</Button>
+					<Button onclick={create} type="submit" size="sm" disabled={saving}>
+						{#if saving}
+							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+							<span>Creating...</span>
+						{:else}
+							Create
+						{/if}
+					</Button>
 				{/if}
 			</div>
 		</Dialog.Footer>

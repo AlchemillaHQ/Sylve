@@ -6784,6 +6784,7 @@ msgstr "初始状态"
 msgid "Optional note about why this snapshot was taken"
 msgstr "关于拍摄此快照原因的可选备注"
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -10053,6 +10054,7 @@ msgstr "此虚拟机当前由另一个节点拥有"
 #~ msgid "VM name"
 #~ msgstr ""
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte

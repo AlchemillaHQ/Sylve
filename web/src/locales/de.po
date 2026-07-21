@@ -6786,6 +6786,7 @@ msgstr "Leerer Ausgangszustand"
 msgid "Optional note about why this snapshot was taken"
 msgstr "Optionale Notiz, warum dieser Snapshot erstellt wurde"
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -10056,6 +10057,7 @@ msgstr "Diese VM gehört derzeit einem anderen Node"
 #~ msgid "VM name"
 #~ msgstr "VM name"
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
