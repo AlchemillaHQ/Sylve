@@ -16389,9 +16389,8 @@ msgstr "Jail deleted, but cleanup was incomplete{0}"
 msgid "Jail deleted; root filesystem retained at {0}"
 msgstr "Jail deleted; root filesystem retained at {0}"
 
-#: src/routes/[node]/jail/[ctid]/+layout.svelte
-msgid "The root filesystem remains as unmanaged ZFS data and can block reuse of this CTID until removed."
-msgstr "The root filesystem remains as unmanaged ZFS data and can block reuse of this CTID until removed."
+#~ msgid "The root filesystem remains as unmanaged ZFS data and can block reuse of this CTID until removed."
+#~ msgstr "The root filesystem remains as unmanaged ZFS data and can block reuse of this CTID until removed."
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "This will permanently delete the jail <0/> <1/> <2/>"
@@ -16429,10 +16428,8 @@ msgstr "VM deleted, but cleanup was incomplete{0}"
 msgid "VM deleted; storage retained at {0}"
 msgstr "VM deleted; storage retained at {0}"
 
-#: src/routes/[node]/vm/[rid]/+layout.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
-msgid "Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID until removed."
-msgstr "Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID until removed."
+#~ msgid "Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID until removed."
+#~ msgstr "Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID until removed."
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Filesystem storage cannot be imported"
@@ -17396,3 +17393,24 @@ msgstr "Create Share"
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Only mounted, non-system datasets that are not already used by another Samba share are shown."
 msgstr "Only mounted, non-system datasets that are not already used by another Samba share are shown."
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Storage retained"
+msgstr "Storage retained"
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Unselected storage will remain as unmanaged ZFS data. Remove it before reusing this RID."
+msgstr "Unselected storage will remain as unmanaged ZFS data. Remove it before reusing this RID."
+
+#~ msgid "Unavailable Disk Sc"
+#~ msgstr "Unavailable Disk Sc"
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Root filesystem retained"
+msgstr "Root filesystem retained"
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "The root filesystem will remain as unmanaged ZFS data. Remove it before reusing this CTID."
+msgstr "The root filesystem will remain as unmanaged ZFS data. Remove it before reusing this CTID."

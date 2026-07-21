@@ -615,9 +615,20 @@
 							></CustomCheckbox>
 						</div>
 						{#if !modalState.deleteRAWDisks || !modalState.deleteVolumes}
-							<div class="mt-2 text-sm text-muted-foreground">
-								Unchecked storage remains as unmanaged ZFS data and can block reuse of this RID
-								until removed.
+							<div
+								class="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+							>
+								<span
+									class="icon-[mdi--alert-circle-outline] mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+									aria-hidden="true"
+								></span>
+								<div>
+									<p class="font-medium text-amber-600 dark:text-amber-400">Storage retained</p>
+									<p class="mt-0.5 text-muted-foreground">
+										Unselected storage will remain as unmanaged ZFS data. Remove it before reusing
+										this RID.
+									</p>
+								</div>
 							</div>
 						{/if}
 					{/if}
