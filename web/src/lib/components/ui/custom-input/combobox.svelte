@@ -3,6 +3,7 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import { generateNanoId } from '$lib/utils/string';
 	import { cn } from '$lib/utils.js';
 	import { watch } from 'runed';
 
@@ -56,6 +57,8 @@
 
 	let search = $state('');
 	let suppressCustomInData = $state(false);
+	// svelte-ignore state_referenced_locally
+	let nanoId = $state(generateNanoId(label));
 
 	watch(
 		() => open,
@@ -131,7 +134,7 @@
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
 		<div class="flex h-7 items-center justify-between w-full">
-			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
+			<Label class="whitespace-nowrap text-sm" for={nanoId}>
 				{label}
 			</Label>
 			{#if topRightButton}
@@ -154,6 +157,7 @@
 	<Popover.Root bind:open>
 		<Popover.Trigger class="{triggerWidth} min-w-0" {disabled}>
 			<Button
+				id={nanoId}
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}

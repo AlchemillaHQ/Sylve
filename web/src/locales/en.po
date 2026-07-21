@@ -861,6 +861,7 @@ msgstr "Failed to create note"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -1189,7 +1190,6 @@ msgstr "This is a note"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Config.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -1626,7 +1626,6 @@ msgstr "Admin"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -1868,7 +1867,6 @@ msgstr "Are you sure?"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
-#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -2124,6 +2122,8 @@ msgid "Select Pools"
 msgstr "Select Pools"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Services"
@@ -2245,14 +2245,14 @@ msgstr "Failed to {0} Samba share"
 msgid "Samba share {0}"
 msgstr "Samba share {0}"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Edit Samba Share"
-msgstr "Edit Samba Share"
+#~ msgid "Edit Samba Share"
+#~ msgstr "Edit Samba Share"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Samba Share"
 msgstr "Create Samba Share"
 
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -5210,6 +5210,7 @@ msgstr "Default Gateway"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -12119,6 +12120,7 @@ msgid "Apple Extensions"
 msgstr "Apple Extensions"
 
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 msgid "Time Machine"
 msgstr "Time Machine"
 
@@ -12904,13 +12906,11 @@ msgstr "Write Access"
 msgid "Select at least one user or group for authenticated access"
 msgstr "Select at least one user or group for authenticated access"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Guest-only shares cannot include users or groups"
-msgstr "Guest-only shares cannot include users or groups"
+#~ msgid "Guest-only shares cannot include users or groups"
+#~ msgstr "Guest-only shares cannot include users or groups"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Guest Only"
-msgstr "Guest Only"
+#~ msgid "Guest Only"
+#~ msgstr "Guest Only"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Read Users"
@@ -12928,17 +12928,15 @@ msgstr "Read Groups"
 msgid "Write Groups"
 msgstr "Write Groups"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Guest Writeable"
-msgstr "Guest Writeable"
+#~ msgid "Guest Writeable"
+#~ msgstr "Guest Writeable"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Time Machine Max Size (GB)"
 msgstr "Time Machine Max Size (GB)"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Set to 0 for unlimited size"
-msgstr "Set to 0 for unlimited size"
+#~ msgid "Set to 0 for unlimited size"
+#~ msgstr "Set to 0 for unlimited size"
 
 #. 0: properties.detach.name; 1: vm.current.name
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
@@ -15555,9 +15553,8 @@ msgstr "Connected ({0})"
 msgid "Idle"
 msgstr "Idle"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Audit Logging"
-msgstr "Audit Logging"
+#~ msgid "Audit Logging"
+#~ msgstr "Audit Logging"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Operations to Audit"
@@ -17192,3 +17189,208 @@ msgstr "Dynamic DNS Entry - Sync"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Dynamic DNS Entry"
 msgstr "Dynamic DNS Entry"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest read-only access"
+msgstr "Guest read-only access"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest read and write access"
+msgstr "Guest read and write access"
+
+#. 0: principalCount; 1: principalCount === 1 ? '' \\: 's'
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Authenticated access for {0} selection{1}"
+msgstr "Authenticated access for {0} selection{1}"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Authenticated access not configured"
+msgstr "Authenticated access not configured"
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Not set"
+msgstr "Not set"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Name cannot contain brackets or line breaks"
+msgstr "Name cannot contain brackets or line breaks"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "This dataset is already used by another Samba share"
+msgstr "This dataset is already used by another Samba share"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Create mask must contain exactly four octal digits"
+msgstr "Create mask must contain exactly four octal digits"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Directory mask must contain exactly four octal digits"
+msgstr "Directory mask must contain exactly four octal digits"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine size must be a whole number of 0 or more"
+msgstr "Time Machine size must be a whole number of 0 or more"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select at least one operation to audit"
+msgstr "Select at least one operation to audit"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Unable to find the Samba share to update"
+msgstr "Unable to find the Samba share to update"
+
+#. 0: share?.name ?? ''
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Edit Samba Share - {0}"
+msgstr "Edit Samba Share - {0}"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Choose the share location, define access, then enable optional Samba features."
+msgstr "Choose the share location, define access, then enable optional Samba features."
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Needs attention"
+msgstr "Needs attention"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "<0/> Details <1/>"
+msgstr "<0/> Details <1/>"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "<0/> Access <1/>"
+msgstr "<0/> Access <1/>"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "<0/> Options <1/>"
+msgstr "<0/> Options <1/>"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Share details"
+msgstr "Share details"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "The selected dataset is the directory exposed by this share."
+msgstr "The selected dataset is the directory exposed by this share."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "No datasets available"
+msgstr "No datasets available"
+
+#~ msgid "Only mounted datasets that are not already used by another Samba share are shown."
+#~ msgstr "Only mounted datasets that are not already used by another Samba share are shown."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Access mode"
+msgstr "Access mode"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Choose who can connect to this share. Guest access does not include your named permissions."
+msgstr "Choose who can connect to this share. Guest access does not include your named permissions."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "<0/> Authenticated"
+msgstr "<0/> Authenticated"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Specific users and groups"
+msgstr "Specific users and groups"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "<0/> Guest read-only"
+msgstr "<0/> Guest read-only"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Anyone can browse and read files"
+msgstr "Anyone can browse and read files"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "<0/> Guest read/write"
+msgstr "<0/> Guest read/write"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Anyone can read and modify files"
+msgstr "Anyone can read and modify files"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Named permissions"
+msgstr "Named permissions"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write access takes precedence over read access for the same user or group."
+msgstr "Write access takes precedence over read access for the same user or group."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guests can read this share without credentials."
+msgstr "Guests can read this share without credentials."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guests can read and write this share without credentials."
+msgstr "Guests can read and write this share without credentials."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Your named user and group selections are preserved if you switch back to authenticated access."
+msgstr "Your named user and group selections are preserved if you switch back to authenticated access."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Enable the Samba features needed by clients of this share."
+msgstr "Enable the Samba features needed by clients of this share."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Advertise this share as a Time Machine backup destination."
+msgstr "Advertise this share as a Time Machine backup destination."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Use 0 for no limit. Whole numbers only."
+msgstr "Use 0 for no limit. Whole numbers only."
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Audit logging"
+msgstr "Audit logging"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Record selected file operations for this share."
+msgstr "Record selected file operations for this share."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Advanced permissions"
+msgstr "Advanced permissions"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Default: 0664 files, 2775 directories"
+msgstr "Default: 0664 files, 2775 directories"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Use four octal digits to control permissions for newly created files and directories."
+msgstr "Use four octal digits to control permissions for newly created files and directories."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "For example, 0664 gives owner read/write and group read/write."
+msgstr "For example, 0664 gives owner read/write and group read/write."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "For example, 2775 preserves the shared group on new directories."
+msgstr "For example, 2775 preserves the shared group on new directories."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Share summary"
+msgstr "Share summary"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Access"
+msgstr "Access"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Standard Samba share"
+msgstr "Standard Samba share"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Create Share"
+msgstr "Create Share"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Only mounted, non-system datasets that are not already used by another Samba share are shown."
+msgstr "Only mounted, non-system datasets that are not already used by another Samba share are shown."
