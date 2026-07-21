@@ -188,7 +188,7 @@ under sponsorship from the FreeBSD Foundation.
 		if (activeDisk) {
 			untrack(() => {
 				buttonAbilities.smart.ability = activeDisk.smartData != null;
-				buttonAbilities.selfTest.ability = true;
+				buttonAbilities.selfTest.ability = activeDisk.smartData != null;
 				buttonAbilities.gpt.ability = !activeDisk.gpt;
 
 				if (activeDisk.usage === 'ZFS') {
