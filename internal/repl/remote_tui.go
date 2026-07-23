@@ -26,22 +26,23 @@ type remoteResponse struct {
 }
 
 type remoteModel struct {
-	viewport  viewport.Model
-	messages  []string
-	enc       *json.Encoder
-	dec       *json.Decoder
-	conn      net.Conn
-	history   []string
-	histIdx   int
-	input     string
-	cursorPos int
-	ready     bool
-	width     int
-	height    int
-	hostname  string
+	viewport    viewport.Model
+	messages    []string
+	enc         *json.Encoder
+	dec         *json.Decoder
+	conn        net.Conn
+	history     []string
+	historyPath string
+	histIdx     int
+	input       string
+	cursorPos   int
+	ready       bool
+	width       int
+	height      int
+	hostname    string
 }
 
-func newRemoteModel(conn net.Conn) remoteModel {
+func newRemoteModel(conn net.Conn, historyPath string) remoteModel {
 	enc := json.NewEncoder(conn)
 	dec := json.NewDecoder(conn)
 
@@ -51,12 +52,13 @@ func newRemoteModel(conn net.Conn) remoteModel {
 		messages: []string{
 			welcomeStyle.Render("Connected to Sylve Console. Type `help`."),
 		},
-		enc:      enc,
-		dec:      dec,
-		conn:     conn,
-		history:  []string{},
-		histIdx:  -1,
-		hostname: hostname,
+		enc:         enc,
+		dec:         dec,
+		conn:        conn,
+		history:     loadReplHistory(historyPath),
+		historyPath: historyPath,
+		histIdx:     -1,
+		hostname:    hostname,
 	}
 }
 
@@ -127,12 +129,12 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "enter":
-			line := m.input
+			line := strings.TrimSpace(m.input)
 			if line == "" {
 				return m, nil
 			}
 
-			m.history = append(m.history, line)
+			m.history = recordReplHistory(m.historyPath, m.history, line)
 			m.histIdx = -1
 
 			prompt := promptStyle.Render("sylve> ")
@@ -149,23 +151,25 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "backspace":
 			if m.cursorPos > 0 {
-				m.input = m.input[:m.cursorPos-1] + m.input[m.cursorPos:]
-				m.cursorPos--
+				start := inputCursorBefore(m.input, m.cursorPos)
+				m.input = m.input[:start] + m.input[m.cursorPos:]
+				m.cursorPos = start
 			}
 
 		case "delete":
 			if m.cursorPos < len(m.input) {
-				m.input = m.input[:m.cursorPos] + m.input[m.cursorPos+1:]
+				end := inputCursorAfter(m.input, m.cursorPos)
+				m.input = m.input[:m.cursorPos] + m.input[end:]
 			}
 
 		case "left":
 			if m.cursorPos > 0 {
-				m.cursorPos--
+				m.cursorPos = inputCursorBefore(m.input, m.cursorPos)
 			}
 
 		case "right":
 			if m.cursorPos < len(m.input) {
-				m.cursorPos++
+				m.cursorPos = inputCursorAfter(m.input, m.cursorPos)
 			}
 
 		case "home":
@@ -207,12 +211,8 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoTop()
 
 		default:
-			if len(msg.String()) == 1 {
-				r := rune(msg.String()[0])
-				if r >= 32 && r <= 126 {
-					m.input = m.input[:m.cursorPos] + string(r) + m.input[m.cursorPos:]
-					m.cursorPos++
-				}
+			if !msg.Alt && (msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace) {
+				m.input, m.cursorPos = insertInputRunes(m.input, m.cursorPos, msg.Runes)
 			}
 		}
 
@@ -241,8 +241,8 @@ func (m remoteModel) View() string {
 	return fmt.Sprintf("%s\n%s\n%s", header, vp, input)
 }
 
-func runRemoteConsoleTUI(conn net.Conn) error {
-	p := tea.NewProgram(newRemoteModel(conn), tea.WithAltScreen())
+func runRemoteConsoleTUI(conn net.Conn, historyPath string) error {
+	p := tea.NewProgram(newRemoteModel(conn, historyPath), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return err
 	}

@@ -144,6 +144,63 @@ func TestExecuteTaskUpdatesStatus(t *testing.T) {
 	}
 }
 
+func TestRecoverInterruptedTasksFailsNormalTasksOnly(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	startedAt := time.Now().Add(-time.Minute).UTC()
+	tasks := []taskModels.GuestLifecycleTask{
+		{
+			GuestType: taskModels.GuestTypeJail,
+			GuestID:   101,
+			Action:    "start",
+			Status:    taskModels.LifecycleTaskStatusRunning,
+			StartedAt: &startedAt,
+		},
+		{
+			GuestType: taskModels.GuestTypeVM,
+			GuestID:   102,
+			Action:    "migrate",
+			Status:    taskModels.LifecycleTaskStatusRunning,
+			StartedAt: &startedAt,
+		},
+		{
+			GuestType: taskModels.GuestTypeVM,
+			GuestID:   103,
+			Action:    "start",
+			Status:    taskModels.LifecycleTaskStatusQueued,
+		},
+	}
+	for i := range tasks {
+		if err := dbConn.Create(&tasks[i]).Error; err != nil {
+			t.Fatalf("seed task %d: %v", i, err)
+		}
+	}
+
+	if err := s.RecoverInterruptedTasks(t.Context()); err != nil {
+		t.Fatalf("RecoverInterruptedTasks: %v", err)
+	}
+
+	var recovered taskModels.GuestLifecycleTask
+	if err := dbConn.First(&recovered, tasks[0].ID).Error; err != nil {
+		t.Fatalf("reload recovered task: %v", err)
+	}
+	if recovered.Status != taskModels.LifecycleTaskStatusFailed || recovered.FinishedAt == nil {
+		t.Fatalf("normal task was not finalized: status=%q finishedAt=%v", recovered.Status, recovered.FinishedAt)
+	}
+	if recovered.Message != lifecycleTaskInterruptedByRestartMessage || recovered.Error != lifecycleTaskInterruptedByRestartError {
+		t.Fatalf("unexpected recovery result: message=%q error=%q", recovered.Message, recovered.Error)
+	}
+
+	for _, task := range tasks[1:] {
+		var got taskModels.GuestLifecycleTask
+		if err := dbConn.First(&got, task.ID).Error; err != nil {
+			t.Fatalf("reload task %d: %v", task.ID, err)
+		}
+		if got.Status != task.Status || got.FinishedAt != nil {
+			t.Fatalf("task %d changed unexpectedly: status=%q finishedAt=%v", task.ID, got.Status, got.FinishedAt)
+		}
+	}
+}
+
 func TestExecuteTaskKeepsRecoverableMigrationRunning(t *testing.T) {
 	s, dbConn := newLifecycleTestService(t)
 	s.SetMigrationExecutor(func(context.Context, uint) error { return retryPendingTestError{} })
@@ -498,5 +555,71 @@ func TestExecuteTaskVMTemplateConvertInvalidPayload(t *testing.T) {
 	}
 	if failed.Status != taskModels.LifecycleTaskStatusFailed {
 		t.Fatalf("expected failed status, got %s", failed.Status)
+	}
+}
+
+func TestListAndGetTasks(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+
+	tasks := []taskModels.GuestLifecycleTask{
+		{
+			GuestType: taskModels.GuestTypeVM,
+			GuestID:   101,
+			Action:    "start",
+			Status:    taskModels.LifecycleTaskStatusQueued,
+		},
+		{
+			GuestType: taskModels.GuestTypeJail,
+			GuestID:   101,
+			Action:    "restart",
+			Status:    taskModels.LifecycleTaskStatusRunning,
+		},
+		{
+			GuestType: taskModels.GuestTypeVM,
+			GuestID:   102,
+			Action:    "stop",
+			Status:    taskModels.LifecycleTaskStatusSuccess,
+		},
+	}
+	for index := range tasks {
+		if err := dbConn.Create(&tasks[index]).Error; err != nil {
+			t.Fatalf("seed task %d: %v", index, err)
+		}
+	}
+
+	active, err := s.ListActiveTasks(taskModels.GuestTypeVM, 101)
+	if err != nil {
+		t.Fatalf("list active tasks: %v", err)
+	}
+	if len(active) != 1 || active[0].ID != tasks[0].ID {
+		t.Fatalf("active tasks = %#v, want VM task %d", active, tasks[0].ID)
+	}
+
+	recent, err := s.ListRecentTasks(taskModels.GuestTypeVM, 0, 1)
+	if err != nil {
+		t.Fatalf("list recent tasks: %v", err)
+	}
+	if len(recent) != 1 || recent[0].ID != tasks[2].ID {
+		t.Fatalf("recent tasks = %#v, want task %d", recent, tasks[2].ID)
+	}
+
+	got, err := s.GetTask(tasks[1].ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if got == nil || got.ID != tasks[1].ID || got.Status != taskModels.LifecycleTaskStatusRunning {
+		t.Fatalf("got task = %#v", got)
+	}
+
+	missing, err := s.GetTask(9999)
+	if err != nil {
+		t.Fatalf("get missing task: %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("expected missing task to be nil, got %#v", missing)
+	}
+
+	if _, err := s.GetTask(0); err == nil || err.Error() != "invalid_task_id" {
+		t.Fatalf("GetTask(0) error = %v", err)
 	}
 }

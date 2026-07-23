@@ -69,10 +69,22 @@ var asciiArtBlock = `  ____        _
 ` + "\t              v" + Version
 
 func NewRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) error) *cli.Command {
+	return newRootCommand(daemonAction, func() bool {
+		return os.Geteuid() == 0
+	})
+}
+
+func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) error, isRoot func() bool) *cli.Command {
 	cmd := &cli.Command{
 		Name:    "sylve",
 		Usage:   "FreeBSD management platform",
 		Version: Version,
+		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
+			if !isRoot() {
+				return ctx, fmt.Errorf("root privileges required")
+			}
+			return ctx, nil
+		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
@@ -88,6 +100,11 @@ func NewRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 		Commands: []*cli.Command{
 			newNotesCommand(),
 			newJailsCommand(),
+			newVMsCommand(),
+			newTasksCommand(),
+			newSwitchesCommand(),
+			newObjectsCommand(),
+			newDownloadsCommand(),
 		},
 		CustomRootCommandHelpTemplate: asciiArtBlock + "\n\n" + cli.RootCommandHelpTemplate,
 	}

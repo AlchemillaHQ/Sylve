@@ -87,10 +87,13 @@ type CreateJailRequest struct {
 }
 
 type SimpleList struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"name"`
-	CTID  uint   `json:"ctId"`
-	State string `json:"state"`
+	ID             uint   `json:"id"`
+	Name           string `json:"name"`
+	CTID           uint   `json:"ctId"`
+	State          string `json:"state"`
+	ResourceLimits *bool  `json:"resourceLimits"`
+	Cores          int    `json:"cores"`
+	Memory         int    `json:"memory"`
 }
 
 type SimpleTemplateList struct {

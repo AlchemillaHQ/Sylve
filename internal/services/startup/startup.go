@@ -10,6 +10,7 @@ package startup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -187,8 +188,8 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	}
 
 	if slices.Contains(basicSettings.Services, models.Jails) {
-		if err := s.Network.SyncEpairs(false); err != nil {
-			return fmt.Errorf("error syncing epairs %v", err)
+		if err := syncEpairsOnStartup(s.Network); err != nil {
+			return err
 		}
 	}
 
@@ -289,5 +290,20 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}()
 	}
 
+	return nil
+}
+
+type epairStartupSyncer interface {
+	SyncEpairs(forceStart bool) error
+}
+
+func syncEpairsOnStartup(network epairStartupSyncer) error {
+	if err := network.SyncEpairs(false); err != nil {
+		if errors.Is(err, networkServiceInterfaces.ErrEpairOwnershipConflict) {
+			logger.L.Warn().Err(err).Msg("unmanaged epair conflicts with a configured jail; skipping startup epair reconciliation")
+			return nil
+		}
+		return fmt.Errorf("error syncing epairs: %w", err)
+	}
 	return nil
 }

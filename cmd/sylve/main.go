@@ -25,6 +25,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/alchemillahq/sylve/internal/config"
+	consolepath "github.com/alchemillahq/sylve/internal/console"
 	"github.com/alchemillahq/sylve/internal/db"
 	dbModels "github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -51,7 +52,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
 	portnetwork "github.com/alchemillahq/sylve/pkg/network"
-	sysU "github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/urfave/cli/v3"
@@ -74,11 +74,18 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		cmd.AsciiArt(os.Stdout)
 	}
 
-	if !sysU.IsRoot() {
-		logger.BootstrapFatal("Root privileges required!")
+	resolvedConfigPath, err := cmd.ResolveConfigPath(configPath)
+	if err != nil {
+		return err
 	}
 
-	startLocalSylve, attachErr := shouldStartLocalSylve(console, repl.TryAttachSocketConsole)
+	cfg := config.ParseConfig(resolvedConfigPath)
+	socketPath := consolepath.SocketPath(cfg.DataPath)
+	historyPath := consolepath.HistoryPath(cfg.DataPath)
+
+	startLocalSylve, attachErr := shouldStartLocalSylve(console, func() (bool, error) {
+		return repl.TryAttachSocketConsole(socketPath, historyPath)
+	})
 	if attachErr != nil {
 		return fmt.Errorf("failed to attach to running Sylve console: %w", attachErr)
 	}
@@ -86,12 +93,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		return nil
 	}
 
-	resolvedConfigPath, err := cmd.ResolveConfigPath(configPath)
-	if err != nil {
-		return err
-	}
-
-	cfg := config.ParseConfig(resolvedConfigPath)
 	logger.InitLogger(cfg.Environment, cfg.DataPath, cfg.LogLevel)
 	logger.L.Info().
 		Str("environment", string(cfg.Environment)).
@@ -207,6 +208,9 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
 	}
+	if err := lifecycleSvc.RecoverInterruptedTasks(initContext); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_recover_interrupted_lifecycle_tasks")
+	}
 
 	logger.L.Info().Msg("Basic initializations complete")
 
@@ -321,10 +325,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		VirtualMachine: libvirtSvc,
 		Lifecycle:      lifecycleSvc,
 		Network:        nS.(*networkService.Service),
+		Utilities:      uS,
+		HistoryPath:    historyPath,
 		QuitChan:       sigChan,
 	}
 
-	replSocketServer, replSocketErr := repl.StartSocketServer(replCtx)
+	replSocketServer, replSocketErr := repl.StartSocketServer(replCtx, socketPath)
 	if replSocketErr != nil {
 		logger.L.Warn().Err(replSocketErr).Msg("Failed to start REPL socket server")
 	}

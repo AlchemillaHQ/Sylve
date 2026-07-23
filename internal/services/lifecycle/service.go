@@ -31,6 +31,9 @@ import (
 const (
 	guestLifecycleExecQueueName = "guest-lifecycle-exec"
 	guestAutostartQueueName     = "guest-autostart-sequence"
+
+	lifecycleTaskInterruptedByRestartMessage = "interrupted_by_server_restart"
+	lifecycleTaskInterruptedByRestartError   = "lifecycle task interrupted by server restart; retry the action"
 )
 
 const (
@@ -191,6 +194,27 @@ func (s *Service) RegisterJobs() {
 
 func (s *Service) EnqueueStartupAutostart(ctx context.Context) error {
 	return db.EnqueueNoPayload(ctx, guestAutostartQueueName)
+}
+
+// RecoverInterruptedTasks closes normal tasks claimed by a previous process.
+// Migration tasks have durable recovery and must remain running for it.
+func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
+	result := s.DB.WithContext(ctx).
+		Model(&taskModels.GuestLifecycleTask{}).
+		Where("status = ? AND action <> ?", taskModels.LifecycleTaskStatusRunning, "migrate").
+		Updates(map[string]any{
+			"status":      taskModels.LifecycleTaskStatusFailed,
+			"message":     lifecycleTaskInterruptedByRestartMessage,
+			"error":       lifecycleTaskInterruptedByRestartError,
+			"finished_at": time.Now().UTC(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		logger.L.Warn().Int64("count", result.RowsAffected).Msg("recovered_interrupted_lifecycle_tasks")
+	}
+	return nil
 }
 
 func (s *Service) RequestAction(
@@ -598,6 +622,22 @@ func (s *Service) ListRecentTasks(guestType string, guestID uint, limit int) ([]
 	}
 
 	return tasks, nil
+}
+
+func (s *Service) GetTask(taskID uint) (*taskModels.GuestLifecycleTask, error) {
+	if taskID == 0 {
+		return nil, fmt.Errorf("invalid_task_id")
+	}
+
+	var task taskModels.GuestLifecycleTask
+	if err := s.DB.First(&task, taskID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &task, nil
 }
 
 func (s *Service) runStartupAutostart(ctx context.Context) error {

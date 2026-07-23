@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -24,26 +26,27 @@ import (
 const inputLineHeight = 1
 
 type sysInfoMsg struct {
-	hostname  string
-	cpuUsage  float64
-	ramTotal  uint64
-	ramUsed   uint64
+	hostname string
+	cpuUsage float64
+	ramTotal uint64
+	ramUsed  uint64
 }
 
 type tuiModel struct {
-	viewport  viewport.Model
-	messages  []string
-	ctx       *Context
-	history   []string
-	histIdx   int
-	input     string
-	cursorPos int
-	ready     bool
-	width     int
-	height    int
-	hostname  string
-	cpuUsage  string
-	ramUsage  string
+	viewport    viewport.Model
+	messages    []string
+	ctx         *Context
+	history     []string
+	historyPath string
+	histIdx     int
+	input       string
+	cursorPos   int
+	ready       bool
+	width       int
+	height      int
+	hostname    string
+	cpuUsage    string
+	ramUsage    string
 }
 
 func startTUI(ctx *Context) {
@@ -55,13 +58,18 @@ func startTUI(ctx *Context) {
 }
 
 func initialTUI(ctx *Context) tuiModel {
+	historyPath := ""
+	if ctx != nil {
+		historyPath = ctx.HistoryPath
+	}
 	m := tuiModel{
 		messages: []string{
 			welcomeStyle.Render("Connected to Sylve Console. Type `help`."),
 		},
-		ctx:     ctx,
-		history: []string{},
-		histIdx: -1,
+		ctx:         ctx,
+		history:     loadReplHistory(historyPath),
+		historyPath: historyPath,
+		histIdx:     -1,
 	}
 	if hostname, err := os.Hostname(); err == nil {
 		m.hostname = hostname
@@ -137,12 +145,12 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "enter":
-			line := m.input
+			line := strings.TrimSpace(m.input)
 			if line == "" {
 				return m, nil
 			}
 
-			m.history = append(m.history, line)
+			m.history = recordReplHistory(m.historyPath, m.history, line)
 			m.histIdx = -1
 
 			prompt := promptStyle.Render("sylve> ")
@@ -168,23 +176,25 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "backspace":
 			if m.cursorPos > 0 {
-				m.input = m.input[:m.cursorPos-1] + m.input[m.cursorPos:]
-				m.cursorPos--
+				start := inputCursorBefore(m.input, m.cursorPos)
+				m.input = m.input[:start] + m.input[m.cursorPos:]
+				m.cursorPos = start
 			}
 
 		case "delete":
 			if m.cursorPos < len(m.input) {
-				m.input = m.input[:m.cursorPos] + m.input[m.cursorPos+1:]
+				end := inputCursorAfter(m.input, m.cursorPos)
+				m.input = m.input[:m.cursorPos] + m.input[end:]
 			}
 
 		case "left":
 			if m.cursorPos > 0 {
-				m.cursorPos--
+				m.cursorPos = inputCursorBefore(m.input, m.cursorPos)
 			}
 
 		case "right":
 			if m.cursorPos < len(m.input) {
-				m.cursorPos++
+				m.cursorPos = inputCursorAfter(m.input, m.cursorPos)
 			}
 
 		case "home":
@@ -235,12 +245,8 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		default:
-			if len(msg.String()) == 1 {
-				r := rune(msg.String()[0])
-				if r >= 32 && r <= 126 {
-					m.input = m.input[:m.cursorPos] + string(r) + m.input[m.cursorPos:]
-					m.cursorPos++
-				}
+			if !msg.Alt && (msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace) {
+				m.input, m.cursorPos = insertInputRunes(m.input, m.cursorPos, msg.Runes)
 			}
 		}
 
@@ -251,6 +257,51 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func insertInputRunes(input string, cursorPos int, runes []rune) (string, int) {
+	if cursorPos < 0 {
+		cursorPos = 0
+	}
+	if cursorPos > len(input) {
+		cursorPos = len(input)
+	}
+
+	var text strings.Builder
+	for _, r := range runes {
+		switch {
+		case unicode.IsSpace(r):
+			// The REPL accepts one command per prompt, so pasted line breaks stay inline.
+			text.WriteByte(' ')
+		case !unicode.IsControl(r):
+			text.WriteRune(r)
+		}
+	}
+
+	inserted := text.String()
+	return input[:cursorPos] + inserted + input[cursorPos:], cursorPos + len(inserted)
+}
+
+func inputCursorBefore(input string, cursorPos int) int {
+	if cursorPos <= 0 {
+		return 0
+	}
+	if cursorPos > len(input) {
+		cursorPos = len(input)
+	}
+	_, size := utf8.DecodeLastRuneInString(input[:cursorPos])
+	return cursorPos - size
+}
+
+func inputCursorAfter(input string, cursorPos int) int {
+	if cursorPos < 0 {
+		return 0
+	}
+	if cursorPos >= len(input) {
+		return len(input)
+	}
+	_, size := utf8.DecodeRuneInString(input[cursorPos:])
+	return cursorPos + size
 }
 
 func (m tuiModel) renderContent() string {
@@ -313,10 +364,11 @@ func renderInput(width int, input string, cursorPos int) string {
 	}
 
 	before := input[:cursorPos]
-	at := string(input[cursorPos])
-	after := input[cursorPos+1:]
+	_, size := utf8.DecodeRuneInString(input[cursorPos:])
+	at := input[cursorPos : cursorPos+size]
+	after := input[cursorPos+size:]
 
-	remaining := width - lipgloss.Width(prompt+before+after) - 1
+	remaining := width - lipgloss.Width(prompt+before+after) - lipgloss.Width(at)
 	if remaining < 0 {
 		remaining = 0
 	}

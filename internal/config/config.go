@@ -26,38 +26,21 @@ var ParsedConfig *internal.SylveConfig
 var ConfigPath string
 
 func ParseConfig(path string) *internal.SylveConfig {
+	cfg, err := ReadConfig(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dataPath, err := resolveDataPath(cfg.DataPath, filepath.Dir(path), false)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg.DataPath = dataPath
+
 	ConfigPath = path
-	file, err := os.Open(path)
+	ParsedConfig = cfg
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(file)
-
-	decoder := json.NewDecoder(file)
-	ParsedConfig = &internal.SylveConfig{
-		Auth: internal.AuthConfig{
-			EnablePAM: true,
-		},
-		ZFS: internal.ZFSConfig{
-			Tune: true,
-		},
-	}
-	err = decoder.Decode(ParsedConfig)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = SetupDataPath()
-
-	if err != nil {
+	if err := SetupDataPath(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -66,6 +49,38 @@ func ParseConfig(path string) *internal.SylveConfig {
 	}
 
 	return ParsedConfig
+}
+
+// ReadConfig decodes a Sylve configuration without mutating global state or
+// creating directories, which lets CLI clients discover a running daemon.
+func ReadConfig(path string) (*internal.SylveConfig, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open config: %w", err)
+	}
+	defer file.Close()
+
+	cfg := &internal.SylveConfig{
+		Auth: internal.AuthConfig{
+			EnablePAM: true,
+		},
+		ZFS: internal.ZFSConfig{
+			Tune: true,
+		},
+	}
+	if err := json.NewDecoder(file).Decode(cfg); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	return cfg, nil
+}
+
+// DataPathFromConfig resolves the configured data path without creating it.
+func DataPathFromConfig(path string) (string, error) {
+	cfg, err := ReadConfig(path)
+	if err != nil {
+		return "", err
+	}
+	return resolveDataPath(cfg.DataPath, filepath.Dir(path), false)
 }
 
 func IsPAMEnabled() bool {
@@ -98,11 +113,28 @@ func IsDevFSDisabled() bool {
 }
 
 func GetDataPath() (string, error) {
+	configuredPath := ""
+	if ParsedConfig != nil {
+		configuredPath = ParsedConfig.DataPath
+	}
+
+	dataPath, err := resolveDataPath(configuredPath, "", true)
+	if err != nil {
+		return "", err
+	}
+	if ParsedConfig != nil {
+		ParsedConfig.DataPath = dataPath
+	}
+	return dataPath, nil
+}
+
+func resolveDataPath(configuredPath, configDir string, create bool) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 
+	dataPath := ""
 	// Explicit override for testing/packaging.
 	if v, ok := os.LookupEnv("SYLVE_DATA_PATH"); ok {
 		v = strings.TrimSpace(v)
@@ -110,32 +142,32 @@ func GetDataPath() (string, error) {
 			if !filepath.IsAbs(v) {
 				v = filepath.Join(cwd, v)
 			}
-			if ParsedConfig != nil {
-				ParsedConfig.DataPath = v
-			}
-			if err := os.MkdirAll(v, 0755); err != nil {
-				return "", fmt.Errorf("failed to create data directory: %w", err)
-			}
-			return v, nil
+			dataPath = v
 		}
 	}
 
-	if ParsedConfig != nil && ParsedConfig.DataPath != "" {
-		return ParsedConfig.DataPath, nil
+	if dataPath == "" && strings.TrimSpace(configuredPath) != "" {
+		dataPath = strings.TrimSpace(configuredPath)
+		if !filepath.IsAbs(dataPath) {
+			if configDir == "" {
+				configDir = cwd
+			}
+			dataPath = filepath.Join(configDir, dataPath)
+		}
 	}
 
-	// The port must set this as the default, we will fall back to it if the config file doesn't specify a path
-	dataPath := filepath.Join(cwd, "data")
-	if runtime.GOOS == "freebsd" && os.Geteuid() == 0 {
-		dataPath = "/var/db/sylve"
+	if dataPath == "" {
+		// The port must set this as the default, we will fall back to it if the config file doesn't specify a path.
+		dataPath = filepath.Join(cwd, "data")
+		if runtime.GOOS == "freebsd" && os.Geteuid() == 0 {
+			dataPath = "/var/db/sylve"
+		}
 	}
 
-	if ParsedConfig != nil {
-		ParsedConfig.DataPath = dataPath
-	}
-
-	if err := os.MkdirAll(dataPath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create data directory: %w", err)
+	if create {
+		if err := os.MkdirAll(dataPath, 0755); err != nil {
+			return "", fmt.Errorf("failed to create data directory: %w", err)
+		}
 	}
 
 	return dataPath, nil

@@ -11,7 +11,6 @@ package libvirt
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -94,20 +93,21 @@ func (s *Service) ListVMs() ([]vmModels.VM, error) {
 		logger.L.Err(err).Msg("Error fetching domain states")
 	}
 
-	for _, vm := range vms {
-		idx := slices.IndexFunc(states, func(s libvirtServiceInterfaces.DomainState) bool {
-			return s.Domain == strconv.Itoa(int(vm.RID))
-		})
-
-		if idx == -1 {
-			vm.State = 0
-			continue
-		}
-
-		vm.State = states[idx].State
-	}
+	applyDomainStates(vms, states)
 
 	return vms, nil
+}
+
+func applyDomainStates(vms []vmModels.VM, states []libvirtServiceInterfaces.DomainState) {
+	for i := range vms {
+		vms[i].State = 0
+		for _, state := range states {
+			if state.Domain == strconv.Itoa(int(vms[i].RID)) {
+				vms[i].State = state.State
+				break
+			}
+		}
+	}
 }
 
 func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) {

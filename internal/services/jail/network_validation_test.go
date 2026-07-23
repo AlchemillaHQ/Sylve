@@ -10,7 +10,10 @@ package jail
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,6 +27,7 @@ import (
 type jailNetworkValidationFakeNetworkService struct {
 	entries        map[uint]string
 	syncEpairsCall int
+	syncEpairsErr  error
 }
 
 func (f *jailNetworkValidationFakeNetworkService) SyncStandardSwitches(_ *networkModels.StandardSwitch, _ string) error {
@@ -98,7 +102,7 @@ func (f *jailNetworkValidationFakeNetworkService) CreateEpair(_ string) error {
 
 func (f *jailNetworkValidationFakeNetworkService) SyncEpairs(_ bool) error {
 	f.syncEpairsCall++
-	return nil
+	return f.syncEpairsErr
 }
 
 func (f *jailNetworkValidationFakeNetworkService) DeleteEpair(_ string) error {
@@ -120,6 +124,71 @@ func (f *jailNetworkValidationFakeNetworkService) ReconcileManagedRoutes() error
 }
 
 func (f *jailNetworkValidationFakeNetworkService) RegisterOnJailObjectUpdateCallback(_ func(jailIDs []uint)) {
+}
+
+func TestSyncNetworkChecksEpairsBeforeMutatingJailFiles(t *testing.T) {
+	dataPath := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", dataPath)
+
+	conflict := errors.New("epair ownership conflict")
+	fakeNetwork := &jailNetworkValidationFakeNetworkService{
+		entries:       map[uint]string{},
+		syncEpairsErr: conflict,
+	}
+	svc := &Service{
+		DB:             testutil.NewSQLiteTestDB(t, &jailModels.Jail{}, &jailModels.Network{}),
+		NetworkService: fakeNetwork,
+	}
+
+	ctid := uint(9301)
+	mountPoint := t.TempDir()
+	rcConfPath := filepath.Join(mountPoint, "etc", "rc.conf")
+	if err := os.MkdirAll(filepath.Dir(rcConfPath), 0755); err != nil {
+		t.Fatalf("create jail etc directory: %v", err)
+	}
+	rcConf := "# Sylve Network Configuration\nifconfig_aaadx_net4b=\"DHCP\"\n"
+	if err := os.WriteFile(rcConfPath, []byte(rcConf), 0644); err != nil {
+		t.Fatalf("write rc.conf: %v", err)
+	}
+
+	jailConfigPath := filepath.Join(dataPath, "jails", fmt.Sprintf("%d", ctid), fmt.Sprintf("%d.conf", ctid))
+	jailConfig := fmt.Sprintf("aaadx {\n\tpath = \"%s\";\n\tvnet;\n}\n", mountPoint)
+	if err := os.MkdirAll(filepath.Dir(jailConfigPath), 0755); err != nil {
+		t.Fatalf("create jail config directory: %v", err)
+	}
+	if err := os.WriteFile(jailConfigPath, []byte(jailConfig), 0644); err != nil {
+		t.Fatalf("write jail config: %v", err)
+	}
+
+	err := svc.SyncNetwork(ctid, jailModels.Jail{
+		CTID: ctid,
+		Type: jailModels.JailTypeFreeBSD,
+		Networks: []jailModels.Network{{
+			ID:       4,
+			SwitchID: 1,
+		}},
+	})
+	if !errors.Is(err, conflict) {
+		t.Fatalf("SyncNetwork error = %v, want %v", err, conflict)
+	}
+	if fakeNetwork.syncEpairsCall != 1 {
+		t.Fatalf("SyncEpairs calls = %d, want 1", fakeNetwork.syncEpairsCall)
+	}
+
+	gotConfig, err := os.ReadFile(jailConfigPath)
+	if err != nil {
+		t.Fatalf("read jail config: %v", err)
+	}
+	if string(gotConfig) != jailConfig {
+		t.Fatalf("jail config changed before epair validation:\n%s", gotConfig)
+	}
+	gotRCConf, err := os.ReadFile(rcConfPath)
+	if err != nil {
+		t.Fatalf("read rc.conf: %v", err)
+	}
+	if string(gotRCConf) != rcConf {
+		t.Fatalf("rc.conf changed before epair validation:\n%s", gotRCConf)
+	}
 }
 
 func TestAddNetworkRejectsUnassignableIPv4CIDRBeforeSync(t *testing.T) {

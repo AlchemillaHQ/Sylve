@@ -111,6 +111,42 @@ func validateStandardSwitchManual(
 	return trimmed, nil
 }
 
+type standardSwitchAddressModes struct {
+	network4ID  uint
+	network6ID  uint
+	gateway4ID  uint
+	gateway6ID  uint
+	dhcp        bool
+	disableIPv6 bool
+	slaac       bool
+	manual      networkModels.StandardSwitchManualAddresses
+}
+
+func normalizeStandardSwitchAddressModes(modes standardSwitchAddressModes) standardSwitchAddressModes {
+	if modes.dhcp {
+		modes.network4ID = 0
+		modes.gateway4ID = 0
+		modes.manual.Network4 = ""
+		modes.manual.Gateway4 = ""
+	}
+
+	// A disabled IPv6 stack cannot use SLAAC, so it takes precedence when both are requested.
+	if modes.disableIPv6 {
+		modes.network6ID = 0
+		modes.gateway6ID = 0
+		modes.manual.Network6 = ""
+		modes.manual.Gateway6 = ""
+		modes.slaac = false
+	} else if modes.slaac {
+		modes.network6ID = 0
+		modes.gateway6ID = 0
+		modes.manual.Network6 = ""
+		modes.manual.Gateway6 = ""
+	}
+
+	return modes
+}
+
 func (s *Service) NewStandardSwitch(
 	name string,
 	mtu int,
@@ -145,6 +181,25 @@ func (s *Service) NewStandardSwitch(
 	if !utils.IsValidVLAN(vlan) && vlan != 0 {
 		return fmt.Errorf("invalid_vlan")
 	}
+
+	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
+		network4ID:  network4Id,
+		network6ID:  network6Id,
+		gateway4ID:  gateway4Id,
+		gateway6ID:  gateway6Id,
+		dhcp:        dhcp,
+		disableIPv6: disableIPv6,
+		slaac:       slaac,
+		manual:      manual,
+	})
+	network4Id = modes.network4ID
+	network6Id = modes.network6ID
+	gateway4Id = modes.gateway4ID
+	gateway6Id = modes.gateway6ID
+	dhcp = modes.dhcp
+	disableIPv6 = modes.disableIPv6
+	slaac = modes.slaac
+	manual = modes.manual
 
 	if conflicts, err := s.conflictingPortsForVLAN(ports, vlan, nil); err != nil {
 		return err
@@ -420,6 +475,25 @@ func (s *Service) EditStandardSwitch(
 	if !utils.IsValidVLAN(vlan) && vlan != 0 {
 		return fmt.Errorf("invalid_vlan")
 	}
+
+	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
+		network4ID:  network4Id,
+		network6ID:  network6Id,
+		gateway4ID:  gateway4Id,
+		gateway6ID:  gateway6Id,
+		dhcp:        dhcp,
+		disableIPv6: disableIPv6,
+		slaac:       slaac,
+		manual:      manual,
+	})
+	network4Id = modes.network4ID
+	network6Id = modes.network6ID
+	gateway4Id = modes.gateway4ID
+	gateway6Id = modes.gateway6ID
+	dhcp = modes.dhcp
+	disableIPv6 = modes.disableIPv6
+	slaac = modes.slaac
+	manual = modes.manual
 
 	if conflicts, err := s.conflictingPortsForVLAN(ports, vlan, &id); err != nil {
 		return err

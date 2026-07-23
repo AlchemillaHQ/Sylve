@@ -232,7 +232,9 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 	var jails []jailModels.Jail
 
-	if err := s.DB.Model(&jailModels.Jail{}).Select("id, name, ct_id").Find(&jails).Error; err != nil {
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Select("id, name, ct_id, resource_limits, cores, memory").
+		Find(&jails).Error; err != nil {
 		logger.L.Error().Err(err).Msg("get_jails_simple: failed to fetch jails")
 		return nil, fmt.Errorf("failed_to_fetch_jails_simple: %w", err)
 	}
@@ -259,12 +261,7 @@ func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 			}
 		}
 
-		list = append(list, jailServiceInterfaces.SimpleList{
-			ID:    jail.ID,
-			Name:  jail.Name,
-			CTID:  jail.CTID,
-			State: state,
-		})
+		list = append(list, simpleJailListItem(jail, state))
 	}
 
 	return list, nil
@@ -279,7 +276,7 @@ func (s *Service) GetSimpleJail(identifier int, byCTID bool) (jailServiceInterfa
 
 	query := s.DB.
 		Model(&jailModels.Jail{}).
-		Select("id", "name", "ct_id")
+		Select("id", "name", "ct_id", "resource_limits", "cores", "memory")
 
 	if byCTID {
 		query = query.Where("ct_id = ?", identifier)
@@ -298,14 +295,19 @@ func (s *Service) GetSimpleJail(identifier int, byCTID bool) (jailServiceInterfa
 		state.State = "UNKNOWN"
 	}
 
-	simple := jailServiceInterfaces.SimpleList{
-		ID:    jail.ID,
-		CTID:  jail.CTID,
-		Name:  jail.Name,
-		State: state.State,
-	}
+	return simpleJailListItem(jail, state.State), nil
+}
 
-	return simple, nil
+func simpleJailListItem(jail jailModels.Jail, state string) jailServiceInterfaces.SimpleList {
+	return jailServiceInterfaces.SimpleList{
+		ID:             jail.ID,
+		CTID:           jail.CTID,
+		Name:           jail.Name,
+		State:          state,
+		ResourceLimits: jail.ResourceLimits,
+		Cores:          jail.Cores,
+		Memory:         jail.Memory,
+	}
 }
 
 func (s *Service) GetJailType(ctId uint) (jailModels.JailType, error) {
@@ -364,6 +366,9 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 
 	if data.Type != jailModels.JailTypeFreeBSD && data.Type != jailModels.JailTypeLinux {
 		return fmt.Errorf("invalid_jail_type")
+	}
+	if data.ResourceLimits != nil && *data.ResourceLimits && (data.Cores == nil || data.Memory == nil) {
+		return fmt.Errorf("resource_limits_require_cores_and_memory")
 	}
 
 	pools, err := s.System.GetUsablePools(ctx)
@@ -626,6 +631,7 @@ type jailDeletePlan struct {
 	ctID         uint
 	rootDatasets []string
 	macIDs       []uint
+	epairNames   []string
 }
 
 type jailDeleteRuntime struct {
@@ -1495,6 +1501,10 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 
 	// Logging & env
 	cfg += fmt.Sprintf("\texec.consolelog += \"%s\";\n", logPath)
+	if data.Type == jailModels.JailTypeFreeBSD {
+		cfg += "\texec.start = \"/bin/sh /etc/rc\";\n"
+		cfg += "\texec.stop = \"/bin/sh /etc/rc.shutdown\";\n"
+	}
 	if data.CleanEnvironment {
 		cfg += "\texec.clean;\n"
 	}
@@ -1728,6 +1738,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	var jail jailModels.Jail
 
 	jail.Name = data.Name
+	jail.Hostname = data.Hostname
 	jail.CTID = ctid
 	jail.Description = data.Description
 	jail.StartAtBoot = data.StartAtBoot
@@ -2156,6 +2167,18 @@ func (s *Service) loadJailDeletePlan(ctx context.Context, ctID uint) (jailDelete
 	plan.macIDs = uniqueUintValues(plan.macIDs)
 	sort.Slice(plan.macIDs, func(i, j int) bool { return plan.macIDs[i] < plan.macIDs[j] })
 
+	var networkIDs []uint
+	if err := db.Model(&jailModels.Network{}).
+		Where("jid = ? AND switch_id > 0", jail.ID).
+		Order("id").
+		Pluck("id", &networkIDs).Error; err != nil {
+		return plan, fmt.Errorf("failed_to_collect_jail_network_ids_for_delete: %w", err)
+	}
+	ctidHash := utils.HashIntToNLetters(int(ctID), 5)
+	for _, networkID := range networkIDs {
+		plan.epairNames = append(plan.epairNames, fmt.Sprintf("%s_net%d", ctidHash, networkID))
+	}
+
 	return plan, nil
 }
 
@@ -2391,6 +2414,18 @@ func (s *Service) deleteJailWithRuntimeOptions(
 		}
 		if running {
 			return fmt.Errorf("jail_became_active_before_delete")
+		}
+		if s.NetworkService != nil {
+			for _, epairName := range plan.epairNames {
+				if err := s.NetworkService.DeleteEpair(epairName); err != nil && !strings.Contains(err.Error(), "not found") {
+					appendJailDeleteWarning(
+						&result,
+						ctID,
+						fmt.Sprintf("epair_cleanup_incomplete: epair=%s", epairName),
+						err,
+					)
+				}
+			}
 		}
 
 		if err := runtime.removeConfig(jailDir); err != nil {

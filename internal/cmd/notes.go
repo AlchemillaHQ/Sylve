@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
-	sylvecli "github.com/alchemillahq/sylve/internal/cli"
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/urfave/cli/v3"
 )
 
@@ -23,16 +22,9 @@ func newNotesCommand() *cli.Command {
 				Usage: "List all notes",
 				Flags: []cli.Flag{jsonFlag},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cmdStr := "notes list"
-					if cmd.Bool("json") {
-						cmdStr += " --json"
-					}
-					output, err := sylvecli.ExecuteCommand(cmdStr)
-					if err != nil {
-						return err
-					}
-					fmt.Print(output)
-					return nil
+					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteList, consoleprotocol.NoteListPayload{
+						JSON: cmd.Bool("json"),
+					}, cmd.Bool("json"))
 				},
 			},
 			{
@@ -54,16 +46,11 @@ func newNotesCommand() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cmdStr := fmt.Sprintf("notes add %s %s", cmd.String("title"), cmd.String("content"))
-					if cmd.Bool("json") {
-						cmdStr += " --json"
-					}
-					output, err := sylvecli.ExecuteCommand(cmdStr)
-					if err != nil {
-						return err
-					}
-					fmt.Print(output)
-					return nil
+					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteAdd, consoleprotocol.NoteAddPayload{
+						Title:   cmd.String("title"),
+						Content: cmd.String("content"),
+						JSON:    cmd.Bool("json"),
+					}, cmd.Bool("json"))
 				},
 			},
 			{
@@ -73,21 +60,19 @@ func newNotesCommand() *cli.Command {
 					jsonFlag,
 					&cli.IntFlag{
 						Name:     "id",
-						Usage:    "Note ID",
+						Usage:    "Note ID (greater than zero)",
 						Required: true,
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cmdStr := fmt.Sprintf("notes get %d", cmd.Int("id"))
-					if cmd.Bool("json") {
-						cmdStr += " --json"
-					}
-					output, err := sylvecli.ExecuteCommand(cmdStr)
+					id, err := commandPositiveUint(cmd, "id")
 					if err != nil {
 						return err
 					}
-					fmt.Print(output)
-					return nil
+					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteGet, consoleprotocol.NoteGetPayload{
+						ID:   id,
+						JSON: cmd.Bool("json"),
+					}, cmd.Bool("json"))
 				},
 			},
 			{
@@ -97,21 +82,19 @@ func newNotesCommand() *cli.Command {
 					jsonFlag,
 					&cli.IntFlag{
 						Name:     "id",
-						Usage:    "Note ID",
+						Usage:    "Note ID (greater than zero)",
 						Required: true,
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cmdStr := fmt.Sprintf("notes delete %d", cmd.Int("id"))
-					if cmd.Bool("json") {
-						cmdStr += " --json"
-					}
-					output, err := sylvecli.ExecuteCommand(cmdStr)
+					id, err := commandPositiveUint(cmd, "id")
 					if err != nil {
 						return err
 					}
-					fmt.Print(output)
-					return nil
+					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteDelete, consoleprotocol.NoteDeletePayload{
+						ID:   id,
+						JSON: cmd.Bool("json"),
+					}, cmd.Bool("json"))
 				},
 			},
 		},

@@ -83,6 +83,54 @@ func TestNormalizeIPv6GatewayForRouteKeepsGlobalAddressUnchanged(t *testing.T) {
 	}
 }
 
+func TestNormalizeStandardSwitchAddressModes(t *testing.T) {
+	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
+		network4ID:  1,
+		network6ID:  2,
+		gateway4ID:  3,
+		gateway6ID:  4,
+		dhcp:        true,
+		disableIPv6: true,
+		slaac:       true,
+		manual: networkModels.StandardSwitchManualAddresses{
+			Network4: "192.0.2.1/24",
+			Gateway4: "192.0.2.254",
+			Network6: "2001:db8::1/64",
+			Gateway6: "2001:db8::fe",
+		},
+	})
+
+	if modes.network4ID != 0 || modes.gateway4ID != 0 || modes.manual.Network4 != "" || modes.manual.Gateway4 != "" {
+		t.Fatalf("DHCP normalization = %#v", modes)
+	}
+	if modes.network6ID != 0 || modes.gateway6ID != 0 || modes.manual.Network6 != "" || modes.manual.Gateway6 != "" || modes.slaac {
+		t.Fatalf("disabled IPv6 normalization = %#v", modes)
+	}
+}
+
+func TestNormalizeStandardSwitchAddressModesSLAACClearsIPv6Only(t *testing.T) {
+	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
+		network4ID: 1,
+		network6ID: 2,
+		gateway4ID: 3,
+		gateway6ID: 4,
+		slaac:      true,
+		manual: networkModels.StandardSwitchManualAddresses{
+			Network4: "192.0.2.1/24",
+			Gateway4: "192.0.2.254",
+			Network6: "2001:db8::1/64",
+			Gateway6: "2001:db8::fe",
+		},
+	})
+
+	if modes.network4ID != 1 || modes.gateway4ID != 3 || modes.manual.Network4 == "" || modes.manual.Gateway4 == "" {
+		t.Fatalf("SLAAC unexpectedly changed IPv4 state: %#v", modes)
+	}
+	if modes.network6ID != 0 || modes.gateway6ID != 0 || modes.manual.Network6 != "" || modes.manual.Gateway6 != "" || !modes.slaac {
+		t.Fatalf("SLAAC normalization = %#v", modes)
+	}
+}
+
 func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 	svc, _ := newNetworkServiceForTest(t,
 		&networkModels.ManualSwitch{},
@@ -1257,12 +1305,12 @@ func TestEditStandardBridgeReplacesIPv6WhenNetworkChanges(t *testing.T) {
 
 func TestValidateStandardSwitchManual(t *testing.T) {
 	tests := []struct {
-		name                                       string
-		net4Id, gw4Id, net6Id, gw6Id               uint
-		manual                                     networkModels.StandardSwitchManualAddresses
-		wantErr                                    string
-		wantNetwork4, wantGateway4                 string
-		wantNetwork6, wantGateway6                 string
+		name                         string
+		net4Id, gw4Id, net6Id, gw6Id uint
+		manual                       networkModels.StandardSwitchManualAddresses
+		wantErr                      string
+		wantNetwork4, wantGateway4   string
+		wantNetwork6, wantGateway6   string
 	}{
 		{
 			name:         "valid manual values are trimmed and returned",

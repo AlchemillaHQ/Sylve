@@ -9,8 +9,11 @@
 package repl
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"github.com/alchemillahq/sylve/internal/logger"
 )
@@ -20,12 +23,24 @@ type cmdHelp struct {
 	Desc string
 }
 
+func parsePositiveUint(value string) (uint, error) {
+	parsed, err := strconv.ParseUint(value, 10, strconv.IntSize)
+	if err != nil || parsed == 0 || parsed > uint64(^uint(0)>>1) {
+		return 0, fmt.Errorf("invalid_positive_integer")
+	}
+	return uint(parsed), nil
+}
+
 var commands = []cmdHelp{
 	{"help", "Show this help message"},
 	{"ping", "Check server connectivity"},
 	{"notes", "Manage notes"},
 	{"jails", "Manage jails"},
 	{"vms", "Manage virtual machines"},
+	{"tasks", "Inspect lifecycle tasks"},
+	{"switches", "Manage network switches"},
+	{"objects", "Manage network objects"},
+	{"downloads", "Manage downloads"},
 	{"quit/exit", "Exit console session"},
 	{"shutdown", "Shutdown Sylve"},
 }
@@ -36,7 +51,11 @@ func ExecuteLine(ctx *Context, line string) bool {
 		return true
 	}
 
-	parts := strings.Fields(line)
+	parts, err := splitCommandLine(line)
+	if err != nil {
+		println(ctx, styledErrorf("Invalid command: %v", err))
+		return true
+	}
 	if len(parts) == 0 {
 		return true
 	}
@@ -53,6 +72,18 @@ func ExecuteLine(ctx *Context, line string) bool {
 
 	case "vms":
 		handleVms(ctx, args)
+
+	case "tasks":
+		handleTasks(ctx, args)
+
+	case "switches":
+		handleSwitches(ctx, args)
+
+	case "objects":
+		handleObjects(ctx, args)
+
+	case "downloads":
+		handleDownloads(ctx, args)
 
 	case "help":
 		printHelp(ctx)
@@ -75,6 +106,68 @@ func ExecuteLine(ctx *Context, line string) bool {
 	}
 
 	return true
+}
+
+// splitCommandLine supports quoting and escaping without invoking a shell.
+func splitCommandLine(line string) ([]string, error) {
+	var args []string
+	var token strings.Builder
+	var quote rune
+	escaped := false
+	tokenStarted := false
+
+	appendToken := func() {
+		if tokenStarted {
+			args = append(args, token.String())
+			token.Reset()
+			tokenStarted = false
+		}
+	}
+
+	for _, r := range line {
+		if escaped {
+			token.WriteRune(r)
+			tokenStarted = true
+			escaped = false
+			continue
+		}
+
+		if quote != 0 {
+			switch {
+			case r == quote:
+				quote = 0
+			case quote == '"' && r == '\\':
+				escaped = true
+			default:
+				token.WriteRune(r)
+			}
+			continue
+		}
+
+		switch {
+		case r == '\\':
+			escaped = true
+			tokenStarted = true
+		case r == '\'' || r == '"':
+			quote = r
+			tokenStarted = true
+		case unicode.IsSpace(r):
+			appendToken()
+		default:
+			token.WriteRune(r)
+			tokenStarted = true
+		}
+	}
+
+	if escaped {
+		return nil, fmt.Errorf("unterminated escape")
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated quote")
+	}
+
+	appendToken()
+	return args, nil
 }
 
 func printHelp(ctx *Context) {

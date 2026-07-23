@@ -11,11 +11,14 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/urfave/cli/v3"
 )
 
@@ -45,11 +48,11 @@ func TestNewRootCommand_Flags_Defaults(t *testing.T) {
 	var configPath string
 	var console bool
 
-	root := NewRootCommand(func(ctx context.Context, c *cli.Command) error {
+	root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
 		configPath = c.String("config")
 		console = c.Bool("console")
 		return nil
-	})
+	}, func() bool { return true })
 
 	if err := root.Run(context.Background(), []string{"sylve"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -66,10 +69,10 @@ func TestNewRootCommand_Flags_Defaults(t *testing.T) {
 func TestNewRootCommand_Flags_Config(t *testing.T) {
 	var configPath string
 
-	root := NewRootCommand(func(ctx context.Context, c *cli.Command) error {
+	root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
 		configPath = c.String("config")
 		return nil
-	})
+	}, func() bool { return true })
 
 	if err := root.Run(context.Background(), []string{"sylve", "--config", "/tmp/test.json"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -83,10 +86,10 @@ func TestNewRootCommand_Flags_Config(t *testing.T) {
 func TestNewRootCommand_Flags_Console(t *testing.T) {
 	var console bool
 
-	root := NewRootCommand(func(ctx context.Context, c *cli.Command) error {
+	root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
 		console = c.Bool("console")
 		return nil
-	})
+	}, func() bool { return true })
 
 	if err := root.Run(context.Background(), []string{"sylve", "--console"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -97,17 +100,128 @@ func TestNewRootCommand_Flags_Console(t *testing.T) {
 	}
 }
 
-func TestNewRootCommand_Subcommand_Notes(t *testing.T) {
+func TestNewRootCommand_Subcommands(t *testing.T) {
 	root := NewRootCommand(nil)
-	found := false
+	want := map[string]bool{
+		"notes":     false,
+		"jails":     false,
+		"vms":       false,
+		"tasks":     false,
+		"switches":  false,
+		"objects":   false,
+		"downloads": false,
+	}
 	for _, sub := range root.Commands {
-		if sub.Name == "notes" {
-			found = true
-			break
+		if _, ok := want[sub.Name]; ok {
+			want[sub.Name] = true
 		}
 	}
-	if !found {
-		t.Fatal("expected notes subcommand")
+	for name, found := range want {
+		if !found {
+			t.Fatalf("expected %s subcommand", name)
+		}
+	}
+}
+
+func TestNewRootCommandRequiresRootForActions(t *testing.T) {
+	testCases := [][]string{
+		{"sylve"},
+		{"sylve", "--console"},
+		{"sylve", "notes", "list"},
+		{"sylve", "jails", "console"},
+	}
+
+	for _, args := range testCases {
+		name := "root"
+		if len(args) > 1 {
+			name = strings.Join(args[1:], " ")
+		}
+		t.Run(name, func(t *testing.T) {
+			called := false
+			root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
+				called = true
+				return nil
+			}, func() bool { return false })
+
+			err := root.Run(context.Background(), args)
+			if err == nil || err.Error() != "root privileges required" {
+				t.Fatalf("expected root error, got %v", err)
+			}
+			if called {
+				t.Fatal("expected action not to run without root privileges")
+			}
+		})
+	}
+}
+
+func TestConsoleSocketPathUsesConfiguredDataPath(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", "")
+	configDir := t.TempDir()
+	dataPath := filepath.Join(configDir, "data")
+	configPath := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"dataPath":"`+dataPath+`"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	got, err := consoleSocketPath(configPath)
+	if err != nil {
+		t.Fatalf("resolve socket path: %v", err)
+	}
+	want := consoleprotocol.SocketPath(dataPath)
+	if got != want {
+		t.Fatalf("socket path = %q, want %q", got, want)
+	}
+}
+
+func TestDirectCLIUsesConfiguredSocketPath(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", "")
+	configDir := t.TempDir()
+	dataPath := filepath.Join(configDir, "data")
+	configPath := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"dataPath":"`+dataPath+`"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	socketPath := consoleprotocol.SocketPath(dataPath)
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0o700); err != nil {
+		t.Fatalf("create socket directory: %v", err)
+	}
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan consoleprotocol.Request, 1)
+	serverErr := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer conn.Close()
+
+		var request consoleprotocol.Request
+		if err := json.NewDecoder(conn).Decode(&request); err != nil {
+			serverErr <- err
+			return
+		}
+		requests <- request
+		serverErr <- json.NewEncoder(conn).Encode(consoleprotocol.Response{Output: "ok\n"})
+	}()
+
+	root := newRootCommand(nil, func() bool { return true })
+	if err := root.Run(context.Background(), []string{"sylve", "--config", configPath, "downloads", "list"}); err != nil {
+		t.Fatalf("run downloads list: %v", err)
+	}
+
+	request := <-requests
+	if request.Operation != consoleprotocol.OperationDownloadList {
+		t.Fatalf("operation = %q, want %q", request.Operation, consoleprotocol.OperationDownloadList)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("serve response: %v", err)
 	}
 }
 

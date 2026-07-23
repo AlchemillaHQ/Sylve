@@ -527,6 +527,11 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 	if err != nil {
 		return err
 	}
+	if !jail.InheritIPv4 && !jail.InheritIPv6 && len(jail.Networks) > 0 {
+		if err := s.NetworkService.SyncEpairs(false); err != nil {
+			return err
+		}
+	}
 
 	lines := strings.Split(cfg, "\n")
 	for i := 0; i < len(lines); i++ {
@@ -602,10 +607,6 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 		if len(jail.Networks) > 0 {
 			ctidHash := s.GetCTIDHash(ctId)
 			managedPostStartPath, managedPostStartPathErr := s.GetHookScriptPath(ctId, "post-start")
-
-			if err := s.NetworkService.SyncEpairs(false); err != nil {
-				return err
-			}
 
 			if jail.Type == jailModels.JailTypeLinux {
 				filtered := make([]string, 0, len(lines))

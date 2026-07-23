@@ -6,7 +6,7 @@
 // of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
 // under sponsorship from the FreeBSD Foundation.
 
-package cli
+package console
 
 import (
 	"encoding/json"
@@ -17,25 +17,25 @@ import (
 	"syscall"
 )
 
-const ConsoleSocketPath = "/var/run/sylve-console.sock"
-
-type socketRequest struct {
-	Command string `json:"command"`
+// ExecuteOperation sends a typed console operation to the running Sylve daemon.
+// Operation failures are returned as real errors.
+func ExecuteOperation(socketPath, operation string, payload any) (string, error) {
+	return executeOperation(socketPath, operation, payload)
 }
 
-type socketResponse struct {
-	Output string `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
+func executeOperation(socketPath, operation string, payload any) (string, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode %s request: %w", operation, err)
+	}
+
+	return executeRequest(socketPath, Request{
+		Operation: operation,
+		Payload:   encoded,
+	})
 }
 
-// ExecuteCommand sends a command to the running sylve daemon via its Unix socket
-// and returns the formatted output. If the daemon is not running, returns an
-// error with a helpful message.
-func ExecuteCommand(command string) (string, error) {
-	return executeCommand(ConsoleSocketPath, command)
-}
-
-func executeCommand(socketPath, command string) (string, error) {
+func executeRequest(socketPath string, request Request) (string, error) {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		if isSocketUnavailable(err) {
@@ -48,11 +48,11 @@ func executeCommand(socketPath, command string) (string, error) {
 	enc := json.NewEncoder(conn)
 	dec := json.NewDecoder(conn)
 
-	if err := enc.Encode(socketRequest{Command: command}); err != nil {
+	if err := enc.Encode(request); err != nil {
 		return "", fmt.Errorf("send command: %w", err)
 	}
 
-	var resp socketResponse
+	var resp Response
 	if err := dec.Decode(&resp); err != nil {
 		return "", fmt.Errorf("read response: %w", err)
 	}

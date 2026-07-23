@@ -132,39 +132,6 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			*request.SLAAC = false
 		}
 
-		if *request.DHCP == true {
-			request.Network4 = new(uint)
-			*request.Network4 = 0
-
-			request.Gateway4 = new(uint)
-			*request.Gateway4 = 0
-		}
-
-		if *request.DisableIPv6 == true {
-			request.Network6 = new(uint)
-			*request.Network6 = 0
-
-			request.Gateway6 = new(uint)
-			*request.Gateway6 = 0
-
-			request.SLAAC = new(bool)
-			*request.SLAAC = false
-		}
-
-		if *request.SLAAC == true {
-			request.Network6 = new(uint)
-			*request.Network6 = 0
-
-			request.Gateway6 = new(uint)
-			*request.Gateway6 = 0
-
-			if request.DisableIPv6 == nil {
-				request.DisableIPv6 = new(bool)
-			}
-
-			*request.DisableIPv6 = false
-		}
-
 		var network4, gateway4, network6, gateway6 uint
 
 		if request.Network4 != nil {
@@ -209,15 +176,6 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 		}
 		if request.Gateway6Manual != nil {
 			manual.Gateway6 = *request.Gateway6Manual
-		}
-
-		if *request.DHCP {
-			manual.Network4 = ""
-			manual.Gateway4 = ""
-		}
-		if *request.DisableIPv6 || *request.SLAAC {
-			manual.Network6 = ""
-			manual.Gateway6 = ""
 		}
 
 		err := networkService.NewStandardSwitch(request.Name,
@@ -367,34 +325,6 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			*request.SLAAC = false
 		}
 
-		if *request.SLAAC == true {
-			request.Network6 = new(uint)
-			*request.Network6 = 0
-
-			request.Gateway6 = new(uint)
-			*request.Gateway6 = 0
-
-			if request.DisableIPv6 == nil {
-				request.DisableIPv6 = new(bool)
-			}
-
-			*request.DisableIPv6 = false
-		}
-
-		if *request.DisableIPv6 == true {
-			request.Network6 = new(uint)
-			*request.Network6 = 0
-
-			request.Gateway6 = new(uint)
-			*request.Gateway6 = 0
-
-			if request.SLAAC == nil {
-				request.SLAAC = new(bool)
-			}
-
-			*request.SLAAC = false
-		}
-
 		var network4, gateway4, network6, gateway6 uint
 
 		if request.Network4 != nil {
@@ -439,15 +369,6 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 		}
 		if request.Gateway6Manual != nil {
 			manual.Gateway6 = *request.Gateway6Manual
-		}
-
-		if *request.DHCP {
-			manual.Network4 = ""
-			manual.Gateway4 = ""
-		}
-		if *request.DisableIPv6 || *request.SLAAC {
-			manual.Network6 = ""
-			manual.Gateway6 = ""
 		}
 
 		err := networkService.EditStandardSwitch(

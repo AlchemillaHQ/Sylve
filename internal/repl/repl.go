@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -20,8 +21,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/network"
 )
 
-const replHistoryFile = "/tmp/sylve.repl.history"
-
 type Context struct {
 	Auth           *auth.Service
 	Info           *info.Service
@@ -29,6 +28,8 @@ type Context struct {
 	VirtualMachine *libvirt.Service
 	Lifecycle      *lifecycle.Service
 	Network        *network.Service
+	Utilities      utilitiesServiceInterfaces.UtilitiesServiceInterface
+	HistoryPath    string
 	QuitChan       chan os.Signal
 	Out            io.Writer
 }

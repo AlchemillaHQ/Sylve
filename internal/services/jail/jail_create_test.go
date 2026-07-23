@@ -394,6 +394,33 @@ func jailCreateRequest(ctid uint, pool string, baseUUID string) jailServiceInter
 	}
 }
 
+func TestCreateJailConfigStartsAndStopsFreeBSDRC(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	mountPoint := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(mountPoint, "etc"), 0755); err != nil {
+		t.Fatalf("create test jail etc directory: %v", err)
+	}
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	service := &Service{DB: db, ctidHashByCTID: make(map[uint]string)}
+
+	config, err := service.CreateJailConfig(jailModels.Jail{
+		CTID: 701,
+		Name: "config-lifecycle",
+		Type: jailModels.JailTypeFreeBSD,
+	}, mountPoint, "")
+	if err != nil {
+		t.Fatalf("CreateJailConfig: %v", err)
+	}
+	for _, expected := range []string{
+		"exec.start = \"/bin/sh /etc/rc\";",
+		"exec.stop = \"/bin/sh /etc/rc.shutdown\";",
+	} {
+		if !strings.Contains(config, expected) {
+			t.Fatalf("jail config missing %q:\n%s", expected, config)
+		}
+	}
+}
+
 func assertModelCount(t *testing.T, db *gorm.DB, model any, want int64, query string, args ...any) {
 	t.Helper()
 
@@ -465,6 +492,32 @@ func TestValidateCreate_FailsWhenStaleCTIDDatasetExists(t *testing.T) {
 	err := svc.ValidateCreate(context.Background(), req)
 	if err == nil || !strings.Contains(err.Error(), "jail_create_stale_artifacts_detected") {
 		t.Fatalf("expected stale artifact error, got %v", err)
+	}
+}
+
+func TestValidateCreate_RequiresCoresAndMemoryWhenResourceLimitsEnabled(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&utilitiesModels.Downloads{},
+	)
+
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, "tank")
+
+	baseDir := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("failed to create base directory: %v", err)
+	}
+	seedBaseDownload(t, db, "base-resource-limits", baseDir)
+
+	req := jailCreateRequest(703, "tank", "base-resource-limits")
+	enabled := true
+	req.ResourceLimits = &enabled
+
+	err := svc.ValidateCreate(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "resource_limits_require_cores_and_memory") {
+		t.Fatalf("expected resource limits validation error, got %v", err)
 	}
 }
 
@@ -572,10 +625,12 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 
 	const ctid uint = 770
 	const resolvConf = "nameserver 1.1.1.1\nnameserver 1.0.0.1\n"
+	const hostname = "linux-jail.example.test"
 
 	req := jailCreateRequest(ctid, poolDir, "base-linux-resolv")
 	req.Type = jailModels.JailTypeLinux
 	req.ResolvConf = resolvConf
+	req.Hostname = hostname
 
 	if err := svc.CreateJail(context.Background(), req); err != nil {
 		t.Fatalf("expected linux jail create to succeed, got %v", err)
@@ -587,6 +642,9 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 	}
 	if created.ResolvConf != resolvConf {
 		t.Fatalf("expected resolv_conf %q, got %q", resolvConf, created.ResolvConf)
+	}
+	if created.Hostname != hostname {
+		t.Fatalf("expected hostname %q, got %q", hostname, created.Hostname)
 	}
 
 	resolvPath := filepath.Join(poolDir, "sylve", "jails", fmt.Sprintf("%d", ctid), "etc", "resolv.conf")

@@ -8,9 +8,14 @@
 
 package networkServiceInterfaces
 
-import "context"
+import (
+	"context"
+	"errors"
 
-import networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+)
+
+var ErrEpairOwnershipConflict = errors.New("epair ownership conflict")
 
 type NetworkServiceInterface interface {
 	SyncStandardSwitches(previous *networkModels.StandardSwitch, action string) error

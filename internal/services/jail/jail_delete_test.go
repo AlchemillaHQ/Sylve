@@ -23,6 +23,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -135,6 +136,17 @@ func inactiveJailDeleteRuntime() jailDeleteRuntime {
 	}
 }
 
+type jailDeleteNetworkService struct {
+	jailNetworkValidationFakeNetworkService
+	deletedEpairs []string
+	deleteErr     error
+}
+
+func (s *jailDeleteNetworkService) DeleteEpair(name string) error {
+	s.deletedEpairs = append(s.deletedEpairs, name)
+	return s.deleteErr
+}
+
 func countJailDeleteRows(t *testing.T, db *gorm.DB, model any, query string, args ...any) int64 {
 	t.Helper()
 	var count int64
@@ -203,6 +215,53 @@ func TestDeleteJailRetainsRootAndDeletesMinimalDatabaseGraph(t *testing.T) {
 	if count := countJailDeleteRows(t, db, &networkModels.Object{}, "id = ?", macID); count != 1 {
 		t.Fatalf("MAC object should be retained when deleteMacs=false, got count %d", count)
 	}
+}
+
+func TestDeleteJailCleansRecordedEpairsBeforeRemovingNetworks(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := newJailDeleteTestDB(t)
+	const ctID uint = 642
+	jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+	var networkIDs []uint
+	if err := db.Model(&jailModels.Network{}).Where("jid = ?", jailID).Pluck("id", &networkIDs).Error; err != nil {
+		t.Fatalf("load seeded jail network: %v", err)
+	}
+	if len(networkIDs) != 1 {
+		t.Fatalf("seeded jail network IDs = %v, want one ID", networkIDs)
+	}
+	network := &jailDeleteNetworkService{}
+	service := &Service{DB: db, NetworkService: network}
+
+	result, err := service.deleteJailWithRuntime(t.Context(), ctID, false, false, inactiveJailDeleteRuntime())
+	if err != nil {
+		t.Fatalf("delete jail: %v", err)
+	}
+	wantEpair := fmt.Sprintf("%s_net%d", utils.HashIntToNLetters(int(ctID), 5), networkIDs[0])
+	if fmt.Sprint(network.deletedEpairs) != fmt.Sprint([]string{wantEpair}) {
+		t.Fatalf("deleted epairs = %v, want [%s]", network.deletedEpairs, wantEpair)
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", result.Warnings)
+	}
+	assertJailDeleteGraphAbsent(t, db, jailID, ctID)
+}
+
+func TestDeleteJailReportsEpairCleanupRefusalAndRemovesIdentity(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := newJailDeleteTestDB(t)
+	const ctID uint = 643
+	jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+	network := &jailDeleteNetworkService{deleteErr: errors.New("refusing to delete unmanaged epair")}
+	service := &Service{DB: db, NetworkService: network}
+
+	result, err := service.deleteJailWithRuntime(t.Context(), ctID, false, false, inactiveJailDeleteRuntime())
+	if err != nil {
+		t.Fatalf("delete jail: %v", err)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "epair_cleanup_incomplete") {
+		t.Fatalf("warnings = %v, want epair cleanup warning", result.Warnings)
+	}
+	assertJailDeleteGraphAbsent(t, db, jailID, ctID)
 }
 
 func TestDeleteJailRuntimeFailuresKeepIdentityAndSkipStorageCleanup(t *testing.T) {

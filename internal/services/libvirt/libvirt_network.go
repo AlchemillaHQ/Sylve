@@ -58,6 +58,14 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 		return err
 	}
 
+	var vm vmModels.VM
+	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
+		return fmt.Errorf("failed_to_find_vm: %w", err)
+	}
+	if network.VMID != vm.ID {
+		return fmt.Errorf("network_not_found")
+	}
+
 	var mac string
 
 	if network.AddressObj == nil || len(network.AddressObj.Entries) == 0 {
@@ -179,11 +187,14 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 	}
 
 	var vm *vmModels.VM
-	for _, v := range vms {
-		if v.RID == req.RID {
-			vm = &v
+	for i := range vms {
+		if vms[i].RID == req.RID {
+			vm = &vms[i]
 			break
 		}
+	}
+	if vm == nil {
+		return fmt.Errorf("vm_not_found")
 	}
 
 	var sw any
