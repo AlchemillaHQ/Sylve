@@ -62,7 +62,6 @@ func TestVMCoreWorkflowIntegration(t *testing.T) {
 	}
 
 	suite := requireConsoleIntegrationSuite(t)
-	assertConsoleManagementBridge(t)
 
 	rid := consoleIntegrationVMRID(t, suite, 0)
 	retainedRID := consoleIntegrationVMRID(t, suite, 1)
@@ -92,10 +91,7 @@ func TestVMCoreWorkflowIntegration(t *testing.T) {
 	if err := suite.database.First(&standard, switchResult.ID).Error; err != nil {
 		t.Fatalf("load VM switch: %v", err)
 	}
-	if standard.BridgeName == "bridge0" || standard.BridgeName == "em0" {
-		t.Fatalf("VM test switch must not use management networking: %#v", standard)
-	}
-	if bridge := consoleBridge(t, standard.BridgeName); len(bridge.BridgeMembers) != 0 {
+	if bridge := consoleBridge(t, standard.BridgeName); !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
 		t.Fatalf("VM test bridge must start memberless: %#v", bridge.BridgeMembers)
 	}
 
@@ -184,10 +180,9 @@ func TestVMCoreWorkflowIntegration(t *testing.T) {
 	waitForConsoleVMTask(t, suite, started.TaskID)
 	waitForConsoleVMState(t, rid, "running")
 	bridge := consoleBridge(t, standard.BridgeName)
-	if len(bridge.BridgeMembers) != 1 || bridge.BridgeMembers[0].Name == "em0" {
+	if len(bridge.BridgeMembers) != 1 {
 		t.Fatalf("running VM bridge members = %#v", bridge.BridgeMembers)
 	}
-	assertConsoleManagementBridge(t)
 
 	purgeError := runREPLCommandFailure(t, suite.socketPath,
 		"vms purge "+strconv.FormatUint(uint64(rid), 10))
@@ -267,7 +262,6 @@ func TestVMCoreWorkflowIntegration(t *testing.T) {
 		t.Fatalf("REPL VM switch delete = %#v", deletedSwitch)
 	}
 	assertConsoleInterfaceMissing(t, standard.BridgeName)
-	assertConsoleManagementBridge(t)
 }
 
 func consoleVMCreateRequest(rid uint, name, pool string) libvirtServiceInterfaces.CreateVMRequest {

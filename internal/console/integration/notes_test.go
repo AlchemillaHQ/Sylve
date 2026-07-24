@@ -130,7 +130,7 @@ func writeConsoleConfig(t *testing.T, dataPath string) string {
 func buildSylveBinary(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "sylve")
-	command := exec.Command("go", "build", "-o", path, "./cmd/sylve")
+	command := exec.Command("go", "build", "-buildvcs=false", "-o", path, "./cmd/sylve")
 	command.Dir = repositoryRoot(t)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build sylve CLI: %v\n%s", err, output)

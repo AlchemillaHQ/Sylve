@@ -30,9 +30,11 @@ jobs:
           copyback: true
           prepare: |
             pkg update
-            pkg install -y go git
+            pkg install -y go git libvirt bhyve-firmware
             kldload zfs || true
             kldload pf || true
+            kldload vmm || true
+            service libvirtd onestart || true
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
             service sshd onestart 2>/dev/null || service sshd onerestart || true
@@ -48,9 +50,11 @@ jobs:
             ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
           run: |
             set +e
+            set -o pipefail
             make test-integration 2>&1 | tee test-integration.log
-            echo "$?" > /tmp/it.rc
-            exit "$(cat /tmp/it.rc)"
+            test_rc="$?"
+            printf '%s\n' "$test_rc" > test-integration.rc
+            exit 0
 
       - name: Upload integration test log
         if: always()
@@ -59,3 +63,12 @@ jobs:
           name: integration-test-log
           path: test-integration.log
           if-no-files-found: warn
+
+      - name: Check integration test result
+        if: always()
+        run: |
+          if [ ! -f test-integration.rc ]; then
+            echo "Integration test result was not produced"
+            exit 1
+          fi
+          exit "$(cat test-integration.rc)"

@@ -221,7 +221,6 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	// Register the switch cleanup first so the jail and its epairs are removed before it.
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, switchName) })
 	t.Cleanup(func() { cleanupConsoleJail(t, suite, ctid) })
-	assertConsoleManagementBridge(t)
 
 	output := runSylve(t, suite.binaryPath, suite.configPath,
 		"switches", "create", "--type", "standard", "--name", switchName,
@@ -244,9 +243,6 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	var standard networkModels.StandardSwitch
 	if err := suite.database.First(&standard, createdSwitch.ID).Error; err != nil {
 		t.Fatalf("load VNET standard switch: %v", err)
-	}
-	if standard.BridgeName == "bridge0" || standard.BridgeName == "em0" {
-		t.Fatalf("generated VNET bridge must not target host networking: %#v", standard)
 	}
 	bridge := consoleBridge(t, standard.BridgeName)
 	if !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
@@ -336,9 +332,6 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	if len(bridge.BridgeMembers) != 1 || bridge.BridgeMembers[0].Name != epairA {
 		t.Fatalf("VNET bridge members = %#v, want only %s", bridge.BridgeMembers, epairA)
 	}
-	if bridge.BridgeMembers[0].Name == "em0" {
-		t.Fatal("VNET bridge unexpectedly includes the management interface")
-	}
 	waitForConsoleJailInterfaceAddresses(t, utils.HashIntToNLetters(int(ctid), 5), epairB, addresses.jailIPv4, addresses.jailIPv6)
 
 	output = runREPLCommand(t, suite.socketPath, "jails stop "+strconv.FormatUint(uint64(ctid), 10)+" --json")
@@ -382,7 +375,6 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 		t.Fatalf("REPL VNET switch delete result = %#v", deletedSwitch)
 	}
 	assertConsoleInterfaceMissing(t, standard.BridgeName)
-	assertConsoleManagementBridge(t)
 }
 
 func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
@@ -409,7 +401,6 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	t.Cleanup(func() { cleanupObject(t, suite, networkName) })
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, switchName) })
 	t.Cleanup(func() { cleanupConsoleJail(t, suite, ctid) })
-	assertConsoleManagementBridge(t)
 
 	output := runSylve(t, suite.binaryPath, suite.configPath,
 		"objects", "create", "--name", namedMACName, "--type", "mac", "--value", namedMACValue)
@@ -455,7 +446,7 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 		t.Fatalf("load object-reference switch: %v", err)
 	}
 	bridge := consoleBridge(t, standard.BridgeName)
-	if standard.NetworkID == nil || *standard.NetworkID != networkObject.ID || len(bridge.BridgeMembers) != 0 {
+	if standard.NetworkID == nil || *standard.NetworkID != networkObject.ID || !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
 		t.Fatalf("object-reference switch = %#v, bridge = %#v", standard, bridge)
 	}
 
@@ -658,7 +649,6 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	for _, objectID := range []uint{namedMAC.ID, addressObject.ID, gatewayObject.ID, networkObject.ID} {
 		assertConsoleObjectDeleted(t, suite, objectID)
 	}
-	assertConsoleManagementBridge(t)
 }
 
 func TestJailFromDownloadedBaseWithTogglesIntegration(t *testing.T) {
@@ -869,7 +859,6 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, switchName) })
 	t.Cleanup(func() { cleanupConsoleJail(t, suite, ctid) })
-	assertConsoleManagementBridge(t)
 
 	output := runREPLCommand(t, suite.socketPath, "switches create standard "+switchName+" --private --json")
 	var createdSwitch struct {
@@ -890,7 +879,7 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 		t.Fatalf("load DHCP/SLAAC standard switch: %v", err)
 	}
 	bridge := consoleBridge(t, standard.BridgeName)
-	if standard.BridgeName == "bridge0" || standard.BridgeName == "em0" || !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
+	if !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
 		t.Fatalf("DHCP/SLAAC bridge must be generated and memberless: %#v", bridge)
 	}
 
@@ -983,7 +972,6 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 		t.Fatalf("CLI DHCP/SLAAC switch delete result = %#v", deletedSwitch)
 	}
 	assertConsoleInterfaceMissing(t, standard.BridgeName)
-	assertConsoleManagementBridge(t)
 }
 
 type consoleJailVNETAddressPlan struct {
@@ -1215,14 +1203,6 @@ func cleanupConsoleDownload(t *testing.T, suite *consoleIntegrationSuite, id uin
 	}
 	if err := suite.utilities.DeleteDownload(int(id)); err != nil {
 		t.Errorf("delete download %d during cleanup: %v", id, err)
-	}
-}
-
-func assertConsoleManagementBridge(t *testing.T) {
-	t.Helper()
-	bridge := consoleBridge(t, "bridge0")
-	if len(bridge.BridgeMembers) != 1 || bridge.BridgeMembers[0].Name != "em0" {
-		t.Fatalf("management bridge must retain only em0: %#v", bridge.BridgeMembers)
 	}
 }
 

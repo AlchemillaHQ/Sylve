@@ -379,7 +379,7 @@ func (s *consoleIntegrationSuite) configure() error {
 		return err
 	}
 	s.binaryPath = filepath.Join(s.root, "sylve")
-	command := exec.Command("go", "build", "-o", s.binaryPath, "./cmd/sylve")
+	command := exec.Command("go", "build", "-buildvcs=false", "-o", s.binaryPath, "./cmd/sylve")
 	command.Dir = root
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("build suite CLI: %w: %s", err, strings.TrimSpace(string(output)))
