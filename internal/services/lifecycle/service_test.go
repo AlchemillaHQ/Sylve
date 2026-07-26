@@ -594,6 +594,13 @@ func TestListAndGetTasks(t *testing.T) {
 	if len(active) != 1 || active[0].ID != tasks[0].ID {
 		t.Fatalf("active tasks = %#v, want VM task %d", active, tasks[0].ID)
 	}
+	activeCount, err := s.CountActiveTasks(context.Background())
+	if err != nil {
+		t.Fatalf("count active tasks: %v", err)
+	}
+	if activeCount != 2 {
+		t.Fatalf("active task count = %d, want 2", activeCount)
+	}
 
 	recent, err := s.ListRecentTasks(taskModels.GuestTypeVM, 0, 1)
 	if err != nil {

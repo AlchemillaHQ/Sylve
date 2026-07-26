@@ -18,5 +18,6 @@ var (
 	clrDim      = lipgloss.Color("#565f89")
 	clrRed      = lipgloss.Color("#f7768e")
 	clrGreen    = lipgloss.Color("#9ece6a")
+	clrYellow   = lipgloss.Color("#e0af68")
 	clrPurple   = lipgloss.Color("#bb9af7")
 )

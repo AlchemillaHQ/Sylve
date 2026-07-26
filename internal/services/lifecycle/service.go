@@ -598,6 +598,18 @@ func (s *Service) ListActiveTasks(guestType string, guestID uint) ([]taskModels.
 	return tasks, nil
 }
 
+func (s *Service) CountActiveTasks(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.DB.WithContext(ctx).
+		Model(&taskModels.GuestLifecycleTask{}).
+		Where("status IN ?", []string{
+			taskModels.LifecycleTaskStatusQueued,
+			taskModels.LifecycleTaskStatusRunning,
+		}).
+		Count(&count).Error
+	return count, err
+}
+
 func (s *Service) ListRecentTasks(guestType string, guestID uint, limit int) ([]taskModels.GuestLifecycleTask, error) {
 	query := s.DB.Model(&taskModels.GuestLifecycleTask{})
 

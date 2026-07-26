@@ -29,6 +29,7 @@ type Context struct {
 	Lifecycle      *lifecycle.Service
 	Network        *network.Service
 	Utilities      utilitiesServiceInterfaces.UtilitiesServiceInterface
+	Status         *StatusProvider
 	HistoryPath    string
 	QuitChan       chan os.Signal
 	Out            io.Writer

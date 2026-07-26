@@ -334,7 +334,7 @@ func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, err
 	for _, d := range domains {
 		state, reason, err := s.conn().DomainGetState(d, 0)
 		if err != nil {
-			fmt.Printf("failed to get domain state: %v\n", err)
+			return states, fmt.Errorf("failed_to_get_domain_state_%s: %w", d.Name, err)
 		}
 
 		pState := libvirt.DomainState(state)

@@ -130,6 +130,8 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 	if req.Operation != "" {
 		switch req.Operation {
+		case consoleprotocol.OperationStatus:
+			return processStatusSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationJailList:
 			return processJailListSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationJailGet:
@@ -271,7 +273,7 @@ func tryAttachSocketConsole(socketPath, historyPath string) (bool, error) {
 	}
 	defer conn.Close()
 
-	if err := runRemoteConsoleTUI(conn, historyPath); err != nil {
+	if err := runRemoteConsoleTUI(conn, socketPath, historyPath); err != nil {
 		return true, err
 	}
 

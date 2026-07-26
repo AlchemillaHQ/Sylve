@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -26,23 +27,26 @@ type remoteResponse struct {
 }
 
 type remoteModel struct {
-	viewport    viewport.Model
-	messages    []string
-	enc         *json.Encoder
-	dec         *json.Decoder
-	conn        net.Conn
-	history     []string
-	historyPath string
-	histIdx     int
-	input       string
-	cursorPos   int
-	ready       bool
-	width       int
-	height      int
-	hostname    string
+	viewport       viewport.Model
+	messages       []string
+	enc            *json.Encoder
+	dec            *json.Decoder
+	conn           net.Conn
+	history        []string
+	historyPath    string
+	histIdx        int
+	input          string
+	cursorPos      int
+	ready          bool
+	width          int
+	height         int
+	hostname       string
+	socketPath     string
+	status         consoleprotocol.StatusSnapshot
+	commandPending bool
 }
 
-func newRemoteModel(conn net.Conn, historyPath string) remoteModel {
+func newRemoteModel(conn net.Conn, socketPath, historyPath string) remoteModel {
 	enc := json.NewEncoder(conn)
 	dec := json.NewDecoder(conn)
 
@@ -59,11 +63,12 @@ func newRemoteModel(conn net.Conn, historyPath string) remoteModel {
 		historyPath: historyPath,
 		histIdx:     -1,
 		hostname:    hostname,
+		socketPath:  socketPath,
 	}
 }
 
 func (m remoteModel) Init() tea.Cmd {
-	return nil
+	return requestStatus(remoteStatusFetcher(m.socketPath), 0)
 }
 
 func (m remoteModel) sendCommand(cmd string) remoteResponse {
@@ -103,6 +108,7 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case remoteResponse:
+		m.commandPending = false
 		if msg.err != "" {
 			m.messages = append(m.messages, styledErrorf("%s", msg.err))
 		}
@@ -122,6 +128,17 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+	case statusMsg:
+		if msg.err == nil {
+			m.status = msg.snapshot
+			if msg.snapshot.Hostname != "" {
+				m.hostname = msg.snapshot.Hostname
+			}
+		} else {
+			m.status.Stale = true
+		}
+		return m, requestStatus(remoteStatusFetcher(m.socketPath), statusRefreshInterval)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "ctrl+d":
@@ -129,6 +146,9 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "enter":
+			if m.commandPending {
+				return m, nil
+			}
 			line := strings.TrimSpace(m.input)
 			if line == "" {
 				return m, nil
@@ -143,6 +163,7 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmdText := line
 			m.input = ""
 			m.cursorPos = 0
+			m.commandPending = true
 
 			m.viewport.SetContent(m.renderContent())
 			return m, func() tea.Msg {
@@ -234,15 +255,15 @@ func (m remoteModel) View() string {
 		return "\n  Initializing..."
 	}
 
-	header := renderHeader(m.width, m.hostname, "", "")
+	header := renderHeader(m.width, m.hostname, m.status)
 	vp := m.viewport.View()
 	input := renderInput(m.width, m.input, m.cursorPos)
 
 	return fmt.Sprintf("%s\n%s\n%s", header, vp, input)
 }
 
-func runRemoteConsoleTUI(conn net.Conn, historyPath string) error {
-	p := tea.NewProgram(newRemoteModel(conn, historyPath), tea.WithAltScreen())
+func runRemoteConsoleTUI(conn net.Conn, socketPath, historyPath string) error {
+	p := tea.NewProgram(newRemoteModel(conn, socketPath, historyPath), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return err
 	}

@@ -23,7 +23,32 @@ var (
 
 	headerVersionStyle = lipgloss.NewStyle().
 				Background(clrHeaderBG).
-				Foreground(clrDim)
+				Foreground(clrText)
+
+	headerLabelStyle = lipgloss.NewStyle().
+				Background(clrHeaderBG).
+				Foreground(clrHeaderFG).
+				Bold(true)
+
+	headerInfoStyle = lipgloss.NewStyle().
+			Background(clrHeaderBG).
+			Foreground(clrCyan).
+			Bold(true)
+
+	headerGoodStyle = lipgloss.NewStyle().
+			Background(clrHeaderBG).
+			Foreground(clrGreen).
+			Bold(true)
+
+	headerWarningStyle = lipgloss.NewStyle().
+				Background(clrHeaderBG).
+				Foreground(clrYellow).
+				Bold(true)
+
+	headerCriticalStyle = lipgloss.NewStyle().
+				Background(clrHeaderBG).
+				Foreground(clrRed).
+				Bold(true)
 
 	promptStyle = lipgloss.NewStyle().
 			Bold(true).

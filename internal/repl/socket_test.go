@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 )
@@ -47,6 +48,33 @@ func TestProcessSocketRequestRejectsUnknownOperation(t *testing.T) {
 	resp := processSocketRequest(&Context{}, socketRequest{Operation: "unknown"})
 	if resp.Error != "unknown_operation" {
 		t.Fatalf("expected unknown_operation, got %q", resp.Error)
+	}
+}
+
+func TestProcessSocketRequestReturnsStatusSnapshot(t *testing.T) {
+	provider := newStatusProvider(statusSources{
+		hostname: func() (string, error) { return "node-a", nil },
+		cpuUsage: func() (float64, error) { return 12, nil },
+	}, time.Minute)
+	payload, err := json.Marshal(consoleprotocol.StatusPayload{})
+	if err != nil {
+		t.Fatalf("marshal status payload: %v", err)
+	}
+
+	resp := processSocketRequest(&Context{Status: provider}, socketRequest{
+		Operation: consoleprotocol.OperationStatus,
+		Payload:   payload,
+	})
+	if resp.Error != "" {
+		t.Fatalf("status response error = %q", resp.Error)
+	}
+
+	var snapshot consoleprotocol.StatusSnapshot
+	if err := json.Unmarshal([]byte(resp.Output), &snapshot); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if snapshot.Hostname != "node-a" || snapshot.CPUUsage == nil || *snapshot.CPUUsage != 12 {
+		t.Fatalf("unexpected status snapshot: %#v", snapshot)
 	}
 }
 
@@ -108,6 +136,7 @@ func TestProcessSocketRequestOperationsRequirePayload(t *testing.T) {
 		{consoleprotocol.OperationTaskListActive, "invalid_task_active_request: payload_required"},
 		{consoleprotocol.OperationTaskListRecent, "invalid_task_recent_request: payload_required"},
 		{consoleprotocol.OperationTaskGet, "invalid_task_get_request: payload_required"},
+		{consoleprotocol.OperationStatus, "invalid_status_request: payload_required"},
 	}
 
 	for _, testCase := range testCases {

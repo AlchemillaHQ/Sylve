@@ -326,6 +326,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		Lifecycle:      lifecycleSvc,
 		Network:        nS.(*networkService.Service),
 		Utilities:      uS,
+		Status:         repl.NewStatusProvider(zS.(*zfs.Service), libvirtSvc, jailSvc, lifecycleSvc),
 		HistoryPath:    historyPath,
 		QuitChan:       sigChan,
 	}

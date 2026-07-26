@@ -13,24 +13,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/alchemillahq/sylve/internal/cmd"
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 const inputLineHeight = 1
-
-type sysInfoMsg struct {
-	hostname string
-	cpuUsage float64
-	ramTotal uint64
-	ramUsed  uint64
-}
 
 type tuiModel struct {
 	viewport    viewport.Model
@@ -45,8 +37,7 @@ type tuiModel struct {
 	width       int
 	height      int
 	hostname    string
-	cpuUsage    string
-	ramUsage    string
+	status      consoleprotocol.StatusSnapshot
 }
 
 func startTUI(ctx *Context) {
@@ -74,38 +65,11 @@ func initialTUI(ctx *Context) tuiModel {
 	if hostname, err := os.Hostname(); err == nil {
 		m.hostname = hostname
 	}
-	if ctx != nil && ctx.Info != nil {
-		if info, err := ctx.Info.GetNodeInfo(); err == nil {
-			m.cpuUsage = fmt.Sprintf("%.0f%%", info.CPUUsage)
-			m.ramUsage = fmt.Sprintf("%.0f%%", info.RAMUsage)
-			if info.Hostname != "" {
-				m.hostname = info.Hostname
-			}
-		}
-	}
 	return m
 }
 
 func (m tuiModel) Init() tea.Cmd {
-	return m.refreshSysInfo()
-}
-
-func (m tuiModel) refreshSysInfo() tea.Cmd {
-	if m.ctx == nil || m.ctx.Info == nil {
-		return nil
-	}
-	return tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
-		info, err := m.ctx.Info.GetNodeInfo()
-		if err != nil {
-			return sysInfoMsg{}
-		}
-		return sysInfoMsg{
-			hostname: info.Hostname,
-			cpuUsage: info.CPUUsage,
-			ramTotal: info.RAMTotal,
-			ramUsed:  uint64(float64(info.RAMTotal) * info.RAMUsage / 100.0),
-		}
-	})
+	return requestStatus(localStatusFetcher(m.ctx), 0)
 }
 
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -127,17 +91,16 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetContent(m.renderContent())
 		return m, nil
 
-	case sysInfoMsg:
-		if msg.hostname != "" {
-			m.hostname = msg.hostname
+	case statusMsg:
+		if msg.err == nil {
+			m.status = msg.snapshot
+			if msg.snapshot.Hostname != "" {
+				m.hostname = msg.snapshot.Hostname
+			}
+		} else {
+			m.status.Stale = true
 		}
-		m.cpuUsage = fmt.Sprintf("%.0f%%", msg.cpuUsage)
-		if msg.ramTotal > 0 {
-			usedGB := float64(msg.ramUsed) / 1024 / 1024 / 1024
-			totalGB := float64(msg.ramTotal) / 1024 / 1024 / 1024
-			m.ramUsage = fmt.Sprintf("%.1f/%.0fGB", usedGB, totalGB)
-		}
-		return m, m.refreshSysInfo()
+		return m, requestStatus(localStatusFetcher(m.ctx), statusRefreshInterval)
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -314,40 +277,10 @@ func (m tuiModel) View() string {
 	}
 
 	return fmt.Sprintf("%s\n%s\n%s",
-		renderHeader(m.width, m.hostname, m.cpuUsage, m.ramUsage),
+		renderHeader(m.width, m.hostname, m.status),
 		m.viewport.View(),
 		renderInput(m.width, m.input, m.cursorPos),
 	)
-}
-
-func renderHeader(width int, hostname, cpu, ram string) string {
-	ver := "v" + cmd.Version
-
-	left := hostname
-	if cpu != "" {
-		left += "  CPU: " + cpu
-	}
-	if ram != "" {
-		left += "  RAM: " + ram
-	}
-
-	center := "◇ Sylve"
-	right := ver
-
-	lW := lipgloss.Width(left)
-	cW := lipgloss.Width(center)
-	rW := lipgloss.Width(right)
-
-	filler := width - lW - cW - rW
-	if filler < 0 {
-		filler = 0
-	}
-	leftFill := filler / 2
-	rightFill := filler - leftFill
-
-	bar := left + strings.Repeat(" ", leftFill) + center + strings.Repeat(" ", rightFill) + right
-
-	return headerBarStyle.Width(width).Render(bar)
 }
 
 func renderInput(width int, input string, cursorPos int) string {

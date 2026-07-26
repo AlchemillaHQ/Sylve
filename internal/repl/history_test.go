@@ -80,7 +80,7 @@ func TestTUIModelsLoadConfiguredHistory(t *testing.T) {
 	serverConn, clientConn := net.Pipe()
 	defer serverConn.Close()
 	defer clientConn.Close()
-	remote := newRemoteModel(clientConn, path)
+	remote := newRemoteModel(clientConn, "", path)
 	if !reflect.DeepEqual(remote.history, []string{"vms list"}) {
 		t.Fatalf("remote history = %#v", remote.history)
 	}

@@ -9,34 +9,48 @@
 package console
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"syscall"
+	"time"
 )
 
 // ExecuteOperation sends a typed console operation to the running Sylve daemon.
 // Operation failures are returned as real errors.
 func ExecuteOperation(socketPath, operation string, payload any) (string, error) {
-	return executeOperation(socketPath, operation, payload)
+	return ExecuteOperationContext(context.Background(), socketPath, operation, payload)
+}
+
+func ExecuteOperationContext(ctx context.Context, socketPath, operation string, payload any) (string, error) {
+	return executeOperationContext(ctx, socketPath, operation, payload)
 }
 
 func executeOperation(socketPath, operation string, payload any) (string, error) {
+	return executeOperationContext(context.Background(), socketPath, operation, payload)
+}
+
+func executeOperationContext(ctx context.Context, socketPath, operation string, payload any) (string, error) {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("encode %s request: %w", operation, err)
 	}
 
-	return executeRequest(socketPath, Request{
+	return executeRequestContext(ctx, socketPath, Request{
 		Operation: operation,
 		Payload:   encoded,
 	})
 }
 
 func executeRequest(socketPath string, request Request) (string, error) {
-	conn, err := net.Dial("unix", socketPath)
+	return executeRequestContext(context.Background(), socketPath, request)
+}
+
+func executeRequestContext(ctx context.Context, socketPath string, request Request) (string, error) {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		if isSocketUnavailable(err) {
 			return "", fmt.Errorf("sylve daemon is not running; start it first with 'sylve'")
@@ -44,6 +58,15 @@ func executeRequest(socketPath string, request Request) (string, error) {
 		return "", fmt.Errorf("connect to daemon: %w", err)
 	}
 	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			return "", fmt.Errorf("set daemon deadline: %w", err)
+		}
+	}
+	stopCancellation := context.AfterFunc(ctx, func() {
+		_ = conn.SetDeadline(time.Now())
+	})
+	defer stopCancellation()
 
 	enc := json.NewEncoder(conn)
 	dec := json.NewDecoder(conn)
