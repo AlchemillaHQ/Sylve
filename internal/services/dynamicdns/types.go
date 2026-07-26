@@ -10,6 +10,7 @@ package dynamicdns
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"time"
 
@@ -40,6 +41,48 @@ type DNSProvider interface {
 	ID() string
 	Validate(context.Context, string, string, string, map[string]string) (map[string]string, error)
 	Upsert(context.Context, string, map[string]string, string, string, netip.Addr) error
+}
+
+// DNSStatusProvider can verify a pending write and avoid unnecessary updates.
+type DNSStatusProvider interface {
+	AddressMatches(context.Context, string, map[string]string, string, string, netip.Addr) (bool, error)
+}
+
+type providerErrorKind uint8
+
+const (
+	providerErrorPermanent providerErrorKind = iota + 1
+	providerErrorTransient
+	providerErrorPending
+)
+
+type providerError struct {
+	kind       providerErrorKind
+	retryAfter time.Duration
+	err        error
+}
+
+func (e *providerError) Error() string {
+	return e.err.Error()
+}
+
+func (e *providerError) Unwrap() error {
+	return e.err
+}
+
+func newProviderError(kind providerErrorKind, retryAfter time.Duration, err error) error {
+	if err == nil {
+		err = errors.New("DNS provider request failed")
+	}
+	return &providerError{kind: kind, retryAfter: retryAfter, err: err}
+}
+
+func providerErrorDetails(err error) (providerErrorKind, time.Duration, bool) {
+	var providerErr *providerError
+	if !errors.As(err, &providerErr) {
+		return 0, 0, false
+	}
+	return providerErr.kind, providerErr.retryAfter, true
 }
 
 type IPSourceResolver interface {

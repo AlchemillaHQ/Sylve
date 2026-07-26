@@ -13,6 +13,7 @@ import "time"
 const (
 	ProviderCloudflare = "cloudflare"
 	ProviderNamecheap  = "namecheap"
+	ProviderSylve      = "sylve"
 
 	RecordTypeA    = "A"
 	RecordTypeAAAA = "AAAA"
@@ -48,6 +49,11 @@ type Entry struct {
 	LastIPv6      string     `json:"lastIPv6"`
 	LastSyncAt    *time.Time `json:"lastSyncAt"`
 	LastSuccessAt *time.Time `json:"lastSuccessAt"`
+
+	LastPublishedIPv4   string     `json:"-"`
+	LastPublishedIPv6   string     `json:"-"`
+	ConsecutiveFailures uint       `json:"consecutiveFailures"`
+	NextRetryAt         *time.Time `json:"nextRetryAt"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

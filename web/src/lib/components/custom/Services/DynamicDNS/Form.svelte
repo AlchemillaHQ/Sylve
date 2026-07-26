@@ -61,8 +61,24 @@
 	];
 	const providerOptions = [
 		{ value: 'cloudflare', label: 'Cloudflare' },
-		{ value: 'namecheap', label: 'Namecheap' }
+		{ value: 'namecheap', label: 'Namecheap' },
+		{ value: 'sylve', label: 'Sylve.app' }
 	];
+	const credentialLabels: Record<Form['provider'], string> = {
+		cloudflare: 'Cloudflare API Token',
+		namecheap: 'Namecheap Dynamic DNS Password',
+		sylve: 'Sylve.app Update Token'
+	};
+	const credentialPastePlaceholders: Record<Form['provider'], string> = {
+		cloudflare: 'Paste API token',
+		namecheap: 'Paste Dynamic DNS password',
+		sylve: 'Paste update token'
+	};
+	const credentialKeepPlaceholders: Record<Form['provider'], string> = {
+		cloudflare: 'Leave blank to keep the configured token',
+		namecheap: 'Leave blank to keep the configured password',
+		sylve: 'Leave blank to keep the configured token'
+	};
 	const sourceTypeOptions = [
 		{ value: 'stun', label: 'STUN' },
 		{ value: 'interface', label: 'Interface' },
@@ -144,17 +160,11 @@
 	let form = $state<Form>(editingEntry ? entryForm(editingEntry) : defaultForm());
 	let interfaceOpen = $state(false);
 	let saving = $state(false);
-	const credentialLabel = $derived(
-		form.provider === 'namecheap' ? 'Namecheap Dynamic DNS Password' : 'Cloudflare API Token'
-	);
+	const credentialLabel = $derived(credentialLabels[form.provider]);
 	const credentialPlaceholder = $derived(
 		!isEditing || editingEntry?.provider !== form.provider
-			? form.provider === 'namecheap'
-				? 'Paste Dynamic DNS password'
-				: 'Paste API token'
-			: form.provider === 'namecheap'
-				? 'Leave blank to keep the configured password'
-				: 'Leave blank to keep the configured token'
+			? credentialPastePlaceholders[form.provider]
+			: credentialKeepPlaceholders[form.provider]
 	);
 	const credentialRequired = $derived(!isEditing || editingEntry?.provider !== form.provider);
 
@@ -285,7 +295,10 @@
 					/>
 					<CustomValueInput
 						label="Hostname"
-						placeholder="home.example.com"
+						placeholder={form.provider === 'sylve' ? 'ares.sylve.app' : 'home.example.com'}
+						hint={form.provider === 'sylve'
+							? 'Must match the hostname assigned to this update token.'
+							: ''}
 						bind:value={form.hostname}
 						classes="space-y-1.5"
 					/>
@@ -320,6 +333,9 @@
 					<CustomValueInput
 						label={credentialLabel}
 						placeholder={credentialPlaceholder}
+						hint={form.provider === 'sylve'
+							? 'Each Sylve.app hostname has its own update token.'
+							: ''}
 						type="password"
 						revealOnFocus={true}
 						bind:value={form.token}

@@ -158,14 +158,34 @@
 	}
 
 	function formatProvider(cell: CellComponent): string {
-		if (cell.getValue() === 'namecheap') {
-			return renderWithIcon('simple-icons:namecheap', 'Namecheap', 'text-orange-500');
+		switch (cell.getValue()) {
+			case 'cloudflare':
+				return renderWithIcon('simple-icons:cloudflare', 'Cloudflare', 'text-orange-400');
+			case 'namecheap':
+				return renderWithIcon('simple-icons:namecheap', 'Namecheap', 'text-orange-500');
+			case 'sylve':
+				return `
+					<span class="inline-flex items-center gap-1" title="Sylve.app">
+						<span class="relative h-3.5 w-3.5 shrink-0">
+							<img src="/logo/black.svg" alt="" class="h-3.5 w-3.5 dark:hidden" />
+							<img src="/logo/white.svg" alt="" class="hidden h-3.5 w-3.5 dark:block" />
+						</span>
+						<span>Sylve.app</span>
+					</span>
+				`.trim();
+			default: {
+				const provider = escapeHTML(cell.getValue() || 'Unknown');
+				return renderWithIcon('mdi:dns', provider, 'text-muted-foreground');
+			}
 		}
-		return renderWithIcon('simple-icons:cloudflare', 'Cloudflare', 'text-orange-400');
 	}
 
 	function formatStatus(cell: CellComponent): string {
-		const row = cell.getRow().getData() as { enabled: boolean };
+		const row = cell.getRow().getData() as {
+			enabled: boolean;
+			nextRetryAt?: string | null;
+			consecutiveFailures?: number;
+		};
 		const icons = [formatEnabled(row.enabled)];
 
 		switch (cell.getValue()) {
@@ -175,11 +195,28 @@
 			case 'partial':
 				icons.push(renderWithIcon('mdi:alert-circle-outline', 'Partial', 'text-amber-400'));
 				break;
+			case 'pending':
+				icons.push(
+					renderWithIcon('mdi:progress-clock', 'Publication pending', 'text-amber-400')
+				);
+				break;
 			case 'error':
 				icons.push(renderWithIcon('mdi:close-circle-outline', 'Error', 'text-red-400'));
 				break;
 			default:
 				icons.push(renderWithIcon('mdi:clock-outline', 'Pending', 'text-muted-foreground'));
+		}
+		if (row.enabled && row.nextRetryAt) {
+			const attempts = row.consecutiveFailures
+				? ` after ${row.consecutiveFailures} failed attempt${row.consecutiveFailures === 1 ? '' : 's'}`
+				: '';
+			icons.push(
+				renderWithIcon(
+					'mdi:clock-outline',
+					`Retry ${convertDbTime(row.nextRetryAt)}${attempts}`,
+					'text-muted-foreground'
+				)
+			);
 		}
 
 		return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
@@ -227,6 +264,14 @@
 		await entriesResource.refetch();
 		if (result.lastStatus === 'success') {
 			toast.success(`${result.hostname} is up to date`, { position: 'bottom-center' });
+		} else if (!result.enabled) {
+			toast.error(`${result.hostname} was disabled after a non-retryable provider error`, {
+				position: 'bottom-center'
+			});
+		} else if (result.lastStatus === 'pending') {
+			toast.warning(`${result.hostname} was saved and DNS publication is pending`, {
+				position: 'bottom-center'
+			});
 		} else if (result.lastStatus === 'partial') {
 			toast.warning(`${result.hostname} updated one address family`, { position: 'bottom-center' });
 		} else {
@@ -331,7 +376,9 @@
 			lastIPv6: entry.lastIPv6,
 			lastStatus: entry.lastStatus,
 			lastSyncAt: entry.lastSyncAt,
-			lastError: entry.lastError
+			lastError: entry.lastError,
+			consecutiveFailures: entry.consecutiveFailures,
+			nextRetryAt: entry.nextRetryAt
 		}))
 	});
 </script>

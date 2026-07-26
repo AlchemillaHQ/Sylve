@@ -8,6 +8,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { WireGuardServer, WireGuardServerPeer } from '$lib/types/network/wireguard';
+	import type { DynamicDNSEntry } from '$lib/types/services/dynamic-dns';
 	import { canvasToPNGDownload } from '$lib/utils/img';
 	import { generatePeerConfig, getWireGuardSubnets } from '$lib/utils/network/wireguard';
 	import { stringToTextDownload } from '$lib/utils/string';
@@ -17,10 +18,11 @@
 	interface Props {
 		server: WireGuardServer;
 		peer: WireGuardServerPeer;
+		dynamicDNSEntries: DynamicDNSEntry[];
 		open: boolean;
 	}
 
-	let { server, peer, open = $bindable() }: Props = $props();
+	let { server, peer, dynamicDNSEntries, open = $bindable() }: Props = $props();
 
 	let allowedIps = $state('');
 	let allTraffic = $state(false);
@@ -30,7 +32,30 @@
 
 	let endpointOpen = $state(false);
 	let endpointValue = $state('');
-	let endpointOptions = $state<{ label: string; value: string }[]>([]);
+	let browserHostname = $state('');
+	let endpointPort = $state(0);
+	let endpointOptions = $derived.by(() => {
+		const defaultEndpoint = browserHostname ? `${browserHostname}:${endpointPort}` : '';
+		const seen: string[] = [];
+		const options: { label: string; value: string }[] = [];
+
+		for (const entry of dynamicDNSEntries) {
+			const hostname = entry.hostname.trim();
+			if (!entry.enabled || !hostname) continue;
+
+			const endpoint = `${hostname}:${endpointPort}`;
+			const key = endpoint.toLowerCase();
+			if (key === defaultEndpoint.toLowerCase() || seen.includes(key)) continue;
+
+			seen.push(key);
+			options.push({ label: endpoint, value: endpoint });
+		}
+
+		if (defaultEndpoint) {
+			options.push({ label: defaultEndpoint, value: defaultEndpoint });
+		}
+		return options;
+	});
 
 	let dnsOpen = $state(false);
 	let dnsValue = $state(['1.1.1.1']);
@@ -44,9 +69,9 @@
 	];
 
 	onMount(() => {
-		const defaultEndpoint = `${window.location.hostname}:${server.port}`;
-		endpointOptions = [{ label: defaultEndpoint, value: defaultEndpoint }];
-		endpointValue = defaultEndpoint;
+		browserHostname = window.location.hostname;
+		endpointPort = server.port;
+		endpointValue = `${browserHostname}:${endpointPort}`;
 	});
 
 	let wireGuardSubnets = $derived(getWireGuardSubnets(server));
@@ -65,6 +90,8 @@
 		() => open,
 		(isOpen) => {
 			if (isOpen) {
+				// Keep polling updates from rebuilding the open combobox list.
+				endpointPort = server.port;
 				showQR = true;
 				activeTab = 'edit';
 				allTraffic = false;
@@ -127,7 +154,7 @@
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<Tabs.Root bind:value={activeTab} class="mt-4">
+		<Tabs.Root bind:value={activeTab} class="mt-4 h-[26rem]">
 			<Tabs.List class="w-full justify-start bg-accent/50">
 				<Tabs.Trigger value="edit" class="flex-1 gap-2">
 					<span class="icon icon-[ic--twotone-edit] size-3.5"></span>
@@ -144,7 +171,7 @@
 				</Tabs.Trigger>
 			</Tabs.List>
 
-			<Tabs.Content value="edit" class="space-y-4 pt-2">
+			<Tabs.Content value="edit" class="min-h-0 space-y-4 overflow-y-auto pt-2">
 				<Combobox
 					label="Endpoint Address"
 					bind:value={endpointValue}
@@ -190,14 +217,14 @@
 				</div>
 			</Tabs.Content>
 
-			<Tabs.Content value="export" class="space-y-4 pt-2">
-				<div class="relative min-h-60">
+			<Tabs.Content value="export" class="min-h-0 space-y-4 overflow-y-auto pt-2">
+				<div class="relative min-h-68">
 					<div
 						class="absolute inset-0 flex flex-col items-center gap-3 transition-opacity duration-200"
 						class:opacity-0={!showQR}
 						class:pointer-events-none={!showQR}
 					>
-						<QRCode id="wg-peer-qr" value={fullConfig} size={230} logo="/logo/black.svg" />
+						<QRCode id="wg-peer-qr" value={fullConfig} size={260} logo="/logo/black.svg" />
 					</div>
 
 					<div

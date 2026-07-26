@@ -21,6 +21,8 @@ export const DynamicDNSEntrySchema = z.object({
 	lastIPv6: z.string().default(''),
 	lastSyncAt: z.string().nullable().optional(),
 	lastSuccessAt: z.string().nullable().optional(),
+	consecutiveFailures: z.number().default(0),
+	nextRetryAt: z.string().nullable().optional(),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });
@@ -29,7 +31,7 @@ export type DynamicDNSEntry = z.infer<typeof DynamicDNSEntrySchema>;
 
 export interface DynamicDNSEntryInput {
 	enabled: boolean;
-	provider: 'cloudflare' | 'namecheap';
+	provider: 'cloudflare' | 'namecheap' | 'sylve';
 	providerSettings?: Record<string, string>;
 	token?: string;
 	hostname: string;

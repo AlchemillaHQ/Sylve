@@ -8,6 +8,7 @@
 		toggleWireGuardServer,
 		wireGuardServerPeers
 	} from '$lib/api/network/wireguard';
+	import { getDynamicDNSEntries } from '$lib/api/services/dynamic-dns';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import ExportModal from '$lib/components/custom/Network/WireGuard/Server/Export.svelte';
 	import PeerList from '$lib/components/custom/Network/WireGuard/Server/PeerList.svelte';
@@ -19,6 +20,7 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { WireGuardServer, WireGuardServerPeer } from '$lib/types/network/wireguard';
+	import type { DynamicDNSEntry } from '$lib/types/services/dynamic-dns';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { randomPrivateIPv4Range, randomPrivateIPv6Range } from '$lib/utils/inet';
@@ -173,11 +175,19 @@
 	let targetPeerID = $state(0);
 	let exportPeerID = $state<number | null>(null);
 	let exportModalOpen = $state(false);
+	let dynamicDNSEntries = $state<DynamicDNSEntry[]>([]);
 
 	let exportPeer = $derived.by(() => {
 		if (!server || exportPeerID === null) return null;
 		return server.peers.find((p) => p.id === exportPeerID) ?? null;
 	});
+
+	async function refreshDynamicDNSEntries() {
+		const result = await getDynamicDNSEntries();
+		if (!Array.isArray(result)) return;
+		dynamicDNSEntries = result;
+		updateCache('dynamic-dns-entries', result);
+	}
 
 	function splitLines(value: string): string[] {
 		return value
@@ -361,6 +371,7 @@
 							onExport={(id) => {
 								exportPeerID = id;
 								exportModalOpen = true;
+								void refreshDynamicDNSEntries();
 							}}
 							onDelete={(id) => {
 								targetPeerID = id;
@@ -567,5 +578,5 @@
 {/if}
 
 {#if server && exportPeer}
-	<ExportModal {server} peer={exportPeer} bind:open={exportModalOpen} />
+	<ExportModal {server} peer={exportPeer} {dynamicDNSEntries} bind:open={exportModalOpen} />
 {/if}

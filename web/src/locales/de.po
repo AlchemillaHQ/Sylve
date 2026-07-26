@@ -1389,6 +1389,7 @@ msgstr "Staging"
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -6069,7 +6070,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -17019,6 +17020,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "Leave blank to keep the configured token"
 msgstr ""
 
@@ -17390,4 +17392,33 @@ msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "The root filesystem will remain as unmanaged ZFS data. Remove it before reusing this CTID."
+msgstr ""
+
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Publication pending"
+msgstr ""
+
+#. 0: convertDbTime(row.nextRetryAt); 1: attempts
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "Retry {0}{1}"
+msgstr ""
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Sylve.app"
+msgstr ""
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Sylve.app Update Token"
+msgstr ""
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Paste update token"
+msgstr ""
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Must match the hostname assigned to this update token."
+msgstr ""
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Each Sylve.app hostname has its own update token."
 msgstr ""

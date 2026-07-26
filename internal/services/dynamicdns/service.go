@@ -27,6 +27,28 @@ var (
 	ErrEntryNotFound = errors.New("dynamic DNS entry not found")
 )
 
+const (
+	syncStatusSuccess  = "success"
+	syncStatusPartial  = "partial"
+	syncStatusError    = "error"
+	syncStatusPending  = "pending"
+	syncStatusDeferred = "deferred"
+
+	transientRetryInitialDelay = time.Minute
+	transientRetryMaximumDelay = time.Hour
+	pendingRetryDelay          = time.Minute
+)
+
+type familySyncResult struct {
+	status               string
+	address              string
+	publishedAddress     string
+	publicationConfirmed bool
+	err                  error
+	providerKind         providerErrorKind
+	retryAfter           time.Duration
+}
+
 type Service struct {
 	DB        *gorm.DB
 	providers map[string]DNSProvider
@@ -40,6 +62,7 @@ type Service struct {
 func NewService(db *gorm.DB) *Service {
 	cloudflare := NewCloudflareProvider()
 	namecheap := NewNamecheapProvider()
+	sylve := NewSylveProvider()
 	interfaceResolver := NewInterfaceResolver()
 	manualResolver := ManualResolver{}
 	stunResolver := NewSTUNResolver()
@@ -49,6 +72,7 @@ func NewService(db *gorm.DB) *Service {
 		providers: map[string]DNSProvider{
 			cloudflare.ID(): cloudflare,
 			namecheap.ID():  namecheap,
+			sylve.ID():      sylve,
 		},
 		sources: map[string]IPSourceResolver{
 			interfaceResolver.Type(): interfaceResolver,
@@ -87,6 +111,9 @@ func (s *Service) CreateEntry(ctx context.Context, input EntryInput) (*EntryView
 }
 
 func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*EntryView, error) {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+
 	var existing dynamicDNSModels.Entry
 	if err := s.DB.WithContext(ctx).First(&existing, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -98,6 +125,14 @@ func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*
 	entry, err := s.prepareEntry(ctx, input, &existing)
 	if err != nil {
 		return nil, err
+	}
+	sameTarget := sameProviderTarget(entry, existing)
+	sameIdentity := sameTarget && entry.ProviderSecret == existing.ProviderSecret
+	if existing.LastStatus == syncStatusPending && !sameTarget {
+		return nil, invalidEntry("provider identity cannot be changed while DNS publication is pending")
+	}
+	if sameIdentity || (existing.LastStatus == syncStatusPending && sameTarget) {
+		preserveSyncState(&entry, existing)
 	}
 	entry.ID = existing.ID
 	entry.CreatedAt = existing.CreatedAt
@@ -111,6 +146,9 @@ func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*
 }
 
 func (s *Service) DeleteEntry(ctx context.Context, id uint) error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+
 	result := s.DB.WithContext(ctx).Delete(&dynamicDNSModels.Entry{}, id)
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete dynamic DNS entry: %w", result.Error)
@@ -122,6 +160,10 @@ func (s *Service) DeleteEntry(ctx context.Context, id uint) error {
 }
 
 func (s *Service) SyncEntry(ctx context.Context, id uint) (*EntryView, error) {
+	return s.syncEntryByID(ctx, id, false)
+}
+
+func (s *Service) syncEntryByID(ctx context.Context, id uint, requireEnabled bool) (*EntryView, error) {
 	s.syncMu.Lock()
 	defer s.syncMu.Unlock()
 
@@ -131,6 +173,14 @@ func (s *Service) SyncEntry(ctx context.Context, id uint) (*EntryView, error) {
 			return nil, ErrEntryNotFound
 		}
 		return nil, fmt.Errorf("failed to retrieve dynamic DNS entry: %w", err)
+	}
+	if requireEnabled && !entry.Enabled {
+		view := entryView(entry)
+		return &view, nil
+	}
+	if entry.NextRetryAt != nil && s.currentTime().Before(*entry.NextRetryAt) {
+		view := entryView(entry)
+		return &view, nil
 	}
 
 	if err := s.syncEntry(ctx, &entry); err != nil {
@@ -149,12 +199,18 @@ func (s *Service) SyncDue(ctx context.Context) error {
 
 	now := s.currentTime()
 	for _, entry := range entries {
-		interval := time.Duration(entry.IntervalMinutes) * time.Minute
-		if entry.LastSyncAt != nil && now.Sub(*entry.LastSyncAt) < interval {
-			continue
+		if entry.NextRetryAt != nil {
+			if now.Before(*entry.NextRetryAt) {
+				continue
+			}
+		} else {
+			interval := time.Duration(entry.IntervalMinutes) * time.Minute
+			if entry.LastSyncAt != nil && now.Sub(*entry.LastSyncAt) < interval {
+				continue
+			}
 		}
 
-		if _, err := s.SyncEntry(ctx, entry.ID); err != nil {
+		if _, err := s.syncEntryByID(ctx, entry.ID, true); err != nil {
 			logger.L.Error().Err(err).Uint("entryID", entry.ID).Msg("dynamic_dns_sync_failed")
 		}
 	}
@@ -231,6 +287,8 @@ func (s *Service) prepareEntry(ctx context.Context, input EntryInput, existing *
 		strings.TrimSpace(input.Token) != "" ||
 		providerID != existing.Provider ||
 		hostname != existing.Hostname ||
+		recordType != existing.RecordType ||
+		(input.Enabled && !existing.Enabled) ||
 		!sameSettings(providerSettings, existing.ProviderSettings)
 	if needsValidation {
 		providerSettings, err = provider.Validate(ctx, secret, hostname, recordType, providerSettings)
@@ -301,6 +359,10 @@ func (s *Service) normalizeSource(rawType string, rawSettings map[string]string,
 
 func (s *Service) syncEntry(ctx context.Context, entry *dynamicDNSModels.Entry) error {
 	now := s.currentTime()
+	previousIPv4Status := entry.IPv4Status
+	previousIPv6Status := entry.IPv6Status
+	previousIPv4Address := entry.LastIPv4
+	previousIPv6Address := entry.LastIPv6
 	entry.LastStatus = ""
 	entry.LastError = ""
 	entry.IPv4Status = ""
@@ -328,46 +390,94 @@ func (s *Service) syncEntry(ctx context.Context, entry *dynamicDNSModels.Entry) 
 		resolveErr = firstError(resolveErr, fmt.Errorf("unsupported DNS provider %q", entry.Provider))
 	}
 
-	requested := 0
 	succeeded := 0
+	pending := 0
+	publicationConfirmed := false
 	var failures []string
+	var controlResult *familySyncResult
+	stopRemainingFamilies := false
 
 	if entry.RecordType == dynamicDNSModels.RecordTypeA || entry.RecordType == dynamicDNSModels.RecordTypeBoth {
-		requested++
-		status, address, err := syncFamily(runCtx, provider, providerKnown, entry, dynamicDNSModels.RecordTypeA, addresses.IPv4, resolveErr)
-		entry.IPv4Status = status
-		entry.LastIPv4 = address
-		if err != nil {
-			entry.IPv4Error = redactSecret(err.Error(), entry.ProviderSecret)
-			failures = append(failures, "IPv4: "+entry.IPv4Error)
-		} else {
+		result := syncFamily(runCtx, provider, providerKnown, entry, dynamicDNSModels.RecordTypeA, addresses.IPv4, resolveErr, previousIPv4Status, previousIPv4Address, entry.LastPublishedIPv4)
+		entry.IPv4Status = result.status
+		entry.LastIPv4 = result.address
+		if result.status == syncStatusSuccess {
 			succeeded++
+		} else if result.status == syncStatusPending {
+			pending++
+		}
+		if result.publishedAddress != "" {
+			entry.LastPublishedIPv4 = result.publishedAddress
+		}
+		publicationConfirmed = publicationConfirmed || result.publicationConfirmed
+		if result.err != nil && result.providerKind != providerErrorPending {
+			entry.IPv4Error = redactSecret(result.err.Error(), entry.ProviderSecret)
+			failures = append(failures, "IPv4: "+entry.IPv4Error)
+		}
+		if result.providerKind != 0 {
+			resultCopy := result
+			controlResult = &resultCopy
+			stopRemainingFamilies = true
 		}
 	}
 	if entry.RecordType == dynamicDNSModels.RecordTypeAAAA || entry.RecordType == dynamicDNSModels.RecordTypeBoth {
-		requested++
-		status, address, err := syncFamily(runCtx, provider, providerKnown, entry, dynamicDNSModels.RecordTypeAAAA, addresses.IPv6, resolveErr)
-		entry.IPv6Status = status
-		entry.LastIPv6 = address
-		if err != nil {
-			entry.IPv6Error = redactSecret(err.Error(), entry.ProviderSecret)
-			failures = append(failures, "IPv6: "+entry.IPv6Error)
-		} else {
+		result := familySyncResult{status: syncStatusDeferred}
+		if stopRemainingFamilies && previousIPv6Status == syncStatusPending {
+			result.status = syncStatusPending
+			result.address = previousIPv6Address
+		} else if addresses.IPv6.IsValid() {
+			result.address = addresses.IPv6.String()
+		}
+		if !stopRemainingFamilies {
+			result = syncFamily(runCtx, provider, providerKnown, entry, dynamicDNSModels.RecordTypeAAAA, addresses.IPv6, resolveErr, previousIPv6Status, previousIPv6Address, entry.LastPublishedIPv6)
+		}
+		entry.IPv6Status = result.status
+		entry.LastIPv6 = result.address
+		if result.status == syncStatusSuccess {
 			succeeded++
+		} else if result.status == syncStatusPending {
+			pending++
+		}
+		if result.publishedAddress != "" {
+			entry.LastPublishedIPv6 = result.publishedAddress
+		}
+		publicationConfirmed = publicationConfirmed || result.publicationConfirmed
+		if result.err != nil && result.providerKind != providerErrorPending {
+			entry.IPv6Error = redactSecret(result.err.Error(), entry.ProviderSecret)
+			failures = append(failures, "IPv6: "+entry.IPv6Error)
+		}
+		if result.providerKind != 0 {
+			resultCopy := result
+			controlResult = &resultCopy
+			stopRemainingFamilies = true
 		}
 	}
 
+	requested := 1
+	if entry.RecordType == dynamicDNSModels.RecordTypeBoth {
+		requested = 2
+	}
 	switch {
 	case succeeded == requested:
-		entry.LastStatus = "success"
+		entry.LastStatus = syncStatusSuccess
 		entry.LastSuccessAt = cloneTime(&now)
+	case pending > 0:
+		entry.LastStatus = syncStatusPending
+		if succeeded > 0 {
+			entry.LastSuccessAt = cloneTime(&now)
+		}
 	case succeeded > 0:
-		entry.LastStatus = "partial"
+		entry.LastStatus = syncStatusPartial
 		entry.LastSuccessAt = cloneTime(&now)
 	default:
-		entry.LastStatus = "error"
+		entry.LastStatus = syncStatusError
+	}
+	if publicationConfirmed {
+		entry.LastSuccessAt = cloneTime(&now)
 	}
 	entry.LastError = strings.Join(failures, "; ")
+
+	s.applyRetryPolicy(entry, controlResult, now)
 
 	if err := s.DB.WithContext(ctx).Save(entry).Error; err != nil {
 		return fmt.Errorf("failed to save dynamic DNS sync status: %w", err)
@@ -375,24 +485,161 @@ func (s *Service) syncEntry(ctx context.Context, entry *dynamicDNSModels.Entry) 
 	return nil
 }
 
-func syncFamily(ctx context.Context, provider DNSProvider, providerKnown bool, entry *dynamicDNSModels.Entry, recordType string, address netip.Addr, resolveErr error) (string, string, error) {
+func (s *Service) applyRetryPolicy(entry *dynamicDNSModels.Entry, result *familySyncResult, now time.Time) {
+	if result == nil {
+		entry.ConsecutiveFailures = 0
+		entry.NextRetryAt = nil
+		return
+	}
+
+	switch result.providerKind {
+	case providerErrorPermanent:
+		entry.Enabled = false
+		entry.ConsecutiveFailures++
+		entry.NextRetryAt = nil
+		logger.L.Warn().Uint("entryID", entry.ID).Str("hostname", entry.Hostname).Msg("dynamic_dns_entry_auto_disabled")
+	case providerErrorTransient:
+		entry.ConsecutiveFailures++
+		delay := result.retryAfter
+		if delay <= 0 {
+			delay = transientRetryDelay(entry.ConsecutiveFailures)
+		}
+		nextRetry := now.Add(delay)
+		entry.NextRetryAt = cloneTime(&nextRetry)
+		if entry.ConsecutiveFailures >= 3 {
+			logger.L.Warn().Uint("entryID", entry.ID).Uint("failures", entry.ConsecutiveFailures).Str("hostname", entry.Hostname).Msg("dynamic_dns_provider_failure_persistent")
+		}
+	case providerErrorPending:
+		entry.ConsecutiveFailures = 0
+		nextRetry := now.Add(pendingRetryDelay)
+		entry.NextRetryAt = cloneTime(&nextRetry)
+	}
+}
+
+func transientRetryDelay(failures uint) time.Duration {
+	if failures == 0 {
+		failures = 1
+	}
+	delay := transientRetryInitialDelay
+	for attempt := uint(1); attempt < failures && delay < transientRetryMaximumDelay; attempt++ {
+		delay *= 2
+		if delay > transientRetryMaximumDelay {
+			return transientRetryMaximumDelay
+		}
+	}
+	return delay
+}
+
+func syncFamily(ctx context.Context, provider DNSProvider, providerKnown bool, entry *dynamicDNSModels.Entry, recordType string, address netip.Addr, resolveErr error, previousStatus, previousAddress, publishedAddress string) familySyncResult {
 	family := "IPv4"
 	if recordType == dynamicDNSModels.RecordTypeAAAA {
 		family = "IPv6"
 	}
+
+	statusProvider, hasStatus := provider.(DNSStatusProvider)
+	confirmedAddress := ""
+	if providerKnown && hasStatus && previousStatus == syncStatusPending {
+		pendingAddress, err := netip.ParseAddr(previousAddress)
+		if err != nil || (recordType == dynamicDNSModels.RecordTypeA && !pendingAddress.Is4()) || (recordType == dynamicDNSModels.RecordTypeAAAA && !pendingAddress.Is6()) {
+			result := familySyncFailure(previousAddress, newProviderError(providerErrorTransient, 0, fmt.Errorf("pending %s address is invalid", family)))
+			result.status = syncStatusPending
+			return result
+		}
+		matches, err := statusProvider.AddressMatches(ctx, entry.ProviderSecret, entry.ProviderSettings, entry.Hostname, recordType, pendingAddress)
+		if err != nil {
+			result := familySyncFailure(previousAddress, err)
+			if result.providerKind == providerErrorTransient {
+				result.status = syncStatusPending
+			}
+			return result
+		}
+		if !matches {
+			return familySyncResult{status: syncStatusPending, address: previousAddress, providerKind: providerErrorPending}
+		}
+		confirmedAddress = pendingAddress.Unmap().String()
+	}
+
 	if resolveErr != nil {
-		return "error", "", fmt.Errorf("failed to resolve %s address: %w", family, resolveErr)
+		result := familySyncFailure("", fmt.Errorf("failed to resolve %s address: %w", family, resolveErr))
+		result.publishedAddress = confirmedAddress
+		result.publicationConfirmed = confirmedAddress != ""
+		return result
 	}
 	if !address.IsValid() {
-		return "error", "", fmt.Errorf("no %s address resolved", family)
+		result := familySyncFailure("", fmt.Errorf("no %s address resolved", family))
+		result.publishedAddress = confirmedAddress
+		result.publicationConfirmed = confirmedAddress != ""
+		return result
+	}
+	addressValue := address.String()
+	if recordType == dynamicDNSModels.RecordTypeA {
+		addressValue = address.Unmap().String()
 	}
 	if !providerKnown {
-		return "error", address.String(), fmt.Errorf("DNS provider is unavailable")
+		return familySyncFailure(addressValue, fmt.Errorf("DNS provider is unavailable"))
 	}
+
+	if confirmedAddress != "" && confirmedAddress == addressValue {
+		return familySyncResult{status: syncStatusSuccess, address: addressValue, publishedAddress: addressValue, publicationConfirmed: true}
+	}
+
+	if hasStatus && confirmedAddress == "" {
+		if published, err := netip.ParseAddr(publishedAddress); err == nil && published.Unmap() == address.Unmap() {
+			return familySyncResult{status: syncStatusSuccess, address: addressValue, publishedAddress: addressValue}
+		}
+
+		matches, err := statusProvider.AddressMatches(ctx, entry.ProviderSecret, entry.ProviderSettings, entry.Hostname, recordType, address)
+		if err != nil {
+			return familySyncFailure(addressValue, err)
+		}
+		if matches {
+			return familySyncResult{status: syncStatusSuccess, address: addressValue, publishedAddress: addressValue, publicationConfirmed: true}
+		}
+	}
+
 	if err := provider.Upsert(ctx, entry.ProviderSecret, entry.ProviderSettings, entry.Hostname, recordType, address); err != nil {
-		return "error", address.String(), err
+		result := familySyncFailure(addressValue, err)
+		result.publishedAddress = confirmedAddress
+		result.publicationConfirmed = confirmedAddress != ""
+		if result.providerKind == providerErrorPending {
+			result.status = syncStatusPending
+		}
+		return result
 	}
-	return "success", address.String(), nil
+	return familySyncResult{status: syncStatusSuccess, address: addressValue, publishedAddress: addressValue, publicationConfirmed: true}
+}
+
+func familySyncFailure(address string, err error) familySyncResult {
+	result := familySyncResult{status: syncStatusError, address: address, err: err}
+	if kind, retryAfter, ok := providerErrorDetails(err); ok {
+		result.providerKind = kind
+		result.retryAfter = retryAfter
+	}
+	return result
+}
+
+func sameProviderTarget(first, second dynamicDNSModels.Entry) bool {
+	return first.Provider == second.Provider &&
+		first.Hostname == second.Hostname &&
+		first.RecordType == second.RecordType &&
+		sameSettings(first.ProviderSettings, second.ProviderSettings)
+}
+
+func preserveSyncState(target *dynamicDNSModels.Entry, existing dynamicDNSModels.Entry) {
+	target.LastStatus = existing.LastStatus
+	target.LastError = existing.LastError
+	target.IPv4Status = existing.IPv4Status
+	target.IPv4Error = existing.IPv4Error
+	target.IPv6Status = existing.IPv6Status
+	target.IPv6Error = existing.IPv6Error
+	target.LastIPv4 = existing.LastIPv4
+	target.LastIPv6 = existing.LastIPv6
+	target.LastSyncAt = cloneTime(existing.LastSyncAt)
+	target.LastSuccessAt = cloneTime(existing.LastSuccessAt)
+	target.LastPublishedIPv4 = existing.LastPublishedIPv4
+	target.LastPublishedIPv6 = existing.LastPublishedIPv6
+	target.ConsecutiveFailures = existing.ConsecutiveFailures
+	target.NextRetryAt = cloneTime(existing.NextRetryAt)
 }
 
 func (s *Service) currentTime() time.Time {
