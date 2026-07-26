@@ -1873,8 +1873,6 @@ func (s *Service) ApplyFirewallConfig() error {
 	s.flushFirewallCounterDeltasLocked()
 	s.updateFirewallRuleNames()
 
-	_, _ = firewallRunCommand("/sbin/pfctl", "-a", "sylve/object-tables", "-F", "Tables")
-
 	if s.isPFEnabled() {
 		if err := system.ServiceAction("pf", "onereload"); err != nil {
 			return err
@@ -2276,19 +2274,99 @@ func writeFirewallObjectTableEntries(tables map[uint]firewallObjectTable, entrie
 }
 
 func (s *Service) loadFirewallObjectTableEntries(tables map[uint]firewallObjectTable) error {
+	valuesByName := make(map[string][]string, len(tables)*2)
 	for _, table := range tables {
 		if table.InetName != "" && len(table.InetValues) > 0 {
-			filePath := filepath.Join(pfObjectTableEntriesDir, table.InetName)
-			if _, err := firewallRunCommand("/sbin/pfctl", "-t", table.InetName, "-T", "add", "-f", filePath); err != nil {
-				return fmt.Errorf("failed_to_load_table_entries: %w", err)
-			}
+			valuesByName[table.InetName] = table.InetValues
 		}
 		if table.Inet6Name != "" && len(table.Inet6Values) > 0 {
-			filePath := filepath.Join(pfObjectTableEntriesDir, table.Inet6Name)
-			if _, err := firewallRunCommand("/sbin/pfctl", "-t", table.Inet6Name, "-T", "add", "-f", filePath); err != nil {
-				return fmt.Errorf("failed_to_load_table_entries: %w", err)
-			}
+			valuesByName[table.Inet6Name] = table.Inet6Values
 		}
+	}
+
+	names := make([]string, 0, len(valuesByName))
+	for name := range valuesByName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if err := replaceFirewallObjectTableEntries(name, valuesByName[name]); err != nil {
+			return fmt.Errorf("failed_to_load_table_entries table=%s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func replaceFirewallObjectTableEntries(tableName string, desiredValues []string) error {
+	filePath := filepath.Join(pfObjectTableEntriesDir, tableName)
+	replace := func() error {
+		_, err := firewallRunCommand("/sbin/pfctl", "-t", tableName, "-T", "replace", "-f", filePath)
+		return err
+	}
+
+	replaceErr := replace()
+	if replaceErr == nil {
+		return nil
+	}
+	if !strings.Contains(strings.ToLower(replaceErr.Error()), "cannot allocate memory") {
+		return replaceErr
+	}
+
+	runtimeOutput, err := firewallRunCommand("/sbin/pfctl", "-t", tableName, "-T", "show")
+	if err != nil {
+		return fmt.Errorf("failed_to_inspect_table_entries_after_memory_error: %w", err)
+	}
+
+	desired := make(map[string]struct{}, len(desiredValues))
+	for _, value := range desiredValues {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			desired[value] = struct{}{}
+		}
+	}
+
+	stale := make([]string, 0)
+	for _, line := range strings.Split(runtimeOutput, "\n") {
+		value := strings.TrimSpace(line)
+		if value == "" {
+			continue
+		}
+		if _, ok := desired[value]; !ok {
+			stale = append(stale, value)
+		}
+	}
+	if len(stale) == 0 {
+		return fmt.Errorf("no_stale_table_entries_to_prune: %w", replaceErr)
+	}
+	sort.Strings(stale)
+
+	staleFile, err := os.CreateTemp("", "sylve-pf-stale-*")
+	if err != nil {
+		return fmt.Errorf("failed_to_create_stale_table_entries_file: %w", err)
+	}
+	stalePath := staleFile.Name()
+	defer os.Remove(stalePath)
+
+	if _, err := staleFile.WriteString(strings.Join(stale, "\n") + "\n"); err != nil {
+		_ = staleFile.Close()
+		return fmt.Errorf("failed_to_write_stale_table_entries_file: %w", err)
+	}
+	if err := staleFile.Close(); err != nil {
+		return fmt.Errorf("failed_to_close_stale_table_entries_file: %w", err)
+	}
+
+	if _, err := firewallRunCommand("/sbin/pfctl", "-t", tableName, "-T", "delete", "-f", stalePath); err != nil {
+		return fmt.Errorf("failed_to_prune_stale_table_entries: %w", err)
+	}
+
+	logger.L.Warn().
+		Str("table", tableName).
+		Int("removed_entries", len(stale)).
+		Msg("pruned_stale_firewall_table_entries_after_memory_exhaustion")
+
+	if err := replace(); err != nil {
+		return fmt.Errorf("failed_to_replace_table_entries_after_pruning: %w", err)
 	}
 	return nil
 }

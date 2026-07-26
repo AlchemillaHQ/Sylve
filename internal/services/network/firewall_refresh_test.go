@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1395,6 +1396,162 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Fatalf("expected stale_file to be removed, got err: %v", err)
+	}
+}
+
+func TestLoadFirewallObjectTableEntriesUsesReplace(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		return "", nil
+	}
+
+	tables := map[uint]firewallObjectTable{
+		2: {
+			ObjectID:    2,
+			InetName:    "sylve_obj_2_inet",
+			InetValues:  []string{"192.0.2.1"},
+			Inet6Name:   "sylve_obj_2_inet6",
+			Inet6Values: []string{"2001:db8::1"},
+		},
+	}
+
+	if err := (&Service{}).loadFirewallObjectTableEntries(tables); err != nil {
+		t.Fatalf("expected table entries to load, got: %v", err)
+	}
+
+	expected := []string{
+		"/sbin/pfctl -t sylve_obj_2_inet -T replace -f " + filepath.Join(pfObjectTableEntriesDir, "sylve_obj_2_inet"),
+		"/sbin/pfctl -t sylve_obj_2_inet6 -T replace -f " + filepath.Join(pfObjectTableEntriesDir, "sylve_obj_2_inet6"),
+	}
+	if !slices.Equal(calls, expected) {
+		t.Fatalf("unexpected pfctl calls:\nexpected: %v\nactual:   %v", expected, calls)
+	}
+}
+
+func TestReplaceFirewallObjectTableEntriesPrunesStaleEntriesAfterENOMEM(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	replaceCalls := 0
+	sequence := []string{}
+	deletedEntries := ""
+	stalePath := ""
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command != "/sbin/pfctl" || len(args) < 4 {
+			t.Fatalf("unexpected command call: %s %v", command, args)
+		}
+
+		operation := args[3]
+		sequence = append(sequence, operation)
+		switch operation {
+		case "replace":
+			replaceCalls++
+			if replaceCalls == 1 {
+				return "", errors.New("command execution failed: exit status 255, output: pfctl: Cannot allocate memory")
+			}
+			return "", nil
+		case "show":
+			return "  10.0.0.1\n  192.0.2.1\n10.0.0.9\n", nil
+		case "delete":
+			if len(args) != 6 || args[4] != "-f" {
+				t.Fatalf("unexpected delete arguments: %v", args)
+			}
+			stalePath = args[5]
+			data, err := os.ReadFile(stalePath)
+			if err != nil {
+				t.Fatalf("failed to read stale entries file: %v", err)
+			}
+			deletedEntries = string(data)
+			return "", nil
+		default:
+			t.Fatalf("unexpected pfctl operation: %s", operation)
+			return "", nil
+		}
+	}
+
+	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{
+		"10.0.0.0/24",
+		"10.0.0.1",
+		"10.0.0.2",
+	})
+	if err != nil {
+		t.Fatalf("expected memory recovery to succeed, got: %v", err)
+	}
+	if !slices.Equal(sequence, []string{"replace", "show", "delete", "replace"}) {
+		t.Fatalf("unexpected recovery sequence: %v", sequence)
+	}
+	if deletedEntries != "10.0.0.9\n192.0.2.1\n" {
+		t.Fatalf("expected only sorted stale entries to be deleted, got %q", deletedEntries)
+	}
+	if stalePath == "" {
+		t.Fatal("expected recovery to create a stale entries file")
+	}
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale entries file to be removed, got: %v", err)
+	}
+}
+
+func TestReplaceFirewallObjectTableEntriesDoesNotPruneOtherErrors(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := 0
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls++
+		if command != "/sbin/pfctl" || len(args) != 6 || args[3] != "replace" {
+			t.Fatalf("unexpected command call: %s %v", command, args)
+		}
+		return "", errors.New("permission denied")
+	}
+
+	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{"10.0.0.1"})
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("expected replace error to be returned, got: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected no destructive recovery for a non-memory error, got %d calls", calls)
+	}
+}
+
+func TestReplaceFirewallObjectTableEntriesRequiresStaleEntriesForRecovery(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := 0
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls++
+		if command != "/sbin/pfctl" || len(args) < 4 {
+			t.Fatalf("unexpected command call: %s %v", command, args)
+		}
+		switch args[3] {
+		case "replace":
+			return "", errors.New("pfctl: Cannot allocate memory")
+		case "show":
+			return "10.0.0.1\n", nil
+		default:
+			t.Fatalf("unexpected recovery operation: %s", args[3])
+			return "", nil
+		}
+	}
+
+	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{"10.0.0.1"})
+	if err == nil || !strings.Contains(err.Error(), "no_stale_table_entries_to_prune") {
+		t.Fatalf("expected recovery to preserve the original table, got: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected replace and show only, got %d calls", calls)
 	}
 }
 
