@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { Chart } from 'svelte-echarts';
+	import { Chart } from '@alchemilla/svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { LineChart } from 'echarts/charts';
-	import { formatBytesBinary, formatBytesPerSecondBinary, formatBitsPerSecondDecimal } from '$lib/utils/bytes';
+	import {
+		formatBytesBinary,
+		formatBytesPerSecondBinary,
+		formatBitsPerSecondDecimal
+	} from '$lib/utils/bytes';
 	import {
 		GridComponent,
 		TitleComponent,
@@ -130,11 +134,7 @@
 			.filter(Boolean) as [number, number | null][];
 	}
 
-	function getEffectiveValueType():
-		| 'percentage'
-		| 'number'
-		| 'human'
-		| Exclude<ValueType, 'auto'> {
+	function getEffectiveValueType(): 'percentage' | 'number' | 'human' | Exclude<ValueType, 'auto'> {
 		if (types !== 'auto') return types;
 		if (percentage) return 'percentage';
 		if (data) return 'human';
