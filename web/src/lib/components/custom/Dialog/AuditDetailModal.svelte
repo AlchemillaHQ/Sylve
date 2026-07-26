@@ -149,62 +149,70 @@
 					</div>
 				</div>
 
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid gap-4">
 					<section
-						class="min-w-0 space-y-3 rounded-xl border p-4 {initialSection === 'request'
+						class="flex max-h-[45vh] min-w-0 flex-col gap-3 overflow-hidden rounded-xl border p-4 {initialSection ===
+						'request'
 							? 'border-primary/60 ring-primary/15 ring-2'
 							: ''}"
 					>
-						<div class="flex items-center gap-2">
+						<div class="flex shrink-0 items-center gap-2">
 							<span class="icon-[mdi--upload-network-outline] text-primary h-4 w-4"></span>
 							<h3 class="text-sm font-semibold">Request</h3>
 						</div>
-						<div class="rounded-lg border px-3 py-2.5">
-							<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-								Endpoint
+						<div class="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
+							<div class="rounded-lg border px-3 py-2.5">
+								<div
+									class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase"
+								>
+									Endpoint
+								</div>
+								<div class="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs">
+									<span class="bg-muted rounded px-1.5 py-0.5 font-semibold">
+										{record.action.method}
+									</span>
+									<span class="break-all">{record.action.path}</span>
+								</div>
 							</div>
-							<div class="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs">
-								<span class="bg-muted rounded px-1.5 py-0.5 font-semibold">
-									{record.action.method}
-								</span>
-								<span class="break-all">{record.action.path}</span>
-							</div>
+							{#if record.action.query}
+								<DetailBlock label="Query" value={record.action.query} copyLabel="Query" />
+							{/if}
+							{#if hasRequestBody}
+								<DetailBlock
+									label="Request Payload"
+									value={record.action.body}
+									copyLabel="Request payload"
+								/>
+							{:else}
+								<p class="text-muted-foreground text-sm">No request payload was recorded.</p>
+							{/if}
 						</div>
-						{#if record.action.query}
-							<DetailBlock label="Query" value={record.action.query} copyLabel="Query" />
-						{/if}
-						{#if hasRequestBody}
-							<DetailBlock
-								label="Request Payload"
-								value={record.action.body}
-								copyLabel="Request payload"
-							/>
-						{:else}
-							<p class="text-muted-foreground text-sm">No request payload was recorded.</p>
-						{/if}
 					</section>
 
 					<section
-						class="min-w-0 space-y-3 rounded-xl border p-4 {initialSection === 'response'
+						class="flex max-h-[45vh] min-w-0 flex-col gap-3 overflow-hidden rounded-xl border p-4 {initialSection ===
+						'response'
 							? 'border-primary/60 ring-primary/15 ring-2'
 							: ''}"
 					>
-						<div class="flex items-center gap-2">
+						<div class="flex shrink-0 items-center gap-2">
 							<span class="icon-[mdi--download-network-outline] text-primary h-4 w-4"></span>
 							<h3 class="text-sm font-semibold">Response</h3>
 						</div>
-						{#if record.error}
-							<DetailBlock label="Recorded Error" value={record.error} copyLabel="Error" />
-						{/if}
-						{#if hasResponse}
-							<DetailBlock
-								label="Response Payload"
-								value={record.action.response}
-								copyLabel="Response"
-							/>
-						{:else if !record.error}
-							<p class="text-muted-foreground text-sm">No response or error was recorded.</p>
-						{/if}
+						<div class="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
+							{#if record.error}
+								<DetailBlock label="Recorded Error" value={record.error} copyLabel="Error" />
+							{/if}
+							{#if hasResponse}
+								<DetailBlock
+									label="Response Payload"
+									value={record.action.response}
+									copyLabel="Response"
+								/>
+							{:else if !record.error}
+								<p class="text-muted-foreground text-sm">No response or error was recorded.</p>
+							{/if}
+						</div>
 					</section>
 				</div>
 
