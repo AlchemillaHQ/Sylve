@@ -44,6 +44,9 @@ func newBootstrapTestService(t *testing.T, existingDatasets []string, pools ...s
 	svc := &Service{
 		DB:     db,
 		System: bootstrapTestSystemService{pools: usablePools},
+		bootstrapHostReleaseFn: func() (string, error) {
+			return "15.1-RELEASE", nil
+		},
 		GZFS: gzfs.NewClient(gzfs.Options{
 			Runner:   runner,
 			ZFSBin:   "zfs",
@@ -67,6 +70,47 @@ func TestListBootstraps_ReturnsAllSupportedVersionsAndTypes(t *testing.T) {
 	want := len(jailServiceInterfaces.SupportedVersions) * len(jailServiceInterfaces.BootstrapTypes)
 	if len(entries) != want {
 		t.Fatalf("expected %d entries, got %d", want, len(entries))
+	}
+}
+
+func TestListBootstraps_FiltersVersionsNewerThanHost(t *testing.T) {
+	svc, _ := newBootstrapTestService(t, nil, "tank")
+	svc.bootstrapHostReleaseFn = func() (string, error) { return "15.0-RELEASE-p7", nil }
+
+	entries, err := svc.ListBootstraps(context.Background(), "tank")
+	if err != nil {
+		t.Fatalf("ListBootstraps returned unexpected error: %v", err)
+	}
+	if len(entries) != len(jailServiceInterfaces.BootstrapTypes) {
+		t.Fatalf("expected only 15.0 entries, got %#v", entries)
+	}
+	for _, entry := range entries {
+		if entry.Major != 15 || entry.Minor != 0 {
+			t.Fatalf("newer bootstrap was listed on 15.0 host: %#v", entry)
+		}
+	}
+}
+
+func TestListBootstraps_LabelsIncludeMinorVersion(t *testing.T) {
+	svc, _ := newBootstrapTestService(t, nil, "tank")
+
+	entries, err := svc.ListBootstraps(context.Background(), "tank")
+	if err != nil {
+		t.Fatalf("ListBootstraps returned unexpected error: %v", err)
+	}
+	labels := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		labels[entry.Label] = struct{}{}
+	}
+	for _, expected := range []string{
+		"FreeBSD 15.0 Base",
+		"FreeBSD 15.0 Minimal",
+		"FreeBSD 15.1 Base",
+		"FreeBSD 15.1 Minimal",
+	} {
+		if _, ok := labels[expected]; !ok {
+			t.Errorf("missing bootstrap label %q in %#v", expected, labels)
+		}
 	}
 }
 
@@ -178,6 +222,38 @@ func TestListBootstraps_CorrectsDatasetAndMountPointPaths(t *testing.T) {
 		}
 		if e.MountPoint != wantMount {
 			t.Errorf("entry %s: expected MountPoint %q, got %q", e.Name, wantMount, e.MountPoint)
+		}
+	}
+}
+
+func TestCreateBootstrap_RejectsVersionNewerThanHost(t *testing.T) {
+	svc, _ := newBootstrapTestService(t, nil, "tank")
+	svc.bootstrapHostReleaseFn = func() (string, error) { return "15.0-RELEASE", nil }
+
+	err := svc.CreateBootstrap(context.Background(), jailServiceInterfaces.BootstrapRequest{
+		Pool: "tank", Major: 15, Minor: 1, Type: "base",
+	})
+	if err == nil || !strings.Contains(err.Error(), "bootstrap_version_newer_than_host") {
+		t.Fatalf("expected host compatibility rejection, got %v", err)
+	}
+}
+
+func TestParseBootstrapHostVersion(t *testing.T) {
+	for _, test := range []struct {
+		release string
+		major   int
+		minor   int
+	}{
+		{release: "15.0-RELEASE-p7", major: 15, minor: 0},
+		{release: "15.1-RELEASE", major: 15, minor: 1},
+		{release: "16.0-CURRENT", major: 16, minor: 0},
+	} {
+		version, err := parseBootstrapHostVersion(test.release)
+		if err != nil {
+			t.Fatalf("parse %q: %v", test.release, err)
+		}
+		if version.Major != test.major || version.Minor != test.minor {
+			t.Fatalf("parse %q = %d.%d, want %d.%d", test.release, version.Major, version.Minor, test.major, test.minor)
 		}
 	}
 }

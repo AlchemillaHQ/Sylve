@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,14 +29,79 @@ func bootstrapName(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor in
 	return fmt.Sprintf(spec.Name, major, minor)
 }
 
-func bootstrapLabel(spec jailServiceInterfaces.BootstrapTypeSpec, major int) string {
-	return fmt.Sprintf(spec.Label, major)
+func bootstrapLabel(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor int) string {
+	return fmt.Sprintf(spec.Label, major, minor)
+}
+
+func parseBootstrapHostVersion(release string) (jailServiceInterfaces.SupportedBootstrapVersion, error) {
+	release = strings.TrimSpace(release)
+	version := jailServiceInterfaces.SupportedBootstrapVersion{}
+	if release == "" {
+		return version, fmt.Errorf("host_release_empty")
+	}
+	base := strings.SplitN(release, "-", 2)[0]
+	parts := strings.Split(base, ".")
+	if len(parts) < 2 {
+		return version, fmt.Errorf("unexpected_host_release_format:%s", release)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil || major < 0 {
+		return version, fmt.Errorf("unexpected_host_release_major:%s", release)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil || minor < 0 {
+		return version, fmt.Errorf("unexpected_host_release_minor:%s", release)
+	}
+	version.Major = major
+	version.Minor = minor
+	return version, nil
+}
+
+func bootstrapVersionAllowedOnHost(requested, host jailServiceInterfaces.SupportedBootstrapVersion) bool {
+	return requested.Major < host.Major ||
+		(requested.Major == host.Major && requested.Minor <= host.Minor)
+}
+
+func (s *Service) bootstrapHostVersion() (jailServiceInterfaces.SupportedBootstrapVersion, error) {
+	var release string
+	var err error
+	if s != nil && s.bootstrapHostReleaseFn != nil {
+		release, err = s.bootstrapHostReleaseFn()
+	} else {
+		release, err = sysctl.GetString("kern.osrelease")
+	}
+	if err != nil {
+		return jailServiceInterfaces.SupportedBootstrapVersion{}, fmt.Errorf("read_kern_osrelease_failed: %w", err)
+	}
+	return parseBootstrapHostVersion(release)
+}
+
+func (s *Service) requireBootstrapVersionCompatible(major, minor int) error {
+	host, err := s.bootstrapHostVersion()
+	if err != nil {
+		return fmt.Errorf("failed_to_determine_host_freebsd_version: %w", err)
+	}
+	requested := jailServiceInterfaces.SupportedBootstrapVersion{Major: major, Minor: minor}
+	if !bootstrapVersionAllowedOnHost(requested, host) {
+		return fmt.Errorf(
+			"bootstrap_version_newer_than_host:requested=%d.%d,host=%d.%d",
+			major, minor, host.Major, host.Minor,
+		)
+	}
+	return nil
 }
 
 func (s *Service) ListBootstraps(ctx context.Context, pool string) ([]jailServiceInterfaces.BootstrapEntry, error) {
 	var entries []jailServiceInterfaces.BootstrapEntry
+	hostVersion, err := s.bootstrapHostVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_determine_host_freebsd_version: %w", err)
+	}
 
 	for _, ver := range jailServiceInterfaces.SupportedVersions {
+		if !bootstrapVersionAllowedOnHost(ver, hostVersion) {
+			continue
+		}
 		for _, bt := range jailServiceInterfaces.BootstrapTypes {
 			name := bootstrapName(bt, ver.Major, ver.Minor)
 			dataset := fmt.Sprintf("%s/sylve/bootstraps/%s", pool, name)
@@ -44,7 +110,7 @@ func (s *Service) ListBootstraps(ctx context.Context, pool string) ([]jailServic
 			entry := jailServiceInterfaces.BootstrapEntry{
 				Pool:       pool,
 				Name:       name,
-				Label:      bootstrapLabel(bt, ver.Major),
+				Label:      bootstrapLabel(bt, ver.Major, ver.Minor),
 				Dataset:    dataset,
 				MountPoint: mountPoint,
 				Major:      ver.Major,
@@ -86,6 +152,9 @@ func (s *Service) CreateBootstrap(ctx context.Context, req jailServiceInterfaces
 
 	if !versionSupported {
 		return fmt.Errorf("unsupported_bootstrap_version: %d.%d", req.Major, req.Minor)
+	}
+	if err := s.requireBootstrapVersionCompatible(req.Major, req.Minor); err != nil {
+		return err
 	}
 
 	var typeSpec *jailServiceInterfaces.BootstrapTypeSpec

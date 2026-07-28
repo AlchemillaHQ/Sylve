@@ -350,6 +350,9 @@ func newJailCreateTestService(db *gorm.DB, runner *jailCreateTestZFSRunner, pool
 			ZDBBin:   "zdb",
 		}),
 		ctidHashByCTID: make(map[uint]string),
+		bootstrapHostReleaseFn: func() (string, error) {
+			return "15.1-RELEASE", nil
+		},
 	}
 }
 
@@ -756,6 +759,48 @@ func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", poolDir, ctid)
 	if !runner.hasDataset(rootDataset) {
 		t.Fatalf("successful jail dataset %q was removed", rootDataset)
+	}
+}
+
+func TestValidateCreate_RejectsBootstrapNewerThanHost(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.JailBootstrap{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&utilitiesModels.Downloads{},
+	)
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, "tank")
+	svc.bootstrapHostReleaseFn = func() (string, error) { return "15.0-RELEASE", nil }
+
+	if err := db.Create(&jailModels.JailBootstrap{
+		Pool:          "tank",
+		Dataset:       "tank/sylve/bootstraps/15-1-Base",
+		MountPoint:    "/tank/sylve/bootstraps/15-1-Base",
+		Name:          "15-1-Base",
+		Major:         15,
+		Minor:         1,
+		BootstrapType: "base",
+		Status:        "completed",
+	}).Error; err != nil {
+		t.Fatalf("seed bootstrap: %v", err)
+	}
+
+	ctid := uint(789)
+	err := svc.ValidateCreate(context.Background(), jailServiceInterfaces.CreateJailRequest{
+		Name:          "newer-bootstrap",
+		CTID:          &ctid,
+		Pool:          "tank",
+		BootstrapName: "15-1-Base",
+		SwitchName:    "none",
+		Type:          jailModels.JailTypeFreeBSD,
+	})
+	if err == nil || !strings.Contains(err.Error(), "bootstrap_version_newer_than_host") {
+		t.Fatalf("expected bootstrap host compatibility rejection, got %v", err)
 	}
 }
 

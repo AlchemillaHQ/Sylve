@@ -69,7 +69,8 @@ type Service struct {
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once
 
-	bootstrapActiveMu sync.Map
+	bootstrapActiveMu      sync.Map
+	bootstrapHostReleaseFn func() (string, error)
 }
 
 func (s *Service) SetGuestIdentityAvailabilityChecker(
@@ -421,6 +422,9 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		}
 		if bRecord.Status != "completed" {
 			return fmt.Errorf("bootstrap_not_completed")
+		}
+		if err := s.requireBootstrapVersionCompatible(bRecord.Major, bRecord.Minor); err != nil {
+			return err
 		}
 
 		ds, _ := s.GZFS.ZFS.Get(ctx, bootstrapDataset, false)

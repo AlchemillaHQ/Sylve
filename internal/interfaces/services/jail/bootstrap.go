@@ -20,6 +20,7 @@ type SupportedBootstrapVersion struct {
 // bootstrap. Add new entries here as pkgbase sets become available.
 var SupportedVersions = []SupportedBootstrapVersion{
 	{Major: 15, Minor: 0},
+	{Major: 15, Minor: 1},
 }
 
 // BootstrapTypeSpec describes one pkgbase set within a major/minor version.
@@ -39,13 +40,13 @@ var BootstrapTypes = []BootstrapTypeSpec{
 	{
 		Type:   "base",
 		Name:   "%d-%d-Base",
-		Label:  "FreeBSD %d Base",
+		Label:  "FreeBSD %d.%d Base",
 		PkgSet: "FreeBSD-set-base-jail",
 	},
 	{
 		Type:   "minimal",
 		Name:   "%d-%d-Minimal",
-		Label:  "FreeBSD %d Minimal",
+		Label:  "FreeBSD %d.%d Minimal",
 		PkgSet: "FreeBSD-set-minimal-jail",
 	},
 }

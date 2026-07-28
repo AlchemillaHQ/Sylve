@@ -137,6 +137,8 @@ func CreateBootstrap(jailService *jail.Service) gin.HandlerFunc {
 				statusCode = http.StatusConflict
 			} else if msg == "pool_not_found" ||
 				msg == "unsupported_bootstrap_type: "+req.Type ||
+				strings.HasPrefix(msg, "unsupported_bootstrap_version:") ||
+				strings.HasPrefix(msg, "bootstrap_version_newer_than_host:") ||
 				strings.HasPrefix(msg, "pkgbase_signing_keys_not_found") ||
 				msg == "pkg_not_found" {
 				statusCode = http.StatusBadRequest
