@@ -19,6 +19,10 @@ type scsiInformationalException struct {
 	TripTemperatureKnown    bool
 }
 
+func scsiTemperatureUnavailable(attr Attribute) bool {
+	return attr.Page == 0x0d && (attr.ID == 0 || attr.ID == 1) && attr.RawValue == 0xff
+}
+
 func parseSCSIInformationalException(raw []byte) (scsiInformationalException, bool) {
 	result := scsiInformationalException{}
 	if len(raw) < 10 || raw[0]&0x3f != 0x2f {

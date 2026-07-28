@@ -37,6 +37,34 @@ func TestParseSCSIInformationalExceptionUsesParameterZero(t *testing.T) {
 	}
 }
 
+func TestParseSCSIInformationalExceptionTreatsTemperatureFFAsUnknown(t *testing.T) {
+	raw := make([]byte, 12)
+	raw[0] = 0x2f
+	binary.BigEndian.PutUint16(raw[2:4], uint16(len(raw)-4))
+	raw[7] = 4
+	raw[10] = 0xff
+	raw[11] = 0xff
+
+	info, ok := parseSCSIInformationalException(raw)
+	if !ok || info.CurrentTemperatureKnown || info.TripTemperatureKnown {
+		t.Fatalf("information: %+v valid=%v", info, ok)
+	}
+}
+
+func TestSCSITemperatureUnavailable(t *testing.T) {
+	for _, id := range []uint32{0, 1} {
+		if !scsiTemperatureUnavailable(Attribute{Page: 0x0d, ID: id, RawValue: 0xff}) {
+			t.Fatalf("page 0x0d parameter %d was not treated as unavailable", id)
+		}
+	}
+	if scsiTemperatureUnavailable(Attribute{Page: 0x0d, ID: 0, RawValue: 40}) {
+		t.Fatal("valid temperature was treated as unavailable")
+	}
+	if scsiTemperatureUnavailable(Attribute{Page: 0x0e, ID: 0, RawValue: 0xff}) {
+		t.Fatal("unrelated attribute was treated as unavailable")
+	}
+}
+
 func TestParseSCSIInformationalExceptionRejectsInvalidInput(t *testing.T) {
 	raw := make([]byte, 12)
 	raw[0] = 0x2f

@@ -194,13 +194,13 @@ func TestDiskSmartMonitorPowerSkipPreservesAvailabilityState(t *testing.T) {
 	}
 }
 
-func TestGetTemperatureSCSIFromPage0x0D(t *testing.T) {
+func TestGetTemperatureSCSIUsesCanonicalTemperature(t *testing.T) {
 	svc := &Service{}
-	scsi := makeSCSI(0, true,
+	scsi := makeSCSI(46, true,
 		attrPage(0x0D, 0, 46, "Temperature"),
 	)
 	if got := svc.getTemperature(scsi); got != 46 {
-		t.Fatalf("expected temperature 46 from SCSI page 0x0D, got %d", got)
+		t.Fatalf("expected canonical SCSI temperature 46, got %d", got)
 	}
 }
 
@@ -211,6 +211,26 @@ func TestGetTemperatureSCSIMissingPage0x0D(t *testing.T) {
 	)
 	if got := svc.getTemperature(scsi); got != 0 {
 		t.Fatalf("expected 0 for SCSI without temperature page, got %d", got)
+	}
+}
+
+func TestGetTemperatureSCSIUnavailableSentinel(t *testing.T) {
+	svc := &Service{}
+	scsi := makeSCSI(0, true,
+		attrPage(0x0D, 0, 0xff, "Temperature"),
+	)
+	if got := svc.getTemperature(scsi); got != 0 {
+		t.Fatalf("expected unavailable SCSI temperature, got %d", got)
+	}
+}
+
+func TestGetTemperatureSCSIUnavailableSentinelUsesFallback(t *testing.T) {
+	svc := &Service{}
+	scsi := makeSCSI(42, true,
+		attrPage(0x0D, 0, 0xff, "Temperature"),
+	)
+	if got := svc.getTemperature(scsi); got != 42 {
+		t.Fatalf("expected canonical fallback temperature 42, got %d", got)
 	}
 }
 
@@ -645,7 +665,7 @@ func TestEvaluateTemperatureATAAlertsAfterConsecutiveBadReadings(t *testing.T) {
 	}
 }
 
-func TestEvaluateTemperatureSCSIAlertsFromPage0x0D(t *testing.T) {
+func TestEvaluateTemperatureSCSIAlertsFromCanonicalTemperature(t *testing.T) {
 	diskService := &mockDiskServiceForWearout{
 		wearoutFn: func(smartData any) (float64, error) {
 			return 0, errors.New("wearout not available for SCSI protocol")
@@ -653,7 +673,7 @@ func TestEvaluateTemperatureSCSIAlertsFromPage0x0D(t *testing.T) {
 	}
 	svc, notifSvc := makeTestSystemService(t, diskService)
 
-	scsi := makeSCSI(0, true,
+	scsi := makeSCSI(60, true,
 		attrPage(0x0D, 0, 60, "Temperature"),
 	)
 	disk := diskServiceInterfaces.Disk{
@@ -673,6 +693,53 @@ func TestEvaluateTemperatureSCSIAlertsFromPage0x0D(t *testing.T) {
 	}
 	if active != 1 {
 		t.Fatalf("expected 1 active notification for SCSI temperature alert, got %d", active)
+	}
+}
+
+func TestEvaluateTemperatureSCSIUnavailableSentinelDoesNotAlert(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{
+		wearoutFn: func(any) (float64, error) { return 0, errors.New("unused") },
+	}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	disk := diskServiceInterfaces.Disk{
+		Device: "da0",
+		Type:   "SSD",
+		SmartData: makeSCSI(0, true,
+			attrPage(0x0D, 0, 0xff, "Temperature"),
+		),
+	}
+	st := &diskSmartState{}
+
+	for range diskSmartConsecutiveTrigger + 1 {
+		svc.evaluateTemperature(context.Background(), disk, st, false)
+	}
+	active, err := notifSvc.CountActive(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active != 0 || st.tempCriticalCount != 0 || st.tempWarningCount != 0 || st.tempNormalCount != 0 {
+		t.Fatalf("active=%d state=%+v", active, st)
+	}
+}
+
+func TestEvaluateTemperatureUnknownInterruptsConsecutiveReadings(t *testing.T) {
+	diskService := &mockDiskServiceForWearout{
+		wearoutFn: func(any) (float64, error) { return 0, errors.New("unused") },
+	}
+	svc, notifSvc := makeTestSystemService(t, diskService)
+	st := &diskSmartState{}
+	hot := diskServiceInterfaces.Disk{Device: "da0", Type: "SSD", SmartData: makeSCSI(60, true)}
+	unknown := diskServiceInterfaces.Disk{Device: "da0", Type: "SSD", SmartData: makeSCSI(0, true)}
+
+	svc.evaluateTemperature(context.Background(), hot, st, false)
+	svc.evaluateTemperature(context.Background(), unknown, st, false)
+	svc.evaluateTemperature(context.Background(), hot, st, false)
+	active, err := notifSvc.CountActive(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active != 0 || st.tempWarningCount != 1 {
+		t.Fatalf("active=%d state=%+v", active, st)
 	}
 }
 

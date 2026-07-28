@@ -554,6 +554,10 @@ func (d *Device) Read() (*DeviceInfo, error) {
 			info.Passed = attr.RawValue == 0
 		}
 
+		if protoVal == C.SMART_PROTO_SCSI && scsiTemperatureUnavailable(attr) {
+			continue
+		}
+
 		info.Attributes = append(info.Attributes, attr)
 
 		if !isATA {

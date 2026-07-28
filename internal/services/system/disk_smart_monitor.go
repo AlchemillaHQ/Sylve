@@ -260,6 +260,9 @@ func (s *Service) evaluateSmartData(ctx context.Context, disk diskServiceInterfa
 func (s *Service) evaluateTemperature(ctx context.Context, disk diskServiceInterfaces.Disk, st *diskSmartState, warmup bool) {
 	temperature := s.getTemperature(disk.SmartData)
 	if temperature <= 0 {
+		st.tempCriticalCount = 0
+		st.tempWarningCount = 0
+		st.tempNormalCount = 0
 		return
 	}
 
@@ -668,15 +671,6 @@ func (s *Service) getTemperature(smartData any) int {
 	}
 
 	if ata, ok := smartData.(diskServiceInterfaces.SmartData); ok {
-		protocol := strings.ToUpper(ata.Device.Protocol)
-		if protocol == "SCSI" {
-			for _, attr := range ata.Attributes {
-				if attr.Page == 0x0D && attr.ID == 0 {
-					return int(attr.RawValue)
-				}
-			}
-			return ata.Temperature
-		}
 		return ata.Temperature
 	}
 
