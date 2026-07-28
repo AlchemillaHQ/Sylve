@@ -9,7 +9,6 @@
  */
 
 import { browser } from '$app/environment';
-import { goto } from '$app/navigation';
 import { storage } from '$lib';
 import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { APIResponse } from '$lib/types/common';
@@ -33,6 +32,7 @@ export type APIRequestConfig = {
     headers?: Record<string, string>;
     data?: unknown;
     body?: BodyInit | null;
+    responseType?: 'blob';
     signal?: AbortSignal;
     credentials?: RequestCredentials;
     validateStatus?: (status: number) => boolean;
@@ -136,6 +136,15 @@ function isAPIClientError(error: unknown): error is APIClientError {
     return typeof error === 'object' && error !== null && 'request' in error;
 }
 
+function isAbortError(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'name' in error &&
+        error.name === 'AbortError'
+    );
+}
+
 function isBodyInit(value: unknown): value is BodyInit {
     return (
         typeof value === 'string' ||
@@ -148,7 +157,10 @@ function isBodyInit(value: unknown): value is BodyInit {
     );
 }
 
-async function parseResponseBody(response: Response): Promise<unknown> {
+async function parseResponseBody(
+    response: Response,
+    responseType?: APIRequestConfig['responseType']
+): Promise<unknown> {
     if (response.status === 204 || response.status === 205) {
         return null;
     }
@@ -157,6 +169,14 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     if (contentType.includes('application/json') || contentType.includes('+json')) {
         try {
             return await response.json();
+        } catch (_e: unknown) {
+            return null;
+        }
+    }
+
+    if (responseType === 'blob') {
+        try {
+            return await response.blob();
         } catch (_e: unknown) {
             return null;
         }
@@ -197,7 +217,7 @@ class FetchAPIClient {
                 credentials: nextConfig.credentials || 'same-origin'
             });
 
-            const data = (await parseResponseBody(response)) as T;
+            const data = (await parseResponseBody(response, nextConfig.responseType)) as T;
             const normalizedResponse: APIClientResponse<T> = {
                 status: response.status,
                 data,
@@ -228,6 +248,9 @@ class FetchAPIClient {
 
             return normalizedResponse;
         } catch (error: unknown) {
+            if (isAbortError(error)) {
+                throw error;
+            }
             if (isAPIClientError(error) && error.handled) {
                 throw error;
             }

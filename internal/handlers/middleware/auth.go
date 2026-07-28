@@ -117,6 +117,7 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 					c.Set("UserID", claims.UserID)
 					c.Set("Username", claims.Username)
 					c.Set("AuthType", claims.AuthType)
+					c.Set("ProxyAdmin", claims.Admin)
 					c.Next()
 					return
 				}
@@ -174,6 +175,7 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 			c.Set("UserID", clusterClaims.UserID)
 			c.Set("Username", clusterClaims.Username)
 			c.Set("AuthType", clusterClaims.AuthType)
+			c.Set("ProxyAdmin", clusterClaims.Admin)
 			c.Next()
 			return
 		}

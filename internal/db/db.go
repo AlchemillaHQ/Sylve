@@ -10,8 +10,10 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -44,6 +46,7 @@ func databaseGormLogger(level gormLogger.LogLevel) gormLogger.Interface {
 		SlowThreshold:             200 * time.Millisecond,
 		LogLevel:                  level,
 		IgnoreRecordNotFoundError: true,
+		ParameterizedQueries:      true,
 		Colorful:                  true,
 	})
 }
@@ -68,25 +71,42 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 	var db *gorm.DB
 	var err error
+	databasePath := ""
 
 	if isTest {
 		db, err = gorm.Open(sqlite.Open(":memory:"), ormConfig)
 	} else {
-		db, err = gorm.Open(sqlite.Open(cfg.DataPath+"/sylve.db"), ormConfig)
+		databasePath = filepath.Join(cfg.DataPath, "sylve.db")
+		db, err = gorm.Open(sqlite.Open(databasePath), ormConfig)
 	}
 
 	if err != nil {
 		logger.L.Fatal().Msgf("Error connecting to database: %v", err)
+	}
+	if databasePath != "" {
+		if err := hardenDatabaseFiles(databasePath); err != nil {
+			logger.L.Fatal().Msgf("Error securing database files: %v", err)
+		}
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
 		logger.L.Fatal().Msgf("Error getting sql database handle: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
-	db.Exec("PRAGMA busy_timeout = 5000")
-	db.Exec("PRAGMA journal_mode = WAL")
-	db.Exec("PRAGMA synchronous = NORMAL")
+	if err := configureSQLite(db); err != nil {
+		if databasePath != "" {
+			_ = hardenDatabaseFiles(databasePath)
+		}
+		logger.L.Fatal().Msgf("Error configuring database: %v", err)
+	}
+	if databasePath != "" {
+		if err := hardenDatabaseFiles(databasePath); err != nil {
+			logger.L.Fatal().Msgf("Error securing database sidecar files: %v", err)
+		}
+	}
 
 	// Pre-migration fixups use the migrations tracking table, so ensure it
 	// exists before running any pre-migration logic.
@@ -115,6 +135,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&models.WebAuthnCredential{},
 		&models.WebAuthnChallenge{},
 		&models.SystemSecrets{},
+		&models.Certificate{},
+		&models.ManagedCertificateOrder{},
+		&models.CertificateSettings{},
 
 		&vmModels.Storage{},
 		&vmModels.Network{},
@@ -207,9 +230,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	replicationguard.MarkPolicySchemaReady(db)
 	replicationguard.MarkGuestOperationSchemaReady(db)
 
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
-
 	err = setupInitUsers(db, cfg)
 	if err != nil {
 		logger.L.Fatal().Msgf("Error setting up initial users: %v", err)
@@ -263,6 +283,30 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	}
 
 	return db
+}
+
+func configureSQLite(db *gorm.DB) error {
+	pragmas := []string{
+		"PRAGMA busy_timeout = 5000",
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA synchronous = NORMAL",
+	}
+	for _, pragma := range pragmas {
+		if err := db.Exec(pragma).Error; err != nil {
+			return fmt.Errorf("execute %q: %w", pragma, err)
+		}
+	}
+	return nil
+}
+
+func hardenDatabaseFiles(databasePath string) error {
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		path := databasePath + suffix
+		if err := os.Chmod(path, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("chmod %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {

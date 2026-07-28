@@ -173,8 +173,6 @@
 		'/api/info/notes/bulk-delete': 'Notes - Bulk Delete',
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',
-		'/api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
-		'/api/dynamic-dns/entries': 'Dynamic DNS Entry',
 		'/api/vnc': 'VNC',
 		'/api/info/terminal': 'Host Terminal - Session',
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
@@ -348,6 +346,19 @@
 	});
 
 	const methodPathToActionMap: Record<string, string> = {
+		'POST /api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
+		'PUT /api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
+		'DELETE /api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
+		'POST /api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
+		'POST /api/certificates': 'TLS Certificate - Create',
+		'PUT /api/certificates/:id': 'TLS Certificate - Update',
+		'DELETE /api/certificates/:id': 'TLS Certificate - Delete',
+		'POST /api/certificates/:id/activate': 'TLS Certificate - Schedule Activation',
+		'DELETE /api/certificates/:id/activate':
+			'TLS Certificate - Cancel Pending Activation',
+		'POST /api/certificates/:id/renew': 'TLS Certificate - Renew',
+		'POST /api/certificates/:id/retry': 'TLS Certificate - Retry Issuance',
+		'POST /api/certificates/:id/download': 'TLS Certificate - Download',
 		'GET /api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - View',
 		'POST /api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
 		'POST /api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',

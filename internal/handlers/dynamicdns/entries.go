@@ -33,6 +33,8 @@ func dynamicDNSErrorStatus(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, dynamicdns.ErrEntryNotFound):
 		return http.StatusNotFound
+	case errors.Is(err, dynamicdns.ErrEntryInUse):
+		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
 	}

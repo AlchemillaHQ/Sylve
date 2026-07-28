@@ -31,7 +31,7 @@ import (
 var _ serviceInterfaces.AuthServiceInterface = (*Service)(nil)
 
 const (
-	maxLoginAttempts  = 5
+	maxLoginAttempts   = 5
 	loginBlockDuration = 15 * time.Minute
 )
 
@@ -41,9 +41,9 @@ type loginAttempt struct {
 }
 
 type Service struct {
-	DB             *gorm.DB
-	loginMu        sync.Mutex
-	loginAttempts  map[string]*loginAttempt
+	DB            *gorm.DB
+	loginMu       sync.Mutex
+	loginAttempts map[string]*loginAttempt
 }
 type JWT struct {
 	jwt.RegisteredClaims
@@ -236,6 +236,7 @@ func (s *Service) createClusterJWTWithUse(
 	userId uint,
 	username string,
 	authType string,
+	admin bool,
 	tokenUse string,
 	forceSecret string,
 	ttl time.Duration,
@@ -275,6 +276,7 @@ func (s *Service) createClusterJWTWithUse(
 			Username: username,
 			AuthType: authType,
 			TokenUse: tokenUse,
+			Admin:    admin,
 		},
 	}
 
@@ -287,10 +289,20 @@ func (s *Service) createClusterJWTWithUse(
 }
 
 func (s *Service) CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error) {
+	admin := false
+	if userId != 0 {
+		var user models.User
+		if err := s.DB.Select("username", "admin").First(&user, userId).Error; err != nil {
+			return "", fmt.Errorf("failed_to_load_proxy_user: %w", err)
+		}
+		username = user.Username
+		admin = user.Admin
+	}
 	return s.createClusterJWTWithUse(
 		userId,
 		username,
 		authType,
+		admin,
 		ClusterTokenUseUserProxy,
 		forceSecret,
 		24*time.Hour,
@@ -306,6 +318,7 @@ func (s *Service) CreateInternalClusterJWT(username string, forceSecret string) 
 		0,
 		username,
 		ClusterInternalAuthType,
+		false,
 		ClusterTokenUseInternalControl,
 		forceSecret,
 		5*time.Minute,

@@ -27,6 +27,8 @@ export type APIRequestOptions = {
     hostname?: string;
     headers?: Record<string, string>;
     skipAuditLog?: boolean;
+    preserveErrors?: boolean;
+    signal?: AbortSignal;
 };
 
 let cacheWritesSuspended = false;
@@ -37,10 +39,12 @@ export function suspendAPICacheWrites(): void {
     cacheWritesSuspended = true;
 }
 
-function getScopedCacheKey(key: string): string {
+function getScopedCacheKey(key: string, hostname?: string): string {
     if (!browser) {
-        return key;
+        return hostname ? `node:${hostname}:${key}` : key;
     }
+
+    if (hostname) return `node:${hostname}:${key}`;
 
     const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
     if (routeHost && routeHost !== 'datacenter' && routeHost !== 'login' && routeHost !== 'inactive-node') {
@@ -71,7 +75,8 @@ export async function apiRequest<T extends z.ZodType>(
                 ...(options?.headers || {}),
                 ...(options?.hostname ? { 'X-Current-Hostname': options.hostname } : {})
             },
-            ...(body ? { data: body } : {})
+            ...(body ? { data: body } : {}),
+            ...(options?.signal ? { signal: options.signal } : {})
         };
 
         const response = await api.request({ ...config, validateStatus: () => true });
@@ -94,7 +99,7 @@ export async function apiRequest<T extends z.ZodType>(
                 stageErrorDetail(apiResponse.data, errorContext);
                 setReloadFlag();
                 if (options?.raw) return apiResponse.data as z.infer<T>;
-                return getDefaultValue(schema, apiResponse.data);
+                return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
             }
         }
 
@@ -109,7 +114,7 @@ export async function apiRequest<T extends z.ZodType>(
             };
             registerErrorContext(invalidResponse, errorContext);
             stageErrorDetail(invalidResponse, errorContext);
-            return getDefaultValue(schema, invalidResponse);
+            return getDefaultValue(schema, invalidResponse, options?.preserveErrors);
         }
 
         /* Caller asked for a raw response */
@@ -126,13 +131,14 @@ export async function apiRequest<T extends z.ZodType>(
             } else {
                 console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
                 setReloadFlag();
-                return getDefaultValue(schema, apiResponse.data);
+                return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
             }
         }
 
         setReloadFlag();
-        return getDefaultValue(schema, apiResponse.data);
+        return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
     } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw error;
         setReloadFlag();
         console.error('API Request Error', error);
         const failedResponse: APIResponse = {
@@ -147,15 +153,16 @@ export async function apiRequest<T extends z.ZodType>(
         };
         registerErrorContext(failedResponse, errorContext);
         stageErrorDetail(failedResponse, errorContext);
-        return getDefaultValue(schema, failedResponse);
+        return getDefaultValue(schema, failedResponse, options?.preserveErrors);
     }
 }
 
 function getDefaultValue<T extends z.ZodType>(
     schema: T,
-    response: APIResponse
+    response: APIResponse,
+    preserveErrors = false
 ): z.infer<T> | APIResponse {
-    if (schema instanceof z.ZodArray) {
+    if (!preserveErrors && schema instanceof z.ZodArray) {
         return [] as z.infer<T>;
     }
 
@@ -166,9 +173,10 @@ export async function cachedFetch<T>(
     key: string,
     fetchFunction: () => Promise<T>,
     duration: number,
-    onlyCache?: boolean
+    onlyCache?: boolean,
+    hostname?: string
 ): Promise<T> {
-    const scopedKey = getScopedCacheKey(key);
+    const scopedKey = getScopedCacheKey(key, hostname);
     const now = Date.now();
     const entry = cacheWritesSuspended ? null : await kvStorage.getItem<T>(scopedKey);
 
@@ -208,10 +216,10 @@ export async function cachedFetch<T>(
     return data;
 }
 
-export async function getCache<T>(key: string): Promise<T | null> {
+export async function getCache<T>(key: string, hostname?: string): Promise<T | null> {
     if (cacheWritesSuspended) return null;
 
-    const scopedKey = getScopedCacheKey(key);
+    const scopedKey = getScopedCacheKey(key, hostname);
     try {
         const entry = await kvStorage.getItem<T>(scopedKey);
         return entry?.data ?? null;
@@ -221,10 +229,10 @@ export async function getCache<T>(key: string): Promise<T | null> {
     }
 }
 
-export async function updateCache<T>(key: string, obj: T): Promise<void> {
+export async function updateCache<T>(key: string, obj: T, hostname?: string): Promise<void> {
     if (cacheWritesSuspended) return;
 
-    const scopedKey = getScopedCacheKey(key);
+    const scopedKey = getScopedCacheKey(key, hostname);
     try {
         if (cacheWritesSuspended) return;
         await kvStorage.setItem(scopedKey, obj);
@@ -233,10 +241,10 @@ export async function updateCache<T>(key: string, obj: T): Promise<void> {
     }
 }
 
-export async function removeCache(key: string): Promise<void> {
+export async function removeCache(key: string, hostname?: string): Promise<void> {
     if (cacheWritesSuspended) return;
 
-    const scopedKey = getScopedCacheKey(key);
+    const scopedKey = getScopedCacheKey(key, hostname);
     try {
         await kvStorage.removeItem(scopedKey);
     } catch (error) {

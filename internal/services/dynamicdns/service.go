@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"gorm.io/gorm"
@@ -25,6 +26,7 @@ import (
 var (
 	ErrInvalidEntry  = errors.New("invalid dynamic DNS entry")
 	ErrEntryNotFound = errors.New("dynamic DNS entry not found")
+	ErrEntryInUse    = errors.New("dynamic DNS entry is in use")
 )
 
 const (
@@ -137,7 +139,21 @@ func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*
 	entry.ID = existing.ID
 	entry.CreatedAt = existing.CreatedAt
 
-	if err := s.DB.WithContext(ctx).Save(&entry).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if entry.Provider != existing.Provider || entry.Hostname != existing.Hostname {
+			inUse, err := entryReferencedByCertificate(tx, existing.ID)
+			if err != nil {
+				return err
+			}
+			if inUse {
+				return fmt.Errorf("%w: provider and hostname cannot be changed while a managed certificate uses this entry", ErrEntryInUse)
+			}
+		}
+		return tx.Save(&entry).Error
+	}); err != nil {
+		if errors.Is(err, ErrEntryInUse) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to update dynamic DNS entry: %w", err)
 	}
 
@@ -149,14 +165,33 @@ func (s *Service) DeleteEntry(ctx context.Context, id uint) error {
 	s.syncMu.Lock()
 	defer s.syncMu.Unlock()
 
-	result := s.DB.WithContext(ctx).Delete(&dynamicDNSModels.Entry{}, id)
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete dynamic DNS entry: %w", result.Error)
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		inUse, err := entryReferencedByCertificate(tx, id)
+		if err != nil {
+			return err
+		}
+		if inUse {
+			return fmt.Errorf("%w: delete the managed certificate before deleting this entry", ErrEntryInUse)
+		}
+		result := tx.Delete(&dynamicDNSModels.Entry{}, id)
+		if result.Error != nil {
+			return fmt.Errorf("failed to delete dynamic DNS entry: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return ErrEntryNotFound
+		}
+		return nil
+	})
+}
+
+func entryReferencedByCertificate(db *gorm.DB, id uint) (bool, error) {
+	var count int64
+	if err := db.Model(&models.Certificate{}).
+		Where("dynamic_dns_entry_id = ?", id).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("check Dynamic DNS certificate references: %w", err)
 	}
-	if result.RowsAffected == 0 {
-		return ErrEntryNotFound
-	}
-	return nil
+	return count > 0, nil
 }
 
 func (s *Service) SyncEntry(ctx context.Context, id uint) (*EntryView, error) {

@@ -594,6 +594,7 @@ msgstr "Action"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -862,6 +863,7 @@ msgstr "Failed to create note"
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -888,6 +890,7 @@ msgstr "Failed to create note"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -930,6 +933,7 @@ msgstr "Created"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
 msgstr "Updated"
@@ -966,6 +970,7 @@ msgstr "View"
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
@@ -1011,6 +1016,7 @@ msgstr "Delete"
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
@@ -1060,6 +1066,7 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -1190,6 +1197,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Config.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -1380,6 +1388,7 @@ msgstr "Voter"
 msgid "Non Voter"
 msgstr "Non Voter"
 
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Staging"
 msgstr "Staging"
@@ -1627,6 +1636,7 @@ msgstr "Admin"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -2089,6 +2099,7 @@ msgstr "First Modified"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -2097,6 +2108,7 @@ msgstr "First Modified"
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
@@ -2222,6 +2234,7 @@ msgstr "Share name already exists"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Name is required"
 msgstr "Name is required"
@@ -2492,6 +2505,7 @@ msgid "Metric"
 msgstr "Metric"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -2807,6 +2821,7 @@ msgstr "Failed to update ZFS Pools"
 msgid "ZFS Pools updated"
 msgstr "ZFS Pools updated"
 
+#. 0: editingCertificate.name
 #. 0: editingEntry.hostname
 #. 0: title
 #. 0: title
@@ -2820,6 +2835,7 @@ msgstr "ZFS Pools updated"
 #. 0: title
 #. 0: title
 #. 0: title
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
@@ -3549,6 +3565,7 @@ msgid "OOB Restore"
 msgstr "OOB Restore"
 
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -5283,7 +5300,9 @@ msgid "Update DHCP Configuration"
 msgstr "Update DHCP Configuration"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
 msgid "Domain"
 msgstr "Domain"
 
@@ -10060,6 +10079,7 @@ msgstr "This VM is owned by another node right now"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Saving..."
@@ -13499,8 +13519,10 @@ msgstr "Path: {0}"
 msgid "This will delete {0}"
 msgstr "This will delete {0}"
 
+#. 0: certificate.name
 #. 0: entry.hostname
 #. NaN: activeRow?.name
+#: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Failed to delete {0}"
@@ -14226,8 +14248,9 @@ msgstr "Capacity threshold (%)"
 msgid "Local"
 msgstr "Local"
 
-#~ msgid "Imported"
-#~ msgstr "Imported"
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Imported"
+msgstr "Imported"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
@@ -17187,9 +17210,8 @@ msgstr "Whole minutes, from 1 to 1440."
 msgid "Dynamic DNS Entry - Sync"
 msgstr "Dynamic DNS Entry - Sync"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Dynamic DNS Entry"
-msgstr "Dynamic DNS Entry"
+#~ msgid "Dynamic DNS Entry"
+#~ msgstr "Dynamic DNS Entry"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Guest read-only access"
@@ -17445,3 +17467,563 @@ msgstr "Must match the hostname assigned to this update token."
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "Each Sylve.app hostname has its own update token."
 msgstr "Each Sylve.app hostname has its own update token."
+
+#: src/routes/[node]/+layout.svelte
+msgid "Certificates"
+msgstr "Certificates"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Available"
+msgstr "Available"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Expired"
+msgstr "Expired"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Expiring"
+msgstr "Expiring"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Self-Signed"
+msgstr "Self-Signed"
+
+#~ msgid "Let's Encrypt (Staging)"
+#~ msgstr "Let's Encrypt (Staging)"
+
+#~ msgid "Let's Encrypt"
+#~ msgstr "Let's Encrypt"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "System Default"
+msgstr "System Default"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Failed to activate {0}"
+msgstr "Failed to activate {0}"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Failed to renew {0}"
+msgstr "Failed to renew {0}"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Certificate deleted"
+msgstr "Certificate deleted"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Expires"
+msgstr "Expires"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "SHA-256 Fingerprint"
+msgstr "SHA-256 Fingerprint"
+
+#~ msgid "Activating..."
+#~ msgstr "Activating..."
+
+#~ msgid "Activate"
+#~ msgstr "Activate"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renewing..."
+msgstr "Renewing..."
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renew"
+msgstr "Renew"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Import PEM"
+msgstr "Import PEM"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Domain is required"
+msgstr "Domain is required"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Failed to check domain"
+msgstr "Failed to check domain"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Domain resolves to this node"
+msgstr "Domain resolves to this node"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Domain does not resolve to an address detected on this node"
+msgstr "Domain does not resolve to an address detected on this node"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Certificate and private key are both required"
+msgstr "Certificate and private key are both required"
+
+#. 0: editingID ? 'update' \\: 'create'
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Failed to {0} certificate"
+msgstr "Failed to {0} certificate"
+
+#. 0: editingID ? 'updated' \\: 'created'
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Certificate {0}"
+msgstr "Certificate {0}"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Add Certificate"
+msgstr "Add Certificate"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Home Dashboard"
+msgstr "Home Dashboard"
+
+#~ msgid "Checking..."
+#~ msgstr "Checking..."
+
+#~ msgid "Check Domain"
+#~ msgstr "Check Domain"
+
+#~ msgid "Address match found."
+#~ msgstr "Address match found."
+
+#~ msgid "No address match found."
+#~ msgstr "No address match found."
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Certificate PEM"
+msgstr "Certificate PEM"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Leave blank to keep the stored certificate"
+msgstr "Leave blank to keep the stored certificate"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Private Key PEM"
+msgstr "Private Key PEM"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Leave blank to keep the stored private key"
+msgstr "Leave blank to keep the stored private key"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Validate certificate against domain"
+msgstr "Validate certificate against domain"
+
+#~ msgid "Use Let's Encrypt staging"
+#~ msgstr "Use Let's Encrypt staging"
+
+#~ msgid "TLS-ALPN-01 requires public TCP port 443 to reach this Sylve HTTPS listener. Wildcard certificates are not supported. Production certificates renew automatically when fewer than 30 days remain."
+#~ msgstr "TLS-ALPN-01 requires public TCP port 443 to reach this Sylve HTTPS listener. Wildcard certificates are not supported. Production certificates renew automatically when fewer than 30 days remain."
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Sylve will generate a random P-256 certificate for this domain. This does not affect the internal cluster certificate."
+msgstr "Sylve will generate a random P-256 certificate for this domain. This does not affect the internal cluster certificate."
+
+#~ msgid "This"
+#~ msgstr "This"
+
+#~ msgid "Next Run (B"
+#~ msgstr "Next Run (B"
+
+#~ msgid "Domain Reachability"
+#~ msgstr "Domain Reachability"
+
+#~ msgid "Checks whether this hostname resolves to an address detected on this node."
+#~ msgstr "Checks whether this hostname resolves to an address detected on this node."
+
+#~ msgid "Let's Encrypt Staging"
+#~ msgstr "Let's Encrypt Staging"
+
+#~ msgid "Requests an untrusted test certificate to avoid production rate limits."
+#~ msgstr "Requests an untrusted test certificate to avoid production rate limits."
+
+#~ msgid "TLS-ALPN-01 Requirements"
+#~ msgstr "TLS-ALPN-01 Requirements"
+
+#~ msgid "Public TCP port 443 must reach this Sylve HTTPS listener directly. Wildcard certificates are not supported. Certificates renew automatically when fewer than 30 days remain."
+#~ msgstr "Public TCP port 443 must reach this Sylve HTTPS listener directly. Wildcard certificates are not supported. Certificates renew automatically when fewer than 30 days remain."
+
+#~ msgid "<0>TLS-ALPN-01 requirements.</0> Public TCP port 443 must reach this Sylve HTTPS listener directly. Wildcard certificates are not supported. Certificates renew automatically when fewer than 30 days remain."
+#~ msgstr "<0>TLS-ALPN-01 requirements.</0> Public TCP port 443 must reach this Sylve HTTPS listener directly. Wildcard certificates are not supported. Certificates renew automatically when fewer than 30 days remain."
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Production"
+msgstr "Production"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Environment"
+msgstr "Environment"
+
+#~ msgid "Issues an untrusted test certificate without using production rate limits."
+#~ msgstr "Issues an untrusted test certificate without using production rate limits."
+
+#~ msgid "Issues a publicly trusted certificate using the production service."
+#~ msgstr "Issues a publicly trusted certificate using the production service."
+
+#~ msgid "Staging (untrusted)"
+#~ msgstr "Staging (untrusted)"
+
+#~ msgid "TLS-ALPN-01 requires public TCP port 443 to reach this node directly. Wildcards are unsupported; renewal is automatic."
+#~ msgstr "TLS-ALPN-01 requires public TCP port 443 to reach this node directly. Wildcards are unsupported; renewal is automatic."
+
+#~ msgid "Checking domain..."
+#~ msgstr "Checking domain..."
+
+#~ msgid "Check domain reachability"
+#~ msgstr "Check domain reachability"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "TLS-ALPN-01 requires direct public access on TCP port 443; wildcards are unsupported."
+msgstr "TLS-ALPN-01 requires direct public access on TCP port 443; wildcards are unsupported."
+
+#~ msgid "DNS matches this node."
+#~ msgstr "DNS matches this node."
+
+#~ msgid "DNS does not match this node."
+#~ msgstr "DNS does not match this node."
+
+#~ msgid "Domain - DNS Matches This Node"
+#~ msgstr "Domain - DNS Matches This Node"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "DNS Matches This Node"
+msgstr "DNS Matches This Node"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "DNS Does Not Match This Node"
+msgstr "DNS Does Not Match This Node"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "DNS Check Failed"
+msgstr "DNS Check Failed"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Pending Restart"
+msgstr "Pending Restart"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Failed to cancel activation for {0}"
+msgstr "Failed to cancel activation for {0}"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Pending activation cancelled for {0}"
+msgstr "Pending activation cancelled for {0}"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Scheduling..."
+msgstr "Scheduling..."
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Activate on Restart"
+msgstr "Activate on Restart"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Cancelling..."
+msgstr "Cancelling..."
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Cancel Pending"
+msgstr "Cancel Pending"
+
+#~ msgid "GET /api/dynamic-dns/entries"
+#~ msgstr "GET /api/dynamic-dns/entries"
+
+#~ msgid "Dynamic DNS Entry - View"
+#~ msgstr "Dynamic DNS Entry - View"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/dynamic-dns/entries"
+msgstr "POST /api/dynamic-dns/entries"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Dynamic DNS Entry - Create"
+msgstr "Dynamic DNS Entry - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PUT /api/dynamic-dns/entries/:id"
+msgstr "PUT /api/dynamic-dns/entries/:id"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Dynamic DNS Entry - Update"
+msgstr "Dynamic DNS Entry - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DELETE /api/dynamic-dns/entries/:id"
+msgstr "DELETE /api/dynamic-dns/entries/:id"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Dynamic DNS Entry - Delete"
+msgstr "Dynamic DNS Entry - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/dynamic-dns/entries/:id/sync"
+msgstr "POST /api/dynamic-dns/entries/:id/sync"
+
+#~ msgid "GET /api/certificates"
+#~ msgstr "GET /api/certificates"
+
+#~ msgid "TLS Certificate - View"
+#~ msgstr "TLS Certificate - View"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/certificates"
+msgstr "POST /api/certificates"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Create"
+msgstr "TLS Certificate - Create"
+
+#~ msgid "GET /api/certificates/domain-suggestions"
+#~ msgstr "GET /api/certificates/domain-suggestions"
+
+#~ msgid "TLS Certificate - Domain Suggestions"
+#~ msgstr "TLS Certificate - Domain Suggestions"
+
+#~ msgid "GET /api/certificates/domain-check"
+#~ msgstr "GET /api/certificates/domain-check"
+
+#~ msgid "TLS Certificate - Domain Check"
+#~ msgstr "TLS Certificate - Domain Check"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PUT /api/certificates/:id"
+msgstr "PUT /api/certificates/:id"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Update"
+msgstr "TLS Certificate - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DELETE /api/certificates/:id"
+msgstr "DELETE /api/certificates/:id"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Delete"
+msgstr "TLS Certificate - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/certificates/:id/activate"
+msgstr "POST /api/certificates/:id/activate"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Schedule Activation"
+msgstr "TLS Certificate - Schedule Activation"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DELETE /api/certificates/:id/activate"
+msgstr "DELETE /api/certificates/:id/activate"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Cancel Pending Activation"
+msgstr "TLS Certificate - Cancel Pending Activation"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/certificates/:id/renew"
+msgstr "POST /api/certificates/:id/renew"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Renew"
+msgstr "TLS Certificate - Renew"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/certificates/:id/retry"
+msgstr "POST /api/certificates/:id/retry"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Retry Issuance"
+msgstr "TLS Certificate - Retry Issuance"
+
+#~ msgid "An active schedule"
+#~ msgstr "An active schedule"
+
+#~ msgid "Could not safely validate the restore destination. Check server logs and re"
+#~ msgstr "Could not safely validate the restore destination. Check server logs and re"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Preparing Request"
+msgstr "Preparing Request"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Issuance Queued"
+msgstr "Issuance Queued"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Issuing"
+msgstr "Issuing"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Waiting for Active Order"
+msgstr "Waiting for Active Order"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Issuance Failed"
+msgstr "Issuance Failed"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renewal Preparing"
+msgstr "Renewal Preparing"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renewal Queued"
+msgstr "Renewal Queued"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renewing"
+msgstr "Renewing"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renewal Waiting"
+msgstr "Renewal Waiting"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Renewal Failed"
+msgstr "Renewal Failed"
+
+#~ msgid "Issuance Pending"
+#~ msgstr "Issuance Pending"
+
+#. 0: escapeHTML(convertDbTime(row.issuanceRetryAt))
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Next check {0}"
+msgstr "Next check {0}"
+
+#. 0: convertDbTime(row.issuanceRetryAt)
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Next broker check: {0}"
+msgstr "Next broker check: {0}"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Let's Encrypt (Direct, Staging)"
+msgstr "Let's Encrypt (Direct, Staging)"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Let's Encrypt (Direct)"
+msgstr "Let's Encrypt (Direct)"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Sylve.app Managed"
+msgstr "Sylve.app Managed"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Failed to retry issuance for {0}"
+msgstr "Failed to retry issuance for {0}"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Certificate issuance restarted for {0}"
+msgstr "Certificate issuance restarted for {0}"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Retrying..."
+msgstr "Retrying..."
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Retry Issuance"
+msgstr "Retry Issuance"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "A Sylve.app Dynamic DNS entry is required"
+msgstr "A Sylve.app Dynamic DNS entry is required"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Certificate issuance started"
+msgstr "Certificate issuance started"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Sylve.app Dynamic DNS Entry"
+msgstr "Sylve.app Dynamic DNS Entry"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Select a Sylve.app hostname"
+msgstr "Select a Sylve.app hostname"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Sylve will create a private P-256 key locally and request the certificate through Sylve.app. Issuance continues in the background and does not activate the certificate."
+msgstr "Sylve will create a private P-256 key locally and request the certificate through Sylve.app. Issuance continues in the background and does not activate the certificate."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "POST /api/certificates/:id/download"
+msgstr "POST /api/certificates/:id/download"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "TLS Certificate - Download"
+msgstr "TLS Certificate - Download"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Downloaded certificate and private key for {0}"
+msgstr "Downloaded certificate and private key for {0}"
+
+#. 0: certificate.name
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Failed to download certificate and private key for {0}"
+msgstr "Failed to download certificate and private key for {0}"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Downloading..."
+msgstr "Downloading..."
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Download Certificate & Key"
+msgstr "Download Certificate & Key"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Unavailable"
+msgstr "Unavailable"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Not Yet Valid"
+msgstr "Not Yet Valid"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Invalid Dates"
+msgstr "Invalid Dates"
+
+#: src/routes/[node]/services/certificates/+page.svelte
+msgid "Certificate download failed"
+msgstr "Certificate download failed"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "AbortError"
+msgstr "AbortError"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "The certificate is no longer available"
+msgstr "The certificate is no longer available"
+
+#. 0: CERTIFICATE_NAME_MAX_LENGTH
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Name must not exceed {0} characters"
+msgstr "Name must not exceed {0} characters"
+
+#. 0: CERTIFICATE_DOMAIN_MAX_LENGTH
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Domain must not exceed {0} characters"
+msgstr "Domain must not exceed {0} characters"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Let's Encrypt requires a non-wildcard DNS hostname"
+msgstr "Let's Encrypt requires a non-wildcard DNS hostname"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Certificate and private key must not exceed 1 MiB each"
+msgstr "Certificate and private key must not exceed 1 MiB each"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Certificate updated; restart Sylve to apply TLS changes"
+msgstr "Certificate updated; restart Sylve to apply TLS changes"
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Checking DNS mapping..."
+msgstr "Checking DNS mapping..."
+
+#: src/lib/components/custom/Services/Certificates/Form.svelte
+msgid "Check DNS mapping"
+msgstr "Check DNS mapping"

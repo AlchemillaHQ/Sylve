@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -50,11 +52,16 @@ func shouldRedactAuditPayload(path string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(path, "/api/auth/login") ||
-		strings.HasPrefix(path, "/api/auth/passkeys/") ||
-		strings.HasPrefix(path, "/api/dynamic-dns/") ||
-		(strings.HasPrefix(path, "/api/cluster/") && !strings.HasPrefix(path, "/api/cluster/backups/")) ||
+	return auditPathMatches(path, "/api/auth/login") ||
+		auditPathMatches(path, "/api/auth/passkeys") ||
+		auditPathMatches(path, "/api/dynamic-dns") ||
+		auditPathMatches(path, "/api/certificates") ||
+		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups")) ||
 		path == "/api/utilities/downloads/signed-url"
+}
+
+func auditPathMatches(path, prefix string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
 func isSensitiveAuditKey(key string) bool {
@@ -63,7 +70,8 @@ func isSensitiveAuditKey(key string) bool {
 	key = strings.ReplaceAll(key, "-", "")
 
 	switch key {
-	case "password",
+	case "auth",
+		"password",
 		"token",
 		"accesstoken",
 		"refreshtoken",
@@ -93,6 +101,26 @@ func isSensitiveAuditKey(key string) bool {
 		strings.Contains(key, "secret") ||
 		strings.Contains(key, "privatekey") ||
 		strings.Contains(key, "signature")
+}
+
+func sanitizeAuditQuery(path, rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+	if shouldRedactAuditPayload(path) {
+		return "[REDACTED]"
+	}
+
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "[REDACTED]"
+	}
+	for key := range values {
+		if isSensitiveAuditKey(key) {
+			values[key] = []string{"[REDACTED]"}
+		}
+	}
+	return values.Encode()
 }
 
 func sanitizeAuditPayload(v interface{}) interface{} {
@@ -255,11 +283,14 @@ func getClaims(c *gin.Context, authService *authService.Service) (claim, error) 
 
 type bodyWriter struct {
 	gin.ResponseWriter
-	body *bytes.Buffer
+	body    *bytes.Buffer
+	capture bool
 }
 
 func (w bodyWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
+	if w.capture {
+		w.body.Write(b)
+	}
 	return w.ResponseWriter.Write(b)
 }
 
@@ -292,7 +323,15 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			}
 		}
 
-		bw := &bodyWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
+		redactPayload := shouldRedactAuditPayload(c.Request.URL.Path)
+		captureResponse := !redactPayload ||
+			c.Request.URL.Path == "/api/auth/login" ||
+			c.Request.URL.Path == "/api/auth/passkeys/login/finish"
+		bw := &bodyWriter{
+			body:           bytes.NewBufferString(""),
+			ResponseWriter: c.Writer,
+			capture:        captureResponse,
+		}
 		c.Writer = bw
 
 		var claims claim
@@ -325,24 +364,34 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		var act action
 		act.Method = c.Request.Method
 		act.Path = c.Request.URL.Path
-		act.Query = c.Request.URL.RawQuery
+		act.Query = sanitizeAuditQuery(c.Request.URL.Path, c.Request.URL.RawQuery)
 
 		if c.Request.Body != nil && c.Request.ContentLength > 0 {
 			buf := new(bytes.Buffer)
 			tee := io.TeeReader(c.Request.Body, buf)
+			if redactPayload {
+				act.Body = "[REDACTED]"
+			}
 
 			var body interface{}
 			if err := json.NewDecoder(tee).Decode(&body); err != nil {
 				logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
 			} else {
-				if shouldRedactAuditPayload(c.Request.URL.Path) {
-					act.Body = "[REDACTED]"
-				} else {
+				if !redactPayload {
 					act.Body = sanitizeAuditPayload(body)
 				}
 			}
 
-			c.Request.Body = io.NopCloser(buf)
+			restoredBody := io.NopCloser(buf)
+			if limit, ok := c.Get(requestBodyLimitContextKey); ok {
+				if maxBytes, valid := limit.(int64); valid && maxBytes > 0 {
+					c.Request.Body = http.MaxBytesReader(c.Writer, restoredBody, maxBytes)
+				} else {
+					c.Request.Body = restoredBody
+				}
+			} else {
+				c.Request.Body = restoredBody
+			}
 		}
 
 		actJSON, err := json.Marshal(act)
@@ -378,7 +427,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			response = nil
 		}
 
-		if shouldRedactAuditPayload(c.Request.URL.Path) {
+		if redactPayload {
 			act.Response = "[REDACTED]"
 		} else {
 			act.Response = sanitizeAuditPayload(response)

@@ -7,8 +7,16 @@ import {
 } from '$lib/types/services/dynamic-dns';
 import { apiRequest } from '$lib/utils/http';
 
-export async function getDynamicDNSEntries(): Promise<DynamicDNSEntry[] | APIResponse> {
-	return await apiRequest('/dynamic-dns/entries', z.array(DynamicDNSEntrySchema), 'GET');
+export async function getDynamicDNSEntries(
+	hostname?: string,
+	signal?: AbortSignal,
+	preserveErrors = false
+): Promise<DynamicDNSEntry[] | APIResponse> {
+	return await apiRequest('/dynamic-dns/entries', z.array(DynamicDNSEntrySchema), 'GET', undefined, {
+		hostname,
+		signal,
+		preserveErrors
+	});
 }
 
 export async function createDynamicDNSEntry(

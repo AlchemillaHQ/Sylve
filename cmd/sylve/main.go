@@ -161,6 +161,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	smbS := serviceRegistry.SambaService
 	mdS := serviceRegistry.MdnsService
 	ddnsS := serviceRegistry.DynamicDNSService
+	certS := serviceRegistry.CertificateService
 	iscsiSvc := serviceRegistry.ISCSIService.(*iscsi.Service)
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
@@ -203,6 +204,9 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
+	if err := certS.Initialize(initContext, cfg.TLS); err != nil {
+		logger.L.Fatal().Err(err).Msg("Failed to initialize public TLS certificates")
+	}
 
 	err = sS.Initialize(aS.(*auth.Service), initContext, qCtx)
 	if err != nil {
@@ -220,6 +224,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
 	go ddnsS.StartWorker(qCtx)
+	go certS.StartManagedWorker(qCtx)
 
 	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
 		var settings dbModels.BasicSettings
@@ -285,7 +290,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	r := gin.Default()
 	r.Use(gzip.Gzip(
-		gzip.DefaultCompression,
+		gzip.BestSpeed,
 		gzip.WithExcludedPaths([]string{"/api/utilities/downloads"}),
 	))
 
@@ -304,6 +309,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		smbS.(*samba.Service),
 		mdS.(*mdns.Service),
 		ddnsS,
+		certS,
 		iscsiSvc,
 		jailSvc,
 		lifecycleSvc,
@@ -347,16 +353,17 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go repl.Start(replCtx)
 	}
 
-	tlsConfig, err := aS.GetSylveCertificate()
+	clusterTLSConfig, err := aS.GetClusterTLSConfig()
 
 	if err != nil {
-		logger.L.Fatal().Err(err).Msg("Failed to get TLS config")
+		logger.L.Fatal().Err(err).Msg("Failed to get cluster TLS config")
 	}
+	publicTLSConfig := certS.TLSConfig()
 
 	httpsServer := &http.Server{
 		Addr:      fmt.Sprintf("%s:%d", cfg.IP, cfg.Port),
 		Handler:   r,
-		TLSConfig: tlsConfig,
+		TLSConfig: publicTLSConfig,
 	}
 
 	httpServer := &http.Server{
@@ -388,6 +395,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
 			}
 		}()
+		go certS.StartRenewalWorker(qCtx)
 	}
 
 	if cfg.HTTPPort != 0 {
@@ -420,7 +428,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		srv := &http.Server{
 			Addr:      fmt.Sprintf("%s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort),
 			Handler:   r,
-			TLSConfig: tlsConfig,
+			TLSConfig: clusterTLSConfig,
 		}
 		activeClusterHTTPS = srv
 		wg.Add(1)

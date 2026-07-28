@@ -264,17 +264,38 @@ func ResetForcePasswordReset() error {
 }
 
 func writeConfig() error {
-	file, err := os.OpenFile(ConfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	directory := filepath.Dir(ConfigPath)
+	file, err := os.CreateTemp(directory, ".sylve-config-*")
 	if err != nil {
-		return fmt.Errorf("failed to open config file for writing: %w", err)
+		return fmt.Errorf("failed to create temporary config file: %w", err)
 	}
+	temporaryPath := file.Name()
+	defer os.Remove(temporaryPath)
 
-	defer file.Close()
+	mode := os.FileMode(0644)
+	if info, statErr := os.Stat(ConfigPath); statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := file.Chmod(mode); err != nil {
+		file.Close()
+		return fmt.Errorf("failed to set temporary config permissions: %w", err)
+	}
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(ParsedConfig); err != nil {
+		file.Close()
 		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return fmt.Errorf("failed to sync config file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close config file: %w", err)
+	}
+	if err := os.Rename(temporaryPath, ConfigPath); err != nil {
+		return fmt.Errorf("failed to replace config file: %w", err)
 	}
 
 	return nil

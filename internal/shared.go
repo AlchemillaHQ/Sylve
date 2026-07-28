@@ -70,7 +70,7 @@ type SylveConfig struct {
 	WANInterfaces  []string        `json:"wanInterfaces"`
 	Admin          BaseConfigAdmin `json:"admin"`
 	DataPath       string          `json:"dataPath"`
-	TLS            TLSConfig       `json:"tlsConfig"`
+	TLS            *TLSConfig      `json:"tlsConfig,omitempty"`
 	Raft           Raft            `json:"raft"`
 	BTT            BTT             `json:"btt"`
 	Auth           AuthConfig      `json:"auth"`
@@ -98,9 +98,9 @@ type BulkDeleteRequest struct {
 }
 
 type BulkUpdateRulesRequest struct {
-	IDs            []int  `json:"ids" binding:"required"`
-	UIEnabled      *bool  `json:"uiEnabled"`
-	NtfyEnabled    *bool  `json:"ntfyEnabled"`
-	EmailEnabled   *bool  `json:"emailEnabled"`
-	DiscordEnabled *bool  `json:"discordEnabled"`
+	IDs            []int `json:"ids" binding:"required"`
+	UIEnabled      *bool `json:"uiEnabled"`
+	NtfyEnabled    *bool `json:"ntfyEnabled"`
+	EmailEnabled   *bool `json:"emailEnabled"`
+	DiscordEnabled *bool `json:"discordEnabled"`
 }

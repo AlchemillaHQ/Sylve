@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -64,6 +65,76 @@ func (p *testStatusProvider) AddressMatches(_ context.Context, _ string, _ map[s
 type testResolver struct {
 	addresses AddressSet
 	err       error
+}
+
+func TestManagedCertificateProtectsDynamicDNSEntryIdentity(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}, &models.Certificate{})
+	provider := &testProvider{id: dynamicDNSModels.ProviderSylve}
+	service := &Service{
+		DB:        database,
+		providers: map[string]DNSProvider{dynamicDNSModels.ProviderSylve: provider},
+		sources: map[string]IPSourceResolver{
+			dynamicDNSModels.SourceTypeManual: ManualResolver{},
+		},
+		now:         time.Now,
+		syncTimeout: time.Second,
+	}
+	entry := dynamicDNSModels.Entry{
+		Enabled:         true,
+		Provider:        dynamicDNSModels.ProviderSylve,
+		ProviderSecret:  "stored-token",
+		Hostname:        "node.example.com",
+		RecordType:      dynamicDNSModels.RecordTypeA,
+		IntervalMinutes: DefaultIntervalMinutes,
+		SourceType:      dynamicDNSModels.SourceTypeManual,
+		SourceSettings:  map[string]string{SourceSettingIPv4: "203.0.113.9"},
+	}
+	if err := database.Create(&entry).Error; err != nil {
+		t.Fatalf("create Dynamic DNS entry: %v", err)
+	}
+	entryID := entry.ID
+	if err := database.Create(&models.Certificate{
+		Name:              "Managed",
+		Type:              models.CertificateTypeSylveManaged,
+		Domain:            entry.Hostname,
+		DynamicDNSEntryID: &entryID,
+	}).Error; err != nil {
+		t.Fatalf("create managed certificate reference: %v", err)
+	}
+
+	_, err := service.UpdateEntry(context.Background(), entry.ID, EntryInput{
+		Enabled:         true,
+		Provider:        dynamicDNSModels.ProviderSylve,
+		Token:           "replacement-token",
+		Hostname:        "renamed.example.com",
+		RecordType:      dynamicDNSModels.RecordTypeA,
+		IntervalMinutes: DefaultIntervalMinutes,
+		SourceType:      dynamicDNSModels.SourceTypeManual,
+		SourceSettings:  map[string]string{SourceSettingIPv4: "203.0.113.10"},
+	})
+	if !errors.Is(err, ErrEntryInUse) {
+		t.Fatalf("expected managed hostname update conflict, got %v", err)
+	}
+	if err := service.DeleteEntry(context.Background(), entry.ID); !errors.Is(err, ErrEntryInUse) {
+		t.Fatalf("expected managed Dynamic DNS deletion conflict, got %v", err)
+	}
+
+	view, err := service.UpdateEntry(context.Background(), entry.ID, EntryInput{
+		Enabled:         false,
+		Provider:        dynamicDNSModels.ProviderSylve,
+		Token:           "replacement-token",
+		Hostname:        entry.Hostname,
+		RecordType:      dynamicDNSModels.RecordTypeA,
+		IntervalMinutes: 15,
+		SourceType:      dynamicDNSModels.SourceTypeManual,
+		SourceSettings:  map[string]string{SourceSettingIPv4: "203.0.113.10"},
+	})
+	if err != nil {
+		t.Fatalf("update referenced Dynamic DNS settings and token: %v", err)
+	}
+	if view.Enabled || view.IntervalMinutes != 15 {
+		t.Fatalf("ordinary referenced Dynamic DNS settings were not updated: %#v", view)
+	}
 }
 
 func (testResolver) Type() string {

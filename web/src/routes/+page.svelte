@@ -1,4 +1,15 @@
 <!-- 
+<span class="icon-[mdi--cloud-lock-outline]"></span>
+<span class="icon-[mdi--alert-circle]"></span>
+<span class="icon-[mdi--account-clock-outline]"></span>
+<span class="icon-[mdi--progress-key]"></span>
+<span class="icon-[mdi--timer-sand]"></span>
+<span class="icon-[mdi--key-plus]"></span>
+<span class="icon-[mdi--restart-alert]"></span>
+<span class="icon-[mdi--shield-home-outline]"></span>
+<span class="icon-[mdi--lock-check-outline]"></span>
+<span class="icon-[mdi--signature-freehand]"></span>
+<span class="icon-[mdi--file-key-outline]"></span>
 <span class="icon-[simple-icons--cloudflare]"></span>
 <span class="icon-[simple-icons--namecheap]"></span>
 <span class="icon-[mdi--arrow-down-bold-circle-outline]"></span>

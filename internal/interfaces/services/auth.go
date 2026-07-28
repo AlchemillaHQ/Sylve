@@ -20,6 +20,7 @@ type CustomClaims struct {
 	Username string `json:"username"`
 	AuthType string `json:"authType"`
 	TokenUse string `json:"tokenUse,omitempty"`
+	Admin    bool   `json:"admin,omitempty"`
 }
 
 // CreateUserOpts contains create-time-only parameters not stored directly on the model.
@@ -88,5 +89,5 @@ type AuthServiceInterface interface {
 
 	AuthenticatePAM(username, password string) (bool, error)
 
-	GetSylveCertificate() (*tls.Config, error)
+	GetClusterTLSConfig() (*tls.Config, error)
 }

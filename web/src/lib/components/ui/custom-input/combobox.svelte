@@ -10,6 +10,7 @@
 	interface Props {
 		open: boolean;
 		label?: string;
+		labelStatus?: { text: string; className?: string };
 		value: string | string[];
 		data: { value: string; label: string }[];
 		onValueChange?: (value: string | string[]) => void;
@@ -36,6 +37,7 @@
 	let {
 		open = $bindable(false),
 		label = '',
+		labelStatus,
 		data = [],
 		onValueChange = () => {},
 		placeholder = '',
@@ -134,8 +136,13 @@
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
 		<div class="flex h-7 items-center justify-between w-full">
-			<Label class="whitespace-nowrap text-sm" for={nanoId}>
-				{label}
+			<Label class="min-w-0 gap-1 whitespace-nowrap text-sm" for={nanoId}>
+				<span class="shrink-0">{label}</span>
+				{#if labelStatus}
+					<span class={cn('min-w-0 truncate text-xs font-normal', labelStatus.className)}>
+						- {labelStatus.text}
+					</span>
+				{/if}
 			</Label>
 			{#if topRightButton}
 				<Button

@@ -22,6 +22,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
+	certificateHandlers "github.com/alchemillahq/sylve/internal/handlers/certificates"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	dynamicDNSHandlers "github.com/alchemillahq/sylve/internal/handlers/dynamicdns"
@@ -42,6 +43,7 @@ import (
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
 	zfsHandlers "github.com/alchemillahq/sylve/internal/handlers/zfs"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskService "github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
@@ -95,6 +97,7 @@ func RegisterRoutes(r *gin.Engine,
 	sambaService *samba.Service,
 	mdnsService *mdns.Service,
 	dynamicDNSService *dynamicdns.Service,
+	certificateService *certificates.Service,
 	iscsiService *iscsi.Service,
 	jailService *jail.Service,
 	lifecycleService *lifecycle.Service,
@@ -273,6 +276,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	dynamicDNSGroup := api.Group("/dynamic-dns")
 	dynamicDNSGroup.Use(middleware.EnsureAuthenticated(authService))
+	dynamicDNSGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	dynamicDNSGroup.Use(EnsureCorrectHost(db, authService))
 	dynamicDNSGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -281,6 +285,25 @@ func RegisterRoutes(r *gin.Engine,
 		dynamicDNSGroup.PUT("/entries/:id", dynamicDNSHandlers.UpdateEntry(dynamicDNSService))
 		dynamicDNSGroup.DELETE("/entries/:id", dynamicDNSHandlers.DeleteEntry(dynamicDNSService))
 		dynamicDNSGroup.POST("/entries/:id/sync", dynamicDNSHandlers.SyncEntry(dynamicDNSService))
+	}
+
+	certificateGroup := api.Group("/certificates")
+	certificateGroup.Use(middleware.EnsureAuthenticated(authService))
+	certificateGroup.Use(middleware.RequireLocalAdminForWrites(authService))
+	certificateGroup.Use(EnsureCorrectHost(db, authService))
+	certificateGroup.Use(middleware.LimitRequestBody(certificates.MaxRequestBodyBytes))
+	certificateGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		certificateGroup.GET("", certificateHandlers.List(certificateService))
+		certificateGroup.POST("", certificateHandlers.Create(certificateService))
+		certificateGroup.GET("/domain-check", certificateHandlers.CheckDomain(certificateService))
+		certificateGroup.PUT("/:id", certificateHandlers.Update(certificateService))
+		certificateGroup.DELETE("/:id", certificateHandlers.Delete(certificateService))
+		certificateGroup.POST("/:id/activate", certificateHandlers.Activate(certificateService))
+		certificateGroup.DELETE("/:id/activate", certificateHandlers.CancelActivation(certificateService))
+		certificateGroup.POST("/:id/renew", certificateHandlers.Renew(certificateService))
+		certificateGroup.POST("/:id/retry", certificateHandlers.Retry(certificateService))
+		certificateGroup.POST("/:id/download", certificateHandlers.Download(certificateService))
 	}
 
 	iscsiGroup := api.Group("/iscsi")

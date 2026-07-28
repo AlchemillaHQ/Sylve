@@ -304,6 +304,11 @@
 				icon: 'material-symbols--design-services-outline-rounded',
 				children: [
 					{
+						label: 'Certificates',
+						icon: 'mdi--certificate-outline',
+						href: `/${node}/services/certificates`
+					},
+					{
 						label: 'Dynamic DNS',
 						icon: 'mdi--dns',
 						href: `/${node}/services/dynamic-dns`
