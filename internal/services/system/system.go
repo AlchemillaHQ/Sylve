@@ -37,6 +37,8 @@ type Service struct {
 	tunMutex    sync.Mutex
 	tunCache    []sysctl.Tunable
 	tunCachedAt time.Time
+	tunList     func() ([]sysctl.Tunable, error)
+	tunDescribe func(string) (sysctl.Tunable, bool, error)
 
 	MdnsRebuild func() error
 }

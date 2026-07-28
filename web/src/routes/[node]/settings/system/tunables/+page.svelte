@@ -18,6 +18,7 @@
 	let query = $state('');
 	let reload = $state(false);
 	let loading = $state(false);
+	let configuredOnly = $state(false);
 	let activeRows = $state<Row[] | null>(null);
 
 	let activeRow: Row | null = $derived(
@@ -66,6 +67,15 @@
 	]);
 
 	let tableData = $derived({ rows: [], columns });
+	let extraParams = $derived({
+		configuredOnly: configuredOnly ? 'true' : 'false'
+	});
+
+	function toggleConfiguredOnly() {
+		configuredOnly = !configuredOnly;
+		activeRows = null;
+		reload = true;
+	}
 
 	function openEdit() {
 		if (!activeRow) return;
@@ -122,16 +132,27 @@
 			</Button>
 		{/if}
 
-		<Button
-			onclick={() => (reload = true)}
-			size="sm"
-			variant="outline"
-			class="ml-auto h-6 shrink-0"
-		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--refresh] h-4 w-4"></span>
-			</div>
-		</Button>
+		<div class="ml-auto">
+			<Button
+				size="sm"
+				variant={configuredOnly ? 'default' : 'outline'}
+				class="h-6.5 shrink-0"
+				onclick={toggleConfiguredOnly}
+				aria-pressed={configuredOnly}
+				title="Show tunables configured and persisted through Sylve"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--filter-check-outline] mr-1 h-4 w-4"></span>
+					<span>Configured Only</span>
+				</div>
+			</Button>
+
+			<Button onclick={() => (reload = true)} size="sm" variant="outline" class="h-6 shrink-0">
+				<div class="flex items-center">
+					<span class="icon-[mdi--refresh] h-4 w-4"></span>
+				</div>
+			</Button>
+		</div>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
@@ -144,6 +165,7 @@
 				bind:parentActiveRow={activeRows}
 				bind:reload
 				multipleSelect={false}
+				{extraParams}
 				initialSort={[{ column: 'name', dir: 'asc' }]}
 			/>
 		{/if}

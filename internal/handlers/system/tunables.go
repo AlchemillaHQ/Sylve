@@ -23,7 +23,9 @@ import (
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param configuredOnly query bool false "Only include tunables configured through Sylve"
 // @Success 200 {object} internal.APIResponse[system.TunablesResponse] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /system/tunables/remote [get]
 func TunablesRemote(systemService *system.Service) gin.HandlerFunc {
@@ -34,8 +36,18 @@ func TunablesRemote(systemService *system.Service) gin.HandlerFunc {
 		sortField := c.Query("sort[0][field]")
 		sortDir := c.Query("sort[0][dir]")
 		search := c.Query("search")
+		configuredOnly, err := strconv.ParseBool(c.DefaultQuery("configuredOnly", "false"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_configured_only_param",
+				Error:   "invalid 'configuredOnly' value: " + err.Error(),
+				Data:    nil,
+			})
+			return
+		}
 
-		res, err := systemService.ListTunablesPaginated(page, size, sortField, sortDir, search)
+		res, err := systemService.ListTunablesPaginated(page, size, sortField, sortDir, search, configuredOnly)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",

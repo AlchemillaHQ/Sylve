@@ -18027,3 +18027,14 @@ msgstr "Checking DNS mapping..."
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 msgid "Check DNS mapping"
 msgstr "Check DNS mapping"
+
+#: src/routes/[node]/settings/system/tunables/+page.svelte
+msgid "Show tunables configured and persisted through Sylve"
+msgstr "Show tunables configured and persisted through Sylve"
+
+#~ msgid "Configured only"
+#~ msgstr "Configured only"
+
+#: src/routes/[node]/settings/system/tunables/+page.svelte
+msgid "Configured Only"
+msgstr "Configured Only"

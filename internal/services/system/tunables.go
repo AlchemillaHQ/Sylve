@@ -37,7 +37,11 @@ func (s *Service) listTunables(force bool) ([]sysctl.Tunable, error) {
 		return s.tunCache, nil
 	}
 
-	list, err := sysctl.List()
+	listFn := s.tunList
+	if listFn == nil {
+		listFn = sysctl.List
+	}
+	list, err := listFn()
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +72,30 @@ func (s *Service) storedTunables() (map[string]string, error) {
 	return stored, nil
 }
 
+func (s *Service) configuredTunables(stored map[string]string) ([]sysctl.Tunable, error) {
+	describe := s.tunDescribe
+	if describe == nil {
+		describe = sysctl.Describe
+	}
+
+	configured := make([]sysctl.Tunable, 0, len(stored))
+	for name, value := range stored {
+		tunable, found, err := describe(name)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			continue
+		}
+		tunable.Value = value
+		configured = append(configured, tunable)
+	}
+	return configured, nil
+}
+
 // ListTunablesPaginated returns a filtered, sorted and paginated slice of the
 // sysctl MIB, shaped to match the remote Tabulator contract.
-func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, search string) (*TunablesResponse, error) {
+func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, search string, configuredOnly bool) (*TunablesResponse, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -78,12 +103,17 @@ func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, sear
 		size = 25
 	}
 
-	all, err := s.listTunables(false)
+	stored, err := s.storedTunables()
 	if err != nil {
 		return nil, err
 	}
 
-	stored, err := s.storedTunables()
+	var all []sysctl.Tunable
+	if configuredOnly {
+		all, err = s.configuredTunables(stored)
+	} else {
+		all, err = s.listTunables(false)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +121,8 @@ func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, sear
 	filtered := make([]sysctl.Tunable, 0, len(all))
 	needle := strings.ToLower(strings.TrimSpace(search))
 	for _, t := range all {
-		if v, ok := stored[t.Name]; ok {
+		v, configured := stored[t.Name]
+		if configured {
 			t.Value = v
 		}
 		if needle != "" && !strings.Contains(strings.ToLower(t.Name), needle) {
@@ -125,6 +156,9 @@ func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, sear
 	}
 	if lastPage < 1 {
 		lastPage = 1
+	}
+	if page > lastPage {
+		page = lastPage
 	}
 
 	offset := (page - 1) * size
