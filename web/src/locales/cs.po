@@ -602,6 +602,7 @@ msgstr "Akce"
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -2136,7 +2137,6 @@ msgstr "Vybrat fondy"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Services"
@@ -2704,6 +2704,7 @@ msgstr "ZFS fondy"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2729,6 +2730,7 @@ msgstr "ZFS fondy"
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2779,6 +2781,7 @@ msgstr "Zapnuto"
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -17289,13 +17292,11 @@ msgstr ""
 msgid "<0/> Options <1/>"
 msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Share details"
-msgstr ""
+#~ msgid "Share details"
+#~ msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "The selected dataset is the directory exposed by this share."
-msgstr ""
+#~ msgid "The selected dataset is the directory exposed by this share."
+#~ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "No datasets available"
@@ -17304,13 +17305,11 @@ msgstr ""
 #~ msgid "Only mounted datasets that are not already used by another Samba share are shown."
 #~ msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Access mode"
-msgstr ""
+#~ msgid "Access mode"
+#~ msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Choose who can connect to this share. Guest access does not include your named permissions."
-msgstr ""
+#~ msgid "Choose who can connect to this share. Guest access does not include your named permissions."
+#~ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "<0/> Authenticated"
@@ -17356,9 +17355,8 @@ msgstr ""
 msgid "Your named user and group selections are preserved if you switch back to authenticated access."
 msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Enable the Samba features needed by clients of this share."
-msgstr ""
+#~ msgid "Enable the Samba features needed by clients of this share."
+#~ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Advertise this share as a Time Machine backup destination."
@@ -18036,4 +18034,12 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/tunables/+page.svelte
 msgid "Configured Only"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Dataset missing"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Disabled shares are saved but are not published by Samba."
 msgstr ""

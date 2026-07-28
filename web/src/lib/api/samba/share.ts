@@ -10,6 +10,7 @@ export async function getSambaShares(): Promise<SambaShare[]> {
 export async function createSambaShare(
     name: string,
     dataset: string,
+    enabled: boolean,
     permissions: {
         read: { userIds: number[]; groupIds: number[] };
         write: { userIds: number[]; groupIds: number[] };
@@ -28,6 +29,7 @@ export async function createSambaShare(
     return await apiRequest('/samba/shares', APIResponseSchema, 'POST', {
         name,
         dataset,
+        enabled,
         permissions,
         guest,
         createMask,
@@ -43,6 +45,7 @@ export async function updateSambaShare(
     id: number,
     name: string,
     dataset: string,
+    enabled: boolean,
     permissions: {
         read: { userIds: number[]; groupIds: number[] };
         write: { userIds: number[]; groupIds: number[] };
@@ -62,6 +65,7 @@ export async function updateSambaShare(
         id,
         name,
         dataset,
+        enabled,
         permissions,
         guest,
         createMask,
@@ -71,6 +75,10 @@ export async function updateSambaShare(
         auditEnabled,
         auditedOperations
     });
+}
+
+export async function setSambaShareEnabled(id: number, enabled: boolean): Promise<APIResponse> {
+    return await apiRequest(`/samba/shares/${id}/enabled`, APIResponseSchema, 'PUT', { enabled });
 }
 
 export async function deleteSambaShare(id: number): Promise<APIResponse> {

@@ -212,7 +212,7 @@ func (s *Service) SetGlobalConfig(
 
 func (s *Service) hasGuestOnlyShares() (bool, error) {
 	var count int64
-	if err := s.DB.Model(&sambaModels.SambaShare{}).Where("guest_ok = ?", true).Count(&count).Error; err != nil {
+	if err := s.DB.Model(&sambaModels.SambaShare{}).Where("enabled = ? AND guest_ok = ?", true, true).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("failed_to_check_guest_shares: %w", err)
 	}
 
@@ -561,6 +561,7 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 		Preload("WriteableUsers").
 		Preload("ReadOnlyGroups").
 		Preload("WriteableGroups").
+		Where("enabled = ?", true).
 		Find(&shares).Error; err != nil {
 		return "", fmt.Errorf("failed to retrieve Samba shares: %w", err)
 	}

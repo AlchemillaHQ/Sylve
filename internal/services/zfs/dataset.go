@@ -92,6 +92,12 @@ func (s *Service) BulkDeleteDatasetByNames(ctx context.Context, names []string) 
 		datasets = append(datasets, ds)
 	}
 
+	allDatasets, err := s.GZFS.ZFS.List(ctx, true, "")
+	if err != nil {
+		return fmt.Errorf("failed to list datasets before deletion: %w", err)
+	}
+	affectedGUIDs := datasetGUIDsInTrees(allDatasets, datasets)
+
 	for _, dataset := range datasets {
 		wasEncrypted := dataset.IsEncrypted()
 
@@ -123,7 +129,7 @@ func (s *Service) BulkDeleteDatasetByNames(ctx context.Context, names []string) 
 		s.SignalDSChange("", "", "snapshot", "bulk_delete")
 	}
 
-	return nil
+	return s.notifyDatasetsDeleted(ctx, affectedGUIDs)
 }
 
 func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
@@ -170,6 +176,12 @@ func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 		}
 	}
 
+	roots := make([]*gzfs.Dataset, 0, len(guids))
+	for _, guid := range guids {
+		roots = append(roots, available[guid])
+	}
+	affectedGUIDs := datasetGUIDsInTrees(datasets, roots)
+
 	for _, guid := range guids {
 		ds := available[guid]
 		wasEncrypted := ds.IsEncrypted()
@@ -183,7 +195,7 @@ func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 		}
 	}
 
-	return nil
+	return s.notifyDatasetsDeleted(ctx, affectedGUIDs)
 }
 
 func (s *Service) IsDatasetInUse(guid string, failEarly bool) bool {

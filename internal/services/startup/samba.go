@@ -10,6 +10,7 @@ package startup
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -58,6 +59,10 @@ func (s *Service) InitSamba(ctx context.Context) error {
 		if err := s.DB.Create(&defaultSettings).Error; err != nil {
 			return err
 		}
+	}
+
+	if err := s.Samba.DisableMissingShares(ctx); err != nil {
+		return fmt.Errorf("failed to reconcile Samba shares: %w", err)
 	}
 
 	if err := s.Samba.WriteConfig(ctx, false); err != nil {

@@ -40,8 +40,13 @@ type SambaGuestRequest struct {
 	Writeable bool `json:"writeable"`
 }
 
+type SetSambaShareEnabledRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 type CreateSambaShareRequest struct {
 	Name               string                  `json:"name"`
+	Enabled            *bool                   `json:"enabled"`
 	Dataset            string                  `json:"dataset"`
 	Permissions        SambaPermissionsRequest `json:"permissions"`
 	Guest              SambaGuestRequest       `json:"guest"`
@@ -56,6 +61,7 @@ type CreateSambaShareRequest struct {
 type UpdateSambaShareRequest struct {
 	ID                 uint                    `json:"id"`
 	Name               string                  `json:"name"`
+	Enabled            *bool                   `json:"enabled"`
 	Dataset            string                  `json:"dataset"`
 	Permissions        SambaPermissionsRequest `json:"permissions"`
 	Guest              SambaGuestRequest       `json:"guest"`
@@ -96,6 +102,7 @@ type SambaShareResponse struct {
 	ID                 int                      `json:"id"`
 	Name               string                   `json:"name"`
 	Dataset            string                   `json:"dataset"`
+	Enabled            bool                     `json:"enabled"`
 	Permissions        SambaPermissionsResponse `json:"permissions"`
 	Guest              SambaGuestResponse       `json:"guest"`
 	CreateMask         string                   `json:"createMask"`
@@ -155,6 +162,7 @@ func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 		ID:      share.ID,
 		Name:    share.Name,
 		Dataset: share.Dataset,
+		Enabled: share.Enabled,
 		Permissions: SambaPermissionsResponse{
 			Read: SambaPrincipalSetResponse{
 				Users:  mapUsers(share.ReadOnlyUsers),
@@ -282,6 +290,11 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			auditEnabled = *request.AuditEnabled
 		}
 
+		enabled := true
+		if request.Enabled != nil {
+			enabled = *request.Enabled
+		}
+
 		if request.AuditedOperations == nil {
 			request.AuditedOperations = []string{}
 		}
@@ -303,6 +316,7 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			timeMachineMaxSize,
 			auditEnabled,
 			request.AuditedOperations,
+			enabled,
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
@@ -382,6 +396,7 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			timeMachineMaxSize,
 			auditEnabled,
 			request.AuditedOperations,
+			request.Enabled,
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
@@ -398,6 +413,41 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			Error:   "",
 			Data:    nil,
 		})
+	}
+}
+
+// @Summary Enable or disable a Samba share
+// @Description Set whether a Samba share is included in the active configuration
+// @Tags Samba
+// @Accept json
+// @Produce json
+// @Param id path uint true "Share ID"
+// @Param request body SetSambaShareEnabledRequest true "Enabled state"
+// @Success 200 {object} internal.APIResponse[any]
+// @Failure 400 {object} internal.APIResponse[any]
+// @Failure 404 {object} internal.APIResponse[any]
+// @Failure 500 {object} internal.APIResponse[any]
+// @Router /samba/shares/{id}/enabled [put]
+func SetShareEnabled(smbService *samba.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_share_id", Error: err.Error()})
+			return
+		}
+
+		var request SetSambaShareEnabledRequest
+		if err := strictJSONBind(c, &request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_request", Error: err.Error()})
+			return
+		}
+
+		if err := smbService.SetShareEnabled(c.Request.Context(), uint(id), request.Enabled); err != nil {
+			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: "failed_to_set_share_enabled", Error: err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "Samba share state updated"})
 	}
 }
 

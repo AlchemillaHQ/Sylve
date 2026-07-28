@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
@@ -119,6 +120,12 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
+	allDatasets, err := s.GZFS.ZFS.List(ctx, true, "")
+	if err != nil {
+		return fmt.Errorf("failed to list datasets before deletion: %w", err)
+	}
+	affectedGUIDs := datasetGUIDsInTrees(allDatasets, []*gzfs.Dataset{foundFS})
+
 	wasEncrypted := foundFS.IsEncrypted()
 
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
@@ -129,7 +136,7 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		cleanupEncryptionKeyForDataset(foundFS)
 	}
 
-	s.SignalDSChange(foundFS.Pool, foundFS.Name, "generic-dataset", "edit")
+	s.SignalDSChange(foundFS.Pool, foundFS.Name, "generic-dataset", "delete")
 
-	return nil
+	return s.notifyDatasetsDeleted(ctx, affectedGUIDs)
 }

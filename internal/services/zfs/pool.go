@@ -385,7 +385,11 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 	s.SignalDSChange(pool.Name, "", "snapshot", "delete")
 	s.SignalDSChange(pool.Name, "", "generic-dataset", "delete")
 
-	return nil
+	deletedGUIDs := make([]string, 0, len(datasets))
+	for _, dataset := range datasets {
+		deletedGUIDs = append(deletedGUIDs, dataset.GUID)
+	}
+	return s.notifyDatasetsDeleted(ctx, deletedGUIDs)
 }
 
 func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) error {

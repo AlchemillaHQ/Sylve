@@ -193,9 +193,11 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	zeltaService := NewService[zelta.Service](db, telemetryDB, clusterService, jailService, networkService, libvirtService, gzfs)
 
 	sambaSvc := sambaService.(*samba.Service)
+	zfsSvc := zfsService.(*zfs.Service)
 	mdnsSvc := mdnsService.(*mdns.Service)
 	sysSvc := systemService.(*system.Service)
 
+	zfsSvc.OnDatasetsDeleted = sambaSvc.DisableSharesForDatasets
 	sambaSvc.OnConfigChange = mdnsSvc.Rebuild
 	sambaSvc.EnsureMdnsEnabled = sysSvc.EnsureMdnsEnabled
 	sambaSvc.WithServiceSettingsLock = sysSvc.WithServiceSettingsLock

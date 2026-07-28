@@ -369,6 +369,7 @@ func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		0,
 		false,
 		nil,
+		true,
 	)
 	if err == nil {
 		t.Fatal("expected error for guest-only share with principals")
@@ -409,6 +410,7 @@ func TestUpdateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		0,
 		false,
 		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected error for guest-only share with principals")
@@ -443,6 +445,7 @@ func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 		0,
 		false,
 		nil,
+		true,
 	)
 	if err == nil {
 		t.Fatal("expected ACL enforcement failure")
@@ -498,6 +501,7 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 		0,
 		false,
 		nil,
+		true,
 	)
 	if err != nil {
 		t.Fatalf("CreateShare failed: %v", err)

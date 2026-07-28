@@ -255,6 +255,7 @@ func RegisterRoutes(r *gin.Engine,
 		samba.GET("/shares", sambaHandlers.GetShares(sambaService))
 		samba.POST("/shares", sambaHandlers.CreateShare(sambaService))
 		samba.PUT("/shares", sambaHandlers.UpdateShare(sambaService))
+		samba.PUT("/shares/:id/enabled", sambaHandlers.SetShareEnabled(sambaService))
 		samba.DELETE("/shares/:id", sambaHandlers.DeleteShare(sambaService))
 
 		samba.GET("/audit-logs", sambaHandlers.GetAuditLogs(sambaService))

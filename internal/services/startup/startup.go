@@ -215,16 +215,15 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.SambaServer) {
 		if err := s.InitSamba(ctx); err != nil {
-			return fmt.Errorf("failed to initialize Samba: %w", err)
-		}
+			logger.L.Error().Err(err).Msg("failed to initialize Samba; continuing startup")
+		} else {
+			if err := s.InitSambaAdmins(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to initialize Samba admins; continuing startup")
+			}
 
-		if err := s.InitSambaAdmins(); err != nil {
-			return fmt.Errorf("failed to initialize Samba admins: %w", err)
-		}
-
-		err := ensureServiceStarted("samba_server")
-		if err != nil {
-			logger.L.Error().Err(err).Msgf("unable to start samba server")
+			if err := ensureServiceStarted("samba_server"); err != nil {
+				logger.L.Error().Err(err).Msg("unable to start samba server")
+			}
 		}
 
 		go s.Samba.WatchAuditLogs(dCtx)

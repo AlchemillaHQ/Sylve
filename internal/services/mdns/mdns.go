@@ -114,7 +114,7 @@ func (s *Service) gatherManagedRecords() ([]mdnsInterfaces.MdnsRecordWithManaged
 	}
 
 	var shares []sambaModels.SambaShare
-	if err := s.DB.Find(&shares).Error; err != nil {
+	if err := s.DB.Where("enabled = ?", true).Find(&shares).Error; err != nil {
 		return nil, err
 	}
 

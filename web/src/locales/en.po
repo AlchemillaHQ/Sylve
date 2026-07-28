@@ -602,6 +602,7 @@ msgstr "Action"
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -2136,7 +2137,6 @@ msgstr "Select Pools"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Services"
@@ -2704,6 +2704,7 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2729,6 +2730,7 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2779,6 +2781,7 @@ msgstr "Enabled"
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -17290,13 +17293,11 @@ msgstr "<0/> Access <1/>"
 msgid "<0/> Options <1/>"
 msgstr "<0/> Options <1/>"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Share details"
-msgstr "Share details"
+#~ msgid "Share details"
+#~ msgstr "Share details"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "The selected dataset is the directory exposed by this share."
-msgstr "The selected dataset is the directory exposed by this share."
+#~ msgid "The selected dataset is the directory exposed by this share."
+#~ msgstr "The selected dataset is the directory exposed by this share."
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "No datasets available"
@@ -17305,13 +17306,11 @@ msgstr "No datasets available"
 #~ msgid "Only mounted datasets that are not already used by another Samba share are shown."
 #~ msgstr "Only mounted datasets that are not already used by another Samba share are shown."
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Access mode"
-msgstr "Access mode"
+#~ msgid "Access mode"
+#~ msgstr "Access mode"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Choose who can connect to this share. Guest access does not include your named permissions."
-msgstr "Choose who can connect to this share. Guest access does not include your named permissions."
+#~ msgid "Choose who can connect to this share. Guest access does not include your named permissions."
+#~ msgstr "Choose who can connect to this share. Guest access does not include your named permissions."
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "<0/> Authenticated"
@@ -17357,9 +17356,8 @@ msgstr "Guests can read and write this share without credentials."
 msgid "Your named user and group selections are preserved if you switch back to authenticated access."
 msgstr "Your named user and group selections are preserved if you switch back to authenticated access."
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Enable the Samba features needed by clients of this share."
-msgstr "Enable the Samba features needed by clients of this share."
+#~ msgid "Enable the Samba features needed by clients of this share."
+#~ msgstr "Enable the Samba features needed by clients of this share."
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Advertise this share as a Time Machine backup destination."
@@ -18038,3 +18036,11 @@ msgstr "Show tunables configured and persisted through Sylve"
 #: src/routes/[node]/settings/system/tunables/+page.svelte
 msgid "Configured Only"
 msgstr "Configured Only"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Dataset missing"
+msgstr "Dataset missing"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Disabled shares are saved but are not published by Samba."
+msgstr "Disabled shares are saved but are not published by Samba."

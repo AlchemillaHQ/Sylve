@@ -16,6 +16,7 @@
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -153,6 +154,14 @@
 				visible: false
 			},
 			{
+				field: 'enabled',
+				title: 'Status',
+				formatter: (cell: CellComponent) =>
+					cell.getValue()
+						? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+						: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
+			},
+			{
 				field: 'name',
 				title: 'Name'
 			},
@@ -194,7 +203,8 @@
 			const row: Row = {
 				id: share.id,
 				name: share.name,
-				mountpoint: dataset ? dataset.mountpoint : '-',
+				enabled: share.enabled,
+				mountpoint: dataset ? dataset.mountpoint : 'Dataset missing',
 				readAccess,
 				writeAccess,
 				created: share.createdAt

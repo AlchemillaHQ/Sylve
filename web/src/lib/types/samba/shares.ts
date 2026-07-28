@@ -30,6 +30,7 @@ export const SambaShareSchema = z.object({
     id: z.number(),
     name: z.string(),
     dataset: z.string(),
+    enabled: z.boolean().default(true),
     permissions: SambaPermissionsSchema,
     guest: SambaGuestSchema,
     createMask: z.string(),

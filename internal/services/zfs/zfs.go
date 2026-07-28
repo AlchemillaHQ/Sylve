@@ -34,6 +34,7 @@ type Service struct {
 	cacheInvalidationMutex    sync.Mutex
 	cacheInvalidationSequence uint64
 	pendingCacheInvalidations map[string]uint64
+	OnDatasetsDeleted         func(context.Context, []string) error
 }
 
 func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
@@ -45,6 +46,36 @@ func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInte
 		syncMutex:                 &sync.Mutex{},
 		pendingCacheInvalidations: make(map[string]uint64, 2),
 	}
+}
+
+func datasetGUIDsInTrees(datasets []*gzfs.Dataset, roots []*gzfs.Dataset) []string {
+	seen := make(map[string]struct{})
+	guids := make([]string, 0, len(roots))
+	for _, dataset := range datasets {
+		if dataset == nil || dataset.GUID == "" {
+			continue
+		}
+		for _, root := range roots {
+			if root != nil && (dataset.Name == root.Name || strings.HasPrefix(dataset.Name, root.Name+"/")) {
+				if _, exists := seen[dataset.GUID]; !exists {
+					seen[dataset.GUID] = struct{}{}
+					guids = append(guids, dataset.GUID)
+				}
+				break
+			}
+		}
+	}
+	return guids
+}
+
+func (s *Service) notifyDatasetsDeleted(ctx context.Context, guids []string) error {
+	if s.OnDatasetsDeleted == nil || len(guids) == 0 {
+		return nil
+	}
+	if err := s.OnDatasetsDeleted(ctx, guids); err != nil {
+		return fmt.Errorf("datasets_deleted_but_dependent_services_failed_to_reconcile: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) PoolFromDataset(ctx context.Context, name string) (string, error) {

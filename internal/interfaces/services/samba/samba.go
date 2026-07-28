@@ -15,6 +15,7 @@ import (
 )
 
 type SambaServiceInterface interface {
+	DisableMissingShares(ctx context.Context) error
 	WriteConfig(ctx context.Context, reload bool) error
 	ParseAuditLogs() error
 	WatchAuditLogs(ctx context.Context)

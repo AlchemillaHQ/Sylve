@@ -43,6 +43,7 @@
 
 	interface FormState {
 		name: string;
+		enabled: boolean;
 		dataset: { open: boolean; value: string };
 		accessMode: AccessMode;
 		readUsers: { open: boolean; value: string[] };
@@ -120,6 +121,7 @@
 	function createFormState(): FormState {
 		return {
 			name: share?.name ?? '',
+			enabled: share?.enabled ?? true,
 			dataset: {
 				open: false,
 				value: share?.dataset ?? ''
@@ -356,6 +358,7 @@
 				share.id,
 				form.name.trim(),
 				form.dataset.value,
+				form.enabled,
 				permissions,
 				guest,
 				form.createMask.trim(),
@@ -369,6 +372,7 @@
 			response = await createSambaShare(
 				form.name.trim(),
 				form.dataset.value,
+				form.enabled,
 				permissions,
 				guest,
 				form.createMask.trim(),
@@ -470,7 +474,7 @@
 				</Tabs.Trigger>
 			</Tabs.List>
 
-			<Tabs.Content value="details" class="m-0 min-h-0 flex-1 overflow-y-auto py-4 pr-3">
+			<Tabs.Content value="details" class="m-0 min-h-0 flex-1 overflow-y-auto py-1 pr-3">
 				<div class="space-y-5 pb-1">
 					{#if tabError('details')}
 						<div
@@ -482,13 +486,6 @@
 					{/if}
 
 					<section class="space-y-3" aria-labelledby="share-details-heading">
-						<div>
-							<p id="share-details-heading" class="text-sm font-semibold">Share details</p>
-							<p class="text-muted-foreground mt-1 text-xs">
-								The selected dataset is the directory exposed by this share.
-							</p>
-						</div>
-
 						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 							<CustomValueInput
 								label="Name"
@@ -512,6 +509,20 @@
 							/>
 						</div>
 
+						<div class="flex items-center space-x-3 rounded-lg border border-border bg-muted/40 p-4">
+							<Checkbox
+								id="share-enabled"
+								bind:checked={form.enabled}
+								class="border-muted-foreground/40 bg-background"
+							/>
+							<div class="grid gap-1.5 leading-none">
+								<Label for="share-enabled" class="text-sm font-medium leading-none">Enabled</Label>
+								<p class="text-[10px] italic text-muted-foreground">
+									Disabled shares are saved but are not published by Samba.
+								</p>
+							</div>
+						</div>
+
 						<p class="text-muted-foreground text-xs">
 							Only mounted, non-system datasets that are not already used by another Samba share are shown.
 						</p>
@@ -519,7 +530,7 @@
 				</div>
 			</Tabs.Content>
 
-			<Tabs.Content value="access" class="m-0 min-h-0 flex-1 overflow-y-auto py-4 pr-3">
+			<Tabs.Content value="access" class="m-0 min-h-0 flex-1 overflow-y-auto py-2 pr-3">
 				<div class="space-y-5 pb-1">
 					{#if tabError('access')}
 						<div
@@ -531,13 +542,6 @@
 					{/if}
 
 					<section class="space-y-3" aria-labelledby="access-mode-heading">
-						<div>
-							<p id="access-mode-heading" class="text-sm font-semibold">Access mode</p>
-							<p class="text-muted-foreground mt-1 text-xs">
-								Choose who can connect to this share. Guest access does not include your named permissions.
-							</p>
-						</div>
-
 						<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 							<label class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('authenticated')}`}>
 								<input
@@ -675,7 +679,7 @@
 				</div>
 			</Tabs.Content>
 
-			<Tabs.Content value="options" class="m-0 min-h-0 flex-1 overflow-y-auto py-4 pr-3">
+			<Tabs.Content value="options" class="m-0 min-h-0 flex-1 overflow-y-auto py-2 pr-3">
 				<div class="space-y-5 pb-1">
 					{#if tabError('options')}
 						<div
@@ -687,13 +691,6 @@
 					{/if}
 
 					<section class="space-y-3" aria-labelledby="services-heading">
-						<div>
-							<p id="services-heading" class="text-sm font-semibold">Services</p>
-							<p class="text-muted-foreground mt-1 text-xs">
-								Enable the Samba features needed by clients of this share.
-							</p>
-						</div>
-
 						<div class={appleExtensions ? 'grid grid-cols-1 gap-3 sm:grid-cols-2' : ''}>
 							{#if appleExtensions}
 								<div class="space-y-3">

@@ -139,6 +139,38 @@ func TestGatherManagedRecordsForAppleSambaShares(t *testing.T) {
 	}
 }
 
+func TestGatherManagedRecordsSkipsDisabledSambaShares(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&models.BasicSettings{},
+		&mdnsModels.MdnsSettings{},
+		&mdnsModels.MdnsRecord{},
+		&sambaModels.SambaSettings{},
+		&sambaModels.SambaShare{},
+	)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.SambaServer}}).Error; err != nil {
+		t.Fatalf("failed to create basic settings: %v", err)
+	}
+	if err := db.Create(&sambaModels.SambaSettings{AppleExtensions: true}).Error; err != nil {
+		t.Fatalf("failed to create samba settings: %v", err)
+	}
+	share := sambaModels.SambaShare{Name: "backups", Dataset: "missing", Enabled: true, TimeMachine: true}
+	if err := db.Create(&share).Error; err != nil {
+		t.Fatalf("failed to create samba share: %v", err)
+	}
+	if err := db.Model(&share).Update("enabled", false).Error; err != nil {
+		t.Fatalf("failed to disable samba share: %v", err)
+	}
+
+	records, err := (&Service{DB: db}).gatherManagedRecords()
+	if err != nil {
+		t.Fatalf("gathering managed records failed: %v", err)
+	}
+	if len(records) != 1 || records[0].Type != "_device-info._tcp" {
+		t.Fatalf("disabled share produced service records: %+v", records)
+	}
+}
+
 func TestGetRecordsSkipsManagedRecordsWhenSambaIsDisabled(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
