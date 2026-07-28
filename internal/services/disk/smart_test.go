@@ -9,11 +9,24 @@
 package disk
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	"github.com/alchemillahq/sylve/pkg/disk/smart"
 )
+
+func TestMapSelfTestStateMarshalsEmptyResultsAsArray(t *testing.T) {
+	state := mapSelfTestState(&smart.SelfTestStatus{})
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"results":[]`)) {
+		t.Fatalf("state encoded with nullable results: %s", encoded)
+	}
+}
 
 func TestMapSelfTestStatusToInterface(t *testing.T) {
 	status := &smart.SelfTestStatus{

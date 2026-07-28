@@ -85,7 +85,8 @@ typedef struct smart_info_s {
 		 sct_supported:1,
 		 self_test_supported:1,
 		 nvme_single_self_test:1,
-		 :27;
+		 nvme_nsid_known:1,
+		 :26;
 	/*
 	 * Device-provided information, including
 	 *  - vendor name

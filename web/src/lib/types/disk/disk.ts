@@ -218,7 +218,10 @@ export const SmartSelfTestStatusSchema = z.object({
 	offline_collection_status: z.string().default(''),
 	offline_collection_running: z.boolean().default(false),
 	checksum_valid: z.boolean().default(true),
-	results: z.array(SmartSelfTestResultSchema).default([])
+	results: z
+		.array(SmartSelfTestResultSchema)
+		.nullish()
+		.transform((results) => results ?? [])
 });
 
 export const SmartSelfTestDetailsSchema = z.object({

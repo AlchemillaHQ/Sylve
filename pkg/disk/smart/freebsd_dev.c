@@ -47,6 +47,7 @@ struct fbsd_smart {
 	smart_t	common;
 	struct cam_device *camdev;
 	int	last_cam_err;	/* per-handle, no thread-safety issue */
+	uint16_t last_nvme_status;
 	bool	read_only;
 };
 
@@ -63,9 +64,27 @@ int smart_get_last_err(smart_h h) {
 	return e;
 }
 
+uint16_t smart_get_last_nvme_status(smart_h h) {
+	struct fbsd_smart *fs = (struct fbsd_smart *)h;
+	if (!fs)
+		return 0;
+	uint16_t status = fs->last_nvme_status;
+	fs->last_nvme_status = 0;
+	return status;
+}
+
+static void
+__record_nvme_status(struct fbsd_smart *fsmart, union ccb *ccb)
+{
+	if (fsmart == NULL || ccb == NULL)
+		return;
+	fsmart->last_nvme_status = le16toh(ccb->nvmeio.cpl.status) >> 1;
+}
+
 static smart_protocol_e __device_get_proto(struct fbsd_smart *);
 static bool __device_proto_tunneled(struct fbsd_smart *);
 static int32_t __device_get_info(struct fbsd_smart *);
+int32_t device_read_nvme_log(smart_h, uint8_t, uint32_t, void *, size_t);
 
 static size_t
 __scsi_transferred(union ccb *ccb, size_t requested)
@@ -558,9 +577,12 @@ __device_read_scsi(smart_h h, uint32_t page, uint8_t subpage, void *buf, size_t 
 static int32_t
 __device_read_nvme(smart_h h, uint32_t page, void *buf, size_t bsize, union ccb *ccb)
 {
-	(void)h;
 	struct ccb_nvmeio *nvmeio = &ccb->nvmeio;
 	uint32_t numd = 0;	/* number of dwords */
+
+	if (h == NULL || buf == NULL ||
+	    bsize != sizeof(struct nvme_health_information_page))
+		return EINVAL;
 
 	/*
 	 * NVME CAM passthru
@@ -701,6 +723,8 @@ device_self_test(smart_h h, uint8_t test_type)
 		return EROFS;
 
 	fsmart->last_cam_err = 0;
+	if (fsmart->common.protocol == SMART_PROTO_NVME)
+		fsmart->last_nvme_status = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
@@ -827,8 +851,6 @@ device_self_test(smart_h h, uint8_t test_type)
 		struct ccb_nvmeio *nvmeio = &ccb->nvmeio;
 		uint8_t nvme_type = test_type;
 		uint32_t nsid = fsmart->common.info.nvme_nsid;
-		if (nsid == 0)
-			nsid = NVME_GLOBAL_NAMESPACE_TAG;
 		if (nvme_type == 0x7F)
 			nvme_type = NVME_STC_ABORT;
 		if (nvme_type != NVME_STC_SHORT &&
@@ -836,6 +858,10 @@ device_self_test(smart_h h, uint8_t test_type)
 		    nvme_type != NVME_STC_ABORT) {
 			cam_freeccb(ccb);
 			return EINVAL;
+		}
+		if (!fsmart->common.info.nvme_nsid_known || nsid == 0) {
+			cam_freeccb(ccb);
+			return ENXIO;
 		}
 		nvmeio->cmd.opc = NVME_OPC_DEVICE_SELF_TEST;
 		nvmeio->cmd.nsid = nsid;
@@ -861,6 +887,8 @@ device_self_test(smart_h h, uint8_t test_type)
 		warn("error sending self-test command");
 		rc = errno ? errno : EIO;
 	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (fsmart->common.protocol == SMART_PROTO_NVME)
+			__record_nvme_status(fsmart, ccb);
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
@@ -1117,6 +1145,9 @@ device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 		return EINVAL;
 	if (fsmart->common.protocol == SMART_PROTO_NVME && (bsize % 4) != 0)
 		return EINVAL;
+	if (fsmart->common.protocol == SMART_PROTO_NVME)
+		return device_read_nvme_log(h, log_addr,
+		    NVME_GLOBAL_NAMESPACE_TAG, buf, bsize);
 
 	fsmart->last_cam_err = 0;
 	ccb = cam_getccb(fsmart->camdev);
@@ -1225,6 +1256,62 @@ device_read_smart_log(smart_h h, uint8_t log_addr, void *buf, size_t bsize)
 	if (rc != 0)
 		fsmart->last_cam_err = rc;
 
+	cam_freeccb(ccb);
+	return rc;
+}
+
+int32_t
+device_read_nvme_log(smart_h h, uint8_t log_addr, uint32_t nsid,
+    void *buf, size_t bsize)
+{
+	struct fbsd_smart *fsmart = h;
+	union ccb *ccb;
+	struct ccb_nvmeio *nvmeio;
+	uint32_t numd;
+	int rc;
+
+	if (fsmart == NULL || buf == NULL || bsize == 0 ||
+	    (bsize % sizeof(uint32_t)) != 0 || bsize > 256 * 1024 || nsid == 0)
+		return EINVAL;
+	if (fsmart->common.protocol != SMART_PROTO_NVME)
+		return ENODEV;
+
+	fsmart->last_cam_err = 0;
+	fsmart->last_nvme_status = 0;
+	ccb = cam_getccb(fsmart->camdev);
+	if (ccb == NULL)
+		return ENOMEM;
+	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+
+	numd = (uint32_t)(bsize / sizeof(uint32_t)) - 1;
+	nvmeio = &ccb->nvmeio;
+	nvmeio->cmd.opc = NVME_OPC_GET_LOG_PAGE;
+	nvmeio->cmd.nsid = nsid;
+	nvmeio->cmd.cdw10 = log_addr | (numd << 16);
+	cam_fill_nvmeadmin(nvmeio, 1, NULL, CAM_DIR_IN, buf, bsize, 5000);
+	ccb->ccb_h.flags |= CAM_DEV_QFRZDIS;
+
+	rc = cam_send_ccb(fsmart->camdev, ccb);
+	if (rc < 0) {
+		rc = errno ? errno : EIO;
+	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		__record_nvme_status(fsmart, ccb);
+		switch (ccb->ccb_h.status & CAM_STATUS_MASK) {
+		case CAM_CMD_TIMEOUT:
+			rc = ETIMEDOUT;
+			break;
+		case CAM_REQ_ABORTED:
+		case CAM_SCSI_BUS_RESET:
+		case CAM_SEQUENCE_FAIL:
+			rc = ECONNABORTED;
+			break;
+		default:
+			rc = EIO;
+			break;
+		}
+	}
+	if (rc != 0)
+		fsmart->last_cam_err = rc;
 	cam_freeccb(ccb);
 	return rc;
 }
@@ -1547,22 +1634,24 @@ device_nvme_identify_ctrl(smart_h h, void *buf, size_t bsize)
 	struct ccb_nvmeio *nvmeio;
 	int rc = 0;
 
-	if (fsmart == NULL)
+	if (fsmart == NULL || buf == NULL || bsize != 4096)
 		return EINVAL;
 
 	if (fsmart->common.protocol != SMART_PROTO_NVME)
 		return ENODEV;
 
 	fsmart->last_cam_err = 0;
+	fsmart->last_nvme_status = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
 
 	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	memset(buf, 0, bsize);
 
 	nvmeio = &ccb->nvmeio;
 	nvmeio->cmd.opc = 0x06;
-	nvmeio->cmd.nsid = NVME_GLOBAL_NAMESPACE_TAG;
+	nvmeio->cmd.nsid = 0;
 	nvmeio->cmd.cdw10 = 1;
 
 	cam_fill_nvmeadmin(&ccb->nvmeio,
@@ -1578,6 +1667,7 @@ device_nvme_identify_ctrl(smart_h h, void *buf, size_t bsize)
 		warn("error sending nvme identify command");
 		rc = errno ? errno : EIO;
 	} else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		__record_nvme_status(fsmart, ccb);
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
@@ -1612,16 +1702,19 @@ device_nvme_identify_ns(smart_h h, uint32_t nsid, void *buf, size_t bsize)
 	struct ccb_nvmeio *nvmeio;
 	int rc;
 
-	if (fsmart == NULL || buf == NULL || bsize < 4096 || nsid == 0)
+	if (fsmart == NULL || buf == NULL || bsize != 4096 || nsid == 0 ||
+	    nsid == NVME_GLOBAL_NAMESPACE_TAG)
 		return EINVAL;
 	if (fsmart->common.protocol != SMART_PROTO_NVME)
 		return ENODEV;
 
 	fsmart->last_cam_err = 0;
+	fsmart->last_nvme_status = 0;
 	ccb = cam_getccb(fsmart->camdev);
 	if (ccb == NULL)
 		return ENOMEM;
 	CCB_CLEAR_ALL_EXCEPT_HDR(ccb);
+	memset(buf, 0, bsize);
 	nvmeio = &ccb->nvmeio;
 	nvmeio->cmd.opc = 0x06;
 	nvmeio->cmd.nsid = nsid;
@@ -1633,6 +1726,7 @@ device_nvme_identify_ns(smart_h h, uint32_t nsid, void *buf, size_t bsize)
 	if (rc < 0)
 		rc = errno ? errno : EIO;
 	else if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		__record_nvme_status(fsmart, ccb);
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 			    CAM_EPF_ALL, stderr);
@@ -1668,6 +1762,8 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 		return EINVAL;
 
 	fsmart->last_cam_err = 0;
+	if (fsmart->common.protocol == SMART_PROTO_NVME)
+		fsmart->last_nvme_status = 0;
 	dprintf("read log page %#x\n", page);
 
 	switch (fsmart->common.protocol) {
@@ -1730,6 +1826,8 @@ device_read_log(smart_h h, uint32_t page, void *buf, size_t bsize)
 	}
 
 	if ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+		if (fsmart->common.protocol == SMART_PROTO_NVME)
+			__record_nvme_status(fsmart, ccb);
 		if (do_debug)
 			cam_error_print(fsmart->camdev, ccb, CAM_ESF_ALL,
 					CAM_EPF_ALL, stderr);
@@ -2067,8 +2165,10 @@ __device_info_nvme(struct fbsd_smart *fsmart, struct ccb_getdev *cgd)
 			ccb->cpi.ccb_h.func_code = XPT_PATH_INQ;
 			if (cam_send_ccb(fsmart->camdev, ccb) >= 0 &&
 			    (ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP &&
-			    ccb->cpi.protocol == PROTO_NVME)
+			    ccb->cpi.protocol == PROTO_NVME) {
 				sinfo->nvme_nsid = ccb->cpi.xport_specific.nvme.nsid;
+				sinfo->nvme_nsid_known = sinfo->nvme_nsid != 0;
+			}
 
 			cam_freeccb(ccb);
 	}

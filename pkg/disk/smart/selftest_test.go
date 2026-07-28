@@ -337,6 +337,10 @@ func TestParseNVMeSelfTestCapabilities(t *testing.T) {
 	if unsupported.Supported || !unsupported.ExecutionSupportKnown {
 		t.Fatalf("unsupported controller: %+v", unsupported)
 	}
+	controller := parseNVMeSelfTestCapabilities(&NVMeIdentifyCtrl{SelfTestSupported: true})
+	if controller.Scope != "controller" || controller.NamespaceID != 0 {
+		t.Fatalf("controller capabilities: %+v", controller)
+	}
 }
 
 func TestParseNVMeIdentifySelfTestFields(t *testing.T) {

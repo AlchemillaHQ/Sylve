@@ -281,6 +281,19 @@ smart_read_self_test_log(smart_h h, void *buf, size_t size)
 }
 
 int32_t
+smart_read_nvme_self_test_log(smart_h h, uint32_t nsid, void *buf, size_t size)
+{
+	smart_t *s = h;
+
+	if (s == NULL || buf == NULL || size == 0 || nsid == 0 ||
+	    nsid == UINT32_MAX)
+		return EINVAL;
+	if (s->protocol != SMART_PROTO_NVME)
+		return ENODEV;
+	return device_read_nvme_log(h, LOG_ADDR_SELF_TEST, nsid, buf, size);
+}
+
+int32_t
 smart_scsi_request_sense(smart_h h, void *buf, size_t size)
 {
 	return device_scsi_request_sense(h, buf, size);
@@ -578,7 +591,7 @@ smart_read_sct_temp_history(smart_h h)
 int32_t
 smart_nvme_identify_ctrl(smart_h h, void *buf, size_t size)
 {
-	if (h == NULL || buf == NULL || size == 0)
+	if (h == NULL || buf == NULL || size != 4096)
 		return EINVAL;
 	return device_nvme_identify_ctrl(h, buf, size);
 }
@@ -586,7 +599,8 @@ smart_nvme_identify_ctrl(smart_h h, void *buf, size_t size)
 int32_t
 smart_nvme_identify_ns(smart_h h, uint32_t nsid, void *buf, size_t size)
 {
-	if (h == NULL || buf == NULL || size < 4096 || nsid == 0)
+	if (h == NULL || buf == NULL || size != 4096 || nsid == 0 ||
+	    nsid == UINT32_MAX)
 		return EINVAL;
 	return device_nvme_identify_ns(h, nsid, buf, size);
 }

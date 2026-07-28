@@ -208,8 +208,15 @@ func TestHardwareReadOnly(t *testing.T) {
 		if _, err := d.ReadNVMeErrorLog(); err != nil {
 			t.Fatalf("NVMe error log: %v", err)
 		}
-		if _, err := d.ReadNVMeIdentifyCtrl(); err != nil {
+		ctrl, err := d.ReadNVMeIdentifyCtrl()
+		if err != nil {
 			t.Fatalf("NVMe identify controller: %v", err)
+		}
+		if ctrl.NamespaceID == 0 {
+			t.Fatal("NVMe namespace ID was not discovered")
+		}
+		if _, err := d.ReadNVMeIdentifyNamespace(ctrl.NamespaceID); err != nil {
+			t.Fatalf("NVMe identify namespace %d: %v", ctrl.NamespaceID, err)
 		}
 	}
 }

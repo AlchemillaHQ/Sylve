@@ -22,6 +22,7 @@ package smart
 bool do_debug = false;
 
 int smart_get_last_err(smart_h h);
+uint16_t smart_get_last_nvme_status(smart_h h);
 
 static smart_attr_t get_attr_at(smart_map_t *map, int i) {
     return map->attr[i];
@@ -112,6 +113,11 @@ static uint32_t get_device_nvme_nsid(smart_h h) {
     return s ? s->info.nvme_nsid : 0;
 }
 
+static bool get_device_nvme_nsid_known(smart_h h) {
+    smart_t *s = (smart_t *)h;
+    return s && s->info.nvme_nsid_known;
+}
+
 static bool get_device_nvme_single_self_test(smart_h h) {
     smart_t *s = (smart_t *)h;
     return s && s->info.nvme_single_self_test;
@@ -168,7 +174,6 @@ import (
 var ErrControllerTimeout = errors.New("controller timeout")
 var ErrControllerAborted = errors.New("controller aborted")
 var ErrDeviceClosed = errors.New("SMART device is closed")
-var ErrUnsupportedFeature = errors.New("SMART feature is not supported by this device")
 
 func IsControllerError(err error) bool {
 	return errors.Is(err, ErrControllerTimeout) || errors.Is(err, ErrControllerAborted)
@@ -179,6 +184,9 @@ func wrapDeviceError(h C.smart_h, err error, devicePath string) error {
 		return nil
 	}
 	lastErr := int(C.smart_get_last_err(h))
+	if status := uint16(C.smart_get_last_nvme_status(h)); status != 0 {
+		err = fmt.Errorf("%v (NVMe status SCT=%d SC=%#02x)", err, (status>>8)&0x7, status&0xff)
+	}
 	switch lastErr {
 	case int(C.ETIMEDOUT):
 		return fmt.Errorf("%w: %s: %v", ErrControllerTimeout, devicePath, err)
@@ -688,7 +696,17 @@ func (d *Device) readSelfTestLogLocked(h C.smart_h, devicePath string) (*SelfTes
 		return nil, fmt.Errorf("%w: self-test log on %s", ErrUnsupportedFeature, devicePath)
 	}
 	raw := make([]byte, size)
-	if rc := C.smart_read_self_test_log(h, unsafe.Pointer(&raw[0]), C.size_t(len(raw))); rc != 0 {
+	var rc C.int32_t
+	if proto == C.SMART_PROTO_NVME {
+		nsid := uint32(C.get_device_nvme_nsid(h))
+		if !bool(C.get_device_nvme_nsid_known(h)) || nsid == 0 {
+			return nil, fmt.Errorf("NVMe namespace ID is unavailable for %s", devicePath)
+		}
+		rc = C.smart_read_nvme_self_test_log(h, C.uint32_t(nsid), unsafe.Pointer(&raw[0]), C.size_t(len(raw)))
+	} else {
+		rc = C.smart_read_self_test_log(h, unsafe.Pointer(&raw[0]), C.size_t(len(raw)))
+	}
+	if rc != 0 {
 		return nil, wrapDeviceError(h, fmt.Errorf("failed to read self-test log from %s: code %d", devicePath, int(rc)), devicePath)
 	}
 	switch proto {
@@ -1013,6 +1031,9 @@ func (d *Device) selfTestCapabilitiesLocked(h C.smart_h, devicePath string, ataR
 			return capabilities, wrapDeviceError(h, fmt.Errorf("NVMe identify controller failed with code %d", int(rc)), devicePath)
 		}
 		ctrl := parseNVMeIdentifyCtrl(buf)
+		if !bool(C.get_device_nvme_nsid_known(h)) {
+			return capabilities, fmt.Errorf("NVMe namespace ID is unavailable for %s", devicePath)
+		}
 		ctrl.NamespaceID = uint32(C.get_device_nvme_nsid(h))
 		capabilities = parseNVMeSelfTestCapabilities(ctrl)
 	default:
@@ -1744,6 +1765,9 @@ func (d *Device) ReadNVMeIdentifyNamespace(namespaceID uint32) (*NVMeIdentifyNam
 		return nil, err
 	}
 	defer d.mu.Unlock()
+	if namespaceID == ^uint32(0) {
+		return nil, fmt.Errorf("invalid NVMe namespace ID %d", namespaceID)
+	}
 	if namespaceID == 0 {
 		namespaceID = uint32(C.get_device_nvme_nsid(h))
 	}

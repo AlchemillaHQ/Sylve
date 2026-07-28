@@ -50,6 +50,7 @@ var ErrSelfTestConfigurationRequired = errors.New("drive self-test configuration
 var ErrInvalidSelectiveSpan = errors.New("invalid selective self-test span")
 var ErrInvalidSelectiveOption = errors.New("invalid selective self-test option")
 var ErrDeviceCapacityUnknown = errors.New("drive capacity is unavailable")
+var ErrUnsupportedFeature = errors.New("SMART feature is not supported by this device")
 
 type SelectiveSpanMode uint8
 
@@ -422,7 +423,11 @@ func parseNVMeSelfTestCapabilities(ctrl *NVMeIdentifyCtrl) SelfTestCapabilities 
 		return c
 	}
 	c.NamespaceID = ctrl.NamespaceID
-	c.Scope = "namespace"
+	if ctrl.NamespaceID != 0 {
+		c.Scope = "namespace"
+	} else {
+		c.Scope = "controller"
+	}
 	c.SingleOperation = ctrl.SelfTestOptions&0x01 != 0
 	c.Supported = true
 	c.Short = true

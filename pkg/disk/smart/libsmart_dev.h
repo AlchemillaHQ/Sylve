@@ -69,6 +69,8 @@ extern int32_t device_scsi_self_test_support(smart_h, bool *, bool *);
 
 extern int32_t device_read_smart_log(smart_h, uint8_t, void *, size_t);
 
+extern int32_t device_read_nvme_log(smart_h, uint8_t, uint32_t, void *, size_t);
+
 extern int32_t device_read_log_ext(smart_h, uint8_t, uint16_t, void *, size_t);
 
 extern int32_t device_write_smart_log(smart_h, uint8_t, void *, size_t);

@@ -178,6 +178,8 @@ int32_t smart_read_ata_data(smart_h, void *, size_t);
 
 int32_t smart_read_self_test_log(smart_h, void *, size_t);
 
+int32_t smart_read_nvme_self_test_log(smart_h, uint32_t, void *, size_t);
+
 int32_t smart_scsi_request_sense(smart_h, void *, size_t);
 
 int32_t smart_scsi_control_mode_page(smart_h, void *, size_t);
