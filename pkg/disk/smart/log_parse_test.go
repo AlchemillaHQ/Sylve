@@ -290,6 +290,19 @@ func TestParseNVMeAndSCSISelfTestLogs(t *testing.T) {
 	}
 }
 
+func TestFilterNVMESelfTestEntriesByNamespace(t *testing.T) {
+	entries := []SelfTestEntry{
+		{NSID: 7, NSIDValid: true},
+		{NSID: 8, NSIDValid: true},
+		{NSIDValid: false},
+	}
+
+	got := filterNVMESelfTestEntries(entries, 7)
+	if len(got) != 2 || !got[0].NSIDValid || got[0].NSID != 7 || got[1].NSIDValid {
+		t.Fatalf("filtered entries: %+v", got)
+	}
+}
+
 func TestParseSCSISelfTestLogValidation(t *testing.T) {
 	valid := make([]byte, 404)
 	valid[0] = 0x10

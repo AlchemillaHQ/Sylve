@@ -317,6 +317,16 @@ func parseNVMESelfTestLog(raw []byte) SelfTestLog {
 	return log
 }
 
+func filterNVMESelfTestEntries(entries []SelfTestEntry, namespaceID uint32) []SelfTestEntry {
+	filtered := entries[:0]
+	for _, entry := range entries {
+		if !entry.NSIDValid || entry.NSID == namespaceID {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
 func parseSCSISelfTestLog(raw []byte) SelfTestLog {
 	log := SelfTestLog{}
 	if len(raw) < 0x194 || raw[0]&0x3f != 0x10 || binary.BigEndian.Uint16(raw[2:4]) != 0x190 {

@@ -81,6 +81,11 @@ type replicationSnapshotIdentity struct {
 	GUID string
 }
 
+type replicationSnapshotCloneDependency struct {
+	Snapshot string
+	Clone    string
+}
+
 type replicationPreviousDatasetInfo struct {
 	Name     string
 	Creation uint64
@@ -303,11 +308,21 @@ func (s *Service) replicationZFSSendPreparedToPath(
 	if commonSnap == snapshotName {
 		appendLine("replication_snapshot_already_present")
 	} else {
+		sourceClonePreflightComplete := false
 		attemptErr := runReplicationAttempts(
 			3,
 			allowProvenForce,
 			replicationAttemptHooks{
 				Run: func(forceRecv bool) (string, error) {
+					// A full -R stream includes earlier snapshots and clone
+					// relationships. Reject clone origins that promotion could not
+					// safely prune instead of discovering them after the transfer.
+					if commonSnap == "" && !sourceClonePreflightComplete {
+						if preflightErr := s.preflightReplicationSourceSnapshotClones(ctx, sourceDataset); preflightErr != nil {
+							return preflightErr.Error(), preflightErr
+						}
+						sourceClonePreflightComplete = true
+					}
 					return s.runReplicationPipelineWithProperties(
 						ctx,
 						target,
@@ -687,6 +702,99 @@ func latestCommonReplicationSnapshot(
 	}
 
 	return "", nil
+}
+
+func parseReplicationSnapshotCloneDependencies(
+	datasetOutput string,
+	cloneOutput string,
+	rootDataset string,
+) ([]replicationSnapshotCloneDependency, error) {
+	datasets, err := parseReplicationDatasetTree(datasetOutput, rootDataset)
+	if err != nil {
+		return nil, err
+	}
+	datasetSet := make(map[string]struct{}, len(datasets))
+	for _, dataset := range datasets {
+		datasetSet[dataset] = struct{}{}
+	}
+
+	rootDataset = normalizeDatasetPath(rootDataset)
+	dependencies := make([]replicationSnapshotCloneDependency, 0)
+	scan := bufio.NewScanner(strings.NewReader(cloneOutput))
+	for scan.Scan() {
+		fields := strings.Fields(strings.TrimSpace(scan.Text()))
+		if len(fields) == 0 {
+			continue
+		}
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("invalid_replication_snapshot_clone_entry")
+		}
+		snapshot := strings.TrimSpace(fields[0])
+		at := strings.LastIndex(snapshot, "@")
+		if at <= 0 {
+			return nil, fmt.Errorf("invalid_replication_snapshot_clone_name:%s", snapshot)
+		}
+		snapshotDataset := normalizeDatasetPath(snapshot[:at])
+		if snapshotDataset != rootDataset && !strings.HasPrefix(snapshotDataset, rootDataset+"/") {
+			return nil, fmt.Errorf("replication_snapshot_clone_outside_tree:%s", snapshot)
+		}
+		if strings.HasPrefix(strings.ToLower(snapshot[at+1:]), haSnapPrefix) || fields[1] == "-" {
+			continue
+		}
+		for _, candidate := range strings.Split(fields[1], ",") {
+			clone := normalizeDatasetPath(candidate)
+			if _, included := datasetSet[clone]; !included {
+				continue
+			}
+			dependencies = append(dependencies, replicationSnapshotCloneDependency{
+				Snapshot: snapshot,
+				Clone:    clone,
+			})
+		}
+	}
+	if err := scan.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(dependencies, func(i, j int) bool {
+		if dependencies[i].Snapshot != dependencies[j].Snapshot {
+			return dependencies[i].Snapshot < dependencies[j].Snapshot
+		}
+		return dependencies[i].Clone < dependencies[j].Clone
+	})
+	return dependencies, nil
+}
+
+func (s *Service) preflightReplicationSourceSnapshotClones(ctx context.Context, sourceDataset string) error {
+	sourceDataset = normalizeDatasetPath(sourceDataset)
+	if sourceDataset == "" {
+		return fmt.Errorf("replication_source_dataset_required")
+	}
+	datasetOutput, err := utils.RunCommandWithContext(
+		ctx,
+		"zfs", "list", "-H", "-r", "-t", "filesystem,volume", "-o", "name", sourceDataset,
+	)
+	if err != nil {
+		return fmt.Errorf("replication_source_clone_preflight_tree_failed: %w", err)
+	}
+	cloneOutput, err := utils.RunCommandWithContext(
+		ctx,
+		"zfs", "get", "-H", "-r", "-t", "snapshot", "-o", "name,value", "clones", sourceDataset,
+	)
+	if err != nil {
+		return fmt.Errorf("replication_source_clone_preflight_snapshot_failed: %w", err)
+	}
+	dependencies, err := parseReplicationSnapshotCloneDependencies(datasetOutput, cloneOutput, sourceDataset)
+	if err != nil {
+		return fmt.Errorf("replication_source_clone_preflight_parse_failed: %w", err)
+	}
+	if len(dependencies) == 0 {
+		return nil
+	}
+	details := make([]string, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		details = append(details, fmt.Sprintf("snapshot=%s,clone=%s", dependency.Snapshot, dependency.Clone))
+	}
+	return fmt.Errorf("replication_source_snapshot_clone_dependency:%s", strings.Join(details, ";"))
 }
 
 func parseReplicationSnapshotIdentities(output, dataset string) ([]replicationSnapshotIdentity, error) {

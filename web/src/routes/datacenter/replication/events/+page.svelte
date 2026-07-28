@@ -271,12 +271,25 @@
 		replication_target_diverged_requires_staged_reseed: {
 			label: 'Target diverged and requires reseeding'
 		},
+		replication_source_snapshot_clone_dependency: {
+			label: 'Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry'
+		},
 		replication_target_dataset_lookup_failed: { label: 'Could not inspect target dataset' }
 	};
 
 	function targetReasonPresentation(value: string): TargetReasonPresentation {
 		const reason = String(value || '').trim();
 		if (!reason) return { label: '' };
+
+		// Dataset staging adds context ahead of the underlying transfer error.
+		// Preserve the actionable presentation when this preflight code is nested.
+		const cloneDependencyMarker = 'replication_source_snapshot_clone_dependency:';
+		const cloneDependencyIndex = reason.toLowerCase().indexOf(cloneDependencyMarker);
+		if (cloneDependencyIndex >= 0) {
+			const detail = reason.slice(cloneDependencyIndex + cloneDependencyMarker.length).trim();
+			const label = targetReasonPresentations.replication_source_snapshot_clone_dependency.label;
+			return { label: detail ? `${label}: ${detail}` : label };
+		}
 
 		const separator = reason.indexOf(':');
 		const code = (separator === -1 ? reason : reason.slice(0, separator)).trim().toLowerCase();

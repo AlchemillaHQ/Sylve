@@ -696,16 +696,14 @@ func (d *Device) readSelfTestLogLocked(h C.smart_h, devicePath string) (*SelfTes
 		return nil, fmt.Errorf("%w: self-test log on %s", ErrUnsupportedFeature, devicePath)
 	}
 	raw := make([]byte, size)
-	var rc C.int32_t
+	var namespaceID uint32
 	if proto == C.SMART_PROTO_NVME {
-		nsid := uint32(C.get_device_nvme_nsid(h))
-		if !bool(C.get_device_nvme_nsid_known(h)) || nsid == 0 {
+		namespaceID = uint32(C.get_device_nvme_nsid(h))
+		if !bool(C.get_device_nvme_nsid_known(h)) || namespaceID == 0 {
 			return nil, fmt.Errorf("NVMe namespace ID is unavailable for %s", devicePath)
 		}
-		rc = C.smart_read_nvme_self_test_log(h, C.uint32_t(nsid), unsafe.Pointer(&raw[0]), C.size_t(len(raw)))
-	} else {
-		rc = C.smart_read_self_test_log(h, unsafe.Pointer(&raw[0]), C.size_t(len(raw)))
 	}
+	rc := C.smart_read_self_test_log(h, unsafe.Pointer(&raw[0]), C.size_t(len(raw)))
 	if rc != 0 {
 		return nil, wrapDeviceError(h, fmt.Errorf("failed to read self-test log from %s: code %d", devicePath, int(rc)), devicePath)
 	}
@@ -721,6 +719,7 @@ func (d *Device) readSelfTestLogLocked(h C.smart_h, devicePath string) (*SelfTes
 		return &log, nil
 	default:
 		log := parseNVMESelfTestLog(raw)
+		log.Entries = filterNVMESelfTestEntries(log.Entries, namespaceID)
 		return &log, nil
 	}
 }

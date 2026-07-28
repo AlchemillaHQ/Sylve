@@ -231,6 +231,40 @@ func TestCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	}
 }
 
+func TestReplicationSourceSnapshotClonePreflightRealZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping real ZFS source clone preflight test in short mode")
+	}
+
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+
+	source := pool + "/source"
+	clone := source + "/manual-clone"
+	zfstest.EnsureDataset(t, client, source)
+	if output, err := exec.Command("zfs", "snapshot", source+"@manual").CombinedOutput(); err != nil {
+		t.Fatalf("create source snapshot: %v\n%s", err, output)
+	}
+	if output, err := exec.Command("zfs", "clone", source+"@manual", clone).CombinedOutput(); err != nil {
+		t.Fatalf("create in-tree dependent clone: %v\n%s", err, output)
+	}
+
+	err := (&Service{}).preflightReplicationSourceSnapshotClones(context.Background(), source)
+	if err == nil {
+		t.Fatal("dependent clone did not block full replication preflight")
+	}
+	for _, expected := range []string{
+		"replication_source_snapshot_clone_dependency",
+		"snapshot=" + source + "@manual",
+		"clone=" + clone,
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("preflight error %q does not contain %q", err, expected)
+		}
+	}
+}
+
 func TestCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {

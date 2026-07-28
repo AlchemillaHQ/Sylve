@@ -48,6 +48,44 @@ func TestRemotePOSIXShellCommandWorksThroughPOSIXAndCShells(t *testing.T) {
 	}
 }
 
+func TestParseReplicationSnapshotCloneDependencies(t *testing.T) {
+	dependencies, err := parseReplicationSnapshotCloneDependencies(
+		"tank/source\ntank/source/disk\ntank/source/clone-a\ntank/source/clone-b\n",
+		strings.Join([]string{
+			"tank/source@manual tank/source/clone-b,tank/outside-clone,tank/source/clone-a",
+			"tank/source@ha_generation tank/source/clone-a",
+			"tank/source/disk@ordinary -",
+		}, "\n"),
+		"tank/source",
+	)
+	if err != nil {
+		t.Fatalf("parse clone dependencies: %v", err)
+	}
+	want := []replicationSnapshotCloneDependency{
+		{Snapshot: "tank/source@manual", Clone: "tank/source/clone-a"},
+		{Snapshot: "tank/source@manual", Clone: "tank/source/clone-b"},
+	}
+	if len(dependencies) != len(want) {
+		t.Fatalf("dependencies = %#v, want %#v", dependencies, want)
+	}
+	for i := range want {
+		if dependencies[i] != want[i] {
+			t.Fatalf("dependency[%d] = %#v, want %#v", i, dependencies[i], want[i])
+		}
+	}
+}
+
+func TestParseReplicationSnapshotCloneDependenciesRejectsMalformedInput(t *testing.T) {
+	_, err := parseReplicationSnapshotCloneDependencies(
+		"tank/source\n",
+		"tank/source@manual",
+		"tank/source",
+	)
+	if err == nil || !strings.Contains(err.Error(), "invalid_replication_snapshot_clone_entry") {
+		t.Fatalf("malformed clone output error = %v", err)
+	}
+}
+
 func TestRunReplicationAttemptsExhaustionDoesNotReturnSuccess(t *testing.T) {
 	attempts := 0
 	aborts := 0
