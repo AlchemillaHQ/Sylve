@@ -288,6 +288,47 @@ func (s *Service) backfillPreClusterState() error {
 	}
 
 	{
+		var operations []clusterModels.BackupJobOperation
+		if err := s.DB.Order("job_id ASC").Find(&operations).Error; err != nil {
+			return fmt.Errorf("scan_existing_backup_job_operations: %w", err)
+		}
+		for _, operation := range operations {
+			acquire := clusterModels.BackupJobOperationAcquire{
+				JobID: operation.JobID, Token: operation.Token, Operation: operation.Operation,
+				HolderNodeID: operation.HolderNodeID, RequestPayload: operation.RequestPayload,
+				AcquiredAt: operation.AcquiredAt,
+			}
+			data, _ := json.Marshal(acquire)
+			if err := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+				Type: "backup_job_operation", Action: "acquire", Data: data,
+			}), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_acquire_backup_job_operation job_id=%d: %w", operation.JobID, err)
+			}
+			transition := clusterModels.BackupJobOperationTransition{
+				JobID: operation.JobID, Token: operation.Token, Operation: operation.Operation,
+				HolderNodeID: operation.HolderNodeID, RequestPayload: operation.RequestPayload,
+				OccurredAt: operation.UpdatedAt,
+			}
+			if operation.State == clusterModels.BackupJobOperationRunning ||
+				operation.State == clusterModels.BackupJobOperationFinishing {
+				transitionData, _ := json.Marshal(transition)
+				if err := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+					Type: "backup_job_operation", Action: "start", Data: transitionData,
+				}), 5*time.Second).Error(); err != nil {
+					return fmt.Errorf("apply_synth_start_backup_job_operation job_id=%d: %w", operation.JobID, err)
+				}
+				if operation.State == clusterModels.BackupJobOperationFinishing {
+					if err := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+						Type: "backup_job_operation", Action: "finish", Data: transitionData,
+					}), 5*time.Second).Error(); err != nil {
+						return fmt.Errorf("apply_synth_finish_backup_job_operation job_id=%d: %w", operation.JobID, err)
+					}
+				}
+			}
+		}
+	}
+
+	{
 		var policies []clusterModels.ReplicationPolicy
 		if err := s.DB.Preload("Targets").Order("id ASC").Find(&policies).Error; err != nil {
 			return fmt.Errorf("scan_existing_replication_policies: %w", err)

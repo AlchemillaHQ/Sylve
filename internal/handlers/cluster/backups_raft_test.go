@@ -34,6 +34,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 
 	db := testutil.NewSQLiteTestDB(t,
 		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupEvent{},
 		&clusterModels.ClusterNode{},

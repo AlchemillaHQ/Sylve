@@ -10,7 +10,9 @@ package cluster
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 func TestRaftBackupJobCRUDTwoNodes(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2,
 		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupEvent{},
 	)
 	defer cleanupClusterRaftTestNodes(t, nodes)
@@ -28,7 +31,7 @@ func TestRaftBackupJobCRUDTwoNodes(t *testing.T) {
 
 	job := clusterModels.BackupJob{
 		ID: 1, Name: "raft-job", TargetID: 10,
-		Mode: clusterModels.BackupJobModeDataset,
+		Mode:          clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data", CronExpr: "0 2 * * *", Enabled: true,
 	}
 	createRaw, _ := json.Marshal(job)
@@ -107,9 +110,10 @@ func TestRaftBackupJobCRUDTwoNodes(t *testing.T) {
 	})
 }
 
-func TestRaftBackupJobDeleteBlockedWhenRunning(t *testing.T) {
+func TestRaftBackupJobDeleteBlockedWhenReserved(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2,
 		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupEvent{},
 	)
 	defer cleanupClusterRaftTestNodes(t, nodes)
@@ -119,7 +123,7 @@ func TestRaftBackupJobDeleteBlockedWhenRunning(t *testing.T) {
 	// create job
 	createRaw, _ := json.Marshal(clusterModels.BackupJob{
 		ID: 1, Name: "running-job", TargetID: 10,
-		Mode: clusterModels.BackupJobModeDataset,
+		Mode:          clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data", CronExpr: "* * * * *", Enabled: true,
 	})
 	if err := leader.service.applyRaftCommand(clusterModels.Command{
@@ -139,31 +143,196 @@ func TestRaftBackupJobDeleteBlockedWhenRunning(t *testing.T) {
 		return true
 	})
 
-	// seed a running event on both nodes
-	for _, n := range nodes {
-		n.service.DB.Create(&clusterModels.BackupEvent{
-			JobID: uintPtr(1), Status: "running",
-		})
+	acquireRaw, _ := json.Marshal(clusterModels.BackupJobOperationAcquire{
+		JobID: 1, Token: "backup:node-a:running", Operation: clusterModels.BackupJobOperationBackup,
+		HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(),
+	})
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
+	}); err != nil {
+		t.Fatalf("acquire operation: %v", err)
 	}
+	waitForClusterCondition(t, 8*time.Second, "operation replicated", func() bool {
+		for _, node := range nodes {
+			var count int64
+			node.service.DB.Model(&clusterModels.BackupJobOperation{}).Where("job_id = ?", 1).Count(&count)
+			if count != 1 {
+				return false
+			}
+		}
+		return true
+	})
 
-	// try to delete — should fail
 	deleteRaw, _ := json.Marshal(map[string]any{"id": 1})
 	err := leader.service.applyRaftCommand(clusterModels.Command{
 		Type: "backup_job", Action: "delete", Data: deleteRaw,
 	})
-	if err == nil {
-		t.Fatal("expected error deleting job with running event")
-	}
-	if !strings.Contains(err.Error(), "backup_job_running") {
+	if err == nil || !strings.Contains(err.Error(), "backup_job_running") {
 		t.Fatalf("expected backup_job_running error, got: %v", err)
 	}
 
-	// job still present
 	for _, n := range nodes {
-		var count int64
-		n.service.DB.Model(&clusterModels.BackupJob{}).Count(&count)
-		if count != 1 {
-			t.Fatalf("expected job still present on node %s, got %d", n.id, count)
+		var jobCount, operationCount int64
+		n.service.DB.Model(&clusterModels.BackupJob{}).Count(&jobCount)
+		n.service.DB.Model(&clusterModels.BackupJobOperation{}).Count(&operationCount)
+		if jobCount != 1 || operationCount != 1 {
+			t.Fatalf("node %s state mismatch: jobs=%d operations=%d", n.id, jobCount, operationCount)
+		}
+	}
+}
+
+func TestRaftBackupJobDeleteIgnoresFollowerLocalRunningEvent(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.BackupEvent{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	createRaw, _ := json.Marshal(clusterModels.BackupJob{
+		ID: 7, Name: "local-event-job", TargetID: 10,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
+		CronExpr: "* * * * *", Enabled: true,
+	})
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job", Action: "create", Data: createRaw,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "job created", func() bool {
+		for _, node := range nodes {
+			var count int64
+			node.service.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", 7).Count(&count)
+			if count != 1 {
+				return false
+			}
+		}
+		return true
+	})
+
+	var follower *clusterRaftTestNode
+	for _, node := range nodes {
+		if node != leader {
+			follower = node
+			break
+		}
+	}
+	if follower == nil {
+		t.Fatal("follower not found")
+	}
+	if err := follower.service.DB.Create(&clusterModels.BackupEvent{
+		JobID: uintPtr(7), Status: "running", StartedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("seed follower-local event: %v", err)
+	}
+
+	deleteRaw, _ := json.Marshal(map[string]any{"id": 7})
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job", Action: "delete", Data: deleteRaw,
+	}); err != nil {
+		t.Fatalf("delete with follower-local telemetry: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "job deleted identically", func() bool {
+		for _, node := range nodes {
+			var count int64
+			node.service.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", 7).Count(&count)
+			if count != 0 {
+				return false
+			}
+		}
+		return true
+	})
+
+	var eventCount int64
+	if err := follower.service.DB.Model(&clusterModels.BackupEvent{}).
+		Where("job_id = ?", 7).Count(&eventCount).Error; err != nil || eventCount != 1 {
+		t.Fatalf("follower-local event history changed: count=%d err=%v", eventCount, err)
+	}
+}
+
+func TestRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	for iteration := uint(1); iteration <= 12; iteration++ {
+		jobID := 100 + iteration
+		createRaw, _ := json.Marshal(clusterModels.BackupJob{
+			ID: jobID, Name: "delete-acquire-race", TargetID: 10,
+			Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
+			CronExpr: "* * * * *", Enabled: true,
+		})
+		if err := leader.service.applyRaftCommand(clusterModels.Command{
+			Type: "backup_job", Action: "create", Data: createRaw,
+		}); err != nil {
+			t.Fatalf("iteration %d create: %v", iteration, err)
+		}
+
+		operationToken := "backup:node-a:race-" + strconv.FormatUint(uint64(iteration), 10)
+		acquireRaw, _ := json.Marshal(clusterModels.BackupJobOperationAcquire{
+			JobID: jobID, Token: operationToken,
+			Operation:    clusterModels.BackupJobOperationBackup,
+			HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(),
+		})
+		deleteRaw, _ := json.Marshal(map[string]any{"id": jobID})
+		var acquireErr, deleteErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			acquireErr = leader.service.applyRaftCommand(clusterModels.Command{
+				Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			deleteErr = leader.service.applyRaftCommand(clusterModels.Command{
+				Type: "backup_job", Action: "delete", Data: deleteRaw,
+			})
+		}()
+		wg.Wait()
+		if (acquireErr == nil) == (deleteErr == nil) {
+			t.Fatalf("iteration %d expected exactly one winner: acquire=%v delete=%v", iteration, acquireErr, deleteErr)
+		}
+
+		waitForClusterCondition(t, 8*time.Second, "delete/acquire race convergence", func() bool {
+			expectedJobs := int64(0)
+			expectedOperations := int64(0)
+			if acquireErr == nil {
+				expectedJobs = 1
+				expectedOperations = 1
+			}
+			for _, node := range nodes {
+				var jobCount, operationCount int64
+				node.service.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", jobID).Count(&jobCount)
+				node.service.DB.Model(&clusterModels.BackupJobOperation{}).Where("job_id = ?", jobID).Count(&operationCount)
+				if jobCount != expectedJobs || operationCount != expectedOperations {
+					return false
+				}
+			}
+			return true
+		})
+
+		if acquireErr == nil {
+			transitionRaw, _ := json.Marshal(clusterModels.BackupJobOperationTransition{
+				JobID: jobID, Token: operationToken,
+				Operation:    clusterModels.BackupJobOperationBackup,
+				HolderNodeID: "node-a", OccurredAt: time.Now().UTC(),
+			})
+			if err := leader.service.applyRaftCommand(clusterModels.Command{
+				Type: "backup_job_operation", Action: "abort", Data: transitionRaw,
+			}); err != nil {
+				t.Fatalf("iteration %d cleanup operation: %v", iteration, err)
+			}
+			if err := leader.service.applyRaftCommand(clusterModels.Command{
+				Type: "backup_job", Action: "delete", Data: deleteRaw,
+			}); err != nil {
+				t.Fatalf("iteration %d cleanup job: %v", iteration, err)
+			}
 		}
 	}
 }
@@ -177,7 +346,7 @@ func TestRaftBackupJobStateUpdateReplication(t *testing.T) {
 	// seed job
 	createRaw, _ := json.Marshal(clusterModels.BackupJob{
 		ID: 1, Name: "state-job", TargetID: 10,
-		Mode: clusterModels.BackupJobModeDataset,
+		Mode:          clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data", CronExpr: "* * * * *", Enabled: true,
 	})
 	if err := leader.service.applyRaftCommand(clusterModels.Command{

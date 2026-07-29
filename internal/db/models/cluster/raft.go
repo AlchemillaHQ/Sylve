@@ -82,6 +82,7 @@ type ClusterSnapshot struct {
 	Options                []ClusterOption                    `json:"options"`
 	BackupTargets          []BackupTargetReplicationPayload   `json:"backupTargets"`
 	BackupJobs             []BackupJob                        `json:"backupJobs"`
+	BackupJobOperations    []BackupJobOperation               `json:"backupJobOperations"`
 	ReplicationPolicies    []ReplicationPolicyPayload         `json:"replicationPolicies"`
 	ReplicationLeases      []ReplicationLease                 `json:"replicationLeases"`
 	GuestOperations        []ReplicationGuestOperation        `json:"guestOperations"`
@@ -111,6 +112,9 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 		snap.BackupTargets = append(snap.BackupTargets, BackupTargetToReplicationPayload(t))
 	}
 	if err := f.DB.Order("id ASC").Find(&snap.BackupJobs).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("job_id ASC").Find(&snap.BackupJobOperations).Error; err != nil {
 		return nil, err
 	}
 	var replicationPolicies []ReplicationPolicy
@@ -193,6 +197,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
 		deleteSets := []restoreSet{
+			{"backup_job_operations", snap.BackupJobOperations, 500},
 			{"replication_events", snap.ReplicationEvents, 500},
 			{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
 			{"replication_guest_operations", snap.GuestOperations, 500},
@@ -222,6 +227,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"replication_events", snap.ReplicationEvents, 500},
 			restoreSet{"backup_targets", backupTargets, 200},
 			restoreSet{"backup_jobs", snap.BackupJobs, 500},
+			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
 			restoreSet{"cluster_notes", snap.Notes, 500},
 			restoreSet{"cluster_options", snap.Options, 100},
 		)
@@ -387,22 +393,35 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
 			}
-			if payload.ID == 0 {
-				return nil
-			}
-			var runningCount int64
-			if err := db.Model(&BackupEvent{}).
-				Where("job_id = ? AND status = ?", payload.ID, "running").
-				Count(&runningCount).Error; err != nil {
+			return DeleteBackupJobTxn(db, payload.ID)
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("backup_job_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "acquire":
+			var payload BackupJobOperationAcquire
+			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
 			}
-			if runningCount > 0 {
-				return fmt.Errorf("backup_job_running")
-			}
-			if err := db.Where("job_id = ?", payload.ID).Delete(&BackupEvent{}).Error; err != nil {
+			return AcquireBackupJobOperationTxn(db, &payload)
+		case "start", "finish", "abort", "release":
+			var payload BackupJobOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
 			}
-			return db.Delete(&BackupJob{}, payload.ID).Error
+			switch action {
+			case "start":
+				return StartBackupJobOperationTxn(db, &payload)
+			case "finish":
+				return FinishBackupJobOperationTxn(db, &payload)
+			case "abort":
+				return AbortBackupJobOperationTxn(db, &payload)
+			default:
+				return ReleaseBackupJobOperationTxn(db, &payload)
+			}
 		default:
 			return nil
 		}

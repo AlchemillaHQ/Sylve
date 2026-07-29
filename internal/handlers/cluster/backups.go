@@ -36,7 +36,35 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 			}
 		}
 
-		jobs, err := cS.ListBackupJobs(targetID)
+		guestType := strings.TrimSpace(c.Query("guestType"))
+		guestIDQuery := strings.TrimSpace(c.Query("guestId"))
+		if (guestType == "") != (guestIDQuery == "") {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "guest_filter_incomplete",
+				Error:   "guestType and guestId must be provided together",
+				Data:    nil,
+			})
+			return
+		}
+
+		var jobs []clusterModels.BackupJob
+		var err error
+		if guestType != "" {
+			guestID64, parseErr := strconv.ParseUint(guestIDQuery, 10, 64)
+			if parseErr != nil || guestID64 == 0 || strings.ToLower(guestType) != clusterModels.ReplicationGuestTypeVM {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_guest_filter",
+					Error:   "guestType must be vm and guestId must be a positive integer",
+					Data:    nil,
+				})
+				return
+			}
+			jobs, err = cS.ListBackupJobsForGuest(targetID, guestType, uint(guestID64))
+		} else {
+			jobs, err = cS.ListBackupJobs(targetID)
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",

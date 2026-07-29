@@ -12,10 +12,11 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFSMDispatcherBackupJobCommands(t *testing.T) {
-	db := newClusterModelTestDB(t, &BackupJob{}, &BackupEvent{})
+	db := newClusterModelTestDB(t, &BackupJob{}, &BackupJobOperation{}, &BackupEvent{})
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
 
@@ -182,8 +183,27 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("delete job with running event returns error", func(t *testing.T) {
-		// seed a running event for job id=1
+	t.Run("replicated operation blocks delete", func(t *testing.T) {
+		acquireRaw, _ := json.Marshal(BackupJobOperationAcquire{
+			JobID: 2, Token: "backup:node-a:2", Operation: BackupJobOperationBackup,
+			HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(),
+		})
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
+		}); err != nil {
+			t.Fatalf("acquire operation: %v", err)
+		}
+
+		deleteRaw, _ := json.Marshal(map[string]any{"id": 2})
+		err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job", Action: "delete", Data: deleteRaw,
+		})
+		if err == nil || !strings.Contains(err.Error(), "backup_job_running") {
+			t.Fatalf("expected replicated operation to block delete, got: %v", err)
+		}
+	})
+
+	t.Run("node-local running event does not affect delete", func(t *testing.T) {
 		if err := db.Create(&BackupEvent{
 			JobID: ptr[uint](1), Status: "running",
 		}).Error; err != nil {
@@ -191,14 +211,15 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 		}
 
 		deleteRaw, _ := json.Marshal(map[string]any{"id": 1})
-		err := applyFSMCommand(t, fsm, Command{
+		if err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "delete", Data: deleteRaw,
-		})
-		if err == nil {
-			t.Fatal("expected error for running job, got nil")
+		}); err != nil {
+			t.Fatalf("local event should not affect replicated delete: %v", err)
 		}
-		if !strings.Contains(err.Error(), "backup_job_running") {
-			t.Fatalf("expected running error, got: %v", err)
+		var eventCount int64
+		db.Model(&BackupEvent{}).Where("job_id = ?", 1).Count(&eventCount)
+		if eventCount != 1 {
+			t.Fatalf("local event history should be retained, got %d rows", eventCount)
 		}
 	})
 

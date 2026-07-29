@@ -34,6 +34,8 @@
 		nodes: ClusterNode[];
 		localNodeId?: string;
 		standaloneMode?: boolean;
+		scopedVmRid?: number;
+		scopedVmHostname?: string;
 		reload: boolean;
 	}
 
@@ -61,6 +63,8 @@
 		nodes,
 		localNodeId = '',
 		standaloneMode = false,
+		scopedVmRid = 0,
+		scopedVmHostname = '',
 		reload = $bindable()
 	}: Props = $props();
 
@@ -240,23 +244,37 @@
 		}
 	}
 
-	function applyDefaults() {
+	async function applyDefaults() {
+		const scopedNode = scopedVmHostname
+			? nodes.find(
+					(node) =>
+						node.hostname === scopedVmHostname ||
+						node.hostname.replace(/\s+\(Local\)$/, '') === scopedVmHostname
+				)
+			: undefined;
+
 		form.name = '';
 		form.targetId = targets[0]?.id ? String(targets[0].id) : '';
-		form.runnerNodeId = standaloneMode
-			? localNodeId || nodes[0]?.nodeUUID || ''
-			: (nodes[0]?.nodeUUID ?? '');
-		form.mode = 'dataset';
+		form.runnerNodeId =
+			scopedNode?.nodeUUID ||
+			(standaloneMode ? localNodeId || nodes[0]?.nodeUUID || '' : (nodes[0]?.nodeUUID ?? ''));
+		form.mode = scopedVmRid > 0 ? 'vm' : 'dataset';
 		form.sourceDataset = '';
 		form.selectedJailId = '';
 		form.selectedVmId = '';
 		form.pruneKeepLast = '0';
 		form.pruneTarget = false;
 		form.stopBeforeBackup = false;
-		form.recursive = false;
+		form.recursive = scopedVmRid > 0;
 		form.cronExpr = '0 * * * *';
 		form.enabled = true;
 		lastRunnerNodeId = form.runnerNodeId;
+
+		if (scopedVmRid > 0) {
+			await loadVMs(true);
+			const scopedVM = vms.find((vm) => vm.rid === scopedVmRid);
+			form.selectedVmId = scopedVM ? String(scopedVM.id) : '';
+		}
 	}
 
 	async function applyFromJob(job: BackupJob) {
@@ -315,7 +333,7 @@
 			return;
 		}
 
-		applyDefaults();
+		await applyDefaults();
 	}
 
 	async function handleModeChange(value: string) {
@@ -441,7 +459,7 @@
 			void applyFromJob(selectedJob);
 			return;
 		}
-		applyDefaults();
+		void applyDefaults();
 	});
 
 	watch([() => open, () => form.mode, () => form.selectedVmId], ([isOpen, mode, selectedVmId]) => {
@@ -562,6 +580,7 @@
 					options={nodeOptions}
 					bind:value={form.runnerNodeId}
 					onChange={() => {}}
+					disabled={scopedVmRid > 0}
 				/>
 
 				<SimpleSelect
@@ -570,6 +589,7 @@
 					options={modeOptions}
 					bind:value={form.mode}
 					onChange={handleModeChange}
+					disabled={scopedVmRid > 0}
 				/>
 			</div>
 
@@ -605,7 +625,7 @@
 						options={vmOptions}
 						bind:value={form.selectedVmId}
 						onChange={() => {}}
-						disabled={vmsLoading || vms.length === 0}
+						disabled={vmsLoading || vms.length === 0 || scopedVmRid > 0}
 					/>
 				{/if}
 			</div>

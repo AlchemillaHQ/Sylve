@@ -19,11 +19,13 @@ import (
 )
 
 func newSchedulerTestDB(t *testing.T) *Service {
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{}, &clusterModels.BackupTarget{},
+	)
 	return &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 }
@@ -52,8 +54,8 @@ func TestNextRunTime(t *testing.T) {
 
 func TestIsLocalBackupJobRunner(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -83,8 +85,8 @@ func TestIsLocalBackupJobRunner(t *testing.T) {
 
 func TestReserveAndReleaseJob(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -140,8 +142,8 @@ func TestWorkloadOperationKey(t *testing.T) {
 
 func TestRunBackupSchedulerTickNoDB(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 	if err := svc.runBackupSchedulerTick(context.Background()); err != nil {
@@ -375,8 +377,8 @@ func TestRunBackupSchedulerTickEnqueuesDueJob(t *testing.T) {
 
 func TestAcquireWorkloadOperation(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -409,8 +411,8 @@ func TestAcquireWorkloadOperation(t *testing.T) {
 
 func TestActiveJobIDs(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -428,8 +430,8 @@ func TestActiveJobIDs(t *testing.T) {
 
 func TestAcquireAndReleaseJob(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 

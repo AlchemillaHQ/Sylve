@@ -84,10 +84,14 @@ export async function validateBackupTarget(id: number): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/targets/validate/${id}`, APIResponseSchema, 'POST', {});
 }
 
-export async function listBackupJobs(targetId?: number): Promise<BackupJob[]> {
+export async function listBackupJobs(targetId?: number, vmRid?: number): Promise<BackupJob[]> {
     const params = new URLSearchParams();
     if (targetId && targetId > 0) {
         params.set('targetId', String(targetId));
+    }
+    if (vmRid && vmRid > 0) {
+        params.set('guestType', 'vm');
+        params.set('guestId', String(vmRid));
     }
     const query = params.toString();
     return await apiRequest(

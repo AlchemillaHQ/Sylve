@@ -88,6 +88,51 @@ func TestBackupJobsHandlerGet(t *testing.T) {
 	}
 }
 
+func TestBackupJobsHandlerFiltersByVM(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
+	cS := &cluster.Service{DB: db}
+	r := newBackupsRouter(cS)
+
+	target := clusterModels.BackupTarget{
+		Name: "vm-filter-target", SSHHost: "localhost", BackupRoot: "/backup",
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("failed to seed target: %v", err)
+	}
+
+	jobs := []clusterModels.BackupJob{
+		{ID: 101, Name: "vm-12", TargetID: target.ID, Mode: "vm", SourceDataset: "zroot/sylve/virtual-machines/12", CronExpr: "0 0 * * *"},
+		{ID: 102, Name: "vm-112", TargetID: target.ID, Mode: "vm", SourceDataset: "zroot/sylve/virtual-machines/112", CronExpr: "0 0 * * *"},
+		{ID: 103, Name: "dataset-12", TargetID: target.ID, Mode: "dataset", SourceDataset: "zroot/sylve/virtual-machines/12", CronExpr: "0 0 * * *"},
+	}
+	if err := db.Create(&jobs).Error; err != nil {
+		t.Fatalf("failed to seed jobs: %v", err)
+	}
+
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/jobs?guestType=vm&guestId=12", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp handlerAPIResponse[[]clusterModels.BackupJob]
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].ID != 101 {
+		t.Fatalf("expected only VM 12 job, got %+v", resp.Data)
+	}
+
+	for _, path := range []string{
+		"/cluster/backups/jobs?guestType=vm",
+		"/cluster/backups/jobs?guestType=vm&guestId=0",
+		"/cluster/backups/jobs?guestType=jail&guestId=12",
+	} {
+		rr = performJSONRequest(t, r, http.MethodGet, path, nil)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for %s, got %d: %s", path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
 func TestBackupTargetRunningJobIDs(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupEvent{})
 	cS := &cluster.Service{DB: db}

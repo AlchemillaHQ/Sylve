@@ -267,6 +267,37 @@ func (s *Service) ListBackupJobs(targetID uint) ([]clusterModels.BackupJob, erro
 	return jobs, err
 }
 
+// ListBackupJobsForGuest returns jobs that belong to one guest. Guest identity
+// is derived from the canonical source dataset so this also works for jobs
+// created before a dedicated guest filter was exposed by the API.
+func (s *Service) ListBackupJobsForGuest(targetID uint, guestType string, guestID uint) ([]clusterModels.BackupJob, error) {
+	guestType = strings.TrimSpace(strings.ToLower(guestType))
+	if guestType != clusterModels.ReplicationGuestTypeVM {
+		return nil, fmt.Errorf("invalid_guest_type")
+	}
+	if guestID == 0 {
+		return nil, fmt.Errorf("guest_id_required")
+	}
+
+	jobs, err := s.ListBackupJobs(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]clusterModels.BackupJob, 0)
+	for _, job := range jobs {
+		if job.Mode != clusterModels.BackupJobModeVM {
+			continue
+		}
+		rid, ok := parseVMRIDFromDataset(job.SourceDataset)
+		if ok && rid == guestID {
+			filtered = append(filtered, job)
+		}
+	}
+
+	return filtered, nil
+}
+
 // RunningJobIDsForTarget returns the IDs of jobs belonging to targetID that
 // currently have an active (non-completed) running event.
 func (s *Service) RunningJobIDsForTarget(targetID uint) ([]uint, error) {
@@ -680,20 +711,7 @@ func (s *Service) ProposeBackupJobDelete(id uint, bypassRaft bool) error {
 	}
 
 	if bypassRaft {
-		var runningCount int64
-		if err := s.DB.Model(&clusterModels.BackupEvent{}).
-			Where("job_id = ? AND status = ?", id, "running").
-			Count(&runningCount).Error; err != nil {
-			return err
-		}
-		if runningCount > 0 {
-			return fmt.Errorf("backup_job_running")
-		}
-
-		if err := s.DB.Where("job_id = ?", id).Delete(&clusterModels.BackupEvent{}).Error; err != nil {
-			return err
-		}
-		return s.DB.Delete(&clusterModels.BackupJob{}, id).Error
+		return clusterModels.DeleteBackupJobTxn(s.DB, id)
 	}
 
 	if s.Raft == nil {

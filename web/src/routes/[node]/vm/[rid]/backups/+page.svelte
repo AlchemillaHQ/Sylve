@@ -7,6 +7,8 @@
 		data
 	}: {
 		data: {
+			rid: number;
+			hostname: string;
 			targets: BackupTarget[];
 			jobs: BackupJob[];
 			nodes: ClusterNode[];
@@ -16,4 +18,4 @@
 	} = $props();
 </script>
 
-<BackupJobsPage {data} />
+<BackupJobsPage {data} vmRid={data.rid} vmHostname={data.hostname} />

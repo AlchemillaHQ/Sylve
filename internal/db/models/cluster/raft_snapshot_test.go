@@ -24,6 +24,7 @@ func allSnapshotModels() []any {
 		&ClusterOption{},
 		&BackupTarget{},
 		&BackupJob{},
+		&BackupJobOperation{},
 		&ReplicationPolicy{},
 		&ReplicationPolicyTarget{},
 		&ReplicationLease{},
@@ -62,6 +63,14 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		CronExpr: "0 0 * * *",
 	}).Error; err != nil {
 		t.Fatalf("failed to seed backup job: %v", err)
+	}
+	operationTime := time.Date(2026, time.January, 1, 2, 3, 4, 0, time.UTC)
+	if err := sourceDB.Create(&BackupJobOperation{
+		JobID: 200, Token: "backup:node-1:snapshot", Operation: BackupJobOperationBackup,
+		State: BackupJobOperationRunning, HolderNodeID: "node-1", Revision: 2,
+		AcquiredAt: operationTime, UpdatedAt: operationTime,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed backup job operation: %v", err)
 	}
 
 	policy := ReplicationPolicy{
@@ -167,6 +176,13 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	destDB.Find(&jobs)
 	if len(jobs) != 1 || jobs[0].Name != "job1" {
 		t.Fatalf("jobs mismatch: %+v", jobs)
+	}
+
+	var backupOperations []BackupJobOperation
+	destDB.Find(&backupOperations)
+	if len(backupOperations) != 1 || backupOperations[0].Token != "backup:node-1:snapshot" ||
+		backupOperations[0].State != BackupJobOperationRunning || backupOperations[0].Revision != 2 {
+		t.Fatalf("backup job operations mismatch: %+v", backupOperations)
 	}
 
 	var pols []ReplicationPolicy

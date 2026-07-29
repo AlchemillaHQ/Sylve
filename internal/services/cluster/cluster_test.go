@@ -250,7 +250,7 @@ func TestResyncClusterStateErrors(t *testing.T) {
 func TestBackfillPreClusterState(t *testing.T) {
 	allModels := []any{
 		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
-		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
+		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{},
 		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ClusterSSHIdentity{},
@@ -279,6 +279,12 @@ func TestBackfillPreClusterState(t *testing.T) {
 	seedDB.Create(&clusterModels.BackupJob{
 		ID: 20, Name: "bk-job", TargetID: 10, Mode: clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data", CronExpr: "0 2 * * *", Enabled: true,
+	})
+	operationAt := time.Now().UTC()
+	seedDB.Create(&clusterModels.BackupJobOperation{
+		JobID: 20, Token: "backup:node-1:backfill", Operation: clusterModels.BackupJobOperationBackup,
+		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "node-1",
+		Revision: 2, AcquiredAt: operationAt, UpdatedAt: operationAt,
 	})
 
 	seedDB.Create(&clusterModels.ReplicationPolicy{
@@ -343,6 +349,11 @@ func TestBackfillPreClusterState(t *testing.T) {
 			var jobCount int64
 			node.service.DB.Model(&clusterModels.BackupJob{}).Count(&jobCount)
 			if jobCount != 1 {
+				return false
+			}
+			var operation clusterModels.BackupJobOperation
+			if err := node.service.DB.Where("job_id = ?", 20).First(&operation).Error; err != nil ||
+				operation.Token != "backup:node-1:backfill" || operation.State != clusterModels.BackupJobOperationRunning {
 				return false
 			}
 

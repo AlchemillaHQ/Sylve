@@ -46,7 +46,9 @@ var (
 
 // backupJobPayload is the goqite queue payload for a backup job
 type backupJobPayload struct {
-	JobID uint `json:"job_id"`
+	JobID          uint   `json:"job_id"`
+	OperationToken string `json:"operation_token,omitempty"`
+	HolderNodeID   string `json:"holder_node_id,omitempty"`
 }
 
 const (
@@ -105,6 +107,8 @@ type Service struct {
 	localFilesystemDatasetLister func(context.Context) ([]string, error)
 	localDatasetUnmounter        func(context.Context, string, bool) error
 	localDatasetMounter          func(context.Context, string) error
+
+	backupOperationEnqueue func(context.Context, string, any) error
 }
 
 type BackupEventProgress struct {
@@ -243,29 +247,73 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 }
 
 func (s *Service) RegisterJobs() {
-	db.QueueRegisterJSONWithPolicy(backupJobQueueName, db.QueueHandlerErrorConsume, func(ctx context.Context, payload backupJobPayload) error {
+	db.QueueRegisterJSON(backupJobQueueName, func(ctx context.Context, payload backupJobPayload) (retErr error) {
 		if payload.JobID == 0 {
 			logger.L.Warn().Msg("queued_backup_job_invalid_payload_job_id")
 			return nil
 		}
 
+		handle, execute, err := s.prepareQueuedBackupJobOperation(
+			ctx,
+			payload.JobID,
+			clusterModels.BackupJobOperationBackup,
+			payload.OperationToken,
+			payload.HolderNodeID,
+			"",
+		)
+		if err != nil {
+			return err
+		}
+		if !execute {
+			s.releaseReservedJob(payload.JobID)
+			return nil
+		}
+
+		operationOwned := true
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				cleanupErr := error(nil)
+				if operationOwned {
+					cleanupErr = s.finishDurableBackupJobOperation(handle)
+				}
+				logger.L.Error().
+					Interface("panic", recovered).
+					Uint("job_id", payload.JobID).
+					Err(cleanupErr).
+					Msg("queued_backup_job_panicked")
+				retErr = cleanupErr
+			}
+		}()
+
 		var job clusterModels.BackupJob
 		if err := s.DB.Preload("Target").First(&job, payload.JobID).Error; err != nil {
 			s.releaseReservedJob(payload.JobID)
 			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_not_found")
+			if cleanupErr := s.finishDurableBackupJobOperation(handle); cleanupErr != nil {
+				return cleanupErr
+			}
+			operationOwned = false
 			return nil
 		}
 
-		if err := s.runBackupJob(ctx, &job); err != nil {
-			if isJobAlreadyRunningErr(err) {
-				s.releaseReservedJob(payload.JobID)
-				logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_backup_job_already_running_discarded")
-				return nil
-			}
-			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_failed")
-			return err
+		runErr := s.runBackupJob(ctx, &job)
+		if isJobAlreadyRunningErr(runErr) {
+			// A duplicate message for the same operation token lost the local
+			// execution race. The winning worker still owns the durable row.
+			operationOwned = false
+			s.releaseReservedJob(payload.JobID)
+			logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_backup_job_duplicate_discarded")
+			return nil
 		}
-
+		if runErr != nil {
+			logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_backup_job_failed")
+		}
+		if cleanupErr := s.finishDurableBackupJobOperation(handle); cleanupErr != nil {
+			return cleanupErr
+		}
+		operationOwned = false
+		// Backup execution failures are recorded in the event/audit and are not
+		// retried. Only operation-control failures retain the queue message.
 		return nil
 	})
 
@@ -488,8 +536,28 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			continue
 		}
 
+		handle, operationErr := s.acquireDurableBackupJobOperation(
+			ctx,
+			job.ID,
+			clusterModels.BackupJobOperationBackup,
+			"",
+		)
+		if operationErr != nil {
+			s.releaseReservedJob(job.ID)
+			logger.L.Debug().Err(operationErr).Uint("job_id", job.ID).Msg("scheduled_backup_operation_reservation_failed")
+			continue
+		}
+		abortOperation := func() {
+			abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
+			defer abortCancel()
+			if err := s.abortDurableBackupJobOperation(abortCtx, handle); err != nil {
+				logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("scheduled_backup_operation_abort_failed")
+			}
+		}
+
 		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextAt).Error; err != nil {
 			s.releaseReservedJob(job.ID)
+			abortOperation()
 			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_next_run_at")
 			continue
 		}
@@ -500,14 +568,18 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				s.releaseReservedJob(job.ID)
+				abortOperation()
 				return ctx.Err()
 			case <-time.After(jitter):
 			}
 		}
 
 		enqueueCtx, enqueueCancel := context.WithTimeout(ctx, 5*time.Second)
-		if err := db.EnqueueJSON(enqueueCtx, backupJobQueueName, backupJobPayload{JobID: job.ID}); err != nil {
+		if err := db.EnqueueJSON(enqueueCtx, backupJobQueueName, backupJobPayload{
+			JobID: job.ID, OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
+		}); err != nil {
 			s.releaseReservedJob(job.ID)
+			abortOperation()
 			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_enqueue_scheduled_backup")
 		}
 		enqueueCancel()
@@ -529,9 +601,26 @@ func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 	if !s.reserveJob(jobID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
-	if err := db.EnqueueJSON(ctx, backupJobQueueName, backupJobPayload{JobID: jobID}); err != nil {
+	handle, err := s.acquireDurableBackupJobOperation(
+		ctx,
+		jobID,
+		clusterModels.BackupJobOperationBackup,
+		"",
+	)
+	if err != nil {
 		s.releaseReservedJob(jobID)
+		if strings.Contains(strings.ToLower(err.Error()), "backup_job_running") {
+			return fmt.Errorf("backup_job_already_running")
+		}
 		return err
+	}
+	if err := db.EnqueueJSON(ctx, backupJobQueueName, backupJobPayload{
+		JobID: jobID, OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
+	}); err != nil {
+		s.releaseReservedJob(jobID)
+		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
+		defer abortCancel()
+		return errors.Join(err, s.abortDurableBackupJobOperation(abortCtx, handle))
 	}
 	return nil
 }
