@@ -50,6 +50,9 @@ func (s *Service) ListReplicationPolicies() ([]clusterModels.ReplicationPolicy, 
 			RuntimeSnapshot: &runtimeSnapshot,
 		})
 		s.ApplyReplicationPolicyHAState(&policies[idx], eval)
+		if err := s.applyBackupJobRunnerRebindHAState(&policies[idx]); err != nil {
+			return policies, err
+		}
 	}
 
 	return policies, nil
@@ -66,6 +69,9 @@ func (s *Service) GetReplicationPolicyByID(id uint) (*clusterModels.ReplicationP
 	}
 	eval := s.EvaluateReplicationPolicyHA(&policy)
 	s.ApplyReplicationPolicyHAState(&policy, eval)
+	if err := s.applyBackupJobRunnerRebindHAState(&policy); err != nil {
+		return nil, err
+	}
 	return &policy, nil
 }
 

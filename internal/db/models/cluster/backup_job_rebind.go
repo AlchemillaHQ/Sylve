@@ -22,6 +22,7 @@ import (
 
 const (
 	BackupJobRunnerRebindKindMigration = "migration"
+	BackupJobRunnerRebindKindFailover  = "failover"
 
 	BackupJobRunnerRebindStatePlanned              = "planned"
 	BackupJobRunnerRebindStateReady                = "ready"
@@ -35,11 +36,13 @@ const (
 	BackupJobRunnerRebindItemRepairRequired = "repair_required"
 	BackupJobRunnerRebindItemRepaired       = "repaired"
 	BackupJobRunnerRebindItemAborted        = "aborted"
+
+	BackupJobRunnerRebindStatusPending = "runner_rebind_pending"
 )
 
 // BackupJobRunnerRebind is replicated coordination state for moving every
-// backup job associated with one guest. Token is the exact migration
-// guest-operation identity that authorizes the move.
+// backup job associated with one guest. Token is the exact migration guest
+// operation or replication-policy transition identity that authorizes the move.
 type BackupJobRunnerRebind struct {
 	Token           string `gorm:"primaryKey" json:"token"`
 	Kind            string `gorm:"index;not null" json:"kind"`
@@ -105,6 +108,11 @@ type BackupJobRunnerRebindRepair struct {
 type BackupJobRunnerRebindPending struct {
 	Token  string `json:"token"`
 	JobID  uint   `json:"jobId"`
+	Reason string `json:"reason"`
+}
+
+type BackupJobRunnerRebindAbort struct {
+	Token  string `json:"token"`
 	Reason string `json:"reason"`
 }
 
@@ -208,7 +216,8 @@ func normalizeBackupJobRunnerRebindPlan(plan *BackupJobRunnerRebindPlan) error {
 	plan.GuestType = strings.ToLower(strings.TrimSpace(plan.GuestType))
 	plan.OldRunnerNodeID = strings.TrimSpace(plan.OldRunnerNodeID)
 	plan.NewRunnerNodeID = strings.TrimSpace(plan.NewRunnerNodeID)
-	if plan.Token == "" || plan.Kind != BackupJobRunnerRebindKindMigration ||
+	if plan.Token == "" ||
+		(plan.Kind != BackupJobRunnerRebindKindMigration && plan.Kind != BackupJobRunnerRebindKindFailover) ||
 		(plan.GuestType != BackupJobModeVM && plan.GuestType != BackupJobModeJail) ||
 		plan.GuestID == 0 || plan.OldRunnerNodeID == "" || plan.NewRunnerNodeID == "" ||
 		plan.OldRunnerNodeID == plan.NewRunnerNodeID {
@@ -232,26 +241,84 @@ func normalizeBackupJobRunnerRebindPlan(plan *BackupJobRunnerRebindPlan) error {
 	return nil
 }
 
-func loadExactMigrationOperationForRebind(tx *gorm.DB, rebind *BackupJobRunnerRebind, allowPreCutover bool) error {
-	var operation ReplicationGuestOperation
-	result := tx.Where("guest_type = ? AND guest_id = ?", rebind.GuestType, rebind.GuestID).
-		Limit(1).Find(&operation)
-	if result.Error != nil {
-		return result.Error
+func loadExactBackupJobRunnerRebindAuthority(tx *gorm.DB, rebind *BackupJobRunnerRebind, allowPreCutover bool) error {
+	if tx == nil || rebind == nil {
+		return fmt.Errorf("backup_job_runner_rebind_authority_required")
 	}
-	if result.RowsAffected != 1 || operation.Operation != ReplicationGuestOperationMigration ||
-		strings.TrimSpace(operation.Token) != rebind.Token ||
-		strings.TrimSpace(operation.OwnerNodeID) != rebind.OldRunnerNodeID ||
-		strings.TrimSpace(operation.TargetNodeID) != rebind.NewRunnerNodeID {
-		return fmt.Errorf("backup_job_runner_rebind_guest_operation_mismatch")
+	switch rebind.Kind {
+	case BackupJobRunnerRebindKindMigration:
+		var operation ReplicationGuestOperation
+		result := tx.Where("guest_type = ? AND guest_id = ?", rebind.GuestType, rebind.GuestID).
+			Limit(1).Find(&operation)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 || operation.Operation != ReplicationGuestOperationMigration ||
+			strings.TrimSpace(operation.Token) != rebind.Token ||
+			strings.TrimSpace(operation.OwnerNodeID) != rebind.OldRunnerNodeID ||
+			strings.TrimSpace(operation.TargetNodeID) != rebind.NewRunnerNodeID {
+			return fmt.Errorf("backup_job_runner_rebind_guest_operation_mismatch")
+		}
+		if operation.State == ReplicationGuestOperationCutover {
+			return nil
+		}
+		if allowPreCutover && operation.State == ReplicationGuestOperationPreCutover {
+			return nil
+		}
+		return fmt.Errorf("backup_job_runner_rebind_guest_operation_not_cutover")
+	case BackupJobRunnerRebindKindFailover:
+		var policy ReplicationPolicy
+		result := tx.Where("guest_type = ? AND guest_id = ?", rebind.GuestType, rebind.GuestID).
+			Limit(1).Find(&policy)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 || !policy.Enabled ||
+			strings.TrimSpace(policy.TransitionRunID) != rebind.Token ||
+			strings.TrimSpace(policy.TransitionSourceNodeID) != rebind.OldRunnerNodeID ||
+			strings.TrimSpace(policy.TransitionTargetNodeID) != rebind.NewRunnerNodeID {
+			return fmt.Errorf("backup_job_runner_rebind_policy_transition_mismatch")
+		}
+		state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
+		activeNodeID := strings.TrimSpace(policy.ActiveNodeID)
+		if activeNodeID == "" {
+			activeNodeID = strings.TrimSpace(policy.SourceNodeID)
+		}
+		if allowPreCutover {
+			if (state != ReplicationTransitionStateDemoting && state != ReplicationTransitionStateCatchup) ||
+				activeNodeID != rebind.OldRunnerNodeID ||
+				policy.OwnerEpoch == 0 || policy.TransitionOwnerEpoch != policy.OwnerEpoch {
+				return fmt.Errorf("backup_job_runner_rebind_policy_transition_not_pre_cutover")
+			}
+			return nil
+		}
+		if (state != ReplicationTransitionStatePromoting && state != ReplicationTransitionStateCompleted) ||
+			activeNodeID != rebind.NewRunnerNodeID ||
+			policy.OwnerEpoch == 0 || policy.TransitionOwnerEpoch != policy.OwnerEpoch {
+			return fmt.Errorf("backup_job_runner_rebind_policy_transition_not_cutover")
+		}
+		return nil
+	default:
+		return fmt.Errorf("backup_job_runner_rebind_kind_invalid")
 	}
-	if operation.State == ReplicationGuestOperationCutover {
+}
+
+func loadExactBackupJobRunnerRebindDecisionAuthority(tx *gorm.DB, rebind *BackupJobRunnerRebind) error {
+	if err := loadExactBackupJobRunnerRebindAuthority(tx, rebind, false); err != nil {
+		return err
+	}
+	if rebind.Kind != BackupJobRunnerRebindKindFailover {
 		return nil
 	}
-	if allowPreCutover && operation.State == ReplicationGuestOperationPreCutover {
-		return nil
+	var policy ReplicationPolicy
+	if err := tx.Where("guest_type = ? AND guest_id = ?", rebind.GuestType, rebind.GuestID).
+		Limit(1).First(&policy).Error; err != nil {
+		return err
 	}
-	return fmt.Errorf("backup_job_runner_rebind_guest_operation_not_cutover")
+	if strings.ToLower(strings.TrimSpace(policy.TransitionState)) != ReplicationTransitionStateCompleted {
+		return fmt.Errorf("backup_job_runner_rebind_transition_not_completed")
+	}
+	return nil
 }
 
 func backupJobRunnerRebindPlansEquivalent(existing BackupJobRunnerRebind, plan *BackupJobRunnerRebindPlan) bool {
@@ -299,7 +366,7 @@ func PrepareBackupJobRunnerRebindTxn(db *gorm.DB, plan *BackupJobRunnerRebindPla
 			OldRunnerNodeID: plan.OldRunnerNodeID, NewRunnerNodeID: plan.NewRunnerNodeID,
 			State: BackupJobRunnerRebindStatePlanned, Revision: 1,
 		}
-		if err := loadExactMigrationOperationForRebind(tx, &rebind, true); err != nil {
+		if err := loadExactBackupJobRunnerRebindAuthority(tx, &rebind, true); err != nil {
 			return err
 		}
 
@@ -393,40 +460,60 @@ func recomputeBackupJobRunnerRebindState(tx *gorm.DB, token string) error {
 		Updates(map[string]any{"state": state, "revision": operation.Revision + 1}).Error
 }
 
+func readyBackupJobRunnerRebind(tx *gorm.DB, payload *BackupJobRunnerRebindReady) error {
+	var operation BackupJobRunnerRebind
+	if err := tx.Where("token = ?", payload.Token).First(&operation).Error; err != nil {
+		return err
+	}
+	if operation.State == BackupJobRunnerRebindStateAborted {
+		return fmt.Errorf("backup_job_runner_rebind_aborted")
+	}
+	if operation.State == BackupJobRunnerRebindStateCompleted ||
+		operation.State == BackupJobRunnerRebindStateCompletedWithRepairs ||
+		operation.State == BackupJobRunnerRebindStateReady {
+		return nil
+	}
+	if operation.State != BackupJobRunnerRebindStatePlanned {
+		return fmt.Errorf("backup_job_runner_rebind_state_invalid")
+	}
+	if err := loadExactBackupJobRunnerRebindAuthority(tx, &operation, false); err != nil {
+		return err
+	}
+	result := tx.Model(&BackupJobRunnerRebind{}).
+		Where("token = ? AND state = ?", operation.Token, BackupJobRunnerRebindStatePlanned).
+		Updates(map[string]any{"state": BackupJobRunnerRebindStateReady, "revision": operation.Revision + 1})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("backup_job_runner_rebind_ready_cas_conflict")
+	}
+	var items []BackupJobRunnerRebindItem
+	if err := tx.Where("operation_token = ? AND state = ?", operation.Token, BackupJobRunnerRebindItemPending).
+		Find(&items).Error; err != nil {
+		return err
+	}
+	for i := range items {
+		if err := tx.Model(&BackupJob{}).
+			Where("id = ?", items[i].JobID).
+			UpdateColumns(map[string]any{
+				"next_run_at": nil,
+				"last_status": BackupJobRunnerRebindStatusPending,
+				"last_error":  "backup_job_runner_rebind_pending",
+			}).Error; err != nil {
+			return err
+		}
+	}
+	return recomputeBackupJobRunnerRebindState(tx, operation.Token)
+}
+
 func ReadyBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebindReady) error {
 	if db == nil || payload == nil || strings.TrimSpace(payload.Token) == "" {
 		return fmt.Errorf("backup_job_runner_rebind_ready_invalid")
 	}
 	payload.Token = strings.TrimSpace(payload.Token)
 	return db.Transaction(func(tx *gorm.DB) error {
-		var operation BackupJobRunnerRebind
-		if err := tx.Where("token = ?", payload.Token).First(&operation).Error; err != nil {
-			return err
-		}
-		if operation.State == BackupJobRunnerRebindStateAborted {
-			return fmt.Errorf("backup_job_runner_rebind_aborted")
-		}
-		if operation.State == BackupJobRunnerRebindStateCompleted ||
-			operation.State == BackupJobRunnerRebindStateCompletedWithRepairs ||
-			operation.State == BackupJobRunnerRebindStateReady {
-			return nil
-		}
-		if operation.State != BackupJobRunnerRebindStatePlanned {
-			return fmt.Errorf("backup_job_runner_rebind_state_invalid")
-		}
-		if err := loadExactMigrationOperationForRebind(tx, &operation, false); err != nil {
-			return err
-		}
-		result := tx.Model(&BackupJobRunnerRebind{}).
-			Where("token = ? AND state = ?", operation.Token, BackupJobRunnerRebindStatePlanned).
-			Updates(map[string]any{"state": BackupJobRunnerRebindStateReady, "revision": operation.Revision + 1})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return fmt.Errorf("backup_job_runner_rebind_ready_cas_conflict")
-		}
-		return recomputeBackupJobRunnerRebindState(tx, operation.Token)
+		return readyBackupJobRunnerRebind(tx, payload)
 	})
 }
 
@@ -451,7 +538,7 @@ func loadPendingBackupJobRunnerRebindItem(tx *gorm.DB, token string, jobID uint)
 	if item.State != BackupJobRunnerRebindItemPending {
 		return operation, item, true, nil
 	}
-	if err := loadExactMigrationOperationForRebind(tx, &operation, false); err != nil {
+	if err := loadExactBackupJobRunnerRebindDecisionAuthority(tx, &operation); err != nil {
 		return operation, item, false, err
 	}
 	return operation, item, false, nil
@@ -514,7 +601,12 @@ func ApplyBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebindAp
 		if err := ValidateBackupJobPlacementFenceTxn(tx, &proposed, payload.PlacementFence); err != nil {
 			return err
 		}
-		updates := map[string]any{"runner_node_id": operation.NewRunnerNodeID, "friendly_src": payload.FriendlySource}
+		updates := map[string]any{
+			"runner_node_id": operation.NewRunnerNodeID,
+			"friendly_src":   payload.FriendlySource,
+			"last_status":    "",
+			"last_error":     "",
+		}
 		if err := tx.Model(&BackupJob{}).Where("id = ?", job.ID).UpdateColumns(updates).Error; err != nil {
 			return err
 		}
@@ -606,13 +698,43 @@ func PendingBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebind
 		if err != nil || terminal {
 			return err
 		}
-		if item.Error == payload.Reason {
-			return nil
+		if item.Error != payload.Reason {
+			if err := tx.Model(&BackupJobRunnerRebindItem{}).
+				Where("operation_token = ? AND job_id = ? AND state = ?", payload.Token, payload.JobID, BackupJobRunnerRebindItemPending).
+				Updates(map[string]any{"error": payload.Reason, "revision": item.Revision + 1}).Error; err != nil {
+				return err
+			}
 		}
-		return tx.Model(&BackupJobRunnerRebindItem{}).
-			Where("operation_token = ? AND job_id = ? AND state = ?", payload.Token, payload.JobID, BackupJobRunnerRebindItemPending).
-			Updates(map[string]any{"error": payload.Reason, "revision": item.Revision + 1}).Error
+		return tx.Model(&BackupJob{}).
+			Where("id = ? AND last_status = ?", payload.JobID, BackupJobRunnerRebindStatusPending).
+			UpdateColumn("last_error", payload.Reason).Error
 	})
+}
+
+func abortBackupJobRunnerRebindItems(db *gorm.DB, operation BackupJobRunnerRebind, reason string) error {
+	var items []BackupJobRunnerRebindItem
+	if err := db.Where("operation_token = ? AND state = ?", operation.Token, BackupJobRunnerRebindItemPending).
+		Find(&items).Error; err != nil {
+		return err
+	}
+	for i := range items {
+		if err := db.Model(&BackupJobRunnerRebindItem{}).
+			Where("operation_token = ? AND job_id = ? AND state = ?", operation.Token, items[i].JobID, BackupJobRunnerRebindItemPending).
+			Updates(map[string]any{
+				"state":    BackupJobRunnerRebindItemAborted,
+				"error":    reason,
+				"revision": items[i].Revision + 1,
+			}).Error; err != nil {
+			return err
+		}
+		if err := db.Model(&BackupJob{}).
+			Where("id = ? AND last_status = ?", items[i].JobID, BackupJobRunnerRebindStatusPending).
+			UpdateColumns(map[string]any{"last_status": "", "last_error": ""}).Error; err != nil {
+			return err
+		}
+	}
+	return db.Model(&BackupJobRunnerRebind{}).Where("token = ?", operation.Token).
+		Updates(map[string]any{"state": BackupJobRunnerRebindStateAborted, "revision": operation.Revision + 1}).Error
 }
 
 func AbortBackupJobRunnerRebindTxn(db *gorm.DB, token string) error {
@@ -634,13 +756,100 @@ func AbortBackupJobRunnerRebindTxn(db *gorm.DB, token string) error {
 	if operation.State != BackupJobRunnerRebindStatePlanned {
 		return fmt.Errorf("backup_job_runner_rebind_already_ready")
 	}
+	reason := "migration_aborted"
+	if operation.Kind == BackupJobRunnerRebindKindFailover {
+		reason = "failover_aborted"
+	}
+	return abortBackupJobRunnerRebindItems(db, operation, reason)
+}
+
+func AbortFailedFailoverBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebindAbort) error {
+	if db == nil || payload == nil {
+		return fmt.Errorf("backup_job_runner_rebind_abort_invalid")
+	}
+	payload.Token = strings.TrimSpace(payload.Token)
+	payload.Reason = strings.TrimSpace(payload.Reason)
+	if payload.Token == "" || payload.Reason == "" {
+		return fmt.Errorf("backup_job_runner_rebind_abort_invalid")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var operation BackupJobRunnerRebind
+		result := tx.Where("token = ?", payload.Token).Limit(1).Find(&operation)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		if operation.State == BackupJobRunnerRebindStateAborted {
+			return nil
+		}
+		if operation.Kind != BackupJobRunnerRebindKindFailover ||
+			operation.State != BackupJobRunnerRebindStatePlanned {
+			return fmt.Errorf("backup_job_runner_rebind_abort_state_invalid")
+		}
+		var policy ReplicationPolicy
+		policyResult := tx.Where("guest_type = ? AND guest_id = ?", operation.GuestType, operation.GuestID).
+			Limit(1).Find(&policy)
+		if policyResult.Error != nil {
+			return policyResult.Error
+		}
+		if policyResult.RowsAffected == 1 && strings.TrimSpace(policy.TransitionRunID) == operation.Token {
+			state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
+			if state != ReplicationTransitionStateFailed && state != ReplicationTransitionStateRollingBack {
+				return fmt.Errorf("backup_job_runner_rebind_transition_still_active")
+			}
+		}
+		return abortBackupJobRunnerRebindItems(tx, operation, payload.Reason)
+	})
+}
+
+// RollbackFailoverBackupJobRunnerRebindTxn cancels a ready failover plan in
+// the same transaction that atomically restores policy ownership. Rebinding is
+// deliberately ordered after target activation, so any applied item here is a
+// protocol violation and fences rollback rather than silently splitting state.
+func RollbackFailoverBackupJobRunnerRebindTxn(
+	db *gorm.DB,
+	token string,
+	currentRunnerNodeID string,
+	restoredRunnerNodeID string,
+) error {
+	if db == nil || !db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+		return nil
+	}
+	token = strings.TrimSpace(token)
+	currentRunnerNodeID = strings.TrimSpace(currentRunnerNodeID)
+	restoredRunnerNodeID = strings.TrimSpace(restoredRunnerNodeID)
+	if token == "" || currentRunnerNodeID == "" || restoredRunnerNodeID == "" {
+		return fmt.Errorf("backup_job_runner_rebind_rollback_invalid")
+	}
+	var operation BackupJobRunnerRebind
+	result := db.Where("token = ?", token).Limit(1).Find(&operation)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return result.Error
+	}
+	if operation.Kind != BackupJobRunnerRebindKindFailover ||
+		operation.NewRunnerNodeID != currentRunnerNodeID ||
+		operation.OldRunnerNodeID != restoredRunnerNodeID {
+		return fmt.Errorf("backup_job_runner_rebind_rollback_mismatch")
+	}
+	if operation.State == BackupJobRunnerRebindStateAborted {
+		return nil
+	}
+	if operation.State != BackupJobRunnerRebindStateReady &&
+		operation.State != BackupJobRunnerRebindStateCompleted {
+		return fmt.Errorf("backup_job_runner_rebind_rollback_state_invalid")
+	}
+	var applied int64
 	if err := db.Model(&BackupJobRunnerRebindItem{}).
-		Where("operation_token = ? AND state = ?", token, BackupJobRunnerRebindItemPending).
-		Updates(map[string]any{"state": BackupJobRunnerRebindItemAborted, "error": "migration_aborted"}).Error; err != nil {
+		Where("operation_token = ? AND state IN ?", token, []string{
+			BackupJobRunnerRebindItemRebound,
+			BackupJobRunnerRebindItemRepairRequired,
+			BackupJobRunnerRebindItemRepaired,
+		}).Count(&applied).Error; err != nil {
 		return err
 	}
-	return db.Model(&BackupJobRunnerRebind{}).Where("token = ?", token).
-		Updates(map[string]any{"state": BackupJobRunnerRebindStateAborted, "revision": operation.Revision + 1}).Error
+	if applied != 0 {
+		return fmt.Errorf("backup_job_runner_rebind_rollback_after_apply")
+	}
+	return abortBackupJobRunnerRebindItems(db, operation, "failover_rolled_back")
 }
 
 func MarkDeletedBackupJobRunnerRebindItemsTxn(db *gorm.DB, jobID uint) error {
@@ -720,6 +929,26 @@ func BackupJobRepairRequired(db *gorm.DB, jobID uint) (bool, error) {
 		return false, err
 	}
 	return count != 0, nil
+}
+
+func RequireNoPendingBackupJobRunnerRebindForGuestTxn(db *gorm.DB, guestType string, guestID uint) error {
+	if db == nil || guestID == 0 || !db.Migrator().HasTable(&BackupJobRunnerRebindItem{}) ||
+		!db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+		return nil
+	}
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	var count int64
+	if err := db.Model(&BackupJobRunnerRebindItem{}).
+		Joins("JOIN backup_job_runner_rebinds ON backup_job_runner_rebinds.token = backup_job_runner_rebind_items.operation_token").
+		Where("backup_job_runner_rebinds.guest_type = ? AND backup_job_runner_rebinds.guest_id = ? AND backup_job_runner_rebinds.state = ? AND backup_job_runner_rebind_items.state = ?",
+			guestType, guestID, BackupJobRunnerRebindStateReady, BackupJobRunnerRebindItemPending).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count != 0 {
+		return fmt.Errorf("backup_job_runner_rebind_pending")
+	}
+	return nil
 }
 
 func BackupJobRunnerRebindPendingForJob(db *gorm.DB, jobID uint) (bool, error) {

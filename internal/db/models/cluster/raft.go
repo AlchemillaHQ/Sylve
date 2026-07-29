@@ -423,6 +423,13 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return fmt.Errorf("invalid_backup_job_mode")
 			}
 			return db.Transaction(func(tx *gorm.DB) error {
+				rebindPending, err := BackupJobRunnerRebindPendingForJob(tx, job.ID)
+				if err != nil {
+					return err
+				}
+				if rebindPending {
+					return fmt.Errorf("backup_job_runner_rebind_pending")
+				}
 				if previousFence != nil {
 					var existing BackupJob
 					result := tx.Where("id = ?", job.ID).Limit(1).Find(&existing)
@@ -508,6 +515,12 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return PendingBackupJobRunnerRebindTxn(db, &payload)
+		case "abort":
+			var payload BackupJobRunnerRebindAbort
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return AbortFailedFailoverBackupJobRunnerRebindTxn(db, &payload)
 		default:
 			return nil
 		}

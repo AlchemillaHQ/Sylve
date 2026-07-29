@@ -97,6 +97,10 @@
 	let deleteModalOpen = $state(false);
 	let errorModal = $state({ open: false, title: '', value: '' });
 	let canViewError = $derived(Boolean(selectedJob?.lastError.trim()));
+	let selectedJobExecutionBlocked = $derived(
+		selectedJob?.lastStatus === 'runner_rebind_pending' ||
+			selectedJob?.lastStatus === 'repair_required'
+	);
 
 	function parseGuestFromDatasetPath(dataset: string): BackupGuestRef {
 		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
@@ -157,6 +161,12 @@
 					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
 				} else if (lastStatus === 'running') {
 					icons.push(renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500'));
+				} else if (lastStatus === 'runner_rebind_pending') {
+					icons.push(
+						renderWithIcon('mdi:server-network', 'Runner rebind pending', 'text-amber-500')
+					);
+				} else if (lastStatus === 'repair_required') {
+					icons.push(renderWithIcon('mdi:wrench-clock', 'Repair required', 'text-red-500'));
 				}
 
 				return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
@@ -343,13 +353,25 @@
 		{/if}
 
 		{#if type === 'run'}
-			<Button onclick={triggerJob} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={triggerJob}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={selectedJobExecutionBlocked}
+			>
 				<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-2" title="Run Now" />
 			</Button>
 		{/if}
 
 		{#if type === 'restore'}
-			<Button onclick={openRestoreModal} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={openRestoreModal}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={selectedJobExecutionBlocked}
+			>
 				<SpanWithIcon
 					icon="icon-[mdi--backup-restore]"
 					size="h-4 w-4"

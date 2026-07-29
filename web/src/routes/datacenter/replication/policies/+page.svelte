@@ -288,6 +288,12 @@
 		if (values.includes('quorum_lost')) {
 			return 'Cluster quorum is unavailable.';
 		}
+		if (values.includes('backup_job_runner_rebind_pending')) {
+			return 'Backup jobs are still being assigned to the new active node.';
+		}
+		if (values.includes('backup_job_runner_rebind_repair_required')) {
+			return 'One or more backup jobs require repair after ownership changed.';
+		}
 		return 'This policy is currently blocked by HA constraints.';
 	}
 
@@ -894,6 +900,7 @@
 					lastStatus: string;
 					transitionState: string;
 					isSyncing: boolean;
+					haReasons: string[];
 				};
 				const icons = [];
 				if (row.enabled) {
@@ -921,6 +928,15 @@
 						)
 					);
 					return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
+				}
+
+				const healthReasons = row.haReasons || [];
+				if (healthReasons.includes('backup_job_runner_rebind_repair_required')) {
+					icons.push(renderWithIcon('mdi:wrench-clock', 'Backup repair required', 'text-red-500'));
+				} else if (healthReasons.includes('backup_job_runner_rebind_pending')) {
+					icons.push(
+						renderWithIcon('mdi:server-network', 'Backup runner pending', 'text-amber-500')
+					);
 				}
 
 				const lastStatus = String(row.lastStatus || '').toLowerCase();
@@ -1050,6 +1066,7 @@
 				haState: protection,
 				haEligible: Boolean(policy.haEligible),
 				haDegraded: policy.haDegraded,
+				haReasons: policy.haReasons || [],
 				targets: targetsLabel,
 				nodeSyncStatuses: targetSync,
 				schedule: scheduleLabel(policy.cronExpr),

@@ -105,6 +105,9 @@ func (s *Service) applyBackupJobRunnerRebindCommand(action string, payload any, 
 		case "pending":
 			value := payload.(clusterModels.BackupJobRunnerRebindPending)
 			return clusterModels.PendingBackupJobRunnerRebindTxn(s.DB, &value)
+		case "abort":
+			value := payload.(clusterModels.BackupJobRunnerRebindAbort)
+			return clusterModels.AbortFailedFailoverBackupJobRunnerRebindTxn(s.DB, &value)
 		default:
 			return fmt.Errorf("invalid_backup_job_runner_rebind_action")
 		}
@@ -117,15 +120,81 @@ func (s *Service) applyBackupJobRunnerRebindCommand(action string, payload any, 
 	})
 }
 
-// PrepareBackupJobRunnerRebind captures the exact set and immutable versions of
-// all persisted VM/jail jobs while the replicated migration interlock fences
-// ordinary updates. The FSM independently verifies completeness and identity.
-func (s *Service) PrepareBackupJobRunnerRebind(
+type backupJobRunnerRebindPreparationAuthority struct {
+	oldRunnerNodeID string
+	authorization   BackupJobPlacementAuthorization
+}
+
+func (s *Service) backupJobRunnerRebindPreparationAuthority(
 	ctx context.Context,
+	kind string,
 	guestType string,
 	guestID uint,
 	newRunnerNodeID string,
-	operationToken string,
+	token string,
+) (backupJobRunnerRebindPreparationAuthority, error) {
+	var authority backupJobRunnerRebindPreparationAuthority
+	switch kind {
+	case clusterModels.BackupJobRunnerRebindKindMigration:
+		var operation clusterModels.ReplicationGuestOperation
+		result := s.DB.WithContext(ctx).
+			Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+			Limit(1).Find(&operation)
+		if result.Error != nil {
+			return authority, result.Error
+		}
+		if result.RowsAffected != 1 || operation.Operation != clusterModels.ReplicationGuestOperationMigration ||
+			strings.TrimSpace(operation.Token) != token ||
+			strings.TrimSpace(operation.OwnerNodeID) == "" ||
+			strings.TrimSpace(operation.TargetNodeID) != newRunnerNodeID {
+			return authority, fmt.Errorf("backup_job_runner_rebind_guest_operation_mismatch")
+		}
+		authority.oldRunnerNodeID = strings.TrimSpace(operation.OwnerNodeID)
+		authority.authorization.GuestOperationToken = token
+		return authority, nil
+	case clusterModels.BackupJobRunnerRebindKindFailover:
+		var policy clusterModels.ReplicationPolicy
+		result := s.DB.WithContext(ctx).
+			Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+			Limit(1).Find(&policy)
+		if result.Error != nil {
+			return authority, result.Error
+		}
+		state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
+		oldRunnerNodeID := strings.TrimSpace(policy.TransitionSourceNodeID)
+		if result.RowsAffected != 1 || !policy.Enabled ||
+			strings.TrimSpace(policy.TransitionRunID) != token ||
+			oldRunnerNodeID == "" || strings.TrimSpace(policy.TransitionTargetNodeID) != newRunnerNodeID ||
+			(state != clusterModels.ReplicationTransitionStateDemoting &&
+				state != clusterModels.ReplicationTransitionStateCatchup) {
+			return authority, fmt.Errorf("backup_job_runner_rebind_policy_transition_mismatch")
+		}
+		activeNodeID := strings.TrimSpace(policy.ActiveNodeID)
+		if activeNodeID == "" {
+			activeNodeID = strings.TrimSpace(policy.SourceNodeID)
+		}
+		if activeNodeID != oldRunnerNodeID || policy.OwnerEpoch == 0 ||
+			policy.TransitionOwnerEpoch != policy.OwnerEpoch {
+			return authority, fmt.Errorf("backup_job_runner_rebind_policy_transition_not_pre_cutover")
+		}
+		authority.oldRunnerNodeID = oldRunnerNodeID
+		authority.authorization.TransitionRunID = token
+		return authority, nil
+	default:
+		return authority, fmt.Errorf("backup_job_runner_rebind_kind_invalid")
+	}
+}
+
+// prepareBackupJobRunnerRebind captures the complete immutable job manifest
+// while an exact migration or failover transition fences ordinary updates.
+// The FSM independently revalidates completeness and authority.
+func (s *Service) prepareBackupJobRunnerRebind(
+	ctx context.Context,
+	kind string,
+	guestType string,
+	guestID uint,
+	newRunnerNodeID string,
+	token string,
 	bypassRaft bool,
 ) error {
 	if s == nil || s.DB == nil {
@@ -134,11 +203,12 @@ func (s *Service) PrepareBackupJobRunnerRebind(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	kind = strings.ToLower(strings.TrimSpace(kind))
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
 	newRunnerNodeID = strings.TrimSpace(newRunnerNodeID)
-	operationToken = strings.TrimSpace(operationToken)
+	token = strings.TrimSpace(token)
 	if (guestType != clusterModels.BackupJobModeVM && guestType != clusterModels.BackupJobModeJail) ||
-		guestID == 0 || newRunnerNodeID == "" || operationToken == "" {
+		guestID == 0 || newRunnerNodeID == "" || token == "" {
 		return fmt.Errorf("backup_job_runner_rebind_input_invalid")
 	}
 	if !bypassRaft {
@@ -150,29 +220,20 @@ func (s *Service) PrepareBackupJobRunnerRebind(
 		}
 	}
 
-	var operation clusterModels.ReplicationGuestOperation
-	opResult := s.DB.WithContext(ctx).
-		Where("guest_type = ? AND guest_id = ?", guestType, guestID).
-		Limit(1).Find(&operation)
-	if opResult.Error != nil {
-		return opResult.Error
+	authority, err := s.backupJobRunnerRebindPreparationAuthority(
+		ctx, kind, guestType, guestID, newRunnerNodeID, token,
+	)
+	if err != nil {
+		return err
 	}
-	if opResult.RowsAffected != 1 || operation.Operation != clusterModels.ReplicationGuestOperationMigration ||
-		strings.TrimSpace(operation.Token) != operationToken ||
-		strings.TrimSpace(operation.OwnerNodeID) == "" ||
-		strings.TrimSpace(operation.TargetNodeID) != newRunnerNodeID {
-		return fmt.Errorf("backup_job_runner_rebind_guest_operation_mismatch")
-	}
-
 	var existing clusterModels.BackupJobRunnerRebind
-	result := s.DB.WithContext(ctx).Where("token = ?", operationToken).Limit(1).Find(&existing)
+	result := s.DB.WithContext(ctx).Where("token = ?", token).Limit(1).Find(&existing)
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 1 {
-		if existing.Kind != clusterModels.BackupJobRunnerRebindKindMigration ||
-			existing.GuestType != guestType || existing.GuestID != guestID ||
-			existing.OldRunnerNodeID != strings.TrimSpace(operation.OwnerNodeID) ||
+		if existing.Kind != kind || existing.GuestType != guestType || existing.GuestID != guestID ||
+			existing.OldRunnerNodeID != authority.oldRunnerNodeID ||
 			existing.NewRunnerNodeID != newRunnerNodeID ||
 			existing.State == clusterModels.BackupJobRunnerRebindStateAborted {
 			return fmt.Errorf("backup_job_runner_rebind_plan_mismatch")
@@ -213,14 +274,14 @@ func (s *Service) PrepareBackupJobRunnerRebind(
 			validationWG.Add(1)
 			go func(index int) {
 				defer validationWG.Done()
-				_, _, err := s.validateBackupJobOnRunner(
+				_, _, validationErr := s.validateBackupJobOnRunner(
 					validationCtx,
 					&matchedJobs[index],
 					false,
-					BackupJobPlacementAuthorization{GuestOperationToken: operationToken},
+					authority.authorization,
 				)
-				if err != nil {
-					preflightErrors[index] = boundedBackupJobRunnerRebindError(err)
+				if validationErr != nil {
+					preflightErrors[index] = boundedBackupJobRunnerRebindError(validationErr)
 				}
 			}(i)
 		}
@@ -238,13 +299,39 @@ func (s *Service) PrepareBackupJobRunnerRebind(
 			PreflightError:      preflightErrors[i],
 		})
 	}
-	plan := clusterModels.BackupJobRunnerRebindPlan{
-		Token: operationToken, Kind: clusterModels.BackupJobRunnerRebindKindMigration,
-		GuestType: guestType, GuestID: guestID,
-		OldRunnerNodeID: strings.TrimSpace(operation.OwnerNodeID), NewRunnerNodeID: newRunnerNodeID,
+	return s.applyBackupJobRunnerRebindCommand("prepare", clusterModels.BackupJobRunnerRebindPlan{
+		Token: token, Kind: kind, GuestType: guestType, GuestID: guestID,
+		OldRunnerNodeID: authority.oldRunnerNodeID, NewRunnerNodeID: newRunnerNodeID,
 		Items: items,
-	}
-	return s.applyBackupJobRunnerRebindCommand("prepare", plan, bypassRaft)
+	}, bypassRaft)
+}
+
+func (s *Service) PrepareBackupJobRunnerRebind(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newRunnerNodeID string,
+	operationToken string,
+	bypassRaft bool,
+) error {
+	return s.prepareBackupJobRunnerRebind(
+		ctx, clusterModels.BackupJobRunnerRebindKindMigration,
+		guestType, guestID, newRunnerNodeID, operationToken, bypassRaft,
+	)
+}
+
+func (s *Service) PrepareBackupJobRunnerRebindForFailover(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newRunnerNodeID string,
+	transitionRunID string,
+	bypassRaft bool,
+) error {
+	return s.prepareBackupJobRunnerRebind(
+		ctx, clusterModels.BackupJobRunnerRebindKindFailover,
+		guestType, guestID, newRunnerNodeID, transitionRunID, bypassRaft,
+	)
 }
 
 func (s *Service) ReadyBackupJobRunnerRebind(operationToken string, bypassRaft bool) error {
@@ -354,6 +441,45 @@ func (s *Service) proposeBackupJobRunnerRebindRepair(token string, item clusterM
 	}, false)
 }
 
+func (s *Service) backupJobRunnerRebindAuthorization(
+	ctx context.Context,
+	operation clusterModels.BackupJobRunnerRebind,
+) (BackupJobPlacementAuthorization, error) {
+	switch operation.Kind {
+	case clusterModels.BackupJobRunnerRebindKindMigration:
+		return BackupJobPlacementAuthorization{GuestOperationToken: operation.Token}, nil
+	case clusterModels.BackupJobRunnerRebindKindFailover:
+		var policy clusterModels.ReplicationPolicy
+		result := s.DB.WithContext(ctx).
+			Where("guest_type = ? AND guest_id = ?", operation.GuestType, operation.GuestID).
+			Limit(1).Find(&policy)
+		if result.Error != nil {
+			return BackupJobPlacementAuthorization{}, result.Error
+		}
+		activeNodeID := strings.TrimSpace(policy.ActiveNodeID)
+		if activeNodeID == "" {
+			activeNodeID = strings.TrimSpace(policy.SourceNodeID)
+		}
+		if result.RowsAffected != 1 || !policy.Enabled ||
+			strings.TrimSpace(policy.TransitionRunID) != operation.Token ||
+			strings.TrimSpace(policy.TransitionSourceNodeID) != operation.OldRunnerNodeID ||
+			strings.TrimSpace(policy.TransitionTargetNodeID) != operation.NewRunnerNodeID ||
+			activeNodeID != operation.NewRunnerNodeID ||
+			policy.OwnerEpoch == 0 || policy.TransitionOwnerEpoch != policy.OwnerEpoch {
+			return BackupJobPlacementAuthorization{}, fmt.Errorf("backup_job_runner_rebind_policy_transition_mismatch")
+		}
+		if strings.ToLower(strings.TrimSpace(policy.TransitionState)) !=
+			clusterModels.ReplicationTransitionStateCompleted {
+			return BackupJobPlacementAuthorization{}, fmt.Errorf("backup_job_runner_rebind_transition_not_completed")
+		}
+		// Completed transitions no longer accept the run ID as a placement
+		// bypass. Normal owner fencing now authorizes independent repair.
+		return BackupJobPlacementAuthorization{}, nil
+	default:
+		return BackupJobPlacementAuthorization{}, fmt.Errorf("backup_job_runner_rebind_kind_invalid")
+	}
+}
+
 func (s *Service) reconcileBackupJobRunnerRebindItem(
 	ctx context.Context,
 	operation clusterModels.BackupJobRunnerRebind,
@@ -374,7 +500,11 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 		strings.TrimSpace(job.RunnerNodeID) != item.ExpectedRunnerID
 	candidate := job
 	candidate.RunnerNodeID = operation.NewRunnerNodeID
-	authorization := BackupJobPlacementAuthorization{GuestOperationToken: operation.Token}
+	authorization, err := s.backupJobRunnerRebindAuthorization(ctx, operation)
+	if err != nil {
+		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)
+		return err
+	}
 	validation, placementFence, err := s.validateBackupJobOnRunner(ctx, &candidate, false, authorization)
 	if err != nil {
 		if isPermanentBackupJobRunnerRebindError(err) {
@@ -492,17 +622,123 @@ func (s *Service) reconcilePendingBackupJobRunnerRebinds(ctx context.Context) er
 	}
 	var operations []clusterModels.BackupJobRunnerRebind
 	if err := s.DB.WithContext(ctx).
-		Where("state = ?", clusterModels.BackupJobRunnerRebindStateReady).
+		Where("state IN ?", []string{
+			clusterModels.BackupJobRunnerRebindStatePlanned,
+			clusterModels.BackupJobRunnerRebindStateReady,
+		}).
 		Order("token ASC").Find(&operations).Error; err != nil {
 		return err
 	}
 	errs := make([]error, 0)
 	for i := range operations {
-		if err := s.ReconcileBackupJobRunnerRebind(ctx, operations[i].Token); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", operations[i].Token, err))
+		operation := operations[i]
+		if operation.State == clusterModels.BackupJobRunnerRebindStatePlanned {
+			if operation.Kind != clusterModels.BackupJobRunnerRebindKindFailover {
+				continue
+			}
+			var policy clusterModels.ReplicationPolicy
+			result := s.DB.WithContext(ctx).
+				Where("guest_type = ? AND guest_id = ?", operation.GuestType, operation.GuestID).
+				Limit(1).Find(&policy)
+			if result.Error != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", operation.Token, result.Error))
+				continue
+			}
+			sameRun := result.RowsAffected == 1 && strings.TrimSpace(policy.TransitionRunID) == operation.Token
+			state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
+			if sameRun && (state == clusterModels.ReplicationTransitionStatePromoting ||
+				state == clusterModels.ReplicationTransitionStateCompleted) {
+				if err := s.ReadyBackupJobRunnerRebind(operation.Token, false); err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", operation.Token, err))
+					continue
+				}
+				operation.State = clusterModels.BackupJobRunnerRebindStateReady
+			} else if !sameRun || state == clusterModels.ReplicationTransitionStateFailed ||
+				state == clusterModels.ReplicationTransitionStateRollingBack {
+				if err := s.applyBackupJobRunnerRebindCommand("abort", clusterModels.BackupJobRunnerRebindAbort{
+					Token: operation.Token, Reason: "failover_transition_aborted",
+				}, false); err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", operation.Token, err))
+				}
+				continue
+			} else {
+				continue
+			}
+		}
+		if operation.State == clusterModels.BackupJobRunnerRebindStateReady {
+			if operation.Kind == clusterModels.BackupJobRunnerRebindKindFailover {
+				var policy clusterModels.ReplicationPolicy
+				result := s.DB.WithContext(ctx).
+					Where("guest_type = ? AND guest_id = ?", operation.GuestType, operation.GuestID).
+					Limit(1).Find(&policy)
+				if result.Error != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", operation.Token, result.Error))
+					continue
+				}
+				if result.RowsAffected != 1 || strings.TrimSpace(policy.TransitionRunID) != operation.Token ||
+					strings.ToLower(strings.TrimSpace(policy.TransitionState)) != clusterModels.ReplicationTransitionStateCompleted {
+					continue
+				}
+			}
+			if err := s.ReconcileBackupJobRunnerRebind(ctx, operation.Token); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", operation.Token, err))
+			}
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func appendBackupJobRunnerRebindHAReason(policy *clusterModels.ReplicationPolicy, reason string) {
+	if policy == nil || strings.TrimSpace(reason) == "" {
+		return
+	}
+	for _, existing := range policy.HAReasons {
+		if existing == reason {
+			return
+		}
+	}
+	policy.HAReasons = append(policy.HAReasons, reason)
+	sort.Strings(policy.HAReasons)
+}
+
+// applyBackupJobRunnerRebindHAState projects replicated pending/repair state
+// into the existing policy health fields without changing persisted policy
+// telemetry or the response envelope.
+func (s *Service) applyBackupJobRunnerRebindHAState(policy *clusterModels.ReplicationPolicy) error {
+	if s == nil || s.DB == nil || policy == nil || policy.GuestID == 0 ||
+		!s.DB.Migrator().HasTable(&clusterModels.BackupJobRunnerRebind{}) ||
+		!s.DB.Migrator().HasTable(&clusterModels.BackupJobRunnerRebindItem{}) {
+		return nil
+	}
+	base := s.DB.Model(&clusterModels.BackupJobRunnerRebindItem{}).
+		Joins("JOIN backup_job_runner_rebinds ON backup_job_runner_rebinds.token = backup_job_runner_rebind_items.operation_token").
+		Where("backup_job_runner_rebinds.guest_type = ? AND backup_job_runner_rebinds.guest_id = ?",
+			strings.ToLower(strings.TrimSpace(policy.GuestType)), policy.GuestID)
+	var pending int64
+	if err := base.
+		Where("backup_job_runner_rebinds.state = ? AND backup_job_runner_rebind_items.state = ?",
+			clusterModels.BackupJobRunnerRebindStateReady, clusterModels.BackupJobRunnerRebindItemPending).
+		Count(&pending).Error; err != nil {
+		return err
+	}
+	var repairs int64
+	if err := s.DB.Model(&clusterModels.BackupJobRunnerRebindItem{}).
+		Joins("JOIN backup_job_runner_rebinds ON backup_job_runner_rebinds.token = backup_job_runner_rebind_items.operation_token").
+		Where("backup_job_runner_rebinds.guest_type = ? AND backup_job_runner_rebinds.guest_id = ? AND backup_job_runner_rebind_items.state = ?",
+			strings.ToLower(strings.TrimSpace(policy.GuestType)), policy.GuestID,
+			clusterModels.BackupJobRunnerRebindItemRepairRequired).
+		Count(&repairs).Error; err != nil {
+		return err
+	}
+	if pending != 0 {
+		policy.HADegraded = true
+		appendBackupJobRunnerRebindHAReason(policy, "backup_job_runner_rebind_pending")
+	}
+	if repairs != 0 {
+		policy.HADegraded = true
+		appendBackupJobRunnerRebindHAReason(policy, "backup_job_runner_rebind_repair_required")
+	}
+	return nil
 }
 
 func (s *Service) StartBackupJobRunnerRebindReconciler(ctx context.Context) {

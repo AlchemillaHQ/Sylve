@@ -277,6 +277,9 @@ type ReplicationOwnershipTransitionPayload struct {
 	ExpectedActiveNodeID    string `json:"expectedActiveNodeId"`
 	ExpectedOwnerEpoch      uint64 `json:"expectedOwnerEpoch"`
 	ExpectedTransitionRunID string `json:"expectedTransitionRunId"`
+	// BackupJobRunnerRebindToken opts new failover commands into the shared
+	// exact-run backup placement protocol. Legacy log entries omit it.
+	BackupJobRunnerRebindToken string `json:"backupJobRunnerRebindToken,omitempty"`
 	// PreviousLeaseExpiresAtOrBefore is an optional force-cutover fence. When
 	// present, the ownership transaction re-reads the previous owner's lease
 	// and rejects the cutover if that matching lease is still valid after this
@@ -889,8 +892,13 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 		if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
 			return existingErr
 		}
-		if existingErr == nil && replicationTransitionInProgress(existing.TransitionState) {
-			return fmt.Errorf("replication_policy_transition_in_progress")
+		if existingErr == nil {
+			if err := RequireNoPendingBackupJobRunnerRebindForGuestTxn(tx, existing.GuestType, existing.GuestID); err != nil {
+				return err
+			}
+			if replicationTransitionInProgress(existing.TransitionState) {
+				return fmt.Errorf("replication_policy_transition_in_progress")
+			}
 		}
 
 		preserveTargetReadiness := existingErr == nil &&
@@ -973,6 +981,9 @@ func updateReplicationPolicy(db *gorm.DB, payload *ReplicationPolicyPayload) err
 			return err
 		}
 		if err := requireNoReplicationGuestOperation(tx, existing.GuestType, existing.GuestID); err != nil {
+			return err
+		}
+		if err := RequireNoPendingBackupJobRunnerRebindForGuestTxn(tx, existing.GuestType, existing.GuestID); err != nil {
 			return err
 		}
 		if existing.OwnerEpoch != payload.ExpectedOwnerEpoch {
@@ -1527,6 +1538,9 @@ func beginReplicationPolicyTransition(db *gorm.DB, begin *ReplicationPolicyTrans
 		if policy.OwnerEpoch != begin.ExpectedOwnerEpoch {
 			return fmt.Errorf("replication_transition_cas_conflict")
 		}
+		if err := RequireNoPendingBackupJobRunnerRebindForGuestTxn(tx, policy.GuestType, policy.GuestID); err != nil {
+			return err
+		}
 		if policy.ProtectionState == ReplicationProtectionStateDeleting {
 			return fmt.Errorf("replication_policy_deleting")
 		}
@@ -1669,6 +1683,7 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 	}
 	payload.ExpectedActiveNodeID = strings.TrimSpace(payload.ExpectedActiveNodeID)
 	payload.ExpectedTransitionRunID = strings.TrimSpace(payload.ExpectedTransitionRunID)
+	payload.BackupJobRunnerRebindToken = strings.TrimSpace(payload.BackupJobRunnerRebindToken)
 	payload.ActiveNodeID = strings.TrimSpace(payload.ActiveNodeID)
 	payload.ProtectionState = strings.TrimSpace(strings.ToLower(payload.ProtectionState))
 	if payload.SourceNodeID != nil {
@@ -1687,6 +1702,10 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 	}
 	if payload.ExpectedTransitionRunID == "" {
 		return fmt.Errorf("replication_transition_run_id_required")
+	}
+	if payload.BackupJobRunnerRebindToken != "" &&
+		payload.BackupJobRunnerRebindToken != payload.ExpectedTransitionRunID {
+		return fmt.Errorf("backup_job_runner_rebind_transition_run_id_mismatch")
 	}
 	if payload.ExpectedOwnerEpoch == ^uint64(0) || payload.OwnerEpoch != payload.ExpectedOwnerEpoch+1 {
 		return fmt.Errorf("replication_ownership_epoch_must_increment")
@@ -1831,6 +1850,27 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 		}
 		if err := persistReplicationPolicyTransition(tx, payload.PolicyID, &payload.Transition); err != nil {
 			return err
+		}
+		if payload.BackupJobRunnerRebindToken != "" {
+			switch payload.Transition.State {
+			case ReplicationTransitionStatePromoting:
+				if err := readyBackupJobRunnerRebind(tx, &BackupJobRunnerRebindReady{
+					Token: payload.BackupJobRunnerRebindToken,
+				}); err != nil {
+					return err
+				}
+			case ReplicationTransitionStateRollingBack:
+				if err := RollbackFailoverBackupJobRunnerRebindTxn(
+					tx,
+					payload.BackupJobRunnerRebindToken,
+					payload.ExpectedActiveNodeID,
+					payload.ActiveNodeID,
+				); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("backup_job_runner_rebind_transition_state_invalid")
+			}
 		}
 		return nil
 	})
@@ -2185,6 +2225,9 @@ func updateReplicationPolicyProtectionState(
 			if err := requireNoReplicationGuestOperation(tx, policy.GuestType, policy.GuestID); err != nil {
 				return err
 			}
+			if err := RequireNoPendingBackupJobRunnerRebindForGuestTxn(tx, policy.GuestType, policy.GuestID); err != nil {
+				return err
+			}
 		}
 
 		result := tx.Model(&ReplicationPolicy{}).
@@ -2271,6 +2314,9 @@ func DeleteReplicationPolicyTxn(db *gorm.DB, policyID uint) error {
 		}
 		if replicationTransitionInProgress(policy.TransitionState) {
 			return fmt.Errorf("replication_policy_transition_in_progress")
+		}
+		if err := RequireNoPendingBackupJobRunnerRebindForGuestTxn(tx, policy.GuestType, policy.GuestID); err != nil {
+			return err
 		}
 		if err := requireNoReplicationGuestOperation(tx, policy.GuestType, policy.GuestID); err != nil {
 			return err

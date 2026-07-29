@@ -347,6 +347,133 @@ func TestBackupJobRunnerRebindObservedConfigurationChangeBecomesRepairRequired(t
 	}
 }
 
+func TestFailoverOwnershipCutoverRequiresReplicatedRebindPlan(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, backupJobRunnerRebindModels()...)
+	seedControlPlanePolicy(t, db)
+	payload := ownershipCommitPayload()
+	payload.BackupJobRunnerRebindToken = payload.ExpectedTransitionRunID
+	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil {
+		t.Fatal("ownership cutover without a rebind plan succeeded")
+	}
+	var policy ReplicationPolicy
+	if err := db.First(&policy, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if policy.ActiveNodeID != "node-1" || policy.OwnerEpoch != 1 ||
+		policy.TransitionState != ReplicationTransitionStateDemoting {
+		t.Fatalf("cutover partially committed without plan: %+v", policy)
+	}
+	var lease ReplicationLease
+	if err := db.Where("policy_id = ?", 1).First(&lease).Error; err != nil {
+		t.Fatal(err)
+	}
+	if lease.OwnerNodeID != "node-1" || lease.OwnerEpoch != 1 {
+		t.Fatalf("lease partially committed without plan: %+v", lease)
+	}
+}
+
+func TestFailoverBackupJobRunnerRebindIsAtomicWithOwnershipAndRollback(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, backupJobRunnerRebindModels()...)
+	seedControlPlanePolicy(t, db)
+	if err := db.Create(&BackupTarget{ID: 1, Name: "backup"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	job := BackupJob{
+		ID: 30, Name: "failover-job", TargetID: 1, RunnerNodeID: "node-1",
+		Mode: BackupJobModeVM, SourceDataset: "tank/sylve/virtual-machines/100",
+		Recursive: true, CronExpr: "0 0 * * *", Enabled: true,
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatal(err)
+	}
+	plan := BackupJobRunnerRebindPlan{
+		Token: "run-1", Kind: BackupJobRunnerRebindKindFailover,
+		GuestType: BackupJobModeVM, GuestID: 100,
+		OldRunnerNodeID: "node-1", NewRunnerNodeID: "node-2",
+		Items: []BackupJobRunnerRebindPlanItem{{
+			JobID: job.ID, ExpectedRunnerID: "node-1",
+			ExpectedFingerprint: BackupJobConfigurationFingerprint(&job),
+		}},
+	}
+	if err := PrepareBackupJobRunnerRebindTxn(db, &plan); err != nil {
+		t.Fatalf("prepare failover plan: %v", err)
+	}
+
+	cutover := ownershipCommitPayload()
+	cutover.BackupJobRunnerRebindToken = plan.Token
+	if err := ApplyReplicationOwnershipTransitionTxn(db, &cutover); err != nil {
+		t.Fatalf("atomic ownership/rebind cutover: %v", err)
+	}
+	var operation BackupJobRunnerRebind
+	if err := db.First(&operation, "token = ?", plan.Token).Error; err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != BackupJobRunnerRebindStateReady {
+		t.Fatalf("rebind was not made ready atomically: %+v", operation)
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if job.LastStatus != BackupJobRunnerRebindStatusPending {
+		t.Fatalf("pending job was not exposed: %+v", job)
+	}
+	if err := AcquireBackupJobOperationTxn(db, &BackupJobOperationAcquire{
+		JobID: job.ID, Token: "backup:node-1:stale", Operation: BackupJobOperationBackup,
+		HolderNodeID: "node-1", AcquiredAt: time.Now().UTC(),
+	}); err == nil || !strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
+		t.Fatalf("old runner was not fenced after cutover: %v", err)
+	}
+	if err := ApplyBackupJobRunnerRebindTxn(db, &BackupJobRunnerRebindApply{
+		Token: plan.Token, JobID: job.ID, ExpectedFingerprint: plan.Items[0].ExpectedFingerprint,
+	}); err == nil || !strings.Contains(err.Error(), "transition_not_completed") {
+		t.Fatalf("job decision was allowed before failover became terminal: %v", err)
+	}
+
+	var policy ReplicationPolicy
+	if err := db.First(&policy, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	rollbackSource := "node-1"
+	rollback := ReplicationOwnershipTransitionPayload{
+		PolicyID: 1, ExpectedActiveNodeID: "node-2", ExpectedOwnerEpoch: 2,
+		ExpectedTransitionRunID: "run-1", BackupJobRunnerRebindToken: "run-1",
+		ActiveNodeID: "node-1", SourceNodeID: &rollbackSource, OwnerEpoch: 3,
+		ReplaceTargets: true,
+		Targets:        []ReplicationPolicyTarget{{NodeID: "node-2", Weight: 100}},
+		Lease: ReplicationLease{
+			PolicyID: 1, GuestType: ReplicationGuestTypeVM, GuestID: 100,
+			OwnerNodeID: "node-1", OwnerEpoch: 3, Version: 30,
+			ExpiresAt: now.Add(time.Hour), LastReason: "rollback", LastActor: "leader",
+		},
+		Transition: ReplicationPolicyTransition{
+			State: ReplicationTransitionStateRollingBack, RunID: "run-1", Reason: "rollback",
+			SourceNodeID: "node-2", TargetNodeID: "node-1", OwnerEpoch: 3,
+			RequestedAt: policy.TransitionRequestedAt, DemotedAt: policy.TransitionDemotedAt,
+			CatchupAt: policy.TransitionCatchupAt, OriginalRunning: policy.TransitionOriginalRunning,
+			OriginalSourceNodeID: policy.TransitionOriginalSourceNodeID,
+			AllowUnsafe:          policy.TransitionAllowUnsafe, MovePinnedSource: policy.TransitionMovePinnedSource,
+			TriggerValidationRun: policy.TransitionTriggerValidationRun,
+		},
+		ProtectionState: ReplicationProtectionStateDegraded,
+	}
+	if err := ApplyReplicationOwnershipTransitionTxn(db, &rollback); err != nil {
+		t.Fatalf("atomic ownership/rebind rollback: %v", err)
+	}
+	if err := db.First(&operation, "token = ?", plan.Token).Error; err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != BackupJobRunnerRebindStateAborted {
+		t.Fatalf("rollback did not abort plan: %+v", operation)
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if job.RunnerNodeID != "node-1" || job.LastStatus != "" || job.LastError != "" {
+		t.Fatalf("rollback left stale job state: %+v", job)
+	}
+}
+
 func TestBackupJobRunnerRebindPlanRejectsIncompleteManifest(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, backupJobRunnerRebindModels()...)
 	if err := db.Create(&BackupTarget{ID: 1, Name: "target"}).Error; err != nil {

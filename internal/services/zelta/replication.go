@@ -1366,6 +1366,7 @@ func (s *Service) rollbackRecoveringPromotion(
 		ExpectedActiveNodeID:           currentOwner,
 		ExpectedOwnerEpoch:             currentEpoch,
 		ExpectedTransitionRunID:        policy.TransitionRunID,
+		BackupJobRunnerRebindToken:     policy.TransitionRunID,
 		PreviousLeaseExpiresAtOrBefore: previousLeaseExpiresAtOrBefore,
 		ActiveNodeID:                   previousOwner,
 		SourceNodeID:                   rollbackSourceUpdate,
@@ -1477,16 +1478,6 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		}
 		return activateErr
 	}
-	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, targetNodeID); err != nil {
-		// Ownership and workload activation are already complete. Backup-runner
-		// placement is retriable control-plane hygiene and must not keep the
-		// ownership transition locked indefinitely.
-		logger.L.Warn().Err(err).
-			Uint("policy_id", policy.ID).
-			Str("target_node_id", targetNodeID).
-			Msg("replication_backup_job_runner_rebind_pending")
-	}
-
 	transition := transitionPayloadFromPolicy(policy)
 	now := s.now().UTC()
 	if transition.PromotedAt == nil {
@@ -1505,6 +1496,14 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 	policy.TransitionCompletedAt = &now
 	policy.TransitionOwnerEpoch = transition.OwnerEpoch
 	policy.TransitionError = ""
+	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, targetNodeID); err != nil {
+		// The transition is already terminal. The replicated ready plan fences
+		// stale execution and the cluster reconciler can finish independently.
+		logger.L.Warn().Err(err).
+			Uint("policy_id", policy.ID).
+			Str("target_node_id", targetNodeID).
+			Msg("replication_backup_job_runner_rebind_pending")
+	}
 	if transition.TriggerValidationRun {
 		if err := s.enqueueReplicationValidationRun(ctx, policy.ID, targetNodeID); err != nil {
 			logger.L.Warn().
@@ -1555,13 +1554,6 @@ func (s *Service) resumeRollingBackTransition(ctx context.Context, policy *clust
 	if err != nil {
 		return err
 	}
-	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, rollbackOwner); err != nil {
-		logger.L.Warn().Err(err).
-			Uint("policy_id", policy.ID).
-			Str("target_node_id", rollbackOwner).
-			Msg("replication_rollback_backup_job_runner_rebind_pending")
-	}
-
 	transition := transitionPayloadFromPolicy(policy)
 	now := s.now().UTC()
 	transition.State = clusterModels.ReplicationTransitionStateFailed
@@ -5563,6 +5555,7 @@ func (s *Service) runPolicyOwnershipTransition(
 				ExpectedActiveNodeID:           targetNodeID,
 				ExpectedOwnerEpoch:             nextEpoch,
 				ExpectedTransitionRunID:        transition.RunID,
+				BackupJobRunnerRebindToken:     transition.RunID,
 				PreviousLeaseExpiresAtOrBefore: targetLeaseExpiresAtOrBefore,
 				ActiveNodeID:                   rollbackOwner,
 				SourceNodeID:                   rollbackSourceUpdate,
@@ -5730,6 +5723,27 @@ func (s *Service) runPolicyOwnershipTransition(
 	policy.TransitionGenerationManifest = transition.GenerationManifest
 	policy.TransitionGenerationRootCount = transition.GenerationRootCount
 	ensureTransitionEvent()
+
+	// Capture the complete backup-job manifest before ownership can move. The
+	// exact transition run blocks ordinary job changes, while source-runner
+	// validation failures are retained as preflight diagnostics rather than
+	// preventing force failover from an unavailable owner.
+	if err := s.Cluster.PrepareBackupJobRunnerRebindForFailover(
+		ctx,
+		policy.GuestType,
+		policy.GuestID,
+		targetNodeID,
+		transition.RunID,
+		false,
+	); err != nil {
+		updateTransitionEvent(
+			replicationEventStatusDemoting,
+			reason+"_backup_runner_rebind_plan_pending",
+			err,
+			false,
+		)
+		return err
+	}
 
 	if transition.OriginalRunning == nil {
 		// Unknown runtime state must never be interpreted as permission to
@@ -6021,6 +6035,7 @@ func (s *Service) runPolicyOwnershipTransition(
 			ExpectedActiveNodeID:           previousOwner,
 			ExpectedOwnerEpoch:             currentEpoch,
 			ExpectedTransitionRunID:        transition.RunID,
+			BackupJobRunnerRebindToken:     transition.RunID,
 			PreviousLeaseExpiresAtOrBefore: previousLeaseExpiresAtOrBefore,
 			ActiveNodeID:                   targetNodeID,
 			SourceNodeID:                   sourceNodeUpdate,
@@ -6114,14 +6129,6 @@ func (s *Service) runPolicyOwnershipTransition(
 		return recoverAfterCommittedCutover(activateErr, reason+"_promoting_failed")
 	}
 
-	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, targetNodeID); err != nil {
-		logger.L.Warn().Err(err).
-			Uint("policy_id", policy.ID).
-			Str("target_node_id", targetNodeID).
-			Msg("replication_backup_job_runner_rebind_pending")
-		updateTransitionEvent(replicationEventStatusPromoting, reason+"_backup_runner_rebind_pending", err, false)
-	}
-
 	now := s.now().UTC()
 	transition.State = clusterModels.ReplicationTransitionStateCompleted
 	transition.PromotedAt = &now
@@ -6137,6 +6144,13 @@ func (s *Service) runPolicyOwnershipTransition(
 	policy.TransitionCompletedAt = &now
 	policy.TransitionError = ""
 	updateTransitionEvent(replicationEventStatusActive, reason+"_active", nil, true)
+
+	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, targetNodeID); err != nil {
+		logger.L.Warn().Err(err).
+			Uint("policy_id", policy.ID).
+			Str("target_node_id", targetNodeID).
+			Msg("replication_backup_job_runner_rebind_pending")
+	}
 
 	if options.TriggerValidationRun {
 		if err := s.enqueueReplicationValidationRun(ctx, policy.ID, targetNodeID); err != nil {
@@ -6241,7 +6255,6 @@ func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string)
 	if job != nil {
 		enabled = job.Enabled
 	}
-
 	req := clusterServiceInterfaces.BackupJobReq{
 		RunnerNodeID: strings.TrimSpace(runnerNodeID),
 		Enabled:      &enabled,
@@ -6249,7 +6262,6 @@ func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string)
 	if job == nil {
 		return req
 	}
-
 	req.Name = strings.TrimSpace(job.Name)
 	req.TargetID = job.TargetID
 	req.Mode = strings.TrimSpace(job.Mode)
@@ -6268,75 +6280,18 @@ func (s *Service) rebindReplicationGuestBackupJobRunners(
 	policy *clusterModels.ReplicationPolicy,
 	runnerNodeID string,
 ) error {
-	if s == nil || policy == nil || policy.ID == 0 {
+	if s == nil || s.Cluster == nil || policy == nil || policy.ID == 0 {
 		return nil
 	}
-	return s.rebindGuestBackupJobRunners(
-		ctx,
-		policy.GuestType,
-		policy.GuestID,
-		runnerNodeID,
-		clusterService.BackupJobPlacementAuthorization{
-			TransitionRunID: strings.TrimSpace(policy.TransitionRunID),
-		},
-	)
-}
-
-func (s *Service) rebindGuestBackupJobRunners(
-	ctx context.Context,
-	guestType string,
-	guestID uint,
-	runnerNodeID string,
-	authorization clusterService.BackupJobPlacementAuthorization,
-) error {
-	if s == nil || s.Cluster == nil || guestID == 0 {
-		return nil
+	if strings.TrimSpace(runnerNodeID) == "" ||
+		strings.TrimSpace(runnerNodeID) != strings.TrimSpace(policy.ActiveNodeID) {
+		return fmt.Errorf("backup_job_runner_rebind_owner_mismatch")
 	}
-
-	runnerNodeID = strings.TrimSpace(runnerNodeID)
-	if runnerNodeID == "" {
-		return nil
+	transitionRunID := strings.TrimSpace(policy.TransitionRunID)
+	if transitionRunID == "" {
+		return fmt.Errorf("backup_job_runner_rebind_transition_run_id_required")
 	}
-
-	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	if guestType == "" {
-		return nil
-	}
-
-	jobs, err := s.Cluster.ListBackupJobs(0)
-	if err != nil {
-		return fmt.Errorf("list_backup_jobs_failed: %w", err)
-	}
-
-	updateErrs := make([]string, 0)
-	for i := range jobs {
-		job := jobs[i]
-		jobGuestType, jobGuestID := backupJobGuestIdentity(&job)
-		if jobGuestType != guestType || jobGuestID != guestID {
-			continue
-		}
-		if strings.TrimSpace(job.RunnerNodeID) == runnerNodeID {
-			continue
-		}
-
-		req := backupJobToReqWithRunner(&job, runnerNodeID)
-		if err := s.Cluster.ProposeBackupJobUpdateContext(ctx, job.ID, req, false, authorization); err != nil {
-			updateErrs = append(updateErrs, fmt.Sprintf("job_%d_update_failed: %v", job.ID, err))
-			continue
-		}
-
-		logger.L.Info().
-			Uint("job_id", job.ID).
-			Str("guest_type", guestType).
-			Uint("guest_id", guestID).
-			Str("runner_node_id", runnerNodeID).
-			Msg("guest_backup_job_runner_rebound")
-	}
-
-	if len(updateErrs) > 0 {
-		return fmt.Errorf("backup_job_runner_rebind_partial_failure: %s", strings.Join(updateErrs, "; "))
-	}
-	return nil
+	return s.Cluster.ReconcileBackupJobRunnerRebind(ctx, transitionRunID)
 }
 
 // PrepareGuestBackupJobRunnerRebind durably captures every affected job while
