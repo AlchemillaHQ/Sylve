@@ -174,6 +174,14 @@
 		) || []
 	);
 
+	let selectedElsewhereCount = $derived.by(() => {
+		const currentSocket = selectedSocket === null ? null : parseInt(selectedSocket);
+		return Array.from(allSelections.entries()).reduce(
+			(total, [socket, cores]) => (socket === currentSocket ? total : total + cores.length),
+			0
+		);
+	});
+
 	const handleSocketSelect = (socketId: string) => {
 		selectedSocket = socketId;
 		step = 'cores';
@@ -207,7 +215,7 @@
 	const handleCoreToggle = (coreId: string) => {
 		if (
 			coreSelectionLimit !== undefined &&
-			selectedCores.size >= coreSelectionLimit &&
+			selectedElsewhereCount + selectedCores.size >= coreSelectionLimit &&
 			!selectedCores.has(coreId)
 		) {
 			toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
@@ -268,6 +276,15 @@
 	const handleConfirm = () => {
 		if (step === 'cores' && selectedSocket) {
 			persistSocketSelection();
+		}
+
+		const totalSelected = Array.from(allSelections.values()).reduce(
+			(total, cores) => total + cores.length,
+			0
+		);
+		if (coreSelectionLimit !== undefined && totalSelected > coreSelectionLimit) {
+			toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
+			return;
 		}
 
 		pinnedCPUs = Array.from(allSelections.entries()).map(([socket, cores]) => ({
@@ -405,7 +422,7 @@
 
 				<div class="space-y-3">
 					<div class="flex flex-row gap-1 text-sm">
-						<p>Selected: {selectedCores.size},</p>
+						<p>Selected: {selectedElsewhereCount + selectedCores.size},</p>
 						<p>Limit: {coreSelectionLimit}</p>
 					</div>
 				</div>
@@ -419,7 +436,7 @@
 						{@const disableSelect =
 							!isAvailable ||
 							(coreSelectionLimit !== undefined &&
-								selectedCores.size >= coreSelectionLimit &&
+								selectedElsewhereCount + selectedCores.size >= coreSelectionLimit &&
 								!isSelected)}
 
 						<button
@@ -464,8 +481,10 @@
 						size="sm"
 						onclick={() => {
 							const max =
-								coreSelectionLimit !== undefined ? coreSelectionLimit : availableCores.length;
-							if (coreSelectionLimit !== undefined && availableCores.length > coreSelectionLimit) {
+								coreSelectionLimit !== undefined
+									? Math.max(0, coreSelectionLimit - selectedElsewhereCount)
+									: availableCores.length;
+							if (coreSelectionLimit !== undefined && availableCores.length > max) {
 								toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
 							}
 							selectedCores = new Set(availableCores.map((core) => core.id).slice(0, max));
