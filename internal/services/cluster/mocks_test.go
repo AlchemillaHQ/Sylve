@@ -9,7 +9,9 @@
 package cluster
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,10 +41,10 @@ func (clusterAuthStub) CreateClusterJWT(_ uint, _, _, _ string) (string, error) 
 // cluster peer node's intra-cluster API. Register handlers for specific
 // endpoints before starting the test.
 type clusterPeerSimulator struct {
-	server    *httptest.Server
-	addr      string // host:port of the test server
-	serveMux  *http.ServeMux
-	requests  []clusterPeerRequest // captured requests in order
+	server   *httptest.Server
+	addr     string // host:port of the test server
+	serveMux *http.ServeMux
+	requests []clusterPeerRequest // captured requests in order
 }
 
 type clusterPeerRequest struct {
@@ -56,10 +58,8 @@ func newClusterPeerSimulator() *clusterPeerSimulator {
 	mux := http.NewServeMux()
 	sim := &clusterPeerSimulator{serveMux: mux}
 	sim.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes := make([]byte, r.ContentLength)
-		if r.ContentLength > 0 {
-			r.Body.Read(bodyBytes)
-		}
+		bodyBytes, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		sim.requests = append(sim.requests, clusterPeerRequest{
 			Method: r.Method,
 			Path:   r.URL.Path,

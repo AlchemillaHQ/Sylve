@@ -381,14 +381,21 @@ func ParamUint(c *gin.Context, name string) (uint, error) {
 }
 
 func HTTPRequestJSON(method, url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
+	return HTTPRequestJSONContext(context.Background(), method, url, payload, headers, timeout)
+}
+
+func HTTPRequestJSONContext(ctx context.Context, method, url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(requestCtx, method, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -444,4 +451,8 @@ func HTTPRequestJSON(method, url string, payload []byte, headers map[string]stri
 
 func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
 	return HTTPRequestJSON(http.MethodPost, url, payload, headers, timeout)
+}
+
+func HTTPPostJSONWithTimeoutContext(ctx context.Context, url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
+	return HTTPRequestJSONContext(ctx, http.MethodPost, url, payload, headers, timeout)
 }

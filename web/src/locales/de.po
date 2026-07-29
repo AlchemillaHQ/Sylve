@@ -256,6 +256,7 @@ msgid "Cluster"
 msgstr "Cluster"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Backups"
@@ -587,6 +588,7 @@ msgstr "Benutzer"
 msgid "Action"
 msgstr "Aktion"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -844,6 +846,7 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
@@ -950,6 +953,7 @@ msgid "View"
 msgstr "Anzeigen"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -1001,6 +1005,7 @@ msgstr "Anzeigen"
 msgid "Delete"
 msgstr "Löschen"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -1053,6 +1058,7 @@ msgstr "Bearbeiten"
 msgid "Bulk Delete"
 msgstr "Sammellöschung"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -2687,6 +2693,7 @@ msgstr "ZFS-Pools"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -2749,6 +2756,7 @@ msgstr "Aktiviert"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -3278,6 +3286,7 @@ msgstr "Fehler beim Neustarten der VM"
 msgid "Force Delete"
 msgstr "Zwangslöschen"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
@@ -3379,6 +3388,7 @@ msgstr "Fehler konnte nicht kopiert werden"
 msgid "Jail {0}"
 msgstr "Jail {0}"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -3387,6 +3397,7 @@ msgstr "Jail {0}"
 msgid "Success"
 msgstr "Erfolg"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -3408,6 +3419,7 @@ msgstr "Unterbrochen"
 msgid "Failed to load event progress"
 msgstr "Ereignisfortschritt konnte nicht geladen werden"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
@@ -3426,6 +3438,7 @@ msgstr "Quelle"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -3446,6 +3459,7 @@ msgid "Mode"
 msgstr "Modus"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -3513,23 +3527,29 @@ msgstr "Fortschritt wird geladen..."
 #~ msgid "#{0} Event - Error Details"
 #~ msgstr "Ereignis #{0} - Fehlerdetails"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Dest Suffix"
 msgstr "Ziel-Suffix"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Prune"
 msgstr "Bereinigen"
 
 #. 0: value
+#. 0: value
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Keep {0}"
 msgstr "{0} behalten"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Off"
 msgstr "Aus"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3537,36 +3557,44 @@ msgstr "Aus"
 msgid "Schedule"
 msgstr "Zeitplan"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Run"
 msgstr "Letzter Lauf"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Backup job deleted"
 msgstr "Backup-Job gelöscht"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed to delete job"
 msgstr "Job konnte nicht gelöscht werden"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Backup job started"
 msgstr "Backup-Job gestartet"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed to run job"
 msgstr "Job konnte nicht ausgeführt werden"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Run Now"
 msgstr "Jetzt ausführen"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "OOB Restore"
 msgstr "OOB-Wiederherstellung"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
@@ -6028,6 +6056,8 @@ msgstr "Sockel {0}"
 
 #. 0: coreSelectionLimit
 #. 0: coreSelectionLimit
+#. 0: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "You can only select up to {0} cores."
@@ -6064,7 +6094,7 @@ msgstr "{0} belegt"
 msgid "<0/> Back to Sockets"
 msgstr "<0/> Zurück zu Sockeln"
 
-#. 0: selectedCores.size
+#. 0: selectedElsewhereCount + selectedCores.size
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Selected: {0},"
 msgstr "Ausgewählt: {0},"
@@ -14245,6 +14275,7 @@ msgstr ""
 msgid "root is a permanent member of the wheel group and cannot be removed. This restriction is enforced by the system."
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Encrypted"
 msgstr ""
@@ -16595,6 +16626,7 @@ msgstr ""
 msgid "Last Verified"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "View Error"
 msgstr ""

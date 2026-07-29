@@ -350,42 +350,87 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 	})
 
 	fsm.Register("backup_job", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		decodeMutation := func() (*BackupJob, *BackupJobPlacementFence, *BackupJobPlacementFence, error) {
+			var envelope struct {
+				Job                    *BackupJob               `json:"job"`
+				PlacementFence         *BackupJobPlacementFence `json:"placementFence"`
+				PreviousPlacementFence *BackupJobPlacementFence `json:"previousPlacementFence"`
+			}
+			if err := json.Unmarshal(raw, &envelope); err != nil {
+				return nil, nil, nil, err
+			}
+			if envelope.Job != nil {
+				return envelope.Job, envelope.PlacementFence, envelope.PreviousPlacementFence, nil
+			}
+
+			// Compatibility with raw BackupJob entries written before the
+			// placement-fence envelope was introduced.
+			var legacy BackupJob
+			if err := json.Unmarshal(raw, &legacy); err != nil {
+				return nil, nil, nil, err
+			}
+			return &legacy, nil, nil, nil
+		}
+
 		switch action {
 		case "create":
-			var job BackupJob
-			if err := json.Unmarshal(raw, &job); err != nil {
+			job, fence, _, err := decodeMutation()
+			if err != nil {
 				return err
 			}
 			if !validBackupJobMode(job.Mode) {
 				return fmt.Errorf("invalid_backup_job_mode")
 			}
-			return upsertBackupJob(db, &job)
+			return db.Transaction(func(tx *gorm.DB) error {
+				if err := ValidateBackupJobPlacementFenceTxn(tx, job, fence); err != nil {
+					return err
+				}
+				return upsertBackupJob(tx, job)
+			})
 		case "update":
-			var job BackupJob
-			if err := json.Unmarshal(raw, &job); err != nil {
+			job, fence, previousFence, err := decodeMutation()
+			if err != nil {
 				return err
 			}
 			if !validBackupJobMode(job.Mode) {
 				return fmt.Errorf("invalid_backup_job_mode")
 			}
-			// Use Updates with map to properly handle boolean false values
-			return db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-				"name":               job.Name,
-				"target_id":          job.TargetID,
-				"runner_node_id":     job.RunnerNodeID,
-				"mode":               job.Mode,
-				"source_dataset":     job.SourceDataset,
-				"jail_root_dataset":  job.JailRootDataset,
-				"friendly_src":       job.FriendlySrc,
-				"dest_suffix":        job.DestSuffix,
-				"prune_keep_last":    job.PruneKeepLast,
-				"prune_target":       job.PruneTarget,
-				"stop_before_backup": job.StopBeforeBackup,
-				"recursive":          job.Recursive,
-				"cron_expr":          job.CronExpr,
-				"enabled":            job.Enabled,
-				"next_run_at":        job.NextRunAt,
-			}).Error
+			return db.Transaction(func(tx *gorm.DB) error {
+				if previousFence != nil {
+					var existing BackupJob
+					result := tx.Where("id = ?", job.ID).Limit(1).Find(&existing)
+					if result.Error != nil {
+						return result.Error
+					}
+					if result.RowsAffected == 0 {
+						return fmt.Errorf("backup_job_not_found")
+					}
+					if err := ValidateBackupJobPlacementFenceTxn(tx, &existing, previousFence); err != nil {
+						return err
+					}
+				}
+				if err := ValidateBackupJobPlacementFenceTxn(tx, job, fence); err != nil {
+					return err
+				}
+				// Use Updates with map to properly handle boolean false values.
+				return tx.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+					"name":               job.Name,
+					"target_id":          job.TargetID,
+					"runner_node_id":     job.RunnerNodeID,
+					"mode":               job.Mode,
+					"source_dataset":     job.SourceDataset,
+					"jail_root_dataset":  job.JailRootDataset,
+					"friendly_src":       job.FriendlySrc,
+					"dest_suffix":        job.DestSuffix,
+					"prune_keep_last":    job.PruneKeepLast,
+					"prune_target":       job.PruneTarget,
+					"stop_before_backup": job.StopBeforeBackup,
+					"recursive":          job.Recursive,
+					"cron_expr":          job.CronExpr,
+					"enabled":            job.Enabled,
+					"next_run_at":        job.NextRunAt,
+				}).Error
+			})
 		case "delete":
 			var payload struct {
 				ID uint `json:"id"`

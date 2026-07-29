@@ -137,7 +137,7 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := cS.ProposeBackupJobCreate(req, cS.Raft == nil)
+		err := cS.ProposeBackupJobCreateContext(c.Request.Context(), req, cS.Raft == nil)
 
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -186,7 +186,13 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = cS.ProposeBackupJobUpdate(uint(id64), req, cS.Raft == nil)
+		err = cS.ProposeBackupJobUpdateContext(
+			c.Request.Context(),
+			uint(id64),
+			req,
+			cS.Raft == nil,
+			cluster.BackupJobPlacementAuthorization{},
+		)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",

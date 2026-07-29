@@ -1477,7 +1477,7 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		}
 		return activateErr
 	}
-	if err := s.rebindReplicationGuestBackupJobRunners(policy, targetNodeID); err != nil {
+	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, targetNodeID); err != nil {
 		// Ownership and workload activation are already complete. Backup-runner
 		// placement is retriable control-plane hygiene and must not keep the
 		// ownership transition locked indefinitely.
@@ -1555,7 +1555,7 @@ func (s *Service) resumeRollingBackTransition(ctx context.Context, policy *clust
 	if err != nil {
 		return err
 	}
-	if err := s.rebindReplicationGuestBackupJobRunners(policy, rollbackOwner); err != nil {
+	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, rollbackOwner); err != nil {
 		logger.L.Warn().Err(err).
 			Uint("policy_id", policy.ID).
 			Str("target_node_id", rollbackOwner).
@@ -6114,7 +6114,7 @@ func (s *Service) runPolicyOwnershipTransition(
 		return recoverAfterCommittedCutover(activateErr, reason+"_promoting_failed")
 	}
 
-	if err := s.rebindReplicationGuestBackupJobRunners(policy, targetNodeID); err != nil {
+	if err := s.rebindReplicationGuestBackupJobRunners(ctx, policy, targetNodeID); err != nil {
 		logger.L.Warn().Err(err).
 			Uint("policy_id", policy.ID).
 			Str("target_node_id", targetNodeID).
@@ -6283,14 +6283,32 @@ func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string)
 	return req
 }
 
-func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.ReplicationPolicy, runnerNodeID string) error {
+func (s *Service) rebindReplicationGuestBackupJobRunners(
+	ctx context.Context,
+	policy *clusterModels.ReplicationPolicy,
+	runnerNodeID string,
+) error {
 	if s == nil || policy == nil || policy.ID == 0 {
 		return nil
 	}
-	return s.rebindGuestBackupJobRunners(policy.GuestType, policy.GuestID, runnerNodeID)
+	return s.rebindGuestBackupJobRunners(
+		ctx,
+		policy.GuestType,
+		policy.GuestID,
+		runnerNodeID,
+		clusterService.BackupJobPlacementAuthorization{
+			TransitionRunID: strings.TrimSpace(policy.TransitionRunID),
+		},
+	)
 }
 
-func (s *Service) rebindGuestBackupJobRunners(guestType string, guestID uint, runnerNodeID string) error {
+func (s *Service) rebindGuestBackupJobRunners(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	runnerNodeID string,
+	authorization clusterService.BackupJobPlacementAuthorization,
+) error {
 	if s == nil || s.Cluster == nil || guestID == 0 {
 		return nil
 	}
@@ -6322,7 +6340,7 @@ func (s *Service) rebindGuestBackupJobRunners(guestType string, guestID uint, ru
 		}
 
 		req := backupJobToReqWithRunner(&job, runnerNodeID)
-		if err := s.Cluster.ProposeBackupJobUpdate(job.ID, req, false); err != nil {
+		if err := s.Cluster.ProposeBackupJobUpdateContext(ctx, job.ID, req, false, authorization); err != nil {
 			updateErrs = append(updateErrs, fmt.Sprintf("job_%d_update_failed: %v", job.ID, err))
 			continue
 		}
@@ -6396,7 +6414,13 @@ func (s *Service) MigrateGuestOwnership(
 		}
 	}
 
-	if err := s.rebindGuestBackupJobRunners(guestType, guestID, newOwnerNodeID); err != nil {
+	if err := s.rebindGuestBackupJobRunners(
+		ctx,
+		guestType,
+		guestID,
+		newOwnerNodeID,
+		clusterService.BackupJobPlacementAuthorization{GuestOperationToken: operationToken},
+	); err != nil {
 		errs = append(errs, fmt.Sprintf("backup_jobs: %v", err))
 	}
 

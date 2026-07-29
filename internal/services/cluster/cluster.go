@@ -49,6 +49,7 @@ type Service struct {
 	clusterStartHook func(ip string) error
 
 	guestIdentityInventoryAPIForNode func(string, raft.ServerAddress) (string, error)
+	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
 }
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {
