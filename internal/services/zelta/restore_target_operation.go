@@ -583,6 +583,14 @@ func (s *Service) ReconcileBackupTargetRestoreOperationsAfterRestart(ctx context
 			result = errors.Join(result, fmt.Errorf("reconcile_operation_%s: %w", operation.Token, err))
 			continue
 		}
+		execution, err := s.restoreExecutionForOperation(operation.Token)
+		if err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		normalizedPayload.EventID = execution.EventID
+		normalizedPayload.AuditRecordID = execution.Audit.RecordID
+		normalizedPayload.AuditOperationID = execution.OperationID
 		if err := s.enqueueRestoreFromTargetOperation(ctx, normalizedPayload); err != nil {
 			result = errors.Join(result, err)
 		}

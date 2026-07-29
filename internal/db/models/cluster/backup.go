@@ -123,10 +123,12 @@ type BackupJob struct {
 type BackupEvent struct {
 	ID             uint       `gorm:"primaryKey" json:"id"`
 	JobID          *uint      `gorm:"index" json:"jobId"`
+	OperationID    *string    `gorm:"uniqueIndex" json:"-"`
+	AuditRecordID  *uint      `gorm:"index" json:"-"`
 	SourceDataset  string     `json:"sourceDataset"`
 	TargetEndpoint string     `json:"targetEndpoint"`
 	Mode           string     `json:"mode"`
-	Status         string     `gorm:"index" json:"status"` // "running", "success", "failed"
+	Status         string     `gorm:"index" json:"status"` // "queued", "running", "success", "failed", "interrupted"
 	Error          string     `gorm:"type:text" json:"error"`
 	Output         string     `gorm:"type:text" json:"output"` // zelta output
 	StartedAt      time.Time  `gorm:"index" json:"startedAt"`

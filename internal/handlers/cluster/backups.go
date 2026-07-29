@@ -890,9 +890,15 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 		if err := zS.EnqueueRestoreJob(c.Request.Context(), job.ID, req.Snapshot); err != nil {
 			status := http.StatusBadRequest
 			msg := "restore_enqueue_failed"
-			if strings.Contains(err.Error(), "already_running") {
+			errorText := strings.ToLower(err.Error())
+			switch {
+			case strings.Contains(errorText, "already_running"):
 				status = http.StatusConflict
 				msg = "backup_job_already_running"
+			case strings.Contains(errorText, "async_audit_"),
+				strings.Contains(errorText, "restore_event_"):
+				status = http.StatusInternalServerError
+				msg = "restore_observability_unavailable"
 			}
 			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
@@ -903,10 +909,7 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 			return
 		}
 
-		c.Set("AuditAsyncJobID", job.ID)
-		c.Set("AuditAsyncJobType", "backup_restore")
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "restore_job_started",
 			Data:    nil,

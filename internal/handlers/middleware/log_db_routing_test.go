@@ -12,12 +12,75 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	internalDB "github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
+
+func TestAsyncWorkerCompletionBeforeRequestLoggerReturnCannotBeOverwritten(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("UserID", uint(7))
+		c.Set("Username", "restore-user")
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+	router.POST("/api/cluster/backups/targets/:id/restore", func(c *gin.Context) {
+		ref, err := internalDB.PrepareAsyncAuditRecord(
+			auditDB,
+			c.Request.Context(),
+			"backup_target_restore",
+			81,
+			"target-restore:node-a:fast-worker",
+		)
+		if err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := internalDB.FinalizeAsyncAuditOperation(
+			auditDB,
+			ref,
+			"success",
+			"",
+			map[string]any{"eventId": 55, "status": "success"},
+		); err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusAccepted, gin.H{"status": "success", "message": "restore_job_started"})
+	})
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/cluster/backups/targets/81/restore",
+		bytes.NewBufferString(`{"snapshot":"@test"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("response=%d body=%s", response.Code, response.Body.String())
+	}
+
+	var record infoModels.AuditRecord
+	if err := auditDB.First(&record).Error; err != nil {
+		t.Fatalf("load audit: %v", err)
+	}
+	if record.Status != "success" || record.AsyncOperationID != "target-restore:node-a:fast-worker" {
+		t.Fatalf("terminal audit was overwritten by middleware: %+v", record)
+	}
+	if !strings.Contains(record.Action, `"eventId":55`) || strings.Contains(record.Action, "restore_job_started") {
+		t.Fatalf("worker outcome was not authoritative: %s", record.Action)
+	}
+}
 
 func TestRequestLoggerMiddlewareWritesAuditToTelemetryDB(t *testing.T) {
 	gin.SetMode(gin.TestMode)

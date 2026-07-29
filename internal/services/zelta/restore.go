@@ -47,11 +47,14 @@ const restoreJobQueueName = "zelta-restore-run"
 
 // restoreJobPayload is the goqite queue payload for a restore job.
 type restoreJobPayload struct {
-	JobID          uint   `json:"job_id"`
-	Snapshot       string `json:"snapshot"` // e.g. "@zelta_2026-02-18_12.00.00"
-	RemoteDataset  string `json:"remote_dataset,omitempty"`
-	OperationToken string `json:"operation_token,omitempty"`
-	HolderNodeID   string `json:"holder_node_id,omitempty"`
+	JobID            uint   `json:"job_id"`
+	Snapshot         string `json:"snapshot"` // e.g. "@zelta_2026-02-18_12.00.00"
+	RemoteDataset    string `json:"remote_dataset,omitempty"`
+	OperationToken   string `json:"operation_token,omitempty"`
+	HolderNodeID     string `json:"holder_node_id,omitempty"`
+	EventID          uint   `json:"event_id,omitempty"`
+	AuditRecordID    uint   `json:"audit_record_id,omitempty"`
+	AuditOperationID string `json:"audit_operation_id,omitempty"`
 }
 
 // ListRemoteSnapshots SSHs to the backup target and lists snapshots for a job's destination dataset.
@@ -140,14 +143,60 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		return err
 	}
 
-	if err := db.EnqueueJSON(ctx, restoreJobQueueName, restoreJobPayload{
-		JobID: jobID, Snapshot: normalizedSnapshot, RemoteDataset: remoteDataset,
-		OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
-	}); err != nil {
+	destinationDataset := strings.TrimSpace(job.SourceDataset)
+	if job.Mode == clusterModels.BackupJobModeJail {
+		destinationDataset = strings.TrimSpace(job.JailRootDataset)
+	}
+	eventSource := job.Name + normalizedSnapshot
+	if job.Mode == clusterModels.BackupJobModeVM {
+		eventSource = remoteDataset + normalizedSnapshot
+	}
+	jobIDCopy := job.ID
+	execution, event, observabilityErr := s.prepareRestoreObservability(
+		ctx,
+		restoreAuditTypeJob,
+		job.ID,
+		handle.Token,
+		restoreEventSpec{
+			JobID:          &jobIDCopy,
+			SourceDataset:  eventSource,
+			TargetEndpoint: destinationDataset,
+		},
+	)
+	if observabilityErr != nil {
 		s.releaseReservedJob(jobID)
 		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
 		defer abortCancel()
-		return errors.Join(err, s.abortDurableBackupJobOperation(abortCtx, handle))
+		return errors.Join(observabilityErr, s.abortDurableBackupJobOperation(abortCtx, handle))
+	}
+	if restoreEventTerminal(event.Status) {
+		s.releaseReservedJob(jobID)
+		return s.finishDurableBackupJobOperation(handle)
+	}
+
+	queuePayload := restoreJobPayload{
+		JobID: jobID, Snapshot: normalizedSnapshot, RemoteDataset: remoteDataset,
+		OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
+		EventID: execution.EventID, AuditRecordID: execution.Audit.RecordID,
+		AuditOperationID: execution.Audit.OperationID,
+	}
+	enqueueErr := error(nil)
+	if s.backupOperationEnqueue != nil {
+		enqueueErr = s.backupOperationEnqueue(ctx, restoreJobQueueName, queuePayload)
+	} else {
+		enqueueErr = db.EnqueueJSON(ctx, restoreJobQueueName, queuePayload)
+	}
+	if err := enqueueErr; err != nil {
+		s.releaseReservedJob(jobID)
+		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
+		defer abortCancel()
+		abortErr := s.abortDurableBackupJobOperation(abortCtx, handle)
+		if abortErr == nil {
+			if eventErr := s.finalizeRestoreEventByID(event.ID, fmt.Errorf("restore_queue_failed: %w", err), ""); eventErr != nil {
+				return errors.Join(err, eventErr)
+			}
+		}
+		return errors.Join(err, abortErr)
 	}
 	return nil
 }
@@ -276,19 +325,28 @@ func (s *Service) runRestoreJob(
 	if err := s.ensureLocalPoolExists(ctx, destinationRoot); err != nil {
 		return fmt.Errorf("restore_preflight_pool_check_failed: %w", err)
 	}
-	event := clusterModels.BackupEvent{
-		JobID:          &job.ID,
-		Mode:           "restore",
-		Status:         "running",
-		SourceDataset:  job.Name + snapshot,
-		TargetEndpoint: sourceDataset,
-		StartedAt:      time.Now().UTC(),
+	var event clusterModels.BackupEvent
+	if execution, managed := restoreExecutionFromContext(ctx); managed {
+		current, loadErr := s.GetLocalBackupEvent(execution.EventID)
+		if loadErr != nil {
+			return fmt.Errorf("load_restore_event_failed: %w", loadErr)
+		}
+		event = *current
+	} else {
+		event = clusterModels.BackupEvent{
+			JobID:          &job.ID,
+			Mode:           "restore",
+			Status:         "running",
+			SourceDataset:  job.Name + snapshot,
+			TargetEndpoint: sourceDataset,
+			StartedAt:      time.Now().UTC(),
+		}
+		if err := s.DB.Create(&event).Error; err != nil {
+			return fmt.Errorf("create_restore_event_failed: %w", err)
+		}
+		stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
+		defer stopHeartbeat()
 	}
-	if err := s.DB.Create(&event).Error; err != nil {
-		return fmt.Errorf("create_restore_event_failed: %w", err)
-	}
-	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
-	defer stopHeartbeat()
 	// Verify the replication lease before the restore operation itself becomes
 	// the durable guest-wide exclusion lock.
 	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 && s.Cluster != nil {
@@ -1242,117 +1300,137 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) err
 	return errors.Join(restoreErrors...)
 }
 
-func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err error, output string) {
-	if event == nil || event.ID == 0 {
-		return
-	}
-
-	now := time.Now().UTC()
-	event.CompletedAt = &now
-	event.Output = output
-	if err != nil {
-		event.Status = "failed"
-		event.Error = err.Error()
-	} else {
-		event.Status = "success"
-		event.Error = ""
-	}
-	if saveErr := s.DB.Save(event).Error; saveErr != nil {
-		logger.L.Warn().Err(saveErr).Uint("event_id", event.ID).Msg("failed_to_finalize_restore_event")
-	}
-
-	if event.JobID != nil && s.TelemetryDB != nil {
-		auditStatus := "success"
-		errMsg := ""
-		if err != nil {
-			auditStatus = "failed"
-			errMsg = err.Error()
-		}
-		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_restore", *event.JobID, auditStatus, errMsg, map[string]any{
-			"eventId": event.ID,
-			"status":  auditStatus,
-			"error":   errMsg,
-		})
-	}
-
-	s.emitLeftPanelRefresh(fmt.Sprintf("restore_event_finalized_%d", event.ID))
-}
-
 // registerRestoreJob registers the restore queue handler with goqite.
 func (s *Service) registerRestoreJob() {
-	db.QueueRegisterJSON(restoreJobQueueName, func(ctx context.Context, payload restoreJobPayload) (retErr error) {
-		if payload.JobID == 0 {
-			logger.L.Warn().Msg("queued_restore_job_invalid_payload_job_id")
-			return nil
-		}
-		requestBytes, err := json.Marshal(restoreOperationRequest{
-			Snapshot: payload.Snapshot, RemoteDataset: payload.RemoteDataset,
-		})
-		if err != nil {
-			return err
-		}
-		handle, execute, err := s.prepareQueuedBackupJobOperation(
-			ctx,
-			payload.JobID,
-			clusterModels.BackupJobOperationRestore,
-			payload.OperationToken,
-			payload.HolderNodeID,
-			string(requestBytes),
-		)
-		if err != nil {
-			return err
-		}
-		if !execute {
-			s.releaseReservedJob(payload.JobID)
-			return nil
-		}
+	db.QueueRegisterJSON(restoreJobQueueName, s.handleRestoreJobQueue)
+}
 
-		operationOwned := true
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				cleanupErr := error(nil)
-				if operationOwned {
-					cleanupErr = s.finishDurableBackupJobOperation(handle)
-				}
-				logger.L.Error().
-					Interface("panic", recovered).
-					Uint("job_id", payload.JobID).
-					Str("stack", string(debug.Stack())).
-					Err(cleanupErr).
-					Msg("queued_restore_job_panicked")
-				retErr = cleanupErr
-			}
-		}()
-
-		var job clusterModels.BackupJob
-		if err := s.DB.Preload("Target").First(&job, payload.JobID).Error; err != nil {
-			s.releaseReservedJob(payload.JobID)
-			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_restore_job_not_found")
-			if cleanupErr := s.finishDurableBackupJobOperation(handle); cleanupErr != nil {
-				return cleanupErr
-			}
-			operationOwned = false
-			return nil
-		}
-
-		runErr := s.runRestoreJob(ctx, &job, payload.Snapshot, payload.RemoteDataset)
-		if isJobAlreadyRunningErr(runErr) {
-			operationOwned = false
-			s.releaseReservedJob(payload.JobID)
-			logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_restore_job_duplicate_discarded")
-			return nil
-		}
-		if runErr != nil {
-			logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_restore_job_failed")
-		}
-		if cleanupErr := s.finishDurableBackupJobOperation(handle); cleanupErr != nil {
-			return cleanupErr
-		}
-		operationOwned = false
-		// Restore execution failures are terminal and recorded by the restore
-		// path. Operation-control failures alone retain the queue message.
+func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobPayload) (retErr error) {
+	if payload.JobID == 0 {
+		logger.L.Warn().Msg("queued_restore_job_invalid_payload_job_id")
 		return nil
+	}
+	requestBytes, err := json.Marshal(restoreOperationRequest{
+		Snapshot: payload.Snapshot, RemoteDataset: payload.RemoteDataset,
 	})
+	if err != nil {
+		return err
+	}
+	handle, execute, err := s.prepareQueuedBackupJobOperation(
+		ctx,
+		payload.JobID,
+		clusterModels.BackupJobOperationRestore,
+		payload.OperationToken,
+		payload.HolderNodeID,
+		string(requestBytes),
+	)
+	if err != nil {
+		return err
+	}
+	if !execute {
+		s.releaseReservedJob(payload.JobID)
+		_ = s.reconcileRestoreEventWithoutExecution(handle.Token)
+		return nil
+	}
+	defer s.releaseReservedJob(payload.JobID)
+
+	var event *clusterModels.BackupEvent
+	var runErr error
+	outcomeReady := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			runErr = fmt.Errorf("panic_in_restore_job: %v", recovered)
+			outcomeReady = true
+			logger.L.Error().
+				Interface("panic", recovered).
+				Uint("job_id", payload.JobID).
+				Str("stack", string(debug.Stack())).
+				Msg("queued_restore_job_panicked")
+		}
+		if !outcomeReady {
+			return
+		}
+		if event == nil || event.ID == 0 {
+			retErr = errors.Join(retErr, runErr)
+			return
+		}
+		if err := s.finalizeRestoreEventByID(event.ID, runErr, ""); err != nil {
+			retErr = errors.Join(retErr, err)
+			return
+		}
+		if err := s.finishDurableBackupJobOperation(handle); err != nil {
+			retErr = errors.Join(retErr, err)
+		}
+	}()
+
+	var job clusterModels.BackupJob
+	jobErr := s.DB.Preload("Target").First(&job, payload.JobID).Error
+	jobID := payload.JobID
+	spec := restoreEventSpec{
+		JobID:          &jobID,
+		SourceDataset:  fmt.Sprintf("backup-job-%d%s", payload.JobID, payload.Snapshot),
+		TargetEndpoint: "unknown",
+	}
+	if jobErr == nil {
+		destinationDataset := strings.TrimSpace(job.SourceDataset)
+		if job.Mode == clusterModels.BackupJobModeJail {
+			destinationDataset = strings.TrimSpace(job.JailRootDataset)
+		}
+		spec.SourceDataset = job.Name + payload.Snapshot
+		if job.Mode == clusterModels.BackupJobModeVM {
+			spec.SourceDataset = payload.RemoteDataset + payload.Snapshot
+		}
+		spec.TargetEndpoint = destinationDataset
+	}
+	execution := restoreExecution{
+		EventID:     payload.EventID,
+		OperationID: handle.Token,
+		Audit: db.AsyncAuditRef{
+			RecordID:    payload.AuditRecordID,
+			OperationID: handle.Token,
+		},
+	}
+	event, err = s.restoreEventForExecution(execution, spec)
+	if err != nil {
+		return err
+	}
+	execution.EventID = event.ID
+	if restoreEventTerminal(event.Status) {
+		s.finalizeRestoreAuditForEvent(event)
+		return s.finishDurableBackupJobOperation(handle)
+	}
+	started, err := s.beginRestoreEvent(event.ID, handle.Token)
+	if err != nil {
+		return err
+	}
+	if !started {
+		return s.finishDurableBackupJobOperation(handle)
+	}
+	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
+	defer stopHeartbeat()
+	runCtx := withRestoreExecution(ctx, execution)
+
+	outcomeReady = true
+	runErr = jobErr
+	if runErr == nil {
+		if s.restoreJobRun != nil {
+			runErr = s.restoreJobRun(runCtx, &job, payload.Snapshot, payload.RemoteDataset)
+		} else {
+			runErr = s.runRestoreJob(runCtx, &job, payload.Snapshot, payload.RemoteDataset)
+		}
+	}
+	if isJobAlreadyRunningErr(runErr) {
+		outcomeReady = false
+		logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_restore_job_duplicate_discarded")
+		return nil
+	}
+	if runErr != nil {
+		logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_restore_job_failed")
+	}
+	// The common defer records the exact event/audit outcome before releasing
+	// the durable operation. Operational failures are consumed; only control
+	// failures retain the queue message.
+	return nil
 }
 
 func remoteDatasetForJob(job *clusterModels.BackupJob) string {

@@ -344,10 +344,14 @@ func (s *Service) ReconcileBackupJobOperationsAfterRestart(ctx context.Context) 
 			var request restoreOperationRequest
 			if err := json.Unmarshal([]byte(operation.RequestPayload), &request); err != nil {
 				enqueueErr = fmt.Errorf("decode_restore_operation_%d: %w", operation.JobID, err)
+			} else if execution, err := s.restoreExecutionForOperation(operation.Token); err != nil {
+				enqueueErr = err
 			} else {
 				enqueueErr = enqueue(restoreJobQueueName, restoreJobPayload{
 					JobID: operation.JobID, Snapshot: request.Snapshot, RemoteDataset: request.RemoteDataset,
 					OperationToken: operation.Token, HolderNodeID: operation.HolderNodeID,
+					EventID: execution.EventID, AuditRecordID: execution.Audit.RecordID,
+					AuditOperationID: execution.OperationID,
 				})
 			}
 		default:

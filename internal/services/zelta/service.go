@@ -111,6 +111,7 @@ type Service struct {
 	localDatasetMounter          func(context.Context, string) error
 
 	backupOperationEnqueue            func(context.Context, string, any) error
+	restoreJobRun                     func(context.Context, *clusterModels.BackupJob, string, string) error
 	restoreFromTargetOperationEnqueue func(context.Context, string, any) error
 	restoreFromTargetRun              func(context.Context, *clusterModels.BackupTarget, restoreFromTargetPayload) error
 }
@@ -447,6 +448,9 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 	if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_backup_events")
 	}
+	if err := s.ReconcileRestoreObservabilityAfterRestart(); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability")
+	}
 
 	ticker := time.NewTicker(30 * time.Second)
 	cleanupTicker := time.NewTicker(5 * time.Minute)
@@ -471,6 +475,9 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 			s.AutoDiscoverAndRegisterKeys(ctx)
 			if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 				logger.L.Warn().Err(err).Msg("periodic_stale_event_cleanup_failed")
+			}
+			if err := s.ReconcileRestoreObservabilityAfterRestart(); err != nil {
+				logger.L.Warn().Err(err).Msg("periodic_restore_observability_reconcile_failed")
 			}
 		}
 	}
@@ -2303,8 +2310,10 @@ func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sort
 
 func (s *Service) CleanupStaleEvents(_ context.Context, maxAge time.Duration) error {
 	cutoff := time.Now().UTC().Add(-maxAge)
+	// Exact restore operations are reconciled against their durable outbox
+	// state; age alone must not interrupt a saturated but valid queued restore.
 	query := s.DB.Model(&clusterModels.BackupEvent{}).
-		Where("status = ? AND updated_at < ?", "running", cutoff)
+		Where("status = ? AND updated_at < ? AND operation_id IS NULL", "running", cutoff)
 
 	activeJobIDs := s.activeJobIDs()
 	if len(activeJobIDs) > 0 {

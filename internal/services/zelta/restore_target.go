@@ -36,6 +36,9 @@ type restoreFromTargetPayload struct {
 	RestoreNetwork     *bool  `json:"restore_network,omitempty"`
 	OperationToken     string `json:"operation_token,omitempty"`
 	HolderNodeID       string `json:"holder_node_id,omitempty"`
+	EventID            uint   `json:"event_id,omitempty"`
+	AuditRecordID      uint   `json:"audit_record_id,omitempty"`
+	AuditOperationID   string `json:"audit_operation_id,omitempty"`
 }
 
 type BackupTargetDatasetInfo struct {
@@ -510,12 +513,41 @@ func (s *Service) EnqueueRestoreFromTarget(
 	if err != nil {
 		return err
 	}
+
+	execution, event, observabilityErr := s.prepareRestoreObservability(
+		ctx,
+		restoreAuditTypeTarget,
+		targetID,
+		handle.Token,
+		restoreEventSpec{
+			SourceDataset:  payload.RemoteDataset + payload.Snapshot,
+			TargetEndpoint: payload.DestinationDataset,
+		},
+	)
+	if observabilityErr != nil {
+		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
+		defer abortCancel()
+		return errors.Join(observabilityErr, s.abortDurableBackupTargetRestoreOperation(abortCtx, handle))
+	}
+	if restoreEventTerminal(event.Status) {
+		return s.finishDurableBackupTargetRestoreOperation(handle)
+	}
+
 	payload.OperationToken = handle.Token
 	payload.HolderNodeID = handle.HolderNodeID
+	payload.EventID = execution.EventID
+	payload.AuditRecordID = execution.Audit.RecordID
+	payload.AuditOperationID = execution.Audit.OperationID
 	if err := s.enqueueRestoreFromTargetOperation(ctx, payload); err != nil {
 		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
 		defer abortCancel()
-		return errors.Join(err, s.abortDurableBackupTargetRestoreOperation(abortCtx, handle))
+		abortErr := s.abortDurableBackupTargetRestoreOperation(abortCtx, handle)
+		if abortErr == nil {
+			if eventErr := s.finalizeRestoreEventByID(event.ID, fmt.Errorf("restore_queue_failed: %w", err), ""); eventErr != nil {
+				return errors.Join(err, eventErr)
+			}
+		}
+		return errors.Join(err, abortErr)
 	}
 	return nil
 }
@@ -541,46 +573,84 @@ func (s *Service) handleRestoreFromTargetQueue(
 		return err
 	}
 	if !execute {
+		_ = s.reconcileRestoreEventWithoutExecution(handle.Token)
 		return nil
 	}
+	defer s.releaseActiveBackupTargetRestoreToken(handle.Token)
 
-	operationOwned := true
+	var event *clusterModels.BackupEvent
+	var runErr error
+	outcomeReady := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			cleanupErr := error(nil)
-			if operationOwned {
-				cleanupErr = s.finishDurableBackupTargetRestoreOperation(handle)
-			}
+			runErr = fmt.Errorf("panic_in_restore_from_target: %v", recovered)
+			outcomeReady = true
 			logger.L.Error().
 				Interface("panic", recovered).
 				Uint("target_id", payload.TargetID).
 				Str("remote_dataset", strings.TrimSpace(payload.RemoteDataset)).
 				Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
 				Str("stack", string(debug.Stack())).
-				Err(cleanupErr).
 				Msg("queued_restore_from_target_job_panicked")
-			retErr = cleanupErr
+		}
+		if !outcomeReady {
+			return
+		}
+		if event == nil || event.ID == 0 {
+			retErr = errors.Join(retErr, runErr)
+			return
+		}
+		if err := s.finalizeRestoreEventByID(event.ID, runErr, ""); err != nil {
+			retErr = errors.Join(retErr, err)
+			return
+		}
+		if err := s.finishDurableBackupTargetRestoreOperation(handle); err != nil {
+			retErr = errors.Join(retErr, err)
 		}
 	}()
 
-	target, err := s.getRestoreTarget(payload.TargetID)
+	execution := restoreExecution{
+		EventID:     payload.EventID,
+		OperationID: handle.Token,
+		Audit: db.AsyncAuditRef{
+			RecordID:    payload.AuditRecordID,
+			OperationID: handle.Token,
+		},
+	}
+	event, err = s.restoreEventForExecution(execution, restoreEventSpec{
+		SourceDataset:  payload.RemoteDataset + payload.Snapshot,
+		TargetEndpoint: payload.DestinationDataset,
+	})
 	if err != nil {
-		logger.L.Warn().
-			Err(err).
-			Uint("target_id", payload.TargetID).
-			Msg("queued_restore_from_target_job_target_lookup_failed")
-		if cleanupErr := s.finishDurableBackupTargetRestoreOperation(handle); cleanupErr != nil {
-			return cleanupErr
-		}
-		operationOwned = false
-		return nil
+		return err
 	}
+	execution.EventID = event.ID
+	if restoreEventTerminal(event.Status) {
+		s.finalizeRestoreAuditForEvent(event)
+		return s.finishDurableBackupTargetRestoreOperation(handle)
+	}
+	started, err := s.beginRestoreEvent(event.ID, handle.Token)
+	if err != nil {
+		return err
+	}
+	if !started {
+		return s.finishDurableBackupTargetRestoreOperation(handle)
+	}
+	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
+	defer stopHeartbeat()
+	runCtx := withRestoreExecution(ctx, execution)
 
-	runRestore := s.runRestoreFromTarget
-	if s.restoreFromTargetRun != nil {
-		runRestore = s.restoreFromTargetRun
+	outcomeReady = true
+	target, targetErr := s.getRestoreTarget(payload.TargetID)
+	runErr = targetErr
+	if runErr == nil {
+		runRestore := s.runRestoreFromTarget
+		if s.restoreFromTargetRun != nil {
+			runRestore = s.restoreFromTargetRun
+		}
+		runErr = runRestore(runCtx, &target, payload)
 	}
-	if runErr := runRestore(ctx, &target, payload); runErr != nil {
+	if runErr != nil {
 		logger.L.Warn().
 			Err(runErr).
 			Uint("target_id", payload.TargetID).
@@ -588,12 +658,9 @@ func (s *Service) handleRestoreFromTargetQueue(
 			Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
 			Msg("queued_restore_from_target_job_failed")
 	}
-	if cleanupErr := s.finishDurableBackupTargetRestoreOperation(handle); cleanupErr != nil {
-		return cleanupErr
-	}
-	operationOwned = false
-	// Execution failures are terminal and are recorded by the restore path.
-	// Only operation-control failures retain the queue message.
+	// The common defer records the exact event/audit outcome before releasing
+	// the durable operation. Operational failures are consumed; only control
+	// failures retain the queue message.
 	return nil
 }
 
@@ -703,39 +770,41 @@ func (s *Service) runRestoreFromTargetVM(
 		remoteEndpoint = remoteEndpoint + snapshot
 	}
 
-	event := clusterModels.BackupEvent{
-		JobID:          jobID,
-		Mode:           "restore",
-		Status:         "running",
-		SourceDataset:  remoteDataset + snapshot,
-		TargetEndpoint: destinationDataset,
-		StartedAt:      time.Now().UTC(),
+	var event clusterModels.BackupEvent
+	execution, managedEvent := restoreExecutionFromContext(ctx)
+	if managedEvent {
+		current, loadErr := s.GetLocalBackupEvent(execution.EventID)
+		if loadErr != nil {
+			return fmt.Errorf("load_restore_event_failed: %w", loadErr)
+		}
+		event = *current
+	} else {
+		event = clusterModels.BackupEvent{
+			JobID:          jobID,
+			Mode:           "restore",
+			Status:         "running",
+			SourceDataset:  remoteDataset + snapshot,
+			TargetEndpoint: destinationDataset,
+			StartedAt:      time.Now().UTC(),
+		}
+		if err := s.DB.Create(&event).Error; err != nil {
+			return fmt.Errorf("create_restore_event_failed: %w", err)
+		}
 	}
-	if err := s.DB.Create(&event).Error; err != nil {
-		return fmt.Errorf("create_restore_event_failed: %w", err)
+	stopHeartbeat := func() {}
+	if !managedEvent {
+		stopHeartbeat = s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 	}
-	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 	defer func() {
 		stopHeartbeat()
+		if managedEvent {
+			return
+		}
 		output := ""
 		if current, err := s.GetLocalBackupEvent(event.ID); err == nil && current != nil {
 			output = current.Output
 		}
 		s.finalizeRestoreEvent(&event, retErr, output)
-
-		if s.TelemetryDB != nil {
-			auditStatus := "success"
-			errMsg := ""
-			if retErr != nil {
-				auditStatus = "failed"
-				errMsg = retErr.Error()
-			}
-			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_target_restore", target.ID, auditStatus, errMsg, map[string]any{
-				"eventId": event.ID,
-				"status":  auditStatus,
-				"error":   errMsg,
-			})
-		}
 	}()
 	defer recoverOperationPanic("restore_from_target_vm", &retErr)
 
@@ -1206,6 +1275,13 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	event := clusterModels.BackupEvent{}
 	if sharedEventID != nil && *sharedEventID > 0 {
 		activeEventID = *sharedEventID
+	} else if execution, managed := restoreExecutionFromContext(ctx); managed {
+		activeEventID = execution.EventID
+		current, loadErr := s.GetLocalBackupEvent(activeEventID)
+		if loadErr != nil {
+			return "", fmt.Errorf("load_restore_event_failed: %w", loadErr)
+		}
+		event = *current
 	} else {
 		event = clusterModels.BackupEvent{
 			JobID:          jobID,
@@ -1564,13 +1640,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 
 	if ownsEvent {
 		s.finalizeRestoreEvent(&event, nil, output)
-
-		if s.TelemetryDB != nil {
-			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "backup_target_restore", target.ID, "success", "", map[string]any{
-				"eventId": event.ID,
-				"status":  "success",
-			})
-		}
 	} else {
 		appendEventOutput(fmt.Sprintf("vm_dataset_restore_complete: %s -> %s", remoteEndpoint, destinationDataset))
 	}

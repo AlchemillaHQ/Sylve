@@ -530,6 +530,9 @@ func restoreFromTargetEnqueueError(err error) (int, string) {
 		strings.Contains(message, "request timed out"),
 		strings.Contains(message, "local_node_id_unavailable"):
 		return http.StatusServiceUnavailable, "restore_reservation_unavailable"
+	case strings.Contains(message, "async_audit_"),
+		strings.Contains(message, "restore_event_"):
+		return http.StatusInternalServerError, "restore_observability_unavailable"
 	case strings.Contains(message, "guest_identity_inventory_scan_failed"),
 		strings.Contains(message, "restore_destination_dataset_check_failed"):
 		return http.StatusInternalServerError, "restore_precheck_failed"
@@ -683,10 +686,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			return
 		}
 
-		c.Set("AuditAsyncJobID", uint(id64))
-		c.Set("AuditAsyncJobType", "backup_target_restore")
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "restore_job_started",
 			Data:    nil,

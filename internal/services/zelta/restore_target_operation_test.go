@@ -22,7 +22,7 @@ import (
 
 func newBackupTargetRestoreOperationService(t *testing.T) (*Service, clusterModels.BackupTarget) {
 	t.Helper()
-	database := newZeltaServiceTestDB(t, &clusterModels.BackupTarget{})
+	database := newZeltaServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	target := clusterModels.BackupTarget{
 		ID: 81, Name: "target", SSHHost: "root@backup", SSHPort: 22,
 		BackupRoot: "tank/backups", Enabled: true,
@@ -257,11 +257,8 @@ func TestOOBRestoreOperationIDRetryAfterCompletionIsIdempotent(t *testing.T) {
 	); err != nil {
 		t.Fatalf("same-operation retry: %v", err)
 	}
-	if len(payloads) != 2 || payloads[0].OperationToken != payloads[1].OperationToken {
-		t.Fatalf("same operation ID tokens = %+v", payloads)
-	}
-	if err := service.handleRestoreFromTargetQueue(context.Background(), payloads[1]); err != nil {
-		t.Fatalf("completed retry message: %v", err)
+	if len(payloads) != 1 {
+		t.Fatalf("completed retry published another queue message: %+v", payloads)
 	}
 	if runs.Load() != 1 {
 		t.Fatalf("completed retry produced %d effective runs", runs.Load())
@@ -278,10 +275,10 @@ func TestOOBRestoreOperationIDRetryAfterCompletionIsIdempotent(t *testing.T) {
 	); err != nil {
 		t.Fatalf("new intentional operation: %v", err)
 	}
-	if payloads[2].OperationToken == payloads[0].OperationToken {
+	if payloads[1].OperationToken == payloads[0].OperationToken {
 		t.Fatal("new operation ID reused completed token")
 	}
-	if err := service.handleRestoreFromTargetQueue(context.Background(), payloads[2]); err != nil {
+	if err := service.handleRestoreFromTargetQueue(context.Background(), payloads[1]); err != nil {
 		t.Fatalf("new intentional execution: %v", err)
 	}
 	if runs.Load() != 2 {

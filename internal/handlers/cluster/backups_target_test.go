@@ -644,6 +644,12 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 			wantMessage: "restore_guest_identity_unavailable",
 		},
 		{
+			name:        "observability unavailable",
+			err:         errors.New("prepare_async_audit_record: database locked"),
+			wantStatus:  http.StatusInternalServerError,
+			wantMessage: "restore_observability_unavailable",
+		},
+		{
 			name:        "inventory scan failed",
 			err:         errors.New("guest_identity_inventory_scan_failed"),
 			wantStatus:  http.StatusInternalServerError,

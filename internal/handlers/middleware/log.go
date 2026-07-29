@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	internalDB "github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 
@@ -294,6 +295,54 @@ func (w bodyWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+func persistRequestAuditResult(auditDB *gorm.DB, desired *infoModels.AuditRecord) error {
+	if auditDB == nil || desired == nil || desired.ID == 0 {
+		return nil
+	}
+
+	return auditDB.Transaction(func(tx *gorm.DB) error {
+		var current infoModels.AuditRecord
+		if err := tx.First(&current, desired.ID).Error; err != nil {
+			return err
+		}
+
+		updates := map[string]any{
+			"user_id":   desired.UserID,
+			"user":      desired.User,
+			"auth_type": desired.AuthType,
+			"node":      desired.Node,
+			"action":    desired.Action,
+			"ended":     desired.Ended,
+			"duration":  desired.Duration,
+			"version":   desired.Version,
+		}
+
+		expectedStatus := current.Status
+		switch current.Status {
+		case "started":
+			updates["status"] = desired.Status
+			updates["async_job_id"] = desired.AsyncJobID
+			updates["async_job_type"] = desired.AsyncJobType
+			updates["async_operation_id"] = desired.AsyncOperationID
+			updates["error"] = desired.Error
+		case "pending":
+			// The handler persisted the exact async identity before queue
+			// publication. Keep it pending while recording the HTTP response.
+			// If a worker wins the CAS first, the update below affects no row
+			// and cannot overwrite its terminal result.
+		default:
+			// A fast worker already made the audit terminal. Its operation
+			// response and completion timestamp are authoritative.
+			return nil
+		}
+
+		result := tx.Model(&infoModels.AuditRecord{}).
+			Where("id = ? AND status = ?", desired.ID, expectedStatus).
+			Updates(updates)
+		return result.Error
+	})
+}
+
 func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Service) gin.HandlerFunc {
 	if telemetryDB == nil {
 		panic("request logger middleware requires a non-nil telemetry database")
@@ -412,6 +461,12 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 
 		if err := auditDB.Create(log).Error; err != nil {
 			logger.L.Error().Msgf("Failed to create audit log: %v", err)
+		} else if log.ID > 0 {
+			// Async handlers bind this already-persisted row to their exact
+			// operation before publishing a queue message.
+			c.Request = c.Request.WithContext(
+				internalDB.ContextWithAuditRecordID(c.Request.Context(), log.ID),
+			)
 		}
 
 		c.Next()
@@ -490,7 +545,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			}
 		}
 
-		if err := auditDB.Save(log).Error; err != nil {
+		if err := persistRequestAuditResult(auditDB, log); err != nil {
 			logger.L.Error().Msgf("Failed to update audit log: %v", err)
 		}
 	}

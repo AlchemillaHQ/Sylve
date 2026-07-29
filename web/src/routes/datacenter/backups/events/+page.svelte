@@ -279,6 +279,12 @@
 					label: 'Interrupted',
 					className: 'text-orange-500'
 				};
+			case 'queued':
+				return {
+					icon: 'mdi:clock-outline',
+					label: 'Queued',
+					className: 'text-blue-500'
+				};
 			case 'running':
 				return {
 					icon: 'mdi:progress-clock',

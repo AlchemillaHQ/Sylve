@@ -351,7 +351,7 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 			[]byte(`{"snapshot":"@bk_j1_c1_test","encryptionKey":"secret","encryptionKeyFormat":"passphrase"}`),
 			map[string]string{"X-Request-ID": requestID, "X-Correlation-ID": "audit-correlation"},
 		)
-		if response.Code != http.StatusOK {
+		if response.Code != http.StatusAccepted {
 			t.Fatalf("ingress %s response=%d body=%s", nodes[ingressIndex].id, response.Code, response.Body.String())
 		}
 		if response.Header().Get("X-Request-ID") != requestID {
