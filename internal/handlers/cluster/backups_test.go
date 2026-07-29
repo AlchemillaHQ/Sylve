@@ -23,7 +23,7 @@ func newBackupsRouter(cS *cluster.Service) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/cluster/backups/jobs", BackupJobs(cS))
-	r.GET("/cluster/backups/targets/:id/running-job-ids", BackupTargetRunningJobIDs(cS))
+	r.GET("/cluster/backups/targets/:id/running-jobs", BackupTargetRunningJobIDs(cS))
 	r.POST("/cluster/backups/jobs", CreateBackupJob(cS))
 	r.DELETE("/cluster/backups/jobs/:id", DeleteBackupJob(cS))
 	return r
@@ -133,14 +133,59 @@ func TestBackupJobsHandlerFiltersByVM(t *testing.T) {
 	}
 }
 
-func TestBackupTargetRunningJobIDs(t *testing.T) {
+func TestBackupTargetRunningJobIDsUsesDurableRemoteRunnerOperations(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupEvent{})
 	cS := &cluster.Service{DB: db}
 	r := newBackupsRouter(cS)
 
-	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-job-ids", nil)
+	jobs := []clusterModels.BackupJob{
+		{ID: 201, Name: "remote-runner-active", TargetID: 1, RunnerNodeID: "runner-a", Mode: "dataset", CronExpr: "0 0 * * *"},
+		{ID: 202, Name: "ingress-local-event-only", TargetID: 1, RunnerNodeID: "ingress-b", Mode: "dataset", CronExpr: "0 0 * * *"},
+		{ID: 203, Name: "other-target", TargetID: 2, RunnerNodeID: "runner-c", Mode: "dataset", CronExpr: "0 0 * * *"},
+		{ID: 204, Name: "remote-restore-finishing", TargetID: 1, RunnerNodeID: "runner-d", Mode: "dataset", CronExpr: "0 0 * * *"},
+	}
+	if err := db.Create(&jobs).Error; err != nil {
+		t.Fatalf("seed jobs: %v", err)
+	}
+	now := time.Now().UTC()
+	operations := []clusterModels.BackupJobOperation{
+		{JobID: 201, Token: "backup:runner-a:active", Operation: clusterModels.BackupJobOperationBackup, State: clusterModels.BackupJobOperationRunning, HolderNodeID: "runner-a", Revision: 2, AcquiredAt: now, UpdatedAt: now},
+		{JobID: 203, Token: "backup:runner-c:other", Operation: clusterModels.BackupJobOperationBackup, State: clusterModels.BackupJobOperationQueued, HolderNodeID: "runner-c", Revision: 1, AcquiredAt: now, UpdatedAt: now},
+		{JobID: 204, Token: "restore:runner-d:finishing", Operation: clusterModels.BackupJobOperationRestore, State: clusterModels.BackupJobOperationFinishing, HolderNodeID: "runner-d", Revision: 3, AcquiredAt: now, UpdatedAt: now},
+	}
+	if err := db.Create(&operations).Error; err != nil {
+		t.Fatalf("seed durable operations: %v", err)
+	}
+	if err := db.Create(&clusterModels.BackupEvent{
+		JobID: uintPtr(202), Status: "running", StartedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed ingress-local event: %v", err)
+	}
+
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-jobs", nil)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 for non-existent target, got %d: %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var response handlerAPIResponse[[]uint]
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Data) != 2 || response.Data[0] != 201 || response.Data[1] != 204 {
+		t.Fatalf("expected remote backup 201 and finishing restore 204, got %v", response.Data)
+	}
+}
+
+func TestBackupTargetRunningJobIDsFailsWhenDurableStatusIsUnavailable(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
+	if err := db.Migrator().DropTable(&clusterModels.BackupJobOperation{}); err != nil {
+		t.Fatalf("drop operation table: %v", err)
+	}
+	cS := &cluster.Service{DB: db}
+	r := newBackupsRouter(cS)
+
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-jobs", nil)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status failure to return 500, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

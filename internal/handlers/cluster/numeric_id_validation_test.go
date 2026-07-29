@@ -38,8 +38,8 @@ func TestNonNumericIDParamReturns400(t *testing.T) {
 		name string
 		tc   testCase
 	}{
-		{"backups target abc", testCase{newBackupsRouter(cS), http.MethodGet, "/cluster/backups/targets/abc/running-job-ids", nil}},
-		{"backups target 0", testCase{newBackupsRouter(cS), http.MethodGet, "/cluster/backups/targets/0/running-job-ids", nil}},
+		{"backups target abc", testCase{newBackupsRouter(cS), http.MethodGet, "/cluster/backups/targets/abc/running-jobs", nil}},
+		{"backups target 0", testCase{newBackupsRouter(cS), http.MethodGet, "/cluster/backups/targets/0/running-jobs", nil}},
 
 		{"backups event abc", testCase{newBackupEventsRouter(cS, zS), http.MethodGet, "/cluster/backups/events/abc", nil}},
 		{"backups event 0", testCase{newBackupEventsRouter(cS, zS), http.MethodGet, "/cluster/backups/events/0", nil}},

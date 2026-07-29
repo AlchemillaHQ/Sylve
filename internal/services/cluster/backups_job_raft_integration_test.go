@@ -337,6 +337,94 @@ func TestRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *testing.T) {
 	}
 }
 
+func TestRunningJobIDsForTargetReadsReplicatedOperationOnNonRunnerLeader(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.BackupEvent{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	runnerNodeID := ""
+	for _, node := range nodes {
+		if node.id != leader.id {
+			runnerNodeID = node.id
+			break
+		}
+	}
+	if runnerNodeID == "" {
+		t.Fatal("remote runner not found")
+	}
+
+	for _, job := range []clusterModels.BackupJob{
+		{
+			ID: 41, Name: "remote-runner", TargetID: 9, RunnerNodeID: runnerNodeID,
+			Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/remote",
+			CronExpr: "0 0 * * *", Enabled: true,
+		},
+		{
+			ID: 42, Name: "leader-event-only", TargetID: 9, RunnerNodeID: leader.id,
+			Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/local",
+			CronExpr: "0 0 * * *", Enabled: true,
+		},
+	} {
+		raw, _ := json.Marshal(job)
+		if err := leader.service.applyRaftCommand(clusterModels.Command{
+			Type: "backup_job", Action: "create", Data: raw,
+		}); err != nil {
+			t.Fatalf("create job %d: %v", job.ID, err)
+		}
+	}
+
+	acquireRaw, _ := json.Marshal(clusterModels.BackupJobOperationAcquire{
+		JobID: 41, Token: "backup:" + runnerNodeID + ":active",
+		Operation: clusterModels.BackupJobOperationBackup, HolderNodeID: runnerNodeID,
+		AcquiredAt: time.Now().UTC(),
+	})
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
+	}); err != nil {
+		t.Fatalf("acquire remote operation: %v", err)
+	}
+
+	// This event exists only on the API ingress node and must not create a false
+	// positive now that durable operations are the status source.
+	if err := leader.service.DB.Create(&clusterModels.BackupEvent{
+		JobID: uintPtr(42), Status: "running", StartedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("seed leader-local event: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "remote operation replicated", func() bool {
+		for _, node := range nodes {
+			var count int64
+			node.service.DB.Model(&clusterModels.BackupJobOperation{}).
+				Where("job_id = ?", 41).Count(&count)
+			if count != 1 {
+				return false
+			}
+		}
+		return true
+	})
+
+	ids, err := leader.service.RunningJobIDsForTarget(9)
+	if err != nil {
+		t.Fatalf("read durable status on non-runner leader: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 41 {
+		t.Fatalf("expected remote operation 41 only, got %v", ids)
+	}
+	for _, node := range nodes {
+		if node == leader {
+			continue
+		}
+		if _, err := node.service.RunningJobIDsForTarget(9); err == nil || !strings.Contains(err.Error(), "not_leader") {
+			t.Fatalf("follower %s was allowed to serve potentially stale status: %v", node.id, err)
+		}
+	}
+}
+
 func TestRaftBackupJobStateUpdateReplication(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.BackupJob{})
 	defer cleanupClusterRaftTestNodes(t, nodes)

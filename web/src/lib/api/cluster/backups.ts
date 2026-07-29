@@ -102,11 +102,18 @@ export async function listBackupJobs(targetId?: number, vmRid?: number): Promise
 }
 
 export async function getTargetRunningJobIds(targetId: number): Promise<number[]> {
-    return await apiRequest(
+    const result = await apiRequest(
         `/cluster/backups/targets/${targetId}/running-jobs`,
         z.array(z.number()),
-        'GET'
+        'GET',
+        undefined,
+        { preserveErrors: true }
     );
+    if (isAPIResponse(result)) {
+        const detail = Array.isArray(result.error) ? result.error.join(' ') : result.error;
+        throw new Error(detail || result.message || 'Active backup operation status is unavailable');
+    }
+    return result;
 }
 
 export async function createBackupJob(input: BackupJobInput): Promise<APIResponse> {

@@ -85,6 +85,11 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 
 func BackupTargetRunningJobIDs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{

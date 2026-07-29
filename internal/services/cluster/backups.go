@@ -300,19 +300,35 @@ func (s *Service) ListBackupJobsForGuest(targetID uint, guestType string, guestI
 }
 
 // RunningJobIDsForTarget returns the IDs of jobs belonging to targetID that
-// currently have an active (non-completed) running event.
+// have a durable queued, running, or finishing operation. Backup events are
+// node-local telemetry and must not determine cluster-visible active state.
+//
+// Raft-backed callers must read on the leader after a barrier so a lagging API
+// ingress node cannot incorrectly report that no operation is active.
 func (s *Service) RunningJobIDsForTarget(targetID uint) ([]uint, error) {
 	if targetID == 0 {
 		return nil, fmt.Errorf("invalid_target_id")
 	}
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("backup_job_database_unavailable")
+	}
+	if s.Raft != nil {
+		if s.Raft.State() != raft.Leader {
+			return nil, fmt.Errorf("not_leader")
+		}
+		if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+			return nil, fmt.Errorf("backup_job_operation_status_barrier_failed: %w", err)
+		}
+	}
 
 	var jobIDs []uint
 	err := s.DB.
-		Table("backup_events").
-		Select("DISTINCT backup_events.job_id").
-		Joins("JOIN backup_jobs ON backup_jobs.id = backup_events.job_id").
-		Where("backup_jobs.target_id = ? AND backup_events.status = ? AND backup_events.completed_at IS NULL", targetID, "running").
-		Pluck("backup_events.job_id", &jobIDs).Error
+		Table("backup_job_operations").
+		Select("DISTINCT backup_job_operations.job_id").
+		Joins("JOIN backup_jobs ON backup_jobs.id = backup_job_operations.job_id").
+		Where("backup_jobs.target_id = ?", targetID).
+		Order("backup_job_operations.job_id ASC").
+		Pluck("backup_job_operations.job_id", &jobIDs).Error
 	return jobIDs, err
 }
 

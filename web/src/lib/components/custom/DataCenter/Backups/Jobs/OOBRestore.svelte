@@ -4,7 +4,6 @@
 		getBackupTargetJailMetadata,
 		getBackupTargetVMMetadata,
 		getTargetRunningJobIds,
-		listBackupJobs,
 		listBackupTargetDatasets,
 		listBackupTargetDatasetSnapshots,
 		restoreBackupFromTarget
@@ -19,7 +18,6 @@
 	import type {
 		BackupGuestRef,
 		BackupJailMetadataInfo,
-		BackupJob,
 		BackupTarget,
 		BackupTargetDatasetInfo,
 		BackupVMMetadataInfo,
@@ -59,7 +57,9 @@
 	let loadingCluster = $state(false);
 	let restoring = $state(false);
 	let runningJobIds = new SvelteSet<number>();
-	let allTargetJobs = $state<BackupJob[]>([]);
+	let runningJobStatusAvailable = $state(false);
+	let checkingRunningJobStatus = $state(false);
+	let targetLoadRevision = 0;
 
 	let targetId = $state('');
 	let restoreNodeId = $state('');
@@ -100,6 +100,17 @@
 		const match = baseSuffix.match(/(?:^|\/)(job-[0-9]+|j-[0-9a-z]+)(?:\/|$)/i);
 		if (!match) return '';
 		return match[1];
+	}
+
+	function jobIdFromLabel(label: string): number {
+		const normalized = label.trim().toLowerCase();
+		let parsed = 0;
+		if (/^j-[0-9a-z]+$/.test(normalized)) {
+			parsed = Number.parseInt(normalized.slice(2), 36);
+		} else if (/^job-[0-9]+$/.test(normalized)) {
+			parsed = Number.parseInt(normalized.slice(4), 10);
+		}
+		return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 	}
 
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
@@ -238,14 +249,19 @@
 	);
 
 	let jobRunning = $derived.by(() => {
-		if (runningJobIds.size === 0) return false;
+		if (!runningJobStatusAvailable || runningJobIds.size === 0) return false;
 		const group = selectedRestoreTargetDatasetGroup;
 		if (!group || !group.jobLabel) return false;
-		const matchingJob = allTargetJobs.find(
-			(j) => extractJobLabel(j.destSuffix || '') === group.jobLabel
-		);
-		return matchingJob ? runningJobIds.has(matchingJob.id) : false;
+		const encodedJobId = jobIdFromLabel(group.jobLabel);
+		return encodedJobId > 0 && runningJobIds.has(encodedJobId);
 	});
+
+	let runningJobStatusUnavailable = $derived(
+		!loadingDatasets &&
+			!checkingRunningJobStatus &&
+			!!targetId &&
+			!runningJobStatusAvailable
+	);
 
 	let generationAliasByTag = $derived(buildGenerationAliasMap(snapshots));
 	let generationOptions = $derived(buildGenerationOptions(snapshots, generationAliasByTag));
@@ -271,6 +287,15 @@
 	let legacyVMRestoreBlocked = $derived(
 		selectedRestoreTargetDatasetKind === 'vm' && !!selectedSnapshotInfo?.legacy
 	);
+	let restoreDisabledTitle = $derived(
+		runningJobStatusUnavailable
+			? 'Could not verify active backup operations'
+			: jobRunning
+				? 'A backup for this lineage is currently in progress'
+				: legacyVMRestoreBlocked
+					? 'Legacy VM restore points cannot prove that every disk root is complete'
+					: ''
+	);
 
 	let hasOutOfBandSnapshots = $derived(
 		snapshots.some((entry) => !!entry.outOfBand || (entry.lineage || 'active') !== 'active')
@@ -294,12 +319,14 @@
 	}
 
 	function resetState(close: boolean = true) {
+		targetLoadRevision += 1;
 		loadingDatasets = false;
 		loadingSnapshots = false;
 		loadingCluster = false;
 		restoring = false;
 		runningJobIds.clear();
-		allTargetJobs = [];
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = false;
 		targetId = '';
 		restoreNodeId = '';
 		dataset = '';
@@ -321,7 +348,8 @@
 	async function initializeModal() {
 		error = '';
 		runningJobIds.clear();
-		allTargetJobs = [];
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = true;
 		targetId = targetOptions[0]?.value || '';
 		restoreNodeId = '';
 		dataset = '';
@@ -341,6 +369,7 @@
 		restoreNodeId = details?.nodeId || nodes[0]?.nodeUUID || '';
 
 		if (!targetId) {
+			checkingRunningJobStatus = false;
 			error = 'No backup targets available';
 			return;
 		}
@@ -349,12 +378,18 @@
 	}
 
 	async function onTargetChange() {
+		const loadRevision = ++targetLoadRevision;
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
-		if (!parsedTargetId) return;
+		if (!parsedTargetId) {
+			runningJobStatusAvailable = false;
+			checkingRunningJobStatus = false;
+			return;
+		}
 
 		loadingDatasets = true;
 		runningJobIds.clear();
-		allTargetJobs = [];
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = true;
 		error = '';
 		dataset = '';
 		selectedGeneration = '';
@@ -366,20 +401,17 @@
 		vmMetadata = null;
 
 		try {
-			const [targetDatasets, targetJobs] = await Promise.all([
+			const runningStatus = getTargetRunningJobIds(parsedTargetId).catch(() => null);
+			const [targetDatasets, runningIds] = await Promise.all([
 				listBackupTargetDatasets(parsedTargetId),
-				listBackupJobs(parsedTargetId)
+				runningStatus
 			]);
+			if (loadRevision !== targetLoadRevision) return;
 
-			allTargetJobs = targetJobs;
 			datasets = targetDatasets;
-
-			// Non-fatal: running-job detection is informational only; never block the UI
-			try {
-				const runningIds = await getTargetRunningJobIds(parsedTargetId);
+			if (runningIds !== null) {
 				for (const id of runningIds) runningJobIds.add(id);
-			} catch {
-				// ignore — restore remains fully available
+				runningJobStatusAvailable = true;
 			}
 
 			const groupedByBase = new SvelteMap<string, BackupTargetDatasetInfo[]>();
@@ -406,9 +438,14 @@
 				await onDatasetChange();
 			}
 		} catch (e: unknown) {
-			error = (e as { message?: string })?.message || 'Failed to load target datasets';
+			if (loadRevision === targetLoadRevision) {
+				error = (e as { message?: string })?.message || 'Failed to load target datasets';
+			}
 		} finally {
-			loadingDatasets = false;
+			if (loadRevision === targetLoadRevision) {
+				checkingRunningJobStatus = false;
+				loadingDatasets = false;
+			}
 		}
 	}
 
@@ -546,6 +583,41 @@
 			return;
 		}
 
+		// Re-read durable cluster operation state immediately before submission.
+		// A failed status read is unavailable, never evidence that the lineage is idle.
+		const statusTarget = targetId;
+		const statusDataset = dataset;
+		runningJobIds.clear();
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = true;
+		let selectedLineageRunning = false;
+		try {
+			const runningIds = await getTargetRunningJobIds(parsedTargetId);
+			if (targetId !== statusTarget || dataset !== statusDataset) {
+				toast.error('Restore selection changed while checking cluster status. Retry the restore', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			for (const id of runningIds) runningJobIds.add(id);
+			const selectedJobId = jobIdFromLabel(selectedRestoreTargetDatasetGroup?.jobLabel || '');
+			selectedLineageRunning = selectedJobId > 0 && runningIds.includes(selectedJobId);
+			runningJobStatusAvailable = true;
+		} catch {
+			toast.error('Could not verify active backup operations. Restore remains unavailable', {
+				position: 'bottom-center'
+			});
+			return;
+		} finally {
+			checkingRunningJobStatus = false;
+		}
+		if (selectedLineageRunning) {
+			toast.error('A backup for this lineage is currently in progress', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		restoring = true;
 		try {
 			const response = await restoreBackupFromTarget(parsedTargetId, {
@@ -643,11 +715,23 @@
 				classes="flex items-center gap-2"
 			/>
 
-			{#if jobRunning}
+			{#if runningJobStatusUnavailable}
+				<div
+					class="space-y-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-600 dark:text-red-400"
+				>
+					<p>
+						Active backup operations could not be verified. Restore remains unavailable until
+						cluster status recovers.
+					</p>
+					<Button size="sm" variant="outline" onclick={() => void onTargetChange()}>
+						Retry Status
+					</Button>
+				</div>
+			{:else if jobRunning}
 				<div
 					class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-center text-sm text-yellow-700 dark:text-yellow-400"
 				>
-					A backup for this target is currently in progress. Restore is unavailable until it
+					A backup for this lineage is currently in progress. Restore is unavailable until it
 					completes.
 				</div>
 			{/if}
@@ -833,6 +917,7 @@
 					loadingDatasets ||
 					loadingSnapshots ||
 					loadingCluster ||
+					!runningJobStatusAvailable ||
 					jobRunning ||
 					!targetId ||
 					!restoreNodeId ||
@@ -840,9 +925,7 @@
 					!snapshot ||
 					!destinationDataset.trim() ||
 					legacyVMRestoreBlocked}
-				title={legacyVMRestoreBlocked
-					? 'Legacy VM restore points cannot prove that every disk root is complete'
-					: ''}
+				title={restoreDisabledTitle}
 				variant="destructive"
 			>
 				{#if restoring}
