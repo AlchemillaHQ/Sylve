@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import {
-		getBackupEvents,
+		getTargetRunningJobIds,
 		listBackupJobSnapshots,
 		restoreBackupJob
 	} from '$lib/api/cluster/backups';
@@ -161,9 +161,9 @@
 		clusterDetails = null;
 
 		try {
-			const [snapshotResult, events] = await Promise.all([
+			const [snapshotResult, runningJobIds] = await Promise.all([
 				listBackupJobSnapshots(selectedJob.id),
-				getBackupEvents(5, selectedJob.id)
+				getTargetRunningJobIds(selectedJob.targetId)
 			]);
 			if (snapshotResult.error) {
 				error = snapshotResult.error;
@@ -171,9 +171,7 @@
 			}
 
 			const items = snapshotResult.snapshots;
-			jobRunning =
-				events.some((e) => e.status === 'running' && !e.completedAt) ||
-				selectedJob.lastStatus === 'running';
+			jobRunning = runningJobIds.includes(selectedJob.id);
 			if (!jobRunning) {
 				snapshots = items;
 				if (items.length > 0) {

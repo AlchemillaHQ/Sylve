@@ -42,11 +42,25 @@ func TestHTTPPostJSONReadReturnsErrorResponseBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-2xx HTTP error")
 	}
+	var statusErr *HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusConflict || !bytes.Equal(statusErr.Body, wantBody) {
+		t.Fatalf("error = %#v, want typed conflict with preserved body", err)
+	}
 	if status != http.StatusConflict {
 		t.Fatalf("status = %d, want %d", status, http.StatusConflict)
 	}
 	if !bytes.Equal(body, wantBody) {
 		t.Fatalf("body = %q, want %q", body, wantBody)
+	}
+}
+
+func TestHTTPPostJSONReadContextHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := HTTPPostJSONReadContext(ctx, "https://127.0.0.1:1", map[string]any{}, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
 	}
 }
 

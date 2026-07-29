@@ -33,6 +33,21 @@ var (
 	sharedClient *http.Client
 )
 
+// HTTPStatusError reports a completed HTTP exchange whose response status was
+// not successful. Body is retained so proxying callers can preserve the
+// upstream response exactly instead of turning application errors into 502s.
+type HTTPStatusError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *HTTPStatusError) Error() string {
+	if e == nil {
+		return "http error"
+	}
+	return fmt.Sprintf("http error %d: %s", e.StatusCode, string(e.Body))
+}
+
 func GetTokenFromHeader(r http.Header) (string, error) {
 	token := r.Get("Authorization")
 	if token != "" {
@@ -248,12 +263,19 @@ func HTTPPostJSON(url string, payload any, headers map[string]string) error {
 }
 
 func HTTPPostJSONRead(url string, payload any, headers map[string]string) ([]byte, int, error) {
+	return HTTPPostJSONReadContext(context.Background(), url, payload, headers)
+}
+
+func HTTPPostJSONReadContext(ctx context.Context, url string, payload any, headers map[string]string) ([]byte, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -291,7 +313,7 @@ func HTTPPostJSONRead(url string, payload any, headers map[string]string) ([]byt
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return b, resp.StatusCode, fmt.Errorf("http error %d: %s", resp.StatusCode, string(b))
+		return b, resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Body: b}
 	}
 	return b, resp.StatusCode, nil
 }

@@ -9,8 +9,12 @@
 package clusterHandlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -24,8 +28,41 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 )
+
+const (
+	backupJobForwardHopHeader      = "X-Sylve-Backup-Forward-Hop"
+	backupJobForwardedByHeader     = "X-Sylve-Backup-Forwarded-By"
+	backupJobForwardedTargetHeader = "X-Sylve-Backup-Forward-Target"
+	backupJobForwardMaxHops        = 1
+)
+
+var backupJobForwardHTTP = utils.HTTPPostJSONReadContext
+
+type backupJobRunService interface {
+	EnqueueBackupJob(context.Context, uint) error
+}
+
+type backupJobRestoreService interface {
+	RegisterRestoreEncryptionKey(string, string) error
+	EnqueueRestoreJob(context.Context, uint, string) error
+}
+
+type restoreBackupJobRequest struct {
+	Snapshot            string `json:"snapshot"`
+	EncryptionKey       string `json:"encryptionKey"`
+	EncryptionKeyFormat string `json:"encryptionKeyFormat"`
+}
+
+type backupJobRunnerRoute struct {
+	LocalNodeID  string
+	RunnerNodeID string
+	TargetAPI    string
+	Hop          int
+	Forward      bool
+}
 
 func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -253,7 +290,7 @@ func DeleteBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func RunBackupJobNow(cS *cluster.Service, zS backupJobRunService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
@@ -277,14 +314,20 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 			return
 		}
 
-		localNodeID := ""
-		if detail := cS.Detail(); detail != nil {
-			localNodeID = strings.TrimSpace(detail.NodeID)
-		}
-
 		runnerNodeID := strings.TrimSpace(job.RunnerNodeID)
-		if runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
-			body, statusCode, err := forwardBackupJobRunToRunner(c, cS, uint(id64), runnerNodeID)
+		route, err := resolveBackupJobRunnerRoute(c, cS, runnerNodeID)
+		if err != nil {
+			writeBackupJobRouteError(c, "backup_job_remote_run_failed", err)
+			return
+		}
+		if route.Forward {
+			body, statusCode, err := forwardBackupJobRequestToRunner(
+				c,
+				cS,
+				route,
+				fmt.Sprintf("/api/cluster/backups/jobs/run/%d", job.ID),
+				map[string]any{},
+			)
 			if err != nil {
 				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
 					Status:  "error",
@@ -294,7 +337,6 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 				})
 				return
 			}
-
 			c.Data(statusCode, "application/json", body)
 			return
 		}
@@ -331,10 +373,105 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
-func forwardBackupJobRunToRunner(c *gin.Context, cS *cluster.Service, jobID uint, runnerNodeID string) ([]byte, int, error) {
-	targetAPI, err := resolveClusterNodeAPI(cS, runnerNodeID)
+func backupJobForwardHop(c *gin.Context) (int, error) {
+	raw := strings.TrimSpace(c.GetHeader(backupJobForwardHopHeader))
+	if raw == "" {
+		return 0, nil
+	}
+	hop, err := strconv.Atoi(raw)
+	if err != nil || hop < 0 || hop > backupJobForwardMaxHops {
+		return 0, fmt.Errorf("backup_job_forward_loop_detected")
+	}
+	return hop, nil
+}
+
+func resolveBackupJobRunnerRoute(
+	c *gin.Context,
+	cS *cluster.Service,
+	runnerNodeID string,
+) (backupJobRunnerRoute, error) {
+	route := backupJobRunnerRoute{RunnerNodeID: strings.TrimSpace(runnerNodeID)}
+	if cS == nil {
+		return route, fmt.Errorf("cluster_service_unavailable")
+	}
+	hop, err := backupJobForwardHop(c)
 	if err != nil {
-		return nil, 0, err
+		return route, err
+	}
+	route.Hop = hop
+	if route.RunnerNodeID == "" {
+		return route, nil
+	}
+
+	if cS.Raft != nil {
+		route.LocalNodeID = strings.TrimSpace(cS.NodeID)
+		if route.LocalNodeID == "" {
+			return route, fmt.Errorf("backup_runner_local_node_id_unavailable")
+		}
+		route.TargetAPI, err = cS.ResolveIntraClusterVoterAPI(route.RunnerNodeID)
+		if err != nil {
+			return route, err
+		}
+	} else {
+		route.LocalNodeID = strings.TrimSpace(cS.LocalNodeID())
+		if route.LocalNodeID == "" {
+			return route, fmt.Errorf("backup_runner_local_node_id_unavailable")
+		}
+	}
+
+	if route.RunnerNodeID == route.LocalNodeID {
+		return route, nil
+	}
+	if route.Hop >= backupJobForwardMaxHops {
+		return route, fmt.Errorf("backup_job_forward_loop_detected")
+	}
+	if cS.Raft == nil {
+		return route, fmt.Errorf("backup_runner_raft_unavailable")
+	}
+	route.Forward = true
+	return route, nil
+}
+
+func writeBackupJobRouteError(c *gin.Context, message string, err error) {
+	status := http.StatusBadGateway
+	errorText := "backup_job_forward_failed"
+	if err != nil {
+		errorText = err.Error()
+		text := strings.ToLower(errorText)
+		switch {
+		case strings.Contains(text, "forward_loop"):
+			status = http.StatusLoopDetected
+			message = "backup_job_forward_loop_detected"
+		case strings.Contains(text, "local_node_id_unavailable"):
+			status = http.StatusServiceUnavailable
+			message = "backup_runner_local_identity_unavailable"
+		case strings.Contains(text, "not_raft_member"),
+			strings.Contains(text, "not_raft_voter"),
+			strings.Contains(text, "raft_unavailable"):
+			status = http.StatusServiceUnavailable
+			message = "backup_runner_unavailable"
+		}
+	}
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   errorText,
+		Data:    nil,
+	})
+}
+
+func forwardBackupJobRequestToRunner(
+	c *gin.Context,
+	cS *cluster.Service,
+	route backupJobRunnerRoute,
+	path string,
+	payload any,
+) ([]byte, int, error) {
+	if !route.Forward || strings.TrimSpace(route.TargetAPI) == "" {
+		return nil, 0, fmt.Errorf("backup_job_forward_route_invalid")
+	}
+	if cS == nil || cS.AuthService == nil {
+		return nil, 0, fmt.Errorf("backup_job_forward_auth_service_unavailable")
 	}
 
 	userID := c.GetUint("UserID")
@@ -351,22 +488,52 @@ func forwardBackupJobRunToRunner(c *gin.Context, cS *cluster.Service, jobID uint
 	if authType == "" {
 		authType = "local"
 	}
-
 	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
 
-	runURL := fmt.Sprintf("https://%s/api/cluster/backups/jobs/run/%d", targetAPI, jobID)
-	body, statusCode, err := utils.HTTPPostJSONRead(runURL, map[string]any{}, map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	})
-	if err != nil {
-		return nil, statusCode, err
+	requestID := strings.TrimSpace(c.GetHeader("X-Request-ID"))
+	if requestID == "" {
+		requestID = strings.TrimSpace(c.GetString("RequestID"))
+	}
+	if requestID == "" {
+		requestID = uuid.NewString()
+	}
+	c.Header("X-Request-ID", requestID)
+	headers := map[string]string{
+		"Accept":                       "application/json",
+		"Content-Type":                 "application/json",
+		"X-Cluster-Token":              fmt.Sprintf("Bearer %s", clusterToken),
+		"X-Request-ID":                 requestID,
+		backupJobForwardHopHeader:      strconv.Itoa(route.Hop + 1),
+		backupJobForwardedByHeader:     route.LocalNodeID,
+		backupJobForwardedTargetHeader: route.RunnerNodeID,
+	}
+	for _, header := range []string{"X-Correlation-ID", "Traceparent"} {
+		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
+			headers[header] = value
+		}
 	}
 
+	forwardURL := fmt.Sprintf("https://%s%s", route.TargetAPI, path)
+	body, statusCode, err := backupJobForwardHTTP(c.Request.Context(), forwardURL, payload, headers)
+	if err != nil {
+		var statusErr *utils.HTTPStatusError
+		if errors.As(err, &statusErr) {
+			if statusCode == 0 {
+				statusCode = statusErr.StatusCode
+			}
+			if body == nil {
+				body = append([]byte(nil), statusErr.Body...)
+			}
+			return body, statusCode, nil
+		}
+		return nil, statusCode, err
+	}
+	if statusCode < 100 {
+		return nil, statusCode, fmt.Errorf("backup_job_forward_response_status_invalid")
+	}
 	return body, statusCode, nil
 }
 
@@ -595,7 +762,7 @@ func BackupJobSnapshots(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 	}
 }
 
-func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
@@ -608,11 +775,7 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req struct {
-			Snapshot            string `json:"snapshot"`
-			EncryptionKey       string `json:"encryptionKey"`
-			EncryptionKeyFormat string `json:"encryptionKeyFormat"`
-		}
+		var req restoreBackupJobRequest
 		if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Snapshot) == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -634,24 +797,43 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 			return
 		}
 
-		// Check runner node routing (same as RunBackupJobNow)
-		localNodeID := ""
-		if detail := cS.Detail(); detail != nil {
-			localNodeID = strings.TrimSpace(detail.NodeID)
-		}
-
 		runnerNodeID := strings.TrimSpace(job.RunnerNodeID)
-		if runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
-			c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "restore_must_run_on_runner_node",
-				Error:   fmt.Sprintf("this job is assigned to node %s, restore must be triggered from that node", runnerNodeID),
-				Data:    nil,
-			})
+		route, err := resolveBackupJobRunnerRoute(c, cS, runnerNodeID)
+		if err != nil {
+			writeBackupJobRouteError(c, "backup_job_remote_restore_failed", err)
+			return
+		}
+		if route.Forward {
+			body, statusCode, err := forwardBackupJobRequestToRunner(
+				c,
+				cS,
+				route,
+				fmt.Sprintf("/api/cluster/backups/jobs/%d/restore", job.ID),
+				req,
+			)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "backup_job_remote_restore_failed",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+			c.Data(statusCode, "application/json", body)
 			return
 		}
 
 		if runnerNodeID == "" && cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			body, marshalErr := json.Marshal(req)
+			if marshalErr != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status: "error", Message: "restore_forward_encode_failed", Error: marshalErr.Error(), Data: nil,
+				})
+				return
+			}
+			c.Request.Body = io.NopCloser(bytes.NewReader(body))
+			c.Request.ContentLength = int64(len(body))
 			forwardToLeader(c, cS)
 			return
 		}
