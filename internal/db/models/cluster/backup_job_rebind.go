@@ -89,12 +89,13 @@ type BackupJobRunnerRebindReady struct {
 }
 
 type BackupJobRunnerRebindApply struct {
-	Token                  string                   `json:"token"`
-	JobID                  uint                     `json:"jobId"`
-	ExpectedFingerprint    string                   `json:"expectedFingerprint"`
-	FriendlySource         string                   `json:"friendlySource"`
-	PlacementFence         *BackupJobPlacementFence `json:"placementFence,omitempty"`
-	PreviousPlacementFence *BackupJobPlacementFence `json:"previousPlacementFence,omitempty"`
+	Token                  string                           `json:"token"`
+	JobID                  uint                             `json:"jobId"`
+	ExpectedFingerprint    string                           `json:"expectedFingerprint"`
+	FriendlySource         string                           `json:"friendlySource"`
+	PlacementFence         *BackupJobPlacementFence         `json:"placementFence,omitempty"`
+	PreviousPlacementFence *BackupJobPlacementFence         `json:"previousPlacementFence,omitempty"`
+	TargetReadiness        *BackupTargetNodeReadinessUpdate `json:"targetReadiness,omitempty"`
 }
 
 type BackupJobRunnerRebindRepair struct {
@@ -600,6 +601,11 @@ func ApplyBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebindAp
 		proposed.RunnerNodeID = operation.NewRunnerNodeID
 		if err := ValidateBackupJobPlacementFenceTxn(tx, &proposed, payload.PlacementFence); err != nil {
 			return err
+		}
+		if payload.TargetReadiness != nil {
+			if err := ApplyBackupTargetNodeReadinessForJobTxn(tx, &proposed, payload.TargetReadiness); err != nil {
+				return err
+			}
 		}
 		updates := map[string]any{
 			"runner_node_id": operation.NewRunnerNodeID,

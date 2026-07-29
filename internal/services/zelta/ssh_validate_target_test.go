@@ -106,6 +106,26 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		})
 	})
 
+	t.Run("readiness validation never creates a missing root", func(t *testing.T) {
+		h := newFakeSSHHarness(t)
+		h.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{
+			"zfs version": {{ExitCode: 0}},
+			"zfs list -H -o name -t filesystem -d 0 tank/backups": {
+				{Stderr: "cannot open 'tank/backups': dataset does not exist\n", ExitCode: 1},
+			},
+		}})
+		s := &Service{}
+		target := &clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "tank/backups"}
+		err := s.ValidateTargetReadiness(context.Background(), target)
+		if err == nil || !strings.Contains(err.Error(), "backup_root_not_found") {
+			t.Fatalf("readiness error = %v", err)
+		}
+		assertFakeSSHCallSequence(t, h.Calls(), []string{
+			"zfs version",
+			"zfs list -H -o name -t filesystem -d 0 tank/backups",
+		})
+	})
+
 	t.Run("dataset lookup transport failure fails closed", func(t *testing.T) {
 		h := newFakeSSHHarness(t)
 		h.SetScenario(fakeSSHScenario{

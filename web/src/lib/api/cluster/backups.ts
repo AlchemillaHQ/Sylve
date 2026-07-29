@@ -81,9 +81,20 @@ export async function deleteBackupTarget(id: number): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/targets/${id}`, APIResponseSchema, 'DELETE');
 }
 
-export async function validateBackupTarget(id: number): Promise<APIResponse> {
-    return await apiRequest(`/cluster/backups/targets/validate/${id}`, APIResponseSchema, 'POST', {});
+export async function validateBackupTarget(id: number, nodeId: string): Promise<APIResponse> {
+    const params = new URLSearchParams();
+    if (nodeId.trim() !== '') {
+        params.set('nodeId', nodeId.trim());
+    }
+    const query = params.toString();
+    return await apiRequest(
+        `/cluster/backups/targets/validate/${id}${query ? `?${query}` : ''}`,
+        APIResponseSchema,
+        'POST',
+        {}
+    );
 }
+
 
 export async function listBackupJobs(targetId?: number, vmRid?: number): Promise<BackupJob[]> {
     const params = new URLSearchParams();

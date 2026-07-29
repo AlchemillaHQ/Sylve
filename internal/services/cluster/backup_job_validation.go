@@ -31,7 +31,7 @@ const (
 	BackupJobSourceClassificationManagedJail  = "managed_jail"
 	BackupJobSourceClassificationManagedScope = "managed_scope"
 
-	backupJobValidationTimeout = 8 * time.Second
+	backupJobValidationTimeout = 65 * time.Second
 )
 
 // BackupJobPlacementAuthorization is supplied only by internal migration or
@@ -49,6 +49,8 @@ type BackupJobSafetyValidationRequest struct {
 	SourceDataset           string `json:"sourceDataset"`
 	JailRootDataset         string `json:"jailRootDataset"`
 	Recursive               bool   `json:"recursive"`
+	TargetID                uint   `json:"targetId,omitempty"`
+	TargetFingerprint       string `json:"targetFingerprint,omitempty"`
 }
 
 type backupJobSafetyRejectionError struct {
@@ -79,7 +81,8 @@ type BackupJobSafetyValidationResult struct {
 	OwnerNodeID     string `json:"ownerNodeId,omitempty"`
 	OwnerEpoch      uint64 `json:"ownerEpoch,omitempty"`
 
-	PlacementFence *clusterModels.BackupJobPlacementFence `json:"placementFence,omitempty"`
+	PlacementFence  *clusterModels.BackupJobPlacementFence         `json:"placementFence,omitempty"`
+	TargetReadiness *clusterModels.BackupTargetNodeReadinessUpdate `json:"targetReadiness,omitempty"`
 }
 
 func normalizeBackupJobSafetyValidationRequest(request BackupJobSafetyValidationRequest) BackupJobSafetyValidationRequest {
@@ -87,6 +90,7 @@ func normalizeBackupJobSafetyValidationRequest(request BackupJobSafetyValidation
 	request.Mode = strings.ToLower(strings.TrimSpace(request.Mode))
 	request.SourceDataset = normalizeManagedGuestDatasetPath(request.SourceDataset)
 	request.JailRootDataset = normalizeManagedGuestDatasetPath(request.JailRootDataset)
+	request.TargetFingerprint = strings.ToLower(strings.TrimSpace(request.TargetFingerprint))
 	return request
 }
 
@@ -291,6 +295,21 @@ func (s *Service) ValidateBackupJobSafetyLocal(
 		result.ValidationError = validationErr.Error()
 		return result, nil
 	}
+	if request.TargetID != 0 || request.TargetFingerprint != "" {
+		if request.TargetID == 0 || request.TargetFingerprint == "" {
+			return result, fmt.Errorf("backup_target_validation_scope_invalid")
+		}
+		targetReadiness, err := s.ValidateBackupTargetConnectivityLocal(ctx, BackupTargetValidationRequest{
+			ExpectedNodeID:          request.ExpectedNodeID,
+			MinimumRaftAppliedIndex: request.MinimumRaftAppliedIndex,
+			TargetID:                request.TargetID,
+			TargetFingerprint:       request.TargetFingerprint,
+		})
+		if err != nil {
+			return result, err
+		}
+		result.TargetReadiness = &targetReadiness
+	}
 	result.Valid = true
 	return result, nil
 }
@@ -419,6 +438,7 @@ func (s *Service) fetchBackupJobSafetyValidation(
 			strings.TrimSpace(response.Error),
 		)
 	}
+	stampRemoteBackupTargetReadinessReceipt(response.Data.TargetReadiness)
 	return response.Data, nil
 }
 
@@ -472,6 +492,22 @@ func validateBackupJobSafetyReceipt(
 		}
 	} else if result.PlacementFence != nil {
 		return fmt.Errorf("backup_runner_validation_unexpected_placement")
+	}
+	if request.TargetID != 0 || request.TargetFingerprint != "" {
+		targetRequest := BackupTargetValidationRequest{
+			ExpectedNodeID:          request.ExpectedNodeID,
+			MinimumRaftAppliedIndex: request.MinimumRaftAppliedIndex,
+			TargetID:                request.TargetID,
+			TargetFingerprint:       request.TargetFingerprint,
+		}
+		if err := validateBackupTargetReadinessReceipt(targetRequest, result.TargetReadiness); err != nil {
+			return err
+		}
+		if err := backupTargetReadinessOutcome(result.TargetReadiness); err != nil {
+			return err
+		}
+	} else if result.TargetReadiness != nil {
+		return fmt.Errorf("backup_runner_validation_unexpected_target_readiness")
 	}
 	return nil
 }
@@ -577,14 +613,43 @@ func (s *Service) validateBackupJobOnRunner(
 	if runnerNodeID == "" {
 		return empty, nil, fmt.Errorf("backup_runner_node_id_required")
 	}
+	if job.TargetID == 0 {
+		return empty, nil, fmt.Errorf("target_id_required")
+	}
+	var target clusterModels.BackupTarget
+	if err := s.DB.WithContext(ctx).First(&target, job.TargetID).Error; err != nil {
+		return empty, nil, fmt.Errorf("backup_target_not_found")
+	}
+	targetFingerprint := clusterModels.BackupTargetConnectivityFingerprint(&target)
+	validateAndRecord := func(
+		request BackupJobSafetyValidationRequest,
+		result BackupJobSafetyValidationResult,
+	) error {
+		receiptErr := validateBackupJobSafetyReceipt(request, result)
+		if receiptErr == nil {
+			return nil
+		}
+		if !isBackupTargetValidationRejected(receiptErr) || result.TargetReadiness == nil {
+			return receiptErr
+		}
+		// Failed connectivity prevents a job mutation, so publish that exact
+		// node-scoped outcome separately. Successful receipts are committed
+		// atomically with the job/rebind command and its target fingerprint.
+		if err := s.UpdateBackupTargetNodeReadiness(*result.TargetReadiness, bypassRaft || s.Raft == nil); err != nil {
+			return fmt.Errorf("backup_target_readiness_publish_failed: %w", err)
+		}
+		return receiptErr
+	}
 
 	if bypassRaft || s.Raft == nil {
 		request := backupJobValidationRequest(job, runnerNodeID, 0)
+		request.TargetID = target.ID
+		request.TargetFingerprint = targetFingerprint
 		result, err := s.ValidateBackupJobSafetyLocal(ctx, request)
 		if err != nil {
 			return empty, nil, err
 		}
-		if err := validateBackupJobSafetyReceipt(request, result); err != nil {
+		if err := validateAndRecord(request, result); err != nil {
 			return empty, nil, err
 		}
 		if err := authorizeBackupJobPlacement(result.PlacementFence, authorization, true); err != nil {
@@ -601,6 +666,8 @@ func (s *Service) validateBackupJobOnRunner(
 	for attempt := 0; attempt < 3; attempt++ {
 		minimumIndex := s.Raft.AppliedIndex()
 		request := backupJobValidationRequest(job, runnerNodeID, minimumIndex)
+		request.TargetID = target.ID
+		request.TargetFingerprint = targetFingerprint
 		var result BackupJobSafetyValidationResult
 		if local {
 			result, err = s.ValidateBackupJobSafetyLocal(ctx, request)
@@ -614,7 +681,7 @@ func (s *Service) validateBackupJobOnRunner(
 		if err != nil {
 			return empty, nil, err
 		}
-		if err := validateBackupJobSafetyReceipt(request, result); err != nil {
+		if err := validateAndRecord(request, result); err != nil {
 			return empty, nil, err
 		}
 

@@ -40,34 +40,17 @@ func mapRaftAddrToAPI(raftAddr string) (string, error) {
 	}).String(), nil
 }
 
-// resolveLeaderAPI resolves the leader's HTTPS API base URL.
-// Prefers the node's registered API address from the nodes table;
-// falls back to deriving it from the Raft address.
-func resolveLeaderAPI(cS *cluster.Service, leaderNodeID, leaderRaftAddr string) string {
-	leaderNodeID = strings.TrimSpace(leaderNodeID)
-
-	// Try the nodes table first (API may differ from Raft IP).
-	if leaderNodeID != "" {
-		nodes, err := cS.Nodes()
-		if err == nil {
-			for _, node := range nodes {
-				if strings.TrimSpace(node.NodeUUID) == leaderNodeID {
-					if api := strings.TrimSpace(node.API); api != "" {
-						return "https://" + api
-					}
-					break
-				}
-			}
-		}
-	}
-
-	// Fall back to port substitution from the Raft address.
+// resolveLeaderAPI derives the internal HTTPS endpoint exclusively from the
+// authoritative Raft leader address and the fixed embedded port. Asynchronous
+// health rows and the configurable public API port must not steer forwarding.
+func resolveLeaderAPI(_ *cluster.Service, _, leaderRaftAddr string) string {
 	if base, err := mapRaftAddrToAPI(leaderRaftAddr); err == nil {
 		return base
 	}
-
 	return ""
 }
+
+var resolveLeaderAPIForForward = resolveLeaderAPI
 
 func forwardToLeader(c *gin.Context, cS *cluster.Service) {
 	leaderAddr, leaderID := cS.Raft.LeaderWithID()
@@ -80,11 +63,11 @@ func forwardToLeader(c *gin.Context, cS *cluster.Service) {
 	}
 
 	leaderNodeID := strings.TrimSpace(string(leaderID))
-	base := resolveLeaderAPI(cS, leaderNodeID, string(leaderAddr))
+	base := resolveLeaderAPIForForward(cS, leaderNodeID, string(leaderAddr))
 	if base == "" {
 		c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
 			Status: "error", Message: "map_leader_api_failed",
-			Error:   "could not resolve leader API address",
+			Error: "could not resolve leader API address",
 		})
 		return
 	}
@@ -126,7 +109,7 @@ func forwardToLeader(c *gin.Context, cS *cluster.Service) {
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",
 		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}, 30*time.Second)
+	}, 75*time.Second)
 
 	if err != nil {
 		c.JSON(http.StatusBadGateway, internal.APIResponse[any]{

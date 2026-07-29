@@ -9,9 +9,11 @@
 package clusterHandlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +38,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTarget{},
+		&clusterModels.BackupTargetNodeReadiness{},
 		&clusterModels.BackupEvent{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
@@ -85,6 +88,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 	})
 
 	cS := &cluster.Service{DB: db, Raft: r}
+	cS.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
 	return cS, func() {
 		r.Shutdown()
 		transport.Close()
@@ -210,6 +214,37 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	}
 	if updated.Enabled {
 		t.Fatalf("expected enabled=false")
+	}
+}
+
+func TestValidateBackupTargetRequiresExplicitVoterInCluster(t *testing.T) {
+	cS, cleanup := setupHandlerRaftCluster(t)
+	defer cleanup()
+	target := clusterModels.BackupTarget{
+		ID: 91, Name: "target-validate-node", SSHHost: "root@backup", SSHPort: 22,
+		BackupRoot: "tank/backups", Enabled: true,
+	}
+	if err := cS.DB.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	zStub := &backupTargetZeltaStub{}
+	router := newBackupTargetRouter(cS, zStub)
+	path := "/cluster/backups/targets/validate/91"
+	rr := performJSONRequest(t, router, http.MethodPost, path, nil)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "validation_node_id_required") {
+		t.Fatalf("missing node status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	configuration := cS.Raft.GetConfiguration()
+	if err := configuration.Error(); err != nil || len(configuration.Configuration().Servers) != 1 {
+		t.Fatalf("configuration err=%v servers=%+v", err, configuration.Configuration().Servers)
+	}
+	nodeID := string(configuration.Configuration().Servers[0].ID)
+	rr = performJSONRequest(t, router, http.MethodPost, path+"?nodeId="+nodeID, nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("selected node status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(zStub.validateCalls) != 1 {
+		t.Fatalf("validate calls=%d, want 1", len(zStub.validateCalls))
 	}
 }
 

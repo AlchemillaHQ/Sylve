@@ -57,7 +57,12 @@ func newManagedDatasetGuardTestService(t *testing.T) *Service {
 		&vmModels.Storage{},
 		&vmModels.VMStorageDataset{},
 	)
-	return &Service{DB: db}
+	return &Service{
+		DB: db,
+		backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
+			return nil
+		},
+	}
 }
 
 func seedManagedDatasetGuardGuests(t *testing.T, service *Service) {

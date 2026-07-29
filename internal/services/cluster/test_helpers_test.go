@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,6 +28,7 @@ func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		migrateModels,
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTargetRestoreOperation{},
+		&clusterModels.BackupTargetNodeReadiness{},
 	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
@@ -75,6 +77,9 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 		service: &Service{
 			DB:   db,
 			Raft: r,
+			backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
+				return nil
+			},
 		},
 	}
 }

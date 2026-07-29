@@ -82,9 +82,17 @@ type backupJobFriendlySourceCommandPayload struct {
 }
 
 func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
+	if err := s.requireBackupTargetReadinessBarrier(); err != nil {
+		return nil, err
+	}
 	var targets []clusterModels.BackupTarget
-	err := s.DB.Order("name ASC").Find(&targets).Error
-	return targets, err
+	if err := s.DB.Order("name ASC").Find(&targets).Error; err != nil {
+		return nil, err
+	}
+	if err := s.attachBackupTargetReadiness(targets); err != nil {
+		return nil, err
+	}
+	return targets, nil
 }
 
 func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, error) {
@@ -190,17 +198,7 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 	}
 
 	if bypassRaft {
-		return s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", input.ID).Updates(map[string]any{
-			"name":               target.Name,
-			"ssh_host":           target.SSHHost,
-			"ssh_port":           target.SSHPort,
-			"ssh_key_path":       target.SSHKeyPath,
-			"ssh_key":            target.SSHKey,
-			"backup_root":        target.BackupRoot,
-			"create_backup_root": target.CreateBackupRoot,
-			"description":        target.Description,
-			"enabled":            target.Enabled,
-		}).Error
+		return clusterModels.UpsertBackupTargetTxn(s.DB, &target)
 	}
 
 	if s.Raft == nil {
@@ -663,9 +661,18 @@ func (s *Service) ProposeBackupJobCreateContext(
 	if err != nil {
 		return err
 	}
+	targetReadiness := job.TargetReadinessReceipt
+	if targetReadiness == nil {
+		return fmt.Errorf("backup_target_readiness_job_receipt_missing")
+	}
 
 	if bypassRaft {
-		return s.DB.Create(job).Error
+		return s.DB.Transaction(func(tx *gorm.DB) error {
+			if err := clusterModels.ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
+				return err
+			}
+			return tx.Create(job).Error
+		})
 	}
 
 	if s.Raft == nil {
@@ -673,8 +680,9 @@ func (s *Service) ProposeBackupJobCreateContext(
 	}
 
 	data, err := json.Marshal(clusterModels.BackupJobCommandPayload{
-		Job:            *job,
-		PlacementFence: fence,
+		Job:             *job,
+		PlacementFence:  fence,
+		TargetReadiness: targetReadiness,
 	})
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_job_payload: %w", err)
@@ -712,9 +720,16 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	if err != nil {
 		return err
 	}
+	targetReadiness := job.TargetReadinessReceipt
+	if targetReadiness == nil {
+		return fmt.Errorf("backup_target_readiness_job_receipt_missing")
+	}
 
 	if bypassRaft {
 		return s.DB.Transaction(func(tx *gorm.DB) error {
+			if err := clusterModels.ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
+				return err
+			}
 			if err := tx.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
 				"name":               job.Name,
 				"target_id":          job.TargetID,
@@ -746,6 +761,7 @@ func (s *Service) ProposeBackupJobUpdateContext(
 		Job:                    *job,
 		PlacementFence:         fence,
 		PreviousPlacementFence: previousFence,
+		TargetReadiness:        targetReadiness,
 	})
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_job_payload: %w", err)
@@ -913,6 +929,7 @@ func (s *Service) buildBackupJob(
 	}
 
 	job.FriendlySrc = strings.TrimSpace(validation.FriendlySource)
+	job.TargetReadinessReceipt = validation.TargetReadiness
 	if !next.IsZero() {
 		job.NextRunAt = &next
 	}

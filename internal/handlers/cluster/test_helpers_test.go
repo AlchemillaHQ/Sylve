@@ -30,6 +30,7 @@ func newClusterHandlerTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		migrateModels,
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTargetRestoreOperation{},
+		&clusterModels.BackupTargetNodeReadiness{},
 	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }

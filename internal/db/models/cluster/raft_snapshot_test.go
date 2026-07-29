@@ -24,6 +24,7 @@ func allSnapshotModels() []any {
 		&ClusterNote{},
 		&ClusterOption{},
 		&BackupTarget{},
+		&BackupTargetNodeReadiness{},
 		&BackupJob{},
 		&BackupJobOperation{},
 		&BackupTargetRestoreOperation{},
@@ -60,6 +61,16 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}
 	if err := sourceDB.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed backup target: %v", err)
+	}
+	readinessVerifiedAt := time.Date(2026, time.January, 1, 1, 2, 3, 0, time.UTC)
+	readinessUntil := readinessVerifiedAt.Add(10 * time.Minute)
+	if err := sourceDB.Create(&BackupTargetNodeReadiness{
+		TargetID: target.ID, NodeID: "node-1",
+		TargetFingerprint:   BackupTargetConnectivityFingerprint(&target),
+		ValidationSucceeded: true, LastVerifiedAt: readinessVerifiedAt,
+		ReadyUntil: &readinessUntil, Revision: 2, RaftAppliedIndex: 42, UpdatedAt: readinessVerifiedAt,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed backup target readiness: %v", err)
 	}
 
 	if err := sourceDB.Create(&BackupJob{
@@ -197,6 +208,15 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if len(targets) != 1 || targets[0].Name != "t1" {
 		t.Fatalf("targets mismatch: %+v", targets)
 	}
+	var targetReadiness []BackupTargetNodeReadiness
+	destDB.Find(&targetReadiness)
+	if len(targetReadiness) != 1 || targetReadiness[0].NodeID != "node-1" ||
+		targetReadiness[0].TargetFingerprint != BackupTargetConnectivityFingerprint(&target) ||
+		!targetReadiness[0].ValidationSucceeded || targetReadiness[0].Revision != 2 ||
+		targetReadiness[0].RaftAppliedIndex != 42 ||
+		!targetReadiness[0].LastVerifiedAt.Equal(readinessVerifiedAt) {
+		t.Fatalf("target readiness mismatch: %+v", targetReadiness)
+	}
 
 	var jobs []BackupJob
 	destDB.Find(&jobs)
@@ -298,6 +318,13 @@ func TestClusterLegacySnapshotWithoutTargetRestoreOperationsClearsReservations(t
 		t.Fatalf("seed target: %v", err)
 	}
 	now := time.Date(2026, time.May, 6, 7, 8, 9, 0, time.UTC)
+	readyUntil := now.Add(time.Hour)
+	if err := database.Create(&BackupTargetNodeReadiness{
+		TargetID: target.ID, NodeID: "local", TargetFingerprint: BackupTargetConnectivityFingerprint(&target),
+		ValidationSucceeded: true, LastVerifiedAt: now, ReadyUntil: &readyUntil, Revision: 1, UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed stale readiness: %v", err)
+	}
 	if err := database.Create(&BackupTargetRestoreOperation{
 		Token: "target-restore:local:stale", TargetID: target.ID, HolderNodeID: "local",
 		DestinationDataset: "zroot/stale", RequestPayload: `{"snapshot":"@stale"}`,
@@ -324,6 +351,9 @@ func TestClusterLegacySnapshotWithoutTargetRestoreOperationsClearsReservations(t
 	var count int64
 	if err := database.Model(&BackupTargetRestoreOperation{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("target restore operations after legacy restore = %d err=%v", count, err)
+	}
+	if err := database.Model(&BackupTargetNodeReadiness{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("target readiness after legacy restore = %d err=%v", count, err)
 	}
 }
 

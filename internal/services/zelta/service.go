@@ -139,7 +139,7 @@ func NewService(
 	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
 	gzfsClient *gzfs.Client,
 ) *Service {
-	return &Service{
+	service := &Service{
 		DB:                        db,
 		TelemetryDB:               telemetryDB,
 		Cluster:                   clusterService,
@@ -159,6 +159,10 @@ func NewService(
 		activeTargetRestoreTokens: make(map[string]struct{}),
 		runtimeClock:              realReplicationRuntimeClock{},
 	}
+	if clusterService != nil {
+		clusterService.SetBackupTargetValidator(service.ValidateTargetReadiness)
+	}
+	return service
 }
 
 func (s *Service) replicationGuestExistsLocally(guestType string, guestID uint) bool {

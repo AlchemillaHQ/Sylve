@@ -406,6 +406,12 @@ func DeleteBackupTargetTxn(db *gorm.DB, targetID uint) error {
 				return err
 			}
 		}
+		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+			if err := tx.Where("target_id = ?", targetID).
+				Delete(&BackupTargetNodeReadiness{}).Error; err != nil {
+				return err
+			}
+		}
 
 		return tx.Delete(&BackupTarget{}, targetID).Error
 	})

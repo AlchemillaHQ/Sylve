@@ -81,6 +81,7 @@ type ClusterSnapshot struct {
 	Notes                         []ClusterNote                      `json:"notes"`
 	Options                       []ClusterOption                    `json:"options"`
 	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
+	BackupTargetReadiness         []BackupTargetNodeReadiness        `json:"backupTargetReadiness,omitempty"`
 	BackupJobs                    []BackupJob                        `json:"backupJobs"`
 	BackupJobOperations           []BackupJobOperation               `json:"backupJobOperations"`
 	BackupTargetRestoreOperations []BackupTargetRestoreOperation     `json:"backupTargetRestoreOperations,omitempty"`
@@ -113,6 +114,11 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	snap.BackupTargets = make([]BackupTargetReplicationPayload, 0, len(targets))
 	for _, t := range targets {
 		snap.BackupTargets = append(snap.BackupTargets, BackupTargetToReplicationPayload(t))
+	}
+	if f.DB.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+		if err := f.DB.Order("target_id ASC, node_id ASC").Find(&snap.BackupTargetReadiness).Error; err != nil {
+			return nil, err
+		}
 	}
 	if err := f.DB.Order("id ASC").Find(&snap.BackupJobs).Error; err != nil {
 		return nil, err
@@ -215,7 +221,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
-		deleteSets := make([]restoreSet, 0, 17)
+		deleteSets := make([]restoreSet, 0, 18)
 		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
 			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
 		}
@@ -224,6 +230,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 		if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
 			deleteSets = append(deleteSets, restoreSet{"backup_target_restore_operations", snap.BackupTargetRestoreOperations, 500})
+		}
+		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+			deleteSets = append(deleteSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
 		}
 		deleteSets = append(deleteSets,
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
@@ -255,6 +264,11 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
 			restoreSet{"replication_events", snap.ReplicationEvents, 500},
 			restoreSet{"backup_targets", backupTargets, 200},
+		)
+		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+			createSets = append(createSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
+		}
+		createSets = append(createSets,
 			restoreSet{"backup_jobs", snap.BackupJobs, 500},
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
 		)
@@ -381,32 +395,52 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 	})
 
+	fsm.Register("backup_target_readiness", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "update":
+			var update BackupTargetNodeReadinessUpdate
+			if err := json.Unmarshal(raw, &update); err != nil {
+				return err
+			}
+			return ApplyBackupTargetNodeReadinessUpdateTxn(db, &update)
+		case "backfill":
+			var row BackupTargetNodeReadiness
+			if err := json.Unmarshal(raw, &row); err != nil {
+				return err
+			}
+			return UpsertBackupTargetNodeReadinessBackfillTxn(db, &row)
+		default:
+			return nil
+		}
+	})
+
 	fsm.Register("backup_job", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		decodeMutation := func() (*BackupJob, *BackupJobPlacementFence, *BackupJobPlacementFence, error) {
+		decodeMutation := func() (*BackupJob, *BackupJobPlacementFence, *BackupJobPlacementFence, *BackupTargetNodeReadinessUpdate, error) {
 			var envelope struct {
-				Job                    *BackupJob               `json:"job"`
-				PlacementFence         *BackupJobPlacementFence `json:"placementFence"`
-				PreviousPlacementFence *BackupJobPlacementFence `json:"previousPlacementFence"`
+				Job                    *BackupJob                       `json:"job"`
+				PlacementFence         *BackupJobPlacementFence         `json:"placementFence"`
+				PreviousPlacementFence *BackupJobPlacementFence         `json:"previousPlacementFence"`
+				TargetReadiness        *BackupTargetNodeReadinessUpdate `json:"targetReadiness"`
 			}
 			if err := json.Unmarshal(raw, &envelope); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 			if envelope.Job != nil {
-				return envelope.Job, envelope.PlacementFence, envelope.PreviousPlacementFence, nil
+				return envelope.Job, envelope.PlacementFence, envelope.PreviousPlacementFence, envelope.TargetReadiness, nil
 			}
 
 			// Compatibility with raw BackupJob entries written before the
-			// placement-fence envelope was introduced.
+			// placement-fence and target-readiness envelope was introduced.
 			var legacy BackupJob
 			if err := json.Unmarshal(raw, &legacy); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
-			return &legacy, nil, nil, nil
+			return &legacy, nil, nil, nil, nil
 		}
 
 		switch action {
 		case "create":
-			job, fence, _, err := decodeMutation()
+			job, fence, _, targetReadiness, err := decodeMutation()
 			if err != nil {
 				return err
 			}
@@ -414,13 +448,18 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return fmt.Errorf("invalid_backup_job_mode")
 			}
 			return db.Transaction(func(tx *gorm.DB) error {
+				if targetReadiness != nil {
+					if err := ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
+						return err
+					}
+				}
 				if err := ValidateBackupJobPlacementFenceTxn(tx, job, fence); err != nil {
 					return err
 				}
 				return upsertBackupJob(tx, job)
 			})
 		case "update":
-			job, fence, previousFence, err := decodeMutation()
+			job, fence, previousFence, targetReadiness, err := decodeMutation()
 			if err != nil {
 				return err
 			}
@@ -450,6 +489,11 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				}
 				if err := ValidateBackupJobPlacementFenceTxn(tx, job, fence); err != nil {
 					return err
+				}
+				if targetReadiness != nil {
+					if err := ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
+						return err
+					}
 				}
 				// Use Updates with map to properly handle boolean false values.
 				if err := tx.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{

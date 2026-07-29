@@ -10,6 +10,7 @@ package clusterHandlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 
 type backupTargetZelta interface {
 	ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error
+	ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error
 	RemoveSSHKey(targetID uint)
 }
 
@@ -35,6 +37,10 @@ var removeTemporaryBackupTargetSSHKey = zelta.RemoveTemporarySSHKey
 
 func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
 		targets, err := cS.ListBackupTargets()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -54,6 +60,9 @@ func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// Create/update admission remains leader-local and proves only leader
+// reachability. Runner readiness is established independently by job
+// placement or the explicit node-selected validation endpoint.
 func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -289,45 +298,92 @@ func DeleteBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 
 func ValidateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_target_id",
-				Error:   "invalid_target_id",
-				Data:    nil,
+				Status: "error", Message: "invalid_target_id", Error: "invalid_target_id", Data: nil,
 			})
 			return
 		}
-
-		target, err := cS.GetBackupTargetByID(uint(id64))
-		if err != nil {
-			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "backup_target_not_found",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-		defer cancel()
-
-		if err := zS.ValidateTarget(ctx, target); err != nil {
+		nodeID := strings.TrimSpace(c.Query("nodeId"))
+		if cS.Raft != nil && nodeID == "" {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "target_validation_failed",
-				Error:   err.Error(),
-				Data:    nil,
+				Status: "error", Message: "validation_node_id_required",
+				Error: "nodeId query parameter is required in a cluster", Data: nil,
 			})
 			return
 		}
-
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 70*time.Second)
+		defer cancel()
+		_, validationErr := cS.ValidateBackupTargetOnNode(
+			ctx, uint(id64), nodeID, zS.ValidateTargetReadiness,
+		)
+		if validationErr != nil {
+			statusCode := http.StatusInternalServerError
+			message := "target_validation_unavailable"
+			var rejected *cluster.BackupTargetValidationRejectedError
+			errorText := strings.ToLower(validationErr.Error())
+			switch {
+			case strings.Contains(errorText, "backup_target_not_found"):
+				statusCode = http.StatusNotFound
+				message = "backup_target_not_found"
+			case errors.As(validationErr, &rejected):
+				statusCode = http.StatusBadRequest
+				message = "target_validation_failed"
+			case strings.Contains(errorText, "not_raft_member"),
+				strings.Contains(errorText, "not_raft_voter"),
+				strings.Contains(errorText, "node_id_required"):
+				statusCode = http.StatusBadRequest
+				message = "validation_node_invalid"
+			case strings.Contains(errorText, "request_failed"),
+				strings.Contains(errorText, "leader_barrier_failed"),
+				strings.Contains(errorText, "raft_catchup_failed"),
+				strings.Contains(errorText, "context deadline"):
+				statusCode = http.StatusServiceUnavailable
+			}
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status: "error", Message: message, Error: validationErr.Error(), Data: nil,
+			})
+			return
+		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "target_validated",
-			Data:    nil,
+			Status: "success", Message: "target_validated", Data: nil,
+		})
+	}
+}
+
+func BackupTargetReadiness(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_target_id", Error: "invalid_target_id", Data: nil,
+			})
+			return
+		}
+		readiness, err := cS.BackupTargetReadiness(uint(id64))
+		if err != nil {
+			statusCode := http.StatusInternalServerError
+			message := "backup_target_readiness_failed"
+			if strings.Contains(strings.ToLower(err.Error()), "record not found") {
+				statusCode = http.StatusNotFound
+				message = "backup_target_not_found"
+			}
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status: "error", Message: message, Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[[]clusterModels.BackupTargetNodeReadinessStatus]{
+			Status: "success", Message: "backup_target_readiness_listed", Data: readiness,
 		})
 	}
 }

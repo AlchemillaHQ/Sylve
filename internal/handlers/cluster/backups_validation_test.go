@@ -3,6 +3,7 @@
 package clusterHandlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -53,6 +54,38 @@ func TestValidateBackupJobSafetyInternalReturnsTypedRunnerReceipt(t *testing.T) 
 	}
 	if !response.Data.Valid || response.Data.NodeID != "node-b" ||
 		response.Data.GuestID != 700 || response.Data.FriendlySource != "handler-vm" {
+		t.Fatalf("response = %+v", response.Data)
+	}
+}
+
+func TestValidateBackupTargetInternalReturnsNodeBoundReceipt(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupTarget{})
+	target := clusterModels.BackupTarget{
+		ID: 9, Name: "target", SSHHost: "root@backup", SSHPort: 22, BackupRoot: "tank/backups",
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	service := &clusterService.Service{DB: db, NodeID: "node-b"}
+	service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
+	request := clusterService.BackupTargetValidationRequest{
+		ExpectedNodeID: "node-b", TargetID: target.ID,
+		TargetFingerprint: clusterModels.BackupTargetConnectivityFingerprint(&target),
+	}
+	body, _ := json.Marshal(request)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/target-validation", ValidateBackupTargetInternal(service))
+	rr := performJSONRequest(t, router, http.MethodPost, "/target-validation", body)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	var response handlerAPIResponse[clusterModels.BackupTargetNodeReadinessUpdate]
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !response.Data.ValidationSucceeded || response.Data.NodeID != "node-b" ||
+		response.Data.TargetID != target.ID {
 		t.Fatalf("response = %+v", response.Data)
 	}
 }

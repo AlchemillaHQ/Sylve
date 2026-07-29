@@ -4,19 +4,22 @@
 		listBackupTargets,
 		validateBackupTarget
 	} from '$lib/api/cluster/backups';
+	import { getDetails, getNodes } from '$lib/api/cluster/cluster';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { BackupTarget } from '$lib/types/cluster/backups';
+	import type { BackupTarget, BackupTargetNodeReadiness } from '$lib/types/cluster/backups';
+	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
 	import Form from '$lib/components/custom/DataCenter/Backups/Targets/Form.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -33,6 +36,49 @@
 			return res;
 		},
 		{ initialValue: data.targets }
+	);
+
+	let clusterDetails = resource(
+		() => 'cluster-details-backup-targets',
+		async () => {
+			const result = await getDetails();
+			return isAPIResponse(result) ? null : result;
+		},
+		{ initialValue: null as ClusterDetails | null }
+	);
+
+	let clusterNodes = resource(
+		() => 'cluster-nodes-backup-targets',
+		async () => await getNodes(),
+		{ initialValue: [] as ClusterNode[] }
+	);
+
+	let selectedValidationNodeId = $state('');
+	let validationNodeInitialized = $state(false);
+	let validationNodeOptions = $derived.by(() => {
+		const names = new Map(clusterNodes.current.map((node) => [node.nodeUUID, node.hostname]));
+		return (clusterDetails.current?.nodes || [])
+			.filter((node) => node.suffrage === 'voter')
+			.map((node) => ({
+				value: node.id,
+				label: `${names.get(node.id) || node.id}${node.isLeader ? ' (leader)' : ''}`
+			}));
+	});
+
+	watch(
+		[
+			() => validationNodeInitialized,
+			() => clusterDetails.current?.nodeId,
+			() => validationNodeOptions
+		],
+		([initialized, currentNodeId, options]) => {
+			if (initialized || options.length === 0) return;
+			const current = (currentNodeId || '').trim();
+			selectedValidationNodeId = options.some((option) => option.value === current)
+				? current
+				: options[0].value;
+			validationNodeInitialized = true;
+		}
 	);
 
 	let reload = $state(false);
@@ -76,6 +122,29 @@
 	let deleteModalOpen = $state(false);
 	let validating = $state(false);
 
+	function selectedReadiness(target: BackupTarget): BackupTargetNodeReadiness | undefined {
+		if (!selectedValidationNodeId) {
+			return target.readiness.find((status) => status.currentVoter);
+		}
+		return target.readiness.find((status) => status.nodeId === selectedValidationNodeId);
+	}
+
+	function readinessLabel(status: BackupTargetNodeReadiness | undefined): string {
+		if (!status) return 'Not validated';
+		if (!status.currentVoter) return 'Removed voter';
+		if (status.ready) return 'Ready';
+		if (status.expired) return 'Expired';
+		if (!status.configurationCurrent) return 'Configuration changed';
+		if (!status.validationSucceeded && status.lastVerifiedAt) return 'Failed';
+		return 'Not validated';
+	}
+
+	function readinessTitle(status: BackupTargetNodeReadiness | undefined): string {
+		if (!status?.lastVerifiedAt) return 'No validation has been recorded for this node';
+		const readyUntil = status.readyUntil ? `; ready until ${status.readyUntil}` : '';
+		return `Last checked ${status.lastVerifiedAt}${readyUntil}`;
+	}
+
 	const targetColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
@@ -87,6 +156,30 @@
 					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
 		},
 		{ field: 'name', title: 'Name' },
+		{
+			field: 'readiness',
+			title: 'Node Readiness',
+			formatter: (cell: CellComponent) => {
+				const value = String(cell.getValue() || 'Not validated');
+				const title = String(cell.getRow().getData().readinessTitle || '');
+				switch (value) {
+					case 'Ready':
+						return renderWithIcon('mdi:check-network', value, 'text-green-500', title);
+					case 'Failed':
+						return renderWithIcon('mdi:network-off', value, 'text-red-500', title);
+					case 'Expired':
+					case 'Configuration changed':
+						return renderWithIcon('mdi:clock-alert-outline', value, 'text-orange-500', title);
+					default:
+						return renderWithIcon(
+							'mdi:help-network-outline',
+							value,
+							'text-muted-foreground',
+							title
+						);
+				}
+			}
+		},
 		{ field: 'sshHost', title: 'SSH Host', visible: false },
 		{ field: 'sshPort', title: 'Port', visible: false },
 		{ field: 'target', title: 'Target' },
@@ -116,6 +209,8 @@
 			backupRoot: target.backupRoot,
 			description: target.description || '-',
 			enabled: target.enabled,
+			readiness: readinessLabel(selectedReadiness(target)),
+			readinessTitle: readinessTitle(selectedReadiness(target)),
 			createdAt: target.createdAt
 		})),
 		columns: targetColumns
@@ -140,9 +235,10 @@
 		if (!selectedTargetId) return;
 		validating = true;
 		try {
-			const response = await validateBackupTarget(selectedTargetId);
+			const response = await validateBackupTarget(selectedTargetId, selectedValidationNodeId);
 			if (response.status === 'success') {
 				toast.success('Target connectivity validated', { position: 'bottom-center' });
+				reload = true;
 			} else {
 				handleAPIError(response);
 				toast.error('Validation failed', { position: 'bottom-center' });
@@ -225,6 +321,21 @@
 
 		{@render button('edit')}
 		{@render button('delete')}
+
+		{#if validationNodeOptions.length > 0}
+			<SimpleSelect
+				options={validationNodeOptions}
+				value={selectedValidationNodeId}
+				onChange={(value) => (selectedValidationNodeId = value)}
+				placeholder="Validation node"
+				title="Node used for target connectivity validation"
+				classes={{
+					parent: 'w-52',
+					label: '',
+					trigger: 'inline-flex h-6.5 w-52 items-center overflow-hidden px-2 text-left'
+				}}
+			/>
+		{/if}
 		{@render button('validate')}
 
 		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">

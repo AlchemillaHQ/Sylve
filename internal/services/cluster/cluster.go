@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,6 +52,8 @@ type Service struct {
 
 	guestIdentityInventoryAPIForNode func(string, raft.ServerAddress) (string, error)
 	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
+	backupTargetValidationAPIForNode func(string, raft.ServerAddress) (string, error)
+	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
 }
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {
@@ -234,6 +237,26 @@ func (s *Service) backfillPreClusterState() error {
 			cmd := clusterModels.Command{Type: "backup_target", Action: "create", Data: data}
 			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
 				return fmt.Errorf("apply_synth_create_backup_target id=%d: %w", t.ID, err)
+			}
+		}
+	}
+
+	{
+		var readiness []clusterModels.BackupTargetNodeReadiness
+		if s.DB.Migrator().HasTable(&clusterModels.BackupTargetNodeReadiness{}) {
+			if err := s.DB.Order("target_id ASC, node_id ASC").Find(&readiness).Error; err != nil {
+				return fmt.Errorf("scan_existing_backup_target_readiness: %w", err)
+			}
+		}
+		for _, row := range readiness {
+			data, _ := json.Marshal(row)
+			cmd := clusterModels.Command{Type: "backup_target_readiness", Action: "backfill", Data: data}
+			future := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second)
+			if err := future.Error(); err != nil {
+				return fmt.Errorf("apply_synth_backup_target_readiness target_id=%d node_id=%s: %w", row.TargetID, row.NodeID, err)
+			}
+			if responseErr, ok := future.Response().(error); ok && responseErr != nil {
+				return fmt.Errorf("apply_synth_backup_target_readiness target_id=%d node_id=%s: %w", row.TargetID, row.NodeID, responseErr)
 			}
 		}
 	}

@@ -50,9 +50,10 @@ type BackupJobPlacementFence struct {
 // create/update proposals. The FSM also accepts the legacy raw BackupJob JSON
 // so pre-upgrade Raft log entries remain replayable.
 type BackupJobCommandPayload struct {
-	Job                    BackupJob                `json:"job"`
-	PlacementFence         *BackupJobPlacementFence `json:"placementFence,omitempty"`
-	PreviousPlacementFence *BackupJobPlacementFence `json:"previousPlacementFence,omitempty"`
+	Job                    BackupJob                        `json:"job"`
+	PlacementFence         *BackupJobPlacementFence         `json:"placementFence,omitempty"`
+	PreviousPlacementFence *BackupJobPlacementFence         `json:"previousPlacementFence,omitempty"`
+	TargetReadiness        *BackupTargetNodeReadinessUpdate `json:"targetReadiness,omitempty"`
 }
 
 func normalizeBackupJobPlacementFence(fence BackupJobPlacementFence) BackupJobPlacementFence {

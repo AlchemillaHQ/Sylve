@@ -255,7 +255,8 @@ func TestResyncClusterStateErrors(t *testing.T) {
 func TestBackfillPreClusterState(t *testing.T) {
 	allModels := []any{
 		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
-		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{},
+		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{},
 		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ClusterSSHIdentity{},
@@ -280,6 +281,14 @@ func TestBackfillPreClusterState(t *testing.T) {
 		Enabled: true, SSHKey: "some-key",
 	}
 	seedDB.Create(&target)
+	readinessAt := time.Now().UTC()
+	readinessUntil := readinessAt.Add(time.Hour)
+	seedDB.Create(&clusterModels.BackupTargetNodeReadiness{
+		TargetID: target.ID, NodeID: "node-1",
+		TargetFingerprint:   clusterModels.BackupTargetConnectivityFingerprint(&target),
+		ValidationSucceeded: true, LastVerifiedAt: readinessAt, ReadyUntil: &readinessUntil,
+		Revision: 7, RaftAppliedIndex: 88, UpdatedAt: readinessAt,
+	})
 
 	seedDB.Create(&clusterModels.BackupJob{
 		ID: 20, Name: "bk-job", TargetID: 10, Mode: clusterModels.BackupJobModeDataset,
@@ -354,6 +363,13 @@ func TestBackfillPreClusterState(t *testing.T) {
 			var tgtCount int64
 			node.service.DB.Model(&clusterModels.BackupTarget{}).Count(&tgtCount)
 			if tgtCount != 1 {
+				return false
+			}
+
+			var readiness clusterModels.BackupTargetNodeReadiness
+			if err := node.service.DB.Where("target_id = ? AND node_id = ?", target.ID, "node-1").
+				First(&readiness).Error; err != nil || readiness.Revision != 7 ||
+				readiness.RaftAppliedIndex != 88 || readiness.TargetFingerprint != clusterModels.BackupTargetConnectivityFingerprint(&target) {
 				return false
 			}
 

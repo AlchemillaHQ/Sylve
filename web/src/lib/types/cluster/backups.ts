@@ -1,5 +1,19 @@
 import { z } from 'zod/v4';
 
+export const BackupTargetNodeReadinessSchema = z.object({
+	targetId: z.number(),
+	nodeId: z.string(),
+	validationSucceeded: z.boolean().default(false),
+	lastVerifiedAt: z.string().nullable().optional(),
+	readyUntil: z.string().nullable().optional(),
+	lastError: z.string().optional().default(''),
+	revision: z.number().int().nonnegative().default(0),
+	ready: z.boolean().default(false),
+	currentVoter: z.boolean().default(false),
+	expired: z.boolean().default(false),
+	configurationCurrent: z.boolean().default(true)
+});
+
 export const BackupTargetSchema = z.object({
 	id: z.number(),
 	name: z.string(),
@@ -10,6 +24,7 @@ export const BackupTargetSchema = z.object({
 	createBackupRoot: z.boolean().default(false),
 	description: z.string().optional().default(''),
 	enabled: z.boolean().default(true),
+	readiness: z.array(BackupTargetNodeReadinessSchema).optional().default([]),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
 });
@@ -102,6 +117,7 @@ export const BackupVMMetadataInfoSchema = z.object({
 	pools: z.array(z.string()).default([])
 });
 
+export type BackupTargetNodeReadiness = z.infer<typeof BackupTargetNodeReadinessSchema>;
 export type BackupTarget = z.infer<typeof BackupTargetSchema>;
 export type BackupJob = z.infer<typeof BackupJobSchema>;
 export type BackupEvent = z.infer<typeof BackupEventSchema>;

@@ -541,11 +541,18 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)
 		return err
 	}
+	targetReadiness := validation.TargetReadiness
+	if targetReadiness == nil {
+		err := fmt.Errorf("backup_target_readiness_job_receipt_missing")
+		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)
+		return err
+	}
 	apply := clusterModels.BackupJobRunnerRebindApply{
 		Token: operation.Token, JobID: item.JobID,
 		ExpectedFingerprint: item.ExpectedFingerprint,
 		FriendlySource:      strings.TrimSpace(validation.FriendlySource),
 		PlacementFence:      placementFence, PreviousPlacementFence: previousFence,
+		TargetReadiness: targetReadiness,
 	}
 	if err := s.applyBackupJobRunnerRebindCommand("apply", apply, false); err != nil {
 		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)

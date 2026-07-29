@@ -14,6 +14,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -37,6 +38,10 @@ func (s *backupTargetZeltaStub) ValidateTarget(_ context.Context, target *cluste
 	return s.validateErr
 }
 
+func (s *backupTargetZeltaStub) ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error {
+	return s.ValidateTarget(ctx, target)
+}
+
 func (s *backupTargetZeltaStub) RemoveSSHKey(targetID uint) {
 	s.removedIDs = append(s.removedIDs, targetID)
 }
@@ -49,6 +54,7 @@ func newBackupTargetRouter(cS *cluster.Service, zS backupTargetZelta) *gin.Engin
 	r.PUT("/cluster/backups/targets/:id", UpdateBackupTarget(cS, zS))
 	r.DELETE("/cluster/backups/targets/:id", DeleteBackupTarget(cS, zS))
 	r.POST("/cluster/backups/targets/validate/:id", ValidateBackupTarget(cS, zS))
+	r.GET("/cluster/backups/targets/:id/readiness", BackupTargetReadiness(cS))
 	return r
 }
 
@@ -596,6 +602,27 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		}
 		if len(zStub.validateCalls) != 1 {
 			t.Fatalf("expected one validate call, got %d", len(zStub.validateCalls))
+		}
+		var readiness clusterModels.BackupTargetNodeReadiness
+		if err := db.Where("target_id = ?", target.ID).First(&readiness).Error; err != nil {
+			t.Fatalf("load readiness: %v", err)
+		}
+		if !readiness.ValidationSucceeded || readiness.NodeID == "" {
+			t.Fatalf("stored readiness: %+v", readiness)
+		}
+
+		rr = performJSONRequest(t, r, http.MethodGet,
+			"/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10)+"/readiness", nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("readiness status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if strings.Contains(rr.Body.String(), "targetFingerprint") {
+			t.Fatalf("internal target fingerprint leaked in readiness response: %s", rr.Body.String())
+		}
+		var readinessResponse handlerAPIResponse[[]clusterModels.BackupTargetNodeReadinessStatus]
+		decodeErr := json.Unmarshal(rr.Body.Bytes(), &readinessResponse)
+		if decodeErr != nil || len(readinessResponse.Data) == 0 || !readinessResponse.Data[0].Ready {
+			t.Fatalf("readiness response=%+v err=%v", readinessResponse, decodeErr)
 		}
 	})
 }

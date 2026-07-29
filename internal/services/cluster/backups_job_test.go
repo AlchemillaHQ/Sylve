@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -29,7 +30,7 @@ func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 		&vmModels.Storage{},
 		&vmModels.VMStorageDataset{},
 	)
-	s := &Service{DB: db}
+	s := &Service{DB: db, backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error { return nil }}
 
 	target := clusterModels.BackupTarget{
 		Name:       "recursive-job-target",

@@ -288,6 +288,18 @@ func (s *Service) cleanupOrphanTargetSSHKeys(targets []clusterModels.BackupTarge
 }
 
 func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error {
+	return s.validateTarget(ctx, target, true)
+}
+
+// ValidateTargetReadiness performs the runner-side connectivity/readiness
+// check without mutating the remote target. Target create/update retains its
+// existing admission behavior; job placement and explicit readiness probes
+// must be observational.
+func (s *Service) ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error {
+	return s.validateTarget(ctx, target, false)
+}
+
+func (s *Service) validateTarget(ctx context.Context, target *clusterModels.BackupTarget, allowCreate bool) error {
 	backupRoot := strings.TrimSpace(target.BackupRoot)
 	if backupRoot == "" {
 		return fmt.Errorf("backup_root_required")
@@ -311,6 +323,9 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 	}
 	if rootExists {
 		return nil
+	}
+	if !allowCreate {
+		return fmt.Errorf("backup_root_not_found: dataset '%s' does not exist on target", backupRoot)
 	}
 
 	if ctx.Err() != nil {
