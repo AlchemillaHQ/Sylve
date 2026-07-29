@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -477,6 +478,114 @@ func TestDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 	}
 	if string(contents) != "retained" {
 		t.Fatalf("retained marker contents = %q", contents)
+	}
+}
+
+func TestDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
+	if runtime.GOOS != "freebsd" {
+		t.Skip("FreeBSD file flags are required for this regression test")
+	}
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping real ZFS jail CTID reuse integration test in short mode")
+	}
+
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+
+	baseDir := filepath.Join(t.TempDir(), "base")
+	protectedFiles := []string{
+		"lib/libc.so.7",
+		"libexec/ld-elf.so.1",
+		"usr/bin/login",
+	}
+	for _, relativePath := range protectedFiles {
+		path := filepath.Join(baseDir, relativePath)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("create base directory for %s: %v", relativePath, err)
+		}
+		if err := os.WriteFile(path, []byte("protected base file: "+relativePath), 0555); err != nil {
+			t.Fatalf("write base file %s: %v", relativePath, err)
+		}
+	}
+	emptyDir := filepath.Join(baseDir, "var", "empty")
+	if err := os.MkdirAll(emptyDir, 0555); err != nil {
+		t.Fatalf("create protected empty directory: %v", err)
+	}
+
+	flaggedPaths := append([]string{}, protectedFiles...)
+	flaggedPaths = append(flaggedPaths, filepath.Join("var", "empty"))
+	for _, relativePath := range flaggedPaths {
+		path := filepath.Join(baseDir, relativePath)
+		if out, err := exec.Command("chflags", "schg", path).CombinedOutput(); err != nil {
+			t.Fatalf("set schg on %s: %v, output: %s", relativePath, err, strings.TrimSpace(string(out)))
+		}
+	}
+	t.Cleanup(func() {
+		_, _ = exec.Command("chflags", "-R", "noschg", baseDir).CombinedOutput()
+	})
+
+	const ctID uint = 694
+	datasetName := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
+	zfstest.EnsureDataset(t, client, datasetName)
+	firstDataset, err := client.ZFS.Get(t.Context(), datasetName, false)
+	if err != nil {
+		t.Fatalf("get first jail dataset: %v", err)
+	}
+	firstGUID := firstDataset.GUID
+	if err := utils.CopyDirContents(baseDir, firstDataset.Mountpoint); err != nil {
+		t.Fatalf("copy base into first jail root: %v", err)
+	}
+
+	copiedProtectedFile := filepath.Join(firstDataset.Mountpoint, protectedFiles[0])
+	flags, err := exec.Command("stat", "-f", "%Sf", copiedProtectedFile).CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspect copied protected file flags: %v, output: %s", err, strings.TrimSpace(string(flags)))
+	}
+	if !strings.Contains(string(flags), "schg") {
+		t.Fatalf("copied protected file flags = %q, want schg", strings.TrimSpace(string(flags)))
+	}
+
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := newJailDeleteTestDB(t)
+	jailID, macID := seedJailDeleteGraph(t, db, ctID, pool, true)
+	network := &jailDeleteNetworkService{}
+	service := &Service{DB: db, GZFS: client, NetworkService: network}
+	result, err := service.deleteJailWithRuntime(t.Context(), ctID, true, true, inactiveJailDeleteRuntime())
+	if err != nil {
+		t.Fatalf("delete first jail with root filesystem: %v", err)
+	}
+	if len(result.Warnings) != 0 || len(result.RetainedDatasets) != 0 {
+		t.Fatalf("delete result = %+v, want complete cleanup", result)
+	}
+	assertJailDeleteGraphAbsent(t, db, jailID, ctID)
+	if count := countJailDeleteRows(t, db, &networkModels.Object{}, "id = ?", macID); count != 0 {
+		t.Fatalf("MAC object count after delete = %d, want 0", count)
+	}
+	if out, err := exec.Command("zfs", "list", "-H", "-o", "name", datasetName).CombinedOutput(); err == nil {
+		t.Fatalf("deleted jail dataset still exists: %s", strings.TrimSpace(string(out)))
+	}
+
+	zfstest.EnsureDataset(t, client, datasetName)
+	secondDataset, err := client.ZFS.Get(t.Context(), datasetName, false)
+	if err != nil {
+		t.Fatalf("get recreated jail dataset: %v", err)
+	}
+	if secondDataset.GUID == firstGUID {
+		t.Fatalf("recreated dataset retained old GUID %q", firstGUID)
+	}
+	if err := utils.CopyDirContents(baseDir, secondDataset.Mountpoint); err != nil {
+		t.Fatalf("copy base after reusing CTID %d: %v", ctID, err)
+	}
+	for _, relativePath := range protectedFiles {
+		contents, err := os.ReadFile(filepath.Join(secondDataset.Mountpoint, relativePath))
+		if err != nil {
+			t.Fatalf("read recreated jail file %s: %v", relativePath, err)
+		}
+		want := "protected base file: " + relativePath
+		if string(contents) != want {
+			t.Fatalf("recreated jail file %s = %q, want %q", relativePath, contents, want)
+		}
 	}
 }
 
