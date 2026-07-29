@@ -71,6 +71,7 @@ type guestWorkloadGurad interface {
 	ReleaseGuestLock(guestType string, guestID uint)
 	AcquireGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, targetNodeID string, taskID uint, token string) error
 	WaitGuestMigrationInterlockAcquired(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
+	PrepareGuestBackupJobRunnerRebind(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
 	SealGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, token string) error
 	WaitGuestMigrationInterlockApplied(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
 	AbortGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, token string) error
@@ -1027,6 +1028,12 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 	}
 	if err := s.checkCancelled(taskID); err != nil {
 		return s.handleCancel(taskID, mp)
+	}
+	if err := s.WorkloadGuard.PrepareGuestBackupJobRunnerRebind(
+		ctx, task.GuestType, task.GuestID, mp.TargetNodeUUID, operationToken,
+	); err != nil {
+		s.updateTaskFailed(taskID, err.Error())
+		return fmt.Errorf("migration_backup_job_rebind_plan_failed: %w", err)
 	}
 
 	mp.Phase = PhaseInitialReplicaton

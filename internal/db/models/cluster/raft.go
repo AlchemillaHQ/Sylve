@@ -83,6 +83,8 @@ type ClusterSnapshot struct {
 	BackupTargets          []BackupTargetReplicationPayload   `json:"backupTargets"`
 	BackupJobs             []BackupJob                        `json:"backupJobs"`
 	BackupJobOperations    []BackupJobOperation               `json:"backupJobOperations"`
+	BackupJobRebinds       []BackupJobRunnerRebind            `json:"backupJobRebinds,omitempty"`
+	BackupJobRebindItems   []BackupJobRunnerRebindItem        `json:"backupJobRebindItems,omitempty"`
 	ReplicationPolicies    []ReplicationPolicyPayload         `json:"replicationPolicies"`
 	ReplicationLeases      []ReplicationLease                 `json:"replicationLeases"`
 	GuestOperations        []ReplicationGuestOperation        `json:"guestOperations"`
@@ -116,6 +118,16 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	}
 	if err := f.DB.Order("job_id ASC").Find(&snap.BackupJobOperations).Error; err != nil {
 		return nil, err
+	}
+	if f.DB.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+		if err := f.DB.Order("token ASC").Find(&snap.BackupJobRebinds).Error; err != nil {
+			return nil, err
+		}
+	}
+	if f.DB.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
+		if err := f.DB.Order("operation_token ASC, job_id ASC").Find(&snap.BackupJobRebindItems).Error; err != nil {
+			return nil, err
+		}
 	}
 	var replicationPolicies []ReplicationPolicy
 	if err := f.DB.Preload("Targets").Order("id ASC").Find(&replicationPolicies).Error; err != nil {
@@ -196,15 +208,22 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
-		deleteSets := []restoreSet{
-			{"backup_job_operations", snap.BackupJobOperations, 500},
-			{"replication_events", snap.ReplicationEvents, 500},
-			{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
-			{"replication_guest_operations", snap.GuestOperations, 500},
-			{"replication_leases", snap.ReplicationLeases, 500},
-			{"replication_policy_targets", replicationTargets, 500},
-			{"replication_policies", replicationPolicies, 500},
+		deleteSets := make([]restoreSet, 0, 16)
+		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
+			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
 		}
+		if tx.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebinds", snap.BackupJobRebinds, 500})
+		}
+		deleteSets = append(deleteSets,
+			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
+			restoreSet{"replication_events", snap.ReplicationEvents, 500},
+			restoreSet{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
+			restoreSet{"replication_guest_operations", snap.GuestOperations, 500},
+			restoreSet{"replication_leases", snap.ReplicationLeases, 500},
+			restoreSet{"replication_policy_targets", replicationTargets, 500},
+			restoreSet{"replication_policies", replicationPolicies, 500},
+		)
 		deleteSets = append(deleteSets,
 			restoreSet{"cluster_ssh_identities", snap.SSHIdentities, 200},
 			restoreSet{"encryption_keys", snap.EncryptionKeys, 200},
@@ -228,6 +247,14 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"backup_targets", backupTargets, 200},
 			restoreSet{"backup_jobs", snap.BackupJobs, 500},
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
+		)
+		if tx.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+			createSets = append(createSets, restoreSet{"backup_job_runner_rebinds", snap.BackupJobRebinds, 500})
+		}
+		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
+			createSets = append(createSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
+		}
+		createSets = append(createSets,
 			restoreSet{"cluster_notes", snap.Notes, 500},
 			restoreSet{"cluster_options", snap.Options, 100},
 		)
@@ -413,7 +440,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 					return err
 				}
 				// Use Updates with map to properly handle boolean false values.
-				return tx.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+				if err := tx.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
 					"name":               job.Name,
 					"target_id":          job.TargetID,
 					"runner_node_id":     job.RunnerNodeID,
@@ -429,7 +456,12 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 					"cron_expr":          job.CronExpr,
 					"enabled":            job.Enabled,
 					"next_run_at":        job.NextRunAt,
-				}).Error
+				}).Error; err != nil {
+					return err
+				}
+				// A normal update has already passed runner-local validation and
+				// therefore acts as the explicit repair acknowledgement.
+				return ClearBackupJobRepairRequiredTxn(tx, job.ID)
 			})
 		case "delete":
 			var payload struct {
@@ -439,6 +471,43 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return DeleteBackupJobTxn(db, payload.ID)
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("backup_job_runner_rebind", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "prepare":
+			var payload BackupJobRunnerRebindPlan
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return PrepareBackupJobRunnerRebindTxn(db, &payload)
+		case "ready":
+			var payload BackupJobRunnerRebindReady
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return ReadyBackupJobRunnerRebindTxn(db, &payload)
+		case "apply":
+			var payload BackupJobRunnerRebindApply
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return ApplyBackupJobRunnerRebindTxn(db, &payload)
+		case "repair":
+			var payload BackupJobRunnerRebindRepair
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return RepairBackupJobRunnerRebindTxn(db, &payload)
+		case "pending":
+			var payload BackupJobRunnerRebindPending
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return PendingBackupJobRunnerRebindTxn(db, &payload)
 		default:
 			return nil
 		}

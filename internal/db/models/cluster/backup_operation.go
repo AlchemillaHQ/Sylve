@@ -117,7 +117,6 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 		if runner := strings.TrimSpace(job.RunnerNodeID); runner != "" && runner != holderNodeID {
 			return fmt.Errorf("backup_job_operation_runner_mismatch")
 		}
-
 		var existing BackupJobOperation
 		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("job_id = ?", payload.JobID).
@@ -134,6 +133,21 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 				return nil
 			}
 			return fmt.Errorf("backup_job_running")
+		}
+
+		rebindPending, err := BackupJobRunnerRebindPendingForJob(tx, payload.JobID)
+		if err != nil {
+			return err
+		}
+		if rebindPending {
+			return fmt.Errorf("backup_job_runner_rebind_pending")
+		}
+		repairRequired, err := BackupJobRepairRequired(tx, payload.JobID)
+		if err != nil {
+			return err
+		}
+		if repairRequired {
+			return fmt.Errorf("backup_job_repair_required")
 		}
 
 		return tx.Create(&BackupJobOperation{
@@ -313,6 +327,6 @@ func DeleteBackupJobTxn(db *gorm.DB, jobID uint) error {
 		if deleted.RowsAffected == 0 {
 			return fmt.Errorf("backup_job_not_found")
 		}
-		return nil
+		return MarkDeletedBackupJobRunnerRebindItemsTxn(tx, jobID)
 	})
 }

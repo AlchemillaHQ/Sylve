@@ -597,6 +597,13 @@ func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 	if err := s.DB.Preload("Target").First(&job, jobID).Error; err != nil {
 		return err
 	}
+	repairRequired, err := clusterModels.BackupJobRepairRequired(s.DB, jobID)
+	if err != nil {
+		return err
+	}
+	if repairRequired {
+		return fmt.Errorf("backup_job_repair_required")
+	}
 
 	if !s.reserveJob(jobID) {
 		return fmt.Errorf("backup_job_already_running")
@@ -626,6 +633,16 @@ func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 }
 
 func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob) (resultErr error) {
+	if job == nil {
+		return fmt.Errorf("backup_job_required")
+	}
+	repairRequired, err := clusterModels.BackupJobRepairRequired(s.DB, job.ID)
+	if err != nil {
+		return fmt.Errorf("backup_job_repair_state_lookup_failed: %w", err)
+	}
+	if repairRequired {
+		return fmt.Errorf("backup_job_repair_required")
+	}
 	if !s.beginJob(job.ID) {
 		return fmt.Errorf("backup_job_already_running")
 	}

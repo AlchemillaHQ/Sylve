@@ -51,6 +51,17 @@ type BackupJobSafetyValidationRequest struct {
 	Recursive               bool   `json:"recursive"`
 }
 
+type backupJobSafetyRejectionError struct {
+	Reason string
+}
+
+func (e *backupJobSafetyRejectionError) Error() string {
+	if e == nil || strings.TrimSpace(e.Reason) == "" {
+		return "backup_runner_validation_rejected"
+	}
+	return strings.TrimSpace(e.Reason)
+}
+
 type BackupJobSafetyValidationResult struct {
 	NodeID           string `json:"nodeId"`
 	RaftAppliedIndex uint64 `json:"raftAppliedIndex,omitempty"`
@@ -325,6 +336,17 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 	return server, nodeID == localNodeID, nil
 }
 
+// ResolveIntraClusterVoterAPI derives an authenticated control endpoint from
+// current Raft voter membership and the fixed embedded HTTPS port. It never
+// trusts asynchronous cluster-node health rows or the public API port.
+func (s *Service) ResolveIntraClusterVoterAPI(nodeID string) (string, error) {
+	server, _, err := s.backupJobRunnerVoter(nodeID)
+	if err != nil {
+		return "", err
+	}
+	return s.backupJobValidationAPI(strings.TrimSpace(nodeID), server.Address)
+}
+
 func (s *Service) backupJobValidationAPI(nodeID string, address raft.ServerAddress) (string, error) {
 	var endpoint string
 	var err error
@@ -428,7 +450,7 @@ func validateBackupJobSafetyReceipt(
 		if validationErr == "" {
 			validationErr = "backup_runner_validation_rejected"
 		}
-		return errors.New(validationErr)
+		return &backupJobSafetyRejectionError{Reason: validationErr}
 	}
 
 	expectedGuestType, expectedGuestID := backupJobValidationIdentity(request)

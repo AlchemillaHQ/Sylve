@@ -6233,27 +6233,7 @@ func (s *Service) forwardCleanupReplicationPolicyDelete(
 }
 
 func backupJobGuestIdentity(job *clusterModels.BackupJob) (string, uint) {
-	if job == nil {
-		return "", 0
-	}
-
-	mode := strings.ToLower(strings.TrimSpace(job.Mode))
-	if mode != clusterModels.BackupJobModeJail && mode != clusterModels.BackupJobModeVM {
-		return "", 0
-	}
-
-	kind, guestID := inferRestoreDatasetKind(strings.TrimSpace(job.JailRootDataset))
-	if guestID == 0 {
-		kind, guestID = inferRestoreDatasetKind(strings.TrimSpace(job.SourceDataset))
-	}
-	if guestID == 0 {
-		return "", 0
-	}
-	if kind != clusterModels.BackupJobModeJail && kind != clusterModels.BackupJobModeVM {
-		return "", 0
-	}
-
-	return kind, guestID
+	return clusterModels.BackupJobGuestIdentity(job)
 }
 
 func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string) clusterServiceInterfaces.BackupJobReq {
@@ -6359,6 +6339,53 @@ func (s *Service) rebindGuestBackupJobRunners(
 	return nil
 }
 
+// PrepareGuestBackupJobRunnerRebind durably captures every affected job while
+// the migration operation is still pre-cutover. Followers forward the request
+// to the current Raft leader; repeated calls with the exact token are safe.
+func (s *Service) PrepareGuestBackupJobRunnerRebind(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newRunnerNodeID string,
+	operationToken string,
+) error {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	newRunnerNodeID = strings.TrimSpace(newRunnerNodeID)
+	operationToken = strings.TrimSpace(operationToken)
+	if guestType == "" || guestID == 0 || newRunnerNodeID == "" || operationToken == "" {
+		return fmt.Errorf("invalid_backup_job_runner_rebind_input")
+	}
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft == nil {
+		return s.Cluster.PrepareBackupJobRunnerRebind(
+			ctx, guestType, guestID, newRunnerNodeID, operationToken, true,
+		)
+	}
+	if s.Cluster.Raft.State() != raft.Leader {
+		_, leaderID := s.Cluster.Raft.LeaderWithID()
+		leaderNodeID := strings.TrimSpace(string(leaderID))
+		if leaderNodeID == "" {
+			return fmt.Errorf("leader_not_available")
+		}
+		return s.forwardRaftVoterControlWithRetry(
+			leaderNodeID,
+			"backup-job-runner-rebind-prepare",
+			map[string]any{
+				"guestType":       guestType,
+				"guestId":         guestID,
+				"newRunnerNodeId": newRunnerNodeID,
+				"operationToken":  operationToken,
+			},
+			replicationControlDefaultTimeout,
+		)
+	}
+	return s.Cluster.PrepareBackupJobRunnerRebind(
+		ctx, guestType, guestID, newRunnerNodeID, operationToken, false,
+	)
+}
+
 func (s *Service) MigrateGuestOwnership(
 	ctx context.Context,
 	guestType string,
@@ -6385,12 +6412,24 @@ func (s *Service) MigrateGuestOwnership(
 		if leaderNodeID == "" {
 			return fmt.Errorf("leader_not_available")
 		}
-		return s.forwardReplicationPolicyControlWithRetry(leaderNodeID, "replication-reassign-owner", map[string]any{
+		return s.forwardRaftVoterControlWithRetry(leaderNodeID, "replication-reassign-owner", map[string]any{
 			"guest_type":        guestType,
 			"guest_id":          guestID,
 			"new_owner_node_id": newOwnerNodeID,
 			"operation_token":   operationToken,
 		}, replicationControlDefaultTimeout)
+	}
+
+	// Normal migrations prepared this plan before cutover. Preparing here as
+	// well safely upgrades/reconciles a cutover task that predates the plan or
+	// whose original proposal outcome was ambiguous.
+	if err := s.PrepareGuestBackupJobRunnerRebind(
+		ctx, guestType, guestID, newOwnerNodeID, operationToken,
+	); err != nil {
+		return fmt.Errorf("prepare_backup_job_runner_rebind_failed: %w", err)
+	}
+	if err := s.Cluster.ReadyBackupJobRunnerRebind(operationToken, false); err != nil {
+		return fmt.Errorf("ready_backup_job_runner_rebind_failed: %w", err)
 	}
 
 	var policies []clusterModels.ReplicationPolicy
@@ -6414,13 +6453,7 @@ func (s *Service) MigrateGuestOwnership(
 		}
 	}
 
-	if err := s.rebindGuestBackupJobRunners(
-		ctx,
-		guestType,
-		guestID,
-		newOwnerNodeID,
-		clusterService.BackupJobPlacementAuthorization{GuestOperationToken: operationToken},
-	); err != nil {
+	if err := s.Cluster.ReconcileBackupJobRunnerRebind(ctx, operationToken); err != nil {
 		errs = append(errs, fmt.Sprintf("backup_jobs: %v", err))
 	}
 
@@ -6968,6 +7001,30 @@ func replicationValidationForwardTimeout(ctx context.Context) (time.Duration, er
 	return timeout, nil
 }
 
+func (s *Service) forwardRaftVoterControlWithRetry(
+	nodeID string,
+	action string,
+	payload map[string]any,
+	timeout time.Duration,
+) error {
+	var lastErr error
+	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
+		targetAPI, resolveErr := s.Cluster.ResolveIntraClusterVoterAPI(nodeID)
+		if resolveErr != nil {
+			lastErr = resolveErr
+		} else {
+			_, lastErr = s.forwardReplicationPolicyControlReadAtAPI(targetAPI, action, payload, timeout)
+			if lastErr == nil {
+				return nil
+			}
+		}
+		if attempt < replicationControlForwardAttempts-1 {
+			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
+		}
+	}
+	return lastErr
+}
+
 func (s *Service) forwardReplicationPolicyControlWithRetry(
 	nodeID string,
 	action string,
@@ -7003,7 +7060,19 @@ func (s *Service) forwardReplicationPolicyControlRead(
 	if err != nil {
 		return nil, err
 	}
+	return s.forwardReplicationPolicyControlReadAtAPI(targetAPI, action, payload, timeout)
+}
 
+func (s *Service) forwardReplicationPolicyControlReadAtAPI(
+	targetAPI string,
+	action string,
+	payload map[string]any,
+	timeout time.Duration,
+) ([]byte, error) {
+	targetAPI = strings.TrimSpace(targetAPI)
+	if targetAPI == "" {
+		return nil, fmt.Errorf("replication_control_target_api_required")
+	}
 	hostname, err := utils.GetSystemHostname()
 	if err != nil || strings.TrimSpace(hostname) == "" {
 		hostname = "cluster"

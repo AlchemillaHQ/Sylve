@@ -25,6 +25,8 @@ func allSnapshotModels() []any {
 		&BackupTarget{},
 		&BackupJob{},
 		&BackupJobOperation{},
+		&BackupJobRunnerRebind{},
+		&BackupJobRunnerRebindItem{},
 		&ReplicationPolicy{},
 		&ReplicationPolicyTarget{},
 		&ReplicationLease{},
@@ -71,6 +73,20 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		AcquiredAt: operationTime, UpdatedAt: operationTime,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed backup job operation: %v", err)
+	}
+	if err := sourceDB.Create(&BackupJobRunnerRebind{
+		Token: "migration:node-1:snapshot", Kind: BackupJobRunnerRebindKindMigration,
+		GuestType: BackupJobModeVM, GuestID: 200, OldRunnerNodeID: "node-1", NewRunnerNodeID: "node-2",
+		State: BackupJobRunnerRebindStateReady, Revision: 3,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed backup-job rebind: %v", err)
+	}
+	if err := sourceDB.Create(&BackupJobRunnerRebindItem{
+		OperationToken: "migration:node-1:snapshot", JobID: 200,
+		ExpectedRunnerID: "node-1", ExpectedFingerprint: "snapshot-fingerprint",
+		State: BackupJobRunnerRebindItemPending, Error: "retry", Revision: 2,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed backup-job rebind item: %v", err)
 	}
 
 	policy := ReplicationPolicy{
@@ -183,6 +199,19 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if len(backupOperations) != 1 || backupOperations[0].Token != "backup:node-1:snapshot" ||
 		backupOperations[0].State != BackupJobOperationRunning || backupOperations[0].Revision != 2 {
 		t.Fatalf("backup job operations mismatch: %+v", backupOperations)
+	}
+	var rebinds []BackupJobRunnerRebind
+	destDB.Find(&rebinds)
+	if len(rebinds) != 1 || rebinds[0].Token != "migration:node-1:snapshot" ||
+		rebinds[0].State != BackupJobRunnerRebindStateReady || rebinds[0].Revision != 3 {
+		t.Fatalf("backup job rebinds mismatch: %+v", rebinds)
+	}
+	var rebindItems []BackupJobRunnerRebindItem
+	destDB.Find(&rebindItems)
+	if len(rebindItems) != 1 || rebindItems[0].OperationToken != "migration:node-1:snapshot" ||
+		rebindItems[0].State != BackupJobRunnerRebindItemPending || rebindItems[0].Error != "retry" ||
+		rebindItems[0].Revision != 2 {
+		t.Fatalf("backup job rebind items mismatch: %+v", rebindItems)
 	}
 
 	var pols []ReplicationPolicy

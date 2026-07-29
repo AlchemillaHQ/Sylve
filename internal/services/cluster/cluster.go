@@ -38,7 +38,8 @@ type Service struct {
 	AuthService serviceInterfaces.AuthServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
 
-	clusterJoinMu sync.Mutex
+	clusterJoinMu     sync.Mutex
+	backupJobRebindMu sync.Mutex
 
 	peerProbeMu            sync.Mutex
 	peerProbeFailureStreak map[string]int

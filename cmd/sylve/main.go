@@ -287,6 +287,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	}
 
 	go migrationSvc.StartRecoveryTicker(qCtx)
+	go clusterSvc.StartBackupJobRunnerRebindReconciler(qCtx)
 	go aS.ClearExpiredJWTTokens(qCtx)
 
 	gin.SetMode(gin.ReleaseMode)

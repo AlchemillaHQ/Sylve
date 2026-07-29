@@ -28,6 +28,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm"
 )
 
 var maxSafeJSInt = big.NewInt(9007199254740991)
@@ -697,23 +698,28 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	}
 
 	if bypassRaft {
-		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
-			"name":               job.Name,
-			"target_id":          job.TargetID,
-			"runner_node_id":     job.RunnerNodeID,
-			"mode":               job.Mode,
-			"source_dataset":     job.SourceDataset,
-			"jail_root_dataset":  job.JailRootDataset,
-			"friendly_src":       job.FriendlySrc,
-			"dest_suffix":        job.DestSuffix,
-			"prune_keep_last":    job.PruneKeepLast,
-			"prune_target":       job.PruneTarget,
-			"stop_before_backup": job.StopBeforeBackup,
-			"recursive":          job.Recursive,
-			"cron_expr":          job.CronExpr,
-			"enabled":            job.Enabled,
-			"next_run_at":        job.NextRunAt,
-		}).Error
+		return s.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
+				"name":               job.Name,
+				"target_id":          job.TargetID,
+				"runner_node_id":     job.RunnerNodeID,
+				"mode":               job.Mode,
+				"source_dataset":     job.SourceDataset,
+				"jail_root_dataset":  job.JailRootDataset,
+				"friendly_src":       job.FriendlySrc,
+				"dest_suffix":        job.DestSuffix,
+				"prune_keep_last":    job.PruneKeepLast,
+				"prune_target":       job.PruneTarget,
+				"stop_before_backup": job.StopBeforeBackup,
+				"recursive":          job.Recursive,
+				"cron_expr":          job.CronExpr,
+				"enabled":            job.Enabled,
+				"next_run_at":        job.NextRunAt,
+			}).Error; err != nil {
+				return err
+			}
+			return clusterModels.ClearBackupJobRepairRequiredTxn(tx, id)
+		})
 	}
 
 	if s.Raft == nil {

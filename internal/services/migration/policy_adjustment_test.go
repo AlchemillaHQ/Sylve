@@ -33,6 +33,10 @@ func (m *migrationWorkloadGuardStub) WaitGuestMigrationInterlockAcquired(context
 	return nil
 }
 
+func (m *migrationWorkloadGuardStub) PrepareGuestBackupJobRunnerRebind(context.Context, string, uint, string, string) error {
+	return nil
+}
+
 func (m *migrationWorkloadGuardStub) SealGuestMigrationInterlock(context.Context, string, uint, string) error {
 	return nil
 }

@@ -609,7 +609,7 @@ func abortReplicationGuestOperation(db *gorm.DB, payload *ReplicationGuestOperat
 		if result.RowsAffected != 1 {
 			return fmt.Errorf("replication_guest_operation_token_mismatch")
 		}
-		return nil
+		return AbortBackupJobRunnerRebindTxn(tx, payload.Token)
 	})
 }
 
@@ -663,6 +663,9 @@ func completeReplicationGuestOperation(db *gorm.DB, payload *ReplicationGuestOpe
 		if existing.State != ReplicationGuestOperationCutover ||
 			strings.TrimSpace(existing.TargetNodeID) != payload.TargetNodeID {
 			return fmt.Errorf("replication_guest_operation_cutover_mismatch")
+		}
+		if err := RequireBackupJobRunnerRebindTerminalTxn(tx, payload.Token); err != nil {
+			return err
 		}
 
 		var policies []ReplicationPolicy

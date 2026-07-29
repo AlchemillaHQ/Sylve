@@ -968,6 +968,42 @@ func DemoteReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin
 	}
 }
 
+func PrepareBackupJobRunnerRebindInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS == nil || zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "backup_job_runner_rebind_unavailable", Error: "cluster_service_unavailable",
+			})
+			return
+		}
+		var req struct {
+			GuestType       string `json:"guestType"`
+			GuestID         uint   `json:"guestId"`
+			NewRunnerNodeID string `json:"newRunnerNodeId"`
+			OperationToken  string `json:"operationToken"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 ||
+			strings.TrimSpace(req.GuestType) == "" || strings.TrimSpace(req.NewRunnerNodeID) == "" ||
+			strings.TrimSpace(req.OperationToken) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_request", Error: "guestType, guestId, newRunnerNodeId, and operationToken are required",
+			})
+			return
+		}
+		if err := zS.PrepareGuestBackupJobRunnerRebind(
+			c.Request.Context(), req.GuestType, req.GuestID, req.NewRunnerNodeID, req.OperationToken,
+		); err != nil {
+			c.JSON(replicationControlErrorStatus(err), internal.APIResponse[any]{
+				Status: "error", Message: "prepare_backup_job_runner_rebind_failed", Error: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status: "success", Message: "backup_job_runner_rebind_prepared",
+		})
+	}
+}
+
 func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if zS == nil {
