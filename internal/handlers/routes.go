@@ -725,6 +725,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-failover-enqueue", clusterHandlers.EnqueueFailoverInternal(zeltaService))
 		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
 		intraCluster.POST("/backup-job-operation", clusterHandlers.BackupJobOperationInternal(clusterService))
+		intraCluster.POST("/backup-target-restore-operation", clusterHandlers.BackupTargetRestoreOperationInternal(clusterService))
 		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))

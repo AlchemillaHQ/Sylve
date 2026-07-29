@@ -10,6 +10,7 @@ package clusterModels
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ func allSnapshotModels() []any {
 		&BackupTarget{},
 		&BackupJob{},
 		&BackupJobOperation{},
+		&BackupTargetRestoreOperation{},
 		&BackupJobRunnerRebind{},
 		&BackupJobRunnerRebindItem{},
 		&ReplicationPolicy{},
@@ -73,6 +75,14 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		AcquiredAt: operationTime, UpdatedAt: operationTime,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed backup job operation: %v", err)
+	}
+	if err := sourceDB.Create(&BackupTargetRestoreOperation{
+		Token: "target-restore:node-1:snapshot", TargetID: target.ID, HolderNodeID: "node-1",
+		DestinationDataset: "zroot/restored", RequestPayload: `{"snapshot":"@snapshot"}`,
+		State: BackupTargetRestoreOperationCompleted, Revision: 4,
+		AcquiredAt: operationTime, UpdatedAt: operationTime,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed target restore operation: %v", err)
 	}
 	if err := sourceDB.Create(&BackupJobRunnerRebind{
 		Token: "failover-200-snapshot", Kind: BackupJobRunnerRebindKindFailover,
@@ -200,6 +210,15 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		backupOperations[0].State != BackupJobOperationRunning || backupOperations[0].Revision != 2 {
 		t.Fatalf("backup job operations mismatch: %+v", backupOperations)
 	}
+	var targetRestoreOperations []BackupTargetRestoreOperation
+	destDB.Find(&targetRestoreOperations)
+	if len(targetRestoreOperations) != 1 ||
+		targetRestoreOperations[0].Token != "target-restore:node-1:snapshot" ||
+		targetRestoreOperations[0].DestinationDataset != "zroot/restored" ||
+		targetRestoreOperations[0].State != BackupTargetRestoreOperationCompleted ||
+		targetRestoreOperations[0].Revision != 4 {
+		t.Fatalf("target restore operations mismatch: %+v", targetRestoreOperations)
+	}
 	var rebinds []BackupJobRunnerRebind
 	destDB.Find(&rebinds)
 	if len(rebinds) != 1 || rebinds[0].Token != "failover-200-snapshot" ||
@@ -266,6 +285,45 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	destDB.Find(&keys)
 	if len(keys) != 1 || keys[0].UUID != "key-1" {
 		t.Fatalf("encryption keys mismatch: %+v", keys)
+	}
+}
+
+func TestClusterLegacySnapshotWithoutTargetRestoreOperationsClearsReservations(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	target := BackupTarget{
+		ID: 901, Name: "legacy-target", SSHHost: "root@backup", SSHPort: 22,
+		BackupRoot: "tank/backups", Enabled: true,
+	}
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	now := time.Date(2026, time.May, 6, 7, 8, 9, 0, time.UTC)
+	if err := database.Create(&BackupTargetRestoreOperation{
+		Token: "target-restore:local:stale", TargetID: target.ID, HolderNodeID: "local",
+		DestinationDataset: "zroot/stale", RequestPayload: `{"snapshot":"@stale"}`,
+		State: BackupTargetRestoreOperationQueued, Revision: 1, AcquiredAt: now, UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed stale operation: %v", err)
+	}
+
+	legacySnapshot := ClusterSnapshot{
+		BackupTargets: []BackupTargetReplicationPayload{BackupTargetToReplicationPayload(target)},
+	}
+	encoded, err := json.Marshal(legacySnapshot)
+	if err != nil {
+		t.Fatalf("marshal legacy snapshot: %v", err)
+	}
+	if bytes.Contains(encoded, []byte("backupTargetRestoreOperations")) {
+		t.Fatalf("legacy snapshot unexpectedly contains target restore operations: %s", encoded)
+	}
+	fsm := NewFSMDispatcher(database)
+	RegisterDefaultHandlers(fsm)
+	if err := fsm.Restore(io.NopCloser(bytes.NewReader(encoded))); err != nil {
+		t.Fatalf("restore legacy snapshot: %v", err)
+	}
+	var count int64
+	if err := database.Model(&BackupTargetRestoreOperation{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("target restore operations after legacy restore = %d err=%v", count, err)
 	}
 }
 

@@ -69,6 +69,8 @@
 	let destinationDataset = $state('');
 	let restoreNetwork = $state(true);
 	let encryptionKey = $state('');
+	let restoreOperationId = $state('');
+	let restoreOperationRequestKey = $state('');
 	let showActiveOnly = $state(true);
 
 	let datasets = $state<BackupTargetDatasetInfo[]>([]);
@@ -335,6 +337,8 @@
 		destinationDataset = '';
 		restoreNetwork = true;
 		encryptionKey = '';
+		restoreOperationId = '';
+		restoreOperationRequestKey = '';
 		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
@@ -358,6 +362,8 @@
 		destinationDataset = '';
 		restoreNetwork = true;
 		encryptionKey = '';
+		restoreOperationId = '';
+		restoreOperationRequestKey = '';
 		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
@@ -555,8 +561,15 @@
 		) {
 			return 'Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108';
 		}
-		if (text.includes('backup_job_already_running')) {
-			return 'A restore for this destination is already running';
+		if (
+			text.includes('backup_job_already_running') ||
+			text.includes('restore_destination_already_running') ||
+			text.includes('restore_destination_reserved')
+		) {
+			return 'A restore for this destination is already queued or running';
+		}
+		if (text.includes('restore_reservation_unavailable')) {
+			return 'Could not durably reserve the destination. Check cluster health and retry';
 		}
 		if (text.includes('restore_vm_legacy_snapshot_unsupported')) {
 			return 'Legacy VM restore points cannot prove that every disk root is complete';
@@ -618,6 +631,20 @@
 			return;
 		}
 
+		const requestKey = JSON.stringify({
+			targetId: parsedTargetId,
+			remoteDataset: dataset,
+			snapshot,
+			destinationDataset: destinationDataset.trim(),
+			restoreNodeId: restoreNodeId.trim(),
+			restoreNetwork
+		});
+		// Keep one idempotency ID across transport retries of the same restore intent.
+		if (!restoreOperationId || restoreOperationRequestKey !== requestKey) {
+			restoreOperationId = crypto.randomUUID();
+			restoreOperationRequestKey = requestKey;
+		}
+
 		restoring = true;
 		try {
 			const response = await restoreBackupFromTarget(parsedTargetId, {
@@ -626,6 +653,7 @@
 				destinationDataset: destinationDataset.trim(),
 				restoreNodeId: restoreNodeId.trim(),
 				restoreNetwork,
+				operationId: restoreOperationId,
 				encryptionKey,
 				encryptionKeyFormat: 'passphrase'
 			});

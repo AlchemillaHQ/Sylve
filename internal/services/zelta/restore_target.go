@@ -34,6 +34,8 @@ type restoreFromTargetPayload struct {
 	Snapshot           string `json:"snapshot"`
 	DestinationDataset string `json:"destination_dataset"`
 	RestoreNetwork     *bool  `json:"restore_network,omitempty"`
+	OperationToken     string `json:"operation_token,omitempty"`
+	HolderNodeID       string `json:"holder_node_id,omitempty"`
 }
 
 type BackupTargetDatasetInfo struct {
@@ -459,6 +461,7 @@ func (s *Service) EnqueueRestoreFromTarget(
 	targetID uint,
 	remoteDataset, snapshot, destinationDataset string,
 	restoreNetwork bool,
+	operationID string,
 ) error {
 	if targetID == 0 {
 		return fmt.Errorf("invalid_target_id")
@@ -497,80 +500,101 @@ func (s *Service) EnqueueRestoreFromTarget(
 		return err
 	}
 
-	if acquired, holder := s.acquireRestoreDestination(destinationDataset); !acquired {
-		return fmt.Errorf(
-			"restore_destination_already_running: dataset=%s holder=%s",
-			destinationDataset,
-			holder,
-		)
-	}
-	s.releaseRestoreDestination(destinationDataset)
-
-	return db.EnqueueJSON(ctx, restoreFromTargetQueueName, restoreFromTargetPayload{
+	handle, payload, err := s.acquireDurableBackupTargetRestoreOperation(ctx, restoreFromTargetPayload{
 		TargetID:           targetID,
 		RemoteDataset:      remoteDataset,
 		Snapshot:           snapshot,
 		DestinationDataset: destinationDataset,
 		RestoreNetwork:     &restoreNetwork,
-	})
+	}, operationID)
+	if err != nil {
+		return err
+	}
+	payload.OperationToken = handle.Token
+	payload.HolderNodeID = handle.HolderNodeID
+	if err := s.enqueueRestoreFromTargetOperation(ctx, payload); err != nil {
+		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
+		defer abortCancel()
+		return errors.Join(err, s.abortDurableBackupTargetRestoreOperation(abortCtx, handle))
+	}
+	return nil
 }
 
 func (s *Service) registerRestoreFromTargetJob() {
-	db.QueueRegisterJSON(restoreFromTargetQueueName, func(ctx context.Context, payload restoreFromTargetPayload) (err error) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				logger.L.Error().
-					Interface("panic", recovered).
-					Uint("target_id", payload.TargetID).
-					Str("remote_dataset", strings.TrimSpace(payload.RemoteDataset)).
-					Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
-					Str("stack", string(debug.Stack())).
-					Msg("queued_restore_from_target_job_panicked")
+	db.QueueRegisterJSON(restoreFromTargetQueueName, s.handleRestoreFromTargetQueue)
+}
 
-				// Do not return an error: restore-from-target jobs should not retry on failure.
-				err = nil
+func (s *Service) handleRestoreFromTargetQueue(
+	ctx context.Context,
+	payload restoreFromTargetPayload,
+) (retErr error) {
+	handle, payload, execute, err := s.prepareQueuedBackupTargetRestoreOperation(ctx, payload)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("target_id", payload.TargetID).
+			Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
+			Msg("queued_restore_from_target_job_invalid_or_unavailable")
+		if backupTargetRestoreQueuePayloadInvalid(err) {
+			return nil
+		}
+		return err
+	}
+	if !execute {
+		return nil
+	}
+
+	operationOwned := true
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			cleanupErr := error(nil)
+			if operationOwned {
+				cleanupErr = s.finishDurableBackupTargetRestoreOperation(handle)
 			}
-		}()
-
-		if payload.TargetID == 0 {
-			logger.L.Warn().
-				Msg("queued_restore_from_target_job_invalid_payload_target_id")
-			return nil
-		}
-		if strings.TrimSpace(payload.RemoteDataset) == "" {
-			logger.L.Warn().
-				Uint("target_id", payload.TargetID).
-				Msg("queued_restore_from_target_job_invalid_payload_remote_dataset")
-			return nil
-		}
-		if strings.TrimSpace(payload.DestinationDataset) == "" {
-			logger.L.Warn().
-				Uint("target_id", payload.TargetID).
-				Msg("queued_restore_from_target_job_invalid_payload_destination_dataset")
-			return nil
-		}
-
-		target, err := s.getRestoreTarget(payload.TargetID)
-		if err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("target_id", payload.TargetID).
-				Msg("queued_restore_from_target_job_target_lookup_failed")
-			return nil
-		}
-
-		if err := s.runRestoreFromTarget(ctx, &target, payload); err != nil {
-			logger.L.Warn().
-				Err(err).
+			logger.L.Error().
+				Interface("panic", recovered).
 				Uint("target_id", payload.TargetID).
 				Str("remote_dataset", strings.TrimSpace(payload.RemoteDataset)).
 				Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
-				Msg("queued_restore_from_target_job_failed")
-			return nil
+				Str("stack", string(debug.Stack())).
+				Err(cleanupErr).
+				Msg("queued_restore_from_target_job_panicked")
+			retErr = cleanupErr
 		}
+	}()
 
+	target, err := s.getRestoreTarget(payload.TargetID)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("target_id", payload.TargetID).
+			Msg("queued_restore_from_target_job_target_lookup_failed")
+		if cleanupErr := s.finishDurableBackupTargetRestoreOperation(handle); cleanupErr != nil {
+			return cleanupErr
+		}
+		operationOwned = false
 		return nil
-	})
+	}
+
+	runRestore := s.runRestoreFromTarget
+	if s.restoreFromTargetRun != nil {
+		runRestore = s.restoreFromTargetRun
+	}
+	if runErr := runRestore(ctx, &target, payload); runErr != nil {
+		logger.L.Warn().
+			Err(runErr).
+			Uint("target_id", payload.TargetID).
+			Str("remote_dataset", strings.TrimSpace(payload.RemoteDataset)).
+			Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
+			Msg("queued_restore_from_target_job_failed")
+	}
+	if cleanupErr := s.finishDurableBackupTargetRestoreOperation(handle); cleanupErr != nil {
+		return cleanupErr
+	}
+	operationOwned = false
+	// Execution failures are terminal and are recorded by the restore path.
+	// Only operation-control failures retain the queue message.
+	return nil
 }
 
 func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModels.BackupTarget, payload restoreFromTargetPayload) error {

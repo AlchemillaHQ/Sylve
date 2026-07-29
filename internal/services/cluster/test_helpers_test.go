@@ -23,7 +23,11 @@ import (
 )
 
 func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
-	migrateModels = append(migrateModels, &clusterModels.BackupJobOperation{})
+	migrateModels = append(
+		migrateModels,
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.BackupTargetRestoreOperation{},
+	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 

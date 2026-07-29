@@ -98,6 +98,8 @@ type Service struct {
 
 	restoreDestinationMu      sync.Mutex
 	runningRestoreDestination map[string]struct{}
+	targetRestoreOperationMu  sync.Mutex
+	activeTargetRestoreTokens map[string]struct{}
 
 	runtimeMu    sync.RWMutex
 	runtimeClock replicationRuntimeClock
@@ -108,7 +110,9 @@ type Service struct {
 	localDatasetUnmounter        func(context.Context, string, bool) error
 	localDatasetMounter          func(context.Context, string) error
 
-	backupOperationEnqueue func(context.Context, string, any) error
+	backupOperationEnqueue            func(context.Context, string, any) error
+	restoreFromTargetOperationEnqueue func(context.Context, string, any) error
+	restoreFromTargetRun              func(context.Context, *clusterModels.BackupTarget, restoreFromTargetPayload) error
 }
 
 type BackupEventProgress struct {
@@ -151,6 +155,7 @@ func NewService(
 		failoverWarnings:          make(map[uint]map[string]struct{}),
 		runningWorkloadOp:         make(map[string]string),
 		runningRestoreDestination: make(map[string]struct{}),
+		activeTargetRestoreTokens: make(map[string]struct{}),
 		runtimeClock:              realReplicationRuntimeClock{},
 	}
 }

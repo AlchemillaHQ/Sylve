@@ -514,12 +514,22 @@ func restoreFromTargetEnqueueError(err error) (int, string) {
 	switch {
 	case strings.Contains(message, "backup_job_already_running"):
 		return http.StatusConflict, "backup_job_already_running"
+	case strings.Contains(message, "restore_destination_reserved"),
+		strings.Contains(message, "restore_destination_already_running"):
+		return http.StatusConflict, "restore_destination_already_running"
 	case strings.Contains(message, "guest_id_already_in_use"),
 		strings.Contains(message, "guest_identity_inventory_conflict"),
 		strings.Contains(message, "restore_destination_guest_dataset_exists"):
 		return http.StatusConflict, "restore_guest_destination_conflict"
 	case strings.Contains(message, "guest_identity_inventory_unavailable"):
 		return http.StatusServiceUnavailable, "restore_guest_identity_unavailable"
+	case strings.Contains(message, "leader_not_available"),
+		strings.Contains(message, "not_leader"),
+		strings.Contains(message, "raft_"),
+		strings.Contains(message, "replication_control_"),
+		strings.Contains(message, "request timed out"),
+		strings.Contains(message, "local_node_id_unavailable"):
+		return http.StatusServiceUnavailable, "restore_reservation_unavailable"
 	case strings.Contains(message, "guest_identity_inventory_scan_failed"),
 		strings.Contains(message, "restore_destination_dataset_check_failed"):
 		return http.StatusInternalServerError, "restore_precheck_failed"
@@ -555,6 +565,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			DestinationDataset  string `json:"destinationDataset"`
 			RestoreNodeID       string `json:"restoreNodeId"`
 			RestoreNetwork      *bool  `json:"restoreNetwork"`
+			OperationID         string `json:"operationId"`
 			EncryptionKey       string `json:"encryptionKey"`
 			EncryptionKeyFormat string `json:"encryptionKeyFormat"`
 		}
@@ -609,6 +620,10 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 		if req.RestoreNetwork != nil {
 			restoreNetwork = *req.RestoreNetwork
 		}
+		operationID := strings.TrimSpace(req.OperationID)
+		if operationID == "" {
+			operationID = strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+		}
 
 		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
 			body, statusCode, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
@@ -617,6 +632,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 				"destinationDataset":  strings.TrimSpace(req.DestinationDataset),
 				"restoreNodeId":       restoreNodeID,
 				"restoreNetwork":      restoreNetwork,
+				"operationId":         operationID,
 				"encryptionKey":       req.EncryptionKey,
 				"encryptionKeyFormat": req.EncryptionKeyFormat,
 			})
@@ -655,6 +671,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			req.Snapshot,
 			req.DestinationDataset,
 			restoreNetwork,
+			operationID,
 		); err != nil {
 			status, msg := restoreFromTargetEnqueueError(err)
 			c.JSON(status, internal.APIResponse[any]{

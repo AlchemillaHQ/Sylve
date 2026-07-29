@@ -331,6 +331,62 @@ func (s *Service) backfillPreClusterState() error {
 	}
 
 	{
+		var operations []clusterModels.BackupTargetRestoreOperation
+		if s.DB.Migrator().HasTable(&clusterModels.BackupTargetRestoreOperation{}) {
+			if err := s.DB.Order("holder_node_id ASC, destination_dataset ASC, token ASC").Find(&operations).Error; err != nil {
+				return fmt.Errorf("scan_existing_backup_target_restore_operations: %w", err)
+			}
+		}
+		for _, operation := range operations {
+			acquire := clusterModels.BackupTargetRestoreOperationAcquire{
+				Token: operation.Token, TargetID: operation.TargetID, HolderNodeID: operation.HolderNodeID,
+				DestinationDataset: operation.DestinationDataset, RequestPayload: operation.RequestPayload,
+				AcquiredAt: operation.AcquiredAt,
+			}
+			data, _ := json.Marshal(acquire)
+			future := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+				Type: "backup_target_restore_operation", Action: "acquire", Data: data,
+			}), 5*time.Second)
+			if err := future.Error(); err != nil {
+				return fmt.Errorf("apply_synth_acquire_backup_target_restore_operation token=%s: %w", operation.Token, err)
+			}
+			transition := clusterModels.BackupTargetRestoreOperationTransition{
+				Token: operation.Token, TargetID: operation.TargetID, HolderNodeID: operation.HolderNodeID,
+				DestinationDataset: operation.DestinationDataset, RequestPayload: operation.RequestPayload,
+				OccurredAt: operation.UpdatedAt,
+			}
+			if operation.State == clusterModels.BackupTargetRestoreOperationRunning ||
+				operation.State == clusterModels.BackupTargetRestoreOperationFinishing ||
+				operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
+				transitionData, _ := json.Marshal(transition)
+				future = s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+					Type: "backup_target_restore_operation", Action: "start", Data: transitionData,
+				}), 5*time.Second)
+				if err := future.Error(); err != nil {
+					return fmt.Errorf("apply_synth_start_backup_target_restore_operation token=%s: %w", operation.Token, err)
+				}
+				if operation.State == clusterModels.BackupTargetRestoreOperationFinishing ||
+					operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
+					future = s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+						Type: "backup_target_restore_operation", Action: "finish", Data: transitionData,
+					}), 5*time.Second)
+					if err := future.Error(); err != nil {
+						return fmt.Errorf("apply_synth_finish_backup_target_restore_operation token=%s: %w", operation.Token, err)
+					}
+				}
+				if operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
+					future = s.Raft.Apply(utils.MustJSON(clusterModels.Command{
+						Type: "backup_target_restore_operation", Action: "release", Data: transitionData,
+					}), 5*time.Second)
+					if err := future.Error(); err != nil {
+						return fmt.Errorf("apply_synth_complete_backup_target_restore_operation token=%s: %w", operation.Token, err)
+					}
+				}
+			}
+		}
+	}
+
+	{
 		var policies []clusterModels.ReplicationPolicy
 		if err := s.DB.Preload("Targets").Order("id ASC").Find(&policies).Error; err != nil {
 			return fmt.Errorf("scan_existing_replication_policies: %w", err)
@@ -644,6 +700,10 @@ func clearClusteredDataTx(tx *gorm.DB) error {
 
 	if err := tx.Exec("DELETE FROM backup_events").Error; err != nil {
 		return fmt.Errorf("failed_to_clean_backup_events: %w", err)
+	}
+
+	if err := tx.Exec("DELETE FROM backup_target_restore_operations").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_backup_target_restore_operations: %w", err)
 	}
 
 	if err := tx.Exec("DELETE FROM backup_jobs").Error; err != nil {

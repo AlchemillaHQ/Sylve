@@ -52,6 +52,7 @@ export type RestoreFromTargetInput = {
     destinationDataset: string;
     restoreNodeId?: string;
     restoreNetwork?: boolean;
+    operationId?: string;
     encryptionKey?: string;
     encryptionKeyFormat?: 'passphrase';
 };

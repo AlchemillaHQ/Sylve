@@ -614,6 +614,18 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 			wantMessage: "backup_job_already_running",
 		},
 		{
+			name:        "destination durably reserved",
+			err:         errors.New("restore_destination_reserved: dataset=zroot/restored holder=node-a"),
+			wantStatus:  http.StatusConflict,
+			wantMessage: "restore_destination_already_running",
+		},
+		{
+			name:        "reservation leader unavailable",
+			err:         errors.New("leader_not_available"),
+			wantStatus:  http.StatusServiceUnavailable,
+			wantMessage: "restore_reservation_unavailable",
+		},
+		{
 			name:        "guest ID occupied",
 			err:         errors.New("guest_id_already_in_use: 100"),
 			wantStatus:  http.StatusConflict,

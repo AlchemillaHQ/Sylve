@@ -78,20 +78,21 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 
 // ClusterSnapshot represents the state that will be snapshotted/restored.
 type ClusterSnapshot struct {
-	Notes                  []ClusterNote                      `json:"notes"`
-	Options                []ClusterOption                    `json:"options"`
-	BackupTargets          []BackupTargetReplicationPayload   `json:"backupTargets"`
-	BackupJobs             []BackupJob                        `json:"backupJobs"`
-	BackupJobOperations    []BackupJobOperation               `json:"backupJobOperations"`
-	BackupJobRebinds       []BackupJobRunnerRebind            `json:"backupJobRebinds,omitempty"`
-	BackupJobRebindItems   []BackupJobRunnerRebindItem        `json:"backupJobRebindItems,omitempty"`
-	ReplicationPolicies    []ReplicationPolicyPayload         `json:"replicationPolicies"`
-	ReplicationLeases      []ReplicationLease                 `json:"replicationLeases"`
-	GuestOperations        []ReplicationGuestOperation        `json:"guestOperations"`
-	GuestOperationReceipts []ReplicationGuestOperationReceipt `json:"guestOperationReceipts"`
-	ReplicationEvents      []ReplicationEvent                 `json:"replicationEvents"`
-	SSHIdentities          []ClusterSSHIdentity               `json:"sshIdentities"`
-	EncryptionKeys         []EncryptionKey                    `json:"encryptionKeys"`
+	Notes                         []ClusterNote                      `json:"notes"`
+	Options                       []ClusterOption                    `json:"options"`
+	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
+	BackupJobs                    []BackupJob                        `json:"backupJobs"`
+	BackupJobOperations           []BackupJobOperation               `json:"backupJobOperations"`
+	BackupTargetRestoreOperations []BackupTargetRestoreOperation     `json:"backupTargetRestoreOperations,omitempty"`
+	BackupJobRebinds              []BackupJobRunnerRebind            `json:"backupJobRebinds,omitempty"`
+	BackupJobRebindItems          []BackupJobRunnerRebindItem        `json:"backupJobRebindItems,omitempty"`
+	ReplicationPolicies           []ReplicationPolicyPayload         `json:"replicationPolicies"`
+	ReplicationLeases             []ReplicationLease                 `json:"replicationLeases"`
+	GuestOperations               []ReplicationGuestOperation        `json:"guestOperations"`
+	GuestOperationReceipts        []ReplicationGuestOperationReceipt `json:"guestOperationReceipts"`
+	ReplicationEvents             []ReplicationEvent                 `json:"replicationEvents"`
+	SSHIdentities                 []ClusterSSHIdentity               `json:"sshIdentities"`
+	EncryptionKeys                []EncryptionKey                    `json:"encryptionKeys"`
 	// We can add more tables here as needed
 }
 
@@ -118,6 +119,12 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	}
 	if err := f.DB.Order("job_id ASC").Find(&snap.BackupJobOperations).Error; err != nil {
 		return nil, err
+	}
+	if f.DB.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
+		if err := f.DB.Order("holder_node_id ASC, destination_dataset ASC, token ASC").
+			Find(&snap.BackupTargetRestoreOperations).Error; err != nil {
+			return nil, err
+		}
 	}
 	if f.DB.Migrator().HasTable(&BackupJobRunnerRebind{}) {
 		if err := f.DB.Order("token ASC").Find(&snap.BackupJobRebinds).Error; err != nil {
@@ -208,12 +215,15 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
-		deleteSets := make([]restoreSet, 0, 16)
+		deleteSets := make([]restoreSet, 0, 17)
 		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
 			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
 		}
 		if tx.Migrator().HasTable(&BackupJobRunnerRebind{}) {
 			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebinds", snap.BackupJobRebinds, 500})
+		}
+		if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
+			deleteSets = append(deleteSets, restoreSet{"backup_target_restore_operations", snap.BackupTargetRestoreOperations, 500})
 		}
 		deleteSets = append(deleteSets,
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
@@ -248,6 +258,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"backup_jobs", snap.BackupJobs, 500},
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
 		)
+		if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
+			createSets = append(createSets, restoreSet{"backup_target_restore_operations", snap.BackupTargetRestoreOperations, 500})
+		}
 		if tx.Migrator().HasTable(&BackupJobRunnerRebind{}) {
 			createSets = append(createSets, restoreSet{"backup_job_runner_rebinds", snap.BackupJobRebinds, 500})
 		}
@@ -362,15 +375,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return nil
 			}
 
-			var jobCount int64
-			if err := db.Model(&BackupJob{}).Where("target_id = ?", payload.ID).Count(&jobCount).Error; err != nil {
-				return err
-			}
-			if jobCount > 0 {
-				return fmt.Errorf("target_in_use_by_backup_jobs: %d", jobCount)
-			}
-
-			return db.Delete(&BackupTarget{}, payload.ID).Error
+			return DeleteBackupTargetTxn(db, payload.ID)
 		default:
 			return nil
 		}
@@ -548,6 +553,36 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return AbortBackupJobOperationTxn(db, &payload)
 			default:
 				return ReleaseBackupJobOperationTxn(db, &payload)
+			}
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("backup_target_restore_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "acquire":
+			var payload BackupTargetRestoreOperationAcquire
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return AcquireBackupTargetRestoreOperationTxn(db, &payload)
+		case "start", "finish", "requeue", "abort", "release":
+			var payload BackupTargetRestoreOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			switch action {
+			case "start":
+				return StartBackupTargetRestoreOperationTxn(db, &payload)
+			case "finish":
+				return FinishBackupTargetRestoreOperationTxn(db, &payload)
+			case "requeue":
+				return RequeueBackupTargetRestoreOperationTxn(db, &payload)
+			case "abort":
+				return AbortBackupTargetRestoreOperationTxn(db, &payload)
+			default:
+				return ReleaseBackupTargetRestoreOperationTxn(db, &payload)
 			}
 		default:
 			return nil

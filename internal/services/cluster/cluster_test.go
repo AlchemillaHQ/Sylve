@@ -164,6 +164,11 @@ func TestClearClusteredData(t *testing.T) {
 	seedDB("backup_events", map[string]any{"id": 1, "status": "running"})
 	seedDB("backup_jobs", map[string]any{"id": 1, "name": "job1", "target_id": 1, "mode": "dataset", "cron_expr": "* * * * *"})
 	seedDB("backup_targets", map[string]any{"id": 1, "name": "target1", "ssh_host": "host", "backup_root": "tank/bk"})
+	seedDB("backup_target_restore_operations", map[string]any{
+		"token": "target-restore:node-1:clear", "target_id": 1, "holder_node_id": "node-1",
+		"destination_dataset": "zroot/restored", "request_payload": `{"snapshot":"@clear"}`,
+		"state": "queued", "revision": 1, "acquired_at": time.Now(), "updated_at": time.Now(),
+	})
 	seedDB("replication_events", map[string]any{"id": 1, "event_type": "run", "status": "success"})
 	seedDB("replication_guest_operations", map[string]any{"guest_type": "vm", "guest_id": 1, "operation": "migration", "state": "active", "token": "migration:n1:1", "owner_node_id": "n1", "target_node_id": "n2", "task_id": 1, "acquired_at": time.Now().Add(-time.Minute)})
 	seedDB("replication_guest_operation_receipts", map[string]any{"token": "migration:n1:1", "guest_type": "vm", "guest_id": 1, "operation": "migration", "owner_node_id": "n1", "target_node_id": "n2", "task_id": 1, "acquired_at": time.Now().Add(-time.Minute), "completed_at": time.Now()})
@@ -176,7 +181,7 @@ func TestClearClusteredData(t *testing.T) {
 	}
 
 	tables := []string{
-		"cluster_notes", "cluster_options", "backup_events", "backup_jobs",
+		"cluster_notes", "cluster_options", "backup_events", "backup_target_restore_operations", "backup_jobs",
 		"backup_targets", "replication_events", "replication_guest_operations", "replication_guest_operation_receipts", "replication_leases",
 		"replication_policy_targets", "replication_policies", "cluster_ssh_identities",
 	}
@@ -286,6 +291,12 @@ func TestBackfillPreClusterState(t *testing.T) {
 		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "node-1",
 		Revision: 2, AcquiredAt: operationAt, UpdatedAt: operationAt,
 	})
+	seedDB.Create(&clusterModels.BackupTargetRestoreOperation{
+		Token: "target-restore:node-1:backfill", TargetID: target.ID, HolderNodeID: "node-1",
+		DestinationDataset: "zroot/restored", RequestPayload: `{"targetId":10,"snapshot":"@backfill"}`,
+		State:    clusterModels.BackupTargetRestoreOperationCompleted,
+		Revision: 4, AcquiredAt: operationAt, UpdatedAt: operationAt,
+	})
 
 	seedDB.Create(&clusterModels.ReplicationPolicy{
 		ID: 30, Name: "rep-pol", GuestType: clusterModels.ReplicationGuestTypeVM,
@@ -354,6 +365,14 @@ func TestBackfillPreClusterState(t *testing.T) {
 			var operation clusterModels.BackupJobOperation
 			if err := node.service.DB.Where("job_id = ?", 20).First(&operation).Error; err != nil ||
 				operation.Token != "backup:node-1:backfill" || operation.State != clusterModels.BackupJobOperationRunning {
+				return false
+			}
+			var targetRestoreOperation clusterModels.BackupTargetRestoreOperation
+			if err := node.service.DB.Where("token = ?", "target-restore:node-1:backfill").
+				First(&targetRestoreOperation).Error; err != nil ||
+				targetRestoreOperation.State != clusterModels.BackupTargetRestoreOperationCompleted ||
+				targetRestoreOperation.Revision != 4 ||
+				targetRestoreOperation.DestinationDataset != "zroot/restored" {
 				return false
 			}
 
