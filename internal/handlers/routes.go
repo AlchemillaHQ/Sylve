@@ -710,6 +710,8 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
 		intraCluster.GET("/guest-identity-inventory", clusterHandlers.GuestIdentityInventoryInternal(clusterService))
+		intraCluster.GET("/replicated-state", clusterHandlers.ReplicatedStateInternal(clusterService))
+		intraCluster.POST("/replicated-state-repair", clusterHandlers.ReplicatedStateRepairInternal(clusterService, zeltaService))
 		intraCluster.POST("/backup-job-safety-validation", clusterHandlers.ValidateBackupJobSafetyInternal(clusterService))
 		intraCluster.POST("/backup-target-validation", clusterHandlers.ValidateBackupTargetInternal(clusterService))
 		intraCluster.POST("/run", clusterHandlers.RunReplicationPolicyInternal(clusterService, zeltaService))

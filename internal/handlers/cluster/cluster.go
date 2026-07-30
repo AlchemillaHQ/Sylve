@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -444,6 +445,15 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			})
 			return
 		}
+		if err := zS.ReconcileEncryptionKeys(); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "error_reconciling_encryption_keys",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[string]{
 			Status:  "success",
@@ -595,8 +605,99 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+func ReplicatedStateInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		minimumIndex, err := strconv.ParseUint(
+			strings.TrimSpace(c.Query("minimumRaftAppliedIndex")),
+			10,
+			64,
+		)
+		if err != nil && strings.TrimSpace(c.Query("minimumRaftAppliedIndex")) != "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_minimum_raft_applied_index",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		digest, err := cS.LocalReplicatedStateDigest(
+			c.Request.Context(),
+			c.Query("expectedNodeId"),
+			minimumIndex,
+		)
+		if err != nil {
+			c.JSON(http.StatusConflict, internal.APIResponse[cluster.ReplicatedStateDigest]{
+				Status:  "error",
+				Message: "replicated_state_unavailable",
+				Error:   err.Error(),
+				Data:    digest,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[cluster.ReplicatedStateDigest]{
+			Status:  "success",
+			Message: "replicated_state_captured",
+			Error:   "",
+			Data:    digest,
+		})
+	}
+}
+
+func ReplicatedStateRepairInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request cluster.ReplicatedStateRepairRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_payload",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		var err error
+		switch strings.ToLower(strings.TrimSpace(request.Action)) {
+		case cluster.ReplicatedStateRepairFence:
+			err = cS.SetReplicatedStateRepairFence(request.ExpectedNodeID, true)
+		case cluster.ReplicatedStateRepairReset:
+			err = cS.ResetReplicatedStateForRepair(request.ExpectedNodeID)
+		case cluster.ReplicatedStateRepairUnfence:
+			if zS != nil {
+				if reconcileErr := zS.ReconcileBackupTargetSSHKeys(); reconcileErr != nil {
+					err = fmt.Errorf("reconcile_backup_target_ssh_keys: %w", reconcileErr)
+					break
+				}
+				if reconcileErr := zS.ReconcileEncryptionKeys(); reconcileErr != nil {
+					err = fmt.Errorf("reconcile_encryption_keys: %w", reconcileErr)
+					break
+				}
+			}
+			err = cS.SetReplicatedStateRepairFence(request.ExpectedNodeID, false)
+		default:
+			err = fmt.Errorf("unsupported_replicated_state_repair_action")
+		}
+		if err != nil {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replicated_state_repair_action_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replicated_state_repair_action_completed",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Resync Cluster State
-// @Description Replays current cluster-backed state through Raft and forces a snapshot from the leader
+// @Description Audits every Raft member and rebuilds divergent followers one at a time
 // @Tags Cluster
 // @Accept json
 // @Produce json
@@ -607,41 +708,58 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/resync-state [post]
 func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := cS.ResyncClusterState(); err != nil {
+		result, err := cS.ResyncClusterStateWithResult(c.Request.Context())
+		if err != nil {
 			if strings.HasPrefix(err.Error(), "not_leader;") {
-				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				c.JSON(http.StatusConflict, internal.APIResponse[cluster.ClusterStateResyncResult]{
 					Status:  "error",
 					Message: "not_leader",
 					Error:   err.Error(),
-					Data:    nil,
+					Data:    result,
 				})
 				return
 			}
 
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			statusCode := http.StatusInternalServerError
+			var blocked *cluster.ReplicatedStateRepairBlockedError
+			if errors.As(err, &blocked) {
+				statusCode = http.StatusConflict
+			}
+			c.JSON(statusCode, internal.APIResponse[cluster.ClusterStateResyncResult]{
 				Status:  "error",
 				Message: "error_resyncing_cluster_state",
 				Error:   err.Error(),
-				Data:    nil,
+				Data:    result,
 			})
 			return
 		}
 
-		if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_reconciling_backup_target_ssh_keys",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
+		if zS != nil {
+			if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[cluster.ClusterStateResyncResult]{
+					Status:  "error",
+					Message: "error_reconciling_backup_target_ssh_keys",
+					Error:   err.Error(),
+					Data:    result,
+				})
+				return
+			}
+			if err := zS.ReconcileEncryptionKeys(); err != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[cluster.ClusterStateResyncResult]{
+					Status:  "error",
+					Message: "error_reconciling_encryption_keys",
+					Error:   err.Error(),
+					Data:    result,
+				})
+				return
+			}
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterStateResyncResult]{
 			Status:  "success",
 			Message: "cluster_state_resynced",
 			Error:   "",
-			Data:    nil,
+			Data:    result,
 		})
 	}
 }

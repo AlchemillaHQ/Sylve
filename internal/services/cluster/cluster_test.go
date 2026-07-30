@@ -13,6 +13,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/hashicorp/raft"
 )
 
 func TestGetClusterDetailsRaftNotInit(t *testing.T) {
@@ -184,7 +185,7 @@ func TestClearClusteredData(t *testing.T) {
 	}
 
 	tables := []string{
-		"cluster_notes", "cluster_options", "backup_events", "backup_target_restore_operations", "backup_jobs",
+		"cluster_notes", "cluster_options", "backup_target_restore_operations", "backup_jobs",
 		"backup_targets", "replication_transition_events", "replication_guest_operations", "replication_guest_operation_receipts", "replication_leases",
 		"replication_policy_targets", "replication_policies", "cluster_ssh_identities",
 	}
@@ -199,6 +200,11 @@ func TestClearClusteredData(t *testing.T) {
 	db.Model(&clusterModels.ReplicationEvent{}).Count(&localEventCount)
 	if localEventCount != 1 {
 		t.Fatalf("expected node-local replication history to survive cluster reset, got %d rows", localEventCount)
+	}
+	var localBackupEventCount int64
+	db.Model(&clusterModels.BackupEvent{}).Count(&localBackupEventCount)
+	if localBackupEventCount != 1 {
+		t.Fatalf("expected node-local backup history to survive cluster reset, got %d rows", localBackupEventCount)
 	}
 }
 
@@ -260,29 +266,30 @@ func TestResyncClusterStateErrors(t *testing.T) {
 	})
 }
 
-func TestBackfillPreClusterState(t *testing.T) {
+func TestSnapshotPreClusterState(t *testing.T) {
 	allModels := []any{
 		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
-		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{},
+		&clusterModels.BackupTargetNodeReadiness{},
 		&clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{},
+		&clusterModels.BackupJobRunnerRebind{}, &clusterModels.BackupJobRunnerRebindItem{},
 		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
+		&clusterModels.ReplicationGuestOperation{}, &clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ClusterSSHIdentity{},
 		&clusterModels.EncryptionKey{},
 		&clusterModels.ReplicationEvent{},
 	}
 
-	nodes := setupClusterRaftTestNodes(t, 2, allModels...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
+	nodes := setupClusterRaftTestNodes(t, 1, allModels...)
+	defer func() { cleanupClusterRaftTestNodes(t, nodes) }()
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.ReplicationEvent{
-			ID: 1, EventType: "replication", Status: "success",
-			Message: "local-history-" + node.id, StartedAt: time.Now().UTC(),
-		}).Error; err != nil {
-			t.Fatalf("seed local replication history on %s: %v", node.id, err)
-		}
+	if err := leader.service.DB.Create(&clusterModels.ReplicationEvent{
+		ID: 1, EventType: "replication", Status: "success",
+		Message: "local-history-" + leader.id, StartedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("seed local replication history on %s: %v", leader.id, err)
 	}
 
 	// seed pre-existing state on the leader's DB (simulating pre-cluster data)
@@ -372,12 +379,31 @@ func TestBackfillPreClusterState(t *testing.T) {
 	})
 
 	// backfill
-	if err := leader.service.backfillPreClusterState(); err != nil {
-		t.Fatalf("backfillPreClusterState failed: %v", err)
+	if err := leader.service.snapshotPreClusterState(); err != nil {
+		t.Fatalf("snapshotPreClusterState failed: %v", err)
 	}
 
-	// verify replication to follower
-	waitForClusterCondition(t, 8*time.Second, "backfill replication", func() bool {
+	joiner := newClusterRaftTestNode(t, "node-2", allModels...)
+	nodes = append(nodes, joiner)
+	leader.transport.Connect(joiner.addr, joiner.transport)
+	joiner.transport.Connect(leader.addr, leader.transport)
+	if err := joiner.service.DB.Create(&clusterModels.ReplicationEvent{
+		ID: 1, EventType: "replication", Status: "success",
+		Message: "local-history-" + joiner.id, StartedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("seed local replication history on %s: %v", joiner.id, err)
+	}
+	if err := leader.raft.AddNonvoter(
+		raft.ServerID(joiner.id),
+		joiner.addr,
+		0,
+		5*time.Second,
+	).Error(); err != nil {
+		t.Fatalf("add snapshot joiner: %v", err)
+	}
+	// Verify a fresh member installs the canonical snapshot while keeping its
+	// node-local history.
+	waitForClusterCondition(t, 8*time.Second, "pre-cluster snapshot install", func() bool {
 		for _, node := range nodes {
 			var noteCount int64
 			node.service.DB.Model(&clusterModels.ClusterNote{}).Count(&noteCount)
@@ -399,7 +425,7 @@ func TestBackfillPreClusterState(t *testing.T) {
 			var replicatedOption clusterModels.ClusterOption
 			if err := node.service.DB.First(&replicatedOption, option.ID).Error; err != nil ||
 				!replicatedOption.CreatedAt.Equal(option.CreatedAt) ||
-				!replicatedOption.UpdatedAt.Equal(clusterModels.NormalizeCommandTime(option.UpdatedAt)) {
+				!replicatedOption.UpdatedAt.Equal(option.UpdatedAt) {
 				return false
 			}
 

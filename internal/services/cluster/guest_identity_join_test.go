@@ -11,6 +11,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -194,6 +195,7 @@ func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 1, models...)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	seedGuestIdentityJoinTestCluster(t, leader)
+	leader.service.AuthService = &guestIdentityInventoryAuthStub{}
 
 	joinerIP := "127.0.0.2"
 	joinerID := RaftServerAddress(joinerIP)
@@ -223,6 +225,28 @@ func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
 		}
 		return sim.Addr(), nil
 	}
+	leader.service.stateDigestForNode = func(
+		ctx context.Context,
+		nodeID string,
+		_ raft.ServerAddress,
+		minimumIndex uint64,
+	) (ReplicatedStateDigest, error) {
+		if nodeID != joinerID {
+			return ReplicatedStateDigest{}, errors.New("unexpected replicated-state node")
+		}
+		return joiner.service.LocalReplicatedStateDigest(ctx, nodeID, minimumIndex)
+	}
+	leader.service.stateRepairForNode = func(
+		_ context.Context,
+		nodeID string,
+		_ raft.ServerAddress,
+		request ReplicatedStateRepairRequest,
+	) error {
+		if nodeID != joinerID || request.Action != ReplicatedStateRepairUnfence {
+			return errors.New("unexpected replicated-state repair request")
+		}
+		return joiner.service.SetReplicatedStateRepairFence(nodeID, false)
+	}
 
 	if err := leader.service.AcceptJoinInventory(
 		context.Background(), joinerID, joinerIP, guestIdentityJoinTestKey, joinerReport,
@@ -249,4 +273,93 @@ func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
 	if !reflect.DeepEqual(afterRetry, beforeRetry) {
 		t.Fatalf("exact voter retry changed membership: before=%+v after=%+v", beforeRetry, afterRetry)
 	}
+}
+
+func TestAcceptJoinInventoryVerifiesNonvoterBeforePromotion(t *testing.T) {
+	models := guestIdentityJoinTestModels()
+	nodes := setupClusterRaftTestNodes(t, 1, models...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	seedGuestIdentityJoinTestCluster(t, leader)
+	leader.service.AuthService = &guestIdentityInventoryAuthStub{}
+
+	joinerIP := "127.0.0.2"
+	joinerID := RaftServerAddress(joinerIP)
+	joiner := newClusterRaftTestNode(t, joinerID, models...)
+	nodes = append(nodes, joiner)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	leader.transport.Connect(joiner.addr, joiner.transport)
+	joiner.transport.Connect(leader.addr, leader.transport)
+
+	digestStarted := make(chan struct{})
+	releaseDigest := make(chan struct{})
+	leader.service.stateDigestForNode = func(
+		ctx context.Context,
+		nodeID string,
+		_ raft.ServerAddress,
+		minimumIndex uint64,
+	) (ReplicatedStateDigest, error) {
+		if nodeID != joinerID {
+			return ReplicatedStateDigest{}, fmt.Errorf("unexpected state node %s", nodeID)
+		}
+		select {
+		case <-digestStarted:
+		default:
+			close(digestStarted)
+		}
+		select {
+		case <-ctx.Done():
+			return ReplicatedStateDigest{}, ctx.Err()
+		case <-releaseDigest:
+		}
+		return joiner.service.LocalReplicatedStateDigest(ctx, nodeID, minimumIndex)
+	}
+	leader.service.stateRepairForNode = func(
+		_ context.Context,
+		nodeID string,
+		_ raft.ServerAddress,
+		request ReplicatedStateRepairRequest,
+	) error {
+		if nodeID != joinerID || request.Action != ReplicatedStateRepairUnfence {
+			return fmt.Errorf("unexpected repair request: node=%s action=%s", nodeID, request.Action)
+		}
+		return joiner.service.SetReplicatedStateRepairFence(nodeID, false)
+	}
+
+	joinResult := make(chan error, 1)
+	go func() {
+		joinResult <- leader.service.AcceptJoinInventory(
+			context.Background(),
+			joinerID,
+			joinerIP,
+			guestIdentityJoinTestKey,
+			BuildGuestIdentityInventoryReport(nil),
+		)
+	}()
+	select {
+	case <-digestStarted:
+	case <-time.After(8 * time.Second):
+		t.Fatal("join never reached replicated-state verification")
+	}
+
+	configuration := leader.raft.GetConfiguration()
+	if err := configuration.Error(); err != nil {
+		t.Fatalf("get staged join configuration: %v", err)
+	}
+	var staged *raft.Server
+	for index := range configuration.Configuration().Servers {
+		server := configuration.Configuration().Servers[index]
+		if server.ID == raft.ServerID(joinerID) {
+			copy := server
+			staged = &copy
+			break
+		}
+	}
+	if staged == nil || staged.Suffrage != raft.Nonvoter {
+		t.Fatalf("joining node was not staged as non-voter: %+v", staged)
+	}
+	close(releaseDigest)
+	if err := <-joinResult; err != nil {
+		t.Fatalf("complete staged join: %v", err)
+	}
+	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
 }

@@ -79,9 +79,11 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 		transport: transport,
 		raft:      r,
 		service: &Service{
-			DB:     db,
-			Raft:   r,
-			NodeID: id,
+			DB:       db,
+			Raft:     r,
+			NodeID:   id,
+			raftFSM:  fsm,
+			stateFSM: fsm,
 			backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
 				return nil
 			},

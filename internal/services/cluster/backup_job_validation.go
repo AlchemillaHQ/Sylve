@@ -319,6 +319,9 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 	if nodeID == "" {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_node_id_required")
 	}
+	if s != nil && s.stateRepair.Load() {
+		return raft.Server{}, false, fmt.Errorf("backup_runner_local_node_repair_fenced")
+	}
 	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_raft_unavailable")
 	}

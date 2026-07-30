@@ -74,6 +74,16 @@ func (s *Service) setupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 }
 
 func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*raft.Raft, error) {
+	if fsm == nil {
+		return nil, fmt.Errorf("raft_fsm_required")
+	}
+	s.raftFSM = fsm
+	if dispatcher, ok := fsm.(*clusterModels.FSMDispatcher); ok {
+		s.stateFSM = dispatcher
+	} else {
+		s.stateFSM = nil
+	}
+
 	if config.ParsedConfig != nil && config.ParsedConfig.Raft.Reset {
 		if err := s.CleanRaftDir(); err != nil {
 			return nil, fmt.Errorf("failed_to_clean_raft_dir: %w", err)

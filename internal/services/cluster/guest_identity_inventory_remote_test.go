@@ -462,14 +462,14 @@ func TestCollectClusterGuestIdentityInventoriesStrictHonorsCanceledContext(t *te
 	}
 }
 
-func TestStrictGuestIdentityInventoryVotersRejectsNonVotersAndDuplicateCanonicalIDs(t *testing.T) {
+func TestStrictGuestIdentityInventoryVotersSkipsNonVotersAndRejectsDuplicateCanonicalIDs(t *testing.T) {
 	configuration := raft.Configuration{Servers: []raft.Server{
 		{ID: "node-a", Address: "node-a", Suffrage: raft.Voter},
 		{ID: "non-voter", Address: "non-voter", Suffrage: raft.Nonvoter},
 	}}
-	_, err := strictGuestIdentityInventoryVoters(configuration, "node-a")
-	if err == nil || !strings.Contains(err.Error(), "non_voter_member_unsupported") {
-		t.Fatalf("error = %v, want fail-closed non-voter rejection", err)
+	voters, err := strictGuestIdentityInventoryVoters(configuration, "node-a")
+	if err != nil || len(voters) != 1 || voters[0].nodeID != "node-a" {
+		t.Fatalf("voters=%+v error=%v, want only node-a", voters, err)
 	}
 
 	configuration = raft.Configuration{Servers: []raft.Server{

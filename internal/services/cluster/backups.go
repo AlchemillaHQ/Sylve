@@ -1070,6 +1070,15 @@ func validateBackupTargetInput(input clusterServiceInterfaces.BackupTargetReq) e
 }
 
 func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
+	s.replicatedStateMu.RLock()
+	defer s.replicatedStateMu.RUnlock()
+	return s.applyRaftCommandUnlocked(cmd)
+}
+
+func (s *Service) applyRaftCommandUnlocked(cmd clusterModels.Command) error {
+	if s == nil || s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
 	if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
 		return fmt.Errorf("failed_to_prepare_command: %w", err)
 	}

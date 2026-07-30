@@ -167,95 +167,32 @@ type ClusterSnapshot struct {
 func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	f.sm.Lock()
 	defer f.sm.Unlock()
-	var snap ClusterSnapshot
-	if err := f.DB.Order("id ASC").Find(&snap.Notes).Error; err != nil {
-		return nil, err
+	return captureClusterSnapshot(f.DB)
+}
+
+// StateDigest serializes a canonical state capture with FSM command
+// application. The applied-index callback is evaluated while the FSM is
+// locked, making the returned index a conservative fence for the image.
+func (f *FSMDispatcher) StateDigest(appliedIndex func() uint64) (string, uint64, error) {
+	if f == nil {
+		return "", 0, fmt.Errorf("raft_fsm_unavailable")
 	}
-	if err := f.DB.Order("id ASC").Find(&snap.Options).Error; err != nil {
-		return nil, err
+	f.sm.Lock()
+	defer f.sm.Unlock()
+
+	snapshot, err := captureClusterSnapshot(f.DB)
+	if err != nil {
+		return "", 0, err
 	}
-	var targets []BackupTarget
-	if err := f.DB.Order("id ASC").Find(&targets).Error; err != nil {
-		return nil, err
+	digest, err := ClusterSnapshotDigest(snapshot)
+	if err != nil {
+		return "", 0, err
 	}
-	snap.BackupTargets = make([]BackupTargetReplicationPayload, 0, len(targets))
-	for _, t := range targets {
-		snap.BackupTargets = append(snap.BackupTargets, BackupTargetToReplicationPayload(t))
+	var index uint64
+	if appliedIndex != nil {
+		index = appliedIndex()
 	}
-	if f.DB.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
-		if err := f.DB.Order("token ASC").Find(&snap.BackupTargetProvisions).Error; err != nil {
-			return nil, err
-		}
-	}
-	if f.DB.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
-		if err := f.DB.Order("target_id ASC, node_id ASC").Find(&snap.BackupTargetReadiness).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := f.DB.Order("id ASC").Find(&snap.BackupJobs).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Order("job_id ASC").Find(&snap.BackupJobOperations).Error; err != nil {
-		return nil, err
-	}
-	if f.DB.Migrator().HasTable(&ReplicationRunOperation{}) {
-		if err := f.DB.Order("policy_id ASC").Find(&snap.ReplicationRunOperations).Error; err != nil {
-			return nil, err
-		}
-	}
-	if f.DB.Migrator().HasTable(&ScheduledRunReceipt{}) {
-		if err := f.DB.Order("token ASC").Find(&snap.ScheduledRunReceipts).Error; err != nil {
-			return nil, err
-		}
-	}
-	if f.DB.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
-		if err := f.DB.Order("holder_node_id ASC, destination_dataset ASC, token ASC").
-			Find(&snap.BackupTargetRestoreOperations).Error; err != nil {
-			return nil, err
-		}
-	}
-	if f.DB.Migrator().HasTable(&BackupJobRunnerRebind{}) {
-		if err := f.DB.Order("token ASC").Find(&snap.BackupJobRebinds).Error; err != nil {
-			return nil, err
-		}
-	}
-	if f.DB.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
-		if err := f.DB.Order("operation_token ASC, job_id ASC").Find(&snap.BackupJobRebindItems).Error; err != nil {
-			return nil, err
-		}
-	}
-	var replicationPolicies []ReplicationPolicy
-	if err := f.DB.Preload("Targets").Order("id ASC").Find(&replicationPolicies).Error; err != nil {
-		return nil, err
-	}
-	snap.ReplicationPolicies = make([]ReplicationPolicyPayload, 0, len(replicationPolicies))
-	for _, policy := range replicationPolicies {
-		snap.ReplicationPolicies = append(snap.ReplicationPolicies, ReplicationPolicyPayload{
-			Policy:  policy,
-			Targets: policy.Targets,
-		})
-	}
-	if err := f.DB.Order("id ASC").Find(&snap.ReplicationLeases).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Order("guest_type ASC, guest_id ASC").Find(&snap.GuestOperations).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Order("token ASC").Find(&snap.GuestOperationReceipts).Error; err != nil {
-		return nil, err
-	}
-	if f.DB.Migrator().HasTable(&ReplicationTransitionEvent{}) {
-		if err := f.DB.Order("id ASC").Find(&snap.ReplicationTransitionEvents).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := f.DB.Order("id ASC").Find(&snap.SSHIdentities).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Order("id ASC").Find(&snap.EncryptionKeys).Error; err != nil {
-		return nil, err
-	}
-	return &snap, nil
+	return digest, index, nil
 }
 
 func dedupReplicationTargets(payloads []ReplicationPolicyPayload) ([]ReplicationPolicy, []ReplicationPolicyTarget) {
@@ -325,45 +262,6 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			transitionEvents = append(transitionEvents, ReplicationTransitionEventFromEvent(event))
 			transitionEventIDs[event.ID] = struct{}{}
 		}
-		deleteSets := make([]restoreSet, 0, 19)
-		if tx.Migrator().HasTable(&ScheduledRunReceipt{}) {
-			deleteSets = append(deleteSets, restoreSet{"scheduled_run_receipts", snap.ScheduledRunReceipts, 500})
-		}
-		if tx.Migrator().HasTable(&ReplicationRunOperation{}) {
-			deleteSets = append(deleteSets, restoreSet{"replication_run_operations", snap.ReplicationRunOperations, 500})
-		}
-		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
-			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
-		}
-		if tx.Migrator().HasTable(&BackupJobRunnerRebind{}) {
-			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebinds", snap.BackupJobRebinds, 500})
-		}
-		if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
-			deleteSets = append(deleteSets, restoreSet{"backup_target_restore_operations", snap.BackupTargetRestoreOperations, 500})
-		}
-		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
-			deleteSets = append(deleteSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
-		}
-		if tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
-			deleteSets = append(deleteSets, restoreSet{"backup_target_provision_operations", snap.BackupTargetProvisions, 500})
-		}
-		deleteSets = append(deleteSets,
-			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
-			restoreSet{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
-			restoreSet{"replication_guest_operations", snap.GuestOperations, 500},
-			restoreSet{"replication_leases", snap.ReplicationLeases, 500},
-			restoreSet{"replication_policy_targets", replicationTargets, 500},
-			restoreSet{"replication_policies", replicationPolicies, 500},
-		)
-		deleteSets = append(deleteSets,
-			restoreSet{"cluster_ssh_identities", snap.SSHIdentities, 200},
-			restoreSet{"encryption_keys", snap.EncryptionKeys, 200},
-			restoreSet{"backup_jobs", snap.BackupJobs, 500},
-			restoreSet{"backup_targets", backupTargets, 200},
-			restoreSet{"cluster_notes", snap.Notes, 500},
-			restoreSet{"cluster_options", snap.Options, 100},
-		)
-
 		createSets := []restoreSet{
 			{"cluster_ssh_identities", snap.SSHIdentities, 200},
 			{"encryption_keys", snap.EncryptionKeys, 200},
@@ -377,9 +275,6 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"backup_targets", backupTargets, 200},
 		)
 		if tx.Migrator().HasTable(&ReplicationTransitionEvent{}) {
-			deleteSets = append(deleteSets,
-				restoreSet{"replication_transition_events", transitionEvents, 500},
-			)
 			createSets = append(createSets,
 				restoreSet{"replication_transition_events", transitionEvents, 500},
 			)
@@ -414,10 +309,8 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"cluster_options", snap.Options, 100},
 		)
 
-		for _, s := range deleteSets {
-			if err := tx.Exec("DELETE FROM " + s.table).Error; err != nil {
-				return err
-			}
+		if err := ClearReplicatedStateTx(tx); err != nil {
+			return err
 		}
 
 		for _, s := range createSets {
@@ -452,6 +345,13 @@ func (s *ClusterSnapshot) Persist(sink raft.SnapshotSink) error {
 func (s *ClusterSnapshot) Release() {}
 
 func RegisterDefaultHandlers(fsm *FSMDispatcher) {
+	fsm.Register("cluster_state", func(_ *gorm.DB, action string, _ json.RawMessage) error {
+		if action != "checkpoint" {
+			return fmt.Errorf("unsupported_cluster_state_action_%s", action)
+		}
+		return nil
+	})
+
 	fsm.Register("note", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		var note ClusterNote
 		switch action {

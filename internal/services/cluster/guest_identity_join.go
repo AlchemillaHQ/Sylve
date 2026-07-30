@@ -80,29 +80,42 @@ func validateJoinMembership(
 	localNodeID, joiningNodeID string,
 	joiningAddress raft.ServerAddress,
 ) (bool, error) {
+	server, err := resolveJoinMembership(configuration, localNodeID, joiningNodeID, joiningAddress)
+	if err != nil {
+		return false, err
+	}
+	return server != nil && server.Suffrage == raft.Voter, nil
+}
+
+func resolveJoinMembership(
+	configuration raft.Configuration,
+	localNodeID, joiningNodeID string,
+	joiningAddress raft.ServerAddress,
+) (*raft.Server, error) {
 	localNodeID = strings.TrimSpace(localNodeID)
 	joiningNodeID = strings.TrimSpace(joiningNodeID)
 	if joiningNodeID == "" {
-		return false, fmt.Errorf("joining_node_id_required")
+		return nil, fmt.Errorf("joining_node_id_required")
 	}
 	if localNodeID != "" && joiningNodeID == localNodeID {
-		return false, fmt.Errorf("joining_node_id_conflicts_with_leader")
+		return nil, fmt.Errorf("joining_node_id_conflicts_with_leader")
 	}
 
 	joiningServerID := raft.ServerID(joiningNodeID)
 	for _, server := range configuration.Servers {
 		if server.ID == joiningServerID {
-			if server.Address == joiningAddress && server.Suffrage == raft.Voter {
-				return true, nil
+			if server.Address == joiningAddress {
+				copy := server
+				return &copy, nil
 			}
-			return false, fmt.Errorf("joining_node_id_already_in_use")
+			return nil, fmt.Errorf("joining_node_id_already_in_use")
 		}
 		if server.Address == joiningAddress {
-			return false, fmt.Errorf("joining_node_address_already_in_use")
+			return nil, fmt.Errorf("joining_node_address_already_in_use")
 		}
 	}
 
-	return false, nil
+	return nil, nil
 }
 
 func (s *Service) checkJoinInventory(
@@ -154,7 +167,7 @@ func (s *Service) checkJoinInventory(
 	if localNodeID == "" {
 		localNodeID = s.LocalNodeID()
 	}
-	alreadyVoter, err := validateJoinMembership(
+	existingServer, err := resolveJoinMembership(
 		configurationFuture.Configuration(),
 		localNodeID,
 		nodeID,
@@ -172,7 +185,7 @@ func (s *Service) checkJoinInventory(
 		return GuestIdentityInventoryReport{}, false, err
 	}
 
-	if alreadyVoter {
+	if existingServer != nil && existingServer.Suffrage == raft.Voter {
 		existing, exists := reports[strings.TrimSpace(nodeID)]
 		if !exists || existing.Digest != canonicalJoiner.Digest {
 			return GuestIdentityInventoryReport{}, false, fmt.Errorf("joining_inventory_changed_for_existing_voter")
@@ -208,15 +221,20 @@ func (s *Service) AcceptJoinInventory(
 	nodeID, nodeIP, providedKey string,
 	submitted GuestIdentityInventoryReport,
 ) error {
+	ctx, cancel := withReplicatedStateTimeout(ctx)
+	defer cancel()
+
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
+	s.replicatedStateMu.Lock()
+	defer s.replicatedStateMu.Unlock()
 
 	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
 	if err != nil {
 		return err
 	}
 	if alreadyVoter {
-		if err := s.ResyncClusterState(); err != nil {
+		if _, err := s.resyncClusterStateLocked(ctx); err != nil {
 			return err
 		}
 		return s.PopulateClusterNodes()
@@ -224,11 +242,44 @@ func (s *Service) AcceptJoinInventory(
 
 	serverID := raft.ServerID(strings.TrimSpace(nodeID))
 	serverAddress := raft.ServerAddress(RaftServerAddress(nodeIP))
-	if err := s.Raft.AddVoter(serverID, serverAddress, 0, raftApplyTimeout).Error(); err != nil {
-		return fmt.Errorf("add_voter_failed: %w", err)
+	configurationFuture := s.Raft.GetConfiguration()
+	if err := configurationFuture.Error(); err != nil {
+		return fmt.Errorf("get_config_failed: %w", err)
 	}
-
-	if err := s.ResyncClusterState(); err != nil {
+	existingServer, err := resolveJoinMembership(
+		configurationFuture.Configuration(),
+		s.guestIdentityInventoryLocalNodeID(),
+		nodeID,
+		serverAddress,
+	)
+	if err != nil {
+		return err
+	}
+	if err := s.checkpointAndSnapshotLocked(); err != nil {
+		return err
+	}
+	reference, err := s.LocalReplicatedStateDigest(
+		ctx,
+		s.guestIdentityInventoryLocalNodeID(),
+		s.Raft.AppliedIndex(),
+	)
+	if err != nil {
+		return err
+	}
+	if existingServer == nil {
+		if err := s.Raft.AddNonvoter(serverID, serverAddress, 0, raftApplyTimeout).Error(); err != nil {
+			return fmt.Errorf("add_nonvoter_failed: %w", err)
+		}
+		existingServer = &raft.Server{
+			ID:       serverID,
+			Address:  serverAddress,
+			Suffrage: raft.Nonvoter,
+		}
+	}
+	if existingServer.Suffrage != raft.Nonvoter && existingServer.Suffrage != raft.Staging {
+		return fmt.Errorf("joining_node_membership_not_promotable")
+	}
+	if _, err := s.promoteCaughtUpNonvoterLocked(ctx, *existingServer, reference); err != nil {
 		return err
 	}
 

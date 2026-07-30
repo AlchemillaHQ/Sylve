@@ -52,11 +52,10 @@ func strictGuestIdentityInventoryVoters(
 
 	for _, server := range configuration.Servers {
 		if server.Suffrage != raft.Voter {
-			return nil, fmt.Errorf(
-				"guest_identity_inventory_non_voter_member_unsupported: node_id=%s suffrage=%d",
-				strings.TrimSpace(string(server.ID)),
-				server.Suffrage,
-			)
+			// Joining and repaired nodes remain non-voters until their
+			// replicated state is verified. They are deliberately excluded
+			// from admission inventory until promotion.
+			continue
 		}
 
 		nodeID := strings.TrimSpace(string(server.ID))
