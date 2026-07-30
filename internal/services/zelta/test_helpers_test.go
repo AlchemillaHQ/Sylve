@@ -75,6 +75,10 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		migrateModels,
 		&clusterModels.BackupTargetProvisionOperation{},
 		&clusterModels.BackupJobOperation{},
+		&clusterModels.ReplicationRunOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
+		&clusterModels.ReplicationTransitionEvent{},
 		&clusterModels.BackupTargetRestoreOperation{},
 	)
 

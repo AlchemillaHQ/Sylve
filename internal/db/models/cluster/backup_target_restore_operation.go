@@ -60,6 +60,56 @@ type BackupTargetRestoreOperationTransition struct {
 	RequireEnabledTarget bool      `json:"requireEnabledTarget,omitempty"`
 }
 
+func BackfillBackupTargetRestoreOperationTxn(
+	db *gorm.DB,
+	operation *BackupTargetRestoreOperation,
+) error {
+	if db == nil || operation == nil {
+		return fmt.Errorf("backup_target_restore_operation_input_invalid")
+	}
+	token, holderNodeID, destinationDataset, requestPayload, err := normalizeBackupTargetRestoreOperationIdentity(
+		operation.Token,
+		operation.TargetID,
+		operation.HolderNodeID,
+		operation.DestinationDataset,
+		operation.RequestPayload,
+	)
+	if err != nil {
+		return err
+	}
+	switch operation.State {
+	case BackupTargetRestoreOperationQueued,
+		BackupTargetRestoreOperationRunning,
+		BackupTargetRestoreOperationFinishing,
+		BackupTargetRestoreOperationCompleted:
+	default:
+		return fmt.Errorf("invalid_backup_target_restore_operation_state")
+	}
+	if operation.Revision == 0 || operation.AcquiredAt.IsZero() || operation.UpdatedAt.IsZero() {
+		return fmt.Errorf("backup_target_restore_operation_checkpoint_required")
+	}
+	operation.Token = token
+	operation.HolderNodeID = holderNodeID
+	operation.DestinationDataset = destinationDataset
+	operation.RequestPayload = requestPayload
+	operation.AcquiredAt = NormalizeCommandTime(operation.AcquiredAt)
+	operation.UpdatedAt = NormalizeCommandTime(operation.UpdatedAt)
+
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "token"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"target_id",
+			"holder_node_id",
+			"destination_dataset",
+			"request_payload",
+			"state",
+			"revision",
+			"acquired_at",
+			"updated_at",
+		}),
+	}).Create(operation).Error
+}
+
 // NormalizeBackupTargetRestoreDestination mirrors the public restore input
 // normalization without consulting ZFS or any node-local state.
 func NormalizeBackupTargetRestoreDestination(dataset string) string {
@@ -149,7 +199,7 @@ func AcquireBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRe
 	payload.HolderNodeID = holderNodeID
 	payload.DestinationDataset = destinationDataset
 	payload.RequestPayload = requestPayload
-	payload.AcquiredAt = payload.AcquiredAt.UTC()
+	payload.AcquiredAt = NormalizeCommandTime(payload.AcquiredAt)
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var existingToken BackupTargetRestoreOperation
@@ -243,7 +293,7 @@ func transitionBackupTargetRestoreOperation(
 	payload.HolderNodeID = holderNodeID
 	payload.DestinationDataset = destinationDataset
 	payload.RequestPayload = requestPayload
-	payload.OccurredAt = payload.OccurredAt.UTC()
+	payload.OccurredAt = NormalizeCommandTime(payload.OccurredAt)
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var existing BackupTargetRestoreOperation

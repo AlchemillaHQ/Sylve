@@ -64,14 +64,17 @@ const BackupJobRuntimeStateVersion = 1
 // synchronized cluster-wide after a backup run finishes. Encrypted is optional
 // so legacy forwarded requests that omitted it preserve the committed value.
 type BackupJobRuntimeStateUpdate struct {
-	Version     uint       `json:"version,omitempty"`
-	JobID       uint       `json:"jobId"`
-	LastRunAt   *time.Time `json:"lastRunAt"`
-	LastStatus  string     `json:"lastStatus"`
-	LastError   string     `json:"lastError"`
-	NextRunAt   *time.Time `json:"nextRunAt"`
-	Encrypted   *bool      `json:"encrypted,omitempty"`
-	NextRunOnly bool       `json:"nextRunOnly,omitempty"`
+	Version          uint       `json:"version,omitempty"`
+	JobID            uint       `json:"jobId"`
+	Token            string     `json:"token,omitempty"`
+	HolderNodeID     string     `json:"holderNodeId,omitempty"`
+	ScheduleRevision uint64     `json:"scheduleRevision,omitempty"`
+	LastRunAt        *time.Time `json:"lastRunAt"`
+	LastStatus       string     `json:"lastStatus"`
+	LastError        string     `json:"lastError"`
+	NextRunAt        *time.Time `json:"nextRunAt"`
+	Encrypted        *bool      `json:"encrypted,omitempty"`
+	NextRunOnly      bool       `json:"nextRunOnly,omitempty"`
 }
 
 type BackupJobFriendlySourceUpdate struct {
@@ -268,6 +271,20 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 	}
 	if update.JobID == 0 {
 		return fmt.Errorf("invalid_job_id")
+	}
+	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
+		return err
+	}
+	if strings.TrimSpace(update.Token) != "" {
+		if update.LastRunAt == nil {
+			return fmt.Errorf("backup_job_run_completed_at_required")
+		}
+		return s.CompleteBackupJobRun(clusterModels.BackupJobRunResult{
+			JobID: update.JobID, Token: update.Token, HolderNodeID: update.HolderNodeID,
+			ScheduleRevision: update.ScheduleRevision, CompletedAt: *update.LastRunAt,
+			LastStatus: update.LastStatus, LastError: update.LastError,
+			NextRunAt: update.NextRunAt, Encrypted: update.Encrypted,
+		}, bypassRaft)
 	}
 	if update.NextRunOnly {
 		if bypassRaft {
@@ -672,6 +689,7 @@ func (s *Service) ProposeBackupJobUpdateContext(
 				"cron_expr":          job.CronExpr,
 				"enabled":            job.Enabled,
 				"next_run_at":        job.NextRunAt,
+				"schedule_revision":  gorm.Expr("schedule_revision + ?", 1),
 			}).Error; err != nil {
 				return err
 			}
@@ -806,6 +824,7 @@ func (s *Service) buildBackupJob(
 		Recursive:        input.Recursive,
 		CronExpr:         cronExpr,
 		Enabled:          enabled,
+		ScheduleRevision: 1,
 	}
 	if job.PruneKeepLast < 0 {
 		return nil, nil, fmt.Errorf("invalid_prune_keep_last")
@@ -1041,6 +1060,9 @@ func validateBackupTargetInput(input clusterServiceInterfaces.BackupTargetReq) e
 }
 
 func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
+	if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
+		return fmt.Errorf("failed_to_prepare_command: %w", err)
+	}
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_command: %w", err)

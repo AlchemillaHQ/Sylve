@@ -229,14 +229,24 @@ func TestListReplicationEvents(t *testing.T) {
 	for i := range events {
 		db.Create(&events[i])
 	}
+	if err := db.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 2, PolicyID: uintPtr(10), TransitionRunID: "transition-2",
+		EventType: "failover", Status: "success", StartedAt: now.Add(2 * time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("seed transition event: %v", err)
+	}
 
 	t.Run("all events no filter", func(t *testing.T) {
 		got, err := s.ListReplicationEvents(200, 0)
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}
-		if len(got) != 3 {
-			t.Fatalf("expected 3 events, got %d", len(got))
+		if len(got) != 4 {
+			t.Fatalf("expected 4 events, got %d", len(got))
+		}
+		if got[0].Scope != clusterModels.ReplicationEventScopeTransition ||
+			got[0].TransitionRunID != "transition-2" {
+			t.Fatalf("transition event was not merged correctly: %+v", got[0])
 		}
 	})
 
@@ -245,8 +255,8 @@ func TestListReplicationEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list by policy: %v", err)
 		}
-		if len(got) != 2 {
-			t.Fatalf("expected 2 events for policy 10, got %d", len(got))
+		if len(got) != 3 {
+			t.Fatalf("expected 3 events for policy 10, got %d", len(got))
 		}
 	})
 
@@ -268,6 +278,9 @@ func TestGetReplicationEventByID(t *testing.T) {
 	db.Create(&clusterModels.ReplicationEvent{
 		ID: 1, EventType: "run", Status: "success",
 	})
+	db.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 1, TransitionRunID: "transition-1", EventType: "failover", Status: "active",
+	})
 
 	event, err := s.GetReplicationEventByID(1)
 	if err != nil {
@@ -275,6 +288,13 @@ func TestGetReplicationEventByID(t *testing.T) {
 	}
 	if event.EventType != "run" {
 		t.Fatalf("type: %q", event.EventType)
+	}
+	transition, err := s.GetReplicationEventByScopedID(1, clusterModels.ReplicationEventScopeTransition)
+	if err != nil {
+		t.Fatalf("get transition: %v", err)
+	}
+	if transition.EventType != "failover" || transition.Scope != clusterModels.ReplicationEventScopeTransition {
+		t.Fatalf("transition mismatch: %+v", transition)
 	}
 
 	_, err = s.GetReplicationEventByID(0)

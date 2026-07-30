@@ -23,7 +23,11 @@ import (
 )
 
 func newReplicationSchedulerTestDB(t *testing.T) *Service {
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationRunOperation{}, &clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
+	)
 	return &Service{
 		DB:                 db,
 		runningReplication: make(map[uint]struct{}),
@@ -135,10 +139,16 @@ func setupRaftClusterService(t *testing.T) (*cluster.Service, string, func()) {
 	localNodeID = strings.TrimSpace(localNodeID)
 
 	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationTransitionEvent{},
+		&clusterModels.ReplicationRunOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
 	)
@@ -185,6 +195,7 @@ func setupRaftClusterService(t *testing.T) (*cluster.Service, string, func()) {
 		NodeUUID: localNodeID, Hostname: "node1", API: "node1:8181",
 		Status: "online",
 	})
+	db.Create(&clusterModels.Cluster{ID: 1, Enabled: true})
 
 	return &cluster.Service{DB: db, Raft: r}, localNodeID, func() {
 		r.Shutdown()

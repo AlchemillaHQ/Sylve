@@ -61,6 +61,57 @@ func TestClearReplicatedManagedBackupTargetKeyPaths(t *testing.T) {
 	}
 }
 
+func TestMigrateReplicationTransitionEvents(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t,
+		&models.Migrations{},
+		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationTransitionEvent{},
+	)
+	now := time.Date(2026, time.July, 30, 12, 0, 0, 0, time.UTC)
+	rows := []clusterModels.ReplicationEvent{
+		{ID: 1, EventType: "replication", Status: "success", StartedAt: now},
+		{ID: 2, TransitionRunID: "transition-2", EventType: "failover", Status: "success", StartedAt: now},
+		{ID: 3, EventType: "failover", Status: "failed", Message: "ambiguous legacy warning", StartedAt: now},
+	}
+	if err := dbConn.Create(&rows).Error; err != nil {
+		t.Fatalf("seed legacy events: %v", err)
+	}
+
+	if err := migrateReplicationTransitionEvents(dbConn); err != nil {
+		t.Fatalf("migrate transition events: %v", err)
+	}
+	if err := migrateReplicationTransitionEvents(dbConn); err != nil {
+		t.Fatalf("repeat transition migration: %v", err)
+	}
+
+	var localEvents []clusterModels.ReplicationEvent
+	if err := dbConn.Order("id ASC").Find(&localEvents).Error; err != nil {
+		t.Fatalf("load local events: %v", err)
+	}
+	if len(localEvents) != 2 || localEvents[0].ID != 1 || localEvents[1].ID != 3 {
+		t.Fatalf("local event migration mismatch: %+v", localEvents)
+	}
+
+	var transitions []clusterModels.ReplicationTransitionEvent
+	if err := dbConn.Order("id ASC").Find(&transitions).Error; err != nil {
+		t.Fatalf("load transition events: %v", err)
+	}
+	if len(transitions) != 1 || transitions[0].ID != 2 ||
+		transitions[0].TransitionRunID != "transition-2" {
+		t.Fatalf("transition event migration mismatch: %+v", transitions)
+	}
+
+	var migrationCount int64
+	if err := dbConn.Model(&models.Migrations{}).
+		Where("name = ?", "split_replication_transition_events_1").
+		Count(&migrationCount).Error; err != nil {
+		t.Fatalf("count migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("migration marker count=%d, want 1", migrationCount)
+	}
+}
+
 func TestFixJailNetworkNameIndexScopesUniquenessByJail(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
 

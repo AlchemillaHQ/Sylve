@@ -83,7 +83,9 @@ const (
 )
 
 type replicationJobPayload struct {
-	PolicyID uint `json:"policy_id"`
+	PolicyID       uint   `json:"policy_id"`
+	OperationToken string `json:"operation_token,omitempty"`
+	HolderNodeID   string `json:"holder_node_id,omitempty"`
 }
 
 type replicationFailoverJobPayload struct {
@@ -421,6 +423,16 @@ func (s *Service) registerReplicationJob() {
 			return nil
 		}
 
+		_, execute, err := s.prepareReplicationRunOperation(
+			payload.PolicyID, payload.OperationToken, payload.HolderNodeID,
+		)
+		if err != nil {
+			return err
+		}
+		if !execute {
+			return nil
+		}
+
 		policy, err := s.Cluster.GetReplicationPolicyByID(payload.PolicyID)
 		if err != nil {
 			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_not_found")
@@ -429,15 +441,19 @@ func (s *Service) registerReplicationJob() {
 			return nil
 		}
 
-		if err := s.runReplicationPolicy(ctx, policy); err != nil {
-			if len(clusterService.ParseReplicationHAIneligibleReasons(err)) > 0 {
+		runErr := s.runReplicationPolicy(ctx, policy)
+		if !isJobAlreadyRunningErr(runErr) {
+			s.updateReplicationPolicyResult(policy, runErr)
+		}
+		if runErr != nil {
+			if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
 				logger.L.Warn().
-					Err(err).
+					Err(runErr).
 					Uint("policy_id", payload.PolicyID).
 					Msg("queued_replication_policy_blocked_ha_constraints")
 				return nil
 			}
-			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
+			logger.L.Warn().Err(runErr).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
 			// Replication policy state/events already record the operational
 			// failure.  The scheduler is the retry policy; one durable queue
 			// message represents exactly one attempt.
@@ -525,7 +541,26 @@ func (s *Service) EnqueueReplicationPolicyRun(ctx context.Context, policyID uint
 		return fmt.Errorf("replication_policy_local_ownership_invalid: %w", ownershipErr)
 	}
 
-	return db.EnqueueJSON(ctx, replicationJobQueueName, replicationJobPayload{PolicyID: policyID})
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return err
+	}
+	operation, err := s.acquireReplicationRunOperation(
+		policy, false, s.now().UTC(), policy.NextRunAt, nil, bypassRaft,
+	)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already_running") {
+			return fmt.Errorf("replication_policy_already_running")
+		}
+		return err
+	}
+	if err := db.EnqueueJSON(ctx, replicationJobQueueName, replicationJobPayload{
+		PolicyID: policyID, OperationToken: operation.Token, HolderNodeID: operation.HolderNodeID,
+	}); err != nil {
+		logger.L.Warn().Err(err).Uint("policy_id", policyID).
+			Msg("replication_queue_publish_deferred_to_reconciler")
+	}
+	return nil
 }
 
 func (s *Service) StartReplicationScheduler(ctx context.Context) {
@@ -895,6 +930,7 @@ func transitionPayloadFromPolicy(policy *clusterModels.ReplicationPolicy) cluste
 		DemotedAt:            policy.TransitionDemotedAt,
 		CatchupAt:            policy.TransitionCatchupAt,
 		PromotedAt:           policy.TransitionPromotedAt,
+		RecoveryDeadlineAt:   policy.TransitionRecoveryDeadlineAt,
 		CompletedAt:          policy.TransitionCompletedAt,
 		Error:                policy.TransitionError,
 		AllowUnsafe:          policy.TransitionAllowUnsafe,
@@ -923,13 +959,14 @@ func (s *Service) findReplicationTransitionEvent(
 
 	transitionRunID = strings.TrimSpace(transitionRunID)
 	if transitionRunID != "" {
-		var event clusterModels.ReplicationEvent
+		var transition clusterModels.ReplicationTransitionEvent
 		err := s.DB.
 			Where("policy_id = ? AND event_type = ? AND transition_run_id = ? AND completed_at IS NULL",
 				policyID, "failover", transitionRunID).
 			Order("started_at DESC").
-			First(&event).Error
+			First(&transition).Error
 		if err == nil {
+			event := transition.AsReplicationEvent()
 			return &event, nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1072,7 +1109,7 @@ func (s *Service) reconcileReplicationTransitionEvent(
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		var existing int64
 		if runID := strings.TrimSpace(policy.TransitionRunID); runID != "" {
-			if countErr := s.DB.Model(&clusterModels.ReplicationEvent{}).
+			if countErr := s.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
 				Where("policy_id = ? AND event_type = ? AND transition_run_id = ?", policy.ID, "failover", runID).
 				Count(&existing).Error; countErr != nil {
 				return countErr
@@ -1434,6 +1471,16 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		return s.failPolicyTransition(policy, fmt.Errorf("replication_transition_owner_target_mismatch"))
 	}
 
+	if policy.TransitionRecoveryDeadlineAt == nil {
+		transition := transitionPayloadFromPolicy(policy)
+		deadline := s.now().UTC().Add(replicationPromotionRollbackAfter)
+		transition.RecoveryDeadlineAt = &deadline
+		if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
+			return err
+		}
+		policy.TransitionRecoveryDeadlineAt = &deadline
+	}
+
 	targetOnline, targetOnlineErr := s.isClusterNodeOnline(targetNodeID)
 	if targetOnlineErr != nil {
 		return targetOnlineErr
@@ -1469,11 +1516,7 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		// owner epoch/run ID. Retry for a bounded period, then explicitly fence
 		// the target and enter the same durable rollback state used by the
 		// uninterrupted transition path.
-		promotionStartedAt := policy.UpdatedAt.UTC()
-		if promotionStartedAt.IsZero() {
-			promotionStartedAt = s.now().UTC()
-		}
-		if !s.now().UTC().Before(promotionStartedAt.Add(replicationPromotionRollbackAfter)) {
+		if replicationPromotionRecoveryExpired(policy, s.now()) {
 			return s.rollbackRecoveringPromotion(ctx, policy, activateErr)
 		}
 		return activateErr
@@ -1514,6 +1557,15 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		}
 	}
 	return nil
+}
+
+func replicationPromotionRecoveryExpired(
+	policy *clusterModels.ReplicationPolicy,
+	now time.Time,
+) bool {
+	return policy != nil &&
+		policy.TransitionRecoveryDeadlineAt != nil &&
+		!now.UTC().Before(policy.TransitionRecoveryDeadlineAt.UTC())
 }
 
 func (s *Service) resumeRollingBackTransition(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
@@ -1612,11 +1664,14 @@ func (s *Service) resumePolicyTransition(ctx context.Context, policy *clusterMod
 		if ownerNodeID == targetNodeID {
 			transition := transitionPayloadFromPolicy(policy)
 			transition.State = clusterModels.ReplicationTransitionStatePromoting
+			deadline := s.now().UTC().Add(replicationPromotionRollbackAfter)
+			transition.RecoveryDeadlineAt = &deadline
 			transition.Error = ""
 			if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
 				return err
 			}
 			policy.TransitionState = clusterModels.ReplicationTransitionStatePromoting
+			policy.TransitionRecoveryDeadlineAt = &deadline
 			policy.TransitionError = ""
 			return s.resumePromotingTransition(ctx, policy)
 		}
@@ -1729,6 +1784,20 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 		return nil
 	}
 
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return err
+	}
+	if err := s.RepublishQueuedReplicationRuns(ctx); err != nil {
+		logger.L.Debug().Err(err).Msg("replication_run_republish_pending")
+	}
+	if err := s.drainScheduledRunResultOutbox(); err != nil {
+		logger.L.Debug().Err(err).Msg("scheduled_run_result_outbox_pending")
+	}
+	if !bypassRaft && (s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader) {
+		return nil
+	}
+
 	var policies []clusterModels.ReplicationPolicy
 	if err := s.DB.Preload("Targets").Where("enabled = ? AND COALESCE(cron_expr, '') != ''", true).Find(&policies).Error; err != nil {
 		return err
@@ -1742,18 +1811,17 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 			continue
 		}
 		runnerNodeID := s.replicationRunnerNodeID(&policy)
-		if runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
+		if bypassRaft && runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
 			continue
 		}
-		if runnerNodeID == "" && s.Cluster.Raft != nil && s.Cluster.Raft.State() != raft.Leader {
-			continue
-		}
-		if ownershipErr := s.validateLocalReplicationPolicyLease(&policy); ownershipErr != nil {
-			logger.L.Warn().
-				Err(ownershipErr).
-				Uint("policy_id", policy.ID).
-				Msg("replication_policy_scheduler_skip_invalid_local_ownership")
-			continue
+		if bypassRaft {
+			if ownershipErr := s.validateLocalReplicationPolicyLease(&policy); ownershipErr != nil {
+				logger.L.Warn().
+					Err(ownershipErr).
+					Uint("policy_id", policy.ID).
+					Msg("replication_policy_scheduler_skip_invalid_local_ownership")
+				continue
+			}
 		}
 
 		haEval := s.Cluster.EvaluateReplicationPolicyHA(&policy)
@@ -1761,24 +1829,38 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 
 		nextAt, err := nextRunTime(policy.CronExpr, now)
 		if err != nil {
-			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
-				"last_status": "failed",
-				"last_error":  "invalid_cron_expr",
-				"next_run_at": nil,
-			}).Error
+			if policy.NextRunAt == nil && policy.LastStatus == "failed" && policy.LastError == "invalid_cron_expr" {
+				continue
+			}
+			decision := clusterModels.ReplicationPolicyScheduleDecision{
+				PolicyID: policy.ID, ExpectedScheduleRevision: policy.ScheduleRevision,
+				ExpectedOwnerEpoch: policy.OwnerEpoch, ExpectedNextRunAt: policy.NextRunAt,
+				DecidedAt: now, SetRuntime: true, LastStatus: "failed",
+				LastError: "invalid_cron_expr",
+			}
+			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("policy_id", policy.ID).
+					Msg("replication_invalid_cron_decision_rejected")
+			}
 			continue
 		}
 
 		if policy.NextRunAt == nil {
-			updates := map[string]any{
-				"next_run_at": nextAt,
+			decision := clusterModels.ReplicationPolicyScheduleDecision{
+				PolicyID: policy.ID, ExpectedScheduleRevision: policy.ScheduleRevision,
+				ExpectedOwnerEpoch: policy.OwnerEpoch, ExpectedNextRunAt: nil,
+				NextRunAt: &nextAt, DecidedAt: now,
 			}
 			if haErr != nil {
-				updates["last_status"] = "blocked"
-				updates["last_error"] = haErr.Error()
-				updates["last_run_at"] = now
+				decision.SetRuntime = true
+				decision.LastStatus = "blocked"
+				decision.LastError = haErr.Error()
+				decision.LastRunAt = &now
 			}
-			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(updates).Error
+			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("policy_id", policy.ID).
+					Msg("replication_initial_schedule_decision_rejected")
+			}
 			continue
 		}
 
@@ -1787,33 +1869,49 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 		}
 
 		if haErr != nil {
-			if err := s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
-				"last_run_at": now,
-				"last_status": "blocked",
-				"last_error":  haErr.Error(),
-				"next_run_at": nextAt,
-			}).Error; err != nil {
+			decision := clusterModels.ReplicationPolicyScheduleDecision{
+				PolicyID: policy.ID, ExpectedScheduleRevision: policy.ScheduleRevision,
+				ExpectedOwnerEpoch: policy.OwnerEpoch, ExpectedNextRunAt: policy.NextRunAt,
+				NextRunAt: &nextAt, DecidedAt: now, SetRuntime: true,
+				LastRunAt: &now, LastStatus: "blocked", LastError: haErr.Error(),
+			}
+			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
 				logger.L.Warn().
-					Err(err).
+					Err(applyErr).
 					Uint("policy_id", policy.ID).
 					Msg("failed_to_mark_replication_policy_ha_blocked")
 			}
 			continue
 		}
 
-		if err := s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Update("next_run_at", nextAt).Error; err != nil {
-			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_update_replication_policy_next_run")
+		var activeRuns int64
+		if err := s.DB.Model(&clusterModels.ReplicationRunOperation{}).
+			Where("policy_id = ?", policy.ID).Count(&activeRuns).Error; err != nil {
+			return err
+		}
+		if activeRuns != 0 {
+			decision := clusterModels.ReplicationPolicyScheduleDecision{
+				PolicyID: policy.ID, ExpectedScheduleRevision: policy.ScheduleRevision,
+				ExpectedOwnerEpoch: policy.OwnerEpoch, ExpectedNextRunAt: policy.NextRunAt,
+				NextRunAt: &nextAt, DecidedAt: now,
+			}
+			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("policy_id", policy.ID).
+					Msg("replication_coalesce_decision_rejected")
+			}
 			continue
 		}
 
-		enqueueCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		if err := db.EnqueueJSON(enqueueCtx, replicationJobQueueName, replicationJobPayload{PolicyID: policy.ID}); err != nil {
-			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_enqueue_replication_policy")
+		occurrenceAt := policy.NextRunAt.UTC()
+		if _, claimErr := s.acquireReplicationRunOperation(
+			&policy, true, occurrenceAt, &nextAt, &now, bypassRaft,
+		); claimErr != nil {
+			logger.L.Debug().Err(claimErr).Uint("policy_id", policy.ID).
+				Msg("scheduled_replication_claim_rejected")
 		}
-		cancel()
 	}
 
-	return nil
+	return s.RepublishQueuedReplicationRuns(ctx)
 }
 
 func (s *Service) replicationRunnerNodeID(policy *clusterModels.ReplicationPolicy) string {
@@ -3804,16 +3902,35 @@ func (s *Service) updateReplicationPolicyResult(policy *clusterModels.Replicatio
 		}
 		lastError = runErr.Error()
 	}
-
-	if s.syncReplicationPolicyRuntimeState(policy.ID, now, next, lastStatus, lastError) {
+	handled, completionErr := s.completeReplicationOperation(
+		policy, lastStatus, lastError, now, next,
+	)
+	if handled {
+		s.logScheduledResultDeliveryFailure(clusterModels.ScheduledRunKindReplication, policy.ID, completionErr)
 		return
 	}
 
+	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
+	if authorityErr != nil {
+		logger.L.Warn().Err(authorityErr).Uint("policy_id", policy.ID).Msg("replication_runtime_authority_unavailable")
+		return
+	}
+	if !bypassRaft {
+		logger.L.Warn().Uint("policy_id", policy.ID).Msg("unfenced_cluster_replication_result_ignored")
+		return
+	}
+	update := clusterService.ReplicationPolicyRuntimeState{
+		ID: policy.ID, LastRunAt: &now, LastStatus: lastStatus,
+		LastError: lastError, NextRunAt: next,
+	}
+	if s.Cluster != nil {
+		if err := s.Cluster.ProposeReplicationPolicyStateUpdate(update, true); err != nil {
+			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_update_replication_policy_state")
+		}
+		return
+	}
 	_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
-		"last_run_at": now,
-		"last_status": lastStatus,
-		"last_error":  lastError,
-		"next_run_at": next,
+		"last_run_at": now, "last_status": lastStatus, "last_error": lastError, "next_run_at": next,
 	}).Error
 }
 
@@ -3829,7 +3946,11 @@ func (s *Service) syncReplicationPolicyRuntimeState(policyID uint, lastRunAt tim
 		LastError:  lastError,
 		NextRunAt:  nextRunAt,
 	}
-	bypassRaft := s.Cluster.Raft == nil
+	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
+	if authorityErr != nil {
+		logger.L.Warn().Err(authorityErr).Uint("policy_id", policyID).Msg("replication_runtime_authority_unavailable")
+		return false
+	}
 	if err := s.Cluster.ProposeReplicationPolicyStateUpdate(update, bypassRaft); err == nil {
 		return true
 	} else if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
@@ -3859,15 +3980,7 @@ func (s *Service) forwardReplicationPolicyStateToLeader(update clusterService.Re
 		return fmt.Errorf("leader_unknown")
 	}
 
-	payload := map[string]any{
-		"id":         update.ID,
-		"lastRunAt":  update.LastRunAt,
-		"lastStatus": update.LastStatus,
-		"lastError":  update.LastError,
-		"nextRunAt":  update.NextRunAt,
-	}
-
-	return s.forwardReplicationPolicyControl(leaderNodeID, "replication-policy-state", payload, 5*time.Second)
+	return s.forwardReplicationPolicyControl(leaderNodeID, "replication-policy-state", update, 5*time.Second)
 }
 
 func (s *Service) publishReplicationTargetReadiness(update clusterModels.ReplicationTargetReadinessUpdate) error {
@@ -6027,6 +6140,8 @@ func (s *Service) runPolicyOwnershipTransition(
 	transition.State = clusterModels.ReplicationTransitionStatePromoting
 	transition.OwnerEpoch = nextEpoch
 	transition.PromotedAt = nil
+	recoveryDeadline := cutoverNow.Add(replicationPromotionRollbackAfter)
+	transition.RecoveryDeadlineAt = &recoveryDeadline
 	transition.CompletedAt = nil
 	transition.Error = ""
 	commitErr := s.Cluster.CommitReplicationOwnershipTransition(

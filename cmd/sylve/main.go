@@ -270,6 +270,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if err := zeltaS.ReconcileBackupJobOperationsAfterRestart(operationReconcileCtx); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_job_operations_after_restart")
 	}
+	if err := zeltaS.ReconcileReplicationRunsAfterRestart(operationReconcileCtx); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_runs_after_restart")
+	}
+	if err := zeltaS.DrainScheduledRunResultOutbox(); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_drain_scheduled_run_result_outbox_after_restart")
+	}
 	operationReconcileCancel()
 	targetRestoreReconcileCtx, targetRestoreReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if err := zeltaS.ReconcileBackupTargetRestoreOperationsAfterRestart(targetRestoreReconcileCtx); err != nil {

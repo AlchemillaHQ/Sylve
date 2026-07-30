@@ -46,19 +46,26 @@ func BackupJobOperationInternal(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		action := strings.ToLower(strings.TrimSpace(req.Action))
+		bypassRaft, authorityErr := cS.RuntimeStateBypassRaft()
+		if authorityErr != nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "backup_job_operation_failed", Error: authorityErr.Error(),
+			})
+			return
+		}
 		var err error
 		if action == "acquire" {
 			err = cS.AcquireBackupJobOperation(clusterModels.BackupJobOperationAcquire{
 				JobID: req.JobID, Token: req.Token, Operation: req.Operation,
 				HolderNodeID: req.HolderNodeID, RequestPayload: req.RequestPayload,
 				AcquiredAt: req.OccurredAt,
-			}, false)
+			}, bypassRaft)
 		} else {
 			err = cS.TransitionBackupJobOperation(action, clusterModels.BackupJobOperationTransition{
 				JobID: req.JobID, Token: req.Token, Operation: req.Operation,
 				HolderNodeID: req.HolderNodeID, RequestPayload: req.RequestPayload,
 				OccurredAt: req.OccurredAt,
-			}, false)
+			}, bypassRaft)
 		}
 		if err != nil {
 			status := http.StatusBadRequest

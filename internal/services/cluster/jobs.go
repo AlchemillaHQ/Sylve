@@ -897,5 +897,22 @@ func (s *Service) StartClusterMonitors(ctx context.Context) {
 				}
 			}
 		}()
+
+		go func() {
+			timer := time.NewTimer(replicatedRetentionInitialDelay)
+			defer timer.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
+						logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+					}
+					timer.Reset(replicatedRetentionInterval)
+				}
+			}
+		}()
 	})
 }

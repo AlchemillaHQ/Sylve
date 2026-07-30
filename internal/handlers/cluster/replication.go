@@ -580,7 +580,13 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		event, err := cS.GetReplicationEventByID(uint(id64))
+		scope := strings.TrimSpace(c.Query("scope"))
+		var event *clusterModels.ReplicationEvent
+		if scope == "" {
+			event, err = cS.GetReplicationEventByID(uint(id64))
+		} else {
+			event, err = cS.GetReplicationEventByScopedID(uint(id64), scope)
+		}
 		if err != nil {
 			if err == gorm.ErrRecordNotFound {
 				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
@@ -1399,7 +1405,14 @@ func UpdateReplicationPolicyStateInternal(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.ProposeReplicationPolicyStateUpdate(req, cS.Raft == nil); err != nil {
+		bypassRaft, authorityErr := cS.RuntimeStateBypassRaft()
+		if authorityErr != nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "update_replication_policy_state_failed", Error: authorityErr.Error(),
+			})
+			return
+		}
+		if err := cS.ProposeReplicationPolicyStateUpdate(req, bypassRaft); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "update_replication_policy_state_failed",

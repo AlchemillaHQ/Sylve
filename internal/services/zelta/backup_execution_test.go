@@ -26,6 +26,9 @@ func newRunBackupJobTestDB(t *testing.T) *Service {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupEvent{},
 		&jailModels.Jail{},

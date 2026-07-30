@@ -362,7 +362,7 @@
 			</div>
 		{:else}
 			<div class="max-h-[55vh] space-y-2 overflow-auto pr-1">
-				{#each runningReplicationEvents as event (event.id)}
+				{#each runningReplicationEvents as event (`${event.scope}:${event.id}`)}
 					<div class="rounded-md border p-3">
 						<div class="flex items-center justify-between gap-2">
 							<div class="text-sm font-medium">

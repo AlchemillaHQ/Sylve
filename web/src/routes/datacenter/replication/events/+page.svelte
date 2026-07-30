@@ -397,14 +397,23 @@
 
 	let selectedEventId = $derived.by(() => {
 		if (!activeRows || activeRows.length !== 1) return 0;
-		const parsed = Number(activeRows[0].id);
+		const parsed = Number(activeRows[0].eventId);
 		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
 		return parsed;
 	});
 
+	let selectedEventScope = $derived.by(() => {
+		if (!activeRows || activeRows.length !== 1) return 'local';
+		return String(activeRows[0].scope || 'local');
+	});
+
 	let selectedEvent = $derived.by(() => {
 		if (selectedEventId <= 0) return null;
-		return events.current.find((event) => event.id === selectedEventId) || null;
+		return (
+			events.current.find(
+				(event) => event.id === selectedEventId && event.scope === selectedEventScope
+			) || null
+		);
 	});
 
 	let progressEventId = $state(0);
@@ -612,7 +621,9 @@
 
 	let tableData = $derived.by(() => ({
 		rows: events.current.map((event) => ({
-			id: event.id,
+			id: `${event.scope}:${event.id}`,
+			eventId: event.id,
+			scope: event.scope,
 			status: event.status,
 			eventType: event.eventType,
 			policy: event.policyId ? (policyNameByID[event.policyId] ?? `Policy ${event.policyId}`) : '-',
@@ -676,7 +687,7 @@
 			variant="outline"
 			class="h-6"
 			onclick={openProgress}
-			disabled={selectedEventId <= 0}
+			disabled={selectedEventId <= 0 || selectedEvent?.scope === 'transition'}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--progress-clock] mr-1 h-4 w-4"></span>

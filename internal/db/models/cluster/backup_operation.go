@@ -31,15 +31,19 @@ const (
 // deletion and execution are ordered by Raft instead of consulting node-local
 // queue maps or event telemetry.
 type BackupJobOperation struct {
-	JobID          uint      `gorm:"primaryKey;autoIncrement:false" json:"jobId"`
-	Token          string    `gorm:"uniqueIndex;not null" json:"token"`
-	Operation      string    `gorm:"index;not null" json:"operation"`
-	State          string    `gorm:"index;not null" json:"state"`
-	HolderNodeID   string    `gorm:"index;not null" json:"holderNodeId"`
-	RequestPayload string    `gorm:"type:text" json:"requestPayload"`
-	Revision       uint64    `gorm:"not null" json:"revision"`
-	AcquiredAt     time.Time `gorm:"index;not null" json:"acquiredAt"`
-	UpdatedAt      time.Time `gorm:"index;not null" json:"updatedAt"`
+	JobID            uint       `gorm:"primaryKey;autoIncrement:false" json:"jobId"`
+	Token            string     `gorm:"uniqueIndex;not null" json:"token"`
+	Operation        string     `gorm:"index;not null" json:"operation"`
+	State            string     `gorm:"index;not null" json:"state"`
+	HolderNodeID     string     `gorm:"index;not null" json:"holderNodeId"`
+	RequestPayload   string     `gorm:"type:text" json:"requestPayload"`
+	Scheduled        bool       `gorm:"index;not null;default:false" json:"scheduled"`
+	OccurrenceAt     *time.Time `gorm:"index" json:"occurrenceAt,omitempty"`
+	ScheduleRevision uint64     `gorm:"not null;default:0" json:"scheduleRevision"`
+	PublishAfter     *time.Time `gorm:"index" json:"publishAfter,omitempty"`
+	Revision         uint64     `gorm:"not null" json:"revision"`
+	AcquiredAt       time.Time  `gorm:"index;not null" json:"acquiredAt"`
+	UpdatedAt        time.Time  `gorm:"index;not null" json:"updatedAt"`
 }
 
 type BackupJobOperationAcquire struct {
@@ -101,12 +105,12 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 	payload.Operation = operation
 	payload.HolderNodeID = holderNodeID
 	payload.RequestPayload = strings.TrimSpace(payload.RequestPayload)
-	payload.AcquiredAt = payload.AcquiredAt.UTC()
+	payload.AcquiredAt = NormalizeCommandTime(payload.AcquiredAt)
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var job BackupJob
 		jobResult := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id", "runner_node_id", "target_id").
+			Select("id", "runner_node_id", "target_id", "schedule_revision").
 			Where("id = ?", payload.JobID).
 			Limit(1).
 			Find(&job)
@@ -166,16 +170,31 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 			return fmt.Errorf("backup_job_repair_required")
 		}
 
+		nextScheduleRevision := job.ScheduleRevision + 1
+		updatedJob := tx.Model(&BackupJob{}).
+			Where("id = ? AND schedule_revision = ?", payload.JobID, job.ScheduleRevision).
+			Updates(map[string]any{
+				"schedule_revision": nextScheduleRevision,
+				"updated_at":        payload.AcquiredAt,
+			})
+		if updatedJob.Error != nil {
+			return updatedJob.Error
+		}
+		if updatedJob.RowsAffected != 1 {
+			return fmt.Errorf("backup_job_schedule_revision_conflict")
+		}
+
 		return tx.Create(&BackupJobOperation{
-			JobID:          payload.JobID,
-			Token:          token,
-			Operation:      operation,
-			State:          BackupJobOperationQueued,
-			HolderNodeID:   holderNodeID,
-			RequestPayload: payload.RequestPayload,
-			Revision:       1,
-			AcquiredAt:     payload.AcquiredAt,
-			UpdatedAt:      payload.AcquiredAt,
+			JobID:            payload.JobID,
+			Token:            token,
+			Operation:        operation,
+			State:            BackupJobOperationQueued,
+			HolderNodeID:     holderNodeID,
+			RequestPayload:   payload.RequestPayload,
+			ScheduleRevision: nextScheduleRevision,
+			Revision:         1,
+			AcquiredAt:       payload.AcquiredAt,
+			UpdatedAt:        payload.AcquiredAt,
 		}).Error
 	})
 }
@@ -197,7 +216,7 @@ func transitionBackupJobOperation(db *gorm.DB, payload *BackupJobOperationTransi
 	payload.Operation = operation
 	payload.HolderNodeID = holderNodeID
 	payload.RequestPayload = strings.TrimSpace(payload.RequestPayload)
-	payload.OccurredAt = payload.OccurredAt.UTC()
+	payload.OccurredAt = NormalizeCommandTime(payload.OccurredAt)
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var existing BackupJobOperation
@@ -221,18 +240,24 @@ func transitionBackupJobOperation(db *gorm.DB, payload *BackupJobOperationTransi
 		case BackupJobOperationRunning:
 			switch existing.State {
 			case BackupJobOperationQueued:
-				if !payload.RequireEnabledTarget {
-					break
-				}
 				var job BackupJob
-				jobResult := tx.Select("id", "target_id").Where("id = ?", payload.JobID).Limit(1).Find(&job)
+				jobResult := tx.Select("id", "target_id", "runner_node_id", "schedule_revision").
+					Where("id = ?", payload.JobID).Limit(1).Find(&job)
 				if jobResult.Error != nil {
 					return jobResult.Error
 				}
 				if jobResult.RowsAffected == 0 {
 					return fmt.Errorf("backup_job_not_found")
 				}
-				if job.TargetID != 0 {
+				if existing.Operation == BackupJobOperationBackup {
+					if existing.ScheduleRevision != 0 && job.ScheduleRevision != existing.ScheduleRevision {
+						return fmt.Errorf("backup_job_operation_schedule_stale")
+					}
+					if runner := strings.TrimSpace(job.RunnerNodeID); runner != "" && runner != holderNodeID {
+						return fmt.Errorf("backup_job_operation_runner_mismatch")
+					}
+				}
+				if payload.RequireEnabledTarget && job.TargetID != 0 {
 					var target BackupTarget
 					targetResult := tx.Select("id", "enabled").Where("id = ?", job.TargetID).Limit(1).Find(&target)
 					if targetResult.Error != nil {

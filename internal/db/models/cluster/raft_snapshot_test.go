@@ -28,6 +28,9 @@ func allSnapshotModels() []any {
 		&BackupTargetNodeReadiness{},
 		&BackupJob{},
 		&BackupJobOperation{},
+		&ReplicationRunOperation{},
+		&ScheduledRunReceipt{},
+		&ScheduledRunResultOutbox{},
 		&BackupTargetRestoreOperation{},
 		&BackupJobRunnerRebind{},
 		&BackupJobRunnerRebindItem{},
@@ -37,6 +40,7 @@ func allSnapshotModels() []any {
 		&ReplicationGuestOperation{},
 		&ReplicationGuestOperationReceipt{},
 		&ReplicationEvent{},
+		&ReplicationTransitionEvent{},
 		&ClusterSSHIdentity{},
 		&EncryptionKey{},
 	}
@@ -135,6 +139,27 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("failed to seed policy target: %v", err)
 	}
+	if err := sourceDB.Create(&ReplicationRunOperation{
+		PolicyID: policy.ID, Token: "replication:node-1:snapshot",
+		State: ReplicationRunOperationQueued, HolderNodeID: "node-1",
+		Scheduled: true, ScheduleRevision: 4, OwnerEpoch: 1,
+		Revision: 1, AcquiredAt: operationTime, UpdatedAt: operationTime,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed replication run operation: %v", err)
+	}
+	if err := sourceDB.Create(&ScheduledRunReceipt{
+		Token: "backup:node-1:completed", Kind: ScheduledRunKindBackup,
+		ObjectID: 199, HolderNodeID: "node-1", ScheduleRevision: 3,
+		Status: "success", Applied: true, CompletedAt: operationTime,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed scheduled run receipt: %v", err)
+	}
+	if err := sourceDB.Create(&ScheduledRunResultOutbox{
+		Token: "replication:node-1:local-outbox", Kind: ScheduledRunKindReplication,
+		ObjectID: policy.ID, Payload: `{"policyId":300}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed local result outbox: %v", err)
+	}
 
 	if err := sourceDB.Create(&ReplicationLease{
 		ID: 500, PolicyID: policy.ID, GuestType: "vm", GuestID: 1,
@@ -160,11 +185,17 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}
 
 	if err := sourceDB.Create(&ReplicationEvent{
-		ID: 600, EventType: "incremental", Status: "success",
+		ID: 600, EventType: "replication", Status: "success",
+		SourceNodeID: "node-1", TargetNodeID: "node-2",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed local replication event: %v", err)
+	}
+	if err := sourceDB.Create(&ReplicationTransitionEvent{
+		ID: 601, EventType: "failover", Status: "success",
 		TransitionRunID: "transition-snapshot",
 		SourceNodeID:    "node-1", TargetNodeID: "node-2",
 	}).Error; err != nil {
-		t.Fatalf("failed to seed replication event: %v", err)
+		t.Fatalf("failed to seed replication transition event: %v", err)
 	}
 
 	if err := sourceDB.Create(&ClusterSSHIdentity{
@@ -198,6 +229,18 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("Persist failed: %v", err)
 	}
 	destDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	if err := destDB.Create(&ScheduledRunResultOutbox{
+		Token: "backup:dest:local-outbox", Kind: ScheduledRunKindBackup,
+		ObjectID: 999, Payload: `{"jobId":999}`,
+	}).Error; err != nil {
+		t.Fatalf("seed destination-local result outbox: %v", err)
+	}
+	if err := destDB.Create(&ReplicationEvent{
+		ID: 600, EventType: "replication", Status: "failed",
+		SourceNodeID: "node-2", TargetNodeID: "node-3",
+	}).Error; err != nil {
+		t.Fatalf("seed destination-local replication event: %v", err)
+	}
 	fsmDest := NewFSMDispatcher(destDB)
 	RegisterDefaultHandlers(fsmDest)
 	if err := fsmDest.Restore(io.NopCloser(bytes.NewReader(buf.Bytes()))); err != nil {
@@ -279,6 +322,23 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if len(pols) != 1 || pols[0].Name != "r1" {
 		t.Fatalf("policies mismatch: %+v", pols)
 	}
+	var replicationRuns []ReplicationRunOperation
+	destDB.Find(&replicationRuns)
+	if len(replicationRuns) != 1 || replicationRuns[0].Token != "replication:node-1:snapshot" ||
+		replicationRuns[0].ScheduleRevision != 4 {
+		t.Fatalf("replication run operations mismatch: %+v", replicationRuns)
+	}
+	var scheduledReceipts []ScheduledRunReceipt
+	destDB.Find(&scheduledReceipts)
+	if len(scheduledReceipts) != 1 || scheduledReceipts[0].Token != "backup:node-1:completed" ||
+		!scheduledReceipts[0].Applied {
+		t.Fatalf("scheduled run receipts mismatch: %+v", scheduledReceipts)
+	}
+	var localOutboxes []ScheduledRunResultOutbox
+	if err := destDB.Find(&localOutboxes).Error; err != nil ||
+		len(localOutboxes) != 1 || localOutboxes[0].Token != "backup:dest:local-outbox" {
+		t.Fatalf("node-local result outbox was replaced by snapshot: rows=%+v err=%v", localOutboxes, err)
+	}
 
 	var ptargets []ReplicationPolicyTarget
 	destDB.Find(&ptargets)
@@ -294,8 +354,14 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	var events []ReplicationEvent
 	destDB.Find(&events)
-	if len(events) != 1 || events[0].Status != "success" || events[0].TransitionRunID != "transition-snapshot" {
-		t.Fatalf("events mismatch: %+v", events)
+	if len(events) != 1 || events[0].Status != "failed" || events[0].SourceNodeID != "node-2" {
+		t.Fatalf("node-local events were replaced by snapshot: %+v", events)
+	}
+	var transitionEvents []ReplicationTransitionEvent
+	destDB.Find(&transitionEvents)
+	if len(transitionEvents) != 1 || transitionEvents[0].Status != "success" ||
+		transitionEvents[0].TransitionRunID != "transition-snapshot" {
+		t.Fatalf("transition events mismatch: %+v", transitionEvents)
 	}
 
 	var operations []ReplicationGuestOperation
@@ -374,6 +440,84 @@ func TestClusterLegacySnapshotWithoutTargetRestoreOperationsClearsReservations(t
 	}
 	if err := database.Model(&BackupTargetNodeReadiness{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("target readiness after legacy restore = %d err=%v", count, err)
+	}
+}
+
+func TestClusterLegacySnapshotDefaultsScheduleRevisionToZero(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	legacy := []byte(`{
+		"backupTargets":[{"id":920,"name":"legacy","sshHost":"host","sshPort":22,"backupRoot":"tank/backups","enabled":true}],
+		"backupJobs":[{"id":921,"name":"legacy-job","targetId":920,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 * * * *","enabled":true}],
+		"replicationPolicies":[{"policy":{"id":922,"name":"legacy-policy","guestType":"vm","guestId":22,"sourceNodeId":"node-a","activeNodeId":"node-a","ownerEpoch":1,"sourceMode":"follow_active","failbackMode":"manual","failoverMode":"manual","cronExpr":"0 * * * *","enabled":true},"targets":[]}]
+	}`)
+	fsm := NewFSMDispatcher(database)
+	RegisterDefaultHandlers(fsm)
+	if err := fsm.Restore(io.NopCloser(bytes.NewReader(legacy))); err != nil {
+		t.Fatalf("restore legacy schedule snapshot: %v", err)
+	}
+	var job BackupJob
+	if err := database.First(&job, 921).Error; err != nil {
+		t.Fatalf("load legacy job: %v", err)
+	}
+	if job.ScheduleRevision != 0 {
+		t.Fatalf("legacy job revision=%d, want 0", job.ScheduleRevision)
+	}
+	var policy ReplicationPolicy
+	if err := database.First(&policy, 922).Error; err != nil {
+		t.Fatalf("load legacy policy: %v", err)
+	}
+	if policy.ScheduleRevision != 0 {
+		t.Fatalf("legacy policy revision=%d, want 0", policy.ScheduleRevision)
+	}
+}
+
+func TestLegacyClusterSnapshotClassifiesEventsWithoutReplacingLocalHistory(t *testing.T) {
+	destDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	if err := destDB.Create(&ReplicationEvent{
+		ID: 8, EventType: "replication", Status: "success",
+		Message: "destination-local", StartedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("seed destination local event: %v", err)
+	}
+
+	legacy := ClusterSnapshot{
+		ReplicationEvents: []ReplicationEvent{
+			{ID: 7, TransitionRunID: "legacy-transition", EventType: "failover", Status: "active"},
+			{ID: 8, EventType: "replication", Status: "failed", Message: "leader-local-collision"},
+			{ID: 9, EventType: "failover", Status: "failed", Message: "ambiguous-legacy"},
+		},
+	}
+	raw, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy snapshot: %v", err)
+	}
+	fsm := NewFSMDispatcher(destDB)
+	RegisterDefaultHandlers(fsm)
+	if err := fsm.Restore(io.NopCloser(bytes.NewReader(raw))); err != nil {
+		t.Fatalf("restore legacy snapshot: %v", err)
+	}
+
+	var transition ReplicationTransitionEvent
+	if err := destDB.First(&transition, 7).Error; err != nil {
+		t.Fatalf("load migrated transition event: %v", err)
+	}
+	if transition.TransitionRunID != "legacy-transition" {
+		t.Fatalf("legacy transition mismatch: %+v", transition)
+	}
+
+	var collision ReplicationEvent
+	if err := destDB.First(&collision, 8).Error; err != nil {
+		t.Fatalf("load destination local collision: %v", err)
+	}
+	if collision.Message != "destination-local" {
+		t.Fatalf("legacy snapshot replaced destination-local history: %+v", collision)
+	}
+	var ambiguous ReplicationEvent
+	if err := destDB.First(&ambiguous, 9).Error; err != nil {
+		t.Fatalf("load ambiguous legacy event: %v", err)
+	}
+	if ambiguous.Message != "ambiguous-legacy" {
+		t.Fatalf("ambiguous legacy event mismatch: %+v", ambiguous)
 	}
 }
 

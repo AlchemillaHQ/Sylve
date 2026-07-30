@@ -79,3 +79,39 @@ func TestBackupEventHardCapNeverDeletesQueuedOrRunningEvents(t *testing.T) {
 		t.Fatalf("retained rows=%d, want %d", total, BackupEventMaxRows)
 	}
 }
+
+func TestLocalReplicationEventRetentionDoesNotDeleteReplicatedTransitions(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationTransitionEvent{},
+	)
+	now := time.Date(2026, time.July, 30, 12, 0, 0, 0, time.UTC)
+	expiredAt := now.Add(-100 * 24 * time.Hour)
+	if err := database.Create(&clusterModels.ReplicationEvent{
+		ID: 1, EventType: "replication", Status: "success",
+		StartedAt: expiredAt, CompletedAt: &expiredAt,
+	}).Error; err != nil {
+		t.Fatalf("seed local event: %v", err)
+	}
+	if err := database.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 1, TransitionRunID: "transition-retained", EventType: "failover", Status: "success",
+		StartedAt: expiredAt, CompletedAt: &expiredAt,
+	}).Error; err != nil {
+		t.Fatalf("seed transition event: %v", err)
+	}
+
+	if err := EnforceReplicationEventRetention(database, now); err != nil {
+		t.Fatalf("enforce local retention: %v", err)
+	}
+
+	var localCount int64
+	database.Model(&clusterModels.ReplicationEvent{}).Count(&localCount)
+	if localCount != 0 {
+		t.Fatalf("expired local event count=%d, want 0", localCount)
+	}
+	var transitionCount int64
+	database.Model(&clusterModels.ReplicationTransitionEvent{}).Count(&transitionCount)
+	if transitionCount != 1 {
+		t.Fatalf("replicated transition count=%d, want 1", transitionCount)
+	}
+}

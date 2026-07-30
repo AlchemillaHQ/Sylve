@@ -56,6 +56,10 @@ func (s *Service) applyBackupJobOperation(
 		return fmt.Errorf("backup_job_operation_service_unavailable")
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
+	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
+	if authorityErr != nil {
+		return authorityErr
+	}
 
 	applyLocal := func() error {
 		switch action {
@@ -75,9 +79,12 @@ func (s *Service) applyBackupJobOperation(
 	}
 
 	if s.Cluster == nil {
+		if !bypassRaft {
+			return fmt.Errorf("cluster_service_unavailable")
+		}
 		return applyLocal()
 	}
-	if s.Cluster.Raft == nil {
+	if bypassRaft {
 		if action == "acquire" {
 			return s.Cluster.AcquireBackupJobOperation(acquire, true)
 		}
@@ -293,6 +300,25 @@ func (s *Service) prepareQueuedBackupJobOperation(
 	if err == nil {
 		return handle, true, nil
 	}
+	if operation == clusterModels.BackupJobOperationBackup &&
+		(strings.Contains(strings.ToLower(err.Error()), "schedule_stale") ||
+			strings.Contains(strings.ToLower(err.Error()), "runner_mismatch")) {
+		var job clusterModels.BackupJob
+		if loadErr := s.DB.First(&job, jobID).Error; loadErr != nil {
+			return handle, false, loadErr
+		}
+		handled, completionErr := s.completeBackupJobOperation(
+			&job, "interrupted", "backup_job_schedule_changed_before_start",
+			time.Now().UTC(), job.NextRunAt, nil,
+		)
+		if handled {
+			s.logScheduledResultDeliveryFailure(
+				clusterModels.ScheduledRunKindBackup, jobID, completionErr,
+			)
+			return handle, false, nil
+		}
+		return handle, false, completionErr
+	}
 	if backupJobOperationFinishing(err) {
 		if releaseErr := s.transitionDurableBackupJobOperation(ctx, "release", handle); releaseErr != nil &&
 			!backupJobOperationStaleMessage(releaseErr) {
@@ -317,6 +343,17 @@ func (s *Service) prepareQueuedBackupJobOperation(
 // concurrent duplicates are stopped by the local job lock and later duplicates
 // observe a released token.
 func (s *Service) ReconcileBackupJobOperationsAfterRestart(ctx context.Context) error {
+	return s.reconcileBackupJobOperations(ctx, false)
+}
+
+// RepublishQueuedBackupJobOperations is the steady-state durable outbox pass.
+// Running work is deliberately excluded here; it is replayed only by the
+// one-shot restart reconciler.
+func (s *Service) RepublishQueuedBackupJobOperations(ctx context.Context) error {
+	return s.reconcileBackupJobOperations(ctx, true)
+}
+
+func (s *Service) reconcileBackupJobOperations(ctx context.Context, queuedOnly bool) error {
 	if s == nil || s.DB == nil {
 		return nil
 	}
@@ -325,7 +362,16 @@ func (s *Service) ReconcileBackupJobOperationsAfterRestart(ctx context.Context) 
 		return fmt.Errorf("local_node_id_unavailable")
 	}
 	var operations []clusterModels.BackupJobOperation
-	if err := s.DB.Where("holder_node_id = ?", holder).Order("job_id ASC").Find(&operations).Error; err != nil {
+	now := time.Now().UTC()
+	query := s.DB.Where("holder_node_id = ?", holder)
+	if queuedOnly {
+		query = query.Where("state = ? AND (publish_after IS NULL OR publish_after <= ?)",
+			clusterModels.BackupJobOperationQueued, now)
+	} else {
+		query = query.Where("state != ? OR publish_after IS NULL OR publish_after <= ?",
+			clusterModels.BackupJobOperationQueued, now)
+	}
+	if err := query.Order("job_id ASC").Find(&operations).Error; err != nil {
 		return err
 	}
 

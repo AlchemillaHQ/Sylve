@@ -42,16 +42,18 @@ type BackupTarget struct {
 }
 
 type BackupTargetReplicationPayload struct {
-	ID               uint   `json:"id"`
-	Name             string `json:"name"`
-	SSHHost          string `json:"sshHost"`
-	SSHPort          int    `json:"sshPort"`
-	SSHKeyPath       string `json:"sshKeyPath"`
-	SSHKey           string `json:"sshKey"`
-	BackupRoot       string `json:"backupRoot"`
-	CreateBackupRoot bool   `json:"createBackupRoot"`
-	Description      string `json:"description"`
-	Enabled          bool   `json:"enabled"`
+	ID               uint      `json:"id"`
+	Name             string    `json:"name"`
+	SSHHost          string    `json:"sshHost"`
+	SSHPort          int       `json:"sshPort"`
+	SSHKeyPath       string    `json:"sshKeyPath"`
+	SSHKey           string    `json:"sshKey"`
+	BackupRoot       string    `json:"backupRoot"`
+	CreateBackupRoot bool      `json:"createBackupRoot"`
+	Description      string    `json:"description"`
+	Enabled          bool      `json:"enabled"`
+	CreatedAt        time.Time `json:"createdAt,omitempty"`
+	UpdatedAt        time.Time `json:"updatedAt,omitempty"`
 }
 
 func BackupTargetToReplicationPayload(target BackupTarget) BackupTargetReplicationPayload {
@@ -67,6 +69,8 @@ func BackupTargetToReplicationPayload(target BackupTarget) BackupTargetReplicati
 		CreateBackupRoot: target.CreateBackupRoot,
 		Description:      target.Description,
 		Enabled:          target.Enabled,
+		CreatedAt:        target.CreatedAt,
+		UpdatedAt:        target.UpdatedAt,
 	}
 }
 
@@ -82,6 +86,8 @@ func (p BackupTargetReplicationPayload) ToModel() BackupTarget {
 		CreateBackupRoot: p.CreateBackupRoot,
 		Description:      p.Description,
 		Enabled:          p.Enabled,
+		CreatedAt:        p.CreatedAt,
+		UpdatedAt:        p.UpdatedAt,
 	}
 }
 
@@ -118,6 +124,7 @@ type BackupJob struct {
 	NextRunAt              *time.Time                       `gorm:"index" json:"nextRunAt"`
 	LastStatus             string                           `gorm:"index" json:"lastStatus"`
 	LastError              string                           `gorm:"type:text" json:"lastError"`
+	ScheduleRevision       uint64                           `gorm:"not null;default:0" json:"scheduleRevision"`
 	CreatedAt              time.Time                        `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt              time.Time                        `gorm:"autoUpdateTime" json:"updatedAt"`
 }
@@ -170,7 +177,7 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 		}
 		hasByName := queryByName.RowsAffected > 0
 
-		now := time.Now()
+		now := replicatedCommandTime(tx)
 		updates := map[string]any{
 			"name":               target.Name,
 			"ssh_host":           target.SSHHost,

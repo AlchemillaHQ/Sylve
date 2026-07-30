@@ -498,9 +498,10 @@ func readyBackupJobRunnerRebind(tx *gorm.DB, payload *BackupJobRunnerRebindReady
 		if err := tx.Model(&BackupJob{}).
 			Where("id = ?", items[i].JobID).
 			UpdateColumns(map[string]any{
-				"next_run_at": nil,
-				"last_status": BackupJobRunnerRebindStatusPending,
-				"last_error":  "backup_job_runner_rebind_pending",
+				"next_run_at":       nil,
+				"last_status":       BackupJobRunnerRebindStatusPending,
+				"last_error":        "backup_job_runner_rebind_pending",
+				"schedule_revision": gorm.Expr("schedule_revision + ?", 1),
 			}).Error; err != nil {
 			return err
 		}
@@ -608,10 +609,11 @@ func ApplyBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebindAp
 			}
 		}
 		updates := map[string]any{
-			"runner_node_id": operation.NewRunnerNodeID,
-			"friendly_src":   payload.FriendlySource,
-			"last_status":    "",
-			"last_error":     "",
+			"runner_node_id":    operation.NewRunnerNodeID,
+			"friendly_src":      payload.FriendlySource,
+			"last_status":       "",
+			"last_error":        "",
+			"schedule_revision": gorm.Expr("schedule_revision + ?", 1),
 		}
 		if err := tx.Model(&BackupJob{}).Where("id = ?", job.ID).UpdateColumns(updates).Error; err != nil {
 			return err
@@ -676,11 +678,12 @@ func RepairBackupJobRunnerRebindTxn(db *gorm.DB, payload *BackupJobRunnerRebindR
 			return fmt.Errorf("backup_job_runner_rebind_job_busy")
 		}
 		if err := tx.Model(&BackupJob{}).Where("id = ?", job.ID).UpdateColumns(map[string]any{
-			"runner_node_id": operation.NewRunnerNodeID,
-			"enabled":        false,
-			"next_run_at":    nil,
-			"last_status":    BackupJobRunnerRebindItemRepairRequired,
-			"last_error":     payload.Reason,
+			"runner_node_id":    operation.NewRunnerNodeID,
+			"enabled":           false,
+			"next_run_at":       nil,
+			"last_status":       BackupJobRunnerRebindItemRepairRequired,
+			"last_error":        payload.Reason,
+			"schedule_revision": gorm.Expr("schedule_revision + ?", 1),
 		}).Error; err != nil {
 			return err
 		}

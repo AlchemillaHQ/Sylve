@@ -60,6 +60,7 @@ export const ReplicationPolicySchema = z.object({
 	transitionDemotedAt: z.string().nullable().optional(),
 	transitionCatchupAt: z.string().nullable().optional(),
 	transitionPromotedAt: z.string().nullable().optional(),
+	transitionRecoveryDeadlineAt: z.string().nullable().optional(),
 	transitionCompletedAt: z.string().nullable().optional(),
 	transitionError: z.string().optional().default(''),
 	createdAt: z.string().optional(),
@@ -68,6 +69,7 @@ export const ReplicationPolicySchema = z.object({
 
 export const ReplicationEventSchema = z.object({
 	id: z.number().int(),
+	scope: z.enum(['local', 'transition']).optional().default('local'),
 	policyId: z.number().int().nullable().optional(),
 	transitionRunId: z.string().optional().default(''),
 	eventType: z.string(),

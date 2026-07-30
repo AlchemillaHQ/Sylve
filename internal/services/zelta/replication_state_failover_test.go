@@ -52,7 +52,26 @@ func TestReplicationPolicyStateSurvivesLeaderFailover(t *testing.T) {
 	t.Log("policy seeded on all nodes")
 
 	svc := fx.NewZeltaService()
+	claimRun := func(token string) {
+		var current clusterModels.ReplicationPolicy
+		if err := leader.db.First(&current, policyID).Error; err != nil {
+			t.Fatalf("load policy for claim: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := leader.cService.ApplyReplicationPolicyScheduleDecision(
+			clusterModels.ReplicationPolicyScheduleDecision{
+				PolicyID: policyID, ExpectedScheduleRevision: current.ScheduleRevision,
+				ExpectedOwnerEpoch: current.OwnerEpoch, ExpectedNextRunAt: current.NextRunAt,
+				NextRunAt: current.NextRunAt, DecidedAt: now, ClaimToken: token,
+				HolderNodeID: fx.LocalNodeID, OccurrenceAt: &now,
+			},
+			false,
+		); err != nil {
+			t.Fatalf("claim replication run %s: %v", token, err)
+		}
+	}
 
+	claimRun("replication:" + fx.LocalNodeID + ":success")
 	svc.updateReplicationPolicyResult(policy, nil)
 
 	time.Sleep(300 * time.Millisecond)
@@ -70,6 +89,7 @@ func TestReplicationPolicyStateSurvivesLeaderFailover(t *testing.T) {
 	}
 	t.Log("success state replicated to all nodes")
 
+	claimRun("replication:" + fx.LocalNodeID + ":failure")
 	svc.updateReplicationPolicyResult(policy, fmt.Errorf("test_replication_error"))
 
 	time.Sleep(300 * time.Millisecond)

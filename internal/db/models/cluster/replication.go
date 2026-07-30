@@ -89,6 +89,7 @@ type ReplicationPolicy struct {
 	NextRunAt                      *time.Time                `gorm:"index" json:"nextRunAt"`
 	LastStatus                     string                    `gorm:"index" json:"lastStatus"`
 	LastError                      string                    `gorm:"type:text" json:"lastError"`
+	ScheduleRevision               uint64                    `gorm:"not null;default:0" json:"scheduleRevision"`
 	TransitionState                string                    `gorm:"not null;default:none;index" json:"transitionState"`
 	TransitionRunID                string                    `gorm:"index" json:"transitionRunId"`
 	TransitionReason               string                    `json:"transitionReason"`
@@ -99,6 +100,7 @@ type ReplicationPolicy struct {
 	TransitionDemotedAt            *time.Time                `json:"transitionDemotedAt"`
 	TransitionCatchupAt            *time.Time                `json:"transitionCatchupAt"`
 	TransitionPromotedAt           *time.Time                `json:"transitionPromotedAt"`
+	TransitionRecoveryDeadlineAt   *time.Time                `gorm:"index" json:"transitionRecoveryDeadlineAt"`
 	TransitionCompletedAt          *time.Time                `gorm:"index" json:"transitionCompletedAt"`
 	TransitionError                string                    `gorm:"type:text" json:"transitionError"`
 	TransitionAllowUnsafe          bool                      `gorm:"not null;default:false" json:"transitionAllowUnsafe"`
@@ -129,6 +131,7 @@ type ReplicationPolicyTransition struct {
 	DemotedAt            *time.Time `json:"demotedAt"`
 	CatchupAt            *time.Time `json:"catchupAt"`
 	PromotedAt           *time.Time `json:"promotedAt"`
+	RecoveryDeadlineAt   *time.Time `json:"recoveryDeadlineAt"`
 	CompletedAt          *time.Time `json:"completedAt"`
 	Error                string     `json:"error"`
 	AllowUnsafe          bool       `json:"allowUnsafe"`
@@ -248,6 +251,76 @@ type ReplicationEvent struct {
 	CompletedAt     *time.Time `json:"completedAt"`
 	CreatedAt       time.Time  `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt       time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+	Scope           string     `gorm:"-" json:"scope,omitempty"`
+}
+
+const (
+	ReplicationEventScopeLocal      = "local"
+	ReplicationEventScopeTransition = "transition"
+)
+
+// ReplicationTransitionEvent is replicated transition/audit state. Ordinary
+// replication run telemetry remains in ReplicationEvent and is node-local.
+type ReplicationTransitionEvent struct {
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	PolicyID        *uint      `gorm:"index" json:"policyId"`
+	TransitionRunID string     `gorm:"not null;default:'';index" json:"transitionRunId"`
+	EventType       string     `gorm:"index;not null" json:"eventType"`
+	Status          string     `gorm:"index;not null" json:"status"`
+	Message         string     `json:"message"`
+	Error           string     `gorm:"type:text" json:"error"`
+	Output          string     `gorm:"type:text" json:"output"`
+	SourceNodeID    string     `gorm:"index" json:"sourceNodeId"`
+	TargetNodeID    string     `gorm:"index" json:"targetNodeId"`
+	GuestType       string     `gorm:"index" json:"guestType"`
+	GuestID         uint       `gorm:"index" json:"guestId"`
+	StartedAt       time.Time  `gorm:"index" json:"startedAt"`
+	CompletedAt     *time.Time `json:"completedAt"`
+	CreatedAt       time.Time  `gorm:"autoCreateTime:false" json:"createdAt"`
+	UpdatedAt       time.Time  `gorm:"autoUpdateTime:false" json:"updatedAt"`
+}
+
+func ReplicationTransitionEventFromEvent(event ReplicationEvent) ReplicationTransitionEvent {
+	return ReplicationTransitionEvent{
+		ID:              event.ID,
+		PolicyID:        event.PolicyID,
+		TransitionRunID: event.TransitionRunID,
+		EventType:       event.EventType,
+		Status:          event.Status,
+		Message:         event.Message,
+		Error:           event.Error,
+		Output:          event.Output,
+		SourceNodeID:    event.SourceNodeID,
+		TargetNodeID:    event.TargetNodeID,
+		GuestType:       event.GuestType,
+		GuestID:         event.GuestID,
+		StartedAt:       event.StartedAt,
+		CompletedAt:     event.CompletedAt,
+		CreatedAt:       event.CreatedAt,
+		UpdatedAt:       event.UpdatedAt,
+	}
+}
+
+func (event ReplicationTransitionEvent) AsReplicationEvent() ReplicationEvent {
+	return ReplicationEvent{
+		ID:              event.ID,
+		PolicyID:        event.PolicyID,
+		TransitionRunID: event.TransitionRunID,
+		EventType:       event.EventType,
+		Status:          event.Status,
+		Message:         event.Message,
+		Error:           event.Error,
+		Output:          event.Output,
+		SourceNodeID:    event.SourceNodeID,
+		TargetNodeID:    event.TargetNodeID,
+		GuestType:       event.GuestType,
+		GuestID:         event.GuestID,
+		StartedAt:       event.StartedAt,
+		CompletedAt:     event.CompletedAt,
+		CreatedAt:       event.CreatedAt,
+		UpdatedAt:       event.UpdatedAt,
+		Scope:           ReplicationEventScopeTransition,
+	}
 }
 
 type ClusterSSHIdentity struct {
@@ -420,7 +493,7 @@ func acquireReplicationGuestOperation(db *gorm.DB, payload *ReplicationGuestOper
 			return fmt.Errorf("replication_restore_scope_invalid")
 		}
 	}
-	payload.AcquiredAt = payload.AcquiredAt.UTC()
+	payload.AcquiredAt = NormalizeCommandTime(payload.AcquiredAt)
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var existing ReplicationGuestOperation
@@ -478,7 +551,7 @@ func normalizeReplicationGuestOperationTransition(payload *ReplicationGuestOpera
 	}
 	payload.TargetNodeID = strings.TrimSpace(payload.TargetNodeID)
 	if !payload.OccurredAt.IsZero() {
-		payload.OccurredAt = payload.OccurredAt.UTC()
+		payload.OccurredAt = NormalizeCommandTime(payload.OccurredAt)
 	}
 	return nil
 }
@@ -1033,7 +1106,8 @@ func updateReplicationPolicy(db *gorm.DB, payload *ReplicationPolicyPayload) err
 				"enabled":           policy.Enabled,
 				"protection_state":  protectionState,
 				"next_run_at":       policy.NextRunAt,
-				"updated_at":        time.Now().UTC(),
+				"schedule_revision": gorm.Expr("schedule_revision + ?", 1),
+				"updated_at":        replicatedCommandTime(tx),
 			})
 		if result.Error != nil {
 			return result.Error
@@ -1233,6 +1307,7 @@ func upsertReplicationLease(db *gorm.DB, lease *ReplicationLease) error {
 	if lease.ExpiresAt.IsZero() {
 		return fmt.Errorf("replication_lease_expiry_required")
 	}
+	lease.ExpiresAt = NormalizeCommandTime(lease.ExpiresAt)
 	if lease.Version == 0 {
 		lease.Version = 1
 	}
@@ -1303,7 +1378,7 @@ func upsertReplicationLease(db *gorm.DB, lease *ReplicationLease) error {
 			"version":       lease.Version,
 			"last_reason":   lease.LastReason,
 			"last_actor":    lease.LastActor,
-			"updated_at":    time.Now().UTC(),
+			"updated_at":    replicatedCommandTime(db),
 		}).Error
 	}
 
@@ -1327,6 +1402,19 @@ func normalizeAndValidateReplicationPolicyTransition(transition *ReplicationPoli
 	if transition.State == "" {
 		transition.State = ReplicationTransitionStateNone
 	}
+	normalizeCheckpoint := func(checkpoint **time.Time) {
+		if checkpoint == nil || *checkpoint == nil {
+			return
+		}
+		normalized := NormalizeCommandTime(**checkpoint)
+		*checkpoint = &normalized
+	}
+	normalizeCheckpoint(&transition.RequestedAt)
+	normalizeCheckpoint(&transition.DemotedAt)
+	normalizeCheckpoint(&transition.CatchupAt)
+	normalizeCheckpoint(&transition.PromotedAt)
+	normalizeCheckpoint(&transition.RecoveryDeadlineAt)
+	normalizeCheckpoint(&transition.CompletedAt)
 	if !validReplicationTransitionState(transition.State) {
 		return fmt.Errorf("invalid_replication_transition_state")
 	}
@@ -1386,6 +1474,7 @@ func replicationTransitionCheckpointsPreserved(policy *ReplicationPolicy, transi
 		replicationCheckpointPreserved(policy.TransitionDemotedAt, transition.DemotedAt) &&
 		replicationCheckpointPreserved(policy.TransitionCatchupAt, transition.CatchupAt) &&
 		replicationCheckpointPreserved(policy.TransitionPromotedAt, transition.PromotedAt) &&
+		replicationCheckpointPreserved(policy.TransitionRecoveryDeadlineAt, transition.RecoveryDeadlineAt) &&
 		replicationCheckpointPreserved(policy.TransitionCompletedAt, transition.CompletedAt) &&
 		replicationOptionalBoolPreserved(policy.TransitionOriginalRunning, transition.OriginalRunning)
 }
@@ -1413,6 +1502,11 @@ func replicationTransitionStateAdvanceAllowed(currentState, nextState string) bo
 }
 
 func persistReplicationPolicyTransition(db *gorm.DB, policyID uint, transition *ReplicationPolicyTransition) error {
+	var current ReplicationPolicy
+	if err := db.Select("id", "transition_state", "schedule_revision").
+		First(&current, policyID).Error; err != nil {
+		return err
+	}
 	updates := map[string]any{
 		"transition_state":                   transition.State,
 		"transition_run_id":                  transition.RunID,
@@ -1424,6 +1518,7 @@ func persistReplicationPolicyTransition(db *gorm.DB, policyID uint, transition *
 		"transition_demoted_at":              transition.DemotedAt,
 		"transition_catchup_at":              transition.CatchupAt,
 		"transition_promoted_at":             transition.PromotedAt,
+		"transition_recovery_deadline_at":    transition.RecoveryDeadlineAt,
 		"transition_completed_at":            transition.CompletedAt,
 		"transition_error":                   transition.Error,
 		"transition_allow_unsafe":            transition.AllowUnsafe,
@@ -1435,7 +1530,11 @@ func persistReplicationPolicyTransition(db *gorm.DB, policyID uint, transition *
 		"transition_generation_owner_epoch":  transition.GenerationOwnerEpoch,
 		"transition_generation_manifest":     transition.GenerationManifest,
 		"transition_generation_root_count":   transition.GenerationRootCount,
-		"updated_at":                         time.Now().UTC(),
+		"updated_at":                         replicatedCommandTime(db),
+	}
+	if replicationTransitionInProgress(current.TransitionState) !=
+		replicationTransitionInProgress(transition.State) {
+		updates["schedule_revision"] = gorm.Expr("schedule_revision + ?", 1)
 	}
 
 	result := db.Model(&ReplicationPolicy{}).
@@ -1723,7 +1822,7 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 		if payload.PreviousLeaseExpiresAtOrBefore.IsZero() {
 			return fmt.Errorf("replication_previous_lease_cutoff_required")
 		}
-		cutoff := payload.PreviousLeaseExpiresAtOrBefore.UTC()
+		cutoff := NormalizeCommandTime(*payload.PreviousLeaseExpiresAtOrBefore)
 		payload.PreviousLeaseExpiresAtOrBefore = &cutoff
 	}
 
@@ -1763,6 +1862,9 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 		}
 		if payload.Transition.CatchupAt == nil {
 			payload.Transition.CatchupAt = policy.TransitionCatchupAt
+		}
+		if payload.Transition.RecoveryDeadlineAt == nil {
+			payload.Transition.RecoveryDeadlineAt = policy.TransitionRecoveryDeadlineAt
 		}
 		if payload.Transition.OriginalRunning == nil {
 			payload.Transition.OriginalRunning = policy.TransitionOriginalRunning
@@ -1813,9 +1915,10 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 		}
 
 		updates := map[string]any{
-			"active_node_id": payload.ActiveNodeID,
-			"owner_epoch":    payload.OwnerEpoch,
-			"updated_at":     time.Now().UTC(),
+			"active_node_id":    payload.ActiveNodeID,
+			"owner_epoch":       payload.OwnerEpoch,
+			"schedule_revision": gorm.Expr("schedule_revision + ?", 1),
+			"updated_at":        replicatedCommandTime(tx),
 		}
 		if payload.SourceNodeID != nil {
 			updates["source_node_id"] = *payload.SourceNodeID
@@ -1898,7 +2001,7 @@ func reassignDisabledReplicationPolicyOwner(
 	if payload.RunID == "" || payload.OperationToken == "" || payload.OccurredAt.IsZero() {
 		return fmt.Errorf("replication_disabled_owner_reassignment_audit_required")
 	}
-	payload.OccurredAt = payload.OccurredAt.UTC()
+	payload.OccurredAt = NormalizeCommandTime(payload.OccurredAt)
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var policy ReplicationPolicy
@@ -1953,6 +2056,7 @@ func reassignDisabledReplicationPolicyOwner(
 			"transition_demoted_at":              payload.OccurredAt,
 			"transition_catchup_at":              nil,
 			"transition_promoted_at":             payload.OccurredAt,
+			"transition_recovery_deadline_at":     nil,
 			"transition_completed_at":            payload.OccurredAt,
 			"transition_error":                   "",
 			"transition_allow_unsafe":            false,
@@ -1964,6 +2068,7 @@ func reassignDisabledReplicationPolicyOwner(
 			"transition_generation_owner_epoch":  uint64(0),
 			"transition_generation_manifest":     "",
 			"transition_generation_root_count":   0,
+			"schedule_revision":                  gorm.Expr("schedule_revision + ?", 1),
 			"updated_at":                         payload.OccurredAt,
 		}
 		result := tx.Model(&ReplicationPolicy{}).
@@ -2034,6 +2139,15 @@ func updateReplicationTargetReadiness(db *gorm.DB, update *ReplicationTargetRead
 	if update.EvaluatedAt.IsZero() {
 		return fmt.Errorf("replication_target_readiness_evaluated_at_required")
 	}
+	update.EvaluatedAt = NormalizeCommandTime(update.EvaluatedAt)
+	if update.LastVerifiedAt != nil {
+		normalized := NormalizeCommandTime(*update.LastVerifiedAt)
+		update.LastVerifiedAt = &normalized
+	}
+	if update.ReadyUntil != nil {
+		normalized := NormalizeCommandTime(*update.ReadyUntil)
+		update.ReadyUntil = &normalized
+	}
 	if update.RequiredDatasetCount < 0 || update.CompletedDatasetCount < 0 ||
 		update.CompletedDatasetCount > update.RequiredDatasetCount {
 		return fmt.Errorf("invalid_replication_target_dataset_counts")
@@ -2091,7 +2205,7 @@ func updateReplicationTargetReadiness(db *gorm.DB, update *ReplicationTargetRead
 		}
 		if existingTarget.OwnerEpoch == update.ExpectedOwnerEpoch {
 			existingEvaluation := existingTarget.UpdatedAt.UTC()
-			incomingEvaluation := update.EvaluatedAt.UTC()
+			incomingEvaluation := update.EvaluatedAt
 			if incomingEvaluation.Before(existingEvaluation) ||
 				(incomingEvaluation.Equal(existingEvaluation) &&
 					!replicationReadinessAssessmentEqual(&existingTarget, update)) {
@@ -2111,7 +2225,7 @@ func updateReplicationTargetReadiness(db *gorm.DB, update *ReplicationTargetRead
 				"last_verified_at":        update.LastVerifiedAt,
 				"ready_until":             update.ReadyUntil,
 				"last_error":              update.LastError,
-				"updated_at":              update.EvaluatedAt.UTC(),
+				"updated_at":              NormalizeCommandTime(update.EvaluatedAt),
 			})
 		if result.Error != nil {
 			return result.Error
@@ -2139,7 +2253,7 @@ func updateReplicationTargetReadiness(db *gorm.DB, update *ReplicationTargetRead
 			Where("id = ? AND owner_epoch = ?", update.PolicyID, update.ExpectedOwnerEpoch).
 			Updates(map[string]any{
 				"protection_state": protectionState,
-				"updated_at":       update.EvaluatedAt.UTC(),
+				"updated_at":       NormalizeCommandTime(update.EvaluatedAt),
 			})
 		if result.Error != nil {
 			return result.Error
@@ -2232,7 +2346,23 @@ func updateReplicationPolicyProtectionState(
 
 		result := tx.Model(&ReplicationPolicy{}).
 			Where("id = ? AND owner_epoch = ?", update.PolicyID, update.ExpectedOwnerEpoch).
-			Update("protection_state", update.State)
+			Updates(func() map[string]any {
+				updates := map[string]any{"protection_state": update.State}
+				wasRunnable := policy.Enabled &&
+					!replicationTransitionInProgress(policy.TransitionState) &&
+					policy.ProtectionState != ReplicationProtectionStateDeleting &&
+					policy.ProtectionState != ReplicationProtectionStateSuspended &&
+					policy.ProtectionState != ReplicationProtectionStateUnprotected
+				willBeRunnable := policy.Enabled &&
+					!replicationTransitionInProgress(policy.TransitionState) &&
+					update.State != ReplicationProtectionStateDeleting &&
+					update.State != ReplicationProtectionStateSuspended &&
+					update.State != ReplicationProtectionStateUnprotected
+				if wasRunnable != willBeRunnable {
+					updates["schedule_revision"] = gorm.Expr("schedule_revision + ?", 1)
+				}
+				return updates
+			}())
 		if result.Error != nil {
 			return result.Error
 		}
@@ -2311,6 +2441,16 @@ func DeleteReplicationPolicyTxn(db *gorm.DB, policyID uint) error {
 		var policy ReplicationPolicy
 		if err := tx.First(&policy, policyID).Error; err != nil {
 			return err
+		}
+		if tx.Migrator().HasTable(&ReplicationRunOperation{}) {
+			var activeRuns int64
+			if err := tx.Model(&ReplicationRunOperation{}).
+				Where("policy_id = ?", policyID).Count(&activeRuns).Error; err != nil {
+				return err
+			}
+			if activeRuns != 0 {
+				return fmt.Errorf("replication_policy_already_running")
+			}
 		}
 		if replicationTransitionInProgress(policy.TransitionState) {
 			return fmt.Errorf("replication_policy_transition_in_progress")

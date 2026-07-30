@@ -23,6 +23,9 @@ func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOpera
 	if payload.AcquiredAt.IsZero() {
 		payload.AcquiredAt = time.Now().UTC()
 	}
+	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
+		return err
+	}
 	if bypassRaft {
 		return clusterModels.AcquireBackupJobOperationTxn(s.DB, &payload)
 	}
@@ -53,6 +56,9 @@ func (s *Service) TransitionBackupJobOperation(
 	}
 	if payload.OccurredAt.IsZero() {
 		payload.OccurredAt = time.Now().UTC()
+	}
+	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
+		return err
 	}
 
 	if bypassRaft {

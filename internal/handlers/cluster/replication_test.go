@@ -392,6 +392,12 @@ func TestReplicationEventByIDHandler(t *testing.T) {
 	if err := db.Create(&evt).Error; err != nil {
 		t.Fatalf("failed to seed event: %v", err)
 	}
+	if err := db.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 100, PolicyID: &policyID, TransitionRunID: "transition-100",
+		EventType: "failover", Status: "active", StartedAt: now, CompletedAt: &now,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed transition event: %v", err)
+	}
 
 	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/replication/events/100", nil)
 	if rr.Code != http.StatusOK {
@@ -404,6 +410,21 @@ func TestReplicationEventByIDHandler(t *testing.T) {
 	}
 	if resp.Message != "replication_event_fetched" {
 		t.Fatalf("expected replication_event_fetched, got %q", resp.Message)
+	}
+	if resp.Data == nil || resp.Data.Scope != clusterModels.ReplicationEventScopeLocal {
+		t.Fatalf("unscoped lookup did not preserve local-first compatibility: %+v", resp.Data)
+	}
+
+	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/replication/events/100?scope=transition", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected transition 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid transition json: %v", err)
+	}
+	if resp.Data == nil || resp.Data.Scope != clusterModels.ReplicationEventScopeTransition ||
+		resp.Data.TransitionRunID != "transition-100" {
+		t.Fatalf("scoped transition lookup mismatch: %+v", resp.Data)
 	}
 }
 

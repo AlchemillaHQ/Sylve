@@ -170,6 +170,9 @@ func TestClearClusteredData(t *testing.T) {
 		"state": "queued", "revision": 1, "acquired_at": time.Now(), "updated_at": time.Now(),
 	})
 	seedDB("replication_events", map[string]any{"id": 1, "event_type": "run", "status": "success"})
+	seedDB("replication_transition_events", map[string]any{
+		"id": 2, "transition_run_id": "transition-clear", "event_type": "failover", "status": "success",
+	})
 	seedDB("replication_guest_operations", map[string]any{"guest_type": "vm", "guest_id": 1, "operation": "migration", "state": "active", "token": "migration:n1:1", "owner_node_id": "n1", "target_node_id": "n2", "task_id": 1, "acquired_at": time.Now().Add(-time.Minute)})
 	seedDB("replication_guest_operation_receipts", map[string]any{"token": "migration:n1:1", "guest_type": "vm", "guest_id": 1, "operation": "migration", "owner_node_id": "n1", "target_node_id": "n2", "task_id": 1, "acquired_at": time.Now().Add(-time.Minute), "completed_at": time.Now()})
 	seedDB("replication_leases", map[string]any{"id": 1, "policy_id": 1, "guest_type": "vm", "guest_id": 1, "owner_node_id": "n1", "owner_epoch": 1, "expires_at": time.Now().Add(time.Hour)})
@@ -182,7 +185,7 @@ func TestClearClusteredData(t *testing.T) {
 
 	tables := []string{
 		"cluster_notes", "cluster_options", "backup_events", "backup_target_restore_operations", "backup_jobs",
-		"backup_targets", "replication_events", "replication_guest_operations", "replication_guest_operation_receipts", "replication_leases",
+		"backup_targets", "replication_transition_events", "replication_guest_operations", "replication_guest_operation_receipts", "replication_leases",
 		"replication_policy_targets", "replication_policies", "cluster_ssh_identities",
 	}
 	for _, table := range tables {
@@ -191,6 +194,11 @@ func TestClearClusteredData(t *testing.T) {
 		if count != 0 {
 			t.Fatalf("expected table %s to be empty, got %d rows", table, count)
 		}
+	}
+	var localEventCount int64
+	db.Model(&clusterModels.ReplicationEvent{}).Count(&localEventCount)
+	if localEventCount != 1 {
+		t.Fatalf("expected node-local replication history to survive cluster reset, got %d rows", localEventCount)
 	}
 }
 
@@ -268,12 +276,22 @@ func TestBackfillPreClusterState(t *testing.T) {
 	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.ReplicationEvent{
+			ID: 1, EventType: "replication", Status: "success",
+			Message: "local-history-" + node.id, StartedAt: time.Now().UTC(),
+		}).Error; err != nil {
+			t.Fatalf("seed local replication history on %s: %v", node.id, err)
+		}
+	}
 
 	// seed pre-existing state on the leader's DB (simulating pre-cluster data)
 	seedDB := leader.service.DB
 
-	seedDB.Create(&clusterModels.ClusterNote{ID: 1, Title: "note1", Content: "content1"})
-	seedDB.Create(&clusterModels.ClusterOption{ID: 1, KeyboardLayout: "de"})
+	note := clusterModels.ClusterNote{ID: 1, Title: "note1", Content: "content1"}
+	seedDB.Create(&note)
+	option := clusterModels.ClusterOption{ID: 1, KeyboardLayout: "de"}
+	seedDB.Create(&option)
 
 	target := clusterModels.BackupTarget{
 		ID: 10, Name: "bk-target", SSHHost: "host@remote",
@@ -293,11 +311,13 @@ func TestBackfillPreClusterState(t *testing.T) {
 	seedDB.Create(&clusterModels.BackupJob{
 		ID: 20, Name: "bk-job", TargetID: 10, Mode: clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data", CronExpr: "0 2 * * *", Enabled: true,
+		ScheduleRevision: 3,
 	})
 	operationAt := time.Now().UTC()
 	seedDB.Create(&clusterModels.BackupJobOperation{
 		JobID: 20, Token: "backup:node-1:backfill", Operation: clusterModels.BackupJobOperationBackup,
 		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "node-1",
+		Scheduled: true, ScheduleRevision: 3,
 		Revision: 2, AcquiredAt: operationAt, UpdatedAt: operationAt,
 	})
 	seedDB.Create(&clusterModels.BackupTargetRestoreOperation{
@@ -313,10 +333,21 @@ func TestBackfillPreClusterState(t *testing.T) {
 		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
 		FailbackMode: clusterModels.ReplicationFailbackManual,
 		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1, Enabled: true,
+		CronExpr:     "* * * * *", OwnerEpoch: 1, Enabled: true, ScheduleRevision: 5,
 	})
 	seedDB.Create(&clusterModels.ReplicationPolicyTarget{
 		PolicyID: 30, NodeID: "node-2", Weight: 100,
+	})
+	seedDB.Create(&clusterModels.ReplicationRunOperation{
+		PolicyID: 30, Token: "replication:node-1:backfill",
+		State: clusterModels.ReplicationRunOperationQueued, HolderNodeID: "node-1",
+		Scheduled: true, ScheduleRevision: 5, OwnerEpoch: 1,
+		Revision: 1, AcquiredAt: operationAt, UpdatedAt: operationAt,
+	})
+	seedDB.Create(&clusterModels.ScheduledRunReceipt{
+		Token: "backup:node-1:completed-backfill", Kind: clusterModels.ScheduledRunKindBackup,
+		ObjectID: 19, HolderNodeID: "node-1", ScheduleRevision: 2,
+		Status: "success", Applied: true, CompletedAt: operationAt,
 	})
 
 	seedDB.Create(&clusterModels.ReplicationLease{
@@ -334,8 +365,8 @@ func TestBackfillPreClusterState(t *testing.T) {
 		UUID: "enc-backfill", KeyData: "encrypted-data-min-32-bytes-long", KeyFormat: "passphrase",
 	})
 
-	seedDB.Create(&clusterModels.ReplicationEvent{
-		ID: 40, EventType: "run", Status: "success",
+	seedDB.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 40, TransitionRunID: "transition-backfill", EventType: "failover", Status: "success",
 		PolicyID: uintPtr(30), SourceNodeID: "node-1", TargetNodeID: "node-2",
 		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
 	})
@@ -353,16 +384,34 @@ func TestBackfillPreClusterState(t *testing.T) {
 			if noteCount != 1 {
 				return false
 			}
+			var replicatedNote clusterModels.ClusterNote
+			if err := node.service.DB.First(&replicatedNote, note.ID).Error; err != nil ||
+				!replicatedNote.CreatedAt.Equal(note.CreatedAt) ||
+				!replicatedNote.UpdatedAt.Equal(note.UpdatedAt) {
+				return false
+			}
 
 			var optCount int64
 			node.service.DB.Model(&clusterModels.ClusterOption{}).Count(&optCount)
 			if optCount != 1 {
 				return false
 			}
+			var replicatedOption clusterModels.ClusterOption
+			if err := node.service.DB.First(&replicatedOption, option.ID).Error; err != nil ||
+				!replicatedOption.CreatedAt.Equal(option.CreatedAt) ||
+				!replicatedOption.UpdatedAt.Equal(clusterModels.NormalizeCommandTime(option.UpdatedAt)) {
+				return false
+			}
 
 			var tgtCount int64
 			node.service.DB.Model(&clusterModels.BackupTarget{}).Count(&tgtCount)
 			if tgtCount != 1 {
+				return false
+			}
+			var replicatedTarget clusterModels.BackupTarget
+			if err := node.service.DB.First(&replicatedTarget, target.ID).Error; err != nil ||
+				!replicatedTarget.CreatedAt.Equal(target.CreatedAt) ||
+				!replicatedTarget.UpdatedAt.Equal(target.UpdatedAt) {
 				return false
 			}
 
@@ -380,7 +429,9 @@ func TestBackfillPreClusterState(t *testing.T) {
 			}
 			var operation clusterModels.BackupJobOperation
 			if err := node.service.DB.Where("job_id = ?", 20).First(&operation).Error; err != nil ||
-				operation.Token != "backup:node-1:backfill" || operation.State != clusterModels.BackupJobOperationRunning {
+				operation.Token != "backup:node-1:backfill" ||
+				operation.State != clusterModels.BackupJobOperationRunning ||
+				!operation.Scheduled || operation.ScheduleRevision != 3 {
 				return false
 			}
 			var targetRestoreOperation clusterModels.BackupTargetRestoreOperation
@@ -395,6 +446,17 @@ func TestBackfillPreClusterState(t *testing.T) {
 			var polCount int64
 			node.service.DB.Model(&clusterModels.ReplicationPolicy{}).Count(&polCount)
 			if polCount != 1 {
+				return false
+			}
+			var replicationRun clusterModels.ReplicationRunOperation
+			if err := node.service.DB.Where("policy_id = ?", 30).First(&replicationRun).Error; err != nil ||
+				replicationRun.Token != "replication:node-1:backfill" ||
+				replicationRun.ScheduleRevision != 5 || replicationRun.OwnerEpoch != 1 {
+				return false
+			}
+			var scheduledReceipt clusterModels.ScheduledRunReceipt
+			if err := node.service.DB.Where("token = ?", "backup:node-1:completed-backfill").
+				First(&scheduledReceipt).Error; err != nil || !scheduledReceipt.Applied {
 				return false
 			}
 
@@ -417,8 +479,13 @@ func TestBackfillPreClusterState(t *testing.T) {
 			}
 
 			var evtCount int64
-			node.service.DB.Model(&clusterModels.ReplicationEvent{}).Count(&evtCount)
+			node.service.DB.Model(&clusterModels.ReplicationTransitionEvent{}).Count(&evtCount)
 			if evtCount != 1 {
+				return false
+			}
+			var localEvent clusterModels.ReplicationEvent
+			if err := node.service.DB.First(&localEvent, 1).Error; err != nil ||
+				localEvent.Message != "local-history-"+node.id {
 				return false
 			}
 		}

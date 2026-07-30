@@ -11,12 +11,16 @@ package cluster
 import "time"
 
 const (
-	raftLeaderPollInterval       = 50 * time.Millisecond
-	raftApplyTimeout             = 5 * time.Second
-	raftLeaderWaitTimeout        = 10 * time.Second
-	raftTransportTimeout         = 10 * time.Second
-	raftTransportMaxPool         = 3
-	raftSnapshotThreshold        = 1024
-	clusterNodePopulateInterval  = 60 * time.Second
-	defaultEventListLimit        = 200
+	raftLeaderPollInterval          = 50 * time.Millisecond
+	raftApplyTimeout                = 5 * time.Second
+	raftLeaderWaitTimeout           = 10 * time.Second
+	raftTransportTimeout            = 10 * time.Second
+	raftTransportMaxPool            = 3
+	raftSnapshotThreshold           = 1024
+	clusterNodePopulateInterval     = 60 * time.Second
+	defaultEventListLimit           = 200
+	replicatedRetentionInterval     = 6 * time.Hour
+	replicatedRetentionInitialDelay = time.Minute
+	replicatedRetentionDays         = 90
+	replicatedRetentionMaxRows      = 10000
 )

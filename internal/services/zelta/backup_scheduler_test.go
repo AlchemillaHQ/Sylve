@@ -21,6 +21,7 @@ import (
 func newSchedulerTestDB(t *testing.T) *Service {
 	db := testutil.NewSQLiteTestDB(t,
 		&clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{}, &clusterModels.BackupTarget{},
+		&clusterModels.ScheduledRunReceipt{}, &clusterModels.ScheduledRunResultOutbox{},
 	)
 	return &Service{
 		DB:                db,
@@ -251,10 +252,17 @@ func TestAdvanceBackupJobScheduleAfterRestorePreventsImmediateBackup(t *testing.
 	job := clusterModels.BackupJob{
 		ID: 7, Name: "restored-job", TargetID: 1, Mode: "dataset",
 		CronExpr: "0 0 * * *", Enabled: true, NextRunAt: &pastDue,
-		LastRunAt: &lastRun, LastStatus: "success",
+		LastRunAt: &lastRun, LastStatus: "success", ScheduleRevision: 1,
 	}
 	if err := svc.DB.Create(&job).Error; err != nil {
 		t.Fatalf("failed to seed job: %v", err)
+	}
+	if err := svc.DB.Create(&clusterModels.BackupJobOperation{
+		JobID: job.ID, Token: "restore:local:schedule", Operation: clusterModels.BackupJobOperationRestore,
+		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "local",
+		ScheduleRevision: 1, Revision: 2, AcquiredAt: before, UpdatedAt: before,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed restore operation: %v", err)
 	}
 
 	if err := svc.advanceBackupJobScheduleAfterRestore(&job); err != nil {

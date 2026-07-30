@@ -817,31 +817,44 @@ func (s *Service) advanceBackupJobScheduleAfterRestore(job *clusterModels.Backup
 	if job == nil || job.ID == 0 {
 		return fmt.Errorf("backup_job_required")
 	}
-	if !job.Enabled {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("backup_job_database_unavailable")
+	}
+	var current clusterModels.BackupJob
+	if err := s.DB.First(&current, job.ID).Error; err != nil {
+		return err
+	}
+	if !current.Enabled {
+		return nil
+	}
+	var operation clusterModels.BackupJobOperation
+	if err := s.DB.Where("job_id = ? AND operation = ?", job.ID, clusterModels.BackupJobOperationRestore).
+		First(&operation).Error; err != nil {
+		return err
+	}
+	if current.ScheduleRevision != operation.ScheduleRevision {
 		return nil
 	}
 
-	nextRunAt, err := nextRunTime(job.CronExpr, time.Now().UTC())
+	now := time.Now().UTC()
+	nextRunAt, err := nextRunTime(current.CronExpr, now)
 	if err != nil {
 		return fmt.Errorf("next_backup_run: %w", err)
 	}
 
-	update := cluster.BackupJobRuntimeStateUpdate{
-		JobID:       job.ID,
-		NextRunAt:   &nextRunAt,
-		NextRunOnly: true,
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return err
 	}
-	if s.syncBackupJobRuntimeState(update) {
-		job.NextRunAt = &nextRunAt
-		return nil
+	decision := clusterModels.BackupJobScheduleDecision{
+		JobID: current.ID, ExpectedScheduleRevision: current.ScheduleRevision,
+		ExpectedNextRunAt: current.NextRunAt, NextRunAt: &nextRunAt, DecidedAt: now,
 	}
-	if s == nil || s.DB == nil {
-		return fmt.Errorf("backup_job_database_unavailable")
-	}
-	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextRunAt).Error; err != nil {
+	if err := s.applyBackupJobScheduleDecision(decision, bypassRaft); err != nil {
 		return fmt.Errorf("update_next_backup_run: %w", err)
 	}
 	job.NextRunAt = &nextRunAt
+	job.ScheduleRevision = current.ScheduleRevision + 1
 	return nil
 }
 

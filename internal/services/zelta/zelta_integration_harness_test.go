@@ -179,6 +179,9 @@ func SetupZeltaClusterFixture(t *testing.T, nodeCount int) *ZeltaClusterFixture 
 		&clusterModels.ReplicationEvent{},
 		&clusterModels.ReplicationGuestOperation{},
 		&clusterModels.ReplicationGuestOperationReceipt{},
+		&clusterModels.ReplicationRunOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
 	}
@@ -230,6 +233,9 @@ func SetupZeltaClusterFixture(t *testing.T, nodeCount int) *ZeltaClusterFixture 
 	waitVoterCount(t, nodes, nodeCount, 8*time.Second)
 
 	for i := 0; i < nodeCount; i++ {
+		if err := nodes[i].db.Create(&clusterModels.Cluster{ID: 1, Enabled: true}).Error; err != nil {
+			t.Fatalf("seed enabled cluster state on %s: %v", nodes[i].id, err)
+		}
 		localNode := clusterModels.ClusterNode{
 			NodeUUID: nodeIDs[i], Hostname: fmt.Sprintf("node%d", i+1),
 			API: fmt.Sprintf("node%d:8181", i+1), Status: "online",

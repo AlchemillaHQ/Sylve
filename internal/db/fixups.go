@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
@@ -21,6 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func Fixups(db *gorm.DB) error {
@@ -31,6 +33,9 @@ func Fixups(db *gorm.DB) error {
 		return err
 	}
 	if err := clearReplicatedManagedBackupTargetKeyPaths(db); err != nil {
+		return err
+	}
+	if err := migrateReplicationTransitionEvents(db); err != nil {
 		return err
 	}
 
@@ -53,6 +58,48 @@ func Fixups(db *gorm.DB) error {
 	cleanupStaleAvahi(db)
 
 	return nil
+}
+
+func migrateReplicationTransitionEvents(db *gorm.DB) error {
+	const name = "split_replication_transition_events_1"
+	if !db.Migrator().HasTable(&clusterModels.ReplicationEvent{}) ||
+		!db.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", name).Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking replication event split migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var legacyTransitions []clusterModels.ReplicationEvent
+		if err := tx.
+			Where("TRIM(COALESCE(transition_run_id, '')) <> ''").
+			Order("id ASC").
+			Find(&legacyTransitions).Error; err != nil {
+			return fmt.Errorf("failed reading legacy replication transition events: %w", err)
+		}
+		for _, event := range legacyTransitions {
+			transition := clusterModels.ReplicationTransitionEventFromEvent(event)
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&transition).Error; err != nil {
+				return fmt.Errorf("failed migrating replication transition event %d: %w", event.ID, err)
+			}
+		}
+		if err := tx.
+			Where("TRIM(COALESCE(transition_run_id, '')) <> ''").
+			Delete(&clusterModels.ReplicationEvent{}).Error; err != nil {
+			return fmt.Errorf("failed removing migrated replication transition events: %w", err)
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording replication event split migration: %w", err)
+		}
+		return nil
+	})
 }
 
 func clearReplicatedManagedBackupTargetKeyPaths(db *gorm.DB) error {

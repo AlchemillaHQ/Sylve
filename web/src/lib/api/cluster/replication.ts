@@ -98,9 +98,15 @@ export async function listReplicationEvents(
 }
 
 export async function getReplicationEvent(
-	id: number
+	id: number,
+	scope: 'local' | 'transition' = 'local'
 ): Promise<z.infer<typeof ReplicationEventSchema>> {
-	return await apiRequest(`/cluster/replication/events/${id}`, ReplicationEventSchema, 'GET');
+	const params = new URLSearchParams({ scope });
+	return await apiRequest(
+		`/cluster/replication/events/${id}?${params.toString()}`,
+		ReplicationEventSchema,
+		'GET'
+	);
 }
 
 export async function getReplicationEventProgress(

@@ -341,7 +341,7 @@ func TestReconcileReplicationTransitionEventFinalizesRecoveredPromotion(t *testi
 	if err := service.runTransitionRecoveryTick(context.Background()); err != nil {
 		t.Fatalf("run transition recovery tick: %v", err)
 	}
-	var stored clusterModels.ReplicationEvent
+	var stored clusterModels.ReplicationTransitionEvent
 	if err := clusterSvc.DB.First(&stored, eventID).Error; err != nil {
 		t.Fatalf("load transition event: %v", err)
 	}
@@ -377,9 +377,9 @@ func TestReconcileReplicationTransitionEventBackfillsLegacyRollback(t *testing.T
 	if err := service.reconcileReplicationTransitionEvent(policy, nil); err != nil {
 		t.Fatalf("reconcile legacy rollback event: %v", err)
 	}
-	var stored clusterModels.ReplicationEvent
+	var stored clusterModels.ReplicationTransitionEvent
 	if err := clusterSvc.DB.First(&stored, legacy.ID).Error; err != nil {
-		t.Fatalf("load legacy event: %v", err)
+		t.Fatalf("load migrated transition event: %v", err)
 	}
 	if stored.Status != replicationEventStatusFailed || stored.CompletedAt == nil ||
 		stored.TransitionRunID != policy.TransitionRunID || stored.Message != policy.TransitionError ||
@@ -407,7 +407,7 @@ func TestReconcileReplicationTransitionEventRecreatesRecentMissingEvent(t *testi
 	if err := service.reconcileReplicationTransitionEvent(policy, nil); err != nil {
 		t.Fatalf("recreate missing transition event: %v", err)
 	}
-	var stored clusterModels.ReplicationEvent
+	var stored clusterModels.ReplicationTransitionEvent
 	if err := clusterSvc.DB.Where("transition_run_id = ?", policy.TransitionRunID).First(&stored).Error; err != nil {
 		t.Fatalf("load recreated event: %v", err)
 	}
@@ -419,7 +419,7 @@ func TestReconcileReplicationTransitionEventRecreatesRecentMissingEvent(t *testi
 		t.Fatalf("repeat missing-event reconciliation: %v", err)
 	}
 	var count int64
-	if err := clusterSvc.DB.Model(&clusterModels.ReplicationEvent{}).
+	if err := clusterSvc.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
 		Where("transition_run_id = ?", policy.TransitionRunID).Count(&count).Error; err != nil {
 		t.Fatalf("count recreated events: %v", err)
 	}
@@ -483,7 +483,7 @@ func TestReconcileReplicationTransitionEventDoesNotRecreateExpiredHistory(t *tes
 		t.Fatalf("reconcile expired transition history: %v", err)
 	}
 	var count int64
-	if err := clusterSvc.DB.Model(&clusterModels.ReplicationEvent{}).
+	if err := clusterSvc.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
 		Where("transition_run_id = ?", policy.TransitionRunID).Count(&count).Error; err != nil {
 		t.Fatalf("count expired transition events: %v", err)
 	}
@@ -511,7 +511,7 @@ func TestReconcileReplicationTransitionEventDoesNotCreateMigrationFailoverEvent(
 		t.Fatalf("reconcile migration transition: %v", err)
 	}
 	var count int64
-	if err := clusterSvc.DB.Model(&clusterModels.ReplicationEvent{}).Count(&count).Error; err != nil {
+	if err := clusterSvc.DB.Model(&clusterModels.ReplicationTransitionEvent{}).Count(&count).Error; err != nil {
 		t.Fatalf("count migration events: %v", err)
 	}
 	if count != 0 {
@@ -547,7 +547,7 @@ func TestEnsureReplicationTransitionEventIsIdempotent(t *testing.T) {
 		t.Fatalf("ensure created duplicate events: first=%d second=%d", first.ID, second.ID)
 	}
 	var count int64
-	if err := clusterSvc.DB.Model(&clusterModels.ReplicationEvent{}).
+	if err := clusterSvc.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
 		Where("transition_run_id = ?", "transition-idempotent").Count(&count).Error; err != nil {
 		t.Fatalf("count transition events: %v", err)
 	}

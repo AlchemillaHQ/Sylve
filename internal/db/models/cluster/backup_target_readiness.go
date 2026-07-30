@@ -102,9 +102,9 @@ func BackupTargetConnectivityFingerprint(target *BackupTarget) string {
 func normalizeBackupTargetNodeReadinessUpdate(update BackupTargetNodeReadinessUpdate) BackupTargetNodeReadinessUpdate {
 	update.NodeID = strings.TrimSpace(update.NodeID)
 	update.TargetFingerprint = strings.ToLower(strings.TrimSpace(update.TargetFingerprint))
-	update.LastVerifiedAt = update.LastVerifiedAt.UTC()
+	update.LastVerifiedAt = NormalizeCommandTime(update.LastVerifiedAt)
 	if update.ReadyUntil != nil {
-		readyUntil := update.ReadyUntil.UTC()
+		readyUntil := NormalizeCommandTime(*update.ReadyUntil)
 		update.ReadyUntil = &readyUntil
 	}
 	update.LastError = strings.TrimSpace(update.LastError)
@@ -155,7 +155,7 @@ func UpsertBackupTargetNodeReadinessBackfillTxn(db *gorm.DB, row *BackupTargetNo
 	if revision == 0 {
 		revision = 1
 	}
-	updatedAt := row.UpdatedAt.UTC()
+	updatedAt := NormalizeCommandTime(row.UpdatedAt)
 	if updatedAt.IsZero() {
 		updatedAt = normalized.LastVerifiedAt
 	}

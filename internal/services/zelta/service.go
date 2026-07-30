@@ -33,6 +33,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
@@ -321,6 +322,7 @@ func (s *Service) RegisterJobs() {
 			logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_backup_job_duplicate_discarded")
 			return nil
 		}
+		s.updateBackupJobResult(&job, runErr, false)
 		if runErr != nil {
 			logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_backup_job_failed")
 		}
@@ -498,6 +500,20 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 		return nil
 	}
 
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return err
+	}
+	if err := s.RepublishQueuedBackupJobOperations(ctx); err != nil {
+		logger.L.Warn().Err(err).Msg("backup_operation_republish_failed")
+	}
+	if err := s.drainScheduledRunResultOutbox(); err != nil {
+		logger.L.Debug().Err(err).Msg("scheduled_run_result_outbox_pending")
+	}
+	if !bypassRaft && (s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader) {
+		return nil
+	}
+
 	now := time.Now().UTC()
 	localNodeID := s.localNodeID()
 	var jobs []clusterModels.BackupJob
@@ -507,22 +523,34 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 
 	for i := range jobs {
 		job := jobs[i]
-		if !s.isLocalBackupJobRunner(&job, localNodeID) {
+		if bypassRaft && !s.isLocalBackupJobRunner(&job, localNodeID) {
 			continue
 		}
 
 		nextAt, err := nextRunTime(job.CronExpr, now)
 		if err != nil {
-			_ = s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-				"last_status": "failed",
-				"last_error":  "invalid_cron_expr",
-				"next_run_at": nil,
-			}).Error
+			if job.NextRunAt == nil && job.LastStatus == "failed" && job.LastError == "invalid_cron_expr" {
+				continue
+			}
+			decision := clusterModels.BackupJobScheduleDecision{
+				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
+				ExpectedNextRunAt: job.NextRunAt, DecidedAt: now,
+				SetRuntime: true, LastStatus: "failed", LastError: "invalid_cron_expr",
+			}
+			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_invalid_cron_decision_rejected")
+			}
 			continue
 		}
 
 		if job.NextRunAt == nil {
-			_ = s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextAt).Error
+			decision := clusterModels.BackupJobScheduleDecision{
+				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
+				ExpectedNextRunAt: nil, NextRunAt: &nextAt, DecidedAt: now,
+			}
+			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_initial_schedule_decision_rejected")
+			}
 			continue
 		}
 
@@ -549,65 +577,64 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 				Uint("job_id", job.ID).
 				Time("next_run", *job.NextRunAt).
 				Msg("scheduled_backup_too_far_past_due_skipping")
-			_ = s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextAt).Error
-			continue
-		}
-
-		if !s.reserveJob(job.ID) {
-			logger.L.Debug().Uint("job_id", job.ID).Msg("scheduled_backup_skip_job_already_queued_or_running")
-			continue
-		}
-
-		handle, operationErr := s.acquireDurableBackupJobOperation(
-			ctx,
-			job.ID,
-			clusterModels.BackupJobOperationBackup,
-			"",
-		)
-		if operationErr != nil {
-			s.releaseReservedJob(job.ID)
-			logger.L.Debug().Err(operationErr).Uint("job_id", job.ID).Msg("scheduled_backup_operation_reservation_failed")
-			continue
-		}
-		abortOperation := func() {
-			abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
-			defer abortCancel()
-			if err := s.abortDurableBackupJobOperation(abortCtx, handle); err != nil {
-				logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("scheduled_backup_operation_abort_failed")
+			decision := clusterModels.BackupJobScheduleDecision{
+				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
+				ExpectedNextRunAt: job.NextRunAt, NextRunAt: &nextAt, DecidedAt: now,
 			}
-		}
-
-		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextAt).Error; err != nil {
-			s.releaseReservedJob(job.ID)
-			abortOperation()
-			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_next_run_at")
+			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_catchup_skip_decision_rejected")
+			}
 			continue
 		}
 
-		// Spread jobs across the tick window to avoid thundering herd.
+		var operationCount int64
+		if countErr := s.DB.Model(&clusterModels.BackupJobOperation{}).
+			Where("job_id = ?", job.ID).Count(&operationCount).Error; countErr != nil {
+			return countErr
+		}
+		if operationCount != 0 {
+			// A long run owns the one reservation. Advancing directly to the
+			// first future occurrence coalesces missed intervals.
+			decision := clusterModels.BackupJobScheduleDecision{
+				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
+				ExpectedNextRunAt: job.NextRunAt, NextRunAt: &nextAt, DecidedAt: now,
+			}
+			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_coalesce_decision_rejected")
+			}
+			continue
+		}
+
+		holderNodeID := strings.TrimSpace(job.RunnerNodeID)
+		if holderNodeID == "" {
+			holderNodeID = strings.TrimSpace(localNodeID)
+		}
+		if holderNodeID == "" && bypassRaft {
+			holderNodeID = "local"
+		}
+		if holderNodeID == "" {
+			logger.L.Warn().Uint("job_id", job.ID).Msg("scheduled_backup_holder_unavailable")
+			continue
+		}
+
+		publishAfter := now
 		if maxBackupEnqueueJitter > 0 {
 			jitter := time.Duration(rand.Int63n(int64(maxBackupEnqueueJitter)))
-			select {
-			case <-ctx.Done():
-				s.releaseReservedJob(job.ID)
-				abortOperation()
-				return ctx.Err()
-			case <-time.After(jitter):
-			}
+			publishAfter = publishAfter.Add(jitter)
 		}
-
-		enqueueCtx, enqueueCancel := context.WithTimeout(ctx, 5*time.Second)
-		if err := db.EnqueueJSON(enqueueCtx, backupJobQueueName, backupJobPayload{
-			JobID: job.ID, OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
-		}); err != nil {
-			s.releaseReservedJob(job.ID)
-			abortOperation()
-			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_enqueue_scheduled_backup")
+		occurrenceAt := job.NextRunAt.UTC()
+		decision := clusterModels.BackupJobScheduleDecision{
+			JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
+			ExpectedNextRunAt: job.NextRunAt, NextRunAt: &nextAt, DecidedAt: now,
+			ClaimToken:   fmt.Sprintf("backup:%s:%s", holderNodeID, uuid.NewString()),
+			HolderNodeID: holderNodeID, OccurrenceAt: &occurrenceAt, PublishAfter: &publishAfter,
 		}
-		enqueueCancel()
+		if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+			logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("scheduled_backup_claim_rejected")
+		}
 	}
 
-	return nil
+	return s.RepublishQueuedBackupJobOperations(ctx)
 }
 
 func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
@@ -647,9 +674,7 @@ func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 		JobID: jobID, OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
 	}); err != nil {
 		s.releaseReservedJob(jobID)
-		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
-		defer abortCancel()
-		return errors.Join(err, s.abortDurableBackupJobOperation(abortCtx, handle))
+		logger.L.Warn().Err(err).Uint("job_id", jobID).Msg("backup_queue_publish_deferred_to_reconciler")
 	}
 	return nil
 }
@@ -2007,6 +2032,9 @@ func targetGenerationDatasetCandidate(activeDataset, generationToken string, att
 }
 
 func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error, encrypted bool) {
+	if job == nil || job.ID == 0 {
+		return
+	}
 	now := time.Now().UTC()
 	next := (*time.Time)(nil)
 
@@ -2022,6 +2050,13 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		status = "failed"
 		lastError = runErr.Error()
 	}
+	handled, completionErr := s.completeBackupJobOperation(
+		job, status, lastError, now, next, &encrypted,
+	)
+	if handled {
+		s.logScheduledResultDeliveryFailure(clusterModels.ScheduledRunKindBackup, job.ID, completionErr)
+		return
+	}
 
 	update := cluster.BackupJobRuntimeStateUpdate{
 		Version:    cluster.BackupJobRuntimeStateVersion,
@@ -2033,21 +2068,26 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		Encrypted:  &encrypted,
 	}
 
-	if s.syncBackupJobRuntimeState(update) {
+	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
+	if authorityErr != nil {
+		logger.L.Warn().Err(authorityErr).Uint("job_id", job.ID).Msg("backup_runtime_authority_unavailable")
 		return
 	}
-
-	updates := map[string]any{
-		"last_run_at": update.LastRunAt,
-		"last_status": update.LastStatus,
-		"last_error":  update.LastError,
-		"next_run_at": update.NextRunAt,
+	if !bypassRaft {
+		logger.L.Warn().Uint("job_id", job.ID).Msg("unfenced_cluster_backup_result_ignored")
+		return
 	}
-	if update.Encrypted != nil {
-		updates["encrypted"] = *update.Encrypted
+	if s.Cluster != nil {
+		if err := s.Cluster.UpdateBackupJobRuntimeState(update, true); err != nil {
+			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
+		}
+		return
 	}
-
-	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {
+	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+		"last_run_at": update.LastRunAt, "last_status": update.LastStatus,
+		"last_error": update.LastError, "next_run_at": update.NextRunAt,
+		"encrypted": encrypted,
+	}).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
 	}
 }
@@ -2057,7 +2097,11 @@ func (s *Service) syncBackupJobRuntimeState(update cluster.BackupJobRuntimeState
 		return false
 	}
 
-	bypassRaft := s.Cluster.Raft == nil
+	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
+	if authorityErr != nil {
+		logger.L.Warn().Err(authorityErr).Uint("job_id", update.JobID).Msg("backup_runtime_authority_unavailable")
+		return false
+	}
 	if err := s.Cluster.UpdateBackupJobRuntimeState(update, bypassRaft); err == nil {
 		return true
 	} else if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {

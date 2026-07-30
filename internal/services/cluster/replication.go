@@ -167,19 +167,51 @@ func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error
 }
 
 type ReplicationPolicyRuntimeState struct {
-	ID         uint       `json:"id"`
-	LastRunAt  *time.Time `json:"lastRunAt"`
-	LastStatus string     `json:"lastStatus"`
-	LastError  string     `json:"lastError"`
-	NextRunAt  *time.Time `json:"nextRunAt"`
+	Action           string     `json:"action,omitempty"`
+	ID               uint       `json:"id"`
+	Token            string     `json:"token,omitempty"`
+	HolderNodeID     string     `json:"holderNodeId,omitempty"`
+	ScheduleRevision uint64     `json:"scheduleRevision,omitempty"`
+	OwnerEpoch       uint64     `json:"ownerEpoch,omitempty"`
+	LastRunAt        *time.Time `json:"lastRunAt"`
+	LastStatus       string     `json:"lastStatus"`
+	LastError        string     `json:"lastError"`
+	NextRunAt        *time.Time `json:"nextRunAt"`
 }
 
 func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRuntimeState, bypassRaft bool) error {
 	if update.ID == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
+	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
+		return err
+	}
+	action := strings.ToLower(strings.TrimSpace(update.Action))
+	if action == "start" {
+		if update.LastRunAt == nil {
+			return fmt.Errorf("replication_run_started_at_required")
+		}
+		return s.StartReplicationRun(clusterModels.ReplicationRunOperationTransition{
+			PolicyID: update.ID, Token: update.Token, HolderNodeID: update.HolderNodeID,
+			OccurredAt: *update.LastRunAt,
+		}, bypassRaft)
+	}
+	if action != "" {
+		return fmt.Errorf("invalid_replication_policy_runtime_action")
+	}
 	if update.LastStatus == "" {
 		return fmt.Errorf("last_status_required")
+	}
+	if strings.TrimSpace(update.Token) != "" {
+		if update.LastRunAt == nil {
+			return fmt.Errorf("replication_policy_run_completed_at_required")
+		}
+		return s.CompleteReplicationPolicyRun(clusterModels.ReplicationPolicyRunResult{
+			PolicyID: update.ID, Token: update.Token, HolderNodeID: update.HolderNodeID,
+			ScheduleRevision: update.ScheduleRevision, OwnerEpoch: update.OwnerEpoch,
+			CompletedAt: *update.LastRunAt, LastStatus: update.LastStatus,
+			LastError: update.LastError, NextRunAt: update.NextRunAt,
+		}, bypassRaft)
 	}
 
 	if bypassRaft {
@@ -429,25 +461,26 @@ func (s *Service) buildReplicationPolicy(
 	poolCapacityPct := resolveOptional(existingByIDFound, existingByID.PoolCapacityPct, input.PoolCapacityPct, 90)
 
 	policy := &clusterModels.ReplicationPolicy{
-		ID:              id,
-		Name:            name,
-		Description:     description,
-		GuestType:       guestType,
-		GuestID:         input.GuestID,
-		SourceNodeID:    sourceNodeID,
-		ActiveNodeID:    activeNodeID,
-		OwnerEpoch:      ownerEpoch,
-		SourceMode:      sourceMode,
-		FailbackMode:    failbackMode,
-		FailoverMode:    failoverMode,
-		CronExpr:        cronExpr,
-		Enabled:         enabled,
-		ProtectionState: protectionState,
-		CrashRecovery:   crashRecovery,
-		CrashRestartMax: crashRestartMax,
-		PoolHealthCheck: poolHealthCheck,
-		PoolCapacityPct: poolCapacityPct,
-		NextRunAt:       next,
+		ID:               id,
+		Name:             name,
+		Description:      description,
+		GuestType:        guestType,
+		GuestID:          input.GuestID,
+		SourceNodeID:     sourceNodeID,
+		ActiveNodeID:     activeNodeID,
+		OwnerEpoch:       ownerEpoch,
+		SourceMode:       sourceMode,
+		FailbackMode:     failbackMode,
+		FailoverMode:     failoverMode,
+		CronExpr:         cronExpr,
+		Enabled:          enabled,
+		ProtectionState:  protectionState,
+		CrashRecovery:    crashRecovery,
+		CrashRestartMax:  crashRestartMax,
+		PoolHealthCheck:  poolHealthCheck,
+		PoolCapacityPct:  poolCapacityPct,
+		NextRunAt:        next,
+		ScheduleRevision: 1,
 	}
 
 	// Preserve transition state from the existing row.
@@ -964,31 +997,40 @@ func (s *Service) UpdateReplicationPolicyProtectionState(
 }
 
 func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.ReplicationEvent, bypassRaft bool) (uint, error) {
-	action := "create"
-	if event.ID == 0 {
-		id, err := s.newRaftObjectID("replication_events")
-		if err != nil {
-			return 0, fmt.Errorf("new_replication_event_id_failed: %w", err)
-		}
-		event.ID = id
-	} else {
-		action = "update"
-	}
-
 	if bypassRaft {
+		event.Scope = ""
 		if err := s.DB.Save(&event).Error; err != nil {
 			return 0, err
 		}
 		return event.ID, nil
 	}
 
-	data, err := json.Marshal(event)
+	action := "create"
+	if event.ID == 0 {
+		id, err := s.newRaftObjectID("replication_transition_events")
+		if err != nil {
+			return 0, fmt.Errorf("new_replication_transition_event_id_failed: %w", err)
+		}
+		event.ID = id
+	} else {
+		action = "update"
+	}
+	decidedAt := time.Now().UTC()
+	if event.StartedAt.IsZero() {
+		event.StartedAt = decidedAt
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = decidedAt
+	}
+	event.UpdatedAt = decidedAt
+	transition := clusterModels.ReplicationTransitionEventFromEvent(event)
+	data, err := json.Marshal(transition)
 	if err != nil {
-		return 0, fmt.Errorf("failed_to_marshal_replication_event_payload: %w", err)
+		return 0, fmt.Errorf("failed_to_marshal_replication_transition_event_payload: %w", err)
 	}
 
 	if err := s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_event",
+		Type:   "replication_transition_event",
 		Action: action,
 		Data:   data,
 	}); err != nil {
@@ -1002,26 +1044,78 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 	if limit <= 0 {
 		limit = defaultEventListLimit
 	}
-	query := s.DB.Order("started_at DESC").Limit(limit)
+	localQuery := s.DB.Order("started_at DESC, id DESC").Limit(limit)
 	if policyID > 0 {
-		query = query.Where("policy_id = ?", policyID)
+		localQuery = localQuery.Where("policy_id = ?", policyID)
 	}
 
-	var events []clusterModels.ReplicationEvent
-	if err := query.Find(&events).Error; err != nil {
+	var localEvents []clusterModels.ReplicationEvent
+	if err := localQuery.Find(&localEvents).Error; err != nil {
 		return nil, err
+	}
+	for i := range localEvents {
+		localEvents[i].Scope = clusterModels.ReplicationEventScopeLocal
+	}
+
+	events := localEvents
+	if s.DB.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
+		transitionQuery := s.DB.Order("started_at DESC, id DESC").Limit(limit)
+		if policyID > 0 {
+			transitionQuery = transitionQuery.Where("policy_id = ?", policyID)
+		}
+		var transitions []clusterModels.ReplicationTransitionEvent
+		if err := transitionQuery.Find(&transitions).Error; err != nil {
+			return nil, err
+		}
+		for _, transition := range transitions {
+			events = append(events, transition.AsReplicationEvent())
+		}
+	}
+
+	sort.SliceStable(events, func(i, j int) bool {
+		if events[i].StartedAt.Equal(events[j].StartedAt) {
+			if events[i].Scope == events[j].Scope {
+				return events[i].ID > events[j].ID
+			}
+			return events[i].Scope < events[j].Scope
+		}
+		return events[i].StartedAt.After(events[j].StartedAt)
+	})
+	if len(events) > limit {
+		events = events[:limit]
 	}
 	return events, nil
 }
 
 func (s *Service) GetReplicationEventByID(id uint) (*clusterModels.ReplicationEvent, error) {
+	event, err := s.GetReplicationEventByScopedID(id, clusterModels.ReplicationEventScopeLocal)
+	if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
+		return event, err
+	}
+	return s.GetReplicationEventByScopedID(id, clusterModels.ReplicationEventScopeTransition)
+}
+
+func (s *Service) GetReplicationEventByScopedID(id uint, scope string) (*clusterModels.ReplicationEvent, error) {
 	if id == 0 {
 		return nil, fmt.Errorf("invalid_event_id")
 	}
+	if strings.TrimSpace(scope) == clusterModels.ReplicationEventScopeTransition {
+		if !s.DB.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		var transition clusterModels.ReplicationTransitionEvent
+		if err := s.DB.First(&transition, id).Error; err != nil {
+			return nil, err
+		}
+		event := transition.AsReplicationEvent()
+		return &event, nil
+	}
+
 	var event clusterModels.ReplicationEvent
 	if err := s.DB.First(&event, id).Error; err != nil {
 		return nil, err
 	}
+	event.Scope = clusterModels.ReplicationEventScopeLocal
 	return &event, nil
 }
 

@@ -11,7 +11,6 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -55,21 +54,7 @@ func (s *Service) ProposeNoteCreate(title, content string, bypassRaft bool) erro
 		Data:   data,
 	}
 
-	payload, err := json.Marshal(cmd)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_command: %w", err)
-	}
-
-	applyFuture := s.Raft.Apply(payload, 5*time.Second)
-	if err := applyFuture.Error(); err != nil {
-		return fmt.Errorf("raft_apply_failed: %w", err)
-	}
-
-	if resp, ok := applyFuture.Response().(error); ok && resp != nil {
-		return fmt.Errorf("fsm_apply_failed: %w", resp)
-	}
-
-	return nil
+	return s.applyRaftCommand(cmd)
 }
 
 func (s *Service) ProposeNoteUpdate(id int, title, content string, bypassRaft bool) error {
@@ -106,21 +91,7 @@ func (s *Service) ProposeNoteUpdate(id int, title, content string, bypassRaft bo
 		Data:   data,
 	}
 
-	payload, err := json.Marshal(cmd)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_command: %w", err)
-	}
-
-	applyFuture := s.Raft.Apply(payload, 5*time.Second)
-	if err := applyFuture.Error(); err != nil {
-		return fmt.Errorf("raft_apply_failed: %w", err)
-	}
-
-	if resp, ok := applyFuture.Response().(error); ok && resp != nil {
-		return fmt.Errorf("fsm_apply_failed: %w", resp)
-	}
-
-	return nil
+	return s.applyRaftCommand(cmd)
 }
 
 func (s *Service) ProposeNoteDelete(id int, bypassRaft bool) error {
@@ -147,21 +118,7 @@ func (s *Service) ProposeNoteDelete(id int, bypassRaft bool) error {
 		Data:   data,
 	}
 
-	payload, err := json.Marshal(cmd)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_command: %w", err)
-	}
-
-	applyFuture := s.Raft.Apply(payload, 5*time.Second)
-	if err := applyFuture.Error(); err != nil {
-		return fmt.Errorf("raft_apply_failed: %w", err)
-	}
-
-	if resp, ok := applyFuture.Response().(error); ok && resp != nil {
-		return fmt.Errorf("fsm_apply_failed: %w", resp)
-	}
-
-	return nil
+	return s.applyRaftCommand(cmd)
 }
 
 func (s *Service) ProposeNoteBulkDelete(ids []int, bypassRaft bool) error {
@@ -188,19 +145,5 @@ func (s *Service) ProposeNoteBulkDelete(ids []int, bypassRaft bool) error {
 		Data:   data,
 	}
 
-	payload, err := json.Marshal(cmd)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_command: %w", err)
-	}
-
-	applyFuture := s.Raft.Apply(payload, 5*time.Second)
-	if err := applyFuture.Error(); err != nil {
-		return fmt.Errorf("raft_apply_failed: %w", err)
-	}
-
-	if resp, ok := applyFuture.Response().(error); ok && resp != nil {
-		return fmt.Errorf("fsm_apply_failed: %w", resp)
-	}
-
-	return nil
+	return s.applyRaftCommand(cmd)
 }

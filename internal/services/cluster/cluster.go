@@ -192,15 +192,9 @@ func (s *Service) backfillPreClusterState() error {
 			return fmt.Errorf("scan_existing_notes: %w", err)
 		}
 		for _, n := range notes {
-			payloadStruct := struct {
-				ID      uint   `json:"id"`
-				Title   string `json:"title"`
-				Content string `json:"content"`
-			}{ID: n.ID, Title: n.Title, Content: n.Content}
-
-			data, _ := json.Marshal(payloadStruct)
+			data, _ := json.Marshal(n)
 			cmd := clusterModels.Command{Type: "note", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_create_note id=%d: %w", n.ID, err)
 			}
 		}
@@ -213,14 +207,9 @@ func (s *Service) backfillPreClusterState() error {
 		}
 
 		for _, o := range opts {
-			payloadStruct := struct {
-				ID             uint   `json:"id"`
-				KeyboardLayout string `json:"keyboardLayout"`
-			}{ID: o.ID, KeyboardLayout: o.KeyboardLayout}
-
-			data, _ := json.Marshal(payloadStruct)
+			data, _ := json.Marshal(o)
 			cmd := clusterModels.Command{Type: "options", Action: "set", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_set_options id=%d: %w", o.ID, err)
 			}
 		}
@@ -235,7 +224,7 @@ func (s *Service) backfillPreClusterState() error {
 		for _, t := range targets {
 			data, _ := json.Marshal(clusterModels.BackupTargetToReplicationPayload(t))
 			cmd := clusterModels.Command{Type: "backup_target", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_create_backup_target id=%d: %w", t.ID, err)
 			}
 		}
@@ -251,12 +240,8 @@ func (s *Service) backfillPreClusterState() error {
 		for _, row := range readiness {
 			data, _ := json.Marshal(row)
 			cmd := clusterModels.Command{Type: "backup_target_readiness", Action: "backfill", Data: data}
-			future := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second)
-			if err := future.Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_backup_target_readiness target_id=%d node_id=%s: %w", row.TargetID, row.NodeID, err)
-			}
-			if responseErr, ok := future.Response().(error); ok && responseErr != nil {
-				return fmt.Errorf("apply_synth_backup_target_readiness target_id=%d node_id=%s: %w", row.TargetID, row.NodeID, responseErr)
 			}
 		}
 	}
@@ -268,45 +253,9 @@ func (s *Service) backfillPreClusterState() error {
 		}
 
 		for _, j := range jobs {
-			payloadStruct := struct {
-				ID               uint       `json:"id"`
-				Name             string     `json:"name"`
-				TargetID         uint       `json:"targetId"`
-				RunnerNodeID     string     `json:"runnerNodeId"`
-				Mode             string     `json:"mode"`
-				SourceDataset    string     `json:"sourceDataset"`
-				JailRootDataset  string     `json:"jailRootDataset"`
-				FriendlySrc      string     `json:"friendlySrc"`
-				DestSuffix       string     `json:"destSuffix"`
-				PruneKeepLast    int        `json:"pruneKeepLast"`
-				PruneTarget      bool       `json:"pruneTarget"`
-				StopBeforeBackup bool       `json:"stopBeforeBackup"`
-				Recursive        bool       `json:"recursive"`
-				CronExpr         string     `json:"cronExpr"`
-				Enabled          bool       `json:"enabled"`
-				NextRunAt        *time.Time `json:"nextRunAt"`
-			}{
-				ID:               j.ID,
-				Name:             j.Name,
-				TargetID:         j.TargetID,
-				RunnerNodeID:     j.RunnerNodeID,
-				Mode:             j.Mode,
-				SourceDataset:    j.SourceDataset,
-				JailRootDataset:  j.JailRootDataset,
-				FriendlySrc:      j.FriendlySrc,
-				DestSuffix:       j.DestSuffix,
-				PruneKeepLast:    j.PruneKeepLast,
-				PruneTarget:      j.PruneTarget,
-				StopBeforeBackup: j.StopBeforeBackup,
-				Recursive:        j.Recursive,
-				CronExpr:         j.CronExpr,
-				Enabled:          j.Enabled,
-				NextRunAt:        j.NextRunAt,
-			}
-
-			data, _ := json.Marshal(payloadStruct)
+			data, _ := json.Marshal(j)
 			cmd := clusterModels.Command{Type: "backup_job", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_create_backup_job id=%d: %w", j.ID, err)
 			}
 		}
@@ -318,37 +267,11 @@ func (s *Service) backfillPreClusterState() error {
 			return fmt.Errorf("scan_existing_backup_job_operations: %w", err)
 		}
 		for _, operation := range operations {
-			acquire := clusterModels.BackupJobOperationAcquire{
-				JobID: operation.JobID, Token: operation.Token, Operation: operation.Operation,
-				HolderNodeID: operation.HolderNodeID, RequestPayload: operation.RequestPayload,
-				AcquiredAt: operation.AcquiredAt,
-			}
-			data, _ := json.Marshal(acquire)
-			if err := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-				Type: "backup_job_operation", Action: "acquire", Data: data,
-			}), 5*time.Second).Error(); err != nil {
-				return fmt.Errorf("apply_synth_acquire_backup_job_operation job_id=%d: %w", operation.JobID, err)
-			}
-			transition := clusterModels.BackupJobOperationTransition{
-				JobID: operation.JobID, Token: operation.Token, Operation: operation.Operation,
-				HolderNodeID: operation.HolderNodeID, RequestPayload: operation.RequestPayload,
-				OccurredAt: operation.UpdatedAt,
-			}
-			if operation.State == clusterModels.BackupJobOperationRunning ||
-				operation.State == clusterModels.BackupJobOperationFinishing {
-				transitionData, _ := json.Marshal(transition)
-				if err := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-					Type: "backup_job_operation", Action: "start", Data: transitionData,
-				}), 5*time.Second).Error(); err != nil {
-					return fmt.Errorf("apply_synth_start_backup_job_operation job_id=%d: %w", operation.JobID, err)
-				}
-				if operation.State == clusterModels.BackupJobOperationFinishing {
-					if err := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-						Type: "backup_job_operation", Action: "finish", Data: transitionData,
-					}), 5*time.Second).Error(); err != nil {
-						return fmt.Errorf("apply_synth_finish_backup_job_operation job_id=%d: %w", operation.JobID, err)
-					}
-				}
+			data, _ := json.Marshal(operation)
+			if err := s.applyRaftCommand(clusterModels.Command{
+				Type: "backup_job_schedule", Action: "backfill_operation", Data: data,
+			}); err != nil {
+				return fmt.Errorf("apply_synth_backfill_backup_job_operation job_id=%d: %w", operation.JobID, err)
 			}
 		}
 	}
@@ -361,50 +284,11 @@ func (s *Service) backfillPreClusterState() error {
 			}
 		}
 		for _, operation := range operations {
-			acquire := clusterModels.BackupTargetRestoreOperationAcquire{
-				Token: operation.Token, TargetID: operation.TargetID, HolderNodeID: operation.HolderNodeID,
-				DestinationDataset: operation.DestinationDataset, RequestPayload: operation.RequestPayload,
-				AcquiredAt: operation.AcquiredAt,
-			}
-			data, _ := json.Marshal(acquire)
-			future := s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-				Type: "backup_target_restore_operation", Action: "acquire", Data: data,
-			}), 5*time.Second)
-			if err := future.Error(); err != nil {
-				return fmt.Errorf("apply_synth_acquire_backup_target_restore_operation token=%s: %w", operation.Token, err)
-			}
-			transition := clusterModels.BackupTargetRestoreOperationTransition{
-				Token: operation.Token, TargetID: operation.TargetID, HolderNodeID: operation.HolderNodeID,
-				DestinationDataset: operation.DestinationDataset, RequestPayload: operation.RequestPayload,
-				OccurredAt: operation.UpdatedAt,
-			}
-			if operation.State == clusterModels.BackupTargetRestoreOperationRunning ||
-				operation.State == clusterModels.BackupTargetRestoreOperationFinishing ||
-				operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
-				transitionData, _ := json.Marshal(transition)
-				future = s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-					Type: "backup_target_restore_operation", Action: "start", Data: transitionData,
-				}), 5*time.Second)
-				if err := future.Error(); err != nil {
-					return fmt.Errorf("apply_synth_start_backup_target_restore_operation token=%s: %w", operation.Token, err)
-				}
-				if operation.State == clusterModels.BackupTargetRestoreOperationFinishing ||
-					operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
-					future = s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-						Type: "backup_target_restore_operation", Action: "finish", Data: transitionData,
-					}), 5*time.Second)
-					if err := future.Error(); err != nil {
-						return fmt.Errorf("apply_synth_finish_backup_target_restore_operation token=%s: %w", operation.Token, err)
-					}
-				}
-				if operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
-					future = s.Raft.Apply(utils.MustJSON(clusterModels.Command{
-						Type: "backup_target_restore_operation", Action: "release", Data: transitionData,
-					}), 5*time.Second)
-					if err := future.Error(); err != nil {
-						return fmt.Errorf("apply_synth_complete_backup_target_restore_operation token=%s: %w", operation.Token, err)
-					}
-				}
+			data, _ := json.Marshal(operation)
+			if err := s.applyRaftCommand(clusterModels.Command{
+				Type: "backup_target_restore_operation", Action: "backfill", Data: data,
+			}); err != nil {
+				return fmt.Errorf("apply_synth_backfill_backup_target_restore_operation token=%s: %w", operation.Token, err)
 			}
 		}
 	}
@@ -421,8 +305,42 @@ func (s *Service) backfillPreClusterState() error {
 				Targets: p.Targets,
 			})
 			cmd := clusterModels.Command{Type: "replication_policy", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_create_replication_policy id=%d: %w", p.ID, err)
+			}
+		}
+	}
+
+	{
+		var operations []clusterModels.ReplicationRunOperation
+		if s.DB.Migrator().HasTable(&clusterModels.ReplicationRunOperation{}) {
+			if err := s.DB.Order("policy_id ASC").Find(&operations).Error; err != nil {
+				return fmt.Errorf("scan_existing_replication_run_operations: %w", err)
+			}
+		}
+		for _, operation := range operations {
+			data, _ := json.Marshal(operation)
+			if err := s.applyRaftCommand(clusterModels.Command{
+				Type: "replication_policy_schedule", Action: "backfill_operation", Data: data,
+			}); err != nil {
+				return fmt.Errorf("apply_synth_backfill_replication_run_operation policy_id=%d: %w", operation.PolicyID, err)
+			}
+		}
+	}
+
+	{
+		var receipts []clusterModels.ScheduledRunReceipt
+		if s.DB.Migrator().HasTable(&clusterModels.ScheduledRunReceipt{}) {
+			if err := s.DB.Order("token ASC").Find(&receipts).Error; err != nil {
+				return fmt.Errorf("scan_existing_scheduled_run_receipts: %w", err)
+			}
+		}
+		for _, receipt := range receipts {
+			data, _ := json.Marshal(receipt)
+			if err := s.applyRaftCommand(clusterModels.Command{
+				Type: "replication_policy_schedule", Action: "backfill_receipt", Data: data,
+			}); err != nil {
+				return fmt.Errorf("apply_synth_backfill_scheduled_run_receipt token=%s: %w", receipt.Token, err)
 			}
 		}
 	}
@@ -436,7 +354,7 @@ func (s *Service) backfillPreClusterState() error {
 		for _, l := range leases {
 			data, _ := json.Marshal(l)
 			cmd := clusterModels.Command{Type: "replication_lease", Action: "upsert", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_upsert_replication_lease id=%d: %w", l.ID, err)
 			}
 		}
@@ -451,7 +369,7 @@ func (s *Service) backfillPreClusterState() error {
 		for _, i := range identities {
 			data, _ := json.Marshal(i)
 			cmd := clusterModels.Command{Type: "cluster_ssh_identity", Action: "upsert", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_upsert_cluster_ssh_identity id=%d: %w", i.ID, err)
 			}
 		}
@@ -466,23 +384,25 @@ func (s *Service) backfillPreClusterState() error {
 		for _, k := range keys {
 			data, _ := json.Marshal(k)
 			cmd := clusterModels.Command{Type: "encryption_key", Action: "upsert", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+			if err := s.applyRaftCommand(cmd); err != nil {
 				return fmt.Errorf("apply_synth_upsert_encryption_key id=%d: %w", k.ID, err)
 			}
 		}
 	}
 
 	{
-		var events []clusterModels.ReplicationEvent
-		if err := s.DB.Order("id ASC").Find(&events).Error; err != nil {
-			return fmt.Errorf("scan_existing_replication_events: %w", err)
+		var events []clusterModels.ReplicationTransitionEvent
+		if s.DB.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
+			if err := s.DB.Order("id ASC").Find(&events).Error; err != nil {
+				return fmt.Errorf("scan_existing_replication_transition_events: %w", err)
+			}
 		}
 
 		for _, e := range events {
 			data, _ := json.Marshal(e)
-			cmd := clusterModels.Command{Type: "replication_event", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
-				return fmt.Errorf("apply_synth_create_replication_event id=%d: %w", e.ID, err)
+			cmd := clusterModels.Command{Type: "replication_transition_event", Action: "create", Data: data}
+			if err := s.applyRaftCommand(cmd); err != nil {
+				return fmt.Errorf("apply_synth_create_replication_transition_event id=%d: %w", e.ID, err)
 			}
 		}
 	}
@@ -728,6 +648,19 @@ func clearClusteredDataTx(tx *gorm.DB) error {
 	if err := tx.Exec("DELETE FROM backup_target_restore_operations").Error; err != nil {
 		return fmt.Errorf("failed_to_clean_backup_target_restore_operations: %w", err)
 	}
+	if err := tx.Exec("DELETE FROM backup_job_operations").Error; err != nil {
+		return fmt.Errorf("failed_to_clean_backup_job_operations: %w", err)
+	}
+	if tx.Migrator().HasTable(&clusterModels.ReplicationRunOperation{}) {
+		if err := tx.Exec("DELETE FROM replication_run_operations").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_run_operations: %w", err)
+		}
+	}
+	if tx.Migrator().HasTable(&clusterModels.ScheduledRunReceipt{}) {
+		if err := tx.Exec("DELETE FROM scheduled_run_receipts").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_scheduled_run_receipts: %w", err)
+		}
+	}
 
 	if tx.Migrator().HasTable(&clusterModels.BackupTargetProvisionOperation{}) {
 		if err := tx.Exec("DELETE FROM backup_target_provision_operations").Error; err != nil {
@@ -743,8 +676,10 @@ func clearClusteredDataTx(tx *gorm.DB) error {
 		return fmt.Errorf("failed_to_clean_backup_targets: %w", err)
 	}
 
-	if err := tx.Exec("DELETE FROM replication_events").Error; err != nil {
-		return fmt.Errorf("failed_to_clean_replication_events: %w", err)
+	if tx.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
+		if err := tx.Exec("DELETE FROM replication_transition_events").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_transition_events: %w", err)
+		}
 	}
 
 	if err := tx.Exec("DELETE FROM replication_guest_operation_receipts").Error; err != nil {

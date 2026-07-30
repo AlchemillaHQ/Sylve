@@ -935,7 +935,14 @@ func UpdateBackupJobStateInternal(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.UpdateBackupJobRuntimeState(req, cS.Raft == nil); err != nil {
+		bypassRaft, authorityErr := cS.RuntimeStateBypassRaft()
+		if authorityErr != nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status: "error", Message: "update_backup_job_state_failed", Error: authorityErr.Error(),
+			})
+			return
+		}
+		if err := cS.UpdateBackupJobRuntimeState(req, bypassRaft); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "update_backup_job_state_failed",

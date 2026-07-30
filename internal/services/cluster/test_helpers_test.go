@@ -27,6 +27,10 @@ func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	migrateModels = append(
 		migrateModels,
 		&clusterModels.BackupJobOperation{},
+		&clusterModels.ReplicationRunOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
+		&clusterModels.ReplicationTransitionEvent{},
 		&clusterModels.BackupTargetRestoreOperation{},
 		&clusterModels.BackupTargetNodeReadiness{},
 	)
