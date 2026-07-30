@@ -24,6 +24,7 @@ func allSnapshotModels() []any {
 		&ClusterNote{},
 		&ClusterOption{},
 		&BackupTarget{},
+		&BackupTargetProvisionOperation{},
 		&BackupTargetNodeReadiness{},
 		&BackupJob{},
 		&BackupJobOperation{},
@@ -62,6 +63,17 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}
 	if err := sourceDB.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed backup target: %v", err)
+	}
+	pendingTarget := BackupTarget{
+		ID: 101, Name: "pending-target", SSHHost: "root@pending", SSHPort: 22,
+		SSHKey: "pending-key", BackupRoot: "tank/pending", CreateBackupRoot: true, Enabled: true,
+	}
+	pendingPrepare := BackupTargetProvisionPrepare{
+		Token: "pending-target-snapshot", Target: BackupTargetToReplicationPayload(pendingTarget),
+		ProposedFingerprint: BackupTargetConfigurationFingerprint(&pendingTarget),
+	}
+	if err := PrepareBackupTargetProvisionOperationTxn(sourceDB, &pendingPrepare); err != nil {
+		t.Fatalf("failed to seed pending target provision: %v", err)
 	}
 	readinessVerifiedAt := time.Date(2026, time.January, 1, 1, 2, 3, 0, time.UTC)
 	readinessUntil := readinessVerifiedAt.Add(10 * time.Minute)
@@ -209,6 +221,12 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if len(targets) != 1 || targets[0].Name != "t1" ||
 		targets[0].SSHKeyPath != "" || targets[0].SSHKey != "snapshot-key" {
 		t.Fatalf("targets mismatch: %+v", targets)
+	}
+	var targetProvisions []BackupTargetProvisionOperation
+	destDB.Find(&targetProvisions)
+	if len(targetProvisions) != 1 || targetProvisions[0].Token != pendingPrepare.Token ||
+		targetProvisions[0].State != BackupTargetProvisionStatePending || targetProvisions[0].Revision != 1 {
+		t.Fatalf("target provisions mismatch: %+v", targetProvisions)
 	}
 	var targetReadiness []BackupTargetNodeReadiness
 	destDB.Find(&targetReadiness)

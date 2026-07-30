@@ -99,6 +99,9 @@ func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, err
 	if id == 0 {
 		return nil, fmt.Errorf("invalid_target_id")
 	}
+	if err := s.requireBackupTargetReadinessBarrier(); err != nil {
+		return nil, err
+	}
 
 	var target clusterModels.BackupTarget
 	if err := s.DB.First(&target, id).Error; err != nil {
@@ -108,119 +111,35 @@ func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, err
 }
 
 func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool) error {
-	if err := validateBackupTargetInput(input); err != nil {
-		return err
-	}
-
 	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
 	if err != nil {
 		return err
 	}
-	if resolvedSSHKey == "" {
-		return fmt.Errorf("managed_ssh_key_required")
-	}
-
-	target := clusterModels.BackupTarget{
-		Name:             strings.TrimSpace(input.Name),
-		SSHHost:          strings.TrimSpace(input.SSHHost),
-		SSHPort:          input.SSHPort,
-		SSHKeyPath:       "",
-		SSHKey:           resolvedSSHKey,
-		BackupRoot:       strings.TrimSpace(input.BackupRoot),
-		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
-		Description:      strings.TrimSpace(input.Description),
-		Enabled:          boolPtrDefaultTrue(input.Enabled),
-	}
-
-	if target.SSHPort == 0 {
-		target.SSHPort = 22
-	}
-
-	if bypassRaft {
-		return s.DB.Create(&target).Error
-	}
-
-	if s.Raft == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	id, err := s.newRaftObjectID("backup_targets")
+	input.SSHKey = resolvedSSHKey
+	candidate, err := s.BuildBackupTargetCreateCandidate(input)
 	if err != nil {
-		return fmt.Errorf("new_backup_target_id_failed: %w", err)
+		return err
 	}
-	target.ID = id
-
-	data, err := json.Marshal(clusterModels.BackupTargetToReplicationPayload(target))
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_target_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_target",
-		Action: "create",
-		Data:   data,
-	})
+	_, err = s.ProposeBackupTargetCreateCandidate(candidate, bypassRaft)
+	return err
 }
 
 func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool) error {
 	if input.ID == 0 {
 		return fmt.Errorf("invalid_target_id")
 	}
-
-	if err := validateBackupTargetInput(input); err != nil {
-		return err
-	}
-
-	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
-	if err != nil {
-		return err
-	}
-	if resolvedSSHKey == "" {
-		return fmt.Errorf("managed_ssh_key_required")
-	}
-	enabled := boolPtrDefaultTrue(input.Enabled)
-	if input.Enabled == nil {
-		existing, err := s.GetBackupTargetByID(input.ID)
-		if err == nil {
-			enabled = existing.Enabled
-		}
-	}
-
-	target := clusterModels.BackupTarget{
-		ID:               input.ID,
-		Name:             strings.TrimSpace(input.Name),
-		SSHHost:          strings.TrimSpace(input.SSHHost),
-		SSHPort:          input.SSHPort,
-		SSHKeyPath:       "",
-		SSHKey:           resolvedSSHKey,
-		BackupRoot:       strings.TrimSpace(input.BackupRoot),
-		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
-		Description:      strings.TrimSpace(input.Description),
-		Enabled:          enabled,
-	}
-
-	if target.SSHPort == 0 {
-		target.SSHPort = 22
-	}
-
-	if bypassRaft {
-		return clusterModels.UpsertBackupTargetTxn(s.DB, &target)
-	}
-
-	if s.Raft == nil {
+	if !bypassRaft && s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-
-	data, err := json.Marshal(clusterModels.BackupTargetToReplicationPayload(target))
+	existing, err := s.GetBackupTargetByID(input.ID)
 	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_target_payload: %w", err)
+		return err
 	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_target",
-		Action: "update",
-		Data:   data,
-	})
+	plan, err := s.BuildBackupTargetUpdatePlan(existing, input)
+	if err != nil {
+		return err
+	}
+	return s.ProposeBackupTargetUpdatePlan(plan, bypassRaft)
 }
 
 func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
@@ -229,16 +148,7 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 	}
 
 	if bypassRaft {
-		var jobIDs []uint
-		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("target_id = ?", id).Pluck("id", &jobIDs).Error; err != nil {
-			return err
-		}
-
-		if len(jobIDs) > 0 {
-			return fmt.Errorf("target_in_use_by_backup_jobs: %d", len(jobIDs))
-		}
-
-		return s.DB.Delete(&clusterModels.BackupTarget{}, id).Error
+		return clusterModels.DeleteBackupTargetTxn(s.DB, id)
 	}
 
 	if s.Raft == nil {
@@ -254,7 +164,7 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 
 	return s.applyRaftCommand(clusterModels.Command{
 		Type:   "backup_target",
-		Action: "delete",
+		Action: "delete_v2",
 		Data:   data,
 	})
 }

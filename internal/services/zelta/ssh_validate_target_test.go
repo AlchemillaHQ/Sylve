@@ -171,46 +171,32 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		}
 	})
 
-	t.Run("managed candidate creates missing root when enabled", func(t *testing.T) {
+	t.Run("managed candidate plans missing root without creating", func(t *testing.T) {
 		h := newFakeSSHHarness(t)
-		h.SetScenario(fakeSSHScenario{
-			Responses: map[string][]fakeSSHResponse{
-				"zfs version": {
-					{ExitCode: 0},
-				},
-				"zfs list -H -o name -t filesystem -d 0 tank/backups": {
-					{Stderr: "cannot open 'tank/backups': dataset does not exist\n", ExitCode: 1},
-					{Stdout: "tank/backups\n", ExitCode: 0},
-				},
-				"zpool list -H -o name tank": {
-					{Stdout: "tank\n", ExitCode: 0},
-				},
-				"zfs create -p tank/backups": {
-					{ExitCode: 0},
-				},
+		h.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{
+			"zfs version": {{ExitCode: 0}},
+			"zfs list -H -o name -t filesystem -d 0 tank/backups": {
+				{Stderr: "cannot open 'tank/backups': dataset does not exist\n", ExitCode: 1},
 			},
-		})
+			"zpool list -H -o name tank": {{Stdout: "tank\n", ExitCode: 0}},
+		}})
 
 		SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
 		if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
 			t.Fatalf("create key dir: %v", err)
 		}
-		s := &Service{}
 		target := &clusterModels.BackupTarget{
 			ID: 45, SSHHost: "user@target", SSHKey: "candidate-key",
 			BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
-
-		if err := s.ValidateTargetCandidate(context.Background(), target); err != nil {
-			t.Fatalf("ValidateTargetCandidate failed: %v", err)
+		inspection, err := (&Service{}).InspectTargetCandidate(context.Background(), target)
+		if err != nil || !inspection.RootProvisioningRequired || inspection.RootExists {
+			t.Fatalf("inspection=%+v err=%v", inspection, err)
 		}
-
 		assertFakeSSHCallSequence(t, h.Calls(), []string{
 			"zfs version",
 			"zfs list -H -o name -t filesystem -d 0 tank/backups",
 			"zpool list -H -o name tank",
-			"zfs create -p tank/backups",
-			"zfs list -H -o name -t filesystem -d 0 tank/backups",
 		})
 		matches, globErr := filepath.Glob(filepath.Join(SSHKeyDirectory, ".target-validation-*"))
 		if globErr != nil || len(matches) != 0 {
@@ -235,8 +221,8 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		target := &clusterModels.BackupTarget{
 			SSHHost: "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
-		if err := s.ValidateTarget(context.Background(), target); err != nil {
-			t.Fatalf("concurrent creation validation failed: %v", err)
+		if err := s.ProvisionBackupTargetRoot(context.Background(), target); err != nil {
+			t.Fatalf("concurrent creation provisioning failed: %v", err)
 		}
 		assertFakeSSHCallSequence(t, h.Calls(), []string{
 			"zfs version",
@@ -263,11 +249,11 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		target := &clusterModels.BackupTarget{
 			SSHHost: "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
-		if err := s.ValidateTarget(context.Background(), target); err != nil {
-			t.Fatalf("initial validation failed: %v", err)
+		if err := s.ProvisionBackupTargetRoot(context.Background(), target); err != nil {
+			t.Fatalf("initial provisioning failed: %v", err)
 		}
-		if err := s.ValidateTarget(context.Background(), target); err != nil {
-			t.Fatalf("retry validation failed: %v", err)
+		if err := s.ProvisionBackupTargetRoot(context.Background(), target); err != nil {
+			t.Fatalf("retry provisioning failed: %v", err)
 		}
 		assertFakeSSHCallSequence(t, h.Calls(), []string{
 			"zfs version",
@@ -411,6 +397,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 				},
 				"zfs list -H -o name -t filesystem -d 0 tank/backups": {
 					{ExitCode: 0},
+					{ExitCode: 0},
 				},
 				"zpool list -H -o name tank": {
 					{Stdout: "tank\n", ExitCode: 0},
@@ -428,9 +415,10 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 			CreateBackupRoot: true,
 		}
 
-		err := s.ValidateTarget(context.Background(), target)
-		if err == nil || !strings.Contains(err.Error(), "backup_root_create_failed") {
-			t.Fatalf("expected backup_root_create_failed error, got %v", err)
+		err := s.ProvisionBackupTargetRoot(context.Background(), target)
+		if err == nil || !strings.Contains(err.Error(), "backup_root_create_failed") ||
+			BackupTargetProvisionFailureIsAmbiguous(err) {
+			t.Fatalf("expected definite backup_root_create_failed error, got %v", err)
 		}
 
 		assertFakeSSHCallSequence(t, h.Calls(), []string{
@@ -438,6 +426,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 			"zfs list -H -o name -t filesystem -d 0 tank/backups",
 			"zpool list -H -o name tank",
 			"zfs create -p tank/backups",
+			"zfs list -H -o name -t filesystem -d 0 tank/backups",
 		})
 	})
 
@@ -468,9 +457,10 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 			CreateBackupRoot: true,
 		}
 
-		err := s.ValidateTarget(context.Background(), target)
-		if err == nil || !strings.Contains(err.Error(), "backup_root_create_verify_failed") {
-			t.Fatalf("expected backup_root_create_verify_failed error, got %v", err)
+		err := s.ProvisionBackupTargetRoot(context.Background(), target)
+		if err == nil || !strings.Contains(err.Error(), "backup_root_create_verify_failed") ||
+			!BackupTargetProvisionFailureIsAmbiguous(err) {
+			t.Fatalf("expected ambiguous backup_root_create_verify_failed error, got %v", err)
 		}
 
 		assertFakeSSHCallSequence(t, h.Calls(), []string{

@@ -19,6 +19,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/hashicorp/raft"
 )
 
 type forwardingAuthStub struct {
@@ -85,19 +86,26 @@ func TestRaftBackupTargetsReplicationTwoNodes(t *testing.T) {
 	})
 
 	leader = waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	err = leader.service.ProposeBackupTargetUpdate(clusterServiceInterfaces.BackupTargetReq{
+	metadata := clusterServiceInterfaces.BackupTargetReq{
 		ID:               targetID,
 		Name:             "target-one-updated",
-		SSHHost:          "user@host-two",
-		SSHPort:          2022,
-		SSHKey:           "key-two",
-		BackupRoot:       "tank/backups-two",
-		CreateBackupRoot: boolPtr(false),
+		SSHHost:          "user@host-one",
+		SSHPort:          22,
+		BackupRoot:       "tank/backups-one",
+		CreateBackupRoot: boolPtr(true),
 		Description:      "updated target",
-		Enabled:          boolPtr(false),
-	}, false)
-	if err != nil {
-		t.Fatalf("leader failed to update backup target through raft: %v", err)
+		Enabled:          boolPtr(true),
+	}
+	if err = leader.service.ProposeBackupTargetUpdate(metadata, false); err != nil {
+		t.Fatalf("leader failed to update backup target metadata through raft: %v", err)
+	}
+	metadata.Enabled = boolPtr(false)
+	if err = leader.service.ProposeBackupTargetUpdate(metadata, false); err != nil {
+		t.Fatalf("leader failed to disable backup target through raft: %v", err)
+	}
+	metadata.SSHKey = "key-two"
+	if err = leader.service.ProposeBackupTargetUpdate(metadata, false); err != nil {
+		t.Fatalf("leader failed to rotate backup target key through raft: %v", err)
 	}
 
 	waitForClusterCondition(t, 8*time.Second, "backup target update replication to 2 nodes", func() bool {
@@ -107,8 +115,8 @@ func TestRaftBackupTargetsReplicationTwoNodes(t *testing.T) {
 				return false
 			}
 			target := targets[0]
-			if target.Name != "target-one-updated" || target.SSHHost != "user@host-two" || target.SSHPort != 2022 ||
-				target.BackupRoot != "tank/backups-two" || target.CreateBackupRoot || target.Enabled ||
+			if target.Name != "target-one-updated" || target.SSHHost != "user@host-one" || target.SSHPort != 22 ||
+				target.BackupRoot != "tank/backups-one" || !target.CreateBackupRoot || target.Enabled ||
 				target.SSHKeyPath != "" || target.SSHKey != "key-two" {
 				return false
 			}
@@ -234,6 +242,73 @@ func TestRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 	})
 }
 
+func TestBackupTargetProvisionSurvivesLeadershipTransferBeforeCompletion(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2,
+		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	operation, err := leader.service.PrepareBackupTargetProvisionCreate(&clusterModels.BackupTarget{
+		Name: "pending-target", SSHHost: "root@backup", SSHKey: "key",
+		BackupRoot: "tank/pending", CreateBackupRoot: true, Enabled: true,
+	}, "provision:leadership-transfer", false)
+	if err != nil {
+		t.Fatalf("prepare provision: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "pending provision replicated", func() bool {
+		for _, node := range nodes {
+			var stored clusterModels.BackupTargetProvisionOperation
+			if err := node.service.DB.First(&stored, "token = ?", operation.Token).Error; err != nil ||
+				stored.State != clusterModels.BackupTargetProvisionStatePending {
+				return false
+			}
+			var targetCount int64
+			if err := node.service.DB.Model(&clusterModels.BackupTarget{}).Count(&targetCount).Error; err != nil || targetCount != 0 {
+				return false
+			}
+		}
+		return true
+	})
+
+	var next *clusterRaftTestNode
+	for _, node := range nodes {
+		if node != leader {
+			next = node
+			break
+		}
+	}
+	if next == nil {
+		t.Fatal("next leader unavailable")
+	}
+	if err := leader.raft.LeadershipTransferToServer(raft.ServerID(next.id), next.addr).Error(); err != nil {
+		t.Fatalf("transfer leadership: %v", err)
+	}
+	newLeader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	stored, err := newLeader.service.GetBackupTargetProvisionOperation(operation.Token)
+	if err != nil {
+		t.Fatalf("load operation on new leader: %v", err)
+	}
+	if err := newLeader.service.CompleteBackupTargetProvision(stored, false); err != nil {
+		t.Fatalf("complete on new leader: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "provision completion replicated", func() bool {
+		for _, node := range nodes {
+			var target clusterModels.BackupTarget
+			if err := node.service.DB.First(&target, operation.TargetID).Error; err != nil ||
+				clusterModels.BackupTargetConfigurationFingerprint(&target) != operation.ProposedFingerprint {
+				return false
+			}
+			var completed clusterModels.BackupTargetProvisionOperation
+			if err := node.service.DB.First(&completed, "token = ?", operation.Token).Error; err != nil ||
+				completed.State != clusterModels.BackupTargetProvisionStateCompleted {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 func TestRaftBackupTargetDeleteBlockedWhenInUse(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 	defer cleanupClusterRaftTestNodes(t, nodes)
@@ -244,6 +319,7 @@ func TestRaftBackupTargetDeleteBlockedWhenInUse(t *testing.T) {
 		SSHHost:    "user@host",
 		SSHKey:     "delete-key",
 		BackupRoot: "tank/delete-blocked",
+		Enabled:    boolPtr(false),
 	}, false); err != nil {
 		t.Fatalf("leader failed to create backup target: %v", err)
 	}

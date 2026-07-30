@@ -81,6 +81,7 @@ type ClusterSnapshot struct {
 	Notes                         []ClusterNote                      `json:"notes"`
 	Options                       []ClusterOption                    `json:"options"`
 	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
+	BackupTargetProvisions        []BackupTargetProvisionOperation   `json:"backupTargetProvisions,omitempty"`
 	BackupTargetReadiness         []BackupTargetNodeReadiness        `json:"backupTargetReadiness,omitempty"`
 	BackupJobs                    []BackupJob                        `json:"backupJobs"`
 	BackupJobOperations           []BackupJobOperation               `json:"backupJobOperations"`
@@ -114,6 +115,11 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	snap.BackupTargets = make([]BackupTargetReplicationPayload, 0, len(targets))
 	for _, t := range targets {
 		snap.BackupTargets = append(snap.BackupTargets, BackupTargetToReplicationPayload(t))
+	}
+	if f.DB.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
+		if err := f.DB.Order("token ASC").Find(&snap.BackupTargetProvisions).Error; err != nil {
+			return nil, err
+		}
 	}
 	if f.DB.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
 		if err := f.DB.Order("target_id ASC, node_id ASC").Find(&snap.BackupTargetReadiness).Error; err != nil {
@@ -221,7 +227,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
-		deleteSets := make([]restoreSet, 0, 18)
+		deleteSets := make([]restoreSet, 0, 19)
 		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
 			deleteSets = append(deleteSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
 		}
@@ -233,6 +239,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
 			deleteSets = append(deleteSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
+		}
+		if tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
+			deleteSets = append(deleteSets, restoreSet{"backup_target_provision_operations", snap.BackupTargetProvisions, 500})
 		}
 		deleteSets = append(deleteSets,
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
@@ -265,6 +274,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			restoreSet{"replication_events", snap.ReplicationEvents, 500},
 			restoreSet{"backup_targets", backupTargets, 200},
 		)
+		if tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
+			createSets = append(createSets, restoreSet{"backup_target_provision_operations", snap.BackupTargetProvisions, 500})
+		}
 		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
 			createSets = append(createSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
 		}
@@ -363,6 +375,18 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_target", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "create_v2":
+			var command BackupTargetCreateV2
+			if err := json.Unmarshal(raw, &command); err != nil {
+				return err
+			}
+			return ApplyBackupTargetCreateV2Txn(db, &command)
+		case "update_v2":
+			var command BackupTargetUpdateV2
+			if err := json.Unmarshal(raw, &command); err != nil {
+				return err
+			}
+			return ApplyBackupTargetUpdateV2Txn(db, &command)
 		case "create":
 			var payload BackupTargetReplicationPayload
 			if err := json.Unmarshal(raw, &payload); err != nil {
@@ -377,7 +401,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			target := payload.ToModel()
 			return upsertBackupTarget(db, &target)
-		case "delete":
+		case "delete", "delete_v2":
 			var payload struct {
 				ID uint `json:"id"`
 			}
@@ -388,8 +412,35 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if payload.ID == 0 {
 				return nil
 			}
+			if action == "delete_v2" {
+				return DeleteBackupTargetTxn(db, payload.ID)
+			}
+			return DeleteBackupTargetLegacyTxn(db, payload.ID)
+		default:
+			return nil
+		}
+	})
 
-			return DeleteBackupTargetTxn(db, payload.ID)
+	fsm.Register("backup_target_provision", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "prepare":
+			var prepare BackupTargetProvisionPrepare
+			if err := json.Unmarshal(raw, &prepare); err != nil {
+				return err
+			}
+			return PrepareBackupTargetProvisionOperationTxn(db, &prepare)
+		case "complete":
+			var transition BackupTargetProvisionTransition
+			if err := json.Unmarshal(raw, &transition); err != nil {
+				return err
+			}
+			return CompleteBackupTargetProvisionOperationTxn(db, &transition)
+		case "fail":
+			var transition BackupTargetProvisionTransition
+			if err := json.Unmarshal(raw, &transition); err != nil {
+				return err
+			}
+			return FailBackupTargetProvisionOperationTxn(db, &transition)
 		default:
 			return nil
 		}

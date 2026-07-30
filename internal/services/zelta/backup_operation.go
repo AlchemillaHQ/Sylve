@@ -162,6 +162,7 @@ func backupJobOperationApplicationError(err error) bool {
 		"backup_job_operation_token_mismatch",
 		"backup_job_operation_finishing",
 		"backup_job_operation_not_releasable",
+		"backup_target_disabled",
 		"invalid_backup_job_operation",
 	} {
 		if strings.Contains(text, marker) {
@@ -204,7 +205,7 @@ func (s *Service) acquireDurableBackupJobOperation(
 	payload := clusterModels.BackupJobOperationAcquire{
 		JobID: handle.JobID, Token: handle.Token, Operation: handle.Operation,
 		HolderNodeID: handle.HolderNodeID, RequestPayload: handle.RequestPayload,
-		AcquiredAt: time.Now().UTC(),
+		AcquiredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	}
 	if err := s.applyBackupJobOperation(ctx, "acquire", payload, clusterModels.BackupJobOperationTransition{}); err != nil {
 		return backupJobOperationHandle{}, err
@@ -220,7 +221,7 @@ func (s *Service) transitionDurableBackupJobOperation(
 	return s.applyBackupJobOperation(ctx, action, clusterModels.BackupJobOperationAcquire{}, clusterModels.BackupJobOperationTransition{
 		JobID: handle.JobID, Token: handle.Token, Operation: handle.Operation,
 		HolderNodeID: handle.HolderNodeID, RequestPayload: handle.RequestPayload,
-		OccurredAt: time.Now().UTC(),
+		OccurredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	})
 }
 
@@ -296,6 +297,12 @@ func (s *Service) prepareQueuedBackupJobOperation(
 		if releaseErr := s.transitionDurableBackupJobOperation(ctx, "release", handle); releaseErr != nil &&
 			!backupJobOperationStaleMessage(releaseErr) {
 			return handle, false, releaseErr
+		}
+		return handle, false, nil
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "backup_target_disabled") {
+		if abortErr := s.abortDurableBackupJobOperation(ctx, handle); abortErr != nil {
+			return handle, false, abortErr
 		}
 		return handle, false, nil
 	}

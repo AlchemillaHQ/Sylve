@@ -164,6 +164,9 @@ func TestDeleteBackupTargetRemovesReadiness(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed readiness: %v", err)
 	}
+	if err := fsm.DB.Model(&BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable target: %v", err)
+	}
 	if err := DeleteBackupTargetTxn(fsm.DB, target.ID); err != nil {
 		t.Fatalf("delete target: %v", err)
 	}

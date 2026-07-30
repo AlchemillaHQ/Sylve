@@ -63,9 +63,11 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	if target.SSHHost == "" {
 		return nil, fmt.Errorf("failed_to_list_remote_snapshots: target SSH host is empty (target not loaded?)")
 	}
-	if err := s.ensureBackupTargetSSHKeyMaterialized(&target); err != nil {
+	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&target)
+	if err != nil {
 		return nil, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
+	defer releaseTargetKey()
 
 	remoteDataset := remoteDatasetForJob(job)
 	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
@@ -220,9 +222,14 @@ func (s *Service) runRestoreJob(
 	if err := cluster.ValidateBackupJobSafetyWithDB(ctx, s.DB, job); err != nil {
 		return fmt.Errorf("restore_backup_job_safety_check_failed: %w", err)
 	}
-	if err := s.ensureBackupTargetSSHKeyMaterialized(&job.Target); err != nil {
+	if !job.Target.Enabled {
+		return fmt.Errorf("backup_target_disabled")
+	}
+	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&job.Target)
+	if err != nil {
 		return fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
+	defer releaseTargetKey()
 
 	sourceDataset := strings.TrimSpace(job.SourceDataset)
 	if job.Mode == clusterModels.BackupJobModeJail {
@@ -275,7 +282,7 @@ func (s *Service) runRestoreJob(
 	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
 		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
-	snapshot, err := normalizeSnapshotName(snapshot)
+	snapshot, err = normalizeSnapshotName(snapshot)
 	if err != nil {
 		return err
 	}

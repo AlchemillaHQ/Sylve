@@ -276,6 +276,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_restore_operations_after_restart")
 	}
 	targetRestoreReconcileCancel()
+	targetProvisionReconcileCtx, targetProvisionReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := zeltaS.ReconcileBackupTargetProvisionOperations(targetProvisionReconcileCtx); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_provision_operations_after_restart")
+	}
+	targetProvisionReconcileCancel()
+	go zeltaS.StartBackupTargetProvisionReconciler(qCtx)
 	if err := zeltaS.ReconcileRestoreObservabilityAfterRestart(); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability_after_restart")
 	}

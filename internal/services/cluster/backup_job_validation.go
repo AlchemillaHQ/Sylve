@@ -620,6 +620,9 @@ func (s *Service) validateBackupJobOnRunner(
 	if err := s.DB.WithContext(ctx).First(&target, job.TargetID).Error; err != nil {
 		return empty, nil, fmt.Errorf("backup_target_not_found")
 	}
+	if !target.Enabled {
+		return empty, nil, fmt.Errorf("backup_target_disabled")
+	}
 	targetFingerprint := clusterModels.BackupTargetConnectivityFingerprint(&target)
 	validateAndRecord := func(
 		request BackupJobSafetyValidationRequest,

@@ -22,6 +22,7 @@ func (s *Service) AcquireBackupTargetRestoreOperation(
 	payload clusterModels.BackupTargetRestoreOperationAcquire,
 	bypassRaft bool,
 ) error {
+	payload.RequireEnabledTarget = true
 	if payload.AcquiredAt.IsZero() {
 		payload.AcquiredAt = time.Now().UTC()
 	}
@@ -49,6 +50,7 @@ func (s *Service) TransitionBackupTargetRestoreOperation(
 	bypassRaft bool,
 ) error {
 	action = strings.ToLower(strings.TrimSpace(action))
+	payload.RequireEnabledTarget = true
 	switch action {
 	case "start", "finish", "requeue", "abort", "release":
 	default:

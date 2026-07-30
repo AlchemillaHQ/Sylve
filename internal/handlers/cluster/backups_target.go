@@ -22,12 +22,17 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 )
 
 type backupTargetZelta interface {
-	ValidateTargetCandidate(ctx context.Context, target *clusterModels.BackupTarget) error
+	InspectTargetCandidate(ctx context.Context, target *clusterModels.BackupTarget) (zelta.BackupTargetValidationResult, error)
+	ValidateTargetCandidateReadiness(ctx context.Context, target *clusterModels.BackupTarget) error
 	ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error
+	ProvisionBackupTargetRoot(ctx context.Context, target *clusterModels.BackupTarget) error
+	MaterializeBackupTargetSSHKey(target *clusterModels.BackupTarget) error
+	AcquireBackupTargetSSHKey(target *clusterModels.BackupTarget) (func(), error)
 	RemoveSSHKey(targetID uint)
 }
 
@@ -72,9 +77,19 @@ func writeBackupTargetCandidateValidationError(c *gin.Context, err error) {
 	})
 }
 
-// Create/update admission remains leader-local and proves only leader
-// reachability. Runner readiness is established independently by job
-// placement or the explicit node-selected validation endpoint.
+func writeBackupTargetKeyMaterializationError(c *gin.Context, err error) {
+	errorText := "backup_target_ssh_key_materialize_failed"
+	if err != nil {
+		errorText = err.Error()
+	}
+	c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		Status: "error", Message: "save_ssh_key_failed", Error: errorText, Data: nil,
+	})
+}
+
+// Connectivity-requiring admission remains leader-local and proves only
+// leader reachability. Metadata/disable updates are observational; runner
+// readiness is established independently by placement or explicit validation.
 func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -102,22 +117,61 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 		}
 		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
-		if err := zS.ValidateTargetCandidate(validateCtx, candidate); err != nil {
+		inspection, err := zS.InspectTargetCandidate(validateCtx, candidate)
+		if err != nil {
 			writeBackupTargetCandidateValidationError(c, err)
 			return
 		}
 
-		req.SSHKey = candidate.SSHKey
-		req.SSHKeyPath = ""
-		err = cS.ProposeBackupTargetCreate(req, cS.Raft == nil)
-
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "backup_target_create_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		var committed *clusterModels.BackupTarget
+		if inspection.RootProvisioningRequired {
+			operation, prepareErr := cS.PrepareBackupTargetProvisionCreate(
+				candidate,
+				"backup-target-provision:"+uuid.NewString(),
+				cS.Raft == nil,
+			)
+			if prepareErr != nil {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status: "error", Message: "backup_target_create_failed", Error: prepareErr.Error(), Data: nil,
+				})
+				return
+			}
+			proposed, decodeErr := clusterModels.DecodeBackupTargetProvisionTarget(operation)
+			if decodeErr != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status: "error", Message: "backup_target_create_failed", Error: decodeErr.Error(), Data: nil,
+				})
+				return
+			}
+			if provisionErr := zS.ProvisionBackupTargetRoot(validateCtx, &proposed); provisionErr != nil {
+				if !zelta.BackupTargetProvisionFailureIsAmbiguous(provisionErr) {
+					if failErr := cS.FailBackupTargetProvision(operation, provisionErr.Error(), cS.Raft == nil); failErr != nil {
+						provisionErr = errors.Join(provisionErr, failErr)
+					} else {
+						zS.RemoveSSHKey(operation.TargetID)
+					}
+				}
+				writeBackupTargetCandidateValidationError(c, provisionErr)
+				return
+			}
+			if completeErr := cS.CompleteBackupTargetProvision(operation, cS.Raft == nil); completeErr != nil {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status: "error", Message: "backup_target_create_failed", Error: completeErr.Error(), Data: nil,
+				})
+				return
+			}
+			committed = &proposed
+		} else {
+			committed, err = cS.ProposeBackupTargetCreateCandidate(candidate, cS.Raft == nil)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status: "error", Message: "backup_target_create_failed", Error: err.Error(), Data: nil,
+				})
+				return
+			}
+		}
+		if err := zS.MaterializeBackupTargetSSHKey(committed); err != nil {
+			writeBackupTargetKeyMaterializationError(c, err)
 			return
 		}
 
@@ -169,7 +223,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			return
 		}
 
-		candidate, err := cS.BuildBackupTargetUpdateCandidate(existing, req)
+		plan, err := cS.BuildBackupTargetUpdatePlan(existing, req)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status: "error", Message: "backup_target_update_failed", Error: err.Error(), Data: nil,
@@ -178,21 +232,26 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 		}
 		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
-		if err := zS.ValidateTargetCandidate(validateCtx, candidate); err != nil {
-			writeBackupTargetCandidateValidationError(c, err)
-			return
+		if plan.Kind == clusterModels.BackupTargetUpdateKindEnable ||
+			plan.Kind == clusterModels.BackupTargetUpdateKindRotateKey {
+			if err := zS.ValidateTargetCandidateReadiness(validateCtx, plan.Candidate); err != nil {
+				writeBackupTargetCandidateValidationError(c, err)
+				return
+			}
+			// The immutable version can be staged safely before Raft: until the
+			// command commits no target references a replacement fingerprint. A
+			// lease closes the gap against local reconciliation during apply.
+			releaseKey, acquireErr := zS.AcquireBackupTargetSSHKey(plan.Candidate)
+			if acquireErr != nil {
+				writeBackupTargetKeyMaterializationError(c, acquireErr)
+				return
+			}
+			defer releaseKey()
 		}
 
-		req.ID = candidate.ID
-		req.SSHKey = candidate.SSHKey
-		req.SSHKeyPath = ""
-		err = cS.ProposeBackupTargetUpdate(req, cS.Raft == nil)
-		if err != nil {
+		if err = cS.ProposeBackupTargetUpdatePlan(plan, cS.Raft == nil); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "backup_target_update_failed",
-				Error:   err.Error(),
-				Data:    nil,
+				Status: "error", Message: "backup_target_update_failed", Error: err.Error(), Data: nil,
 			})
 			return
 		}

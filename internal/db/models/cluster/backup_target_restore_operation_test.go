@@ -213,11 +213,14 @@ func TestBackupTargetDeleteIsFencedByRestoreOperation(t *testing.T) {
 	}
 
 	payload := backupTargetRestoreTransition(acquire, now.Add(time.Second))
-	if err := DeleteBackupTargetTxn(db, target.ID); err == nil || !strings.Contains(err.Error(), "restore_operations") {
-		t.Fatalf("delete target with reservation error = %v", err)
-	}
 	if err := StartBackupTargetRestoreOperationTxn(db, &payload); err != nil {
 		t.Fatalf("start: %v", err)
+	}
+	if err := db.Model(&BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable target: %v", err)
+	}
+	if err := DeleteBackupTargetTxn(db, target.ID); err == nil || !strings.Contains(err.Error(), "restore_operations") {
+		t.Fatalf("delete target with reservation error = %v", err)
 	}
 	payload.OccurredAt = now.Add(2 * time.Second)
 	if err := FinishBackupTargetRestoreOperationTxn(db, &payload); err != nil {

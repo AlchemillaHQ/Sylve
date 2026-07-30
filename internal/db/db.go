@@ -209,6 +209,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ClusterOption{},
 		&clusterModels.ClusterNote{},
 		&clusterModels.BackupTarget{},
+		&clusterModels.BackupTargetProvisionOperation{},
 		&clusterModels.BackupTargetNodeReadiness{},
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupJobOperation{},

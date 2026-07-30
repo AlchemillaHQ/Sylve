@@ -207,10 +207,11 @@ func (s *Service) preflightOOBGuestRestoreDestination(
 }
 
 func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) ([]BackupTargetDatasetInfo, error) {
-	target, err := s.getRestoreTarget(targetID)
+	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseTargetKey()
 
 	fsOutput, err := s.runTargetZFSList(ctx, &target, "-t", "filesystem", "-r", "-Hp", "-o", "name,encryption", target.BackupRoot)
 	if err != nil {
@@ -323,10 +324,11 @@ func parseRemoteDatasetEncryption(line string) (dataset string, encrypted bool) 
 }
 
 func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID uint, remoteDataset string) ([]SnapshotInfo, error) {
-	target, err := s.getRestoreTarget(targetID)
+	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseTargetKey()
 
 	remoteDataset = strings.TrimSpace(remoteDataset)
 	if remoteDataset == "" {
@@ -404,10 +406,11 @@ func (s *Service) filterRestorableTargetSnapshots(
 }
 
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {
-	target, err := s.getRestoreTarget(targetID)
+	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseTargetKey()
 
 	remoteDataset = strings.TrimSpace(remoteDataset)
 	if remoteDataset == "" {
@@ -432,10 +435,11 @@ func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint
 }
 
 func (s *Service) GetRemoteTargetVMMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupVMMetadataInfo, error) {
-	target, err := s.getRestoreTarget(targetID)
+	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseTargetKey()
 
 	remoteDataset = strings.TrimSpace(remoteDataset)
 	if remoteDataset == "" {
@@ -487,10 +491,11 @@ func (s *Service) EnqueueRestoreFromTarget(
 		return fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
 	}
 
-	target, err := s.getRestoreTarget(targetID)
+	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return err
 	}
+	defer releaseTargetKey()
 	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
 		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
@@ -556,6 +561,33 @@ func (s *Service) registerRestoreFromTargetJob() {
 	db.QueueRegisterJSON(restoreFromTargetQueueName, s.handleRestoreFromTargetQueue)
 }
 
+func (s *Service) finalizeRestoreFromTargetAdmissionFailure(
+	payload restoreFromTargetPayload,
+	handle backupTargetRestoreOperationHandle,
+	admissionErr error,
+) error {
+	execution := restoreExecution{
+		EventID:     payload.EventID,
+		OperationID: handle.Token,
+		Audit: db.AsyncAuditRef{
+			RecordID:    payload.AuditRecordID,
+			OperationID: handle.Token,
+		},
+	}
+	event, err := s.restoreEventForExecution(execution, restoreEventSpec{
+		SourceDataset:  payload.RemoteDataset + payload.Snapshot,
+		TargetEndpoint: payload.DestinationDataset,
+	})
+	if err != nil {
+		return errors.Join(admissionErr, err)
+	}
+	if restoreEventTerminal(event.Status) {
+		s.finalizeRestoreAuditForEvent(event)
+		return nil
+	}
+	return s.finalizeRestoreEventByID(event.ID, admissionErr, "")
+}
+
 func (s *Service) handleRestoreFromTargetQueue(
 	ctx context.Context,
 	payload restoreFromTargetPayload,
@@ -569,6 +601,9 @@ func (s *Service) handleRestoreFromTargetQueue(
 			Msg("queued_restore_from_target_job_invalid_or_unavailable")
 		if backupTargetRestoreQueuePayloadInvalid(err) {
 			return nil
+		}
+		if backupTargetRestoreOperationTargetUnavailable(err) {
+			return s.finalizeRestoreFromTargetAdmissionFailure(payload, handle, err)
 		}
 		return err
 	}
@@ -641,9 +676,10 @@ func (s *Service) handleRestoreFromTargetQueue(
 	runCtx := withRestoreExecution(ctx, execution)
 
 	outcomeReady = true
-	target, targetErr := s.getRestoreTarget(payload.TargetID)
+	target, releaseTargetKey, targetErr := s.getRestoreTargetWithKey(payload.TargetID)
 	runErr = targetErr
 	if runErr == nil {
+		defer releaseTargetKey()
 		runRestore := s.runRestoreFromTarget
 		if s.restoreFromTargetRun != nil {
 			runRestore = s.restoreFromTargetRun
@@ -2563,10 +2599,21 @@ func (s *Service) getRestoreTarget(targetID uint) (clusterModels.BackupTarget, e
 	if !target.Enabled {
 		return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_disabled")
 	}
-	if err := s.ensureBackupTargetSSHKeyMaterialized(&target); err != nil {
-		return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
-	}
 	return target, nil
+}
+
+func (s *Service) getRestoreTargetWithKey(
+	targetID uint,
+) (clusterModels.BackupTarget, func(), error) {
+	target, err := s.getRestoreTarget(targetID)
+	if err != nil {
+		return clusterModels.BackupTarget{}, func() {}, err
+	}
+	release, err := s.acquireBackupTargetSSHKey(&target)
+	if err != nil {
+		return clusterModels.BackupTarget{}, func() {}, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+	}
+	return target, release, nil
 }
 
 func (s *Service) runTargetZFSList(ctx context.Context, target *clusterModels.BackupTarget, args ...string) (string, error) {

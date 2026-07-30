@@ -480,14 +480,63 @@ func TestRestoreTargetLookupFailureAfterAcceptanceIsObserved(t *testing.T) {
 	if err := service.DB.First(&event, payload.EventID).Error; err != nil {
 		t.Fatalf("load event: %v", err)
 	}
-	if event.Status != "failed" || !strings.Contains(strings.ToLower(event.Error), "record not found") {
+	if event.Status != "failed" || !strings.Contains(strings.ToLower(event.Error), "backup_target_not_found") {
 		t.Fatalf("target lookup event = %+v", event)
 	}
 	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
 		t.Fatalf("load audit: %v", err)
 	}
-	if audit.Status != "failed" || !strings.Contains(strings.ToLower(audit.Error), "record not found") {
+	if audit.Status != "failed" || !strings.Contains(strings.ToLower(audit.Error), "backup_target_not_found") {
 		t.Fatalf("target lookup audit = %+v", audit)
+	}
+}
+
+func TestRestoreTargetDisableAfterAcceptanceIsObserved(t *testing.T) {
+	service, telemetryDB, target := newRestoreObservabilityService(t)
+	audit := newStartedRestoreAudit(t, telemetryDB, "/api/cluster/backups/targets/91/restore")
+	var payload restoreFromTargetPayload
+	service.restoreFromTargetOperationEnqueue = func(_ context.Context, _ string, value any) error {
+		payload = value.(restoreFromTargetPayload)
+		return nil
+	}
+	if err := service.EnqueueRestoreFromTarget(
+		internalDB.ContextWithAuditRecordID(context.Background(), audit.ID),
+		target.ID,
+		"tank/backups/data",
+		"@bk_j1_c1_target_disabled",
+		"zroot/target-disabled",
+		true,
+		"cccccccc-dddd-4eee-8fff-aaaaaaaaaaaa",
+	); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := service.DB.Model(&clusterModels.BackupTarget{}).
+		Where("id = ?", target.ID).
+		Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable target: %v", err)
+	}
+	if err := service.handleRestoreFromTargetQueue(context.Background(), payload); err != nil {
+		t.Fatalf("consume disabled target: %v", err)
+	}
+
+	var event clusterModels.BackupEvent
+	if err := service.DB.First(&event, payload.EventID).Error; err != nil {
+		t.Fatalf("load event: %v", err)
+	}
+	if event.Status != "failed" || !strings.Contains(strings.ToLower(event.Error), "backup_target_disabled") {
+		t.Fatalf("disabled target event = %+v", event)
+	}
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("load audit: %v", err)
+	}
+	if audit.Status != "failed" || !strings.Contains(strings.ToLower(audit.Error), "backup_target_disabled") {
+		t.Fatalf("disabled target audit = %+v", audit)
+	}
+	var operationCount int64
+	if err := service.DB.Model(&clusterModels.BackupTargetRestoreOperation{}).
+		Where("token = ?", payload.OperationToken).
+		Count(&operationCount).Error; err != nil || operationCount != 0 {
+		t.Fatalf("disabled target reservation count=%d err=%v", operationCount, err)
 	}
 }
 

@@ -43,21 +43,23 @@ type BackupJobOperation struct {
 }
 
 type BackupJobOperationAcquire struct {
-	JobID          uint      `json:"jobId"`
-	Token          string    `json:"token"`
-	Operation      string    `json:"operation"`
-	HolderNodeID   string    `json:"holderNodeId"`
-	RequestPayload string    `json:"requestPayload"`
-	AcquiredAt     time.Time `json:"acquiredAt"`
+	JobID                uint      `json:"jobId"`
+	Token                string    `json:"token"`
+	Operation            string    `json:"operation"`
+	HolderNodeID         string    `json:"holderNodeId"`
+	RequestPayload       string    `json:"requestPayload"`
+	AcquiredAt           time.Time `json:"acquiredAt"`
+	RequireEnabledTarget bool      `json:"requireEnabledTarget,omitempty"`
 }
 
 type BackupJobOperationTransition struct {
-	JobID          uint      `json:"jobId"`
-	Token          string    `json:"token"`
-	Operation      string    `json:"operation"`
-	HolderNodeID   string    `json:"holderNodeId"`
-	RequestPayload string    `json:"requestPayload"`
-	OccurredAt     time.Time `json:"occurredAt"`
+	JobID                uint      `json:"jobId"`
+	Token                string    `json:"token"`
+	Operation            string    `json:"operation"`
+	HolderNodeID         string    `json:"holderNodeId"`
+	RequestPayload       string    `json:"requestPayload"`
+	OccurredAt           time.Time `json:"occurredAt"`
+	RequireEnabledTarget bool      `json:"requireEnabledTarget,omitempty"`
 }
 
 func normalizeBackupJobOperationIdentity(jobID uint, token, operation, holderNodeID string) (string, string, string, error) {
@@ -104,7 +106,7 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 	return db.Transaction(func(tx *gorm.DB) error {
 		var job BackupJob
 		jobResult := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id", "runner_node_id").
+			Select("id", "runner_node_id", "target_id").
 			Where("id = ?", payload.JobID).
 			Limit(1).
 			Find(&job)
@@ -133,6 +135,20 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 				return nil
 			}
 			return fmt.Errorf("backup_job_running")
+		}
+
+		if payload.RequireEnabledTarget && job.TargetID != 0 {
+			var target BackupTarget
+			targetResult := tx.Select("id", "enabled").Where("id = ?", job.TargetID).Limit(1).Find(&target)
+			if targetResult.Error != nil {
+				return targetResult.Error
+			}
+			if targetResult.RowsAffected == 0 {
+				return fmt.Errorf("backup_target_not_found")
+			}
+			if !target.Enabled {
+				return fmt.Errorf("backup_target_disabled")
+			}
 		}
 
 		rebindPending, err := BackupJobRunnerRebindPendingForJob(tx, payload.JobID)
@@ -205,6 +221,30 @@ func transitionBackupJobOperation(db *gorm.DB, payload *BackupJobOperationTransi
 		case BackupJobOperationRunning:
 			switch existing.State {
 			case BackupJobOperationQueued:
+				if !payload.RequireEnabledTarget {
+					break
+				}
+				var job BackupJob
+				jobResult := tx.Select("id", "target_id").Where("id = ?", payload.JobID).Limit(1).Find(&job)
+				if jobResult.Error != nil {
+					return jobResult.Error
+				}
+				if jobResult.RowsAffected == 0 {
+					return fmt.Errorf("backup_job_not_found")
+				}
+				if job.TargetID != 0 {
+					var target BackupTarget
+					targetResult := tx.Select("id", "enabled").Where("id = ?", job.TargetID).Limit(1).Find(&target)
+					if targetResult.Error != nil {
+						return targetResult.Error
+					}
+					if targetResult.RowsAffected == 0 {
+						return fmt.Errorf("backup_target_not_found")
+					}
+					if !target.Enabled {
+						return fmt.Errorf("backup_target_disabled")
+					}
+				}
 			case BackupJobOperationRunning:
 				return nil
 			case BackupJobOperationFinishing:

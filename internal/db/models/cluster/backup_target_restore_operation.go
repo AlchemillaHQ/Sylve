@@ -41,21 +41,23 @@ type BackupTargetRestoreOperation struct {
 }
 
 type BackupTargetRestoreOperationAcquire struct {
-	Token              string    `json:"token"`
-	TargetID           uint      `json:"targetId"`
-	HolderNodeID       string    `json:"holderNodeId"`
-	DestinationDataset string    `json:"destinationDataset"`
-	RequestPayload     string    `json:"requestPayload"`
-	AcquiredAt         time.Time `json:"acquiredAt"`
+	Token                string    `json:"token"`
+	TargetID             uint      `json:"targetId"`
+	HolderNodeID         string    `json:"holderNodeId"`
+	DestinationDataset   string    `json:"destinationDataset"`
+	RequestPayload       string    `json:"requestPayload"`
+	AcquiredAt           time.Time `json:"acquiredAt"`
+	RequireEnabledTarget bool      `json:"requireEnabledTarget,omitempty"`
 }
 
 type BackupTargetRestoreOperationTransition struct {
-	Token              string    `json:"token"`
-	TargetID           uint      `json:"targetId"`
-	HolderNodeID       string    `json:"holderNodeId"`
-	DestinationDataset string    `json:"destinationDataset"`
-	RequestPayload     string    `json:"requestPayload"`
-	OccurredAt         time.Time `json:"occurredAt"`
+	Token                string    `json:"token"`
+	TargetID             uint      `json:"targetId"`
+	HolderNodeID         string    `json:"holderNodeId"`
+	DestinationDataset   string    `json:"destinationDataset"`
+	RequestPayload       string    `json:"requestPayload"`
+	OccurredAt           time.Time `json:"occurredAt"`
+	RequireEnabledTarget bool      `json:"requireEnabledTarget,omitempty"`
 }
 
 // NormalizeBackupTargetRestoreDestination mirrors the public restore input
@@ -172,12 +174,16 @@ func AcquireBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRe
 			return fmt.Errorf("backup_target_restore_operation_token_mismatch")
 		}
 
-		var targetCount int64
-		if err := tx.Model(&BackupTarget{}).Where("id = ?", payload.TargetID).Count(&targetCount).Error; err != nil {
-			return err
+		var target BackupTarget
+		targetResult := tx.Select("id", "enabled").Where("id = ?", payload.TargetID).Limit(1).Find(&target)
+		if targetResult.Error != nil {
+			return targetResult.Error
 		}
-		if targetCount == 0 {
+		if targetResult.RowsAffected == 0 {
 			return fmt.Errorf("backup_target_not_found")
+		}
+		if payload.RequireEnabledTarget && !target.Enabled {
+			return fmt.Errorf("backup_target_disabled")
 		}
 
 		var holderOperations []BackupTargetRestoreOperation
@@ -270,6 +276,19 @@ func transitionBackupTargetRestoreOperation(
 		case "start":
 			switch existing.State {
 			case BackupTargetRestoreOperationQueued:
+				if payload.RequireEnabledTarget {
+					var target BackupTarget
+					targetResult := tx.Select("id", "enabled").Where("id = ?", existing.TargetID).Limit(1).Find(&target)
+					if targetResult.Error != nil {
+						return targetResult.Error
+					}
+					if targetResult.RowsAffected == 0 {
+						return fmt.Errorf("backup_target_not_found")
+					}
+					if !target.Enabled {
+						return fmt.Errorf("backup_target_disabled")
+					}
+				}
 				targetState = BackupTargetRestoreOperationRunning
 			case BackupTargetRestoreOperationRunning:
 				return fmt.Errorf("backup_target_restore_operation_already_started")
@@ -375,6 +394,17 @@ func ReleaseBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRe
 // queued/running out-of-band restores. HasTable preserves replay and tests made
 // from schemas that predate durable target-restore reservations.
 func DeleteBackupTargetTxn(db *gorm.DB, targetID uint) error {
+	return deleteBackupTargetTxn(db, targetID, true)
+}
+
+// DeleteBackupTargetLegacyTxn preserves historical backup_target/delete log
+// replay. New requests use DeleteBackupTargetTxn and its disabled/quiescent
+// contract through the versioned delete action.
+func DeleteBackupTargetLegacyTxn(db *gorm.DB, targetID uint) error {
+	return deleteBackupTargetTxn(db, targetID, false)
+}
+
+func deleteBackupTargetTxn(db *gorm.DB, targetID uint, requireDisabled bool) error {
 	if db == nil {
 		return fmt.Errorf("backup_target_database_unavailable")
 	}
@@ -383,6 +413,32 @@ func DeleteBackupTargetTxn(db *gorm.DB, targetID uint) error {
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
+		var target BackupTarget
+		targetResult := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", targetID).Limit(1).Find(&target)
+		if targetResult.Error != nil {
+			return targetResult.Error
+		}
+		if targetResult.RowsAffected == 0 {
+			if requireDisabled {
+				return fmt.Errorf("backup_target_not_found")
+			}
+			return nil
+		}
+		if requireDisabled && target.Enabled {
+			return fmt.Errorf("backup_target_must_be_disabled_before_delete")
+		}
+		if requireDisabled && tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
+			var pendingCount int64
+			if err := tx.Model(&BackupTargetProvisionOperation{}).
+				Where("target_id = ? AND state = ?", targetID, BackupTargetProvisionStatePending).
+				Count(&pendingCount).Error; err != nil {
+				return err
+			}
+			if pendingCount != 0 {
+				return fmt.Errorf("backup_target_provision_pending")
+			}
+		}
+
 		var jobCount int64
 		if err := tx.Model(&BackupJob{}).Where("target_id = ?", targetID).Count(&jobCount).Error; err != nil {
 			return err
@@ -409,6 +465,12 @@ func DeleteBackupTargetTxn(db *gorm.DB, targetID uint) error {
 		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
 			if err := tx.Where("target_id = ?", targetID).
 				Delete(&BackupTargetNodeReadiness{}).Error; err != nil {
+				return err
+			}
+		}
+		if tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
+			if err := tx.Where("target_id = ?", targetID).
+				Delete(&BackupTargetProvisionOperation{}).Error; err != nil {
 				return err
 			}
 		}

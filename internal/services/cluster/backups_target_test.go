@@ -92,20 +92,29 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 		t.Fatalf("expected SSH key to be trimmed and persisted, got %q", created.SSHKey)
 	}
 
-	updateInput := clusterServiceInterfaces.BackupTargetReq{
-		ID:               created.ID,
-		Name:             "  target-updated  ",
-		SSHHost:          "  user@host-two  ",
-		SSHPort:          0,
-		SSHKey:           " updated-key ",
-		BackupRoot:       "  tank/backups-two ",
-		CreateBackupRoot: boolPtr(true),
-		Description:      " updated description ",
-		Enabled:          boolPtr(true),
+	metadataInput := clusterServiceInterfaces.BackupTargetReq{
+		ID:          created.ID,
+		Name:        "  target-updated  ",
+		SSHHost:     "  user@host-one  ",
+		SSHPort:     22,
+		BackupRoot:  "  tank/backups-one ",
+		Description: " updated description ",
+		Enabled:     boolPtr(true),
 	}
-
-	if err := s.ProposeBackupTargetUpdate(updateInput, true); err != nil {
-		t.Fatalf("ProposeBackupTargetUpdate bypass failed: %v", err)
+	if err := s.ProposeBackupTargetUpdate(metadataInput, true); err != nil {
+		t.Fatalf("metadata update bypass failed: %v", err)
+	}
+	disableInput := metadataInput
+	disableInput.Name = "target-updated"
+	disableInput.Description = "updated description"
+	disableInput.Enabled = boolPtr(false)
+	if err := s.ProposeBackupTargetUpdate(disableInput, true); err != nil {
+		t.Fatalf("disable update bypass failed: %v", err)
+	}
+	rotationInput := disableInput
+	rotationInput.SSHKey = " updated-key "
+	if err := s.ProposeBackupTargetUpdate(rotationInput, true); err != nil {
+		t.Fatalf("key rotation bypass failed: %v", err)
 	}
 
 	var updated clusterModels.BackupTarget
@@ -113,13 +122,13 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 		t.Fatalf("failed to fetch updated backup target: %v", err)
 	}
 	if updated.Name != "target-updated" ||
-		updated.SSHHost != "user@host-two" ||
+		updated.SSHHost != "user@host-one" ||
 		updated.SSHPort != 22 ||
-		updated.BackupRoot != "tank/backups-two" ||
+		updated.BackupRoot != "tank/backups-one" ||
 		updated.Description != "updated description" ||
 		updated.SSHKey != "updated-key" ||
-		!updated.CreateBackupRoot ||
-		!updated.Enabled {
+		updated.CreateBackupRoot ||
+		updated.Enabled {
 		t.Fatalf("unexpected updated backup target: %+v", updated)
 	}
 
@@ -175,7 +184,7 @@ func TestProposeBackupTargetDeleteBlockedWhenJobUsesTarget(t *testing.T) {
 		SSHHost:    "user@host",
 		SSHPort:    22,
 		BackupRoot: "tank/in-use",
-		Enabled:    true,
+		Enabled:    false,
 	}
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to create target: %v", err)

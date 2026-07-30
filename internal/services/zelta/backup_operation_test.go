@@ -107,6 +107,44 @@ func TestBackupJobOperationRestartRequeuesExactToken(t *testing.T) {
 	}
 }
 
+func TestQueuedBackupJobOperationIsAbortedAfterTargetDisable(t *testing.T) {
+	database := newZeltaServiceTestDB(t,
+		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
+	)
+	service := newTestZeltaService(database)
+	target := clusterModels.BackupTarget{
+		ID: 61, Name: "target", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true,
+	}
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	if err := database.Create(&clusterModels.BackupJob{
+		ID: 62, Name: "job", TargetID: target.ID, Mode: clusterModels.BackupJobModeDataset,
+		SourceDataset: "tank/data", CronExpr: "0 0 * * *",
+	}).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	handle, err := service.acquireDurableBackupJobOperation(
+		context.Background(), 62, clusterModels.BackupJobOperationBackup, "",
+	)
+	if err != nil {
+		t.Fatalf("acquire queued operation: %v", err)
+	}
+	if err := database.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable target: %v", err)
+	}
+	_, execute, err := service.prepareQueuedBackupJobOperation(
+		context.Background(), handle.JobID, handle.Operation, handle.Token, handle.HolderNodeID, handle.RequestPayload,
+	)
+	if err != nil || execute {
+		t.Fatalf("prepare disabled operation execute=%v err=%v", execute, err)
+	}
+	var count int64
+	if err := database.Model(&clusterModels.BackupJobOperation{}).Where("job_id = ?", handle.JobID).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("queued operation count=%d err=%v", count, err)
+	}
+}
+
 func TestQueuedRestoreTokenIsBoundToReplicatedRequest(t *testing.T) {
 	database := newZeltaServiceTestDB(t,
 		&clusterModels.BackupJob{},

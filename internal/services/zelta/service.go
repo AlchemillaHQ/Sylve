@@ -101,6 +101,12 @@ type Service struct {
 	targetRestoreOperationMu  sync.Mutex
 	activeTargetRestoreTokens map[string]struct{}
 
+	backupTargetKeyMu    sync.Mutex
+	backupTargetKeyUsers map[string]uint
+
+	backupTargetProvisionMu     sync.Mutex
+	activeTargetProvisionTokens map[string]struct{}
+
 	runtimeMu    sync.RWMutex
 	runtimeClock replicationRuntimeClock
 
@@ -724,17 +730,18 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		logger.L.Debug().Uint("job_id", job.ID).Msg("stop_before_backup_enabled")
 	}
 
-	if err := s.ensureBackupTargetSSHKeyMaterialized(&job.Target); err != nil {
-		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
-		s.updateBackupJobResult(job, runErr, false)
-		return runErr
-	}
-
 	if !job.Target.Enabled {
 		runErr := fmt.Errorf("backup_target_disabled")
 		s.updateBackupJobResult(job, runErr, false)
 		return runErr
 	}
+	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&job.Target)
+	if err != nil {
+		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+		s.updateBackupJobResult(job, runErr, false)
+		return runErr
+	}
+	defer releaseTargetKey()
 
 	event := clusterModels.BackupEvent{
 		JobID:     &job.ID,

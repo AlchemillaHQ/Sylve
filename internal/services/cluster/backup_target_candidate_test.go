@@ -37,39 +37,93 @@ func TestBuildBackupTargetCreateCandidateRequiresPastedManagedKey(t *testing.T) 
 	}
 }
 
-func TestBuildBackupTargetUpdateCandidateUsesStoredManagedKeyAndExactID(t *testing.T) {
+func TestBuildBackupTargetUpdatePlanPreservesStoredManagedKeyAndRequiresQuiescedRotation(t *testing.T) {
 	s := &Service{}
 	existing := &clusterModels.BackupTarget{
-		ID: 81, Name: "old", SSHHost: "root@old", SSHPort: 22,
+		ID: 81, Name: "target", SSHHost: "root@backup", SSHPort: 22,
 		SSHKeyPath: "/leader/local/target-81_id", SSHKey: "stored-private-key",
-		BackupRoot: "tank/old", Enabled: true,
+		BackupRoot: "tank/backups", Enabled: true,
 	}
 	input := managedBackupTargetInput()
 	input.SSHKey = ""
-	candidate, err := s.BuildBackupTargetUpdateCandidate(existing, input)
+	plan, err := s.BuildBackupTargetUpdatePlan(existing, input)
 	if err != nil {
-		t.Fatalf("candidate: %v", err)
+		t.Fatalf("plan: %v", err)
 	}
-	if candidate.ID != existing.ID || candidate.SSHKey != "stored-private-key" || candidate.SSHKeyPath != "" {
-		t.Fatalf("stored identity not preserved: %+v", candidate)
+	if plan.Kind != clusterModels.BackupTargetUpdateKindMetadata || plan.Candidate.ID != existing.ID ||
+		plan.Candidate.SSHKey != "stored-private-key" || plan.Candidate.SSHKeyPath != "" {
+		t.Fatalf("stored identity not preserved: %+v", plan)
 	}
 
 	input.SSHKey = " replacement-key "
-	candidate, err = s.BuildBackupTargetUpdateCandidate(existing, input)
-	if err != nil {
-		t.Fatalf("replacement candidate: %v", err)
+	if _, err := s.BuildBackupTargetUpdatePlan(existing, input); err == nil ||
+		!strings.Contains(err.Error(), "must_be_disabled") {
+		t.Fatalf("enabled replacement error=%v", err)
 	}
-	if candidate.ID != existing.ID || candidate.SSHKey != "replacement-key" || candidate.SSHKeyPath != "" {
-		t.Fatalf("replacement candidate: %+v", candidate)
+	existing.Enabled = false
+	input.Enabled = boolPtr(false)
+	plan, err = s.BuildBackupTargetUpdatePlan(existing, input)
+	if err != nil {
+		t.Fatalf("replacement plan: %v", err)
+	}
+	if plan.Kind != clusterModels.BackupTargetUpdateKindRotateKey || plan.Candidate.SSHKey != "replacement-key" ||
+		plan.Candidate.Enabled || plan.Candidate.SSHKeyPath != "" {
+		t.Fatalf("replacement plan: %+v", plan)
 	}
 }
 
-func TestBuildBackupTargetUpdateCandidateRejectsLegacyTargetWithoutKey(t *testing.T) {
-	existing := &clusterModels.BackupTarget{ID: 82, SSHKeyPath: "/legacy/external/path", Enabled: true}
+func TestBuildBackupTargetUpdatePlanAllowsLegacyMetadataAndDisable(t *testing.T) {
+	existing := &clusterModels.BackupTarget{
+		ID: 82, Name: "target", SSHHost: "root@backup", SSHPort: 22,
+		SSHKeyPath: "/legacy/external/path", BackupRoot: "tank/backups", Enabled: true,
+	}
 	input := managedBackupTargetInput()
 	input.SSHKey = ""
-	if _, err := (&Service{}).BuildBackupTargetUpdateCandidate(existing, input); err == nil ||
-		!strings.Contains(err.Error(), "managed_ssh_key_required") {
-		t.Fatalf("legacy target error=%v", err)
+	input.Name = "renamed"
+	plan, err := (&Service{}).BuildBackupTargetUpdatePlan(existing, input)
+	if err != nil || plan.Kind != clusterModels.BackupTargetUpdateKindMetadata {
+		t.Fatalf("legacy metadata plan=%+v err=%v", plan, err)
+	}
+	input.Name = existing.Name
+	input.Enabled = boolPtr(false)
+	plan, err = (&Service{}).BuildBackupTargetUpdatePlan(existing, input)
+	if err != nil || plan.Kind != clusterModels.BackupTargetUpdateKindDisable {
+		t.Fatalf("legacy disable plan=%+v err=%v", plan, err)
+	}
+}
+
+func TestBuildBackupTargetUpdatePlanRejectsMixedStateAndMetadataChanges(t *testing.T) {
+	existing := &clusterModels.BackupTarget{
+		ID: 84, Name: "target", SSHHost: "root@backup", SSHPort: 22,
+		SSHKey: "key", BackupRoot: "tank/backups", Enabled: true,
+	}
+	input := managedBackupTargetInput()
+	input.SSHKey = ""
+	input.Name = "renamed"
+	input.Enabled = boolPtr(false)
+	if _, err := (&Service{}).BuildBackupTargetUpdatePlan(existing, input); err == nil ||
+		!strings.Contains(err.Error(), "update_mode_conflict") {
+		t.Fatalf("mixed state/metadata error=%v", err)
+	}
+}
+
+func TestBuildBackupTargetUpdatePlanRejectsImmutableIdentityChanges(t *testing.T) {
+	existing := &clusterModels.BackupTarget{
+		ID: 83, Name: "target", SSHHost: "root@backup", SSHPort: 22,
+		SSHKey: "key", BackupRoot: "tank/backups", CreateBackupRoot: true, Enabled: true,
+	}
+	input := managedBackupTargetInput()
+	input.SSHKey = ""
+	input.CreateBackupRoot = boolPtr(true)
+	input.BackupRoot = "tank/other"
+	if _, err := (&Service{}).BuildBackupTargetUpdatePlan(existing, input); err == nil ||
+		!strings.Contains(err.Error(), "root_immutable") {
+		t.Fatalf("root error=%v", err)
+	}
+	input.BackupRoot = existing.BackupRoot
+	input.SSHHost = "root@other"
+	if _, err := (&Service{}).BuildBackupTargetUpdatePlan(existing, input); err == nil ||
+		!strings.Contains(err.Error(), "endpoint_immutable") {
+		t.Fatalf("endpoint error=%v", err)
 	}
 }

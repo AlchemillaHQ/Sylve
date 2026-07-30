@@ -729,6 +729,12 @@ func clearClusteredDataTx(tx *gorm.DB) error {
 		return fmt.Errorf("failed_to_clean_backup_target_restore_operations: %w", err)
 	}
 
+	if tx.Migrator().HasTable(&clusterModels.BackupTargetProvisionOperation{}) {
+		if err := tx.Exec("DELETE FROM backup_target_provision_operations").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_target_provision_operations: %w", err)
+		}
+	}
+
 	if err := tx.Exec("DELETE FROM backup_jobs").Error; err != nil {
 		return fmt.Errorf("failed_to_clean_backup_jobs: %w", err)
 	}

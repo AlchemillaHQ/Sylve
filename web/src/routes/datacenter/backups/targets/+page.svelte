@@ -293,6 +293,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
+				disabled={targets.current.find((target) => target.id === selectedTargetId)?.enabled ?? true}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>

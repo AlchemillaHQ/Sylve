@@ -19,6 +19,7 @@ import (
 )
 
 func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOperationAcquire, bypassRaft bool) error {
+	payload.RequireEnabledTarget = true
 	if payload.AcquiredAt.IsZero() {
 		payload.AcquiredAt = time.Now().UTC()
 	}
@@ -46,6 +47,7 @@ func (s *Service) TransitionBackupJobOperation(
 	bypassRaft bool,
 ) error {
 	action = strings.ToLower(strings.TrimSpace(action))
+	payload.RequireEnabledTarget = true
 	if action != "start" && action != "finish" && action != "abort" && action != "release" {
 		return fmt.Errorf("invalid_backup_job_operation_action")
 	}

@@ -17,48 +17,42 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+type BackupTargetUpdatePlan struct {
+	Candidate           *clusterModels.BackupTarget
+	Kind                string
+	ExpectedFingerprint string
+	ProposedFingerprint string
+}
+
+func normalizedBackupTargetPort(port int) int {
+	if port == 0 {
+		return 22
+	}
+	return port
+}
+
 func backupTargetCandidateFromInput(
 	input clusterServiceInterfaces.BackupTargetReq,
-	existing *clusterModels.BackupTarget,
 ) (*clusterModels.BackupTarget, error) {
 	if err := validateBackupTargetInput(input); err != nil {
 		return nil, err
 	}
 
 	key := strings.TrimSpace(input.SSHKey)
-	if key == "" && existing != nil {
-		key = strings.TrimSpace(existing.SSHKey)
-	}
 	if key == "" {
 		return nil, fmt.Errorf("managed_ssh_key_required")
 	}
-
-	enabled := boolPtrDefaultTrue(input.Enabled)
-	id := input.ID
-	if existing != nil {
-		if input.ID != 0 && input.ID != existing.ID {
-			return nil, fmt.Errorf("backup_target_id_mismatch")
-		}
-		id = existing.ID
-		if input.Enabled == nil {
-			enabled = existing.Enabled
-		}
-	}
-
 	candidate := &clusterModels.BackupTarget{
-		ID:               id,
+		ID:               input.ID,
 		Name:             strings.TrimSpace(input.Name),
 		SSHHost:          strings.TrimSpace(input.SSHHost),
-		SSHPort:          input.SSHPort,
+		SSHPort:          normalizedBackupTargetPort(input.SSHPort),
 		SSHKeyPath:       "",
 		SSHKey:           key,
 		BackupRoot:       strings.TrimSpace(input.BackupRoot),
 		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
 		Description:      strings.TrimSpace(input.Description),
-		Enabled:          enabled,
-	}
-	if candidate.SSHPort == 0 {
-		candidate.SSHPort = 22
+		Enabled:          boolPtrDefaultTrue(input.Enabled),
 	}
 	return candidate, nil
 }
@@ -66,15 +60,113 @@ func backupTargetCandidateFromInput(
 func (s *Service) BuildBackupTargetCreateCandidate(
 	input clusterServiceInterfaces.BackupTargetReq,
 ) (*clusterModels.BackupTarget, error) {
-	return backupTargetCandidateFromInput(input, nil)
+	return backupTargetCandidateFromInput(input)
+}
+
+func (s *Service) BuildBackupTargetUpdatePlan(
+	existing *clusterModels.BackupTarget,
+	input clusterServiceInterfaces.BackupTargetReq,
+) (*BackupTargetUpdatePlan, error) {
+	if existing == nil || existing.ID == 0 {
+		return nil, fmt.Errorf("backup_target_not_found")
+	}
+	if err := validateBackupTargetInput(input); err != nil {
+		return nil, err
+	}
+	if input.ID != 0 && input.ID != existing.ID {
+		return nil, fmt.Errorf("backup_target_id_mismatch")
+	}
+
+	incomingHost := strings.TrimSpace(input.SSHHost)
+	incomingPort := normalizedBackupTargetPort(existing.SSHPort)
+	if input.SSHPort != 0 {
+		incomingPort = normalizedBackupTargetPort(input.SSHPort)
+	}
+	incomingRoot := strings.TrimSpace(input.BackupRoot)
+	incomingCreateRoot := existing.CreateBackupRoot
+	if input.CreateBackupRoot != nil {
+		incomingCreateRoot = *input.CreateBackupRoot
+	}
+	if incomingHost != strings.TrimSpace(existing.SSHHost) || incomingPort != normalizedBackupTargetPort(existing.SSHPort) {
+		return nil, fmt.Errorf("backup_target_endpoint_immutable")
+	}
+	if incomingRoot != strings.TrimSpace(existing.BackupRoot) {
+		return nil, fmt.Errorf("backup_target_root_immutable")
+	}
+	if incomingCreateRoot != existing.CreateBackupRoot {
+		return nil, fmt.Errorf("backup_target_create_root_immutable")
+	}
+
+	proposedKey := strings.TrimSpace(input.SSHKey)
+	if proposedKey == "" {
+		proposedKey = strings.TrimSpace(existing.SSHKey)
+	}
+	proposedEnabled := existing.Enabled
+	if input.Enabled != nil {
+		proposedEnabled = *input.Enabled
+	}
+	candidate := &clusterModels.BackupTarget{
+		ID:               existing.ID,
+		Name:             strings.TrimSpace(input.Name),
+		SSHHost:          strings.TrimSpace(existing.SSHHost),
+		SSHPort:          normalizedBackupTargetPort(existing.SSHPort),
+		SSHKeyPath:       strings.TrimSpace(existing.SSHKeyPath),
+		SSHKey:           proposedKey,
+		BackupRoot:       strings.TrimSpace(existing.BackupRoot),
+		CreateBackupRoot: existing.CreateBackupRoot,
+		Description:      strings.TrimSpace(input.Description),
+		Enabled:          proposedEnabled,
+	}
+	if proposedKey != "" {
+		candidate.SSHKeyPath = ""
+	}
+
+	metadataChanged := candidate.Name != strings.TrimSpace(existing.Name) ||
+		candidate.Description != strings.TrimSpace(existing.Description)
+	keyChanged := candidate.SSHKey != strings.TrimSpace(existing.SSHKey)
+	enabledChanged := candidate.Enabled != existing.Enabled
+
+	kind := clusterModels.BackupTargetUpdateKindMetadata
+	switch {
+	case keyChanged:
+		if metadataChanged || enabledChanged {
+			return nil, fmt.Errorf("backup_target_update_mode_conflict")
+		}
+		if existing.Enabled || candidate.Enabled {
+			return nil, fmt.Errorf("backup_target_must_be_disabled_for_key_rotation")
+		}
+		kind = clusterModels.BackupTargetUpdateKindRotateKey
+	case enabledChanged:
+		if metadataChanged {
+			return nil, fmt.Errorf("backup_target_update_mode_conflict")
+		}
+		if candidate.Enabled {
+			if candidate.SSHKey == "" {
+				return nil, fmt.Errorf("managed_ssh_key_required")
+			}
+			kind = clusterModels.BackupTargetUpdateKindEnable
+		} else {
+			kind = clusterModels.BackupTargetUpdateKindDisable
+		}
+	default:
+		kind = clusterModels.BackupTargetUpdateKindMetadata
+	}
+
+	return &BackupTargetUpdatePlan{
+		Candidate:           candidate,
+		Kind:                kind,
+		ExpectedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(existing),
+		ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(candidate),
+	}, nil
 }
 
 func (s *Service) BuildBackupTargetUpdateCandidate(
 	existing *clusterModels.BackupTarget,
 	input clusterServiceInterfaces.BackupTargetReq,
 ) (*clusterModels.BackupTarget, error) {
-	if existing == nil || existing.ID == 0 {
-		return nil, fmt.Errorf("backup_target_not_found")
+	plan, err := s.BuildBackupTargetUpdatePlan(existing, input)
+	if err != nil {
+		return nil, err
 	}
-	return backupTargetCandidateFromInput(input, existing)
+	return plan.Candidate, nil
 }

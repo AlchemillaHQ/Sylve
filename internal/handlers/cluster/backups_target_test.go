@@ -26,10 +26,16 @@ import (
 )
 
 type backupTargetZeltaStub struct {
-	validateErr   error
-	validateFn    func(*clusterModels.BackupTarget) error
-	validateCalls []clusterModels.BackupTarget
-	removedIDs    []uint
+	validateErr      error
+	validateFn       func(*clusterModels.BackupTarget) error
+	validateCalls    []clusterModels.BackupTarget
+	inspection       zelta.BackupTargetValidationResult
+	provisionErr     error
+	provisionFn      func(*clusterModels.BackupTarget) error
+	materializeErr   error
+	provisionCalls   []clusterModels.BackupTarget
+	materializeCalls []clusterModels.BackupTarget
+	removedIDs       []uint
 }
 
 var _ backupTargetZelta = (*zelta.Service)(nil)
@@ -44,12 +50,43 @@ func (s *backupTargetZeltaStub) ValidateTarget(_ context.Context, target *cluste
 	return s.validateErr
 }
 
-func (s *backupTargetZeltaStub) ValidateTargetCandidate(ctx context.Context, target *clusterModels.BackupTarget) error {
+func (s *backupTargetZeltaStub) InspectTargetCandidate(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+) (zelta.BackupTargetValidationResult, error) {
+	return s.inspection, s.ValidateTarget(ctx, target)
+}
+
+func (s *backupTargetZeltaStub) ValidateTargetCandidateReadiness(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+) error {
 	return s.ValidateTarget(ctx, target)
 }
 
 func (s *backupTargetZeltaStub) ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error {
 	return s.ValidateTarget(ctx, target)
+}
+
+func (s *backupTargetZeltaStub) ProvisionBackupTargetRoot(_ context.Context, target *clusterModels.BackupTarget) error {
+	if target != nil {
+		s.provisionCalls = append(s.provisionCalls, *target)
+		if s.provisionFn != nil {
+			return s.provisionFn(target)
+		}
+	}
+	return s.provisionErr
+}
+
+func (s *backupTargetZeltaStub) MaterializeBackupTargetSSHKey(target *clusterModels.BackupTarget) error {
+	if target != nil {
+		s.materializeCalls = append(s.materializeCalls, *target)
+	}
+	return s.materializeErr
+}
+
+func (s *backupTargetZeltaStub) AcquireBackupTargetSSHKey(target *clusterModels.BackupTarget) (func(), error) {
+	return func() {}, s.MaterializeBackupTargetSSHKey(target)
 }
 
 func (s *backupTargetZeltaStub) RemoveSSHKey(targetID uint) {
@@ -250,6 +287,112 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 			t.Fatalf("unexpected create validation candidate: %+v", zStub.validateCalls)
 		}
 	})
+
+	t.Run("post-commit key materialization failure is reported without changing committed key", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+		cS := &cluster.Service{DB: db}
+		zStub := &backupTargetZeltaStub{materializeErr: errors.New("materialize_target_ssh_key: disk full")}
+		r := newBackupTargetRouter(cS, zStub)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
+		if rr.Code != http.StatusInternalServerError || !strings.Contains(rr.Body.String(), "save_ssh_key_failed") {
+			t.Fatalf("expected materialization error, got %d body=%s", rr.Code, rr.Body.String())
+		}
+		var committed clusterModels.BackupTarget
+		if err := db.Where("name = ?", "target-a").First(&committed).Error; err != nil {
+			t.Fatalf("committed target missing: %v", err)
+		}
+		if committed.SSHKey != "ssh-key-data" || committed.SSHKeyPath != "" {
+			t.Fatalf("committed key changed: %+v", committed)
+		}
+	})
+
+	t.Run("missing root is durably prepared before provisioning", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t,
+			&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
+		)
+		cS := &cluster.Service{DB: db}
+		zStub := &backupTargetZeltaStub{inspection: zelta.BackupTargetValidationResult{RootProvisioningRequired: true}}
+		zStub.provisionFn = func(target *clusterModels.BackupTarget) error {
+			var pending int64
+			if err := db.Model(&clusterModels.BackupTargetProvisionOperation{}).
+				Where("target_id = ? AND state = ?", target.ID, clusterModels.BackupTargetProvisionStatePending).
+				Count(&pending).Error; err != nil || pending != 1 {
+				return errors.New("provision_operation_not_durable")
+			}
+			var visible int64
+			if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Count(&visible).Error; err != nil || visible != 0 {
+				return errors.New("target_visible_before_provision_completion")
+			}
+			return nil
+		}
+		r := newBackupTargetRouter(cS, zStub)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", []byte(`{
+			"name":"provisioned","sshHost":"user@host","sshKey":"key",
+			"backupRoot":"tank/new","createBackupRoot":true,"enabled":true
+		}`))
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("expected 201, got %d body=%s", rr.Code, rr.Body.String())
+		}
+		if len(zStub.provisionCalls) != 1 || len(zStub.materializeCalls) != 1 {
+			t.Fatalf("provision calls=%+v materialize=%+v", zStub.provisionCalls, zStub.materializeCalls)
+		}
+		var operation clusterModels.BackupTargetProvisionOperation
+		if err := db.First(&operation).Error; err != nil || operation.State != clusterModels.BackupTargetProvisionStateCompleted {
+			t.Fatalf("operation=%+v err=%v", operation, err)
+		}
+	})
+
+	t.Run("definite provisioning failure leaves failed intent and no target", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t,
+			&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
+		)
+		cS := &cluster.Service{DB: db}
+		zStub := &backupTargetZeltaStub{
+			inspection:   zelta.BackupTargetValidationResult{RootProvisioningRequired: true},
+			provisionErr: errors.New("backup_root_create_failed: permission denied"),
+		}
+		r := newBackupTargetRouter(cS, zStub)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", []byte(`{
+			"name":"failed","sshHost":"user@host","sshKey":"key",
+			"backupRoot":"tank/failed","createBackupRoot":true
+		}`))
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+		}
+		var operation clusterModels.BackupTargetProvisionOperation
+		if err := db.First(&operation).Error; err != nil || operation.State != clusterModels.BackupTargetProvisionStateFailed {
+			t.Fatalf("operation=%+v err=%v", operation, err)
+		}
+		var count int64
+		if err := db.Model(&clusterModels.BackupTarget{}).Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("target count=%d err=%v", count, err)
+		}
+	})
+
+	t.Run("ambiguous provisioning failure remains pending for reconciliation", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t,
+			&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
+		)
+		cS := &cluster.Service{DB: db}
+		zStub := &backupTargetZeltaStub{
+			inspection: zelta.BackupTargetValidationResult{RootProvisioningRequired: true},
+			provisionErr: &zelta.BackupTargetProvisionError{
+				Err: errors.New("backup_root_create_verify_failed"), Ambiguous: true,
+			},
+		}
+		r := newBackupTargetRouter(cS, zStub)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", []byte(`{
+			"name":"pending","sshHost":"user@host","sshKey":"key",
+			"backupRoot":"tank/pending","createBackupRoot":true
+		}`))
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+		}
+		var operation clusterModels.BackupTargetProvisionOperation
+		if err := db.First(&operation).Error; err != nil || operation.State != clusterModels.BackupTargetProvisionStatePending {
+			t.Fatalf("operation=%+v err=%v", operation, err)
+		}
+	})
 }
 
 func TestBackupTargetsHandlerUpdate(t *testing.T) {
@@ -311,7 +454,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		}
 	})
 
-	t.Run("legacy target without managed material requires pasted key", func(t *testing.T) {
+	t.Run("legacy target metadata update does not require connectivity or key conversion", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 		cS := &cluster.Service{DB: db}
 		target := clusterModels.BackupTarget{
@@ -324,10 +467,13 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPut, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
-			"name":"legacy","sshHost":"user@host","backupRoot":"tank/old"
+			"name":"legacy-renamed","sshHost":"user@host","backupRoot":"tank/old"
 		}`))
-		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "managed_ssh_key_required") {
-			t.Fatalf("expected managed key rejection, got %d body=%s", rr.Code, rr.Body.String())
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected metadata update, got %d body=%s", rr.Code, rr.Body.String())
+		}
+		if len(zStub.validateCalls) != 0 {
+			t.Fatalf("metadata update performed connectivity validation: %+v", zStub.validateCalls)
 		}
 	})
 
@@ -335,11 +481,15 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 		cS := &cluster.Service{DB: db}
 		target := seedTarget(t, cS)
+		if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
+			t.Fatalf("disable target: %v", err)
+		}
+		target.Enabled = false
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("validate_failed")}
 		r := newBackupTargetRouter(cS, zStub)
 
 		rr := performJSONRequest(t, r, http.MethodPut, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
-			"name":"target-updated","sshHost":"user@host","sshKey":"new-key","backupRoot":"tank/new"
+			"name":"target-old","sshHost":"user@old-host","sshKey":"new-key","backupRoot":"tank/old","enabled":false
 		}`))
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
@@ -357,10 +507,39 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		}
 	})
 
+	t.Run("key activation failure leaves committed disabled key unchanged", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+		cS := &cluster.Service{DB: db}
+		target := seedTarget(t, cS)
+		if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
+			t.Fatalf("disable target: %v", err)
+		}
+		zStub := &backupTargetZeltaStub{materializeErr: errors.New("activate_ssh_key: disk full")}
+		r := newBackupTargetRouter(cS, zStub)
+		rr := performJSONRequest(t, r, http.MethodPut,
+			"/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
+				"name":"target-old","sshHost":"user@old-host","sshKey":"new-key","backupRoot":"tank/old","enabled":false
+			}`))
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
+		}
+		var stored clusterModels.BackupTarget
+		if err := db.First(&stored, target.ID).Error; err != nil {
+			t.Fatalf("load target: %v", err)
+		}
+		if stored.SSHKey != "old-key" || stored.Enabled {
+			t.Fatalf("failed activation changed committed target: %+v", stored)
+		}
+	})
+
 	t.Run("valid managed key replacement", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 		cS := &cluster.Service{DB: db}
 		target := seedTarget(t, cS)
+		if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
+			t.Fatalf("disable target: %v", err)
+		}
+		target.Enabled = false
 		zStub := &backupTargetZeltaStub{validateFn: func(candidate *clusterModels.BackupTarget) error {
 			if candidate.SSHKey != "valid-new-key" {
 				return errors.New("wrong_validation_key")
@@ -370,7 +549,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPut,
 			"/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
-				"name":"target-updated","sshHost":"user@host","sshKey":"valid-new-key","backupRoot":"tank/new"
+				"name":"target-old","sshHost":"user@old-host","sshKey":"valid-new-key","backupRoot":"tank/old","enabled":false
 			}`))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
@@ -408,7 +587,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPut,
 			"/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
-				"name":"name-conflict","sshHost":"user@host","sshKey":"replacement-key","backupRoot":"tank/new"
+				"name":"name-conflict","sshHost":"user@old-host","backupRoot":"tank/old"
 			}`))
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("expected mutation failure, got %d body=%s", rr.Code, rr.Body.String())
@@ -420,6 +599,30 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		keyContent, readErr := os.ReadFile(canonicalPath)
 		if stored.SSHKey != "old-key" || readErr != nil || string(keyContent) != "old-key\n" {
 			t.Fatalf("failed mutation changed committed key: target=%+v content=%q err=%v", stored, string(keyContent), readErr)
+		}
+	})
+
+	t.Run("immutable endpoint and root changes are rejected before validation", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+		cS := &cluster.Service{DB: db}
+		target := seedTarget(t, cS)
+		zStub := &backupTargetZeltaStub{}
+		r := newBackupTargetRouter(cS, zStub)
+		path := "/cluster/backups/targets/" + strconv.FormatUint(uint64(target.ID), 10)
+		rootChange := performJSONRequest(t, r, http.MethodPut, path, []byte(`{
+			"name":"target-old","sshHost":"user@old-host","backupRoot":"tank/other"
+		}`))
+		if rootChange.Code != http.StatusBadRequest || !strings.Contains(rootChange.Body.String(), "backup_target_root_immutable") {
+			t.Fatalf("root change code=%d body=%s", rootChange.Code, rootChange.Body.String())
+		}
+		endpointChange := performJSONRequest(t, r, http.MethodPut, path, []byte(`{
+			"name":"target-old","sshHost":"user@other","backupRoot":"tank/old"
+		}`))
+		if endpointChange.Code != http.StatusBadRequest || !strings.Contains(endpointChange.Body.String(), "backup_target_endpoint_immutable") {
+			t.Fatalf("endpoint change code=%d body=%s", endpointChange.Code, endpointChange.Body.String())
+		}
+		if len(zStub.validateCalls) != 0 {
+			t.Fatalf("immutable edits reached validation: %+v", zStub.validateCalls)
 		}
 	})
 
@@ -448,6 +651,31 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		}
 	})
 
+	t.Run("disable succeeds while unreachable and enable requires validation", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+		cS := &cluster.Service{DB: db}
+		target := seedTarget(t, cS)
+		zStub := &backupTargetZeltaStub{validateErr: errors.New("target_unreachable")}
+		r := newBackupTargetRouter(cS, zStub)
+		path := "/cluster/backups/targets/" + strconv.FormatUint(uint64(target.ID), 10)
+		disable := performJSONRequest(t, r, http.MethodPut, path, []byte(`{
+			"name":"target-old","sshHost":"user@old-host","backupRoot":"tank/old","enabled":false
+		}`))
+		if disable.Code != http.StatusOK || len(zStub.validateCalls) != 0 {
+			t.Fatalf("disable code=%d calls=%+v body=%s", disable.Code, zStub.validateCalls, disable.Body.String())
+		}
+		enable := performJSONRequest(t, r, http.MethodPut, path, []byte(`{
+			"name":"target-old","sshHost":"user@old-host","backupRoot":"tank/old","enabled":true
+		}`))
+		if enable.Code != http.StatusBadRequest || len(zStub.validateCalls) != 1 {
+			t.Fatalf("enable code=%d calls=%+v body=%s", enable.Code, zStub.validateCalls, enable.Body.String())
+		}
+		var stored clusterModels.BackupTarget
+		if err := db.First(&stored, target.ID).Error; err != nil || stored.Enabled {
+			t.Fatalf("failed enable changed target=%+v err=%v", stored, err)
+		}
+	})
+
 	t.Run("success", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 		cS := &cluster.Service{DB: db}
@@ -457,8 +685,8 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 		rr := performJSONRequest(t, r, http.MethodPut, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
 			"name":"target-updated",
-			"sshHost":"user@host-updated",
-			"backupRoot":"tank/new",
+			"sshHost":"user@old-host",
+			"backupRoot":"tank/old",
 			"description":"updated"
 		}`))
 		if rr.Code != http.StatusOK {
@@ -469,15 +697,14 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		if err := db.First(&updated, target.ID).Error; err != nil {
 			t.Fatalf("failed to fetch updated target: %v", err)
 		}
-		if updated.Name != "target-updated" || updated.SSHHost != "user@host-updated" || updated.BackupRoot != "tank/new" {
+		if updated.Name != "target-updated" || updated.SSHHost != "user@old-host" || updated.BackupRoot != "tank/old" {
 			t.Fatalf("unexpected updated target: %+v", updated)
 		}
 		if updated.SSHKey != "old-key" || updated.SSHKeyPath != "" {
 			t.Fatalf("expected managed key to remain node-local when no replacement is provided, got %+v", updated)
 		}
-		if len(zStub.validateCalls) != 1 || zStub.validateCalls[0].ID != target.ID ||
-			zStub.validateCalls[0].SSHKey != "old-key" || zStub.validateCalls[0].SSHKeyPath != "" {
-			t.Fatalf("metadata update did not validate with the stored managed key: %+v", zStub.validateCalls)
+		if len(zStub.validateCalls) != 0 {
+			t.Fatalf("metadata update performed connectivity validation: %+v", zStub.validateCalls)
 		}
 	})
 }
@@ -526,7 +753,7 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 			SSHHost:    "user@delete",
 			SSHPort:    22,
 			BackupRoot: "tank/delete",
-			Enabled:    true,
+			Enabled:    false,
 		}
 		if err := db.Create(&target).Error; err != nil {
 			t.Fatalf("failed to seed target: %v", err)

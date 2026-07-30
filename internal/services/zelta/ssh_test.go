@@ -220,6 +220,50 @@ func TestRemoveSSHKeyRemovesTargetKeyPath(t *testing.T) {
 	}
 }
 
+func TestRemoveSSHKeyRemovesAllUnleasedVersions(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("create key dir: %v", err)
+	}
+	s := &Service{}
+	leased := clusterModels.BackupTarget{ID: 77, SSHKey: "old-key"}
+	release, err := s.acquireBackupTargetSSHKey(&leased)
+	if err != nil {
+		t.Fatalf("acquire leased key: %v", err)
+	}
+	current := clusterModels.BackupTarget{ID: 77, SSHKey: "new-key"}
+	if err := s.MaterializeBackupTargetSSHKey(&current); err != nil {
+		t.Fatalf("materialize current key: %v", err)
+	}
+	canonical := filepath.Join(SSHKeyDirectory, "target-77_id")
+	if err := ensureSSHKeyFileAtPath(canonical, "legacy-key"); err != nil {
+		t.Fatalf("materialize canonical key: %v", err)
+	}
+	other := filepath.Join(SSHKeyDirectory, managedBackupTargetSSHKeyName(78, "other-key"))
+	if err := ensureSSHKeyFileAtPath(other, "other-key"); err != nil {
+		t.Fatalf("materialize other key: %v", err)
+	}
+
+	s.RemoveSSHKey(77)
+	if _, err := os.Stat(leased.SSHKeyPath); err != nil {
+		t.Fatalf("leased version removed: %v", err)
+	}
+	for _, removed := range []string{current.SSHKeyPath, canonical} {
+		if _, err := os.Stat(removed); !os.IsNotExist(err) {
+			t.Fatalf("unleased target version retained path=%s err=%v", removed, err)
+		}
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("other target key removed: %v", err)
+	}
+	release()
+	s.RemoveSSHKey(77)
+	if _, err := os.Stat(leased.SSHKeyPath); !os.IsNotExist(err) {
+		t.Fatalf("released version retained: %v", err)
+	}
+}
+
 func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 	t.Run("nil target returns error", func(t *testing.T) {
 		s := &Service{}
@@ -275,7 +319,7 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 			t.Fatalf("ensureBackupTargetSSHKeyMaterialized failed: %v", err)
 		}
 
-		expectedPath := filepath.Join(SSHKeyDirectory, "target-7_id")
+		expectedPath := filepath.Join(SSHKeyDirectory, managedBackupTargetSSHKeyName(7, "private-key-material"))
 		if target.SSHKeyPath != expectedPath {
 			t.Fatalf("expected generated key path %q, got %q", expectedPath, target.SSHKeyPath)
 		}
@@ -323,7 +367,7 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 			t.Fatalf("ensureBackupTargetSSHKeyMaterialized failed: %v", err)
 		}
 
-		expectedPath := filepath.Join(SSHKeyDirectory, "target-12345_id")
+		expectedPath := filepath.Join(SSHKeyDirectory, managedBackupTargetSSHKeyName(12345, "drifted-key"))
 		if target.SSHKeyPath != expectedPath {
 			t.Fatalf("expected canonical key path %q, got %q", expectedPath, target.SSHKeyPath)
 		}
@@ -347,15 +391,85 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 		if err := s.ensureBackupTargetSSHKeyMaterialized(target); err != nil {
 			t.Fatalf("ensureBackupTargetSSHKeyMaterialized failed: %v", err)
 		}
-		canonical := filepath.Join(SSHKeyDirectory, "target-9_id")
-		content, err := os.ReadFile(canonical)
-		if err != nil || string(content) != "explicit-key\n" || target.SSHKeyPath != canonical {
-			t.Fatalf("canonical managed key path=%q content=%q err=%v", target.SSHKeyPath, string(content), err)
+		versioned := filepath.Join(SSHKeyDirectory, managedBackupTargetSSHKeyName(9, "explicit-key"))
+		content, err := os.ReadFile(versioned)
+		if err != nil || string(content) != "explicit-key\n" || target.SSHKeyPath != versioned {
+			t.Fatalf("versioned managed key path=%q content=%q err=%v", target.SSHKeyPath, string(content), err)
 		}
 		if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
 			t.Fatalf("old node-local path was written: %v", err)
 		}
 	})
+}
+
+func TestFailedBackupTargetKeyActivationLeavesCommittedVersionComplete(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("create key dir: %v", err)
+	}
+	s := &Service{}
+	oldTarget := clusterModels.BackupTarget{ID: 43, SSHKey: "old-key"}
+	if err := s.MaterializeBackupTargetSSHKey(&oldTarget); err != nil {
+		t.Fatalf("materialize old key: %v", err)
+	}
+	newPath := filepath.Join(SSHKeyDirectory, managedBackupTargetSSHKeyName(43, "new-key"))
+	if err := os.Mkdir(newPath, 0700); err != nil {
+		t.Fatalf("create activation obstruction: %v", err)
+	}
+	newTarget := clusterModels.BackupTarget{ID: 43, SSHKey: "new-key"}
+	if err := s.MaterializeBackupTargetSSHKey(&newTarget); err == nil || !strings.Contains(err.Error(), "activate_ssh_key") {
+		t.Fatalf("activation error=%v", err)
+	}
+	if content, err := os.ReadFile(oldTarget.SSHKeyPath); err != nil || string(content) != "old-key\n" {
+		t.Fatalf("old committed content=%q err=%v", string(content), err)
+	}
+	if matches, err := filepath.Glob(filepath.Join(SSHKeyDirectory, ".target-key-materialization-*")); err != nil || len(matches) != 0 {
+		t.Fatalf("temporary materialization leak matches=%v err=%v", matches, err)
+	}
+}
+
+func TestVersionedBackupTargetKeysRemainImmutableWhileLeased(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("create key dir: %v", err)
+	}
+	s := &Service{}
+	oldTarget := clusterModels.BackupTarget{ID: 44, SSHHost: "root@backup", SSHKey: "old-key"}
+	releaseOld, err := s.acquireBackupTargetSSHKey(&oldTarget)
+	if err != nil {
+		t.Fatalf("acquire old key: %v", err)
+	}
+	newTarget := clusterModels.BackupTarget{ID: 44, SSHHost: "root@backup", SSHKey: "new-key"}
+	if err := s.MaterializeBackupTargetSSHKey(&newTarget); err != nil {
+		t.Fatalf("materialize new key: %v", err)
+	}
+	if oldTarget.SSHKeyPath == newTarget.SSHKeyPath {
+		t.Fatalf("old and new versions share path %q", oldTarget.SSHKeyPath)
+	}
+	if sshControlPath(&oldTarget, oldTarget.SSHKeyPath) == sshControlPath(&newTarget, newTarget.SSHKeyPath) {
+		t.Fatal("old and new versions share SSH control path")
+	}
+	if content, err := os.ReadFile(oldTarget.SSHKeyPath); err != nil || string(content) != "old-key\n" {
+		t.Fatalf("old content=%q err=%v", string(content), err)
+	}
+	if content, err := os.ReadFile(newTarget.SSHKeyPath); err != nil || string(content) != "new-key\n" {
+		t.Fatalf("new content=%q err=%v", string(content), err)
+	}
+	if err := s.cleanupOrphanTargetSSHKeys([]clusterModels.BackupTarget{newTarget}); err != nil {
+		t.Fatalf("cleanup while leased: %v", err)
+	}
+	if _, err := os.Stat(oldTarget.SSHKeyPath); err != nil {
+		t.Fatalf("leased old version removed: %v", err)
+	}
+	releaseOld()
+	if err := s.cleanupOrphanTargetSSHKeys([]clusterModels.BackupTarget{newTarget}); err != nil {
+		t.Fatalf("cleanup after release: %v", err)
+	}
+	if _, err := os.Stat(oldTarget.SSHKeyPath); !os.IsNotExist(err) {
+		t.Fatalf("released old version retained: %v", err)
+	}
 }
 
 func TestTargetSSHKeyPath(t *testing.T) {
@@ -387,6 +501,17 @@ func TestTargetSSHKeyPath(t *testing.T) {
 		}
 		if got != canonical {
 			t.Fatalf("expected canonical %q, got %q", canonical, got)
+		}
+	})
+
+	t.Run("managed material derives immutable version", func(t *testing.T) {
+		got, err := s.targetSSHKeyPath(&clusterModels.BackupTarget{ID: 555, SSHKey: "managed-key"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := filepath.Join(SSHKeyDirectory, managedBackupTargetSSHKeyName(555, "managed-key"))
+		if got != expected {
+			t.Fatalf("expected version %q, got %q", expected, got)
 		}
 	})
 

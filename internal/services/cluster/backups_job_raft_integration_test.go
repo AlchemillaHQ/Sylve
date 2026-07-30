@@ -339,6 +339,7 @@ func TestRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *testing.T) {
 
 func TestRunningJobIDsForTargetReadsReplicatedOperationOnNonRunnerLeader(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3,
+		&clusterModels.BackupTarget{},
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupEvent{},
@@ -355,6 +356,14 @@ func TestRunningJobIDsForTargetReadsReplicatedOperationOnNonRunnerLeader(t *test
 	}
 	if runnerNodeID == "" {
 		t.Fatal("remote runner not found")
+	}
+	targetRaw, _ := json.Marshal(clusterModels.BackupTargetToReplicationPayload(clusterModels.BackupTarget{
+		ID: 9, Name: "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups", Enabled: true,
+	}))
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_target", Action: "create", Data: targetRaw,
+	}); err != nil {
+		t.Fatalf("create target: %v", err)
 	}
 
 	for _, job := range []clusterModels.BackupJob{

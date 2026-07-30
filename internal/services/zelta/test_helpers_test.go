@@ -73,6 +73,7 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	}
 	migrateModels = append(
 		migrateModels,
+		&clusterModels.BackupTargetProvisionOperation{},
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTargetRestoreOperation{},
 	)

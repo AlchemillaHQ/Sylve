@@ -91,7 +91,7 @@ func backupTargetRestoreOperationTransition(
 	return clusterModels.BackupTargetRestoreOperationTransition{
 		Token: handle.Token, TargetID: handle.TargetID, HolderNodeID: handle.HolderNodeID,
 		DestinationDataset: handle.DestinationDataset, RequestPayload: handle.RequestPayload,
-		OccurredAt: time.Now().UTC(),
+		OccurredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	}
 }
 
@@ -210,6 +210,7 @@ func backupTargetRestoreOperationApplicationError(err error) bool {
 	for _, marker := range []string{
 		"restore_destination_reserved",
 		"backup_target_not_found",
+		"backup_target_disabled",
 		"backup_target_restore_operation_not_found",
 		"backup_target_restore_operation_token_mismatch",
 		"backup_target_restore_operation_already_started",
@@ -242,6 +243,15 @@ func backupTargetRestoreOperationStaleMessage(err error) bool {
 
 func backupTargetRestoreOperationFinishing(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "backup_target_restore_operation_finishing")
+}
+
+func backupTargetRestoreOperationTargetUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "backup_target_disabled") ||
+		strings.Contains(text, "backup_target_not_found")
 }
 
 func backupTargetRestoreQueuePayloadInvalid(err error) bool {
@@ -295,7 +305,7 @@ func (s *Service) acquireDurableBackupTargetRestoreOperation(
 	acquire := clusterModels.BackupTargetRestoreOperationAcquire{
 		Token: handle.Token, TargetID: handle.TargetID, HolderNodeID: handle.HolderNodeID,
 		DestinationDataset: handle.DestinationDataset, RequestPayload: handle.RequestPayload,
-		AcquiredAt: time.Now().UTC(),
+		AcquiredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	}
 	if err := s.applyBackupTargetRestoreOperation(
 		ctx,
@@ -431,6 +441,15 @@ func (s *Service) prepareQueuedBackupTargetRestoreOperation(
 			return handle, normalizedPayload, false, releaseErr
 		}
 		return handle, normalizedPayload, false, nil
+	}
+	if backupTargetRestoreOperationTargetUnavailable(err) {
+		if abortErr := s.abortDurableBackupTargetRestoreOperation(ctx, handle); abortErr != nil {
+			return handle, normalizedPayload, false, abortErr
+		}
+		// The request was already accepted with durable event/audit correlation.
+		// Return the admission failure so the queue wrapper can publish that exact
+		// terminal outcome after removing the now-unexecutable reservation.
+		return handle, normalizedPayload, false, err
 	}
 	if strings.Contains(strings.ToLower(err.Error()), "backup_target_restore_operation_already_started") {
 		// No worker in this process owns the token (the local claim above won),
