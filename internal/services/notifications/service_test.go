@@ -83,7 +83,7 @@ func (m *mockDiskService) DestroyPartitionTable(device string) error {
 	return nil
 }
 
-func (m *mockDiskService) IsDiskGPT(device string) bool {
+func (m *mockDiskService) IsDiskGPT(device string, sectorSize int) bool {
 	return false
 }
 

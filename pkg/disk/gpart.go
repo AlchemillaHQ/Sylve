@@ -9,13 +9,22 @@
 package disk
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+var ErrNoPartitionTable = errors.New("no GEOM-recognized partition table")
+
+var noPartitionTableDiagnostics = []*regexp.Regexp{
+	regexp.MustCompile(`^gpart: No such geom(?:: [^\r\n]+)?\.?$`),
+	regexp.MustCompile(`^gpart: arg0 '[^'\r\n]+': Invalid argument$`),
+}
 
 func CheckDevice(device string) error {
 	info, err := os.Stat(device)
@@ -33,19 +42,51 @@ func CheckDevice(device string) error {
 	return nil
 }
 
-func DestroyDisk(device string) error {
-	err := CheckDevice(device)
+func isNoPartitionTableDiagnostic(output string) bool {
+	diagnostic := strings.TrimSpace(output)
+	for _, pattern := range noPartitionTableDiagnostics {
+		if pattern.MatchString(diagnostic) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func classifyDestroyDiskResult(device, output string, commandErr error) error {
+	if commandErr == nil {
+		return nil
+	}
+
+	diagnostic := strings.TrimSpace(output)
+	if isNoPartitionTableDiagnostic(diagnostic) {
+		return fmt.Errorf("%w for %s: %s", ErrNoPartitionTable, device, diagnostic)
+	}
+
+	if diagnostic == "" {
+		return fmt.Errorf("error destroying disk %s: %w", device, commandErr)
+	}
+
+	return fmt.Errorf("error destroying disk %s: %w, output: %s", device, commandErr, diagnostic)
+}
+
+func destroyDisk(
+	device string,
+	checkDevice func(string) error,
+	runCommand func(string, ...string) (string, error),
+) error {
+	err := checkDevice(device)
 
 	if err != nil {
 		return err
 	}
 
-	output, err := utils.RunCommand("/sbin/gpart", "destroy", "-F", device)
-	if err != nil {
-		return fmt.Errorf("error destroying disk %s: %v, output: %s", device, err, output)
-	}
+	output, err := runCommand("/sbin/gpart", "destroy", "-F", device)
+	return classifyDestroyDiskResult(device, output, err)
+}
 
-	return nil
+func DestroyDisk(device string) error {
+	return destroyDisk(device, CheckDevice, utils.RunCommand)
 }
 
 func CreatePartition(device string, size uint64, ptype string) error {

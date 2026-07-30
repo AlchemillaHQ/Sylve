@@ -50,6 +50,10 @@ type diskSelfTestService interface {
 	StopSelfTest(string) (*diskServiceInterfaces.DiskSelfTestInfo, error)
 }
 
+type diskWipeService interface {
+	DestroyPartitionTable(string) error
+}
+
 // @Summary List disk devices
 // @Description List all disk devices on the system
 // @Tags Disk
@@ -194,7 +198,7 @@ func StopSelfTest(service diskSelfTestService) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /disk/wipe [post]
-func WipeDisk(diskService *disk.Service, infoService *info.Service) gin.HandlerFunc {
+func WipeDisk(diskService diskWipeService, infoService *info.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var r DiskActionRequest
 
@@ -210,7 +214,7 @@ func WipeDisk(diskService *disk.Service, infoService *info.Service) gin.HandlerF
 			return
 		}
 
-		err := diskUtils.DestroyDisk(r.Device)
+		err := diskService.DestroyPartitionTable(r.Device)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

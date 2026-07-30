@@ -443,7 +443,7 @@ func (m *mockDiskServiceForWearout) GetDiskSize(device string) (uint64, error) {
 func (m *mockDiskServiceForWearout) DestroyPartitionTable(device string) error {
 	return errors.New("not implemented")
 }
-func (m *mockDiskServiceForWearout) IsDiskGPT(device string) bool { return false }
+func (m *mockDiskServiceForWearout) IsDiskGPT(device string, sectorSize int) bool { return false }
 func (m *mockDiskServiceForWearout) RunSelfTest(disk diskServiceInterfaces.DiskInfo, testType string) error {
 	return errors.New("not implemented")
 }

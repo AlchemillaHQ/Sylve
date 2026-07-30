@@ -524,13 +524,19 @@ func TestGetDiskDevicesWithoutSMARTSkipsReader(t *testing.T) {
 				Type:        "SSD",
 				Description: "Test disk",
 				MediaSize:   1024,
+				SectorSize:  4096,
 				Partitions: []diskServiceInterfaces.PartitionInfo{{
 					Name: "ada0p1",
 					Size: 512,
 				}},
 			}}, nil
 		},
-		diskGPTSource: func(string) bool { return true },
+		diskGPTSource: func(device string, sectorSize int) bool {
+			if device != "/dev/ada0" || sectorSize != 4096 {
+				t.Fatalf("GPT probe got device=%q sectorSize=%d", device, sectorSize)
+			}
+			return true
+		},
 		smartDataSource: func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
 			reads.Add(1)
 			return diskServiceInterfaces.SmartData{HealthKnown: true, Passed: true}, nil, nil
@@ -569,7 +575,7 @@ func TestGetDiskDevicesForSMARTMonitorSkipsStandbyATA(t *testing.T) {
 				Partitions: []diskServiceInterfaces.PartitionInfo{{Name: "ada0p1", Size: 512}},
 			}}, nil
 		},
-		diskGPTSource: func(string) bool { return true },
+		diskGPTSource: func(string, int) bool { return true },
 		ataPowerModeSource: func(string) (smart.ATAPowerMode, error) {
 			probes.Add(1)
 			return mode, probeErr

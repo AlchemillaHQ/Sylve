@@ -10,6 +10,7 @@ package utils
 
 import (
 	"errors"
+	"math"
 	"os"
 	"sync"
 	"testing"
@@ -170,13 +171,13 @@ func TestBootMode(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name               string
-		bootMethodReturn   string
-		bootMethodError    error
-		efiRtReturn        string
-		efiRtError         error
-		efiDevExists       bool
-		expectedMode       string
+		name             string
+		bootMethodReturn string
+		bootMethodError  error
+		efiRtReturn      string
+		efiRtError       error
+		efiDevExists     bool
+		expectedMode     string
 	}{
 		{
 			name:             "BIOS mode",
@@ -252,26 +253,63 @@ func TestBootMode(t *testing.T) {
 }
 
 func TestReadDiskSector(t *testing.T) {
-	tmp, err := os.CreateTemp("", "diskmock")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
-
-	data := make([]byte, 1024)
-	copy(data[512:], []byte("SECTOR1DATA"))
-	if _, err := tmp.Write(data); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name       string
+		sectorSize int64
+	}{
+		{name: "512-byte logical sector", sectorSize: 512},
+		{name: "4096-byte logical sector", sectorSize: 4096},
 	}
 
-	buf, err := ReadDiskSector(tmp.Name(), 1)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp, err := os.CreateTemp(t.TempDir(), "diskmock")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			data := make([]byte, 2*tt.sectorSize)
+			copy(data[tt.sectorSize:], []byte("SECTOR1DATA"))
+			if _, err := tmp.Write(data); err != nil {
+				tmp.Close()
+				t.Fatal(err)
+			}
+			if err := tmp.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			buf, err := ReadDiskSector(tmp.Name(), 1, tt.sectorSize)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if int64(len(buf)) != tt.sectorSize {
+				t.Fatalf("sector length = %d; want %d", len(buf), tt.sectorSize)
+			}
+			if string(buf[:11]) != "SECTOR1DATA" {
+				t.Errorf("expected 'SECTOR1DATA', got %q", string(buf[:11]))
+			}
+		})
+	}
+}
+
+func TestReadDiskSectorRejectsInvalidGeometry(t *testing.T) {
+	tests := []struct {
+		name       string
+		lba        int64
+		sectorSize int64
+	}{
+		{name: "negative LBA", lba: -1, sectorSize: 512},
+		{name: "zero sector size", lba: 1, sectorSize: 0},
+		{name: "negative sector size", lba: 1, sectorSize: -512},
+		{name: "offset overflow", lba: math.MaxInt64, sectorSize: 2},
 	}
 
-	if string(buf[:11]) != "SECTOR1DATA" {
-		t.Errorf("expected 'SECTOR1DATA', got %q", string(buf[:11]))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := ReadDiskSector("unused", tt.lba, tt.sectorSize); err == nil {
+				t.Fatal("expected an error")
+			}
+		})
 	}
 }
 

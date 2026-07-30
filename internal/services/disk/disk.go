@@ -12,12 +12,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
@@ -80,7 +78,7 @@ type Service struct {
 	smartDataSource           func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error)
 	ataPowerModeSource        func(string) (smart.ATAPowerMode, error)
 	scsiPowerModeSource       func(string) (smart.SCSIPowerMode, error)
-	diskGPTSource             func(string) bool
+	diskGPTSource             func(string, int) bool
 }
 
 func NewDiskService(db *gorm.DB, zfsService zfsServiceInterfaces.ZfsServiceInterface, gzfs *gzfs.Client) diskServiceInterfaces.DiskServiceInterface {
@@ -238,11 +236,11 @@ func (s *Service) physicalDisks() ([]diskServiceInterfaces.DiskInfo, error) {
 	return ExtractDiskInfo(&mesh)
 }
 
-func (s *Service) diskIsGPT(device string) bool {
+func (s *Service) diskIsGPT(device string, sectorSize int) bool {
 	if s.diskGPTSource != nil {
-		return s.diskGPTSource(device)
+		return s.diskGPTSource(device, sectorSize)
 	}
-	return s.IsDiskGPT(device)
+	return s.IsDiskGPT(device, sectorSize)
 }
 
 func (s *Service) readSmartData(disk diskServiceInterfaces.DiskInfo, includeSelfTestLog bool) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
@@ -307,7 +305,7 @@ func (s *Service) getDiskDevices(ctx context.Context, includeSMART, avoidWake bo
 		disk.Serial = d.Serial
 
 		if !avoidWake {
-			disk.GPT = s.diskIsGPT("/dev/" + d.Name)
+			disk.GPT = s.diskIsGPT("/dev/"+d.Name, d.SectorSize)
 		}
 
 		if includeSMART && !skipRemainingSMART {
@@ -477,45 +475,14 @@ func (s *Service) DestroyPartitionTable(device string) error {
 	s.DiskOperationMutex.Lock()
 	defer s.DiskOperationMutex.Unlock()
 
-	if _, err := os.Stat(device); os.IsNotExist(err) {
-		return fmt.Errorf("device does not exist: %v", err)
-	}
-
-	file, err := os.OpenFile(device, os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open disk: %v", err)
-	}
-
-	defer file.Close()
-
-	diskSize, err := s.GetDiskSize(device)
-	if err != nil {
-		return fmt.Errorf("failed to get disk size: %v", err)
-	}
-
-	const wipeSize = 1024 * 1024
-	buffer := make([]byte, wipeSize)
-
-	_, err = file.WriteAt(buffer, 0)
-	if err != nil {
-		return fmt.Errorf("error wiping primary GPT: %v", err)
-	}
-
-	if diskSize > wipeSize {
-		_, err = file.WriteAt(buffer, int64(diskSize)-int64(wipeSize))
-		if err != nil {
-			return fmt.Errorf("error wiping backup GPT: %v", err)
-		}
-	} else {
-		return fmt.Errorf("disk size is too small for GPT")
-	}
-
-	err = syscall.Fsync(int(file.Fd()))
-	if err != nil {
-		return fmt.Errorf("failed to sync disk: %v", err)
-	}
-
-	return nil
+	return destroyPartitionTable(
+		device,
+		func(device string) (uint64, error) {
+			return resolveWholeDiskSize(device, diskUtils.CheckDevice, s.physicalDisks)
+		},
+		diskUtils.DestroyDisk,
+		openDiskForWrite,
+	)
 }
 
 func (s *Service) InitializeGPT(device string) error {
@@ -541,8 +508,8 @@ func (s *Service) InitializeGPT(device string) error {
 	return nil
 }
 
-func (s *Service) IsDiskGPT(device string) bool {
-	gptSector, err := utils.ReadDiskSector(device, 1)
+func (s *Service) IsDiskGPT(device string, sectorSize int) bool {
+	gptSector, err := utils.ReadDiskSector(device, 1, int64(sectorSize))
 	if err != nil {
 		if strings.Contains(err.Error(), "device not configured") {
 			return false

@@ -149,7 +149,7 @@ type DiskServiceInterface interface {
 	GetWearOut(disk any) (float64, error)
 	GetDiskSize(device string) (uint64, error)
 	DestroyPartitionTable(device string) error
-	IsDiskGPT(device string) bool
+	IsDiskGPT(device string, sectorSize int) bool
 	RunSelfTest(disk DiskInfo, testType string) error
 	AbortSelfTest(disk DiskInfo) error
 	GetSelfTestLog(disk DiskInfo) (*DiskSelfTestLog, error)
