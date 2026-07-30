@@ -293,7 +293,7 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 	if target != nil && strings.TrimSpace(target.SSHKey) != "" {
 		return s.ValidateTargetCandidate(ctx, target)
 	}
-	return s.validateTarget(ctx, target, true)
+	return s.validateTarget(ctx, target, target != nil && target.CreateBackupRoot)
 }
 
 // ValidateTargetCandidate validates uncommitted managed key material from an
@@ -305,7 +305,7 @@ func (s *Service) ValidateTargetCandidate(ctx context.Context, target *clusterMo
 		return err
 	}
 	defer cleanup()
-	return s.validateTarget(ctx, candidate, true)
+	return s.validateTarget(ctx, candidate, candidate.CreateBackupRoot)
 }
 
 func prepareBackupTargetValidationCandidate(
@@ -329,9 +329,9 @@ func prepareBackupTargetValidationCandidate(
 }
 
 // ValidateTargetReadiness performs the runner-side connectivity/readiness
-// check without mutating the remote target. Target create/update retains its
-// existing admission behavior; job placement and explicit readiness probes
-// must be observational.
+// check without mutating the remote target. Create/update admission may
+// provision a missing root only when explicitly requested; job placement and
+// explicit readiness probes must remain observational.
 func (s *Service) ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error {
 	return s.validateTarget(ctx, target, false)
 }
@@ -387,8 +387,9 @@ func (s *Service) validateTarget(ctx context.Context, target *clusterModels.Back
 		return fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
 	}
 
-	if err := s.remoteCreateDataset(ctx, target, backupRoot); err != nil {
-		return err
+	createErr := s.remoteCreateDataset(ctx, target, backupRoot)
+	if createErr != nil && !strings.Contains(strings.ToLower(createErr.Error()), "already exists") {
+		return createErr
 	}
 
 	created, verifyOutput, verifyErr := s.remoteDatasetExists(ctx, target, backupRoot)
