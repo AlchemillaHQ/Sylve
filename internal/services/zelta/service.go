@@ -2024,12 +2024,13 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 	}
 
 	update := cluster.BackupJobRuntimeStateUpdate{
+		Version:    cluster.BackupJobRuntimeStateVersion,
 		JobID:      job.ID,
 		LastRunAt:  &now,
 		LastStatus: status,
 		LastError:  lastError,
 		NextRunAt:  next,
-		Encrypted:  encrypted,
+		Encrypted:  &encrypted,
 	}
 
 	if s.syncBackupJobRuntimeState(update) {
@@ -2041,7 +2042,9 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		"last_status": update.LastStatus,
 		"last_error":  update.LastError,
 		"next_run_at": update.NextRunAt,
-		"encrypted":   update.Encrypted,
+	}
+	if update.Encrypted != nil {
+		updates["encrypted"] = *update.Encrypted
 	}
 
 	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {
@@ -2084,16 +2087,8 @@ func (s *Service) forwardBackupJobStateToLeader(update cluster.BackupJobRuntimeS
 		return fmt.Errorf("leader_unknown")
 	}
 
-	payload := map[string]any{
-		"jobId":       update.JobID,
-		"lastRunAt":   update.LastRunAt,
-		"lastStatus":  update.LastStatus,
-		"lastError":   update.LastError,
-		"nextRunAt":   update.NextRunAt,
-		"nextRunOnly": update.NextRunOnly,
-	}
-
-	return s.forwardReplicationPolicyControl(leaderNodeID, "backup-job-state", payload, 5*time.Second)
+	update.Version = cluster.BackupJobRuntimeStateVersion
+	return s.forwardReplicationPolicyControl(leaderNodeID, "backup-job-state", update, 5*time.Second)
 }
 
 func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr error, output string) {

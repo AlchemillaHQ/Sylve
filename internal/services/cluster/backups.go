@@ -58,15 +58,19 @@ type BackupJobInput struct {
 	Enabled          *bool  `json:"enabled"`
 }
 
+const BackupJobRuntimeStateVersion = 1
+
 // BackupJobRuntimeStateUpdate carries runtime-only fields that should be
-// synchronized cluster-wide after a backup run finishes.
+// synchronized cluster-wide after a backup run finishes. Encrypted is optional
+// so legacy forwarded requests that omitted it preserve the committed value.
 type BackupJobRuntimeStateUpdate struct {
+	Version     uint       `json:"version,omitempty"`
 	JobID       uint       `json:"jobId"`
 	LastRunAt   *time.Time `json:"lastRunAt"`
 	LastStatus  string     `json:"lastStatus"`
 	LastError   string     `json:"lastError"`
 	NextRunAt   *time.Time `json:"nextRunAt"`
-	Encrypted   bool       `json:"encrypted"`
+	Encrypted   *bool      `json:"encrypted,omitempty"`
 	NextRunOnly bool       `json:"nextRunOnly,omitempty"`
 }
 
@@ -259,6 +263,9 @@ func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {
 }
 
 func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate, bypassRaft bool) error {
+	if update.Version > BackupJobRuntimeStateVersion {
+		return fmt.Errorf("unsupported_backup_job_runtime_state_version")
+	}
 	if update.JobID == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
@@ -294,13 +301,16 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 	update.LastStatus = status
 
 	if bypassRaft {
-		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Updates(map[string]any{
+		updates := map[string]any{
 			"last_run_at": update.LastRunAt,
 			"last_status": update.LastStatus,
 			"last_error":  strings.TrimSpace(update.LastError),
 			"next_run_at": update.NextRunAt,
-			"encrypted":   update.Encrypted,
-		}).Error
+		}
+		if update.Encrypted != nil {
+			updates["encrypted"] = *update.Encrypted
+		}
+		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Updates(updates).Error
 	}
 
 	if s.Raft == nil {

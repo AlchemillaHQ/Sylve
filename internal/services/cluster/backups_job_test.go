@@ -18,6 +18,45 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 )
 
+func TestUpdateBackupJobRuntimeStatePreservesOmittedEncryption(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.BackupJob{})
+	s := &Service{DB: db}
+	job := clusterModels.BackupJob{
+		ID: 41, Name: "runtime-state", TargetID: 9,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
+		CronExpr: "0 0 * * *", Enabled: true, Encrypted: true,
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	if err := s.UpdateBackupJobRuntimeState(BackupJobRuntimeStateUpdate{
+		JobID: 41, LastStatus: "failed", LastError: "legacy runner",
+	}, true); err != nil {
+		t.Fatalf("legacy update: %v", err)
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatalf("reload legacy update: %v", err)
+	}
+	if !job.Encrypted {
+		t.Fatal("omitted encrypted field cleared committed value")
+	}
+
+	encrypted := false
+	if err := s.UpdateBackupJobRuntimeState(BackupJobRuntimeStateUpdate{
+		Version: BackupJobRuntimeStateVersion, JobID: 41,
+		LastStatus: "success", Encrypted: &encrypted,
+	}, true); err != nil {
+		t.Fatalf("explicit unencrypted update: %v", err)
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatalf("reload explicit update: %v", err)
+	}
+	if job.Encrypted {
+		t.Fatal("explicit encrypted=false was not applied")
+	}
+}
+
 func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 	db := newClusterServiceTestDB(
 		t,

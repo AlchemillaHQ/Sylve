@@ -688,12 +688,13 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		switch action {
 		case "update":
 			var payload struct {
+				Version     uint       `json:"version"`
 				JobID       uint       `json:"jobId"`
 				LastRunAt   *time.Time `json:"lastRunAt"`
 				LastStatus  string     `json:"lastStatus"`
 				LastError   string     `json:"lastError"`
 				NextRunAt   *time.Time `json:"nextRunAt"`
-				Encrypted   bool       `json:"encrypted"`
+				Encrypted   *bool      `json:"encrypted"`
 				NextRunOnly bool       `json:"nextRunOnly"`
 			}
 			if err := json.Unmarshal(raw, &payload); err != nil {
@@ -714,13 +715,16 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return fmt.Errorf("invalid_last_status")
 			}
 
-			return db.Model(&BackupJob{}).Where("id = ?", payload.JobID).Updates(map[string]any{
+			updates := map[string]any{
 				"last_run_at": payload.LastRunAt,
 				"last_status": status,
 				"last_error":  strings.TrimSpace(payload.LastError),
 				"next_run_at": payload.NextRunAt,
-				"encrypted":   payload.Encrypted,
-			}).Error
+			}
+			if payload.Encrypted != nil {
+				updates["encrypted"] = *payload.Encrypted
+			}
+			return db.Model(&BackupJob{}).Where("id = ?", payload.JobID).Updates(updates).Error
 		default:
 			return nil
 		}

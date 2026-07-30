@@ -483,6 +483,42 @@ func TestRaftBackupJobStateUpdateReplication(t *testing.T) {
 		return true
 	})
 
+	legacyRaw, _ := json.Marshal(map[string]any{
+		"jobId": 1, "lastStatus": "failed", "lastError": "legacy follower",
+	})
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job_state", Action: "update", Data: legacyRaw,
+	}); err != nil {
+		t.Fatalf("legacy state update via raft: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "legacy state preserves encryption", func() bool {
+		for _, n := range nodes {
+			var job clusterModels.BackupJob
+			if err := n.service.DB.First(&job, 1).Error; err != nil || !job.Encrypted || job.LastStatus != "failed" {
+				return false
+			}
+		}
+		return true
+	})
+
+	unencryptedRaw, _ := json.Marshal(map[string]any{
+		"version": 1, "jobId": 1, "lastStatus": "success", "encrypted": false,
+	})
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job_state", Action: "update", Data: unencryptedRaw,
+	}); err != nil {
+		t.Fatalf("unencrypted state update via raft: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "unencrypted state replicated", func() bool {
+		for _, n := range nodes {
+			var job clusterModels.BackupJob
+			if err := n.service.DB.First(&job, 1).Error; err != nil || job.Encrypted {
+				return false
+			}
+		}
+		return true
+	})
+
 	// test invalid status
 	invalidRaw, _ := json.Marshal(map[string]any{"jobId": 1, "lastStatus": "unknown"})
 	err := leader.service.applyRaftCommand(clusterModels.Command{

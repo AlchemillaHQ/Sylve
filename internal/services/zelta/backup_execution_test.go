@@ -117,6 +117,21 @@ func fetchJob(t *testing.T, db *gorm.DB, id uint) clusterModels.BackupJob {
 	return job
 }
 
+func TestUpdateBackupJobResultPersistsEncryptionState(t *testing.T) {
+	service := newRunBackupJobTestDB(t)
+	target := seedBackupTarget(t, service.DB, 1, "runtime-state")
+	job := seedAndLoadJob(t, service.DB, 101, "runtime-state", clusterModels.BackupJobModeDataset, target.ID, "tank/data")
+
+	service.updateBackupJobResult(&job, nil, true)
+	if got := fetchJob(t, service.DB, job.ID); !got.Encrypted {
+		t.Fatal("encrypted completion was not persisted")
+	}
+	service.updateBackupJobResult(&job, nil, false)
+	if got := fetchJob(t, service.DB, job.ID); got.Encrypted {
+		t.Fatal("unencrypted completion was not persisted")
+	}
+}
+
 func TestRunBackupJobAlreadyRunning(t *testing.T) {
 	svc := newRunBackupJobTestDB(t)
 	target := seedBackupTarget(t, svc.DB, 1, "t1")

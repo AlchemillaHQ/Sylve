@@ -7000,7 +7000,7 @@ func (s *Service) forwardReplicationPolicyControlWithRetry(
 	return lastErr
 }
 
-func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload map[string]any, timeout time.Duration) error {
+func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload any, timeout time.Duration) error {
 	_, err := s.forwardReplicationPolicyControlRead(nodeID, action, payload, timeout)
 	return err
 }
@@ -7008,7 +7008,7 @@ func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, 
 func (s *Service) forwardReplicationPolicyControlRead(
 	nodeID string,
 	action string,
-	payload map[string]any,
+	payload any,
 	timeout time.Duration,
 ) ([]byte, error) {
 	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
@@ -7021,7 +7021,7 @@ func (s *Service) forwardReplicationPolicyControlRead(
 func (s *Service) forwardReplicationPolicyControlReadAtAPI(
 	targetAPI string,
 	action string,
-	payload map[string]any,
+	payload any,
 	timeout time.Duration,
 ) ([]byte, error) {
 	targetAPI = strings.TrimSpace(targetAPI)

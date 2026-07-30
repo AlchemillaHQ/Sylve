@@ -29,6 +29,47 @@ func newBackupsRouter(cS *cluster.Service) *gin.Engine {
 	return r
 }
 
+func TestUpdateBackupJobStateInternalPreservesLegacyEncryption(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
+	service := &cluster.Service{DB: db}
+	job := clusterModels.BackupJob{
+		ID: 71, Name: "forwarded-state", TargetID: 9,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
+		CronExpr: "0 0 * * *", Enabled: true, Encrypted: true,
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/intra-cluster/backup-job-state", UpdateBackupJobStateInternal(service))
+
+	legacy := []byte(`{"jobId":71,"lastStatus":"failed","lastError":"legacy follower"}`)
+	rr := performJSONRequest(t, router, http.MethodPost, "/intra-cluster/backup-job-state", legacy)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("legacy update status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatalf("reload legacy update: %v", err)
+	}
+	if !job.Encrypted {
+		t.Fatal("legacy forwarded update cleared encrypted state")
+	}
+
+	current := []byte(`{"version":1,"jobId":71,"lastStatus":"success","encrypted":false}`)
+	rr = performJSONRequest(t, router, http.MethodPost, "/intra-cluster/backup-job-state", current)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("current update status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatalf("reload current update: %v", err)
+	}
+	if job.Encrypted {
+		t.Fatal("forwarded encrypted=false was not applied")
+	}
+}
+
 func TestBackupJobsHandlerGet(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
 	cS := &cluster.Service{DB: db}
