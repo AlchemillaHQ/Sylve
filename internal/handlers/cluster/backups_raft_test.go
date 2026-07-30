@@ -18,6 +18,8 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -214,6 +216,126 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	}
 	if updated.Enabled {
 		t.Fatalf("expected enabled=false")
+	}
+}
+
+func TestUpdateBackupJobHandlerMissingJobReturnsNotFound(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{})
+	router := newBackupJobCrudRouter(&cluster.Service{DB: database})
+	body := `{"name":"missing-job","targetId":1,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 0 * * *","enabled":true}`
+
+	response := performJSONRequest(
+		t,
+		router,
+		http.MethodPut,
+		"/cluster/backups/jobs/999",
+		[]byte(body),
+	)
+	if response.Code != http.StatusNotFound ||
+		!strings.Contains(response.Body.String(), "backup_job_not_found") {
+		t.Fatalf("response=%d body=%s, want missing-job 404", response.Code, response.Body.String())
+	}
+}
+
+func TestUpdateBackupJobHandlerReportsStrictRunnerPlacementFailures(t *testing.T) {
+	tests := []struct {
+		name        string
+		clustered   bool
+		duplicate   bool
+		wantStatus  int
+		wantMessage string
+	}{
+		{
+			name: "inventory unavailable", clustered: true,
+			wantStatus: http.StatusServiceUnavailable, wantMessage: "backup_job_runner_inventory_unavailable",
+		},
+		{
+			name: "duplicate registration", duplicate: true,
+			wantStatus: http.StatusConflict, wantMessage: "backup_job_update_failed",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			database := testutil.NewSQLiteTestDB(
+				t,
+				&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+				&clusterModels.BackupJob{}, &clusterModels.BackupJobRunnerRebind{},
+				&clusterModels.BackupJobRunnerRebindItem{}, &clusterModels.Cluster{},
+				&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
+				&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
+				&jailModels.Jail{},
+			)
+			if err := database.Create(&clusterModels.Cluster{Enabled: test.clustered}).Error; err != nil {
+				t.Fatalf("seed cluster state: %v", err)
+			}
+			target := clusterModels.BackupTarget{
+				ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
+			}
+			if err := database.Create(&target).Error; err != nil {
+				t.Fatalf("seed target: %v", err)
+			}
+			job := clusterModels.BackupJob{
+				ID: 82, Name: "stale-runner", TargetID: target.ID, RunnerNodeID: "node-old",
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/812",
+				Recursive: true, CronExpr: "0 0 * * *", Enabled: true,
+			}
+			if err := database.Create(&job).Error; err != nil {
+				t.Fatalf("seed job: %v", err)
+			}
+			vm := vmModels.VM{RID: 812, Name: "vm-812"}
+			if err := database.Create(&vm).Error; err != nil {
+				t.Fatalf("seed VM: %v", err)
+			}
+			dataset := vmModels.VMStorageDataset{
+				Pool: "fast", Name: "fast/sylve/virtual-machines/812/disk0", GUID: "vm-812-guid",
+			}
+			if err := database.Create(&dataset).Error; err != nil {
+				t.Fatalf("seed VM dataset: %v", err)
+			}
+			if err := database.Create(&vmModels.Storage{
+				VMID: vm.ID, Type: vmModels.VMStorageTypeZVol,
+				Pool: "fast", Enable: true, DatasetID: &dataset.ID,
+			}).Error; err != nil {
+				t.Fatalf("seed VM storage: %v", err)
+			}
+			if test.duplicate {
+				if err := database.Create(&jailModels.Jail{CTID: 812, Name: "duplicate-jail"}).Error; err != nil {
+					t.Fatalf("seed duplicate jail: %v", err)
+				}
+			}
+
+			service := &cluster.Service{DB: database, NodeID: "node-current"}
+			service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
+				return nil
+			})
+			router := newBackupJobCrudRouter(service)
+			body := `{"name":"stale-runner","targetId":1,"runnerNodeId":"node-current","mode":"vm","sourceDataset":"fast/sylve/virtual-machines/812","recursive":true,"cronExpr":"0 0 * * *","enabled":true}`
+			response := performJSONRequest(
+				t,
+				router,
+				http.MethodPut,
+				"/cluster/backups/jobs/82",
+				[]byte(body),
+			)
+			if response.Code != test.wantStatus ||
+				!strings.Contains(response.Body.String(), test.wantMessage) {
+				t.Fatalf(
+					"response=%d body=%s, want status=%d message=%s",
+					response.Code,
+					response.Body.String(),
+					test.wantStatus,
+					test.wantMessage,
+				)
+			}
+			var unchanged clusterModels.BackupJob
+			if err := database.First(&unchanged, job.ID).Error; err != nil {
+				t.Fatalf("reload job: %v", err)
+			}
+			if unchanged.RunnerNodeID != "node-old" {
+				t.Fatalf("failed placement changed runner: %+v", unchanged)
+			}
+		})
 	}
 }
 

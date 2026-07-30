@@ -34,6 +34,7 @@ const (
 	backupJobForwardedByHeader     = "X-Sylve-Backup-Forwarded-By"
 	backupJobForwardedTargetHeader = "X-Sylve-Backup-Forward-Target"
 	backupJobForwardMaxHops        = clusterForwardMaxHops
+	backupJobMaxSafeQueryID        = 1<<53 - 1
 )
 
 var backupJobForwardHTTP = func(
@@ -79,13 +80,33 @@ type backupJobRunnerRoute struct {
 	Forward      bool
 }
 
+func backupJobTargetIDQuery(c *gin.Context) (uint, error) {
+	values, present := c.Request.URL.Query()["targetId"]
+	if !present {
+		return 0, nil
+	}
+	if len(values) != 1 || values[0] == "" {
+		return 0, fmt.Errorf("targetId must be provided once as a positive JavaScript-safe integer")
+	}
+
+	parsed, err := strconv.ParseUint(values[0], 10, 64)
+	if err != nil || parsed == 0 || parsed > backupJobMaxSafeQueryID {
+		return 0, fmt.Errorf("targetId must be provided once as a positive JavaScript-safe integer")
+	}
+	return uint(parsed), nil
+}
+
 func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		targetID := uint(0)
-		if q := c.Query("targetId"); q != "" {
-			if parsed, err := strconv.ParseUint(q, 10, 64); err == nil {
-				targetID = uint(parsed)
-			}
+		targetID, err := backupJobTargetIDQuery(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_filter",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
 		}
 
 		guestType := strings.TrimSpace(c.Query("guestType"))
@@ -101,7 +122,6 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		var jobs []clusterModels.BackupJob
-		var err error
 		if guestType != "" {
 			guestID64, parseErr := strconv.ParseUint(guestIDQuery, 10, 64)
 			if parseErr != nil || guestID64 == 0 || strings.ToLower(guestType) != clusterModels.ReplicationGuestTypeVM {
@@ -197,9 +217,15 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 		err := cS.ProposeBackupJobCreateContext(c.Request.Context(), req, cS.Raft == nil)
 
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			status := http.StatusBadRequest
+			message := "backup_job_create_failed"
+			if strings.Contains(err.Error(), "backup_job_id_conflict") {
+				status = http.StatusConflict
+				message = "backup_job_id_conflict"
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "backup_job_create_failed",
+				Message: message,
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -251,9 +277,22 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 			cluster.BackupJobPlacementAuthorization{},
 		)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			status := http.StatusBadRequest
+			message := "backup_job_update_failed"
+			switch {
+			case strings.Contains(err.Error(), "guest_identity_inventory_unavailable"):
+				status = http.StatusServiceUnavailable
+				message = "backup_job_runner_inventory_unavailable"
+			case strings.Contains(err.Error(), "backup_job_not_found"):
+				status = http.StatusNotFound
+				message = "backup_job_not_found"
+			case strings.Contains(err.Error(), "guest_identity_inventory_conflict"),
+				strings.Contains(err.Error(), "backup_job_runner_rebind_pending"):
+				status = http.StatusConflict
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "backup_job_update_failed",
+				Message: message,
 				Error:   err.Error(),
 				Data:    nil,
 			})

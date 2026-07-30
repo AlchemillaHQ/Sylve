@@ -2,7 +2,7 @@
 	import { createBackupJob, updateBackupJob, type BackupJobInput } from '$lib/api/cluster/backups';
 	import { getJails } from '$lib/api/jail/jail';
 	import { getVMs } from '$lib/api/vm/vm';
-	import { getDatasets } from '$lib/api/zfs/datasets';
+	import { getDatasetsResult } from '$lib/api/zfs/datasets';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -19,7 +19,7 @@
 	} from '$lib/types/cluster/backups';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { VM } from '$lib/types/vm/vm';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { vmBaseDataset, vmStoragePools } from '$lib/utils/vm/vm';
 	import { watch } from 'runed';
@@ -55,6 +55,8 @@
 		recursive: boolean;
 	};
 
+	type SourceEncryptionState = 'idle' | 'checking' | 'encrypted' | 'unencrypted' | 'unavailable';
+
 	let {
 		open = $bindable(),
 		edit = $bindable(),
@@ -77,8 +79,9 @@
 	let vmsLoading = $state(false);
 	let vmsLoadedForNode = $state('');
 	let lastRunnerNodeId = $state('');
-	let srcEncrypted = $state(false);
-	let srcEncryptionChecking = $state(false);
+	let srcEncryptionState = $state<SourceEncryptionState>('idle');
+	let srcEncryptionGeneration = 0;
+	let srcEncryptionController: AbortController | null = null;
 
 	let form = $state<JobFormState>({
 		name: '',
@@ -119,6 +122,34 @@
 			}))
 		];
 	});
+
+	function normalizedNodeHostname(value: string): string {
+		return value.trim().replace(/\s+\(Local\)$/, '');
+	}
+
+	let scopedVmNode = $derived.by(() => {
+		if (scopedVmRid <= 0 || !scopedVmHostname.trim()) return null;
+		const hostname = normalizedNodeHostname(scopedVmHostname);
+		return nodes.find((node) => normalizedNodeHostname(node.hostname) === hostname) || null;
+	});
+	let scopedRebindPending = $derived(
+		edit && scopedVmRid > 0 && selectedJob?.lastStatus === 'runner_rebind_pending'
+	);
+	let scopedRunnerMismatch = $derived(
+		edit &&
+			scopedVmRid > 0 &&
+			selectedJob?.mode === 'vm' &&
+			!!scopedVmNode &&
+			form.runnerNodeId.trim() !== scopedVmNode.nodeUUID.trim()
+	);
+	let scopedRunnerSelectedForSave = $derived(
+		edit &&
+			scopedVmRid > 0 &&
+			selectedJob?.mode === 'vm' &&
+			!!scopedVmNode &&
+			(selectedJob.runnerNodeId || '').trim() !== scopedVmNode.nodeUUID.trim() &&
+			form.runnerNodeId.trim() === scopedVmNode.nodeUUID.trim()
+	);
 
 	const modeOptions: Array<{ value: BackupJobMode; label: string }> = [
 		{ value: 'dataset', label: 'Single Dataset' },
@@ -172,32 +203,70 @@
 		return { kind: 'dataset', id: 0 };
 	}
 
-	async function checkSourceEncryption(dataset: string) {
-		if (!dataset) {
-			srcEncrypted = false;
+	function invalidateSourceEncryptionCheck(state: SourceEncryptionState = 'idle') {
+		srcEncryptionGeneration += 1;
+		srcEncryptionController?.abort();
+		srcEncryptionController = null;
+		srcEncryptionState = state;
+	}
+
+	async function checkSourceEncryption(dataset: string, hostname: string) {
+		const requestedDataset = dataset.trim();
+		const requestedHostname = hostname.trim();
+		invalidateSourceEncryptionCheck();
+		if (!requestedDataset) return;
+		if (!requestedHostname) {
+			srcEncryptionState = 'unavailable';
 			return;
 		}
 
-		srcEncryptionChecking = true;
-		await sleep(1000);
+		const generation = srcEncryptionGeneration;
+		const controller = new AbortController();
+		srcEncryptionController = controller;
+		srcEncryptionState = 'checking';
 
 		try {
-			const datasets = await Promise.all([
-				getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
-				getDatasets(GZFSDatasetTypeSchema.enum.VOLUME)
-			]).then(([filesystems, volumes]) => [...filesystems, ...volumes]);
+			await sleep(1000);
+			if (controller.signal.aborted || generation !== srcEncryptionGeneration) return;
 
-			const match = datasets.find((d) => {
-				if (d.name !== dataset) return false;
-				console.log(d.properties);
-				const enc = d.properties?.encryption || '';
-				return enc && enc !== 'off' && enc !== '-' && enc !== 'none';
-			});
-			srcEncrypted = !!match;
-		} catch {
-			srcEncrypted = false;
+			const [filesystems, volumes] = await Promise.all([
+				getDatasetsResult(
+					GZFSDatasetTypeSchema.enum.FILESYSTEM,
+					requestedHostname,
+					controller.signal
+				),
+				getDatasetsResult(GZFSDatasetTypeSchema.enum.VOLUME, requestedHostname, controller.signal)
+			]);
+			if (controller.signal.aborted || generation !== srcEncryptionGeneration) return;
+			if (isAPIResponse(filesystems) || isAPIResponse(volumes)) {
+				srcEncryptionState = 'unavailable';
+				return;
+			}
+
+			const source = [...filesystems, ...volumes].find((entry) => entry.name === requestedDataset);
+			if (!source) {
+				srcEncryptionState = 'unavailable';
+				return;
+			}
+			const encryption = (source.properties?.encryption || '').trim().toLowerCase();
+			srcEncryptionState =
+				encryption !== '' && encryption !== 'off' && encryption !== '-' && encryption !== 'none'
+					? 'encrypted'
+					: 'unencrypted';
+		} catch (error) {
+			if (
+				!(error instanceof Error && error.name === 'AbortError') &&
+				generation === srcEncryptionGeneration
+			) {
+				srcEncryptionState = 'unavailable';
+			}
 		} finally {
-			srcEncryptionChecking = false;
+			if (generation === srcEncryptionGeneration) {
+				srcEncryptionController = null;
+				if (srcEncryptionState === 'checking') {
+					srcEncryptionState = 'unavailable';
+				}
+			}
 		}
 	}
 
@@ -207,11 +276,14 @@
 
 		const selectedNode = nodes.find((node) => node.nodeUUID === runnerNodeId);
 		if (selectedNode?.hostname) {
-			return selectedNode.hostname;
+			return normalizedNodeHostname(selectedNode.hostname);
 		}
 
-		const nodeByHostname = nodes.find((node) => node.hostname === runnerNodeId);
-		return nodeByHostname?.hostname || runnerNodeId;
+		const normalizedRunner = normalizedNodeHostname(runnerNodeId);
+		const nodeByHostname = nodes.find(
+			(node) => normalizedNodeHostname(node.hostname) === normalizedRunner
+		);
+		return nodeByHostname ? normalizedNodeHostname(nodeByHostname.hostname) : '';
 	}
 
 	async function loadJails(force: boolean = false) {
@@ -245,18 +317,10 @@
 	}
 
 	async function applyDefaults() {
-		const scopedNode = scopedVmHostname
-			? nodes.find(
-					(node) =>
-						node.hostname === scopedVmHostname ||
-						node.hostname.replace(/\s+\(Local\)$/, '') === scopedVmHostname
-				)
-			: undefined;
-
 		form.name = '';
 		form.targetId = targets[0]?.id ? String(targets[0].id) : '';
 		form.runnerNodeId =
-			scopedNode?.nodeUUID ||
+			scopedVmNode?.nodeUUID ||
 			(standaloneMode ? localNodeId || nodes[0]?.nodeUUID || '' : (nodes[0]?.nodeUUID ?? ''));
 		form.mode = scopedVmRid > 0 ? 'vm' : 'dataset';
 		form.sourceDataset = '';
@@ -314,14 +378,68 @@
 		if (form.mode === 'vm') {
 			await loadVMs(true);
 			const parsedGuest = parseGuestFromDatasetPath(job.sourceDataset || '');
-			if (parsedGuest.kind === 'vm' && parsedGuest.id > 0) {
-				const matchingVM = vms.find((vm) => vm.rid === parsedGuest.id);
+			const scopedRunnerMatches =
+				scopedVmRid > 0 &&
+				!!scopedVmNode &&
+				form.runnerNodeId.trim() === scopedVmNode.nodeUUID.trim();
+			const expectedRID =
+				parsedGuest.kind === 'vm' && parsedGuest.id > 0
+					? parsedGuest.id
+					: scopedRunnerMatches
+						? scopedVmRid
+						: 0;
+			if (expectedRID > 0) {
+				const matchingVM = vms.find((vm) => vm.rid === expectedRID);
 				form.selectedVmId = matchingVM ? String(matchingVM.id) : '';
 			}
 		}
 	}
 
+	async function useCurrentVMOwner() {
+		if (!scopedVmNode || scopedVmRid <= 0 || scopedRebindPending) return;
+
+		vmsLoading = true;
+		try {
+			const hostname = normalizedNodeHostname(scopedVmNode.hostname);
+			const result = await getVMs(hostname || undefined);
+			const scopedVM = result.find((vm) => vm.rid === scopedVmRid);
+			if (!scopedVM) {
+				toast.error(`VM ${scopedVmRid} was not found on ${hostname || 'the scoped node'}`, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			const dataset = vmBaseDataset(scopedVM);
+			if (!dataset) {
+				toast.error(`Unable to resolve a dataset root for VM ${scopedVmRid}`, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', result);
+			vms = result;
+			vmsLoadedForNode = hostname;
+			form.runnerNodeId = scopedVmNode.nodeUUID;
+			lastRunnerNodeId = form.runnerNodeId;
+			form.mode = 'vm';
+			form.selectedVmId = String(scopedVM.id);
+			form.sourceDataset = dataset;
+			form.recursive = true;
+			toast.success('Current VM owner selected. Save the job to apply the repair.', {
+				position: 'bottom-center'
+			});
+		} catch (e: unknown) {
+			toast.error((e as { message?: string })?.message || 'Failed to load the scoped VM owner', {
+				position: 'bottom-center'
+			});
+		} finally {
+			vmsLoading = false;
+		}
+	}
+
 	function handleClose() {
+		invalidateSourceEncryptionCheck();
 		open = false;
 		edit = false;
 		loading = false;
@@ -492,25 +610,13 @@
 	});
 
 	watch(
-		[
-			() => open,
-			() => form.mode,
-			() => form.sourceDataset,
-			() => form.selectedJailId,
-			() => form.selectedVmId
-		],
-		([isOpen]) => {
-			if (!isOpen) return;
-			let dataset = '';
-			if (form.mode === 'dataset') {
-				dataset = form.sourceDataset;
-			} else if (form.mode === 'jail' && selectedJail) {
-				const base = selectedJail.storages?.find((s) => s.isBase);
-				if (base) dataset = `${base.pool}/sylve/jails/${selectedJail.ctId}`;
-			} else if (form.mode === 'vm' && selectedVM) {
-				dataset = vmBaseDataset(selectedVM) || '';
+		[() => open, () => form.mode, () => form.sourceDataset, () => form.runnerNodeId],
+		([isOpen, mode, dataset]) => {
+			if (!isOpen || mode !== 'dataset') {
+				invalidateSourceEncryptionCheck();
+				return;
 			}
-			void checkSourceEncryption(dataset);
+			void checkSourceEncryption(dataset, selectedRunnerHostname());
 		}
 	);
 
@@ -558,6 +664,54 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
+			{#if edit && scopedVmRid > 0 && selectedJob?.mode === 'vm'}
+				{#if scopedRebindPending}
+					<div class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+						<p class="font-medium text-amber-700 dark:text-amber-300">
+							Runner rebind is still in progress
+						</p>
+						<p class="mt-1 text-muted-foreground">
+							Automatic reconciliation owns this job. Wait for it to finish before editing.
+						</p>
+					</div>
+				{:else if !scopedVmNode}
+					<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+						<p class="font-medium text-destructive">Scoped VM node is unavailable</p>
+						<p class="mt-1 text-muted-foreground">
+							The route node could not be resolved, so runner repair is disabled.
+						</p>
+					</div>
+				{:else if scopedRunnerMismatch}
+					<div class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+						<p class="font-medium text-amber-700 dark:text-amber-300">
+							This job is assigned to a different runner
+						</p>
+						<p class="mt-1 text-muted-foreground">
+							The scoped VM is on {scopedVmNode.hostname}. Select its current owner, then save to
+							repair the assignment.
+						</p>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							class="mt-3"
+							onclick={useCurrentVMOwner}
+							disabled={vmsLoading}
+						>
+							{vmsLoading ? 'Loading VM owner…' : 'Use current VM owner'}
+						</Button>
+					</div>
+				{:else if scopedRunnerSelectedForSave}
+					<div class="rounded-md border border-blue-500/50 bg-blue-500/10 p-3 text-sm">
+						<p class="font-medium text-blue-700 dark:text-blue-300">Current VM owner selected</p>
+						<p class="mt-1 text-muted-foreground">
+							The runner will change to {scopedVmNode.hostname} only after this job is saved and the backend
+							verifies live placement.
+						</p>
+					</div>
+				{/if}
+			{/if}
+
 			<CustomValueInput
 				label="Name"
 				placeholder="daily-backup"
@@ -747,7 +901,7 @@
 					</li>
 
 					{#if form.mode !== 'jail' && form.mode !== 'vm'}
-						{#if srcEncryptionChecking}
+						{#if srcEncryptionState === 'checking'}
 							<li>
 								<span
 									class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin inline-block align-text-bottom mb-0.5"
@@ -759,17 +913,23 @@
 								></span>
 								<span>Select a dataset to view encryption information</span>
 							</li>
-						{:else if srcEncrypted}
+						{:else if srcEncryptionState === 'encrypted'}
 							<li>
 								<span class="icon-[mdi--lock] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
 								></span>
 								<span>Source is encrypted</span>
 							</li>
-						{:else}
+						{:else if srcEncryptionState === 'unencrypted'}
 							<li>
 								<span class="icon-[mdi--unlocked] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
 								></span>
 								<span>Source is not encrypted</span>
+							</li>
+						{:else}
+							<li>
+								<span class="icon-[mdi--help] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
+								></span>
+								<span>Encryption information is unavailable for the selected runner</span>
 							</li>
 						{/if}
 					{/if}
@@ -778,7 +938,7 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button onclick={saveJob} disabled={loading}>
+			<Button onclick={saveJob} disabled={loading || scopedRebindPending}>
 				{#if loading}
 					<div class="flex items-center gap-1">
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>

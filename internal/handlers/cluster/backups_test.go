@@ -117,6 +117,17 @@ func TestBackupJobsHandlerGet(t *testing.T) {
 		t.Fatalf("expected 1 job, got %d", len(resp.Data))
 	}
 
+	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/jobs?targetId=1", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].ID != job.ID {
+		t.Fatalf("expected target-filtered job %d, got %+v", job.ID, resp.Data)
+	}
+
 	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/jobs?targetId=99999", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -126,6 +137,48 @@ func TestBackupJobsHandlerGet(t *testing.T) {
 	}
 	if len(resp.Data) != 0 {
 		t.Fatalf("expected 0 with non-existent target, got %d", len(resp.Data))
+	}
+}
+
+func TestBackupJobsHandlerRejectsInvalidTargetFilter(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
+	if err := db.Create(&clusterModels.BackupJob{
+		ID: 100, Name: "must-not-leak", TargetID: 1,
+		Mode: clusterModels.BackupJobModeDataset, CronExpr: "0 0 * * *",
+	}).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	router := newBackupsRouter(&cluster.Service{DB: db})
+
+	tests := map[string]string{
+		"empty":       "?targetId=",
+		"malformed":   "?targetId=not-a-number",
+		"zero":        "?targetId=0",
+		"unsafe":      "?targetId=9007199254740992",
+		"overflow":    "?targetId=18446744073709551616",
+		"repeated":    "?targetId=1&targetId=2",
+		"empty-first": "?targetId=&targetId=1",
+	}
+	for name, query := range tests {
+		t.Run(name, func(t *testing.T) {
+			rr := performJSONRequest(
+				t,
+				router,
+				http.MethodGet,
+				"/cluster/backups/jobs"+query,
+				nil,
+			)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var response handlerAPIResponse[any]
+			if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+				t.Fatalf("invalid json: %v", err)
+			}
+			if response.Message != "invalid_target_filter" {
+				t.Fatalf("message = %q, want invalid_target_filter", response.Message)
+			}
+		})
 	}
 }
 

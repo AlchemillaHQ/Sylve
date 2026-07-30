@@ -71,6 +71,7 @@ type Service struct {
 	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
 	backupTargetValidationAPIForNode func(string, raft.ServerAddress) (string, error)
 	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
+	backupJobIDGenerator             func() (uint, error)
 }
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {

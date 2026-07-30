@@ -572,30 +572,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 						return err
 					}
 				}
-				// Use Updates with map to properly handle boolean false values.
-				if err := tx.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-					"name":               job.Name,
-					"target_id":          job.TargetID,
-					"runner_node_id":     job.RunnerNodeID,
-					"mode":               job.Mode,
-					"source_dataset":     job.SourceDataset,
-					"jail_root_dataset":  job.JailRootDataset,
-					"friendly_src":       job.FriendlySrc,
-					"dest_suffix":        job.DestSuffix,
-					"prune_keep_last":    job.PruneKeepLast,
-					"prune_target":       job.PruneTarget,
-					"stop_before_backup": job.StopBeforeBackup,
-					"recursive":          job.Recursive,
-					"cron_expr":          job.CronExpr,
-					"enabled":            job.Enabled,
-					"next_run_at":        job.NextRunAt,
-					"schedule_revision":  gorm.Expr("schedule_revision + ?", 1),
-				}).Error; err != nil {
-					return err
-				}
-				// A normal update has already passed runner-local validation and
-				// therefore acts as the explicit repair acknowledgement.
-				return ClearBackupJobRepairRequiredTxn(tx, job.ID)
+				return ApplyBackupJobUpdateTxn(tx, job)
 			})
 		case "delete":
 			var payload struct {

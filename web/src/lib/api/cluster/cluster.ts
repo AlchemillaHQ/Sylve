@@ -48,6 +48,12 @@ export async function getNodes(): Promise<ClusterNode[]> {
     return await apiRequest('/cluster/nodes', z.array(ClusterNodeSchema), 'GET');
 }
 
+export async function getNodesResult(): Promise<ClusterNode[] | APIResponse> {
+    return await apiRequest('/cluster/nodes', z.array(ClusterNodeSchema), 'GET', undefined, {
+        preserveErrors: true
+    });
+}
+
 export async function getClusterResources(): Promise<NodeResource[]> {
     return await apiRequest('/cluster/resources', z.array(NodeResourceSchema), 'GET');
 }

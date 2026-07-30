@@ -1,19 +1,13 @@
 <script lang="ts">
 	import BackupJobsPage from '$lib/components/custom/DataCenter/Backups/Jobs/Page.svelte';
-	import type { BackupJob, BackupTarget } from '$lib/types/cluster/backups';
-	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { BackupJobsPageData } from '$lib/utils/backup-jobs-page-state';
 
 	let {
 		data
 	}: {
-		data: {
+		data: BackupJobsPageData & {
 			rid: number;
 			hostname: string;
-			targets: BackupTarget[];
-			jobs: BackupJob[];
-			nodes: ClusterNode[];
-			localNodeId: string;
-			standaloneMode: boolean;
 		};
 	} = $props();
 </script>

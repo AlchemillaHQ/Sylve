@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -32,7 +33,8 @@ import (
 )
 
 var maxSafeJSInt = big.NewInt(9007199254740991)
-var maxBackupJobIDRange = big.NewInt(1000000000)
+
+const backupJobIDGenerationAttempts = 2
 
 func boolPtrDefaultTrue(v *bool) bool {
 	if v == nil {
@@ -600,7 +602,7 @@ func (s *Service) ProposeBackupJobCreateContext(
 		defer s.clusterJoinMu.Unlock()
 	}
 
-	id, err := s.newRaftObjectID("backup_jobs")
+	id, err := s.newAvailableBackupJobID(ctx)
 	if err != nil {
 		return fmt.Errorf("new_backup_job_id_failed: %w", err)
 	}
@@ -619,7 +621,7 @@ func (s *Service) ProposeBackupJobCreateContext(
 			if err := clusterModels.ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
 				return err
 			}
-			return tx.Create(job).Error
+			return clusterModels.InsertBackupJobTxn(tx, job)
 		})
 	}
 
@@ -664,6 +666,24 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	if id == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var existing clusterModels.BackupJob
+	if err := s.DB.WithContext(ctx).Where("id = ?", id).First(&existing).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("backup_job_not_found")
+		}
+		return err
+	}
+	rebindPending, err := clusterModels.BackupJobRunnerRebindPendingForJob(s.DB.WithContext(ctx), id)
+	if err != nil {
+		return err
+	}
+	if rebindPending {
+		return fmt.Errorf("backup_job_runner_rebind_pending")
+	}
 
 	previousFence, err := s.backupJobPreviousPlacementFence(ctx, id, authorization)
 	if err != nil {
@@ -677,33 +697,21 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	if targetReadiness == nil {
 		return fmt.Errorf("backup_target_readiness_job_receipt_missing")
 	}
+	if strings.TrimSpace(existing.RunnerNodeID) != strings.TrimSpace(job.RunnerNodeID) {
+		guestType, guestID := clusterModels.BackupJobGuestIdentity(job)
+		if guestType != "" && guestID > 0 {
+			if err := s.RequireGuestPlacement(ctx, guestType, guestID, job.RunnerNodeID); err != nil {
+				return fmt.Errorf("backup_job_runner_placement_invalid: %w", err)
+			}
+		}
+	}
 
 	if bypassRaft {
 		return s.DB.Transaction(func(tx *gorm.DB) error {
 			if err := clusterModels.ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
 				return err
 			}
-			if err := tx.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
-				"name":               job.Name,
-				"target_id":          job.TargetID,
-				"runner_node_id":     job.RunnerNodeID,
-				"mode":               job.Mode,
-				"source_dataset":     job.SourceDataset,
-				"jail_root_dataset":  job.JailRootDataset,
-				"friendly_src":       job.FriendlySrc,
-				"dest_suffix":        job.DestSuffix,
-				"prune_keep_last":    job.PruneKeepLast,
-				"prune_target":       job.PruneTarget,
-				"stop_before_backup": job.StopBeforeBackup,
-				"recursive":          job.Recursive,
-				"cron_expr":          job.CronExpr,
-				"enabled":            job.Enabled,
-				"next_run_at":        job.NextRunAt,
-				"schedule_revision":  gorm.Expr("schedule_revision + ?", 1),
-			}).Error; err != nil {
-				return err
-			}
-			return clusterModels.ClearBackupJobRepairRequiredTxn(tx, id)
+			return clusterModels.ApplyBackupJobUpdateTxn(tx, job)
 		})
 	}
 
@@ -1125,20 +1133,49 @@ func (s *Service) newRaftObjectID(table string) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	id := uint(n.Uint64())
-	if id == 0 {
-		return 0, fmt.Errorf("generated_zero_id")
-	}
-	return id, nil
+	return uint(n.Uint64() + 1), nil
 }
 
-func raftObjectIDRangeForTable(table string) *big.Int {
-	switch strings.ToLower(strings.TrimSpace(table)) {
-	case "backup_jobs":
-		return maxBackupJobIDRange
-	default:
-		return maxSafeJSInt
+func raftObjectIDRangeForTable(_ string) *big.Int {
+	return maxSafeJSInt
+}
+
+func (s *Service) newAvailableBackupJobID(ctx context.Context) (uint, error) {
+	if s == nil || s.DB == nil {
+		return 0, fmt.Errorf("backup_job_database_unavailable")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	for attempt := 0; attempt < backupJobIDGenerationAttempts; attempt++ {
+		var (
+			id  uint
+			err error
+		)
+		if s.backupJobIDGenerator != nil {
+			id, err = s.backupJobIDGenerator()
+		} else {
+			id, err = s.newRaftObjectID("backup_jobs")
+		}
+		if err != nil {
+			return 0, err
+		}
+		if id == 0 || uint64(id) > maxSafeJSInt.Uint64() {
+			return 0, fmt.Errorf("generated_backup_job_id_out_of_range")
+		}
+
+		var existing clusterModels.BackupJob
+		result := s.DB.WithContext(ctx).Select("id").Where("id = ?", id).Limit(1).Find(&existing)
+		if result.Error != nil {
+			return 0, result.Error
+		}
+		if result.RowsAffected == 0 {
+			return id, nil
+		}
+	}
+
+	return 0, fmt.Errorf("backup_job_id_conflict")
 }
 
 func resolveSSHKeyMaterial(sshKey, sshKeyPath string) (string, error) {

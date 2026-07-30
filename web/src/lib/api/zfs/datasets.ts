@@ -18,6 +18,18 @@ export async function getDatasets(
 	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
 }
 
+export async function getDatasetsResult(
+	type: GZFSDatasetType,
+	hostname: string,
+	signal?: AbortSignal
+): Promise<Dataset[] | APIResponse> {
+	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET', undefined, {
+		hostname,
+		signal,
+		preserveErrors: true
+	});
+}
+
 export async function deleteSnapshot(
 	snapshot: Dataset,
 	recursive: boolean = false

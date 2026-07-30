@@ -241,6 +241,120 @@ func TestRemoteRunnerValidationCreatesGuestAndDatasetJobsAcrossThreeNodes(t *tes
 	}
 }
 
+func TestBackupJobRunnerChangeRequiresStrictLivePlacement(t *testing.T) {
+	models := []any{
+		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.BackupJob{}, &clusterModels.BackupJobRunnerRebind{},
+		&clusterModels.BackupJobRunnerRebindItem{}, &clusterModels.Cluster{},
+		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
+		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
+		&jailModels.Jail{},
+	}
+	nodes := setupClusterRaftTestNodes(t, 2, models...)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	runner := remoteClusterRaftTestNode(t, nodes, leader)
+	leader.service.NodeID = leader.id
+	runner.service.NodeID = runner.id
+	leader.service.AuthService = clusterAuthStub{}
+	if err := leader.service.DB.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
+		t.Fatalf("seed clustered state: %v", err)
+	}
+
+	target := clusterModels.BackupTarget{
+		ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
+	}
+	job := clusterModels.BackupJob{
+		ID: 81, Name: "stale-runner", TargetID: target.ID, RunnerNodeID: leader.id,
+		Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/811",
+		Recursive: true, CronExpr: "0 0 * * *", Enabled: true, ScheduleRevision: 1,
+	}
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&target).Error; err != nil {
+			t.Fatalf("seed target on %s: %v", node.id, err)
+		}
+		if err := node.service.DB.Create(&job).Error; err != nil {
+			t.Fatalf("seed job on %s: %v", node.id, err)
+		}
+	}
+	seedRemoteValidationVM(t, runner.service, 811, "fast", "current-vm")
+
+	sim := newClusterPeerSimulator()
+	defer sim.Close()
+	registerBackupJobValidationPeer(t, sim, runner.service)
+	registerGuestIdentityInventoryPeer(t, sim, runner.id, []GuestIdentityInventoryEntry{{
+		NodeID: runner.id, GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 811, RecordID: 1, Name: "current-vm",
+	}})
+	leader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
+		if nodeID != runner.id {
+			return "", fmt.Errorf("unexpected validation runner %s", nodeID)
+		}
+		return sim.Addr(), nil
+	}
+	leader.service.guestIdentityInventoryAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
+		if nodeID != runner.id {
+			return "", fmt.Errorf("unexpected inventory node %s", nodeID)
+		}
+		return sim.Addr(), nil
+	}
+
+	enabled := true
+	update := clusterServiceInterfaces.BackupJobReq{
+		Name: job.Name, TargetID: target.ID, RunnerNodeID: runner.id,
+		Mode: clusterModels.BackupJobModeVM, SourceDataset: job.SourceDataset,
+		Recursive: true, CronExpr: job.CronExpr, Enabled: &enabled,
+	}
+	if err := leader.service.ProposeBackupJobUpdateContext(
+		t.Context(), job.ID, update, false, BackupJobPlacementAuthorization{},
+	); err != nil {
+		t.Fatalf("repair stale runner: %v", err)
+	}
+	waitForClusterCondition(t, 5*time.Second, "strict runner repair replication", func() bool {
+		for _, node := range nodes {
+			var current clusterModels.BackupJob
+			if node.service.DB.First(&current, job.ID).Error != nil ||
+				current.RunnerNodeID != runner.id {
+				return false
+			}
+		}
+		return true
+	})
+
+	seedRemoteValidationVM(t, leader.service, 811, "fast", "duplicate-vm")
+	update.RunnerNodeID = leader.id
+	err := leader.service.ProposeBackupJobUpdateContext(
+		t.Context(), job.ID, update, false, BackupJobPlacementAuthorization{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_conflict") {
+		t.Fatalf("duplicate placement error = %v", err)
+	}
+	var unchanged clusterModels.BackupJob
+	if err := leader.service.DB.First(&unchanged, job.ID).Error; err != nil {
+		t.Fatalf("reload duplicate-rejected job: %v", err)
+	}
+	if unchanged.RunnerNodeID != runner.id {
+		t.Fatalf("duplicate placement changed runner: %+v", unchanged)
+	}
+
+	leader.service.guestIdentityInventoryAPIForNode = func(string, raft.ServerAddress) (string, error) {
+		return "127.0.0.1:1", nil
+	}
+	err = leader.service.ProposeBackupJobUpdateContext(
+		t.Context(), job.ID, update, false, BackupJobPlacementAuthorization{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_unavailable") {
+		t.Fatalf("unavailable placement error = %v", err)
+	}
+	if err := leader.service.DB.First(&unchanged, job.ID).Error; err != nil {
+		t.Fatalf("reload unavailable-rejected job: %v", err)
+	}
+	if unchanged.RunnerNodeID != runner.id {
+		t.Fatalf("unavailable placement changed runner: %+v", unchanged)
+	}
+}
+
 func TestRemoteRunnerValidationRejectsManagedDatasetAndStaleHealthRunner(t *testing.T) {
 	models := []any{
 		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.ClusterNode{},

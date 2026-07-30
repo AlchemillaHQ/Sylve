@@ -10,6 +10,7 @@ package cluster
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -111,5 +112,164 @@ func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 	}
 	if !job.Recursive {
 		t.Fatal("recursive setting was not persisted by update")
+	}
+}
+
+func TestProposeBackupJobCreateRetriesOccupiedGeneratedID(t *testing.T) {
+	db := newClusterServiceTestDB(
+		t,
+		&clusterModels.BackupTarget{},
+		&clusterModels.BackupJob{},
+		&clusterModels.ClusterNode{},
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+	)
+	target := clusterModels.BackupTarget{
+		Name:       "collision-target",
+		SSHHost:    "user@backup-host",
+		BackupRoot: "tank/backups",
+		Enabled:    true,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	existing := clusterModels.BackupJob{
+		ID: 7001, Name: "existing-job", TargetID: target.ID, RunnerNodeID: "node-create",
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "zroot/existing",
+		CronExpr: "0 0 * * *", Enabled: true,
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing job: %v", err)
+	}
+
+	freeID := uint(maxSafeJSInt.Uint64() - 1)
+	candidates := []uint{existing.ID, freeID}
+	calls := 0
+	service := &Service{
+		DB: db, NodeID: "node-create",
+		backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
+			return nil
+		},
+		backupJobIDGenerator: func() (uint, error) {
+			id := candidates[calls]
+			calls++
+			return id, nil
+		},
+	}
+	enabled := true
+	err := service.ProposeBackupJobCreate(clusterServiceInterfaces.BackupJobReq{
+		Name: "new-job", TargetID: target.ID, RunnerNodeID: "node-create",
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "zroot/new",
+		CronExpr: "0 0 * * *", Enabled: &enabled,
+	}, true)
+	if err != nil {
+		t.Fatalf("create after ID collision: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("ID generator calls = %d, want 2", calls)
+	}
+
+	var unchanged clusterModels.BackupJob
+	if err := db.First(&unchanged, existing.ID).Error; err != nil {
+		t.Fatalf("reload existing job: %v", err)
+	}
+	if unchanged.Name != existing.Name || unchanged.SourceDataset != existing.SourceDataset {
+		t.Fatalf("collision retry changed existing job: %+v", unchanged)
+	}
+	var created clusterModels.BackupJob
+	if err := db.First(&created, freeID).Error; err != nil {
+		t.Fatalf("load retried job: %v", err)
+	}
+	if created.Name != "new-job" {
+		t.Fatalf("retried job = %+v", created)
+	}
+}
+
+func TestProposeBackupJobCreateReturnsConflictAfterOccupiedCandidates(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.BackupJob{})
+	existing := clusterModels.BackupJob{
+		ID: 7002, Name: "existing-job", TargetID: 1, RunnerNodeID: "node-create",
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "zroot/existing",
+		CronExpr: "0 0 * * *", Enabled: true,
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing job: %v", err)
+	}
+
+	calls := 0
+	service := &Service{
+		DB: db,
+		backupJobIDGenerator: func() (uint, error) {
+			calls++
+			return existing.ID, nil
+		},
+	}
+	err := service.ProposeBackupJobCreate(clusterServiceInterfaces.BackupJobReq{}, true)
+	if err == nil || !strings.Contains(err.Error(), "backup_job_id_conflict") {
+		t.Fatalf("exhausted collision error = %v", err)
+	}
+	if calls != backupJobIDGenerationAttempts {
+		t.Fatalf("ID generator calls = %d, want %d", calls, backupJobIDGenerationAttempts)
+	}
+
+	var unchanged clusterModels.BackupJob
+	if err := db.First(&unchanged, existing.ID).Error; err != nil {
+		t.Fatalf("reload existing job: %v", err)
+	}
+	if unchanged.Name != existing.Name || unchanged.SourceDataset != existing.SourceDataset {
+		t.Fatalf("exhausted collision changed existing job: %+v", unchanged)
+	}
+}
+
+func TestProposeBackupJobUpdateDoesNotBypassPendingRunnerRebind(t *testing.T) {
+	db := newClusterServiceTestDB(
+		t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobRunnerRebind{},
+		&clusterModels.BackupJobRunnerRebindItem{},
+	)
+	service := &Service{DB: db}
+	job := clusterModels.BackupJob{
+		ID: 42, Name: "pending-rebind", TargetID: 1, RunnerNodeID: "node-old",
+		Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/812",
+		Recursive: true, CronExpr: "0 0 * * *", Enabled: true,
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	if err := db.Create(&clusterModels.BackupJobRunnerRebind{
+		Token: "failover-812", Kind: clusterModels.BackupJobRunnerRebindKindFailover,
+		GuestType: clusterModels.BackupJobModeVM, GuestID: 812,
+		OldRunnerNodeID: "node-old", NewRunnerNodeID: "node-new",
+		State: clusterModels.BackupJobRunnerRebindStateReady, Revision: 1,
+	}).Error; err != nil {
+		t.Fatalf("seed rebind: %v", err)
+	}
+	if err := db.Create(&clusterModels.BackupJobRunnerRebindItem{
+		OperationToken: "failover-812", JobID: job.ID,
+		ExpectedRunnerID: "node-old", ExpectedFingerprint: "fingerprint",
+		State: clusterModels.BackupJobRunnerRebindItemPending, Revision: 1,
+	}).Error; err != nil {
+		t.Fatalf("seed rebind item: %v", err)
+	}
+
+	enabled := true
+	err := service.ProposeBackupJobUpdate(job.ID, clusterServiceInterfaces.BackupJobReq{
+		Name: job.Name, TargetID: job.TargetID, RunnerNodeID: "node-new",
+		Mode: job.Mode, SourceDataset: job.SourceDataset, Recursive: true,
+		CronExpr: job.CronExpr, Enabled: &enabled,
+	}, true)
+	if err == nil || !strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
+		t.Fatalf("pending rebind update error = %v", err)
+	}
+	var unchanged clusterModels.BackupJob
+	if err := db.First(&unchanged, job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if unchanged.RunnerNodeID != "node-old" {
+		t.Fatalf("pending rebind update changed runner: %+v", unchanged)
 	}
 }

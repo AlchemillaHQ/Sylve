@@ -383,10 +383,10 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 	return nil
 }
 
-// RequireGuestRestorePlacement authoritatively verifies an in-place restore.
-// Exactly one durable registration must exist for the guest, with the expected
-// type on the selected runner. ClusterNode.GuestIDs health rows are not used.
-func (s *Service) RequireGuestRestorePlacement(
+// RequireGuestPlacement authoritatively verifies that exactly one durable
+// registration exists for the guest, with the expected type on the selected
+// node. ClusterNode.GuestIDs health rows are not used.
+func (s *Service) RequireGuestPlacement(
 	ctx context.Context,
 	guestType string,
 	guestID uint,
@@ -433,4 +433,15 @@ func (s *Service) RequireGuestRestorePlacement(
 		guestType,
 		string(rawMatches),
 	)
+}
+
+// RequireGuestRestorePlacement keeps restore call sites explicit while sharing
+// the same strict placement rule with other guest placement changes.
+func (s *Service) RequireGuestRestorePlacement(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	expectedNodeID string,
+) error {
+	return s.RequireGuestPlacement(ctx, guestType, guestID, expectedNodeID)
 }

@@ -66,6 +66,16 @@ export async function listBackupTargets(): Promise<BackupTarget[]> {
     return await apiRequest('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
 }
 
+export async function listBackupTargetsResult(): Promise<BackupTarget[] | APIResponse> {
+    return await apiRequest(
+        '/cluster/backups/targets',
+        z.array(BackupTargetSchema),
+        'GET',
+        undefined,
+        { preserveErrors: true }
+    );
+}
+
 export async function createBackupTarget(input: BackupTargetInput): Promise<APIResponse> {
     return await apiRequest('/cluster/backups/targets', APIResponseSchema, 'POST', input);
 }
@@ -110,6 +120,28 @@ export async function listBackupJobs(targetId?: number, vmRid?: number): Promise
         `/cluster/backups/jobs${query ? `?${query}` : ''}`,
         z.array(BackupJobSchema),
         'GET'
+    );
+}
+
+export async function listBackupJobsResult(
+    targetId?: number,
+    vmRid?: number
+): Promise<BackupJob[] | APIResponse> {
+    const params = new URLSearchParams();
+    if (targetId && targetId > 0) {
+        params.set('targetId', String(targetId));
+    }
+    if (vmRid && vmRid > 0) {
+        params.set('guestType', 'vm');
+        params.set('guestId', String(vmRid));
+    }
+    const query = params.toString();
+    return await apiRequest(
+        `/cluster/backups/jobs${query ? `?${query}` : ''}`,
+        z.array(BackupJobSchema),
+        'GET',
+        undefined,
+        { preserveErrors: true }
     );
 }
 

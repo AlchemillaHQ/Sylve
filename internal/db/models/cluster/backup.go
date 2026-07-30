@@ -292,3 +292,68 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 		}),
 	}).Create(job).Error
 }
+
+// InsertBackupJobTxn is the standalone create guard. Clustered creates retain
+// the legacy upsert FSM action for mixed-version and log replay compatibility;
+// their IDs are collision-checked while the leader's create lock is held.
+func InsertBackupJobTxn(db *gorm.DB, job *BackupJob) error {
+	if db == nil {
+		return fmt.Errorf("backup_job_database_unavailable")
+	}
+	if job == nil || job.ID == 0 {
+		return fmt.Errorf("backup_job_id_required")
+	}
+
+	result := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(job)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("backup_job_id_conflict")
+	}
+	return nil
+}
+
+// ApplyBackupJobUpdateTxn applies an already validated ordinary job update.
+// Callers own the surrounding transaction so a missing job also rolls back
+// target-readiness and repair-state changes in the same command.
+func ApplyBackupJobUpdateTxn(db *gorm.DB, job *BackupJob) error {
+	if db == nil {
+		return fmt.Errorf("backup_job_database_unavailable")
+	}
+	if job == nil || job.ID == 0 {
+		return fmt.Errorf("backup_job_id_required")
+	}
+
+	result := db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+		"name":               job.Name,
+		"target_id":          job.TargetID,
+		"runner_node_id":     job.RunnerNodeID,
+		"mode":               job.Mode,
+		"source_dataset":     job.SourceDataset,
+		"jail_root_dataset":  job.JailRootDataset,
+		"friendly_src":       job.FriendlySrc,
+		"dest_suffix":        job.DestSuffix,
+		"prune_keep_last":    job.PruneKeepLast,
+		"prune_target":       job.PruneTarget,
+		"stop_before_backup": job.StopBeforeBackup,
+		"recursive":          job.Recursive,
+		"cron_expr":          job.CronExpr,
+		"enabled":            job.Enabled,
+		"next_run_at":        job.NextRunAt,
+		"schedule_revision":  gorm.Expr("schedule_revision + ?", 1),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("backup_job_not_found")
+	}
+
+	// A normal update has already passed runner-local validation and therefore
+	// acts as the explicit repair acknowledgement.
+	return ClearBackupJobRepairRequiredTxn(db, job.ID)
+}

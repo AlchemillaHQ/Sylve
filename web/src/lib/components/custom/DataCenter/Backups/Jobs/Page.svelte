@@ -1,8 +1,8 @@
 <script lang="ts">
 	import {
 		deleteBackupJob,
-		listBackupJobs,
-		listBackupTargets,
+		listBackupJobsResult,
+		listBackupTargetsResult,
 		runBackupJob
 	} from '$lib/api/cluster/backups';
 	import Form from '$lib/components/custom/DataCenter/Backups/Jobs/Form.svelte';
@@ -14,10 +14,13 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { BackupGuestRef, BackupJob, BackupTarget } from '$lib/types/cluster/backups';
+	import type { BackupGuestRef } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import {
+		backupJobsUnavailableSources,
+		type BackupJobsPageData
+	} from '$lib/utils/backup-jobs-page-state';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
@@ -29,22 +32,26 @@
 		vmRid = 0,
 		vmHostname = ''
 	}: {
-		data: {
-			targets: BackupTarget[];
-			jobs: BackupJob[];
-			nodes: ClusterNode[];
-			localNodeId: string;
-			standaloneMode: boolean;
-		};
+		data: BackupJobsPageData;
 		vmRid?: number;
 		vmHostname?: string;
 	} = $props();
 
 	// svelte-ignore state_referenced_locally
+	let targetsAvailable = $state(data.availability.targets);
+	// svelte-ignore state_referenced_locally
+	let jobsAvailable = $state(data.availability.jobs);
+
+	// svelte-ignore state_referenced_locally
 	let targets = resource(
 		() => 'backup-targets',
 		async () => {
-			const res = await listBackupTargets();
+			const res = await listBackupTargetsResult();
+			if (isAPIResponse(res)) {
+				targetsAvailable = false;
+				return [];
+			}
+			targetsAvailable = true;
 			updateCache('backup-targets', res);
 			return res;
 		},
@@ -55,7 +62,12 @@
 	let jobs = resource(
 		() => (vmRid > 0 ? `backup-jobs-vm-${vmRid}` : 'backup-jobs'),
 		async (key: string) => {
-			const res = await listBackupJobs(undefined, vmRid);
+			const res = await listBackupJobsResult(undefined, vmRid);
+			if (isAPIResponse(res)) {
+				jobsAvailable = false;
+				return [];
+			}
+			jobsAvailable = true;
 			updateCache(key, res);
 			return res;
 		},
@@ -65,6 +77,15 @@
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 	let reload = $state(false);
+	let standaloneMode = $derived(data.clusterMode === 'standalone');
+	let unavailableSources = $derived(
+		backupJobsUnavailableSources(data.clusterMode, {
+			...data.availability,
+			targets: targetsAvailable,
+			jobs: jobsAvailable
+		})
+	);
+	let mutationsAvailable = $derived(unavailableSources.length === 0);
 
 	watch(
 		() => reload,
@@ -283,19 +304,20 @@
 	});
 
 	function openCreateJob() {
+		if (!mutationsAvailable) return;
 		jobModal.edit = false;
 		jobModal.open = true;
 		activeRows = [];
 	}
 
 	function openEditJob() {
-		if (!selectedJobId) return;
+		if (!mutationsAvailable || !selectedJobId) return;
 		jobModal.edit = true;
 		jobModal.open = true;
 	}
 
 	function openRestoreModal() {
-		if (!selectedJobId) return;
+		if (!mutationsAvailable || !selectedJobId) return;
 		restoreModalOpen = true;
 	}
 
@@ -310,7 +332,7 @@
 	}
 
 	async function removeJob() {
-		if (!selectedJobId) return;
+		if (!mutationsAvailable || !selectedJobId) return;
 		const response = await deleteBackupJob(selectedJobId);
 		if (response.status === 'success') {
 			toast.success('Backup job deleted', { position: 'bottom-center' });
@@ -325,7 +347,7 @@
 	}
 
 	async function triggerJob() {
-		if (!selectedJobId) return;
+		if (!mutationsAvailable || !selectedJobId) return;
 		const response = await runBackupJob(selectedJobId);
 		if (response.status === 'success') {
 			toast.success('Backup job started', { position: 'bottom-center' });
@@ -341,13 +363,25 @@
 {#snippet button(type: string)}
 	{#if activeRows.length === 1}
 		{#if type === 'edit'}
-			<Button onclick={openEditJob} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={openEditJob}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={!mutationsAvailable}
+			>
 				<SpanWithIcon icon="icon-[mdi--note-edit]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
 		{#if type === 'delete'}
-			<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={() => (deleteModalOpen = true)}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={!mutationsAvailable}
+			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
@@ -358,7 +392,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
-				disabled={selectedJobExecutionBlocked}
+				disabled={!mutationsAvailable || selectedJobExecutionBlocked}
 			>
 				<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-2" title="Run Now" />
 			</Button>
@@ -370,7 +404,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
-				disabled={selectedJobExecutionBlocked}
+				disabled={!mutationsAvailable || selectedJobExecutionBlocked}
 			>
 				<SpanWithIcon
 					icon="icon-[mdi--backup-restore]"
@@ -395,6 +429,16 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
+	{#if unavailableSources.length > 0}
+		<div class="border-b border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+			<p class="font-medium text-destructive">Backup job data is unavailable</p>
+			<p class="text-muted-foreground">
+				Could not load {unavailableSources.join(', ')}. Changes are disabled until the page is
+				refreshed successfully.
+			</p>
+		</div>
+	{/if}
+
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
@@ -402,7 +446,7 @@
 			onclick={openCreateJob}
 			size="sm"
 			class="h-6"
-			disabled={targets.current.length === 0 || nodes.length === 0}
+			disabled={!mutationsAvailable || targets.current.length === 0 || nodes.length === 0}
 		>
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
@@ -422,7 +466,7 @@
 				size="sm"
 				variant="outline"
 				class="ml-auto h-6"
-				disabled={targets.current.length === 0}
+				disabled={!mutationsAvailable || targets.current.length === 0}
 			>
 				<div class="flex items-center">
 					<span class="icon-[mdi--database-sync-outline] mr-1 h-4 w-4"></span>
@@ -458,7 +502,7 @@
 	targets={targets.current}
 	{nodes}
 	localNodeId={data.localNodeId}
-	standaloneMode={data.standaloneMode}
+	{standaloneMode}
 	scopedVmRid={vmRid}
 	scopedVmHostname={vmHostname}
 />
