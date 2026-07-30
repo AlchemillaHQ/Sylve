@@ -492,21 +492,6 @@ func TestExtractGuestFromDatasetPath(t *testing.T) {
 	}
 }
 
-func TestContainsGuestID(t *testing.T) {
-	if containsGuestID([]uint{}, 1) {
-		t.Fatal("empty list should not contain")
-	}
-	if containsGuestID([]uint{1, 2, 3}, 2) == false {
-		t.Fatal("should contain 2")
-	}
-	if containsGuestID([]uint{1, 2, 3}, 4) {
-		t.Fatal("should not contain 4")
-	}
-	if containsGuestID([]uint{1, 2, 3}, 0) {
-		t.Fatal("should not contain 0")
-	}
-}
-
 func TestCreateReplicationPolicyHandlerValidation(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
 	cS := &cluster.Service{DB: db}

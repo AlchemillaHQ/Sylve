@@ -378,6 +378,11 @@ func (s *Service) runRestoreJob(
 			s.finalizeRestoreEvent(&event, restoreErr, "")
 			return restoreErr
 		}
+		if jailRestoreFence == nil {
+			restoreErr := fmt.Errorf("acquire_jail_restore_fence_failed: restore_fence_schema_unavailable")
+			s.finalizeRestoreEvent(&event, restoreErr, "")
+			return restoreErr
+		}
 		defer func() {
 			if jailRestoreFence == nil || retErr == nil {
 				return
@@ -392,6 +397,15 @@ func (s *Service) runRestoreJob(
 				}
 			}
 		}()
+		if err := s.requireInPlaceGuestRestorePlacement(
+			ctx,
+			jailRestoreFence.guestType,
+			jailRestoreFence.guestID,
+		); err != nil {
+			restoreErr := fmt.Errorf("restore_guest_placement_check_failed: %w", err)
+			s.finalizeRestoreEvent(&event, restoreErr, "")
+			return restoreErr
+		}
 	}
 	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
 		restoreErr := fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
@@ -666,6 +680,17 @@ type restoreGuestFence struct {
 	guestID    uint
 	token      string
 	wasRunning bool
+}
+
+func (s *Service) requireInPlaceGuestRestorePlacement(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+) error {
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
+	}
+	return s.Cluster.RequireGuestRestorePlacement(ctx, guestType, guestID, "")
 }
 
 func (s *Service) acquireJailRestoreFence(ctx context.Context, dataset string, eventID uint) (*restoreGuestFence, error) {

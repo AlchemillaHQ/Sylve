@@ -1007,6 +1007,9 @@ func (s *Service) runRestoreFromTargetVM(
 	if err != nil {
 		return fmt.Errorf("acquire_vm_restore_fence_failed: %w", err)
 	}
+	if vmRestoreFence == nil {
+		return fmt.Errorf("acquire_vm_restore_fence_failed: restore_fence_schema_unavailable")
+	}
 	defer func() {
 		if vmRestoreFence == nil || retErr == nil {
 			return
@@ -1021,6 +1024,15 @@ func (s *Service) runRestoreFromTargetVM(
 			}
 		}
 	}()
+	if !strictAsNew {
+		if err := s.requireInPlaceGuestRestorePlacement(
+			ctx,
+			vmRestoreFence.guestType,
+			vmRestoreFence.guestID,
+		); err != nil {
+			return fmt.Errorf("restore_guest_placement_check_failed: %w", err)
+		}
+	}
 	for _, plan := range rootPlans {
 		identity := newRestoreStagingIdentity(jobID, target.ID, plan.destination)
 		if err := s.prepareRestoreStagingDataset(ctx, plan.destination+".restoring", identity); err != nil {

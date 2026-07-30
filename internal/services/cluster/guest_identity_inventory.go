@@ -297,6 +297,58 @@ func (s *Service) RequireGuestIDAvailable(ctx context.Context, guestID uint) err
 	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
 }
 
+func (s *Service) strictGuestIdentityInventoryReport(
+	ctx context.Context,
+) (GuestIdentityInventoryReport, string, error) {
+	if s == nil || s.DB == nil {
+		return GuestIdentityInventoryReport{}, "", fmt.Errorf(
+			"guest_identity_inventory_scan_failed: cluster_service_not_initialized",
+		)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return GuestIdentityInventoryReport{}, "", fmt.Errorf(
+			"guest_identity_inventory_scan_failed: %w",
+			err,
+		)
+	}
+
+	var clusterState clusterModels.Cluster
+	err := s.DB.WithContext(ctx).Select("enabled").First(&clusterState).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return GuestIdentityInventoryReport{}, "", fmt.Errorf(
+			"guest_identity_inventory_scan_failed: %w",
+			err,
+		)
+	}
+
+	localNodeID := s.guestIdentityInventoryLocalNodeID()
+	if err == nil && clusterState.Enabled {
+		_, report, collectErr := s.collectClusterGuestIdentityInventoriesStrict(ctx)
+		if collectErr != nil {
+			return GuestIdentityInventoryReport{}, localNodeID, fmt.Errorf(
+				"guest_identity_inventory_unavailable: %w",
+				collectErr,
+			)
+		}
+		return report, localNodeID, nil
+	}
+
+	if localNodeID == "" {
+		localNodeID = "local"
+	}
+	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), localNodeID)
+	if err != nil {
+		return GuestIdentityInventoryReport{}, localNodeID, fmt.Errorf(
+			"guest_identity_inventory_scan_failed: %w",
+			err,
+		)
+	}
+	return report, localNodeID, nil
+}
+
 // RequireGuestIDsAvailable performs one inventory read for a batch of IDs.
 func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint) error {
 	if len(guestIDs) == 0 {
@@ -309,39 +361,11 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 		}
 		requested[guestID] = struct{}{}
 	}
-	if s == nil || s.DB == nil {
-		return fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
-	}
 
-	var clusterState clusterModels.Cluster
-	err := s.DB.WithContext(ctx).Select("enabled").First(&clusterState).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
+	report, _, err := s.strictGuestIdentityInventoryReport(ctx)
+	if err != nil {
+		return err
 	}
-
-	var report GuestIdentityInventoryReport
-	if err == nil && clusterState.Enabled {
-		_, report, err = s.collectClusterGuestIdentityInventoriesStrict(ctx)
-		if err != nil {
-			return fmt.Errorf("guest_identity_inventory_unavailable: %w", err)
-		}
-	} else {
-		nodeID := s.guestIdentityInventoryLocalNodeID()
-		if nodeID == "" {
-			nodeID = "local"
-		}
-		report, err = ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), nodeID)
-		if err != nil {
-			return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
-		}
-	}
-
 	if err := requireCleanGuestIdentityInventory(report); err != nil {
 		return err
 	}
@@ -357,4 +381,56 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 	}
 
 	return nil
+}
+
+// RequireGuestRestorePlacement authoritatively verifies an in-place restore.
+// Exactly one durable registration must exist for the guest, with the expected
+// type on the selected runner. ClusterNode.GuestIDs health rows are not used.
+func (s *Service) RequireGuestRestorePlacement(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	expectedNodeID string,
+) error {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	if guestType != clusterModels.ReplicationGuestTypeVM &&
+		guestType != clusterModels.ReplicationGuestTypeJail {
+		return fmt.Errorf("invalid_guest_type")
+	}
+	if guestID == 0 || guestID > guestIdentityInventoryMaxID {
+		return fmt.Errorf("invalid_guest_id")
+	}
+
+	report, localNodeID, err := s.strictGuestIdentityInventoryReport(ctx)
+	if err != nil {
+		return err
+	}
+	expectedNodeID = strings.TrimSpace(expectedNodeID)
+	if expectedNodeID == "" {
+		expectedNodeID = localNodeID
+	}
+	if expectedNodeID == "" {
+		return fmt.Errorf("guest_identity_inventory_scan_failed: restore_node_id_unavailable")
+	}
+
+	matches := make([]GuestIdentityInventoryEntry, 0, 1)
+	for _, entry := range report.Entries {
+		if entry.GuestID == guestID {
+			matches = append(matches, entry)
+		}
+	}
+	if len(matches) == 1 &&
+		matches[0].NodeID == expectedNodeID &&
+		matches[0].GuestType == guestType {
+		return nil
+	}
+
+	rawMatches, _ := json.Marshal(matches)
+	return fmt.Errorf(
+		"guest_identity_inventory_conflict: restore_placement guest_id=%d expected_node_id=%s expected_guest_type=%s registrations=%s",
+		guestID,
+		expectedNodeID,
+		guestType,
+		string(rawMatches),
+	)
 }

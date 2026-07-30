@@ -13,6 +13,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -430,14 +431,29 @@ func (s *restoreVMLifecycleStub) ForceStopVM(uint) error {
 	return s.actionErr["force-stop"]
 }
 
-func TestVMRestoreFenceStopsAndBlocksMutations(t *testing.T) {
+func TestVMRestoreFenceHoldsThroughFinalPlacementCheckAndBlocksMutations(t *testing.T) {
 	vmStub := &restoreVMLifecycleStub{
 		shutOffStates: []bool{false, true},
 		actionErr:     make(map[string]error),
 	}
+	database := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.Cluster{},
+		&clusterModels.ReplicationGuestOperation{},
+		&vmModels.VM{},
+		&jailModels.Jail{},
+	)
+	if err := database.Create(&clusterModels.Cluster{Enabled: false}).Error; err != nil {
+		t.Fatalf("seed standalone cluster state: %v", err)
+	}
+	if err := database.Create(&vmModels.VM{RID: 42, Name: "restore-vm-42"}).Error; err != nil {
+		t.Fatalf("seed restore VM: %v", err)
+	}
+	clusterSvc := &clusterService.Service{DB: database, NodeID: "node-a"}
 	svc := &Service{
-		DB: testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationGuestOperation{}),
-		VM: vmStub,
+		DB:      database,
+		Cluster: clusterSvc,
+		VM:      vmStub,
 	}
 
 	fence, err := svc.acquireVMRestoreFence(t.Context(), 42, 9)
@@ -449,6 +465,13 @@ func TestVMRestoreFenceStopsAndBlocksMutations(t *testing.T) {
 	}
 	if want := []string{"force-stop"}; !reflect.DeepEqual(vmStub.actions, want) {
 		t.Fatalf("VM actions = %v, want %v", vmStub.actions, want)
+	}
+	if err := svc.requireInPlaceGuestRestorePlacement(
+		t.Context(),
+		clusterModels.ReplicationGuestTypeVM,
+		42,
+	); err != nil {
+		t.Fatalf("final placement check under restore fence: %v", err)
 	}
 
 	allowed, err := clusterService.CanNodeMutateProtectedGuest(

@@ -23,6 +23,8 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -392,6 +394,94 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 		if err := json.Unmarshal(capturedBodies[index], &payload); err != nil || payload.Snapshot != "@bk_j1_c1_test" || payload.EncryptionKey != "secret" {
 			t.Fatalf("forwarded body %d = %s err=%v", index, capturedBodies[index], err)
 		}
+	}
+}
+
+func TestBackupRestoreUsesStrictInventoryInsteadOfHealthRows(t *testing.T) {
+	tests := []struct {
+		name        string
+		clustered   bool
+		wantStatus  int
+		wantMessage string
+		wantEnqueue bool
+	}{
+		{
+			name:        "stale health row is advisory",
+			wantStatus:  http.StatusAccepted,
+			wantMessage: "restore_job_started",
+			wantEnqueue: true,
+		},
+		{
+			name:        "unavailable voter inventory is distinct",
+			clustered:   true,
+			wantStatus:  http.StatusServiceUnavailable,
+			wantMessage: "restore_guest_identity_unavailable",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			database := testutil.NewSQLiteTestDB(
+				t,
+				&clusterModels.BackupTarget{},
+				&clusterModels.BackupJob{},
+				&clusterModels.Cluster{},
+				&clusterModels.ClusterNode{},
+				&vmModels.VM{},
+				&jailModels.Jail{},
+			)
+			if err := database.Create(&clusterModels.Cluster{Enabled: test.clustered}).Error; err != nil {
+				t.Fatalf("seed cluster state: %v", err)
+			}
+			if err := database.Create(&clusterModels.ClusterNode{
+				NodeUUID: "stale-node",
+				GuestIDs: []uint{72},
+			}).Error; err != nil {
+				t.Fatalf("seed stale health row: %v", err)
+			}
+			if err := database.Create(&vmModels.VM{RID: 72, Name: "vm-72"}).Error; err != nil {
+				t.Fatalf("seed VM: %v", err)
+			}
+			target := clusterModels.BackupTarget{
+				ID: 1, Name: "strict-inventory-target", SSHHost: "root@backup",
+				SSHPort: 22, BackupRoot: "tank/backups", Enabled: true,
+			}
+			if err := database.Create(&target).Error; err != nil {
+				t.Fatalf("seed backup target: %v", err)
+			}
+			job := clusterModels.BackupJob{
+				ID: 71, Name: "strict-inventory-restore", TargetID: target.ID,
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "zroot/virtual-machines/72",
+				CronExpr: "0 0 * * *", Enabled: true,
+			}
+			if err := database.Create(&job).Error; err != nil {
+				t.Fatalf("seed backup job: %v", err)
+			}
+
+			service := &clusterService.Service{DB: database, NodeID: "current-node"}
+			restoreService := &backupRestoreHandlerStub{}
+			router := newBackupRestoreForwardRouter(service, restoreService, 1, "tester", "test")
+			response := performBackupForwardRequest(
+				t,
+				router,
+				"/api/cluster/backups/jobs/71/restore",
+				[]byte(`{"snapshot":"@bk_j71_c1_test"}`),
+				nil,
+			)
+			if response.Code != test.wantStatus ||
+				!strings.Contains(response.Body.String(), test.wantMessage) {
+				t.Fatalf(
+					"restore response=%d body=%s, want status=%d message=%s",
+					response.Code,
+					response.Body.String(),
+					test.wantStatus,
+					test.wantMessage,
+				)
+			}
+			if got := len(restoreService.enqueuedJobs); (got == 1) != test.wantEnqueue {
+				t.Fatalf("enqueue calls=%d, wantEnqueue=%t", got, test.wantEnqueue)
+			}
+		})
 	}
 }
 

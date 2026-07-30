@@ -110,29 +110,30 @@
 			clusterDetails = details;
 			return details;
 		} catch (e: unknown) {
-			toast.error((e as { message?: string })?.message || 'Failed to load cluster details', {
-				position: 'bottom-center'
-			});
+			toast.warning(
+				(e as { message?: string })?.message ||
+					'Could not load advisory placement data; the server will verify before restoring.',
+				{ position: 'bottom-center' }
+			);
 			return null;
 		}
 	}
 
-	async function ensureGuestIDPlacementForRestore(
+	function warnGuestIDPlacementForRestore(
 		guestID: number,
 		restoreNodeID: string,
-		kind: 'jail' | 'vm'
-	): Promise<boolean> {
-		if (guestID <= 0) return true;
-
-		const details = clusterDetails || (await loadClusterDetails());
-		if (!details) return false;
+		kind: 'jail' | 'vm',
+		details: ClusterDetails | null
+	): void {
+		if (guestID <= 0) return;
+		if (!details) return;
 
 		const registeredOn = details.nodes.filter((node) => (node.guestIDs || []).includes(guestID));
-		if (registeredOn.length === 0) return true;
+		if (registeredOn.length === 0) return;
 
 		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
 		if (conflicts.length === 0 && registeredOn.length === 1) {
-			return true;
+			return;
 		}
 
 		const conflictLabels =
@@ -141,10 +142,10 @@
 				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
 
 		const guestLabel = kind === 'vm' ? 'VM' : 'Jail';
-		toast.error(`${guestLabel} ${guestID} already exists on ${conflictLabels}.`, {
-			position: 'bottom-center'
-		});
-		return false;
+		toast.warning(
+			`Health data also reports ${guestLabel} ${guestID} on ${conflictLabels}. The server will verify live placement before restoring.`,
+			{ position: 'bottom-center' }
+		);
 	}
 
 	async function loadSnapshots() {
@@ -221,12 +222,8 @@
 						(details?.leaderId || '').trim() ||
 						(details?.nodeId || '').trim();
 
-					if (
-						parsedGuest.kind !== 'dataset' &&
-						!(await ensureGuestIDPlacementForRestore(guestID, restoreNodeID, parsedGuest.kind))
-					) {
-						restoring = false;
-						return;
+					if (parsedGuest.kind !== 'dataset') {
+						warnGuestIDPlacementForRestore(guestID, restoreNodeID, parsedGuest.kind, details);
 					}
 				}
 			}

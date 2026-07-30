@@ -609,60 +609,6 @@ func extractGuestFromDatasetPath(dataset string) (string, uint) {
 	return "", 0
 }
 
-func containsGuestID(guestIDs []uint, guestID uint) bool {
-	if guestID == 0 {
-		return false
-	}
-	for _, existing := range guestIDs {
-		if existing == guestID {
-			return true
-		}
-	}
-	return false
-}
-
-func validateGuestIDRestorePlacement(cS *cluster.Service, guestID uint, restoreNodeID string) error {
-	if cS == nil || guestID == 0 {
-		return nil
-	}
-
-	details, err := cS.GetClusterDetails()
-	if err != nil {
-		return fmt.Errorf("load_cluster_details_failed: %w", err)
-	}
-	if details == nil {
-		return nil
-	}
-
-	restoreNodeID = strings.TrimSpace(restoreNodeID)
-
-	matches := make([]string, 0)
-	conflicts := make([]string, 0)
-	for _, node := range details.Nodes {
-		nodeID := strings.TrimSpace(node.ID)
-		if nodeID == "" || !containsGuestID(node.GuestIDs, guestID) {
-			continue
-		}
-		matches = append(matches, nodeID)
-		if restoreNodeID == "" || nodeID != restoreNodeID {
-			conflicts = append(conflicts, nodeID)
-		}
-	}
-
-	if len(matches) == 0 {
-		return nil
-	}
-
-	if len(conflicts) > 0 {
-		return fmt.Errorf("guest_id_%d_already_registered_on_other_nodes: %s", guestID, strings.Join(conflicts, ","))
-	}
-	if len(matches) > 1 {
-		return fmt.Errorf("guest_id_%d_registered_on_multiple_nodes: %s", guestID, strings.Join(matches, ","))
-	}
-
-	return nil
-}
-
 func BackupJobSnapshots(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -781,9 +727,9 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 		}
 
 		if job.Mode == clusterModels.BackupJobModeJail || job.Mode == clusterModels.BackupJobModeVM {
-			_, guestID := extractGuestFromDatasetPath(job.JailRootDataset)
+			guestType, guestID := extractGuestFromDatasetPath(job.JailRootDataset)
 			if guestID == 0 {
-				_, guestID = extractGuestFromDatasetPath(job.SourceDataset)
+				guestType, guestID = extractGuestFromDatasetPath(job.SourceDataset)
 			}
 
 			restoreNodeID := runnerNodeID
@@ -793,6 +739,9 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 					restoreNodeID = strings.TrimSpace(string(leaderID))
 				}
 				if restoreNodeID == "" {
+					restoreNodeID = strings.TrimSpace(cS.NodeID)
+				}
+				if restoreNodeID == "" {
 					if detail := cS.Detail(); detail != nil {
 						restoreNodeID = strings.TrimSpace(detail.NodeID)
 					}
@@ -800,10 +749,19 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 			}
 
 			if guestID > 0 {
-				if err := validateGuestIDRestorePlacement(cS, guestID, restoreNodeID); err != nil {
+				if err := cS.RequireGuestRestorePlacement(
+					c.Request.Context(),
+					guestType,
+					guestID,
+					restoreNodeID,
+				); err != nil {
 					status := http.StatusConflict
 					message := "restore_guest_id_conflict"
-					if strings.Contains(err.Error(), "load_cluster_details_failed") {
+					switch {
+					case strings.Contains(err.Error(), "guest_identity_inventory_unavailable"):
+						status = http.StatusServiceUnavailable
+						message = "restore_guest_identity_unavailable"
+					case strings.Contains(err.Error(), "guest_identity_inventory_scan_failed"):
 						status = http.StatusInternalServerError
 						message = "restore_precheck_failed"
 					}

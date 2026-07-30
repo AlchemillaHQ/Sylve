@@ -216,3 +216,91 @@ func TestRequireGuestIDAvailableClusteredWithoutRaftFailsClosed(t *testing.T) {
 		t.Fatalf("clustered check without Raft error = %v", err)
 	}
 }
+
+func TestRequireGuestRestorePlacementIgnoresStaleHealthRows(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.Cluster{},
+		&clusterModels.ClusterNode{},
+		&vmModels.VM{},
+		&jailModels.Jail{},
+	)
+	if err := db.Create(&clusterModels.Cluster{Enabled: false}).Error; err != nil {
+		t.Fatalf("seed standalone cluster state: %v", err)
+	}
+	if err := db.Create(&clusterModels.ClusterNode{
+		NodeUUID: "stale-node",
+		GuestIDs: []uint{710},
+	}).Error; err != nil {
+		t.Fatalf("seed stale health row: %v", err)
+	}
+	if err := db.Create(&vmModels.VM{RID: 710, Name: "vm-710"}).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+
+	service := &Service{DB: db, NodeID: "current-node"}
+	if err := service.RequireGuestRestorePlacement(
+		t.Context(),
+		clusterModels.ReplicationGuestTypeVM,
+		710,
+		"current-node",
+	); err != nil {
+		t.Fatalf("stale health row decided restore placement: %v", err)
+	}
+}
+
+func TestRequireGuestRestorePlacementRequiresOneExpectedRegistration(t *testing.T) {
+	tests := []struct {
+		name           string
+		seedVM         bool
+		seedJail       bool
+		expectedNodeID string
+		wantError      bool
+	}{
+		{name: "one expected registration", seedVM: true, expectedNodeID: "node-a"},
+		{name: "registration missing", expectedNodeID: "node-a", wantError: true},
+		{name: "wrong node", seedVM: true, expectedNodeID: "node-b", wantError: true},
+		{name: "second registration", seedVM: true, seedJail: true, expectedNodeID: "node-a", wantError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(
+				t,
+				&clusterModels.Cluster{},
+				&vmModels.VM{},
+				&jailModels.Jail{},
+			)
+			if err := db.Create(&clusterModels.Cluster{Enabled: false}).Error; err != nil {
+				t.Fatalf("seed standalone cluster state: %v", err)
+			}
+			if test.seedVM {
+				if err := db.Create(&vmModels.VM{RID: 711, Name: "vm-711"}).Error; err != nil {
+					t.Fatalf("seed VM: %v", err)
+				}
+			}
+			if test.seedJail {
+				if err := db.Create(&jailModels.Jail{CTID: 711, Name: "jail-711"}).Error; err != nil {
+					t.Fatalf("seed jail: %v", err)
+				}
+			}
+
+			service := &Service{DB: db, NodeID: "node-a"}
+			err := service.RequireGuestRestorePlacement(
+				t.Context(),
+				clusterModels.ReplicationGuestTypeVM,
+				711,
+				test.expectedNodeID,
+			)
+			if test.wantError {
+				if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_conflict") {
+					t.Fatalf("placement error = %v, want inventory conflict", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("valid placement rejected: %v", err)
+			}
+		})
+	}
+}

@@ -195,6 +195,82 @@ func TestRequireGuestIDsAvailableChecksRemoteVoterOncePerBatch(t *testing.T) {
 	}
 }
 
+func TestRequireGuestRestorePlacementChecksEveryVoter(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(
+		t,
+		2,
+		&clusterModels.Cluster{},
+		&vmModels.VM{},
+		&jailModels.Jail{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	remote := remoteClusterRaftTestNode(t, nodes, leader)
+	leader.service.NodeID = leader.id
+	leader.service.AuthService = &guestIdentityInventoryAuthStub{}
+	if err := leader.service.DB.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
+		t.Fatalf("seed clustered state: %v", err)
+	}
+	if err := leader.service.DB.Create(&vmModels.VM{RID: 706, Name: "local-vm-706"}).Error; err != nil {
+		t.Fatalf("seed local VM: %v", err)
+	}
+
+	remoteEntries := []GuestIdentityInventoryEntry(nil)
+	sim := newClusterPeerSimulator()
+	defer sim.Close()
+	sim.serveMux.HandleFunc("/api/intra-cluster/guest-identity-inventory", func(w http.ResponseWriter, _ *http.Request) {
+		report := BuildGuestIdentityInventoryReport(remoteEntries)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internal.APIResponse[GuestIdentityInventorySnapshot]{
+			Status: "success",
+			Data: GuestIdentityInventorySnapshot{
+				NodeID: remote.id,
+				Report: report,
+			},
+		})
+	})
+	leader.service.guestIdentityInventoryAPIForNode = func(string, raft.ServerAddress) (string, error) {
+		return sim.Addr(), nil
+	}
+
+	if err := leader.service.RequireGuestRestorePlacement(
+		t.Context(),
+		clusterModels.ReplicationGuestTypeVM,
+		706,
+		leader.id,
+	); err != nil {
+		t.Fatalf("one expected registration rejected: %v", err)
+	}
+
+	remoteEntries = []GuestIdentityInventoryEntry{{
+		NodeID: remote.id, GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 706, RecordID: 1, Name: "duplicate-vm-706",
+	}}
+	err := leader.service.RequireGuestRestorePlacement(
+		t.Context(),
+		clusterModels.ReplicationGuestTypeVM,
+		706,
+		leader.id,
+	)
+	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_conflict") {
+		t.Fatalf("second voter registration error = %v, want inventory conflict", err)
+	}
+
+	leader.service.guestIdentityInventoryAPIForNode = func(string, raft.ServerAddress) (string, error) {
+		return "127.0.0.1:1", nil
+	}
+	err = leader.service.RequireGuestRestorePlacement(
+		t.Context(),
+		clusterModels.ReplicationGuestTypeVM,
+		706,
+		leader.id,
+	)
+	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_unavailable") {
+		t.Fatalf("unavailable voter error = %v, want distinct inventory unavailable", err)
+	}
+}
+
 func TestCollectClusterGuestIdentityInventoriesStrictBuildsCrossNodeConflict(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, &vmModels.VM{}, &jailModels.Jail{})
 	defer cleanupClusterRaftTestNodes(t, nodes)
