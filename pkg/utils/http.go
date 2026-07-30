@@ -41,6 +41,14 @@ type HTTPStatusError struct {
 	Body       []byte
 }
 
+// HTTPReadResponse is a completed HTTP exchange. Non-2xx application
+// responses are returned here rather than converted into transport errors.
+type HTTPReadResponse struct {
+	StatusCode int
+	Header     http.Header
+	Body       []byte
+}
+
 func (e *HTTPStatusError) Error() string {
 	if e == nil {
 		return "http error"
@@ -469,6 +477,106 @@ func HTTPRequestJSONContext(ctx context.Context, method, url string, payload []b
 	}
 
 	return respBody, resp.StatusCode, nil
+}
+
+// HTTPRequestReadContext performs an intra-cluster HTTP request with a
+// caller-derived timeout. Every completed HTTP exchange, including non-2xx
+// application responses, is returned as an HTTPReadResponse. Errors are
+// reserved for request construction, transport, cancellation, timeout, body
+// decoding, and response-size failures.
+func HTTPRequestReadContext(
+	ctx context.Context,
+	method string,
+	url string,
+	payload []byte,
+	headers map[string]string,
+	timeout time.Duration,
+	maxResponseBytes int64,
+) (HTTPReadResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	requestCtx := ctx
+	cancel := func() {}
+	if timeout > 0 {
+		requestCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(requestCtx, method, url, bytes.NewReader(payload))
+	if err != nil {
+		return HTTPReadResponse{}, err
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	if req.Header.Get("Accept-Encoding") == "" {
+		req.Header.Set("Accept-Encoding", "gzip")
+	}
+
+	client := intraClusterClient()
+	clientCopy := *client
+	clientCopy.Timeout = 0
+
+	resp, err := clientCopy.Do(req)
+	if err != nil {
+		return HTTPReadResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	var reader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gz, gzipErr := gzip.NewReader(resp.Body)
+		if gzipErr != nil {
+			return HTTPReadResponse{}, fmt.Errorf("decode gzip response: %w", gzipErr)
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
+	if maxResponseBytes <= 0 {
+		maxResponseBytes = 4 << 20
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, maxResponseBytes+1))
+	if err != nil {
+		return HTTPReadResponse{}, fmt.Errorf("read response body: %w", err)
+	}
+	if int64(len(body)) > maxResponseBytes {
+		return HTTPReadResponse{}, fmt.Errorf("response body exceeds %d bytes", maxResponseBytes)
+	}
+
+	responseHeaders := resp.Header.Clone()
+	removeHopByHopHeaders(responseHeaders)
+	responseHeaders.Del("Content-Encoding")
+	responseHeaders.Del("Content-Length")
+
+	return HTTPReadResponse{
+		StatusCode: resp.StatusCode,
+		Header:     responseHeaders,
+		Body:       body,
+	}, nil
+}
+
+func removeHopByHopHeaders(headers http.Header) {
+	for _, value := range headers.Values("Connection") {
+		for _, token := range strings.Split(value, ",") {
+			headers.Del(strings.TrimSpace(token))
+		}
+	}
+	for _, name := range []string{
+		"Connection",
+		"Keep-Alive",
+		"Proxy-Connection",
+		"Proxy-Authenticate",
+		"Proxy-Authorization",
+		"Te",
+		"Trailer",
+		"Transfer-Encoding",
+		"Upgrade",
+	} {
+		headers.Del(name)
+	}
 }
 
 func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {

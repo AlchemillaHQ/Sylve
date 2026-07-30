@@ -972,12 +972,3 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 		})
 	}
 }
-
-func TestHasForwardedRestoreResponse(t *testing.T) {
-	if !hasForwardedRestoreResponse([]byte(`{"status":"error"}`), http.StatusConflict) {
-		t.Fatal("expected remote conflict response to be preserved")
-	}
-	if hasForwardedRestoreResponse(nil, 0) {
-		t.Fatal("transport failure without a response must not be preserved")
-	}
-}

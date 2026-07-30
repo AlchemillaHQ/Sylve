@@ -26,7 +26,6 @@ import (
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -260,15 +259,15 @@ func newBackupRunForwardRouter(
 func dispatchBackupForwardToRouter(
 	router http.Handler,
 	capture func(string, map[string]string, []byte),
-) func(context.Context, string, any, map[string]string) ([]byte, int, error) {
-	return func(ctx context.Context, targetURL string, payload any, headers map[string]string) ([]byte, int, error) {
+) func(context.Context, string, any, map[string]string) (clusterForwardResponse, error) {
+	return func(ctx context.Context, targetURL string, payload any, headers map[string]string) (clusterForwardResponse, error) {
 		parsed, err := url.Parse(targetURL)
 		if err != nil {
-			return nil, 0, err
+			return clusterForwardResponse{}, err
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {
-			return nil, 0, err
+			return clusterForwardResponse{}, err
 		}
 		if capture != nil {
 			copyHeaders := make(map[string]string, len(headers))
@@ -283,11 +282,11 @@ func dispatchBackupForwardToRouter(
 		}
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
-		responseBody := append([]byte(nil), response.Body.Bytes()...)
-		if response.Code < 200 || response.Code >= 300 {
-			return responseBody, response.Code, &utils.HTTPStatusError{StatusCode: response.Code, Body: responseBody}
-		}
-		return responseBody, response.Code, nil
+		return clusterForwardResponse{
+			StatusCode: response.Code,
+			Header:     response.Header().Clone(),
+			Body:       append([]byte(nil), response.Body.Bytes()...),
+		}, nil
 	}
 }
 
@@ -411,8 +410,12 @@ func TestBackupRestorePreservesRunnerApplicationResponses(t *testing.T) {
 	for _, statusCode := range []int{http.StatusBadRequest, http.StatusConflict, http.StatusServiceUnavailable} {
 		t.Run(fmt.Sprintf("status_%d", statusCode), func(t *testing.T) {
 			wantBody := []byte(fmt.Sprintf(`{"status":"error","message":"runner_%d","data":{"jobId":62}}`, statusCode))
-			backupJobForwardHTTP = func(context.Context, string, any, map[string]string) ([]byte, int, error) {
-				return wantBody, statusCode, &utils.HTTPStatusError{StatusCode: statusCode, Body: wantBody}
+			backupJobForwardHTTP = func(context.Context, string, any, map[string]string) (clusterForwardResponse, error) {
+				return clusterForwardResponse{
+					StatusCode: statusCode,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       wantBody,
+				}, nil
 			}
 			response := performBackupForwardRequest(
 				t,
@@ -443,9 +446,9 @@ func TestBackupRestoreForwardingFencesTransportMembershipIdentityAndLoops(t *tes
 	t.Cleanup(func() { backupJobForwardHTTP = originalForward })
 
 	calls := 0
-	backupJobForwardHTTP = func(context.Context, string, any, map[string]string) ([]byte, int, error) {
+	backupJobForwardHTTP = func(context.Context, string, any, map[string]string) (clusterForwardResponse, error) {
 		calls++
-		return nil, 0, errors.New("runner offline")
+		return clusterForwardResponse{}, errors.New("runner offline")
 	}
 	response := performBackupForwardRequest(
 		t,

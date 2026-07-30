@@ -608,10 +608,6 @@ func restoreFromTargetEnqueueError(err error) (int, string) {
 	}
 }
 
-func hasForwardedRestoreResponse(body []byte, statusCode int) bool {
-	return statusCode >= http.StatusBadRequest && len(body) > 0
-}
-
 func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -692,7 +688,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 		}
 
 		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
-			body, statusCode, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
+			response, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
 				"remoteDataset":       strings.TrimSpace(req.RemoteDataset),
 				"snapshot":            strings.TrimSpace(req.Snapshot),
 				"destinationDataset":  strings.TrimSpace(req.DestinationDataset),
@@ -703,20 +699,11 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 				"encryptionKeyFormat": req.EncryptionKeyFormat,
 			})
 			if err != nil {
-				if hasForwardedRestoreResponse(body, statusCode) {
-					c.Data(statusCode, "application/json", body)
-					return
-				}
-				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "restore_remote_node_forward_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
+				writeClusterForwardError(c, "restore_remote_node_forward_failed", err)
 				return
 			}
 
-			c.Data(statusCode, "application/json", body)
+			writeClusterForwardResponse(c, response)
 			return
 		}
 

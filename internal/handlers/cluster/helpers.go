@@ -10,6 +10,8 @@ package clusterHandlers
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -23,7 +25,47 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
+
+const (
+	clusterForwardHopHeader        = "X-Sylve-Cluster-Forward-Hop"
+	clusterForwardMaxHops          = 1
+	clusterForwardMaxResponseBytes = int64(4 << 20)
+
+	clusterForwardShortReadTimeout  = 15 * time.Second
+	clusterForwardValidationTimeout = 70 * time.Second
+	clusterForwardDurableTimeout    = 90 * time.Second
+)
+
+type clusterForwardTimeoutClass uint8
+
+const (
+	clusterForwardShortRead clusterForwardTimeoutClass = iota
+	clusterForwardValidation
+	clusterForwardDurable
+)
+
+type clusterForwardResponse = utils.HTTPReadResponse
+
+var clusterForwardHTTP = func(
+	ctx context.Context,
+	method string,
+	targetURL string,
+	body []byte,
+	headers map[string]string,
+	timeout time.Duration,
+) (clusterForwardResponse, error) {
+	return utils.HTTPRequestReadContext(
+		ctx,
+		method,
+		targetURL,
+		body,
+		headers,
+		timeout,
+		clusterForwardMaxResponseBytes,
+	)
+}
 
 func mapRaftAddrToAPI(raftAddr string) (string, error) {
 	host, _, err := net.SplitHostPort(raftAddr)
@@ -52,7 +94,202 @@ func resolveLeaderAPI(_ *cluster.Service, _, leaderRaftAddr string) string {
 
 var resolveLeaderAPIForForward = resolveLeaderAPI
 
+func clusterForwardTimeout(class clusterForwardTimeoutClass) time.Duration {
+	switch class {
+	case clusterForwardShortRead:
+		return clusterForwardShortReadTimeout
+	case clusterForwardValidation:
+		return clusterForwardValidationTimeout
+	default:
+		return clusterForwardDurableTimeout
+	}
+}
+
+func clusterForwardClassForRequest(request *http.Request) clusterForwardTimeoutClass {
+	if request == nil {
+		return clusterForwardDurable
+	}
+	switch request.Method {
+	case http.MethodGet, http.MethodHead:
+		return clusterForwardShortRead
+	}
+
+	path := strings.ToLower(request.URL.Path)
+	if strings.Contains(path, "/validate") ||
+		strings.Contains(path, "validation") ||
+		strings.Contains(path, "readiness") {
+		return clusterForwardValidation
+	}
+	return clusterForwardDurable
+}
+
+func currentClusterForwardHop(c *gin.Context) (int, error) {
+	raw := strings.TrimSpace(c.GetHeader(clusterForwardHopHeader))
+	if raw == "" {
+		return 0, nil
+	}
+	hop, err := strconv.Atoi(raw)
+	if err != nil || hop < 0 || hop > clusterForwardMaxHops {
+		return 0, fmt.Errorf("cluster_forward_loop_detected")
+	}
+	return hop, nil
+}
+
+func nextClusterForwardHop(c *gin.Context) (int, error) {
+	hop, err := currentClusterForwardHop(c)
+	if err != nil {
+		return 0, err
+	}
+	if hop >= clusterForwardMaxHops {
+		return 0, fmt.Errorf("cluster_forward_loop_detected")
+	}
+	return hop + 1, nil
+}
+
+func clusterForwardHeaders(c *gin.Context, cS *cluster.Service, hop int) (map[string]string, error) {
+	if cS == nil || cS.AuthService == nil {
+		return nil, fmt.Errorf("cluster_forward_auth_service_unavailable")
+	}
+
+	userID := c.GetUint("UserID")
+	username := strings.TrimSpace(c.GetString("Username"))
+	authType := strings.TrimSpace(c.GetString("AuthType"))
+	if username == "" {
+		hostname, _ := utils.GetSystemHostname()
+		if hostname != "" {
+			username = hostname
+		} else {
+			username = "cluster"
+		}
+	}
+	if authType == "" {
+		authType = "local"
+	}
+
+	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
+	if err != nil {
+		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
+	}
+
+	accept := strings.TrimSpace(c.GetHeader("Accept"))
+	if accept == "" {
+		accept = "application/json"
+	}
+	contentType := strings.TrimSpace(c.GetHeader("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json"
+	}
+
+	requestID := strings.TrimSpace(c.GetHeader("X-Request-ID"))
+	if requestID == "" {
+		requestID = strings.TrimSpace(c.GetString("RequestID"))
+	}
+	if requestID == "" {
+		requestID = uuid.NewString()
+	}
+	c.Header("X-Request-ID", requestID)
+
+	headers := map[string]string{
+		"Accept":                accept,
+		"Content-Type":          contentType,
+		"X-Cluster-Token":       fmt.Sprintf("Bearer %s", clusterToken),
+		"X-Request-ID":          requestID,
+		clusterForwardHopHeader: strconv.Itoa(hop),
+	}
+	for _, header := range []string{
+		"X-Correlation-ID",
+		"Traceparent",
+		"Idempotency-Key",
+	} {
+		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
+			headers[header] = value
+		}
+	}
+	return headers, nil
+}
+
+func performClusterForward(
+	c *gin.Context,
+	cS *cluster.Service,
+	method string,
+	targetURL string,
+	body []byte,
+	class clusterForwardTimeoutClass,
+) (clusterForwardResponse, error) {
+	hop, err := nextClusterForwardHop(c)
+	if err != nil {
+		return clusterForwardResponse{}, err
+	}
+	headers, err := clusterForwardHeaders(c, cS, hop)
+	if err != nil {
+		return clusterForwardResponse{}, err
+	}
+	response, err := clusterForwardHTTP(
+		c.Request.Context(),
+		method,
+		targetURL,
+		body,
+		headers,
+		clusterForwardTimeout(class),
+	)
+	if err != nil {
+		return clusterForwardResponse{}, err
+	}
+	if response.StatusCode < 100 || response.StatusCode > 599 {
+		return clusterForwardResponse{}, fmt.Errorf("cluster_forward_response_status_invalid: %d", response.StatusCode)
+	}
+	return response, nil
+}
+
+func writeClusterForwardResponse(c *gin.Context, response clusterForwardResponse) {
+	for _, header := range []string{
+		"X-Request-ID",
+		"X-Correlation-ID",
+		"Traceparent",
+		"Idempotency-Key",
+		"Retry-After",
+	} {
+		if value := strings.TrimSpace(response.Header.Get(header)); value != "" {
+			c.Header(header, value)
+		}
+	}
+
+	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Data(response.StatusCode, contentType, response.Body)
+}
+
+func writeClusterForwardError(c *gin.Context, message string, err error) {
+	status := http.StatusBadGateway
+	errorText := strings.ToLower(err.Error())
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		status = http.StatusGatewayTimeout
+	case strings.Contains(errorText, "forward_loop"):
+		status = http.StatusLoopDetected
+		message = "cluster_forward_loop_detected"
+	case strings.Contains(errorText, "auth_service_unavailable"):
+		status = http.StatusServiceUnavailable
+	case strings.Contains(errorText, "create_cluster_token_failed"):
+		status = http.StatusInternalServerError
+	}
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   err.Error(),
+		Data:    nil,
+	})
+}
+
 func forwardToLeader(c *gin.Context, cS *cluster.Service) {
+	if cS == nil || cS.Raft == nil {
+		c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+			Status: "error", Message: "leader_unknown",
+		})
+		return
+	}
 	leaderAddr, leaderID := cS.Raft.LeaderWithID()
 	if leaderAddr == "" {
 		_ = cS.Raft.VerifyLeader().Error()
@@ -81,42 +318,19 @@ func forwardToLeader(c *gin.Context, cS *cluster.Service) {
 	}
 	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-	userID := c.GetUint("UserID")
-	username := strings.TrimSpace(c.GetString("Username"))
-	authType := strings.TrimSpace(c.GetString("AuthType"))
-	if username == "" {
-		hostname, _ := utils.GetSystemHostname()
-		if hostname != "" {
-			username = hostname
-		} else {
-			username = "cluster"
-		}
-	}
-	if authType == "" {
-		authType = "local"
-	}
-
-	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-			Status: "error", Message: "create_forward_token_failed", Error: err.Error(),
-		})
-		return
-	}
-
 	targetURL := fmt.Sprintf("%s%s", strings.TrimRight(base, "/"), c.Request.URL.RequestURI())
-	respBody, statusCode, err := utils.HTTPRequestJSON(c.Request.Method, targetURL, bodyBytes, map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}, 75*time.Second)
-
+	response, err := performClusterForward(
+		c,
+		cS,
+		c.Request.Method,
+		targetURL,
+		bodyBytes,
+		clusterForwardClassForRequest(c.Request),
+	)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-			Status: "error", Message: "leader_forward_failed", Error: err.Error(),
-		})
+		writeClusterForwardError(c, "leader_forward_failed", err)
 		return
 	}
 
-	c.Data(statusCode, "application/json", respBody)
+	writeClusterForwardResponse(c, response)
 }

@@ -19,7 +19,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -28,18 +27,13 @@ func BackupEvents(cS *clusterService.Service, zS *zelta.Service) gin.HandlerFunc
 	return func(c *gin.Context) {
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
 		if shouldForwardBackupEventsRequest(cS, requestedNodeID) {
-			body, statusCode, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/backups/events")
+			response, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/backups/events")
 			if err != nil {
-				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "backup_events_remote_forward_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
+				writeClusterForwardError(c, "backup_events_remote_forward_failed", err)
 				return
 			}
 
-			c.Data(statusCode, "application/json", body)
+			writeClusterForwardResponse(c, response)
 			return
 		}
 
@@ -92,18 +86,13 @@ func BackupEventByID(cS *clusterService.Service, zS *zelta.Service) gin.HandlerF
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
 		if shouldForwardBackupEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/backups/events/%d", id64)
-			body, statusCode, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, path)
+			response, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
-				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "backup_event_remote_forward_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
+				writeClusterForwardError(c, "backup_event_remote_forward_failed", err)
 				return
 			}
 
-			c.Data(statusCode, "application/json", body)
+			writeClusterForwardResponse(c, response)
 			return
 		}
 
@@ -151,18 +140,13 @@ func BackupEventProgressByID(cS *clusterService.Service, zS *zelta.Service) gin.
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
 		if shouldForwardBackupEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/backups/events/%d/progress", id64)
-			body, statusCode, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, path)
+			response, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
-				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "backup_event_progress_remote_forward_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
+				writeClusterForwardError(c, "backup_event_progress_remote_forward_failed", err)
 				return
 			}
 
-			c.Data(statusCode, "application/json", body)
+			writeClusterForwardResponse(c, response)
 			return
 		}
 
@@ -198,18 +182,13 @@ func BackupEventsRemote(cS *clusterService.Service, zS *zelta.Service) gin.Handl
 	return func(c *gin.Context) {
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
 		if shouldForwardBackupEventsRequest(cS, requestedNodeID) {
-			body, statusCode, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/backups/events/remote")
+			response, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/backups/events/remote")
 			if err != nil {
-				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "backup_events_remote_forward_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
+				writeClusterForwardError(c, "backup_events_remote_forward_failed", err)
 				return
 			}
 
-			c.Data(statusCode, "application/json", body)
+			writeClusterForwardResponse(c, response)
 			return
 		}
 
@@ -263,30 +242,15 @@ func shouldForwardBackupEventsRequest(cS *clusterService.Service, requestedNodeI
 	return localNodeID == "" || requestedNodeID != localNodeID
 }
 
-func forwardBackupEventsRequestToNode(c *gin.Context, cS *clusterService.Service, nodeID, path string) ([]byte, int, error) {
+func forwardBackupEventsRequestToNode(
+	c *gin.Context,
+	cS *clusterService.Service,
+	nodeID string,
+	path string,
+) (clusterForwardResponse, error) {
 	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
 	if err != nil {
-		return nil, 0, err
-	}
-
-	userID := c.GetUint("UserID")
-	username := strings.TrimSpace(c.GetString("Username"))
-	authType := strings.TrimSpace(c.GetString("AuthType"))
-	if username == "" {
-		hostname, _ := utils.GetSystemHostname()
-		if hostname != "" {
-			username = hostname
-		} else {
-			username = "cluster"
-		}
-	}
-	if authType == "" {
-		authType = "local"
-	}
-
-	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
-	if err != nil {
-		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
+		return clusterForwardResponse{}, err
 	}
 
 	query := c.Request.URL.Query()
@@ -297,14 +261,12 @@ func forwardBackupEventsRequestToNode(c *gin.Context, cS *clusterService.Service
 		remoteURL += "?" + encoded
 	}
 
-	body, statusCode, err := utils.HTTPGetJSONRead(remoteURL, map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	})
-	if err != nil {
-		return nil, statusCode, err
-	}
-
-	return body, statusCode, nil
+	return performClusterForward(
+		c,
+		cS,
+		http.MethodGet,
+		remoteURL,
+		nil,
+		clusterForwardShortRead,
+	)
 }
