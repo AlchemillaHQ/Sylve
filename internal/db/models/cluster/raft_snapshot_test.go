@@ -57,7 +57,8 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}
 
 	target := BackupTarget{
-		ID: 100, Name: "t1", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup",
+		ID: 100, Name: "t1", SSHHost: "localhost", SSHPort: 22,
+		SSHKeyPath: "/leader/local/target-100_id", SSHKey: "snapshot-key", BackupRoot: "/backup",
 	}
 	if err := sourceDB.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed backup target: %v", err)
@@ -205,7 +206,8 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	var targets []BackupTarget
 	destDB.Find(&targets)
-	if len(targets) != 1 || targets[0].Name != "t1" {
+	if len(targets) != 1 || targets[0].Name != "t1" ||
+		targets[0].SSHKeyPath != "" || targets[0].SSHKey != "snapshot-key" {
 		t.Fatalf("targets mismatch: %+v", targets)
 	}
 	var targetReadiness []BackupTargetNodeReadiness

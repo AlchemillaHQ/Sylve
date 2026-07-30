@@ -10,12 +10,31 @@ package zelta
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
+
+func TestValidateTargetCandidateCleansStagedKeyOnFailure(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("create key dir: %v", err)
+	}
+	target := &clusterModels.BackupTarget{ID: 99, SSHKey: "candidate-key", SSHHost: "root@backup"}
+	err := (&Service{}).ValidateTargetCandidate(context.Background(), target)
+	if err == nil || !strings.Contains(err.Error(), "backup_root_required") {
+		t.Fatalf("validation error=%v", err)
+	}
+	matches, globErr := filepath.Glob(filepath.Join(SSHKeyDirectory, ".target-validation-*"))
+	if globErr != nil || len(matches) != 0 {
+		t.Fatalf("staged key leak matches=%v err=%v", matches, globErr)
+	}
+}
 
 func TestValidateTargetWithFakeSSH(t *testing.T) {
 	t.Run("backup_root_required", func(t *testing.T) {

@@ -85,18 +85,15 @@ func BackupTargetConnectivityFingerprint(target *BackupTarget) string {
 	if target == nil {
 		return ""
 	}
-	sshPort := target.SSHPort
-	if sshPort == 0 {
-		sshPort = 22
-	}
-	keyHash := sha256.Sum256([]byte(strings.TrimSpace(target.SSHKey)))
+	normalized := normalizeBackupTarget(*target)
+	keyHash := sha256.Sum256([]byte(normalized.SSHKey))
 	payload, _ := json.Marshal(backupTargetConnectivityFingerprintPayload{
-		SSHHost:          strings.TrimSpace(target.SSHHost),
-		SSHPort:          sshPort,
-		SSHKeyPath:       strings.TrimSpace(target.SSHKeyPath),
+		SSHHost:          normalized.SSHHost,
+		SSHPort:          normalized.SSHPort,
+		SSHKeyPath:       normalized.SSHKeyPath,
 		SSHKeyHash:       hex.EncodeToString(keyHash[:]),
-		BackupRoot:       strings.TrimSpace(target.BackupRoot),
-		CreateBackupRoot: target.CreateBackupRoot,
+		BackupRoot:       normalized.BackupRoot,
+		CreateBackupRoot: normalized.CreateBackupRoot,
 	})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])

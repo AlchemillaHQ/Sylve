@@ -59,6 +59,10 @@
 			toast.error('Backup Root is required', { position: 'bottom-center' });
 			return;
 		}
+		if (!edit && !sshKey.trim()) {
+			toast.error('SSH private key is required', { position: 'bottom-center' });
+			return;
+		}
 
 		const payload: BackupTargetInput = {
 			name: name,
@@ -92,6 +96,8 @@
 		handleAPIError(response);
 		if (response.error?.includes('backup_root_not_found')) {
 			toast.error('Backup root not found on target', { position: 'bottom-center' });
+		} else if (response.error?.includes('managed_ssh_key_required')) {
+			toast.error('Paste the SSH private key for this target', { position: 'bottom-center' });
 		} else {
 			toast.error(edit ? 'Failed to update target' : 'Failed to create target', {
 				position: 'bottom-center'
@@ -187,6 +193,9 @@
 					classes="space-y-1"
 					textAreaClasses="min-h-[80px]! max-h-[200px]!"
 				/>
+				<p class="text-muted-foreground text-xs">
+					The matching public key must already be authorized on the backup target.
+				</p>
 			</div>
 
 			<CustomValueInput

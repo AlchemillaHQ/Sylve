@@ -30,6 +30,9 @@ func Fixups(db *gorm.DB) error {
 	if err := replaceLegacyNetlinkEvents(db); err != nil {
 		return err
 	}
+	if err := clearReplicatedManagedBackupTargetKeyPaths(db); err != nil {
+		return err
+	}
 
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
@@ -50,6 +53,45 @@ func Fixups(db *gorm.DB) error {
 	cleanupStaleAvahi(db)
 
 	return nil
+}
+
+func clearReplicatedManagedBackupTargetKeyPaths(db *gorm.DB) error {
+	const name = "clear_replicated_managed_backup_target_key_paths_1"
+	if !db.Migrator().HasTable("backup_targets") {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", name).Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking managed backup target key path migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var targetIDs []uint
+		if err := tx.Table("backup_targets").
+			Where("TRIM(COALESCE(ssh_key, '')) <> '' AND TRIM(COALESCE(ssh_key_path, '')) <> ''").
+			Pluck("id", &targetIDs).Error; err != nil {
+			return fmt.Errorf("failed finding replicated managed backup target key paths: %w", err)
+		}
+		if len(targetIDs) > 0 {
+			if err := tx.Table("backup_targets").Where("id IN ?", targetIDs).
+				UpdateColumn("ssh_key_path", "").Error; err != nil {
+				return fmt.Errorf("failed clearing replicated managed backup target key paths: %w", err)
+			}
+			if tx.Migrator().HasTable("backup_target_node_readinesses") {
+				if err := tx.Exec("DELETE FROM backup_target_node_readinesses WHERE target_id IN ?", targetIDs).Error; err != nil {
+					return fmt.Errorf("failed invalidating backup target readiness after key path migration: %w", err)
+				}
+			}
+		}
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording managed backup target key path migration: %w", err)
+		}
+		return nil
+	})
 }
 
 func replaceLegacyNetlinkEvents(db *gorm.DB) error {

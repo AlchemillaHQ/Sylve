@@ -169,7 +169,9 @@ func (s *Service) targetSSHKeyPath(target *clusterModels.BackupTarget) (string, 
 	}
 	canonical := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", target.ID))
 
-	if stored == "" {
+	// Replicated key material always means managed authentication. Any stored
+	// path is legacy node-local state and must not steer another node.
+	if strings.TrimSpace(target.SSHKey) != "" || stored == "" {
 		return canonical, nil
 	}
 
@@ -288,7 +290,42 @@ func (s *Service) cleanupOrphanTargetSSHKeys(targets []clusterModels.BackupTarge
 }
 
 func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error {
+	if target != nil && strings.TrimSpace(target.SSHKey) != "" {
+		return s.ValidateTargetCandidate(ctx, target)
+	}
 	return s.validateTarget(ctx, target, true)
+}
+
+// ValidateTargetCandidate validates uncommitted managed key material from an
+// operation-specific file. It never overwrites the canonical key used by the
+// committed target, and the staged file is removed on every return path.
+func (s *Service) ValidateTargetCandidate(ctx context.Context, target *clusterModels.BackupTarget) error {
+	candidate, cleanup, err := prepareBackupTargetValidationCandidate(target)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return s.validateTarget(ctx, candidate, true)
+}
+
+func prepareBackupTargetValidationCandidate(
+	target *clusterModels.BackupTarget,
+) (*clusterModels.BackupTarget, func(), error) {
+	if target == nil {
+		return nil, func() {}, fmt.Errorf("backup_target_required")
+	}
+	key := strings.TrimSpace(target.SSHKey)
+	if key == "" {
+		return nil, func() {}, fmt.Errorf("managed_ssh_key_required")
+	}
+	keyPath, err := SaveTemporarySSHKey(key)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("stage_backup_target_ssh_key_failed: %w", err)
+	}
+	candidate := *target
+	candidate.SSHKey = ""
+	candidate.SSHKeyPath = keyPath
+	return &candidate, func() { RemoveTemporarySSHKey(keyPath) }, nil
 }
 
 // ValidateTargetReadiness performs the runner-side connectivity/readiness

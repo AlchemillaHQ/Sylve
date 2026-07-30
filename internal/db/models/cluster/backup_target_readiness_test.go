@@ -32,6 +32,22 @@ func seedBackupTargetReadinessTestTarget(t *testing.T) (*BackupTarget, *FSMDispa
 	return target, fsm
 }
 
+func TestBackupTargetConnectivityFingerprintIgnoresManagedNodeLocalPath(t *testing.T) {
+	left := &BackupTarget{
+		SSHHost: "root@backup", SSHPort: 22, SSHKey: "managed-key",
+		SSHKeyPath: "/node-a/target-1_id", BackupRoot: "tank/backups",
+	}
+	right := *left
+	right.SSHKeyPath = "/node-b/target-1_id"
+	if BackupTargetConnectivityFingerprint(left) != BackupTargetConnectivityFingerprint(&right) {
+		t.Fatal("managed node-local paths must not alter target connectivity identity")
+	}
+	right.SSHKey = "replacement-key"
+	if BackupTargetConnectivityFingerprint(left) == BackupTargetConnectivityFingerprint(&right) {
+		t.Fatal("managed key replacement must alter target connectivity identity")
+	}
+}
+
 func TestFSMBackupTargetReadinessUpdateIsFingerprintBound(t *testing.T) {
 	target, fsm := seedBackupTargetReadinessTestTarget(t)
 	verified := time.Date(2026, time.February, 3, 4, 5, 6, 0, time.UTC)

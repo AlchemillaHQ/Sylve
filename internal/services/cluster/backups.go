@@ -116,12 +116,15 @@ func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.Backu
 	if err != nil {
 		return err
 	}
+	if resolvedSSHKey == "" {
+		return fmt.Errorf("managed_ssh_key_required")
+	}
 
 	target := clusterModels.BackupTarget{
 		Name:             strings.TrimSpace(input.Name),
 		SSHHost:          strings.TrimSpace(input.SSHHost),
 		SSHPort:          input.SSHPort,
-		SSHKeyPath:       strings.TrimSpace(input.SSHKeyPath),
+		SSHKeyPath:       "",
 		SSHKey:           resolvedSSHKey,
 		BackupRoot:       strings.TrimSpace(input.BackupRoot),
 		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
@@ -172,6 +175,9 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 	if err != nil {
 		return err
 	}
+	if resolvedSSHKey == "" {
+		return fmt.Errorf("managed_ssh_key_required")
+	}
 	enabled := boolPtrDefaultTrue(input.Enabled)
 	if input.Enabled == nil {
 		existing, err := s.GetBackupTargetByID(input.ID)
@@ -185,7 +191,7 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 		Name:             strings.TrimSpace(input.Name),
 		SSHHost:          strings.TrimSpace(input.SSHHost),
 		SSHPort:          input.SSHPort,
-		SSHKeyPath:       strings.TrimSpace(input.SSHKeyPath),
+		SSHKeyPath:       "",
 		SSHKey:           resolvedSSHKey,
 		BackupRoot:       strings.TrimSpace(input.BackupRoot),
 		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),

@@ -70,7 +70,8 @@ func TestRaftBackupTargetsReplicationTwoNodes(t *testing.T) {
 			if targets[0].Name != "target-one" || targets[0].SSHHost != "user@host-one" || targets[0].BackupRoot != "tank/backups-one" {
 				return false
 			}
-			if targets[0].SSHPort != 22 || !targets[0].CreateBackupRoot || !targets[0].Enabled {
+			if targets[0].SSHPort != 22 || !targets[0].CreateBackupRoot || !targets[0].Enabled ||
+				targets[0].SSHKeyPath != "" || targets[0].SSHKey != "key-one" {
 				return false
 			}
 			if targetID == 0 {
@@ -107,7 +108,8 @@ func TestRaftBackupTargetsReplicationTwoNodes(t *testing.T) {
 			}
 			target := targets[0]
 			if target.Name != "target-one-updated" || target.SSHHost != "user@host-two" || target.SSHPort != 2022 ||
-				target.BackupRoot != "tank/backups-two" || target.CreateBackupRoot || target.Enabled {
+				target.BackupRoot != "tank/backups-two" || target.CreateBackupRoot || target.Enabled ||
+				target.SSHKeyPath != "" || target.SSHKey != "key-two" {
 				return false
 			}
 		}
@@ -167,6 +169,7 @@ func TestRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 	if err := initialLeader.service.ProposeBackupTargetCreate(clusterServiceInterfaces.BackupTargetReq{
 		Name:       "before-failover",
 		SSHHost:    "user@host-before",
+		SSHKey:     "key-before",
 		BackupRoot: "tank/before",
 	}, false); err != nil {
 		t.Fatalf("initial leader failed to create backup target: %v", err)
@@ -204,6 +207,7 @@ func TestRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 	if err := newLeader.service.ProposeBackupTargetCreate(clusterServiceInterfaces.BackupTargetReq{
 		Name:       "after-failover",
 		SSHHost:    "user@host-after",
+		SSHKey:     "key-after",
 		BackupRoot: "tank/after",
 	}, false); err != nil {
 		t.Fatalf("new leader failed to create backup target after failover: %v", err)
@@ -238,6 +242,7 @@ func TestRaftBackupTargetDeleteBlockedWhenInUse(t *testing.T) {
 	if err := leader.service.ProposeBackupTargetCreate(clusterServiceInterfaces.BackupTargetReq{
 		Name:       "delete-blocked",
 		SSHHost:    "user@host",
+		SSHKey:     "delete-key",
 		BackupRoot: "tank/delete-blocked",
 	}, false); err != nil {
 		t.Fatalf("leader failed to create backup target: %v", err)

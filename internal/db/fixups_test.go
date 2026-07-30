@@ -10,13 +10,56 @@ package db
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestClearReplicatedManagedBackupTargetKeyPaths(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t,
+		&models.Migrations{}, &clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+	)
+	target := clusterModels.BackupTarget{
+		ID: 7, Name: "legacy-managed", SSHHost: "root@backup", SSHPort: 22,
+		SSHKeyPath: "/leader/local/target-7_id", SSHKey: "managed-key", BackupRoot: "tank/backups",
+	}
+	if err := dbConn.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	if err := dbConn.Create(&clusterModels.BackupTargetNodeReadiness{
+		TargetID: target.ID, NodeID: "node-1", TargetFingerprint: "legacy", LastVerifiedAt: time.Now(), UpdatedAt: time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("seed readiness: %v", err)
+	}
+
+	if err := clearReplicatedManagedBackupTargetKeyPaths(dbConn); err != nil {
+		t.Fatalf("fixup: %v", err)
+	}
+	var stored clusterModels.BackupTarget
+	if err := dbConn.First(&stored, target.ID).Error; err != nil {
+		t.Fatalf("load target: %v", err)
+	}
+	if stored.SSHKeyPath != "" || stored.SSHKey != "managed-key" {
+		t.Fatalf("managed target not normalized: %+v", stored)
+	}
+	var readinessCount, migrationCount int64
+	if err := dbConn.Model(&clusterModels.BackupTargetNodeReadiness{}).Count(&readinessCount).Error; err != nil || readinessCount != 0 {
+		t.Fatalf("readiness count=%d err=%v", readinessCount, err)
+	}
+	if err := dbConn.Model(&models.Migrations{}).
+		Where("name = ?", "clear_replicated_managed_backup_target_key_paths_1").
+		Count(&migrationCount).Error; err != nil || migrationCount != 1 {
+		t.Fatalf("migration count=%d err=%v", migrationCount, err)
+	}
+	if err := clearReplicatedManagedBackupTargetKeyPaths(dbConn); err != nil {
+		t.Fatalf("idempotent fixup: %v", err)
+	}
+}
 
 func TestFixJailNetworkNameIndexScopesUniquenessByJail(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})

@@ -29,7 +29,7 @@ type BackupTarget struct {
 	Name             string                            `gorm:"uniqueIndex;not null" json:"name"`
 	SSHHost          string                            `gorm:"column:ssh_host;" json:"sshHost"`           // user@host
 	SSHPort          int                               `gorm:"column:ssh_port;default:22" json:"sshPort"` // SSH port (default 22)
-	SSHKeyPath       string                            `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // path to private key on host filesystem
+	SSHKeyPath       string                            `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // legacy/local execution path; managed paths are derived per node
 	SSHKey           string                            `gorm:"column:ssh_key;type:text" json:"-"`
 	BackupRoot       string                            `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
 	CreateBackupRoot bool                              `gorm:"column:create_backup_root;default:false" json:"createBackupRoot"`
@@ -55,6 +55,7 @@ type BackupTargetReplicationPayload struct {
 }
 
 func BackupTargetToReplicationPayload(target BackupTarget) BackupTargetReplicationPayload {
+	target = normalizeBackupTarget(target)
 	return BackupTargetReplicationPayload{
 		ID:               target.ID,
 		Name:             target.Name,
@@ -228,6 +229,12 @@ func normalizeBackupTarget(target BackupTarget) BackupTarget {
 	target.Name = strings.TrimSpace(target.Name)
 	target.SSHHost = strings.TrimSpace(target.SSHHost)
 	target.SSHKeyPath = strings.TrimSpace(target.SSHKeyPath)
+	target.SSHKey = strings.TrimSpace(target.SSHKey)
+	if target.SSHKey != "" {
+		// Managed key paths are derived independently on every node and must
+		// never become part of replicated target state.
+		target.SSHKeyPath = ""
+	}
 	target.BackupRoot = strings.TrimSpace(target.BackupRoot)
 	target.Description = strings.TrimSpace(target.Description)
 

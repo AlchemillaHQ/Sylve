@@ -119,6 +119,87 @@ func TestTemporarySSHKeyIsNotRemovedAsOrphan(t *testing.T) {
 	}
 }
 
+func TestPrepareBackupTargetValidationCandidateStagesManagedKey(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatalf("create key dir: %v", err)
+	}
+	canonical := filepath.Join(SSHKeyDirectory, "target-42_id")
+	if err := os.WriteFile(canonical, []byte("committed-key\n"), 0600); err != nil {
+		t.Fatalf("write committed key: %v", err)
+	}
+	target := &clusterModels.BackupTarget{
+		ID: 42, SSHKey: "replacement-key", SSHHost: "root@backup", BackupRoot: "tank/backups",
+	}
+
+	candidate, cleanup, err := prepareBackupTargetValidationCandidate(target)
+	if err != nil {
+		t.Fatalf("prepare candidate: %v", err)
+	}
+	if target.SSHKey != "replacement-key" || target.SSHKeyPath != "" {
+		t.Fatalf("original candidate mutated: %+v", target)
+	}
+	if candidate.ID != target.ID || candidate.SSHKey != "" ||
+		!strings.HasPrefix(filepath.Base(candidate.SSHKeyPath), ".target-validation-") {
+		t.Fatalf("staged candidate: %+v", candidate)
+	}
+	stagedPath := candidate.SSHKeyPath
+	service := &Service{}
+	sshArgs := service.buildSSHArgs(candidate)
+	committedArgs := service.buildSSHArgs(target)
+	foundIdentity := false
+	for i := 0; i+1 < len(sshArgs); i++ {
+		if sshArgs[i] == "-i" && sshArgs[i+1] == stagedPath {
+			foundIdentity = true
+			break
+		}
+	}
+	if !foundIdentity {
+		t.Fatalf("staged identity omitted from SSH args: %v", sshArgs)
+	}
+	controlPath := func(args []string) string {
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "ControlPath=") {
+				return arg
+			}
+		}
+		return ""
+	}
+	if controlPath(sshArgs) == "" || controlPath(sshArgs) == controlPath(committedArgs) {
+		t.Fatalf("staged validation reused committed SSH control path: staged=%v committed=%v", sshArgs, committedArgs)
+	}
+	if content, err := os.ReadFile(stagedPath); err != nil || string(content) != "replacement-key\n" {
+		t.Fatalf("staged key content=%q err=%v", string(content), err)
+	}
+	if info, err := os.Stat(stagedPath); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("staged key mode=%v err=%v", info, err)
+	}
+	if content, err := os.ReadFile(canonical); err != nil || string(content) != "committed-key\n" {
+		t.Fatalf("committed key changed before commit: content=%q err=%v", string(content), err)
+	}
+
+	cleanup()
+	if _, err := os.Stat(stagedPath); !os.IsNotExist(err) {
+		t.Fatalf("staged key not removed: %v", err)
+	}
+	if content, err := os.ReadFile(canonical); err != nil || string(content) != "committed-key\n" {
+		t.Fatalf("cleanup changed committed key: content=%q err=%v", string(content), err)
+	}
+}
+
+func TestPrepareBackupTargetValidationCandidateReportsStagingFailure(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(SSHKeyDirectory, []byte("file"), 0600); err != nil {
+		t.Fatalf("write blocking file: %v", err)
+	}
+	_, _, err := prepareBackupTargetValidationCandidate(&clusterModels.BackupTarget{SSHKey: "key"})
+	if err == nil || !strings.Contains(err.Error(), "stage_backup_target_ssh_key_failed") {
+		t.Fatalf("staging error=%v", err)
+	}
+}
+
 func TestRemoveSSHKeyRemovesTargetKeyPath(t *testing.T) {
 	resetZeltaTestGlobals(t)
 	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
@@ -206,6 +287,15 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 		if string(content) != "private-key-material\n" {
 			t.Fatalf("unexpected generated key content: %q", string(content))
 		}
+		if err := os.Remove(expectedPath); err != nil {
+			t.Fatalf("remove follower-local managed key: %v", err)
+		}
+		if err := s.ensureBackupTargetSSHKeyMaterialized(target); err != nil {
+			t.Fatalf("rematerialize missing managed key: %v", err)
+		}
+		if content, err = os.ReadFile(expectedPath); err != nil || string(content) != "private-key-material\n" {
+			t.Fatalf("rematerialized content=%q err=%v", string(content), err)
+		}
 
 		var persisted clusterModels.BackupTarget
 		if err := db.First(&persisted, 7).Error; err != nil {
@@ -245,25 +335,25 @@ func TestEnsureBackupTargetSSHKeyMaterialized(t *testing.T) {
 		}
 	})
 
-	t.Run("existing key path writes key to explicit path", func(t *testing.T) {
-		keyPath := filepath.Join(t.TempDir(), "keys", "target-explicit")
+	t.Run("managed material ignores an old node-local path", func(t *testing.T) {
+		resetZeltaTestGlobals(t)
+		SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
+		oldPath := filepath.Join(t.TempDir(), "keys", "target-explicit")
 		target := &clusterModels.BackupTarget{
-			ID:         9,
-			SSHKeyPath: keyPath,
-			SSHKey:     "  explicit-key  ",
+			ID: 9, SSHKeyPath: oldPath, SSHKey: "  explicit-key  ",
 		}
 
 		s := &Service{}
 		if err := s.ensureBackupTargetSSHKeyMaterialized(target); err != nil {
 			t.Fatalf("ensureBackupTargetSSHKeyMaterialized failed: %v", err)
 		}
-
-		content, err := os.ReadFile(keyPath)
-		if err != nil {
-			t.Fatalf("failed to read explicit key path: %v", err)
+		canonical := filepath.Join(SSHKeyDirectory, "target-9_id")
+		content, err := os.ReadFile(canonical)
+		if err != nil || string(content) != "explicit-key\n" || target.SSHKeyPath != canonical {
+			t.Fatalf("canonical managed key path=%q content=%q err=%v", target.SSHKeyPath, string(content), err)
 		}
-		if string(content) != "explicit-key\n" {
-			t.Fatalf("expected explicit key content with newline, got %q", string(content))
+		if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+			t.Fatalf("old node-local path was written: %v", err)
 		}
 	})
 }

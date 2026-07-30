@@ -26,14 +26,10 @@ import (
 )
 
 type backupTargetZelta interface {
-	ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error
+	ValidateTargetCandidate(ctx context.Context, target *clusterModels.BackupTarget) error
 	ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error
 	RemoveSSHKey(targetID uint)
 }
-
-var saveBackupTargetSSHKey = zelta.SaveSSHKey
-var saveTemporaryBackupTargetSSHKey = zelta.SaveTemporarySSHKey
-var removeTemporaryBackupTargetSSHKey = zelta.RemoveTemporarySSHKey
 
 func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -60,6 +56,22 @@ func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+func writeBackupTargetCandidateValidationError(c *gin.Context, err error) {
+	statusCode := http.StatusBadRequest
+	message := "target_validation_failed"
+	errorText := "target_validation_failed"
+	if err != nil {
+		errorText = err.Error()
+	}
+	if strings.Contains(strings.ToLower(errorText), "stage_backup_target_ssh_key_failed") {
+		statusCode = http.StatusInternalServerError
+		message = "save_ssh_key_failed"
+	}
+	c.JSON(statusCode, internal.APIResponse[any]{
+		Status: "error", Message: message, Error: errorText, Data: nil,
+	})
+}
+
 // Create/update admission remains leader-local and proves only leader
 // reachability. Runner readiness is established independently by job
 // placement or the explicit node-selected validation endpoint.
@@ -81,54 +93,23 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			return
 		}
 
-		sshPort := req.SSHPort
-		if sshPort == 0 {
-			sshPort = 22
+		candidate, err := cS.BuildBackupTargetCreateCandidate(req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "backup_target_create_failed", Error: err.Error(), Data: nil,
+			})
+			return
 		}
-
-		sshKeyPath := ""
-		if strings.TrimSpace(req.SSHKey) != "" {
-			path, err := saveTemporaryBackupTargetSSHKey(req.SSHKey)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "save_ssh_key_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
-				return
-			}
-			sshKeyPath = path
-			defer removeTemporaryBackupTargetSSHKey(path)
-		}
-
-		testTarget := &clusterModels.BackupTarget{
-			SSHHost:          strings.TrimSpace(req.SSHHost),
-			SSHPort:          sshPort,
-			SSHKeyPath:       sshKeyPath,
-			BackupRoot:       strings.TrimSpace(req.BackupRoot),
-			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
-		}
-
 		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
-
-		if err := zS.ValidateTarget(validateCtx, testTarget); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "target_validation_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-
+		if err := zS.ValidateTargetCandidate(validateCtx, candidate); err != nil {
+			writeBackupTargetCandidateValidationError(c, err)
 			return
 		}
 
-		// The validation key is temporary. Persist the key material with no path;
-		// once the target has its real ID, each node materializes its canonical key.
+		req.SSHKey = candidate.SSHKey
 		req.SSHKeyPath = ""
-
-		err := cS.ProposeBackupTargetCreate(req, cS.Raft == nil)
+		err = cS.ProposeBackupTargetCreate(req, cS.Raft == nil)
 
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -177,11 +158,6 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			return
 		}
 
-		sshPort := req.SSHPort
-		if sshPort == 0 {
-			sshPort = 22
-		}
-
 		existing, err := cS.GetBackupTargetByID(uint(id64))
 		if err != nil {
 			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
@@ -193,51 +169,23 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			return
 		}
 
-		sshKeyPath := existing.SSHKeyPath
-		if strings.TrimSpace(req.SSHKey) != "" {
-			path, err := saveBackupTargetSSHKey(uint(id64), req.SSHKey)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "save_ssh_key_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
-				return
-			}
-			sshKeyPath = path
-		}
-
-		testTarget := &clusterModels.BackupTarget{
-			SSHHost:          strings.TrimSpace(req.SSHHost),
-			SSHPort:          sshPort,
-			SSHKeyPath:       sshKeyPath,
-			BackupRoot:       strings.TrimSpace(req.BackupRoot),
-			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
-		}
-
-		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-		defer cancel()
-
-		if err := zS.ValidateTarget(validateCtx, testTarget); err != nil {
+		candidate, err := cS.BuildBackupTargetUpdateCandidate(existing, req)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "target_validation_failed",
-				Error:   err.Error(),
-				Data:    nil,
+				Status: "error", Message: "backup_target_update_failed", Error: err.Error(), Data: nil,
 			})
 			return
 		}
-
-		sshKeyData := strings.TrimSpace(req.SSHKey)
-		if sshKeyData == "" {
-			sshKeyData = existing.SSHKey
+		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
+		if err := zS.ValidateTargetCandidate(validateCtx, candidate); err != nil {
+			writeBackupTargetCandidateValidationError(c, err)
+			return
 		}
 
-		req.SSHKeyPath = sshKeyPath
-		req.SSHKey = sshKeyData
-		req.ID = uint(id64)
-
+		req.ID = candidate.ID
+		req.SSHKey = candidate.SSHKey
+		req.SSHKeyPath = ""
 		err = cS.ProposeBackupTargetUpdate(req, cS.Raft == nil)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{

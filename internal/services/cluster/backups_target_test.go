@@ -161,8 +161,8 @@ func TestProposeBackupTargetCreateResolvesSSHKeyFromPath(t *testing.T) {
 	if err := db.Where("name = ?", "target-path").First(&created).Error; err != nil {
 		t.Fatalf("failed to fetch created target: %v", err)
 	}
-	if created.SSHKey != "path-key" {
-		t.Fatalf("expected ssh key to be loaded from path, got %q", created.SSHKey)
+	if created.SSHKey != "path-key" || created.SSHKeyPath != "" {
+		t.Fatalf("expected path to be imported as managed material without replication, got %+v", created)
 	}
 }
 
@@ -217,6 +217,7 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 	createInput := clusterServiceInterfaces.BackupTargetReq{
 		Name:       "target-one",
 		SSHHost:    "user@host",
+		SSHKey:     "managed-key",
 		BackupRoot: "tank/backups",
 	}
 
@@ -232,6 +233,7 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 		ID:         1,
 		Name:       "target-one",
 		SSHHost:    "user@host",
+		SSHKey:     "managed-key",
 		BackupRoot: "tank/backups",
 	}
 
