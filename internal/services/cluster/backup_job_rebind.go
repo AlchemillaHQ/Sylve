@@ -299,6 +299,13 @@ func (s *Service) prepareBackupJobRunnerRebind(
 			PreflightError:      preflightErrors[i],
 		})
 	}
+	if !bypassRaft {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(newRunnerNodeID); err != nil {
+			return fmt.Errorf("backup_job_runner_rebind_target_invalid: %w", err)
+		}
+	}
 	return s.applyBackupJobRunnerRebindCommand("prepare", clusterModels.BackupJobRunnerRebindPlan{
 		Token: token, Kind: kind, GuestType: guestType, GuestID: guestID,
 		OldRunnerNodeID: authority.oldRunnerNodeID, NewRunnerNodeID: newRunnerNodeID,

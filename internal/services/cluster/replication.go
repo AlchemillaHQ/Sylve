@@ -76,6 +76,11 @@ func (s *Service) GetReplicationPolicyByID(id uint) (*clusterModels.ReplicationP
 }
 
 func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.ReplicationPolicyReq, bypassRaft bool) error {
+	if !bypassRaft {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+	}
+
 	id, err := s.newRaftObjectID("replication_policies")
 	if err != nil {
 		return fmt.Errorf("new_replication_policy_id_failed: %w", err)
@@ -106,6 +111,11 @@ func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.
 }
 
 func (s *Service) ProposeReplicationPolicyUpdate(id uint, input clusterServiceInterfaces.ReplicationPolicyReq, bypassRaft bool) error {
+	if !bypassRaft {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+	}
+
 	if id == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
@@ -714,6 +724,11 @@ func (s *Service) UpsertReplicationLease(lease clusterModels.ReplicationLease, b
 		return clusterModels.UpsertReplicationLeaseTxn(s.DB, &lease)
 	}
 
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	if err := s.RequireCurrentRaftVoter(lease.OwnerNodeID); err != nil {
+		return fmt.Errorf("replication_lease_owner_not_current_voter: %w", err)
+	}
 	data, err := json.Marshal(lease)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_replication_lease: %w", err)
@@ -731,6 +746,19 @@ func (s *Service) UpsertReplicationLeasesBatch(leases []clusterModels.Replicatio
 		return nil
 	}
 
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	checkedOwners := make(map[string]struct{}, len(leases))
+	for _, lease := range leases {
+		ownerNodeID := strings.TrimSpace(lease.OwnerNodeID)
+		if _, checked := checkedOwners[ownerNodeID]; checked {
+			continue
+		}
+		if err := s.RequireCurrentRaftVoter(ownerNodeID); err != nil {
+			return fmt.Errorf("replication_lease_owner_not_current_voter: %w", err)
+		}
+		checkedOwners[ownerNodeID] = struct{}{}
+	}
 	data, err := json.Marshal(leases)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_replication_leases_batch: %w", err)
@@ -818,6 +846,16 @@ func (s *Service) BeginReplicationPolicyTransition(
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
 	}
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	for _, nodeID := range []string{begin.Transition.SourceNodeID, begin.Transition.TargetNodeID} {
+		if strings.TrimSpace(nodeID) == "" {
+			continue
+		}
+		if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
+			return fmt.Errorf("replication_transition_node_not_current_voter: %w", err)
+		}
+	}
 
 	data, err := json.Marshal(begin)
 	if err != nil {
@@ -843,6 +881,23 @@ func (s *Service) CommitReplicationOwnershipTransition(
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
 	}
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	nodeIDs := []string{payload.ActiveNodeID, payload.Lease.OwnerNodeID}
+	if payload.SourceNodeID != nil {
+		nodeIDs = append(nodeIDs, *payload.SourceNodeID)
+	}
+	for _, target := range payload.Targets {
+		nodeIDs = append(nodeIDs, target.NodeID)
+	}
+	for _, nodeID := range nodeIDs {
+		if strings.TrimSpace(nodeID) == "" {
+			continue
+		}
+		if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
+			return fmt.Errorf("replication_ownership_node_not_current_voter: %w", err)
+		}
+	}
 
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -865,6 +920,20 @@ func (s *Service) ReassignDisabledReplicationPolicyOwner(
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
 	}
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	nodeIDs := []string{payload.ActiveNodeID, payload.SourceNodeID}
+	for _, target := range payload.Targets {
+		nodeIDs = append(nodeIDs, target.NodeID)
+	}
+	for _, nodeID := range nodeIDs {
+		if strings.TrimSpace(nodeID) == "" {
+			continue
+		}
+		if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
+			return fmt.Errorf("replication_owner_reassignment_node_not_current_voter: %w", err)
+		}
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_disabled_replication_owner_reassignment: %w", err)
@@ -886,6 +955,16 @@ func (s *Service) AcquireReplicationGuestOperation(
 	}
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
+	}
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	if err := s.RequireCurrentRaftVoter(payload.OwnerNodeID); err != nil {
+		return fmt.Errorf("replication_guest_operation_owner_not_current_voter: %w", err)
+	}
+	if strings.TrimSpace(payload.TargetNodeID) != "" {
+		if err := s.RequireCurrentRaftVoter(payload.TargetNodeID); err != nil {
+			return fmt.Errorf("replication_guest_operation_target_not_current_voter: %w", err)
+		}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

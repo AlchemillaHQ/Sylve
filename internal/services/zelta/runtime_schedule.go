@@ -38,6 +38,19 @@ func (s *Service) runtimeStateBypassRaft() (bool, error) {
 	return probe.RuntimeStateBypassRaft()
 }
 
+func (s *Service) requireCurrentRuntimeVoter(nodeID string, bypassRaft bool) error {
+	if bypassRaft {
+		return nil
+	}
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if err := s.Cluster.RequireCurrentRaftVoter(nodeID); err != nil {
+		return fmt.Errorf("runtime_node_not_current_raft_voter: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) applyBackupJobScheduleDecision(
 	decision clusterModels.BackupJobScheduleDecision,
 	bypassRaft bool,
@@ -336,6 +349,9 @@ func (s *Service) startReplicationRunOperation(operation *clusterModels.Replicat
 	if err != nil {
 		return err
 	}
+	if err := s.requireCurrentRuntimeVoter(operation.HolderNodeID, bypassRaft); err != nil {
+		return err
+	}
 	transition := clusterModels.ReplicationRunOperationTransition{
 		PolicyID: operation.PolicyID, Token: operation.Token,
 		HolderNodeID: operation.HolderNodeID, OccurredAt: now,
@@ -450,6 +466,13 @@ func (s *Service) reconcileReplicationRuns(ctx context.Context, queuedOnly bool)
 	holder := strings.TrimSpace(s.localNodeID())
 	if holder == "" {
 		holder = "local"
+	}
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return err
+	}
+	if err := s.requireCurrentRuntimeVoter(holder, bypassRaft); err != nil {
+		return err
 	}
 	now := s.now().UTC()
 	var operations []clusterModels.ReplicationRunOperation

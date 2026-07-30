@@ -595,6 +595,11 @@ func (s *Service) ProposeBackupJobCreateContext(
 	input clusterServiceInterfaces.BackupJobReq,
 	bypassRaft bool,
 ) error {
+	if !bypassRaft {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+	}
+
 	id, err := s.newRaftObjectID("backup_jobs")
 	if err != nil {
 		return fmt.Errorf("new_backup_job_id_failed: %w", err)
@@ -651,6 +656,11 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	bypassRaft bool,
 	authorization BackupJobPlacementAuthorization,
 ) error {
+	if !bypassRaft {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+	}
+
 	if id == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
@@ -1081,22 +1091,23 @@ func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
 }
 
 // backupRunnerNodeExists is retained for replication-policy compatibility.
-// Backup-job validation resolves its runner directly from Raft membership.
+// Clustered callers resolve current Raft voters; standalone callers accept
+// only the local machine identity. Health rows are never authoritative.
 func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID == "" {
 		return false
 	}
 
-	if detail := s.Detail(); detail != nil && strings.TrimSpace(detail.NodeID) == nodeID {
-		return true
+	if s.Raft != nil {
+		return s.RequireCurrentRaftVoter(nodeID) == nil
 	}
-
-	var count int64
-	if err := s.DB.Model(&clusterModels.ClusterNode{}).Where("node_uuid = ?", nodeID).Count(&count).Error; err != nil {
+	bypassRaft, err := s.RuntimeStateBypassRaft()
+	if err != nil || !bypassRaft {
 		return false
 	}
-	return count > 0
+	detail := s.Detail()
+	return detail != nil && strings.TrimSpace(detail.NodeID) == nodeID
 }
 
 func (s *Service) newRaftObjectID(table string) (uint, error) {

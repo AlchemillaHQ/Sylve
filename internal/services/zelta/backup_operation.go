@@ -295,8 +295,15 @@ func (s *Service) prepareQueuedBackupJobOperation(
 	if handle.HolderNodeID != localHolder {
 		return handle, false, nil
 	}
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return handle, false, err
+	}
+	if err := s.requireCurrentRuntimeVoter(localHolder, bypassRaft); err != nil {
+		return handle, false, err
+	}
 
-	err := s.transitionDurableBackupJobOperation(ctx, "start", handle)
+	err = s.transitionDurableBackupJobOperation(ctx, "start", handle)
 	if err == nil {
 		return handle, true, nil
 	}
@@ -360,6 +367,13 @@ func (s *Service) reconcileBackupJobOperations(ctx context.Context, queuedOnly b
 	holder := s.backupJobOperationHolder()
 	if holder == "" {
 		return fmt.Errorf("local_node_id_unavailable")
+	}
+	bypassRaft, err := s.runtimeStateBypassRaft()
+	if err != nil {
+		return err
+	}
+	if err := s.requireCurrentRuntimeVoter(holder, bypassRaft); err != nil {
+		return err
 	}
 	var operations []clusterModels.BackupJobOperation
 	now := time.Now().UTC()

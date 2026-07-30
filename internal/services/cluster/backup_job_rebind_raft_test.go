@@ -297,7 +297,7 @@ func TestFailoverBackupJobRunnerRebindCompletesTransitionAndReconcilesOnNewLeade
 	}
 	sourceA, targetB := remotes[0], remotes[1]
 	runID := "failover-808-exact-run"
-	requestedAt := time.Now().UTC()
+	requestedAt := clusterModels.NormalizeCommandTime(time.Now().UTC())
 	originalRunning := true
 	seedRemoteValidationVM(t, sourceA.service, 808, "fast", "source-vm")
 	seedRemoteValidationVM(t, targetB.service, 808, "fast", "failed-over-vm")

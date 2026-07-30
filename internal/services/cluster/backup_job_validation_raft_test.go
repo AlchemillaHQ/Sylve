@@ -94,20 +94,27 @@ func TestBackupJobPlacementFenceRaceIsDeterministicAcrossRaftMembers(t *testing.
 }
 
 func TestBackupJobRunnerResolutionRejectsNonVoter(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1)
-	nonVoter := newClusterRaftTestNode(t, "node-non-voter")
+	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ClusterNode{})
+	nonVoter := newClusterRaftTestNode(t, "node-non-voter", &clusterModels.ClusterNode{})
 	nodes = append(nodes, nonVoter)
 	connectClusterRaftTestNodes(nodes)
 	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes[:1], 8*time.Second)
-	leader.service.NodeID = leader.id
 	if err := leader.raft.AddNonvoter(raft.ServerID(nonVoter.id), nonVoter.addr, 0, 5*time.Second).Error(); err != nil {
 		t.Fatalf("add non-voter: %v", err)
+	}
+	if err := leader.service.DB.Create(&clusterModels.ClusterNode{
+		NodeUUID: nonVoter.id, Status: "online",
+	}).Error; err != nil {
+		t.Fatalf("seed stale health row: %v", err)
 	}
 	_, _, err := leader.service.backupJobRunnerVoter("node-non-voter")
 	if err == nil || !strings.Contains(err.Error(), "backup_runner_not_raft_voter") {
 		t.Fatalf("non-voter resolution error = %v", err)
+	}
+	if leader.service.backupRunnerNodeExists(nonVoter.id) {
+		t.Fatal("stale health row made a non-voter a valid replication runner")
 	}
 }
 

@@ -1788,6 +1788,9 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := s.requireCurrentRuntimeVoter(s.localNodeID(), bypassRaft); err != nil {
+		return err
+	}
 	if err := s.RepublishQueuedReplicationRuns(ctx); err != nil {
 		logger.L.Debug().Err(err).Msg("replication_run_republish_pending")
 	}

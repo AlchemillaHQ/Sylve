@@ -50,6 +50,11 @@ type RemovePeerRequest struct {
 	NodeID string `json:"nodeId" binding:"required"`
 }
 
+type peerRemovalService interface {
+	RemovePeer(raft.ServerID) error
+	ClearClusterNode(string) error
+}
+
 func joinLeaderAPIHost(leaderIP string) string {
 	return cluster.ClusterAPIHost(leaderIP)
 }
@@ -650,9 +655,10 @@ func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 // @Param request body RemovePeerRequest true "Remove Peer Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 409 {object} internal.APIResponse[cluster.PeerRemovalConflict] "Peer owns cluster resources"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/remove-peer [post]
-func RemovePeer(cS *cluster.Service) gin.HandlerFunc {
+func RemovePeer(cS peerRemovalService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req RemovePeerRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -665,9 +671,29 @@ func RemovePeer(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		raftId := raft.ServerID(req.NodeID)
+		nodeID := strings.TrimSpace(req.NodeID)
+		if nodeID == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_payload",
+				Error:   "node_id_required",
+				Data:    nil,
+			})
+			return
+		}
+		raftId := raft.ServerID(nodeID)
 
 		if err := cS.RemovePeer(raftId); err != nil {
+			var blocked *cluster.PeerRemovalBlockedError
+			if errors.As(err, &blocked) {
+				c.JSON(http.StatusConflict, internal.APIResponse[cluster.PeerRemovalConflict]{
+					Status:  "error",
+					Message: "peer_removal_blocked",
+					Error:   err.Error(),
+					Data:    blocked.Conflict,
+				})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_removing_peer",
@@ -677,7 +703,7 @@ func RemovePeer(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.ClearClusterNode(req.NodeID); err != nil {
+		if err := cS.ClearClusterNode(nodeID); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_clearing_cluster_node",

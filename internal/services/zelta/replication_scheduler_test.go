@@ -207,7 +207,7 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 	cSvc, localNodeID, cleanup := setupRaftClusterService(t)
 	defer cleanup()
 	db := cSvc.DB
-	now := time.Now().UTC()
+	now := clusterModels.NormalizeCommandTime(time.Now().UTC())
 
 	// --- Policy 1: HA-ineligible, past NextRunAt → should be marked "blocked" ---
 	past := now.Add(-1 * time.Hour)
@@ -327,5 +327,21 @@ func TestReplicationSchedulerTickIntegration(t *testing.T) {
 	}
 	if !strings.Contains(r4.LastError, "invalid_cron_expr") {
 		t.Errorf("p4: expected invalid_cron_expr, got %q", r4.LastError)
+	}
+}
+
+func TestSchedulersStopWhenLocalNodeIsOutsideRaftConfiguration(t *testing.T) {
+	clusterService, _, cleanup := setupRaftClusterService(t)
+	defer cleanup()
+	clusterService.NodeID = "removed-node"
+
+	service := &Service{DB: clusterService.DB, Cluster: clusterService}
+	if err := service.runBackupSchedulerTick(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "backup_runner_local_node_not_in_raft_configuration") {
+		t.Fatalf("backup scheduler error = %v", err)
+	}
+	if err := service.runReplicationSchedulerTick(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "backup_runner_local_node_not_in_raft_configuration") {
+		t.Fatalf("replication scheduler error = %v", err)
 	}
 }

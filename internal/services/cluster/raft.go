@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -211,6 +212,40 @@ func (s *Service) RemovePeer(id raft.ServerID) error {
 	}
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
+	}
+
+	nodeID := strings.TrimSpace(string(id))
+	if nodeID == "" {
+		return fmt.Errorf("peer_node_id_required")
+	}
+	configurationFuture := s.Raft.GetConfiguration()
+	if err := configurationFuture.Error(); err != nil {
+		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
+	}
+	currentMember := false
+	for _, server := range configurationFuture.Configuration().Servers {
+		if strings.TrimSpace(string(server.ID)) == nodeID {
+			currentMember = true
+			break
+		}
+	}
+	if !currentMember {
+		return nil
+	}
+	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		return fmt.Errorf("peer_removal_leader_barrier_failed: %w", err)
+	}
+	dependencies, err := s.peerRemovalDependencies(nodeID)
+	if err != nil {
+		return err
+	}
+	if len(dependencies) != 0 {
+		return &PeerRemovalBlockedError{
+			Conflict: PeerRemovalConflict{
+				NodeID:       nodeID,
+				Dependencies: dependencies,
+			},
+		}
 	}
 
 	fut := s.Raft.RemoveServer(id, 0, 8*time.Second)

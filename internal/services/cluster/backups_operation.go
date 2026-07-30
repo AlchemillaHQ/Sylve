@@ -35,6 +35,11 @@ func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOpera
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+		return fmt.Errorf("backup_job_operation_holder_not_current_voter: %w", err)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_job_operation_acquire: %w", err)
@@ -78,6 +83,13 @@ func (s *Service) TransitionBackupJobOperation(
 	}
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
+	}
+	if action == "start" {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+			return fmt.Errorf("backup_job_operation_holder_not_current_voter: %w", err)
+		}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

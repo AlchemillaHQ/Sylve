@@ -35,6 +35,11 @@ func (s *Service) AcquireBackupTargetRestoreOperation(
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+		return fmt.Errorf("backup_restore_holder_not_current_voter: %w", err)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_target_restore_operation_acquire: %w", err)
@@ -79,6 +84,13 @@ func (s *Service) TransitionBackupTargetRestoreOperation(
 	}
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
+	}
+	if action == "start" || action == "requeue" {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+			return fmt.Errorf("backup_restore_holder_not_current_voter: %w", err)
+		}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

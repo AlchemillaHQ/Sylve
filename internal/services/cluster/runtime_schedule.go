@@ -93,6 +93,13 @@ func (s *Service) ApplyBackupJobScheduleDecision(
 	decision clusterModels.BackupJobScheduleDecision,
 	bypassRaft bool,
 ) error {
+	if !bypassRaft && decision.ClaimToken != "" {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(decision.HolderNodeID); err != nil {
+			return fmt.Errorf("backup_schedule_holder_not_current_voter: %w", err)
+		}
+	}
 	return s.applyRuntimeScheduleCommand(
 		"backup_job_schedule", "decide", decision, bypassRaft,
 		func() error { return clusterModels.ApplyBackupJobScheduleDecisionTxn(s.DB, &decision) },
@@ -113,6 +120,13 @@ func (s *Service) ApplyReplicationPolicyScheduleDecision(
 	decision clusterModels.ReplicationPolicyScheduleDecision,
 	bypassRaft bool,
 ) error {
+	if !bypassRaft && decision.ClaimToken != "" {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(decision.HolderNodeID); err != nil {
+			return fmt.Errorf("replication_schedule_holder_not_current_voter: %w", err)
+		}
+	}
 	return s.applyRuntimeScheduleCommand(
 		"replication_policy_schedule", "decide", decision, bypassRaft,
 		func() error { return clusterModels.ApplyReplicationPolicyScheduleDecisionTxn(s.DB, &decision) },
@@ -123,6 +137,13 @@ func (s *Service) StartReplicationRun(
 	transition clusterModels.ReplicationRunOperationTransition,
 	bypassRaft bool,
 ) error {
+	if !bypassRaft {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(transition.HolderNodeID); err != nil {
+			return fmt.Errorf("replication_run_holder_not_current_voter: %w", err)
+		}
+	}
 	return s.applyRuntimeScheduleCommand(
 		"replication_policy_schedule", "start", transition, bypassRaft,
 		func() error { return clusterModels.StartReplicationRunOperationTxn(s.DB, &transition) },

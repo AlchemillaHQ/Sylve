@@ -355,6 +355,13 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 	return server, nodeID == localNodeID, nil
 }
 
+// RequireCurrentRaftVoter rejects stale health rows and removed/non-voter
+// members when assigning or starting cluster work.
+func (s *Service) RequireCurrentRaftVoter(nodeID string) error {
+	_, _, err := s.backupJobRunnerVoter(nodeID)
+	return err
+}
+
 // ResolveIntraClusterVoterAPI derives an authenticated control endpoint from
 // current Raft voter membership and the fixed embedded HTTPS port. It never
 // trusts asynchronous cluster-node health rows or the public API port.

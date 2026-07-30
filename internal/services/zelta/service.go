@@ -504,6 +504,9 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := s.requireCurrentRuntimeVoter(s.localNodeID(), bypassRaft); err != nil {
+		return err
+	}
 	if err := s.RepublishQueuedBackupJobOperations(ctx); err != nil {
 		logger.L.Warn().Err(err).Msg("backup_operation_republish_failed")
 	}
