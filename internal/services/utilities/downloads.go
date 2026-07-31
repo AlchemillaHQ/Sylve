@@ -264,7 +264,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return 0, err
 		}
 
-		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
+		err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
 			ID: download.ID,
 		})
 
@@ -303,6 +303,14 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 
 		filePath := path.Join(destDir, finalName)
 
+		if err := ValidateDownloaderPostProcessOptions(
+			finalName,
+			automaticExtraction,
+			automaticRawConversion,
+		); err != nil {
+			return 0, err
+		}
+
 		if _, err := os.Stat(filePath); err == nil {
 			err := os.Remove(filePath)
 			if err != nil {
@@ -331,7 +339,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return 0, err
 		}
 
-		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
+		err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
 			ID: download.ID,
 		})
 
@@ -343,8 +351,22 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 
 		return download.ID, nil
 	} else if utils.IsAbsPath(url) {
-		if _, err := os.Stat(url); os.IsNotExist(err) {
-			return 0, fmt.Errorf("file_not_found")
+		sourceInfo, err := os.Stat(url)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return 0, fmt.Errorf("file_not_found")
+			}
+			return 0, fmt.Errorf("source_stat_failed: %w", err)
+		}
+		if !sourceInfo.Mode().IsRegular() {
+			return 0, fmt.Errorf("source_not_regular_file")
+		}
+		sourceFile, err := os.Open(url)
+		if err != nil {
+			return 0, fmt.Errorf("source_not_readable: %w", err)
+		}
+		if err := sourceFile.Close(); err != nil {
+			return 0, fmt.Errorf("source_close_failed: %w", err)
 		}
 
 		var finalName string
@@ -366,6 +388,14 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		sourcePath := path.Clean(url)
 		destDir := config.GetDownloadsPath("path")
 		destPath := path.Clean(path.Join(destDir, finalName))
+
+		if err := ValidateDownloaderPostProcessOptions(
+			finalName,
+			automaticExtraction,
+			automaticRawConversion,
+		); err != nil {
+			return 0, err
+		}
 
 		// Never delete the source file; only replace an existing destination when they differ.
 		if sourcePath != destPath {
@@ -398,7 +428,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return 0, fmt.Errorf("failed_to_create_download_record: %w", err)
 		}
 
-		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
+		err = s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
 			ID: download.ID,
 		})
 
@@ -418,11 +448,21 @@ func (s *Service) StartDownload(id *uint) error {
 	if id == nil {
 		return fmt.Errorf("download_is_nil")
 	}
+	if !s.beginDownloadStart(*id) {
+		return nil
+	}
+	defer s.endDownloadStart(*id)
 
 	download, err := s.GetDownloadByID(*id)
 	if err != nil {
 		logger.L.Error().Uint("download_id", *id).Err(err).Msg("GetDownloadByID failed")
 		return err
+	}
+	if download.Status == utilitiesModels.DownloadStatusDone ||
+		download.Status == utilitiesModels.DownloadStatusFailed ||
+		(download.Type == utilitiesModels.DownloadTypePath &&
+			download.Status == utilitiesModels.DownloadStatusProcessing) {
+		return nil
 	}
 
 	if utils.IsMagnetURI(download.URL) {
@@ -558,6 +598,12 @@ func (s *Service) StartDownload(id *uint) error {
 			return fmt.Errorf("failed_to_update_download_record: %w", err)
 		}
 
+		if sourcePath != destPath {
+			if err := s.removeCompletedDownloaderUploadSource(sourcePath); err != nil {
+				logger.L.Warn().Uint("download_id", *id).Err(err).Msg("failed_to_remove_completed_upload_source")
+			}
+		}
+
 		if download.Status == utilitiesModels.DownloadStatusDone && s.TelemetryDB != nil {
 			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
 				"downloadId": download.ID,
@@ -605,6 +651,13 @@ func (s *Service) StartPostProcess(id *uint) error {
 	if !d.AutomaticExtraction && !d.AutomaticRawConversion {
 		return s.finishDownload(&d, "")
 	}
+	if err := ValidateDownloaderPostProcessOptions(
+		d.Name,
+		d.AutomaticExtraction,
+		d.AutomaticRawConversion,
+	); err != nil {
+		return s.failDownload(&d, err)
+	}
 
 	var extractedPath string
 
@@ -615,42 +668,42 @@ func (s *Service) StartPostProcess(id *uint) error {
 		}
 
 		mime, kind, err := utils.SniffMIME(d.Path)
-		sniffFailed := false
 		logger.L.Debug().Msgf("postproc sniff id=%d mime=%s ext=%s kind=%+v err=%v", d.ID, mime, kind.Extension, kind, err)
 		if err != nil {
-			// If unknown, still mark done; not extractable
 			logger.L.Warn().Msgf("sniff failed (%s): %v", d.Path, err)
-			sniffFailed = true
+			return s.failDownload(&d, fmt.Errorf("%w: %v", ErrDownloaderExtractionFormat, err))
 		}
 
-		if !sniffFailed {
-			if mime == "application/x-tar" || utils.IsTarLike(d.Path, mime) {
-				// We're using --no-xattrs to handle cross-platform rootfs extraction (e.g., Linux rootfs on FreeBSD)
-				if out, err := utils.RunCommand("/usr/bin/tar", "--no-xattrs", "-xf", d.Path, "-C", extractsPath); err != nil {
-					logger.L.Error().Msgf("tar extract failed: %v (%s)", err, out)
-					return s.failDownload(&d, err)
-				}
-
-				d.ExtractedPath = extractsPath
-				return s.finishDownload(&d, extractsPath)
+		if mime == "application/x-tar" || utils.IsTarLike(d.Path, mime) {
+			if d.AutomaticRawConversion {
+				return s.failDownload(&d, ErrDownloaderPostProcessOptions)
 			}
 
-			outName := defaultOutName(d.Path, kind.Extension)
-			outFile := filepath.Join(extractsPath, outName)
-
-			if err := utils.DecompressOne(mime, d.Path, outFile); err != nil {
-				logger.L.Error().Msgf("decompress failed: %v", err)
+			// We're using --no-xattrs to handle cross-platform rootfs extraction (e.g., Linux rootfs on FreeBSD)
+			if out, err := utils.RunCommand("/usr/bin/tar", "--no-xattrs", "-xf", d.Path, "-C", extractsPath); err != nil {
+				logger.L.Error().Msgf("tar extract failed: %v (%s)", err, out)
 				return s.failDownload(&d, err)
 			}
 
-			if files, _ := os.ReadDir(extractsPath); len(files) == 1 {
-				d.ExtractedPath = filepath.Join(extractsPath, files[0].Name())
-			} else {
-				d.ExtractedPath = extractsPath
-			}
-
-			extractedPath = d.ExtractedPath
+			d.ExtractedPath = extractsPath
+			return s.finishDownload(&d, extractsPath)
 		}
+
+		outName := defaultOutName(d.Path, kind.Extension)
+		outFile := filepath.Join(extractsPath, outName)
+
+		if err := utils.DecompressOne(mime, d.Path, outFile); err != nil {
+			logger.L.Error().Msgf("decompress failed: %v", err)
+			return s.failDownload(&d, err)
+		}
+
+		if files, _ := os.ReadDir(extractsPath); len(files) == 1 {
+			d.ExtractedPath = filepath.Join(extractsPath, files[0].Name())
+		} else {
+			d.ExtractedPath = extractsPath
+		}
+
+		extractedPath = d.ExtractedPath
 	}
 
 	if d.AutomaticRawConversion {
@@ -757,6 +810,26 @@ func (s *Service) UpdateDownload(id uint, req utilitiesServiceInterfaces.UpdateD
 	var d utilitiesModels.Downloads
 	if err := s.DB.First(&d, "id = ?", id).Error; err != nil {
 		return fmt.Errorf("download_not_found: %w", err)
+	}
+
+	effectiveName := d.Name
+	if req.Name != nil {
+		effectiveName = *req.Name
+	}
+	effectiveExtraction := d.AutomaticExtraction
+	if req.AutomaticExtraction != nil {
+		effectiveExtraction = *req.AutomaticExtraction
+	}
+	effectiveRawConversion := d.AutomaticRawConversion
+	if req.AutomaticRawConversion != nil {
+		effectiveRawConversion = *req.AutomaticRawConversion
+	}
+	if err := ValidateDownloaderPostProcessOptions(
+		effectiveName,
+		effectiveExtraction,
+		effectiveRawConversion,
+	); err != nil {
+		return err
 	}
 
 	updates := map[string]any{}
@@ -1061,22 +1134,14 @@ func (s *Service) syncPath(download *utilitiesModels.Downloads) {
 		if download.CreatedAt.Before(staleWindow) {
 			logger.L.Info().Msgf("syncPath: stale pending path download (ID=%d), enqueuing start job", download.ID)
 
-			err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
+			err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
 				ID: download.ID,
 			})
 
 			if err != nil {
 				logger.L.Error().Msgf("syncPath: failed to enqueue start job for download ID=%d: %v", download.ID, err)
 				download.Error = "failed_to_enqueue_start_job"
-				download.Status = utilitiesModels.DownloadStatusFailed
-				s.DB.Model(download).Select("Error", "Status").Updates(download)
-				if s.TelemetryDB != nil {
-					db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
-						"downloadId": download.ID,
-						"status":     "failed",
-						"error":      download.Error,
-					})
-				}
+				s.DB.Model(download).Select("Error").Updates(download)
 			}
 		}
 	}
@@ -1155,6 +1220,14 @@ func (s *Service) DeleteDownload(id int) error {
 	if err := s.DB.Delete(&download).Error; err != nil {
 		logger.L.Debug().Msgf("Failed to delete download: %v", err)
 		return err
+	}
+	if err := s.DB.Where(
+		"path = ? AND scope = ? AND status = ?",
+		download.URL,
+		utilitiesModels.UploadScopeDownloader,
+		utilitiesModels.UploadStatusCompleted,
+	).Delete(&utilitiesModels.Upload{}).Error; err != nil {
+		logger.L.Warn().Msgf("Failed to delete completed upload identity: %v", err)
 	}
 
 	return nil

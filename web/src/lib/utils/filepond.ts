@@ -1,0 +1,44 @@
+import { browser } from '$app/environment';
+import { storage } from '$lib';
+import { resolveNodeHostname } from '$lib/utils/enabled-services';
+
+export function getFilePondRequestHeaders(): Record<string, string> {
+	if (!browser) return {};
+
+	const hostname =
+		resolveNodeHostname(window.location.pathname) ||
+		storage.localHostname?.trim() ||
+		storage.hostname?.trim();
+	const headers: Record<string, string> = {};
+	const token = storage.token?.trim();
+	const clusterToken = storage.clusterToken?.trim();
+
+	if (token) headers.Authorization = `Bearer ${token}`;
+	if (clusterToken) headers['X-Cluster-Token'] = `Bearer ${clusterToken}`;
+	if (hostname) headers['X-Current-Hostname'] = hostname;
+
+	return headers;
+}
+
+export function parseFilePondUploadID(response: string): string {
+	try {
+		const parsed = JSON.parse(response) as {
+			data?: { uploadId?: unknown };
+		};
+		return typeof parsed.data?.uploadId === 'string' ? parsed.data.uploadId.trim() : '';
+	} catch {
+		return '';
+	}
+}
+
+export function parseFilePondUploadError(response: string): string {
+	try {
+		const parsed = JSON.parse(response) as { error?: unknown; message?: unknown };
+		if (Array.isArray(parsed.error)) return parsed.error.join(', ');
+		if (typeof parsed.error === 'string' && parsed.error) return parsed.error;
+		if (typeof parsed.message === 'string' && parsed.message) return parsed.message;
+	} catch {
+		// FilePond can display a non-JSON response directly.
+	}
+	return response || 'Upload failed';
+}

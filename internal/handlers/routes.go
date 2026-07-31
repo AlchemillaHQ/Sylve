@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/assets"
+	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
@@ -61,6 +62,8 @@ import (
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // @title           Sylve API
@@ -109,6 +112,7 @@ func RegisterRoutes(r *gin.Engine,
 	telemetryDB *gorm.DB,
 ) {
 	api := r.Group("/api")
+	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
 	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
 
 	health := api.Group("/health")
@@ -448,9 +452,7 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	fileExplorer := system.Group("/file-explorer")
-	fileExplorer.Use(middleware.EnsureAuthenticated(authService))
-	fileExplorer.Use(EnsureCorrectHost(db, authService))
-	fileExplorer.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	fileExplorer.Use(middleware.RequireLocalAdmin(authService))
 	{
 		fileExplorer.GET("", systemHandlers.Files(systemService))
 		fileExplorer.POST("", systemHandlers.AddFileOrFolder(systemService))
@@ -464,7 +466,7 @@ func RegisterRoutes(r *gin.Engine,
 		fileExplorer.POST("/copy-or-move", systemHandlers.CopyOrMoveFileOrFolder(systemService))
 		fileExplorer.POST("/copy-or-move-batch", systemHandlers.CopyOrMoveFilesOrFolders(systemService))
 
-		fileExplorer.POST("/upload", systemHandlers.UploadFile(systemService))
+		fileExplorer.POST("/upload", systemHandlers.UploadFile(systemService, uploadAdmission))
 		fileExplorer.DELETE("/upload", systemHandlers.DeleteUpload(systemService))
 	}
 
@@ -604,14 +606,19 @@ func RegisterRoutes(r *gin.Engine,
 	utilities.Use(middleware.EnsureAuthenticated(authService))
 	utilities.Use(EnsureCorrectHost(db, authService))
 	utilities.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	requireUtilitiesAdmin := middleware.RequireLocalAdmin(authService)
 	{
-		utilities.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
+		utilities.POST("/downloader-uploads", requireUtilitiesAdmin, utilitiesHandlers.UploadDownloaderFile(utilitiesService, uploadAdmission))
+		utilities.POST("/downloader-uploads/:id/complete", requireUtilitiesAdmin, utilitiesHandlers.CompleteDownloaderUpload(utilitiesService))
+		utilities.DELETE("/downloader-uploads/:id", requireUtilitiesAdmin, utilitiesHandlers.AbortDownloaderUpload(utilitiesService))
+
+		utilities.POST("/downloads", requireUtilitiesAdmin, utilitiesHandlers.DownloadFile(utilitiesService))
 		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
 		utilities.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
 		utilities.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
-		utilities.PUT("/downloads/:id", utilitiesHandlers.UpdateDownload(utilitiesService))
-		utilities.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
-		utilities.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
+		utilities.PUT("/downloads/:id", requireUtilitiesAdmin, utilitiesHandlers.UpdateDownload(utilitiesService))
+		utilities.DELETE("/downloads/:id", requireUtilitiesAdmin, utilitiesHandlers.DeleteDownload(utilitiesService))
+		utilities.POST("/downloads/bulk-delete", requireUtilitiesAdmin, utilitiesHandlers.BulkDeleteDownload(utilitiesService))
 		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
 
 		utilities.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))

@@ -27,6 +27,7 @@
 		enabled: boolean;
 		reload: boolean;
 		selectedTarget: BackupTarget | null;
+		disabled?: boolean;
 	}
 
 	let {
@@ -41,12 +42,15 @@
 		createBackupRoot = $bindable(),
 		enabled = $bindable(),
 		reload = $bindable(),
-		selectedTarget
+		selectedTarget,
+		disabled = false
 	}: Props = $props();
 
 	let loading = $state(false);
 
 	async function saveTarget() {
+		if (disabled) return;
+
 		if (!name.trim()) {
 			toast.error('Name is required', { position: 'bottom-center' });
 			return;
@@ -281,7 +285,7 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button onclick={saveTarget} disabled={loading}>
+			<Button onclick={saveTarget} disabled={loading || disabled}>
 				{#if loading}
 					<div class="flex items-center gap-1">
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>

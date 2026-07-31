@@ -10,9 +10,12 @@ package utilities
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -97,5 +100,44 @@ func TestListDownloads_DoesNotEnqueueSyncWhenNoPending(t *testing.T) {
 
 	if enqueueCalls != 0 {
 		t.Fatalf("expected no enqueue calls for done downloads, got %d", enqueueCalls)
+	}
+}
+
+func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	service := &Service{
+		DB: db,
+		enqueueDownloadStartFn: func(
+			_ context.Context,
+			_ utilitiesServiceInterfaces.DownloadStartPayload,
+		) error {
+			return errors.New("queue offline")
+		},
+	}
+	pending := utilitiesModels.Downloads{
+		UUID:      "stale-path-uuid",
+		Path:      "/tmp/stale-path-destination",
+		Name:      "stale.img",
+		Type:      utilitiesModels.DownloadTypePath,
+		URL:       "/tmp/stale-path-source",
+		Progress:  0,
+		Status:    utilitiesModels.DownloadStatusPending,
+		CreatedAt: time.Now().Add(-3 * time.Minute),
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	service.syncPath(&pending)
+
+	var stored utilitiesModels.Downloads
+	if err := db.First(&stored, pending.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != utilitiesModels.DownloadStatusPending {
+		t.Fatalf("status=%q want pending", stored.Status)
+	}
+	if stored.Error != "failed_to_enqueue_start_job" {
+		t.Fatalf("error=%q", stored.Error)
 	}
 }

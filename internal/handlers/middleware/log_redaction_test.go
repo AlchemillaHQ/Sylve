@@ -10,6 +10,9 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +22,20 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
+
+type auditTrackingReadCloser struct {
+	reader *bytes.Reader
+	reads  int
+}
+
+func (r *auditTrackingReadCloser) Read(p []byte) (int, error) {
+	r.reads++
+	return r.reader.Read(p)
+}
+
+func (r *auditTrackingReadCloser) Close() error {
+	return nil
+}
 
 func TestShouldRedactAuditPayload(t *testing.T) {
 	cases := []struct {
@@ -34,6 +51,9 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		{path: "/api/certificates/2/activate", want: true},
 		{path: "/api/certificates/2/download", want: true},
 		{path: "/api/utilities/downloads/signed-url", want: true},
+		{path: "/api/system/file-explorer/upload", want: true},
+		{path: "/api/utilities/downloader-uploads", want: true},
+		{path: "/api/utilities/downloader-uploads/id/complete", want: false},
 		{path: "/api/zfs/pools", want: false},
 	}
 
@@ -57,6 +77,119 @@ func TestSanitizeAuditQuery(t *testing.T) {
 	}
 	if got := sanitizeAuditQuery("/api/vm/console", "%zz"); got != "[REDACTED]" {
 		t.Fatalf("malformed query=%q", got)
+	}
+}
+
+func TestUploadAuditDoesNotReadMultipartOrRecordSensitivePayloads(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, path := range []string{
+		"/api/system/file-explorer/upload",
+		"/api/utilities/downloader-uploads",
+	} {
+		t.Run(path, func(t *testing.T) {
+			auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set("UserID", uint(7))
+				c.Set("Username", "admin")
+				c.Set("AuthType", "sylve")
+				c.Next()
+			})
+			router.Use(RequestLoggerMiddleware(auditDB, nil))
+
+			var receivedBody []byte
+			var readsBeforeHandler int
+			router.POST(path, func(c *gin.Context) {
+				tracked, ok := c.Request.Body.(*auditTrackingReadCloser)
+				if !ok {
+					t.Fatalf("request body was replaced with %T", c.Request.Body)
+				}
+				readsBeforeHandler = tracked.reads
+
+				var err error
+				receivedBody, err = io.ReadAll(c.Request.Body)
+				if err != nil {
+					t.Fatalf("read request body: %v", err)
+				}
+
+				c.JSON(http.StatusCreated, gin.H{
+					"data": gin.H{
+						"path":     "/private/storage/confidential-disk.raw",
+						"uploadId": "opaque-but-private-upload-id",
+					},
+				})
+			})
+
+			var multipartBody bytes.Buffer
+			writer := multipart.NewWriter(&multipartBody)
+			file, err := writer.CreateFormFile("file", "confidential-disk.raw")
+			if err != nil {
+				t.Fatalf("create multipart file: %v", err)
+			}
+			if _, err := file.Write([]byte("TOP SECRET FILE CONTENT")); err != nil {
+				t.Fatalf("write multipart file: %v", err)
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatalf("close multipart writer: %v", err)
+			}
+			wantBody := append([]byte(nil), multipartBody.Bytes()...)
+			trackedBody := &auditTrackingReadCloser{reader: bytes.NewReader(wantBody)}
+
+			request := httptest.NewRequest(
+				http.MethodPost,
+				path+"?hash=reusable-query-hash&path=/private/storage",
+				nil,
+			)
+			request.Body = trackedBody
+			request.ContentLength = int64(len(wantBody))
+			request.Header.Set("Content-Type", writer.FormDataContentType())
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != http.StatusCreated {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if readsBeforeHandler != 0 {
+				t.Fatalf("audit middleware read multipart body %d times before handler", readsBeforeHandler)
+			}
+			if !bytes.Equal(receivedBody, wantBody) {
+				t.Fatal("handler did not receive the original multipart body")
+			}
+
+			var records []infoModels.AuditRecord
+			if err := auditDB.Find(&records).Error; err != nil {
+				t.Fatalf("load audit records: %v", err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("audit record count=%d want=1", len(records))
+			}
+
+			var recorded action
+			if err := json.Unmarshal([]byte(records[0].Action), &recorded); err != nil {
+				t.Fatalf("decode audit action: %v", err)
+			}
+			if recorded.Method != http.MethodPost || recorded.Path != path {
+				t.Fatalf("unexpected audit metadata: %+v", recorded)
+			}
+			if recorded.Query != "[REDACTED]" ||
+				recorded.Body != "[REDACTED]" ||
+				recorded.Response != "[REDACTED]" {
+				t.Fatalf("upload audit was not metadata-only: %+v", recorded)
+			}
+
+			for _, secret := range []string{
+				"reusable-query-hash",
+				"/private/storage",
+				"confidential-disk.raw",
+				"TOP SECRET FILE CONTENT",
+				"opaque-but-private-upload-id",
+			} {
+				if strings.Contains(records[0].Action, secret) {
+					t.Fatalf("audit action leaked %q: %s", secret, records[0].Action)
+				}
+			}
+		})
 	}
 }
 

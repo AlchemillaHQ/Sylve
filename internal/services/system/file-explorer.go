@@ -34,6 +34,35 @@ func fileExplorerPathOverlaps(path, root string) bool {
 	return false
 }
 
+// resolveFileExplorerGuardPath resolves every existing path component while
+// preserving a possibly non-existent final suffix. This lets the restore fence
+// reason about the actual mutation target without preventing normal explorer
+// use of symlinked directories.
+func resolveFileExplorerGuardPath(path string) string {
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		path = string(filepath.Separator) + path
+	}
+
+	current := path
+	var suffix []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(current); err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return path
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
 // EnsureFileExplorerMutationAllowed blocks writes that could alter a jail
 // whose dataset is being replaced by a restore. Read-only explorer operations
 // intentionally do not call this method.
@@ -53,14 +82,14 @@ func (s *Service) EnsureFileExplorerMutationAllowed(paths ...string) error {
 		return fmt.Errorf("restore_fence_jails_path_failed: %w", err)
 	}
 	for _, operation := range operations {
-		jailRoot := filepath.Join(jailsPath, strconv.FormatUint(uint64(operation.GuestID), 10))
+		jailRoot := resolveFileExplorerGuardPath(
+			filepath.Join(jailsPath, strconv.FormatUint(uint64(operation.GuestID), 10)),
+		)
 		for _, path := range paths {
 			if path == "" {
 				continue
 			}
-			if !filepath.IsAbs(path) {
-				path = "/" + path
-			}
+			path = resolveFileExplorerGuardPath(path)
 			if fileExplorerPathOverlaps(path, jailRoot) {
 				return fmt.Errorf("restore_in_progress: ctid=%d", operation.GuestID)
 			}

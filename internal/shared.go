@@ -59,6 +59,11 @@ type ZFSConfig struct {
 	Tune bool `json:"tune"`
 }
 
+type UploadsConfig struct {
+	MaxFileBytes           int64 `json:"maxFileBytes"`
+	MaxConcurrentTransfers int64 `json:"maxConcurrentTransfers"`
+}
+
 type SylveConfig struct {
 	Environment    Environment     `json:"environment"`
 	ProxyToVite    bool            `json:"proxyToVite"`
@@ -76,6 +81,7 @@ type SylveConfig struct {
 	Auth           AuthConfig      `json:"auth"`
 	Jails          JailsConfig     `json:"jails"`
 	ZFS            ZFSConfig       `json:"zfs"`
+	Uploads        UploadsConfig   `json:"uploads"`
 	TrustedProxies []string        `json:"trustedProxies"`
 }
 

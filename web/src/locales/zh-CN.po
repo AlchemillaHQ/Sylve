@@ -611,7 +611,6 @@ msgstr "操作"
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -914,7 +913,6 @@ msgstr "创建笔记失败"
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -998,7 +996,6 @@ msgstr "查看"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -1042,7 +1039,6 @@ msgstr "删除"
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1097,7 +1093,6 @@ msgstr "批量删除"
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -2068,9 +2063,7 @@ msgstr "新建文件"
 msgid "New Folder"
 msgstr "新建文件夹"
 
-#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "Upload File"
 msgstr "上传文件"
 
@@ -2745,7 +2738,6 @@ msgstr "ZFS 存储池"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2797,7 +2789,6 @@ msgstr "已启用"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Disabled"
@@ -3049,7 +3040,6 @@ msgstr "请输入有效的 Magnet、HTTP URL 或路径"
 msgid "Invalid file name"
 msgstr "文件名无效"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download started"
 msgstr "下载已开始"
@@ -3307,7 +3297,6 @@ msgstr "强制删除"
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Running"
@@ -3391,7 +3380,6 @@ msgstr "Jail {0}"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Success"
@@ -3403,7 +3391,7 @@ msgstr "成功"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3432,7 +3420,6 @@ msgstr "加载事件进度失败"
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source"
 msgstr "源"
 
@@ -3445,7 +3432,6 @@ msgstr "源"
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Target"
 msgstr "目标"
@@ -3462,7 +3448,6 @@ msgstr "模式"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore"
 msgstr "还原"
 
@@ -3528,30 +3513,24 @@ msgstr "正在加载进度..."
 #~ msgstr "#{0} 事件 - 错误详情"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Dest Suffix"
 msgstr "目标后缀"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Prune"
 msgstr "清理"
 
 #. 0: value
-#. 0: value
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Keep {0}"
 msgstr "保留 {0}"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Off"
 msgstr "关闭"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Schedule"
@@ -3559,38 +3538,31 @@ msgstr "计划"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Run"
 msgstr "上次运行"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Backup job deleted"
 msgstr "备份任务已删除"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed to delete job"
 msgstr "删除任务失败"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Backup job started"
 msgstr "备份任务已启动"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed to run job"
 msgstr "运行任务失败"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Run Now"
 msgstr "立即运行"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "OOB Restore"
 msgstr "带外还原"
 
@@ -3599,7 +3571,6 @@ msgstr "带外还原"
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Refresh"
 msgstr "刷新"
@@ -6122,7 +6093,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -7710,7 +7681,6 @@ msgstr "正在创建"
 #~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "Failed to load cluster details"
 msgstr "加载集群详情失败"
 
@@ -9114,9 +9084,8 @@ msgstr "<0/> 启动"
 msgid "<0/> Shutdown"
 msgstr "<0/> 关机"
 
-#: src/routes/datacenter/backups/jobs/+page.ts
-msgid "Local node"
-msgstr "本地节点"
+#~ msgid "Local node"
+#~ msgstr "本地节点"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Leader IP is required"
@@ -9227,6 +9196,7 @@ msgstr "名称前缀"
 
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Queued"
 msgstr "已排队"
 
@@ -9953,21 +9923,18 @@ msgstr "快照 {0}/{1}@{2} 已创建"
 msgid "Flash File To Volume"
 msgstr "将文件刷写到卷"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to start download from uploaded file"
-msgstr "无法开始从上传的文件下载"
+#~ msgid "Failed to start download from uploaded file"
+#~ msgstr "无法开始从上传的文件下载"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Upload"
 msgstr "上传"
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Upload failed"
-msgstr "上传失败"
+#~ msgid "Upload failed"
+#~ msgstr "上传失败"
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Uploaded file path is invalid"
-msgstr "上传的文件路径无效"
+#~ msgid "Uploaded file path is invalid"
+#~ msgstr "上传的文件路径无效"
 
 #~ msgid "Upload destination: <0/>"
 #~ msgstr ""
@@ -9975,14 +9942,15 @@ msgstr "上传的文件路径无效"
 #~ msgid "File uploaded. Click Download to start."
 #~ msgstr ""
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Upload a file first"
-msgstr "请先上传文件"
+#~ msgid "Upload a file first"
+#~ msgstr "请先上传文件"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "Upload Type"
 msgstr "上传类型"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "Select Upload Type"
 msgstr "选择上传类型"
@@ -9990,17 +9958,14 @@ msgstr "选择上传类型"
 #~ msgid "Move"
 #~ msgstr ""
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Complete Upload"
-msgstr "完成上传"
+#~ msgid "Complete Upload"
+#~ msgstr "完成上传"
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Failed to start move from uploaded file"
-msgstr "无法开始从上传的文件移动"
+#~ msgid "Failed to start move from uploaded file"
+#~ msgstr "无法开始从上传的文件移动"
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "File uploaded, you can complete upload now"
-msgstr "文件已上传，现在可以完成上传"
+#~ msgid "File uploaded, you can complete upload now"
+#~ msgstr "文件已上传，现在可以完成上传"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Create new IPv4 Network"
@@ -13376,9 +13341,8 @@ msgstr "未找到此数据集的快照。备份可能仍在进行中。"
 msgid "A backup is currently in progress. Restore is unavailable until it completes."
 msgstr "备份正在进行中。恢复在完成之前不可用。"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "A backup for this target is currently in progress. Restore is unavailable until it completes."
-msgstr "此目标的备份正在进行中。恢复在完成之前不可用。"
+#~ msgid "A backup for this target is currently in progress. Restore is unavailable until it completes."
+#~ msgstr "此目标的备份正在进行中。恢复在完成之前不可用。"
 
 #: src/lib/components/custom/Notifications/Bell.svelte
 msgid "Show Dismissed"
@@ -14273,7 +14237,6 @@ msgid "root is a permanent member of the wheel group and cannot be removed. This
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Encrypted"
 msgstr ""
 
@@ -14758,6 +14721,7 @@ msgstr ""
 msgid "Cleaning up source…"
 msgstr ""
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Complete"
 msgstr ""
@@ -16369,6 +16333,7 @@ msgstr ""
 msgid "Waiting to retry the migration safely…"
 msgstr ""
 
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Ready"
@@ -16546,9 +16511,8 @@ msgstr ""
 msgid "Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108"
 msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "A restore for this destination is already running"
-msgstr ""
+#~ msgid "A restore for this destination is already running"
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Guest restores are create-only. The RID/CTID and canonical destination dataset must not already exist."
@@ -16624,7 +16588,6 @@ msgid "Last Verified"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "View Error"
 msgstr ""
 
@@ -17481,6 +17444,7 @@ msgid "Available"
 msgstr ""
 
 #: src/routes/[node]/services/certificates/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Expired"
 msgstr ""
 
@@ -17994,6 +17958,7 @@ msgstr ""
 msgid "Certificate download failed"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 msgid "AbortError"
 msgstr ""
@@ -18049,4 +18014,363 @@ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Disabled shares are saved but are not published by Samba."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader - Upload"
+msgstr ""
+
+#~ msgid "VDEV #{0} ha"
+#~ msgstr ""
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to remove upload"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to abort upload"
+msgstr ""
+
+#. 0: updated; 1: updated === 1 ? '' \\: 's'
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Applied defaults to {0} file{1}"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to complete upload"
+msgstr ""
+
+#. 0: completed; 1: completed === 1 ? '' \\: 's'
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Added {0} file{1} to the downloader"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Done"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Completing"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Completion failed"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Ready to complete"
+msgstr ""
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload Files"
+msgstr ""
+
+#~ msgid "FilePond handles transfer progress, cancellation, and retry. Complete each staged file with its downloader options below."
+#~ msgstr ""
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload authentication is unavailable. Sign in again before uploading files."
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Batch defaults"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Completed transfers inherit these values and can still be adjusted per file."
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Apply to unfinished"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Staged uploads"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Extract"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Convert to RAW"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "<0/> Completing"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Retry completion"
+msgstr ""
+
+#~ msgid "Cancel all"
+#~ msgstr ""
+
+#. 0: completableItems.length
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Complete All ({0})"
+msgstr ""
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+msgid "Upload files to <0/>. Files dropped on the explorer start automatically."
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Cancel All"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Backup jobs are still being assigned to the new active node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "One or more backup jobs require repair after ownership changed."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Backup repair required"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Backup runner pending"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Not validated"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Removed voter"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Configuration changed"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "No validation has been recorded for this node"
+msgstr ""
+
+#. 0: status.lastVerifiedAt; 1: readyUntil
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Last checked {0}{1}"
+msgstr ""
+
+#~ msgid "Node Readiness"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validation node"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Node used for target connectivity validation"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+msgid "Runner rebind pending"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+msgid "Repair required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+msgid "Backup job data is unavailable"
+msgstr ""
+
+#. 0: unavailableSources.join(', ')
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+msgid "Could not load {0}. Changes are disabled until the page is refreshed successfully."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "SSH private key is required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Disable the target before rotating its SSH key"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Rotate the SSH key separately from metadata changes"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Change enabled state separately from metadata"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Paste the SSH private key for this target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Create a new target to change its SSH endpoint or backup root"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Wait for queued and running target operations to finish"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Disable and save the target before rotating its key."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "The matching public key must already be authorized on the backup target."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "SSH endpoint and backup root are immutable. Create a new target to change them."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Could not load advisory placement data; the server will verify before restoring."
+msgstr ""
+
+#. 0: guestLabel; 1: guestID; 2: conflictLabels
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Health data also reports {0} {1} on {2}. The server will verify live placement before restoring."
+msgstr ""
+
+#. 0: scopedVmRid; 1: hostname || 'the scoped node'
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "VM {0} was not found on {1}"
+msgstr ""
+
+#. 0: scopedVmRid
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Unable to resolve a dataset root for VM {0}"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Current VM owner selected. Save the job to apply the repair."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Failed to load the scoped VM owner"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Runner rebind is still in progress"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Automatic reconciliation owns this job. Wait for it to finish before editing."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Scoped VM node is unavailable"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "The route node could not be resolved, so runner repair is disabled."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "This job is assigned to a different runner"
+msgstr ""
+
+#. 0: scopedVmNode.hostname
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "The scoped VM is on {0}. Select its current owner, then save to repair the assignment."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Loading VM owner…"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Use current VM owner"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Current VM owner selected"
+msgstr ""
+
+#. 0: scopedVmNode.hostname
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "The runner will change to {0} only after this job is saved and the backend verifies live placement."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Encryption information is unavailable for the selected runner"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Could not verify active backup operations"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "A backup for this lineage is currently in progress"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "A restore for this destination is already queued or running"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Could not durably reserve the destination. Check cluster health and retry"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restore selection changed while checking cluster status. Retry the restore"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Could not verify active backup operations. Restore remains unavailable"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Active backup operations could not be verified. Restore remains unavailable until cluster status recovers."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Retry Status"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "A backup for this lineage is currently in progress. Restore is unavailable until it completes."
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Cancel Remaining"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/backups/+page.ts
+msgid "Invalid VM ID"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Cluster quorum is unavailable. Changes are disabled until enough voters recover."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Could not verify complete cluster membership. Changes are disabled until cluster status recovers."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Could not refresh backup targets. Changes are disabled until the page refreshes successfully."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Could not verify cluster state. Changes are disabled until cluster status recovers."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup target changes are unavailable"
 msgstr ""

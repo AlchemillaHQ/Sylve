@@ -9,6 +9,7 @@
 package utilitiesHandlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -149,6 +150,15 @@ func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 
 		downloadID, err := utilitiesService.DownloadFile(request)
 		if err != nil {
+			if errors.Is(err, utilities.ErrDownloaderPostProcessOptions) {
+				c.JSON(http.StatusUnprocessableEntity, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "incompatible_post_processing_options",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_download_file",
@@ -413,6 +423,15 @@ func UpdateDownload(utilitiesService *utilities.Service) gin.HandlerFunc {
 		}
 
 		if err := utilitiesService.UpdateDownload(uint(id), request); err != nil {
+			if errors.Is(err, utilities.ErrDownloaderPostProcessOptions) {
+				c.JSON(http.StatusUnprocessableEntity, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "incompatible_post_processing_options",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_update_download",

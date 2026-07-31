@@ -260,6 +260,40 @@ func TestGenerateRandomString(t *testing.T) {
 	})
 }
 
+func TestIsValidFilename(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"FreeBSD-15.1-RELEASE-amd64.iso",
+		"root filesystem.txz",
+		"日本語.img",
+		strings.Repeat("a", 255),
+	}
+	for _, name := range valid {
+		if err := IsValidFilename(name); err != nil {
+			t.Errorf("IsValidFilename(%q) returned error: %v", name, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"   ",
+		".",
+		"..",
+		"nested/file.iso",
+		`nested\\file.iso`,
+		"line\nbreak.iso",
+		"nul\x00byte.iso",
+		strings.Repeat("a", 256),
+		strings.Repeat("界", 86),
+	}
+	for _, name := range invalid {
+		if err := IsValidFilename(name); err == nil {
+			t.Errorf("IsValidFilename(%q) succeeded, want error", name)
+		}
+	}
+}
+
 func TestStringInSlice(t *testing.T) {
 	tests := []struct {
 		element  string

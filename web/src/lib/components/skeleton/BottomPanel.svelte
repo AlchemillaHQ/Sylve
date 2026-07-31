@@ -220,6 +220,7 @@
 		'/api/vm/templates': 'VM Template',
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
+		'/api/utilities/downloader-uploads': 'Downloader - Upload',
 		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
 		'/api/utilities/downloads/bulk-delete': 'Downloader - Bulk Delete',
 		'/api/utilities/download': 'Downloader',

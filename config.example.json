@@ -31,5 +31,9 @@
     "zfs": {
         "tune": true
     },
+    "uploads": {
+        "maxFileBytes": 68719476736,
+        "maxConcurrentTransfers": 2
+    },
     "trustedProxies": []
 }

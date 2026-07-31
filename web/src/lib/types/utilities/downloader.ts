@@ -34,12 +34,19 @@ export const UTypeGroupedDownloadSchema = z.object({
 	uType: z.enum(['base-rootfs', 'cloud-init', 'uncategorized'])
 });
 
-export const DownloadPathsSchema = z.object({
-	http: z.string(),
-	path: z.string()
+export const DownloaderUploadCompletionSchema = z.object({
+	uploadId: z.string(),
+	downloadId: z.number(),
+	status: z.literal('completed')
+});
+
+export const DownloaderUploadAbortSchema = z.object({
+	uploadId: z.string(),
+	status: z.enum(['aborted', 'completed'])
 });
 
 export type Download = z.infer<typeof DownloadSchema>;
 export type DownloadedFile = z.infer<typeof DownloadedFileSchema>;
 export type UTypeGroupedDownload = z.infer<typeof UTypeGroupedDownloadSchema>;
-export type DownloadPaths = z.infer<typeof DownloadPathsSchema>;
+export type DownloaderUploadCompletion = z.infer<typeof DownloaderUploadCompletionSchema>;
+export type DownloaderUploadAbort = z.infer<typeof DownloaderUploadAbortSchema>;

@@ -1,24 +1,30 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
-	DownloadPathsSchema,
 	DownloadSchema,
+	DownloaderUploadAbortSchema,
+	DownloaderUploadCompletionSchema,
 	UTypeGroupedDownloadSchema,
-	type DownloadPaths,
 	type Download,
+	type DownloaderUploadAbort,
+	type DownloaderUploadCompletion,
 	type UTypeGroupedDownload
 } from '$lib/types/utilities/downloader';
 import { apiRequest } from '$lib/utils/http';
 
 export async function getDownloads(hostname?: string): Promise<Download[]> {
-	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET', undefined, { hostname });
+	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET', undefined, {
+		hostname
+	});
 }
 
 export async function getDownloadsByUType(hostname?: string): Promise<UTypeGroupedDownload[]> {
-	return await apiRequest('/utilities/downloads/utype', UTypeGroupedDownloadSchema.array(), 'GET', undefined, { hostname });
-}
-
-export async function getDownloadPaths(): Promise<DownloadPaths> {
-	return await apiRequest('/utilities/downloads/paths', DownloadPathsSchema, 'GET');
+	return await apiRequest(
+		'/utilities/downloads/utype',
+		UTypeGroupedDownloadSchema.array(),
+		'GET',
+		undefined,
+		{ hostname }
+	);
 }
 
 export async function startDownload(
@@ -37,6 +43,37 @@ export async function startDownload(
 		automaticRawConversion,
 		downloadType
 	});
+}
+
+export async function completeDownloaderUpload(
+	uploadId: string,
+	downloadType: 'base-rootfs' | 'cloud-init' | 'uncategorized',
+	automaticExtraction: boolean,
+	automaticRawConversion: boolean
+): Promise<DownloaderUploadCompletion | APIResponse> {
+	return await apiRequest(
+		`/utilities/downloader-uploads/${encodeURIComponent(uploadId)}/complete`,
+		DownloaderUploadCompletionSchema,
+		'POST',
+		{
+			downloadType,
+			automaticExtraction,
+			automaticRawConversion
+		},
+		{ preserveErrors: true }
+	);
+}
+
+export async function abortDownloaderUpload(
+	uploadId: string
+): Promise<DownloaderUploadAbort | APIResponse> {
+	return await apiRequest(
+		`/utilities/downloader-uploads/${encodeURIComponent(uploadId)}`,
+		DownloaderUploadAbortSchema,
+		'DELETE',
+		undefined,
+		{ preserveErrors: true }
+	);
 }
 
 export async function updateDownload(

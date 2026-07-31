@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -28,8 +29,6 @@ import (
 	"github.com/cavaliergopher/grab/v3"
 	"github.com/cenkalti/rain/v2/torrent"
 	"gorm.io/gorm"
-
-	"sync"
 )
 
 var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
@@ -62,6 +61,22 @@ type Service struct {
 	syncQueueMu        sync.Mutex
 	downloadSyncQueued bool
 	enqueueNoPayloadFn func(ctx context.Context, name string) error
+
+	downloadStartRunMu     sync.Mutex
+	downloadStartRunning   map[uint]struct{}
+	downloadStartQueueMu   sync.Mutex
+	downloadStartQueued    map[uint]struct{}
+	enqueueDownloadStartFn func(
+		ctx context.Context,
+		payload utilitiesServiceInterfaces.DownloadStartPayload,
+	) error
+
+	uploadLifecycleMu  sync.Mutex
+	uploadActiveMu     sync.Mutex
+	activeUploads      map[string]struct{}
+	uploadNowFn        func() time.Time
+	uploadHostnameFn   func() (string, error)
+	uploadStagingDirFn func() string
 }
 
 func NewUtilitiesService(
@@ -103,16 +118,19 @@ func NewUtilitiesService(
 	}
 
 	return &Service{
-		DB:                 dbConn,
-		TelemetryDB:        telemetryDB,
-		BTTClient:          session,
-		GrabClient:         secureClient,
-		GrabInsecure:       insecureClient,
-		httpResponses:      make(map[string]*grab.Response),
-		inflight:           make(map[uint]struct{}),
-		VMService:          vmService,
-		JailService:        jailService,
-		enqueueNoPayloadFn: db.EnqueueNoPayload,
+		DB:                   dbConn,
+		TelemetryDB:          telemetryDB,
+		BTTClient:            session,
+		GrabClient:           secureClient,
+		GrabInsecure:         insecureClient,
+		httpResponses:        make(map[string]*grab.Response),
+		inflight:             make(map[uint]struct{}),
+		VMService:            vmService,
+		JailService:          jailService,
+		enqueueNoPayloadFn:   db.EnqueueNoPayload,
+		downloadStartRunning: make(map[uint]struct{}),
+		downloadStartQueued:  make(map[uint]struct{}),
+		activeUploads:        make(map[string]struct{}),
 	}
 }
 
@@ -148,6 +166,8 @@ func (s *Service) RegisterJobs() {
 	s.CleanupStaleAuditRecords()
 
 	db.QueueRegisterJSON("utils-download-start", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadStartPayload) error {
+		defer s.clearDownloadStartQueued(payload.ID)
+
 		if err := s.StartDownload(&payload.ID); err != nil {
 			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("StartDownload failed")
 		}
@@ -174,6 +194,64 @@ func (s *Service) RegisterJobs() {
 	})
 
 	s.registerWoLJobs()
+}
+
+func (s *Service) enqueueDownloadStart(
+	ctx context.Context,
+	payload utilitiesServiceInterfaces.DownloadStartPayload,
+) error {
+	enqueueFn := s.enqueueDownloadStartFn
+	if enqueueFn != nil {
+		return enqueueFn(ctx, payload)
+	}
+	return db.EnqueueJSON(ctx, "utils-download-start", &payload)
+}
+
+func (s *Service) enqueueDownloadStartOnce(
+	ctx context.Context,
+	payload utilitiesServiceInterfaces.DownloadStartPayload,
+) error {
+	s.downloadStartQueueMu.Lock()
+	if s.downloadStartQueued == nil {
+		s.downloadStartQueued = make(map[uint]struct{})
+	}
+	if _, queued := s.downloadStartQueued[payload.ID]; queued {
+		s.downloadStartQueueMu.Unlock()
+		return nil
+	}
+	s.downloadStartQueued[payload.ID] = struct{}{}
+	s.downloadStartQueueMu.Unlock()
+
+	if err := s.enqueueDownloadStart(ctx, payload); err != nil {
+		s.clearDownloadStartQueued(payload.ID)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) clearDownloadStartQueued(id uint) {
+	s.downloadStartQueueMu.Lock()
+	delete(s.downloadStartQueued, id)
+	s.downloadStartQueueMu.Unlock()
+}
+
+func (s *Service) beginDownloadStart(id uint) bool {
+	s.downloadStartRunMu.Lock()
+	defer s.downloadStartRunMu.Unlock()
+	if s.downloadStartRunning == nil {
+		s.downloadStartRunning = make(map[uint]struct{})
+	}
+	if _, exists := s.downloadStartRunning[id]; exists {
+		return false
+	}
+	s.downloadStartRunning[id] = struct{}{}
+	return true
+}
+
+func (s *Service) endDownloadStart(id uint) {
+	s.downloadStartRunMu.Lock()
+	delete(s.downloadStartRunning, id)
+	s.downloadStartRunMu.Unlock()
 }
 
 func (s *Service) clearDownloadSyncQueued() {

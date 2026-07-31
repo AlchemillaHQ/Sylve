@@ -18,8 +18,9 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { type APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
-	import type { Download, DownloadPaths } from '$lib/types/utilities/downloader';
+	import type { Download } from '$lib/types/utilities/downloader';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { getDownloaderProcessingOptionsError } from '$lib/utils/downloader-processing';
 	import {
 		addTrackersToMagnet,
 		isDownloadURL,
@@ -30,24 +31,16 @@
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-import { sleep } from '$lib/utils';
-import { storage } from '$lib';
-import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { sleep } from '$lib/utils';
+	import { storage } from '$lib';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { watch } from 'runed';
 
 	interface Data {
 		downloads: Download[];
-		downloadPaths: DownloadPaths;
 	}
 
 	type DownloadType = 'base-rootfs' | 'cloud-init' | 'uncategorized';
-
-	interface UploadedDownloadPayload {
-		path: string;
-		downloadType: DownloadType;
-		automaticExtraction: boolean;
-		automaticRawConversion: boolean;
-	}
 
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
@@ -114,10 +107,7 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 	};
 
 	let modalState = $state(options);
-	let uploadModalState = $state({
-		isOpen: false,
-		loading: false
-	});
+	let uploadModalState = $state({ isOpen: false });
 	let editState = $state({
 		isOpen: false,
 		loading: false,
@@ -133,26 +123,20 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 	});
 	let isAlreadyExtracted = $derived(editState.extractedPath !== '');
 	let isAlreadyRawConverted = $derived(editState.extractedPath.endsWith('.raw'));
-	let uploadStagingPath: string = $derived.by(() => {
-		const pathDownloadsPath =
-			data?.downloadPaths && typeof data.downloadPaths.path === 'string'
-				? data.downloadPaths.path
-				: '';
-		const httpDownloadsPath =
-			data?.downloadPaths && typeof data.downloadPaths.http === 'string'
-				? data.downloadPaths.http
-				: '';
-
-		if (isValidAbsPath(pathDownloadsPath)) {
-			return pathDownloadsPath;
-		}
-
-		if (isValidAbsPath(httpDownloadsPath)) {
-			return httpDownloadsPath;
-		}
-
-		return '/tmp';
-	});
+	let newDownloadProcessingError = $derived(
+		getDownloaderProcessingOptionsError(
+			modalState.name || modalState.url,
+			modalState.automaticExtraction,
+			modalState.automaticRawConversion
+		)
+	);
+	let editProcessingError = $derived(
+		getDownloaderProcessingOptionsError(
+			editState.name,
+			editState.automaticExtraction,
+			editState.automaticRawConversion
+		)
+	);
 	let tableData = $derived(generateTableData(downloads.current as Download[]));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -180,6 +164,11 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 		}
 		return !hasParent;
 	});
+
+	function getAPIResponseError(response: APIResponse, fallback: string): string {
+		if (Array.isArray(response.error)) return response.error.join(', ');
+		return response.error || response.message || fallback;
+	}
 
 	let deleteTitle = $derived.by(() => {
 		if (activeRows && Array.isArray(activeRows) && activeRows.length > 1) {
@@ -244,6 +233,10 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 		if (!modalState.downloadType) {
 			modalState.downloadType = 'uncategorized';
 		}
+		if (newDownloadProcessingError) {
+			toast.error(newDownloadProcessingError, { position: 'bottom-center' });
+			return;
+		}
 
 		modalState.loading = true;
 
@@ -258,12 +251,15 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 			modalState.automaticRawConversion
 		);
 
-		if (result) {
+		if (result.status === 'success') {
 			modalState = options;
 			reload = true;
 			toast.success('Download started', { position: 'bottom-center' });
 		} else {
-			toast.error('Download failed', { position: 'bottom-center' });
+			handleAPIError(result);
+			toast.error(getAPIResponseError(result, 'Download failed'), {
+				position: 'bottom-center'
+			});
 		}
 	}
 
@@ -320,29 +316,8 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 		}
 	}
 
-	async function handleUploadedFile(payload: UploadedDownloadPayload) {
-		if (uploadModalState.loading) return;
-
-		uploadModalState.loading = true;
-		const result = await startDownload(
-			payload.path,
-			payload.downloadType,
-			undefined,
-			false,
-			payload.automaticExtraction,
-			payload.automaticRawConversion
-		);
-		uploadModalState.loading = false;
-
-		if (isAPIResponse(result) && result.status === 'success') {
-			uploadModalState.isOpen = false;
-			reload = true;
-			toast.success('Download started', { position: 'bottom-center' });
-			return;
-		}
-
-		handleAPIError(result as APIResponse);
-		toast.error('Failed to start download from uploaded file', { position: 'bottom-center' });
+	function handleUploadedFile() {
+		reload = true;
 	}
 
 	function handleView() {
@@ -391,26 +366,29 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 	}
 
 	async function handleSaveEdit() {
+		if (editProcessingError) {
+			toast.error(editProcessingError, { position: 'bottom-center' });
+			return;
+		}
 		editState.loading = true;
-		const result = await updateDownload(
-			editState.id,
-			{
-				name: editState.name,
-				uType: editState.uType,
-				automaticExtraction: editState.automaticExtraction,
-				automaticRawConversion: editState.automaticRawConversion
-			}
-		);
+		const result = await updateDownload(editState.id, {
+			name: editState.name,
+			uType: editState.uType,
+			automaticExtraction: editState.automaticExtraction,
+			automaticRawConversion: editState.automaticRawConversion
+		});
 
 		editState.loading = false;
 
-		if (isAPIResponse(result) && result.status === 'success') {
+		if (result.status === 'success') {
 			editState.isOpen = false;
 			reload = true;
 			toast.success('Download updated', { position: 'bottom-center' });
 		} else {
-			handleAPIError(result as APIResponse);
-			toast.error('Failed to update download', { position: 'bottom-center' });
+			handleAPIError(result);
+			toast.error(getAPIResponseError(result, 'Failed to update download'), {
+				position: 'bottom-center'
+			});
 		}
 	}
 
@@ -594,12 +572,22 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 							classes="flex items-center gap-2"
 						/>
 					</div>
+					{#if newDownloadProcessingError}
+						<p class="text-destructive mt-2 text-xs" role="alert">
+							{newDownloadProcessingError}
+						</p>
+					{/if}
 				</div>
 			{/if}
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2 py-2">
-					<Button onclick={newDownload} type="submit" size="sm">
+					<Button
+						onclick={newDownload}
+						type="submit"
+						size="sm"
+						disabled={modalState.loading || Boolean(newDownloadProcessingError)}
+					>
 						{#if modalState.loading}
 							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 						{:else}
@@ -622,7 +610,9 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 			<Dialog.Header class="pr-14">
 				<Dialog.Title>
 					<SpanWithIcon
-						icon={editState.type === 'torrent' ? 'icon-[mdi--eye] text-primary' : 'icon-[mdi--pencil] text-primary'}
+						icon={editState.type === 'torrent'
+							? 'icon-[mdi--eye] text-primary'
+							: 'icon-[mdi--pencil] text-primary'}
 						size="h-5 w-5"
 						gap="gap-2"
 						title={editState.type === 'torrent' ? 'View' : 'Edit'}
@@ -691,6 +681,11 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 							classes="flex items-center gap-2"
 						/>
 					</div>
+					{#if editProcessingError}
+						<p class="text-destructive text-xs" role="alert">
+							{editProcessingError}
+						</p>
+					{/if}
 
 					{#if editState.extractedPath}
 						<p class="text-xs text-muted-foreground">
@@ -703,7 +698,12 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 			{#if editState.type !== 'torrent'}
 				<Dialog.Footer class="flex justify-end">
 					<div class="flex w-full items-center justify-end gap-2 py-2">
-						<Button onclick={handleSaveEdit} type="submit" size="sm">
+						<Button
+							onclick={handleSaveEdit}
+							type="submit"
+							size="sm"
+							disabled={editState.loading || Boolean(editProcessingError)}
+						>
 							{#if editState.loading}
 								<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 							{:else}
@@ -718,12 +718,10 @@ import { IsDocumentVisible, resource, useInterval } from 'runed';
 
 	<DownloaderUploadModal
 		bind:open={uploadModalState.isOpen}
-		stagingPath={uploadStagingPath}
-		loading={uploadModalState.loading}
 		onClose={() => {
 			uploadModalState.isOpen = false;
 		}}
-		onUploaded={handleUploadedFile}
+		onCompleted={handleUploadedFile}
 	/>
 
 	<TreeTable

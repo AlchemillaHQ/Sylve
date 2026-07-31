@@ -8,7 +8,11 @@
 
 package utilitiesServiceInterfaces
 
-import utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+import (
+	"context"
+
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+)
 
 type DownloadFileRequest struct {
 	URL                    string                        `json:"url" binding:"required"`
@@ -40,6 +44,18 @@ type DownloadPostProcPayload struct {
 	ID uint `json:"id"`
 }
 
+type CompleteDownloaderUploadRequest struct {
+	DownloadType           utilitiesModels.DownloadUType `json:"downloadType"`
+	AutomaticExtraction    bool                          `json:"automaticExtraction"`
+	AutomaticRawConversion bool                          `json:"automaticRawConversion"`
+}
+
+type DownloaderUploadCompletion struct {
+	UploadID   string                       `json:"uploadId"`
+	DownloadID uint                         `json:"downloadId"`
+	Status     utilitiesModels.UploadStatus `json:"status"`
+}
+
 type UtilitiesServiceInterface interface {
 	DownloadFile(req DownloadFileRequest) (uint, error)
 	ListDownloads() ([]utilitiesModels.Downloads, error)
@@ -48,6 +64,7 @@ type UtilitiesServiceInterface interface {
 	DeleteDownload(id int) error
 
 	RegisterJobs()
+	StartUploadCleanupWorker(ctx context.Context)
 
 	StartWOLServer() error
 }

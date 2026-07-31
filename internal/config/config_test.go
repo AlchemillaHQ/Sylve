@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alchemillahq/sylve/internal"
 )
 
 func TestDataPathFromConfigUsesRelativeConfigPathWithoutCreatingIt(t *testing.T) {
@@ -66,5 +68,59 @@ func TestReadConfigReturnsDecodeErrors(t *testing.T) {
 		t.Fatal("expected config decode error")
 	} else if !strings.HasPrefix(err.Error(), "decode config") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGetUploadsConfigUsesDefaults(t *testing.T) {
+	previous := ParsedConfig
+	ParsedConfig = nil
+	t.Cleanup(func() {
+		ParsedConfig = previous
+	})
+
+	got := GetUploadsConfig()
+	if got.MaxFileBytes != DefaultUploadMaxFileBytes {
+		t.Fatalf("max file bytes = %d, want %d", got.MaxFileBytes, DefaultUploadMaxFileBytes)
+	}
+	if got.MaxConcurrentTransfers != DefaultUploadMaxConcurrentTransfers {
+		t.Fatalf(
+			"max concurrent transfers = %d, want %d",
+			got.MaxConcurrentTransfers,
+			DefaultUploadMaxConcurrentTransfers,
+		)
+	}
+}
+
+func TestGetUploadsConfigHonorsPositiveOverrides(t *testing.T) {
+	previous := ParsedConfig
+	ParsedConfig = &internal.SylveConfig{
+		Uploads: internal.UploadsConfig{
+			MaxFileBytes:           1024,
+			MaxConcurrentTransfers: 3,
+		},
+	}
+	t.Cleanup(func() {
+		ParsedConfig = previous
+	})
+
+	got := GetUploadsConfig()
+	if got.MaxFileBytes != 1024 || got.MaxConcurrentTransfers != 3 {
+		t.Fatalf("unexpected upload config: %+v", got)
+	}
+}
+
+func TestSetupDataPathCreatesDownloaderUploadStagingDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", root)
+
+	if err := SetupDataPath(); err != nil {
+		t.Fatalf("setup data path: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(root, "downloads", "uploads"))
+	if err != nil {
+		t.Fatalf("stat downloader upload staging directory: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("downloader upload staging path is not a directory")
 	}
 }

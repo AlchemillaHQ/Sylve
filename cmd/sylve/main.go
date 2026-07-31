@@ -225,6 +225,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
 	go ddnsS.StartWorker(qCtx)
 	go certS.StartManagedWorker(qCtx)
+	go uS.StartUploadCleanupWorker(qCtx)
 
 	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
 		var settings dbModels.BasicSettings

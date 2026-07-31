@@ -4,7 +4,11 @@
 
 package system
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestFileExplorerPathOverlaps(t *testing.T) {
 	root := "/zroot/sylve/jails/42"
@@ -20,5 +24,23 @@ func TestFileExplorerPathOverlaps(t *testing.T) {
 		if got := fileExplorerPathOverlaps(tt.path, root); got != tt.want {
 			t.Errorf("fileExplorerPathOverlaps(%q, %q) = %t, want %t", tt.path, root, got, tt.want)
 		}
+	}
+}
+
+func TestResolveFileExplorerGuardPathResolvesExistingSymlinkPrefix(t *testing.T) {
+	root := t.TempDir()
+	realDirectory := filepath.Join(root, "real")
+	if err := os.Mkdir(realDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(realDirectory, alias); err != nil {
+		t.Fatal(err)
+	}
+
+	got := resolveFileExplorerGuardPath(filepath.Join(alias, "new", "file.img"))
+	want := filepath.Join(realDirectory, "new", "file.img")
+	if got != want {
+		t.Fatalf("resolved path=%q want=%q", got, want)
 	}
 }

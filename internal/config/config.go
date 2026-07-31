@@ -25,6 +25,12 @@ import (
 var ParsedConfig *internal.SylveConfig
 var ConfigPath string
 
+const (
+	DefaultUploadMaxFileBytes           int64 = 64 << 30
+	DefaultUploadRequestOverheadBytes   int64 = 1 << 20
+	DefaultUploadMaxConcurrentTransfers int64 = 2
+)
+
 func ParseConfig(path string) *internal.SylveConfig {
 	cfg, err := ReadConfig(path)
 	if err != nil {
@@ -112,6 +118,24 @@ func IsDevFSDisabled() bool {
 	return false
 }
 
+func GetUploadsConfig() internal.UploadsConfig {
+	uploads := internal.UploadsConfig{
+		MaxFileBytes:           DefaultUploadMaxFileBytes,
+		MaxConcurrentTransfers: DefaultUploadMaxConcurrentTransfers,
+	}
+
+	if ParsedConfig != nil {
+		if ParsedConfig.Uploads.MaxFileBytes > 0 {
+			uploads.MaxFileBytes = ParsedConfig.Uploads.MaxFileBytes
+		}
+		if ParsedConfig.Uploads.MaxConcurrentTransfers > 0 {
+			uploads.MaxConcurrentTransfers = ParsedConfig.Uploads.MaxConcurrentTransfers
+		}
+	}
+
+	return uploads
+}
+
 func GetDataPath() (string, error) {
 	configuredPath := ""
 	if ParsedConfig != nil {
@@ -189,6 +213,7 @@ func SetupDataPath() error {
 		filepath.Join(dataPath, "downloads", "http"),
 		filepath.Join(dataPath, "downloads", "path"),
 		filepath.Join(dataPath, "downloads", "extracted"),
+		filepath.Join(dataPath, "downloads", "uploads"),
 	}
 
 	for _, dir := range dirs {
@@ -217,6 +242,8 @@ func GetDownloadsPath(dType string) string {
 		return filepath.Join(dataPath, "downloads", "path")
 	case "extracted":
 		return filepath.Join(dataPath, "downloads", "extracted")
+	case "uploads":
+		return filepath.Join(dataPath, "downloads", "uploads")
 	}
 
 	return filepath.Join(dataPath, "downloads")

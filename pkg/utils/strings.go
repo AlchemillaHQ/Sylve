@@ -37,6 +37,8 @@ import (
 const Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 const letters = "abcdefghijklmnopqrstuvwxyz"
 
+var validFilenamePattern = regexp.MustCompile(`^[^\\/:*?"<>|]{1,255}$`)
+
 func FNVHash(s string) uint64 {
 	hasher := fnv.New64a()
 	hasher.Write([]byte(s))
@@ -535,23 +537,22 @@ func IsValidCountryCode(code string) bool {
 }
 
 func IsValidFilename(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
+	if strings.TrimSpace(name) == "" {
 		return errors.New("file name cannot be blank")
 	}
+	if name == "." || name == ".." {
+		return errors.New("invalid file name")
+	}
+	if !utf8.ValidString(name) || len([]byte(name)) > 255 {
+		return errors.New("invalid file name")
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return errors.New("invalid file name")
+		}
+	}
 
-	validate := validator.New()
-	validFileName := regexp.MustCompile(`^[^\\/:*?"<>|]{1,255}$`)
-
-	_ = validate.RegisterValidation("filename", func(fl validator.FieldLevel) bool {
-		return validFileName.MatchString(fl.Field().String())
-	})
-
-	input := struct {
-		Name string `validate:"required,filename"`
-	}{Name: name}
-
-	if err := validate.Struct(input); err != nil {
+	if !validFilenamePattern.MatchString(name) {
 		return errors.New("invalid file name")
 	}
 	return nil

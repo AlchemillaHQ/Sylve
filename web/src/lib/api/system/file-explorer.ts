@@ -34,6 +34,16 @@ export async function deleteFileOrFolder(path: string): Promise<APIResponse> {
 	);
 }
 
+export async function revertFileExplorerUpload(uploadId: string): Promise<APIResponse> {
+	return await apiRequest(
+		'/system/file-explorer/upload',
+		APIResponseSchema,
+		'DELETE',
+		{ data: { uploadId } },
+		{ preserveErrors: true }
+	);
+}
+
 export async function renameFileOrFolder(id: string, newName: string): Promise<APIResponse> {
 	const body = {
 		id,

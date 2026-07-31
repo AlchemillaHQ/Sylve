@@ -47,13 +47,21 @@ type action struct {
 	Response interface{} `json:"response,omitempty"`
 }
 
+func isMetadataOnlyUploadAuditPath(path string) bool {
+	path = strings.TrimSpace(path)
+
+	return path == "/api/system/file-explorer/upload" ||
+		path == "/api/utilities/downloader-uploads"
+}
+
 func shouldRedactAuditPayload(path string) bool {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return false
 	}
 
-	return auditPathMatches(path, "/api/auth/login") ||
+	return isMetadataOnlyUploadAuditPath(path) ||
+		auditPathMatches(path, "/api/auth/login") ||
 		auditPathMatches(path, "/api/auth/passkeys") ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
@@ -150,6 +158,15 @@ func sanitizeAuditPayload(v interface{}) interface{} {
 	default:
 		return typed
 	}
+}
+
+func isMultipartAuditRequest(request *http.Request) bool {
+	if request == nil {
+		return false
+	}
+
+	contentType := strings.ToLower(strings.TrimSpace(request.Header.Get("Content-Type")))
+	return strings.HasPrefix(contentType, "multipart/")
 }
 
 func parseClaimUserID(raw interface{}) (*uint, bool) {
@@ -359,8 +376,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			}
 		}
 
-		if strings.Contains(c.Request.URL.Path, "file-explorer/upload") ||
-			strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") {
+		if strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") {
 			c.Next()
 			return
 		}
@@ -415,7 +431,13 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		act.Path = c.Request.URL.Path
 		act.Query = sanitizeAuditQuery(c.Request.URL.Path, c.Request.URL.RawQuery)
 
-		if c.Request.Body != nil && c.Request.ContentLength > 0 {
+		if isMultipartAuditRequest(c.Request) {
+			if redactPayload {
+				act.Body = "[REDACTED]"
+			} else {
+				act.Body = "[OMITTED: multipart]"
+			}
+		} else if c.Request.Body != nil && c.Request.ContentLength > 0 {
 			buf := new(bytes.Buffer)
 			tee := io.TeeReader(c.Request.Body, buf)
 			if redactPayload {

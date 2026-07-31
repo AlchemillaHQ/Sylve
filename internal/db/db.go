@@ -189,6 +189,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&utilitiesModels.CloudInitTemplate{},
 		&utilitiesModels.DownloadedFile{},
 		&utilitiesModels.Downloads{},
+		&utilitiesModels.Upload{},
 		&utilitiesModels.WoL{},
 
 		&sambaModels.SambaSettings{},
