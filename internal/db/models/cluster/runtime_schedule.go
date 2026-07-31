@@ -153,7 +153,7 @@ func scheduleTimesEqual(left, right *time.Time) bool {
 	if left == nil || right == nil {
 		return left == nil && right == nil
 	}
-	return left.Equal(*right)
+	return NormalizeCommandTime(*left).Equal(NormalizeCommandTime(*right))
 }
 
 func validateScheduledStatus(status string) (string, error) {

@@ -763,8 +763,9 @@ func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing
 		t.Fatalf("rename emergency-fenced dataset: %v\n%s", renameErr, output)
 	}
 
-	fx := SetupZeltaClusterFixture(t, 1)
+	fx := SetupZeltaClusterFixture(t, 2)
 	defer fx.Cleanup()
+	migrationTargetNodeID := fx.Nodes[1].id
 	vmFenceToken := guestTokens[replicationGuestKey(clusterModels.ReplicationGuestTypeVM, 706)]
 	if err := fx.ClusterSvc.AcquireReplicationGuestOperation(clusterModels.ReplicationGuestOperationAcquire{
 		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 706,
@@ -777,7 +778,7 @@ func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing
 	if err := fx.ClusterSvc.AcquireReplicationGuestOperation(clusterModels.ReplicationGuestOperationAcquire{
 		GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 707,
 		Operation: clusterModels.ReplicationGuestOperationMigration,
-		Token:     migrationToken, OwnerNodeID: fx.LocalNodeID, TargetNodeID: "node-target", TaskID: 707,
+		Token:     migrationToken, OwnerNodeID: fx.LocalNodeID, TargetNodeID: migrationTargetNodeID, TaskID: 707,
 	}, false); err != nil {
 		t.Fatalf("seed migration guard: %v", err)
 	}
@@ -813,7 +814,7 @@ func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing
 	if err := fx.ClusterSvc.CompleteReplicationGuestOperation(clusterModels.ReplicationGuestOperationTransition{
 		GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 707,
 		Operation: clusterModels.ReplicationGuestOperationMigration,
-		Token:     migrationToken, TargetNodeID: "node-target",
+		Token:     migrationToken, TargetNodeID: migrationTargetNodeID,
 	}, false); err != nil {
 		t.Fatalf("complete migration guard: %v", err)
 	}

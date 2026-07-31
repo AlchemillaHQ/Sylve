@@ -1463,7 +1463,8 @@ func replicationCheckpointPreserved(current, next *time.Time) bool {
 	if current == nil {
 		return true
 	}
-	return next != nil && current.UTC().Equal(next.UTC())
+	return next != nil &&
+		NormalizeCommandTime(*current).Equal(NormalizeCommandTime(*next))
 }
 
 func replicationTransitionCheckpointsPreserved(policy *ReplicationPolicy, transition *ReplicationPolicyTransition) bool {

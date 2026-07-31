@@ -787,7 +787,7 @@ func TestReplicationLeaseUpsertIsPolicyBoundAndMonotonic(t *testing.T) {
 
 func TestReplicationLeaseBatchStaleEntryDoesNotRollbackValidRenewal(t *testing.T) {
 	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
-	now := time.Now().UTC()
+	now := NormalizeCommandTime(time.Now().UTC())
 	if err := db.Create(&[]ReplicationPolicy{
 		{ID: 1, Name: "moved", GuestType: ReplicationGuestTypeVM, GuestID: 1, ActiveNodeID: "node-b", OwnerEpoch: 2, Enabled: true},
 		{ID: 2, Name: "steady", GuestType: ReplicationGuestTypeJail, GuestID: 2, ActiveNodeID: "node-c", OwnerEpoch: 1, Enabled: true},

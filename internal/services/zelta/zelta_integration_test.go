@@ -480,7 +480,7 @@ func TestAutoSafeNodeDownWarningIsDeduplicatedUntilRecovery(t *testing.T) {
 	}
 
 	var count int64
-	if err := fx.DB.Model(&clusterModels.ReplicationEvent{}).
+	if err := fx.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
 		Where("policy_id = ? AND message = ?", pid, "node_down_auto_safe_blocked_owner_unreachable").
 		Count(&count).Error; err != nil {
 		t.Fatalf("count warning events: %v", err)
@@ -499,7 +499,7 @@ func TestAutoSafeNodeDownWarningIsDeduplicatedUntilRecovery(t *testing.T) {
 		t.Fatalf("new outage tick: %v", err)
 	}
 
-	if err := fx.DB.Model(&clusterModels.ReplicationEvent{}).
+	if err := fx.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
 		Where("policy_id = ? AND message = ?", pid, "node_down_auto_safe_blocked_owner_unreachable").
 		Count(&count).Error; err != nil {
 		t.Fatalf("count warning events after recovery: %v", err)

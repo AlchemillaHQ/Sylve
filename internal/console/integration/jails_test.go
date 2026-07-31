@@ -19,6 +19,7 @@ import (
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
@@ -115,14 +116,14 @@ func TestJailWithoutNetworkFromBootstrapIntegration(t *testing.T) {
 
 	output = runREPLCommand(t, suite.socketPath, "jails start "+strconv.FormatUint(uint64(ctid), 10)+" --json")
 	assertJailAction(t, output, ctid, "start")
-	waitForConsoleJailRunning(t, suite, ctid, true)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, true)
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"jails", "stop", "--ctid", strconv.FormatUint(uint64(ctid), 10), "--json")
 	assertJailAction(t, output, ctid, "stop")
-	waitForConsoleJailRunning(t, suite, ctid, false)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, false)
 
 	output = runREPLCommand(t, suite.socketPath,
 		"jails delete "+strconv.FormatUint(uint64(ctid), 10)+" --purge --json")
@@ -318,11 +319,15 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 		}
 	}
 
+	if output, err := exec.Command("chroot", mountPoint, "/bin/sh", "-c", "true").CombinedOutput(); err != nil {
+		t.Fatalf("static VNET jail root is not executable before start: %v\n%s", err, output)
+	}
+
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"jails", "start", "--ctid", strconv.FormatUint(uint64(ctid), 10), "--json")
 	assertJailAction(t, output, ctid, "start")
-	waitForConsoleJailRunning(t, suite, ctid, true)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, true)
 
 	hostEpair := consoleInterface(t, epairA)
 	if !hasInterfaceGroup(hostEpair.Groups, "sylve") {
@@ -336,8 +341,8 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 
 	output = runREPLCommand(t, suite.socketPath, "jails stop "+strconv.FormatUint(uint64(ctid), 10)+" --json")
 	assertJailAction(t, output, ctid, "stop")
-	waitForConsoleJailRunning(t, suite, ctid, false)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, false)
 	if !hasInterfaceGroup(consoleInterface(t, epairA).Groups, "sylve") {
 		t.Fatalf("stopped VNET host epair %s is not marked as Sylve-managed", epairA)
 	}
@@ -548,8 +553,8 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"jails", "start", "--ctid", strconv.FormatUint(uint64(ctid), 10), "--json")
 	assertJailAction(t, output, ctid, "start")
-	waitForConsoleJailRunning(t, suite, ctid, true)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, true)
 	hostEpair := consoleInterface(t, epairA)
 	if !hasInterfaceGroup(hostEpair.Groups, "sylve") {
 		t.Fatalf("object-reference host epair is not Sylve-managed: %#v", hostEpair)
@@ -583,14 +588,14 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	output = runREPLCommand(t, suite.socketPath,
 		"jails stop "+strconv.FormatUint(uint64(ctid), 10)+" --json")
 	assertJailAction(t, output, ctid, "stop")
-	waitForConsoleJailRunning(t, suite, ctid, false)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, false)
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"jails", "start", "--ctid", strconv.FormatUint(uint64(ctid), 10), "--json")
 	assertJailAction(t, output, ctid, "start")
-	waitForConsoleJailRunning(t, suite, ctid, true)
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
+	waitForConsoleJailRunning(t, suite, ctid, true)
 	waitForConsoleJailInterfaceAddresses(t, utils.HashIntToNLetters(int(ctid), 5), epairB, updatedIPv4)
 
 	output = runREPLCommand(t, suite.socketPath,
@@ -1139,18 +1144,31 @@ func waitForConsoleJailInterfaceAddresses(t *testing.T, jailName, interfaceName 
 func waitForConsoleJailLifecycleIdle(t *testing.T, suite *consoleIntegrationSuite, ctid uint) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
-	var lastTask any
+	var lastTask taskModels.GuestLifecycleTask
 	var lastErr error
 	for time.Now().Before(deadline) {
-		task, err := suite.lifecycle.GetActiveTaskForGuest("jail", ctid)
-		if err == nil && task == nil {
-			return
+		task := taskModels.GuestLifecycleTask{}
+		err := suite.database.
+			Where("guest_type = ? AND guest_id = ?", taskModels.GuestTypeJail, ctid).
+			Order("id DESC").
+			First(&task).Error
+		if err == nil {
+			lastTask = task
+			switch task.Status {
+			case taskModels.LifecycleTaskStatusSuccess:
+				return
+			case taskModels.LifecycleTaskStatusFailed:
+				logs, logsErr := suite.jail.GetJailLogs(ctid)
+				t.Fatalf(
+					"jail %d lifecycle task %d (%s) failed: %s\nconsole log error: %v\nconsole log:\n%s",
+					ctid, task.ID, task.Action, task.Error, logsErr, logs,
+				)
+			}
 		}
-		lastTask = task
 		lastErr = err
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("jail %d lifecycle task did not become idle: task=%#v err=%v", ctid, lastTask, lastErr)
+	t.Fatalf("jail %d lifecycle task did not finish: task=%#v err=%v", ctid, lastTask, lastErr)
 }
 
 func assertConsoleJailDeleted(t *testing.T, suite *consoleIntegrationSuite, ctid uint, dataset, configPath string) {

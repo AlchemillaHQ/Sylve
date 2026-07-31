@@ -177,6 +177,7 @@ func SetupZeltaClusterFixture(t *testing.T, nodeCount int) *ZeltaClusterFixture 
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationTransitionEvent{},
 		&clusterModels.ReplicationGuestOperation{},
 		&clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ReplicationRunOperation{},

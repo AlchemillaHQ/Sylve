@@ -8,6 +8,7 @@ SMART_RUN_SELF_TEST ?= 0
 SMART_WAIT_SELF_TEST ?= 0
 SMART_TEST_OUTPUT ?= tmp/smart-integration.log
 SMART_TEST_TIMEOUT ?= 30m
+INTEGRATION_TEST_TIMEOUT ?= 45m
 GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test test-integration test-smart-integration clean
@@ -67,7 +68,7 @@ test:
 
 test-integration:
 	@[ "$$(id -u)" = "0" ] || { echo "make test-integration must run as root (it creates ZFS pools)"; exit 1; }
-	go test -count=1 -v ./...
+	go test -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v ./...
 
 test-smart-integration:
 	@[ "$$(sysctl -n kern.ostype 2>/dev/null)" = "FreeBSD" ] || { echo "make test-smart-integration must run on FreeBSD"; exit 1; }
