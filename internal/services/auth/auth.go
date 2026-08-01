@@ -151,8 +151,10 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 	s.loginMu.Lock()
 	attempt, exists := s.loginAttempts[username]
 	if exists && time.Now().Before(attempt.blockedUntil) {
+		attemptSnapshot := *attempt
 		s.loginMu.Unlock()
-		return 0, "", fmt.Errorf("too_many_attempts: try again in %s", time.Until(attempt.blockedUntil).Round(time.Second))
+		s.logLoginFailure(username, authType, "rate_limited", attemptSnapshot, nil)
+		return 0, "", fmt.Errorf("too_many_attempts: try again in %s", time.Until(attemptSnapshot.blockedUntil).Round(time.Second))
 	}
 	s.loginMu.Unlock()
 
@@ -160,51 +162,69 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 
 	if authType == "sylve" {
 		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				s.logLoginFailure(username, authType, "user_not_found", attempt, nil)
+			} else {
+				s.logLoginFailure(username, authType, "database_lookup_failed", attempt, err)
+			}
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
 		if !utils.CheckPasswordHash(password, user.Password) {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			s.logLoginFailure(username, authType, "password_mismatch", attempt, nil)
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
 		if !user.Admin {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			s.logLoginFailure(username, authType, "admin_required", attempt, nil)
 			return 0, "", fmt.Errorf("only_admin_allowed")
 		}
 	} else if authType == "pam" {
 		if !config.IsPAMEnabled() {
+			s.logLoginFailure(username, authType, "pam_disabled", loginAttempt{}, nil)
 			return 0, "", fmt.Errorf("pam_auth_disabled")
 		}
 
 		valid, err := s.AuthenticatePAM(username, password)
 
 		if err != nil {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			s.logLoginFailure(username, authType, "pam_error", attempt, err)
 			return 0, "", fmt.Errorf("pam_auth_error")
 		}
 
 		if !valid {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			s.logLoginFailure(username, authType, "credentials_rejected", attempt, nil)
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
 		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				s.logLoginFailure(username, authType, "user_not_registered", attempt, nil)
+			} else {
+				s.logLoginFailure(username, authType, "database_lookup_failed", attempt, err)
+			}
 			return 0, "", fmt.Errorf("user_not_registered_in_sylve")
 		}
 
 		if !user.Admin {
-			s.recordFailedLogin(username)
+			attempt := s.recordFailedLogin(username)
+			s.logLoginFailure(username, authType, "admin_required", attempt, nil)
 			return 0, "", fmt.Errorf("only_admin_allowed")
 		}
 	} else {
+		s.logLoginFailure(username, authType, "invalid_auth_type", loginAttempt{}, nil)
 		return 0, "", fmt.Errorf("invalid_auth_type")
 	}
 
 	token, err := s.issueJWT(user, authType, remember)
 	if err != nil {
+		s.logLoginFailure(username, authType, "jwt_issue_failed", loginAttempt{}, err)
 		return 0, "", err
 	}
 
@@ -213,23 +233,57 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 	delete(s.loginAttempts, username)
 	s.loginMu.Unlock()
 
+	logger.L.Info().
+		Str("username", username).
+		Str("auth_type", authType).
+		Uint("user_id", user.ID).
+		Msg("authentication_succeeded")
+
 	return user.ID, token, nil
 }
 
 // recordFailedLogin increments the rate-limit counter for username.
-func (s *Service) recordFailedLogin(username string) {
+func (s *Service) recordFailedLogin(username string) loginAttempt {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 
+	if s.loginAttempts == nil {
+		s.loginAttempts = make(map[string]*loginAttempt)
+	}
+
 	attempt, exists := s.loginAttempts[username]
 	if !exists {
-		s.loginAttempts[username] = &loginAttempt{count: 1}
-		return
+		attempt = &loginAttempt{count: 1}
+		s.loginAttempts[username] = attempt
+		return *attempt
 	}
 	attempt.count++
 	if attempt.count >= maxLoginAttempts {
 		attempt.blockedUntil = time.Now().Add(loginBlockDuration)
 	}
+
+	return *attempt
+}
+
+func (s *Service) logLoginFailure(username, authType, reason string, attempt loginAttempt, err error) {
+	event := logger.L.Warn()
+	if err != nil {
+		event = logger.L.Error().Err(err)
+	}
+
+	event = event.
+		Str("username", username).
+		Str("auth_type", authType).
+		Str("reason", reason)
+
+	if attempt.count > 0 {
+		event = event.Int("failed_attempts", attempt.count)
+	}
+	if !attempt.blockedUntil.IsZero() {
+		event = event.Time("blocked_until", attempt.blockedUntil)
+	}
+
+	event.Msg("authentication_failed")
 }
 
 func (s *Service) createClusterJWTWithUse(
