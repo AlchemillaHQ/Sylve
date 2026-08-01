@@ -25,6 +25,14 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const (
+	scheduledRunOutboxInitialBackoff      = 5 * time.Second
+	scheduledRunOutboxMaxBackoff          = 5 * time.Minute
+	scheduledRunOutboxQuarantineRetention = 30 * 24 * time.Hour
+)
+
+var errScheduledRunOperationRevalidation = errors.New("scheduled_run_operation_revalidation_failed")
+
 func (s *Service) runtimeStateBypassRaft() (bool, error) {
 	if s == nil || s.DB == nil {
 		return false, fmt.Errorf("runtime_state_database_unavailable")
@@ -136,32 +144,232 @@ func (s *Service) storeScheduledRunResult(kind string, objectID uint, token stri
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("scheduled_run_outbox_database_unavailable")
 	}
+	token = strings.TrimSpace(token)
+	kind = strings.TrimSpace(kind)
+	if token == "" || kind == "" || objectID == 0 {
+		return fmt.Errorf("scheduled_run_outbox_identity_invalid")
+	}
 	payload, err := json.Marshal(result)
 	if err != nil {
 		return err
 	}
 	row := clusterModels.ScheduledRunResultOutbox{
-		Token: strings.TrimSpace(token), Kind: kind, ObjectID: objectID, Payload: string(payload),
+		Token: token, Kind: kind, ObjectID: objectID, Payload: string(payload),
 	}
-	return s.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+	created := s.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if created.Error != nil {
+		return created.Error
+	}
+	if created.RowsAffected == 1 {
+		return nil
+	}
+
+	// A token identifies one immutable terminal result. Silently retaining a
+	// different payload hides duplicate execution/finalization races and later
+	// turns them into an opaque receipt conflict at the leader.
+	var existing clusterModels.ScheduledRunResultOutbox
+	if err := s.DB.First(&existing, "token = ?", token).Error; err != nil {
+		return err
+	}
+	if existing.Kind == row.Kind && existing.ObjectID == row.ObjectID && existing.Payload == row.Payload {
+		return nil
+	}
+	return fmt.Errorf("scheduled_run_outbox_token_conflict: token=%s", token)
+}
+
+func scheduledRunOutboxBackoff(attemptCount uint) time.Duration {
+	backoff := scheduledRunOutboxInitialBackoff
+	for attempt := uint(1); attempt < attemptCount && backoff < scheduledRunOutboxMaxBackoff; attempt++ {
+		backoff *= 2
+		if backoff >= scheduledRunOutboxMaxBackoff {
+			return scheduledRunOutboxMaxBackoff
+		}
+	}
+	return backoff
+}
+
+func (s *Service) scheduledRunTokenTerminalLocally(token string) (bool, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false, nil
+	}
+	var receiptCount int64
+	if err := s.DB.Model(&clusterModels.ScheduledRunReceipt{}).
+		Where("token = ?", token).Count(&receiptCount).Error; err != nil {
+		return false, err
+	}
+	if receiptCount != 0 {
+		return true, nil
+	}
+	var outboxCount int64
+	if err := s.DB.Model(&clusterModels.ScheduledRunResultOutbox{}).
+		Where("token = ?", token).Count(&outboxCount).Error; err != nil {
+		return false, err
+	}
+	return outboxCount != 0, nil
+}
+
+func (s *Service) backupRunTokenExecutable(jobID uint, token string) (bool, error) {
+	terminal, err := s.scheduledRunTokenTerminalLocally(token)
+	if err != nil || terminal {
+		return false, err
+	}
+	var operation clusterModels.BackupJobOperation
+	err = s.DB.First(&operation, "job_id = ? AND token = ?", jobID, strings.TrimSpace(token)).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return operation.Operation == clusterModels.BackupJobOperationBackup &&
+		(operation.State == clusterModels.BackupJobOperationQueued ||
+			operation.State == clusterModels.BackupJobOperationRunning), nil
+}
+
+func (s *Service) replicationRunTokenExecutable(policyID uint, token string) (bool, error) {
+	terminal, err := s.scheduledRunTokenTerminalLocally(token)
+	if err != nil || terminal {
+		return false, err
+	}
+	var operation clusterModels.ReplicationRunOperation
+	err = s.DB.First(&operation, "policy_id = ? AND token = ?", policyID, strings.TrimSpace(token)).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return operation.State == clusterModels.ReplicationRunOperationQueued ||
+		operation.State == clusterModels.ReplicationRunOperationRunning, nil
+}
+
+func (s *Service) scheduledRunOperationExists(row clusterModels.ScheduledRunResultOutbox) (bool, error) {
+	var count int64
+	var query *gorm.DB
+	switch row.Kind {
+	case clusterModels.ScheduledRunKindBackup:
+		query = s.DB.Model(&clusterModels.BackupJobOperation{}).
+			Where("job_id = ? AND token = ?", row.ObjectID, row.Token)
+	case clusterModels.ScheduledRunKindReplication:
+		query = s.DB.Model(&clusterModels.ReplicationRunOperation{}).
+			Where("policy_id = ? AND token = ?", row.ObjectID, row.Token)
+	default:
+		return false, nil
+	}
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count != 0, nil
+}
+
+func (s *Service) pruneScheduledRunResultQuarantine(now time.Time) error {
+	var rows []clusterModels.ScheduledRunResultOutbox
+	if err := s.DB.Where("quarantined = ? AND updated_at < ?", true,
+		now.Add(-scheduledRunOutboxQuarantineRetention)).
+		Order("updated_at ASC").Limit(100).Find(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		active, err := s.scheduledRunOperationExists(row)
+		if err != nil {
+			return err
+		}
+		if active {
+			if err := s.DB.Model(&clusterModels.ScheduledRunResultOutbox{}).
+				Where("token = ?", row.Token).UpdateColumn("updated_at", now).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.DB.Where("token = ? AND quarantined = ?", row.Token, true).
+			Delete(&clusterModels.ScheduledRunResultOutbox{}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func permanentScheduledRunResultDeliveryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"scheduled_run_receipt_token_conflict",
+		"backup_job_run_result_token_mismatch",
+		"replication_policy_run_result_token_mismatch",
+		"backup_job_run_result_invalid",
+		"replication_policy_run_result_invalid",
+		"backup_job_run_result_fence_required",
+		"replication_policy_run_result_fence_required",
+		"invalid_scheduled_run_status",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) recordScheduledRunOutboxFailure(
+	row clusterModels.ScheduledRunResultOutbox,
+	deliveryErr error,
+	permanent bool,
+	now time.Time,
+) error {
+	attemptCount := row.AttemptCount + 1
+	updates := map[string]any{
+		"attempt_count": attemptCount,
+		"last_error":    deliveryErr.Error(),
+	}
+	if permanent {
+		updates["quarantined"] = true
+		updates["next_attempt_at"] = nil
+	} else {
+		nextAttemptAt := now.Add(scheduledRunOutboxBackoff(attemptCount))
+		updates["next_attempt_at"] = nextAttemptAt
+	}
+	return s.DB.Model(&clusterModels.ScheduledRunResultOutbox{}).
+		Where("token = ?", row.Token).
+		Updates(updates).Error
 }
 
 func (s *Service) drainScheduledRunResultOutbox() error {
 	if s == nil || s.DB == nil || !s.DB.Migrator().HasTable(&clusterModels.ScheduledRunResultOutbox{}) {
 		return nil
 	}
+	// Completion paths and the scheduler can request a drain concurrently.
+	// The rows are durable, so let the active drain own delivery rather than
+	// multiplying leader RPCs and socket pressure during an outage.
+	if !s.scheduledRunOutboxMu.TryLock() {
+		return nil
+	}
+	defer s.scheduledRunOutboxMu.Unlock()
+
+	now := s.now().UTC()
+	if err := s.pruneScheduledRunResultQuarantine(now); err != nil {
+		return fmt.Errorf("prune_scheduled_run_result_quarantine_failed: %w", err)
+	}
 	var rows []clusterModels.ScheduledRunResultOutbox
-	if err := s.DB.Order("created_at ASC").Limit(100).Find(&rows).Error; err != nil {
+	if err := s.DB.
+		Where("quarantined = ?", false).
+		Where("next_attempt_at IS NULL OR next_attempt_at <= ?", now).
+		Order("created_at ASC").
+		Limit(100).
+		Find(&rows).Error; err != nil {
 		return err
 	}
 	var combined error
 	for _, row := range rows {
 		var deliveryErr error
+		permanent := false
 		switch row.Kind {
 		case clusterModels.ScheduledRunKindBackup:
 			var result clusterModels.BackupJobRunResult
 			if err := json.Unmarshal([]byte(row.Payload), &result); err != nil {
 				deliveryErr = fmt.Errorf("decode_backup_run_result_%s: %w", row.Token, err)
+				permanent = true
 			} else {
 				deliveryErr = s.deliverBackupJobRunResult(result)
 			}
@@ -169,15 +377,54 @@ func (s *Service) drainScheduledRunResultOutbox() error {
 			var result clusterModels.ReplicationPolicyRunResult
 			if err := json.Unmarshal([]byte(row.Payload), &result); err != nil {
 				deliveryErr = fmt.Errorf("decode_replication_run_result_%s: %w", row.Token, err)
+				permanent = true
 			} else {
 				deliveryErr = s.deliverReplicationPolicyRunResult(result)
 			}
 		default:
 			deliveryErr = fmt.Errorf("invalid_scheduled_run_outbox_kind")
+			permanent = true
 		}
 		if deliveryErr != nil {
-			combined = errors.Join(combined, deliveryErr)
-			continue
+			permanent = permanent || permanentScheduledRunResultDeliveryError(deliveryErr)
+			if err := s.recordScheduledRunOutboxFailure(row, deliveryErr, permanent, now); err != nil {
+				combined = errors.Join(combined, err)
+			}
+			if permanent {
+				logger.L.Error().
+					Err(deliveryErr).
+					Str("token", row.Token).
+					Str("kind", row.Kind).
+					Uint("object_id", row.ObjectID).
+					Uint("attempt_count", row.AttemptCount+1).
+					Msg("scheduled_run_result_quarantined")
+				// Bound upgrade-time work if an older build accumulated many
+				// poisoned rows; the next scheduler pass will quarantine the next.
+				break
+			}
+
+			combined = errors.Join(combined, fmt.Errorf(
+				"scheduled_run_result_delivery_deferred token=%s kind=%s object_id=%d: %w",
+				row.Token, row.Kind, row.ObjectID, deliveryErr,
+			))
+			// Cluster/network failures normally affect every row. Back off this
+			// row and stop after one failed RPC so an outage cannot turn a drain
+			// into hundreds of sequential connection timeouts.
+			break
+		}
+		var receiptCount int64
+		if err := s.DB.Model(&clusterModels.ScheduledRunReceipt{}).
+			Where("token = ?", row.Token).Count(&receiptCount).Error; err != nil {
+			combined = errors.Join(combined, err)
+			break
+		}
+		if receiptCount == 0 {
+			visibilityErr := fmt.Errorf("scheduled_run_result_waiting_for_local_receipt")
+			if err := s.recordScheduledRunOutboxFailure(row, visibilityErr, false, now); err != nil {
+				combined = errors.Join(combined, err)
+			}
+			combined = errors.Join(combined, visibilityErr)
+			break
 		}
 		if err := s.DB.Where("token = ?", row.Token).
 			Delete(&clusterModels.ScheduledRunResultOutbox{}).Error; err != nil {
@@ -421,10 +668,26 @@ func (s *Service) prepareReplicationRunOperation(
 	if operation.HolderNodeID != localHolder {
 		return nil, false, nil
 	}
+	switch operation.State {
+	case clusterModels.ReplicationRunOperationRunning:
+		// A lost start acknowledgement leaves the durable operation running even
+		// though execution never began. Resume only while no terminal outbox or
+		// receipt exists; the keyed execution lock is held through finalization.
+		executable, err := s.replicationRunTokenExecutable(policyID, token)
+		return &operation, executable, err
+	case clusterModels.ReplicationRunOperationQueued:
+		// Start the claimed operation below.
+	default:
+		return nil, false, nil
+	}
 	if err := s.startReplicationRunOperation(&operation); err != nil {
 		text := strings.ToLower(err.Error())
 		if strings.Contains(text, "not_found") || strings.Contains(text, "token_mismatch") {
 			return nil, false, nil
+		}
+		if strings.Contains(text, "already_started") {
+			executable, lookupErr := s.replicationRunTokenExecutable(policyID, token)
+			return &operation, executable, lookupErr
 		}
 		if strings.Contains(text, "schedule_stale") {
 			var policy clusterModels.ReplicationPolicy

@@ -58,7 +58,7 @@ func Nodes(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/resources [get]
 func Resources(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		res, err := cS.Resources()
+		res, err := cS.ResourcesContext(c.Request.Context())
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

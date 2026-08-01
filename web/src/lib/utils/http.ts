@@ -33,6 +33,12 @@ export type APIRequestOptions = {
 
 let cacheWritesSuspended = false;
 
+export function isRequestCancellation(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const code = 'code' in error ? String(error.code || '') : '';
+    return error.name === 'AbortError' || error.name === 'CanceledError' || code === 'ERR_CANCELED';
+}
+
 // A full browser reset reloads the module after storage is cleared. Until then,
 // ignore late requests from the outgoing session so they cannot recreate cache entries.
 export function suspendAPICacheWrites(): void {
@@ -138,7 +144,7 @@ export async function apiRequest<T extends z.ZodType>(
         setReloadFlag();
         return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
     } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') throw error;
+        if (isRequestCancellation(error)) throw error;
         setReloadFlag();
         console.error('API Request Error', error);
         const failedResponse: APIResponse = {

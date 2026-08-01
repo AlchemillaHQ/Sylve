@@ -9,7 +9,10 @@
 package cluster
 
 import (
+	"context"
 	"testing"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 func TestDetail(t *testing.T) {
@@ -26,5 +29,33 @@ func TestDetail(t *testing.T) {
 	}
 	if detail.APIPort != ClusterEmbeddedHTTPSPort {
 		t.Fatalf("expected APIPort=%d, got %d", ClusterEmbeddedHTTPSPort, detail.APIPort)
+	}
+}
+
+func TestResourcesContextSkipsKnownOfflinePeer(t *testing.T) {
+	peer := newClusterPeerSimulator()
+	defer peer.Close()
+
+	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
+	node := clusterModels.ClusterNode{
+		NodeUUID: "known-offline-peer",
+		Hostname: "offline-peer",
+		API:      peer.Addr(),
+		Status:   nodeStatusOffline,
+	}
+	if err := db.Create(&node).Error; err != nil {
+		t.Fatalf("seed offline peer: %v", err)
+	}
+
+	service := &Service{DB: db, AuthService: clusterAuthStub{}}
+	resources, err := service.ResourcesContext(context.Background())
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	if len(resources) != 1 || resources[0].NodeUUID != node.NodeUUID || resources[0].Hostname != node.Hostname {
+		t.Fatalf("offline peer identity missing: %+v", resources)
+	}
+	if peer.NumRequests() != 0 {
+		t.Fatalf("known offline peer received %d inventory requests", peer.NumRequests())
 	}
 }

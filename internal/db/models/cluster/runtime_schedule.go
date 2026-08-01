@@ -68,12 +68,16 @@ type ScheduledRunReceipt struct {
 // in a cluster snapshot or resync. Payload is one BackupJobRunResult or
 // ReplicationPolicyRunResult encoded as JSON.
 type ScheduledRunResultOutbox struct {
-	Token     string    `gorm:"primaryKey" json:"token"`
-	Kind      string    `gorm:"index;not null" json:"kind"`
-	ObjectID  uint      `gorm:"index;not null;autoIncrement:false" json:"objectId"`
-	Payload   string    `gorm:"type:text;not null" json:"payload"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	Token         string     `gorm:"primaryKey" json:"token"`
+	Kind          string     `gorm:"index;not null" json:"kind"`
+	ObjectID      uint       `gorm:"index;not null;autoIncrement:false" json:"objectId"`
+	Payload       string     `gorm:"type:text;not null" json:"payload"`
+	AttemptCount  uint       `gorm:"not null;default:0" json:"attemptCount"`
+	NextAttemptAt *time.Time `gorm:"index" json:"nextAttemptAt,omitempty"`
+	LastError     string     `gorm:"type:text" json:"lastError,omitempty"`
+	Quarantined   bool       `gorm:"index;not null;default:false" json:"quarantined"`
+	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 type BackupJobScheduleDecision struct {
@@ -455,7 +459,7 @@ func StartReplicationRunOperationTxn(db *gorm.DB, transition *ReplicationRunOper
 			return fmt.Errorf("replication_run_token_mismatch")
 		}
 		if operation.State == ReplicationRunOperationRunning {
-			return nil
+			return fmt.Errorf("replication_run_already_started")
 		}
 		if operation.State != ReplicationRunOperationQueued {
 			return fmt.Errorf("invalid_replication_run_state")

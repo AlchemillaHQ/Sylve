@@ -43,8 +43,11 @@ export async function getVMs(hostname?: string): Promise<VM[]> {
 	return await apiRequest('/vm', z.array(VMSchema), 'GET', undefined, { hostname });
 }
 
-export async function getSimpleVMs(hostname?: string): Promise<SimpleVm[]> {
-	return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, { hostname });
+export async function getSimpleVMs(hostname?: string, signal?: AbortSignal): Promise<SimpleVm[]> {
+	return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, {
+		hostname,
+		signal
+	});
 }
 
 export async function getSimpleVMTemplates(hostname?: string): Promise<SimpleVmTemplate[]> {

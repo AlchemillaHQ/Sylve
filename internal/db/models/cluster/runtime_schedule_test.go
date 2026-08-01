@@ -139,6 +139,41 @@ func TestReplicationScheduleClaimCASAllowsOneToken(t *testing.T) {
 	}
 }
 
+func TestReplicationRunStartRejectsDuplicateExecution(t *testing.T) {
+	database := newRuntimeScheduleTestDB(t)
+	occurrence := time.Date(2026, time.August, 1, 4, 34, 0, 0, time.UTC)
+	if err := database.Create(&ReplicationPolicy{
+		ID: 20, Name: "duplicate-start", GuestType: ReplicationGuestTypeVM,
+		GuestID: 20, SourceNodeID: "node-a", ActiveNodeID: "node-a",
+		OwnerEpoch: 2, SourceMode: ReplicationSourceModeFollowActive,
+		FailbackMode: ReplicationFailbackManual, FailoverMode: ReplicationFailoverManual,
+		CronExpr: "0 * * * *", Enabled: true, NextRunAt: &occurrence, ScheduleRevision: 5,
+	}).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	next := occurrence.Add(time.Hour)
+	decision := ReplicationPolicyScheduleDecision{
+		PolicyID: 20, ExpectedScheduleRevision: 5, ExpectedOwnerEpoch: 2,
+		ExpectedNextRunAt: &occurrence, NextRunAt: &next, DecidedAt: occurrence,
+		ClaimToken: "replication:node-a:duplicate", HolderNodeID: "node-a",
+		Scheduled: true, OccurrenceAt: &occurrence,
+	}
+	if err := ApplyReplicationPolicyScheduleDecisionTxn(database, &decision); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	transition := ReplicationRunOperationTransition{
+		PolicyID: 20, Token: decision.ClaimToken, HolderNodeID: "node-a",
+		OccurredAt: occurrence.Add(time.Minute),
+	}
+	if err := StartReplicationRunOperationTxn(database, &transition); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := StartReplicationRunOperationTxn(database, &transition); err == nil ||
+		!strings.Contains(err.Error(), "replication_run_already_started") {
+		t.Fatalf("duplicate start accepted: %v", err)
+	}
+}
+
 func TestBackupStaleCompletionRecordsReceiptWithoutOverwritingEdit(t *testing.T) {
 	database := newRuntimeScheduleTestDB(t)
 	occurrence := time.Date(2026, time.July, 30, 10, 0, 0, 0, time.UTC)

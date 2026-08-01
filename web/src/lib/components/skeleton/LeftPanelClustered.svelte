@@ -78,7 +78,7 @@
 	const cluster = resource(
 		() => 'cluster-resources',
 		async (_, __, { signal }) => {
-			return await getClusterResources();
+			return await getClusterResources(signal);
 		},
 		{
 			initialValue: [] as NodeResource[]
@@ -88,7 +88,7 @@
 	const nodes = resource(
 		() => 'cluster-nodes',
 		async (_, __, { signal }) => {
-			return await getNodes();
+			return await getNodes(signal);
 		},
 		{
 			initialValue: [] as ClusterNode[]

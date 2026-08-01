@@ -261,7 +261,8 @@ func (s *Service) finishDurableBackupJobOperation(handle backupJobOperationHandl
 
 // prepareQueuedBackupJobOperation turns legacy queue messages into a durable
 // reservation and advances the exact operation token to running. A stale
-// duplicate is consumed without reacquiring work.
+// duplicate or a token with a pending terminal result is consumed without
+// reacquiring work.
 func (s *Service) prepareQueuedBackupJobOperation(
 	ctx context.Context,
 	jobID uint,
@@ -301,6 +302,15 @@ func (s *Service) prepareQueuedBackupJobOperation(
 	}
 	if err := s.requireCurrentRuntimeVoter(localHolder, bypassRaft); err != nil {
 		return handle, false, err
+	}
+	if operation == clusterModels.BackupJobOperationBackup && handle.Token != "" {
+		terminal, err := s.scheduledRunTokenTerminalLocally(handle.Token)
+		if err != nil {
+			return handle, false, err
+		}
+		if terminal {
+			return handle, false, nil
+		}
 	}
 
 	err = s.transitionDurableBackupJobOperation(ctx, "start", handle)
@@ -347,8 +357,8 @@ func (s *Service) prepareQueuedBackupJobOperation(
 
 // ReconcileBackupJobOperationsAfterRestart treats replicated queued/running
 // operations as an outbox. Enqueueing the same token more than once is safe:
-// concurrent duplicates are stopped by the local job lock and later duplicates
-// observe a released token.
+// concurrent duplicates are stopped by the local job lock, while later
+// duplicates observe either a released token or its node-local terminal outbox.
 func (s *Service) ReconcileBackupJobOperationsAfterRestart(ctx context.Context) error {
 	return s.reconcileBackupJobOperations(ctx, false)
 }

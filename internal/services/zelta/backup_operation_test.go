@@ -107,6 +107,46 @@ func TestBackupJobOperationRestartRequeuesExactToken(t *testing.T) {
 	}
 }
 
+func TestRunningBackupOperationWithTerminalOutboxIsNotReexecuted(t *testing.T) {
+	database := newZeltaServiceTestDB(t,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+	)
+	if err := database.Create(&clusterModels.BackupJob{
+		ID: 54, Name: "terminal-outbox", Mode: clusterModels.BackupJobModeDataset,
+		SourceDataset: "tank/data", CronExpr: "0 0 * * *",
+	}).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	now := time.Now().UTC()
+	operation := clusterModels.BackupJobOperation{
+		JobID: 54, Token: "backup:local:terminal-outbox", Operation: clusterModels.BackupJobOperationBackup,
+		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "local",
+		Revision: 2, AcquiredAt: now, UpdatedAt: now,
+	}
+	if err := database.Create(&operation).Error; err != nil {
+		t.Fatalf("seed operation: %v", err)
+	}
+	if err := database.Create(&clusterModels.ScheduledRunResultOutbox{
+		Token: operation.Token, Kind: clusterModels.ScheduledRunKindBackup,
+		ObjectID: operation.JobID, Payload: `{}`,
+	}).Error; err != nil {
+		t.Fatalf("seed terminal outbox: %v", err)
+	}
+
+	service := newTestZeltaService(database)
+	_, execute, err := service.prepareQueuedBackupJobOperation(
+		context.Background(), operation.JobID, operation.Operation,
+		operation.Token, operation.HolderNodeID, operation.RequestPayload,
+	)
+	if err != nil {
+		t.Fatalf("prepare terminalized operation: %v", err)
+	}
+	if execute {
+		t.Fatal("running backup token with a terminal outbox was allowed to execute again")
+	}
+}
+
 func TestQueuedBackupJobOperationIsAbortedAfterTargetDisable(t *testing.T) {
 	database := newZeltaServiceTestDB(t,
 		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},

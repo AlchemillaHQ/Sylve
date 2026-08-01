@@ -84,6 +84,45 @@ func TestReplicationSchedulerTickNoDB(t *testing.T) {
 	}
 }
 
+func TestPrepareReplicationRunResumesOnlyWithoutTerminalResult(t *testing.T) {
+	service := newReplicationSchedulerTestDB(t)
+	now := time.Date(2026, time.August, 1, 4, 33, 0, 0, time.UTC)
+	operation := clusterModels.ReplicationRunOperation{
+		PolicyID: 8001, Token: "replication:local:running", State: clusterModels.ReplicationRunOperationRunning,
+		HolderNodeID: "local", ScheduleRevision: 3, OwnerEpoch: 2,
+		Revision: 2, AcquiredAt: now, UpdatedAt: now,
+	}
+	if err := service.DB.Create(&operation).Error; err != nil {
+		t.Fatalf("seed running operation: %v", err)
+	}
+
+	prepared, execute, err := service.prepareReplicationRunOperation(
+		operation.PolicyID, operation.Token, operation.HolderNodeID,
+	)
+	if err != nil {
+		t.Fatalf("prepare interrupted run: %v", err)
+	}
+	if !execute || prepared == nil || prepared.Token != operation.Token {
+		t.Fatalf("interrupted run not resumable: execute=%t operation=%+v", execute, prepared)
+	}
+
+	if err := service.DB.Create(&clusterModels.ScheduledRunResultOutbox{
+		Token: operation.Token, Kind: clusterModels.ScheduledRunKindReplication,
+		ObjectID: operation.PolicyID, Payload: `{}`,
+	}).Error; err != nil {
+		t.Fatalf("seed terminal outbox: %v", err)
+	}
+	_, execute, err = service.prepareReplicationRunOperation(
+		operation.PolicyID, operation.Token, operation.HolderNodeID,
+	)
+	if err != nil {
+		t.Fatalf("prepare terminalized run: %v", err)
+	}
+	if execute {
+		t.Fatal("running token with a terminal outbox was allowed to execute again")
+	}
+}
+
 func TestReplicationSchedulerTickNoCluster(t *testing.T) {
 	svc := newReplicationSchedulerTestDB(t)
 	if err := svc.runReplicationSchedulerTick(context.Background()); err != nil {

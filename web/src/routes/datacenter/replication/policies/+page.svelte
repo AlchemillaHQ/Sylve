@@ -9,8 +9,8 @@
 		type ReplicationPolicyInput,
 		type ReplicationPolicyTargetInput
 	} from '$lib/api/cluster/replication';
-	import { getJails } from '$lib/api/jail/jail';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getSimpleJails } from '$lib/api/jail/jail';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -22,12 +22,12 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { ReplicationPolicy } from '$lib/types/cluster/replication';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isRequestCancellation, updateCache } from '$lib/utils/http';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { watch } from 'runed';
@@ -39,9 +39,6 @@
 	interface Data {
 		policies: ReplicationPolicy[];
 		nodes: ClusterNode[];
-		resources: NodeResource[];
-		jails: SimpleJail[];
-		vms: SimpleVm[];
 	}
 
 	type EditableTarget = {
@@ -352,11 +349,9 @@
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 
-	// svelte-ignore state_referenced_locally
-	let jails = $state(data.jails);
+	let jails = $state<SimpleJail[]>([]);
 
-	// svelte-ignore state_referenced_locally
-	let vms = $state(data.vms);
+	let vms = $state<SimpleVm[]>([]);
 
 	let reload = $state(false);
 	let query = $state('');
@@ -371,6 +366,10 @@
 	let freshnessNow = $state(Date.now());
 	let periodicRefreshRunning = false;
 	let policyRefreshGeneration = 0;
+	let jailLoadGeneration = 0;
+	let vmLoadGeneration = 0;
+	let jailLoadController: AbortController | null = null;
+	let vmLoadController: AbortController | null = null;
 
 	// svelte-ignore state_referenced_locally
 	let policies = $state<ReplicationPolicy[]>(data.policies);
@@ -834,56 +833,32 @@
 		return 'No online target server is currently available for this policy.';
 	});
 
-	let vmOptions = $derived.by(() =>
-		vms.map((vm) => ({ value: String(vm.rid), label: `${vm.name} (RID ${vm.rid})` }))
-	);
-
-	let jailOptions = $derived.by(() =>
-		jails.map((jail) => ({ value: String(jail.ctId), label: `${jail.name} (CTID ${jail.ctId})` }))
-	);
-
-	let vmByNode = $derived.by(() => {
-		const out: Record<string, Array<{ value: string; label: string }>> = {};
-		for (const res of data.resources) {
-			if (!res.vms) continue;
-			const nodeVms = res.vms.map((vm) => ({
-				value: String(vm.rid),
-				label: `${vm.name} (RID ${vm.rid})`
-			}));
-			if (nodeVms.length > 0) out[res.nodeUUID] = nodeVms;
-		}
-		return out;
-	});
-
-	let jailByNode = $derived.by(() => {
-		const out: Record<string, Array<{ value: string; label: string }>> = {};
-		for (const res of data.resources) {
-			if (!res.jails) continue;
-			const nodeJails = res.jails.map((jail) => ({
-				value: String(jail.ctId),
-				label: `${jail.name} (CTID ${jail.ctId})`
-			}));
-			if (nodeJails.length > 0) out[res.nodeUUID] = nodeJails;
-		}
-		return out;
-	});
-
 	let guestOptions = $derived.by(() => {
 		const nodeId = String(policyModal.workloadNodeId || '').trim();
 		if (!nodeId) return [];
-		if (policyModal.guestType === 'vm') return vmByNode[nodeId] || [];
-		return jailByNode[nodeId] || [];
+		if (policyModal.guestType === 'vm') {
+			if (vmsLoadedForNode !== nodeId) return [];
+			return vms.map((vm) => ({ value: String(vm.rid), label: `${vm.name} (RID ${vm.rid})` }));
+		}
+		if (jailsLoadedForNode !== nodeId) return [];
+		return jails.map((jail) => ({
+			value: String(jail.ctId),
+			label: `${jail.name} (CTID ${jail.ctId})`
+		}));
 	});
 
 	function policyWorkloadLabel(policy: ReplicationPolicy): string {
 		const type = policy.guestType === 'jail' ? 'Jail' : 'VM';
 		const id = policy.guestId;
 		const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
-		const resource = data.resources.find((candidate) => candidate.nodeUUID === nodeId);
 		const name =
 			policy.guestType === 'jail'
-				? resource?.jails?.find((jail) => jail.ctId === id)?.name
-				: resource?.vms?.find((vm) => vm.rid === id)?.name;
+				? jailsLoadedForNode === nodeId
+					? jails.find((jail) => jail.ctId === id)?.name
+					: undefined
+				: vmsLoadedForNode === nodeId
+					? vms.find((vm) => vm.rid === id)?.name
+					: undefined;
 		return name ? `${type} ${id} - ${name}` : `${type} ${id}`;
 	}
 
@@ -1107,10 +1082,9 @@
 	function openCreatePolicy() {
 		resetPolicyModal();
 		policyModal.open = true;
-		void loadVMsForNode();
 	}
 
-	async function openEditPolicy() {
+	function openEditPolicy() {
 		if (selectedPolicyId === 0) return;
 		const policy = policies.find((entry) => entry.id === selectedPolicyId);
 		if (!policy) return;
@@ -1141,12 +1115,6 @@
 						weight: String(target.weight || 100)
 					}))
 				: [{ nodeId: '', weight: '100' }];
-
-		if (policyModal.guestType === 'jail') {
-			await loadJailsForNode(true);
-			return;
-		}
-		await loadVMsForNode(true);
 	}
 
 	function selectedWorkloadHostname(): string {
@@ -1162,33 +1130,75 @@
 		return nodeByHostname?.hostname || nodeId;
 	}
 
-	async function loadJailsForNode(force: boolean = false) {
+	async function loadJailsForNode() {
+		const nodeId = policyModal.workloadNodeId.trim();
+		if (!nodeId) {
+			jailLoadController?.abort();
+			jailLoadController = null;
+			jailLoadGeneration += 1;
+			jails = [];
+			jailsLoadedForNode = '';
+			jailsLoading = false;
+			return;
+		}
 		const hostname = selectedWorkloadHostname();
-		if (jailsLoading) return;
-		if (!force && jailsLoadedForNode === hostname) return;
+		if (jailsLoadedForNode === nodeId) return;
+		jailLoadController?.abort();
+		jailLoadController = new AbortController();
+		const controller = jailLoadController;
+		const generation = ++jailLoadGeneration;
+		jails = [];
+		jailsLoadedForNode = '';
 		jailsLoading = true;
 		try {
-			const res = await getJails(hostname || undefined);
-			updateCache(hostname ? `jail-list-${hostname}` : 'jail-list', res);
+			const res = await getSimpleJails(hostname || undefined, controller.signal);
+			if (generation !== jailLoadGeneration) return;
+			void updateCache('simple-jails', res, hostname || undefined);
 			jails = res;
-			jailsLoadedForNode = hostname;
+			jailsLoadedForNode = nodeId;
+		} catch (error) {
+			if (!isRequestCancellation(error)) throw error;
 		} finally {
-			jailsLoading = false;
+			if (generation === jailLoadGeneration) {
+				jailLoadController = null;
+				jailsLoading = false;
+			}
 		}
 	}
 
-	async function loadVMsForNode(force: boolean = false) {
+	async function loadVMsForNode() {
+		const nodeId = policyModal.workloadNodeId.trim();
+		if (!nodeId) {
+			vmLoadController?.abort();
+			vmLoadController = null;
+			vmLoadGeneration += 1;
+			vms = [];
+			vmsLoadedForNode = '';
+			vmsLoading = false;
+			return;
+		}
 		const hostname = selectedWorkloadHostname();
-		if (vmsLoading) return;
-		if (!force && vmsLoadedForNode === hostname) return;
+		if (vmsLoadedForNode === nodeId) return;
+		vmLoadController?.abort();
+		vmLoadController = new AbortController();
+		const controller = vmLoadController;
+		const generation = ++vmLoadGeneration;
+		vms = [];
+		vmsLoadedForNode = '';
 		vmsLoading = true;
 		try {
-			const res = await getVMs(hostname || undefined);
-			updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', res);
+			const res = await getSimpleVMs(hostname || undefined, controller.signal);
+			if (generation !== vmLoadGeneration) return;
+			void updateCache('simple-vms', res, hostname || undefined);
 			vms = res;
-			vmsLoadedForNode = hostname;
+			vmsLoadedForNode = nodeId;
+		} catch (error) {
+			if (!isRequestCancellation(error)) throw error;
 		} finally {
-			vmsLoading = false;
+			if (generation === vmLoadGeneration) {
+				vmLoadController = null;
+				vmsLoading = false;
+			}
 		}
 	}
 
@@ -1564,12 +1574,26 @@
 	watch(
 		[() => policyModal.open, () => policyModal.workloadNodeId, () => policyModal.guestType],
 		([isOpen, _workloadNodeId, guestType]) => {
-			if (!isOpen) return;
-			if (guestType === 'jail') {
-				void loadJailsForNode(true);
+			if (!isOpen) {
+				jailLoadController?.abort();
+				vmLoadController?.abort();
+				jailLoadController = null;
+				vmLoadController = null;
+				jailLoadGeneration += 1;
+				vmLoadGeneration += 1;
+				jails = [];
+				vms = [];
+				jailsLoadedForNode = '';
+				vmsLoadedForNode = '';
+				jailsLoading = false;
+				vmsLoading = false;
 				return;
 			}
-			void loadVMsForNode(true);
+			if (guestType === 'jail') {
+				void loadJailsForNode();
+				return;
+			}
+			void loadVMsForNode();
 		}
 	);
 
@@ -1765,11 +1789,6 @@
 									onChange={(value) => {
 										policyModal.guestType = (value || 'vm') as 'vm' | 'jail';
 										policyModal.guestId = '';
-										if (policyModal.guestType === 'jail') {
-											void loadJailsForNode(true);
-											return;
-										}
-										void loadVMsForNode(true);
 									}}
 								/>
 
@@ -1874,10 +1893,10 @@
 										{policyModal.targets.length}/{maxTargetRows} targets configured
 									</p>
 								</div>
-									<Button
-										size="sm"
-										variant="outline"
-										class="h-6 shrink-0"
+								<Button
+									size="sm"
+									variant="outline"
+									class="h-6 shrink-0"
 									onclick={addTargetRow}
 									disabled={!canAddTargetRow}
 								>

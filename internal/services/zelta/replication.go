@@ -441,11 +441,15 @@ func (s *Service) registerReplicationJob() {
 			return nil
 		}
 
-		runErr := s.runReplicationPolicy(ctx, policy)
-		if !isJobAlreadyRunningErr(runErr) {
-			s.updateReplicationPolicyResult(policy, runErr)
-		}
+		runErr := s.runReplicationPolicyWithToken(ctx, policy, payload.OperationToken)
 		if runErr != nil {
+			if errors.Is(runErr, errScheduledRunOperationRevalidation) {
+				return runErr
+			}
+			if isJobAlreadyRunningErr(runErr) {
+				logger.L.Info().Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_duplicate_discarded")
+				return nil
+			}
 			if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
 				logger.L.Warn().
 					Err(runErr).
@@ -2411,22 +2415,46 @@ func (s *Service) runReplicationTargetGenerationAttempt(
 }
 
 func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
+	return s.runReplicationPolicyWithToken(ctx, policy, "")
+}
+
+func (s *Service) runReplicationPolicyWithToken(
+	ctx context.Context,
+	policy *clusterModels.ReplicationPolicy,
+	operationToken string,
+) error {
 	if policy == nil || policy.ID == 0 {
 		return fmt.Errorf("invalid_policy")
-	}
-	if !replicationPolicyAllowsRuns(policy) {
-		return fmt.Errorf("replication_policy_not_runnable")
-	}
-	if s.Cluster == nil {
-		runErr := fmt.Errorf("cluster_service_unavailable")
-		s.updateReplicationPolicyResult(policy, runErr)
-		return runErr
 	}
 	if !s.acquireReplication(policy.ID) {
 		return fmt.Errorf("replication_policy_already_running")
 	}
 	defer s.releaseReplication(policy.ID)
 
+	if strings.TrimSpace(operationToken) != "" {
+		executable, err := s.replicationRunTokenExecutable(policy.ID, operationToken)
+		if err != nil {
+			return fmt.Errorf("%w: replication policy %d: %v", errScheduledRunOperationRevalidation, policy.ID, err)
+		}
+		if !executable {
+			return fmt.Errorf("replication_policy_already_running")
+		}
+	}
+
+	runErr := s.runReplicationPolicyCore(ctx, policy)
+	if !isJobAlreadyRunningErr(runErr) {
+		s.updateReplicationPolicyResult(policy, runErr)
+	}
+	return runErr
+}
+
+func (s *Service) runReplicationPolicyCore(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
+	if !replicationPolicyAllowsRuns(policy) {
+		return fmt.Errorf("replication_policy_not_runnable")
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
 	if ok, holder := s.acquireWorkloadOperation(
 		policy.GuestType,
 		policy.GuestID,
@@ -2438,7 +2466,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 			strings.ToLower(strings.TrimSpace(policy.GuestType)),
 			policy.GuestID,
 		)
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 	defer s.releaseWorkloadOperation(policy.GuestType, policy.GuestID)
@@ -2456,13 +2483,11 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	haEval := s.Cluster.EvaluateReplicationPolicyHA(policy)
 	if !haEval.Eligible {
 		runErr := replicationPolicyHAError(haEval)
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 
 	if ownershipErr := s.validateLocalReplicationPolicyLease(policy); ownershipErr != nil {
 		runErr := fmt.Errorf("replication_policy_local_ownership_invalid: %w", ownershipErr)
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 
@@ -2471,7 +2496,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	// discovery, so a stale metadata file can never be snapshotted and re-arm
 	// target readiness. Fail closed before source discovery or any snapshot.
 	if runErr := s.refreshReplicationSourceMetadataForRun(policy); runErr != nil {
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 
@@ -2482,18 +2506,15 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 				err = errors.Join(err, fmt.Errorf("invalidate_replication_target_readiness_failed: %w", invalidateErr))
 			}
 		}
-		s.updateReplicationPolicyResult(policy, err)
 		return err
 	}
 	if len(sourceDatasets) == 0 {
 		runErr := fmt.Errorf("no_source_datasets_found")
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 
 	identities, err := s.Cluster.ListClusterSSHIdentities()
 	if err != nil {
-		s.updateReplicationPolicyResult(policy, err)
 		return err
 	}
 	identityByNode := make(map[string]clusterModels.ClusterSSHIdentity, len(identities))
@@ -2519,7 +2540,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		Message:      "replication_run_started",
 	}
 	if err := s.DB.Create(&event).Error; err != nil {
-		s.updateReplicationPolicyResult(policy, err)
 		return err
 	}
 
@@ -2529,7 +2549,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		if finalizeErr := s.finalizeReplicationEvent(&event, runErr); finalizeErr != nil {
 			runErr = errors.Join(runErr, finalizeErr)
 		}
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 
@@ -2598,7 +2617,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		if finalizeErr := s.finalizeReplicationEvent(&event, runErr); finalizeErr != nil {
 			runErr = errors.Join(runErr, finalizeErr)
 		}
-		s.updateReplicationPolicyResult(policy, runErr)
 		return runErr
 	}
 
@@ -2739,8 +2757,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	if finalizeErr := s.finalizeReplicationEvent(&event, runErr); finalizeErr != nil {
 		runErr = errors.Join(runErr, finalizeErr)
 	}
-	s.updateReplicationPolicyResult(policy, runErr)
-
 	return runErr
 }
 

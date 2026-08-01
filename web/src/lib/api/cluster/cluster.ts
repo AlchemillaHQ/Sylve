@@ -44,8 +44,10 @@ export async function resetCluster(): Promise<APIResponse> {
     return await apiRequest('/cluster/reset-node', APIResponseSchema, 'DELETE');
 }
 
-export async function getNodes(): Promise<ClusterNode[]> {
-    return await apiRequest('/cluster/nodes', z.array(ClusterNodeSchema), 'GET');
+export async function getNodes(signal?: AbortSignal): Promise<ClusterNode[]> {
+    return await apiRequest('/cluster/nodes', z.array(ClusterNodeSchema), 'GET', undefined, {
+        signal
+    });
 }
 
 export async function getNodesResult(): Promise<ClusterNode[] | APIResponse> {
@@ -54,8 +56,10 @@ export async function getNodesResult(): Promise<ClusterNode[] | APIResponse> {
     });
 }
 
-export async function getClusterResources(): Promise<NodeResource[]> {
-    return await apiRequest('/cluster/resources', z.array(NodeResourceSchema), 'GET');
+export async function getClusterResources(signal?: AbortSignal): Promise<NodeResource[]> {
+    return await apiRequest('/cluster/resources', z.array(NodeResourceSchema), 'GET', undefined, {
+        signal
+    });
 }
 
 interface TreeNode {
