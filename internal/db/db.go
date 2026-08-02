@@ -321,73 +321,118 @@ func hardenDatabaseFiles(databasePath string) error {
 }
 
 func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
-	const username = "admin"
-	adminCfg := cfg.Admin
-
 	// Import root user if it exists as a Unix user but not in the DB.
 	setupRootUser(db)
+	return setupConfiguredAdmin(db, cfg.Admin)
+}
+
+func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error {
+	const username = "admin"
 
 	var user models.User
 	result := db.Where("username = ?", username).First(&user)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			hashed, err := utils.HashPassword(adminCfg.Password)
 			if err != nil {
-				logger.L.Error().Msgf("Failed to hash password for admin user: %v", err)
-				return err
+				logger.L.Error().Err(err).Str("username", username).Msg("admin_password_hash_failed")
+				return fmt.Errorf("hash initial admin password: %w", err)
 			}
 
 			newUser := models.User{
 				Username: username,
+				Email:    adminCfg.Email,
 				Password: hashed,
 				Admin:    true,
 				Source:   "local",
 			}
 			if err := db.Create(&newUser).Error; err != nil {
-				logger.L.Error().Msgf("Failed to create admin user: %v", err)
-				return err
+				logger.L.Error().Err(err).Str("username", username).Msg("admin_user_create_failed")
+				return fmt.Errorf("create initial admin user: %w", err)
 			}
-			logger.L.Info().Msg("Admin user created")
+			logger.L.Info().
+				Str("username", username).
+				Str("outcome", "created").
+				Msg("admin_password_configuration")
+			return nil
 		} else {
-			logger.L.Error().Msgf("Error querying admin user: %v", result.Error)
-			return result.Error
+			logger.L.Error().Err(result.Error).Str("username", username).Msg("admin_user_lookup_failed")
+			return fmt.Errorf("query initial admin user: %w", result.Error)
 		}
-	} else {
-		updates := map[string]any{}
-		needsUpdate := false
+	}
 
-		if user.Email != adminCfg.Email {
-			updates["email"] = adminCfg.Email
-			needsUpdate = true
+	updates := map[string]any{}
+	if user.Email != adminCfg.Email {
+		updates["email"] = adminCfg.Email
+	}
+	if !user.Admin {
+		updates["admin"] = true
+	}
+
+	passwordOutcome := "matches_stored"
+	passwordLogLevel := "debug"
+	if adminCfg.ForcePasswordReset {
+		if adminCfg.Password == "" {
+			logger.L.Error().
+				Str("username", username).
+				Str("outcome", "rejected_empty_password").
+				Msg("admin_password_configuration")
+			return fmt.Errorf("admin force password reset requires a non-empty configured password")
 		}
 
-		if !user.Admin {
-			updates["admin"] = true
-			needsUpdate = true
-		}
-
-		if adminCfg.ForcePasswordReset && adminCfg.Password != "" {
-			if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
-				hashed, err := utils.HashPassword(adminCfg.Password)
-				if err != nil {
-					logger.L.Error().Msgf("Failed to hash password for admin update: %v", err)
-					return err
-				}
-				updates["password"] = hashed
-				needsUpdate = true
-				logger.L.Warn().Msg("Admin password forcefully reset from config")
+		passwordLogLevel = "info"
+		if utils.CheckPasswordHash(adminCfg.Password, user.Password) {
+			passwordOutcome = "force_reset_already_matched"
+		} else {
+			hashed, err := utils.HashPassword(adminCfg.Password)
+			if err != nil {
+				logger.L.Error().Err(err).Str("username", username).Msg("admin_password_hash_failed")
+				return fmt.Errorf("hash admin reset password: %w", err)
 			}
+			updates["password"] = hashed
+			passwordOutcome = "force_reset_applied"
 		}
+	} else if adminCfg.Password == "" {
+		passwordOutcome = "configured_password_empty"
+	} else if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
+		passwordOutcome = "ignored_force_reset_disabled"
+		passwordLogLevel = "warn"
+	}
 
-		if !needsUpdate {
-			logger.L.Debug().Msg("Admin user up to date, no changes needed")
-		} else if err := db.Model(&user).Updates(updates).Error; err != nil {
-			logger.L.Error().Msgf("Failed to update admin user: %v", err)
-			return err
-		} else {
-			logger.L.Info().Msg("Admin user updated")
+	if len(updates) > 0 {
+		if err := db.Model(&user).Updates(updates).Error; err != nil {
+			logger.L.Error().Err(err).Str("username", username).Msg("admin_user_update_failed")
+			return fmt.Errorf("update initial admin user: %w", err)
 		}
+	}
+
+	if adminCfg.ForcePasswordReset {
+		var persisted models.User
+		if err := db.Select("password").Where("username = ?", username).First(&persisted).Error; err != nil {
+			logger.L.Error().Err(err).Str("username", username).Msg("admin_password_verification_failed")
+			return fmt.Errorf("reload admin password after force reset: %w", err)
+		}
+		if !utils.CheckPasswordHash(adminCfg.Password, persisted.Password) {
+			logger.L.Error().Str("username", username).Msg("admin_password_verification_failed")
+			return fmt.Errorf("persisted admin password did not verify after force reset")
+		}
+	}
+
+	passwordLog := logger.L.Debug()
+	switch passwordLogLevel {
+	case "info":
+		passwordLog = logger.L.Info()
+	case "warn":
+		passwordLog = logger.L.Warn()
+	}
+	passwordLog.
+		Str("username", username).
+		Str("outcome", passwordOutcome).
+		Msg("admin_password_configuration")
+
+	if len(updates) > 0 {
+		logger.L.Info().Str("username", username).Msg("admin_user_updated")
 	}
 
 	return nil
