@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -103,6 +104,26 @@ func newBackupTargetRouter(cS *cluster.Service, zS backupTargetZelta) *gin.Engin
 	r.POST("/cluster/backups/targets/validate/:id", ValidateBackupTarget(cS, zS))
 	r.GET("/cluster/backups/targets/:id/readiness", BackupTargetReadiness(cS))
 	return r
+}
+
+func TestRestoreBackupTargetRejectsInvalidInputBeforeServiceUse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/cluster/backups/targets/:id/restore", RestoreBackupTargetDataset(&cluster.Service{}, nil))
+	request, err := http.NewRequest(
+		http.MethodPost,
+		"/cluster/backups/targets/1/restore",
+		strings.NewReader(`{"remoteDataset":"tank/backups;touch","snapshot":"@bk_test","destinationDataset":"zroot/restore"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestBackupTargetsHandlerGet(t *testing.T) {

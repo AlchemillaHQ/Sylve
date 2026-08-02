@@ -31,6 +31,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/google/uuid"
@@ -246,13 +247,26 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 	snapshotName string,
 	recursive bool,
 ) (string, error) {
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
-	extraEnv := s.buildZeltaEnv(target)
-	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+	parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		return "", fmt.Errorf("invalid_backup_source_dataset: %w", err)
+	}
+	zeltaEndpoint, err := canonicalZeltaEndpoint(target, destSuffix)
+	if err != nil {
+		return "", err
+	}
 	snapshotName = strings.TrimSpace(snapshotName)
 	if snapshotName == "" {
 		snapshotName = zeltaSnapshotName("bk")
 	}
+	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapshotName)
+	if err != nil {
+		return "", fmt.Errorf("invalid_backup_snapshot_name: %w", err)
+	}
+	sourceDataset = parsedSource.String()
+	snapshotName = parsedSnapshot.String()
+	extraEnv := s.buildZeltaEnv(target)
+	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
 
 	return runZeltaWithEnvStreaming(
 		ctx,
@@ -413,23 +427,28 @@ func (s *Service) syncTargetBackupJobMetadata(
 	if target == nil || strings.TrimSpace(target.SSHHost) == "" {
 		return nil
 	}
-
-	remoteDataset := normalizeDatasetPath(strings.TrimSpace(target.BackupRoot))
-	suffix := normalizeDatasetPath(destSuffix)
-	if suffix != "" {
-		remoteDataset = normalizeDatasetPath(remoteDataset + "/" + suffix)
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return err
 	}
-	if remoteDataset == "" {
-		return nil
+	parsedRemoteDataset, err := remoteexec.JoinZFSDataset(root, destSuffix)
+	if err != nil {
+		return fmt.Errorf("backup_target_dataset_invalid: %w", err)
 	}
+	remoteDataset := parsedRemoteDataset.String()
 
-	sourceDataset = normalizeDatasetPath(sourceDataset)
+	sourceDataset = strings.TrimSpace(sourceDataset)
 	if sourceDataset == "" && strings.TrimSpace(job.Mode) == clusterModels.BackupJobModeJail {
-		sourceDataset = normalizeDatasetPath(job.JailRootDataset)
+		sourceDataset = strings.TrimSpace(job.JailRootDataset)
 	}
 	if sourceDataset == "" {
-		sourceDataset = normalizeDatasetPath(job.SourceDataset)
+		sourceDataset = strings.TrimSpace(job.SourceDataset)
 	}
+	parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		return fmt.Errorf("backup_source_dataset_invalid: %w", err)
+	}
+	sourceDataset = parsedSource.String()
 
 	props := []string{
 		fmt.Sprintf("sylve:backup_job_id=%d", job.ID),
@@ -437,12 +456,14 @@ func (s *Service) syncTargetBackupJobMetadata(
 		fmt.Sprintf("sylve:backup_source=%s", sourceDataset),
 		fmt.Sprintf("sylve:backup_updated_at=%s", time.Now().UTC().Format(time.RFC3339)),
 	}
+	props, err = canonicalZFSPropertyAssignments(props)
+	if err != nil {
+		return err
+	}
 
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "set")
-	sshArgs = append(sshArgs, props...)
-	sshArgs = append(sshArgs, remoteDataset)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	argv := append([]string{"zfs", "set"}, props...)
+	argv = append(argv, remoteDataset)
+	output, err := s.runTargetSSH(ctx, target, argv...)
 	if err != nil {
 		return fmt.Errorf("sync_target_metadata_failed: %w (output: %s)", err, strings.TrimSpace(output))
 	}
@@ -804,12 +825,11 @@ func (s *Service) runBackupJobCore(
 		runErr := fmt.Errorf("backup_target_disabled")
 		return runErr
 	}
-	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&job.Target)
+	_, targetRoot, err := canonicalizeBackupTarget(&job.Target)
 	if err != nil {
-		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+		runErr := err
 		return runErr
 	}
-	defer releaseTargetKey()
 
 	event := clusterModels.BackupEvent{
 		JobID:     &job.ID,
@@ -842,6 +862,12 @@ func (s *Service) runBackupJobCore(
 		runErr := fmt.Errorf("invalid_backup_job_mode")
 		return runErr
 	}
+	parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		runErr := fmt.Errorf("invalid_backup_source_dataset: %w", err)
+		return runErr
+	}
+	sourceDataset = parsedSource.String()
 	if err := cluster.ValidateBackupJobSafetyWithDB(ctx, s.DB, job); err != nil {
 		runErr := fmt.Errorf("backup_job_safety_validation_failed: %w", err)
 		return runErr
@@ -869,10 +895,11 @@ func (s *Service) runBackupJobCore(
 		preferredVMSource := normalizeDatasetPath(sourceDataset)
 		validatedSources := make([]string, 0, len(vmSourceDatasets))
 		for _, vmSource := range vmSourceDatasets {
-			vmSource = normalizeDatasetPath(vmSource)
-			if vmSource == "" {
-				continue
+			parsedVMSource, err := remoteexec.ParseZFSDataset(vmSource)
+			if err != nil {
+				return fmt.Errorf("invalid_vm_backup_source_dataset: %w", err)
 			}
+			vmSource = parsedVMSource.String()
 
 			exists, err := s.localDatasetExists(ctx, vmSource)
 			if err != nil {
@@ -980,18 +1007,34 @@ func (s *Service) runBackupJobCore(
 	backupScopes := s.backupRunScopes(job, sourceDataset, destSuffix, vmSourceDatasets)
 	operationRoots := make([]string, 0, len(backupScopes))
 	for _, scope := range backupScopes {
-		operationRoots = append(operationRoots, scope.sourceDataset)
+		parsedScope, err := remoteexec.ParseZFSDataset(scope.sourceDataset)
+		if err != nil {
+			return fmt.Errorf("invalid_backup_scope_source_dataset: %w", err)
+		}
+		if _, err := remoteexec.JoinZFSDataset(targetRoot, scope.destSuffix); err != nil {
+			return fmt.Errorf("invalid_backup_scope_target_dataset: %w", err)
+		}
+		operationRoots = append(operationRoots, parsedScope.String())
 	}
 	acquired, holder, heldRoots := s.acquireDatasetOperations(operationRoots)
 	if !acquired {
 		return fmt.Errorf("backup_dataset_operation_conflict: holder=%s", holder)
 	}
 	defer s.releaseDatasetOperations(heldRoots)
+	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&job.Target)
+	if err != nil {
+		return fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+	}
+	defer releaseTargetKey()
 
 	if err := s.validateBackupScopesDoNotOverlapTarget(ctx, job, backupScopes); err != nil {
 		return fmt.Errorf("backup_scope_validation_failed: %w", err)
 	}
-	event.TargetEndpoint = job.Target.ZeltaEndpoint(destSuffix)
+	eventTargetEndpoint, err := canonicalZeltaEndpoint(&job.Target, destSuffix)
+	if err != nil {
+		return err
+	}
+	event.TargetEndpoint = eventTargetEndpoint
 	if err := s.DB.Create(&event).Error; err != nil {
 		return fmt.Errorf("create_backup_event_failed: %w", err)
 	}

@@ -89,7 +89,7 @@ func seedRuntimeBackupGuardGuests(t *testing.T, db *gorm.DB) {
 
 func seedBackupTarget(t *testing.T, db *gorm.DB, id uint, name string) clusterModels.BackupTarget {
 	target := clusterModels.BackupTarget{
-		ID: id, Name: name, SSHHost: "localhost", BackupRoot: "/backup", Enabled: true,
+		ID: id, Name: name, SSHHost: "localhost", BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed target %s: %v", name, err)

@@ -138,6 +138,61 @@ func TestBuildClusterSSHArgs(t *testing.T) {
 	}
 }
 
+func TestClusterRemoteCommandArgsEncodeArgumentsAndPreserveStreaming(t *testing.T) {
+	identity := &clusterModels.ClusterSSHIdentity{
+		NodeUUID: "node-42",
+		SSHUser:  "root",
+		SSHHost:  "Backup.Example",
+		SSHPort:  8183,
+	}
+	args, err := clusterRemoteCommandArgs(
+		identity,
+		"/tmp/test-key",
+		true,
+		"zfs.recv",
+		"tank/sylve/virtual-machines/42",
+		"zfs", "recv", "-o", "sylve:run-id=secret-token", "tank/sylve/virtual-machines/42",
+	)
+	if err != nil {
+		t.Fatalf("cluster remote command args: %v", err)
+	}
+	for _, arg := range args {
+		if arg == "-n" {
+			t.Fatal("streaming receiver retained ssh stdin suppression")
+		}
+		if strings.Contains(arg, "secret-token") || strings.Contains(arg, "sylve:run-id") {
+			t.Fatalf("remote argument was not encoded: %q", arg)
+		}
+	}
+	if len(args) < 2 || args[len(args)-2] != "root@backup.example" || !strings.HasPrefix(args[len(args)-1], "/bin/sh -c ") {
+		t.Fatalf("unexpected ssh invocation: %v", args)
+	}
+}
+
+func TestClusterRemoteCommandArgsRejectInvalidBoundaryValues(t *testing.T) {
+	valid := &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup.example", SSHPort: 22}
+	tests := []struct {
+		name     string
+		identity *clusterModels.ClusterSSHIdentity
+		dataset  string
+	}{
+		{name: "missing identity"},
+		{name: "unsafe host", identity: &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup;touch", SSHPort: 22}},
+		{name: "embedded port", identity: &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup:22", SSHPort: 22}},
+		{name: "invalid port", identity: &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup.example", SSHPort: 65536}},
+		{name: "unsafe dataset", identity: valid, dataset: "tank/guest;touch"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := clusterRemoteCommandArgs(
+				test.identity, "", false, "zfs.list", test.dataset, "zfs", "list", test.dataset,
+			); err == nil {
+				t.Fatal("invalid remote boundary was accepted")
+			}
+		})
+	}
+}
+
 func TestBackupEventReferencesGuest_VM(t *testing.T) {
 	svc := &Service{}
 

@@ -60,6 +60,48 @@ func enqueueTargetRestoreWithOperationID(
 	)
 }
 
+func TestOOBRestoreInvalidRemoteValuesHaveNoDurableSideEffects(t *testing.T) {
+	service, target := newBackupTargetRestoreOperationService(t)
+	publications := 0
+	service.restoreFromTargetOperationEnqueue = func(context.Context, string, any) error {
+		publications++
+		return nil
+	}
+	tests := []struct {
+		remote      string
+		snapshot    string
+		destination string
+	}{
+		{remote: "tank/backups/data;touch", snapshot: "@bk_j1_c1_test", destination: "zroot/restored"},
+		{remote: "tank/backups/data", snapshot: "@bk_j1_c1_test;touch", destination: "zroot/restored"},
+		{remote: "tank/backups/data", snapshot: "@bk_j1_c1_test", destination: "/zroot/restored"},
+	}
+	for _, test := range tests {
+		if err := service.EnqueueRestoreFromTarget(
+			context.Background(),
+			target.ID,
+			test.remote,
+			test.snapshot,
+			test.destination,
+			true,
+			"",
+		); err == nil {
+			t.Fatalf("accepted invalid request: %+v", test)
+		}
+	}
+	var operations int64
+	if err := service.DB.Model(&clusterModels.BackupTargetRestoreOperation{}).Count(&operations).Error; err != nil {
+		t.Fatalf("count operations: %v", err)
+	}
+	var events int64
+	if err := service.DB.Model(&clusterModels.BackupEvent{}).Count(&events).Error; err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if operations != 0 || events != 0 || publications != 0 {
+		t.Fatalf("side effects: operations=%d events=%d publications=%d", operations, events, publications)
+	}
+}
+
 func TestOOBRestoreReservationExistsWhileQueueLaneIsSaturated(t *testing.T) {
 	service, target := newBackupTargetRestoreOperationService(t)
 	enqueueEntered := make(chan restoreFromTargetPayload, 1)
@@ -79,7 +121,7 @@ func TestOOBRestoreReservationExistsWhileQueueLaneIsSaturated(t *testing.T) {
 
 	firstResult := make(chan error, 1)
 	go func() {
-		firstResult <- enqueueTargetRestore(context.Background(), service, target.ID, "/zroot/restored/")
+		firstResult <- enqueueTargetRestore(context.Background(), service, target.ID, "zroot/restored")
 	}()
 
 	var firstPayload restoreFromTargetPayload

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -217,7 +218,11 @@ func (s *Service) destroyLocalBackupSnapshotsWithProof(
 	proofs map[string]string,
 ) error {
 	for _, candidate := range snapshots {
-		snapshot := strings.TrimSpace(candidate)
+		parsed, err := remoteexec.ParseZFSSnapshot(candidate)
+		if err != nil {
+			return fmt.Errorf("backup_retention_local_snapshot_invalid: %w", err)
+		}
+		snapshot := parsed.String()
 		expectedGUID, ok := proofs[snapshot]
 		if !ok || expectedGUID == "" {
 			return fmt.Errorf("backup_retention_local_snapshot_unproven: snapshot=%s", snapshot)
@@ -257,14 +262,21 @@ func (s *Service) destroyTargetBackupSnapshotsWithProof(
 	if target == nil {
 		return fmt.Errorf("backup_target_required")
 	}
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return err
+	}
 	for _, candidate := range snapshots {
-		snapshot := strings.TrimSpace(candidate)
+		parsed, err := remoteexec.ParseZFSSnapshot(candidate)
+		if err != nil {
+			return fmt.Errorf("backup_retention_target_snapshot_invalid: %w", err)
+		}
+		snapshot := parsed.String()
 		expectedGUID, ok := proofs[snapshot]
 		if !ok || expectedGUID == "" {
 			return fmt.Errorf("backup_retention_target_snapshot_unproven: snapshot=%s", snapshot)
 		}
-		dataset := snapshotDatasetName(snapshot)
-		if !datasetWithinRoot(target.BackupRoot, dataset) {
+		if !parsed.Dataset().Within(root) {
 			return fmt.Errorf("backup_retention_target_snapshot_outside_root: snapshot=%s", snapshot)
 		}
 		output, err := s.runTargetSSH(

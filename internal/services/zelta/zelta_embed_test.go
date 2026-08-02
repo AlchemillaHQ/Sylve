@@ -79,6 +79,70 @@ func TestEnsureZeltaInstalledRefreshesChangedEmbeddedAssets(t *testing.T) {
 	}
 }
 
+func TestEmbeddedZeltaParsesBracketedIPv6Endpoints(t *testing.T) {
+	awk, err := exec.LookPath("awk")
+	if err != nil {
+		t.Skip("awk unavailable")
+	}
+	common, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-common.awk")
+	if err != nil {
+		t.Fatalf("read common parser: %v", err)
+	}
+	commonSource := string(common)
+	commonStart := strings.Index(commonSource, "function load_endpoint")
+	if commonStart < 0 {
+		t.Fatal("load_endpoint source not found")
+	}
+	commonEnd := strings.Index(commonSource[commonStart:], "# Output")
+	if commonEnd < 0 {
+		t.Fatal("load_endpoint source end not found")
+	}
+	commonProgram := commonSource[commonStart:commonStart+commonEnd] +
+		"\nBEGIN {\n" +
+		"  load_endpoint(\"root@[2001:db8::1]:tank/backups@bk_test\", parsed)\n" +
+		"  print parsed[\"REMOTE\"] \"\\t\" parsed[\"HOST\"] \"\\t\" parsed[\"DS\"] \"\\t\" parsed[\"SNAP\"]\n" +
+		"}\n"
+	commonCommand := exec.Command(awk, "-f", "-")
+	commonCommand.Stdin = strings.NewReader(commonProgram)
+	commonOutput, err := commonCommand.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run common parser: %v: %s", err, commonOutput)
+	}
+	if got := strings.TrimSpace(string(commonOutput)); got != "root@2001:db8::1\t2001:db8::1\ttank/backups\t@bk_test" {
+		t.Fatalf("common endpoint=%q", got)
+	}
+
+	args, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-args.awk")
+	if err != nil {
+		t.Fatalf("read argument parser: %v", err)
+	}
+	argsSource := string(args)
+	argsStart := strings.Index(argsSource, "function validate_host")
+	if argsStart < 0 {
+		t.Fatal("get_endpoint source not found")
+	}
+	argsEnd := strings.Index(argsSource[argsStart:], "function match_arg")
+	if argsEnd < 0 {
+		t.Fatal("get_endpoint source end not found")
+	}
+	argsProgram := argsSource[argsStart:argsStart+argsEnd] +
+		"\nBEGIN {\n" +
+		"  Opt[\"HOSTNAME\"] = \"local\"\n" +
+		"  $0 = \"root@[2001:db8::1]:tank/backups@bk_test\"\n" +
+		"  get_endpoint()\n" +
+		"  print NewOpt[\"SRC_REMOTE\"] \"\\t\" NewOpt[\"SRC_HOST\"] \"\\t\" NewOpt[\"SRC_DS\"] \"\\t\" NewOpt[\"SRC_SNAP\"]\n" +
+		"}\n"
+	argsCommand := exec.Command(awk, "-f", "-")
+	argsCommand.Stdin = strings.NewReader(argsProgram)
+	argsOutput, err := argsCommand.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run argument parser: %v: %s", err, argsOutput)
+	}
+	if got := strings.TrimSpace(string(argsOutput)); got != "root@2001:db8::1\t2001:db8::1\ttank/backups\t@bk_test" {
+		t.Fatalf("argument endpoint=%q", got)
+	}
+}
+
 func TestZeltaBackupWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {

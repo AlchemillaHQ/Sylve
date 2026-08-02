@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -284,7 +285,61 @@ func fakeSSHCommandSuffix(args []string) string {
 		return ""
 	}
 
-	return strings.Join(args[i:], " ")
+	command := strings.Join(args[i:], " ")
+	if argv, ok := fakeSSHDecodedArgv(command); ok {
+		return strings.Join(argv, " ")
+	}
+	return command
+}
+
+func fakeSSHDecodedArgv(command string) ([]string, bool) {
+	const prefix = `/bin/sh -c 'eval "$(/usr/bin/printf %s "$1" | /usr/bin/base64 -d)"' sh `
+	if !strings.HasPrefix(command, prefix) {
+		return nil, false
+	}
+	encoded := strings.TrimPrefix(command, prefix)
+	script, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, false
+	}
+	return fakeSSHParseRenderedArgv(string(script))
+}
+
+func fakeSSHParseRenderedArgv(script string) ([]string, bool) {
+	if !strings.HasPrefix(script, "exec ") {
+		return nil, false
+	}
+	script = strings.TrimPrefix(script, "exec ")
+	argv := make([]string, 0, 8)
+	for len(script) > 0 {
+		if script[0] != '\'' {
+			return nil, false
+		}
+		script = script[1:]
+		var arg strings.Builder
+		for {
+			end := strings.IndexByte(script, '\'')
+			if end < 0 {
+				return nil, false
+			}
+			arg.WriteString(script[:end])
+			script = script[end+1:]
+			if script == "" || script[0] == ' ' {
+				break
+			}
+			if !strings.HasPrefix(script, "\"'\"'") {
+				return nil, false
+			}
+			arg.WriteByte('\'')
+			script = script[4:]
+		}
+		argv = append(argv, arg.String())
+		if script == "" {
+			break
+		}
+		script = script[1:]
+	}
+	return argv, len(argv) > 0
 }
 
 func fakeSSHOptionRequiresValue(option string) bool {

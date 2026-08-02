@@ -22,33 +22,6 @@ func requireValidShellScript(t *testing.T, script string) {
 	}
 }
 
-func TestRemotePOSIXShellCommandWorksThroughPOSIXAndCShells(t *testing.T) {
-	script := "set -eu\nvalue='quoted value'\nprintf '%s' \"$value\""
-	command := remotePOSIXShellCommand(script)
-	tests := []struct {
-		name string
-		path string
-		args []string
-	}{
-		{name: "posix", path: "/bin/sh", args: []string{"-c", command}},
-		{name: "csh", path: "/bin/csh", args: []string{"-f", "-c", command}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := exec.LookPath(tt.path); err != nil {
-				t.Skipf("%s unavailable: %v", tt.path, err)
-			}
-			output, err := exec.Command(tt.path, tt.args...).CombinedOutput()
-			if err != nil {
-				t.Fatalf("remote script transport failed through %s: %v\n%s", tt.name, err, output)
-			}
-			if got := string(output); got != "quoted value" {
-				t.Fatalf("remote script output through %s=%q, want %q", tt.name, got, "quoted value")
-			}
-		})
-	}
-}
-
 func TestParseReplicationSnapshotCloneDependencies(t *testing.T) {
 	dependencies, err := parseReplicationSnapshotCloneDependencies(
 		"tank/source\ntank/source/disk\ntank/source/clone-a\ntank/source/clone-b\n",

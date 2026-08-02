@@ -90,6 +90,24 @@ type backupRunHandlerStub struct {
 	err      error
 }
 
+func TestRestoreBackupJobRejectsInvalidSnapshotBeforeLookup(t *testing.T) {
+	service := &clusterService.Service{DB: testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{})}
+	restoreService := &backupRestoreHandlerStub{}
+	router := newBackupRestoreForwardRouter(service, restoreService, 1, "admin", "local")
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/cluster/backups/jobs/42/restore",
+		strings.NewReader(`{"snapshot":"@bad;name","encryptionKey":"secret"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest || len(restoreService.registeredKeys) != 0 {
+		t.Fatalf("status=%d body=%s keys=%v", response.Code, response.Body.String(), restoreService.registeredKeys)
+	}
+}
+
 func (s *backupRunHandlerStub) EnqueueBackupJob(_ context.Context, jobID uint) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

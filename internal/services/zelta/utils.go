@@ -230,7 +230,10 @@ func datasetFromZeltaEndpoint(endpoint string) string {
 		return ""
 	}
 
-	if idx := strings.LastIndex(raw, ":"); idx >= 0 && idx+1 < len(raw) {
+	if idx := strings.Index(raw, "]:"); idx >= 0 && idx+2 < len(raw) {
+		return normalizeDatasetPath(raw[idx+2:])
+	}
+	if idx := strings.Index(raw, ":"); idx >= 0 && idx+1 < len(raw) {
 		return normalizeDatasetPath(raw[idx+1:])
 	}
 

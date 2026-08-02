@@ -41,29 +41,27 @@ type backupTargetRestoreOperationRequest struct {
 func normalizeRestoreFromTargetOperationRequest(
 	payload restoreFromTargetPayload,
 ) (backupTargetRestoreOperationRequest, restoreFromTargetPayload, error) {
+	if payload.TargetID == 0 {
+		return backupTargetRestoreOperationRequest{}, payload, fmt.Errorf("invalid_target_id")
+	}
+	remoteDataset, snapshot, destinationDataset, err := CanonicalRestoreFromTargetInput(
+		payload.RemoteDataset,
+		payload.Snapshot,
+		payload.DestinationDataset,
+	)
+	if err != nil {
+		return backupTargetRestoreOperationRequest{}, payload, err
+	}
 	request := backupTargetRestoreOperationRequest{
 		TargetID:           payload.TargetID,
-		RemoteDataset:      strings.TrimSpace(payload.RemoteDataset),
-		Snapshot:           strings.TrimSpace(payload.Snapshot),
-		DestinationDataset: normalizeRestoreDestinationDataset(payload.DestinationDataset),
+		RemoteDataset:      remoteDataset,
+		Snapshot:           snapshot,
+		DestinationDataset: destinationDataset,
 		RestoreNetwork:     true,
 	}
 	if payload.RestoreNetwork != nil {
 		request.RestoreNetwork = *payload.RestoreNetwork
 	}
-	switch {
-	case request.TargetID == 0:
-		return request, payload, fmt.Errorf("invalid_target_id")
-	case request.RemoteDataset == "":
-		return request, payload, fmt.Errorf("remote_dataset_required")
-	case request.Snapshot == "":
-		return request, payload, fmt.Errorf("snapshot_required")
-	case request.DestinationDataset == "":
-		return request, payload, fmt.Errorf("destination_dataset_required")
-	case !isValidRestoreDestinationDataset(request.DestinationDataset):
-		return request, payload, fmt.Errorf("destination_dataset_invalid")
-	}
-
 	payload.TargetID = request.TargetID
 	payload.RemoteDataset = request.RemoteDataset
 	payload.Snapshot = request.Snapshot

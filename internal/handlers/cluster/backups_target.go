@@ -668,6 +668,18 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			})
 			return
 		}
+		req.RemoteDataset, req.Snapshot, req.DestinationDataset, err = zelta.CanonicalRestoreFromTargetInput(
+			req.RemoteDataset,
+			req.Snapshot,
+			req.DestinationDataset,
+		)
+		if err != nil {
+			status, message := restoreFromTargetEnqueueError(err)
+			c.JSON(status, internal.APIResponse[any]{
+				Status: "error", Message: message, Error: err.Error(), Data: nil,
+			})
+			return
+		}
 
 		localNodeID := ""
 		if detail := cS.Detail(); detail != nil {

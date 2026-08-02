@@ -70,6 +70,41 @@ func TestParseRemoteDatasetEncryption(t *testing.T) {
 	}
 }
 
+func TestCanonicalRestoreFromTargetInput(t *testing.T) {
+	remote, snapshot, destination, err := CanonicalRestoreFromTargetInput(
+		"tank/backups/data",
+		"bk_j1_c1_valid",
+		"zroot/restored",
+	)
+	if err != nil {
+		t.Fatalf("canonical input: %v", err)
+	}
+	if remote != "tank/backups/data" || snapshot != "@bk_j1_c1_valid" || destination != "zroot/restored" {
+		t.Fatalf("canonical input = %q %q %q", remote, snapshot, destination)
+	}
+
+	for _, test := range []struct {
+		name        string
+		remote      string
+		snapshot    string
+		destination string
+	}{
+		{name: "absolute remote", remote: "/tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "zroot/restored"},
+		{name: "remote traversal", remote: "tank/backups/../data", snapshot: "@bk_j1_c1_valid", destination: "zroot/restored"},
+		{name: "snapshot shell", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid;touch", destination: "zroot/restored"},
+		{name: "snapshot dataset mismatch", remote: "tank/backups/data", snapshot: "tank/backups/other@bk_j1_c1_valid", destination: "zroot/restored"},
+		{name: "absolute destination", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "/zroot/restored"},
+		{name: "pool-only destination", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "zroot"},
+		{name: "destination snapshot", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "zroot/restored@snap"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, _, err := CanonicalRestoreFromTargetInput(test.remote, test.snapshot, test.destination); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestIsValidRestoreDestinationDataset(t *testing.T) {
 	if !isValidRestoreDestinationDataset("tank/data") {
 		t.Fatal("valid pool/path should pass")

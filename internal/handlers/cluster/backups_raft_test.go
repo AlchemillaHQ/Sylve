@@ -111,7 +111,7 @@ func TestCreateBackupJobHandlerHappyPath(t *testing.T) {
 	defer cleanup()
 
 	target := clusterModels.BackupTarget{
-		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup", Enabled: true,
+		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
@@ -145,7 +145,7 @@ func TestDeleteBackupJobHandlerHappyPath(t *testing.T) {
 	defer cleanup()
 
 	target := clusterModels.BackupTarget{
-		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup", Enabled: true,
+		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
@@ -182,7 +182,7 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	defer cleanup()
 
 	target := clusterModels.BackupTarget{
-		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup", Enabled: true,
+		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)

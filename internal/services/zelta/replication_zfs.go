@@ -21,6 +21,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -112,25 +113,11 @@ type replicationStagingSeedResult struct {
 }
 
 func validReplicationZFSToken(value string) bool {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 128 {
-		return false
-	}
-	for _, r := range value {
-		switch {
-		case r >= 'a' && r <= 'z',
-			r >= 'A' && r <= 'Z',
-			r >= '0' && r <= '9',
-			r == '.', r == '_', r == '-', r == ':':
-		default:
-			return false
-		}
-	}
-	return true
+	token, err := remoteexec.ParseOperationToken(value)
+	return err == nil && token.String() == value
 }
 
 func validateReplicationSnapshotName(snapshotName string) error {
-	snapshotName = strings.TrimSpace(snapshotName)
 	if !validReplicationZFSToken(snapshotName) {
 		return fmt.Errorf("invalid_replication_snapshot_name")
 	}
@@ -220,7 +207,7 @@ func (opts ReplicationZFSTransferOptions) validate() error {
 			return fmt.Errorf("invalid_replication_snapshot_guid")
 		}
 	}
-	if strings.TrimSpace(opts.GenerationName) != "" && !validReplicationZFSToken(opts.GenerationName) {
+	if opts.GenerationName != "" && !validReplicationZFSToken(opts.GenerationName) {
 		return fmt.Errorf("invalid_replication_generation_name")
 	}
 	return nil
@@ -288,13 +275,19 @@ func (s *Service) CreateReplicationSnapshotGroup(
 	if err := validateReplicationSnapshotName(snapshotName); err != nil {
 		return err
 	}
+	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapshotName)
+	if err != nil {
+		return err
+	}
+	snapshotName = parsedSnapshot.String()
 	seen := make(map[string]struct{}, len(sourceDatasets))
 	args := []string{"snapshot", "-r"}
 	for _, sourceDataset := range sourceDatasets {
-		sourceDataset = normalizeDatasetPath(sourceDataset)
-		if sourceDataset == "" {
-			return fmt.Errorf("source_dataset_required")
+		parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+		if err != nil {
+			return fmt.Errorf("source_dataset_invalid: %w", err)
 		}
+		sourceDataset = parsedSource.String()
 		if _, exists := seen[sourceDataset]; exists {
 			continue
 		}
@@ -326,18 +319,6 @@ func (s *Service) replicationZFSSendPreparedToPath(
 ) (string, error) {
 	if target == nil {
 		return "", fmt.Errorf("replication_target_required")
-	}
-	sourceDataset = normalizeDatasetPath(sourceDataset)
-	if sourceDataset == "" {
-		return "", fmt.Errorf("source_dataset_required")
-	}
-	if err := validateReplicationSnapshotName(snapshotName); err != nil {
-		return "", err
-	}
-
-	targetPath = normalizeDatasetPath(targetPath)
-	if targetPath == "" {
-		return "", fmt.Errorf("replication_target_dataset_required")
 	}
 
 	var outputLog strings.Builder
@@ -587,31 +568,59 @@ func (s *Service) runReplicationPipelineWithProperties(
 	forceRecv bool,
 	receiveProperties map[string]string,
 ) (string, error) {
+	parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		return "", fmt.Errorf("invalid_replication_source_dataset: %w", err)
+	}
+	parsedTarget, err := canonicalTargetDataset(target, targetPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid_replication_target_dataset: %w", err)
+	}
+	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapName)
+	if err != nil {
+		return "", fmt.Errorf("invalid_replication_snapshot_name: %w", err)
+	}
+	if commonSnap != "" {
+		parsedCommon, parseErr := remoteexec.ParseZFSSnapshotName(commonSnap)
+		if parseErr != nil {
+			return "", fmt.Errorf("invalid_replication_common_snapshot_name: %w", parseErr)
+		}
+		commonSnap = parsedCommon.String()
+	}
+	receiveProperties, err = canonicalZFSProperties(receiveProperties)
+	if err != nil {
+		return "", fmt.Errorf("invalid_replication_receive_properties: %w", err)
+	}
+	sourceDataset = parsedSource.String()
+	targetPath = parsedTarget.String()
+	snapName = parsedSnapshot.String()
 	if forceRecv && !hasCompleteReplicationProvenance(receiveProperties) {
 		return "", fmt.Errorf("replication_force_receive_provenance_required")
 	}
 	sendArgs := replicationZFSSendArgs(sourceDataset, snapName, commonSnap, encrypted)
 
-	sshArgs := s.buildSSHArgs(target)
-	recvArgs := make([]string, 0, len(sshArgs)+10)
-	for _, a := range sshArgs {
-		if a != "-n" {
-			recvArgs = append(recvArgs, a)
-		}
-	}
-	recvArgs = append(recvArgs, target.SSHHost, "zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto")
+	recvArgv := []string{"zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto"}
 	propertyNames := make([]string, 0, len(receiveProperties))
 	for property := range receiveProperties {
 		propertyNames = append(propertyNames, property)
 	}
 	sort.Strings(propertyNames)
 	for _, property := range propertyNames {
-		recvArgs = append(recvArgs, "-o", property+"="+receiveProperties[property])
+		recvArgv = append(recvArgv, "-o", property+"="+receiveProperties[property])
 	}
 	if forceRecv {
-		recvArgs = append(recvArgs, "-F")
+		recvArgv = append(recvArgv, "-F")
 	}
-	recvArgs = append(recvArgs, targetPath)
+	recvArgv = append(recvArgv, targetPath)
+	remoteCommand, err := remoteexec.NewCommand(recvArgv...)
+	if err != nil {
+		return "", fmt.Errorf("ssh_recv_command_invalid: %w", err)
+	}
+	kind, dataset := remoteCommandLogFields(recvArgv)
+	recvArgs, err := s.targetRemoteCommandArgs(target, remoteCommand, true, kind, dataset)
+	if err != nil {
+		return "", fmt.Errorf("ssh_recv_command_invalid: %w", err)
+	}
 
 	sendCmd := exec.CommandContext(ctx, "zfs", sendArgs...)
 	recvCmd := exec.CommandContext(ctx, "ssh", recvArgs...)
@@ -717,10 +726,11 @@ func (s *Service) abortTargetResumableReceiveDataset(
 	if target == nil {
 		return "", fmt.Errorf("replication_target_required")
 	}
-	targetDataset = normalizeDatasetPath(targetDataset)
-	if targetDataset == "" {
-		return "", fmt.Errorf("replication_target_dataset_required")
+	parsedTarget, err := canonicalTargetDataset(target, targetDataset)
+	if err != nil {
+		return "", fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	targetDataset = parsedTarget.String()
 	output, err := s.runTargetSSH(ctx, target, "zfs", "receive", "-A", targetDataset)
 	if err != nil && !isReplicationResumeAbortNoopError(err) {
 		return output, err
@@ -833,10 +843,11 @@ func parseReplicationSnapshotCloneDependencies(
 }
 
 func (s *Service) preflightReplicationSourceSnapshotClones(ctx context.Context, sourceDataset string) error {
-	sourceDataset = normalizeDatasetPath(sourceDataset)
-	if sourceDataset == "" {
-		return fmt.Errorf("replication_source_dataset_required")
+	parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		return fmt.Errorf("replication_source_dataset_invalid: %w", err)
 	}
+	sourceDataset = parsedSource.String()
 	datasetOutput, err := utils.RunCommandWithContext(
 		ctx,
 		"zfs", "list", "-H", "-r", "-t", "filesystem,volume", "-o", "name", sourceDataset,
@@ -944,10 +955,11 @@ func (s *Service) GetReplicationSnapshotManifest(
 	seen := make(map[string]struct{}, len(sourceDatasets))
 	manifest := make([]ReplicationSnapshotManifestEntry, 0, len(sourceDatasets))
 	for _, sourceDataset := range sourceDatasets {
-		sourceDataset = normalizeDatasetPath(sourceDataset)
-		if sourceDataset == "" {
-			return nil, fmt.Errorf("source_dataset_required")
+		parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+		if err != nil {
+			return nil, fmt.Errorf("source_dataset_invalid: %w", err)
 		}
+		sourceDataset = parsedSource.String()
 		if _, exists := seen[sourceDataset]; exists {
 			continue
 		}
@@ -1133,9 +1145,19 @@ func (s *Service) replicationSnapshotTreeManifestRemote(
 	canonicalSourceRoot string,
 	snapshotName string,
 ) ([]ReplicationSnapshotManifestEntry, error) {
-	if target == nil {
-		return nil, fmt.Errorf("replication_target_required")
+	parsedObservedRoot, err := canonicalTargetDataset(target, observedRoot)
+	if err != nil {
+		return nil, fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	parsedSourceRoot, err := remoteexec.ParseZFSDataset(canonicalSourceRoot)
+	if err != nil {
+		return nil, fmt.Errorf("replication_source_dataset_invalid: %w", err)
+	}
+	if err := validateReplicationSnapshotName(snapshotName); err != nil {
+		return nil, err
+	}
+	observedRoot = parsedObservedRoot.String()
+	canonicalSourceRoot = parsedSourceRoot.String()
 	datasetOutput, err := s.runTargetSSH(
 		ctx,
 		target,
@@ -1227,10 +1249,11 @@ func (s *Service) GetReplicationSnapshotTreeManifest(
 	manifests := make([][]ReplicationSnapshotManifestEntry, 0, len(sourceDatasets))
 	seen := make(map[string]struct{})
 	for _, sourceDataset := range sourceDatasets {
-		sourceDataset = normalizeDatasetPath(sourceDataset)
-		if sourceDataset == "" {
-			return nil, fmt.Errorf("source_dataset_required")
+		parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
+		if err != nil {
+			return nil, fmt.Errorf("source_dataset_invalid: %w", err)
 		}
+		sourceDataset = parsedSource.String()
 		if _, exists := seen[sourceDataset]; exists {
 			continue
 		}
@@ -1289,10 +1312,11 @@ func (s *Service) ensureReplicationSnapshotGUID(
 }
 
 func (s *Service) listHaSnapshotIdentitiesLocal(ctx context.Context, dataset string) ([]replicationSnapshotIdentity, error) {
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return []replicationSnapshotIdentity{}, nil
+	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return nil, fmt.Errorf("replication_source_dataset_invalid: %w", err)
 	}
+	dataset = parsedDataset.String()
 
 	output, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", "-s", "creation", dataset)
 	if err != nil {
@@ -1307,17 +1331,13 @@ func (s *Service) listHaSnapshotIdentitiesLocal(ctx context.Context, dataset str
 }
 
 func (s *Service) listHaSnapshotIdentitiesRemote(ctx context.Context, target *clusterModels.BackupTarget, dataset string) ([]replicationSnapshotIdentity, error) {
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return []replicationSnapshotIdentity{}, nil
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return nil, fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
-	if target == nil {
-		return nil, fmt.Errorf("replication_target_required")
-	}
+	dataset = parsedDataset.String()
 
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", "-s", "creation", dataset)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	output, err := s.runTargetSSH(ctx, target, "zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", "-s", "creation", dataset)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") ||
 			strings.Contains(strings.ToLower(err.Error()), "no such") {
@@ -1363,10 +1383,11 @@ func filterHaSnapshots(output, dataset string) []string {
 }
 
 func (s *Service) ensureTargetParentDatasets(ctx context.Context, target *clusterModels.BackupTarget, targetPath string) error {
-	targetPath = normalizeDatasetPath(targetPath)
-	if targetPath == "" {
-		return nil
+	parsedTarget, err := canonicalTargetDataset(target, targetPath)
+	if err != nil {
+		return fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	targetPath = parsedTarget.String()
 
 	idx := strings.LastIndex(targetPath, "/")
 	if idx <= 0 || idx >= len(targetPath)-1 {
@@ -1399,10 +1420,11 @@ func (s *Service) ensureTargetParentDatasets(ctx context.Context, target *cluste
 }
 
 func (s *Service) ensureTargetReplicationReadonly(ctx context.Context, target *clusterModels.BackupTarget, targetPath string) error {
-	targetPath = normalizeDatasetPath(targetPath)
-	if targetPath == "" {
-		return nil
+	parsedTarget, err := canonicalTargetDataset(target, targetPath)
+	if err != nil {
+		return fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	targetPath = parsedTarget.String()
 
 	script := fmt.Sprintf(
 		`set -eu
@@ -1415,7 +1437,7 @@ done`,
 		targetPath,
 	)
 
-	output, err := s.runTargetSSH(ctx, target, "sh", "-c", script)
+	output, err := s.runTargetDatasetScript(ctx, target, targetPath, script)
 	if err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
 	}
@@ -1428,10 +1450,11 @@ func (s *Service) verifyTargetReplicationReadonly(
 	target *clusterModels.BackupTarget,
 	targetPath string,
 ) error {
-	targetPath = normalizeDatasetPath(targetPath)
-	if targetPath == "" {
-		return fmt.Errorf("replication_target_dataset_required")
+	parsedTarget, err := canonicalTargetDataset(target, targetPath)
+	if err != nil {
+		return fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	targetPath = parsedTarget.String()
 	output, err := s.runTargetSSH(
 		ctx,
 		target,
@@ -1486,10 +1509,15 @@ func (s *Service) setTargetReplicationProperties(
 	if target == nil {
 		return fmt.Errorf("replication_target_required")
 	}
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return fmt.Errorf("replication_target_dataset_required")
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return fmt.Errorf("invalid_replication_target_dataset: %w", err)
 	}
+	properties, err = canonicalZFSProperties(properties)
+	if err != nil {
+		return fmt.Errorf("invalid_replication_properties: %w", err)
+	}
+	dataset = parsedDataset.String()
 	args := []string{"zfs", "set"}
 	for _, property := range sortedReplicationPropertyNames(properties) {
 		args = append(args, property+"="+properties[property])
@@ -1524,11 +1552,19 @@ func (s *Service) readTargetReplicationProperties(
 	if target == nil {
 		return nil, fmt.Errorf("replication_target_required")
 	}
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return nil, fmt.Errorf("replication_target_dataset_required")
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return nil, fmt.Errorf("invalid_replication_target_dataset: %w", err)
 	}
+	dataset = parsedDataset.String()
 	propertyNames = append([]string{}, propertyNames...)
+	for idx := range propertyNames {
+		property, parseErr := remoteexec.ParseZFSPropertyName(propertyNames[idx])
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		propertyNames[idx] = property.String()
+	}
 	sort.Strings(propertyNames)
 	output, err := s.runTargetSSH(
 		ctx,
@@ -1563,27 +1599,11 @@ func verifyReplicationPropertyValues(actual, expected map[string]string) error {
 }
 
 func validateExactReplicationDatasetPath(dataset string) (string, error) {
-	raw := strings.TrimSpace(dataset)
-	normalized := normalizeDatasetPath(raw)
-	if raw == "" || normalized == "" || raw != normalized || strings.HasPrefix(raw, "/") || strings.Contains(raw, "@") {
-		return "", fmt.Errorf("invalid_exact_replication_dataset_path")
+	parsed, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return "", fmt.Errorf("invalid_exact_replication_dataset_path: %w", err)
 	}
-	for _, component := range strings.Split(raw, "/") {
-		if component == "" || component == "." || component == ".." {
-			return "", fmt.Errorf("invalid_exact_replication_dataset_path")
-		}
-		for _, r := range component {
-			switch {
-			case r >= 'a' && r <= 'z',
-				r >= 'A' && r <= 'Z',
-				r >= '0' && r <= '9',
-				r == '.', r == '_', r == '-', r == ':', r == '%':
-			default:
-				return "", fmt.Errorf("invalid_exact_replication_dataset_path")
-			}
-		}
-	}
-	return normalized, nil
+	return parsed.String(), nil
 }
 
 func parsePreviousReplicationDatasets(
@@ -1706,20 +1726,17 @@ func (s *Service) CleanupPreviousReplicationGenerations(
 	policyID uint,
 	keep int,
 ) error {
-	if target == nil {
-		return fmt.Errorf("replication_target_required")
-	}
 	if policyID == 0 {
 		return fmt.Errorf("replication_policy_id_required")
 	}
 	if keep < 0 {
 		return fmt.Errorf("replication_previous_retention_invalid")
 	}
-	var err error
-	targetDataset, err = validateExactReplicationDatasetPath(targetDataset)
+	parsedTarget, err := canonicalTargetDataset(target, targetDataset)
 	if err != nil {
-		return err
+		return fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	targetDataset = parsedTarget.String()
 	parent := targetDataset
 	if idx := strings.LastIndex(targetDataset, "/"); idx > 0 {
 		parent = targetDataset[:idx]
@@ -1772,7 +1789,7 @@ func (s *Service) CleanupPreviousReplicationGenerations(
 	_, removable := splitPreviousReplicationRetention(proven, keep)
 	for _, candidate := range removable {
 		script := buildDestroyProvenPreviousReplicationScript(candidate.Name, targetDataset, policyID)
-		destroyOutput, destroyErr := s.runTargetSSH(ctx, target, "sh", "-c", script)
+		destroyOutput, destroyErr := s.runTargetDatasetScript(ctx, target, candidate.Name, script)
 		if destroyErr != nil {
 			return fmt.Errorf(
 				"destroy_replication_previous_generation_%s_failed: %s: %w",
@@ -1968,13 +1985,11 @@ func (s *Service) targetReplicationDatasetExists(
 	target *clusterModels.BackupTarget,
 	dataset string,
 ) (bool, error) {
-	if target == nil {
-		return false, fmt.Errorf("replication_target_required")
-	}
-	dataset, err := validateExactReplicationDatasetPath(dataset)
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	dataset = parsedDataset.String()
 	output, err := s.runTargetSSH(
 		ctx,
 		target,
@@ -2107,7 +2122,7 @@ func (s *Service) trySeedFreshReplicationStaging(
 		replicationCurrentStandbySeedProperties(opts.PolicyID, sourceDataset, targetDataset),
 		receiveProperties,
 	)
-	output, runErr := s.runTargetSSH(ctx, target, "sh", "-c", script)
+	output, runErr := s.runTargetDatasetScript(ctx, target, stagingDataset, script)
 	result.Output = strings.TrimSpace(output)
 	if runErr != nil {
 		return result, fmt.Errorf("seed_replication_staging_failed: %s: %w", result.Output, runErr)
@@ -2190,7 +2205,7 @@ func (s *Service) destroyProvenStagingDataset(
 	expected := replicationProvenanceProperties(opts, sourceDataset, targetDataset, replicationStateReceiving)
 	delete(expected, replicationPropertyState)
 	script := buildDestroyProvenStagingScript(stagingDataset, expected)
-	output, err := s.runTargetSSH(ctx, target, "sh", "-c", script)
+	output, err := s.runTargetDatasetScript(ctx, target, stagingDataset, script)
 	if err != nil {
 		return fmt.Errorf("destroy_proven_staging_dataset_failed: %s: %w", strings.TrimSpace(output), err)
 	}
@@ -2214,7 +2229,7 @@ func (s *Service) cleanupExactReplicationStagingAfterFailure(
 	expected := replicationProvenanceProperties(opts, sourceDataset, targetDataset, replicationStateReceiving)
 	delete(expected, replicationPropertyState)
 	script := buildAbortAndDestroyProvenStagingScript(stagingDataset, expected)
-	output, err := s.runTargetSSH(cleanupCtx, target, "sh", "-c", script)
+	output, err := s.runTargetDatasetScript(cleanupCtx, target, stagingDataset, script)
 	if err != nil {
 		return fmt.Errorf("cleanup_proven_replication_staging_failed: %s: %w", strings.TrimSpace(output), err)
 	}
@@ -2333,21 +2348,21 @@ func (s *Service) cleanupStaleReplicationStagingGenerations(
 	maxOwnerEpoch uint64,
 	keepRunID string,
 ) error {
-	if target == nil || policyID == 0 || maxOwnerEpoch == 0 || strings.TrimSpace(keepRunID) == "" {
+	if target == nil || policyID == 0 || maxOwnerEpoch == 0 || !validReplicationZFSToken(keepRunID) {
 		return fmt.Errorf("invalid_replication_staging_cleanup_identity")
 	}
-	var err error
-	targetDataset, err = validateExactReplicationDatasetPath(targetDataset)
+	parsedTarget, err := canonicalTargetDataset(target, targetDataset)
 	if err != nil {
-		return err
+		return fmt.Errorf("replication_target_dataset_invalid: %w", err)
 	}
+	targetDataset = parsedTarget.String()
 	script := buildCleanupStaleReplicationStagingScript(
 		targetDataset,
 		policyID,
 		maxOwnerEpoch,
 		keepRunID,
 	)
-	output, err := s.runTargetSSH(ctx, target, "sh", "-c", script)
+	output, err := s.runTargetDatasetScript(ctx, target, targetDataset, script)
 	if err != nil {
 		return fmt.Errorf("cleanup_stale_replication_staging_failed: %s: %w", strings.TrimSpace(output), err)
 	}
@@ -2366,20 +2381,15 @@ func (s *Service) ReplicationZFSSendStaged(
 	onLine func(string),
 ) (ReplicationStagedTransferResult, string, error) {
 	result := ReplicationStagedTransferResult{}
-	if target == nil {
-		return result, "", fmt.Errorf("replication_target_required")
-	}
 	if err := opts.validate(); err != nil {
 		return result, "", err
 	}
-	sourceDataset = normalizeDatasetPath(sourceDataset)
-	if sourceDataset == "" {
-		return result, "", fmt.Errorf("source_dataset_required")
+	parsedSource, parsedTarget, err := canonicalReplicationTransferValues(target, sourceDataset, destSuffix)
+	if err != nil {
+		return result, "", err
 	}
-	targetDataset := targetDatasetPath(target.BackupRoot, destSuffix)
-	if targetDataset == "" {
-		return result, "", fmt.Errorf("replication_target_dataset_required")
-	}
+	sourceDataset = parsedSource.String()
+	targetDataset := parsedTarget.String()
 	stagingDataset, err := replicationStagingDatasetPath(targetDataset, opts)
 	if err != nil {
 		return result, "", err
@@ -2632,21 +2642,19 @@ func (s *Service) PromoteStagedReplicationDataset(
 	destSuffix string,
 	opts ReplicationZFSTransferOptions,
 ) error {
-	if target == nil {
-		return fmt.Errorf("replication_target_required")
-	}
 	if err := opts.validate(); err != nil {
 		return err
 	}
-	sourceDataset = normalizeDatasetPath(sourceDataset)
-	if sourceDataset == "" {
-		return fmt.Errorf("source_dataset_required")
+	parsedSource, parsedTarget, err := canonicalReplicationTransferValues(target, sourceDataset, destSuffix)
+	if err != nil {
+		return err
 	}
-	opts, err := s.ensureReplicationSnapshotGUID(ctx, sourceDataset, opts)
+	sourceDataset = parsedSource.String()
+	opts, err = s.ensureReplicationSnapshotGUID(ctx, sourceDataset, opts)
 	if err != nil {
 		return fmt.Errorf("replication_snapshot_manifest_failed: %w", err)
 	}
-	targetDataset := targetDatasetPath(target.BackupRoot, destSuffix)
+	targetDataset := parsedTarget.String()
 	stagingDataset, err := replicationStagingDatasetPath(targetDataset, opts)
 	if err != nil {
 		return err
@@ -2669,7 +2677,7 @@ func (s *Service) PromoteStagedReplicationDataset(
 		expectedStage,
 		strconv.FormatUint(uint64(opts.PolicyID), 10),
 	)
-	output, err := s.runTargetSSH(ctx, target, "sh", "-c", script)
+	output, err := s.runTargetDatasetScript(ctx, target, targetDataset, script)
 	if err != nil {
 		return fmt.Errorf("promote_staged_replication_dataset_failed: %s: %w", strings.TrimSpace(output), err)
 	}
@@ -2835,22 +2843,19 @@ func (s *Service) RollbackPromotedReplicationDataset(
 	destSuffix string,
 	opts ReplicationZFSTransferOptions,
 ) error {
-	if target == nil {
-		return fmt.Errorf("replication_target_required")
-	}
 	if err := opts.validate(); err != nil {
 		return err
 	}
-	sourceDataset = normalizeDatasetPath(sourceDataset)
-	if sourceDataset == "" {
-		return fmt.Errorf("source_dataset_required")
+	parsedSource, parsedTarget, err := canonicalReplicationTransferValues(target, sourceDataset, destSuffix)
+	if err != nil {
+		return err
 	}
-	var err error
+	sourceDataset = parsedSource.String()
 	opts, err = s.ensureReplicationSnapshotGUID(ctx, sourceDataset, opts)
 	if err != nil {
 		return fmt.Errorf("replication_snapshot_manifest_failed: %w", err)
 	}
-	targetDataset := targetDatasetPath(target.BackupRoot, destSuffix)
+	targetDataset := parsedTarget.String()
 	stagingDataset, err := replicationStagingDatasetPath(targetDataset, opts)
 	if err != nil {
 		return err
@@ -2873,7 +2878,7 @@ func (s *Service) RollbackPromotedReplicationDataset(
 		expectedCurrent,
 		strconv.FormatUint(uint64(opts.PolicyID), 10),
 	)
-	output, err := s.runTargetSSH(ctx, target, "sh", "-c", script)
+	output, err := s.runTargetDatasetScript(ctx, target, targetDataset, script)
 	if err != nil {
 		return fmt.Errorf("rollback_promoted_replication_dataset_failed: %s: %w", strings.TrimSpace(output), err)
 	}
@@ -2887,15 +2892,22 @@ func (s *Service) destroyLocalSnapshotBestEffort(ctx context.Context, dataset, s
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("replication_snapshot_destroy_canceled: %w", err)
 	}
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return fmt.Errorf("replication_snapshot_dataset_required")
+	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return fmt.Errorf("replication_snapshot_dataset_invalid: %w", err)
 	}
-	snapName = strings.TrimSpace(snapName)
 	if err := validateReplicationSnapshotName(snapName); err != nil {
 		return err
 	}
-	dsSnap := dataset + "@" + snapName
+	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapName)
+	if err != nil {
+		return err
+	}
+	fullSnapshot, err := remoteexec.NewZFSSnapshot(parsedDataset, parsedSnapshot)
+	if err != nil {
+		return err
+	}
+	dsSnap := fullSnapshot.String()
 	output, err := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", dsSnap)
 	if err != nil {
 		if contextErr := ctx.Err(); contextErr != nil {
@@ -3034,11 +3046,20 @@ func (s *Service) destroyRemoteSnapshotBestEffort(ctx context.Context, target *c
 	if target == nil {
 		return nil
 	}
-
-	snap := normalizeDatasetPath(dataset) + "@" + snapName
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", "-r", snap)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return fmt.Errorf("replication_target_dataset_invalid: %w", err)
+	}
+	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapName)
+	if err != nil {
+		return fmt.Errorf("replication_snapshot_name_invalid: %w", err)
+	}
+	fullSnapshot, err := remoteexec.NewZFSSnapshot(parsedDataset, parsedSnapshot)
+	if err != nil {
+		return fmt.Errorf("replication_snapshot_name_invalid: %w", err)
+	}
+	snap := fullSnapshot.String()
+	output, err := s.runTargetSSH(ctx, target, "zfs", "destroy", "-r", snap)
 	if err != nil {
 		lower := strings.ToLower(err.Error() + " " + output)
 		if strings.Contains(lower, "dataset does not exist") ||

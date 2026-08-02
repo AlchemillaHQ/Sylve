@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -66,10 +67,11 @@ type backupCommitMetadata struct {
 }
 
 func normalizeBackupSnapshotName(snapshotName string) (string, error) {
-	snapshotName = strings.TrimSpace(strings.TrimPrefix(snapshotName, "@"))
-	if snapshotName == "" || !validReplicationZFSToken(snapshotName) {
+	snapshot, err := remoteexec.ParseZFSSnapshotName(snapshotName)
+	if err != nil {
 		return "", fmt.Errorf("invalid_backup_snapshot_name")
 	}
+	snapshotName = snapshot.String()
 	if !strings.HasPrefix(strings.ToLower(snapshotName), "bk_") {
 		return "", fmt.Errorf("backup_snapshot_name_must_use_bk_prefix")
 	}
@@ -404,10 +406,11 @@ func (s *Service) remoteBackupManifestEntries(
 	snapshotName string,
 	recursive bool,
 ) ([]backupManifestEntry, error) {
-	if target == nil {
-		return nil, fmt.Errorf("backup_target_required")
+	parsedRemoteRoot, err := canonicalTargetDataset(target, remoteRoot)
+	if err != nil {
+		return nil, fmt.Errorf("backup_target_manifest_root_invalid: %w", err)
 	}
-	remoteRoot = normalizeDatasetPath(remoteRoot)
+	remoteRoot = parsedRemoteRoot.String()
 	datasetArgs := backupDatasetListArgs(remoteRoot, recursive)
 	datasetOutput, err := s.runTargetSSH(ctx, target, datasetArgs...)
 	if err != nil {
@@ -565,10 +568,12 @@ func (s *Service) setRemoteBackupCommitMetadata(
 	remoteSnapshot string,
 	metadata backupCommitMetadata,
 ) error {
-	if target == nil {
-		return fmt.Errorf("backup_target_required")
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return err
 	}
-	if !isValidZFSSnapshotName(remoteSnapshot) {
+	snapshot, err := remoteexec.ParseZFSSnapshot(remoteSnapshot)
+	if err != nil || !snapshot.Dataset().Within(root) {
 		return fmt.Errorf("invalid_backup_commit_snapshot")
 	}
 	properties, err := backupCommitProperties(metadata)
@@ -577,6 +582,7 @@ func (s *Service) setRemoteBackupCommitMetadata(
 	}
 	args := []string{"zfs", "set"}
 	args = append(args, properties...)
+	remoteSnapshot = snapshot.String()
 	args = append(args, remoteSnapshot)
 	output, err := s.runTargetSSH(ctx, target, args...)
 	if err != nil {
@@ -734,12 +740,15 @@ func (s *Service) getRemoteBackupCommitMetadata(
 	target *clusterModels.BackupTarget,
 	remoteSnapshot string,
 ) (backupCommitMetadata, error) {
-	if target == nil {
-		return backupCommitMetadata{}, fmt.Errorf("backup_target_required")
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return backupCommitMetadata{}, err
 	}
-	if !isValidZFSSnapshotName(remoteSnapshot) {
+	snapshot, err := remoteexec.ParseZFSSnapshot(remoteSnapshot)
+	if err != nil || !snapshot.Dataset().Within(root) {
 		return backupCommitMetadata{}, fmt.Errorf("invalid_backup_commit_snapshot")
 	}
+	remoteSnapshot = snapshot.String()
 	output, err := s.runTargetSSH(
 		ctx,
 		target,

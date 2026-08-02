@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 
@@ -25,11 +24,11 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 var zeltaFS = assets.ZeltaFiles
-var zfsSnapshotNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:/-]+@[A-Za-z0-9._:-]+$`)
 
 var ZeltaInstallDir string
 
@@ -184,7 +183,14 @@ func runZeltaWithEnvStreaming(
 	env = append(env, extraEnv...)
 	cmd.Env = env
 
-	logger.L.Debug().Str("bin", bin).Strs("args", args).Msg("exec_zelta_with_env")
+	commandKind := "zelta"
+	if len(args) > 0 {
+		switch args[0] {
+		case "backup", "prune", "restore", "match", "report":
+			commandKind += "." + args[0]
+		}
+	}
+	logger.L.Debug().Str("command_kind", commandKind).Msg("exec_zelta_with_env")
 
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("start_zelta_failed: %w", err)
@@ -251,8 +257,7 @@ func runZeltaWithEnvStreaming(
 		if isBenignPipeReadError(readErr) {
 			logger.L.Debug().
 				Err(readErr).
-				Str("bin", bin).
-				Strs("args", args).
+				Str("command_kind", commandKind).
 				Msg("ignoring_benign_zelta_pipe_read_error")
 			continue
 		}
@@ -291,8 +296,14 @@ func (s *Service) PruneCandidatesWithTarget(ctx context.Context, target *cluster
 	if keepLast < 0 {
 		return nil, "", fmt.Errorf("invalid_prune_keep_last")
 	}
-
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
+	source, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid_prune_source_dataset: %w", err)
+	}
+	zeltaEndpoint, err := canonicalZeltaEndpoint(target, destSuffix)
+	if err != nil {
+		return nil, "", err
+	}
 	extraEnv := s.buildZeltaEnv(target)
 
 	output, err := runZeltaWithEnv(
@@ -302,7 +313,7 @@ func (s *Service) PruneCandidatesWithTarget(ctx context.Context, target *cluster
 		"--no-ranges",
 		fmt.Sprintf("--keep-snap-num=%d", keepLast),
 		"--keep-snap-days=0",
-		sourceDataset,
+		source.String(),
 		zeltaEndpoint,
 	)
 	if err != nil {
@@ -326,8 +337,14 @@ func (s *Service) PruneTargetCandidatesWithSource(ctx context.Context, target *c
 	if keepLast < 0 {
 		return nil, "", fmt.Errorf("invalid_prune_keep_last")
 	}
-
-	remoteSource := target.ZeltaEndpoint(destSuffix)
+	source, err := remoteexec.ParseZFSDataset(sourceDataset)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid_prune_source_dataset: %w", err)
+	}
+	remoteSource, err := canonicalZeltaEndpoint(target, destSuffix)
+	if err != nil {
+		return nil, "", err
+	}
 	extraEnv := s.buildZeltaEnv(target)
 
 	output, err := runZeltaWithEnv(
@@ -338,7 +355,7 @@ func (s *Service) PruneTargetCandidatesWithSource(ctx context.Context, target *c
 		fmt.Sprintf("--keep-snap-num=%d", keepLast),
 		"--keep-snap-days=0",
 		remoteSource,
-		sourceDataset,
+		source.String(),
 	)
 	if err != nil {
 		return nil, output, err
@@ -359,12 +376,11 @@ func (s *Service) PruneTargetCandidatesWithSource(ctx context.Context, target *c
 
 func (s *Service) DestroySnapshots(ctx context.Context, snapshots []string) error {
 	for _, snapshot := range snapshots {
-		snap := strings.TrimSpace(snapshot)
-		if !isValidZFSSnapshotName(snap) {
+		snap, err := remoteexec.ParseZFSSnapshot(snapshot)
+		if err != nil {
 			continue
 		}
-
-		if err := s.destroyLocalDataset(ctx, snap, false); err != nil {
+		if err := s.destroyLocalDataset(ctx, snap.String(), false); err != nil {
 			return err
 		}
 	}
@@ -373,20 +389,23 @@ func (s *Service) DestroySnapshots(ctx context.Context, snapshots []string) erro
 }
 
 func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clusterModels.BackupTarget, targetSnapshots []string) error {
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return err
+	}
 	for _, targetSnapshot := range targetSnapshots {
-		snap := strings.TrimSpace(targetSnapshot)
-		if !isValidZFSSnapshotName(snap) {
+		snapshot, err := remoteexec.ParseZFSSnapshot(targetSnapshot)
+		if err != nil || !snapshot.Dataset().Within(root) {
 			continue
 		}
+		snap := snapshot.String()
 
-		sshArgs := s.buildSSHArgs(target)
-		sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", snap)
-		out, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+		out, err := s.runTargetSSH(ctx, target, "zfs", "destroy", snap)
 		if err != nil {
 			if isRemoteSubcommandBlocked(out) {
 				logger.L.Warn().
 					Str("ssh_host", target.SSHHost).
-					Str("snapshot", snap).
+					Str("dataset", remoteDatasetForLog(snapshot.Dataset().String())).
 					Msg("remote_zfs_destroy_not_permitted_skipped")
 				continue
 			}
@@ -398,13 +417,8 @@ func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clus
 }
 
 func isValidZFSSnapshotName(name string) bool {
-	if name == "" {
-		return false
-	}
-	if strings.ContainsAny(name, " \t\r\n\"'{}[](),") {
-		return false
-	}
-	return zfsSnapshotNamePattern.MatchString(name)
+	_, err := remoteexec.ParseZFSSnapshot(name)
+	return err == nil
 }
 
 func parsePruneCandidateLine(line string) string {

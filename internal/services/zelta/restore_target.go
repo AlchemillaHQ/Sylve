@@ -10,7 +10,6 @@ package zelta
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 )
 
 const restoreFromTargetQueueName = "zelta-restore-from-target-run"
@@ -207,7 +206,7 @@ func (s *Service) preflightOOBGuestRestoreDestination(
 }
 
 func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) ([]BackupTargetDatasetInfo, error) {
-	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
+	target, _, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +248,6 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		if dataset == "" {
 			continue
 		}
-
 		snapCount := snapshotCountByDataset[dataset]
 		if snapCount < 1 {
 			continue
@@ -324,17 +322,18 @@ func parseRemoteDatasetEncryption(line string) (dataset string, encrypted bool) 
 }
 
 func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID uint, remoteDataset string) ([]SnapshotInfo, error) {
-	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
+	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+	remoteDataset = parsedRemoteDataset.String()
+	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseTargetKey()
 
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if remoteDataset == "" {
-		return nil, fmt.Errorf("remote_dataset_required")
-	}
-	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+	if !parsedRemoteDataset.Within(rootDataset) {
 		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
@@ -406,17 +405,18 @@ func (s *Service) filterRestorableTargetSnapshots(
 }
 
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {
-	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
+	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+	remoteDataset = parsedRemoteDataset.String()
+	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseTargetKey()
 
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if remoteDataset == "" {
-		return nil, fmt.Errorf("remote_dataset_required")
-	}
-	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+	if !parsedRemoteDataset.Within(rootDataset) {
 		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
@@ -435,17 +435,18 @@ func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint
 }
 
 func (s *Service) GetRemoteTargetVMMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupVMMetadataInfo, error) {
-	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
+	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+	remoteDataset = parsedRemoteDataset.String()
+	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseTargetKey()
 
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if remoteDataset == "" {
-		return nil, fmt.Errorf("remote_dataset_required")
-	}
-	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+	if !parsedRemoteDataset.Within(rootDataset) {
 		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
@@ -463,6 +464,52 @@ func (s *Service) GetRemoteTargetVMMetadata(ctx context.Context, targetID uint, 
 	return info, nil
 }
 
+func requiredRemoteDataset(raw string) (remoteexec.ZFSDataset, error) {
+	if strings.TrimSpace(raw) == "" {
+		return remoteexec.ZFSDataset{}, fmt.Errorf("remote_dataset_required")
+	}
+	dataset, err := remoteexec.ParseZFSDataset(raw)
+	if err != nil {
+		return remoteexec.ZFSDataset{}, fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	return dataset, nil
+}
+
+func CanonicalRestoreFromTargetInput(
+	remoteDataset, snapshot, destinationDataset string,
+) (string, string, string, error) {
+	if strings.TrimSpace(remoteDataset) == "" {
+		return "", "", "", fmt.Errorf("remote_dataset_required")
+	}
+	if strings.TrimSpace(snapshot) == "" {
+		return "", "", "", fmt.Errorf("snapshot_required")
+	}
+	if strings.TrimSpace(destinationDataset) == "" {
+		return "", "", "", fmt.Errorf("destination_dataset_required")
+	}
+	defaultRemoteDataset, err := requiredRemoteDataset(remoteDataset)
+	if err != nil {
+		return "", "", "", err
+	}
+	selectedRemoteDataset := defaultRemoteDataset.String()
+
+	remoteDataset, snapshot, err = parseRestoreSnapshotInput(snapshot, defaultRemoteDataset.String())
+	if err != nil {
+		return "", "", "", err
+	}
+	if remoteDataset != selectedRemoteDataset {
+		return "", "", "", fmt.Errorf("snapshot_dataset_mismatch")
+	}
+	destination, err := remoteexec.ParseZFSDataset(destinationDataset)
+	if err != nil || !strings.Contains(destination.String(), "/") {
+		if err == nil {
+			err = fmt.Errorf("fully_qualified_dataset_required")
+		}
+		return "", "", "", fmt.Errorf("destination_dataset_invalid: %w", err)
+	}
+	return remoteDataset, snapshot, destination.String(), nil
+}
+
 func (s *Service) EnqueueRestoreFromTarget(
 	ctx context.Context,
 	targetID uint,
@@ -474,29 +521,25 @@ func (s *Service) EnqueueRestoreFromTarget(
 		return fmt.Errorf("invalid_target_id")
 	}
 
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if remoteDataset == "" {
-		return fmt.Errorf("remote_dataset_required")
-	}
-
-	remoteDataset, snapshot, err := parseRestoreSnapshotInput(snapshot, remoteDataset)
+	remoteDataset, snapshot, destinationDataset, err := CanonicalRestoreFromTargetInput(
+		remoteDataset,
+		snapshot,
+		destinationDataset,
+	)
 	if err != nil {
 		return err
 	}
-	destinationDataset = normalizeRestoreDestinationDataset(destinationDataset)
-	if destinationDataset == "" {
-		return fmt.Errorf("destination_dataset_required")
-	}
-	if !isValidRestoreDestinationDataset(destinationDataset) {
-		return fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
-	}
 
-	target, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
+	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return err
 	}
 	defer releaseTargetKey()
-	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil {
+		return fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	if !parsedRemoteDataset.Within(rootDataset) {
 		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 	if _, err := s.preflightOOBGuestRestoreDestination(
@@ -676,7 +719,7 @@ func (s *Service) handleRestoreFromTargetQueue(
 	runCtx := withRestoreExecution(ctx, execution)
 
 	outcomeReady = true
-	target, releaseTargetKey, targetErr := s.getRestoreTargetWithKey(payload.TargetID)
+	target, _, releaseTargetKey, targetErr := s.getRestoreTargetWithKey(payload.TargetID)
 	runErr = targetErr
 	if runErr == nil {
 		defer releaseTargetKey()
@@ -701,6 +744,28 @@ func (s *Service) handleRestoreFromTargetQueue(
 }
 
 func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModels.BackupTarget, payload restoreFromTargetPayload) error {
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return err
+	}
+	remoteDataset, snapshot, destinationDataset, err := CanonicalRestoreFromTargetInput(
+		payload.RemoteDataset,
+		payload.Snapshot,
+		payload.DestinationDataset,
+	)
+	if err != nil {
+		return err
+	}
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil {
+		return fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	if !parsedRemoteDataset.Within(root) {
+		return fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+	payload.RemoteDataset = remoteDataset
+	payload.Snapshot = snapshot
+	payload.DestinationDataset = destinationDataset
 	if acquired, holder := s.acquireRestoreDestination(payload.DestinationDataset); !acquired {
 		return fmt.Errorf(
 			"restore_destination_already_running: dataset=%s holder=%s",
@@ -729,10 +794,6 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		}
 	}
 
-	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
-	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
-		return fmt.Errorf("remote_dataset_outside_backup_root")
-	}
 	if _, err := s.preflightOOBGuestRestoreDestination(
 		ctx,
 		target,
@@ -748,7 +809,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
 	}
 
-	_, err := s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, false, nil)
+	_, err = s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, false, nil)
 	return err
 }
 
@@ -1313,7 +1374,10 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		return "", fmt.Errorf("restore_preflight_recursive_snapshot_failed: %w", err)
 	}
 
-	remoteEndpoint := target.SSHHost + ":" + remoteDataset + snapshot
+	remoteEndpoint, err := canonicalZeltaSnapshotEndpoint(target, remoteDataset, snapshot)
+	if err != nil {
+		return "", err
+	}
 	restorePath := destinationDataset + ".restoring"
 	stagingIdentity := newRestoreStagingIdentity(jobID, target.ID, destinationDataset)
 	destinationKind, destinationGuestID := inferRestoreDatasetKind(destinationDataset)
@@ -1710,15 +1774,23 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 	if vmRID == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
 	}
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil || !parsedRemoteDataset.Within(root) {
+		if err == nil {
+			err = fmt.Errorf("dataset_outside_backup_root")
+		}
+		return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	backupRoot := root.String()
+	remoteDataset = parsedRemoteDataset.String()
 
 	output, err := s.runTargetZFSList(ctx, target, "-t", "filesystem", "-r", "-Hp", "-o", "name", target.BackupRoot)
 	if err != nil {
 		return nil, err
-	}
-	backupRoot := normalizeDatasetPath(target.BackupRoot)
-	remoteDataset = normalizeDatasetPath(remoteDataset)
-	if !datasetWithinRoot(backupRoot, remoteDataset) {
-		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
 	selectedSuffix := relativeDatasetSuffix(backupRoot, remoteDataset)
@@ -1734,10 +1806,11 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 	bestRank := make(map[string]int)
 
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		dataset := normalizeDatasetPath(line)
-		if dataset == "" || !datasetWithinRoot(backupRoot, dataset) {
+		parsedDataset, parseErr := remoteexec.ParseZFSDataset(strings.TrimSpace(line))
+		if parseErr != nil || !parsedDataset.Within(root) {
 			continue
 		}
+		dataset := parsedDataset.String()
 
 		suffix := relativeDatasetSuffix(backupRoot, dataset)
 		lineage, _, baseSuffix := classifyDatasetLineage(suffix)
@@ -1949,13 +2022,21 @@ func canonicalVMDatasetRoot(dataset string, vmRID uint) string {
 }
 
 func (s *Service) remoteDatasetChildCount(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) int {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost,
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return 0
+	}
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil || !parsedRemoteDataset.Within(root) {
+		return 0
+	}
+	remoteDataset = parsedRemoteDataset.String()
+	argv := []string{
 		"zfs", "list", "-t", "filesystem,volume", "-r", "-d", "1",
 		"-Hp", "-o", "name", remoteDataset,
-	)
+	}
 
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	output, err := s.runTargetSSH(ctx, target, argv...)
 	if err != nil {
 		return 0
 	}
@@ -1977,38 +2058,43 @@ func (s *Service) listRemoteSnapshotsForDatasetRecursive(ctx context.Context, ta
 }
 
 func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string, recursive bool) ([]SnapshotInfo, error) {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-t", "snapshot", "-Hp")
-	if recursive {
-		sshArgs = append(sshArgs, "-r")
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return nil, err
 	}
-	sshArgs = append(sshArgs,
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil || !parsedRemoteDataset.Within(root) {
+		if err == nil {
+			err = fmt.Errorf("dataset_outside_backup_root")
+		}
+		return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	remoteDataset = parsedRemoteDataset.String()
+	argv := []string{"zfs", "list", "-t", "snapshot", "-Hp"}
+	if recursive {
+		argv = append(argv, "-r")
+	}
+	argv = append(argv,
 		"-o", "name,creation,used,refer,guid,encryption",
 		"-s", "creation",
 		remoteDataset,
 	)
 
-	logger.L.Debug().
-		Str("ssh_host", target.SSHHost).
-		Str("ssh_key_path", target.SSHKeyPath).
-		Str("remote_dataset", remoteDataset).
-		Bool("recursive", recursive).
-		Strs("ssh_args", sshArgs).
-		Msg("listing_remote_snapshots")
-
 	var output string
-	var err error
+	err = nil
 	const maxRetries = 2
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		output, err = utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+		output, err = s.runTargetSSH(ctx, target, argv...)
 		if err == nil {
 			break
 		}
 		if attempt < maxRetries {
 			logger.L.Warn().
-				Err(err).
 				Int("attempt", attempt).
-				Str("output", output).
+				Str("command_kind", "zfs.list").
+				Str("ssh_host", target.SSHHost).
+				Str("dataset", remoteDatasetForLog(remoteDataset)).
+				Bool("recursive", recursive).
 				Msg("ssh_snapshot_list_failed_retrying")
 			time.Sleep(2 * time.Second)
 		}
@@ -2255,10 +2341,18 @@ func datasetDepth(dataset string) int {
 }
 
 func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]string, error) {
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if remoteDataset == "" {
-		return nil, fmt.Errorf("remote_dataset_required")
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return nil, err
 	}
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil || !parsedRemoteDataset.Within(root) {
+		if err == nil {
+			err = fmt.Errorf("dataset_outside_backup_root")
+		}
+		return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	remoteDataset = parsedRemoteDataset.String()
 
 	remoteSuffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
 	_, _, baseSuffix := classifyDatasetLineage(remoteSuffix)
@@ -2288,10 +2382,11 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 	seen := make(map[string]struct{})
 
 	add := func(dataset string) {
-		dataset = strings.TrimSpace(dataset)
-		if dataset == "" {
+		parsedDataset, parseErr := remoteexec.ParseZFSDataset(strings.TrimSpace(dataset))
+		if parseErr != nil || !parsedDataset.Within(root) {
 			return
 		}
+		dataset = parsedDataset.String()
 		if _, ok := seen[dataset]; ok {
 			return
 		}
@@ -2383,6 +2478,11 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 }
 
 func (s *Service) readRemoteJailMetadata(ctx context.Context, target *clusterModels.BackupTarget, dataset string, fallbackCTID uint) (*BackupJailMetadataInfo, error) {
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return nil, fmt.Errorf("remote_jail_metadata_dataset_invalid: %w", err)
+	}
+	dataset = parsedDataset.String()
 	mountedOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mounted", dataset)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
@@ -2412,7 +2512,7 @@ func (s *Service) readRemoteJailMetadata(ctx context.Context, target *clusterMod
 	}
 
 	metaPath := strings.TrimSuffix(mountpoint, "/") + "/.sylve/jail.json"
-	metaRaw, err := s.runTargetSSH(ctx, target, "cat", metaPath)
+	metaRaw, err := s.runTargetDatasetSSH(ctx, target, dataset, "cat", metaPath)
 	if err != nil {
 		lower := strings.ToLower(strings.TrimSpace(metaRaw) + " " + err.Error())
 		if strings.Contains(lower, "no such file") || strings.Contains(lower, "not found") {
@@ -2531,6 +2631,11 @@ func (s *Service) readRemoteDatasetMetadataFile(
 	dataset string,
 	relativeMetaPath string,
 ) (string, error) {
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return "", fmt.Errorf("remote_metadata_dataset_invalid: %w", err)
+	}
+	dataset = parsedDataset.String()
 	mountedOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mounted", dataset)
 	if err != nil {
 		return "", fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
@@ -2560,7 +2665,7 @@ func (s *Service) readRemoteDatasetMetadataFile(
 	}
 
 	metaPath := strings.TrimSuffix(mountpoint, "/") + "/" + strings.TrimLeft(relativeMetaPath, "/")
-	metaRaw, err := s.runTargetSSH(ctx, target, "cat", metaPath)
+	metaRaw, err := s.runTargetDatasetSSH(ctx, target, dataset, "cat", metaPath)
 	if err != nil {
 		lower := strings.ToLower(strings.TrimSpace(metaRaw) + " " + err.Error())
 		if strings.Contains(lower, "no such file") || strings.Contains(lower, "not found") {
@@ -2616,61 +2721,36 @@ func (s *Service) getRestoreTarget(targetID uint) (clusterModels.BackupTarget, e
 
 func (s *Service) getRestoreTargetWithKey(
 	targetID uint,
-) (clusterModels.BackupTarget, func(), error) {
+) (clusterModels.BackupTarget, remoteexec.ZFSDataset, func(), error) {
 	target, err := s.getRestoreTarget(targetID)
 	if err != nil {
-		return clusterModels.BackupTarget{}, func() {}, err
+		return clusterModels.BackupTarget{}, remoteexec.ZFSDataset{}, func() {}, err
+	}
+	_, root, err := canonicalizeBackupTarget(&target)
+	if err != nil {
+		return clusterModels.BackupTarget{}, remoteexec.ZFSDataset{}, func() {}, err
 	}
 	release, err := s.acquireBackupTargetSSHKey(&target)
 	if err != nil {
-		return clusterModels.BackupTarget{}, func() {}, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+		return clusterModels.BackupTarget{}, remoteexec.ZFSDataset{}, func() {}, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
-	return target, release, nil
+	return target, root, release, nil
 }
 
 func (s *Service) runTargetZFSList(ctx context.Context, target *clusterModels.BackupTarget, args ...string) (string, error) {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list")
-	sshArgs = append(sshArgs, args...)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
-	if err != nil {
-		return output, fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
-	}
-	return output, nil
-}
-
-func (s *Service) runTargetSSH(ctx context.Context, target *clusterModels.BackupTarget, args ...string) (string, error) {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost)
-	// OpenSSH concatenates every argument after the host into one remote shell
-	// command. Transport scripts as base64 through a syntax shared by POSIX and
-	// csh-family login shells, then execute the decoded script under /bin/sh.
-	// Direct POSIX quoting breaks on FreeBSD's stock root csh login shell.
-	if len(args) == 3 && args[0] == "sh" && args[1] == "-c" {
-		args = []string{remotePOSIXShellCommand(args[2])}
-	}
-	sshArgs = append(sshArgs, args...)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
-	if err != nil {
-		return output, fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
-	}
-	return output, nil
-}
-
-func remotePOSIXShellCommand(script string) string {
-	encoded := base64.StdEncoding.EncodeToString([]byte(script))
-	return "/usr/bin/printf %s " + encoded + " | /usr/bin/base64 -d | /bin/sh"
+	argv := append([]string{"zfs", "list"}, args...)
+	return s.runTargetSSH(ctx, target, argv...)
 }
 
 func normalizeSnapshotName(snapshot string) (string, error) {
-	snapshot = strings.TrimSpace(snapshot)
-	if snapshot == "" {
+	if strings.TrimSpace(snapshot) == "" {
 		return "", fmt.Errorf("snapshot_required")
 	}
-	if !strings.HasPrefix(snapshot, "@") {
-		snapshot = "@" + snapshot
+	parsed, err := remoteexec.ParseZFSSnapshotName(snapshot)
+	if err != nil {
+		return "", fmt.Errorf("snapshot_invalid: %w", err)
 	}
-	return snapshot, nil
+	return parsed.WithAt(), nil
 }
 
 func datasetWithinRoot(root, dataset string) bool {
@@ -2708,14 +2788,11 @@ func normalizeRestoreDestinationDataset(destinationDataset string) string {
 }
 
 func isValidRestoreDestinationDataset(destinationDataset string) bool {
-	destinationDataset = normalizeDatasetPath(destinationDataset)
-	if destinationDataset == "" {
+	parsed, err := remoteexec.ParseZFSDataset(destinationDataset)
+	if err != nil {
 		return false
 	}
-	if !strings.Contains(destinationDataset, "/") {
-		return false
-	}
-	return !strings.Contains(destinationDataset, "@")
+	return strings.Contains(parsed.String(), "/")
 }
 
 func classifyDatasetLineage(suffix string) (string, bool, string) {

@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -538,10 +539,14 @@ func (s *Service) inspectTarget(
 	if target == nil {
 		return result, fmt.Errorf("backup_target_required")
 	}
-	backupRoot := strings.TrimSpace(target.BackupRoot)
-	if backupRoot == "" {
+	if strings.TrimSpace(target.BackupRoot) == "" {
 		return result, fmt.Errorf("backup_root_required")
 	}
+	_, rootDataset, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return result, err
+	}
+	backupRoot := rootDataset.String()
 	releaseKey, err := s.acquireBackupTargetSSHKey(target)
 	if err != nil {
 		return result, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
@@ -564,7 +569,7 @@ func (s *Service) inspectTarget(
 	if !allowProvisionPlan {
 		return result, fmt.Errorf("backup_root_not_found: dataset '%s' does not exist on target", backupRoot)
 	}
-	pool := parseZFSPoolNameFromDataset(backupRoot)
+	pool := rootDataset.Pool()
 	if pool == "" {
 		return result, fmt.Errorf("invalid_backup_root: dataset '%s' is invalid", backupRoot)
 	}
@@ -585,10 +590,14 @@ func (s *Service) ProvisionBackupTargetRoot(ctx context.Context, target *cluster
 	if target == nil {
 		return fmt.Errorf("backup_target_required")
 	}
-	backupRoot := strings.TrimSpace(target.BackupRoot)
-	if backupRoot == "" {
+	if strings.TrimSpace(target.BackupRoot) == "" {
 		return fmt.Errorf("backup_root_required")
 	}
+	_, rootDataset, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return &BackupTargetProvisionError{Err: err}
+	}
+	backupRoot := rootDataset.String()
 	if !target.CreateBackupRoot {
 		return fmt.Errorf("backup_target_root_creation_not_authorized")
 	}
@@ -607,7 +616,7 @@ func (s *Service) ProvisionBackupTargetRoot(ctx context.Context, target *cluster
 	if exists {
 		return nil
 	}
-	pool := parseZFSPoolNameFromDataset(backupRoot)
+	pool := rootDataset.Pool()
 	if pool == "" {
 		return &BackupTargetProvisionError{Err: fmt.Errorf("invalid_backup_root: dataset '%s' is invalid", backupRoot)}
 	}
@@ -637,25 +646,13 @@ func (s *Service) ProvisionBackupTargetRoot(ctx context.Context, target *cluster
 	return &BackupTargetProvisionError{Err: verifyFailure, Ambiguous: true}
 }
 
-func parseZFSPoolNameFromDataset(dataset string) string {
-	trimmed := strings.TrimSpace(dataset)
-	if trimmed == "" {
-		return ""
-	}
-
-	idx := strings.Index(trimmed, "/")
-	if idx <= 0 {
-		return trimmed
-	}
-
-	return strings.TrimSpace(trimmed[:idx])
-}
-
 func (s *Service) remoteDatasetExists(ctx context.Context, target *clusterModels.BackupTarget, dataset string) (bool, string, error) {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-d", "0", dataset)
-
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return false, "", fmt.Errorf("invalid_remote_dataset: %w", err)
+	}
+	dataset = parsedDataset.String()
+	output, err := s.runTargetSSH(ctx, target, "zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-d", "0", dataset)
 	if err != nil {
 		if replicationDatasetMissingResult(output, err) {
 			return false, output, nil
@@ -667,10 +664,16 @@ func (s *Service) remoteDatasetExists(ctx context.Context, target *clusterModels
 }
 
 func (s *Service) remoteZFSPoolExists(ctx context.Context, target *clusterModels.BackupTarget, pool string) (bool, string, error) {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zpool", "list", "-H", "-o", "name", pool)
-
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	_, root, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return false, "", err
+	}
+	parsedPool, err := remoteexec.ParseZFSDataset(pool)
+	if err != nil || parsedPool.String() != parsedPool.Pool() || parsedPool.String() != root.Pool() {
+		return false, "", fmt.Errorf("invalid_remote_zfs_pool")
+	}
+	pool = parsedPool.String()
+	output, err := s.runTargetSSH(ctx, target, "zpool", "list", "-H", "-o", "name", pool)
 	if err != nil {
 		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
 		if strings.Contains(combined, "no such pool") {
@@ -683,10 +686,12 @@ func (s *Service) remoteZFSPoolExists(ctx context.Context, target *clusterModels
 }
 
 func (s *Service) remoteCreateDataset(ctx context.Context, target *clusterModels.BackupTarget, dataset string) error {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "create", "-p", dataset)
-
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return fmt.Errorf("invalid_backup_root: %w", err)
+	}
+	dataset = parsedDataset.String()
+	output, err := s.runTargetSSH(ctx, target, "zfs", "create", "-p", dataset)
 	if err != nil {
 		return fmt.Errorf("backup_root_create_failed: failed to create dataset '%s': %w (output: %q)", dataset, err, output)
 	}
@@ -703,15 +708,166 @@ func isRemoteSubcommandBlocked(output string) bool {
 }
 
 func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterModels.BackupTarget) error {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "version")
-
-	_, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	_, err := s.runTargetSSH(ctx, target, "zfs", "version")
 	if err != nil {
 		return fmt.Errorf("ssh_connection_failed: %w", err)
 	}
 
 	return nil
+}
+
+func (s *Service) runTargetSSH(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	argv ...string,
+) (string, error) {
+	command, err := remoteexec.NewCommand(argv...)
+	if err != nil {
+		return "", err
+	}
+	kind, dataset := remoteCommandLogFields(argv)
+	return s.runTargetRemoteCommand(ctx, target, command, kind, dataset)
+}
+
+func (s *Service) runTargetDatasetSSH(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	dataset string,
+	argv ...string,
+) (string, error) {
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return "", err
+	}
+	command, err := remoteexec.NewCommand(argv...)
+	if err != nil {
+		return "", err
+	}
+	kind, _ := remoteCommandLogFields(argv)
+	return s.runTargetRemoteCommand(ctx, target, command, kind, parsedDataset.String())
+}
+
+func (s *Service) runTargetDatasetScript(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	dataset string,
+	script string,
+) (string, error) {
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return "", err
+	}
+	command, err := remoteexec.NewScript(script)
+	if err != nil {
+		return "", err
+	}
+	return s.runTargetRemoteCommand(ctx, target, command, "script", parsedDataset.String())
+}
+
+func (s *Service) runTargetRemoteCommand(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	command remoteexec.Command,
+	kind string,
+	dataset string,
+) (string, error) {
+	sshArgs, err := s.targetRemoteCommandArgs(target, command, false, kind, dataset)
+	if err != nil {
+		return "", err
+	}
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		return output, fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
+	}
+	return output, nil
+}
+
+func (s *Service) targetRemoteCommandArgs(
+	target *clusterModels.BackupTarget,
+	command remoteexec.Command,
+	readsStdin bool,
+	kind string,
+	dataset string,
+) ([]string, error) {
+	destination, _, err := canonicalizeBackupTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	sshArgs, err := command.SSHArgs(s.buildSSHArgs(target), destination, readsStdin)
+	if err != nil {
+		return nil, err
+	}
+	port := target.SSHPort
+	if port == 0 {
+		port = 22
+	}
+	event := logger.L.Debug().
+		Str("command_kind", kind).
+		Uint("target_id", target.ID).
+		Str("ssh_host", destination.String()).
+		Int("ssh_port", port)
+	if dataset != "" {
+		event.Str("dataset", remoteDatasetForLog(dataset))
+	}
+	event.Msg("remote_command_execute")
+	return sshArgs, nil
+}
+
+func remoteCommandLogFields(argv []string) (string, string) {
+	if len(argv) == 0 {
+		return "remote", ""
+	}
+	program := strings.TrimSpace(argv[0])
+	operation := ""
+	if len(argv) > 1 {
+		operation = strings.TrimSpace(argv[1])
+	}
+	kind := "remote"
+	hasDataset := false
+	switch program {
+	case "zfs":
+		kind = "zfs"
+		switch operation {
+		case "list", "get", "set", "create", "destroy", "receive", "recv", "rename", "snapshot", "mount", "unmount", "hold", "release":
+			kind += "." + operation
+			hasDataset = true
+		case "version":
+			kind += ".version"
+		}
+	case "zpool":
+		kind = "zpool"
+		switch operation {
+		case "list", "get":
+			kind += "." + operation
+			hasDataset = true
+		}
+	case "cat":
+		kind = "metadata.read"
+	}
+	if !hasDataset || len(argv) < 2 {
+		return kind, ""
+	}
+	resource := argv[len(argv)-1]
+	if snapshot, err := remoteexec.ParseZFSSnapshot(resource); err == nil {
+		return kind, remoteDatasetForLog(snapshot.Dataset().String())
+	}
+	if dataset, err := remoteexec.ParseZFSDataset(resource); err == nil {
+		return kind, remoteDatasetForLog(dataset.String())
+	}
+	return kind, ""
+}
+
+func remoteDatasetForLog(dataset string) string {
+	parts := strings.Split(dataset, "/")
+	for index, part := range parts {
+		for _, marker := range []string{"_gen-", "_previous-", "_restore-backup-", ".pre_"} {
+			if markerIndex := strings.Index(part, marker); markerIndex > 0 {
+				parts[index] = part[:markerIndex]
+				break
+			}
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 func sshControlPath(target *clusterModels.BackupTarget, keyPath string) string {

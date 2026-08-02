@@ -37,6 +37,29 @@ func TestBuildBackupTargetCreateCandidateRequiresPastedManagedKey(t *testing.T) 
 	}
 }
 
+func TestBuildBackupTargetCreateCandidateCanonicalizesRemoteValues(t *testing.T) {
+	input := managedBackupTargetInput()
+	input.SSHHost = "root@Backup.Example"
+	input.BackupRoot = " tank/backups "
+	candidate, err := (&Service{}).BuildBackupTargetCreateCandidate(input)
+	if err != nil {
+		t.Fatalf("candidate: %v", err)
+	}
+	if candidate.SSHHost != "root@backup.example" || candidate.BackupRoot != "tank/backups" {
+		t.Fatalf("candidate: %+v", candidate)
+	}
+
+	input.SSHHost = "-oProxyCommand=touch"
+	if _, err := (&Service{}).BuildBackupTargetCreateCandidate(input); err == nil {
+		t.Fatal("unsafe SSH destination accepted")
+	}
+	input.SSHHost = "root@backup"
+	input.BackupRoot = "tank/backups;touch"
+	if _, err := (&Service{}).BuildBackupTargetCreateCandidate(input); err == nil {
+		t.Fatal("unsafe backup root accepted")
+	}
+}
+
 func TestBuildBackupTargetUpdatePlanPreservesStoredManagedKeyAndRequiresQuiescedRotation(t *testing.T) {
 	s := &Service{}
 	existing := &clusterModels.BackupTarget{

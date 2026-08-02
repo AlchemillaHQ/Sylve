@@ -3722,7 +3722,7 @@ if zfs list -H "$ds" >/dev/null 2>&1; then
 fi`,
 			dataset,
 		)
-		if _, err := s.runTargetSSH(ctx, target, "sh", "-c", script); err != nil {
+		if _, err := s.runTargetDatasetScript(ctx, target, dataset, script); err != nil {
 			return fmt.Errorf("destroy_remote_lineage_dataset_%s_failed: %w", dataset, err)
 		}
 	}

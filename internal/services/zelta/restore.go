@@ -22,6 +22,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -63,13 +64,25 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	if target.SSHHost == "" {
 		return nil, fmt.Errorf("failed_to_list_remote_snapshots: target SSH host is empty (target not loaded?)")
 	}
+	_, rootDataset, err := canonicalizeBackupTarget(&target)
+	if err != nil {
+		return nil, err
+	}
+	remoteDataset := remoteDatasetForJob(job)
+	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil {
+		return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
+	if !parsedRemoteDataset.Within(rootDataset) {
+		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+	remoteDataset = parsedRemoteDataset.String()
 	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&target)
 	if err != nil {
 		return nil, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
 	defer releaseTargetKey()
 
-	remoteDataset := remoteDatasetForJob(job)
 	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
 	if err != nil {
 		return nil, err
@@ -112,13 +125,9 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		return err
 	}
 
-	defaultRemoteDataset := remoteDatasetForJob(&job)
-	remoteDataset, normalizedSnapshot, err := parseRestoreSnapshotInput(snapshot, defaultRemoteDataset)
+	remoteDataset, normalizedSnapshot, destinationDataset, err := canonicalRestoreJobInput(&job, snapshot, "")
 	if err != nil {
 		return err
-	}
-	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
-		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
 	if !s.reserveJob(jobID) {
@@ -145,10 +154,6 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		return err
 	}
 
-	destinationDataset := strings.TrimSpace(job.SourceDataset)
-	if job.Mode == clusterModels.BackupJobModeJail {
-		destinationDataset = strings.TrimSpace(job.JailRootDataset)
-	}
 	eventSource := job.Name + normalizedSnapshot
 	if job.Mode == clusterModels.BackupJobModeVM {
 		eventSource = remoteDataset + normalizedSnapshot
@@ -215,13 +220,20 @@ func (s *Service) runRestoreJob(
 	snapshot string,
 	remoteDataset string,
 ) (retErr error) {
+	if job == nil || job.ID == 0 {
+		return fmt.Errorf("backup_job_required")
+	}
+	if err := cluster.ValidateBackupJobSafetyWithDB(ctx, s.DB, job); err != nil {
+		return fmt.Errorf("restore_backup_job_safety_check_failed: %w", err)
+	}
+	remoteDataset, snapshot, sourceDataset, err := canonicalRestoreJobInput(job, snapshot, remoteDataset)
+	if err != nil {
+		return err
+	}
 	if !s.beginJob(job.ID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
 	defer s.releaseJob(job.ID)
-	if err := cluster.ValidateBackupJobSafetyWithDB(ctx, s.DB, job); err != nil {
-		return fmt.Errorf("restore_backup_job_safety_check_failed: %w", err)
-	}
 	if !job.Target.Enabled {
 		return fmt.Errorf("backup_target_disabled")
 	}
@@ -231,13 +243,6 @@ func (s *Service) runRestoreJob(
 	}
 	defer releaseTargetKey()
 
-	sourceDataset := strings.TrimSpace(job.SourceDataset)
-	if job.Mode == clusterModels.BackupJobModeJail {
-		sourceDataset = strings.TrimSpace(job.JailRootDataset)
-	}
-	if sourceDataset == "" {
-		return fmt.Errorf("source_dataset_required")
-	}
 	if acquired, holder := s.acquireRestoreDestination(sourceDataset); !acquired {
 		return fmt.Errorf(
 			"restore_destination_already_running: dataset=%s holder=%s",
@@ -275,23 +280,22 @@ func (s *Service) runRestoreJob(
 		return s.runRestoreVMJob(ctx, job, snapshot, remoteDataset, sourceDataset)
 	}
 
-	if strings.TrimSpace(remoteDataset) == "" {
-		remoteDataset = remoteDatasetForJob(job)
-	}
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
-		return fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-	snapshot, err = normalizeSnapshotName(snapshot)
-	if err != nil {
-		return err
-	}
-
 	resolvedRemoteDataset, err := s.resolveRemoteDatasetForSnapshot(ctx, &job.Target, remoteDataset, snapshot)
 	if err != nil {
 		return fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
 	}
-	remoteDataset = resolvedRemoteDataset
+	parsedResolvedRemoteDataset, err := remoteexec.ParseZFSDataset(resolvedRemoteDataset)
+	if err != nil {
+		return fmt.Errorf("resolved_remote_dataset_invalid: %w", err)
+	}
+	_, targetRoot, err := canonicalizeBackupTarget(&job.Target)
+	if err != nil || !parsedResolvedRemoteDataset.Within(targetRoot) {
+		if err == nil {
+			err = fmt.Errorf("dataset_outside_backup_root")
+		}
+		return fmt.Errorf("resolved_remote_dataset_invalid: %w", err)
+	}
+	remoteDataset = parsedResolvedRemoteDataset.String()
 	commitMetadata, err := s.requireRemoteBackupRestoreCommit(ctx, job, remoteDataset, snapshot)
 	if err != nil {
 		return err
@@ -317,7 +321,10 @@ func (s *Service) runRestoreJob(
 
 	// Build the remote source endpoint with snapshot suffix:
 	// e.g. root@192.168.180.1:zroot/sylve-backups/jails/105@zelta_2026-02-18_12.00.00
-	remoteEndpoint := job.Target.SSHHost + ":" + remoteDataset + snapshot
+	remoteEndpoint, err := canonicalZeltaSnapshotEndpoint(&job.Target, remoteDataset, snapshot)
+	if err != nil {
+		return err
+	}
 
 	// The temp local dataset for receiving the restore sits next to the original:
 	// e.g. zroot/sylve/jails/105 → zroot/sylve/jails/105.restoring
@@ -926,11 +933,15 @@ func (s *Service) restoreManifestRemote(
 	snapshot string,
 	recursive bool,
 ) ([]restoreDatasetManifestEntry, error) {
-	remoteRoot = normalizeDatasetPath(remoteRoot)
-	snapshot, err := normalizeSnapshotName(snapshot)
+	parsedRemoteRoot, err := canonicalTargetDataset(target, remoteRoot)
+	if err != nil {
+		return nil, fmt.Errorf("remote_restore_root_invalid: %w", err)
+	}
+	snapshot, err = normalizeSnapshotName(snapshot)
 	if err != nil {
 		return nil, err
 	}
+	remoteRoot = parsedRemoteRoot.String()
 
 	datasetArgs := []string{"zfs", "list", "-H", "-p"}
 	if recursive {
@@ -1500,10 +1511,11 @@ func (s *Service) targetDatasetExists(
 	target *clusterModels.BackupTarget,
 	dataset string,
 ) (bool, error) {
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return false, fmt.Errorf("dataset_required")
+	parsedDataset, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return false, fmt.Errorf("target_dataset_invalid: %w", err)
 	}
+	dataset = parsedDataset.String()
 
 	output, err := s.runTargetSSH(ctx, target, "zfs", "list", "-H", "-o", "name", dataset)
 	if err != nil {
@@ -1515,7 +1527,8 @@ func (s *Service) targetDatasetExists(
 	}
 
 	for _, line := range strings.Split(output, "\n") {
-		if normalizeDatasetPath(strings.TrimSpace(line)) == dataset {
+		parsedLine, parseErr := remoteexec.ParseZFSDataset(strings.TrimSpace(line))
+		if parseErr == nil && parsedLine.String() == dataset {
 			return true, nil
 		}
 	}
@@ -1527,11 +1540,16 @@ func (s *Service) renameTargetDataset(
 	target *clusterModels.BackupTarget,
 	fromDataset, toDataset string,
 ) error {
-	fromDataset = normalizeDatasetPath(fromDataset)
-	toDataset = normalizeDatasetPath(toDataset)
-	if fromDataset == "" || toDataset == "" {
-		return fmt.Errorf("dataset_required")
+	parsedFrom, err := canonicalTargetDataset(target, fromDataset)
+	if err != nil {
+		return fmt.Errorf("rename_source_dataset_invalid: %w", err)
 	}
+	parsedTo, err := canonicalTargetDataset(target, toDataset)
+	if err != nil {
+		return fmt.Errorf("rename_destination_dataset_invalid: %w", err)
+	}
+	fromDataset = parsedFrom.String()
+	toDataset = parsedTo.String()
 	if fromDataset == toDataset {
 		return nil
 	}
@@ -1550,23 +1568,21 @@ func (s *Service) activateTargetGenerationForRestore(
 	activeDataset string,
 	selectedDataset string,
 ) (restoreTargetGenerationActivation, error) {
-	activation := restoreTargetGenerationActivation{
-		ActiveDataset:   normalizeDatasetPath(activeDataset),
-		SelectedDataset: normalizeDatasetPath(selectedDataset),
+	activation := restoreTargetGenerationActivation{}
+	parsedActive, err := canonicalTargetDataset(target, activeDataset)
+	if err != nil {
+		return activation, fmt.Errorf("active_target_dataset_invalid: %w", err)
 	}
-	activeDataset = normalizeDatasetPath(activeDataset)
-	selectedDataset = normalizeDatasetPath(selectedDataset)
-	if target == nil {
-		return activation, fmt.Errorf("target_required")
+	parsedSelected, err := canonicalTargetDataset(target, selectedDataset)
+	if err != nil {
+		return activation, fmt.Errorf("selected_target_dataset_invalid: %w", err)
 	}
-	if activeDataset == "" || selectedDataset == "" {
-		return activation, fmt.Errorf("target_dataset_required")
-	}
+	activeDataset = parsedActive.String()
+	selectedDataset = parsedSelected.String()
+	activation.ActiveDataset = activeDataset
+	activation.SelectedDataset = selectedDataset
 	if activeDataset == selectedDataset {
 		return activation, nil
-	}
-	if !datasetWithinRoot(target.BackupRoot, activeDataset) || !datasetWithinRoot(target.BackupRoot, selectedDataset) {
-		return activation, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 	activeBase := datasetLineageBaseSuffixForDataset(target.BackupRoot, activeDataset)
 	selectedBase := datasetLineageBaseSuffixForDataset(target.BackupRoot, selectedDataset)
@@ -1661,30 +1677,64 @@ func parseRestoreSnapshotInput(snapshotInput, defaultRemoteDataset string) (stri
 	if raw == "" {
 		return "", "", fmt.Errorf("snapshot_required")
 	}
-
 	if idx := strings.LastIndex(raw, "@"); idx > 0 {
-		remoteDataset := strings.TrimSpace(raw[:idx])
-		snapshot := strings.TrimSpace(raw[idx:])
-		if remoteDataset == "" {
-			return "", "", fmt.Errorf("remote_dataset_required")
+		parsed, err := remoteexec.ParseZFSSnapshot(raw)
+		if err != nil {
+			return "", "", fmt.Errorf("snapshot_invalid: %w", err)
 		}
-		if snapshot == "@" {
-			return "", "", fmt.Errorf("snapshot_required")
-		}
-		return remoteDataset, snapshot, nil
+		return parsed.Dataset().String(), parsed.Name().WithAt(), nil
 	}
-
-	snapshot := raw
-	if !strings.HasPrefix(snapshot, "@") {
-		snapshot = "@" + snapshot
-	}
-
-	defaultRemoteDataset = strings.TrimSpace(defaultRemoteDataset)
-	if defaultRemoteDataset == "" {
+	if strings.TrimSpace(defaultRemoteDataset) == "" {
 		return "", "", fmt.Errorf("remote_dataset_required")
 	}
+	defaultDataset, err := remoteexec.ParseZFSDataset(defaultRemoteDataset)
+	if err != nil {
+		return "", "", fmt.Errorf("remote_dataset_invalid: %w", err)
+	}
 
-	return defaultRemoteDataset, snapshot, nil
+	snapshot, err := remoteexec.ParseZFSSnapshotName(raw)
+	if err != nil {
+		return "", "", fmt.Errorf("snapshot_invalid: %w", err)
+	}
+
+	if _, err := remoteexec.NewZFSSnapshot(defaultDataset, snapshot); err != nil {
+		return "", "", fmt.Errorf("snapshot_invalid: %w", err)
+	}
+
+	return defaultDataset.String(), snapshot.WithAt(), nil
+}
+
+func canonicalRestoreJobInput(
+	job *clusterModels.BackupJob,
+	snapshot, remoteDataset string,
+) (string, string, string, error) {
+	if job == nil || job.ID == 0 {
+		return "", "", "", fmt.Errorf("backup_job_required")
+	}
+	_, root, err := canonicalizeBackupTarget(&job.Target)
+	if err != nil {
+		return "", "", "", err
+	}
+	if strings.TrimSpace(remoteDataset) == "" {
+		remoteDataset = remoteDatasetForJob(job)
+	}
+	remoteDataset, snapshot, err = parseRestoreSnapshotInput(snapshot, remoteDataset)
+	if err != nil {
+		return "", "", "", err
+	}
+	parsedRemote, err := remoteexec.ParseZFSDataset(remoteDataset)
+	if err != nil || !parsedRemote.Within(root) {
+		return "", "", "", fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+	destination := job.SourceDataset
+	if job.Mode == clusterModels.BackupJobModeJail {
+		destination = job.JailRootDataset
+	}
+	parsedDestination, err := remoteexec.ParseZFSDataset(destination)
+	if err != nil {
+		return "", "", "", fmt.Errorf("destination_dataset_invalid: %w", err)
+	}
+	return parsedRemote.String(), snapshot, parsedDestination.String(), nil
 }
 
 func (s *Service) resolveRemoteDatasetForSnapshot(

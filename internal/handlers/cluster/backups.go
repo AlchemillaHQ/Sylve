@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,21 @@ type restoreBackupJobRequest struct {
 	Snapshot            string `json:"snapshot"`
 	EncryptionKey       string `json:"encryptionKey"`
 	EncryptionKeyFormat string `json:"encryptionKeyFormat"`
+}
+
+func canonicalRestoreSnapshot(raw string) (string, error) {
+	if strings.LastIndex(strings.TrimSpace(raw), "@") > 0 {
+		snapshot, err := remoteexec.ParseZFSSnapshot(raw)
+		if err != nil {
+			return "", err
+		}
+		return snapshot.String(), nil
+	}
+	snapshot, err := remoteexec.ParseZFSSnapshotName(raw)
+	if err != nil {
+		return "", err
+	}
+	return snapshot.WithAt(), nil
 }
 
 type backupJobRunnerRoute struct {
@@ -356,7 +372,6 @@ func RunBackupJobNow(cS *cluster.Service, zS backupJobRunService) gin.HandlerFun
 			})
 			return
 		}
-
 		job, err := cS.GetBackupJobByID(uint(id64))
 		if err != nil {
 			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
@@ -714,6 +729,13 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 				Message: "snapshot_required",
 				Error:   "snapshot field is required",
 				Data:    nil,
+			})
+			return
+		}
+		req.Snapshot, err = canonicalRestoreSnapshot(req.Snapshot)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "snapshot_invalid", Error: err.Error(), Data: nil,
 			})
 			return
 		}

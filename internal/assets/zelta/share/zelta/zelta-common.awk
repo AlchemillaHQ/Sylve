@@ -34,7 +34,18 @@ function load_endpoint(ep, ep_arr,	_str_parts, _id, _remote ,_user, _host, _ds, 
 	if (!ep) return
 	_id	= ep				# ID is the user's endpoint string
 	# Find the connection info for ssh, '[user@]host'
-	if (ep ~ /^[^ :\/]+:/) {
+	if (ep ~ /^([^ @:\/]+@)?\[[^]]+\]:/) {
+		_remote = ep
+		sub(/]:.*/, "]", _remote)
+		ep = substr(ep, length(_remote) + 2)
+		if (split(_remote, _str_parts, "@")==2) {
+			_user = _str_parts[1]
+			_host = _str_parts[2]
+		} else _host = _str_parts[1]
+		sub(/^\[/, "", _host)
+		sub(/\]$/, "", _host)
+		_remote = (_user ? _user "@" : "") _host
+	} else if (ep ~ /^[^ :\/]+:/) {
 		_remote	= ep
 		sub(/:.*/, "", _remote)		# REMOTE is '[user@]host'
 		sub(/^[^ :\/]+:/,"", ep)	# Don't split(), ep may have ':'

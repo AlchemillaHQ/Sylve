@@ -46,6 +46,26 @@ func setReplicationTestTreeReadonly(t *testing.T, root, value string) {
 	}
 }
 
+func TestReplicationZFSTokensRequireExactValues(t *testing.T) {
+	if !validReplicationZFSToken("replication-run_1") {
+		t.Fatal("canonical replication token rejected")
+	}
+	for _, value := range []string{" replication-run_1", "replication-run_1 ", "-option"} {
+		if validReplicationZFSToken(value) {
+			t.Fatalf("non-exact replication token accepted: %q", value)
+		}
+	}
+	if err := validateReplicationSnapshotName(" ha_replication-1-run"); err == nil {
+		t.Fatal("non-exact replication snapshot name accepted")
+	}
+	if err := (ReplicationZFSTransferOptions{
+		PolicyID: 1, OwnerEpoch: 1, RunID: "run-1",
+		SnapshotName: "ha_replication-1-run", GenerationName: " ",
+	}).validate(); err == nil {
+		t.Fatal("non-exact optional generation token accepted")
+	}
+}
+
 func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	tests := []struct {

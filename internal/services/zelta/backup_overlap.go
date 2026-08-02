@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -24,14 +25,11 @@ type backupPoolIdentity struct {
 }
 
 func backupDatasetPool(dataset string) (string, error) {
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return "", fmt.Errorf("backup_dataset_required")
+	parsed, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return "", fmt.Errorf("backup_dataset_invalid: %w", err)
 	}
-	if idx := strings.IndexByte(dataset, '/'); idx >= 0 {
-		return dataset[:idx], nil
-	}
-	return dataset, nil
+	return parsed.Pool(), nil
 }
 
 func parseBackupPoolGUID(output string) (uint64, error) {
@@ -87,7 +85,11 @@ func datasetPathEqualOrAncestor(ancestor, dataset string) bool {
 }
 
 func (s *Service) localBackupPoolIdentity(ctx context.Context, dataset string) (backupPoolIdentity, error) {
-	dataset = normalizeDatasetPath(dataset)
+	parsed, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return backupPoolIdentity{}, fmt.Errorf("backup_source_dataset_invalid: %w", err)
+	}
+	dataset = parsed.String()
 	pool, err := backupDatasetPool(dataset)
 	if err != nil {
 		return backupPoolIdentity{}, err
@@ -108,10 +110,11 @@ func (s *Service) remoteBackupPoolIdentity(
 	target *clusterModels.BackupTarget,
 	dataset string,
 ) (backupPoolIdentity, error) {
-	if target == nil {
-		return backupPoolIdentity{}, fmt.Errorf("backup_target_required")
+	parsed, err := canonicalTargetDataset(target, dataset)
+	if err != nil {
+		return backupPoolIdentity{}, fmt.Errorf("backup_target_dataset_invalid: %w", err)
 	}
-	dataset = normalizeDatasetPath(dataset)
+	dataset = parsed.String()
 	pool, err := backupDatasetPool(dataset)
 	if err != nil {
 		return backupPoolIdentity{}, err

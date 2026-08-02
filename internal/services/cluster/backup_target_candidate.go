@@ -14,6 +14,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -34,7 +35,8 @@ func normalizedBackupTargetPort(port int) int {
 func backupTargetCandidateFromInput(
 	input clusterServiceInterfaces.BackupTargetReq,
 ) (*clusterModels.BackupTarget, error) {
-	if err := validateBackupTargetInput(input); err != nil {
+	destination, root, err := canonicalBackupTargetInput(input)
+	if err != nil {
 		return nil, err
 	}
 
@@ -45,11 +47,11 @@ func backupTargetCandidateFromInput(
 	candidate := &clusterModels.BackupTarget{
 		ID:               input.ID,
 		Name:             strings.TrimSpace(input.Name),
-		SSHHost:          strings.TrimSpace(input.SSHHost),
+		SSHHost:          destination.String(),
 		SSHPort:          normalizedBackupTargetPort(input.SSHPort),
 		SSHKeyPath:       "",
 		SSHKey:           key,
-		BackupRoot:       strings.TrimSpace(input.BackupRoot),
+		BackupRoot:       root.String(),
 		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
 		Description:      strings.TrimSpace(input.Description),
 		Enabled:          boolPtrDefaultTrue(input.Enabled),
@@ -70,27 +72,37 @@ func (s *Service) BuildBackupTargetUpdatePlan(
 	if existing == nil || existing.ID == 0 {
 		return nil, fmt.Errorf("backup_target_not_found")
 	}
-	if err := validateBackupTargetInput(input); err != nil {
+	incomingHost, incomingRoot, err := canonicalBackupTargetInput(input)
+	if err != nil {
 		return nil, err
 	}
 	if input.ID != 0 && input.ID != existing.ID {
 		return nil, fmt.Errorf("backup_target_id_mismatch")
 	}
 
-	incomingHost := strings.TrimSpace(input.SSHHost)
+	existingHost, err := remoteexec.ParseSSHDestination(existing.SSHHost)
+	if err != nil {
+		return nil, fmt.Errorf("backup_target_existing_endpoint_invalid: %w", err)
+	}
+	if existing.SSHPort < 0 || existing.SSHPort > 65535 {
+		return nil, fmt.Errorf("backup_target_existing_endpoint_invalid: invalid_ssh_port")
+	}
+	existingRoot, err := remoteexec.ParseZFSDataset(existing.BackupRoot)
+	if err != nil {
+		return nil, fmt.Errorf("backup_target_existing_root_invalid: %w", err)
+	}
 	incomingPort := normalizedBackupTargetPort(existing.SSHPort)
 	if input.SSHPort != 0 {
 		incomingPort = normalizedBackupTargetPort(input.SSHPort)
 	}
-	incomingRoot := strings.TrimSpace(input.BackupRoot)
 	incomingCreateRoot := existing.CreateBackupRoot
 	if input.CreateBackupRoot != nil {
 		incomingCreateRoot = *input.CreateBackupRoot
 	}
-	if incomingHost != strings.TrimSpace(existing.SSHHost) || incomingPort != normalizedBackupTargetPort(existing.SSHPort) {
+	if incomingHost.String() != existingHost.String() || incomingPort != normalizedBackupTargetPort(existing.SSHPort) {
 		return nil, fmt.Errorf("backup_target_endpoint_immutable")
 	}
-	if incomingRoot != strings.TrimSpace(existing.BackupRoot) {
+	if incomingRoot.String() != existingRoot.String() {
 		return nil, fmt.Errorf("backup_target_root_immutable")
 	}
 	if incomingCreateRoot != existing.CreateBackupRoot {

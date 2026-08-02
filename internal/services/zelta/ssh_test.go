@@ -9,12 +9,14 @@
 package zelta
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 )
 
 func TestSaveSSHKeyWritesTrimmedKeyWithTrailingNewline(t *testing.T) {
@@ -76,6 +78,129 @@ func TestBuildSSHArgsDoesNotInventIdentityForPasswordlessTarget(t *testing.T) {
 	}
 	if !foundIdentity {
 		t.Fatalf("configured key was omitted: %v", withKey)
+	}
+}
+
+func TestRunTargetSSHUsesEncodedRemoteCommands(t *testing.T) {
+	dir := t.TempDir()
+	sshPath := filepath.Join(dir, "ssh")
+	if err := os.WriteFile(sshPath, []byte("#!/bin/sh\nfor arg do remote=$arg; done\nexec /bin/sh -c \"$remote\"\n"), 0755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service := &Service{}
+	target := &clusterModels.BackupTarget{
+		SSHHost:    "root@localhost",
+		SSHPort:    22,
+		BackupRoot: "tank/backups",
+	}
+	output, err := service.runTargetSSH(
+		context.Background(),
+		target,
+		"/usr/bin/printf",
+		"<%s>",
+		"value; $(printf injected)",
+	)
+	if err != nil {
+		t.Fatalf("run target command: %v", err)
+	}
+	if output != "<value; $(printf injected)>" {
+		t.Fatalf("command output = %q", output)
+	}
+
+	output, err = service.runTargetDatasetScript(
+		context.Background(),
+		target,
+		"tank/backups/vm",
+		"value='script value'\nprintf '%s' \"$value\"",
+	)
+	if err != nil {
+		t.Fatalf("run target script: %v", err)
+	}
+	if output != "script value" {
+		t.Fatalf("script output = %q", output)
+	}
+}
+
+func TestRemoteCommandLogFieldsRedactCommandData(t *testing.T) {
+	tests := []struct {
+		name        string
+		argv        []string
+		wantKind    string
+		wantDataset string
+	}{
+		{
+			name:        "snapshot token",
+			argv:        []string{"zfs", "destroy", "tank/backups/vm@ha_secret-token"},
+			wantKind:    "zfs.destroy",
+			wantDataset: "tank/backups/vm",
+		},
+		{
+			name:        "staging token",
+			argv:        []string{"zfs", "recv", "tank/backups/vm_gen-secret-token/disk"},
+			wantKind:    "zfs.recv",
+			wantDataset: "tank/backups/vm/disk",
+		},
+		{
+			name:     "metadata path",
+			argv:     []string{"cat", "/mounted/.sylve/vm.json"},
+			wantKind: "metadata.read",
+		},
+		{
+			name:     "unknown command",
+			argv:     []string{"custom-secret-token", "private-key"},
+			wantKind: "remote",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			kind, dataset := remoteCommandLogFields(test.argv)
+			if kind != test.wantKind || dataset != test.wantDataset {
+				t.Fatalf("log fields = (%q, %q), want (%q, %q)", kind, dataset, test.wantKind, test.wantDataset)
+			}
+		})
+	}
+}
+
+func TestTargetRemoteCommandArgsPreserveStreamingWithoutExposingArguments(t *testing.T) {
+	service := &Service{}
+	target := &clusterModels.BackupTarget{
+		ID:         42,
+		SSHHost:    "root@backup.example",
+		SSHPort:    22,
+		BackupRoot: "tank/backups",
+	}
+	command, err := remoteexec.NewCommand(
+		"zfs",
+		"recv",
+		"-o",
+		"sylve:run-id=secret-token",
+		"tank/backups/vm_gen-secret-token",
+	)
+	if err != nil {
+		t.Fatalf("new remote command: %v", err)
+	}
+	args, err := service.targetRemoteCommandArgs(
+		target,
+		command,
+		true,
+		"zfs.recv",
+		"tank/backups/vm_gen-secret-token",
+	)
+	if err != nil {
+		t.Fatalf("target remote command args: %v", err)
+	}
+	for _, arg := range args {
+		if arg == "-n" {
+			t.Fatal("streaming receiver retained ssh stdin suppression")
+		}
+		if strings.Contains(arg, "secret-token") || strings.Contains(arg, "sylve:run-id") {
+			t.Fatalf("remote argument was not encoded: %q", arg)
+		}
+	}
+	if len(args) < 2 || args[len(args)-2] != "root@backup.example" || !strings.HasPrefix(args[len(args)-1], "/bin/sh -c ") {
+		t.Fatalf("unexpected ssh invocation: %v", args)
 	}
 }
 
@@ -542,52 +667,4 @@ func TestTargetSSHKeyPath(t *testing.T) {
 			t.Fatalf("expected stored %q, got %q", stored, got)
 		}
 	})
-}
-
-func TestParseZFSPoolNameFromDataset(t *testing.T) {
-	tests := []struct {
-		name    string
-		dataset string
-		want    string
-	}{
-		{
-			name:    "empty",
-			dataset: "",
-			want:    "",
-		},
-		{
-			name:    "whitespace",
-			dataset: "   ",
-			want:    "",
-		},
-		{
-			name:    "pool only",
-			dataset: "tank",
-			want:    "tank",
-		},
-		{
-			name:    "pool with child dataset",
-			dataset: "tank/backups",
-			want:    "tank",
-		},
-		{
-			name:    "trimmed pool and dataset",
-			dataset: "  tank/backup/root  ",
-			want:    "tank",
-		},
-		{
-			name:    "leading slash remains invalid but parsed verbatim",
-			dataset: "/broken",
-			want:    "/broken",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseZFSPoolNameFromDataset(tc.dataset)
-			if got != tc.want {
-				t.Fatalf("expected pool %q, got %q", tc.want, got)
-			}
-		})
-	}
 }

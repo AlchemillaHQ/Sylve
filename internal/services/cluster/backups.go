@@ -26,6 +26,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
@@ -781,6 +782,12 @@ func (s *Service) buildBackupJob(
 	if err := s.DB.WithContext(ctx).First(&target, input.TargetID).Error; err != nil {
 		return nil, nil, fmt.Errorf("backup_target_not_found")
 	}
+	if _, err := remoteexec.ParseSSHDestination(target.SSHHost); err != nil {
+		return nil, nil, fmt.Errorf("backup_target_ssh_host_invalid: %w", err)
+	}
+	if _, err := remoteexec.ParseZFSDataset(target.BackupRoot); err != nil {
+		return nil, nil, fmt.Errorf("backup_target_root_invalid: %w", err)
+	}
 	if strings.TrimSpace(input.Name) == "" {
 		return nil, nil, fmt.Errorf("name_required")
 	}
@@ -865,6 +872,15 @@ func (s *Service) buildBackupJob(
 		}
 		job.JailRootDataset = ""
 	}
+	dataset := &job.SourceDataset
+	if mode == clusterModels.BackupJobModeJail {
+		dataset = &job.JailRootDataset
+	}
+	parsedDataset, err := remoteexec.ParseZFSDataset(*dataset)
+	if err != nil {
+		return nil, nil, fmt.Errorf("source_dataset_invalid: %w", err)
+	}
+	*dataset = parsedDataset.String()
 
 	validation, placementFence, err := s.validateBackupJobOnRunner(ctx, job, bypassRaft, authorization)
 	if err != nil {
@@ -1056,25 +1072,24 @@ func parseVMRIDFromDataset(dataset string) (uint, bool) {
 	return 0, false
 }
 
-func validateBackupTargetInput(input clusterServiceInterfaces.BackupTargetReq) error {
+func canonicalBackupTargetInput(
+	input clusterServiceInterfaces.BackupTargetReq,
+) (remoteexec.SSHDestination, remoteexec.ZFSDataset, error) {
 	if strings.TrimSpace(input.Name) == "" {
-		return fmt.Errorf("name_required")
+		return remoteexec.SSHDestination{}, remoteexec.ZFSDataset{}, fmt.Errorf("name_required")
 	}
-
-	if strings.TrimSpace(input.SSHHost) == "" {
-		return fmt.Errorf("ssh_host_required")
+	destination, err := remoteexec.ParseSSHDestination(input.SSHHost)
+	if err != nil {
+		return remoteexec.SSHDestination{}, remoteexec.ZFSDataset{}, fmt.Errorf("invalid_ssh_host: %w", err)
 	}
-
-	if strings.TrimSpace(input.BackupRoot) == "" {
-		return fmt.Errorf("backup_root_required")
+	root, err := remoteexec.ParseZFSDataset(input.BackupRoot)
+	if err != nil {
+		return remoteexec.SSHDestination{}, remoteexec.ZFSDataset{}, fmt.Errorf("invalid_backup_root: %w", err)
 	}
-
-	sshHost := strings.TrimSpace(input.SSHHost)
-	if strings.Contains(sshHost, " ") || strings.Contains(sshHost, ":") {
-		return fmt.Errorf("invalid_ssh_host: should be user@host or just hostname")
+	if input.SSHPort < 0 || input.SSHPort > 65535 {
+		return remoteexec.SSHDestination{}, remoteexec.ZFSDataset{}, fmt.Errorf("invalid_ssh_port")
 	}
-
-	return nil
+	return destination, root, nil
 }
 
 func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {

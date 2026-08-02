@@ -33,6 +33,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	goLibvirt "github.com/digitalocean/go-libvirt"
 )
@@ -63,6 +64,82 @@ func buildClusterSSHArgs(identity *clusterModels.ClusterSSHIdentity, privateKeyP
 	}
 
 	return args
+}
+
+func clusterSSHDestination(identity *clusterModels.ClusterSSHIdentity) (remoteexec.SSHDestination, error) {
+	if identity == nil {
+		return remoteexec.SSHDestination{}, fmt.Errorf("cluster_ssh_identity_required")
+	}
+	if identity.SSHPort < 0 || identity.SSHPort > 65535 {
+		return remoteexec.SSHDestination{}, fmt.Errorf("invalid_cluster_ssh_port")
+	}
+	destination := strings.TrimSpace(identity.SSHHost)
+	if user := strings.TrimSpace(identity.SSHUser); user != "" {
+		destination = user + "@" + destination
+	}
+	parsed, err := remoteexec.ParseSSHDestination(destination)
+	if err != nil {
+		return remoteexec.SSHDestination{}, fmt.Errorf("invalid_cluster_ssh_destination: %w", err)
+	}
+	return parsed, nil
+}
+
+func clusterRemoteCommandArgs(
+	identity *clusterModels.ClusterSSHIdentity,
+	privateKeyPath string,
+	readsStdin bool,
+	commandKind string,
+	dataset string,
+	argv ...string,
+) ([]string, error) {
+	destination, err := clusterSSHDestination(identity)
+	if err != nil {
+		return nil, err
+	}
+	if dataset != "" {
+		parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
+		if err != nil {
+			return nil, fmt.Errorf("invalid_remote_dataset: %w", err)
+		}
+		dataset = parsedDataset.String()
+	}
+	command, err := remoteexec.NewCommand(argv...)
+	if err != nil {
+		return nil, err
+	}
+	args, err := command.SSHArgs(buildClusterSSHArgs(identity, privateKeyPath), destination, readsStdin)
+	if err != nil {
+		return nil, err
+	}
+	port := identity.SSHPort
+	if port == 0 {
+		port = 22
+	}
+	event := logger.L.Debug().
+		Str("command_kind", commandKind).
+		Str("target_node_id", strings.TrimSpace(identity.NodeUUID)).
+		Str("ssh_host", destination.String()).
+		Int("ssh_port", port)
+	if dataset != "" {
+		event.Str("dataset", dataset)
+	}
+	event.Msg("remote_command_execute")
+	return args, nil
+}
+
+func runClusterRemoteCommand(
+	ctx context.Context,
+	identity *clusterModels.ClusterSSHIdentity,
+	privateKeyPath string,
+	commandKind string,
+	dataset string,
+	argv ...string,
+) (string, error) {
+	args, err := clusterRemoteCommandArgs(identity, privateKeyPath, false, commandKind, dataset, argv...)
+	if err != nil {
+		return "", err
+	}
+	return utils.RunCommandWithContext(ctx, "ssh", args...)
 }
 
 // countingWriter wraps an io.Writer and atomically tracks bytes written.
@@ -111,9 +188,7 @@ func (s *Service) phasePreflight(ctx context.Context, mp *migrationPayload, task
 		return fmt.Errorf("cluster_ssh_key_unavailable: %w", err)
 	}
 
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost), "zfs", "version")
-	if _, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...); err != nil {
+	if _, err := runClusterRemoteCommand(ctx, identity, privateKeyPath, "zfs.version", "", "zfs", "version"); err != nil {
 		return fmt.Errorf("%w: %v", ErrSSHUnreachable, err)
 	}
 
@@ -260,6 +335,16 @@ func (s *Service) sendDatasetToNode(
 	progressFn func(dataset string, totalBytes, sentBytes uint64),
 	taskID uint,
 ) error {
+	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return fmt.Errorf("migration_dataset_invalid: %w", err)
+	}
+	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapName)
+	if err != nil || !isMigrationOwnedSnapshot(parsedSnapshot.String()) {
+		return fmt.Errorf("migration_snapshot_invalid")
+	}
+	dataset = parsedDataset.String()
+	snapName = parsedSnapshot.String()
 	commonSnap := ""
 	if incremental {
 		prevSnaps, snapErr := s.listMigrationSnapshots(ctx, dataset)
@@ -277,19 +362,10 @@ func (s *Service) sendDatasetToNode(
 	}
 
 	if !incremental {
-		cleanArgs := buildClusterSSHArgs(identity, privateKeyPath)
-		destroyArgs := make([]string, 0, len(cleanArgs))
-		for _, a := range cleanArgs {
-			if a != "-n" {
-				destroyArgs = append(destroyArgs, a)
-			}
-		}
-		destroyArgs = append(destroyArgs,
-			fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+		output, err := runClusterRemoteCommand(
+			ctx, identity, privateKeyPath, "zfs.destroy", dataset,
 			"zfs", "destroy", "-rf", dataset,
 		)
-
-		output, err := utils.RunCommandWithContext(ctx, "ssh", destroyArgs...)
 		if err != nil {
 			if isDatasetNotFound(err) {
 				logger.L.Debug().
@@ -303,18 +379,10 @@ func (s *Service) sendDatasetToNode(
 			}
 		}
 
-		verifyArgs := make([]string, 0, len(cleanArgs))
-		for _, a := range cleanArgs {
-			if a != "-n" {
-				verifyArgs = append(verifyArgs, a)
-			}
-		}
-		verifyArgs = append(verifyArgs,
-			fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+		if verifyOut, verifyErr := runClusterRemoteCommand(
+			ctx, identity, privateKeyPath, "zfs.list", dataset,
 			"zfs", "list", "-H", dataset,
-		)
-
-		if verifyOut, verifyErr := utils.RunCommandWithContext(ctx, "ssh", verifyArgs...); verifyErr == nil {
+		); verifyErr == nil {
 			return fmt.Errorf("target_dataset_still_exists_on_%s_after_destroy: %s",
 				identity.SSHHost, strings.TrimSpace(verifyOut))
 		}
@@ -331,17 +399,13 @@ func (s *Service) sendDatasetToNode(
 	}
 	sendArgs = append(sendArgs, fullSnap)
 
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	recvArgs := make([]string, 0, len(sshArgs)+10)
-	for _, a := range sshArgs {
-		if a != "-n" {
-			recvArgs = append(recvArgs, a)
-		}
-	}
-	recvArgs = append(recvArgs,
-		fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+	recvArgs, err := clusterRemoteCommandArgs(
+		identity, privateKeyPath, true, "zfs.recv", dataset,
 		"zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto", "-F", dataset,
 	)
+	if err != nil {
+		return fmt.Errorf("migration_receive_command_invalid: %w", err)
+	}
 
 	sendCmd := exec.CommandContext(ctx, "zfs", sendArgs...)
 	recvCmd := exec.CommandContext(ctx, "ssh", recvArgs...)
@@ -543,18 +607,15 @@ func (s *Service) listRemoteMigrationSnapshots(
 	identity *clusterModels.ClusterSSHIdentity,
 	privateKeyPath string,
 ) ([]string, error) {
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	args := make([]string, 0, len(sshArgs)+9)
-	for _, arg := range sshArgs {
-		if arg != "-n" {
-			args = append(args, arg)
-		}
+	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return nil, fmt.Errorf("migration_dataset_invalid: %w", err)
 	}
-	args = append(args,
-		fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+	dataset = parsedDataset.String()
+	output, err := runClusterRemoteCommand(
+		ctx, identity, privateKeyPath, "zfs.list", dataset,
 		"zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", dataset,
 	)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -670,12 +731,15 @@ func (s *Service) destroyRemoteMigrationSnapshots(
 	if identity == nil {
 		return fmt.Errorf("migration_snapshot_cleanup_target_identity_unavailable")
 	}
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	listArgs := append(append([]string(nil), sshArgs...),
-		fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+	parsedRoot, err := remoteexec.ParseZFSDataset(root)
+	if err != nil {
+		return fmt.Errorf("migration_snapshot_cleanup_root_invalid: %w", err)
+	}
+	root = parsedRoot.String()
+	output, err := runClusterRemoteCommand(
+		ctx, identity, privateKeyPath, "zfs.list", root,
 		"zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", root,
 	)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", listArgs...)
 	if err != nil {
 		if isDatasetNotFound(errors.New(output + ": " + err.Error())) {
 			return nil
@@ -685,11 +749,14 @@ func (s *Service) destroyRemoteMigrationSnapshots(
 
 	var cleanupErrs []error
 	for _, snapshot := range migrationSnapshotPathsWithinRoot(root, output) {
-		destroyArgs := append(append([]string(nil), sshArgs...),
-			fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
-			"zfs", "destroy", snapshot,
+		parsedSnapshot, parseErr := remoteexec.ParseZFSSnapshot(snapshot)
+		if parseErr != nil || !parsedSnapshot.Dataset().Within(parsedRoot) {
+			continue
+		}
+		destroyOutput, destroyErr := runClusterRemoteCommand(
+			ctx, identity, privateKeyPath, "zfs.destroy", parsedSnapshot.Dataset().String(),
+			"zfs", "destroy", parsedSnapshot.String(),
 		)
-		destroyOutput, destroyErr := utils.RunCommandWithContext(ctx, "ssh", destroyArgs...)
 		if destroyErr != nil && !isMigrationSnapshotNotFound(errors.New(destroyOutput+": "+destroyErr.Error())) {
 			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy_remote_migration_snapshot_%s_failed: %w", snapshot, destroyErr))
 		}

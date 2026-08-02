@@ -28,6 +28,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -1488,11 +1489,15 @@ func (s *Service) remotePoolExists(ctx context.Context, identity *clusterModels.
 	if err != nil {
 		return false, err
 	}
-
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost), "zpool", "list", "-H", "-o", "name", pool)
-
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	parsedPool, err := remoteexec.ParseZFSDataset(pool)
+	if err != nil || parsedPool.String() != parsedPool.Pool() {
+		return false, fmt.Errorf("invalid_remote_pool")
+	}
+	pool = parsedPool.String()
+	output, err := runClusterRemoteCommand(
+		ctx, identity, privateKeyPath, "zpool.list", pool,
+		"zpool", "list", "-H", "-o", "name", pool,
+	)
 	if err != nil {
 		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
 		if strings.Contains(combined, "no such pool") {
@@ -1757,12 +1762,15 @@ func (s *Service) resolveNetworkBridgeName(switchType string, switchID any) (str
 }
 
 func (s *Service) remoteDatasetExists(ctx context.Context, identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, dataset string) (bool, error) {
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	sshArgs = append(sshArgs,
-		fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
+	if err != nil {
+		return false, fmt.Errorf("invalid_remote_dataset: %w", err)
+	}
+	dataset = parsedDataset.String()
+	output, err := runClusterRemoteCommand(
+		ctx, identity, privateKeyPath, "zfs.list", dataset,
 		"zfs", "list", "-H", dataset,
 	)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
 		if strings.Contains(strings.ToLower(output), "dataset does not exist") ||
 			strings.Contains(strings.ToLower(output), "cannot open") {
@@ -1774,12 +1782,10 @@ func (s *Service) remoteDatasetExists(ctx context.Context, identity *clusterMode
 }
 
 func (s *Service) remoteBridgeExists(ctx context.Context, identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, bridge string) (bool, error) {
-	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
-	sshArgs = append(sshArgs,
-		fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+	output, err := runClusterRemoteCommand(
+		ctx, identity, privateKeyPath, "ifconfig.get", "",
 		"/sbin/ifconfig", bridge,
 	)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
 		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
 		if strings.Contains(combined, "does not exist") ||
