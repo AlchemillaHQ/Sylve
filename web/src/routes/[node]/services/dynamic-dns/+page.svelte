@@ -462,7 +462,7 @@
 	open={modals.delete.open}
 	names={{ parent: 'Dynamic DNS entry', element: selectedEntry?.hostname ?? '' }}
 	actions={{
-		onConfirm: () => void confirmDelete(),
+		onConfirm: confirmDelete,
 		onCancel: () => {
 			modals.delete.open = false;
 		}

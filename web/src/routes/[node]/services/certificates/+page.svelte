@@ -23,6 +23,7 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
 	import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -91,7 +92,7 @@
 		edit: { open: false, id: 0 },
 		delete: { open: false }
 	});
-	let currentHostname = data.hostname;
+	let currentHostname = untrack(() => data.hostname);
 	let pageGeneration = 0;
 	$effect(() => {
 		if (data.hostname === currentHostname) return;
@@ -708,7 +709,7 @@
 	names={{ parent: 'certificate', element: selectedCertificate?.name ?? '' }}
 	loading={deleting}
 	actions={{
-		onConfirm: () => void confirmDelete(),
+		onConfirm: confirmDelete,
 		onCancel: () => {
 			modals.delete.open = false;
 		}

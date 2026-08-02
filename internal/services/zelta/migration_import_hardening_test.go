@@ -5,6 +5,7 @@ package zelta
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
@@ -86,6 +87,73 @@ func TestGeneratedMigrationSnapshotMatcherPreservesUserPrefixes(t *testing.T) {
 	} {
 		if got := isGeneratedMigrationSnapshotName(test.name); got != test.want {
 			t.Errorf("isGeneratedMigrationSnapshotName(%q) = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
+func TestGeneratedMigrationSnapshotPathUsesExactRootBoundary(t *testing.T) {
+	root := "zroot/sylve/virtual-machines/73"
+	for _, test := range []struct {
+		path string
+		want bool
+	}{
+		{path: root + "@sylve-migrate-initial-1700000000", want: true},
+		{path: root + "/disk-0@sylve-migrate-final-1700000001", want: true},
+		{path: root + "0@sylve-migrate-final-1700000001", want: false},
+		{path: root + "/disk-0@sylve-migrate-user-1700000001", want: false},
+		{path: root + "/disk-0@manual", want: false},
+	} {
+		if got := isGeneratedMigrationSnapshotPath(root, test.path); got != test.want {
+			t.Errorf("isGeneratedMigrationSnapshotPath(%q, %q) = %t, want %t", root, test.path, got, test.want)
+		}
+	}
+}
+
+func TestMigrationSnapshotCleanupSurfacesFailureAndPreservesUserSnapshots(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping real ZFS migration snapshot cleanup integration test in short mode")
+	}
+
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+	root := pool + "/sylve/virtual-machines/732"
+	zfstest.EnsureDataset(t, client, root+"/child")
+
+	migrationSnapshot := root + "@sylve-migrate-final-1700000001"
+	manualSnapshot := root + "@sylve-migrate-user-1700000001"
+	for _, snapshot := range []string{migrationSnapshot, manualSnapshot} {
+		if output, err := exec.Command("zfs", "snapshot", "-r", snapshot).CombinedOutput(); err != nil {
+			t.Fatalf("create snapshot %s: %v\n%s", snapshot, err, output)
+		}
+	}
+
+	const holdTag = "sylve-migration-cleanup-test"
+	if output, err := exec.Command("zfs", "hold", holdTag, migrationSnapshot).CombinedOutput(); err != nil {
+		t.Fatalf("hold migration snapshot: %v\n%s", err, output)
+	}
+
+	service := &Service{GZFS: client}
+	err := service.destroyMigratedDatasetSnapshots(t.Context(), []string{root})
+	if err == nil || !strings.Contains(err.Error(), migrationSnapshot) {
+		t.Fatalf("held snapshot cleanup result = %v", err)
+	}
+	if output, err := exec.Command("zfs", "list", "-H", "-t", "snapshot", migrationSnapshot).CombinedOutput(); err != nil {
+		t.Fatalf("held migration snapshot was removed: %v\n%s", err, output)
+	}
+
+	if output, err := exec.Command("zfs", "release", holdTag, migrationSnapshot).CombinedOutput(); err != nil {
+		t.Fatalf("release migration snapshot hold: %v\n%s", err, output)
+	}
+	if err := service.destroyMigratedDatasetSnapshots(t.Context(), []string{root}); err != nil {
+		t.Fatalf("retry migration snapshot cleanup: %v", err)
+	}
+	if output, err := exec.Command("zfs", "list", "-H", "-t", "snapshot", migrationSnapshot).CombinedOutput(); err == nil {
+		t.Fatalf("migration snapshot survived cleanup retry: %s", output)
+	}
+	for _, snapshot := range []string{manualSnapshot, root + "/child@sylve-migrate-user-1700000001"} {
+		if output, err := exec.Command("zfs", "list", "-H", "-t", "snapshot", snapshot).CombinedOutput(); err != nil {
+			t.Fatalf("user snapshot %s was removed: %v\n%s", snapshot, err, output)
 		}
 	}
 }

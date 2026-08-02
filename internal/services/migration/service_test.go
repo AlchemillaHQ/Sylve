@@ -9,6 +9,8 @@
 package migration
 
 import (
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -66,6 +68,39 @@ func TestMigrationOwnedSnapshotMatchesOnlyGeneratedNames(t *testing.T) {
 		if got := isMigrationOwnedSnapshot(test.name); got != test.want {
 			t.Errorf("isMigrationOwnedSnapshot(%q) = %v, want %v", test.name, got, test.want)
 		}
+	}
+}
+
+func TestMigrationSnapshotPathsStayWithinExactGuestRoot(t *testing.T) {
+	root := "zroot/sylve/virtual-machines/41"
+	output := strings.Join([]string{
+		root + "@sylve-migrate-initial-1700000000",
+		root + "/disk-0@sylve-migrate-final-1700000001",
+		root + "0@sylve-migrate-final-1700000001",
+		root + "/disk-0@sylve-migrate-user-1700000001",
+		root + "/disk-0@manual",
+	}, "\n")
+	want := []string{
+		root + "/disk-0@sylve-migrate-final-1700000001",
+		root + "@sylve-migrate-initial-1700000000",
+	}
+	if got := migrationSnapshotPathsWithinRoot(root, output); !reflect.DeepEqual(got, want) {
+		t.Fatalf("migration snapshot paths = %v, want %v", got, want)
+	}
+}
+
+func TestMigrationSnapshotMissingResultIsIdempotent(t *testing.T) {
+	for _, message := range []string{
+		"cannot open 'zroot/guest': dataset does not exist",
+		"cannot destroy 'zroot/guest@sylve-migrate-final-1': snapshot does not exist",
+		"could not find any snapshots to destroy",
+	} {
+		if !isMigrationSnapshotNotFound(errors.New(message)) {
+			t.Fatalf("missing snapshot result was not idempotent: %s", message)
+		}
+	}
+	if isMigrationSnapshotNotFound(errors.New("snapshot has dependent clones")) {
+		t.Fatal("snapshot dependency failure was treated as missing")
 	}
 }
 

@@ -1827,7 +1827,6 @@ msgid "Log out"
 msgstr "退出登录"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
@@ -1851,7 +1850,6 @@ msgid "Processing..."
 msgstr "处理中..."
 
 #: src/lib/components/custom/Dialog/Alert.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1881,7 +1879,6 @@ msgstr "您确定吗？"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -6092,7 +6089,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -8188,7 +8185,6 @@ msgstr "前缀"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Recursive"
 msgstr "递归"
@@ -8315,7 +8311,7 @@ msgstr "保留每月快照"
 msgid "Keep Yearly"
 msgstr "保留每年快照"
 
-#. 0: datasets.length
+#. 0: targets.length
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Deleted {0} snapshots"
 msgstr "已删除 {0} 个快照"
@@ -14053,13 +14049,11 @@ msgstr ""
 msgid "Health Check"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "This will delete snapshot <0/>"
-msgstr ""
+#~ msgid "This will delete snapshot <0/>"
+#~ msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "This will delete <0>{0} snapshots</0>"
-msgstr ""
+#~ msgid "This will delete <0>{0} snapshots</0>"
+#~ msgstr ""
 
 #. 0: p.hostSocket; 1: (p.hostCpu ?? []).join(', ')
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -15012,7 +15006,7 @@ msgstr ""
 msgid "Detach failed"
 msgstr ""
 
-#. 0: activeRow?.name
+#. 0: device
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Detached {0}"
 msgstr ""
@@ -18442,4 +18436,24 @@ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cleaning replicas on all nodes..."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Delete this backup target? This removes only its saved connection metadata. Backup datasets and snapshots on the remote host are not deleted."
+msgstr ""
+
+#~ msgid "Delete this backup job? This removes only the job configuration and schedule. Existing backup snapshots on the source and backup target are preserved and will no longer be managed by this job."
+#~ msgstr ""
+
+#. 0: datasets.length; 1: datasets.length === 1 ? '' \\: 's'
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will permanently delete {0} selected snapshot{1}. This action cannot be undone."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Deleting snapshots..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+msgid "This removes only the job configuration and schedule. Existing backup snapshots on the source and backup target are preserved and will no longer be managed by this job."
 msgstr ""

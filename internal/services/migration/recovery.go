@@ -252,6 +252,22 @@ func (s *Service) reconcileMigrationOperation(ctx context.Context, operation clu
 			(task.Status == taskModels.LifecycleTaskStatusFailed || task.Status == taskModels.LifecycleTaskStatusSuccess)) {
 			abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 			defer cancel()
+			if err == nil {
+				var payload migrationPayload
+				if strings.TrimSpace(task.Payload) != "" {
+					if decodeErr := json.Unmarshal([]byte(task.Payload), &payload); decodeErr != nil {
+						return fmt.Errorf("migration_pre_cutover_cleanup_payload_invalid: %w", decodeErr)
+					}
+				}
+				if payload.Phase == PhaseInitialReplicaton && len(payload.SourceDatasetRoots) > 0 {
+					if strings.TrimSpace(payload.TargetNodeUUID) != strings.TrimSpace(operation.TargetNodeID) {
+						return fmt.Errorf("migration_pre_cutover_cleanup_target_mismatch")
+					}
+					if cleanupErr := s.runPreCutoverSnapshotCleanup(abortCtx, task, payload); cleanupErr != nil {
+						return fmt.Errorf("migration_pre_cutover_snapshot_cleanup_failed: %w", cleanupErr)
+					}
+				}
+			}
 			return s.abortPreCutoverInterlockConvergently(
 				abortCtx, operation.GuestType, operation.GuestID, operation.Token,
 			)

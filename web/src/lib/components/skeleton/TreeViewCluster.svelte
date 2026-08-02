@@ -464,7 +464,7 @@
 		bind:open={deleteVMOpen}
 		customTitle={`Remove the stale inventory entry for <span class="font-semibold">${item.label}</span>? Only the local VM record and any local libvirt domain are removed &mdash; ZFS datasets are preserved and nothing is deleted on other nodes.`}
 		actions={{
-			onConfirm: () => void handleRemoveVMEntry(),
+			onConfirm: handleRemoveVMEntry,
 			onCancel: () => {
 				deleteVMOpen = false;
 			}
@@ -494,7 +494,7 @@
 		bind:open={deleteTemplateOpen}
 		names={{ parent: 'template', element: item.label }}
 		actions={{
-			onConfirm: () => void handleDeleteTemplate(),
+			onConfirm: handleDeleteTemplate,
 			onCancel: () => {
 				deleteTemplateOpen = false;
 			}
@@ -524,7 +524,7 @@
 		bind:open={deleteTemplateOpen}
 		names={{ parent: 'template', element: item.label }}
 		actions={{
-			onConfirm: () => void handleDeleteTemplate(),
+			onConfirm: handleDeleteTemplate,
 			onCancel: () => {
 				deleteTemplateOpen = false;
 			}

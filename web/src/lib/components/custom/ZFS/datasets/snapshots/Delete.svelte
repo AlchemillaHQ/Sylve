@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { bulkDeleteByNames } from '$lib/api/zfs/datasets';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
@@ -9,24 +8,23 @@
 	interface Props {
 		open: boolean;
 		datasets: Dataset[];
-		askRecursive?: boolean;
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), datasets, askRecursive = true, reload = $bindable() }: Props = $props();
-	let recursive = $state(false);
+	let { open = $bindable(), datasets, reload = $bindable() }: Props = $props();
 
-	async function onCancel() {
+	function onCancel() {
 		open = false;
 	}
 
 	async function onConfirm() {
-		if (datasets.length > 0) {
-			const response = await bulkDeleteByNames(datasets);
+		const targets = [...datasets];
+		if (targets.length > 0) {
+			const response = await bulkDeleteByNames(targets);
 
 			if (response.status === 'success') {
 				open = false;
-				toast.success(`Deleted ${datasets.length} snapshots`, {
+				toast.success(`Deleted ${targets.length} snapshots`, {
 					position: 'bottom-center'
 				});
 			} else {
@@ -45,26 +43,9 @@
 	}
 </script>
 
-<AlertDialog.Root bind:open>
-	<AlertDialog.Content onInteractOutside={(e) => e.preventDefault()}>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Are you sure?</AlertDialog.Title>
-			<AlertDialog.Description>
-				{#if datasets.length === 1}
-					This will delete snapshot <b>{datasets[0].name}</b>
-				{:else}
-					This will delete <b>{datasets.length} snapshots</b>
-				{/if}
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-
-		{#if askRecursive}
-			<CustomCheckbox label="Recursive" bind:checked={recursive} classes="flex items-center gap-2"
-			></CustomCheckbox>
-		{/if}
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel onclick={onCancel}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={onConfirm}>Continue</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<AlertDialog
+	bind:open
+	customTitle={`This will permanently delete ${datasets.length} selected snapshot${datasets.length === 1 ? '' : 's'}. This action cannot be undone.`}
+	loadingLabel="Deleting snapshots..."
+	actions={{ onConfirm, onCancel }}
+/>

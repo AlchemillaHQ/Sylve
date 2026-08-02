@@ -330,9 +330,7 @@
 		open={modals.delete.open}
 		customTitle={`This will detach the jail from the switch <b>${activeRow.switch}</b>`}
 		actions={{
-			onConfirm: async () => {
-				handleSwitchDelete();
-			},
+			onConfirm: handleSwitchDelete,
 			onCancel: () => {
 				modals.delete.open = false;
 			}

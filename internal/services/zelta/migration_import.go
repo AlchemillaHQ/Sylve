@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -93,10 +94,8 @@ func (s *Service) ImportMigratedVMWithRoots(
 		return warnings, fmt.Errorf("failed_to_prepare_migrated_vm_datasets_for_activation: %w", err)
 	}
 
-	for _, dataset := range roots {
-		if err := s.destroyDatasetMigrationSnapshots(ctx, dataset); err != nil {
-			logger.L.Warn().Err(err).Str("dataset", dataset).Msg("failed_to_destroy_migration_snapshots_on_target")
-		}
+	if err := s.destroyMigratedDatasetSnapshots(ctx, roots); err != nil {
+		return warnings, fmt.Errorf("failed_to_cleanup_migrated_vm_snapshots: %w", err)
 	}
 
 	return warnings, nil
@@ -185,10 +184,8 @@ func (s *Service) ImportMigratedJailWithRoots(
 		return warnings, fmt.Errorf("failed_to_prepare_migrated_jail_datasets_for_activation: %w", err)
 	}
 
-	for _, dataset := range roots {
-		if err := s.destroyDatasetMigrationSnapshots(ctx, dataset); err != nil {
-			logger.L.Warn().Err(err).Str("dataset", dataset).Msg("failed_to_destroy_migration_snapshots_on_target")
-		}
+	if err := s.destroyMigratedDatasetSnapshots(ctx, roots); err != nil {
+		return warnings, fmt.Errorf("failed_to_cleanup_migrated_jail_snapshots: %w", err)
 	}
 
 	return warnings, nil
@@ -350,21 +347,18 @@ func (s *Service) destroyDatasetMigrationSnapshots(ctx context.Context, dataset 
 		return err
 	}
 
+	var cleanupErrs []error
 	for _, snap := range snaps {
 		if snap == nil {
 			continue
 		}
 		fullName := snap.Name
-		atIdx := strings.LastIndex(fullName, "@")
-		if atIdx < 0 {
-			continue
-		}
-		shortName := fullName[atIdx+1:]
-		if !isGeneratedMigrationSnapshotName(shortName) {
+		if !isGeneratedMigrationSnapshotPath(dataset, fullName) {
 			continue
 		}
 
 		if destroyErr := snap.Destroy(ctx, false, false); destroyErr != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy_migration_snapshot_%s_failed: %w", fullName, destroyErr))
 			logger.L.Warn().
 				Str("snapshot", fullName).
 				Err(destroyErr).
@@ -372,7 +366,29 @@ func (s *Service) destroyDatasetMigrationSnapshots(ctx context.Context, dataset 
 		}
 	}
 
-	return nil
+	return errors.Join(cleanupErrs...)
+}
+
+func (s *Service) destroyMigratedDatasetSnapshots(ctx context.Context, roots []string) error {
+	var cleanupErrs []error
+	for _, dataset := range roots {
+		if err := s.destroyDatasetMigrationSnapshots(ctx, dataset); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_migration_snapshots_%s_failed: %w", dataset, err))
+		}
+	}
+	return errors.Join(cleanupErrs...)
+}
+
+func isGeneratedMigrationSnapshotPath(root, fullName string) bool {
+	root = strings.TrimSpace(root)
+	fullName = strings.TrimSpace(fullName)
+	at := strings.LastIndex(fullName, "@")
+	if root == "" || at <= 0 || at == len(fullName)-1 {
+		return false
+	}
+	dataset := fullName[:at]
+	return (dataset == root || strings.HasPrefix(dataset, root+"/")) &&
+		isGeneratedMigrationSnapshotName(fullName[at+1:])
 }
 
 func isGeneratedMigrationSnapshotName(shortName string) bool {

@@ -112,6 +112,7 @@
 	setContext('jailSummaryBarExtras', summaryBarExtras);
 
 	const visible = new IsDocumentVisible();
+	let isDeleteInFlight = $state(false);
 
 	let modalState = $state({
 		isDeleteOpen: false,
@@ -141,7 +142,7 @@
 
 	useInterval(() => 1000, {
 		callback: () => {
-			if (visible.current && ctId) {
+			if (visible.current && ctId && !isDeleteInFlight) {
 				jState.refetch();
 			}
 		}
@@ -150,7 +151,7 @@
 	watch(
 		() => storage.idle,
 		(idle) => {
-			if (!idle && ctId) {
+			if (!idle && ctId && !isDeleteInFlight) {
 				refreshJailState();
 			}
 		}
@@ -165,7 +166,8 @@
 	}
 
 	async function handleDelete() {
-		if (!jail.current) return;
+		if (!jail.current || isDeleteInFlight) return;
+		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Jail';
@@ -182,6 +184,7 @@
 		modalState.loading.open = false;
 
 		if (result.status === 'error') {
+			isDeleteInFlight = false;
 			toast.error(
 				result.message === 'guest_delete_requires_replication_policy_removed'
 					? 'Remove the replication policy before deleting this jail'

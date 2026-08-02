@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -156,15 +157,30 @@ func (s *Service) phaseFinalSync(ctx context.Context, mp *migrationPayload, task
 }
 
 func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPayload, task taskModels.GuestLifecycleTask, incremental bool) error {
-	datasets, err := s.resolveGuestDatasets(ctx, task.GuestType, task.GuestID)
+	if mp == nil {
+		return fmt.Errorf("migration_payload_required")
+	}
+	resolved, err := s.resolveGuestDatasets(ctx, task.GuestType, task.GuestID)
 	if err != nil {
 		return fmt.Errorf("resolve_datasets_failed: %w", err)
+	}
+	resolved = filterParentDatasets(normalizedMigrationDatasetRootManifest(resolved))
+	datasets := resolved
+	if len(mp.SourceDatasetRoots) > 0 {
+		datasets = filterParentDatasets(normalizedMigrationDatasetRootManifest(mp.SourceDatasetRoots))
+		if !sameMigrationDatasetRootManifest(datasets, resolved) {
+			return fmt.Errorf("migration_source_dataset_roots_changed")
+		}
 	}
 	if len(datasets) == 0 {
 		return fmt.Errorf("no_datasets_found_for_guest")
 	}
 
-	datasets = filterParentDatasets(datasets)
+	for _, dataset := range datasets {
+		if !isCanonicalMigrationGuestDataset(dataset, task.GuestType, task.GuestID) {
+			return fmt.Errorf("migration_source_dataset_root_invalid: %s", dataset)
+		}
+	}
 
 	var metadataWriter func(uint) error
 	switch task.GuestType {
@@ -205,28 +221,8 @@ func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPaylo
 
 	if !incremental {
 		for _, dataset := range datasets {
-			snapList, listErr := s.GZFS.ZFS.ListWithPrefix(ctx, gzfs.DatasetTypeSnapshot, dataset, true)
-			if listErr != nil {
-				continue
-			}
-			for _, snap := range snapList {
-				if snap == nil {
-					continue
-				}
-				fullName := snap.Name
-				atIdx := strings.LastIndex(fullName, "@")
-				if atIdx < 0 {
-					continue
-				}
-				shortName := fullName[atIdx+1:]
-				if shortName == "" {
-					continue
-				}
-				if isMigrationOwnedSnapshot(shortName) {
-					if err := snap.Destroy(ctx, false, false); err != nil && !isDatasetNotFound(err) {
-						return fmt.Errorf("destroy_previous_migration_snapshot_%s_failed: %w", fullName, err)
-					}
-				}
+			if err := s.destroyLocalMigrationSnapshots(ctx, dataset); err != nil {
+				return fmt.Errorf("destroy_previous_migration_snapshots_%s_failed: %w", dataset, err)
 			}
 		}
 	}
@@ -606,6 +602,160 @@ func latestCommonMigrationSnapshot(local, remote []string) string {
 	return best
 }
 
+func migrationSnapshotPathsWithinRoot(root, output string) []string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+
+	paths := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, line := range strings.Split(output, "\n") {
+		name := strings.TrimSpace(line)
+		if !isMigrationSnapshotPathWithinRoot(root, name) {
+			continue
+		}
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
+		paths = append(paths, name)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func isMigrationSnapshotPathWithinRoot(root, name string) bool {
+	root = strings.TrimSpace(root)
+	name = strings.TrimSpace(name)
+	at := strings.LastIndex(name, "@")
+	if root == "" || at <= 0 || at == len(name)-1 {
+		return false
+	}
+	dataset := name[:at]
+	return (dataset == root || strings.HasPrefix(dataset, root+"/")) &&
+		isMigrationOwnedSnapshot(name[at+1:])
+}
+
+func (s *Service) destroyLocalMigrationSnapshots(ctx context.Context, root string) error {
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return fmt.Errorf("migration_snapshot_cleanup_zfs_unavailable")
+	}
+	snapshots, err := s.GZFS.ZFS.ListWithPrefix(ctx, gzfs.DatasetTypeSnapshot, root, true)
+	if err != nil {
+		if isDatasetNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	var cleanupErrs []error
+	for _, snapshot := range snapshots {
+		if snapshot == nil || !isMigrationSnapshotPathWithinRoot(root, snapshot.Name) {
+			continue
+		}
+		if err := snapshot.Destroy(ctx, false, false); err != nil && !isMigrationSnapshotNotFound(err) {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy_local_migration_snapshot_%s_failed: %w", snapshot.Name, err))
+		}
+	}
+	return errors.Join(cleanupErrs...)
+}
+
+func (s *Service) destroyRemoteMigrationSnapshots(
+	ctx context.Context,
+	root string,
+	identity *clusterModels.ClusterSSHIdentity,
+	privateKeyPath string,
+) error {
+	if identity == nil {
+		return fmt.Errorf("migration_snapshot_cleanup_target_identity_unavailable")
+	}
+	sshArgs := buildClusterSSHArgs(identity, privateKeyPath)
+	listArgs := append(append([]string(nil), sshArgs...),
+		fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+		"zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", root,
+	)
+	output, err := utils.RunCommandWithContext(ctx, "ssh", listArgs...)
+	if err != nil {
+		if isDatasetNotFound(errors.New(output + ": " + err.Error())) {
+			return nil
+		}
+		return err
+	}
+
+	var cleanupErrs []error
+	for _, snapshot := range migrationSnapshotPathsWithinRoot(root, output) {
+		destroyArgs := append(append([]string(nil), sshArgs...),
+			fmt.Sprintf("%s@%s", identity.SSHUser, identity.SSHHost),
+			"zfs", "destroy", snapshot,
+		)
+		destroyOutput, destroyErr := utils.RunCommandWithContext(ctx, "ssh", destroyArgs...)
+		if destroyErr != nil && !isMigrationSnapshotNotFound(errors.New(destroyOutput+": "+destroyErr.Error())) {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy_remote_migration_snapshot_%s_failed: %w", snapshot, destroyErr))
+		}
+	}
+	return errors.Join(cleanupErrs...)
+}
+
+func (s *Service) cleanupPreCutoverMigrationSnapshots(
+	ctx context.Context,
+	task taskModels.GuestLifecycleTask,
+	payload migrationPayload,
+) error {
+	if s == nil || s.DB == nil || s.Cluster == nil {
+		return fmt.Errorf("migration_snapshot_cleanup_unavailable")
+	}
+	roots := filterParentDatasets(normalizedMigrationDatasetRootManifest(payload.SourceDatasetRoots))
+	if len(roots) == 0 {
+		return nil
+	}
+	for _, root := range roots {
+		if !isCanonicalMigrationGuestDataset(root, task.GuestType, task.GuestID) {
+			return fmt.Errorf("migration_cleanup_dataset_root_invalid: %s", root)
+		}
+	}
+
+	var cleanupErrs []error
+	for _, root := range roots {
+		if err := s.destroyLocalMigrationSnapshots(ctx, root); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_local_migration_snapshots_%s_failed: %w", root, err))
+		}
+	}
+
+	var targetNode clusterModels.ClusterNode
+	if err := s.DB.WithContext(ctx).Where("node_uuid = ?", payload.TargetNodeUUID).First(&targetNode).Error; err != nil {
+		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_target_node_unavailable: %w", err))
+		return errors.Join(cleanupErrs...)
+	}
+	identity, err := s.getNodeSSHIdentity(targetNode.NodeUUID)
+	if err != nil {
+		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_target_identity_unavailable: %w", err))
+		return errors.Join(cleanupErrs...)
+	}
+	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
+	if err != nil {
+		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_cluster_key_unavailable: %w", err))
+		return errors.Join(cleanupErrs...)
+	}
+	for _, root := range roots {
+		if err := s.destroyRemoteMigrationSnapshots(ctx, root, identity, privateKeyPath); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_remote_migration_snapshots_%s_failed: %w", root, err))
+		}
+	}
+	return errors.Join(cleanupErrs...)
+}
+
+func (s *Service) runPreCutoverSnapshotCleanup(
+	ctx context.Context,
+	task taskModels.GuestLifecycleTask,
+	payload migrationPayload,
+) error {
+	if s.preCutoverSnapshotCleanup != nil {
+		return s.preCutoverSnapshotCleanup(ctx, task, payload)
+	}
+	return s.cleanupPreCutoverMigrationSnapshots(ctx, task, payload)
+}
+
 func (s *Service) phaseStopSource(ctx context.Context, mp *migrationPayload, task taskModels.GuestLifecycleTask) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -941,6 +1091,18 @@ func isDatasetNotFound(err error) bool {
 
 	return strings.Contains(lower, "dataset does not exist") ||
 		strings.Contains(lower, "no such pool")
+}
+
+func isMigrationSnapshotNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isDatasetNotFound(err) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "snapshot does not exist") ||
+		strings.Contains(lower, "could not find any snapshots to destroy")
 }
 
 func filterParentDatasets(datasets []string) []string {

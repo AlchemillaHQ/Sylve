@@ -315,12 +315,15 @@
 				toast.success(`Route ${String(activeRow?.name ?? '')} deleted`, {
 					position: 'bottom-center'
 				});
+				modals.delete.open = false;
+				modals.delete.id = 0;
 			} else {
 				handleAPIError(result);
 				toast.error('Failed to delete route', { position: 'bottom-center' });
 			}
 		},
-		onCancel: async () => {
+		onCancel: () => {
+			modals.delete.open = false;
 			modals.delete.id = 0;
 		}
 	}}

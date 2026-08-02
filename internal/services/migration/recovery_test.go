@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +97,135 @@ func TestReconcileTerminalPreCutoverTaskAbortsExactToken(t *testing.T) {
 	}
 	var count int64
 	if err := db.Model(&clusterModels.ReplicationGuestOperation{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("remaining operation count = %d, err=%v", count, err)
+	}
+}
+
+func TestReconcileTerminalPreCutoverTaskCleansSnapshotsBeforeAbort(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationGuestOperation{},
+		&taskModels.GuestLifecycleTask{},
+	)
+	payload, err := json.Marshal(migrationPayload{
+		TargetNodeUUID:     "node-b",
+		OperationToken:     "migration:node-a:922",
+		Phase:              PhaseInitialReplicaton,
+		SourceDatasetRoots: []string{"zroot/sylve/virtual-machines/922"},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	task := taskModels.GuestLifecycleTask{
+		ID:        922,
+		GuestType: taskModels.GuestTypeVM,
+		GuestID:   922,
+		Action:    "migrate",
+		Source:    taskModels.LifecycleTaskSourceUser,
+		Status:    taskModels.LifecycleTaskStatusFailed,
+		Payload:   string(payload),
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeVM,
+		GuestID:      task.GuestID,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationPreCutover,
+		Token:        "migration:node-a:922",
+		TaskID:       task.ID,
+		TargetNodeID: "node-b",
+	}
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatalf("seed operation: %v", err)
+	}
+
+	order := make([]string, 0, 2)
+	guard := &migrationWorkloadGuardStub{}
+	guard.abortFn = func(_ context.Context, guestType string, guestID uint, token string) error {
+		order = append(order, "abort")
+		return db.Where("guest_type = ? AND guest_id = ? AND token = ?", guestType, guestID, token).
+			Delete(&clusterModels.ReplicationGuestOperation{}).Error
+	}
+	svc := &Service{
+		DB:            db,
+		WorkloadGuard: guard,
+		preCutoverSnapshotCleanup: func(_ context.Context, gotTask taskModels.GuestLifecycleTask, gotPayload migrationPayload) error {
+			order = append(order, "cleanup")
+			if gotTask.ID != task.ID || !sameMigrationDatasetRootManifest(gotPayload.SourceDatasetRoots, []string{"zroot/sylve/virtual-machines/922"}) {
+				return fmt.Errorf("unexpected_cleanup_scope")
+			}
+			return nil
+		},
+	}
+	if err := svc.reconcileMigrationOperation(t.Context(), operation); err != nil {
+		t.Fatalf("reconcile operation: %v", err)
+	}
+	if !reflect.DeepEqual(order, []string{"cleanup", "abort"}) {
+		t.Fatalf("reconciliation order = %v", order)
+	}
+}
+
+func TestReconcileTerminalPreCutoverTaskRetainsGuardWhenSnapshotCleanupFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationGuestOperation{},
+		&taskModels.GuestLifecycleTask{},
+	)
+	payload, err := json.Marshal(migrationPayload{
+		TargetNodeUUID:     "node-b",
+		OperationToken:     "migration:node-a:923",
+		Phase:              PhaseInitialReplicaton,
+		SourceDatasetRoots: []string{"zroot/sylve/jails/923"},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	task := taskModels.GuestLifecycleTask{
+		ID:        923,
+		GuestType: taskModels.GuestTypeJail,
+		GuestID:   923,
+		Action:    "migrate",
+		Source:    taskModels.LifecycleTaskSourceUser,
+		Status:    taskModels.LifecycleTaskStatusFailed,
+		Payload:   string(payload),
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeJail,
+		GuestID:      task.GuestID,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationPreCutover,
+		Token:        "migration:node-a:923",
+		TaskID:       task.ID,
+		TargetNodeID: "node-b",
+	}
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatalf("seed operation: %v", err)
+	}
+	abortCalls := 0
+	guard := &migrationWorkloadGuardStub{}
+	guard.abortFn = func(context.Context, string, uint, string) error {
+		abortCalls++
+		return nil
+	}
+	svc := &Service{
+		DB:            db,
+		WorkloadGuard: guard,
+		preCutoverSnapshotCleanup: func(context.Context, taskModels.GuestLifecycleTask, migrationPayload) error {
+			return errors.New("target unavailable")
+		},
+	}
+	err = svc.reconcileMigrationOperation(t.Context(), operation)
+	if err == nil || !strings.Contains(err.Error(), "migration_pre_cutover_snapshot_cleanup_failed") {
+		t.Fatalf("reconcile result = %v", err)
+	}
+	if abortCalls != 0 {
+		t.Fatalf("abort calls = %d, want 0", abortCalls)
+	}
+	var count int64
+	if err := db.Model(&clusterModels.ReplicationGuestOperation{}).Count(&count).Error; err != nil || count != 1 {
 		t.Fatalf("remaining operation count = %d, err=%v", count, err)
 	}
 }

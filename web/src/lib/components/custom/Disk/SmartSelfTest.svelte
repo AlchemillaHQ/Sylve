@@ -682,6 +682,14 @@ under sponsorship from the FreeBSD Foundation.
 		await refresh(false, generation);
 	}
 
+	function preventActionDialogEscape(event: KeyboardEvent) {
+		if (action !== '') event.preventDefault();
+	}
+
+	function preventScheduleDialogEscape(event: KeyboardEvent) {
+		if (scheduleAction !== '') event.preventDefault();
+	}
+
 	function pollActive() {
 		if (!open || !visible.current || loading || action || scheduleAction) return;
 		if (selectedActiveState) void refreshAll();
@@ -1482,7 +1490,12 @@ under sponsorship from the FreeBSD Foundation.
 </Dialog.Root>
 
 <AlertDialog.Root bind:open={startConfirmOpen}>
-	<AlertDialog.Content onInteractOutside={(event) => event.preventDefault()} class="p-5">
+	<AlertDialog.Content
+		onInteractOutside={(event) => event.preventDefault()}
+		onEscapeKeydown={preventActionDialogEscape}
+		aria-busy={action !== ''}
+		class="p-5"
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Start {selectedDefinition?.label || 'S.M.A.R.T'} test?</AlertDialog.Title>
 			<AlertDialog.Description class="space-y-3">
@@ -1512,7 +1525,12 @@ under sponsorship from the FreeBSD Foundation.
 </AlertDialog.Root>
 
 <AlertDialog.Root bind:open={deleteConfirmOpen}>
-	<AlertDialog.Content onInteractOutside={(event) => event.preventDefault()} class="p-5">
+	<AlertDialog.Content
+		onInteractOutside={(event) => event.preventDefault()}
+		onEscapeKeydown={preventScheduleDialogEscape}
+		aria-busy={scheduleAction !== ''}
+		class="p-5"
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Delete periodic self-test schedule?</AlertDialog.Title>
 			<AlertDialog.Description>
@@ -1545,7 +1563,12 @@ under sponsorship from the FreeBSD Foundation.
 </AlertDialog.Root>
 
 <AlertDialog.Root bind:open={abortConfirmOpen}>
-	<AlertDialog.Content onInteractOutside={(event) => event.preventDefault()} class="p-5">
+	<AlertDialog.Content
+		onInteractOutside={(event) => event.preventDefault()}
+		onEscapeKeydown={preventActionDialogEscape}
+		aria-busy={action !== ''}
+		class="p-5"
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Abort the running S.M.A.R.T test?</AlertDialog.Title>
 			<AlertDialog.Description>

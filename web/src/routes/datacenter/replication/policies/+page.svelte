@@ -1579,12 +1579,17 @@
 		try {
 			const result = await deleteReplicationPolicy(target.id);
 			if (result.status === 'success') {
-				await removeCache('replication-events');
-				toast.success('Policy deleted', { position: 'bottom-center' });
+				const remainingPolicies = policies.filter((policy) => policy.id !== target.id);
+				policyRefreshGeneration += 1;
+				policies = remainingPolicies;
+				activeRows = [];
 				deleteModalOpen = false;
 				pendingPolicyDelete = null;
-				activeRows = [];
-				reload = true;
+				await Promise.all([
+					updateCache('replication-policies', remainingPolicies),
+					removeCache('replication-events')
+				]);
+				toast.success('Policy deleted', { position: 'bottom-center' });
 				return;
 			}
 

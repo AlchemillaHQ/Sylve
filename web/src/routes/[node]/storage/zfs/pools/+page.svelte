@@ -33,6 +33,7 @@ under sponsorship from the FreeBSD Foundation.
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
@@ -56,7 +57,7 @@ under sponsorship from the FreeBSD Foundation.
 			return pools;
 		},
 		{
-			initialValue: data.pools
+			initialValue: untrack(() => data.pools)
 		}
 	);
 
@@ -68,7 +69,7 @@ under sponsorship from the FreeBSD Foundation.
 			return disks;
 		},
 		{
-			initialValue: data.disks
+			initialValue: untrack(() => data.disks)
 		}
 	);
 
@@ -339,10 +340,10 @@ under sponsorship from the FreeBSD Foundation.
 	}}
 	actions={{
 		onConfirm: async () => {
-			modals.delete.open = false;
-			let pool = $state.snapshot(activePool);
-			let response = await deletePool(pool?.guid as string);
+			const pool = $state.snapshot(activePool);
+			const response = await deletePool(pool?.guid as string);
 			reload = true;
+			if (response.status === 'success') modals.delete.open = false;
 			handleAPIResponse(response, {
 				success: `Pool ${pool?.name} deleted`,
 				error: parsePoolActionError(response)
@@ -365,16 +366,17 @@ under sponsorship from the FreeBSD Foundation.
 	confirmLabel="Detach"
 	actions={{
 		onConfirm: async () => {
-			modals.detach.open = false;
-			let pool = getPoolByDevice(pools.current, activeRow?.name);
+			const device = String(activeRow?.name || '');
+			const pool = getPoolByDevice(pools.current, device);
 			if (!pool) return;
 			const poolObj = pools.current.find((p) => p.name === pool);
 			if (!poolObj) return;
-			const response = await detachDevice(poolObj.guid, activeRow?.name as string);
+			const response = await detachDevice(poolObj.guid, device);
 			if (response.status === 'error') {
 				toast.error(response.error || 'Detach failed', { position: 'bottom-center' });
 			} else {
-				toast.success(`Detached ${activeRow?.name}`, { position: 'bottom-center' });
+				modals.detach.open = false;
+				toast.success(`Detached ${device}`, { position: 'bottom-center' });
 			}
 		},
 		onCancel: () => {

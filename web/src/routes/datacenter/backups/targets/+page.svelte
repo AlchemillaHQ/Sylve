@@ -456,10 +456,9 @@
 <AlertDialog
 	open={deleteModalOpen}
 	names={{ parent: 'backup target', element: targetModal.name || '' }}
+	customTitle="Delete this backup target? This removes only its saved connection metadata. Backup datasets and snapshots on the remote host are not deleted."
 	actions={{
-		onConfirm: async () => {
-			await removeTarget();
-		},
+		onConfirm: removeTarget,
 		onCancel: () => {
 			deleteModalOpen = false;
 		}

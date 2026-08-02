@@ -314,6 +314,7 @@
 	}
 
 	async function handleDelete() {
+		if (isDeleteInFlight) return;
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;

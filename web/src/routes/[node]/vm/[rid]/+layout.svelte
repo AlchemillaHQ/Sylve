@@ -172,7 +172,7 @@
 	}
 
 	async function handleDelete() {
-		if (!vm.current) return;
+		if (!vm.current || isDeleteInFlight) return;
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;

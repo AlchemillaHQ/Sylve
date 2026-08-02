@@ -513,10 +513,9 @@
 <AlertDialog
 	open={deleteModalOpen}
 	names={{ parent: 'job', element: selectedJob?.name || '' }}
+	customTitle="This removes only the job configuration and schedule. Existing backup snapshots on the source and backup target are preserved and will no longer be managed by this job."
 	actions={{
-		onConfirm: async () => {
-			await removeJob();
-		},
+		onConfirm: removeJob,
 		onCancel: () => {
 			deleteModalOpen = false;
 		}

@@ -367,7 +367,6 @@
 	<DeleteSnapshot
 		bind:open={modals.snapshot.delete.open}
 		datasets={activeDatasets}
-		askRecursive={false}
 		bind:reload
 	/>
 {/if}

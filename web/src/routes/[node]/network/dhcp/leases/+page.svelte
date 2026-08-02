@@ -132,7 +132,6 @@
 		},
 		delete: {
 			open: false,
-			loading: false,
 			type: '' as 'static' | 'dynamic' | '',
 			id: '0',
 			ip: '',
@@ -387,8 +386,6 @@
 		onConfirm: async () => {
 			let result = null as null | APIResponse;
 
-			modals.delete.loading = true;
-
 			if (modals.delete.type === 'static') {
 				result = await deleteDHCPLease(parseInt(modals.delete.id));
 			} else if (modals.delete.type === 'dynamic') {
@@ -410,7 +407,6 @@
 			}
 
 			modals.delete.open = false;
-			modals.delete.loading = false;
 			modals.delete.id = '0';
 			modals.delete.identifier = '';
 			modals.delete.ip = '';
@@ -422,9 +418,7 @@
 			modals.delete.id = '0';
 			modals.delete.identifier = '';
 			modals.delete.ip = '';
-			modals.delete.loading = false;
 		}
 	}}
-	loading={modals.delete.loading}
 	loadingLabel="Deleting Lease..."
 ></AlertDialog>

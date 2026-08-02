@@ -143,6 +143,10 @@
 		});
 	}
 
+	function preventDismissEscape(event: KeyboardEvent) {
+		if (dismissingAll) event.preventDefault();
+	}
+
 	function severityIcon(severity: string) {
 		switch (severity) {
 			case 'critical':
@@ -344,7 +348,12 @@
 </Dialog.Root>
 
 <AlertDialog.Root bind:open={dismissAllOpen}>
-	<AlertDialog.Content onInteractOutside={(event) => event.preventDefault()} class="p-5">
+	<AlertDialog.Content
+		onInteractOutside={(event) => event.preventDefault()}
+		onEscapeKeydown={preventDismissEscape}
+		aria-busy={dismissingAll}
+		class="p-5"
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Dismiss all notifications?</AlertDialog.Title>
 			<AlertDialog.Description>

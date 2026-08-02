@@ -91,6 +91,8 @@ type Service struct {
 	activeMu  sync.Mutex
 	active    map[uint]struct{}
 	cutoverMu sync.Mutex
+
+	preCutoverSnapshotCleanup func(context.Context, taskModels.GuestLifecycleTask, migrationPayload) error
 }
 
 func NewService(
@@ -1010,6 +1012,16 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 		}
 		abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
+		if mp.Phase == PhaseInitialReplicaton && len(mp.SourceDatasetRoots) > 0 {
+			if err := s.runPreCutoverSnapshotCleanup(abortCtx, task, mp); err != nil {
+				logger.L.Error().Err(err).
+					Str("guest_type", task.GuestType).
+					Uint("guest_id", task.GuestID).
+					Uint("task_id", taskID).
+					Msg("migration_pre_cutover_snapshot_cleanup_failed")
+				return
+			}
+		}
 		if err := s.abortPreCutoverInterlockConvergently(
 			abortCtx, task.GuestType, task.GuestID, operationToken,
 		); err != nil {
@@ -1036,9 +1048,31 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 		return fmt.Errorf("migration_backup_job_rebind_plan_failed: %w", err)
 	}
 
+	roots, err := s.resolveGuestDatasets(ctx, task.GuestType, task.GuestID)
+	if err != nil {
+		s.updateTaskFailed(taskID, err.Error())
+		return fmt.Errorf("migration_initial_dataset_resolution_failed: %w", err)
+	}
+	roots = filterParentDatasets(normalizedMigrationDatasetRootManifest(roots))
+	if len(roots) == 0 {
+		err := fmt.Errorf("migration_initial_source_dataset_roots_missing")
+		s.updateTaskFailed(taskID, err.Error())
+		return err
+	}
+	for _, root := range roots {
+		if !isCanonicalMigrationGuestDataset(root, task.GuestType, task.GuestID) {
+			err := fmt.Errorf("migration_initial_dataset_root_invalid: %s", root)
+			s.updateTaskFailed(taskID, err.Error())
+			return err
+		}
+	}
+	mp.SourceDatasetRoots = append([]string(nil), roots...)
 	mp.Phase = PhaseInitialReplicaton
 	mp.PhaseMessage = "replicating_datasets_to_target"
-	s.updateTaskPhase(taskID, mp)
+	if err := s.persistTaskPhase(taskID, mp); err != nil {
+		s.updateTaskFailed(taskID, err.Error())
+		return fmt.Errorf("migration_initial_replication_checkpoint_failed: %w", err)
+	}
 
 	if err := s.phaseInitialReplication(ctx, &mp, task); err != nil {
 		if isExplicitMigrationCancellation(err) {
@@ -1048,24 +1082,28 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 		return err
 	}
 
-	roots, err := s.resolveGuestDatasets(ctx, task.GuestType, task.GuestID)
+	currentRoots, err := s.resolveGuestDatasets(ctx, task.GuestType, task.GuestID)
 	if err != nil {
 		s.updateTaskFailed(taskID, err.Error())
 		return fmt.Errorf("migration_cutover_dataset_resolution_failed: %w", err)
 	}
-	roots = filterParentDatasets(roots)
-	if len(roots) == 0 {
+	currentRoots = filterParentDatasets(normalizedMigrationDatasetRootManifest(currentRoots))
+	if len(currentRoots) == 0 {
 		err := fmt.Errorf("migration_cutover_source_dataset_roots_missing")
 		s.updateTaskFailed(taskID, err.Error())
 		return err
 	}
-	mp.SourceDatasetRoots = append([]string(nil), roots...)
+	if !sameMigrationDatasetRootManifest(roots, currentRoots) {
+		err := fmt.Errorf("migration_cutover_source_dataset_roots_changed")
+		s.updateTaskFailed(taskID, err.Error())
+		return err
+	}
 	mp.PhaseMessage = "revalidating_target_before_cutover"
 	if err := s.persistTaskPhase(taskID, mp); err != nil {
 		s.updateTaskFailed(taskID, err.Error())
 		return fmt.Errorf("migration_cutover_checkpoint_persist_failed: %w", err)
 	}
-	if err := s.phaseFinalCutoverRevalidation(ctx, &mp, task, roots); err != nil {
+	if err := s.phaseFinalCutoverRevalidation(ctx, &mp, task, currentRoots); err != nil {
 		s.updateTaskFailed(taskID, err.Error())
 		return err
 	}
