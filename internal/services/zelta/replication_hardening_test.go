@@ -261,12 +261,117 @@ func TestReplicationManifestHashBindsEveryRootAndEpoch(t *testing.T) {
 }
 
 func TestReplicationGenerationSnapshotNameBoundsLongIDs(t *testing.T) {
-	name, err := replicationGenerationSnapshotName(strings.Repeat("a", 128))
+	const policyID = uint(987654321)
+	name, err := replicationGenerationSnapshotName(
+		policyID,
+		"replication-987654321-"+strings.Repeat("a", 106),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(name) > 128 || !strings.HasPrefix(name, haSnapPrefix) {
+	ownership, owned := parseReplicationPolicySnapshotOwnership(name)
+	if len(name) > 128 || !owned || ownership.PolicyID != policyID || ownership.Kind != "replication" {
 		t.Fatalf("invalid bounded snapshot name %q", name)
+	}
+	if strings.HasPrefix(name, haSnapPrefix) && !strings.HasPrefix(name, "ha_replication-987654321-") {
+		t.Fatalf("shortened snapshot lost policy ownership: %q", name)
+	}
+	if len(ownership.Suffix) != 32 {
+		t.Fatalf("shortened suffix=%q, want 32 hex characters", ownership.Suffix)
+	}
+
+	catchupName, err := replicationGenerationSnapshotName(
+		policyID,
+		"catchup-987654321-"+strings.Repeat("b", 110),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catchupOwnership, owned := parseReplicationPolicySnapshotOwnership(catchupName)
+	if !owned || catchupOwnership.PolicyID != policyID || catchupOwnership.Kind != "catchup" ||
+		len(catchupName) > 128 {
+		t.Fatalf("invalid bounded catch-up snapshot name %q", catchupName)
+	}
+
+	opaqueName, err := replicationGenerationSnapshotName(policyID, strings.Repeat("c", 128))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opaqueOwnership, owned := parseReplicationPolicySnapshotOwnership(opaqueName)
+	if !owned || opaqueOwnership.PolicyID != policyID || opaqueOwnership.Kind != "replication" ||
+		strings.HasPrefix(opaqueName, "ha_") && !strings.HasPrefix(opaqueName, "ha_replication-987654321-") {
+		t.Fatalf("opaque generation lost ownership in %q", opaqueName)
+	}
+}
+
+func TestReplicationCatchupGenerationIDIsStableAndPolicyAddressable(t *testing.T) {
+	const policyID = uint(77)
+	first, err := replicationCatchupGenerationID(policyID, "failover-77-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := replicationCatchupGenerationID(policyID, "failover-77-token")
+	if err != nil || first != second {
+		t.Fatalf("catch-up generation is not stable: first=%q second=%q err=%v", first, second, err)
+	}
+	name, err := replicationGenerationSnapshotName(policyID, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownership, owned := parseReplicationPolicySnapshotOwnership(name)
+	if !owned || ownership.PolicyID != policyID || ownership.Kind != "catchup" {
+		t.Fatalf("catch-up generation snapshot ownership=%+v owned=%t name=%q", ownership, owned, name)
+	}
+
+	longRunID := strings.Repeat("r", 128)
+	shortened, err := replicationCatchupGenerationID(policyID, longRunID)
+	if err != nil || len(shortened) > 128 || !strings.HasPrefix(shortened, "catchup-77-") {
+		t.Fatalf("bounded catch-up generation=%q err=%v", shortened, err)
+	}
+}
+
+func TestBindReplicationTransitionGenerationAcceptsCanonicalAndLegacyCatchup(t *testing.T) {
+	const (
+		policyID = uint(77)
+		epoch    = uint64(5)
+		runID    = "failover-77-token"
+	)
+	canonical, err := replicationCatchupGenerationID(policyID, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		name       string
+		generation string
+		wantErr    bool
+	}{
+		{name: "canonical catch-up", generation: canonical},
+		{name: "legacy exact transition run", generation: runID},
+		{name: "unrelated generation", generation: "catchup-77-other-run", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := &clusterModels.ReplicationPolicy{
+				ID: policyID, OwnerEpoch: epoch,
+				Targets: []clusterModels.ReplicationPolicyTarget{
+					readyReplicationTarget("node-b", tc.generation, epoch, now, now.Add(time.Hour), 100),
+				},
+			}
+			transition := &clusterModels.ReplicationPolicyTransition{RunID: runID}
+			err := bindReplicationTransitionGenerationEvidence(policy, "node-b", transition, true)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "generation_run_mismatch") {
+					t.Fatalf("unrelated generation error=%v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("bind generation evidence: %v", err)
+			}
+			if transition.GenerationID != tc.generation {
+				t.Fatalf("bound generation=%q, want %q", transition.GenerationID, tc.generation)
+			}
+		})
 	}
 }
 

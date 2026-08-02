@@ -11,7 +11,435 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/hashicorp/raft"
 )
+
+type disposableReplicationGuestDriver struct {
+	sourceCalls int
+	datasets    []string
+}
+
+func (d *disposableReplicationGuestDriver) sourceDatasets(context.Context, uint) ([]string, error) {
+	d.sourceCalls++
+	return append([]string(nil), d.datasets...), nil
+}
+
+func (*disposableReplicationGuestDriver) activate(context.Context, uint, string, bool) error {
+	return nil
+}
+
+func (*disposableReplicationGuestDriver) demote(context.Context, uint) error {
+	return nil
+}
+
+func (*disposableReplicationGuestDriver) selfFence(context.Context, uint, uint, string, string, string) {
+}
+
+func TestFollowerOwnerForwardsExactReplicationClaimAndRepublishesAfterApplyLag(t *testing.T) {
+	fx := SetupZeltaClusterFixture(t, 3)
+	defer fx.Cleanup()
+
+	owner := fx.Nodes[0]
+	initialLeader := fx.Nodes[1]
+	finalLeader := fx.Nodes[2]
+	if err := owner.raft.LeadershipTransferToServer(
+		raft.ServerID(initialLeader.id), initialLeader.addr,
+	).Error(); err != nil {
+		t.Fatalf("transfer leadership: %v", err)
+	}
+	fx.WaitForCondition(8*time.Second, "leadership transfer", func() bool {
+		return initialLeader.raft.State() == raft.Leader && owner.raft.State() == raft.Follower
+	})
+
+	now := time.Now().UTC()
+	nextRunAt := now.Add(5 * time.Minute)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 8801, Name: "follower-owner-manual-run",
+		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 107,
+		SourceNodeID: owner.id, ActiveNodeID: owner.id, OwnerEpoch: 3,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
+		FailoverMode: clusterModels.ReplicationFailoverManual,
+		Enabled:      true, ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+		CronExpr: "*/5 * * * *", NextRunAt: &nextRunAt, ScheduleRevision: 7,
+		Targets: []clusterModels.ReplicationPolicyTarget{
+			{NodeID: initialLeader.id, Weight: 200},
+			{NodeID: finalLeader.id, Weight: 100},
+		},
+	}
+	for _, node := range fx.Nodes {
+		nodePolicy := policy
+		nodePolicy.Targets = append([]clusterModels.ReplicationPolicyTarget(nil), policy.Targets...)
+		if err := clusterModels.UpsertReplicationPolicyTxn(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
+			t.Fatalf("seed policy on %s: %v", node.id, err)
+		}
+		if err := node.db.Create(&clusterModels.ReplicationLease{
+			PolicyID: policy.ID, GuestType: policy.GuestType, GuestID: policy.GuestID,
+			OwnerNodeID: owner.id, OwnerEpoch: policy.OwnerEpoch, ExpiresAt: now.Add(time.Hour),
+		}).Error; err != nil {
+			t.Fatalf("seed lease on %s: %v", node.id, err)
+		}
+	}
+
+	service := newTestZeltaService(owner.db)
+	service.Cluster = owner.cService
+	var queued []replicationJobPayload
+	service.replicationOperationEnqueue = func(_ context.Context, name string, payload any) error {
+		if name != replicationJobQueueName {
+			t.Fatalf("queue name=%q, want %q", name, replicationJobQueueName)
+		}
+		claim, ok := payload.(replicationJobPayload)
+		if !ok {
+			t.Fatalf("queue payload type=%T", payload)
+		}
+		queued = append(queued, claim)
+		return nil
+	}
+
+	forwardAttempts := 0
+	claimToken := ""
+	service.replicationRunClaimForward = func(
+		_ context.Context,
+		leaderNodeID string,
+		decision clusterModels.ReplicationPolicyScheduleDecision,
+	) error {
+		if decision.HolderNodeID != owner.id || decision.PolicyID != policy.ID || decision.Scheduled {
+			t.Fatalf("forwarded claim lost owner/manual fence: %+v", decision)
+		}
+		forwardAttempts++
+		if forwardAttempts == 1 {
+			if leaderNodeID != initialLeader.id {
+				t.Fatalf("first claim target=%q, want %q", leaderNodeID, initialLeader.id)
+			}
+			claimToken = decision.ClaimToken
+			if err := initialLeader.raft.LeadershipTransferToServer(
+				raft.ServerID(finalLeader.id), finalLeader.addr,
+			).Error(); err != nil {
+				t.Fatalf("change leader during claim: %v", err)
+			}
+			fx.WaitForCondition(8*time.Second, "claim-time leadership change", func() bool {
+				_, observedLeaderID := owner.raft.LeaderWithID()
+				return finalLeader.raft.State() == raft.Leader &&
+					strings.TrimSpace(string(observedLeaderID)) == finalLeader.id
+			})
+			return fmt.Errorf("replication_control_replication-run-claim_failed_status_503: not_leader")
+		}
+		if leaderNodeID != finalLeader.id {
+			t.Fatalf("attempt %d claim target=%q, want %q", forwardAttempts, leaderNodeID, finalLeader.id)
+		}
+		if forwardAttempts == 2 {
+			if decision.ClaimToken != claimToken {
+				t.Fatalf("claim retry changed token: first=%q retry=%q", claimToken, decision.ClaimToken)
+			}
+			for _, node := range fx.Nodes[1:] {
+				owner.transport.Disconnect(node.addr)
+				node.transport.Disconnect(owner.addr)
+			}
+		}
+		return finalLeader.cService.ApplyReplicationPolicyScheduleDecision(decision, false)
+	}
+
+	if err := service.EnqueueReplicationPolicyRun(context.Background(), policy.ID); err != nil {
+		t.Fatalf("enqueue through follower owner: %v", err)
+	}
+	if len(queued) != 1 || queued[0].PolicyID != policy.ID ||
+		queued[0].HolderNodeID != owner.id || queued[0].OperationToken == "" {
+		t.Fatalf("unexpected initial queue publication: %+v", queued)
+	}
+
+	var ownerOperationCount int64
+	if err := owner.db.Model(&clusterModels.ReplicationRunOperation{}).
+		Where("policy_id = ?", policy.ID).Count(&ownerOperationCount).Error; err != nil {
+		t.Fatalf("count lagging owner operations: %v", err)
+	}
+	if ownerOperationCount != 0 {
+		t.Fatalf("owner FSM was not delayed: operations=%d", ownerOperationCount)
+	}
+	var leaderOperation clusterModels.ReplicationRunOperation
+	if err := finalLeader.db.First(&leaderOperation, "policy_id = ?", policy.ID).Error; err != nil {
+		t.Fatalf("leader did not commit claim: %v", err)
+	}
+	if leaderOperation.Token != queued[0].OperationToken || leaderOperation.HolderNodeID != owner.id {
+		t.Fatalf("committed claim differs from queued claim: operation=%+v queued=%+v", leaderOperation, queued[0])
+	}
+
+	for _, source := range fx.Nodes {
+		for _, target := range fx.Nodes {
+			if source == target {
+				continue
+			}
+			source.transport.Connect(target.addr, target.transport)
+		}
+	}
+	fx.WaitForCondition(8*time.Second, "owner FSM catch-up", func() bool {
+		var operation clusterModels.ReplicationRunOperation
+		return owner.db.First(&operation, "policy_id = ?", policy.ID).Error == nil &&
+			operation.Token == leaderOperation.Token
+	})
+	fx.WaitForCondition(8*time.Second, "owner leader discovery", func() bool {
+		_, leaderID := owner.raft.LeaderWithID()
+		return strings.TrimSpace(string(leaderID)) != ""
+	})
+
+	if err := service.RepublishQueuedReplicationRuns(context.Background()); err != nil {
+		t.Fatalf("republish caught-up claim: %v", err)
+	}
+	if len(queued) != 2 || queued[1] != queued[0] {
+		t.Fatalf("republisher changed exact claim: %+v", queued)
+	}
+
+	err := service.EnqueueReplicationPolicyRun(context.Background(), policy.ID)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "already_running") {
+		t.Fatalf("duplicate manual run was not rejected: %v", err)
+	}
+	if len(queued) != 2 {
+		t.Fatalf("duplicate run published another queue item: %+v", queued)
+	}
+	if forwardAttempts != 3 {
+		t.Fatalf("forward attempts=%d, want two exact retries plus one duplicate claim", forwardAttempts)
+	}
+	var operationCount int64
+	if err := finalLeader.db.Model(&clusterModels.ReplicationRunOperation{}).
+		Where("policy_id = ?", policy.ID).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count leader operations: %v", err)
+	}
+	if operationCount != 1 {
+		t.Fatalf("operation count=%d, want 1", operationCount)
+	}
+
+	rejected := []struct {
+		name            string
+		id              uint
+		enabled         bool
+		activeNodeID    string
+		ownerEpoch      uint64
+		leaseOwnerEpoch uint64
+		leaseExpiresAt  time.Time
+		wantError       string
+	}{
+		{
+			name: "non-runnable", id: 8810, enabled: false, activeNodeID: owner.id,
+			ownerEpoch: 1, leaseOwnerEpoch: 1, leaseExpiresAt: now.Add(time.Hour),
+			wantError: "replication_policy_not_runnable",
+		},
+		{
+			name: "expired local lease", id: 8811, enabled: true, activeNodeID: owner.id,
+			ownerEpoch: 2, leaseOwnerEpoch: 2, leaseExpiresAt: now.Add(-time.Minute),
+			wantError: "replication_lease_expired",
+		},
+		{
+			name: "stale lease epoch", id: 8812, enabled: true, activeNodeID: owner.id,
+			ownerEpoch: 3, leaseOwnerEpoch: 2, leaseExpiresAt: now.Add(time.Hour),
+			wantError: "replication_lease_epoch_mismatch",
+		},
+		{
+			name: "different active owner", id: 8813, enabled: true, activeNodeID: initialLeader.id,
+			ownerEpoch: 1, leaseOwnerEpoch: 1, leaseExpiresAt: now.Add(time.Hour),
+			wantError: "replication_policy_not_owned_by_local_node",
+		},
+	}
+	baselineForwardAttempts := forwardAttempts
+	for _, test := range rejected {
+		t.Run(test.name, func(t *testing.T) {
+			rejectedPolicy := clusterModels.ReplicationPolicy{
+				ID: test.id, Name: test.name,
+				GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: test.id,
+				SourceNodeID: test.activeNodeID, ActiveNodeID: test.activeNodeID,
+				OwnerEpoch: test.ownerEpoch, SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+				FailoverMode: clusterModels.ReplicationFailoverManual,
+				Enabled:      test.enabled, ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+				CronExpr: "*/5 * * * *",
+				Targets: []clusterModels.ReplicationPolicyTarget{
+					{NodeID: initialLeader.id, Weight: 200},
+					{NodeID: finalLeader.id, Weight: 100},
+				},
+			}
+			if err := clusterModels.UpsertReplicationPolicyTxn(
+				owner.db, &rejectedPolicy, rejectedPolicy.Targets,
+			); err != nil {
+				t.Fatalf("seed rejected policy: %v", err)
+			}
+			if err := owner.db.Create(&clusterModels.ReplicationLease{
+				PolicyID: test.id, GuestType: rejectedPolicy.GuestType, GuestID: rejectedPolicy.GuestID,
+				OwnerNodeID: test.activeNodeID, OwnerEpoch: test.leaseOwnerEpoch,
+				ExpiresAt: test.leaseExpiresAt,
+			}).Error; err != nil {
+				t.Fatalf("seed rejected lease: %v", err)
+			}
+
+			err := service.EnqueueReplicationPolicyRun(context.Background(), test.id)
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), test.wantError) {
+				t.Fatalf("error=%v, want marker %q", err, test.wantError)
+			}
+			for _, node := range fx.Nodes {
+				var count int64
+				if err := node.db.Model(&clusterModels.ReplicationRunOperation{}).
+					Where("policy_id = ?", test.id).Count(&count).Error; err != nil {
+					t.Fatalf("count rejected operations on %s: %v", node.id, err)
+				}
+				if count != 0 {
+					t.Fatalf("rejected policy created %d operations on %s", count, node.id)
+				}
+			}
+		})
+	}
+	if forwardAttempts != baselineForwardAttempts {
+		t.Fatalf("locally rejected claims were forwarded: before=%d after=%d", baselineForwardAttempts, forwardAttempts)
+	}
+}
+
+func TestCapturedReplicationQueueTokenExecutesOnceAndCreatesOneEvent(t *testing.T) {
+	fx := SetupZeltaClusterFixture(t, 3)
+	defer fx.Cleanup()
+
+	owner := fx.Nodes[0]
+	if owner.raft.State() != raft.Leader {
+		t.Fatalf("execution owner state=%s, want leader for deterministic result finalization", owner.raft.State())
+	}
+	if err := owner.db.AutoMigrate(&clusterModels.ClusterSSHIdentity{}); err != nil {
+		t.Fatalf("migrate SSH identity table: %v", err)
+	}
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+
+	now := time.Now().UTC()
+	nextRunAt := now.Add(5 * time.Minute)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 8890, Name: "captured-token-single-execution",
+		GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 8890,
+		SourceNodeID: owner.id, ActiveNodeID: owner.id, OwnerEpoch: 4,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
+		FailoverMode: clusterModels.ReplicationFailoverManual,
+		Enabled:      true, ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+		CronExpr: "*/5 * * * *", NextRunAt: &nextRunAt, ScheduleRevision: 9,
+		Targets: []clusterModels.ReplicationPolicyTarget{
+			{NodeID: fx.Nodes[1].id, Weight: 200},
+			{NodeID: fx.Nodes[2].id, Weight: 100},
+		},
+	}
+	for _, node := range fx.Nodes {
+		nodePolicy := policy
+		nodePolicy.Targets = append([]clusterModels.ReplicationPolicyTarget(nil), policy.Targets...)
+		if err := clusterModels.UpsertReplicationPolicyTxn(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
+			t.Fatalf("seed policy on %s: %v", node.id, err)
+		}
+		if err := node.db.Create(&clusterModels.ReplicationLease{
+			PolicyID: policy.ID, GuestType: policy.GuestType, GuestID: policy.GuestID,
+			OwnerNodeID: owner.id, OwnerEpoch: policy.OwnerEpoch,
+			ExpiresAt: now.Add(time.Hour), Version: 1,
+		}).Error; err != nil {
+			t.Fatalf("seed lease on %s: %v", node.id, err)
+		}
+	}
+
+	service := newTestZeltaService(owner.db)
+	service.Cluster = owner.cService
+	driver := &disposableReplicationGuestDriver{
+		datasets: []string{"disposable/sylve/jails/8890"},
+	}
+	service.replicationGuestDriverFactory = func(guestType string) (replicationGuestDriver, error) {
+		if guestType != clusterModels.ReplicationGuestTypeJail {
+			return nil, fmt.Errorf("unexpected guest type %q", guestType)
+		}
+		return driver, nil
+	}
+
+	queued := make([]replicationJobPayload, 0, 1)
+	service.replicationOperationEnqueue = func(_ context.Context, name string, payload any) error {
+		if name != replicationJobQueueName {
+			t.Fatalf("queue name=%q, want %q", name, replicationJobQueueName)
+		}
+		claim, ok := payload.(replicationJobPayload)
+		if !ok {
+			t.Fatalf("queue payload type=%T", payload)
+		}
+		queued = append(queued, claim)
+		return nil
+	}
+
+	if err := service.EnqueueReplicationPolicyRun(context.Background(), policy.ID); err != nil {
+		t.Fatalf("capture replication run: %v", err)
+	}
+	if len(queued) != 1 || queued[0].PolicyID != policy.ID ||
+		queued[0].OperationToken == "" || queued[0].HolderNodeID != owner.id {
+		t.Fatalf("captured queue payload=%+v", queued)
+	}
+	captured := queued[0]
+	if err := service.handleReplicationJob(context.Background(), captured); err != nil {
+		t.Fatalf("execute captured queue payload: %v", err)
+	}
+	if driver.sourceCalls != 1 {
+		t.Fatalf("driver executions=%d, want 1", driver.sourceCalls)
+	}
+
+	var events []clusterModels.ReplicationEvent
+	if err := owner.db.Where("policy_id = ?", policy.ID).Order("id ASC").Find(&events).Error; err != nil {
+		t.Fatalf("load replication events: %v", err)
+	}
+	if len(events) != 1 || events[0].CompletedAt == nil || events[0].Status == replicationEventStatusRunning {
+		t.Fatalf("replication events=%+v, want one terminal event", events)
+	}
+	var receiptCount int64
+	if err := owner.db.Model(&clusterModels.ScheduledRunReceipt{}).
+		Where("token = ? AND kind = ? AND object_id = ?",
+			captured.OperationToken, clusterModels.ScheduledRunKindReplication, policy.ID,
+		).Count(&receiptCount).Error; err != nil {
+		t.Fatalf("count exact execution receipt: %v", err)
+	}
+	if receiptCount != 1 {
+		t.Fatalf("exact execution receipts=%d, want 1", receiptCount)
+	}
+	var operationCount int64
+	if err := owner.db.Model(&clusterModels.ReplicationRunOperation{}).
+		Where("policy_id = ?", policy.ID).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count completed operation: %v", err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("completed operation rows=%d, want 0", operationCount)
+	}
+
+	if err := service.handleReplicationJob(context.Background(), captured); err != nil {
+		t.Fatalf("replay captured queue payload: %v", err)
+	}
+	if driver.sourceCalls != 1 {
+		t.Fatalf("replayed token executed driver %d times", driver.sourceCalls)
+	}
+	if err := owner.db.Where("policy_id = ?", policy.ID).Find(&events).Error; err != nil {
+		t.Fatalf("reload replication events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("replayed token created %d events, want 1", len(events))
+	}
+}
+
+func TestStandaloneReplicationClaimAppliesLocally(t *testing.T) {
+	service := newReplicationSchedulerTestDB(t)
+	now := time.Now().UTC()
+	policy := clusterModels.ReplicationPolicy{
+		ID: 8802, Name: "standalone-manual-run",
+		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 108,
+		OwnerEpoch: 1, Enabled: true,
+		ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+	}
+	if err := service.DB.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	handle, err := service.acquireReplicationRunOperation(
+		context.Background(), &policy, false, now, nil, nil, true,
+	)
+	if err != nil {
+		t.Fatalf("acquire standalone claim: %v", err)
+	}
+	if handle.Token == "" || handle.HolderNodeID != "local" || handle.PolicyID != policy.ID {
+		t.Fatalf("unexpected standalone handle: %+v", handle)
+	}
+	var operation clusterModels.ReplicationRunOperation
+	if err := service.DB.First(&operation, "policy_id = ?", policy.ID).Error; err != nil {
+		t.Fatalf("load standalone operation: %v", err)
+	}
+	if operation.Token != handle.Token || operation.HolderNodeID != handle.HolderNodeID ||
+		operation.State != clusterModels.ReplicationRunOperationQueued {
+		t.Fatalf("unexpected standalone operation: %+v", operation)
+	}
+}
 
 func TestBackupClaimSurvivesPublishFailureAndRestartRepublishesSameToken(t *testing.T) {
 	service := newSchedulerTestDB(t)

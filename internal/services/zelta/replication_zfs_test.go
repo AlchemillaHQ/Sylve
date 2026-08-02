@@ -79,9 +79,10 @@ func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
 			}
 
 			service := &Service{GZFS: client}
-			scopeLocalFilesystemDatasetsToPool(t, service, pool)
+			scopeLocalDatasetsToPool(t, service, pool)
+			policyID := uint(700 + tt.guestID)
 			generationID := "replication-validator-" + strconv.FormatUint(uint64(tt.guestID), 10)
-			snapshotName, err := replicationGenerationSnapshotName(generationID)
+			snapshotName, err := replicationGenerationSnapshotName(policyID, generationID)
 			if err != nil {
 				t.Fatalf("generation snapshot name: %v", err)
 			}
@@ -89,7 +90,6 @@ func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
 				t.Fatalf("create generation snapshot: %v\n%s", err, output)
 			}
 			snapshotGUID := zfsGetProperty(t, root+"@"+snapshotName, "guid")
-			policyID := uint(700 + tt.guestID)
 			ownerEpoch := uint64(4)
 			sourceRoot := pool + "/source/" + strconv.FormatUint(uint64(tt.guestID), 10)
 			setRealZFSProperties(t, root, replicationProvenanceProperties(
@@ -175,7 +175,7 @@ func TestValidateAlreadyRunningReplicationActivationIgnoresSnapshots(t *testing.
 			}
 			service := newTestZeltaService(database)
 			service.GZFS = client
-			scopeLocalFilesystemDatasetsToPool(t, service, pool)
+			scopeLocalDatasetsToPool(t, service, pool)
 			policyID := uint(800 + tt.guestID)
 			setRealZFSProperties(t, root, map[string]string{
 				replicationPropertyPolicyID: strconv.FormatUint(uint64(policyID), 10),
@@ -215,7 +215,7 @@ func TestFenceReplicationGuestDatasets(t *testing.T) {
 	}
 
 	s := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, s, pool)
+	scopeLocalDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
@@ -240,7 +240,7 @@ func TestFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, s, pool)
+	scopeLocalDatasetsToPool(t, s, pool)
 
 	// fence once
 	policy := &clusterModels.ReplicationPolicy{
@@ -266,7 +266,7 @@ func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
 	zfstest.EnsureDataset(t, client, jailDS)
 
 	s := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, s, pool)
+	scopeLocalDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 3, GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 50,
@@ -288,7 +288,7 @@ func TestFenceReplicationGuestDatasetsNoMatch(t *testing.T) {
 	ctx := context.Background()
 
 	s := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, s, pool)
+	scopeLocalDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 4, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 9999,
@@ -317,7 +317,7 @@ func TestUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 	zfstest.EnsureDataset(t, client, vmDS)
 
 	s := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, s, pool)
+	scopeLocalDatasetsToPool(t, s, pool)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 5, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 300,
@@ -353,7 +353,7 @@ func TestFindLocalGuestDatasets(t *testing.T) {
 	zfstest.EnsureDataset(t, client, pool+"/sylve/virtual-machines/0100")
 
 	s := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, s, pool)
+	scopeLocalDatasetsToPool(t, s, pool)
 
 	datasets, err := s.findLocalGuestDatasets(ctx, clusterModels.ReplicationGuestTypeVM, 100)
 	if err != nil {

@@ -124,6 +124,16 @@ func (s *Service) waitForReplicatedStateAppliedIndex(ctx context.Context, minimu
 	}
 }
 
+func (s *Service) WaitForReplicatedStateAppliedIndex(ctx context.Context, minimum uint64) (uint64, error) {
+	if minimum == 0 {
+		if s != nil && s.Raft != nil && s.Raft.State() != raft.Shutdown {
+			return s.Raft.AppliedIndex(), nil
+		}
+		return 0, nil
+	}
+	return s.waitForReplicatedStateAppliedIndex(ctx, minimum)
+}
+
 func (s *Service) LocalReplicatedStateDigest(
 	ctx context.Context,
 	expectedNodeID string,

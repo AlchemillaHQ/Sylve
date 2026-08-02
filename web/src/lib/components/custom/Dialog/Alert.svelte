@@ -27,10 +27,19 @@
 		loadingLabel = 'Processing...',
 		loading = false
 	}: Props = $props();
+
+	function handleEscapeKeydown(event: KeyboardEvent) {
+		if (loading) event.preventDefault();
+	}
 </script>
 
 <AlertDialog.Root bind:open>
-	<AlertDialog.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
+	<AlertDialog.Content
+		onInteractOutside={(e) => e.preventDefault()}
+		onEscapeKeydown={handleEscapeKeydown}
+		aria-busy={loading}
+		class="p-5"
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>
 				<SpanWithIcon
@@ -54,7 +63,7 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel onclick={actions.onCancel}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel onclick={actions.onCancel} disabled={loading}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action onclick={actions.onConfirm} disabled={loading}>
 				{#if loading}
 					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>

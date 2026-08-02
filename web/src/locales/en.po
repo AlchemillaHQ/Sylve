@@ -4119,9 +4119,8 @@ msgstr "Policy created"
 msgid "Policy deleted"
 msgstr "Policy deleted"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Failed to delete policy"
-msgstr "Failed to delete policy"
+#~ msgid "Failed to delete policy"
+#~ msgstr "Failed to delete policy"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Replication run queued"
@@ -18400,3 +18399,73 @@ msgstr "Could not verify cluster state. Changes are disabled until cluster statu
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Backup target changes are unavailable"
 msgstr "Backup target changes are unavailable"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cleanup is incomplete; the policy remains safely disabled. Retry when all cluster nodes are available."
+msgstr "Cleanup is incomplete; the policy remains safely disabled. Retry when all cluster nodes are available."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy is currently moving between nodes. Wait for that operation to finish, then retry."
+msgstr "This policy is currently moving between nodes. Wait for that operation to finish, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable. Restore quorum, then retry cleanup."
+msgstr "Cluster quorum is unavailable. Restore quorum, then retry cleanup."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "The cluster leader changed during deletion. Wait a few seconds, then retry."
+msgstr "The cluster leader changed during deletion. Wait a few seconds, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "A cluster node is unavailable. Bring all nodes back online, then retry cleanup."
+msgstr "A cluster node is unavailable. Bring all nodes back online, then retry cleanup."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy ownership changed during cleanup. Refresh the policy state, then retry."
+msgstr "Policy ownership changed during cleanup. Refresh the policy state, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Replication cleanup is temporarily unavailable. Restore the replication service, then retry."
+msgstr "Replication cleanup is temporarily unavailable. Restore the replication service, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy no longer exists. Refresh the policy list."
+msgstr "This policy no longer exists. Refresh the policy list."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Deletion timed out before cleanup was confirmed. Check cluster health, then retry."
+msgstr "Deletion timed out before cleanup was confirmed. Check cluster health, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "The delete request could not be completed. Check your connection and cluster status, then retry."
+msgstr "The delete request could not be completed. Check your connection and cluster status, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Could not delete the policy. Check the reported error and cluster status, then retry."
+msgstr "Could not delete the policy. Check the reported error and cluster status, then retry."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Request failed"
+msgstr "Request failed"
+
+#. 0: escapeHtml(pendingPolicyDelete.name)
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Replication policy <span class=\"font-semibold\">{0}</span> is already disabled for deletion. Retry cleanup of its standby replicas and policy-owned HA snapshots. The active VM or jail data will be preserved."
+msgstr "Replication policy <span class=\"font-semibold\">{0}</span> is already disabled for deletion. Retry cleanup of its standby replicas and policy-owned HA snapshots. The active VM or jail data will be preserved."
+
+#. 0: escapeHtml(pendingPolicyDelete?.name || '')
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This will permanently delete replication policy <span class=\"font-semibold\">{0}</span>, its standby replicas, and HA snapshots owned by this policy. The active VM or jail data will be preserved."
+msgstr "This will permanently delete replication policy <span class=\"font-semibold\">{0}</span>, its standby replicas, and HA snapshots owned by this policy. The active VM or jail data will be preserved."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Retry cleanup"
+msgstr "Retry cleanup"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Delete policy"
+msgstr "Delete policy"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cleaning replicas on all nodes..."
+msgstr "Cleaning replicas on all nodes..."

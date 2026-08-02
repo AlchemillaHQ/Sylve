@@ -417,54 +417,51 @@ func isReplicationPolicyTransitionRunningError(err error) bool {
 }
 
 func (s *Service) registerReplicationJob() {
-	db.QueueRegisterJSON(replicationJobQueueName, func(ctx context.Context, payload replicationJobPayload) error {
-		if payload.PolicyID == 0 {
-			logger.L.Warn().Msg("queued_replication_policy_invalid_payload_discarded")
-			return nil
-		}
+	db.QueueRegisterJSON(replicationJobQueueName, s.handleReplicationJob)
+}
 
-		_, execute, err := s.prepareReplicationRunOperation(
-			payload.PolicyID, payload.OperationToken, payload.HolderNodeID,
-		)
-		if err != nil {
-			return err
-		}
-		if !execute {
-			return nil
-		}
-
-		policy, err := s.Cluster.GetReplicationPolicyByID(payload.PolicyID)
-		if err != nil {
-			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_not_found")
-			// A queue record can outlive its policy.  Retrying a deleted or
-			// otherwise terminal policy forever creates a poison message.
-			return nil
-		}
-
-		runErr := s.runReplicationPolicyWithToken(ctx, policy, payload.OperationToken)
-		if runErr != nil {
-			if errors.Is(runErr, errScheduledRunOperationRevalidation) {
-				return runErr
-			}
-			if isJobAlreadyRunningErr(runErr) {
-				logger.L.Info().Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_duplicate_discarded")
-				return nil
-			}
-			if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
-				logger.L.Warn().
-					Err(runErr).
-					Uint("policy_id", payload.PolicyID).
-					Msg("queued_replication_policy_blocked_ha_constraints")
-				return nil
-			}
-			logger.L.Warn().Err(runErr).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
-			// Replication policy state/events already record the operational
-			// failure.  The scheduler is the retry policy; one durable queue
-			// message represents exactly one attempt.
-			return nil
-		}
+func (s *Service) handleReplicationJob(ctx context.Context, payload replicationJobPayload) error {
+	if payload.PolicyID == 0 {
+		logger.L.Warn().Msg("queued_replication_policy_invalid_payload_discarded")
 		return nil
-	})
+	}
+
+	_, execute, err := s.prepareReplicationRunOperation(
+		ctx, payload.PolicyID, payload.OperationToken, payload.HolderNodeID,
+	)
+	if err != nil {
+		return err
+	}
+	if !execute {
+		return nil
+	}
+
+	policy, err := s.Cluster.GetReplicationPolicyByID(payload.PolicyID)
+	if err != nil {
+		logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_not_found")
+		return nil
+	}
+
+	runErr := s.runReplicationPolicyWithToken(ctx, policy, payload.OperationToken)
+	if runErr != nil {
+		if errors.Is(runErr, errScheduledRunOperationRevalidation) {
+			return runErr
+		}
+		if isJobAlreadyRunningErr(runErr) {
+			logger.L.Info().Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_duplicate_discarded")
+			return nil
+		}
+		if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
+			logger.L.Warn().
+				Err(runErr).
+				Uint("policy_id", payload.PolicyID).
+				Msg("queued_replication_policy_blocked_ha_constraints")
+			return nil
+		}
+		logger.L.Warn().Err(runErr).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
+		return nil
+	}
+	return nil
 }
 
 func (s *Service) registerReplicationFailoverJob() {
@@ -550,7 +547,7 @@ func (s *Service) EnqueueReplicationPolicyRun(ctx context.Context, policyID uint
 		return err
 	}
 	operation, err := s.acquireReplicationRunOperation(
-		policy, false, s.now().UTC(), policy.NextRunAt, nil, bypassRaft,
+		ctx, policy, false, s.now().UTC(), policy.NextRunAt, nil, bypassRaft,
 	)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "already_running") {
@@ -558,7 +555,7 @@ func (s *Service) EnqueueReplicationPolicyRun(ctx context.Context, policyID uint
 		}
 		return err
 	}
-	if err := db.EnqueueJSON(ctx, replicationJobQueueName, replicationJobPayload{
+	if err := s.enqueueReplicationRunOperation(ctx, replicationJobPayload{
 		PolicyID: policyID, OperationToken: operation.Token, HolderNodeID: operation.HolderNodeID,
 	}); err != nil {
 		logger.L.Warn().Err(err).Uint("policy_id", policyID).
@@ -1911,7 +1908,7 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 
 		occurrenceAt := policy.NextRunAt.UTC()
 		if _, claimErr := s.acquireReplicationRunOperation(
-			&policy, true, occurrenceAt, &nextAt, &now, bypassRaft,
+			ctx, &policy, true, occurrenceAt, &nextAt, &now, bypassRaft,
 		); claimErr != nil {
 			logger.L.Debug().Err(claimErr).Uint("policy_id", policy.ID).
 				Msg("scheduled_replication_claim_rejected")
@@ -2981,20 +2978,63 @@ func (s *Service) replicationDatasetGenerationReady(
 	return true, nil
 }
 
-func replicationGenerationSnapshotName(generationID string) (string, error) {
+func replicationGenerationSnapshotName(policyID uint, generationID string) (string, error) {
+	if policyID == 0 {
+		return "", fmt.Errorf("replication_policy_id_required")
+	}
 	generationID = strings.TrimSpace(generationID)
 	if !validReplicationZFSToken(generationID) {
 		return "", fmt.Errorf("invalid_replication_generation_id")
 	}
-	snapshotName := haSnapPrefix + generationID
+
+	kind := "replication"
+	suffix := generationID
+	for _, candidateKind := range []string{"replication", "catchup"} {
+		prefix := fmt.Sprintf("%s-%d-", candidateKind, policyID)
+		if strings.HasPrefix(generationID, prefix) && len(generationID) > len(prefix) {
+			kind = candidateKind
+			suffix = strings.TrimPrefix(generationID, prefix)
+			break
+		}
+	}
+	if !validReplicationZFSToken(suffix) {
+		return "", fmt.Errorf("invalid_replication_generation_suffix")
+	}
+
+	snapshotPrefix := fmt.Sprintf("%s%s-%d-", haSnapPrefix, kind, policyID)
+	snapshotName := snapshotPrefix + suffix
 	if len(snapshotName) > 128 {
-		sum := sha256.Sum256([]byte(generationID))
-		snapshotName = fmt.Sprintf("%s%x", haSnapPrefix, sum[:16])
+		sum := sha256.Sum256([]byte(suffix))
+		snapshotName = fmt.Sprintf("%s%x", snapshotPrefix, sum[:16])
 	}
 	if err := validateReplicationSnapshotName(snapshotName); err != nil {
 		return "", err
 	}
+	ownership, ok := parseReplicationPolicySnapshotOwnership(snapshotName)
+	if !ok || ownership.PolicyID != policyID || ownership.Kind != kind {
+		return "", fmt.Errorf("replication_snapshot_ownership_invalid")
+	}
 	return snapshotName, nil
+}
+
+func replicationCatchupGenerationID(policyID uint, transitionRunID string) (string, error) {
+	if policyID == 0 {
+		return "", fmt.Errorf("replication_policy_id_required")
+	}
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if !validReplicationZFSToken(transitionRunID) {
+		return "", fmt.Errorf("invalid_replication_transition_run_id")
+	}
+	prefix := fmt.Sprintf("catchup-%d-", policyID)
+	generationID := prefix + transitionRunID
+	if len(generationID) > 128 {
+		sum := sha256.Sum256([]byte(transitionRunID))
+		generationID = fmt.Sprintf("%s%x", prefix, sum[:16])
+	}
+	if !validReplicationZFSToken(generationID) {
+		return "", fmt.Errorf("invalid_replication_generation_id")
+	}
+	return generationID, nil
 }
 
 func replicationSnapshotManifestHash(
@@ -3194,7 +3234,7 @@ func (s *Service) replicatePolicyGenerationToTarget(
 	if generationID == "" {
 		generationID = fmt.Sprintf("replication-%d-%s", policy.ID, compactNowToken())
 	}
-	snapshotName, err := replicationGenerationSnapshotName(generationID)
+	snapshotName, err := replicationGenerationSnapshotName(policy.ID, generationID)
 	if err != nil {
 		return result, err
 	}
@@ -4281,6 +4321,10 @@ func badgerCounterIncr(key string, max uint64) uint64 {
 }
 
 func badgerCounterDelete(key string) {
+	if db.CacheDB == nil {
+		logger.L.Warn().Str("key", key).Msg("badger_counter_delete_skipped_cache_unavailable")
+		return
+	}
 	if err := db.SetValue(key, nil, 0); err != nil {
 		logger.L.Warn().Err(err).Str("key", key).Msg("badger_counter_delete_failed")
 	}
@@ -4796,8 +4840,16 @@ func bindReplicationTransitionGenerationEvidence(
 	if !replicationTargetGenerationComplete(target, replicationPolicyOwnerEpoch(policy)) {
 		return fmt.Errorf("replication_transition_target_generation_incomplete")
 	}
-	if requireTransitionGeneration && strings.TrimSpace(target.GenerationID) != strings.TrimSpace(transition.RunID) {
-		return fmt.Errorf("replication_transition_target_generation_run_mismatch")
+	if requireTransitionGeneration {
+		actualGenerationID := strings.TrimSpace(target.GenerationID)
+		legacyGenerationID := strings.TrimSpace(transition.RunID)
+		catchupGenerationID, err := replicationCatchupGenerationID(policy.ID, legacyGenerationID)
+		if err != nil {
+			return fmt.Errorf("replication_transition_catchup_generation_invalid: %w", err)
+		}
+		if actualGenerationID != catchupGenerationID && actualGenerationID != legacyGenerationID {
+			return fmt.Errorf("replication_transition_target_generation_run_mismatch")
+		}
 	}
 	if transition.GenerationID != "" {
 		if transition.GenerationID != strings.TrimSpace(target.GenerationID) ||
@@ -6012,6 +6064,10 @@ func (s *Service) runPolicyOwnershipTransition(
 				return recoverPreviousOwnerThenFail(err, reason+"_transition_checkpoint_failed")
 			}
 
+			catchupGenerationID, generationErr := replicationCatchupGenerationID(policy.ID, transition.RunID)
+			if generationErr != nil {
+				return recoverPreviousOwnerThenFail(generationErr, reason+"_catchup_generation_failed")
+			}
 			catchupErr := s.withReplicationTransitionLeaseKeeper(
 				ctx,
 				policy,
@@ -6026,7 +6082,7 @@ func (s *Service) runPolicyOwnershipTransition(
 							targetNodeID,
 							currentEpoch,
 							transition.RunID,
-							transition.RunID,
+							catchupGenerationID,
 						)
 					}
 					return s.forwardCatchupReplicationPolicy(
@@ -6035,7 +6091,7 @@ func (s *Service) runPolicyOwnershipTransition(
 						targetNodeID,
 						currentEpoch,
 						transition.RunID,
-						transition.RunID,
+						catchupGenerationID,
 					)
 				},
 			)
@@ -6370,14 +6426,71 @@ func (s *Service) forwardReplicationPolicyRuntimeState(
 }
 
 func (s *Service) forwardCleanupReplicationPolicyDelete(
+	ctx context.Context,
 	nodeID string,
 	policyID uint,
 	expectedOwnerEpoch uint64,
+	minimumRaftAppliedIndex uint64,
 ) error {
-	return s.forwardReplicationPolicyControl(nodeID, "cleanup-policy-delete", map[string]any{
-		"policyId":           policyID,
-		"expectedOwnerEpoch": expectedOwnerEpoch,
-	}, replicationControlDefaultTimeout)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	payload := clusterServiceInterfaces.ReplicationPolicyDeleteCleanupRequest{
+		PolicyID:                policyID,
+		ExpectedOwnerEpoch:      expectedOwnerEpoch,
+		MinimumRaftAppliedIndex: minimumRaftAppliedIndex,
+	}
+	var lastErr error
+	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
+		lastErr = s.forwardReplicationPolicyControlContext(
+			ctx,
+			nodeID,
+			"cleanup-policy-delete",
+			payload,
+			replicationControlDefaultTimeout,
+		)
+		if lastErr == nil || !replicationPolicyDeleteCleanupForwardRetryable(lastErr) {
+			return lastErr
+		}
+		if attempt == replicationControlForwardAttempts-1 {
+			break
+		}
+
+		backoff := replicationControlForwardBackoff * time.Duration(attempt+1)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return fmt.Errorf("replication_policy_delete_cleanup_forward_canceled: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return lastErr
+}
+
+func replicationPolicyDeleteCleanupForwardRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	lowerErr := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"failed_status_400",
+		"failed_status_401",
+		"failed_status_403",
+		"failed_status_404",
+		"failed_status_409",
+		"failed_status_422",
+	} {
+		if strings.Contains(lowerErr, marker) {
+			return false
+		}
+	}
+	return true
 }
 
 func backupJobGuestIdentity(job *clusterModels.BackupJob) (string, uint) {
@@ -7139,6 +7252,21 @@ func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, 
 	return err
 }
 
+func (s *Service) forwardReplicationPolicyControlContext(
+	ctx context.Context,
+	nodeID string,
+	action string,
+	payload any,
+	timeout time.Duration,
+) error {
+	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
+	if err != nil {
+		return err
+	}
+	_, err = s.forwardReplicationPolicyControlReadAtAPIContext(ctx, targetAPI, action, payload, timeout)
+	return err
+}
+
 func (s *Service) forwardReplicationPolicyControlRead(
 	nodeID string,
 	action string,
@@ -7158,9 +7286,24 @@ func (s *Service) forwardReplicationPolicyControlReadAtAPI(
 	payload any,
 	timeout time.Duration,
 ) ([]byte, error) {
+	return s.forwardReplicationPolicyControlReadAtAPIContext(
+		context.Background(), targetAPI, action, payload, timeout,
+	)
+}
+
+func (s *Service) forwardReplicationPolicyControlReadAtAPIContext(
+	ctx context.Context,
+	targetAPI string,
+	action string,
+	payload any,
+	timeout time.Duration,
+) ([]byte, error) {
 	targetAPI = strings.TrimSpace(targetAPI)
 	if targetAPI == "" {
 		return nil, fmt.Errorf("replication_control_target_api_required")
+	}
+	if s == nil || s.Cluster == nil || s.Cluster.AuthService == nil {
+		return nil, fmt.Errorf("replication_control_auth_service_unavailable")
 	}
 	hostname, err := utils.GetSystemHostname()
 	if err != nil || strings.TrimSpace(hostname) == "" {
@@ -7181,7 +7324,7 @@ func (s *Service) forwardReplicationPolicyControlReadAtAPI(
 		timeout = replicationControlDefaultTimeout
 	}
 
-	responseBody, statusCode, err := utils.HTTPPostJSONWithTimeout(url, body, map[string]string{
+	responseBody, statusCode, err := utils.HTTPPostJSONWithTimeoutContext(ctx, url, body, map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",
 		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
@@ -7195,13 +7338,30 @@ func (s *Service) forwardReplicationPolicyControlReadAtAPI(
 // CleanupReplicationPolicyDeleteBestEffort retains its historical name, but
 // cleanup is now an all-node acknowledgement barrier: any failed or missing
 // acknowledgement leaves the durable policy in deleting for a safe retry.
-func (s *Service) CleanupReplicationPolicyDeleteBestEffort(ctx context.Context, policyID uint) error {
+const replicationPolicyDeleteCleanupTimeout = 45 * time.Second
+
+func (s *Service) CleanupReplicationPolicyDeleteBestEffort(
+	ctx context.Context,
+	policyID uint,
+	minimumRaftAppliedIndex uint64,
+) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
 	if s.Cluster == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
+	if s.Cluster.Raft != nil && minimumRaftAppliedIndex == 0 {
+		return fmt.Errorf("replication_policy_delete_applied_index_required")
+	}
+	if s.Cluster.Raft == nil && minimumRaftAppliedIndex != 0 {
+		return fmt.Errorf("replication_policy_delete_applied_index_invalid_standalone")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cleanupCtx, cancel := context.WithTimeout(ctx, replicationPolicyDeleteCleanupTimeout)
+	defer cancel()
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
@@ -7255,15 +7415,17 @@ func (s *Service) CleanupReplicationPolicyDeleteBestEffort(ctx context.Context, 
 			var cleanupErr error
 			if localNodeID != "" && nodeID == localNodeID {
 				cleanupErr = s.CleanupReplicationPolicyDeleteLocalBestEffort(
-					ctx,
+					cleanupCtx,
 					policyID,
 					expectedOwnerEpoch,
 				)
 			} else {
 				cleanupErr = s.forwardCleanupReplicationPolicyDelete(
+					cleanupCtx,
 					nodeID,
 					policyID,
 					expectedOwnerEpoch,
+					minimumRaftAppliedIndex,
 				)
 			}
 			results <- cleanupResult{nodeID: nodeID, err: cleanupErr}
@@ -7393,6 +7555,109 @@ func (s *Service) validateLocalReplicationPolicyDeleteAuthority(
 	return policy, nil
 }
 
+func (s *Service) cleanupLocalReplicationPolicySnapshots(
+	ctx context.Context,
+	policyID uint,
+	expectedOwnerEpoch uint64,
+	localNodeID string,
+	roots []string,
+) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	if expectedOwnerEpoch == 0 {
+		return fmt.Errorf("replication_owner_epoch_required")
+	}
+	localNodeID = strings.TrimSpace(localNodeID)
+	if localNodeID == "" {
+		return fmt.Errorf("local_node_id_missing")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	normalizedRoots := make([]string, 0, len(roots))
+	seenRoots := make(map[string]struct{}, len(roots))
+	for _, root := range roots {
+		root = normalizeDatasetPath(root)
+		if root == "" {
+			continue
+		}
+		if _, exists := seenRoots[root]; exists {
+			continue
+		}
+		seenRoots[root] = struct{}{}
+		normalizedRoots = append(normalizedRoots, root)
+	}
+	sort.Strings(normalizedRoots)
+
+	cleanupErrs := make([]error, 0)
+	seenTargets := make(map[string]struct{})
+	for _, root := range normalizedRoots {
+		identities, err := s.listHaSnapshotIdentitiesLocal(ctx, root)
+		if err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policyID).
+				Uint64("owner_epoch", expectedOwnerEpoch).
+				Str("node_id", localNodeID).
+				Str("root_dataset", root).
+				Str("snapshot_name", "").
+				Str("outcome", "list_failed").
+				Msg("replication_policy_snapshot_cleanup")
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("list_policy_snapshots_%s_failed: %w", root, err))
+			continue
+		}
+
+		names := replicationSnapshotNamesOwnedByPolicy(identities, policyID)
+		if len(names) == 0 {
+			logger.L.Info().
+				Uint("policy_id", policyID).
+				Uint64("owner_epoch", expectedOwnerEpoch).
+				Str("node_id", localNodeID).
+				Str("root_dataset", root).
+				Str("snapshot_name", "").
+				Str("outcome", "no_exact_policy_snapshots").
+				Msg("replication_policy_snapshot_cleanup")
+			continue
+		}
+
+		for _, snapshotName := range names {
+			target := root + "@" + snapshotName
+			if _, exists := seenTargets[target]; exists {
+				continue
+			}
+			seenTargets[target] = struct{}{}
+			if err := s.destroyLocalSnapshotBestEffort(ctx, root, snapshotName); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("policy_id", policyID).
+					Uint64("owner_epoch", expectedOwnerEpoch).
+					Str("node_id", localNodeID).
+					Str("root_dataset", root).
+					Str("snapshot_name", snapshotName).
+					Str("outcome", "failed").
+					Msg("replication_policy_snapshot_cleanup")
+				cleanupErrs = append(
+					cleanupErrs,
+					fmt.Errorf("destroy_policy_snapshot_%s_failed: %w", target, err),
+				)
+				continue
+			}
+			logger.L.Info().
+				Uint("policy_id", policyID).
+				Uint64("owner_epoch", expectedOwnerEpoch).
+				Str("node_id", localNodeID).
+				Str("root_dataset", root).
+				Str("snapshot_name", snapshotName).
+				Str("outcome", "removed_or_already_absent").
+				Msg("replication_policy_snapshot_cleanup")
+		}
+	}
+
+	return errors.Join(cleanupErrs...)
+}
+
 const replicationDeleteCleanupQuiesceTimeout = 10 * time.Second
 
 // acquireReplicationDeleteCleanupGuards waits for an existing replication
@@ -7463,6 +7728,9 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	policy, err := s.validateLocalReplicationPolicyDeleteAuthority(policyID, expectedOwnerEpoch)
 	if err != nil {
 		return err
@@ -7500,41 +7768,55 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(
 
 	// Never remove the active owner's primary dataset during policy delete.
 	if localNodeID == ownerNodeID {
+		if err := s.cleanupLocalReplicationPolicySnapshots(
+			ctx,
+			policy.ID,
+			expectedOwnerEpoch,
+			localNodeID,
+			datasets,
+		); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Sprintf("cleanup_policy_snapshots_failed: %v", err))
+		}
 		// Historical `_gen-*` siblings are not deleted by name. Only the
 		// provenance-aware remote generation primitives may remove them; an
 		// unknown local sibling could be user-owned data with a coincidental
 		// name. Leaving such residue is safer than destructive guessing.
-		return s.cleanupLocalReplicationDatasetsByProvenance(ctx, policy.ID, datasets)
-	}
+		if err := s.cleanupLocalReplicationDatasetsByProvenance(ctx, policy.ID, datasets); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Sprintf("cleanup_proven_replication_datasets_failed: %v", err))
+		}
+	} else {
+		driver, driverErr := s.replicationGuestDriver(policy.GuestType)
+		if driverErr != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Sprintf("replication_guest_driver_failed: %v", driverErr))
+		} else if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Sprintf("demote_before_cleanup_failed: %v", demoteErr))
+		}
 
-	driver, driverErr := s.replicationGuestDriver(policy.GuestType)
-	if driverErr != nil {
-		cleanupErrs = append(cleanupErrs, fmt.Sprintf("replication_guest_driver_failed: %v", driverErr))
-	} else if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
-		cleanupErrs = append(cleanupErrs, fmt.Sprintf("demote_before_cleanup_failed: %v", demoteErr))
-	}
+		for _, dataset := range datasets {
+			if err := s.destroyLocalDatasetIncludingDependentsWithRetry(ctx, dataset, 20, 500*time.Millisecond); err != nil {
+				cleanupErrs = append(cleanupErrs, fmt.Sprintf("destroy_local_replica_dataset_%s_failed: %v", dataset, err))
+				continue
+			}
+		}
+		if err := s.cleanupLocalReplicationDatasetsByProvenance(ctx, policy.ID, nil); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Sprintf("cleanup_proven_replication_datasets_failed: %v", err))
+		}
 
-	for _, dataset := range datasets {
-		if err := s.destroyLocalDatasetIncludingDependentsWithRetry(ctx, dataset, 20, 500*time.Millisecond); err != nil {
-			cleanupErrs = append(cleanupErrs, fmt.Sprintf("destroy_local_replica_dataset_%s_failed: %v", dataset, err))
-			continue
+		switch strings.TrimSpace(policy.GuestType) {
+		case clusterModels.ReplicationGuestTypeJail:
+			if _, retireErr := s.retireStaleNonOwnerJailMetadata(ctx, policy.GuestID, localNodeID, ownerNodeID); retireErr != nil {
+				cleanupErrs = append(cleanupErrs, fmt.Sprintf("retire_stale_jail_metadata_failed: %v", retireErr))
+			}
+		case clusterModels.ReplicationGuestTypeVM:
+			if _, retireErr := s.retireStaleNonOwnerVMMetadata(ctx, policy.GuestID, localNodeID, ownerNodeID); retireErr != nil {
+				cleanupErrs = append(cleanupErrs, fmt.Sprintf("retire_stale_vm_metadata_failed: %v", retireErr))
+			}
 		}
 	}
-	if err := s.cleanupLocalReplicationDatasetsByProvenance(ctx, policy.ID, nil); err != nil {
-		cleanupErrs = append(cleanupErrs, fmt.Sprintf("cleanup_proven_replication_datasets_failed: %v", err))
-	}
 
-	switch strings.TrimSpace(policy.GuestType) {
-	case clusterModels.ReplicationGuestTypeJail:
-		if _, retireErr := s.retireStaleNonOwnerJailMetadata(ctx, policy.GuestID, localNodeID, ownerNodeID); retireErr != nil {
-			cleanupErrs = append(cleanupErrs, fmt.Sprintf("retire_stale_jail_metadata_failed: %v", retireErr))
-		}
-	case clusterModels.ReplicationGuestTypeVM:
-		if _, retireErr := s.retireStaleNonOwnerVMMetadata(ctx, policy.GuestID, localNodeID, ownerNodeID); retireErr != nil {
-			cleanupErrs = append(cleanupErrs, fmt.Sprintf("retire_stale_vm_metadata_failed: %v", retireErr))
-		}
+	if _, err := s.validateLocalReplicationPolicyDeleteAuthority(policyID, expectedOwnerEpoch); err != nil {
+		cleanupErrs = append(cleanupErrs, fmt.Sprintf("replication_policy_delete_post_cleanup_authority_failed: %v", err))
 	}
-
 	if len(cleanupErrs) > 0 {
 		return fmt.Errorf("replication_policy_delete_local_cleanup_failed: %s", strings.Join(cleanupErrs, "; "))
 	}
@@ -8201,7 +8483,7 @@ func (s *Service) validateReplicationTransitionGenerationForActivation(
 		policy.TransitionGenerationOwnerEpoch == 0 || policy.TransitionGenerationRootCount <= 0 {
 		return fmt.Errorf("replication_transition_generation_evidence_missing")
 	}
-	snapshotName, err := replicationGenerationSnapshotName(generationID)
+	snapshotName, err := replicationGenerationSnapshotName(policy.ID, generationID)
 	if err != nil {
 		return err
 	}

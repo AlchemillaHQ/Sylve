@@ -9,6 +9,7 @@
 package clusterHandlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+type replicationPolicyDeleteCleanupService interface {
+	CleanupReplicationPolicyDeleteBestEffort(context.Context, uint, uint64) error
+}
+
+type replicationPolicyRunService interface {
+	EnqueueReplicationPolicyRun(context.Context, uint) error
+}
 
 func ReplicationPolicies(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -149,7 +158,7 @@ func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 	}
 }
 
-func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteCleanupService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -211,8 +220,26 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 			}
 		}
 
+		minimumRaftAppliedIndex := uint64(0)
+		if cS.Raft != nil {
+			minimumRaftAppliedIndex = cS.Raft.AppliedIndex()
+			if minimumRaftAppliedIndex == 0 {
+				c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "replication_policy_delete_applied_index_unavailable",
+					Error:   "replication_policy_delete_applied_index_unavailable",
+					Data:    nil,
+				})
+				return
+			}
+		}
+
 		deletingOwnerEpoch := policy.OwnerEpoch
-		if cleanupErr := zS.CleanupReplicationPolicyDeleteBestEffort(c.Request.Context(), uint(id64)); cleanupErr != nil {
+		if cleanupErr := zS.CleanupReplicationPolicyDeleteBestEffort(
+			c.Request.Context(),
+			uint(id64),
+			minimumRaftAppliedIndex,
+		); cleanupErr != nil {
 			logger.L.Warn().
 				Uint("policy_id", uint(id64)).
 				Uint64("owner_epoch", deletingOwnerEpoch).
@@ -231,8 +258,9 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 		// a stale cleanup acknowledgement from authorizing deletion after an
 		// ownership epoch or lifecycle change.
 		policy, policyErr = cS.GetReplicationPolicyByID(uint(id64))
-		if policyErr != nil || policy.OwnerEpoch != deletingOwnerEpoch ||
-			policy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+		if policyErr != nil || policy.ID != uint(id64) || policy.OwnerEpoch != deletingOwnerEpoch ||
+			policy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting ||
+			replicationPolicyDeleteTransitionInProgress(policy.TransitionState) {
 			revalidationErr := "replication_policy_delete_revalidation_failed"
 			if policyErr != nil {
 				revalidationErr = policyErr.Error()
@@ -280,7 +308,19 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 	}
 }
 
-func RunReplicationPolicyNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func replicationPolicyDeleteTransitionInProgress(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case clusterModels.ReplicationTransitionStateDemoting,
+		clusterModels.ReplicationTransitionStateCatchup,
+		clusterModels.ReplicationTransitionStatePromoting,
+		clusterModels.ReplicationTransitionStateRollingBack:
+		return true
+	default:
+		return false
+	}
+}
+
+func RunReplicationPolicyNow(cS *cluster.Service, zS replicationPolicyRunService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
@@ -326,12 +366,7 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS *zelta.Service) gin.Handler
 		}
 
 		if err := zS.EnqueueReplicationPolicyRun(c.Request.Context(), policy.ID); err != nil {
-			status := http.StatusBadRequest
-			msg := "replication_policy_enqueue_failed"
-			if strings.Contains(err.Error(), "already_running") {
-				status = http.StatusConflict
-				msg = "replication_policy_already_running"
-			}
+			status, msg := replicationPolicyEnqueueErrorResponse(err)
 			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
 				Message: msg,
@@ -350,6 +385,43 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS *zelta.Service) gin.Handler
 			Data:    nil,
 		})
 	}
+}
+
+func replicationPolicyEnqueueErrorResponse(err error) (int, string) {
+	text := strings.ToLower(err.Error())
+	if strings.Contains(text, "already_running") {
+		return http.StatusConflict, "replication_policy_already_running"
+	}
+	for _, marker := range []string{
+		"replication_run_claim_unavailable",
+		"leader_not_available",
+		"cluster_service_unavailable",
+		"raft_not_initialized",
+		"cluster_enabled_raft_unavailable",
+		"not_leader",
+		"not the leader",
+		"leadership",
+		"quorum",
+		"timeout",
+		"deadline",
+		"context canceled",
+	} {
+		if strings.Contains(text, marker) {
+			return http.StatusServiceUnavailable, "replication_policy_enqueue_failed"
+		}
+	}
+	for _, marker := range []string{
+		"conflict",
+		"mismatch",
+		"stale",
+		"transition_in_progress",
+		"replication_policy_local_ownership_invalid",
+	} {
+		if strings.Contains(text, marker) {
+			return http.StatusConflict, "replication_policy_enqueue_failed"
+		}
+	}
+	return http.StatusBadRequest, "replication_policy_enqueue_failed"
 }
 
 func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
@@ -841,7 +913,7 @@ func ActivateReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) g
 	}
 }
 
-func RunReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func RunReplicationPolicyInternal(cS *cluster.Service, zS replicationPolicyRunService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if zS == nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -867,12 +939,7 @@ func RunReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.Ha
 		}
 
 		if err := zS.EnqueueReplicationPolicyRun(c.Request.Context(), req.PolicyID); err != nil {
-			status := http.StatusBadRequest
-			msg := "replication_policy_enqueue_failed"
-			if strings.Contains(strings.ToLower(err.Error()), "already_running") {
-				status = http.StatusConflict
-				msg = "replication_policy_already_running"
-			}
+			status, msg := replicationPolicyEnqueueErrorResponse(err)
 			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
 				Message: msg,
@@ -1238,10 +1305,7 @@ func UpdateReplicationTargetReadinessInternal(cS *cluster.Service) gin.HandlerFu
 
 func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			PolicyID           uint   `json:"policyId"`
-			ExpectedOwnerEpoch uint64 `json:"expectedOwnerEpoch"`
-		}
+		var req clusterServiceInterfaces.ReplicationPolicyDeleteCleanupRequest
 		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 || req.ExpectedOwnerEpoch == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -1257,6 +1321,36 @@ func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Servi
 				Status:  "error",
 				Message: "cleanup_replication_policy_delete_unavailable",
 				Error:   "replication_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+		if cS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cleanup_replication_policy_delete_unavailable",
+				Error:   "cluster_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+		if cS.Raft != nil && req.MinimumRaftAppliedIndex == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "minimumRaftAppliedIndex is required in clustered mode",
+				Data:    nil,
+			})
+			return
+		}
+		if _, err := cS.WaitForReplicatedStateAppliedIndex(
+			c.Request.Context(),
+			req.MinimumRaftAppliedIndex,
+		); err != nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cleanup_replication_policy_delete_applied_index_unavailable",
+				Error:   fmt.Sprintf("replication_policy_delete_applied_index_wait_failed: %v", err),
 				Data:    nil,
 			})
 			return

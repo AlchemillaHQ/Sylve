@@ -97,7 +97,7 @@ func TestPrepareReplicationRunResumesOnlyWithoutTerminalResult(t *testing.T) {
 	}
 
 	prepared, execute, err := service.prepareReplicationRunOperation(
-		operation.PolicyID, operation.Token, operation.HolderNodeID,
+		context.Background(), operation.PolicyID, operation.Token, operation.HolderNodeID,
 	)
 	if err != nil {
 		t.Fatalf("prepare interrupted run: %v", err)
@@ -113,7 +113,7 @@ func TestPrepareReplicationRunResumesOnlyWithoutTerminalResult(t *testing.T) {
 		t.Fatalf("seed terminal outbox: %v", err)
 	}
 	_, execute, err = service.prepareReplicationRunOperation(
-		operation.PolicyID, operation.Token, operation.HolderNodeID,
+		context.Background(), operation.PolicyID, operation.Token, operation.HolderNodeID,
 	)
 	if err != nil {
 		t.Fatalf("prepare terminalized run: %v", err)

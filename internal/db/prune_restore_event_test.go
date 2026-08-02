@@ -115,3 +115,39 @@ func TestLocalReplicationEventRetentionDoesNotDeleteReplicatedTransitions(t *tes
 		t.Fatalf("replicated transition count=%d, want 1", transitionCount)
 	}
 }
+
+func TestCleanupOrphanReplicationEventsKeepsLiveAndNullPolicyRows(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationEvent{},
+	)
+	now := time.Now().UTC()
+	livePolicyID := uint(31)
+	orphanPolicyID := uint(32)
+	if err := database.Create(&clusterModels.ReplicationPolicy{
+		ID: livePolicyID, Name: "live", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 31,
+		SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
+	}).Error; err != nil {
+		t.Fatalf("seed live policy: %v", err)
+	}
+	events := []clusterModels.ReplicationEvent{
+		{ID: 1, PolicyID: &orphanPolicyID, EventType: "replication", Status: "running", StartedAt: now},
+		{ID: 2, PolicyID: &livePolicyID, EventType: "replication", Status: "failed", StartedAt: now},
+		{ID: 3, PolicyID: nil, EventType: "replication", Status: "success", StartedAt: now},
+	}
+	if err := database.Create(&events).Error; err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	if err := CleanupOrphanReplicationEvents(database); err != nil {
+		t.Fatalf("cleanup orphan replication events: %v", err)
+	}
+
+	var remaining []clusterModels.ReplicationEvent
+	if err := database.Order("id ASC").Find(&remaining).Error; err != nil {
+		t.Fatalf("load remaining events: %v", err)
+	}
+	if len(remaining) != 2 || remaining[0].ID != 2 || remaining[1].ID != 3 {
+		t.Fatalf("unexpected remaining replication events: %+v", remaining)
+	}
+}

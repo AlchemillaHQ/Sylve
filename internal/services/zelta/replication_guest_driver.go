@@ -35,6 +35,9 @@ type replicationGuestDriver interface {
 }
 
 func (s *Service) replicationGuestDriver(guestType string) (replicationGuestDriver, error) {
+	if s != nil && s.replicationGuestDriverFactory != nil {
+		return s.replicationGuestDriverFactory(guestType)
+	}
 	switch strings.TrimSpace(guestType) {
 	case clusterModels.ReplicationGuestTypeJail:
 		return jailReplicationGuestDriver{service: s}, nil

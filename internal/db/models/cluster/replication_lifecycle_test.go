@@ -69,7 +69,13 @@ func TestDeletingLifecycleWinsRaceAgainstTransitionBegin(t *testing.T) {
 }
 
 func TestReplicationPolicyDeleteRequiresDeletingLifecycle(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationEvent{})
+	db := newClusterModelTestDB(t,
+		&ReplicationPolicy{},
+		&ReplicationPolicyTarget{},
+		&ReplicationLease{},
+		&ReplicationEvent{},
+		&ReplicationTransitionEvent{},
+	)
 	if err := db.Create(&ReplicationPolicy{
 		ID: 8, Name: "armed", GuestType: ReplicationGuestTypeVM, GuestID: 88,
 		SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
@@ -88,6 +94,83 @@ func TestReplicationPolicyDeleteRequiresDeletingLifecycle(t *testing.T) {
 	}
 	if err := DeleteReplicationPolicyTxn(db, 8); err != nil {
 		t.Fatalf("delete after lifecycle acknowledgement: %v", err)
+	}
+}
+
+func TestReplicationPolicyDeleteRemovesOnlyExactPolicyEvents(t *testing.T) {
+	db := newClusterModelTestDB(t,
+		&ReplicationPolicy{},
+		&ReplicationPolicyTarget{},
+		&ReplicationLease{},
+		&ReplicationEvent{},
+		&ReplicationTransitionEvent{},
+	)
+	deletedPolicyID := uint(81)
+	otherPolicyID := uint(82)
+	for _, policy := range []ReplicationPolicy{
+		{
+			ID: deletedPolicyID, Name: "delete-events", GuestType: ReplicationGuestTypeVM, GuestID: 181,
+			SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 3,
+			ProtectionState: ReplicationProtectionStateDeleting,
+		},
+		{
+			ID: otherPolicyID, Name: "keep-events", GuestType: ReplicationGuestTypeVM, GuestID: 182,
+			SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
+			ProtectionState: ReplicationProtectionStateArmed,
+		},
+	} {
+		if err := db.Create(&policy).Error; err != nil {
+			t.Fatalf("seed policy %d: %v", policy.ID, err)
+		}
+	}
+
+	now := time.Now().UTC()
+	localEvents := []ReplicationEvent{
+		{ID: 1, PolicyID: &deletedPolicyID, EventType: "replication", Status: "failed", StartedAt: now},
+		{ID: 2, PolicyID: &otherPolicyID, EventType: "replication", Status: "success", StartedAt: now},
+		{ID: 3, PolicyID: nil, EventType: "replication", Status: "success", StartedAt: now},
+	}
+	if err := db.Create(&localEvents).Error; err != nil {
+		t.Fatalf("seed local events: %v", err)
+	}
+	transitionEvents := []ReplicationTransitionEvent{
+		{ID: 11, PolicyID: &deletedPolicyID, TransitionRunID: "delete-run", EventType: "failover", Status: "failed", StartedAt: now},
+		{ID: 12, PolicyID: &otherPolicyID, TransitionRunID: "keep-run", EventType: "failover", Status: "success", StartedAt: now},
+		{ID: 13, PolicyID: nil, TransitionRunID: "unscoped-run", EventType: "failover", Status: "success", StartedAt: now},
+	}
+	if err := db.Create(&transitionEvents).Error; err != nil {
+		t.Fatalf("seed transition events: %v", err)
+	}
+
+	if err := DeleteReplicationPolicyTxn(db, deletedPolicyID); err != nil {
+		t.Fatalf("delete policy: %v", err)
+	}
+
+	for name, model := range map[string]any{
+		"local":      &ReplicationEvent{},
+		"transition": &ReplicationTransitionEvent{},
+	} {
+		var deletedCount int64
+		if err := db.Model(model).Where("policy_id = ?", deletedPolicyID).Count(&deletedCount).Error; err != nil {
+			t.Fatalf("count deleted %s events: %v", name, err)
+		}
+		if deletedCount != 0 {
+			t.Fatalf("deleted policy %s events=%d, want 0", name, deletedCount)
+		}
+		var otherCount int64
+		if err := db.Model(model).Where("policy_id = ?", otherPolicyID).Count(&otherCount).Error; err != nil {
+			t.Fatalf("count other %s events: %v", name, err)
+		}
+		if otherCount != 1 {
+			t.Fatalf("other policy %s events=%d, want 1", name, otherCount)
+		}
+		var nullCount int64
+		if err := db.Model(model).Where("policy_id IS NULL").Count(&nullCount).Error; err != nil {
+			t.Fatalf("count null %s events: %v", name, err)
+		}
+		if nullCount != 1 {
+			t.Fatalf("null policy %s events=%d, want 1", name, nullCount)
+		}
 	}
 }
 

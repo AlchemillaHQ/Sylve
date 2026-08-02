@@ -44,6 +44,12 @@ const (
 	replicationStateReady     = "ready"
 )
 
+type replicationPolicySnapshotOwnership struct {
+	Kind     string
+	PolicyID uint
+	Suffix   string
+}
+
 // ReplicationZFSTransferOptions identifies one fenced replication generation.
 // SnapshotAlreadyCreated allows a caller to create one coherent snapshot group
 // across all roots before sending any of them.
@@ -132,6 +138,68 @@ func validateReplicationSnapshotName(snapshotName string) error {
 		return fmt.Errorf("replication_snapshot_name_must_use_ha_prefix")
 	}
 	return nil
+}
+
+func parseReplicationPolicySnapshotOwnership(snapshotName string) (replicationPolicySnapshotOwnership, bool) {
+	ownership := replicationPolicySnapshotOwnership{}
+	snapshotName = strings.TrimSpace(snapshotName)
+	if !validReplicationZFSToken(snapshotName) {
+		return ownership, false
+	}
+
+	for _, kind := range []string{"replication", "catchup"} {
+		prefix := haSnapPrefix + kind + "-"
+		if !strings.HasPrefix(snapshotName, prefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(snapshotName, prefix)
+		separator := strings.IndexByte(remainder, '-')
+		if separator <= 0 || separator == len(remainder)-1 {
+			return ownership, false
+		}
+		policyToken := remainder[:separator]
+		suffix := remainder[separator+1:]
+		policyID64, err := strconv.ParseUint(policyToken, 10, 64)
+		if err != nil || policyID64 == 0 || strconv.FormatUint(policyID64, 10) != policyToken {
+			return ownership, false
+		}
+		policyID := uint(policyID64)
+		if uint64(policyID) != policyID64 || !validReplicationZFSToken(suffix) {
+			return ownership, false
+		}
+		return replicationPolicySnapshotOwnership{
+			Kind:     kind,
+			PolicyID: policyID,
+			Suffix:   suffix,
+		}, true
+	}
+
+	return ownership, false
+}
+
+func replicationSnapshotNamesOwnedByPolicy(
+	identities []replicationSnapshotIdentity,
+	policyID uint,
+) []string {
+	if policyID == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{})
+	names := make([]string, 0)
+	for _, identity := range identities {
+		name := strings.TrimSpace(identity.Name)
+		ownership, ok := parseReplicationPolicySnapshotOwnership(name)
+		if !ok || ownership.PolicyID != policyID {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (opts ReplicationZFSTransferOptions) validate() error {
@@ -816,6 +884,9 @@ func parseReplicationSnapshotIdentities(output, dataset string) ([]replicationSn
 			continue
 		}
 		if len(fields) != 2 || strings.TrimSpace(fields[1]) == "" || fields[1] == "-" {
+			return nil, fmt.Errorf("invalid_replication_snapshot_identity:%s", fields[0])
+		}
+		if _, err := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 64); err != nil {
 			return nil, fmt.Errorf("invalid_replication_snapshot_identity:%s", fields[0])
 		}
 		shortName := strings.TrimPrefix(fields[0], dataset+"@")
@@ -2810,13 +2881,36 @@ func (s *Service) RollbackPromotedReplicationDataset(
 }
 
 func (s *Service) destroyLocalSnapshotBestEffort(ctx context.Context, dataset, snapName string) error {
-	dsSnap := normalizeDatasetPath(dataset) + "@" + snapName
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("replication_snapshot_destroy_canceled: %w", err)
+	}
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return fmt.Errorf("replication_snapshot_dataset_required")
+	}
+	snapName = strings.TrimSpace(snapName)
+	if err := validateReplicationSnapshotName(snapName); err != nil {
+		return err
+	}
+	dsSnap := dataset + "@" + snapName
 	output, err := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", dsSnap)
 	if err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return fmt.Errorf("replication_snapshot_destroy_canceled: %w", contextErr)
+		}
 		if localSnapshotMissingResult(output, err) {
 			return nil
 		}
-		return fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
+		if detail := strings.TrimSpace(output); detail != "" {
+			return fmt.Errorf("destroy_local_snapshot_failed: %s: %w", detail, err)
+		}
+		return fmt.Errorf("destroy_local_snapshot_failed: %w", err)
+	}
+	if detail := strings.TrimSpace(output); detail != "" {
+		return fmt.Errorf("destroy_local_snapshot_unexpected_output: %s", detail)
 	}
 	return nil
 }

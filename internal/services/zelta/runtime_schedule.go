@@ -29,6 +29,7 @@ const (
 	scheduledRunOutboxInitialBackoff      = 5 * time.Second
 	scheduledRunOutboxMaxBackoff          = 5 * time.Minute
 	scheduledRunOutboxQuarantineRetention = 30 * 24 * time.Hour
+	replicationRunClaimForwardTimeout     = 10 * time.Second
 )
 
 var errScheduledRunOperationRevalidation = errors.New("scheduled_run_operation_revalidation_failed")
@@ -83,6 +84,107 @@ func (s *Service) applyReplicationPolicyScheduleDecision(
 		return fmt.Errorf("cluster_service_unavailable")
 	}
 	return clusterModels.ApplyReplicationPolicyScheduleDecisionTxn(s.DB, &decision)
+}
+
+func (s *Service) applyReplicationRunClaim(
+	ctx context.Context,
+	decision clusterModels.ReplicationPolicyScheduleDecision,
+	bypassRaft bool,
+) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("replication_run_claim_service_unavailable")
+	}
+	if decision.PolicyID == 0 || decision.ExpectedOwnerEpoch == 0 || decision.DecidedAt.IsZero() ||
+		strings.TrimSpace(decision.ClaimToken) == "" ||
+		strings.TrimSpace(decision.HolderNodeID) == "" || decision.OccurrenceAt == nil ||
+		decision.SetRuntime || decision.LastRunAt != nil ||
+		strings.TrimSpace(decision.LastStatus) != "" || strings.TrimSpace(decision.LastError) != "" {
+		return fmt.Errorf("replication_run_claim_invalid")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if bypassRaft {
+		return s.applyReplicationPolicyScheduleDecision(decision, true)
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if s.Cluster.LocalNodeIsLeader() {
+			lastErr = s.Cluster.ApplyReplicationPolicyScheduleDecision(decision, false)
+		} else {
+			_, leaderID := s.Cluster.Raft.LeaderWithID()
+			leaderNodeID := strings.TrimSpace(string(leaderID))
+			if leaderNodeID == "" {
+				lastErr = fmt.Errorf("leader_not_available")
+			} else if s.replicationRunClaimForward != nil {
+				lastErr = s.replicationRunClaimForward(ctx, leaderNodeID, decision)
+			} else {
+				lastErr = s.forwardReplicationPolicyControlContext(
+					ctx,
+					leaderNodeID,
+					"replication-run-claim",
+					decision,
+					replicationRunClaimForwardTimeout,
+				)
+			}
+		}
+		if lastErr == nil {
+			return nil
+		}
+		if replicationRunClaimApplicationError(lastErr) {
+			return lastErr
+		}
+		if attempt < replicationControlForwardAttempts-1 {
+			timer := time.NewTimer(replicationControlForwardBackoff * time.Duration(attempt+1))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("leader_not_available")
+	}
+	return fmt.Errorf("replication_run_claim_unavailable: %w", lastErr)
+}
+
+func replicationRunClaimApplicationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"replication_policy_schedule_decision_invalid",
+		"replication_policy_schedule_fence_required",
+		"replication_run_claim_invalid",
+		"invalid_request",
+		"replication_run_claim_token_conflict",
+		"replication_policy_schedule_revision_conflict",
+		"replication_policy_disabled",
+		"replication_policy_transition_in_progress",
+		"replication_policy_not_runnable",
+		"replication_run_holder_mismatch",
+		"replication_policy_already_running",
+		"replication_schedule_holder_not_current_voter",
+		"record not found",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) deliverBackupJobRunResult(result clusterModels.BackupJobRunResult) error {
@@ -544,14 +646,21 @@ func (s *Service) logScheduledResultDeliveryFailure(kind string, objectID uint, 
 		Msg("scheduled_run_result_deferred")
 }
 
+type replicationRunOperationHandle struct {
+	PolicyID     uint
+	Token        string
+	HolderNodeID string
+}
+
 func (s *Service) acquireReplicationRunOperation(
+	ctx context.Context,
 	policy *clusterModels.ReplicationPolicy,
 	scheduled bool,
 	occurrenceAt time.Time,
 	nextRunAt *time.Time,
 	publishAfter *time.Time,
 	bypassRaft bool,
-) (*clusterModels.ReplicationRunOperation, error) {
+) (*replicationRunOperationHandle, error) {
 	if policy == nil || policy.ID == 0 {
 		return nil, fmt.Errorf("invalid_policy_id")
 	}
@@ -577,14 +686,12 @@ func (s *Service) acquireReplicationRunOperation(
 		HolderNodeID: holder, Scheduled: scheduled, OccurrenceAt: &occurrenceAt,
 		PublishAfter: publishAfter,
 	}
-	if err := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); err != nil {
+	if err := s.applyReplicationRunClaim(ctx, decision, bypassRaft); err != nil {
 		return nil, err
 	}
-	var operation clusterModels.ReplicationRunOperation
-	if err := s.DB.Where("token = ?", token).First(&operation).Error; err != nil {
-		return nil, err
-	}
-	return &operation, nil
+	return &replicationRunOperationHandle{
+		PolicyID: policy.ID, Token: token, HolderNodeID: holder,
+	}, nil
 }
 
 func (s *Service) startReplicationRunOperation(operation *clusterModels.ReplicationRunOperation) error {
@@ -623,6 +730,7 @@ func (s *Service) startReplicationRunOperation(operation *clusterModels.Replicat
 }
 
 func (s *Service) prepareReplicationRunOperation(
+	ctx context.Context,
 	policyID uint,
 	token, holder string,
 ) (*clusterModels.ReplicationRunOperation, bool, error) {
@@ -638,7 +746,7 @@ func (s *Service) prepareReplicationRunOperation(
 			return nil, false, err
 		}
 		operation, err := s.acquireReplicationRunOperation(
-			&policy, false, s.now().UTC(), policy.NextRunAt, nil, bypassRaft,
+			ctx, &policy, false, s.now().UTC(), policy.NextRunAt, nil, bypassRaft,
 		)
 		if err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "already_running") {
@@ -752,7 +860,7 @@ func (s *Service) reconcileReplicationRuns(ctx context.Context, queuedOnly bool)
 	}
 	var combined error
 	for _, operation := range operations {
-		if err := db.EnqueueJSON(ctx, replicationJobQueueName, replicationJobPayload{
+		if err := s.enqueueReplicationRunOperation(ctx, replicationJobPayload{
 			PolicyID: operation.PolicyID, OperationToken: operation.Token,
 			HolderNodeID: operation.HolderNodeID,
 		}); err != nil {
@@ -760,4 +868,11 @@ func (s *Service) reconcileReplicationRuns(ctx context.Context, queuedOnly bool)
 		}
 	}
 	return combined
+}
+
+func (s *Service) enqueueReplicationRunOperation(ctx context.Context, payload replicationJobPayload) error {
+	if s.replicationOperationEnqueue != nil {
+		return s.replicationOperationEnqueue(ctx, replicationJobQueueName, payload)
+	}
+	return db.EnqueueJSON(ctx, replicationJobQueueName, payload)
 }

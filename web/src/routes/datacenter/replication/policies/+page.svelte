@@ -27,7 +27,7 @@
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, isRequestCancellation, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isRequestCancellation, removeCache, updateCache } from '$lib/utils/http';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { watch } from 'runed';
@@ -44,6 +44,12 @@
 	type EditableTarget = {
 		nodeId: string;
 		weight: string;
+	};
+
+	type PendingPolicyDelete = {
+		id: number;
+		name: string;
+		protectionState: string;
 	};
 
 	type PolicyTargetSyncState = 'active' | 'ready' | 'failed' | 'stale' | 'pending' | 'untargeted';
@@ -261,6 +267,79 @@
 		return '';
 	}
 
+	function isPolicyDeleteCleanupIncomplete(message: unknown, error: unknown): boolean {
+		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
+		return combined.includes('replication_policy_delete_cleanup_incomplete');
+	}
+
+	function userPolicyDeleteErrorMessage(message: unknown, error: unknown): string {
+		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
+
+		if (combined.includes('replication_policy_delete_cleanup_incomplete')) {
+			return 'Cleanup is incomplete; the policy remains safely disabled. Retry when all cluster nodes are available.';
+		}
+		if (
+			combined.includes('policy_transition_in_progress') ||
+			combined.includes('cannot_delete_policy_during_failover') ||
+			combined.includes('transition_in_progress')
+		) {
+			return 'This policy is currently moving between nodes. Wait for that operation to finish, then retry.';
+		}
+		if (combined.includes('quorum')) {
+			return 'Cluster quorum is unavailable. Restore quorum, then retry cleanup.';
+		}
+		if (
+			combined.includes('not_leader') ||
+			combined.includes('not the leader') ||
+			combined.includes('leadership')
+		) {
+			return 'The cluster leader changed during deletion. Wait a few seconds, then retry.';
+		}
+		if (
+			combined.includes('node_unavailable') ||
+			combined.includes('node_id_unavailable') ||
+			combined.includes('node offline') ||
+			combined.includes('unreachable') ||
+			combined.includes('connection refused') ||
+			combined.includes('no route to host')
+		) {
+			return 'A cluster node is unavailable. Bring all nodes back online, then retry cleanup.';
+		}
+		if (
+			combined.includes('replication_policy_delete_revalidation_failed') ||
+			combined.includes('owner_epoch') ||
+			combined.includes('cas_conflict')
+		) {
+			return 'Policy ownership changed during cleanup. Refresh the policy state, then retry.';
+		}
+		if (
+			combined.includes('replication_policy_delete_cleanup_unavailable') ||
+			combined.includes('replication_service_unavailable')
+		) {
+			return 'Replication cleanup is temporarily unavailable. Restore the replication service, then retry.';
+		}
+		if (
+			combined.includes('replication_policy_not_found') ||
+			combined.includes('record not found')
+		) {
+			return 'This policy no longer exists. Refresh the policy list.';
+		}
+		if (combined.includes('timeout') || combined.includes('deadline exceeded')) {
+			return 'Deletion timed out before cleanup was confirmed. Check cluster health, then retry.';
+		}
+		if (
+			combined.includes('request failed') ||
+			combined.includes('failed to fetch') ||
+			combined.includes('network error') ||
+			combined.includes('econnreset') ||
+			combined.includes('econnrefused')
+		) {
+			return 'The delete request could not be completed. Check your connection and cluster status, then retry.';
+		}
+
+		return 'Could not delete the policy. Check the reported error and cluster status, then retry.';
+	}
+
 	function describePolicyHAReasons(reasons: string[]): string {
 		const values = (reasons || []).map((value) =>
 			String(value || '')
@@ -357,6 +436,8 @@
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let deleteModalOpen = $state(false);
+	let policyDeleting = $state(false);
+	let pendingPolicyDelete = $state<PendingPolicyDelete | null>(null);
 	let failoverModalOpen = $state(false);
 	let policySaving = $state(false);
 	let jailsLoading = $state(false);
@@ -1474,19 +1555,59 @@
 		}
 	}
 
-	async function removePolicy() {
-		if (!selectedPolicyId) return;
-		const result = await deleteReplicationPolicy(selectedPolicyId);
-		if (result.status === 'success') {
-			toast.success('Policy deleted', { position: 'bottom-center' });
-			deleteModalOpen = false;
-			activeRows = [];
-			reload = true;
-			return;
-		}
+	function openDeletePolicyModal() {
+		if (!selectedPolicy) return;
+		pendingPolicyDelete = {
+			id: selectedPolicy.id,
+			name: selectedPolicy.name,
+			protectionState: selectedPolicy.protectionState || ''
+		};
+		deleteModalOpen = true;
+	}
 
-		handleAPIError(result);
-		toast.error('Failed to delete policy', { position: 'bottom-center' });
+	function closeDeletePolicyModal() {
+		if (policyDeleting) return;
+		deleteModalOpen = false;
+		pendingPolicyDelete = null;
+	}
+
+	async function removePolicy() {
+		const target = pendingPolicyDelete;
+		if (policyDeleting || !target) return;
+
+		policyDeleting = true;
+		try {
+			const result = await deleteReplicationPolicy(target.id);
+			if (result.status === 'success') {
+				await removeCache('replication-events');
+				toast.success('Policy deleted', { position: 'bottom-center' });
+				deleteModalOpen = false;
+				pendingPolicyDelete = null;
+				activeRows = [];
+				reload = true;
+				return;
+			}
+
+			handleAPIError(result);
+			if (isPolicyDeleteCleanupIncomplete(result.message || '', result.error || '')) {
+				pendingPolicyDelete = { ...target, protectionState: 'deleting' };
+				reload = true;
+			}
+			toast.error(userPolicyDeleteErrorMessage(result.message || '', result.error || ''), {
+				position: 'bottom-center'
+			});
+		} catch (error) {
+			console.error('Replication policy delete request failed', error);
+			toast.error(
+				userPolicyDeleteErrorMessage(
+					'Request failed',
+					error instanceof Error ? error.message : error
+				),
+				{ position: 'bottom-center' }
+			);
+		} finally {
+			policyDeleting = false;
+		}
 	}
 
 	async function runNow() {
@@ -1687,7 +1808,7 @@
 	{/if}
 
 	{#if type === 'delete' && selectedPolicyId > 0}
-		<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6">
+		<Button onclick={openDeletePolicyModal} size="sm" variant="outline" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 				<span>Delete</span>
@@ -2267,14 +2388,17 @@
 </Dialog.Root>
 
 <AlertDialog
-	open={deleteModalOpen}
-	names={{ parent: 'replication policy', element: selectedPolicyName }}
+	bind:open={deleteModalOpen}
+	customTitle={pendingPolicyDelete?.protectionState === 'deleting'
+		? `Replication policy <span class="font-semibold">${escapeHtml(pendingPolicyDelete.name)}</span> is already disabled for deletion. Retry cleanup of its standby replicas and policy-owned HA snapshots. The active VM or jail data will be preserved.`
+		: `This will permanently delete replication policy <span class="font-semibold">${escapeHtml(pendingPolicyDelete?.name || '')}</span>, its standby replicas, and HA snapshots owned by this policy. The active VM or jail data will be preserved.`}
+	confirmLabel={pendingPolicyDelete?.protectionState === 'deleting'
+		? 'Retry cleanup'
+		: 'Delete policy'}
+	loading={policyDeleting}
+	loadingLabel="Cleaning replicas on all nodes..."
 	actions={{
-		onConfirm: async () => {
-			await removePolicy();
-		},
-		onCancel: () => {
-			deleteModalOpen = false;
-		}
+		onConfirm: removePolicy,
+		onCancel: closeDeletePolicyModal
 	}}
 />

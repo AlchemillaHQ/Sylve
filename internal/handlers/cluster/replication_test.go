@@ -9,23 +9,97 @@
 package clusterHandlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/raft"
+	"gorm.io/gorm"
 )
 
+type replicationPolicyDeleteCleanupStub struct {
+	cleanup func(context.Context, uint, uint64) error
+}
+
+func newSingleNodeReplicationHandlerRaft(t *testing.T, database *gorm.DB) *raft.Raft {
+	t.Helper()
+	fsm := clusterModels.NewFSMDispatcher(database)
+	clusterModels.RegisterDefaultHandlers(fsm)
+	config := raft.DefaultConfig()
+	config.LocalID = raft.ServerID("node-a")
+	config.Logger = hclog.NewNullLogger()
+	config.HeartbeatTimeout = 100 * time.Millisecond
+	config.ElectionTimeout = 100 * time.Millisecond
+	config.LeaderLeaseTimeout = 50 * time.Millisecond
+	config.CommitTimeout = 10 * time.Millisecond
+	address, transport := raft.NewInmemTransport(raft.ServerAddress("node-a"))
+	instance, err := raft.NewRaft(
+		config,
+		fsm,
+		raft.NewInmemStore(),
+		raft.NewInmemStore(),
+		raft.NewInmemSnapshotStore(),
+		transport,
+	)
+	if err != nil {
+		t.Fatalf("create raft: %v", err)
+	}
+	if err := instance.BootstrapCluster(raft.Configuration{Servers: []raft.Server{{
+		ID: raft.ServerID("node-a"), Address: address, Suffrage: raft.Voter,
+	}}}).Error(); err != nil {
+		t.Fatalf("bootstrap raft: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for instance.State() != raft.Leader && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if instance.State() != raft.Leader {
+		t.Fatalf("raft state=%s, want leader", instance.State())
+	}
+	t.Cleanup(func() {
+		if instance.State() != raft.Shutdown {
+			_ = instance.Shutdown().Error()
+		}
+		_ = transport.Close()
+	})
+	return instance
+}
+
+func (s *replicationPolicyDeleteCleanupStub) CleanupReplicationPolicyDeleteBestEffort(
+	ctx context.Context,
+	policyID uint,
+	minimumRaftAppliedIndex uint64,
+) error {
+	if s == nil || s.cleanup == nil {
+		return nil
+	}
+	return s.cleanup(ctx, policyID, minimumRaftAppliedIndex)
+}
+
 func newReplicationRouter(cS *cluster.Service) *gin.Engine {
+	return newReplicationRouterWithDeleteCleanup(cS, nil)
+}
+
+func newReplicationRouterWithDeleteCleanup(
+	cS *cluster.Service,
+	cleanupService replicationPolicyDeleteCleanupService,
+) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/cluster/replication/policies", ReplicationPolicies(cS))
 	r.POST("/cluster/replication/policies", CreateReplicationPolicy(cS))
 	r.PUT("/cluster/replication/policies/:id", UpdateReplicationPolicy(cS, nil))
-	r.DELETE("/cluster/replication/policies/:id", DeleteReplicationPolicy(cS, nil))
+	r.DELETE("/cluster/replication/policies/:id", DeleteReplicationPolicy(cS, cleanupService))
 	r.GET("/cluster/replication/events", ReplicationEvents(cS))
 	r.GET("/cluster/replication/events/:id", ReplicationEventByID(cS))
 	return r
@@ -35,6 +109,7 @@ func newReplicationInternalRouter(cS *cluster.Service) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/intra/replication-runtime-state", ReplicationPolicyRuntimeStateInternal(cS, nil))
+	r.POST("/intra/replication-run-claim", ReplicationRunClaimInternal(cS))
 	r.POST("/intra/activate", ActivateReplicationPolicyInternal(cS, nil))
 	r.POST("/intra/demote", DemoteReplicationPolicyInternal(cS, nil))
 	r.POST("/intra/catchup", CatchupReplicationPolicyInternal(cS, nil))
@@ -42,6 +117,128 @@ func newReplicationInternalRouter(cS *cluster.Service) *gin.Engine {
 	r.POST("/intra/cleanup-policy-delete", CleanupReplicationPolicyDeleteInternal(cS, nil))
 	r.POST("/intra/replication-guest-operation-status", ReplicationGuestOperationStatusInternal(cS))
 	return r
+}
+
+func TestReplicationRunClaimInternalAppliesOneExactIdempotentClaim(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationRunOperation{},
+	)
+	nextRunAt := time.Date(2026, time.August, 2, 7, 30, 0, 0, time.UTC)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 801, Name: "manual-claim", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 107, SourceNodeID: "node-owner", ActiveNodeID: "node-owner",
+		OwnerEpoch: 2, Enabled: true, ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+		ScheduleRevision: 4, NextRunAt: &nextRunAt,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	decidedAt := time.Date(2026, time.August, 2, 7, 1, 0, 0, time.UTC)
+	occurrenceAt := decidedAt
+	decision := clusterModels.ReplicationPolicyScheduleDecision{
+		PolicyID: policy.ID, ExpectedScheduleRevision: policy.ScheduleRevision,
+		ExpectedOwnerEpoch: policy.OwnerEpoch, ExpectedNextRunAt: &nextRunAt,
+		NextRunAt: &nextRunAt, DecidedAt: decidedAt,
+		ClaimToken: "replication:node-owner:manual-claim", HolderNodeID: "node-owner",
+		OccurrenceAt: &occurrenceAt,
+	}
+	body, err := json.Marshal(decision)
+	if err != nil {
+		t.Fatalf("marshal claim: %v", err)
+	}
+	r := newReplicationInternalRouter(&cluster.Service{DB: db})
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		response := performJSONRequest(t, r, http.MethodPost, "/intra/replication-run-claim", body)
+		if response.Code != http.StatusOK {
+			t.Fatalf("attempt %d status=%d body=%s", attempt, response.Code, response.Body.String())
+		}
+	}
+
+	var operation clusterModels.ReplicationRunOperation
+	if err := db.First(&operation, "policy_id = ?", policy.ID).Error; err != nil {
+		t.Fatalf("load operation: %v", err)
+	}
+	if operation.Token != decision.ClaimToken || operation.HolderNodeID != decision.HolderNodeID ||
+		operation.State != clusterModels.ReplicationRunOperationQueued {
+		t.Fatalf("unexpected operation: %+v", operation)
+	}
+	var operationCount int64
+	if err := db.Model(&clusterModels.ReplicationRunOperation{}).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count operations: %v", err)
+	}
+	if operationCount != 1 {
+		t.Fatalf("operation count=%d, want 1", operationCount)
+	}
+	var updated clusterModels.ReplicationPolicy
+	if err := db.First(&updated, policy.ID).Error; err != nil {
+		t.Fatalf("reload policy: %v", err)
+	}
+	if updated.ScheduleRevision != policy.ScheduleRevision+1 || updated.NextRunAt == nil ||
+		!updated.NextRunAt.Equal(nextRunAt) {
+		t.Fatalf("manual claim changed schedule incorrectly: %+v", updated)
+	}
+}
+
+func TestReplicationRunClaimInternalRejectsNonClaimRuntimeMutation(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationRunOperation{},
+	)
+	r := newReplicationInternalRouter(&cluster.Service{DB: db})
+	body := []byte(`{
+		"policyId":801,
+		"expectedOwnerEpoch":2,
+		"decidedAt":"2026-08-02T07:01:00Z",
+		"claimToken":"replication:node-owner:forged",
+		"holderNodeId":"node-owner",
+		"occurrenceAt":"2026-08-02T07:01:00Z",
+		"setRuntime":true,
+		"lastStatus":"success"
+	}`)
+	response := performJSONRequest(t, r, http.MethodPost, "/intra/replication-run-claim", body)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s, want 400", response.Code, response.Body.String())
+	}
+}
+
+func TestReplicationPolicyEnqueueErrorsExposeRetryableAvailability(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantStatus  int
+		wantMessage string
+	}{
+		{
+			name:       "follower leader discovery",
+			err:        errors.New("replication_run_claim_unavailable: leader_not_available"),
+			wantStatus: http.StatusServiceUnavailable, wantMessage: "replication_policy_enqueue_failed",
+		},
+		{
+			name:       "raw raft follower",
+			err:        errors.New("not_leader"),
+			wantStatus: http.StatusServiceUnavailable, wantMessage: "replication_policy_enqueue_failed",
+		},
+		{
+			name:       "follower apply lag duplicate",
+			err:        errors.New("replication_policy_schedule_revision_conflict"),
+			wantStatus: http.StatusConflict, wantMessage: "replication_policy_enqueue_failed",
+		},
+		{
+			name:       "durable operation exists",
+			err:        errors.New("replication_policy_already_running"),
+			wantStatus: http.StatusConflict, wantMessage: "replication_policy_already_running",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			status, message := replicationPolicyEnqueueErrorResponse(test.err)
+			if status != test.wantStatus || message != test.wantMessage {
+				t.Fatalf("status=%d message=%q, want %d %q", status, message, test.wantStatus, test.wantMessage)
+			}
+		})
+	}
 }
 
 func TestReplicationGuestOperationStatusRequiresExactAppliedRow(t *testing.T) {
@@ -171,8 +368,102 @@ func TestReplicationDeleteCleanupInternalRequiresEpochAndService(t *testing.T) {
 	}
 }
 
+func TestReplicationDeleteCleanupInternalMapsFenceFailureAndAuthorityConflict(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+	)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 18, Name: "cleanup-authority", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 18, SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 3,
+		ProtectionState: clusterModels.ReplicationProtectionStateDeleting,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	cS := &cluster.Service{DB: db, NodeID: "node-a"}
+	zS := &zelta.Service{DB: db, Cluster: cS}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/intra/cleanup-policy-delete", CleanupReplicationPolicyDeleteInternal(cS, zS))
+
+	fenceFailure := performJSONRequest(
+		t,
+		r,
+		http.MethodPost,
+		"/intra/cleanup-policy-delete",
+		[]byte(`{"policyId":18,"expectedOwnerEpoch":3,"minimumRaftAppliedIndex":9}`),
+	)
+	if fenceFailure.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(fenceFailure.Body.String(), "cleanup_replication_policy_delete_applied_index_unavailable") {
+		t.Fatalf("fence failure response=%d %s", fenceFailure.Code, fenceFailure.Body.String())
+	}
+
+	authorityConflict := performJSONRequest(
+		t,
+		r,
+		http.MethodPost,
+		"/intra/cleanup-policy-delete",
+		[]byte(`{"policyId":18,"expectedOwnerEpoch":2,"minimumRaftAppliedIndex":0}`),
+	)
+	if authorityConflict.Code != http.StatusConflict ||
+		!strings.Contains(authorityConflict.Body.String(), "epoch_mismatch") {
+		t.Fatalf("authority conflict response=%d %s", authorityConflict.Code, authorityConflict.Body.String())
+	}
+}
+
+func TestReplicationDeleteCleanupInternalRejectsStaleEpochAfterFence(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+	)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 181, Name: "fenced-authority", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 181, SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 4,
+		ProtectionState: clusterModels.ReplicationProtectionStateDeleting,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	raftInstance := newSingleNodeReplicationHandlerRaft(t, db)
+	cS := &cluster.Service{DB: db, NodeID: "node-a", Raft: raftInstance}
+	if err := cS.UpdateReplicationPolicyProtectionState(
+		policy.ID,
+		policy.OwnerEpoch,
+		clusterModels.ReplicationProtectionStateDeleting,
+		false,
+	); err != nil {
+		t.Fatalf("apply lifecycle fence: %v", err)
+	}
+	minimum := raftInstance.AppliedIndex()
+	if minimum == 0 {
+		t.Fatal("raft fence index is zero")
+	}
+	zS := &zelta.Service{DB: db, Cluster: cS}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/intra/cleanup-policy-delete", CleanupReplicationPolicyDeleteInternal(cS, zS))
+	body := []byte(fmt.Sprintf(
+		`{"policyId":181,"expectedOwnerEpoch":3,"minimumRaftAppliedIndex":%d}`,
+		minimum,
+	))
+	response := performJSONRequest(t, r, http.MethodPost, "/intra/cleanup-policy-delete", body)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "epoch_mismatch") {
+		t.Fatalf("stale authority response=%d %s", response.Code, response.Body.String())
+	}
+	var retained clusterModels.ReplicationPolicy
+	if err := db.First(&retained, policy.ID).Error; err != nil {
+		t.Fatalf("stale authority removed policy: %v", err)
+	}
+}
+
 func TestReplicationDeleteDoesNotRemoveMetadataWithoutCleanupService(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{})
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationTransitionEvent{},
+	)
 	policy := clusterModels.ReplicationPolicy{
 		ID:              19,
 		Name:            "delete-ack-barrier",
@@ -186,6 +477,18 @@ func TestReplicationDeleteDoesNotRemoveMetadataWithoutCleanupService(t *testing.
 	}
 	if err := db.Create(&policy).Error; err != nil {
 		t.Fatalf("seed policy: %v", err)
+	}
+	policyID := policy.ID
+	now := time.Now().UTC()
+	if err := db.Create(&clusterModels.ReplicationEvent{
+		PolicyID: &policyID, EventType: "replication", Status: "failed", StartedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed local event: %v", err)
+	}
+	if err := db.Create(&clusterModels.ReplicationTransitionEvent{
+		PolicyID: &policyID, TransitionRunID: "failed-delete", EventType: "failover", Status: "failed", StartedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed transition event: %v", err)
 	}
 
 	cS := &cluster.Service{DB: db}
@@ -201,6 +504,123 @@ func TestReplicationDeleteDoesNotRemoveMetadataWithoutCleanupService(t *testing.
 	}
 	if retained.ProtectionState != clusterModels.ReplicationProtectionStateArmed {
 		t.Fatalf("policy lifecycle changed before cleanup was available: %s", retained.ProtectionState)
+	}
+	for name, model := range map[string]any{
+		"local":      &clusterModels.ReplicationEvent{},
+		"transition": &clusterModels.ReplicationTransitionEvent{},
+	} {
+		var count int64
+		if err := db.Model(model).Where("policy_id = ?", policy.ID).Count(&count).Error; err != nil {
+			t.Fatalf("count retained %s events: %v", name, err)
+		}
+		if count != 1 {
+			t.Fatalf("incomplete delete retained %s events=%d, want 1", name, count)
+		}
+	}
+}
+
+func TestReplicationDeletePartialCleanupRetryFinalizesOnlyAfterAcknowledgement(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{},
+		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationTransitionEvent{},
+	)
+	policyID := uint(20)
+	otherPolicyID := uint(21)
+	policy := clusterModels.ReplicationPolicy{
+		ID: policyID, Name: "retry-delete", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 920, SourceNodeID: "node-1", ActiveNodeID: "node-1", OwnerEpoch: 5,
+		ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	now := time.Now().UTC()
+	localEvents := []clusterModels.ReplicationEvent{
+		{ID: 31, PolicyID: &policyID, EventType: "replication", Status: "failed", StartedAt: now},
+		{ID: 32, PolicyID: &otherPolicyID, EventType: "replication", Status: "success", StartedAt: now},
+		{ID: 33, PolicyID: nil, EventType: "replication", Status: "success", StartedAt: now},
+	}
+	if err := db.Create(&localEvents).Error; err != nil {
+		t.Fatalf("seed local events: %v", err)
+	}
+	transitionEvents := []clusterModels.ReplicationTransitionEvent{
+		{ID: 41, PolicyID: &policyID, TransitionRunID: "delete", EventType: "failover", Status: "failed", StartedAt: now},
+		{ID: 42, PolicyID: &otherPolicyID, TransitionRunID: "keep", EventType: "failover", Status: "success", StartedAt: now},
+		{ID: 43, PolicyID: nil, TransitionRunID: "unscoped", EventType: "failover", Status: "success", StartedAt: now},
+	}
+	if err := db.Create(&transitionEvents).Error; err != nil {
+		t.Fatalf("seed transition events: %v", err)
+	}
+
+	attempts := 0
+	cleanup := &replicationPolicyDeleteCleanupStub{cleanup: func(
+		_ context.Context,
+		gotPolicyID uint,
+		minimumRaftAppliedIndex uint64,
+	) error {
+		attempts++
+		if gotPolicyID != policyID || minimumRaftAppliedIndex != 0 {
+			t.Fatalf("cleanup authority=(policy %d, index %d), want (%d, 0)", gotPolicyID, minimumRaftAppliedIndex, policyID)
+		}
+		if attempts == 1 {
+			return errors.New("replication_policy_delete_cleanup_partial_failure: node-3 unavailable")
+		}
+		return nil
+	}}
+	cS := &cluster.Service{DB: db, NodeID: "node-1"}
+	r := newReplicationRouterWithDeleteCleanup(cS, cleanup)
+
+	first := performJSONRequest(t, r, http.MethodDelete, "/cluster/replication/policies/20", nil)
+	if first.Code != http.StatusServiceUnavailable {
+		t.Fatalf("first delete response=%d %s", first.Code, first.Body.String())
+	}
+	var retained clusterModels.ReplicationPolicy
+	if err := db.First(&retained, policyID).Error; err != nil {
+		t.Fatalf("partial cleanup removed policy: %v", err)
+	}
+	if retained.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+		t.Fatalf("partial cleanup lifecycle=%q, want deleting", retained.ProtectionState)
+	}
+	for name, model := range map[string]any{
+		"local":      &clusterModels.ReplicationEvent{},
+		"transition": &clusterModels.ReplicationTransitionEvent{},
+	} {
+		var count int64
+		if err := db.Model(model).Where("policy_id = ?", policyID).Count(&count).Error; err != nil || count != 1 {
+			t.Fatalf("partial cleanup %s event count=%d err=%v, want 1", name, count, err)
+		}
+	}
+
+	second := performJSONRequest(t, r, http.MethodDelete, "/cluster/replication/policies/20", nil)
+	if second.Code != http.StatusOK {
+		t.Fatalf("retry delete response=%d %s", second.Code, second.Body.String())
+	}
+	if attempts != 2 {
+		t.Fatalf("cleanup attempts=%d, want 2", attempts)
+	}
+	var policyCount int64
+	if err := db.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policyID).Count(&policyCount).Error; err != nil || policyCount != 0 {
+		t.Fatalf("final policy count=%d err=%v, want 0", policyCount, err)
+	}
+	for name, model := range map[string]any{
+		"local":      &clusterModels.ReplicationEvent{},
+		"transition": &clusterModels.ReplicationTransitionEvent{},
+	} {
+		var exactCount int64
+		if err := db.Model(model).Where("policy_id = ?", policyID).Count(&exactCount).Error; err != nil || exactCount != 0 {
+			t.Fatalf("final exact %s event count=%d err=%v, want 0", name, exactCount, err)
+		}
+		var otherCount int64
+		if err := db.Model(model).Where("policy_id = ?", otherPolicyID).Count(&otherCount).Error; err != nil || otherCount != 1 {
+			t.Fatalf("final other %s event count=%d err=%v, want 1", name, otherCount, err)
+		}
+		var nullCount int64
+		if err := db.Model(model).Where("policy_id IS NULL").Count(&nullCount).Error; err != nil || nullCount != 1 {
+			t.Fatalf("final null %s event count=%d err=%v, want 1", name, nullCount, err)
+		}
 	}
 }
 

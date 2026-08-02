@@ -2057,7 +2057,7 @@ func reassignDisabledReplicationPolicyOwner(
 			"transition_demoted_at":              payload.OccurredAt,
 			"transition_catchup_at":              nil,
 			"transition_promoted_at":             payload.OccurredAt,
-			"transition_recovery_deadline_at":     nil,
+			"transition_recovery_deadline_at":    nil,
 			"transition_completed_at":            payload.OccurredAt,
 			"transition_error":                   "",
 			"transition_allow_unsafe":            false,
@@ -2473,6 +2473,11 @@ func DeleteReplicationPolicyTxn(db *gorm.DB, policyID uint) error {
 		}
 		if err := tx.Where("policy_id = ?", policyID).Delete(&ReplicationEvent{}).Error; err != nil {
 			return err
+		}
+		if tx.Migrator().HasTable(&ReplicationTransitionEvent{}) {
+			if err := tx.Where("policy_id = ?", policyID).Delete(&ReplicationTransitionEvent{}).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Delete(&ReplicationPolicy{}, policyID).Error
 	})

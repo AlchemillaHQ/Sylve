@@ -726,6 +726,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/replication-runtime-state", clusterHandlers.ReplicationPolicyRuntimeStateInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-run-claim", clusterHandlers.ReplicationRunClaimInternal(clusterService))
 		intraCluster.POST("/replication-target-readiness", clusterHandlers.UpdateReplicationTargetReadinessInternal(clusterService))
 		intraCluster.POST("/backup-job-runner-rebind-prepare", clusterHandlers.PrepareBackupJobRunnerRebindInternal(clusterService, zeltaService))
 		intraCluster.POST("/replication-reassign-owner", clusterHandlers.ReassignReplicationOwnerInternal(clusterService, zeltaService))

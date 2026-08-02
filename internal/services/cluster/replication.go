@@ -1314,6 +1314,9 @@ func (s *Service) CanLocalNodeStartProtectedGuestForTransition(
 }
 
 func (s *Service) LocalNodeID() string {
+	if nodeID := strings.TrimSpace(s.NodeID); nodeID != "" {
+		return nodeID
+	}
 	detail := s.Detail()
 	if detail == nil {
 		return ""

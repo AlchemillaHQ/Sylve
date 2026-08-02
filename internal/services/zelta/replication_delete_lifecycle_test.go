@@ -6,6 +6,7 @@ package zelta
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -106,6 +107,54 @@ func TestDeletingPolicyCancelsTransferAuthority(t *testing.T) {
 	_, err := s.validateReplicationTransferAuthority(policy.ID, policy.OwnerEpoch, "")
 	if err == nil || !strings.Contains(err.Error(), "replication_policy_deleting") {
 		t.Fatalf("deleting did not revoke transfer authority: %v", err)
+	}
+}
+
+func TestReplicationDeleteCleanupStandaloneBypassesOnlyRaftFence(t *testing.T) {
+	db := newZeltaServiceTestDB(
+		t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ClusterNode{},
+	)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 44, Name: "standalone-armed", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 12, SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 2,
+		ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+
+	s := newTestZeltaService(db)
+	s.Cluster = &clusterService.Service{DB: db, NodeID: "node-a"}
+	err := s.CleanupReplicationPolicyDeleteBestEffort(context.Background(), policy.ID, 0)
+	if err == nil || !strings.Contains(err.Error(), "replication_policy_not_deleting") {
+		t.Fatalf("standalone cleanup bypassed lifecycle validation: %v", err)
+	}
+	err = s.CleanupReplicationPolicyDeleteBestEffort(context.Background(), policy.ID, 1)
+	if err == nil || !strings.Contains(err.Error(), "applied_index_invalid_standalone") {
+		t.Fatalf("standalone cleanup accepted a raft fence: %v", err)
+	}
+}
+
+func TestReplicationDeleteCleanupForwardRetriesOnlyTransientFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{name: "network", err: fmt.Errorf("connection refused"), retryable: true},
+		{name: "service unavailable", err: fmt.Errorf("replication_control_cleanup-policy-delete_failed_status_503"), retryable: true},
+		{name: "owner epoch conflict", err: fmt.Errorf("replication_control_cleanup-policy-delete_failed_status_409"), retryable: false},
+		{name: "invalid request", err: fmt.Errorf("replication_control_cleanup-policy-delete_failed_status_400"), retryable: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := replicationPolicyDeleteCleanupForwardRetryable(tt.err); got != tt.retryable {
+				t.Fatalf("retryable=%t, want %t", got, tt.retryable)
+			}
+		})
 	}
 }
 

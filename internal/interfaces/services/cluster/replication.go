@@ -32,3 +32,9 @@ type ReplicationPolicyReq struct {
 	Enabled         *bool                        `json:"enabled"`
 	Targets         []ReplicationPolicyTargetReq `json:"targets" binding:"required"`
 }
+
+type ReplicationPolicyDeleteCleanupRequest struct {
+	PolicyID                uint   `json:"policyId"`
+	ExpectedOwnerEpoch      uint64 `json:"expectedOwnerEpoch"`
+	MinimumRaftAppliedIndex uint64 `json:"minimumRaftAppliedIndex"`
+}

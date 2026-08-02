@@ -136,6 +136,17 @@ func pruneScheduledRunReceipts(tx *gorm.DB, cutoff time.Time, maxRows int) error
 }
 
 func pruneReplicationTransitionEvents(tx *gorm.DB, cutoff time.Time, maxRows int) error {
+	if tx.Migrator().HasTable(&ReplicationPolicy{}) {
+		if err := tx.
+			Where(
+				"policy_id IS NOT NULL AND policy_id NOT IN (?)",
+				tx.Model(&ReplicationPolicy{}).Select("id"),
+			).
+			Delete(&ReplicationTransitionEvent{}).Error; err != nil {
+			return fmt.Errorf("failed_to_prune_orphan_replication_transition_events: %w", err)
+		}
+	}
+
 	if err := tx.
 		Where("completed_at IS NOT NULL AND completed_at < ?", cutoff).
 		Delete(&ReplicationTransitionEvent{}).Error; err != nil {

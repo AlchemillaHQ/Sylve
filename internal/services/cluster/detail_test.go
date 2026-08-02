@@ -32,6 +32,24 @@ func TestDetail(t *testing.T) {
 	}
 }
 
+func TestLocalNodeIDPrefersConfiguredNodeID(t *testing.T) {
+	service := &Service{NodeID: "  configured-node-id  "}
+	if got := service.LocalNodeID(); got != "configured-node-id" {
+		t.Fatalf("LocalNodeID()=%q, want configured node ID", got)
+	}
+}
+
+func TestLocalNodeIDFallsBackToSystemUUID(t *testing.T) {
+	service := &Service{}
+	detail := service.Detail()
+	if detail == nil {
+		t.Fatal("expected non-nil detail")
+	}
+	if got := service.LocalNodeID(); got != detail.NodeID {
+		t.Fatalf("LocalNodeID()=%q, want system UUID %q", got, detail.NodeID)
+	}
+}
+
 func TestResourcesContextSkipsKnownOfflinePeer(t *testing.T) {
 	peer := newClusterPeerSimulator()
 	defer peer.Close()

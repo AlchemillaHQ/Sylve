@@ -5,6 +5,7 @@
 package zelta
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"strings"
@@ -287,6 +288,46 @@ func TestParseReplicationSnapshotIdentitiesRejectsMissingGUID(t *testing.T) {
 	_, err := parseReplicationSnapshotIdentities("tank/vm@ha_bad\t-", "tank/vm")
 	if err == nil || !strings.Contains(err.Error(), "invalid_replication_snapshot_identity") {
 		t.Fatalf("expected invalid identity error, got %v", err)
+	}
+	_, err = parseReplicationSnapshotIdentities("tank/vm@ha_bad\tnot-a-guid", "tank/vm")
+	if err == nil || !strings.Contains(err.Error(), "invalid_replication_snapshot_identity") {
+		t.Fatalf("expected nonnumeric GUID error, got %v", err)
+	}
+}
+
+func TestReplicationPolicySnapshotOwnershipIsExactAndStrict(t *testing.T) {
+	identities := []replicationSnapshotIdentity{
+		{Name: "ha_replication-12-run-a", GUID: "1"},
+		{Name: "ha_catchup-12-run-b", GUID: "2"},
+		{Name: "ha_replication-123-run-c", GUID: "3"},
+		{Name: "ha_replication-12-run-a", GUID: "1"},
+		{Name: "ha_replication-012-leading-zero", GUID: "4"},
+		{Name: "ha_replication-12", GUID: "5"},
+		{Name: "ha_replication-12-", GUID: "6"},
+		{Name: "ha_catchup-x-run", GUID: "7"},
+		{Name: "ha_0123456789abcdef0123456789abcdef", GUID: "8"},
+		{Name: "ha_manual", GUID: "9"},
+		{Name: "manual", GUID: "10"},
+		{Name: "bk_job-12", GUID: "11"},
+		{Name: "sylve-migrate-12", GUID: "12"},
+	}
+
+	got := replicationSnapshotNamesOwnedByPolicy(identities, 12)
+	want := []string{"ha_catchup-12-run-b", "ha_replication-12-run-a"}
+	if len(got) != len(want) {
+		t.Fatalf("owned snapshots=%#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("owned snapshot[%d]=%q, want %q", i, got[i], want[i])
+		}
+	}
+	if collision := replicationSnapshotNamesOwnedByPolicy(identities, 123); len(collision) != 1 ||
+		collision[0] != "ha_replication-123-run-c" {
+		t.Fatalf("policy-ID collision selection=%#v", collision)
+	}
+	if zero := replicationSnapshotNamesOwnedByPolicy(identities, 0); len(zero) != 0 {
+		t.Fatalf("zero policy unexpectedly owned snapshots: %#v", zero)
 	}
 }
 
@@ -718,6 +759,15 @@ func TestLocalSnapshotMissingResultDoesNotMaskExecutionErrors(t *testing.T) {
 	}
 	if localSnapshotMissingResult("", errors.New("exec: zfs: no such file or directory")) {
 		t.Fatal("an unavailable zfs executable must remain a cleanup failure")
+	}
+}
+
+func TestDestroyLocalSnapshotTreatsCancellationAsIncomplete(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := (&Service{}).destroyLocalSnapshotBestEffort(ctx, "tank/source", "ha_replication-12-run")
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled snapshot cleanup error=%v", err)
 	}
 }
 

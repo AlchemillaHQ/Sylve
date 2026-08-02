@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,19 +31,25 @@ func runReplicationZFSScript(t *testing.T, script string) (string, error) {
 	return strings.TrimSpace(string(output)), err
 }
 
-func scopeLocalFilesystemDatasetsToPool(t *testing.T, service *Service, pool string) {
+func scopeLocalDatasetsToPool(t *testing.T, service *Service, pool string) {
 	t.Helper()
 	if service == nil || strings.TrimSpace(pool) == "" {
 		t.Fatal("scoped local dataset lister requires a service and pool")
 	}
-	service.localFilesystemDatasetLister = func(ctx context.Context) ([]string, error) {
+	list := func(ctx context.Context, datasetTypes string) ([]string, error) {
 		output, err := exec.CommandContext(
-			ctx, "zfs", "list", "-H", "-o", "name", "-r", "-t", "filesystem,volume", pool,
+			ctx, "zfs", "list", "-H", "-o", "name", "-r", "-t", datasetTypes, pool,
 		).CombinedOutput()
 		if err != nil {
 			return nil, fmt.Errorf("list disposable ZFS pool %s: %w: %s", pool, err, strings.TrimSpace(string(output)))
 		}
 		return strings.Fields(string(output)), nil
+	}
+	service.localFilesystemDatasetLister = func(ctx context.Context) ([]string, error) {
+		return list(ctx, "filesystem")
+	}
+	service.localVolumeDatasetLister = func(ctx context.Context) ([]string, error) {
+		return list(ctx, "volume")
 	}
 }
 
@@ -317,6 +324,241 @@ func TestCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
 	}
 }
 
+func TestCleanupPolicyOwnedReplicationSnapshotsRealZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping real ZFS policy-owned snapshot cleanup test in short mode")
+	}
+
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+
+	firstRoot := pool + "/sylve/virtual-machines/812"
+	secondRoot := pool + "/secondary/sylve/virtual-machines/812"
+	for _, root := range []string{firstRoot, secondRoot} {
+		zfstest.EnsureDataset(t, client, root+"/child")
+		zfstest.EnsureVolume(t, client, root+"/disk", 8)
+	}
+
+	ownedNormal := "ha_replication-812-run-a"
+	ownedCatchup := "ha_catchup-812-run-b"
+	unrelated := []string{
+		"ha_replication-8120-prefix-collision",
+		"ha_replication-999-other-policy",
+		"ha_0123456789abcdef0123456789abcdef",
+		"ha_manual",
+		"bk_job-812",
+		"sylve-migrate-812",
+		"manual_keep",
+	}
+	for _, root := range []string{firstRoot, secondRoot} {
+		for _, snapshot := range append([]string{ownedNormal, ownedCatchup}, unrelated...) {
+			if output, err := exec.Command("zfs", "snapshot", "-r", root+"@"+snapshot).CombinedOutput(); err != nil {
+				t.Fatalf("create %s@%s: %v\n%s", root, snapshot, err, output)
+			}
+		}
+	}
+
+	service := &Service{}
+	if err := service.cleanupLocalReplicationPolicySnapshots(
+		context.Background(),
+		812,
+		4,
+		"node-owner",
+		[]string{secondRoot, firstRoot, firstRoot},
+	); err != nil {
+		t.Fatalf("cleanup exact policy snapshots: %v", err)
+	}
+
+	for _, root := range []string{firstRoot, secondRoot} {
+		for _, dataset := range []string{root, root + "/child", root + "/disk"} {
+			if !realZFSDatasetExists(t, dataset) {
+				t.Fatalf("snapshot cleanup removed dataset: %s", dataset)
+			}
+			for _, snapshot := range []string{ownedNormal, ownedCatchup} {
+				if realZFSSnapshotExists(t, dataset, snapshot) {
+					t.Fatalf("owned snapshot remains: %s@%s", dataset, snapshot)
+				}
+			}
+			for _, snapshot := range unrelated {
+				if !realZFSSnapshotExists(t, dataset, snapshot) {
+					t.Fatalf("unrelated snapshot was removed: %s@%s", dataset, snapshot)
+				}
+			}
+		}
+	}
+
+	if err := service.cleanupLocalReplicationPolicySnapshots(
+		context.Background(),
+		812,
+		4,
+		"node-owner",
+		[]string{firstRoot, secondRoot, pool + "/missing/sylve/virtual-machines/812"},
+	); err != nil {
+		t.Fatalf("missing roots and snapshots must be idempotent on retry: %v", err)
+	}
+}
+
+func TestCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping real ZFS policy snapshot clone-dependency test in short mode")
+	}
+
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+	root := pool + "/sylve/virtual-machines/814"
+	clone := pool + "/dependent-clone"
+	snapshot := "ha_replication-814-cloned"
+	zfstest.EnsureDataset(t, client, root+"/child")
+	if output, err := exec.Command("zfs", "snapshot", "-r", root+"@"+snapshot).CombinedOutput(); err != nil {
+		t.Fatalf("create policy snapshot: %v\n%s", err, output)
+	}
+	if output, err := exec.Command("zfs", "clone", root+"@"+snapshot, clone).CombinedOutput(); err != nil {
+		t.Fatalf("create dependent clone: %v\n%s", err, output)
+	}
+
+	service := &Service{}
+	err := service.cleanupLocalReplicationPolicySnapshots(
+		context.Background(), 814, 2, "node-owner", []string{root},
+	)
+	if err == nil {
+		t.Fatal("clone dependency did not block policy snapshot cleanup")
+	}
+	if !realZFSDatasetExists(t, root) || !realZFSDatasetExists(t, root+"/child") ||
+		!realZFSDatasetExists(t, clone) || !realZFSSnapshotExists(t, root, snapshot) {
+		t.Fatalf("failed cleanup changed protected topology: root=%v child=%v clone=%v snapshot=%v",
+			realZFSDatasetExists(t, root),
+			realZFSDatasetExists(t, root+"/child"),
+			realZFSDatasetExists(t, clone),
+			realZFSSnapshotExists(t, root, snapshot),
+		)
+	}
+	if output, err := exec.Command("zfs", "destroy", clone).CombinedOutput(); err != nil {
+		t.Fatalf("destroy dependent clone: %v\n%s", err, output)
+	}
+	if err := service.cleanupLocalReplicationPolicySnapshots(
+		context.Background(), 814, 2, "node-owner", []string{root},
+	); err != nil {
+		t.Fatalf("cleanup after clone removal: %v", err)
+	}
+	if realZFSSnapshotExists(t, root, snapshot) || !realZFSDatasetExists(t, root) {
+		t.Fatalf("retry cleanup result snapshot=%v root=%v",
+			realZFSSnapshotExists(t, root, snapshot), realZFSDatasetExists(t, root))
+	}
+}
+
+func TestReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	if testing.Short() {
+		t.Skip("skipping real ZFS held policy snapshot lifecycle test in short mode")
+	}
+
+	pool, client, cleanup := zfstest.Pool(t)
+	defer cleanup()
+	guestID := uint(813)
+	root := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, guestID)
+	child := root + "/disk"
+	lineage := fmt.Sprintf("%s/sylve/virtual-machines/%d_gen-stale", pool, guestID)
+	snapshot := "ha_replication-813-held"
+	zfstest.EnsureDataset(t, client, root)
+	zfstest.EnsureVolume(t, client, child, 8)
+	zfstest.EnsureDataset(t, client, lineage)
+	setRealZFSProperties(t, lineage, map[string]string{
+		replicationPropertyPolicyID: strconv.FormatUint(uint64(guestID), 10),
+		replicationPropertyRole:     replicationRoleStandby,
+	})
+	if output, err := exec.Command("zfs", "snapshot", "-r", root+"@"+snapshot).CombinedOutput(); err != nil {
+		t.Fatalf("create held policy snapshot: %v\n%s", err, output)
+	}
+	const holdTag = "sylve-phase-1c-test"
+	if output, err := exec.Command("zfs", "hold", holdTag, root+"@"+snapshot).CombinedOutput(); err != nil {
+		t.Fatalf("hold policy snapshot: %v\n%s", err, output)
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("zfs", "release", holdTag, root+"@"+snapshot).Run()
+	})
+
+	database := newZeltaServiceTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ClusterNode{},
+		&vmModels.VM{},
+	)
+	clusterSvc := &clusterService.Service{DB: database}
+	localNodeID := strings.TrimSpace(clusterSvc.LocalNodeID())
+	if localNodeID == "" {
+		t.Fatal("local node identity unavailable")
+	}
+	policy := clusterModels.ReplicationPolicy{
+		ID: guestID, Name: "held-snapshot-delete", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: guestID, SourceNodeID: localNodeID, ActiveNodeID: localNodeID, OwnerEpoch: 3,
+		ProtectionState: clusterModels.ReplicationProtectionStateDeleting,
+		TransitionState: clusterModels.ReplicationTransitionStateNone,
+	}
+	if err := database.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	if err := database.Create(&vmModels.VM{RID: guestID, Name: "still-present"}).Error; err != nil {
+		t.Fatalf("seed VM metadata: %v", err)
+	}
+
+	service := newTestZeltaService(database)
+	service.Cluster = clusterSvc
+	service.GZFS = client
+	scopeLocalDatasetsToPool(t, service, pool)
+	err := service.CleanupReplicationPolicyDeleteLocalBestEffort(context.Background(), policy.ID, policy.OwnerEpoch)
+	if err == nil || !strings.Contains(err.Error(), "cleanup_policy_snapshots_failed") {
+		t.Fatalf("held snapshot cleanup error=%v", err)
+	}
+	if !realZFSDatasetExists(t, root) || !realZFSDatasetExists(t, child) ||
+		!realZFSSnapshotExists(t, root, snapshot) {
+		t.Fatalf("held cleanup changed active guest: root=%v child=%v snapshot=%v",
+			realZFSDatasetExists(t, root),
+			realZFSDatasetExists(t, child),
+			realZFSSnapshotExists(t, root, snapshot),
+		)
+	}
+	if realZFSDatasetExists(t, lineage) {
+		t.Fatalf("proven standby lineage cleanup stopped after snapshot failure: %s", lineage)
+	}
+	var retainedPolicy clusterModels.ReplicationPolicy
+	if err := database.First(&retainedPolicy, policy.ID).Error; err != nil ||
+		retainedPolicy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+		t.Fatalf("held cleanup policy=%+v err=%v", retainedPolicy, err)
+	}
+	var retainedVM vmModels.VM
+	if err := database.First(&retainedVM, "rid = ?", guestID).Error; err != nil || retainedVM.Name != "still-present" {
+		t.Fatalf("held cleanup VM metadata=%+v err=%v", retainedVM, err)
+	}
+
+	if output, err := exec.Command("zfs", "release", holdTag, root+"@"+snapshot).CombinedOutput(); err != nil {
+		t.Fatalf("release policy snapshot hold: %v\n%s", err, output)
+	}
+	if err := service.CleanupReplicationPolicyDeleteLocalBestEffort(
+		context.Background(), policy.ID, policy.OwnerEpoch,
+	); err != nil {
+		t.Fatalf("cleanup after hold release: %v", err)
+	}
+	if realZFSSnapshotExists(t, root, snapshot) || realZFSSnapshotExists(t, child, snapshot) ||
+		!realZFSDatasetExists(t, root) ||
+		!realZFSDatasetExists(t, child) {
+		t.Fatalf("retry cleanup result root=%v child=%v root_snapshot=%v child_snapshot=%v",
+			realZFSDatasetExists(t, root),
+			realZFSDatasetExists(t, child),
+			realZFSSnapshotExists(t, root, snapshot),
+			realZFSSnapshotExists(t, child, snapshot),
+		)
+	}
+	if err := database.First(&retainedPolicy, policy.ID).Error; err != nil ||
+		retainedPolicy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+		t.Fatalf("retry cleanup policy=%+v err=%v", retainedPolicy, err)
+	}
+	if err := database.First(&retainedVM, "rid = ?", guestID).Error; err != nil || retainedVM.Name != "still-present" {
+		t.Fatalf("retry cleanup VM metadata=%+v err=%v", retainedVM, err)
+	}
+}
+
 func TestPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	if testing.Short() {
@@ -396,7 +638,7 @@ func TestPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
 	service := NewService(db, nil, clusterSvc, nil, nil, nil, client)
-	scopeLocalFilesystemDatasetsToPool(t, service, pool)
+	scopeLocalDatasetsToPool(t, service, pool)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	probeAccepted := make(chan struct{})
@@ -437,7 +679,7 @@ func TestPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS
 		t.Fatalf("generation did not fail at the first readiness probe: %v", err)
 	}
 
-	snapshot, err := replicationGenerationSnapshotName(generationID)
+	snapshot, err := replicationGenerationSnapshotName(policy.ID, generationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,7 +919,7 @@ func TestColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *testing.T) {
 		Cluster: &clusterService.Service{DB: db},
 		GZFS:    client,
 	}
-	scopeLocalFilesystemDatasetsToPool(t, svc, pool)
+	scopeLocalDatasetsToPool(t, svc, pool)
 	svc.replaceReplicationFenceCache(map[uint]replicationFenceObservation{
 		77: {
 			Policy: clusterModels.ReplicationPolicy{
@@ -724,7 +966,7 @@ func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing
 	}
 
 	coldService := &Service{GZFS: client}
-	scopeLocalFilesystemDatasetsToPool(t, coldService, pool)
+	scopeLocalDatasetsToPool(t, coldService, pool)
 	if err := coldService.selfFenceAllCanonicalGuests(t.Context(), "node-a"); err != nil {
 		t.Fatalf("cold-start canonical fencing failed: %v", err)
 	}
@@ -790,7 +1032,7 @@ func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing
 	}
 	recoveredService := fx.NewZeltaService()
 	recoveredService.GZFS = client
-	scopeLocalFilesystemDatasetsToPool(t, recoveredService, pool)
+	scopeLocalDatasetsToPool(t, recoveredService, pool)
 	if err := recoveredService.selfFenceExpiredLeases(t.Context()); err != nil {
 		t.Fatalf("first policy recovery pass failed: %v", err)
 	}

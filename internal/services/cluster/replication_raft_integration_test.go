@@ -9,7 +9,9 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,6 +65,27 @@ func TestRaftReplicationPolicyCRUDTwoNodes(t *testing.T) {
 		}
 		return true
 	})
+
+	deletedPolicyID := uint(1)
+	otherPolicyID := uint(2)
+	for _, node := range nodes {
+		localEvents := []clusterModels.ReplicationEvent{
+			{ID: 101, PolicyID: &deletedPolicyID, EventType: "replication", Status: "failed", StartedAt: time.Now().UTC()},
+			{ID: 102, PolicyID: &otherPolicyID, EventType: "replication", Status: "success", StartedAt: time.Now().UTC()},
+			{ID: 103, PolicyID: nil, EventType: "replication", Status: "success", StartedAt: time.Now().UTC()},
+		}
+		if err := node.service.DB.Create(&localEvents).Error; err != nil {
+			t.Fatalf("seed local events on %s: %v", node.id, err)
+		}
+		transitionEvents := []clusterModels.ReplicationTransitionEvent{
+			{ID: 201, PolicyID: &deletedPolicyID, TransitionRunID: "delete", EventType: "failover", Status: "failed", StartedAt: time.Now().UTC()},
+			{ID: 202, PolicyID: &otherPolicyID, TransitionRunID: "keep", EventType: "failover", Status: "success", StartedAt: time.Now().UTC()},
+			{ID: 203, PolicyID: nil, TransitionRunID: "unscoped", EventType: "failover", Status: "success", StartedAt: time.Now().UTC()},
+		}
+		if err := node.service.DB.Create(&transitionEvents).Error; err != nil {
+			t.Fatalf("seed transition events on %s: %v", node.id, err)
+		}
+	}
 
 	// update
 	payload.Policy.Name = "raft-policy-updated"
@@ -118,9 +141,151 @@ func TestRaftReplicationPolicyCRUDTwoNodes(t *testing.T) {
 			if count != 0 {
 				return false
 			}
+			for _, model := range []any{&clusterModels.ReplicationEvent{}, &clusterModels.ReplicationTransitionEvent{}} {
+				var exactCount int64
+				if n.service.DB.Model(model).Where("policy_id = ?", deletedPolicyID).Count(&exactCount).Error != nil || exactCount != 0 {
+					return false
+				}
+				var otherCount int64
+				if n.service.DB.Model(model).Where("policy_id = ?", otherPolicyID).Count(&otherCount).Error != nil || otherCount != 1 {
+					return false
+				}
+				var nullCount int64
+				if n.service.DB.Model(model).Where("policy_id IS NULL").Count(&nullCount).Error != nil || nullCount != 1 {
+					return false
+				}
+			}
 		}
 		return true
 	})
+}
+
+func TestReplicationDeleteAppliedIndexFenceWaitsForLaggingFollower(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	payload := clusterModels.ReplicationPolicyPayload{Policy: clusterModels.ReplicationPolicy{
+		ID: 91, Name: "fenced-delete", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 91,
+		SourceNodeID: leader.id, ActiveNodeID: leader.id, OwnerEpoch: 1,
+		CronExpr: "*/5 * * * *", Enabled: true, ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+	}}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal policy: %v", err)
+	}
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "replication_policy", Action: "create", Data: raw,
+	}); err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
+	waitForClusterCondition(t, 5*time.Second, "initial policy convergence", func() bool {
+		for _, node := range nodes {
+			var count int64
+			if node.service.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", 91).Count(&count).Error != nil || count != 1 {
+				return false
+			}
+		}
+		return true
+	})
+
+	var lagging *clusterRaftTestNode
+	for _, node := range nodes {
+		if node != leader {
+			lagging = node
+			break
+		}
+	}
+	if lagging == nil {
+		t.Fatal("lagging follower not found")
+	}
+	lagging.transport.DisconnectAll()
+	for _, node := range nodes {
+		if node != lagging {
+			node.transport.Disconnect(lagging.addr)
+		}
+	}
+
+	if err := leader.service.UpdateReplicationPolicyProtectionState(
+		91, 1, clusterModels.ReplicationProtectionStateDeleting, false,
+	); err != nil {
+		t.Fatalf("mark policy deleting: %v", err)
+	}
+	minimum := leader.raft.AppliedIndex()
+	if lagging.raft.AppliedIndex() >= minimum {
+		t.Fatalf("follower did not lag: follower=%d minimum=%d", lagging.raft.AppliedIndex(), minimum)
+	}
+
+	type waitResult struct {
+		applied uint64
+		err     error
+	}
+	resultCh := make(chan waitResult, 1)
+	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() {
+		applied, waitErr := lagging.service.WaitForReplicatedStateAppliedIndex(waitCtx, minimum)
+		resultCh <- waitResult{applied: applied, err: waitErr}
+	}()
+
+	select {
+	case result := <-resultCh:
+		t.Fatalf("fence returned before follower caught up: %+v", result)
+	case <-time.After(75 * time.Millisecond):
+	}
+	connectClusterRaftTestNodes(nodes)
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("wait for follower catchup: %v", result.err)
+		}
+		if result.applied < minimum {
+			t.Fatalf("applied index=%d, want >=%d", result.applied, minimum)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for follower fence")
+	}
+	var policy clusterModels.ReplicationPolicy
+	if err := lagging.service.DB.First(&policy, 91).Error; err != nil {
+		t.Fatalf("load caught-up policy: %v", err)
+	}
+	if policy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+		t.Fatalf("caught-up lifecycle=%q, want deleting", policy.ProtectionState)
+	}
+}
+
+func TestReplicationDeleteAppliedIndexFenceTimeoutIsRetryableAndNonMutating(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ReplicationPolicy{})
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	policy := clusterModels.ReplicationPolicy{
+		ID: 92, Name: "fence-timeout", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 92,
+		SourceNodeID: leader.id, ActiveNodeID: leader.id, OwnerEpoch: 1,
+		ProtectionState: clusterModels.ReplicationProtectionStateDeleting,
+	}
+	if err := leader.service.DB.Create(&policy).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := leader.service.WaitForReplicatedStateAppliedIndex(ctx, leader.raft.AppliedIndex()+1000)
+	if err == nil || !strings.Contains(err.Error(), "replicated_state_catchup_failed") ||
+		!strings.Contains(err.Error(), "deadline exceeded") {
+		t.Fatalf("unexpected fence timeout: %v", err)
+	}
+	var retained clusterModels.ReplicationPolicy
+	if err := leader.service.DB.First(&retained, policy.ID).Error; err != nil {
+		t.Fatalf("fence timeout removed policy: %v", err)
+	}
+	if retained.ProtectionState != clusterModels.ReplicationProtectionStateDeleting {
+		t.Fatalf("fence timeout changed lifecycle to %q", retained.ProtectionState)
+	}
 }
 
 func TestRaftReplicationPolicyThreeNodeFailover(t *testing.T) {

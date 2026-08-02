@@ -119,3 +119,51 @@ func TestReplicationTransitionEventsAndRetentionConvergeWithoutMergingLocalHisto
 		return true
 	})
 }
+
+func TestReplicatedRetentionConvergesOrphanTransitionCleanup(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3,
+		&clusterModels.Cluster{},
+		&clusterModels.ReplicationPolicy{},
+	)
+	defer cleanupClusterRaftTestNodes(t, nodes)
+	livePolicyID := uint(41)
+	orphanPolicyID := uint(42)
+	now := time.Date(2026, time.August, 2, 12, 0, 0, 0, time.UTC)
+
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
+			t.Fatalf("seed cluster state on %s: %v", node.id, err)
+		}
+		if err := node.service.DB.Create(&clusterModels.ReplicationPolicy{
+			ID: livePolicyID, Name: "live", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 41,
+			SourceNodeID: "node-1", ActiveNodeID: "node-1", OwnerEpoch: 1,
+		}).Error; err != nil {
+			t.Fatalf("seed live policy on %s: %v", node.id, err)
+		}
+		events := []clusterModels.ReplicationTransitionEvent{
+			{ID: 301, PolicyID: &orphanPolicyID, TransitionRunID: "orphan", EventType: "failover", Status: "promoting", StartedAt: now},
+			{ID: 302, PolicyID: &livePolicyID, TransitionRunID: "live", EventType: "failover", Status: "success", StartedAt: now, CompletedAt: &now},
+			{ID: 303, PolicyID: nil, TransitionRunID: "unscoped", EventType: "failover", Status: "success", StartedAt: now, CompletedAt: &now},
+		}
+		if err := node.service.DB.Create(&events).Error; err != nil {
+			t.Fatalf("seed transition events on %s: %v", node.id, err)
+		}
+	}
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	if err := leader.service.EnforceReplicatedRetention(now); err != nil {
+		t.Fatalf("enforce replicated retention: %v", err)
+	}
+	waitForClusterCondition(t, 8*time.Second, "orphan transition cleanup convergence", func() bool {
+		for _, node := range nodes {
+			var events []clusterModels.ReplicationTransitionEvent
+			if err := node.service.DB.Order("id ASC").Find(&events).Error; err != nil {
+				return false
+			}
+			if len(events) != 2 || events[0].ID != 302 || events[1].ID != 303 {
+				return false
+			}
+		}
+		return true
+	})
+}

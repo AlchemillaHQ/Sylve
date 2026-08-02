@@ -457,6 +457,9 @@ func (s *Service) ensureLocalFilesystemPath(ctx context.Context, dataset string)
 }
 
 func (s *Service) listLocalVolumeDatasets(ctx context.Context) ([]string, error) {
+	if s != nil && s.localVolumeDatasetLister != nil {
+		return s.localVolumeDatasetLister(ctx)
+	}
 	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
 		return nil, fmt.Errorf("gzfs_not_initialized")
 	}

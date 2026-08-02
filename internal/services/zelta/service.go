@@ -116,10 +116,14 @@ type Service struct {
 	// Local dataset seams keep host-level ZFS tests scoped to disposable pools.
 	// Production leaves them nil and uses gzfs directly.
 	localFilesystemDatasetLister func(context.Context) ([]string, error)
+	localVolumeDatasetLister     func(context.Context) ([]string, error)
 	localDatasetUnmounter        func(context.Context, string, bool) error
 	localDatasetMounter          func(context.Context, string) error
 
 	backupOperationEnqueue            func(context.Context, string, any) error
+	replicationOperationEnqueue       func(context.Context, string, any) error
+	replicationRunClaimForward        func(context.Context, string, clusterModels.ReplicationPolicyScheduleDecision) error
+	replicationGuestDriverFactory     func(string) (replicationGuestDriver, error)
 	restoreJobRun                     func(context.Context, *clusterModels.BackupJob, string, string) error
 	restoreFromTargetOperationEnqueue func(context.Context, string, any) error
 	restoreFromTargetRun              func(context.Context, *clusterModels.BackupTarget, restoreFromTargetPayload) error

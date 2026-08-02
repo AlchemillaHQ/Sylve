@@ -138,12 +138,37 @@ func CleanupOrphanBackupEvents(db *gorm.DB) error {
 	return nil
 }
 
+func CleanupOrphanReplicationEvents(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&clusterModels.ReplicationEvent{}) ||
+		!db.Migrator().HasTable(&clusterModels.ReplicationPolicy{}) {
+		return nil
+	}
+
+	deleteResult := db.Where(
+		"policy_id IS NOT NULL AND policy_id NOT IN (?)",
+		db.Model(&clusterModels.ReplicationPolicy{}).Select("id"),
+	).Delete(&clusterModels.ReplicationEvent{})
+	if deleteResult.Error != nil {
+		return fmt.Errorf("failed_to_prune_orphan_replication_events: %w", deleteResult.Error)
+	}
+
+	if deleteResult.RowsAffected > 0 {
+		logger.L.Info().Int64("count", deleteResult.RowsAffected).Msg("Removed orphan replication events")
+	}
+
+	return nil
+}
+
 func PruneJobs(db *gorm.DB) error {
 	if err := CleanupOrphanBackupEvents(db); err != nil {
 		return err
 	}
 
 	if err := EnforceBackupEventRetention(db, time.Now()); err != nil {
+		return err
+	}
+
+	if err := CleanupOrphanReplicationEvents(db); err != nil {
 		return err
 	}
 

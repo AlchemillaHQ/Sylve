@@ -467,3 +467,64 @@ func TestClusterForwardErrorClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestReplicationRunForwardRejectsLoopsAndUnavailableOwnerCreatesNoOperation(t *testing.T) {
+	database := newClusterHandlerTestDB(t,
+		&clusterModels.ClusterNode{},
+		&clusterModels.ReplicationRunOperation{},
+	)
+	if err := database.Create(&clusterModels.ClusterNode{
+		NodeUUID: "offline-owner", API: "offline-owner.example:8184",
+	}).Error; err != nil {
+		t.Fatalf("seed owner node: %v", err)
+	}
+	service := &cluster.Service{DB: database, AuthService: authForwardStub{}}
+
+	originalForward := clusterForwardHTTP
+	forwardCalls := 0
+	clusterForwardHTTP = func(
+		_ context.Context,
+		_ string,
+		_ string,
+		_ []byte,
+		_ map[string]string,
+		timeout time.Duration,
+	) (clusterForwardResponse, error) {
+		forwardCalls++
+		if timeout != clusterForwardDurableTimeout {
+			t.Fatalf("replication forward timeout=%s, want %s", timeout, clusterForwardDurableTimeout)
+		}
+		return clusterForwardResponse{}, errors.New("connection refused")
+	}
+	t.Cleanup(func() { clusterForwardHTTP = originalForward })
+
+	c, recorder := newClusterForwardTestContext(http.MethodPost, "/run", `{}`, nil)
+	response, err := forwardReplicationRunToNode(c, service, 901, "offline-owner")
+	if err == nil {
+		writeClusterForwardResponse(c, response)
+	} else {
+		writeClusterForwardError(c, "replication_run_remote_forward_failed", err)
+	}
+	if recorder.Code != http.StatusBadGateway || forwardCalls != 1 {
+		t.Fatalf("unavailable owner status=%d calls=%d body=%s", recorder.Code, forwardCalls, recorder.Body.String())
+	}
+
+	loopContext, _ := newClusterForwardTestContext(
+		http.MethodPost,
+		"/run",
+		`{}`,
+		map[string]string{clusterForwardHopHeader: "1"},
+	)
+	_, err = forwardReplicationRunToNode(loopContext, service, 901, "offline-owner")
+	if err == nil || !strings.Contains(err.Error(), "forward_loop") || forwardCalls != 1 {
+		t.Fatalf("loop result: calls=%d err=%v", forwardCalls, err)
+	}
+
+	var operationCount int64
+	if err := database.Model(&clusterModels.ReplicationRunOperation{}).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count operations: %v", err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("unavailable/looped owner created %d operations", operationCount)
+	}
+}

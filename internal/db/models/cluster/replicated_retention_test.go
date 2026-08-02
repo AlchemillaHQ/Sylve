@@ -18,6 +18,7 @@ func TestApplyReplicatedRetentionTxnBoundsReceiptsAndTransitionEvents(t *testing
 	db := newClusterModelTestDB(t,
 		&ScheduledRunReceipt{},
 		&ReplicationGuestOperationReceipt{},
+		&ReplicationPolicy{},
 		&ReplicationTransitionEvent{},
 		&ReplicationEvent{},
 	)
@@ -127,5 +128,46 @@ func TestApplyReplicatedRetentionTxnBoundsReceiptsAndTransitionEvents(t *testing
 	}
 	if localCount != 1 {
 		t.Fatalf("replicated retention touched local telemetry: count=%d", localCount)
+	}
+}
+
+func TestApplyReplicatedRetentionTxnRemovesOnlyOrphanTransitionEvents(t *testing.T) {
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationTransitionEvent{})
+	now := time.Date(2026, time.August, 2, 12, 0, 0, 0, time.UTC)
+	livePolicyID := uint(71)
+	orphanPolicyID := uint(72)
+	if err := db.Create(&ReplicationPolicy{
+		ID: livePolicyID, Name: "live", GuestType: ReplicationGuestTypeVM, GuestID: 71,
+		SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
+	}).Error; err != nil {
+		t.Fatalf("seed live policy: %v", err)
+	}
+	events := []ReplicationTransitionEvent{
+		{ID: 21, PolicyID: &orphanPolicyID, TransitionRunID: "orphan-active", EventType: "failover", Status: "promoting", StartedAt: now},
+		{ID: 22, PolicyID: &livePolicyID, TransitionRunID: "live", EventType: "failover", Status: "success", StartedAt: now, CompletedAt: &now},
+		{ID: 23, PolicyID: nil, TransitionRunID: "unscoped", EventType: "failover", Status: "success", StartedAt: now, CompletedAt: &now},
+	}
+	if err := db.Create(&events).Error; err != nil {
+		t.Fatalf("seed transition events: %v", err)
+	}
+
+	decision := ReplicatedRetentionDecision{
+		ScheduledRunReceiptCutoff:    now.Add(-90 * 24 * time.Hour),
+		ScheduledRunReceiptMaxRows:   100,
+		GuestOperationReceiptCutoff:  now.Add(-90 * 24 * time.Hour),
+		GuestOperationReceiptMaxRows: 100,
+		ReplicationTransitionCutoff:  now.Add(-90 * 24 * time.Hour),
+		ReplicationTransitionMaxRows: 100,
+	}
+	if err := ApplyReplicatedRetentionTxn(db, &decision); err != nil {
+		t.Fatalf("apply retention: %v", err)
+	}
+
+	var remaining []ReplicationTransitionEvent
+	if err := db.Order("id ASC").Find(&remaining).Error; err != nil {
+		t.Fatalf("load remaining transition events: %v", err)
+	}
+	if len(remaining) != 2 || remaining[0].ID != 22 || remaining[1].ID != 23 {
+		t.Fatalf("unexpected remaining transition events: %+v", remaining)
 	}
 }
