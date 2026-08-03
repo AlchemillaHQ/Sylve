@@ -37,8 +37,9 @@ func TestActivateTargetGenerationRollsBackAmbiguousArchiveRenameRealZFS(t *testi
 	))
 
 	// Use a transport shim, not a fake ZFS binary: every command executes
-	// against real FreeBSD ZFS. The first active->archive rename succeeds, then
-	// the shim reports a transport error to model an ambiguous SSH result.
+	// against real FreeBSD ZFS. The first command that removes the active source
+	// succeeds, then the shim reports a transport error to model an ambiguous SSH
+	// result.
 	dir := t.TempDir()
 	sshPath := filepath.Join(dir, "ssh")
 	statePath := filepath.Join(dir, "archive-rename-executed")
@@ -51,15 +52,25 @@ while [ "$#" -gt 0 ]; do
     *) shift; break ;;
   esac
 done
-if [ "$#" -ge 4 ] && [ "$1" = "zfs" ] && [ "$2" = "rename" ] && \
-   [ "$3" = "${ZELTA_TEST_FAIL_RENAME_FROM:-}" ] && \
+source_was_present=false
+if zfs list -H -o name "${ZELTA_TEST_FAIL_RENAME_FROM:-}" >/dev/null 2>&1; then
+  source_was_present=true
+fi
+set +e
+/bin/sh -c "$1"
+status=$?
+set -e
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+if [ "$source_was_present" = true ] && \
+   ! zfs list -H -o name "${ZELTA_TEST_FAIL_RENAME_FROM:-}" >/dev/null 2>&1 && \
    [ ! -e "${ZELTA_TEST_RENAME_STATE:?}" ]; then
-  "$@"
   : > "${ZELTA_TEST_RENAME_STATE}"
   echo simulated_transport_error >&2
   exit 255
 fi
-exec "$@"
+exit 0
 `
 	if err := os.WriteFile(sshPath, []byte(sshScript), 0o755); err != nil {
 		t.Fatalf("write SSH fault shim: %v", err)

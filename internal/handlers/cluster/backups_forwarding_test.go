@@ -103,8 +103,11 @@ func TestRestoreBackupJobRejectsInvalidSnapshotBeforeLookup(t *testing.T) {
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusBadRequest || len(restoreService.registeredKeys) != 0 {
-		t.Fatalf("status=%d body=%s keys=%v", response.Code, response.Body.String(), restoreService.registeredKeys)
+	if response.Code != http.StatusBadRequest || len(restoreService.registeredKeys) != 0 || len(restoreService.enqueuedJobs) != 0 {
+		t.Fatalf(
+			"status=%d body=%s keys=%v jobs=%v",
+			response.Code, response.Body.String(), restoreService.registeredKeys, restoreService.enqueuedJobs,
+		)
 	}
 }
 

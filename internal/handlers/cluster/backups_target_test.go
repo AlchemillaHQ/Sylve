@@ -272,6 +272,13 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		if resp.Message != "backup_target_create_failed" {
 			t.Fatalf("unexpected response: %+v", resp)
 		}
+		var targets int64
+		if err := db.Model(&clusterModels.BackupTarget{}).Count(&targets).Error; err != nil {
+			t.Fatalf("count targets: %v", err)
+		}
+		if len(zStub.validateCalls) != 0 || targets != 0 {
+			t.Fatalf("invalid boundary reached validation or persistence: calls=%v targets=%d", zStub.validateCalls, targets)
+		}
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -669,6 +676,9 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		}
 		if resp.Message != "backup_target_update_failed" {
 			t.Fatalf("unexpected response: %+v", resp)
+		}
+		if len(zStub.validateCalls) != 0 {
+			t.Fatalf("invalid boundary reached validation: %+v", zStub.validateCalls)
 		}
 	})
 

@@ -44,7 +44,7 @@ func TestParseSSHDestinationRejectsUnsafeOrAmbiguousInput(t *testing.T) {
 	for _, input := range []string{
 		"", "-oProxyCommand=touch", "root@-host", "root@@host", "@host",
 		"host:22", "[2001:db8::1]:22", "[backup]", "host name", "host\nname",
-		"host;touch", "host/path", "bad_host", "123", "2130706433",
+		"host;touch", "host'quote", `host"quote`, "$(hostname)", "host/path", "bad_host", "123", "2130706433",
 		"999.999.999.999", "-host",
 	} {
 		t.Run(input, func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestParseZFSDatasetRejectsNonExactInput(t *testing.T) {
 	for _, input := range []string{
 		"", "/tank/backups", "tank/backups/", "tank//backups", "tank/./backups",
 		"tank/../backups", "tank/backups@snap", "tank/backups#bookmark", "tank/bad;name",
-		"tank/$(touch)", "tank/recv%temporary", "tank/backup with spaces", "tank/backups\nnext",
+		"tank/bad'name", `tank/bad"name`, "tank/$(touch)", "tank/recv%temporary", "tank/backup with spaces", "tank/backups\nnext",
 		"1tank/backups",
 	} {
 		t.Run(input, func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestParseZFSSnapshot(t *testing.T) {
 }
 
 func TestParseZFSSnapshotRejectsInvalidInput(t *testing.T) {
-	for _, input := range []string{"", "@", "snap/name", "snap@again", "snap#bookmark", "snap;touch", "$(touch)", "snap with spaces", "snap\nnext"} {
+	for _, input := range []string{"", "@", "snap/name", "snap@again", "snap#bookmark", "snap;touch", "snap'quote", `snap"quote`, "$(touch)", "snap with spaces", "snap\nnext"} {
 		t.Run(input, func(t *testing.T) {
 			if got, err := ParseZFSSnapshotName(input); err == nil {
 				t.Fatalf("accepted %q as %q", input, got.String())
@@ -141,7 +141,7 @@ func TestParseZFSPropertyValuesAndOperationTokens(t *testing.T) {
 			t.Fatalf("property %q = %#v err=%v", input, property, err)
 		}
 	}
-	for _, input := range []string{"", "Readonly", "-readonly", "sylve:bad value", "sylve:bad=value", "sylve:bad\nname"} {
+	for _, input := range []string{"", "Readonly", "-readonly", "sylve:bad value", "sylve:bad=value", "sylve:bad'quote", `sylve:bad"quote`, "sylve:$(bad)", "sylve:bad\nname"} {
 		if property, err := ParseZFSPropertyName(input); err == nil {
 			t.Fatalf("accepted property %q as %q", input, property.String())
 		}
@@ -161,7 +161,7 @@ func TestParseZFSPropertyValuesAndOperationTokens(t *testing.T) {
 			t.Fatalf("token %q = %#v err=%v", input, token, err)
 		}
 	}
-	for _, input := range []string{"", "-option", "token with space", "token;touch", "$(touch)", "token\nnext", strings.Repeat("a", maxOperationTokenLen+1)} {
+	for _, input := range []string{"", "-option", "token with space", "token;touch", "token'quote", `token"quote`, "$(touch)", "token\nnext", strings.Repeat("a", maxOperationTokenLen+1)} {
 		if token, err := ParseOperationToken(input); err == nil {
 			t.Fatalf("accepted token %q as %q", input, token.String())
 		}

@@ -37,24 +37,43 @@ func TestValidateTargetCandidateCleansStagedKeyOnFailure(t *testing.T) {
 }
 
 func TestValidateTargetWithFakeSSH(t *testing.T) {
-	t.Run("backup_root_required", func(t *testing.T) {
-		h := newFakeSSHHarness(t)
-		s := &Service{}
-		target := &clusterModels.BackupTarget{
-			SSHHost:    "user@target",
-			SSHPort:    22,
-			BackupRoot: "   ",
-		}
-
-		err := s.ValidateTarget(context.Background(), target)
-		if err == nil || !strings.Contains(err.Error(), "backup_root_required") {
-			t.Fatalf("expected backup_root_required error, got %v", err)
-		}
-
-		if got := h.Calls(); len(got) != 0 {
-			t.Fatalf("expected no ssh calls for backup_root_required, got %#v", got)
-		}
-	})
+	for _, test := range []struct {
+		name      string
+		target    clusterModels.BackupTarget
+		wantError string
+	}{
+		{
+			name:      "backup root required",
+			target:    clusterModels.BackupTarget{SSHHost: "user@target", SSHPort: 22, BackupRoot: "   "},
+			wantError: "backup_root_required",
+		},
+		{
+			name:      "unsafe destination",
+			target:    clusterModels.BackupTarget{SSHHost: "-oProxyCommand=touch", SSHPort: 22, BackupRoot: "tank/backups"},
+			wantError: "invalid_ssh_host",
+		},
+		{
+			name:      "unsafe dataset",
+			target:    clusterModels.BackupTarget{SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups;touch"},
+			wantError: "invalid_backup_root",
+		},
+		{
+			name:      "invalid port",
+			target:    clusterModels.BackupTarget{SSHHost: "user@target", SSHPort: 65536, BackupRoot: "tank/backups"},
+			wantError: "invalid_ssh_port",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newFakeSSHHarness(t)
+			err := (&Service{}).ValidateTarget(context.Background(), &test.target)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("validation error = %v, want %q", err, test.wantError)
+			}
+			if calls := h.Calls(); len(calls) != 0 {
+				t.Fatalf("invalid boundary invoked ssh: %#v", calls)
+			}
+		})
+	}
 
 	t.Run("dataset already exists", func(t *testing.T) {
 		h := newFakeSSHHarness(t)

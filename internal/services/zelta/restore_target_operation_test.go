@@ -62,6 +62,7 @@ func enqueueTargetRestoreWithOperationID(
 
 func TestOOBRestoreInvalidRemoteValuesHaveNoDurableSideEffects(t *testing.T) {
 	service, target := newBackupTargetRestoreOperationService(t)
+	harness := newFakeSSHHarness(t)
 	publications := 0
 	service.restoreFromTargetOperationEnqueue = func(context.Context, string, any) error {
 		publications++
@@ -97,8 +98,8 @@ func TestOOBRestoreInvalidRemoteValuesHaveNoDurableSideEffects(t *testing.T) {
 	if err := service.DB.Model(&clusterModels.BackupEvent{}).Count(&events).Error; err != nil {
 		t.Fatalf("count events: %v", err)
 	}
-	if operations != 0 || events != 0 || publications != 0 {
-		t.Fatalf("side effects: operations=%d events=%d publications=%d", operations, events, publications)
+	if calls := harness.Calls(); operations != 0 || events != 0 || publications != 0 || len(calls) != 0 {
+		t.Fatalf("side effects: operations=%d events=%d publications=%d ssh=%v", operations, events, publications, calls)
 	}
 }
 

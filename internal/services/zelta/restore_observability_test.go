@@ -59,6 +59,46 @@ func newStartedRestoreAudit(t *testing.T, telemetryDB *gorm.DB, path string) inf
 	return audit
 }
 
+func TestRestoreJobInvalidRemoteValuesHaveNoDurableSideEffects(t *testing.T) {
+	service, _, target := newRestoreObservabilityService(t)
+	job := clusterModels.BackupJob{
+		ID: 92, Name: "invalid-restore", TargetID: target.ID,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "zroot/data",
+		DestSuffix: "data", CronExpr: "0 0 * * *",
+	}
+	if err := service.DB.Create(&job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	publications := 0
+	service.backupOperationEnqueue = func(context.Context, string, any) error {
+		publications++
+		return nil
+	}
+	for _, snapshot := range []string{
+		"@bk_j92_c1_valid;touch",
+		"tank/backups/../data@bk_j92_c1_valid",
+		"tank/backups-old/data@bk_j92_c1_valid",
+	} {
+		if err := service.EnqueueRestoreJob(context.Background(), job.ID, snapshot); err == nil {
+			t.Fatalf("accepted invalid snapshot %q", snapshot)
+		}
+	}
+	var operations int64
+	if err := service.DB.Model(&clusterModels.BackupJobOperation{}).Count(&operations).Error; err != nil {
+		t.Fatalf("count operations: %v", err)
+	}
+	var events int64
+	if err := service.DB.Model(&clusterModels.BackupEvent{}).Count(&events).Error; err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if operations != 0 || events != 0 || publications != 0 || len(service.runningJobs) != 0 {
+		t.Fatalf(
+			"side effects: operations=%d events=%d publications=%d reservations=%d",
+			operations, events, publications, len(service.runningJobs),
+		)
+	}
+}
+
 func TestRestoreEventAndAuditTerminalTransitionsAreExactlyCorrelated(t *testing.T) {
 	service, telemetryDB, target := newRestoreObservabilityService(t)
 	firstAudit := newStartedRestoreAudit(t, telemetryDB, "/api/cluster/backups/targets/91/restore")

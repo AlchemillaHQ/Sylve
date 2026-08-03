@@ -204,6 +204,59 @@ func TestTargetRemoteCommandArgsPreserveStreamingWithoutExposingArguments(t *tes
 	}
 }
 
+func TestInvalidRemoteCommandValuesDoNotInvokeSSH(t *testing.T) {
+	target := clusterModels.BackupTarget{
+		SSHHost:    "root@backup.example",
+		SSHPort:    22,
+		BackupRoot: "tank/backups",
+	}
+	for name, dataset := range map[string]string{
+		"outside root":  "tank/backups-old/data",
+		"unsafe syntax": "tank/backups/data;touch",
+	} {
+		t.Run(name, func(t *testing.T) {
+			harness := newFakeSSHHarness(t)
+			_, err := (&Service{}).runTargetDatasetSSH(
+				context.Background(), &target, dataset, "zfs", "list", dataset,
+			)
+			if err == nil {
+				t.Fatal("invalid value was accepted")
+			}
+			if calls := harness.Calls(); len(calls) != 0 {
+				t.Fatalf("invalid value invoked ssh: %#v", calls)
+			}
+		})
+	}
+
+	t.Run("unsafe snapshot", func(t *testing.T) {
+		harness := newFakeSSHHarness(t)
+		if err := (&Service{}).DestroyTargetSnapshotsByName(
+			context.Background(), &target, []string{"tank/backups/data@bk_valid;touch"},
+		); err != nil {
+			t.Fatalf("destroy invalid snapshot: %v", err)
+		}
+		if calls := harness.Calls(); len(calls) != 0 {
+			t.Fatalf("invalid snapshot invoked ssh: %#v", calls)
+		}
+	})
+
+	t.Run("unsafe property", func(t *testing.T) {
+		harness := newFakeSSHHarness(t)
+		_, err := (&Service{}).runReplicationPipelineWithProperties(
+			context.Background(), &target,
+			"zroot/sylve/virtual-machines/107", "ha_replication-1-valid", "",
+			"tank/backups/virtual-machines/107", false, false,
+			map[string]string{"sylve:bad property": "value"},
+		)
+		if err == nil {
+			t.Fatal("invalid property was accepted")
+		}
+		if calls := harness.Calls(); len(calls) != 0 {
+			t.Fatalf("invalid property invoked ssh: %#v", calls)
+		}
+	})
+}
+
 func TestTemporarySSHKeyIsNotRemovedAsOrphan(t *testing.T) {
 	resetZeltaTestGlobals(t)
 	SSHKeyDirectory = filepath.Join(t.TempDir(), "ssh")
