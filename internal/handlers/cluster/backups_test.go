@@ -182,7 +182,7 @@ func TestBackupJobsHandlerRejectsInvalidTargetFilter(t *testing.T) {
 	}
 }
 
-func TestBackupJobsHandlerFiltersByVM(t *testing.T) {
+func TestBackupJobsHandlerFiltersByGuest(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
 	cS := &cluster.Service{DB: db}
 	r := newBackupsRouter(cS)
@@ -198,6 +198,10 @@ func TestBackupJobsHandlerFiltersByVM(t *testing.T) {
 		{ID: 101, Name: "vm-12", TargetID: target.ID, Mode: "vm", SourceDataset: "zroot/sylve/virtual-machines/12", CronExpr: "0 0 * * *"},
 		{ID: 102, Name: "vm-112", TargetID: target.ID, Mode: "vm", SourceDataset: "zroot/sylve/virtual-machines/112", CronExpr: "0 0 * * *"},
 		{ID: 103, Name: "dataset-12", TargetID: target.ID, Mode: "dataset", SourceDataset: "zroot/sylve/virtual-machines/12", CronExpr: "0 0 * * *"},
+		{ID: 104, Name: "jail-12", TargetID: target.ID, Mode: "jail", JailRootDataset: "zroot/sylve/jails/12", CronExpr: "0 0 * * *"},
+		{ID: 105, Name: "jail-112", TargetID: target.ID, Mode: "jail", JailRootDataset: "zroot/sylve/jails/112", CronExpr: "0 0 * * *"},
+		{ID: 106, Name: "dataset-jail-12", TargetID: target.ID, Mode: "dataset", SourceDataset: "zroot/sylve/jails/12", CronExpr: "0 0 * * *"},
+		{ID: 107, Name: "legacy-jail-12", TargetID: target.ID, Mode: "jail", SourceDataset: "zroot/sylve/jails/12", CronExpr: "0 0 * * *"},
 	}
 	if err := db.Create(&jobs).Error; err != nil {
 		t.Fatalf("failed to seed jobs: %v", err)
@@ -215,10 +219,23 @@ func TestBackupJobsHandlerFiltersByVM(t *testing.T) {
 		t.Fatalf("expected only VM 12 job, got %+v", resp.Data)
 	}
 
+	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/jobs?guestType=jail&guestId=12", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	resp = handlerAPIResponse[[]clusterModels.BackupJob]{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp.Data) != 2 || resp.Data[0].ID != 104 || resp.Data[1].ID != 107 {
+		t.Fatalf("expected jail 12 jobs including the legacy source fallback, got %+v", resp.Data)
+	}
+
 	for _, path := range []string{
 		"/cluster/backups/jobs?guestType=vm",
 		"/cluster/backups/jobs?guestType=vm&guestId=0",
-		"/cluster/backups/jobs?guestType=jail&guestId=12",
+		"/cluster/backups/jobs?guestType=dataset&guestId=12",
+		"/cluster/backups/jobs?guestType=jail&guestId=not-a-number",
 	} {
 		rr = performJSONRequest(t, r, http.MethodGet, path, nil)
 		if rr.Code != http.StatusBadRequest {

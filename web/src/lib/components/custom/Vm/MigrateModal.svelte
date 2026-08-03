@@ -76,7 +76,28 @@
 		return s.replace(/_/g, ' ').replace(/replicating_dataset:/, 'Replicating: ');
 	}
 
-	let nodes = $state<ClusterNode[]>([]);
+	function resolveSourceNodeUuid(clusterNodes: ClusterNode[]): string {
+		const sourceHostname = node.trim().toLowerCase();
+		return (
+			clusterNodes.find((candidate) => candidate.hostname.trim().toLowerCase() === sourceHostname)
+				?.nodeUUID || sourceNodeUuid.trim()
+		);
+	}
+
+	function migrationTargetNodes(clusterNodes: ClusterNode[]): ClusterNode[] {
+		const sourceHostname = node.trim().toLowerCase();
+		const sourceUuid = resolveSourceNodeUuid(clusterNodes);
+		return clusterNodes.filter(
+			(candidate) =>
+				candidate.nodeUUID !== '' &&
+				candidate.status === 'online' &&
+				candidate.nodeUUID !== sourceUuid &&
+				candidate.hostname.trim().toLowerCase() !== sourceHostname
+		);
+	}
+
+	let clusterNodes = $state.raw<ClusterNode[]>([]);
+	let nodes = $derived.by(() => migrationTargetNodes(clusterNodes));
 	let selectedNodeUuid = $state('');
 	let validation = $state<ValidateResult | null>(null);
 	let loading = $state(false);
@@ -140,14 +161,16 @@
 
 		const freshNodes = await getNodes();
 		const onlineNodes: ClusterNode[] = !isAPIResponse(freshNodes) ? freshNodes : [];
+		clusterNodes = onlineNodes;
+		const currentSourceNodeUuid = resolveSourceNodeUuid(onlineNodes);
 
 		// Try the current node first, then all other online cluster nodes.
 		const candidates = [node];
 		for (const n of onlineNodes) {
 			if (n.hostname) {
-				const isSelf = sourceNodeUuid
-					? n.nodeUUID === sourceNodeUuid
-					: n.hostname.toLowerCase() === node.toLowerCase();
+				const isSelf =
+					n.nodeUUID === currentSourceNodeUuid ||
+					n.hostname.trim().toLowerCase() === node.trim().toLowerCase();
 				if (!isSelf) {
 					candidates.push(n.hostname);
 				}
@@ -231,15 +254,7 @@
 	onMount(async () => {
 		const result = await getNodes();
 		if (!isAPIResponse(result)) {
-			const selfUuid = sourceNodeUuid;
-			const selfHostname = node.toLowerCase();
-			nodes = result.filter(
-				(n) =>
-					n.nodeUUID !== '' &&
-					n.status === 'online' &&
-					n.nodeUUID !== selfUuid &&
-					(selfUuid === '' ? n.hostname.toLowerCase() !== selfHostname : true)
-			);
+			clusterNodes = result;
 		}
 	});
 

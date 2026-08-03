@@ -13,6 +13,7 @@
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type {
 		BackupGuestRef,
+		BackupGuestScope,
 		BackupJob,
 		BackupJobMode,
 		BackupTarget
@@ -34,8 +35,7 @@
 		nodes: ClusterNode[];
 		localNodeId?: string;
 		standaloneMode?: boolean;
-		scopedVmRid?: number;
-		scopedVmHostname?: string;
+		guestScope?: BackupGuestScope | null;
 		reload: boolean;
 	}
 
@@ -65,8 +65,7 @@
 		nodes,
 		localNodeId = '',
 		standaloneMode = false,
-		scopedVmRid = 0,
-		scopedVmHostname = '',
+		guestScope = null,
 		reload = $bindable()
 	}: Props = $props();
 
@@ -127,28 +126,36 @@
 		return value.trim().replace(/\s+\(Local\)$/, '');
 	}
 
-	let scopedVmNode = $derived.by(() => {
-		if (scopedVmRid <= 0 || !scopedVmHostname.trim()) return null;
-		const hostname = normalizedNodeHostname(scopedVmHostname);
+	let scopedGuest = $derived(guestScope && guestScope.id > 0 ? guestScope : null);
+	let scopedGuestNode = $derived.by(() => {
+		if (!scopedGuest?.hostname.trim()) return null;
+		const hostname = normalizedNodeHostname(scopedGuest.hostname);
 		return nodes.find((node) => normalizedNodeHostname(node.hostname) === hostname) || null;
 	});
+	let scopedGuestLabel = $derived(scopedGuest?.kind === 'vm' ? 'VM' : 'jail');
+	let scopedGuestLoading = $derived(
+		scopedGuest?.kind === 'vm' ? vmsLoading : scopedGuest?.kind === 'jail' ? jailsLoading : false
+	);
 	let scopedRebindPending = $derived(
-		edit && scopedVmRid > 0 && selectedJob?.lastStatus === 'runner_rebind_pending'
+		edit &&
+			!!scopedGuest &&
+			selectedJob?.mode === scopedGuest.kind &&
+			selectedJob?.lastStatus === 'runner_rebind_pending'
 	);
 	let scopedRunnerMismatch = $derived(
 		edit &&
-			scopedVmRid > 0 &&
-			selectedJob?.mode === 'vm' &&
-			!!scopedVmNode &&
-			form.runnerNodeId.trim() !== scopedVmNode.nodeUUID.trim()
+			!!scopedGuest &&
+			selectedJob?.mode === scopedGuest.kind &&
+			!!scopedGuestNode &&
+			form.runnerNodeId.trim() !== scopedGuestNode.nodeUUID.trim()
 	);
 	let scopedRunnerSelectedForSave = $derived(
 		edit &&
-			scopedVmRid > 0 &&
-			selectedJob?.mode === 'vm' &&
-			!!scopedVmNode &&
-			(selectedJob.runnerNodeId || '').trim() !== scopedVmNode.nodeUUID.trim() &&
-			form.runnerNodeId.trim() === scopedVmNode.nodeUUID.trim()
+			!!scopedGuest &&
+			selectedJob?.mode === scopedGuest.kind &&
+			!!scopedGuestNode &&
+			(selectedJob.runnerNodeId || '').trim() !== scopedGuestNode.nodeUUID.trim() &&
+			form.runnerNodeId.trim() === scopedGuestNode.nodeUUID.trim()
 	);
 
 	const modeOptions: Array<{ value: BackupJobMode; label: string }> = [
@@ -320,24 +327,28 @@
 		form.name = '';
 		form.targetId = targets[0]?.id ? String(targets[0].id) : '';
 		form.runnerNodeId =
-			scopedVmNode?.nodeUUID ||
+			scopedGuestNode?.nodeUUID ||
 			(standaloneMode ? localNodeId || nodes[0]?.nodeUUID || '' : (nodes[0]?.nodeUUID ?? ''));
-		form.mode = scopedVmRid > 0 ? 'vm' : 'dataset';
+		form.mode = scopedGuest?.kind ?? 'dataset';
 		form.sourceDataset = '';
 		form.selectedJailId = '';
 		form.selectedVmId = '';
 		form.pruneKeepLast = '0';
 		form.pruneTarget = false;
 		form.stopBeforeBackup = false;
-		form.recursive = scopedVmRid > 0;
+		form.recursive = scopedGuest?.kind === 'vm';
 		form.cronExpr = '0 * * * *';
 		form.enabled = true;
 		lastRunnerNodeId = form.runnerNodeId;
 
-		if (scopedVmRid > 0) {
+		if (scopedGuest?.kind === 'vm') {
 			await loadVMs(true);
-			const scopedVM = vms.find((vm) => vm.rid === scopedVmRid);
+			const scopedVM = vms.find((vm) => vm.rid === scopedGuest.id);
 			form.selectedVmId = scopedVM ? String(scopedVM.id) : '';
+		} else if (scopedGuest?.kind === 'jail') {
+			await loadJails(true);
+			const scopedJail = jails.find((jail) => jail.ctId === scopedGuest.id);
+			form.selectedJailId = scopedJail ? String(scopedJail.id) : '';
 		}
 	}
 
@@ -362,8 +373,18 @@
 			await loadJails(true);
 			const rootDataset = job.jailRootDataset || job.sourceDataset || '';
 			const parsedGuest = parseGuestFromDatasetPath(rootDataset);
-			if (parsedGuest.kind === 'jail' && parsedGuest.id > 0) {
-				const matchingJail = jails.find((jail) => jail.ctId === parsedGuest.id);
+			const scopedRunnerMatches =
+				scopedGuest?.kind === 'jail' &&
+				!!scopedGuestNode &&
+				form.runnerNodeId.trim() === scopedGuestNode.nodeUUID.trim();
+			const expectedCtID =
+				parsedGuest.kind === 'jail' && parsedGuest.id > 0
+					? parsedGuest.id
+					: scopedRunnerMatches
+						? scopedGuest.id
+						: 0;
+			if (expectedCtID > 0) {
+				const matchingJail = jails.find((jail) => jail.ctId === expectedCtID);
 				form.selectedJailId = matchingJail ? String(matchingJail.id) : '';
 			} else {
 				const matchingJail = jails.find((jail) => {
@@ -379,14 +400,14 @@
 			await loadVMs(true);
 			const parsedGuest = parseGuestFromDatasetPath(job.sourceDataset || '');
 			const scopedRunnerMatches =
-				scopedVmRid > 0 &&
-				!!scopedVmNode &&
-				form.runnerNodeId.trim() === scopedVmNode.nodeUUID.trim();
+				scopedGuest?.kind === 'vm' &&
+				!!scopedGuestNode &&
+				form.runnerNodeId.trim() === scopedGuestNode.nodeUUID.trim();
 			const expectedRID =
 				parsedGuest.kind === 'vm' && parsedGuest.id > 0
 					? parsedGuest.id
 					: scopedRunnerMatches
-						? scopedVmRid
+						? scopedGuest.id
 						: 0;
 			if (expectedRID > 0) {
 				const matchingVM = vms.find((vm) => vm.rid === expectedRID);
@@ -395,46 +416,83 @@
 		}
 	}
 
-	async function useCurrentVMOwner() {
-		if (!scopedVmNode || scopedVmRid <= 0 || scopedRebindPending) return;
+	async function useCurrentGuestOwner() {
+		if (!scopedGuestNode || !scopedGuest || scopedRebindPending) return;
 
-		vmsLoading = true;
+		if (scopedGuest.kind === 'vm') vmsLoading = true;
+		else jailsLoading = true;
 		try {
-			const hostname = normalizedNodeHostname(scopedVmNode.hostname);
-			const result = await getVMs(hostname || undefined);
-			const scopedVM = result.find((vm) => vm.rid === scopedVmRid);
-			if (!scopedVM) {
-				toast.error(`VM ${scopedVmRid} was not found on ${hostname || 'the scoped node'}`, {
-					position: 'bottom-center'
-				});
-				return;
-			}
-			const dataset = vmBaseDataset(scopedVM);
-			if (!dataset) {
-				toast.error(`Unable to resolve a dataset root for VM ${scopedVmRid}`, {
-					position: 'bottom-center'
-				});
-				return;
+			const hostname = normalizedNodeHostname(scopedGuestNode.hostname);
+			if (scopedGuest.kind === 'jail') {
+				const result = await getJails(hostname || undefined);
+				const scopedJail = result.find((jail) => jail.ctId === scopedGuest.id);
+				if (!scopedJail) {
+					toast.error(`Jail ${scopedGuest.id} was not found on ${hostname || 'the scoped node'}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+				const baseStorage = scopedJail.storages?.find((storage) => storage.isBase);
+				if (!baseStorage) {
+					toast.error(`Unable to resolve a dataset root for jail ${scopedGuest.id}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
+				updateCache(hostname ? `jail-list-${hostname}` : 'jail-list', result);
+				jails = result;
+				jailsLoadedForNode = hostname;
+				form.runnerNodeId = scopedGuestNode.nodeUUID;
+				lastRunnerNodeId = form.runnerNodeId;
+				form.mode = 'jail';
+				form.selectedJailId = String(scopedJail.id);
+				form.selectedVmId = '';
+				form.sourceDataset = '';
+			} else {
+				const result = await getVMs(hostname || undefined);
+				const scopedVM = result.find((vm) => vm.rid === scopedGuest.id);
+				if (!scopedVM) {
+					toast.error(`VM ${scopedGuest.id} was not found on ${hostname || 'the scoped node'}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+				const dataset = vmBaseDataset(scopedVM);
+				if (!dataset) {
+					toast.error(`Unable to resolve a dataset root for VM ${scopedGuest.id}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
+				updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', result);
+				vms = result;
+				vmsLoadedForNode = hostname;
+				form.runnerNodeId = scopedGuestNode.nodeUUID;
+				lastRunnerNodeId = form.runnerNodeId;
+				form.mode = 'vm';
+				form.selectedJailId = '';
+				form.selectedVmId = String(scopedVM.id);
+				form.sourceDataset = dataset;
+				form.recursive = true;
 			}
 
-			updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', result);
-			vms = result;
-			vmsLoadedForNode = hostname;
-			form.runnerNodeId = scopedVmNode.nodeUUID;
-			lastRunnerNodeId = form.runnerNodeId;
-			form.mode = 'vm';
-			form.selectedVmId = String(scopedVM.id);
-			form.sourceDataset = dataset;
-			form.recursive = true;
-			toast.success('Current VM owner selected. Save the job to apply the repair.', {
-				position: 'bottom-center'
-			});
+			toast.success(
+				`Current ${scopedGuestLabel} owner selected. Save the job to apply the repair.`,
+				{
+					position: 'bottom-center'
+				}
+			);
 		} catch (e: unknown) {
-			toast.error((e as { message?: string })?.message || 'Failed to load the scoped VM owner', {
-				position: 'bottom-center'
-			});
+			toast.error(
+				(e as { message?: string })?.message ||
+					`Failed to load the scoped ${scopedGuestLabel} owner`,
+				{ position: 'bottom-center' }
+			);
 		} finally {
-			vmsLoading = false;
+			if (scopedGuest.kind === 'vm') vmsLoading = false;
+			else jailsLoading = false;
 		}
 	}
 
@@ -664,7 +722,7 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
-			{#if edit && scopedVmRid > 0 && selectedJob?.mode === 'vm'}
+			{#if edit && scopedGuest && selectedJob?.mode === scopedGuest.kind}
 				{#if scopedRebindPending}
 					<div class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
 						<p class="font-medium text-amber-700 dark:text-amber-300">
@@ -674,9 +732,11 @@
 							Automatic reconciliation owns this job. Wait for it to finish before editing.
 						</p>
 					</div>
-				{:else if !scopedVmNode}
+				{:else if !scopedGuestNode}
 					<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-						<p class="font-medium text-destructive">Scoped VM node is unavailable</p>
+						<p class="font-medium text-destructive">
+							Scoped {scopedGuestLabel} node is unavailable
+						</p>
 						<p class="mt-1 text-muted-foreground">
 							The route node could not be resolved, so runner repair is disabled.
 						</p>
@@ -687,26 +747,30 @@
 							This job is assigned to a different runner
 						</p>
 						<p class="mt-1 text-muted-foreground">
-							The scoped VM is on {scopedVmNode.hostname}. Select its current owner, then save to
-							repair the assignment.
+							The scoped {scopedGuestLabel} is on {scopedGuestNode.hostname}. Select its current
+							owner, then save to repair the assignment.
 						</p>
 						<Button
 							type="button"
 							variant="outline"
 							size="sm"
 							class="mt-3"
-							onclick={useCurrentVMOwner}
-							disabled={vmsLoading}
+							onclick={useCurrentGuestOwner}
+							disabled={scopedGuestLoading}
 						>
-							{vmsLoading ? 'Loading VM owner…' : 'Use current VM owner'}
+							{scopedGuestLoading
+								? `Loading ${scopedGuestLabel} owner…`
+								: `Use current ${scopedGuestLabel} owner`}
 						</Button>
 					</div>
 				{:else if scopedRunnerSelectedForSave}
 					<div class="rounded-md border border-blue-500/50 bg-blue-500/10 p-3 text-sm">
-						<p class="font-medium text-blue-700 dark:text-blue-300">Current VM owner selected</p>
+						<p class="font-medium text-blue-700 dark:text-blue-300">
+							Current {scopedGuestLabel} owner selected
+						</p>
 						<p class="mt-1 text-muted-foreground">
-							The runner will change to {scopedVmNode.hostname} only after this job is saved and the backend
-							verifies live placement.
+							The runner will change to {scopedGuestNode.hostname} only after this job is saved and the
+							backend verifies live placement.
 						</p>
 					</div>
 				{/if}
@@ -734,7 +798,7 @@
 					options={nodeOptions}
 					bind:value={form.runnerNodeId}
 					onChange={() => {}}
-					disabled={scopedVmRid > 0}
+					disabled={Boolean(scopedGuest)}
 				/>
 
 				<SimpleSelect
@@ -743,7 +807,7 @@
 					options={modeOptions}
 					bind:value={form.mode}
 					onChange={handleModeChange}
-					disabled={scopedVmRid > 0}
+					disabled={Boolean(scopedGuest)}
 				/>
 			</div>
 
@@ -766,7 +830,7 @@
 						options={jailOptions}
 						bind:value={form.selectedJailId}
 						onChange={() => {}}
-						disabled={jailsLoading || jails.length === 0}
+						disabled={jailsLoading || jails.length === 0 || scopedGuest?.kind === 'jail'}
 					/>
 				{:else}
 					<SimpleSelect
@@ -779,7 +843,7 @@
 						options={vmOptions}
 						bind:value={form.selectedVmId}
 						onChange={() => {}}
-						disabled={vmsLoading || vms.length === 0 || scopedVmRid > 0}
+						disabled={vmsLoading || vms.length === 0 || scopedGuest?.kind === 'vm'}
 					/>
 				{/if}
 			</div>

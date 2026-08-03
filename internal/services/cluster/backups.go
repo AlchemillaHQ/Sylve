@@ -197,7 +197,7 @@ func (s *Service) ListBackupJobs(targetID uint) ([]clusterModels.BackupJob, erro
 // created before a dedicated guest filter was exposed by the API.
 func (s *Service) ListBackupJobsForGuest(targetID uint, guestType string, guestID uint) ([]clusterModels.BackupJob, error) {
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
-	if guestType != clusterModels.ReplicationGuestTypeVM {
+	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
 		return nil, fmt.Errorf("invalid_guest_type")
 	}
 	if guestID == 0 {
@@ -211,12 +211,26 @@ func (s *Service) ListBackupJobsForGuest(targetID uint, guestType string, guestI
 
 	filtered := make([]clusterModels.BackupJob, 0)
 	for _, job := range jobs {
-		if job.Mode != clusterModels.BackupJobModeVM {
-			continue
-		}
-		rid, ok := parseVMRIDFromDataset(job.SourceDataset)
-		if ok && rid == guestID {
-			filtered = append(filtered, job)
+		switch guestType {
+		case clusterModels.ReplicationGuestTypeVM:
+			if job.Mode != clusterModels.BackupJobModeVM {
+				continue
+			}
+			rid, ok := parseVMRIDFromDataset(job.SourceDataset)
+			if ok && rid == guestID {
+				filtered = append(filtered, job)
+			}
+		case clusterModels.ReplicationGuestTypeJail:
+			if job.Mode != clusterModels.BackupJobModeJail {
+				continue
+			}
+			ctID, ok := parseJailCTIDFromDataset(job.JailRootDataset)
+			if !ok {
+				ctID, ok = parseJailCTIDFromDataset(job.SourceDataset)
+			}
+			if ok && ctID == guestID {
+				filtered = append(filtered, job)
+			}
 		}
 	}
 

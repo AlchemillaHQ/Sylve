@@ -257,6 +257,7 @@ msgstr "Cluster"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Backups"
@@ -18267,23 +18268,21 @@ msgstr "Could not load advisory placement data; the server will verify before re
 msgid "Health data also reports {0} {1} on {2}. The server will verify live placement before restoring."
 msgstr "Health data also reports {0} {1} on {2}. The server will verify live placement before restoring."
 
-#. 0: scopedVmRid; 1: hostname || 'the scoped node'
+#. 0: scopedGuest.id; 1: hostname || 'the scoped node'
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "VM {0} was not found on {1}"
 msgstr "VM {0} was not found on {1}"
 
-#. 0: scopedVmRid
+#. 0: scopedGuest.id
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Unable to resolve a dataset root for VM {0}"
 msgstr "Unable to resolve a dataset root for VM {0}"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "Current VM owner selected. Save the job to apply the repair."
-msgstr "Current VM owner selected. Save the job to apply the repair."
+#~ msgid "Current VM owner selected. Save the job to apply the repair."
+#~ msgstr "Current VM owner selected. Save the job to apply the repair."
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "Failed to load the scoped VM owner"
-msgstr "Failed to load the scoped VM owner"
+#~ msgid "Failed to load the scoped VM owner"
+#~ msgstr "Failed to load the scoped VM owner"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Runner rebind is still in progress"
@@ -18293,9 +18292,8 @@ msgstr "Runner rebind is still in progress"
 msgid "Automatic reconciliation owns this job. Wait for it to finish before editing."
 msgstr "Automatic reconciliation owns this job. Wait for it to finish before editing."
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "Scoped VM node is unavailable"
-msgstr "Scoped VM node is unavailable"
+#~ msgid "Scoped VM node is unavailable"
+#~ msgstr "Scoped VM node is unavailable"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "The route node could not be resolved, so runner repair is disabled."
@@ -18305,24 +18303,19 @@ msgstr "The route node could not be resolved, so runner repair is disabled."
 msgid "This job is assigned to a different runner"
 msgstr "This job is assigned to a different runner"
 
-#. 0: scopedVmNode.hostname
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "The scoped VM is on {0}. Select its current owner, then save to repair the assignment."
-msgstr "The scoped VM is on {0}. Select its current owner, then save to repair the assignment."
+#~ msgid "The scoped VM is on {0}. Select its current owner, then save to repair the assignment."
+#~ msgstr "The scoped VM is on {0}. Select its current owner, then save to repair the assignment."
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "Loading VM owner…"
-msgstr "Loading VM owner…"
+#~ msgid "Loading VM owner…"
+#~ msgstr "Loading VM owner…"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "Use current VM owner"
-msgstr "Use current VM owner"
+#~ msgid "Use current VM owner"
+#~ msgstr "Use current VM owner"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-msgid "Current VM owner selected"
-msgstr "Current VM owner selected"
+#~ msgid "Current VM owner selected"
+#~ msgstr "Current VM owner selected"
 
-#. 0: scopedVmNode.hostname
+#. 0: scopedGuestNode.hostname
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "The runner will change to {0} only after this job is saved and the backend verifies live placement."
 msgstr "The runner will change to {0} only after this job is saved and the backend verifies live placement."
@@ -18542,3 +18535,52 @@ msgstr "No data has been recorded for this VM."
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 msgid "No data has been recorded for this jail."
 msgstr "No data has been recorded for this jail."
+
+#: src/routes/[node]/jail/[ctid]/backups/+page.ts
+msgid "Invalid jail CTID"
+msgstr "Invalid jail CTID"
+
+#. 0: scopedGuest.id; 1: hostname || 'the scoped node'
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Jail {0} was not found on {1}"
+msgstr "Jail {0} was not found on {1}"
+
+#. 0: scopedGuest.id
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Unable to resolve a dataset root for jail {0}"
+msgstr "Unable to resolve a dataset root for jail {0}"
+
+#. 0: scopedGuestLabel
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Current {0} owner selected. Save the job to apply the repair."
+msgstr "Current {0} owner selected. Save the job to apply the repair."
+
+#. 0: scopedGuestLabel
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Failed to load the scoped {0} owner"
+msgstr "Failed to load the scoped {0} owner"
+
+#. 0: scopedGuestLabel
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Scoped {0} node is unavailable"
+msgstr "Scoped {0} node is unavailable"
+
+#. 0: scopedGuestLabel; 1: scopedGuestNode.hostname
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "The scoped {0} is on {1}. Select its current owner, then save to repair the assignment."
+msgstr "The scoped {0} is on {1}. Select its current owner, then save to repair the assignment."
+
+#. 0: scopedGuestLabel
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Loading {0} owner…"
+msgstr "Loading {0} owner…"
+
+#. 0: scopedGuestLabel
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Use current {0} owner"
+msgstr "Use current {0} owner"
+
+#. 0: scopedGuestLabel
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Current {0} owner selected"
+msgstr "Current {0} owner selected"

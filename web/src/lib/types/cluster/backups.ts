@@ -128,11 +128,21 @@ export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema
 export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;
 export type BackupJobMode = BackupJob['mode'];
 export type BackupGuestKind = 'dataset' | 'jail' | 'vm';
+export type BackupScopedGuestKind = Exclude<BackupGuestKind, 'dataset'>;
 export type BackupSnapshotLineageMarker = 'CURR' | 'OOB' | 'INT';
 
 export interface BackupGuestRef {
 	kind: BackupGuestKind;
 	id: number;
+}
+
+export interface BackupGuestFilter {
+	kind: BackupScopedGuestKind;
+	id: number;
+}
+
+export interface BackupGuestScope extends BackupGuestFilter {
+	hostname: string;
 }
 
 export interface BackupRestoreGenerationOption {

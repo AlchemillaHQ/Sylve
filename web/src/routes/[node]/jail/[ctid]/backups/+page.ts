@@ -1,17 +1,17 @@
+import type { BackupGuestScope } from '$lib/types/cluster/backups';
 import { loadBackupJobsPageData } from '$lib/utils/backup-jobs-page';
 import { parsePositiveSafeInteger } from '$lib/utils/backup-jobs-page-state';
-import type { BackupGuestScope } from '$lib/types/cluster/backups';
 import { error } from '@sveltejs/kit';
 
 export async function load({ params }) {
-	const rid = parsePositiveSafeInteger(params.rid);
-	if (rid === null) {
-		error(404, 'Invalid VM ID');
+	const ctId = parsePositiveSafeInteger(params.ctid);
+	if (ctId === null) {
+		error(404, 'Invalid jail CTID');
 	}
 
 	const guestScope: BackupGuestScope = {
-		kind: 'vm',
-		id: rid,
+		kind: 'jail',
+		id: ctId,
 		hostname: params.node
 	};
 	const data = await loadBackupJobsPageData(guestScope);

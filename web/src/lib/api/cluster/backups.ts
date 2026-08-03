@@ -11,6 +11,7 @@ import {
     type BackupVMMetadataInfo,
     type BackupEvent,
     type BackupEventProgress,
+    type BackupGuestFilter,
     type BackupJob,
     type BackupTargetDatasetInfo,
     type BackupTarget,
@@ -106,14 +107,17 @@ export async function validateBackupTarget(id: number, nodeId: string): Promise<
 }
 
 
-export async function listBackupJobs(targetId?: number, vmRid?: number): Promise<BackupJob[]> {
+export async function listBackupJobs(
+    targetId?: number,
+    guest?: BackupGuestFilter
+): Promise<BackupJob[]> {
     const params = new URLSearchParams();
     if (targetId && targetId > 0) {
         params.set('targetId', String(targetId));
     }
-    if (vmRid && vmRid > 0) {
-        params.set('guestType', 'vm');
-        params.set('guestId', String(vmRid));
+    if (guest && guest.id > 0) {
+        params.set('guestType', guest.kind);
+        params.set('guestId', String(guest.id));
     }
     const query = params.toString();
     return await apiRequest(
@@ -125,15 +129,15 @@ export async function listBackupJobs(targetId?: number, vmRid?: number): Promise
 
 export async function listBackupJobsResult(
     targetId?: number,
-    vmRid?: number
+    guest?: BackupGuestFilter
 ): Promise<BackupJob[] | APIResponse> {
     const params = new URLSearchParams();
     if (targetId && targetId > 0) {
         params.set('targetId', String(targetId));
     }
-    if (vmRid && vmRid > 0) {
-        params.set('guestType', 'vm');
-        params.set('guestId', String(vmRid));
+    if (guest && guest.id > 0) {
+        params.set('guestType', guest.kind);
+        params.set('guestId', String(guest.id));
     }
     const query = params.toString();
     return await apiRequest(

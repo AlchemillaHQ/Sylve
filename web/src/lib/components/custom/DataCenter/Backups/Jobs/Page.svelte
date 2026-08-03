@@ -14,12 +14,13 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { BackupGuestRef } from '$lib/types/cluster/backups';
+	import type { BackupGuestRef, BackupGuestScope } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import {
 		backupJobsUnavailableSources,
 		type BackupJobsPageData
 	} from '$lib/utils/backup-jobs-page-state';
+	import { backupJobsCacheKey } from '$lib/utils/backup-jobs-page';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
@@ -29,12 +30,10 @@
 
 	let {
 		data,
-		vmRid = 0,
-		vmHostname = ''
+		guestScope = null
 	}: {
 		data: BackupJobsPageData;
-		vmRid?: number;
-		vmHostname?: string;
+		guestScope?: BackupGuestScope | null;
 	} = $props();
 
 	// svelte-ignore state_referenced_locally
@@ -60,9 +59,9 @@
 
 	// svelte-ignore state_referenced_locally
 	let jobs = resource(
-		() => (vmRid > 0 ? `backup-jobs-vm-${vmRid}` : 'backup-jobs'),
+		() => backupJobsCacheKey(guestScope ?? undefined),
 		async (key: string) => {
-			const res = await listBackupJobsResult(undefined, vmRid);
+			const res = await listBackupJobsResult(undefined, guestScope ?? undefined);
 			if (isAPIResponse(res)) {
 				jobsAvailable = false;
 				return [];
@@ -460,7 +459,7 @@
 		{@render button('restore')}
 		{@render button('error')}
 
-		{#if vmRid === 0}
+		{#if !guestScope}
 			<Button
 				onclick={() => (restoreTargetModalOpen = true)}
 				size="sm"
@@ -503,8 +502,7 @@
 	{nodes}
 	localNodeId={data.localNodeId}
 	{standaloneMode}
-	scopedVmRid={vmRid}
-	scopedVmHostname={vmHostname}
+	{guestScope}
 />
 
 <Restore bind:open={restoreModalOpen} bind:reload {selectedJob} {nodes} />

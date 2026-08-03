@@ -125,7 +125,7 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		guestType := strings.TrimSpace(c.Query("guestType"))
+		guestType := strings.ToLower(strings.TrimSpace(c.Query("guestType")))
 		guestIDQuery := strings.TrimSpace(c.Query("guestId"))
 		if (guestType == "") != (guestIDQuery == "") {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -140,11 +140,12 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 		var jobs []clusterModels.BackupJob
 		if guestType != "" {
 			guestID64, parseErr := strconv.ParseUint(guestIDQuery, 10, 64)
-			if parseErr != nil || guestID64 == 0 || strings.ToLower(guestType) != clusterModels.ReplicationGuestTypeVM {
+			if parseErr != nil || guestID64 == 0 ||
+				(guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail) {
 				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "invalid_guest_filter",
-					Error:   "guestType must be vm and guestId must be a positive integer",
+					Error:   "guestType must be vm or jail and guestId must be a positive integer",
 					Data:    nil,
 				})
 				return

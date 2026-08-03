@@ -98,6 +98,11 @@
 					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
 					href: `/${node}/jail/${jailName}/snapshots`
 				},
+				{
+					label: 'Backups',
+					icon: 'mdi--backup-restore',
+					href: `/${node}/jail/${jailName}/backups`
+				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
 			];
 		}
