@@ -260,10 +260,14 @@
 					if (shouldReResolve) void stats.refetch({ step: null });
 					else void refetchCurrentStats();
 				}
+			}
+		}
+	});
 
-				if (showLogs) {
-					logs.refetch();
-				}
+	useInterval(3000, {
+		callback: () => {
+			if (visible.current && showLogs) {
+				logs.refetch();
 			}
 		}
 	});

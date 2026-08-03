@@ -1,5 +1,5 @@
 {
-    "environment": "development",
+    "environment": "production",
     "proxyToVite": false,
     "auth": {
         "enablePAM": true
@@ -8,7 +8,7 @@
         "email": "admin@sylve.local",
         "password": "admin"
     },
-    "logLevel": 0,
+    "logLevel": 3,
     "port": 8181,
     "httpPort": 8182,
     "raft": {

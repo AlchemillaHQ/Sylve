@@ -109,6 +109,12 @@ func (s *Service) PreFlightChecklist(basicSettings models.BasicSettings) error {
 		return err
 	}
 
+	if slices.Contains(basicSettings.Services, models.Jails) {
+		if err := s.SyncJailLogRotation(); err != nil {
+			return err
+		}
+	}
+
 	if err := s.DevfsSync(); err != nil {
 		return err
 	}

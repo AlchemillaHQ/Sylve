@@ -9,8 +9,44 @@
 package startup
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestWriteJailLogRotationConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "newsyslog.conf.d", "sylve.conf")
+	jailsPath := "/var/db/sylve/jails"
+
+	if err := writeJailLogRotationConfig(configPath, jailsPath); err != nil {
+		t.Fatalf("writeJailLogRotationConfig: %v", err)
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read generated config: %v", err)
+	}
+
+	want := "# Managed by Sylve; changes will be overwritten.\n" +
+		"/var/db/sylve/jails/*/*.log\t0644\t5\t1M\t*\tBEGNZ\n"
+	if string(content) != want {
+		t.Fatalf("generated config = %q, want %q", content, want)
+	}
+
+	if err := writeJailLogRotationConfig(configPath, jailsPath); err != nil {
+		t.Fatalf("idempotent writeJailLogRotationConfig: %v", err)
+	}
+}
+
+func TestWriteJailLogRotationConfigRejectsUnsafePath(t *testing.T) {
+	err := writeJailLogRotationConfig(
+		filepath.Join(t.TempDir(), "sylve.conf"),
+		"/var/db/sylve jails",
+	)
+	if err == nil {
+		t.Fatal("expected an unsafe jails path to be rejected")
+	}
+}
 
 func TestSysctlSyncRaisesNetFIBsWhenBelowMinimum(t *testing.T) {
 	previousGet := startupGetSysctlInt64
@@ -83,4 +119,3 @@ func TestSysctlSyncKeepsNetFIBsWhenAlreadyHighEnough(t *testing.T) {
 		t.Fatal("expected net.fibs not to be changed when current value is already >= 8")
 	}
 }
-

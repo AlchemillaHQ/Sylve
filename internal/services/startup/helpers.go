@@ -9,6 +9,7 @@
 package startup
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -34,7 +35,10 @@ var (
 	startupGetSystemMemoryBytes = utils.GetSystemMemoryBytes
 )
 
-const arcMaxOID = "vfs.zfs.arc_max"
+const (
+	arcMaxOID                 = "vfs.zfs.arc_max"
+	jailLogRotationConfigPath = "/usr/local/etc/newsyslog.conf.d/sylve.conf"
+)
 
 // computeARCMax returns 10% of host memory, capped at 16 GiB.
 func computeARCMax(memBytes int64) int64 {
@@ -453,6 +457,45 @@ func (s *Service) CheckSambaSyslogConfig(basicSettings models.BasicSettings) err
 		if _, err := f.WriteString("\n" + sylveLine + "\n"); err != nil {
 			return fmt.Errorf("failed to append to syslog config: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (s *Service) SyncJailLogRotation() error {
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get jails path: %w", err)
+	}
+
+	return writeJailLogRotationConfig(jailLogRotationConfigPath, jailsPath)
+}
+
+func writeJailLogRotationConfig(configPath, jailsPath string) error {
+	jailsPath = filepath.Clean(jailsPath)
+	if !filepath.IsAbs(jailsPath) || strings.ContainsAny(jailsPath, " \t\r\n#*?[\\") {
+		return fmt.Errorf("unsupported jails path for newsyslog: %q", jailsPath)
+	}
+
+	content := []byte(fmt.Sprintf(
+		"# Managed by Sylve; changes will be overwritten.\n%s\t0644\t5\t1M\t*\tBEGNZ\n",
+		filepath.Join(jailsPath, "*", "*.log"),
+	))
+
+	if current, err := os.ReadFile(configPath); err == nil {
+		if bytes.Equal(current, content) {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read jail log rotation config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("failed to create newsyslog config directory: %w", err)
+	}
+
+	if err := utils.AtomicWriteFile(configPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write jail log rotation config: %w", err)
 	}
 
 	return nil
