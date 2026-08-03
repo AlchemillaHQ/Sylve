@@ -1,8 +1,8 @@
 <script lang="ts">
 	import {
 		collectIds,
-		getClusterResources,
-		getNodes,
+		getClusterResourcesResult,
+		getNodesResult,
 		hasSavedClusterIds,
 		loadClusterIds,
 		saveOpenIds
@@ -16,6 +16,17 @@
 	import { resource, watch } from 'runed';
 	import { page } from '$app/state';
 	import { onDestroy } from 'svelte';
+	import { isAPIResponse } from '$lib/utils/http';
+
+	interface ClusterSidebarSnapshot {
+		resources: NodeResource[];
+		nodes: ClusterNode[];
+	}
+
+	const emptyClusterSidebarSnapshot: ClusterSidebarSnapshot = {
+		resources: [],
+		nodes: []
+	};
 
 	let openIds = $state(
 		(() => {
@@ -50,7 +61,7 @@
 	};
 
 	async function refetchClusterResources() {
-		await Promise.all([cluster.refetch(), nodes.refetch()]);
+		await clusterSidebarSnapshot.refetch();
 	}
 
 	function scheduleTrailingRefetch() {
@@ -75,28 +86,33 @@
 		}
 	});
 
-	const cluster = resource(
-		() => 'cluster-resources',
-		async (_, __, { signal }) => {
-			return await getClusterResources(signal);
+	const clusterSidebarSnapshot = resource(
+		() => 'cluster-sidebar-snapshot',
+		async (_, __, { signal }): Promise<ClusterSidebarSnapshot> => {
+			const [resourcesResult, nodesResult] = await Promise.all([
+				getClusterResourcesResult(signal),
+				getNodesResult(signal)
+			]);
+
+			if (isAPIResponse(resourcesResult) || isAPIResponse(nodesResult)) {
+				throw new Error('Failed to refresh the cluster sidebar snapshot');
+			}
+
+			return {
+				resources: resourcesResult,
+				nodes: nodesResult
+			};
 		},
 		{
-			initialValue: [] as NodeResource[]
+			initialValue: emptyClusterSidebarSnapshot
 		}
 	);
 
-	const nodes = resource(
-		() => 'cluster-nodes',
-		async (_, __, { signal }) => {
-			return await getNodes(signal);
-		},
-		{
-			initialValue: [] as ClusterNode[]
-		}
-	);
+	let cluster = $derived(clusterSidebarSnapshot.current.resources);
+	let nodes = $derived(clusterSidebarSnapshot.current.nodes);
 
 	let globalNextGuestId = $derived.by(() => {
-		const guestIds = cluster.current.flatMap((resource) => [
+		const guestIds = cluster.flatMap((resource) => [
 			...(resource.jails ?? []).map((jail) => jail.ctId),
 			...(resource.vms ?? []).map((vm) => vm.rid)
 		]);
@@ -114,7 +130,7 @@
 			label: 'Data Center',
 			icon: 'ant-design--cluster-outlined',
 			href: '/datacenter/summary',
-			children: cluster.current.map((n) => {
+			children: cluster.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
 					...(n.jails ?? []).map((j) => ({
@@ -183,15 +199,15 @@
 						: [])
 				];
 
-				const found = nodes.current.find((node) => node.nodeUUID === n.nodeUUID);
-				const isActive = found && found.status === 'online';
+				const found = nodes.find((node) => node.nodeUUID === n.nodeUUID);
+				const isOffline = found?.status === 'offline';
 
 				return {
 					id: n.nodeUUID,
 					label: nodeLabel,
-					icon: isActive ? 'fluent--storage-20-filled' : 'mdi--server-off',
-					href: isActive ? `/${nodeLabel}/summary` : `/inactive-node`,
-					children: isActive ? nodeChildren : [],
+					icon: isOffline ? 'mdi--server-off' : 'fluent--storage-20-filled',
+					href: isOffline ? `/inactive-node` : `/${nodeLabel}/summary`,
+					children: isOffline ? [] : nodeChildren,
 					nextGuestId: globalNextGuestId
 				};
 			})
@@ -218,7 +234,7 @@
 		() => tree,
 		(currentTree) => {
 			if (currentTree.length > 0) {
-				const hasClusterNodes = cluster.current.length > 0;
+				const hasClusterNodes = cluster.length > 0;
 				const allCurrentIds = new Set(collectIds(currentTree));
 
 				if (!hasInitializedOpenIds) {
@@ -271,7 +287,7 @@
 		const path = page.url.pathname;
 		const parts = path.split('/').filter(Boolean);
 		const nodeLabel = parts[0];
-		const node = cluster.current.find((n) => (n.hostname || n.nodeUUID) === nodeLabel);
+		const node = cluster.find((n) => (n.hostname || n.nodeUUID) === nodeLabel);
 
 		return node?.nodeUUID ?? null;
 	});

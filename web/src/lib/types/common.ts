@@ -29,6 +29,14 @@ export const GuestDeletionResponseSchema = APIResponseSchema.extend({
 	data: GuestDeletionDataSchema.nullable().optional()
 });
 
+export const GFSStepSchema = z.enum(['hourly', 'daily', 'weekly', 'monthly', 'yearly']);
+
+export const StatsHistoryStateSchema = z.enum([
+	'available',
+	'never-recorded',
+	'outside-supported-range'
+]);
+
 export function parseGuestDeletionData(value: unknown): GuestDeletionData {
 	const parsed = GuestDeletionDataSchema.safeParse(value);
 	return parsed.success ? parsed.data : { warnings: [], retainedDatasets: [] };
@@ -66,4 +74,5 @@ export type APIResponse = z.infer<typeof APIResponseSchema>;
 export type GuestDeletionData = z.infer<typeof GuestDeletionDataSchema>;
 export type GuestDeletionResponse = z.infer<typeof GuestDeletionResponseSchema>;
 export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN' | 'de' | 'cs';
-export type GFSStep = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type GFSStep = z.infer<typeof GFSStepSchema>;
+export type StatsHistoryState = z.infer<typeof StatsHistoryStateSchema>;

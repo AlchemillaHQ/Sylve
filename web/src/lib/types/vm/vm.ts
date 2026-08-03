@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
+import { GFSStepSchema, StatsHistoryStateSchema } from '../common';
 
 export interface CPUPin {
     socket: number;
@@ -171,6 +172,13 @@ export const VMStatSchema = z.object({
     createdAt: z.string().default(new Date(0).toISOString())
 });
 
+export const VMStatsBootstrapSchema = z.object({
+    points: z.array(VMStatSchema),
+    resolvedStep: GFSStepSchema.nullable(),
+    lastSampleAt: z.string().nullable(),
+    historyState: StatsHistoryStateSchema
+});
+
 export const VMLogsSchema = z.object({
     logs: z.string()
 });
@@ -305,6 +313,7 @@ export type VMStorage = z.infer<typeof VMStorageSchema>;
 export type VMNetwork = z.infer<typeof VMNetworkSchema>;
 export type VMDomain = z.infer<typeof VMDomainSchema>;
 export type VMStat = z.infer<typeof VMStatSchema>;
+export type VMStatsBootstrap = z.infer<typeof VMStatsBootstrapSchema>;
 export type VMLogs = z.infer<typeof VMLogsSchema>;
 export type SimpleVm = z.infer<typeof SimpleVmSchema>;
 export type SimpleVmTemplate = z.infer<typeof SimpleVmTemplateSchema>;

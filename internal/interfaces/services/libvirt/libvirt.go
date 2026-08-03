@@ -46,6 +46,7 @@ type LibvirtServiceInterface interface {
 	ApplyVMStatsRetention() error
 	StoreVMUsage() error
 	GetVMUsage(vmId int, step db.GFSStep) ([]vmModels.VMStats, error)
+	GetVMUsageBootstrap(vmId int) (db.StatsBootstrap[vmModels.VMStats], error)
 
 	CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error
 	SyncVMDisks(rid uint) error

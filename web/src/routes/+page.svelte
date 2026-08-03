@@ -2,7 +2,6 @@
 <span class="icon-[mdi--cloud-lock-outline]"></span>
 <span class="icon-[mdi--alert-circle]"></span>
 <span class="icon-[mdi--account-clock-outline]"></span>
-<span class="icon-[mdi--progress-key]"></span>
 <span class="icon-[mdi--timer-sand]"></span>
 <span class="icon-[mdi--key-plus]"></span>
 <span class="icon-[mdi--restart-alert]"></span>

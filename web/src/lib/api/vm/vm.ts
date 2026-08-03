@@ -2,6 +2,7 @@ import {
 	APIResponseSchema,
 	GuestDeletionResponseSchema,
 	type APIResponse,
+	type GFSStep,
 	type GuestDeletionResponse
 } from '$lib/types/common';
 import {
@@ -13,6 +14,7 @@ import {
 	VMSchema,
 	VMTemplateSchema,
 	VMStatSchema,
+	VMStatsBootstrapSchema,
 	type CreateData,
 	type QGAInfo,
 	type SimpleVm,
@@ -22,10 +24,11 @@ import {
 	type VMTemplate,
 	type VMDomain,
 	type VMStat,
+	type VMStatsBootstrap,
 	type OutcomeResponse,
 	OutcomeResponseSchema
 } from '$lib/types/vm/vm';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 function toExtraBhyveOptions(raw: string): string[] {
@@ -35,8 +38,12 @@ function toExtraBhyveOptions(raw: string): string[] {
 		.filter((line) => line.length > 0);
 }
 
-export async function getVmById(id: number, type: 'rid' | 'id'): Promise<VM> {
-	return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
+export async function getVmById(
+	id: number,
+	type: 'rid' | 'id',
+	options?: NodeAPIRequestOptions
+): Promise<VM> {
+	return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET', undefined, options);
 }
 
 export async function getVMs(hostname?: string): Promise<VM[]> {
@@ -71,8 +78,18 @@ export async function getVMTemplateById(
 	});
 }
 
-export async function getSimpleVMById(id: number, type: 'rid' | 'id'): Promise<SimpleVm> {
-	return await apiRequest(`/vm/simple/${id}?type=${type}`, SimpleVmSchema, 'GET');
+export async function getSimpleVMById(
+	id: number,
+	type: 'rid' | 'id',
+	options?: NodeAPIRequestOptions
+): Promise<SimpleVm> {
+	return await apiRequest(
+		`/vm/simple/${id}?type=${type}`,
+		SimpleVmSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function newVM(data: CreateData): Promise<APIResponse> {
@@ -152,8 +169,11 @@ export async function purgeVMRegistration(
 	);
 }
 
-export async function getVMDomain(rid: number | string): Promise<VMDomain> {
-	return await apiRequest(`/vm/domain/${rid}`, VMDomainSchema, 'GET');
+export async function getVMDomain(
+	rid: number | string,
+	options?: NodeAPIRequestOptions
+): Promise<VMDomain> {
+	return await apiRequest(`/vm/domain/${rid}`, VMDomainSchema, 'GET', undefined, options);
 }
 
 export async function actionVm(
@@ -216,12 +236,29 @@ export async function deleteVMTemplate(
 	});
 }
 
-export async function getStats(rid: number, step: string): Promise<VMStat[]> {
-	return await apiRequest(`/vm/stats/${rid}/${step}`, z.array(VMStatSchema), 'GET');
+export async function getStats(
+	rid: number,
+	step: GFSStep,
+	options?: NodeAPIRequestOptions
+): Promise<VMStat[] | APIResponse> {
+	return await apiRequest(`/vm/stats/${rid}/${step}`, z.array(VMStatSchema), 'GET', undefined, {
+		...options,
+		preserveErrors: true
+	});
 }
 
-export async function getVMLogs(rid: number): Promise<VMLogs> {
-	return await apiRequest(`/vm/logs/${rid}`, VMLogsSchema, 'GET');
+export async function getStatsBootstrap(
+	rid: number,
+	options?: NodeAPIRequestOptions
+): Promise<VMStatsBootstrap | APIResponse> {
+	return await apiRequest(`/vm/stats/${rid}`, VMStatsBootstrapSchema, 'GET', undefined, {
+		...options,
+		preserveErrors: true
+	});
+}
+
+export async function getVMLogs(rid: number, options?: NodeAPIRequestOptions): Promise<VMLogs> {
+	return await apiRequest(`/vm/logs/${rid}`, VMLogsSchema, 'GET', undefined, options);
 }
 
 export async function updateDescription(rid: number, description: string): Promise<APIResponse> {
@@ -322,6 +359,9 @@ export async function modifyExtraBhyveOptions(
 	});
 }
 
-export async function getQGAInfo(rid: number): Promise<APIResponse | QGAInfo> {
-	return await apiRequest(`/vm/qga/${rid}`, QGAInfoSchema, 'GET');
+export async function getQGAInfo(
+	rid: number,
+	options?: NodeAPIRequestOptions
+): Promise<APIResponse | QGAInfo> {
+	return await apiRequest(`/vm/qga/${rid}`, QGAInfoSchema, 'GET', undefined, options);
 }

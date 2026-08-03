@@ -50,14 +50,24 @@ export async function getNodes(signal?: AbortSignal): Promise<ClusterNode[]> {
     });
 }
 
-export async function getNodesResult(): Promise<ClusterNode[] | APIResponse> {
+export async function getNodesResult(signal?: AbortSignal): Promise<ClusterNode[] | APIResponse> {
     return await apiRequest('/cluster/nodes', z.array(ClusterNodeSchema), 'GET', undefined, {
-        preserveErrors: true
+        preserveErrors: true,
+        signal
     });
 }
 
 export async function getClusterResources(signal?: AbortSignal): Promise<NodeResource[]> {
     return await apiRequest('/cluster/resources', z.array(NodeResourceSchema), 'GET', undefined, {
+        signal
+    });
+}
+
+export async function getClusterResourcesResult(
+    signal?: AbortSignal
+): Promise<NodeResource[] | APIResponse> {
+    return await apiRequest('/cluster/resources', z.array(NodeResourceSchema), 'GET', undefined, {
+        preserveErrors: true,
         signal
     });
 }

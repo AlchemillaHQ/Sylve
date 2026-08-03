@@ -8,13 +8,27 @@ export const csr = true;
 
 export async function load({ params }) {
 	const ctId = Number(params.ctid);
+	const node = String(params.node);
 
 	const [jail, state] = await Promise.all([
-		cachedFetch(`simple-jail-${ctId}`, async () => getSimpleJailById(ctId, 'ctid'), SEVEN_DAYS),
-		cachedFetch(`jail-${ctId}-state`, async () => getJailStateById(ctId), SEVEN_DAYS)
+		cachedFetch(
+			`simple-jail-${ctId}`,
+			async () => getSimpleJailById(ctId, 'ctid', { hostname: node }),
+			SEVEN_DAYS,
+			false,
+			node
+		),
+		cachedFetch(
+			`jail-${ctId}-state`,
+			async () => getJailStateById(ctId, { hostname: node }),
+			SEVEN_DAYS,
+			false,
+			node
+		)
 	]);
 
 	return {
+		node,
 		ctId,
 		jail,
 		state

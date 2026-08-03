@@ -9,7 +9,9 @@
 package jailHandlers
 
 import (
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db"
@@ -17,10 +19,43 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
-	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
+
+func parseJailStatsCTID(c *gin.Context) (uint, bool) {
+	ctID, err := strconv.ParseUint(c.Param("ctId"), 10, 64)
+	if err != nil || ctID == 0 {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_ctid_format",
+			Data:    nil,
+			Error:   "ctid must be a positive integer",
+		})
+		return 0, false
+	}
+
+	return uint(ctID), true
+}
+
+func writeJailStatsServiceError(c *gin.Context, err error) {
+	if strings.Contains(strings.ToLower(err.Error()), "jail_not_found") {
+		c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "jail_not_found",
+			Data:    nil,
+			Error:   "jail_not_found",
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		Status:  "error",
+		Message: "internal_server_error",
+		Data:    nil,
+		Error:   err.Error(),
+	})
+}
 
 // @Summary List all Jails States
 // @Description Retrieve a list of all jails states
@@ -180,37 +215,69 @@ func GetJailLogs(jailService *jail.Service) gin.HandlerFunc {
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]jailModels.JailStats] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Jail Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail/stats/:ctid/:step [get]
 func GetJailStats(jailService *jail.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctId, _ := utils.ParamUint(c, "ctId")
-		step := c.Param("step")
-
-		if ctId == 0 || step == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Data:    nil,
-				Error:   "ctid and step are required",
-			})
+		ctID, ok := parseJailStatsCTID(c)
+		if !ok {
 			return
 		}
 
-		stats, err := jailService.GetJailUsage(ctId, db.GFSStep(step))
-		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+		step := c.Param("step")
+		if _, err := db.GFSStep(step).Window(); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "internal_server_error",
+				Message: "invalid_stats_step",
 				Data:    nil,
 				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]jailModels.JailStats]{
+		stats, err := jailService.GetJailUsage(ctID, db.GFSStep(step))
+		if err != nil {
+			writeJailStatsServiceError(c, err)
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]jailModels.JailStats]{
 			Status:  "success",
 			Message: "jail_stats_retrieved",
+			Data:    stats,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Get Initial Jail Statistics
+// @Description Retrieve the finest available statistics window and its availability metadata for a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[db.StatsBootstrap[jailModels.JailStats]] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Jail Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/stats/:ctid [get]
+func GetJailStatsBootstrap(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctID, ok := parseJailStatsCTID(c)
+		if !ok {
+			return
+		}
+
+		stats, err := jailService.GetJailUsageBootstrap(ctID)
+		if err != nil {
+			writeJailStatsServiceError(c, err)
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[db.StatsBootstrap[jailModels.JailStats]]{
+			Status:  "success",
+			Message: "jail_stats_bootstrap_retrieved",
 			Data:    stats,
 			Error:   "",
 		})

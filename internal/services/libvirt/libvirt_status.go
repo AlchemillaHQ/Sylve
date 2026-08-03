@@ -244,3 +244,57 @@ func (s *Service) GetVMUsage(rid int, step db.GFSStep) ([]vmModels.VMStats, erro
 
 	return vmStats, nil
 }
+
+func (s *Service) GetVMUsageBootstrap(rid int) (db.StatsBootstrap[vmModels.VMStats], error) {
+	return s.getVMUsageBootstrapAt(rid, time.Now())
+}
+
+func (s *Service) getVMUsageBootstrapAt(
+	rid int,
+	now time.Time,
+) (db.StatsBootstrap[vmModels.VMStats], error) {
+	empty := db.BuildStatsBootstrap[vmModels.VMStats](now, nil, nil)
+
+	vmID, err := s.GetVMIDByRID(uint(rid))
+	if err != nil {
+		return empty, err
+	}
+	if vmID == 0 {
+		return empty, fmt.Errorf("vm_not_found")
+	}
+
+	var latestAt *time.Time
+	var latest vmModels.VMStats
+	result := s.DB.
+		Select("created_at").
+		Where("vm_id = ?", vmID).
+		Order("created_at DESC").
+		Limit(1).
+		Find(&latest)
+	if result.Error != nil {
+		return empty, fmt.Errorf("failed_to_get_latest_vm_usage: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		latestAt = &latest.CreatedAt
+	}
+
+	availability := db.ResolveStatsAvailability(now, latestAt)
+	if availability.ResolvedStep == nil {
+		return db.BuildStatsBootstrap[vmModels.VMStats](now, nil, latestAt), nil
+	}
+
+	window, err := availability.ResolvedStep.Window()
+	if err != nil {
+		return empty, err
+	}
+
+	var points []vmModels.VMStats
+	if err := s.DB.
+		Where("vm_id = ? AND created_at >= ?", vmID, now.Add(-window)).
+		Order("created_at ASC").
+		Find(&points).Error; err != nil {
+		return empty, fmt.Errorf("failed_to_get_vm_usage_bootstrap: %w", err)
+	}
+
+	return db.BuildStatsBootstrap(now, points, latestAt), nil
+}

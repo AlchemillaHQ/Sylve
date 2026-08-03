@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
+import { GFSStepSchema, StatsHistoryStateSchema } from '../common';
 
 export interface CreateData {
     name: string;
@@ -195,6 +196,13 @@ export const JailStatSchema = z.object({
     createdAt: z.string()
 });
 
+export const JailStatsBootstrapSchema = z.object({
+    points: z.array(JailStatSchema),
+    resolvedStep: GFSStepSchema.nullable(),
+    lastSampleAt: z.string().nullable(),
+    historyState: StatsHistoryStateSchema
+});
+
 export const ExecPhaseDefs = [
     {
         key: 'prestart',
@@ -244,6 +252,7 @@ export type JailTemplate = z.infer<typeof JailTemplateSchema>;
 export type JailState = z.infer<typeof JailStateSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;
+export type JailStatsBootstrap = z.infer<typeof JailStatsBootstrapSchema>;
 
 export type JailLifecycleAction = 'start' | 'stop';
 export type JailLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';

@@ -8,27 +8,33 @@ export const csr = true;
 
 export async function load({ params }) {
 	const rid = Number(params.rid);
+	const node = String(params.node);
 
 	const [vm, domain] = await Promise.all([
 		cachedFetch(
 			`simple-vm-${rid}`,
 			async () => {
-				const result = await getSimpleVMById(rid, 'rid');
+				const result = await getSimpleVMById(rid, 'rid', { hostname: node });
 				return isAPIResponse(result) ? null : result;
 			},
-			SEVEN_DAYS
+			SEVEN_DAYS,
+			false,
+			node
 		),
 		cachedFetch(
 			`vm-domain-${rid}`,
 			async () => {
-				const result = await getVMDomain(rid);
+				const result = await getVMDomain(rid, { hostname: node });
 				return isAPIResponse(result) ? null : result;
 			},
-			SEVEN_DAYS
+			SEVEN_DAYS,
+			false,
+			node
 		)
 	]);
 
 	return {
+		node,
 		rid,
 		vm,
 		domain

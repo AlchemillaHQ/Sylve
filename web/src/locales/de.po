@@ -3293,6 +3293,7 @@ msgstr "Zwangslöschen"
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -6089,7 +6090,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -12223,6 +12224,7 @@ msgstr "Unbekannter Fehler"
 #~ msgid "<0/> Installed"
 #~ msgstr "<0/> Installiert"
 
+#: src/lib/components/custom/Charts/LineBrush/Single.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
@@ -18459,4 +18461,61 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 msgid "This removes only the job configuration and schedule. Existing backup snapshots on the source and backup target are preserved and will no longer be managed by this job."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Unable to load telemetry. Retrying…"
+msgstr ""
+
+#: src/lib/components/custom/Charts/LineBrush/Single.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Loading telemetry…"
+msgstr ""
+
+#~ msgid "No telemetry has been recorded for this jail."
+#~ msgstr ""
+
+#. 0: dateToAgo(activeStats.lastSampleAt)
+#. 0: dateToAgo(activeStats.lastSampleAt)
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Last telemetry was recorded {0}; graph history is available for 70 days."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "The last telemetry is outside the supported 70-day graph range."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "No samples exist in the selected time range."
+msgstr ""
+
+#~ msgid "An"
+#~ msgstr ""
+
+#~ msgid "Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or"
+#~ msgstr ""
+
+#~ msgid "No telemetry has been recorded for this VM."
+#~ msgstr ""
+
+#: src/lib/components/custom/Charts/LineBrush/Single.svelte
+msgid "Telemetry may be stale"
+msgstr ""
+
+#~ msgid "Updating…"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "No data has been recorded for this VM."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "No data has been recorded for this jail."
 msgstr ""

@@ -504,6 +504,7 @@ func RegisterRoutes(r *gin.Engine,
 		)
 		vm.GET("/domain/:rid", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
 		vm.GET("/logs/:rid", vmHandlers.GetVMLogs(libvirtService))
+		vm.GET("/stats/:rid", vmHandlers.GetVMStatsBootstrap(libvirtService))
 		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
 		vm.PUT("/description", vmHandlers.UpdateVMDescription(libvirtService))
 		vm.PUT("/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
@@ -573,6 +574,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
 		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
 		jail.PUT("/cpu", jailHandlers.UpdateJailCPU(jailService))
+		jail.GET("/stats/:ctId", jailHandlers.GetJailStatsBootstrap(jailService))
 		jail.GET("/stats/:ctId/:step", jailHandlers.GetJailStats(jailService))
 		jail.PUT("/resource-limits/:ctId", jailHandlers.UpdateResourceLimits(jailService))
 

@@ -2,7 +2,7 @@
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { setContext } from 'svelte';
 	import { page } from '$app/state';
 	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
@@ -33,6 +33,7 @@
 		const value = Number(page.url.pathname.split('/')[3]);
 		return Number.isFinite(value) ? value : 0;
 	});
+	let node = $derived(String(page.params.node || ''));
 
 	let jailChildRoute = $derived.by(() => {
 		const segments = page.url.pathname.split('/').filter(Boolean);
@@ -44,22 +45,22 @@
 	let isSummaryPage = $derived.by(() => jailChildRoute === '' || jailChildRoute === 'summary');
 
 	const jail = resource(
-		() => `simple-jail-${ctId}`,
-		async (key: string): Promise<SimpleJail | null> => {
-			if (!ctId) return null;
-			const result = await getSimpleJailById(ctId, 'ctid');
-			updateCache(key, result);
+		[() => node, () => ctId],
+		async ([hostname, currentCtID], _, { signal }): Promise<SimpleJail | null> => {
+			if (!currentCtID) return null;
+			const result = await getSimpleJailById(currentCtID, 'ctid', { hostname, signal });
+			updateCache(`simple-jail-${currentCtID}`, result, hostname);
 			return result;
 		},
 		{ initialValue: (page.data as { jail?: SimpleJail | null }).jail ?? null }
 	);
 
 	const jState = resource(
-		() => `jail-${ctId}-state`,
-		async (key: string): Promise<JailState | null> => {
-			if (!ctId) return null;
-			const result = await getJailStateById(ctId);
-			updateCache(key, result);
+		[() => node, () => ctId],
+		async ([hostname, currentCtID], _, { signal }): Promise<JailState | null> => {
+			if (!currentCtID) return null;
+			const result = await getJailStateById(currentCtID, { hostname, signal });
+			updateCache(`jail-${currentCtID}-state`, result, hostname);
 			return result;
 		},
 		{ initialValue: (page.data as { state?: JailState | null }).state ?? null }
@@ -104,7 +105,7 @@
 		logsLength = $state(0);
 		showLogsCallback = $state<() => void>(() => {});
 		gfsStep = $state<GFSStep>('hourly');
-		refetchStats = $state<() => void>(() => {});
+		refetchStats = $state<(step?: GFSStep) => void>(() => {});
 		active = $state(false);
 	}
 
@@ -380,7 +381,7 @@
 						{ label: 'Yearly', value: 'yearly' }
 					]}
 					bind:value={summaryBarExtras.gfsStep}
-					onChange={() => summaryBarExtras.refetchStats()}
+					onChange={(value) => summaryBarExtras.refetchStats(value as GFSStep)}
 					classes={{ trigger: 'h-6!' }}
 					icon="icon-[mdi--calendar]"
 				/>
@@ -393,7 +394,7 @@
 		class:overflow-hidden={isConsolePage}
 		class:overflow-auto={!isConsolePage}
 	>
-		{#key ctId}
+		{#key `${node}:${ctId}`}
 			{@render children?.()}
 		{/key}
 	</div>
@@ -464,7 +465,12 @@
 	{sourceNodeUuid}
 	onSuccess={(targetHostname: string) => {
 		if (targetHostname) {
-			goto(`/${targetHostname}/jail/${ctId}/summary`);
+			useSafeGoto(
+				resolve('/[node]/jail/[ctid]/summary', {
+					node: targetHostname,
+					ctid: String(ctId)
+				})
+			);
 		}
 	}}
 />

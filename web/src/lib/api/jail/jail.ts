@@ -2,6 +2,7 @@ import {
 	APIResponseSchema,
 	GuestDeletionResponseSchema,
 	type APIResponse,
+	type GFSStep,
 	type GuestDeletionResponse
 } from '$lib/types/common';
 import {
@@ -9,6 +10,7 @@ import {
 	JailSchema,
 	JailStateSchema,
 	JailStatSchema,
+	JailStatsBootstrapSchema,
 	SimpleJailSchema,
 	type CreateData,
 	type ExecPhaseKey,
@@ -16,6 +18,7 @@ import {
 	type Jail,
 	type JailLogs,
 	type JailStat,
+	type JailStatsBootstrap,
 	type JailState,
 	type SimpleJail,
 	JailTemplateSchema,
@@ -23,7 +26,7 @@ import {
 	SimpleJailTemplateSchema,
 	type SimpleJailTemplate
 } from '$lib/types/jail/jail';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export async function newJail(data: CreateData): Promise<APIResponse> {
@@ -106,12 +109,26 @@ export async function getJails(hostname?: string): Promise<Jail[]> {
 	return await apiRequest('/jail', z.array(JailSchema), 'GET', undefined, { hostname });
 }
 
-export async function getJailById(id: number, type: 'ctid' | 'id'): Promise<Jail> {
-	return await apiRequest(`/jail/${id}?type=${type}`, JailSchema, 'GET');
+export async function getJailById(
+	id: number,
+	type: 'ctid' | 'id',
+	options?: NodeAPIRequestOptions
+): Promise<Jail> {
+	return await apiRequest(`/jail/${id}?type=${type}`, JailSchema, 'GET', undefined, options);
 }
 
-export async function getSimpleJailById(id: number, type: 'ctid' | 'id'): Promise<SimpleJail> {
-	return await apiRequest(`/jail/simple/${id}?type=${type}`, SimpleJailSchema, 'GET');
+export async function getSimpleJailById(
+	id: number,
+	type: 'ctid' | 'id',
+	options?: NodeAPIRequestOptions
+): Promise<SimpleJail> {
+	return await apiRequest(
+		`/jail/simple/${id}?type=${type}`,
+		SimpleJailSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function deleteJail(
@@ -130,8 +147,11 @@ export async function getJailStates(): Promise<JailState[]> {
 	return await apiRequest('/jail/state', z.array(JailStateSchema), 'GET');
 }
 
-export async function getJailStateById(ctId: number): Promise<JailState> {
-	return await apiRequest(`/jail/state/${ctId}`, JailStateSchema, 'GET');
+export async function getJailStateById(
+	ctId: number,
+	options?: NodeAPIRequestOptions
+): Promise<JailState> {
+	return await apiRequest(`/jail/state/${ctId}`, JailStateSchema, 'GET', undefined, options);
 }
 
 export async function jailAction(
@@ -201,12 +221,35 @@ export async function updateName(id: number, name: string): Promise<APIResponse>
 	});
 }
 
-export async function getJailLogs(id: number): Promise<JailLogs> {
-	return await apiRequest(`/jail/${id}/logs`, JailLogsSchema, 'GET');
+export async function getJailLogs(id: number, options?: NodeAPIRequestOptions): Promise<JailLogs> {
+	return await apiRequest(`/jail/${id}/logs`, JailLogsSchema, 'GET', undefined, options);
 }
 
-export async function getStats(ctId: number, step: string): Promise<JailStat[]> {
-	return await apiRequest(`/jail/stats/${ctId}/${step}`, z.array(JailStatSchema), 'GET');
+export async function getStats(
+	ctId: number,
+	step: GFSStep,
+	options?: NodeAPIRequestOptions
+): Promise<JailStat[] | APIResponse> {
+	return await apiRequest(
+		`/jail/stats/${ctId}/${step}`,
+		z.array(JailStatSchema),
+		'GET',
+		undefined,
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
+}
+
+export async function getStatsBootstrap(
+	ctId: number,
+	options?: NodeAPIRequestOptions
+): Promise<JailStatsBootstrap | APIResponse> {
+	return await apiRequest(`/jail/stats/${ctId}`, JailStatsBootstrapSchema, 'GET', undefined, {
+		...options,
+		preserveErrors: true
+	});
 }
 
 export async function addNetwork(
@@ -306,7 +349,7 @@ export async function setNetworkInheritance(
 	ipv4: boolean,
 	ipv6: boolean
 ): Promise<APIResponse> {
-	let s = ipv4 === false && ipv6 === false ? 'disinheritance' : 'inheritance';
+	const s = ipv4 === false && ipv6 === false ? 'disinheritance' : 'inheritance';
 
 	return await apiRequest(`/jail/network/${s}/${ctId}`, APIResponseSchema, 'PUT', {
 		ipv4,

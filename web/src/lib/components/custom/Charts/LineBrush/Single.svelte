@@ -16,6 +16,8 @@
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
 	import { watch } from 'runed';
+	import { onDestroy } from 'svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
 
 	use([
 		LineChart,
@@ -36,6 +38,10 @@
 		color: 'one' | 'two' | 'three' | 'four';
 		containerClass?: string;
 		containerContentHeight?: string;
+		emptyMessage?: string;
+		loading?: boolean;
+		error?: boolean;
+		onRetry?: () => void;
 	}
 
 	let {
@@ -45,7 +51,11 @@
 		color,
 		percentage,
 		containerClass = 'p-5',
-		containerContentHeight = 'h-[360px]'
+		containerContentHeight = 'h-[360px]',
+		emptyMessage = '',
+		loading = false,
+		error = false,
+		onRetry
 	}: Props = $props();
 
 	let chart: EChartsType | undefined = $state(undefined);
@@ -264,10 +274,10 @@
 
 	let mouseIn = $state(false);
 
-	watch([() => points, () => mouseIn], ([currentPoints, isMouseIn]) => {
-		if (!chart || !currentPoints || isMouseIn) return;
+	watch([() => chart, () => points, () => mouseIn], ([currentChart, currentPoints, isMouseIn]) => {
+		if (!currentChart || !currentPoints || isMouseIn) return;
 
-		chart.setOption({
+		currentChart.setOption({
 			series: [
 				{
 					data: currentPoints.map((p) => [p.date, p.value])
@@ -362,6 +372,12 @@
 			});
 		}
 	);
+
+	onDestroy(() => {
+		if (optionRafId !== null) {
+			cancelAnimationFrame(optionRafId);
+		}
+	});
 </script>
 
 <Card.Root class={containerClass}>
@@ -384,7 +400,32 @@
 					>{title}</span
 				>
 			</div>
-			<Chart {init} {options} bind:chart />
+			{#if points.length > 0 && error}
+				<div
+					role="status"
+					class="text-muted-foreground pointer-events-none absolute top-1 right-12 z-10 flex items-center gap-1 text-xs"
+				>
+					<span>Telemetry may be stale</span>
+				</div>
+			{/if}
+			{#if points.length === 0 && (emptyMessage || loading)}
+				<div
+					role="status"
+					class="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-3 px-6 pt-8 text-center text-sm"
+				>
+					<div class="flex items-center gap-2">
+						{#if loading}
+							<span class="icon-[mdi--loading] h-4 w-4 shrink-0 animate-spin"></span>
+						{/if}
+						<span>{emptyMessage || 'Loading telemetry…'}</span>
+					</div>
+					{#if error && onRetry}
+						<Button size="sm" variant="outline" onclick={onRetry}>Retry</Button>
+					{/if}
+				</div>
+			{:else}
+				<Chart {init} {options} bind:chart />
+			{/if}
 		</div>
 	</Card.Content>
 </Card.Root>

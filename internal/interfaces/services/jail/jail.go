@@ -11,6 +11,7 @@ package jailServiceInterfaces
 import (
 	"context"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 )
 
@@ -168,6 +169,8 @@ type JailServiceInterface interface {
 
 	StoreJailUsage() error
 	PruneOrphanedJailStats() error
+	GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailStats, error)
+	GetJailUsageBootstrap(ctId uint) (db.StatsBootstrap[jailModels.JailStats], error)
 
 	ListBootstraps(ctx context.Context, pool string) ([]BootstrapEntry, error)
 	CreateBootstrap(ctx context.Context, req BootstrapRequest) error

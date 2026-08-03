@@ -35,30 +35,31 @@
 		const value = Number(page.url.pathname.split('/')[3]);
 		return Number.isFinite(value) ? value : 0;
 	});
+	let node = $derived(String(page.params.node || ''));
 
 	const vm = resource(
-		() => `simple-vm-${rid}`,
-		async (key: string): Promise<SimpleVm | null> => {
-			if (!rid) return null;
-			const result = await getSimpleVMById(rid, 'rid');
+		[() => node, () => rid],
+		async ([hostname, currentRid], _, { signal }): Promise<SimpleVm | null> => {
+			if (!currentRid) return null;
+			const result = await getSimpleVMById(currentRid, 'rid', { hostname, signal });
 			if (isAPIResponse(result)) {
 				return null;
 			}
-			updateCache(key, result);
+			updateCache(`simple-vm-${currentRid}`, result, hostname);
 			return result;
 		},
 		{ initialValue: (page.data as { vm?: SimpleVm | null }).vm ?? null }
 	);
 
 	const domain = resource(
-		() => `vm-domain-${rid}`,
-		async (key: string): Promise<VMDomain | null> => {
-			if (!rid) return null;
-			const result = await getVMDomain(rid);
+		[() => node, () => rid],
+		async ([hostname, currentRid], _, { signal }): Promise<VMDomain | null> => {
+			if (!currentRid) return null;
+			const result = await getVMDomain(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
 				return null;
 			}
-			updateCache(key, result);
+			updateCache(`vm-domain-${currentRid}`, result, hostname);
 			return result;
 		},
 		{ initialValue: (page.data as { domain?: VMDomain | null }).domain ?? null }
@@ -448,7 +449,7 @@
 				{/if}
 			</div>
 
-			{#key rid}
+			{#key `${node}:${rid}`}
 				<div class="flex items-center gap-1">
 					{#if vm.current && domain.current}
 						{#if !shouldHideActionButtons && domain.current.id === -1 && !isDomainRunningForActions && !isDomainErrorState && !isOrphanState}
@@ -562,7 +563,7 @@
 		class:overflow-hidden={isConsolePage}
 		class:overflow-auto={!isConsolePage}
 	>
-		{#key rid}
+		{#key `${node}:${rid}`}
 			{@render children?.()}
 		{/key}
 	</div>

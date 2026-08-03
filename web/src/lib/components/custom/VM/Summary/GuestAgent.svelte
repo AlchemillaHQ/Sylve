@@ -12,13 +12,14 @@
 	import { fade } from 'svelte/transition';
 
 	interface Props {
+		node: string;
 		rid: number;
 		initialGaInfo: QGAInfo | APIResponse | null;
 		qgaEnabled: boolean;
 		refreshSignal?: number;
 	}
 
-	let { rid, initialGaInfo, qgaEnabled, refreshSignal = 0 }: Props = $props();
+	let { node, rid, initialGaInfo, qgaEnabled, refreshSignal = 0 }: Props = $props();
 	let activeGaView = $state('os');
 	let normalizedInitialGaInfo = $derived.by(() =>
 		!qgaEnabled || !initialGaInfo || isAPIResponse(initialGaInfo) ? null : initialGaInfo
@@ -27,18 +28,18 @@
 	let hasCompletedInitialGaFetch = $state(false);
 
 	const gaInfo = resource(
-		() => `vm-qga-${rid}`,
-		async (key) => {
+		[() => node, () => rid],
+		async ([hostname, currentRid], _, { signal }) => {
 			if (!qgaEnabled) {
 				return null;
 			}
 
-			const result = await getQGAInfo(rid);
+			const result = await getQGAInfo(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
 				return null;
 			}
 
-			updateCache(key, result);
+			updateCache(`vm-qga-${currentRid}`, result, hostname);
 			return result;
 		},
 		{ initialValue: null }
@@ -197,7 +198,7 @@
 							</Table.Header>
 							<Table.Body>
 								{#if displayGaInfo.interfaces && displayGaInfo.interfaces.length > 0}
-									{#each displayGaInfo.interfaces as iface}
+									{#each displayGaInfo.interfaces as iface (iface)}
 										<Table.Row>
 											<Table.Cell class="font-mono font-bold">{iface.name || 'unknown'}</Table.Cell>
 											<Table.Cell class="font-mono text-xs"
@@ -206,7 +207,7 @@
 											<Table.Cell>
 												<div class="flex flex-col gap-1">
 													{#if iface['ip-addresses'] && iface['ip-addresses'].length > 0}
-														{#each iface['ip-addresses'] as ip}
+														{#each iface['ip-addresses'] as ip (`${ip['ip-address-type']}:${ip['ip-address']}:${ip.prefix}`)}
 															<span class="text-xs">
 																<span class="text-muted-foreground mr-1 uppercase"
 																	>{ip['ip-address-type']}:</span

@@ -588,7 +588,7 @@ func (s *Service) GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailSta
 	if err := s.DB.Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
 		Select("id").
-		First(&jailId).Error; err != nil {
+		Scan(&jailId).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_actual_jail_id: %w", err)
 	}
 
@@ -613,4 +613,63 @@ func (s *Service) GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailSta
 	}
 
 	return jailStats, nil
+}
+
+func (s *Service) GetJailUsageBootstrap(
+	ctID uint,
+) (db.StatsBootstrap[jailModels.JailStats], error) {
+	return s.getJailUsageBootstrapAt(ctID, time.Now())
+}
+
+func (s *Service) getJailUsageBootstrapAt(
+	ctID uint,
+	now time.Time,
+) (db.StatsBootstrap[jailModels.JailStats], error) {
+	empty := db.BuildStatsBootstrap[jailModels.JailStats](now, nil, nil)
+
+	var jailID uint
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctID).
+		Select("id").
+		Scan(&jailID).Error; err != nil {
+		return empty, fmt.Errorf("failed_to_get_actual_jail_id: %w", err)
+	}
+	if jailID == 0 {
+		return empty, fmt.Errorf("jail_not_found")
+	}
+
+	var latestAt *time.Time
+	var latest jailModels.JailStats
+	result := s.DB.
+		Select("created_at").
+		Where("jid = ?", jailID).
+		Order("created_at DESC").
+		Limit(1).
+		Find(&latest)
+	if result.Error != nil {
+		return empty, fmt.Errorf("failed_to_get_latest_jail_usage: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		latestAt = &latest.CreatedAt
+	}
+
+	availability := db.ResolveStatsAvailability(now, latestAt)
+	if availability.ResolvedStep == nil {
+		return db.BuildStatsBootstrap[jailModels.JailStats](now, nil, latestAt), nil
+	}
+
+	window, err := availability.ResolvedStep.Window()
+	if err != nil {
+		return empty, err
+	}
+
+	var points []jailModels.JailStats
+	if err := s.DB.
+		Where("jid = ? AND created_at >= ?", jailID, now.Add(-window)).
+		Order("created_at ASC").
+		Find(&points).Error; err != nil {
+		return empty, fmt.Errorf("failed_to_get_jail_usage_bootstrap: %w", err)
+	}
+
+	return db.BuildStatsBootstrap(now, points, latestAt), nil
 }

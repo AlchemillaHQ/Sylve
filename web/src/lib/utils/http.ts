@@ -31,6 +31,11 @@ export type APIRequestOptions = {
     signal?: AbortSignal;
 };
 
+export type NodeAPIRequestOptions = Pick<
+    APIRequestOptions,
+    'hostname' | 'signal' | 'preserveErrors'
+>;
+
 let cacheWritesSuspended = false;
 
 export function isRequestCancellation(error: unknown): boolean {
@@ -53,7 +58,12 @@ function getScopedCacheKey(key: string, hostname?: string): string {
     if (hostname) return `node:${hostname}:${key}`;
 
     const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
-    if (routeHost && routeHost !== 'datacenter' && routeHost !== 'login' && routeHost !== 'inactive-node') {
+    if (
+        routeHost &&
+        routeHost !== 'datacenter' &&
+        routeHost !== 'login' &&
+        routeHost !== 'inactive-node'
+    ) {
         return `node:${routeHost}:${key}`;
     }
 

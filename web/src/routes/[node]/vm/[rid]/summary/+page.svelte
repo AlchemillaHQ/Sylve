@@ -1,13 +1,13 @@
 <script lang="ts">
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import { goto } from '$app/navigation';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import {
 		actionVm,
 		deleteVM,
 		getStats,
+		getStatsBootstrap,
 		getVmById,
 		getVMLogs,
 		purgeVMRegistration,
@@ -25,7 +25,7 @@
 		type QGAInfo,
 		type VM,
 		type VMDomain,
-		type VMStat
+		type VMStatsBootstrap
 	} from '$lib/types/vm/vm';
 	import { getObjectSchemaDefaults, sleep } from '$lib/utils';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
@@ -49,20 +49,55 @@
 	import { resolve } from '$app/paths';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Data {
 		node: string;
 		rid: number;
 		vm: VM;
-		stats: VMStat[];
+		stats: VMStatsBootstrap | null;
 		gaInfo: QGAInfo | APIResponse | null;
 		nodes: ClusterNode[] | null;
 	}
 
 	let { data }: { data: Data } = $props();
 	let gfsStep = $state<GFSStep>('hourly');
+
+	type VMStatsSnapshot = VMStatsBootstrap & {
+		identity: string;
+	};
+
+	type StatsRefetchRequest = { step: GFSStep | null };
+
+	function initialStatsSnapshot(): VMStatsSnapshot | null {
+		const identity = `${data.node}:vm:${data.rid}`;
+		return data.stats
+			? {
+					identity,
+					...data.stats
+				}
+			: null;
+	}
+
+	let statsIdentity = $derived(`${data.node}:vm:${data.rid}`);
+	let manualStatsSelection = $state<{ identity: string; step: GFSStep } | null>(null);
+	let requestedStatsStep = $derived(
+		manualStatsSelection?.identity === statsIdentity ? manualStatsSelection.step : null
+	);
+
+	function getStatsRefetchStep(refetching: unknown): GFSStep | null {
+		if (typeof refetching !== 'object' || refetching === null || !('step' in refetching)) {
+			return null;
+		}
+
+		return (refetching as StatsRefetchRequest).step;
+	}
+
+	function ensureCurrentStatsRequest(identity: string, signal: AbortSignal): void {
+		if (signal.aborted || statsIdentity !== identity) {
+			throw new DOMException('Obsolete VM statistics request', 'AbortError');
+		}
+	}
 
 	let sourceNodeUuid = $derived.by(() => {
 		const nds = data.nodes;
@@ -91,10 +126,10 @@
 
 	// svelte-ignore state_referenced_locally
 	const vm = resource(
-		() => 'vm-' + data.rid,
-		async (key) => {
-			const result = await getVmById(Number(data.rid), 'rid');
-			updateCache(key, result);
+		[() => data.node, () => data.rid],
+		async ([hostname, rid], _, { signal }) => {
+			const result = await getVmById(Number(rid), 'rid', { hostname, signal });
+			updateCache(`vm-${rid}`, result, hostname);
 			return result;
 		},
 		{ initialValue: data.vm }
@@ -103,34 +138,126 @@
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
 	const logs = resource(
-		() => `vm-${data.rid}-logs`,
-		async (key) => {
-			const result = await getVMLogs(Number(data.rid));
-			updateCache(key, result);
+		[() => data.node, () => data.rid],
+		async ([hostname, rid], _, { signal }) => {
+			const result = await getVMLogs(Number(rid), { hostname, signal });
+			updateCache(`vm-${rid}-logs`, result, hostname);
 			return result;
 		},
 		{ initialValue: { logs: '' } }
 	);
 
-	// svelte-ignore state_referenced_locally
+	let lastAutomaticStatsResolution = 0;
+
 	const stats = resource(
-		[() => gfsStep],
-		async ([gfsStep]) => {
-			const result = await getStats(Number(data.vm.rid), gfsStep);
-			const key = `vm-stats-${data.vm.rid}`;
-			updateCache(key, result);
-			return result;
+		[() => data.node, () => data.rid],
+		async (
+			[hostname, rid],
+			_,
+			{ data: previousSnapshot, refetching, signal }
+		): Promise<VMStatsSnapshot | null> => {
+			const identity = `${hostname}:vm:${rid}`;
+			const requestedStep = getStatsRefetchStep(refetching);
+
+			if (!requestedStep) {
+				const result = await getStatsBootstrap(Number(rid), { hostname, signal });
+				if (isAPIResponse(result)) {
+					throw new Error(
+						result.message || result.error?.toString() || 'Failed to load VM statistics'
+					);
+				}
+
+				ensureCurrentStatsRequest(identity, signal);
+
+				const snapshot: VMStatsSnapshot = {
+					identity,
+					...result
+				};
+				await updateCache(`guest-stats-v2:vm:${rid}:bootstrap`, result, hostname);
+				ensureCurrentStatsRequest(identity, signal);
+				lastAutomaticStatsResolution = Date.now();
+				return snapshot;
+			}
+
+			const result = await getStats(Number(rid), requestedStep, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(
+					result.message || result.error?.toString() || 'Failed to load VM statistics'
+				);
+			}
+			ensureCurrentStatsRequest(identity, signal);
+
+			const previous = previousSnapshot?.identity === identity ? previousSnapshot : null;
+			const snapshot: VMStatsSnapshot = {
+				identity,
+				points: result,
+				resolvedStep: requestedStep,
+				lastSampleAt: result.at(-1)?.createdAt ?? previous?.lastSampleAt ?? null,
+				historyState: result.length > 0 ? 'available' : (previous?.historyState ?? 'available')
+			};
+			return snapshot;
 		},
-		{ initialValue: data.stats }
+		{ initialValue: initialStatsSnapshot() }
 	);
+
+	let activeStats = $derived.by(() =>
+		stats.current?.identity === statsIdentity ? stats.current : null
+	);
+	let statsPoints = $derived(activeStats?.points ?? []);
+	let displayedStatsStep = $derived(activeStats?.resolvedStep ?? null);
+	let statsEmptyMessage = $derived.by(() => {
+		if (!activeStats) {
+			return stats.error ? 'Unable to load telemetry. Retrying…' : 'Loading telemetry…';
+		}
+		if (
+			requestedStatsStep &&
+			displayedStatsStep === requestedStatsStep &&
+			statsPoints.length === 0
+		) {
+			return 'No samples exist in the selected time range.';
+		}
+		if (activeStats.historyState === 'never-recorded') {
+			return 'No data has been recorded for this VM.';
+		}
+		if (activeStats.historyState === 'outside-supported-range') {
+			return activeStats.lastSampleAt
+				? `Last telemetry was recorded ${dateToAgo(activeStats.lastSampleAt)}; graph history is available for 70 days.`
+				: 'The last telemetry is outside the supported 70-day graph range.';
+		}
+		if (statsPoints.length === 0) return 'No samples exist in the selected time range.';
+		return '';
+	});
+
+	watch(
+		() => displayedStatsStep,
+		(step) => {
+			if (step) gfsStep = step;
+		}
+	);
+
+	function refetchCurrentStats() {
+		return stats.refetch({ step: requestedStatsStep ?? displayedStatsStep });
+	}
+
+	function selectStatsStep(step: GFSStep) {
+		manualStatsSelection = { identity: statsIdentity, step };
+		if (displayedStatsStep) gfsStep = displayedStatsStep;
+		void stats.refetch({ step });
+	}
 
 	const visible = new IsDocumentVisible();
 
 	useInterval(() => 3000, {
 		callback: () => {
 			if (visible.current && !isDeleteInFlight) {
-				if (gfsStep === 'hourly') {
-					stats.refetch();
+				const pollingStep = requestedStatsStep ?? displayedStatsStep;
+				const shouldReResolve =
+					requestedStatsStep === null &&
+					domain.current?.status === 'Running' &&
+					Date.now() - lastAutomaticStatsResolution >= 60000;
+				if (!stats.loading && (stats.error || pollingStep === 'hourly' || shouldReResolve)) {
+					if (shouldReResolve) void stats.refetch({ step: null });
+					else void refetchCurrentStats();
 				}
 			}
 		}
@@ -147,8 +274,9 @@
 	watch(
 		() => domain.current,
 		(currentDomain, prevDomain) => {
-			if (prevDomain?.status !== currentDomain?.status) {
+			if (prevDomain && prevDomain.status !== currentDomain?.status) {
 				vm.refetch();
+				if (requestedStatsStep === null) void stats.refetch({ step: null });
 			}
 		}
 	);
@@ -158,7 +286,7 @@
 		(idle) => {
 			if (!idle && !isDeleteInFlight) {
 				vm.refetch();
-				stats.refetch();
+				void refetchCurrentStats();
 			}
 
 			if (!idle && showLogs) {
@@ -168,7 +296,7 @@
 	);
 
 	let recentStat = $derived(
-		stats.current[stats.current.length - 1] || getObjectSchemaDefaults(VMStatSchema)
+		statsPoints[statsPoints.length - 1] || getObjectSchemaDefaults(VMStatSchema)
 	);
 	let gaRefreshSignal = $state(0);
 	let isQgaEnabled = $derived.by(() => vm.current?.qemuGuestAgent === true);
@@ -348,7 +476,7 @@
 
 		if (result.status === 'error') {
 			isDeleteInFlight = false;
-			await Promise.all([vm.refetch(), domain.refetch(), stats.refetch()]);
+			await Promise.all([vm.refetch(), domain.refetch(), refetchCurrentStats()]);
 			toast.error(
 				result.message === 'guest_delete_requires_replication_policy_removed'
 					? 'Remove the replication policy before deleting this VM'
@@ -787,8 +915,8 @@
 					{ label: 'Yearly', value: 'yearly' }
 				]}
 				bind:value={gfsStep}
-				onChange={() => {
-					stats.refetch();
+				onChange={(value) => {
+					selectStatsStep(value as GFSStep);
 				}}
 				classes={{ trigger: 'h-6!' }}
 				icon="icon-[mdi--calendar]"
@@ -922,37 +1050,48 @@
 	</div>
 
 	<GuestAgent
-		rid={data.vm.rid}
+		node={data.node}
+		rid={data.rid}
 		initialGaInfo={data.gaInfo}
 		refreshSignal={gaRefreshSignal}
 		qgaEnabled={isQgaEnabled}
 	/>
 
-	<div class="space-y-4 px-4 pb-4">
-		<LineBrush
-			title="CPU Usage"
-			points={stats.current.map((data) => ({
-				date: new Date(data.createdAt).getTime(),
-				value: Number(data.cpuUsage)
-			}))}
-			percentage={true}
-			color="one"
-			containerContentHeight="h-64"
-			titleIconClass="icon-[solar--cpu-bold]"
-		/>
+	{#key statsIdentity}
+		<div class="space-y-4 px-4 pb-4">
+			<LineBrush
+				title="CPU Usage"
+				points={statsPoints.map((data) => ({
+					date: new Date(data.createdAt).getTime(),
+					value: Number(data.cpuUsage)
+				}))}
+				emptyMessage={statsEmptyMessage}
+				loading={stats.loading && !activeStats}
+				error={Boolean(stats.error)}
+				onRetry={() => void refetchCurrentStats()}
+				percentage={true}
+				color="one"
+				containerContentHeight="h-64"
+				titleIconClass="icon-[solar--cpu-bold]"
+			/>
 
-		<LineBrush
-			title="Memory Usage"
-			points={stats.current.map((data) => ({
-				date: new Date(data.createdAt).getTime(),
-				value: Number(data.memoryUsage)
-			}))}
-			percentage={true}
-			color="two"
-			containerContentHeight="h-64"
-			titleIconClass="icon-[ph--memory]"
-		/>
-	</div>
+			<LineBrush
+				title="Memory Usage"
+				points={statsPoints.map((data) => ({
+					date: new Date(data.createdAt).getTime(),
+					value: Number(data.memoryUsage)
+				}))}
+				emptyMessage={statsEmptyMessage}
+				loading={stats.loading && !activeStats}
+				error={Boolean(stats.error)}
+				onRetry={() => void refetchCurrentStats()}
+				percentage={true}
+				color="two"
+				containerContentHeight="h-64"
+				titleIconClass="icon-[ph--memory]"
+			/>
+		</div>
+	{/key}
 </div>
 
 <AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>
@@ -1096,7 +1235,12 @@
 	{sourceNodeUuid}
 	onSuccess={(targetHostname: string) => {
 		if (targetHostname) {
-			goto(`/${targetHostname}/vm/${data.rid}/summary`);
+			useSafeGoto(
+				resolve('/[node]/vm/[rid]/summary', {
+					node: targetHostname,
+					rid: String(data.rid)
+				})
+			);
 		}
 	}}
 />
