@@ -1057,7 +1057,7 @@
 		qgaEnabled={isQgaEnabled}
 	/>
 
-	{#key statsIdentity}
+	{#key `${statsIdentity}:${displayedStatsStep ?? 'none'}`}
 		<div class="space-y-4 px-4 pb-4">
 			<LineBrush
 				title="CPU Usage"
@@ -1071,6 +1071,7 @@
 				onRetry={() => void refetchCurrentStats()}
 				percentage={true}
 				color="one"
+				animateOnMount={true}
 				containerContentHeight="h-64"
 				titleIconClass="icon-[solar--cpu-bold]"
 			/>
@@ -1087,6 +1088,7 @@
 				onRetry={() => void refetchCurrentStats()}
 				percentage={true}
 				color="two"
+				animateOnMount={true}
 				containerContentHeight="h-64"
 				titleIconClass="icon-[ph--memory]"
 			/>

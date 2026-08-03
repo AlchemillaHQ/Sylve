@@ -143,7 +143,8 @@
 			right: 10,
 			top: 56,
 			bottom: 56,
-			containLabel: true
+			outerBoundsMode: 'same',
+			outerBoundsContain: 'axisLabel'
 		},
 		xAxis: {
 			type: 'time',
