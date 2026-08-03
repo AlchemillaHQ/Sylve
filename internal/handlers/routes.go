@@ -148,6 +148,8 @@ func RegisterRoutes(r *gin.Engine,
 		info.GET("/swap/historical", infoHandlers.HistoricalSwapInfoHandler(infoService))
 
 		info.GET("/network-interfaces/historical", infoHandlers.HistoricalNetworkInterfacesInfoHandler(infoService))
+		info.GET("/summary/history", infoHandlers.SummaryHistoryHandler(infoService))
+		info.GET("/summary/history/delta", infoHandlers.SummaryHistoryDeltaHandler(infoService))
 
 		notes := info.Group("/notes")
 		{

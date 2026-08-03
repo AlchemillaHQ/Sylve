@@ -1255,19 +1255,16 @@ msgstr "CPU 使用率"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "RAM Usage"
 msgstr "内存使用率"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Disk Usage"
-msgstr "磁盘使用率"
+#~ msgid "Disk Usage"
+#~ msgstr "磁盘使用率"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Swap Usage"
-msgstr "交换分区使用率"
+#~ msgid "Swap Usage"
+#~ msgstr "交换分区使用率"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "CPU(s)"
@@ -18557,4 +18554,16 @@ msgstr ""
 #. 0: scopedGuestLabel
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Current {0} owner selected"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/> RAM Usage"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/> Disk Usage"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/>Swap Usage"
 msgstr ""

@@ -21,6 +21,7 @@
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { watch } from 'runed';
+	import { onDestroy } from 'svelte';
 
 	use([
 		LineChart,
@@ -52,6 +53,7 @@
 		smooth?: boolean;
 		containerClass?: string;
 		containerContentHeight?: string;
+		animateOnMount?: boolean;
 	}
 
 	let {
@@ -63,11 +65,17 @@
 		types = 'auto',
 		smooth = true,
 		containerClass = 'p-5',
-		containerContentHeight = 'h-[360px]'
+		containerContentHeight = 'h-[360px]',
+		animateOnMount = false
 	}: Props = $props();
 
+	const mountAnimationDuration = 1400;
 	let chart: EChartsType | undefined = $state(undefined);
 	let optionRafId: number | null = null;
+	let mountAnimatedChart: EChartsType | undefined;
+	let mountAnimationRevealTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationSyncTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationReady = !animateOnMount;
 
 	const titleColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 	const legendTextColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
@@ -122,7 +130,7 @@
 	const seriesColors = $derived(series.map((s) => colors[s.color].main));
 	const gridColor = $derived(mode.current === 'dark' ? colors.grid.dark : colors.grid.light);
 
-	function cleanPoints(src?: { date: any; value: any }[]) {
+	function cleanPoints(src?: { date: unknown; value: unknown }[]) {
 		if (!Array.isArray(src)) return [];
 		return src
 			.map((p) => {
@@ -160,8 +168,11 @@
 		}
 	}
 
-	function getOptions(): EChartsOption {
+	function getOptions(includeSeries = true): EChartsOption {
 		return {
+			animation: animateOnMount ? true : undefined,
+			animationDuration: animateOnMount ? mountAnimationDuration : undefined,
+			animationEasing: animateOnMount ? 'cubicInOut' : undefined,
 			title: {
 				show: false,
 				textStyle: {
@@ -292,13 +303,15 @@
 					}
 				}
 			],
-			series: series.map((s) => ({
-				name: s.name,
-				type: 'line',
-				showSymbol: false,
-				smooth,
-				data: cleanPoints(s.points)
-			})),
+			series: includeSeries
+				? series.map((s) => ({
+						name: s.name,
+						type: 'line',
+						showSymbol: false,
+						smooth,
+						data: cleanPoints(s.points)
+					}))
+				: [],
 			toolbox: {
 				feature: {
 					saveAsImage: {
@@ -314,7 +327,42 @@
 		};
 	}
 
+	const mountOptions = animateOnMount ? getOptions(false) : undefined;
 	let mouseIn = $state(false);
+
+	function startMountAnimation(currentChart: EChartsType) {
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+
+		mountAnimatedChart = currentChart;
+		mountAnimationReady = false;
+		mountAnimationRevealTimer = setTimeout(() => {
+			mountAnimationRevealTimer = null;
+			if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+			const revealedSeries = series;
+			const revealedMode = mode.current;
+			currentChart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+
+			mountAnimationSyncTimer = setTimeout(() => {
+				mountAnimationSyncTimer = null;
+				if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+				mountAnimationReady = true;
+				if (series !== revealedSeries || mode.current !== revealedMode) {
+					currentChart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+				}
+			}, mountAnimationDuration);
+		}, 100);
+	}
+
+	watch(
+		() => chart,
+		(currentChart) => {
+			if (!animateOnMount || !currentChart || currentChart === mountAnimatedChart) return;
+			startMountAnimation(currentChart);
+		}
+	);
 
 	watch(
 		[
@@ -329,6 +377,7 @@
 		],
 		() => {
 			if (!chart || chart.isDisposed?.()) return;
+			if (animateOnMount && !mountAnimationReady) return;
 
 			if (optionRafId !== null) {
 				cancelAnimationFrame(optionRafId);
@@ -339,8 +388,15 @@
 				chart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
 				optionRafId = null;
 			});
-		}
+		},
+		{ lazy: animateOnMount }
 	);
+
+	onDestroy(() => {
+		if (optionRafId !== null) cancelAnimationFrame(optionRafId);
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+	});
 </script>
 
 <Card.Root class={containerClass}>
@@ -364,7 +420,7 @@
 				>
 			</div>
 			{#key mode.current}
-				<Chart {init} options={getOptions()} bind:chart />
+				<Chart {init} options={mountOptions ?? getOptions()} bind:chart />
 			{/key}
 		</div>
 	</Card.Content>

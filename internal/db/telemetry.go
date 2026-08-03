@@ -76,7 +76,7 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 
 	telemetryDB.Exec("PRAGMA busy_timeout = 5000")
 	telemetryDB.Exec("PRAGMA journal_mode = WAL")
-	telemetryDB.Exec("PRAGMA synchronous = NORMAL")
+	telemetryDB.Exec("PRAGMA synchronous = OFF")
 
 	if err := telemetryDB.AutoMigrate(
 		&sambaModels.SambaAuditLog{},

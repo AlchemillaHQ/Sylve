@@ -1255,19 +1255,16 @@ msgstr "Vytížení procesoru"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "RAM Usage"
 msgstr "Využití operační paměti"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Disk Usage"
-msgstr "Využití disku"
+#~ msgid "Disk Usage"
+#~ msgstr "Využití disku"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Swap Usage"
-msgstr "Využití odkládacího prostoru"
+#~ msgid "Swap Usage"
+#~ msgstr "Využití odkládacího prostoru"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "CPU(s)"
@@ -18582,4 +18579,16 @@ msgstr ""
 #. 0: scopedGuestLabel
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Current {0} owner selected"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/> RAM Usage"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/> Disk Usage"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/>Swap Usage"
 msgstr ""

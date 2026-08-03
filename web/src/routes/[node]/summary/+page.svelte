@@ -2,8 +2,8 @@
 	import { storage } from '$lib';
 	import { getBasicInfo } from '$lib/api/info/basic';
 	import { getCPUInfo } from '$lib/api/info/cpu';
-	import { getNetworkInterfaceInfoHistorical } from '$lib/api/info/network';
 	import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
+	import { getNodeSummaryHistory } from '$lib/api/info/summary';
 	import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import LineBrushMultiple from '$lib/components/custom/Charts/LineBrush/Multiple.svelte';
@@ -11,9 +11,9 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import type { BasicInfo } from '$lib/types/info/basic';
-	import type { CPUInfo, CPUInfoHistorical } from '$lib/types/info/cpu';
-	import type { HistoricalNetworkInterface } from '$lib/types/info/network';
-	import type { RAMInfo, RAMInfoHistorical } from '$lib/types/info/ram';
+	import type { CPUInfo } from '$lib/types/info/cpu';
+	import type { RAMInfo } from '$lib/types/info/ram';
+	import type { NodeSummaryHistory, SummaryHistoryNetworkPoint } from '$lib/types/info/summary';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
@@ -25,21 +25,20 @@
 		hostname: string;
 		basicInfo: BasicInfo;
 		cpuInfo: CPUInfo;
-		cpuInfoHistorical: CPUInfoHistorical;
 		ramInfo: RAMInfo;
-		ramInfoHistorical: RAMInfoHistorical;
 		swapInfo: RAMInfo;
-		swapInfoHistorical: RAMInfoHistorical;
 		totalDiskUsage: number;
-		networkUsageHistorical: HistoricalNetworkInterface[];
+		summaryHistory: NodeSummaryHistory;
 	}
 
 	let { data }: { data: Data } = $props();
+	const historyReconcileInterval = 5 * 60 * 1000;
+	let lastHistoryFullRefreshAt = Date.now();
 
 	// svelte-ignore state_referenced_locally
 	const basicInfo = resource(
 		() => 'basic-info',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getBasicInfo();
 			updateCache(key, result);
 			return result;
@@ -52,7 +51,7 @@
 	// svelte-ignore state_referenced_locally
 	const cpuInfo = resource(
 		() => 'cpu-info',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getCPUInfo('current');
 			updateCache(key, result);
 			return result;
@@ -63,22 +62,9 @@
 	);
 
 	// svelte-ignore state_referenced_locally
-	const cpuInfoHistorical = resource(
-		() => 'cpu-info-historical',
-		async (key, prevKey, { signal }) => {
-			const result = await getCPUInfo('historical');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.cpuInfoHistorical
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
 	const ramInfo = resource(
 		() => 'ram-info',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getRAMInfo('current');
 			updateCache(key, result);
 			return result;
@@ -89,22 +75,9 @@
 	);
 
 	// svelte-ignore state_referenced_locally
-	const ramInfoHistorical = resource(
-		() => 'ram-info-historical',
-		async (key, prevKey, { signal }) => {
-			const result = await getRAMInfo('historical');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.ramInfoHistorical
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
 	const swapInfo = resource(
 		() => 'swap-info',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getSwapInfo('current');
 			updateCache(key, result);
 			return result;
@@ -115,22 +88,9 @@
 	);
 
 	// svelte-ignore state_referenced_locally
-	const swapInfoHistorical = resource(
-		() => 'swap-info-historical',
-		async (key, prevKey, { signal }) => {
-			const result = await getSwapInfo('historical');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.swapInfoHistorical
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
 	const totalDiskUsage = resource(
 		() => 'total-disk-usage',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getPoolsDiskUsage();
 			updateCache(key, result);
 			return result;
@@ -140,21 +100,61 @@
 		}
 	);
 
+	function mergeSummaryPoints<T extends { id: number; createdAt: string }>(
+		current: T[],
+		incoming: T[]
+	): T[] {
+		if (incoming.length === 0) return current;
+
+		const byID: Record<number, T> = {};
+		for (const point of current) byID[point.id] = point;
+		for (const point of incoming) byID[point.id] = point;
+
+		return Object.values(byID).sort((left, right) => {
+			const timeDifference = Date.parse(left.createdAt) - Date.parse(right.createdAt);
+			return Number.isFinite(timeDifference) && timeDifference !== 0
+				? timeDifference
+				: left.id - right.id;
+		});
+	}
+
+	function mergeSummaryHistory(
+		current: NodeSummaryHistory,
+		incoming: NodeSummaryHistory
+	): NodeSummaryHistory {
+		if (incoming.cpu.length === 0 && incoming.ram.length === 0 && incoming.network.length === 0) {
+			return current;
+		}
+
+		return {
+			cpu: mergeSummaryPoints(current.cpu, incoming.cpu),
+			ram: mergeSummaryPoints(current.ram, incoming.ram),
+			network: mergeSummaryPoints(current.network, incoming.network),
+			cursors: incoming.cursors
+		};
+	}
+
 	// svelte-ignore state_referenced_locally
-	const networkUsageHistorical = resource(
-		() => 'network-usage-historical',
-		async (key, prevKey, { signal }) => {
-			const result = await getNetworkInterfaceInfoHistorical();
-			updateCache(key, result);
+	const summaryHistory = resource(
+		() => 'node-summary-history',
+		async (key, _prevKey, { data: current, refetching, signal }) => {
+			const fullRefresh = refetching === 'full';
+			const incoming = await getNodeSummaryHistory(fullRefresh ? undefined : current.cursors, {
+				signal
+			});
+			const result = fullRefresh ? incoming : mergeSummaryHistory(current, incoming);
+
+			if (fullRefresh) lastHistoryFullRefreshAt = Date.now();
+			void updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: data.networkUsageHistorical
+			initialValue: data.summaryHistory
 		}
 	);
 
 	function toNetworkDeltaPoints(
-		history: HistoricalNetworkInterface[],
+		history: SummaryHistoryNetworkPoint[],
 		direction: 'receivedBytes' | 'sentBytes'
 	): { date: number; value: number }[] {
 		return history
@@ -193,29 +193,26 @@
 	useInterval(() => 30000, {
 		callback: () => {
 			if (storage.visible) {
-				cpuInfoHistorical.refetch();
-				ramInfoHistorical.refetch();
-				swapInfoHistorical.refetch();
-				networkUsageHistorical.refetch();
+				const refreshMode =
+					Date.now() - lastHistoryFullRefreshAt >= historyReconcileInterval ? 'full' : 'delta';
+				void summaryHistory.refetch(refreshMode);
 			}
 		}
 	});
 
 	watch(
 		[() => storage.visible, () => data.hostname],
-		([visible, hostname], [prevViisible, prevHostname]) => {
-			if (visible || hostname !== prevHostname) {
+		([visible, hostname], [previousVisible, previousHostname]) => {
+			if (hostname !== previousHostname || (visible && !previousVisible)) {
 				basicInfo.refetch();
 				cpuInfo.refetch();
 				ramInfo.refetch();
 				swapInfo.refetch();
 				totalDiskUsage.refetch();
-				cpuInfoHistorical.refetch();
-				ramInfoHistorical.refetch();
-				swapInfoHistorical.refetch();
-				networkUsageHistorical.refetch();
+				void summaryHistory.refetch('full');
 			}
-		}
+		},
+		{ lazy: true }
 	);
 </script>
 
@@ -245,7 +242,7 @@
 					<div class="flex w-full justify-between pb-1">
 						<p class="inline-flex items-center">
 							<span class="icon-[ri--ram-fill] mr-1 h-5 w-5"></span>
-							{'RAM Usage'}
+							RAM Usage
 						</p>
 						<p>
 							{`${floatToNDecimals(ramInfo.current?.usedPercent || 0, 2)}% of ${formatBytesBinary(ramInfo.current?.total || 0)}`}
@@ -257,7 +254,7 @@
 					<div class="flex w-full justify-between pb-1">
 						<p class="inline-flex items-center">
 							<span class="icon-[bxs--server] mr-1 h-5 w-5"></span>
-							{'Disk Usage'}
+							Disk Usage
 						</p>
 						<p>
 							{floatToNDecimals(totalDiskUsage.current, 2)} %
@@ -272,7 +269,7 @@
 				<div>
 					<div class="flex w-full justify-between pb-1">
 						<p class="inline-flex items-center">
-							<span class="icon-[ic--baseline-loop] mr-1 h-5 w-5"></span>{'Swap Usage'}
+							<span class="icon-[ic--baseline-loop] mr-1 h-5 w-5"></span>Swap Usage
 						</p>
 						<p>
 							{`${floatToNDecimals(swapInfo.current.usedPercent, 2)}% of ${formatBytesBinary(swapInfo.current.total)}`}
@@ -331,11 +328,12 @@
 	<LineBrush
 		title="CPU Usage"
 		percentage={true}
-		points={cpuInfoHistorical.current.map((data) => ({
+		points={summaryHistory.current.cpu.map((data) => ({
 			date: new Date(data.createdAt).getTime(),
 			value: Number(data.usage)
 		}))}
 		color="one"
+		animateOnMount={true}
 		containerContentHeight="h-64"
 		titleIconClass="icon-[solar--cpu-bold]"
 	/>
@@ -343,11 +341,12 @@
 	<LineBrush
 		title="RAM Usage"
 		percentage={true}
-		points={ramInfoHistorical.current.map((data) => ({
+		points={summaryHistory.current.ram.map((data) => ({
 			date: new Date(data.createdAt).getTime(),
 			value: Number(data.usage)
 		}))}
 		color="two"
+		animateOnMount={true}
 		containerContentHeight="h-64"
 		titleIconClass="icon-[ph--memory]"
 	/>
@@ -358,16 +357,17 @@
 		data={true}
 		types="bitsPerSecond"
 		smooth={false}
+		animateOnMount={true}
 		series={[
 			{
 				name: 'Received',
 				color: 'two',
-				points: toNetworkDeltaPoints(networkUsageHistorical.current, 'receivedBytes')
+				points: toNetworkDeltaPoints(summaryHistory.current.network, 'receivedBytes')
 			},
 			{
 				name: 'Sent',
 				color: 'one',
-				points: toNetworkDeltaPoints(networkUsageHistorical.current, 'sentBytes')
+				points: toNetworkDeltaPoints(summaryHistory.current.network, 'sentBytes')
 			}
 		]}
 		titleIconClass="icon-[mdi--network]"

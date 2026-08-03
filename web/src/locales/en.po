@@ -1255,19 +1255,16 @@ msgstr "CPU Usage"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "RAM Usage"
 msgstr "RAM Usage"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Disk Usage"
-msgstr "Disk Usage"
+#~ msgid "Disk Usage"
+#~ msgstr "Disk Usage"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Swap Usage"
-msgstr "Swap Usage"
+#~ msgid "Swap Usage"
+#~ msgstr "Swap Usage"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "CPU(s)"
@@ -18584,3 +18581,15 @@ msgstr "Use current {0} owner"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Current {0} owner selected"
 msgstr "Current {0} owner selected"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/> RAM Usage"
+msgstr "<0/> RAM Usage"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/> Disk Usage"
+msgstr "<0/> Disk Usage"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "<0/>Swap Usage"
+msgstr "<0/>Swap Usage"

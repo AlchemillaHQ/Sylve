@@ -42,6 +42,7 @@
 		loading?: boolean;
 		error?: boolean;
 		onRetry?: () => void;
+		animateOnMount?: boolean;
 	}
 
 	let {
@@ -55,11 +56,17 @@
 		emptyMessage = '',
 		loading = false,
 		error = false,
-		onRetry
+		onRetry,
+		animateOnMount = false
 	}: Props = $props();
 
+	const mountAnimationDuration = 1400;
 	let chart: EChartsType | undefined = $state(undefined);
 	let optionRafId: number | null = null;
+	let mountAnimatedChart: EChartsType | undefined;
+	let mountAnimationRevealTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationSyncTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationReady = !animateOnMount;
 
 	const colors = $derived({
 		title: cssVar('--text-blue-600'),
@@ -111,6 +118,9 @@
 	// svelte-ignore state_referenced_locally
 	// @wc-ignore
 	let options: EChartsOption = $state.raw({
+		animation: animateOnMount ? true : undefined,
+		animationDuration: animateOnMount ? mountAnimationDuration : undefined,
+		animationEasing: animateOnMount ? 'cubicInOut' : undefined,
 		title: {
 			show: false,
 			textStyle: {
@@ -235,14 +245,16 @@
 				}
 			}
 		],
-		series: [
-			{
-				type: 'line',
-				showSymbol: false,
-				smooth: true,
-				data: points.map((p) => [p.date, p.value])
-			}
-		],
+		series: animateOnMount
+			? []
+			: [
+					{
+						type: 'line',
+						showSymbol: false,
+						smooth: true,
+						data: points.map((p) => [p.date, p.value])
+					}
+				],
 		toolbox: {
 			feature: {
 				saveAsImage: {
@@ -274,16 +286,51 @@
 
 	let mouseIn = $state(false);
 
-	watch([() => chart, () => points, () => mouseIn], ([currentChart, currentPoints, isMouseIn]) => {
-		if (!currentChart || !currentPoints || isMouseIn) return;
-
+	function setSeriesPoints(currentChart: EChartsType, currentPoints = points) {
 		currentChart.setOption({
 			series: [
 				{
-					data: currentPoints.map((p) => [p.date, p.value])
+					type: 'line',
+					showSymbol: false,
+					smooth: true,
+					data: currentPoints.map((point) => [point.date, point.value])
 				}
 			]
 		});
+	}
+
+	function startMountAnimation(currentChart: EChartsType) {
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+
+		mountAnimatedChart = currentChart;
+		mountAnimationReady = false;
+		mountAnimationRevealTimer = setTimeout(() => {
+			mountAnimationRevealTimer = null;
+			if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+			const revealedPoints = points;
+			setSeriesPoints(currentChart, revealedPoints);
+
+			mountAnimationSyncTimer = setTimeout(() => {
+				mountAnimationSyncTimer = null;
+				if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+				mountAnimationReady = true;
+				if (points !== revealedPoints) setSeriesPoints(currentChart);
+			}, mountAnimationDuration);
+		}, 100);
+	}
+
+	watch([() => chart, () => points, () => mouseIn], ([currentChart, currentPoints, isMouseIn]) => {
+		if (!currentChart || !currentPoints) return;
+		if (animateOnMount && currentChart !== mountAnimatedChart) {
+			startMountAnimation(currentChart);
+			return;
+		}
+		if ((animateOnMount && !mountAnimationReady) || isMouseIn) return;
+
+		setSeriesPoints(currentChart, currentPoints);
 	});
 
 	watch(
@@ -370,13 +417,16 @@
 
 				optionRafId = null;
 			});
-		}
+		},
+		{ lazy: animateOnMount }
 	);
 
 	onDestroy(() => {
 		if (optionRafId !== null) {
 			cancelAnimationFrame(optionRafId);
 		}
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
 	});
 </script>
 
