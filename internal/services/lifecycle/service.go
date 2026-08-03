@@ -72,10 +72,11 @@ type Service struct {
 
 	createMu sync.Mutex
 
-	vmActionFn   func(rid uint, action string) error
-	vmStateFn    func(rid uint) (int, error)
-	jailActionFn func(ctid int, action string) error
-	jailActiveFn func(ctid uint) (bool, error)
+	vmActionFn          func(rid uint, action string) error
+	vmStateFn           func(rid uint) (int, error)
+	jailActionFn        func(ctid int, action string) error
+	jailActiveFn        func(ctid uint) (bool, error)
+	startupGuestReadyFn func(guestType string, guestID uint) (bool, error)
 
 	jailTemplateConvertFn func(ctx context.Context, ctid uint, req jail.ConvertToTemplateRequest) error
 	jailTemplateCreateFn  func(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
@@ -88,6 +89,10 @@ type Service struct {
 
 func (s *Service) SetMigrationExecutor(fn MigrationExecutor) {
 	s.migrateFn = fn
+}
+
+func (s *Service) SetStartupGuestReadinessChecker(fn func(string, uint) (bool, error)) {
+	s.startupGuestReadyFn = fn
 }
 
 func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
@@ -664,6 +669,9 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	for _, jl := range jails {
+		if !s.startupGuestReady(taskModels.GuestTypeJail, jl.CTID) {
+			continue
+		}
 		task, _, err := s.createTask(ctx, taskModels.GuestTypeJail, jl.CTID, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
 		if err != nil {
 			if errors.Is(err, ErrTaskInProgress) {
@@ -692,6 +700,9 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	for _, vm := range vms {
+		if !s.startupGuestReady(taskModels.GuestTypeVM, vm.RID) {
+			continue
+		}
 		task, _, err := s.createTask(ctx, taskModels.GuestTypeVM, vm.RID, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
 		if err != nil {
 			if errors.Is(err, ErrTaskInProgress) {
@@ -710,4 +721,25 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *Service) startupGuestReady(guestType string, guestID uint) bool {
+	if s.startupGuestReadyFn == nil {
+		return true
+	}
+	ready, err := s.startupGuestReadyFn(guestType, guestID)
+	if err != nil {
+		logger.L.Warn().Err(err).
+			Str("guest_type", guestType).
+			Uint("guest_id", guestID).
+			Msg("startup_guest_readiness_check_failed")
+		return false
+	}
+	if !ready {
+		logger.L.Warn().
+			Str("guest_type", guestType).
+			Uint("guest_id", guestID).
+			Msg("startup_guest_not_ready")
+	}
+	return ready
 }

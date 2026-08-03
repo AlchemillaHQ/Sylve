@@ -185,6 +185,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc)
 	migrationSvc := serviceRegistry.MigrationService
 	lifecycleSvc.SetMigrationExecutor(migrationSvc.ExecuteMigration)
+	lifecycleSvc.SetStartupGuestReadinessChecker(zeltaS.CanAutostartReplicationGuest)
 	refreshEmitter := func(reason string) {
 		clusterSvc.EmitLeftPanelRefreshClusterWide(reason)
 	}
@@ -251,11 +252,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			go libvirtSvc.StartLifecycleWatcher(qCtx)
 		}
 
-		enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
-			logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
-		}
-		enqueueCancel()
 	} else {
 		logger.L.Info().
 			Bool("initialized", basicSettings.Initialized).
@@ -291,6 +287,16 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	go zeltaS.StartBackupTargetProvisionReconciler(qCtx)
 	if err := zeltaS.ReconcileRestoreObservabilityAfterRestart(); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability_after_restart")
+	}
+	if err := zeltaS.PrepareReplicationStartup(context.Background()); err != nil {
+		logger.L.Error().Err(err).Msg("replication_startup_fence_or_authority_failed")
+	}
+	if startAdvancedStartupWorkers {
+		enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
+			logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
+		}
+		enqueueCancel()
 	}
 	go db.StartQueue(qCtx)
 	if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
@@ -482,6 +488,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	<-sigChan
 
 	logger.L.Info().Msg("Shutting down servers gracefully")
+	qStop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -499,6 +506,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		}
 	}
 	clusterHTTPSMu.Unlock()
+
+	shutdownFenceCtx, shutdownFenceCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := zeltaS.FenceReplicationShutdown(shutdownFenceCtx); err != nil {
+		logger.L.Error().Err(err).Msg("replication_shutdown_fence_failed")
+	}
+	shutdownFenceCancel()
 
 	wg.Wait()
 	logger.L.Info().Msg("Servers exited properly")

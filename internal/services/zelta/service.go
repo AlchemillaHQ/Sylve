@@ -100,6 +100,7 @@ type Service struct {
 	replicationFenceMu           sync.Mutex
 	replicationFenceObservations map[uint]replicationFenceObservation
 	replicationLeaseAuthorities  map[uint]replicationLeaseAuthority
+	replicationStartupReady      bool
 
 	workloadOpMu      sync.Mutex
 	runningWorkloadOp map[string]string

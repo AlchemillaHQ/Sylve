@@ -391,6 +391,49 @@ func TestStartupAutostartOrder(t *testing.T) {
 	}
 }
 
+func TestStartupAutostartSkipsOnlyGuestsThatAreNotReady(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	startAtBoot := boolPtr(true)
+	if err := dbConn.Create(&jailModels.Jail{
+		CTID: 101, Name: "protected", Type: jailModels.JailTypeFreeBSD, StartAtBoot: startAtBoot,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Create(&vmModels.VM{RID: 202, Name: "unprotected", StartAtBoot: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	s.SetStartupGuestReadinessChecker(func(guestType string, guestID uint) (bool, error) {
+		return guestType == taskModels.GuestTypeVM && guestID == 202, nil
+	})
+	var started []string
+	s.jailActionFn = func(ctid int, action string) error {
+		started = append(started, fmt.Sprintf("jail:%d:%s", ctid, action))
+		return nil
+	}
+	s.vmActionFn = func(rid uint, action string) error {
+		started = append(started, fmt.Sprintf("vm:%d:%s", rid, action))
+		return nil
+	}
+
+	if err := s.runStartupAutostart(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"vm:202:start"}; !slices.Equal(started, want) {
+		t.Fatalf("started guests = %v, want %v", started, want)
+	}
+
+	var taskCount int64
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).
+		Where("source = ?", taskModels.LifecycleTaskSourceStartup).
+		Count(&taskCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if taskCount != 1 {
+		t.Fatalf("startup task count = %d, want 1", taskCount)
+	}
+}
+
 func TestExecuteTaskVMTemplateConvertAndCreate(t *testing.T) {
 	s, _ := newLifecycleTestService(t)
 

@@ -9280,24 +9280,26 @@ func (s *Service) selfFenceReplicationPolicy(
 	expectedOwner string,
 	fenceReason string,
 	requireRegistration bool,
-) {
+) error {
 	if policy == nil || policy.ID == 0 {
-		return
+		return nil
 	}
-	cutoverTarget, cutoverErr := s.isLocalMigrationCutoverTarget(ctx, policy.GuestType, policy.GuestID, localNodeID)
-	if cutoverErr != nil {
-		logger.L.Warn().
-			Err(cutoverErr).
-			Uint("policy_id", policy.ID).
-			Uint("guest_id", policy.GuestID).
-			Msg("replication_self_fence_migration_cutover_check_failed")
-	} else if cutoverTarget {
-		// The target has a durable cutover permit and may already have imported
-		// the VM before the policy ownership update reaches this node.
-		return
+	if requireRegistration {
+		cutoverTarget, cutoverErr := s.isLocalMigrationCutoverTarget(ctx, policy.GuestType, policy.GuestID, localNodeID)
+		if cutoverErr != nil {
+			logger.L.Warn().
+				Err(cutoverErr).
+				Uint("policy_id", policy.ID).
+				Uint("guest_id", policy.GuestID).
+				Msg("replication_self_fence_migration_cutover_check_failed")
+		} else if cutoverTarget {
+			return nil
+		}
 	}
+	var fenceErr error
 	if !requireRegistration {
 		if err := s.emergencyStopReplicationGuest(policy.GuestType, policy.GuestID); err != nil {
+			fenceErr = errors.Join(fenceErr, err)
 			logger.L.Error().Err(err).
 				Uint("policy_id", policy.ID).
 				Uint("guest_id", policy.GuestID).
@@ -9307,28 +9309,31 @@ func (s *Service) selfFenceReplicationPolicy(
 	}
 	driver, err := s.replicationGuestDriver(policy.GuestType)
 	if err != nil {
+		fenceErr = errors.Join(fenceErr, err)
 		logger.L.Warn().
 			Err(err).
 			Uint("policy_id", policy.ID).
 			Uint("guest_id", policy.GuestID).
 			Str("guest_type", strings.TrimSpace(policy.GuestType)).
 			Msg("replication_self_fence_invalid_guest_type")
-		return
+		return fenceErr
 	}
 	if requireRegistration {
 		registered, lookupErr := s.replicationGuestRegistrationStatus(policy.GuestType, policy.GuestID)
 		if lookupErr != nil {
 			if err := s.emergencyStopReplicationGuest(policy.GuestType, policy.GuestID); err != nil {
+				fenceErr = errors.Join(fenceErr, err)
 				logger.L.Error().Err(err).
 					Uint("policy_id", policy.ID).
 					Msg("replication_registration_lookup_failed_emergency_stop_failed")
 			}
 		} else if !registered {
-			return
+			return fenceErr
 		}
 	}
 	driver.selfFence(ctx, policy.ID, policy.GuestID, localNodeID, expectedOwner, fenceReason)
 	if err := s.fenceReplicationGuestDatasets(ctx, policy, fenceReason); err != nil {
+		fenceErr = errors.Join(fenceErr, err)
 		logger.L.Warn().
 			Err(err).
 			Uint("policy_id", policy.ID).
@@ -9337,6 +9342,7 @@ func (s *Service) selfFenceReplicationPolicy(
 			Str("reason", fenceReason).
 			Msg("replication_self_fence_dataset_fencing_failed")
 	}
+	return fenceErr
 }
 
 func (s *Service) isLocalMigrationCutoverTarget(
@@ -10072,6 +10078,7 @@ func (s *Service) selfFenceUnknownProvenanceGuests(
 		return fmt.Errorf("replication_cold_fence_dataset_list_failed: %w", err)
 	}
 	seen := make(map[uint]struct{})
+	var fenceErr error
 	for _, dataset := range datasets {
 		guestType, guestID, _, canonical := parseCanonicalReplicationGuestDataset(dataset)
 		if !canonical {
@@ -10097,18 +10104,19 @@ func (s *Service) selfFenceUnknownProvenanceGuests(
 			ID: policyID, GuestType: guestType, GuestID: guestID,
 			ActiveNodeID: localNodeID, SourceNodeID: localNodeID,
 		}
-		s.selfFenceReplicationPolicy(
+		fenceErr = errors.Join(fenceErr, s.selfFenceReplicationPolicy(
 			ctx, &policy, localNodeID, localNodeID, replicationFenceReasonOwnerLeaseInvalid, false,
-		)
+		))
 	}
-	return nil
+	return fenceErr
 }
 
 func (s *Service) selfFenceFromCachedObservations(
 	ctx context.Context,
 	localNodeID string,
 	observations map[uint]replicationFenceObservation,
-) {
+) error {
+	var fenceErr error
 	for _, observation := range observations {
 		policy := observation.Policy
 		expectedOwner := replicationPolicyOwnerNode(&policy)
@@ -10119,8 +10127,11 @@ func (s *Service) selfFenceFromCachedObservations(
 		if strings.TrimSpace(expectedOwner) == strings.TrimSpace(localNodeID) {
 			reason = replicationFenceReasonOwnerLeaseInvalid
 		}
-		s.selfFenceReplicationPolicy(ctx, &policy, localNodeID, expectedOwner, reason, false)
+		fenceErr = errors.Join(fenceErr, s.selfFenceReplicationPolicy(
+			ctx, &policy, localNodeID, expectedOwner, reason, false,
+		))
 	}
+	return fenceErr
 }
 
 func (s *Service) handleReplicationPolicyReadFailure(
@@ -10143,10 +10154,10 @@ func (s *Service) handleReplicationPolicyReadFailure(
 	// non-empty cache can still omit a policy enabled immediately before the
 	// database became unreadable, which is why canonical discovery remains
 	// mandatory above.
-	s.selfFenceFromCachedObservations(ctx, localNodeID, previousObservations)
+	cachedFenceErr := s.selfFenceFromCachedObservations(ctx, localNodeID, previousObservations)
 	discoveryErr := s.selfFenceUnknownProvenanceGuests(ctx, localNodeID, previousObservations)
 
-	return errors.Join(policyReadErr, runtimeFenceErr, canonicalFenceErr, discoveryErr)
+	return errors.Join(policyReadErr, runtimeFenceErr, canonicalFenceErr, cachedFenceErr, discoveryErr)
 }
 
 func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
@@ -10157,6 +10168,14 @@ func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 }
 
 func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localNodeID string) error {
+	return s.selfFenceReplicationLeasesForLocalNode(ctx, localNodeID, true)
+}
+
+func (s *Service) selfFenceReplicationLeasesForLocalNode(
+	ctx context.Context,
+	localNodeID string,
+	requireRegistration bool,
+) error {
 	localNodeID = strings.TrimSpace(localNodeID)
 	previousObservations := s.snapshotReplicationFenceCache()
 	if len(previousObservations) == 0 {
@@ -10177,7 +10196,7 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 	}
 
 	var policies []clusterModels.ReplicationPolicy
-	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where("enabled = ?", true).Find(&policies).Error; err != nil {
 		return s.handleReplicationPolicyReadFailure(
 			ctx,
 			err,
@@ -10187,10 +10206,16 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 	}
 
 	observations := make(map[uint]replicationFenceObservation, len(policies))
+	var fenceErr error
 	for _, policy := range policies {
 		expectedOwner := strings.TrimSpace(replicationPolicyOwnerNode(&policy))
 		if expectedOwner == "" {
 			s.invalidateReplicationLeaseAuthority(policy.ID)
+			observations[policy.ID] = replicationFenceObservation{Policy: policy}
+			fenceErr = errors.Join(fenceErr, s.selfFenceReplicationPolicy(
+				ctx, &policy, localNodeID, "",
+				replicationFenceReasonOwnerLeaseInvalid, requireRegistration,
+			))
 			continue
 		}
 		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
@@ -10201,7 +10226,10 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 			if expectedEpoch == 0 {
 				s.invalidateReplicationLeaseAuthority(policy.ID)
 				observations[policy.ID] = observation
-				s.selfFenceReplicationPolicy(ctx, &policy, localNodeID, expectedOwner, replicationFenceReasonOwnerLeaseInvalid, true)
+				fenceErr = errors.Join(fenceErr, s.selfFenceReplicationPolicy(
+					ctx, &policy, localNodeID, expectedOwner,
+					replicationFenceReasonOwnerLeaseInvalid, requireRegistration,
+				))
 				continue
 			}
 
@@ -10223,6 +10251,7 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 				// the newly committed lease is valid.
 				if !transitionStateInProgress(policy.TransitionState) {
 					if err := s.unfenceReplicationGuestDatasetsIfNeeded(ctx, &policy); err != nil {
+						fenceErr = errors.Join(fenceErr, err)
 						logger.L.Warn().Err(err).
 							Uint("policy_id", policy.ID).
 							Uint("guest_id", policy.GuestID).
@@ -10241,7 +10270,9 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 			observations[policy.ID] = observation
 		}
 
-		s.selfFenceReplicationPolicy(ctx, &policy, localNodeID, expectedOwner, fenceReason, true)
+		fenceErr = errors.Join(fenceErr, s.selfFenceReplicationPolicy(
+			ctx, &policy, localNodeID, expectedOwner, fenceReason, requireRegistration,
+		))
 	}
 
 	// A successful policy enumeration is authoritative: remove cache entries
@@ -10252,9 +10283,9 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 		logger.L.Warn().Err(err).Msg("replication_durable_fence_observations_persist_failed")
 	}
 	if err := s.restoreReplicationEmergencyReadonlyChanges(ctx, policies); err != nil {
-		return fmt.Errorf("replication_emergency_readonly_restore_failed: %w", err)
+		fenceErr = errors.Join(fenceErr, fmt.Errorf("replication_emergency_readonly_restore_failed: %w", err))
 	}
-	return nil
+	return fenceErr
 }
 
 func (s *Service) isReplicationGuestRunning(guestType string, guestID uint) (bool, error) {
