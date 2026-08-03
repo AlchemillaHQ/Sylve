@@ -507,6 +507,12 @@ func TestAutoSafeNodeDownWarningIsDeduplicatedUntilRecovery(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("warning event count across two outages = %d, want 2", count)
 	}
+	svc.forcedPromotionMu.Lock()
+	_, tracked := svc.forcedPromotions[pid]
+	svc.forcedPromotionMu.Unlock()
+	if tracked {
+		t.Fatal("auto_safe must not accumulate forced-promotion authority")
+	}
 }
 
 func TestFailoverControllerManualModeDoesNotAutoFailover(t *testing.T) {
@@ -546,6 +552,33 @@ func TestFailoverControllerManualModeDoesNotAutoFailover(t *testing.T) {
 		updated.TransitionState != "" {
 		t.Fatalf("manual mode should not auto-failover, got transition state %q",
 			updated.TransitionState)
+	}
+	svc.forcedPromotionMu.Lock()
+	_, tracked := svc.forcedPromotions[pid]
+	svc.forcedPromotionMu.Unlock()
+	if tracked {
+		t.Fatal("manual mode must not accumulate forced-promotion authority")
+	}
+	if err := fx.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", pid).Updates(map[string]any{
+		"transition_state":          clusterModels.ReplicationTransitionStateDemoting,
+		"transition_run_id":         "manual-force-recovery",
+		"transition_source_node_id": "node-2",
+		"transition_target_node_id": fx.LocalNodeID,
+		"transition_owner_epoch":    uint64(1),
+		"transition_allow_unsafe":   true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	fx.SetNodeStatus("node-2", "offline")
+	svc.recordForcedPromotionObservation(pid, "node-2", 1, "term-1", 1)
+	if err := svc.runFailoverControllerTick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	svc.forcedPromotionMu.Lock()
+	_, tracked = svc.forcedPromotions[pid]
+	svc.forcedPromotionMu.Unlock()
+	if !tracked {
+		t.Fatal("manual force recovery lost its in-process fencing wait")
 	}
 	t.Log("manual mode correctly prevented auto-failover")
 }

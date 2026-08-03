@@ -96,6 +96,8 @@ type Service struct {
 	poolDownMisses     map[string]int
 	failoverWarningMu  sync.Mutex
 	failoverWarnings   map[uint]map[string]struct{}
+	forcedPromotionMu  sync.Mutex
+	forcedPromotions   map[uint]replicationForcedPromotionObservation
 
 	replicationFenceMu           sync.Mutex
 	replicationFenceObservations map[uint]replicationFenceObservation
@@ -173,6 +175,7 @@ func NewService(
 		runningTransitions:        make(map[uint]struct{}),
 		poolDownMisses:            make(map[string]int),
 		failoverWarnings:          make(map[uint]map[string]struct{}),
+		forcedPromotions:          make(map[uint]replicationForcedPromotionObservation),
 		runningWorkloadOp:         make(map[string]string),
 		runningRestoreDestination: make(map[string]struct{}),
 		activeTargetRestoreTokens: make(map[string]struct{}),

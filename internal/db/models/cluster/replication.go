@@ -359,6 +359,7 @@ type ReplicationOwnershipTransitionPayload struct {
 	// instant. Keeping this predicate in the same transaction as the owner CAS
 	// closes the gap between a leader-side expiry check and the Raft commit.
 	PreviousLeaseExpiresAtOrBefore *time.Time                  `json:"previousLeaseExpiresAtOrBefore,omitempty"`
+	ExpectedPreviousLeaseVersion   *uint64                     `json:"expectedPreviousLeaseVersion,omitempty"`
 	ActiveNodeID                   string                      `json:"activeNodeId"`
 	SourceNodeID                   *string                     `json:"sourceNodeId,omitempty"`
 	OwnerEpoch                     uint64                      `json:"ownerEpoch"`
@@ -1883,11 +1884,34 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 			return err
 		}
 
-		if payload.PreviousLeaseExpiresAtOrBefore != nil {
+		if payload.Transition.AllowUnsafe && payload.Transition.State == ReplicationTransitionStatePromoting &&
+			payload.Transition.GenerationID != "" {
+			var target ReplicationPolicyTarget
+			if err := tx.Where("policy_id = ? AND node_id = ?", payload.PolicyID, payload.ActiveNodeID).
+				First(&target).Error; err != nil {
+				return fmt.Errorf("replication_force_target_generation_revalidation_failed: %w", err)
+			}
+			if !target.Ready || target.OwnerEpoch != payload.ExpectedOwnerEpoch ||
+				payload.Transition.GenerationOwnerEpoch != target.OwnerEpoch ||
+				strings.TrimSpace(target.GenerationID) != payload.Transition.GenerationID ||
+				strings.TrimSpace(target.ManifestHash) != payload.Transition.GenerationManifest ||
+				target.RequiredDatasetCount <= 0 ||
+				target.CompletedDatasetCount != target.RequiredDatasetCount ||
+				target.RequiredDatasetCount != payload.Transition.GenerationRootCount ||
+				target.LastVerifiedAt == nil || target.ReadyUntil == nil {
+				return fmt.Errorf("replication_force_target_generation_changed")
+			}
+		}
+
+		if payload.PreviousLeaseExpiresAtOrBefore != nil || payload.ExpectedPreviousLeaseVersion != nil {
 			var previousLease ReplicationLease
 			err := tx.Where("policy_id = ?", payload.PolicyID).First(&previousLease).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
+			}
+			if errors.Is(err, gorm.ErrRecordNotFound) && payload.ExpectedPreviousLeaseVersion != nil &&
+				*payload.ExpectedPreviousLeaseVersion != 0 {
+				return fmt.Errorf("replication_previous_owner_lease_version_changed")
 			}
 			if err == nil {
 				leaseOwner := strings.TrimSpace(previousLease.OwnerNodeID)
@@ -1895,7 +1919,12 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 					(previousLease.OwnerEpoch == payload.ExpectedOwnerEpoch && leaseOwner != payload.ExpectedActiveNodeID) {
 					return fmt.Errorf("replication_previous_owner_lease_mismatch")
 				}
-				if previousLease.OwnerEpoch == payload.ExpectedOwnerEpoch &&
+				if payload.ExpectedPreviousLeaseVersion != nil &&
+					previousLease.Version != *payload.ExpectedPreviousLeaseVersion {
+					return fmt.Errorf("replication_previous_owner_lease_version_changed")
+				}
+				if payload.PreviousLeaseExpiresAtOrBefore != nil &&
+					previousLease.OwnerEpoch == payload.ExpectedOwnerEpoch &&
 					leaseOwner == payload.ExpectedActiveNodeID &&
 					previousLease.ExpiresAt.After(*payload.PreviousLeaseExpiresAtOrBefore) {
 					return fmt.Errorf("replication_previous_owner_lease_not_expired")

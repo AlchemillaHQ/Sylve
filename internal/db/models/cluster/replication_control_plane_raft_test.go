@@ -203,6 +203,70 @@ func TestReplicationOwnershipTransitionLeaseExpiryPredicateIsAtomic(t *testing.T
 	}
 }
 
+func unsafeOwnershipCommitPayload(t *testing.T, db *gorm.DB) ReplicationOwnershipTransitionPayload {
+	t.Helper()
+	if err := db.Model(&ReplicationPolicy{}).Where("id = ?", 1).Updates(map[string]any{
+		"transition_allow_unsafe":           true,
+		"transition_generation_id":          "generation-1",
+		"transition_generation_owner_epoch": uint64(1),
+		"transition_generation_manifest":    "manifest-1",
+		"transition_generation_root_count":  2,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	payload := ownershipCommitPayload()
+	payload.Transition.AllowUnsafe = true
+	payload.Transition.GenerationID = "generation-1"
+	payload.Transition.GenerationOwnerEpoch = 1
+	payload.Transition.GenerationManifest = "manifest-1"
+	payload.Transition.GenerationRootCount = 2
+	version := uint64(10)
+	payload.ExpectedPreviousLeaseVersion = &version
+	return payload
+}
+
+func TestReplicationOwnershipTransitionLeaseVersionPredicateIsAtomic(t *testing.T) {
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	seedControlPlanePolicy(t, db)
+	payload := unsafeOwnershipCommitPayload(t, db)
+	if err := db.Model(&ReplicationLease{}).Where("policy_id = ?", 1).Update("version", 11).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil ||
+		!strings.Contains(err.Error(), "previous_owner_lease_version_changed") {
+		t.Fatalf("advanced lease should reject force cutover, got %v", err)
+	}
+	version := uint64(11)
+	payload.ExpectedPreviousLeaseVersion = &version
+	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err != nil {
+		t.Fatalf("unchanged observed lease should permit force cutover: %v", err)
+	}
+}
+
+func TestReplicationOwnershipTransitionRevalidatesForcedGenerationAtomically(t *testing.T) {
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	seedControlPlanePolicy(t, db)
+	payload := unsafeOwnershipCommitPayload(t, db)
+	if err := db.Model(&ReplicationPolicyTarget{}).
+		Where("policy_id = ? AND node_id = ?", 1, "node-2").
+		Update("manifest_hash", "changed-manifest").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil ||
+		!strings.Contains(err.Error(), "replication_force_target_generation_changed") {
+		t.Fatalf("changed target generation should reject force cutover, got %v", err)
+	}
+	var policy ReplicationPolicy
+	if err := db.First(&policy, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if policy.ActiveNodeID != "node-1" || policy.OwnerEpoch != 1 {
+		t.Fatalf("rejected force cutover changed ownership: %+v", policy)
+	}
+}
+
 func TestFSMReplicationPolicyTransitionBeginCASAndRecoveryOptions(t *testing.T) {
 	db := newClusterModelTestDB(t, &ReplicationPolicy{})
 	if err := db.Create(&ReplicationPolicy{

@@ -100,6 +100,18 @@ func TestReplicationFailoverRequestMode(t *testing.T) {
 	}
 }
 
+func TestReplicationFailoverAllowUnsafeOnlyForUnreachableOwner(t *testing.T) {
+	if replicationFailoverAllowUnsafe(replicationFailoverRequestForce, true) {
+		t.Fatal("reachable owner should use acknowledged handoff")
+	}
+	if !replicationFailoverAllowUnsafe(replicationFailoverRequestForce, false) {
+		t.Fatal("unreachable owner should retain explicit force semantics")
+	}
+	if replicationFailoverAllowUnsafe(replicationFailoverRequestSafe, false) {
+		t.Fatal("safe failover must never become unsafe")
+	}
+}
+
 func TestReplicationGuestKey(t *testing.T) {
 	if replicationGuestKey("", 0) != "" {
 		t.Fatal("empty guest should return empty key")

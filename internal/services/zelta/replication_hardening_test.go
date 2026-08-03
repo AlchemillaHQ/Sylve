@@ -471,46 +471,6 @@ func TestOwnershipCommitErrorIsReconciledFromPolicyAndLease(t *testing.T) {
 	}
 }
 
-func TestMissingLeaseForceBarrierIsBounded(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationLease{})
-	start := time.Unix(2_000_000_000, 0).UTC()
-	clock := &fakeReplicationRuntimeClock{now: start}
-	s := &Service{Cluster: &clusterService.Service{DB: db}}
-	s.setReplicationRuntimeClock(clock)
-	policy := &clusterModels.ReplicationPolicy{ID: 99}
-
-	if err := s.waitForPreviousOwnerLeaseExpiry(nil, policy, "node-old", 1); err != nil {
-		t.Fatal(err)
-	}
-	elapsed := s.now().Sub(start)
-	want := 2*replicationLeaseTTL + replicationLeaseExpirySafetyMargin
-	if elapsed < want || elapsed > want+250*time.Millisecond {
-		t.Fatalf("missing lease barrier elapsed %s, want bounded near %s", elapsed, want)
-	}
-}
-
-func TestOlderLeaseForceBarrierIsBounded(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationLease{})
-	start := time.Unix(2_000_000_000, 0).UTC()
-	if err := db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 100, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 1,
-		OwnerNodeID: "old-owner", OwnerEpoch: 1, Version: 1, ExpiresAt: start.Add(time.Hour),
-	}).Error; err != nil {
-		t.Fatal(err)
-	}
-	clock := &fakeReplicationRuntimeClock{now: start}
-	s := &Service{Cluster: &clusterService.Service{DB: db}}
-	s.setReplicationRuntimeClock(clock)
-	policy := &clusterModels.ReplicationPolicy{ID: 100}
-	if err := s.waitForPreviousOwnerLeaseExpiry(nil, policy, "current-owner", 2); err != nil {
-		t.Fatal(err)
-	}
-	elapsed := s.now().Sub(start)
-	if elapsed < replicationLeaseExpirySafetyMargin || elapsed > replicationLeaseExpirySafetyMargin+250*time.Millisecond {
-		t.Fatalf("older lease barrier elapsed %s", elapsed)
-	}
-}
-
 func TestForceCutoverMarginExceedsFencePollingWindow(t *testing.T) {
 	if replicationLeaseExpirySafetyMargin < 2*replicationSelfFenceInterval {
 		t.Fatalf(

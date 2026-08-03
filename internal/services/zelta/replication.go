@@ -47,19 +47,17 @@ const (
 )
 
 const (
-	defaultReplicationPruneKeepLast  = 64
-	defaultReplicationLineageKeepOld = 2
-	replicationFailoverDownMissLimit = 3
-	replicationFailbackHitLimit      = 3
-	replicationCrashRestartLimit     = 3
-	replicationLeaseTTL              = 20 * time.Second
-	// Forced cutover must wait substantially longer than the local fencing
-	// poll interval.  This also leaves bounded room for clock skew between
-	// nodes after the old owner's authoritative lease has expired.
-	replicationSelfFenceInterval       = 2 * time.Second
-	replicationLeaseRenewalInterval    = 5 * time.Second
-	replicationLeaseExpirySafetyMargin = 30 * time.Second
-	replicationLowPoolCapacityPercent  = 90
+	defaultReplicationPruneKeepLast       = 64
+	defaultReplicationLineageKeepOld      = 2
+	replicationFailoverDownMissLimit      = 3
+	replicationFailbackHitLimit           = 3
+	replicationCrashRestartLimit          = 3
+	replicationLeaseTTL                   = 20 * time.Second
+	replicationSelfFenceInterval          = 2 * time.Second
+	replicationLeaseRenewalInterval       = 5 * time.Second
+	replicationLeaseExpirySafetyMargin    = 30 * time.Second
+	replicationFailoverControllerInterval = 5 * time.Second
+	replicationLowPoolCapacityPercent     = 90
 
 	replicationEventStatusRunning     = "running"
 	replicationEventStatusDemoting    = "demoting"
@@ -757,8 +755,11 @@ func (s *Service) runReplicationSchedulingLoop(ctx context.Context) {
 }
 
 func (s *Service) runReplicationLeaderControlLoop(ctx context.Context) {
-	runReplicationPeriodicLoop(ctx, 5*time.Second, func(ctx context.Context) {
+	s.resetForcedPromotionObservations()
+	defer s.resetForcedPromotionObservations()
+	runReplicationPeriodicLoop(ctx, replicationFailoverControllerInterval, func(ctx context.Context) {
 		if s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader {
+			s.resetForcedPromotionObservations()
 			return
 		}
 		if err := s.runTransitionRecoveryTick(ctx); err != nil {
@@ -955,6 +956,10 @@ func replicationFailoverRequestMode(mode string) string {
 	default:
 		return replicationFailoverRequestSafe
 	}
+}
+
+func replicationFailoverAllowUnsafe(requestMode string, ownerOnline bool) bool {
+	return replicationFailoverRequestMode(requestMode) == replicationFailoverRequestForce && !ownerOnline
 }
 
 func transitionPayloadFromPolicy(policy *clusterModels.ReplicationPolicy) clusterModels.ReplicationPolicyTransition {
@@ -1375,7 +1380,7 @@ func (s *Service) rollbackRecoveringPromotion(
 	if err != nil {
 		return appendReplicationStepError(cause, "replication_current_owner_health_unknown", err)
 	}
-	var previousLeaseExpiresAtOrBefore *time.Time
+	var expectedPreviousLeaseVersion *uint64
 	if currentOnline {
 		var demoteErr error
 		if currentOwner == strings.TrimSpace(s.Cluster.LocalNodeID()) {
@@ -1397,14 +1402,15 @@ func (s *Service) rollbackRecoveringPromotion(
 			return appendReplicationStepError(cause, "replication_current_owner_fence_unconfirmed", demoteErr)
 		}
 	} else {
-		// The current owner cannot acknowledge demotion. Stop renewing it,
-		// wait through lease expiry plus the fencing/skew margin, and carry the
-		// same cutoff into the atomic rollback transaction.
-		if err := s.waitForPreviousOwnerLeaseExpiry(ctx, policy, currentOwner, currentEpoch); err != nil {
-			return appendReplicationStepError(cause, "replication_current_owner_lease_barrier_failed", err)
+		decision, _, barrierErr := s.evaluateForcedPromotionBarrier(policy.ID, currentOwner, currentEpoch)
+		if barrierErr != nil {
+			return appendReplicationStepError(cause, "replication_current_owner_fence_barrier_failed", barrierErr)
 		}
-		cutoff := s.now().UTC().Add(-replicationLeaseExpirySafetyMargin)
-		previousLeaseExpiresAtOrBefore = &cutoff
+		if !decision.Ready {
+			s.logForcedPromotionDecision(policy.ID, currentOwner, decision)
+			return appendReplicationStepError(cause, "replication_current_owner_fence_barrier_pending", nil)
+		}
+		expectedPreviousLeaseVersion = &decision.LeaseVersion
 	}
 
 	rollbackEpoch := currentEpoch + 1
@@ -1441,17 +1447,17 @@ func (s *Service) rollbackRecoveringPromotion(
 	transition.CompletedAt = nil
 	transition.Error = "rollback_in_progress"
 	payload := clusterModels.ReplicationOwnershipTransitionPayload{
-		PolicyID:                       policy.ID,
-		ExpectedActiveNodeID:           currentOwner,
-		ExpectedOwnerEpoch:             currentEpoch,
-		ExpectedTransitionRunID:        policy.TransitionRunID,
-		BackupJobRunnerRebindToken:     policy.TransitionRunID,
-		PreviousLeaseExpiresAtOrBefore: previousLeaseExpiresAtOrBefore,
-		ActiveNodeID:                   previousOwner,
-		SourceNodeID:                   rollbackSourceUpdate,
-		OwnerEpoch:                     rollbackEpoch,
-		ReplaceTargets:                 true,
-		Targets:                        rollbackTargets,
+		PolicyID:                     policy.ID,
+		ExpectedActiveNodeID:         currentOwner,
+		ExpectedOwnerEpoch:           currentEpoch,
+		ExpectedTransitionRunID:      policy.TransitionRunID,
+		BackupJobRunnerRebindToken:   policy.TransitionRunID,
+		ExpectedPreviousLeaseVersion: expectedPreviousLeaseVersion,
+		ActiveNodeID:                 previousOwner,
+		SourceNodeID:                 rollbackSourceUpdate,
+		OwnerEpoch:                   rollbackEpoch,
+		ReplaceTargets:               true,
+		Targets:                      rollbackTargets,
 		Lease: clusterModels.ReplicationLease{
 			PolicyID:    policy.ID,
 			GuestType:   policy.GuestType,
@@ -4412,6 +4418,7 @@ func (s *Service) replicationCountersDelete(policyID uint) {
 	badgerCounterDelete(badgerDownKey(policyID))
 	badgerCounterDelete(fmt.Sprintf("%s%d", badgerKeyFailbackHits, policyID))
 	s.clearFailoverWarnings(policyID)
+	s.resetForcedPromotionObservation(policyID)
 }
 
 func replicationFailoverWarningKey(ownerNodeID, message string) string {
@@ -4606,6 +4613,7 @@ func (s *Service) runReplicationLeaseRenewalTick(ctx context.Context) error {
 
 func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 	if s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader {
+		s.resetForcedPromotionObservations()
 		return nil
 	}
 
@@ -4622,21 +4630,78 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var forceQuorumChecked bool
+	var forceQuorumOK bool
+	var forceQuorumErr error
+	checkForceQuorum := func() (bool, error) {
+		if !forceQuorumChecked {
+			forceQuorumOK, forceQuorumErr = s.hasFailoverQuorum(nodeByID)
+			forceQuorumChecked = true
+		}
+		return forceQuorumOK, forceQuorumErr
+	}
+
 	now := s.now().UTC()
 	for i := range policies {
 		policy := policies[i]
-		observedOwner := replicationPolicyOwnerNode(&policy)
-		if observedNode, ok := nodeByID[observedOwner]; ok &&
-			strings.EqualFold(strings.TrimSpace(observedNode.Status), "online") {
-			// Clear outage-local state even when HA eligibility or an in-progress
-			// transition causes this policy to skip the controller below.
-			s.downMissesReset(policy.ID)
-			s.clearFailoverWarnings(policy.ID)
-		}
 		if !policy.Enabled {
+			s.resetForcedPromotionObservation(policy.ID)
 			continue
 		}
-		if transitionStateInProgress(policy.TransitionState) || s.IsPolicyTransitionRunning(policy.ID) {
+
+		owner := replicationPolicyOwnerNode(&policy)
+		if owner == "" {
+			s.resetForcedPromotionObservation(policy.ID)
+			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_missing")
+			continue
+		}
+		ownerEpoch := replicationPolicyOwnerEpoch(&policy)
+		if ownerEpoch == 0 {
+			s.resetForcedPromotionObservation(policy.ID)
+			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_epoch_missing")
+			continue
+		}
+
+		status := "offline"
+		if node, ok := nodeByID[owner]; ok {
+			status = strings.ToLower(strings.TrimSpace(node.Status))
+		}
+		failoverMode := policyFailoverMode(&policy)
+		transitionRunning := transitionStateInProgress(policy.TransitionState) || s.IsPolicyTransitionRunning(policy.ID)
+		if status == "online" {
+			s.downMissesReset(policy.ID)
+			s.clearFailoverWarnings(policy.ID)
+			s.resetForcedPromotionObservation(policy.ID)
+		} else if failoverMode != clusterModels.ReplicationFailoverAutoForce &&
+			!(transitionRunning && policy.TransitionAllowUnsafe) {
+			s.resetForcedPromotionObservation(policy.ID)
+		}
+
+		var forceDecision replicationForcedPromotionDecision
+		var forceObservationErr error
+		if status != "online" && failoverMode == clusterModels.ReplicationFailoverAutoForce {
+			quorumOK, quorumErr := checkForceQuorum()
+			switch {
+			case quorumErr != nil:
+				forceObservationErr = quorumErr
+				s.resetForcedPromotionObservation(policy.ID)
+			case !quorumOK:
+				forceObservationErr = fmt.Errorf("force_failover_requires_quorum")
+				s.resetForcedPromotionObservation(policy.ID)
+			default:
+				forceDecision, forceObservationErr = s.observeForcedPromotion(
+					policy.ID, owner, ownerEpoch, nodeByID,
+				)
+			}
+			if forceObservationErr != nil {
+				logger.L.Warn().Err(forceObservationErr).
+					Uint("policy_id", policy.ID).
+					Str("owner_node_id", owner).
+					Msg("replication_force_promotion_observation_failed")
+			}
+		}
+
+		if transitionRunning {
 			continue
 		}
 		if !replicationPolicyAcceptsNewTransition(&policy) {
@@ -4650,23 +4715,6 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				Str("reasons", strings.Join(haEval.Reasons, ",")).
 				Msg("replication_policy_failover_controller_blocked_by_ha_constraints")
 			continue
-		}
-
-		owner := replicationPolicyOwnerNode(&policy)
-		if owner == "" {
-			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_missing")
-			continue
-		}
-		ownerEpoch := replicationPolicyOwnerEpoch(&policy)
-		if ownerEpoch == 0 {
-			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_epoch_missing")
-			continue
-		}
-
-		node, ok := nodeByID[owner]
-		status := "offline"
-		if ok {
-			status = strings.ToLower(strings.TrimSpace(node.Status))
 		}
 
 		if status == "online" {
@@ -4715,7 +4763,6 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			continue
 		}
 
-		failoverMode := policyFailoverMode(&policy)
 		if failoverMode == clusterModels.ReplicationFailoverManual {
 			continue
 		}
@@ -4771,7 +4818,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			TriggerValidationRun: true,
 		}
 		if failoverMode == clusterModels.ReplicationFailoverAutoForce {
-			quorumOK, quorumErr := s.hasFailoverQuorum(nodeByID)
+			quorumOK, quorumErr := checkForceQuorum()
 			if quorumErr != nil {
 				logger.L.Warn().
 					Err(quorumErr).
@@ -4795,6 +4842,13 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				})
 				continue
 			}
+			if forceObservationErr != nil {
+				continue
+			}
+			if !forceDecision.Ready {
+				s.logForcedPromotionDecision(policy.ID, owner, forceDecision)
+				continue
+			}
 			reason = "node_down_auto_force"
 			requireDemoteAck = false
 			options.AllowUnsafe = true
@@ -4814,6 +4868,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 
 		s.downMissesReset(policy.ID)
 		s.clearFailoverWarnings(policy.ID)
+		s.resetForcedPromotionObservation(policy.ID)
 	}
 
 	return nil
@@ -5078,79 +5133,6 @@ func (s *Service) hasFailoverQuorum(nodeByID map[string]clusterModels.ClusterNod
 	return onlineVoters >= required, nil
 }
 
-func (s *Service) waitForPreviousOwnerLeaseExpiry(
-	ctx context.Context,
-	policy *clusterModels.ReplicationPolicy,
-	previousOwner string,
-	expectedOwnerEpoch uint64,
-) error {
-	if policy == nil || policy.ID == 0 {
-		return fmt.Errorf("invalid_policy")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	previousOwner = strings.TrimSpace(previousOwner)
-	if previousOwner == "" || expectedOwnerEpoch == 0 {
-		return fmt.Errorf("replication_previous_owner_lease_identity_missing")
-	}
-	barrierStartedAt := s.now().UTC()
-	missingLeaseBarrier := barrierStartedAt.Add(2*replicationLeaseTTL + replicationLeaseExpirySafetyMargin)
-	olderLeaseBarrier := barrierStartedAt.Add(replicationLeaseExpirySafetyMargin)
-
-	for {
-		if ctx != nil {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-		}
-		barrier := missingLeaseBarrier
-		lease, err := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-		if err == nil && lease != nil {
-			leaseOwner := strings.TrimSpace(lease.OwnerNodeID)
-			switch {
-			case lease.OwnerEpoch > expectedOwnerEpoch:
-				return fmt.Errorf("replication_previous_owner_lease_epoch_advanced")
-			case lease.OwnerEpoch == expectedOwnerEpoch && leaseOwner != previousOwner:
-				return fmt.Errorf("replication_previous_owner_lease_owner_changed")
-			case lease.OwnerEpoch == expectedOwnerEpoch:
-				barrier = lease.ExpiresAt.UTC().Add(replicationLeaseExpirySafetyMargin)
-			case lease.OwnerEpoch < expectedOwnerEpoch:
-				// An older lease cannot authorize the current owner epoch. Keep
-				// only the clock-skew margin before promotion.
-				barrier = olderLeaseBarrier
-			}
-		} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("replication_previous_owner_lease_lookup_failed: %w", err)
-		}
-
-		waitFor := barrier.Sub(s.now().UTC())
-		if waitFor <= 0 {
-			// Re-read once after crossing the barrier. A renewal assembled
-			// before the persisted transition became visible may have extended
-			// the old lease while we were waiting.
-			lease, recheckErr := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-			if recheckErr == nil && lease != nil &&
-				strings.TrimSpace(lease.OwnerNodeID) == previousOwner &&
-				lease.OwnerEpoch == expectedOwnerEpoch &&
-				s.now().UTC().Before(lease.ExpiresAt.UTC().Add(replicationLeaseExpirySafetyMargin)) {
-				continue
-			}
-			if recheckErr != nil && !errors.Is(recheckErr, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("replication_previous_owner_lease_recheck_failed: %w", recheckErr)
-			}
-			return nil
-		}
-
-		// Keep real-clock cancellation responsive while allowing the fake
-		// clock to advance deterministically in tests.
-		if waitFor > 250*time.Millisecond {
-			waitFor = 250 * time.Millisecond
-		}
-		s.sleep(waitFor)
-	}
-}
-
 func (s *Service) EnqueueReplicationPolicyFailover(
 	policyID uint,
 	targetNodeID string,
@@ -5200,19 +5182,20 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 	if ownerNodeID == "" || replicationPolicyOwnerEpoch(policy) == 0 {
 		return fmt.Errorf("replication_policy_owner_missing")
 	}
-	if requestMode == replicationFailoverRequestSafe && !nodeOnlineByID(nodeByID, ownerNodeID) {
+	ownerOnline := nodeOnlineByID(nodeByID, ownerNodeID)
+	if requestMode == replicationFailoverRequestSafe && !ownerOnline {
 		return fmt.Errorf("safe_failover_requires_online_owner_use_force_for_owner_down")
 	}
+	unsafeFailover := replicationFailoverAllowUnsafe(requestMode, ownerOnline)
 
 	targetNodeID = strings.TrimSpace(targetNodeID)
 	if targetNodeID == "" {
-		forceMode := requestMode == replicationFailoverRequestForce
 		targetNodeID, err = s.selectFailoverTargetWithReadiness(
 			policy,
 			ownerNodeID,
 			nodeByID,
-			forceMode,
-			forceMode,
+			unsafeFailover,
+			unsafeFailover,
 		)
 		if err != nil {
 			return err
@@ -5227,7 +5210,7 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 	if !nodeOnlineByID(nodeByID, targetNodeID) {
 		return fmt.Errorf("replication_target_node_offline")
 	}
-	if requestMode == replicationFailoverRequestForce {
+	if unsafeFailover {
 		if err := s.validateUnsafeFailoverTargetGeneration(policy, targetNodeID); err != nil {
 			return err
 		}
@@ -5265,7 +5248,7 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 
 	runID := fmt.Sprintf("failover-%d-%s", policyID, compactNowToken())
 	reason := "manual_failover"
-	if requestMode == replicationFailoverRequestForce {
+	if unsafeFailover {
 		reason = "manual_force_failover"
 	}
 	requestedAt := s.now().UTC()
@@ -5277,12 +5260,12 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 		TargetNodeID:         targetNodeID,
 		OwnerEpoch:           replicationPolicyOwnerEpoch(policy),
 		RequestedAt:          &requestedAt,
-		AllowUnsafe:          requestMode == replicationFailoverRequestForce,
+		AllowUnsafe:          unsafeFailover,
 		MovePinnedSource:     movePinnedSource,
 		TriggerValidationRun: true,
 		OriginalSourceNodeID: strings.TrimSpace(policy.SourceNodeID),
 	}
-	if requestMode == replicationFailoverRequestForce {
+	if unsafeFailover {
 		if err := bindReplicationTransitionGenerationEvidence(policy, targetNodeID, &transition, false); err != nil {
 			return err
 		}
@@ -5403,19 +5386,20 @@ func (s *Service) requestReplicationPolicyFailover(
 	if ownerNodeID == "" {
 		return fmt.Errorf("replication_policy_owner_missing")
 	}
-	if requestMode == replicationFailoverRequestSafe && !nodeOnlineByID(nodeByID, ownerNodeID) {
+	ownerOnline := nodeOnlineByID(nodeByID, ownerNodeID)
+	if requestMode == replicationFailoverRequestSafe && !ownerOnline {
 		return fmt.Errorf("safe_failover_requires_online_owner_use_force_for_owner_down")
 	}
+	unsafeFailover := replicationFailoverAllowUnsafe(requestMode, ownerOnline)
 
 	targetNodeID = strings.TrimSpace(targetNodeID)
 	if targetNodeID == "" {
-		forceMode := requestMode == replicationFailoverRequestForce
 		selectedTarget, selectErr := s.selectFailoverTargetWithReadiness(
 			policy,
 			ownerNodeID,
 			nodeByID,
-			forceMode,
-			forceMode,
+			unsafeFailover,
+			unsafeFailover,
 		)
 		if selectErr != nil {
 			return selectErr
@@ -5431,7 +5415,7 @@ func (s *Service) requestReplicationPolicyFailover(
 	if !nodeOnlineByID(nodeByID, targetNodeID) {
 		return fmt.Errorf("replication_target_node_offline")
 	}
-	if requestMode == replicationFailoverRequestForce {
+	if unsafeFailover {
 		if err := s.validateUnsafeFailoverTargetGeneration(policy, targetNodeID); err != nil {
 			return err
 		}
@@ -5460,13 +5444,13 @@ func (s *Service) requestReplicationPolicyFailover(
 
 	options := replicationTransitionOptions{
 		RunID:                runID,
-		AllowUnsafe:          requestMode == replicationFailoverRequestForce,
+		AllowUnsafe:          unsafeFailover,
 		MovePinnedSource:     movePinnedSource,
 		TriggerValidationRun: true,
 	}
-	requireDemoteAck := requestMode == replicationFailoverRequestSafe
+	requireDemoteAck := !unsafeFailover
 	reason := "manual_failover"
-	if requestMode == replicationFailoverRequestForce {
+	if unsafeFailover {
 		quorumOK, quorumErr := s.hasFailoverQuorum(nodeByID)
 		if quorumErr != nil {
 			return fmt.Errorf("force_failover_quorum_check_failed: %w", quorumErr)
@@ -5726,19 +5710,18 @@ func (s *Service) runPolicyOwnershipTransition(
 		}
 		rollbackEpoch := nextEpoch + 1
 
-		// Ownership already belongs to the target at nextEpoch. Before granting
-		// the previous owner a newer lease, prove the target is fenced. An online
-		// or health-unknown target must acknowledge exact-run demotion; a
-		// definitively offline target must cross its lease-expiry/skew barrier,
-		// which is then repeated as an atomic commit predicate.
-		var targetLeaseExpiresAtOrBefore *time.Time
+		var expectedTargetLeaseVersion *uint64
 		targetKnownOnline, targetHealthErr := s.isClusterNodeOnline(targetNodeID)
 		if targetHealthErr == nil && !targetKnownOnline {
-			if barrierErr := s.waitForPreviousOwnerLeaseExpiry(ctx, policy, targetNodeID, nextEpoch); barrierErr != nil {
-				return fmt.Errorf("%w: rollback_target_lease_barrier_failed: %v", errReplicationRollbackPending, barrierErr)
+			decision, _, barrierErr := s.evaluateForcedPromotionBarrier(policy.ID, targetNodeID, nextEpoch)
+			if barrierErr != nil {
+				return fmt.Errorf("%w: rollback_target_fence_barrier_failed: %v", errReplicationRollbackPending, barrierErr)
 			}
-			cutoff := s.now().UTC().Add(-replicationLeaseExpirySafetyMargin)
-			targetLeaseExpiresAtOrBefore = &cutoff
+			if !decision.Ready {
+				s.logForcedPromotionDecision(policy.ID, targetNodeID, decision)
+				return fmt.Errorf("%w: rollback_target_fence_barrier_pending", errReplicationRollbackPending)
+			}
+			expectedTargetLeaseVersion = &decision.LeaseVersion
 		} else if demoteErr := demoteOnNode(targetNodeID, nextEpoch); demoteErr != nil {
 			if targetHealthErr != nil {
 				demoteErr = fmt.Errorf("target_health_unknown: %v; target_demote_failed: %w", targetHealthErr, demoteErr)
@@ -5784,20 +5767,20 @@ func (s *Service) runPolicyOwnershipTransition(
 		transition.Error = "rollback_in_progress"
 		if err := s.Cluster.CommitReplicationOwnershipTransition(
 			clusterModels.ReplicationOwnershipTransitionPayload{
-				PolicyID:                       policy.ID,
-				ExpectedActiveNodeID:           targetNodeID,
-				ExpectedOwnerEpoch:             nextEpoch,
-				ExpectedTransitionRunID:        transition.RunID,
-				BackupJobRunnerRebindToken:     transition.RunID,
-				PreviousLeaseExpiresAtOrBefore: targetLeaseExpiresAtOrBefore,
-				ActiveNodeID:                   rollbackOwner,
-				SourceNodeID:                   rollbackSourceUpdate,
-				OwnerEpoch:                     rollbackEpoch,
-				ReplaceTargets:                 true,
-				Targets:                        rollbackTargets,
-				Lease:                          rollbackLease,
-				Transition:                     transition,
-				ProtectionState:                clusterModels.ReplicationProtectionStateDegraded,
+				PolicyID:                     policy.ID,
+				ExpectedActiveNodeID:         targetNodeID,
+				ExpectedOwnerEpoch:           nextEpoch,
+				ExpectedTransitionRunID:      transition.RunID,
+				BackupJobRunnerRebindToken:   transition.RunID,
+				ExpectedPreviousLeaseVersion: expectedTargetLeaseVersion,
+				ActiveNodeID:                 rollbackOwner,
+				SourceNodeID:                 rollbackSourceUpdate,
+				OwnerEpoch:                   rollbackEpoch,
+				ReplaceTargets:               true,
+				Targets:                      rollbackTargets,
+				Lease:                        rollbackLease,
+				Transition:                   transition,
+				ProtectionState:              clusterModels.ReplicationProtectionStateDegraded,
 			},
 			false,
 		); err != nil {
@@ -6179,12 +6162,11 @@ func (s *Service) runPolicyOwnershipTransition(
 			updateTransitionEvent(replicationEventStatusFailed, reason+"_blocked_without_demote_or_catchup", transitionErr, true)
 			return transitionErr
 		}
-		updateTransitionEvent(replicationEventStatusDemoting, reason+"_waiting_for_previous_owner_lease_expiry", nil, false)
-		if barrierErr := s.waitForPreviousOwnerLeaseExpiry(ctx, policy, previousOwner, currentEpoch); barrierErr != nil {
-			// Renewal is already disabled for this unsafe run. A cancellation or
-			// leadership/read error cannot prove whether the watchdog fenced the
-			// old owner, so leave the transition recoverable rather than terminal.
-			updateTransitionEvent(replicationEventStatusDemoting, reason+"_lease_expiry_barrier_pending", barrierErr, false)
+		updateTransitionEvent(replicationEventStatusDemoting, reason+"_waiting_for_previous_owner_fence", nil, false)
+		if _, barrierErr := s.revalidateForcedPromotion(
+			policy.ID, previousOwner, currentEpoch, targetNodeID, &transition,
+		); barrierErr != nil {
+			updateTransitionEvent(replicationEventStatusDemoting, reason+"_fence_barrier_pending", barrierErr, false)
 			return barrierErr
 		}
 		if transition.DemotedAt == nil {
@@ -6197,29 +6179,7 @@ func (s *Service) runPolicyOwnershipTransition(
 			}
 			policy.TransitionDemotedAt = &fencedAt
 		}
-		updateTransitionEvent(replicationEventStatusDemoting, reason+"_previous_owner_lease_expired", nil, false)
-		latestPolicy, latestErr := s.Cluster.GetReplicationPolicyByID(policy.ID)
-		if latestErr != nil {
-			return recoverPreviousOwnerThenFail(latestErr, reason+"_target_generation_revalidation_failed")
-		}
-		if replicationPolicyOwnerNode(latestPolicy) != previousOwner ||
-			replicationPolicyOwnerEpoch(latestPolicy) != currentEpoch {
-			return recoverPreviousOwnerThenFail(
-				fmt.Errorf("replication_ownership_changed_before_force_cutover"),
-				reason+"_target_generation_revalidation_failed",
-			)
-		}
-		if latestErr = s.validateUnsafeFailoverTargetGeneration(latestPolicy, targetNodeID); latestErr != nil {
-			return recoverPreviousOwnerThenFail(latestErr, reason+"_target_generation_revalidation_failed")
-		}
-		if latestErr = bindReplicationTransitionGenerationEvidence(
-			latestPolicy,
-			targetNodeID,
-			&transition,
-			false,
-		); latestErr != nil {
-			return recoverPreviousOwnerThenFail(latestErr, reason+"_target_generation_changed")
-		}
+		updateTransitionEvent(replicationEventStatusDemoting, reason+"_previous_owner_fenced", nil, false)
 	}
 
 	targetOnline, targetOnlineErr := s.isClusterNodeOnline(targetNodeID)
@@ -6244,11 +6204,6 @@ func (s *Service) runPolicyOwnershipTransition(
 	}
 
 	cutoverNow := s.now().UTC()
-	var previousLeaseExpiresAtOrBefore *time.Time
-	if options.AllowUnsafe {
-		cutoff := cutoverNow.Add(-replicationLeaseExpirySafetyMargin)
-		previousLeaseExpiresAtOrBefore = &cutoff
-	}
 	lease := clusterModels.ReplicationLease{
 		PolicyID:    policy.ID,
 		GuestType:   policy.GuestType,
@@ -6260,6 +6215,23 @@ func (s *Service) runPolicyOwnershipTransition(
 		LastReason:  reason,
 		LastActor:   s.Cluster.LocalNodeID(),
 	}
+	var expectedPreviousLeaseVersion *uint64
+	if options.AllowUnsafe {
+		version, revalidationErr := s.revalidateForcedPromotion(
+			policy.ID,
+			previousOwner,
+			currentEpoch,
+			targetNodeID,
+			&transition,
+		)
+		if revalidationErr != nil {
+			return recoverPreviousOwnerThenFail(
+				revalidationErr,
+				reason+"_force_promotion_revalidation_failed",
+			)
+		}
+		expectedPreviousLeaseVersion = &version
+	}
 	updateTransitionEvent(replicationEventStatusPromoting, reason+"_promoting", nil, false)
 	transition.State = clusterModels.ReplicationTransitionStatePromoting
 	transition.OwnerEpoch = nextEpoch
@@ -6270,20 +6242,20 @@ func (s *Service) runPolicyOwnershipTransition(
 	transition.Error = ""
 	commitErr := s.Cluster.CommitReplicationOwnershipTransition(
 		clusterModels.ReplicationOwnershipTransitionPayload{
-			PolicyID:                       policy.ID,
-			ExpectedActiveNodeID:           previousOwner,
-			ExpectedOwnerEpoch:             currentEpoch,
-			ExpectedTransitionRunID:        transition.RunID,
-			BackupJobRunnerRebindToken:     transition.RunID,
-			PreviousLeaseExpiresAtOrBefore: previousLeaseExpiresAtOrBefore,
-			ActiveNodeID:                   targetNodeID,
-			SourceNodeID:                   sourceNodeUpdate,
-			OwnerEpoch:                     nextEpoch,
-			ReplaceTargets:                 true,
-			Targets:                        rotatedTargets,
-			Lease:                          lease,
-			Transition:                     transition,
-			ProtectionState:                clusterModels.ReplicationProtectionStateDegraded,
+			PolicyID:                     policy.ID,
+			ExpectedActiveNodeID:         previousOwner,
+			ExpectedOwnerEpoch:           currentEpoch,
+			ExpectedTransitionRunID:      transition.RunID,
+			BackupJobRunnerRebindToken:   transition.RunID,
+			ExpectedPreviousLeaseVersion: expectedPreviousLeaseVersion,
+			ActiveNodeID:                 targetNodeID,
+			SourceNodeID:                 sourceNodeUpdate,
+			OwnerEpoch:                   nextEpoch,
+			ReplaceTargets:               true,
+			Targets:                      rotatedTargets,
+			Lease:                        lease,
+			Transition:                   transition,
+			ProtectionState:              clusterModels.ReplicationProtectionStateDegraded,
 		},
 		false,
 	)
