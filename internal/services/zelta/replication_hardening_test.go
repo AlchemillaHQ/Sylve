@@ -471,12 +471,14 @@ func TestOwnershipCommitErrorIsReconciledFromPolicyAndLease(t *testing.T) {
 	}
 }
 
-func TestForceCutoverMarginExceedsFencePollingWindow(t *testing.T) {
-	if replicationLeaseExpirySafetyMargin < 2*replicationSelfFenceInterval {
+func TestForceCutoverMarginCoversSupervisedRestartAndColdFence(t *testing.T) {
+	const supervisedRestartDelay = 5 * time.Second
+	requiredMargin := supervisedRestartDelay + replicationProcessFenceTimeout
+	if replicationLeaseExpirySafetyMargin <= requiredMargin {
 		t.Fatalf(
-			"force cutover margin %s is shorter than two fence polls %s",
+			"force cutover margin %s must exceed restart and cold-fence window %s",
 			replicationLeaseExpirySafetyMargin,
-			2*replicationSelfFenceInterval,
+			requiredMargin,
 		)
 	}
 }

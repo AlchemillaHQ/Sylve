@@ -10,6 +10,23 @@ TODO: Hayzam: This should be moved into the main documentation linked from the R
 
 Forced recovery prefers the freshest complete generation. Target priority is used for normal selection and to break freshness ties.
 
+### Automatic force recovery boundary
+
+After the active owner becomes unreachable, the surviving leader waits through
+the lease lifetime, self-fence interval, and safety margin using local elapsed
+time. The wait restarts after a leadership change, surviving-leader restart,
+observation gap, owner recovery, or lease change. Immediately before promotion,
+Sylve requires Raft quorum and rechecks ownership, target readiness, and the
+selected replication generation.
+
+Automatic force recovery covers a network-partitioned owner while its Sylve
+process remains scheduled, and an ordinary process exit when external
+supervision restarts Sylve within five seconds. It does not guarantee fencing if
+Sylve remains hung or stopped, supervision fails, or local guest-stop or
+dataset-readonly commands fail. Disable automatic force recovery when those
+supervision and local-fencing assumptions cannot be met; do not shorten the
+promotion barrier.
+
 ## Pool-health actions
 
 Pool-health monitoring is an active recovery feature, not alerting alone:
