@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -28,6 +27,8 @@ func (s *emergencyVMRuntimeFenceSpy) EmergencyStopAllManagedVMs(context.Context)
 	return s.err
 }
 
+func (*emergencyVMRuntimeFenceSpy) ForceStopVM(uint) error { return nil }
+
 type emergencyJailRuntimeFenceSpy struct {
 	jailServiceInterfaces.JailServiceInterface
 	order *[]string
@@ -38,6 +39,8 @@ func (s *emergencyJailRuntimeFenceSpy) EmergencyStopAllManagedJails(context.Cont
 	*s.order = append(*s.order, "jail")
 	return s.err
 }
+
+func (*emergencyJailRuntimeFenceSpy) ForceStopJail(uint) error { return nil }
 
 type noEmergencyVMRuntimeCapability struct {
 	libvirtServiceInterfaces.LibvirtServiceInterface
@@ -165,20 +168,18 @@ func TestReplicationPolicyReadFailureFencesAllRuntimesWithNonemptyCache(t *testi
 		VM:   &emergencyVMRuntimeFenceSpy{order: &order, err: vmErr},
 		Jail: &emergencyJailRuntimeFenceSpy{order: &order, err: jailErr},
 	}
-	now := time.Now().UTC()
 	observations := map[uint]replicationFenceObservation{
 		1: {
 			Policy: clusterModels.ReplicationPolicy{
 				ID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 101,
 				ActiveNodeID: "node-a", OwnerEpoch: 1, Enabled: true,
 			},
-			LeaseOwner: "node-a", LeaseEpoch: 1, LeaseExpiresAt: now.Add(time.Minute),
 		},
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	err := svc.handleReplicationPolicyReadFailure(ctx, policyErr, "node-a", now, observations)
+	err := svc.handleReplicationPolicyReadFailure(ctx, policyErr, "node-a", observations)
 	if !errors.Is(err, policyErr) || !errors.Is(err, vmErr) || !errors.Is(err, jailErr) {
 		t.Fatalf("policy/runtime errors were not aggregated: %v", err)
 	}
@@ -237,7 +238,7 @@ func TestReplicationPolicyReadFailureFencesRuntimesWithMissingEmptyOrCorruptObse
 			cancel()
 			policyErr := errors.New("policy read failed")
 			if err := svc.handleReplicationPolicyReadFailure(
-				ctx, policyErr, "node-a", time.Now().UTC(), observations,
+				ctx, policyErr, "node-a", observations,
 			); !errors.Is(err, policyErr) {
 				t.Fatalf("policy read error not preserved: %v", err)
 			}

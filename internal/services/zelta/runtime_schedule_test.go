@@ -74,7 +74,8 @@ func TestFollowerOwnerForwardsExactReplicationClaimAndRepublishesAfterApplyLag(t
 		}
 		if err := node.db.Create(&clusterModels.ReplicationLease{
 			PolicyID: policy.ID, GuestType: policy.GuestType, GuestID: policy.GuestID,
-			OwnerNodeID: owner.id, OwnerEpoch: policy.OwnerEpoch, ExpiresAt: now.Add(time.Hour),
+			OwnerNodeID: owner.id, OwnerEpoch: policy.OwnerEpoch,
+			ExpiresAt: now.Add(time.Hour), Version: 1,
 		}).Error; err != nil {
 			t.Fatalf("seed lease on %s: %v", node.id, err)
 		}
@@ -82,6 +83,16 @@ func TestFollowerOwnerForwardsExactReplicationClaimAndRepublishesAfterApplyLag(t
 
 	service := newTestZeltaService(owner.db)
 	service.Cluster = owner.cService
+	if err := service.validateLocalReplicationPolicyLease(&policy); err == nil ||
+		!strings.Contains(err.Error(), "replication_lease_expired") {
+		t.Fatalf("startup lease was not a fenced baseline: %v", err)
+	}
+	for _, node := range fx.Nodes {
+		if err := node.db.Model(&clusterModels.ReplicationLease{}).
+			Where("policy_id = ?", policy.ID).Update("version", 2).Error; err != nil {
+			t.Fatalf("advance lease on %s: %v", node.id, err)
+		}
+	}
 	var queued []replicationJobPayload
 	service.replicationOperationEnqueue = func(_ context.Context, name string, payload any) error {
 		if name != replicationJobQueueName {
@@ -332,6 +343,16 @@ func TestCapturedReplicationQueueTokenExecutesOnceAndCreatesOneEvent(t *testing.
 
 	service := newTestZeltaService(owner.db)
 	service.Cluster = owner.cService
+	if err := service.validateLocalReplicationPolicyLease(&policy); err == nil ||
+		!strings.Contains(err.Error(), "replication_lease_expired") {
+		t.Fatalf("startup lease was not a fenced baseline: %v", err)
+	}
+	for _, node := range fx.Nodes {
+		if err := node.db.Model(&clusterModels.ReplicationLease{}).
+			Where("policy_id = ?", policy.ID).Update("version", 2).Error; err != nil {
+			t.Fatalf("advance lease on %s: %v", node.id, err)
+		}
+	}
 	driver := &disposableReplicationGuestDriver{
 		datasets: []string{"disposable/sylve/jails/8890"},
 	}

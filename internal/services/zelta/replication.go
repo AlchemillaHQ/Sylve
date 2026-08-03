@@ -111,10 +111,15 @@ var errReplicationPreviousOwnerRecoveryUnconfirmed = errors.New("replication_pre
 var errReplicationTargetFallbackReadinessInvalidation = errors.New("replication_target_fallback_readiness_invalidation_failed")
 
 type replicationFenceObservation struct {
-	Policy         clusterModels.ReplicationPolicy
-	LeaseOwner     string
-	LeaseEpoch     uint64
-	LeaseExpiresAt time.Time
+	Policy clusterModels.ReplicationPolicy
+}
+
+type replicationLeaseAuthority struct {
+	ownerNodeID       string
+	ownerEpoch        uint64
+	baselineVersion   uint64
+	acceptedVersion   uint64
+	authorityDeadline time.Time
 }
 
 type replicationEmergencyReadonlyChange struct {
@@ -141,13 +146,6 @@ type emergencyJailRuntimeFencer interface {
 	EmergencyStopAllManagedJails(context.Context) error
 }
 
-type replicationFenceCacheState struct {
-	mu           sync.RWMutex
-	observations map[uint]replicationFenceObservation
-}
-
-var replicationFenceCaches sync.Map
-
 var replicationEmergencyReadonlyMu sync.Mutex
 
 const (
@@ -156,31 +154,98 @@ const (
 	replicationEmergencyReadonlyProp = "sylve:emergency-readonly-token"
 )
 
-func (s *Service) replicationFenceCacheState() *replicationFenceCacheState {
-	if existing, ok := replicationFenceCaches.Load(s); ok {
-		return existing.(*replicationFenceCacheState)
-	}
-	created := &replicationFenceCacheState{observations: make(map[uint]replicationFenceObservation)}
-	actual, _ := replicationFenceCaches.LoadOrStore(s, created)
-	return actual.(*replicationFenceCacheState)
-}
-
 func (s *Service) snapshotReplicationFenceCache() map[uint]replicationFenceObservation {
-	state := s.replicationFenceCacheState()
-	state.mu.RLock()
-	defer state.mu.RUnlock()
-	out := make(map[uint]replicationFenceObservation, len(state.observations))
-	for policyID, observation := range state.observations {
+	s.replicationFenceMu.Lock()
+	defer s.replicationFenceMu.Unlock()
+	out := make(map[uint]replicationFenceObservation, len(s.replicationFenceObservations))
+	for policyID, observation := range s.replicationFenceObservations {
 		out[policyID] = observation
 	}
 	return out
 }
 
 func (s *Service) replaceReplicationFenceCache(observations map[uint]replicationFenceObservation) {
-	state := s.replicationFenceCacheState()
-	state.mu.Lock()
-	state.observations = observations
-	state.mu.Unlock()
+	s.replicationFenceMu.Lock()
+	s.replicationFenceObservations = observations
+	s.replicationFenceMu.Unlock()
+}
+
+func (s *Service) observeReplicationLeaseAuthority(
+	policyID uint,
+	localNodeID string,
+	expectedEpoch uint64,
+	lease *clusterModels.ReplicationLease,
+) bool {
+	localNodeID = strings.TrimSpace(localNodeID)
+	now := s.now()
+	observedVersion := uint64(0)
+	if lease != nil {
+		observedVersion = lease.Version
+	}
+
+	s.replicationFenceMu.Lock()
+	defer s.replicationFenceMu.Unlock()
+	if s.replicationLeaseAuthorities == nil {
+		s.replicationLeaseAuthorities = make(map[uint]replicationLeaseAuthority)
+	}
+
+	authority, found := s.replicationLeaseAuthorities[policyID]
+	if !found || authority.ownerNodeID != localNodeID || authority.ownerEpoch != expectedEpoch {
+		s.replicationLeaseAuthorities[policyID] = replicationLeaseAuthority{
+			ownerNodeID:     localNodeID,
+			ownerEpoch:      expectedEpoch,
+			baselineVersion: observedVersion,
+		}
+		return false
+	}
+
+	highestVersion := max(authority.baselineVersion, authority.acceptedVersion)
+	leaseMatches := lease != nil &&
+		strings.TrimSpace(lease.OwnerNodeID) == localNodeID &&
+		lease.OwnerEpoch == expectedEpoch
+	if !leaseMatches || observedVersion < highestVersion {
+		if observedVersion > highestVersion {
+			authority.baselineVersion = observedVersion
+		}
+		authority.authorityDeadline = time.Time{}
+		s.replicationLeaseAuthorities[policyID] = authority
+		return false
+	}
+	if observedVersion > highestVersion {
+		authority.acceptedVersion = observedVersion
+		authority.authorityDeadline = now.Add(replicationLeaseTTL)
+		s.replicationLeaseAuthorities[policyID] = authority
+		return true
+	}
+	return !authority.authorityDeadline.IsZero() && now.Before(authority.authorityDeadline)
+}
+
+func (s *Service) invalidateReplicationLeaseAuthority(policyID uint) {
+	s.replicationFenceMu.Lock()
+	if authority, ok := s.replicationLeaseAuthorities[policyID]; ok {
+		authority.authorityDeadline = time.Time{}
+		s.replicationLeaseAuthorities[policyID] = authority
+	}
+	s.replicationFenceMu.Unlock()
+}
+
+func (s *Service) invalidateAllReplicationLeaseAuthorities() {
+	s.replicationFenceMu.Lock()
+	for policyID, authority := range s.replicationLeaseAuthorities {
+		authority.authorityDeadline = time.Time{}
+		s.replicationLeaseAuthorities[policyID] = authority
+	}
+	s.replicationFenceMu.Unlock()
+}
+
+func (s *Service) retainReplicationLeaseAuthorities(observations map[uint]replicationFenceObservation) {
+	s.replicationFenceMu.Lock()
+	for policyID := range s.replicationLeaseAuthorities {
+		if _, ok := observations[policyID]; !ok {
+			delete(s.replicationLeaseAuthorities, policyID)
+		}
+	}
+	s.replicationFenceMu.Unlock()
 }
 
 func replicationFenceObservationPath() (string, error) {
@@ -323,30 +388,6 @@ func persistDurableReplicationEmergencyReadonlyChanges(changes map[string]replic
 		return err
 	}
 	return nil
-}
-
-func replicationFenceObservationLeaseValid(
-	observation replicationFenceObservation,
-	localNodeID string,
-	expectedOwner string,
-	expectedEpoch uint64,
-	now time.Time,
-) bool {
-	return strings.TrimSpace(expectedOwner) == strings.TrimSpace(localNodeID) &&
-		strings.TrimSpace(observation.LeaseOwner) == strings.TrimSpace(localNodeID) &&
-		observation.LeaseEpoch == expectedEpoch &&
-		!observation.LeaseExpiresAt.IsZero() && now.UTC().Before(observation.LeaseExpiresAt.UTC())
-}
-
-func replicationFenceMissingLeaseDeadline(previousDeadline, policyCreatedAt time.Time) time.Time {
-	if policyCreatedAt.IsZero() {
-		return previousDeadline.UTC()
-	}
-	graceDeadline := policyCreatedAt.UTC().Add(2 * replicationLeaseTTL)
-	if previousDeadline.IsZero() || graceDeadline.Before(previousDeadline) {
-		return graceDeadline
-	}
-	return previousDeadline.UTC()
 }
 
 func appendReplicationStepError(base error, label string, detail error) error {
@@ -2059,38 +2100,46 @@ func (s *Service) validateLocalReplicationPolicyLease(policy *clusterModels.Repl
 		return fmt.Errorf("invalid_policy")
 	}
 	if s.Cluster == nil {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		return fmt.Errorf("cluster_service_unavailable")
 	}
 
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
 	if localNodeID == "" {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		return fmt.Errorf("local_node_id_missing")
 	}
 
 	policyOwner := replicationPolicyOwnerNode(policy)
 	if policyOwner == "" {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		return fmt.Errorf("replication_policy_owner_missing")
 	}
 	if policyOwner != localNodeID {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		return fmt.Errorf("replication_policy_not_owned_by_local_node")
 	}
 
 	expectedEpoch := replicationPolicyOwnerEpoch(policy)
 	if expectedEpoch == 0 {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		return fmt.Errorf("replication_policy_owner_epoch_missing")
 	}
 
 	lease, err := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
 	if err != nil {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("replication_lease_missing")
 		}
 		return fmt.Errorf("replication_lease_lookup_failed: %w", err)
 	}
 	if lease == nil {
+		s.invalidateReplicationLeaseAuthority(policy.ID)
 		return fmt.Errorf("replication_lease_missing")
 	}
 
+	authorityValid := s.observeReplicationLeaseAuthority(policy.ID, localNodeID, expectedEpoch, lease)
 	leaseOwner := strings.TrimSpace(lease.OwnerNodeID)
 	if leaseOwner == "" {
 		return fmt.Errorf("replication_lease_owner_missing")
@@ -2104,7 +2153,7 @@ func (s *Service) validateLocalReplicationPolicyLease(policy *clusterModels.Repl
 	if lease.OwnerEpoch != expectedEpoch {
 		return fmt.Errorf("replication_lease_epoch_mismatch")
 	}
-	if s.now().UTC().After(lease.ExpiresAt) {
+	if !authorityValid {
 		return fmt.Errorf("replication_lease_expired")
 	}
 
@@ -8177,7 +8226,7 @@ func (s *Service) waitForLocalReplicationOwnershipForTransition(
 	}
 
 	transitionRunID = strings.TrimSpace(transitionRunID)
-	deadline := s.now().UTC().Add(timeout)
+	deadline := s.now().Add(timeout)
 	for {
 		policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 		if err != nil {
@@ -8201,19 +8250,8 @@ func (s *Service) waitForLocalReplicationOwnershipForTransition(
 			}
 
 			if expectedOwner == localNodeID {
-				var lease clusterModels.ReplicationLease
-				leaseErr := s.DB.Where("policy_id = ?", policyID).First(&lease).Error
-				if leaseErr != nil {
-					if leaseErr != gorm.ErrRecordNotFound {
-						return leaseErr
-					}
-				} else {
-					leaseEpoch := lease.OwnerEpoch
-					if strings.TrimSpace(lease.OwnerNodeID) == localNodeID &&
-						leaseEpoch == expectedEpoch &&
-						s.now().UTC().Before(lease.ExpiresAt) {
-						return nil
-					}
+				if s.validateLocalReplicationPolicyLease(policy) == nil {
+					return nil
 				}
 			}
 		}
@@ -8223,7 +8261,7 @@ func (s *Service) waitForLocalReplicationOwnershipForTransition(
 				return err
 			}
 		}
-		if s.now().UTC().After(deadline) {
+		if s.now().After(deadline) {
 			return fmt.Errorf("replication_activation_ownership_not_ready")
 		}
 		s.sleep(200 * time.Millisecond)
@@ -10069,23 +10107,12 @@ func (s *Service) selfFenceUnknownProvenanceGuests(
 func (s *Service) selfFenceFromCachedObservations(
 	ctx context.Context,
 	localNodeID string,
-	now time.Time,
 	observations map[uint]replicationFenceObservation,
 ) {
 	for _, observation := range observations {
 		policy := observation.Policy
 		expectedOwner := replicationPolicyOwnerNode(&policy)
 		if expectedOwner == "" {
-			continue
-		}
-		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
-		if replicationFenceObservationLeaseValid(
-			observation,
-			localNodeID,
-			expectedOwner,
-			expectedEpoch,
-			now,
-		) {
 			continue
 		}
 		reason := replicationFenceReasonPolicyOwnerMismatch
@@ -10100,9 +10127,9 @@ func (s *Service) handleReplicationPolicyReadFailure(
 	ctx context.Context,
 	policyReadErr error,
 	localNodeID string,
-	now time.Time,
 	previousObservations map[uint]replicationFenceObservation,
 ) error {
+	s.invalidateAllReplicationLeaseAuthorities()
 	// Runtime fail-stop is deliberately first. Dataset discovery may be slow or
 	// unavailable, and no such failure may leave a running guest behind.
 	runtimeFenceErr := s.emergencyStopAllManagedGuestRuntimes(ctx)
@@ -10116,7 +10143,7 @@ func (s *Service) handleReplicationPolicyReadFailure(
 	// non-empty cache can still omit a policy enabled immediately before the
 	// database became unreadable, which is why canonical discovery remains
 	// mandatory above.
-	s.selfFenceFromCachedObservations(ctx, localNodeID, now, previousObservations)
+	s.selfFenceFromCachedObservations(ctx, localNodeID, previousObservations)
 	discoveryErr := s.selfFenceUnknownProvenanceGuests(ctx, localNodeID, previousObservations)
 
 	return errors.Join(policyReadErr, runtimeFenceErr, canonicalFenceErr, discoveryErr)
@@ -10131,7 +10158,6 @@ func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 
 func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localNodeID string) error {
 	localNodeID = strings.TrimSpace(localNodeID)
-	now := s.now().UTC()
 	previousObservations := s.snapshotReplicationFenceCache()
 	if len(previousObservations) == 0 {
 		if durable, err := loadDurableReplicationFenceObservations(); err == nil {
@@ -10146,20 +10172,16 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 			ctx,
 			fmt.Errorf("replication_local_node_id_unavailable"),
 			localNodeID,
-			now,
 			previousObservations,
 		)
 	}
 
 	var policies []clusterModels.ReplicationPolicy
 	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
-		// A transient local DB failure must not extend write authority forever.
-		// The last successfully observed lease deadline remains the hard bound.
 		return s.handleReplicationPolicyReadFailure(
 			ctx,
 			err,
 			localNodeID,
-			now,
 			previousObservations,
 		)
 	}
@@ -10168,58 +10190,34 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 	for _, policy := range policies {
 		expectedOwner := strings.TrimSpace(replicationPolicyOwnerNode(&policy))
 		if expectedOwner == "" {
+			s.invalidateReplicationLeaseAuthority(policy.ID)
 			continue
 		}
 		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
 		observation := replicationFenceObservation{Policy: policy}
-		if previous, ok := previousObservations[policy.ID]; ok &&
-			replicationPolicyOwnerNode(&previous.Policy) == expectedOwner &&
-			replicationPolicyOwnerEpoch(&previous.Policy) == expectedEpoch {
-			observation.LeaseOwner = previous.LeaseOwner
-			observation.LeaseEpoch = previous.LeaseEpoch
-			observation.LeaseExpiresAt = previous.LeaseExpiresAt
-		}
 
 		fenceReason := replicationFenceReasonPolicyOwnerMismatch
 		if expectedOwner == localNodeID {
 			if expectedEpoch == 0 {
+				s.invalidateReplicationLeaseAuthority(policy.ID)
 				observations[policy.ID] = observation
 				s.selfFenceReplicationPolicy(ctx, &policy, localNodeID, expectedOwner, replicationFenceReasonOwnerLeaseInvalid, true)
 				continue
 			}
 
 			lease, leaseLookupErr := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-			if leaseLookupErr == nil && lease != nil {
-				observation.LeaseOwner = strings.TrimSpace(lease.OwnerNodeID)
-				observation.LeaseEpoch = lease.OwnerEpoch
-				observation.LeaseExpiresAt = lease.ExpiresAt.UTC()
-			} else if errors.Is(leaseLookupErr, gorm.ErrRecordNotFound) {
-				graceAnchor := policy.CreatedAt
-				// Preserve the legacy creation grace as an explicit bounded
-				// observation. A missing lease can never extend a previously
-				// observed deadline, and ordinary policy edits do not reset it.
-				observation.LeaseOwner = localNodeID
-				observation.LeaseEpoch = expectedEpoch
-				observation.LeaseExpiresAt = replicationFenceMissingLeaseDeadline(
-					observation.LeaseExpiresAt, graceAnchor,
-				)
-			} else if leaseLookupErr != nil {
+			if leaseLookupErr != nil && !errors.Is(leaseLookupErr, gorm.ErrRecordNotFound) {
 				logger.L.Warn().
 					Err(leaseLookupErr).
 					Uint("policy_id", policy.ID).
 					Uint("guest_id", policy.GuestID).
 					Str("guest_type", strings.TrimSpace(policy.GuestType)).
-					Msg("replication_self_fence_local_owner_lease_lookup_failed_using_cached_deadline")
+					Msg("replication_self_fence_local_owner_lease_lookup_failed")
 			}
 			observations[policy.ID] = observation
 
-			if replicationFenceObservationLeaseValid(
-				observation,
-				localNodeID,
-				expectedOwner,
-				expectedEpoch,
-				now,
-			) {
+			if leaseLookupErr == nil && lease != nil &&
+				s.observeReplicationLeaseAuthority(policy.ID, localNodeID, expectedEpoch, lease) {
 				// Exact transition activation owns writable cutover. The watchdog
 				// may fence during a transition, but never unfences merely because
 				// the newly committed lease is valid.
@@ -10234,8 +10232,12 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 				}
 				continue
 			}
+			if leaseLookupErr != nil || lease == nil {
+				s.invalidateReplicationLeaseAuthority(policy.ID)
+			}
 			fenceReason = replicationFenceReasonOwnerLeaseInvalid
 		} else {
+			s.invalidateReplicationLeaseAuthority(policy.ID)
 			observations[policy.ID] = observation
 		}
 
@@ -10245,6 +10247,7 @@ func (s *Service) selfFenceExpiredLeasesForLocalNode(ctx context.Context, localN
 	// A successful policy enumeration is authoritative: remove cache entries
 	// for policies that were disabled or deleted, and retain only this pass.
 	s.replaceReplicationFenceCache(observations)
+	s.retainReplicationLeaseAuthorities(observations)
 	if err := persistDurableReplicationFenceObservations(observations); err != nil {
 		logger.L.Warn().Err(err).Msg("replication_durable_fence_observations_persist_failed")
 	}
@@ -10333,17 +10336,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 			continue
 		}
 
-		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
-		if expectedEpoch == 0 {
-			continue
-		}
-
-		lease, err := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-		if err != nil || lease == nil {
-			continue
-		}
-		if lease.OwnerNodeID != localNodeID || lease.OwnerEpoch != expectedEpoch ||
-			time.Now().UTC().After(lease.ExpiresAt) {
+		if err := s.validateLocalReplicationPolicyLease(&policy); err != nil {
 			continue
 		}
 
@@ -10630,17 +10623,7 @@ func (s *Service) checkLocalPoolHealth(ctx context.Context, localNodeID string) 
 			continue
 		}
 
-		expectedEpoch := replicationPolicyOwnerEpoch(&policy)
-		if expectedEpoch == 0 {
-			continue
-		}
-
-		lease, err := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-		if err != nil || lease == nil {
-			continue
-		}
-		if lease.OwnerNodeID != localNodeID || lease.OwnerEpoch != expectedEpoch ||
-			time.Now().UTC().After(lease.ExpiresAt) {
+		if err := s.validateLocalReplicationPolicyLease(&policy); err != nil {
 			continue
 		}
 

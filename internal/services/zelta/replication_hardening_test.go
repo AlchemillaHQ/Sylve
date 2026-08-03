@@ -536,46 +536,111 @@ func TestReplicationNotLeaderErrorRecognition(t *testing.T) {
 	}
 }
 
-func TestReplicationFenceObservationNeverExtendsLeaseDeadline(t *testing.T) {
-	now := time.Date(2026, time.July, 11, 8, 0, 0, 0, time.UTC)
-	observation := replicationFenceObservation{
-		LeaseOwner:     "node-a",
-		LeaseEpoch:     9,
-		LeaseExpiresAt: now.Add(time.Second),
-	}
-	if !replicationFenceObservationLeaseValid(observation, "node-a", "node-a", 9, now) {
-		t.Fatal("matching cached lease should remain valid before its observed deadline")
-	}
-	if replicationFenceObservationLeaseValid(observation, "node-a", "node-a", 9, now.Add(time.Second)) {
-		t.Fatal("cached lease must expire at the observed deadline")
-	}
-	if replicationFenceObservationLeaseValid(observation, "node-a", "node-a", 10, now) {
-		t.Fatal("cached lease from an older epoch must not authorize writes")
-	}
-	if replicationFenceObservationLeaseValid(observation, "node-a", "node-b", 9, now) {
-		t.Fatal("cached lease must not override a changed policy owner")
+func TestReplicationLeaseAuthorityRequiresPostStartVersion(t *testing.T) {
+	start := time.Date(2026, time.July, 11, 8, 0, 0, 0, time.UTC)
+	clock := &fakeReplicationRuntimeClock{now: start}
+	service := &Service{}
+	service.setReplicationRuntimeClock(clock)
+	lease := &clusterModels.ReplicationLease{
+		PolicyID: 7, OwnerNodeID: "node-a", OwnerEpoch: 9,
+		Version: 40, ExpiresAt: start.Add(100 * 365 * 24 * time.Hour),
 	}
 
-	createdAt := now.Add(-time.Hour)
-	if got := replicationFenceMissingLeaseDeadline(now.Add(time.Minute), createdAt); !got.Equal(createdAt.Add(2 * replicationLeaseTTL)) {
-		t.Fatalf("creation grace should shorten a later cached deadline: %s", got)
+	if service.observeReplicationLeaseAuthority(7, "node-a", 9, lease) {
+		t.Fatal("startup lease version granted authority")
 	}
-	previous := now.Add(5 * time.Second)
-	if got := replicationFenceMissingLeaseDeadline(previous, now); !got.Equal(previous) {
-		t.Fatalf("missing lease extended the cached deadline: got %s want %s", got, previous)
+	if service.observeReplicationLeaseAuthority(7, "node-a", 9, lease) {
+		t.Fatal("repeated startup lease version granted authority")
+	}
+	lease.Version = 41
+	lease.ExpiresAt = start.Add(-100 * 365 * 24 * time.Hour)
+	if !service.observeReplicationLeaseAuthority(7, "node-a", 9, lease) {
+		t.Fatal("newer lease version did not grant authority")
 	}
 }
 
-func TestDurableReplicationFenceObservationRoundTrip(t *testing.T) {
+func TestReplicationLeaseAuthorityRepeatedVersionDoesNotExtendDeadline(t *testing.T) {
+	start := time.Date(2026, time.July, 11, 9, 0, 0, 0, time.UTC)
+	clock := &fakeReplicationRuntimeClock{now: start}
+	service := &Service{}
+	service.setReplicationRuntimeClock(clock)
+	lease := &clusterModels.ReplicationLease{PolicyID: 8, OwnerNodeID: "node-a", OwnerEpoch: 3, Version: 10}
+
+	if service.observeReplicationLeaseAuthority(8, "node-a", 3, lease) {
+		t.Fatal("baseline version granted authority")
+	}
+	lease.Version = 11
+	if !service.observeReplicationLeaseAuthority(8, "node-a", 3, lease) {
+		t.Fatal("advanced version did not grant authority")
+	}
+	service.replicationFenceMu.Lock()
+	deadline := service.replicationLeaseAuthorities[8].authorityDeadline
+	service.replicationFenceMu.Unlock()
+
+	clock.Sleep(replicationLeaseTTL - time.Second)
+	if !service.observeReplicationLeaseAuthority(8, "node-a", 3, lease) {
+		t.Fatal("authority expired before its local deadline")
+	}
+	service.replicationFenceMu.Lock()
+	repeatedDeadline := service.replicationLeaseAuthorities[8].authorityDeadline
+	service.replicationFenceMu.Unlock()
+	if !repeatedDeadline.Equal(deadline) {
+		t.Fatalf("repeated version extended deadline: got %s want %s", repeatedDeadline, deadline)
+	}
+
+	clock.Sleep(time.Second)
+	if service.observeReplicationLeaseAuthority(8, "node-a", 3, lease) {
+		t.Fatal("repeated version revived expired authority")
+	}
+	lease.Version = 12
+	if !service.observeReplicationLeaseAuthority(8, "node-a", 3, lease) {
+		t.Fatal("new version did not refresh expired authority")
+	}
+}
+
+func TestReplicationLeaseAuthorityDelayedOrUnavailableStateFailsClosed(t *testing.T) {
+	start := time.Date(2026, time.July, 11, 10, 0, 0, 0, time.UTC)
+	service := &Service{}
+	service.setReplicationRuntimeClock(&fakeReplicationRuntimeClock{now: start})
+	lease := &clusterModels.ReplicationLease{PolicyID: 9, OwnerNodeID: "node-a", OwnerEpoch: 4, Version: 20}
+
+	if service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("baseline version granted authority")
+	}
+	lease.Version = 22
+	if !service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("newer version did not grant authority")
+	}
+	lease.Version = 21
+	if service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("delayed older version retained authority")
+	}
+	lease.Version = 22
+	if service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("last accepted version restored invalidated authority")
+	}
+	lease.Version = 23
+	if !service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("fresh version did not restore authority")
+	}
+	service.invalidateAllReplicationLeaseAuthorities()
+	if service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("cached version restored authority after local state became unavailable")
+	}
+	lease.Version = 24
+	if !service.observeReplicationLeaseAuthority(9, "node-a", 4, lease) {
+		t.Fatal("post-failure version did not restore authority")
+	}
+}
+
+func TestDurableReplicationFenceObservationDoesNotRestoreAuthority(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	now := time.Date(2026, time.July, 11, 9, 0, 0, 0, time.UTC)
 	want := map[uint]replicationFenceObservation{
 		7: {
 			Policy: clusterModels.ReplicationPolicy{
 				ID: 7, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 700,
 				ActiveNodeID: "node-a", OwnerEpoch: 3, Enabled: true,
 			},
-			LeaseOwner: "node-a", LeaseEpoch: 3, LeaseExpiresAt: now,
 		},
 	}
 	if err := persistDurableReplicationFenceObservations(want); err != nil {
@@ -586,8 +651,14 @@ func TestDurableReplicationFenceObservationRoundTrip(t *testing.T) {
 		t.Fatalf("load observations: %v", err)
 	}
 	observation, ok := got[7]
-	if !ok || observation.Policy.GuestID != 700 || observation.LeaseEpoch != 3 ||
-		!observation.LeaseExpiresAt.Equal(now) {
+	if !ok || observation.Policy.GuestID != 700 {
 		t.Fatalf("observation mismatch: %+v", got)
+	}
+
+	service := &Service{}
+	service.replaceReplicationFenceCache(got)
+	lease := &clusterModels.ReplicationLease{PolicyID: 7, OwnerNodeID: "node-a", OwnerEpoch: 3, Version: 50}
+	if service.observeReplicationLeaseAuthority(7, "node-a", 3, lease) {
+		t.Fatal("durable observation restored process-local authority")
 	}
 }

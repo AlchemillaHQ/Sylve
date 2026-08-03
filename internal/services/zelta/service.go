@@ -97,6 +97,10 @@ type Service struct {
 	failoverWarningMu  sync.Mutex
 	failoverWarnings   map[uint]map[string]struct{}
 
+	replicationFenceMu           sync.Mutex
+	replicationFenceObservations map[uint]replicationFenceObservation
+	replicationLeaseAuthorities  map[uint]replicationLeaseAuthority
+
 	workloadOpMu      sync.Mutex
 	runningWorkloadOp map[string]string
 
@@ -172,6 +176,9 @@ func NewService(
 		runningRestoreDestination: make(map[string]struct{}),
 		activeTargetRestoreTokens: make(map[string]struct{}),
 		runtimeClock:              realReplicationRuntimeClock{},
+
+		replicationFenceObservations: make(map[uint]replicationFenceObservation),
+		replicationLeaseAuthorities:  make(map[uint]replicationLeaseAuthority),
 	}
 	if clusterService != nil {
 		clusterService.SetBackupTargetValidator(service.ValidateTargetReadiness)

@@ -639,6 +639,14 @@ func TestPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS
 
 	service := NewService(db, nil, clusterSvc, nil, nil, nil, client)
 	scopeLocalDatasetsToPool(t, service, pool)
+	if err := service.validateLocalReplicationPolicyLease(policy); err == nil ||
+		!strings.Contains(err.Error(), "replication_lease_expired") {
+		t.Fatalf("startup lease was not a fenced baseline: %v", err)
+	}
+	if err := db.Model(&clusterModels.ReplicationLease{}).
+		Where("policy_id = ?", policy.ID).Update("version", 2).Error; err != nil {
+		t.Fatalf("advance replication lease: %v", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	probeAccepted := make(chan struct{})
@@ -926,7 +934,6 @@ func TestColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *testing.T) {
 				ID: 77, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 703,
 				Enabled: true, ActiveNodeID: "node-a", SourceNodeID: "node-a", OwnerEpoch: 1,
 			},
-			LeaseOwner: "node-a", LeaseEpoch: 1, LeaseExpiresAt: time.Now().Add(-time.Minute),
 		},
 	})
 	if err := svc.selfFenceExpiredLeases(t.Context()); err == nil {
