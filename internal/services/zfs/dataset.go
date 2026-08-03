@@ -10,6 +10,7 @@ package zfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,6 +22,18 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+var ErrCannotDeletePoolRootDataset = errors.New("cannot_delete_pool_root_dataset")
+
+func validateDatasetDeletionTargets(datasets ...*gzfs.Dataset) error {
+	for _, dataset := range datasets {
+		if dataset != nil && dataset.Name == dataset.Pool {
+			return fmt.Errorf("%w: %s", ErrCannotDeletePoolRootDataset, dataset.Name)
+		}
+	}
+
+	return nil
+}
 
 func MsgpackEncode(d []*gzfs.Dataset) ([]byte, error) {
 	return msgpack.Marshal(d)
@@ -90,6 +103,10 @@ func (s *Service) BulkDeleteDatasetByNames(ctx context.Context, names []string) 
 		}
 
 		datasets = append(datasets, ds)
+	}
+
+	if err := validateDatasetDeletionTargets(datasets...); err != nil {
+		return err
 	}
 
 	allDatasets, err := s.GZFS.ZFS.List(ctx, true, "")
@@ -167,6 +184,10 @@ func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 	for _, guid := range guids {
 		if _, ok := available[guid]; !ok {
 			return fmt.Errorf("dataset with guid %s not found", guid)
+		}
+
+		if err := validateDatasetDeletionTargets(available[guid]); err != nil {
+			return err
 		}
 
 		for _, name := range cantDelete {

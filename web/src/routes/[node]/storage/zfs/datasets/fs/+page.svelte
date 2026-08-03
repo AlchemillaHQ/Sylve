@@ -126,11 +126,10 @@
 
 	let poolsSelected = $derived.by(() => {
 		if (activeRows && activeRows.length > 0) {
-			const filtered = activeRows.filter((row) => {
-				return row.type === 'pool';
-			});
-
-			return filtered.length > 0;
+			return (
+				activeRows.some((row) => row.rowKind === 'pool-root') ||
+				activeDatasets.some((dataset) => dataset.name === dataset.pool)
+			);
 		}
 
 		return false;
@@ -181,7 +180,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'delete-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset?.name.includes('/')}
+		{#if type === 'delete-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset.name !== activeDataset.pool}
 			<Button
 				onclick={async () => {
 					if (activeDataset) {
@@ -196,7 +195,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'snapshot-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset?.name.includes('/')}
+		{#if type === 'snapshot-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset.name !== activeDataset.pool}
 			<Button
 				onclick={async () => {
 					if (activeDataset) {
@@ -280,7 +279,7 @@
 {/if}
 
 <!-- Delete FS -->
-{#if modals.fs.delete.open && activeDataset && activeDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM}
+{#if modals.fs.delete.open && activeDataset && activeDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset.name !== activeDataset.pool}
 	<AlertDialogModal
 		bind:open={modals.fs.delete.open}
 		names={{
@@ -318,7 +317,7 @@
 {/if}
 
 <!-- Bulk delete -->
-{#if modals.bulk.delete.open && activeDatasets.length > 0}
+{#if modals.bulk.delete.open && activeDatasets.length > 0 && !poolsSelected}
 	<AlertDialogModal
 		bind:open={modals.bulk.delete.open}
 		customTitle={`Are you sure you want to delete ${modals.bulk.delete.title}? This action cannot be undone.`}

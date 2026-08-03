@@ -102,6 +102,10 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return fmt.Errorf("filesystem with guid %s not found", guid)
 	}
 
+	if err := validateDatasetDeletionTargets(foundFS); err != nil {
+		return err
+	}
+
 	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
 	for _, name := range noDelete {
 		if strings.HasSuffix(foundFS.Name, name) {

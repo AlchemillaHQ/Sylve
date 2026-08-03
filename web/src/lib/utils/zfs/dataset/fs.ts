@@ -244,7 +244,8 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
                     referenced: 0,
                     mountpoint: '',
                     children: [],
-                    type
+                    type,
+                    rowKind: type === 'pool' ? 'pool-root' : 'dataset'
                 };
                 nodeMap.set(name, node);
             }
