@@ -9,13 +9,19 @@
 package db
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/mattn/go-sqlite3"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -31,8 +37,10 @@ const (
 	swapStatsTelemetryMigrationName               = "swap_stats_to_telemetry_1"
 	networkStatsTelemetryMigrationName            = "network_interfaces_to_telemetry_1"
 	networkInterfacesAggregateDeltasMigrationName = "network_interfaces_aggregate_deltas_v2"
-	zPoolHistoricalTelemetryMigrationName         = "z_pool_historical_to_telemetry_1"
+	zfsTelemetryFreshStartMigrationName           = "zfs_telemetry_fresh_start_1"
 )
+
+var errTelemetryDatabaseCorrupt = errors.New("telemetry database is corrupt")
 
 func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest bool) *gorm.DB {
 	if mainDB == nil {
@@ -64,32 +72,18 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		mainDBPath = filepath.Join(cfg.DataPath, "sylve.db")
 	}
 
-	telemetryDB, err := gorm.Open(sqlite.Open(telemetryDBPath), ormConfig)
+	telemetryDB, sqlDB, quarantinedPath, err := openTelemetryDatabase(
+		telemetryDBPath,
+		ormConfig,
+		!isTest,
+	)
 	if err != nil {
-		logger.L.Fatal().Msgf("Error connecting to telemetry database: %v", err)
+		logger.L.Fatal().Msgf("Error preparing telemetry database: %v", err)
 	}
-
-	sqlDB, err := telemetryDB.DB()
-	if err != nil {
-		logger.L.Fatal().Msgf("Error getting telemetry sql database handle: %v", err)
-	}
-
-	telemetryDB.Exec("PRAGMA busy_timeout = 5000")
-	telemetryDB.Exec("PRAGMA journal_mode = WAL")
-	telemetryDB.Exec("PRAGMA synchronous = OFF")
-
-	if err := telemetryDB.AutoMigrate(
-		&sambaModels.SambaAuditLog{},
-		&infoModels.CPU{},
-		&infoModels.AuditRecord{},
-		&infoModels.RAM{},
-		&infoModels.Swap{},
-		&infoModels.NetworkInterface{},
-		&infoModels.FirewallRuleDelta{},
-		&infoModels.FirewallRuleCounterTotal{},
-		&infoModels.ZPoolHistorical{},
-	); err != nil {
-		logger.L.Fatal().Msgf("Error migrating telemetry database: %v", err)
+	if quarantinedPath != "" {
+		logger.L.Error().
+			Str("quarantined_path", quarantinedPath).
+			Msg("Corrupt telemetry database quarantined; started with a fresh database")
 	}
 
 	droppedSambaAuditLogTable, err := migrateSambaAuditLogsToTelemetry(mainDB, telemetryDB, mainDBPath)
@@ -127,9 +121,9 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		logger.L.Fatal().Msgf("Error migrating network interface aggregate deltas: %v", err)
 	}
 
-	droppedZPoolHistoricalTable, err := migrateZPoolHistoricalToTelemetry(mainDB, mainDBPath)
+	droppedZPoolHistoricalTable, err := prepareZFSHistoryTables(mainDB, telemetryDB)
 	if err != nil {
-		logger.L.Fatal().Msgf("Error migrating zpool historical to telemetry database: %v", err)
+		logger.L.Fatal().Msgf("Error preparing ZFS telemetry history tables: %v", err)
 	}
 
 	if (droppedSambaAuditLogTable ||
@@ -149,6 +143,163 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 	sqlDB.SetMaxIdleConns(1)
 
 	return telemetryDB
+}
+
+func openTelemetryDatabase(path string, ormConfig *gorm.Config, recoverCorruption bool) (*gorm.DB, *sql.DB, string, error) {
+	telemetryDB, sqlDB, err := prepareTelemetryDatabase(path, ormConfig)
+	if err == nil {
+		return telemetryDB, sqlDB, "", nil
+	}
+
+	if sqlDB != nil {
+		_ = sqlDB.Close()
+	}
+	if !recoverCorruption || !isTelemetryDatabaseCorruption(err) {
+		return nil, nil, "", err
+	}
+
+	quarantinedPath, quarantineErr := quarantineTelemetryDatabase(path, time.Now().UTC())
+	if quarantineErr != nil {
+		return nil, nil, "", fmt.Errorf("quarantine corrupt telemetry database: %w", quarantineErr)
+	}
+
+	telemetryDB, sqlDB, err = prepareTelemetryDatabase(path, ormConfig)
+	if err != nil {
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+		return nil, nil, quarantinedPath, fmt.Errorf("create replacement telemetry database: %w", err)
+	}
+
+	return telemetryDB, sqlDB, quarantinedPath, nil
+}
+
+func prepareTelemetryDatabase(path string, ormConfig *gorm.Config) (*gorm.DB, *sql.DB, error) {
+	config := *ormConfig
+	telemetryDB, err := gorm.Open(sqlite.Open(path), &config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open telemetry database: %w", err)
+	}
+
+	sqlDB, err := telemetryDB.DB()
+	if err != nil {
+		return nil, nil, fmt.Errorf("get telemetry sql database handle: %w", err)
+	}
+
+	if err := telemetryDB.Exec("PRAGMA busy_timeout = 5000").Error; err != nil {
+		return telemetryDB, sqlDB, fmt.Errorf("configure telemetry busy timeout: %w", err)
+	}
+	if err := checkTelemetryDatabaseIntegrity(sqlDB); err != nil {
+		return telemetryDB, sqlDB, err
+	}
+	if err := telemetryDB.Exec("PRAGMA journal_mode = WAL").Error; err != nil {
+		return telemetryDB, sqlDB, fmt.Errorf("configure telemetry journal mode: %w", err)
+	}
+	if err := telemetryDB.Exec("PRAGMA synchronous = NORMAL").Error; err != nil {
+		return telemetryDB, sqlDB, fmt.Errorf("configure telemetry synchronous mode: %w", err)
+	}
+
+	if err := telemetryDB.AutoMigrate(
+		&sambaModels.SambaAuditLog{},
+		&infoModels.CPU{},
+		&infoModels.AuditRecord{},
+		&infoModels.RAM{},
+		&infoModels.Swap{},
+		&infoModels.NetworkInterface{},
+		&infoModels.FirewallRuleDelta{},
+		&infoModels.FirewallRuleCounterTotal{},
+	); err != nil {
+		return telemetryDB, sqlDB, fmt.Errorf("migrate telemetry database: %w", err)
+	}
+
+	return telemetryDB, sqlDB, nil
+}
+
+func checkTelemetryDatabaseIntegrity(sqlDB *sql.DB) error {
+	rows, err := sqlDB.Query("PRAGMA quick_check(1)")
+	if err != nil {
+		return fmt.Errorf("check telemetry database integrity: %w", err)
+	}
+	defer rows.Close()
+
+	checked := false
+	for rows.Next() {
+		checked = true
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("read telemetry database integrity result: %w", err)
+		}
+		if !strings.EqualFold(strings.TrimSpace(result), "ok") {
+			return fmt.Errorf("%w: %s", errTelemetryDatabaseCorrupt, result)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("check telemetry database integrity: %w", err)
+	}
+	if !checked {
+		return fmt.Errorf("%w: quick_check returned no result", errTelemetryDatabaseCorrupt)
+	}
+	return nil
+}
+
+func isTelemetryDatabaseCorruption(err error) bool {
+	if errors.Is(err, errTelemetryDatabaseCorrupt) {
+		return true
+	}
+
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		if sqliteErr.Code == sqlite3.ErrCorrupt || sqliteErr.Code == sqlite3.ErrNotADB {
+			return true
+		}
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database disk image is malformed") ||
+		strings.Contains(message, "database is malformed") ||
+		strings.Contains(message, "file is not a database")
+}
+
+func quarantineTelemetryDatabase(path string, now time.Time) (string, error) {
+	basePath := fmt.Sprintf("%s.corrupt-%s", path, now.Format("20060102T150405.000000000Z"))
+	quarantinedPath := basePath
+	for suffix := 1; ; suffix++ {
+		if _, err := os.Lstat(quarantinedPath); errors.Is(err, os.ErrNotExist) {
+			break
+		} else if err != nil {
+			return "", fmt.Errorf("inspect quarantine path %s: %w", quarantinedPath, err)
+		}
+		quarantinedPath = fmt.Sprintf("%s-%d", basePath, suffix)
+	}
+
+	pairs := [][2]string{
+		{path, quarantinedPath},
+		{path + "-wal", quarantinedPath + "-wal"},
+		{path + "-shm", quarantinedPath + "-shm"},
+		{path + "-journal", quarantinedPath + "-journal"},
+	}
+
+	renamed := make([][2]string, 0, len(pairs))
+	for _, pair := range pairs {
+		if _, err := os.Stat(pair[0]); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return "", fmt.Errorf("inspect %s: %w", pair[0], err)
+		}
+		if err := os.Rename(pair[0], pair[1]); err != nil {
+			for i := len(renamed) - 1; i >= 0; i-- {
+				_ = os.Rename(renamed[i][1], renamed[i][0])
+			}
+			return "", fmt.Errorf("move %s to %s: %w", pair[0], pair[1], err)
+		}
+		renamed = append(renamed, pair)
+	}
+
+	if len(renamed) == 0 {
+		return "", fmt.Errorf("telemetry database files do not exist at %s", path)
+	}
+	return quarantinedPath, nil
 }
 
 func migrateSambaAuditLogsToTelemetry(mainDB, telemetryDB *gorm.DB, mainDBPath string) (bool, error) {
@@ -904,10 +1055,31 @@ func migrateNetworkInterfacesAggregateDeltas(mainDB, telemetryDB *gorm.DB, _ str
 	return true, nil
 }
 
-func migrateZPoolHistoricalToTelemetry(mainDB *gorm.DB, _ string) (bool, error) {
-	applied, err := migrationApplied(mainDB, zPoolHistoricalTelemetryMigrationName)
+func prepareZFSHistoryTables(mainDB, telemetryDB *gorm.DB) (bool, error) {
+	applied, err := migrationApplied(mainDB, zfsTelemetryFreshStartMigrationName)
 	if err != nil {
 		return false, err
+	}
+
+	if !applied {
+		for _, model := range []any{
+			&infoModels.ZPoolHistorical{},
+			&infoModels.ZFSARCHistorical{},
+		} {
+			if !telemetryDB.Migrator().HasTable(model) {
+				continue
+			}
+			if err := telemetryDB.Migrator().DropTable(model); err != nil {
+				return false, fmt.Errorf("failed resetting ZFS telemetry history: %w", err)
+			}
+		}
+	}
+
+	if err := telemetryDB.AutoMigrate(
+		&infoModels.ZPoolHistorical{},
+		&infoModels.ZFSARCHistorical{},
+	); err != nil {
+		return false, fmt.Errorf("failed preparing ZFS telemetry history tables: %w", err)
 	}
 
 	if applied {
@@ -922,7 +1094,7 @@ func migrateZPoolHistoricalToTelemetry(mainDB *gorm.DB, _ string) (bool, error) 
 		dropped = true
 	}
 
-	if err := recordMigration(mainDB, zPoolHistoricalTelemetryMigrationName); err != nil {
+	if err := recordMigration(mainDB, zfsTelemetryFreshStartMigrationName); err != nil {
 		return false, err
 	}
 

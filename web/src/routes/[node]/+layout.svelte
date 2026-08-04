@@ -224,12 +224,11 @@
 						label: 'ZFS',
 						icon: 'file-icons--openzfs',
 						children: [
-							// Turned off dashboard for now
-							// {
-							// 	label: 'Dashboard',
-							// 	icon: 'mdi--monitor-dashboard',
-							// 	href: `/${node}/storage/zfs/dashboard`
-							// },
+							{
+								label: 'Dashboard',
+								icon: 'mdi--monitor-dashboard',
+								href: `/${node}/storage/zfs/dashboard`
+							},
 							{ label: 'Pools', icon: 'bi--hdd-stack-fill', href: `/${node}/storage/zfs/pools` },
 							{
 								label: 'Datasets',

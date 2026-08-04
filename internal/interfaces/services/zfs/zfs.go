@@ -34,6 +34,7 @@ type EditVolumeRequest struct {
 
 type ZfsServiceInterface interface {
 	StoreStats()
+	PruneHistoricalStats()
 	RemoveNonExistentPools()
 	Cron(ctx context.Context)
 
@@ -58,6 +59,9 @@ type ZfsServiceInterface interface {
 	ReplaceDevice(ctx context.Context, guid, old, latest string) error
 	DetachDevice(ctx context.Context, guid, device string) error
 	GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]PoolStatPoint, int, error)
+	GetDashboardSnapshot(ctx context.Context) (DashboardSnapshot, error)
+	GetDashboardHistory(ctx context.Context, query DashboardHistoryQuery) (DashboardHistory, error)
+	GetDashboardHistoryDelta(ctx context.Context, query DashboardDeltaQuery) (DashboardHistory, error)
 
 	CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error
 	DeleteSnapshot(ctx context.Context, guid string, recursive bool) error

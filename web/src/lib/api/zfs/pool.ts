@@ -2,16 +2,20 @@ import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	PoolsDiskUsageSchema,
 	PoolStatPointsResponseSchema,
+	ZFSDashboardHistorySchema,
+	ZFSDashboardSnapshotSchema,
 	ZpoolSchema,
 	ZPoolStatusPoolSchema,
 	type CreateZpool,
 	type PoolsDiskUsage,
+	type ZFSDashboardHistory,
+	type ZFSDashboardSnapshot,
 	type PoolStatPointsResponse,
 	type ReplaceDevice,
 	type Zpool,
 	type ZpoolStatusPool
 } from '$lib/types/zfs/pool';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 const PoolsResponseSchema = APIResponseSchema.extend({
@@ -94,6 +98,58 @@ export async function getPoolStats(
 		`/zfs/pool/stats/${interval}/${limit}`,
 		PoolStatPointsResponseSchema,
 		'GET'
+	);
+}
+
+export async function getZFSDashboardHistory(
+	rangeSeconds: number,
+	poolGuid = '',
+	maxPoints = 900,
+	options?: NodeAPIRequestOptions
+): Promise<ZFSDashboardHistory> {
+	const query = new URLSearchParams({
+		rangeSeconds: rangeSeconds.toString(),
+		maxPoints: maxPoints.toString()
+	});
+	if (poolGuid) query.set('poolGuid', poolGuid);
+	return await apiRequest(
+		`/zfs/dashboard/history?${query.toString()}`,
+		ZFSDashboardHistorySchema,
+		'GET',
+		undefined,
+		options
+	);
+}
+
+export async function getZFSDashboardSnapshot(
+	options?: NodeAPIRequestOptions
+): Promise<ZFSDashboardSnapshot> {
+	return await apiRequest(
+		'/zfs/dashboard/snapshot',
+		ZFSDashboardSnapshotSchema,
+		'GET',
+		undefined,
+		options
+	);
+}
+
+export async function getZFSDashboardHistoryDelta(
+	poolAfter: number,
+	arcAfter: number,
+	poolGuid = '',
+	options?: NodeAPIRequestOptions
+): Promise<ZFSDashboardHistory> {
+	const query = new URLSearchParams({
+		poolAfter: poolAfter.toString(),
+		arcAfter: arcAfter.toString()
+	});
+	if (poolGuid) query.set('poolGuid', poolGuid);
+	return await apiRequest(
+		`/zfs/dashboard/history/delta?${query.toString()}`,
+		ZFSDashboardHistorySchema,
+		'GET',
+		undefined,
+		options
 	);
 }
 

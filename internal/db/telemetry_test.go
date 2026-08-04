@@ -1026,6 +1026,128 @@ func TestMigrateNetworkInterfacesToTelemetryHandlesFreshInstallWithoutLegacyTabl
 	}
 }
 
+func TestPrepareZFSHistoryTablesResetsLegacyDataOnce(t *testing.T) {
+	tmp := t.TempDir()
+	mainDB := openSQLiteFileDB(t, filepath.Join(tmp, "sylve.db"))
+	telemetryDB := openSQLiteFileDB(t, filepath.Join(tmp, "telemetry.db"))
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}); err != nil {
+		t.Fatalf("failed to migrate main db migrations table: %v", err)
+	}
+	if err := mainDB.Exec(`CREATE TABLE z_pool_historicals (id integer primary key, name text)`).Error; err != nil {
+		t.Fatalf("failed creating legacy main zpool history table: %v", err)
+	}
+	if err := mainDB.Exec(`INSERT INTO z_pool_historicals (id, name) VALUES (1, 'legacy-main')`).Error; err != nil {
+		t.Fatalf("failed seeding legacy main zpool history: %v", err)
+	}
+	if err := telemetryDB.Exec(`CREATE TABLE z_pool_historicals (id integer primary key, name text)`).Error; err != nil {
+		t.Fatalf("failed creating legacy telemetry zpool history table: %v", err)
+	}
+	if err := telemetryDB.Exec(`INSERT INTO z_pool_historicals (id, name) VALUES (1, 'legacy-telemetry')`).Error; err != nil {
+		t.Fatalf("failed seeding legacy telemetry zpool history: %v", err)
+	}
+	if err := telemetryDB.Exec(`CREATE TABLE zfsarc_historicals (id integer primary key, size integer)`).Error; err != nil {
+		t.Fatalf("failed creating legacy ARC history table: %v", err)
+	}
+	if err := telemetryDB.Exec(`INSERT INTO zfsarc_historicals (id, size) VALUES (1, 1024)`).Error; err != nil {
+		t.Fatalf("failed seeding legacy ARC history: %v", err)
+	}
+
+	dropped, err := prepareZFSHistoryTables(mainDB, telemetryDB)
+	if err != nil {
+		t.Fatalf("failed preparing ZFS history tables: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected legacy main zpool history table to be dropped")
+	}
+	if mainDB.Migrator().HasTable(&infoModels.ZPoolHistorical{}) {
+		t.Fatal("legacy main zpool history table still exists")
+	}
+	if !telemetryDB.Migrator().HasColumn(&infoModels.ZPoolHistorical{}, "SampleCount") {
+		t.Fatal("current zpool history schema was not created")
+	}
+	if !telemetryDB.Migrator().HasColumn(&infoModels.ZFSARCHistorical{}, "TargetSize") {
+		t.Fatal("current ARC history schema was not created")
+	}
+
+	var poolCount int64
+	if err := telemetryDB.Model(&infoModels.ZPoolHistorical{}).Count(&poolCount).Error; err != nil {
+		t.Fatalf("failed counting reset zpool history: %v", err)
+	}
+	var arcCount int64
+	if err := telemetryDB.Model(&infoModels.ZFSARCHistorical{}).Count(&arcCount).Error; err != nil {
+		t.Fatalf("failed counting reset ARC history: %v", err)
+	}
+	if poolCount != 0 || arcCount != 0 {
+		t.Fatalf("expected reset history tables to be empty, got pool=%d ARC=%d", poolCount, arcCount)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := telemetryDB.Create(&infoModels.ZPoolHistorical{GUID: "pool-1", Name: "tank", CreatedAt: now}).Error; err != nil {
+		t.Fatalf("failed seeding current zpool history: %v", err)
+	}
+	if err := telemetryDB.Create(&infoModels.ZFSARCHistorical{Size: 2048, CreatedAt: now}).Error; err != nil {
+		t.Fatalf("failed seeding current ARC history: %v", err)
+	}
+
+	dropped, err = prepareZFSHistoryTables(mainDB, telemetryDB)
+	if err != nil {
+		t.Fatalf("second ZFS history preparation failed: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected second ZFS history preparation to preserve current tables")
+	}
+	if err := telemetryDB.Model(&infoModels.ZPoolHistorical{}).Count(&poolCount).Error; err != nil {
+		t.Fatalf("failed counting preserved zpool history: %v", err)
+	}
+	if err := telemetryDB.Model(&infoModels.ZFSARCHistorical{}).Count(&arcCount).Error; err != nil {
+		t.Fatalf("failed counting preserved ARC history: %v", err)
+	}
+	if poolCount != 1 || arcCount != 1 {
+		t.Fatalf("expected current history to survive restart, got pool=%d ARC=%d", poolCount, arcCount)
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", zfsTelemetryFreshStartMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking ZFS fresh-start marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected one ZFS fresh-start marker, got %d", migrationCount)
+	}
+}
+
+func TestPrepareZFSHistoryTablesCreatesFreshSchema(t *testing.T) {
+	tmp := t.TempDir()
+	mainDB := openSQLiteFileDB(t, filepath.Join(tmp, "sylve.db"))
+	telemetryDB := openSQLiteFileDB(t, filepath.Join(tmp, "telemetry.db"))
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}); err != nil {
+		t.Fatalf("failed to migrate main db migrations table: %v", err)
+	}
+
+	dropped, err := prepareZFSHistoryTables(mainDB, telemetryDB)
+	if err != nil {
+		t.Fatalf("failed preparing fresh ZFS history tables: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected no legacy main table to be dropped on fresh install")
+	}
+	if !telemetryDB.Migrator().HasTable(&infoModels.ZPoolHistorical{}) {
+		t.Fatal("fresh zpool history table was not created")
+	}
+	if !telemetryDB.Migrator().HasTable(&infoModels.ZFSARCHistorical{}) {
+		t.Fatal("fresh ARC history table was not created")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", zfsTelemetryFreshStartMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking fresh-install ZFS marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected one fresh-install ZFS marker, got %d", migrationCount)
+	}
+}
+
 func openSQLiteFileDB(t *testing.T, path string) *gorm.DB {
 	t.Helper()
 

@@ -85,7 +85,7 @@ func poolHealthRank(state string) int {
 		return 3
 	case string(gzfs.ZPoolStateOffline), string(gzfs.ZPoolStateRemoved):
 		return 4
-	case string(gzfs.ZPoolStateFaulted), string(gzfs.ZPoolStateUnavailible), string(gzfs.ZPoolStateCorruptData), "SUSPENDED":
+	case string(gzfs.ZPoolStateFaulted), string(gzfs.ZPoolStateUnavailible), "UNAVAILABLE", string(gzfs.ZPoolStateCorruptData), "SUSPENDED":
 		return 5
 	default:
 		return 2

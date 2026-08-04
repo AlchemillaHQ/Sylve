@@ -15,75 +15,78 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"gorm.io/gorm"
 )
 
 func (s *Service) StoreStats() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	now := time.Now().UTC()
+	arcStat, arcErr := collectARCStats(now)
+	if arcErr != nil {
+		logger.L.Debug().Err(arcErr).Msg("zfs_cron: ARC telemetry unavailable")
+	}
+
 	pools, err := s.GZFS.Zpool.List(ctx)
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to list zpools")
-		return
+		pools = nil
 	}
 
+	stats := make([]infoModels.ZPoolHistorical, 0, len(pools))
 	for _, pool := range pools {
-		newStat := infoModels.ZPoolHistorical{
-			Name:          pool.Name,
-			GUID:          pool.PoolGUID,
-			Allocated:     pool.Alloc,
-			Size:          pool.Size,
-			Free:          pool.Free,
-			Fragmentation: pool.Fragmentation,
-			DedupRatio:    pool.DedupRatio,
+		if pool == nil {
+			continue
 		}
 
-		if err := s.TelemetryDB.Create(&newStat).Error; err != nil {
-			logger.L.Debug().Err(err).Msg("zfs_cron: Failed to insert zpool data")
-		}
+		ioStat := s.getPoolIOStat(pool.Name, now)
+		stats = append(stats, infoModels.ZPoolHistorical{
+			Name:                       pool.Name,
+			GUID:                       pool.PoolGUID,
+			Health:                     string(pool.State),
+			WorstHealth:                string(pool.State),
+			Allocated:                  pool.Alloc,
+			Size:                       pool.Size,
+			Free:                       pool.Free,
+			Fragmentation:              pool.Fragmentation,
+			DedupRatio:                 pool.DedupRatio,
+			ReadIOPS:               ioStat.ReadIOPS,
+			WriteIOPS:              ioStat.WriteIOPS,
+			ReadBytesPerSecond:     ioStat.ReadBytesPerSecond,
+			WriteBytesPerSecond:    ioStat.WriteBytesPerSecond,
+			ReadLatencyNanos:       ioStat.ReadLatencyNanos,
+			WriteLatencyNanos:      ioStat.WriteLatencyNanos,
+			MaxReadIOPS:            ioStat.ReadIOPS,
+			MaxWriteIOPS:           ioStat.WriteIOPS,
+			MaxReadBytesPerSecond:  ioStat.ReadBytesPerSecond,
+			MaxWriteBytesPerSecond: ioStat.WriteBytesPerSecond,
+			MaxReadLatencyNanos:    ioStat.ReadLatencyNanos,
+			MaxWriteLatencyNanos:   ioStat.WriteLatencyNanos,
+			SampleCount:            1,
+			IntervalSeconds:        poolIOSampleIntervalSeconds,
+			CreatedAt:              now,
+		})
 	}
 
-	now := time.Now()
-
-	var rows []infoModels.ZPoolHistorical
-	if err := s.TelemetryDB.
-		Select("id", "name", "created_at").
-		Order("created_at DESC").
-		Find(&rows).Error; err != nil {
-		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to load zpool historical rows for GFS")
+	if len(stats) == 0 && arcErr != nil {
 		return
 	}
 
-	if len(rows) == 0 {
-		return
-	}
-
-	groups := make(map[string][]infoModels.ZPoolHistorical)
-	for _, r := range rows {
-		groups[r.Name] = append(groups[r.Name], r)
-	}
-
-	var allDeleteIDs []uint
-	for _, poolRows := range groups {
-		_, deleteIDs := db.ApplyGFS(now, poolRows)
-		allDeleteIDs = append(allDeleteIDs, deleteIDs...)
-	}
-
-	if len(allDeleteIDs) == 0 {
-		return
-	}
-
-	const batchSize = 500
-	for i := 0; i < len(allDeleteIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(allDeleteIDs) {
-			end = len(allDeleteIDs)
+	if err := s.TelemetryDB.Transaction(func(tx *gorm.DB) error {
+		if len(stats) > 0 {
+			if err := tx.CreateInBatches(&stats, 100).Error; err != nil {
+				return err
+			}
 		}
-		batch := allDeleteIDs[i:end]
-
-		if err := s.TelemetryDB.Unscoped().Delete(&infoModels.ZPoolHistorical{}, batch).Error; err != nil {
-			logger.L.Debug().Err(err).Msg("zfs_cron: Failed to prune zpool historical data (batch delete)")
+		if arcErr == nil {
+			if err := tx.Create(&arcStat).Error; err != nil {
+				return err
+			}
 		}
+		return nil
+	}); err != nil {
+		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to insert ZFS telemetry")
 	}
 }
 
@@ -91,41 +94,62 @@ func (s *Service) RemoveNonExistentPools() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	existingPools, err := s.GZFS.Zpool.GetPoolNames(ctx)
+	existingPools, err := s.GZFS.Zpool.List(ctx)
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("zfs_cron: failed to list zpools")
 		return
 	}
 
-	existingSet := make(map[string]struct{}, len(existingPools))
-	for _, p := range existingPools {
-		existingSet[p] = struct{}{}
+	existingGUIDs := make(map[string]struct{}, len(existingPools))
+	existingNames := make(map[string]struct{}, len(existingPools))
+	for _, pool := range existingPools {
+		if pool == nil {
+			continue
+		}
+		existingGUIDs[pool.PoolGUID] = struct{}{}
+		existingNames[pool.Name] = struct{}{}
 	}
 
-	var storedNames []string
+	var storedPools []struct {
+		GUID string
+		Name string
+	}
 	if err := s.TelemetryDB.
 		Model(&infoModels.ZPoolHistorical{}).
-		Distinct("name").
-		Pluck("name", &storedNames).Error; err != nil {
+		Distinct("guid", "name").
+		Find(&storedPools).Error; err != nil {
 
 		logger.L.Debug().Err(err).Msg("zfs_cron: failed to load historical pool names")
 		return
 	}
 
-	var namesToDelete []string
-	for _, name := range storedNames {
-		if _, exists := existingSet[name]; !exists {
-			namesToDelete = append(namesToDelete, name)
+	guidsToDelete := make(map[string]struct{})
+	namesToDelete := make(map[string]struct{})
+	for _, stored := range storedPools {
+		if stored.GUID != "" {
+			if _, exists := existingGUIDs[stored.GUID]; !exists {
+				guidsToDelete[stored.GUID] = struct{}{}
+			}
+			continue
+		}
+		if _, exists := existingNames[stored.Name]; !exists {
+			namesToDelete[stored.Name] = struct{}{}
 		}
 	}
 
-	if len(namesToDelete) == 0 {
+	if len(guidsToDelete) == 0 && len(namesToDelete) == 0 {
 		return
 	}
 
-	result := s.TelemetryDB.Unscoped().
-		Where("name IN ?", namesToDelete).
-		Delete(&infoModels.ZPoolHistorical{})
+	query := s.TelemetryDB.Unscoped()
+	if len(guidsToDelete) > 0 && len(namesToDelete) > 0 {
+		query = query.Where("guid IN ? OR (guid = '' AND name IN ?)", mapKeys(guidsToDelete), mapKeys(namesToDelete))
+	} else if len(guidsToDelete) > 0 {
+		query = query.Where("guid IN ?", mapKeys(guidsToDelete))
+	} else {
+		query = query.Where("guid = '' AND name IN ?", mapKeys(namesToDelete))
+	}
+	result := query.Delete(&infoModels.ZPoolHistorical{})
 
 	if result.Error != nil {
 		logger.L.Debug().Err(result.Error).Msg("zfs_cron: failed to delete non-existent pool entries")
@@ -135,7 +159,8 @@ func (s *Service) RemoveNonExistentPools() {
 	if result.RowsAffected > 0 {
 		logger.L.Debug().
 			Int64("deleted_count", result.RowsAffected).
-			Strs("names", namesToDelete).
+			Strs("guids", mapKeys(guidsToDelete)).
+			Strs("legacy_names", mapKeys(namesToDelete)).
 			Msg("zfs_cron: deleted non-existent pool entries")
 	}
 
@@ -145,15 +170,17 @@ func (s *Service) RemoveNonExistentPools() {
 
 func (s *Service) Cron(ctx context.Context) {
 	tickerFast := time.NewTicker(10 * time.Second)
-	tickerSlow := time.NewTicker(10 * time.Minute)
+	tickerMaintenance := time.NewTicker(10 * time.Minute)
 
 	defer tickerFast.Stop()
-	defer tickerSlow.Stop()
+	defer tickerMaintenance.Stop()
 
 	s.SignalDSChange("", "", db.ZFSCacheKindGenericDataset, "startup")
 	s.SignalDSChange("", "", db.ZFSCacheKindSnapshot, "startup")
 	go s.runCacheInvalidationWorker(ctx)
+	go s.monitorPoolIO(ctx)
 	s.StoreStats()
+	s.PruneHistoricalStats()
 	s.RemoveNonExistentPools()
 
 	for {
@@ -163,8 +190,17 @@ func (s *Service) Cron(ctx context.Context) {
 			return
 		case <-tickerFast.C:
 			s.StoreStats()
-		case <-tickerSlow.C:
+		case <-tickerMaintenance.C:
+			s.PruneHistoricalStats()
 			s.RemoveNonExistentPools()
 		}
 	}
+}
+
+func mapKeys(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+	return keys
 }

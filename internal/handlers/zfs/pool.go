@@ -382,6 +382,15 @@ func PoolStats(zfsService *zfs.Service) gin.HandlerFunc {
 			})
 			return
 		}
+		if intervalInt <= 0 || intervalInt > 525600 || limitInt < 0 || limitInt > 10000 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_stats_range",
+				Error:   "interval must be between 1 and 525600 minutes and limit between 0 and 10000",
+				Data:    nil,
+			})
+			return
+		}
 
 		stats, count, err := zfsService.GetZpoolHistoricalStats(intervalInt, limitInt)
 

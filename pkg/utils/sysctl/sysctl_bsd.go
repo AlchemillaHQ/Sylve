@@ -39,6 +39,26 @@ func GetInt64(name string) (int64, error) {
 	return value, nil
 }
 
+func GetUint64(name string) (uint64, error) {
+	var value uint64
+	oldlen := C.size_t(unsafe.Sizeof(value))
+
+	nameC := C.CString(name)
+	defer C.free(unsafe.Pointer(nameC))
+
+	_, err := C.sysctlbyname(
+		nameC,
+		unsafe.Pointer(&value),
+		&oldlen,
+		nil,
+		0,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return value, nil
+}
+
 func GetString(name string) (string, error) {
 	b, err := GetBytes(name)
 	if err != nil {

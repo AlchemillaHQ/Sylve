@@ -49,9 +49,27 @@ type ReplaceDevice struct {
 }
 
 type PoolStatPoint struct {
-	Time       int64   `json:"time"`
-	Allocated  uint64  `json:"allocated"`
-	Free       uint64  `json:"free"`
-	Size       uint64  `json:"size"`
-	DedupRatio float64 `json:"dedupRatio"`
+	ID                         uint    `json:"id"`
+	Time                       int64   `json:"time"`
+	Health                     string  `json:"health"`
+	WorstHealth                string  `json:"worstHealth"`
+	Allocated                  uint64  `json:"allocated"`
+	Free                       uint64  `json:"free"`
+	Size                       uint64  `json:"size"`
+	Fragmentation              float64 `json:"fragmentation"`
+	DedupRatio                 float64 `json:"dedupRatio"`
+	ReadIOPS                   uint64  `json:"readIOPS"`
+	WriteIOPS                  uint64  `json:"writeIOPS"`
+	ReadBytesPerSecond         uint64  `json:"readBytesPerSecond"`
+	WriteBytesPerSecond        uint64  `json:"writeBytesPerSecond"`
+	ReadLatencyNanos           uint64  `json:"readLatencyNanos"`
+	WriteLatencyNanos          uint64  `json:"writeLatencyNanos"`
+	MaxReadIOPS                uint64  `json:"maxReadIOPS"`
+	MaxWriteIOPS               uint64  `json:"maxWriteIOPS"`
+	MaxReadBytesPerSecond      uint64  `json:"maxReadBytesPerSecond"`
+	MaxWriteBytesPerSecond     uint64  `json:"maxWriteBytesPerSecond"`
+	MaxReadLatencyNanos        uint64  `json:"maxReadLatencyNanos"`
+	MaxWriteLatencyNanos       uint64  `json:"maxWriteLatencyNanos"`
+	SampleCount                uint32  `json:"sampleCount"`
+	IntervalSeconds            uint32  `json:"intervalSeconds"`
 }

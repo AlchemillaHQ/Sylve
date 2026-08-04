@@ -171,6 +171,9 @@ func RegisterRoutes(r *gin.Engine,
 	zfs.Use(EnsureCorrectHost(db, authService))
 	zfs.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
+		zfs.GET("/dashboard/snapshot", zfsHandlers.DashboardSnapshot(zfsService))
+		zfs.GET("/dashboard/history", zfsHandlers.DashboardHistory(zfsService))
+		zfs.GET("/dashboard/history/delta", zfsHandlers.DashboardHistoryDelta(zfsService))
 		zfs.GET("/pool/stats/:interval/:limit", zfsHandlers.PoolStats(zfsService))
 		pools := zfs.Group("/pools")
 		{

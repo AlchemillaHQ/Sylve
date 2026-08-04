@@ -2568,6 +2568,7 @@ msgstr "MAC(s)"
 msgid "DUID(s)"
 msgstr "DUID(s)"
 
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Data"
@@ -4015,6 +4016,7 @@ msgstr "Manual move back"
 msgid "Never"
 msgstr "Never"
 
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Stale"
@@ -5036,6 +5038,7 @@ msgstr "Manage additional options for this jail"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
@@ -6088,8 +6091,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -7288,6 +7291,7 @@ msgstr "Scrub started"
 msgid "A scrub is already in progress"
 msgstr "A scrub is already in progress"
 
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Scrub"
 msgstr "Scrub"
@@ -7888,6 +7892,7 @@ msgid "Backup Date"
 msgstr "Backup Date"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Used"
 msgstr "Used"
@@ -12677,10 +12682,14 @@ msgid "Home Directory Permissions"
 msgstr "Home Directory Permissions"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
+#: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
 msgid "Read"
 msgstr "Read"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
+#: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
 msgid "Write"
 msgstr "Write"
 
@@ -12690,8 +12699,9 @@ msgstr "Write"
 #~ msgid "Group"
 #~ msgstr "Group"
 
-#~ msgid "Other"
-#~ msgstr "Other"
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Other"
+msgstr "Other"
 
 #~ msgid "Octal: 0{0}"
 #~ msgstr "Octal: 0{0}"
@@ -17962,6 +17972,7 @@ msgid "Download Certificate & Key"
 msgstr "Download Certificate & Key"
 
 #: src/routes/[node]/services/certificates/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Unavailable"
 msgstr "Unavailable"
 
@@ -18593,3 +18604,555 @@ msgstr "<0/> Disk Usage"
 #: src/routes/[node]/summary/+page.svelte
 msgid "<0/>Swap Usage"
 msgstr "<0/>Swap Usage"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Dashboard"
+msgstr "Dashboard"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "All pools"
+msgstr "All pools"
+
+#: src/lib/components/custom/ZFS/Dashboard/CapacityChart.svelte
+msgid "Allocated"
+msgstr "Allocated"
+
+#: src/lib/components/custom/ZFS/Dashboard/CapacityChart.svelte
+msgid "Free"
+msgstr "Free"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Fragmentation"
+msgstr "Fragmentation"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Dedup ratio"
+msgstr "Dedup ratio"
+
+#. 0: data.hostname
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "ZFS Dashboard · {0}"
+msgstr "ZFS Dashboard · {0}"
+
+#~ msgid "ZFS Dashboard"
+#~ msgstr "ZFS Dashboard"
+
+#~ msgid "Capacity, efficiency, health, and logical I/O telemetry for {0}."
+#~ msgstr "Capacity, efficiency, health, and logical I/O telemetry for {0}."
+
+#~ msgid "Capacity used"
+#~ msgstr "Capacity used"
+
+#~ msgid "{0} of {1}"
+#~ msgstr "{0} of {1}"
+
+#~ msgid "Pool health"
+#~ msgstr "Pool health"
+
+#~ msgid "{0} of {1} {2} online"
+#~ msgstr "{0} of {1} {2} online"
+
+#~ msgid "Logical I/O now"
+#~ msgstr "Logical I/O now"
+
+#~ msgid "Storage efficiency"
+#~ msgstr "Storage efficiency"
+
+#~ msgid "Pool overview"
+#~ msgstr "Pool overview"
+
+#~ msgid "{0} configured"
+#~ msgstr "{0} configured"
+
+#~ msgid "{0} devices · {1} data vdevs"
+#~ msgstr "{0} devices · {1} data vdevs"
+
+#~ msgid "Focus"
+#~ msgstr "Focus"
+
+#~ msgid "allocated"
+#~ msgstr "allocated"
+
+#. 0: formatBytesBinary(pool.free)
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
+msgid "{0} free"
+msgstr "{0} free"
+
+#~ msgid "{0} total"
+#~ msgstr "{0} total"
+
+#~ msgid "{0}% fragmented"
+#~ msgstr "{0}% fragmented"
+
+#~ msgid "{0}× dedup"
+#~ msgstr "{0}× dedup"
+
+#~ msgid "No configured ZFS pools were found."
+#~ msgstr "No configured ZFS pools were found."
+
+#~ msgid "Historical telemetry"
+#~ msgstr "Historical telemetry"
+
+#~ msgid "70-day GFS retention, displayed at one-minute resolution."
+#~ msgstr "70-day GFS retention, displayed at one-minute resolution."
+
+#~ msgid "{0} points"
+#~ msgstr "{0} points"
+
+#~ msgid "Space allocation"
+#~ msgstr "Space allocation"
+
+#~ msgid "Capacity utilization"
+#~ msgstr "Capacity utilization"
+
+#~ msgid "Logical I/O bandwidth"
+#~ msgstr "Logical I/O bandwidth"
+
+#~ msgid "Logical operations"
+#~ msgstr "Logical operations"
+
+#~ msgid "Deduplication ratio"
+#~ msgstr "Deduplication ratio"
+
+#~ msgid "Average I/O latency (ms)"
+#~ msgstr "Average I/O latency (ms)"
+
+#~ msgid "Telemetry is warming up for this pool scope."
+#~ msgstr "Telemetry is warming up for this pool scope."
+
+#~ msgid "The first historical sample is recorded during the ZFS telemetry cycle."
+#~ msgstr "The first historical sample is recorded during the ZFS telemetry cycle."
+
+#~ msgid "Trend warming up"
+#~ msgstr "Trend warming up"
+
+#~ msgid "No material change"
+#~ msgstr "No material change"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Selected pool"
+msgstr "Selected pool"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Warming up"
+msgstr "Warming up"
+
+#~ msgid "<0/> Live · {0}"
+#~ msgstr "<0/> Live · {0}"
+
+#~ msgid "Pools, cache efficiency and I/O behavior on {0}."
+#~ msgstr "Pools, cache efficiency and I/O behavior on {0}."
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Pool scope"
+msgstr "Pool scope"
+
+#~ msgid "1H"
+#~ msgstr "1H"
+
+#~ msgid "24H"
+#~ msgstr "24H"
+
+#~ msgid "7D"
+#~ msgstr "7D"
+
+#~ msgid "30D"
+#~ msgstr "30D"
+
+#~ msgid "70D"
+#~ msgstr "70D"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Refresh dashboard"
+msgstr "Refresh dashboard"
+
+#~ msgid "ZFS summary"
+#~ msgstr "ZFS summary"
+
+#~ msgid "All selected pools are healthy"
+#~ msgstr "All selected pools are healthy"
+
+#~ msgid "Attention required · {0}"
+#~ msgstr "Attention required · {0}"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Capacity"
+msgstr "Capacity"
+
+#~ msgid "Current activity"
+#~ msgstr "Current activity"
+
+#. 0: formatBytesPerSecondBinary(ioSummary.readBytesPerSecond); 1: formatBytesPerSecondBinary(ioSummary.writeBytesPerSecond)
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Read {0} · Write {1}"
+msgstr "Read {0} · Write {1}"
+
+#~ msgid "Logical pool activity"
+#~ msgstr "Logical pool activity"
+
+#~ msgid "ARC efficiency"
+#~ msgstr "ARC efficiency"
+
+#~ msgid "Waiting for the first cache sample"
+#~ msgstr "Waiting for the first cache sample"
+
+#~ msgid "Demand / prefetch"
+#~ msgstr "Demand / prefetch"
+
+#~ msgid "Capacity and ARC overview"
+#~ msgstr "Capacity and ARC overview"
+
+#~ msgid "<0/> Pool capacity"
+#~ msgstr "<0/> Pool capacity"
+
+#~ msgid "Allocated and available space across every pool."
+#~ msgstr "Allocated and available space across every pool."
+
+#~ msgid "Click to focus"
+#~ msgstr "Click to focus"
+
+#~ msgid "<0/> Adaptive Replacement Cache"
+#~ msgstr "<0/> Adaptive Replacement Cache"
+
+#~ msgid "Node-wide efficiency and current memory composition."
+#~ msgstr "Node-wide efficiency and current memory composition."
+
+#~ msgid "ZFS performance"
+#~ msgstr "ZFS performance"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "<0/> Performance"
+msgstr "<0/> Performance"
+
+#~ msgid "Read and write behavior for {0}."
+#~ msgstr "Read and write behavior for {0}."
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Bandwidth"
+msgstr "Bandwidth"
+
+#~ msgid "IOPS"
+#~ msgstr "IOPS"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Latency"
+msgstr "Latency"
+
+#~ msgid "{0} rendered points"
+#~ msgstr "{0} rendered points"
+
+#~ msgid "<0/> Workload balance"
+#~ msgstr "<0/> Workload balance"
+
+#~ msgid "Current logical throughput split."
+#~ msgstr "Current logical throughput split."
+
+#~ msgid "ZFS diagnostics"
+#~ msgstr "ZFS diagnostics"
+
+#~ msgid "<0/> Pool efficiency"
+#~ msgstr "<0/> Pool efficiency"
+
+#~ msgid "Fragmentation ranked with dedup context."
+#~ msgstr "Fragmentation ranked with dedup context."
+
+#~ msgid "<0/> Latency under load"
+#~ msgstr "<0/> Latency under load"
+
+#~ msgid "How response time changes as operation volume rises."
+#~ msgstr "How response time changes as operation volume rises."
+
+#~ msgid "Ratio warming up"
+#~ msgstr "Ratio warming up"
+
+#~ msgid "Resident"
+#~ msgstr "Resident"
+
+#~ msgid "ARC limit"
+#~ msgstr "ARC limit"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Memory composition"
+msgstr "Memory composition"
+
+#~ msgid "Current ARC footprint"
+#~ msgstr "Current ARC footprint"
+
+#~ msgid "<0/>Data {0}"
+#~ msgstr "<0/>Data {0}"
+
+#~ msgid "<0/>Metadata {0}"
+#~ msgstr "<0/>Metadata {0}"
+
+#~ msgid "<0/>Other {0}"
+#~ msgstr "<0/>Other {0}"
+
+#~ msgid "<0/>Headers {0}"
+#~ msgstr "<0/>Headers {0}"
+
+#~ msgid "L2ARC"
+#~ msgstr "L2ARC"
+
+#~ msgid "Hit ratio"
+#~ msgstr "Hit ratio"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "ARC telemetry is warming up"
+msgstr "ARC telemetry is warming up"
+
+#~ msgid "The first cache sample appears after the telemetry collector starts."
+#~ msgstr "The first cache sample appears after the telemetry collector starts."
+
+#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
+msgid "Latency (ms)"
+msgstr "Latency (ms)"
+
+#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
+msgid "No active I/O in this range"
+msgstr "No active I/O in this range"
+
+#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
+msgid "Latency points appear when the selected scope is serving operations."
+msgstr "Latency points appear when the selected scope is serving operations."
+
+#: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
+msgid "Performance history is warming up"
+msgstr "Performance history is warming up"
+
+#: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
+msgid "Read and write samples will appear here as they are collected."
+msgstr "Read and write samples will appear here as they are collected."
+
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid "<0/>Read"
+msgstr "<0/>Read"
+
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid "<0/>Write"
+msgstr "<0/>Write"
+
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid ""
+msgstr ""
+
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Live ZFS telemetry is stale. Historical data remains available."
+msgstr "Live ZFS telemetry is stale. Historical data remains available."
+
+#. 0: summary.health
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Pool state is {0}. Review pool and device status."
+msgstr "Pool state is {0}. Review pool and device status."
+
+#. 0: summary.statusUnavailable; 1: summary.statusUnavailable === 1 ? '' \\: 's'
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Detailed device status is unavailable for {0} pool{1}."
+msgstr "Detailed device status is unavailable for {0} pool{1}."
+
+#. 0: new Date(snapshot.current.sampledAt).toLocaleTimeString([], { hour\\: '2-digit', minute\\: '2-digit', second\\: '2-digit' })
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Sampled {0}"
+msgstr "Sampled {0}"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Waiting for samples"
+msgstr "Waiting for samples"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "ZFS"
+msgstr "ZFS"
+
+#. 0: data.hostname
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Operational storage and performance on {0}"
+msgstr "Operational storage and performance on {0}"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "ZFS operational summary"
+msgstr "ZFS operational summary"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Storage health"
+msgstr "Storage health"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "No pools"
+msgstr "No pools"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Some device status unavailable"
+msgstr "Some device status unavailable"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "No known pool or device errors"
+msgstr "No known pool or device errors"
+
+#~ msgid "Data integrity"
+#~ msgstr "Data integrity"
+
+#~ msgid "Run regular scrubs to verify data"
+#~ msgstr "Run regular scrubs to verify data"
+
+#~ msgid "Review pool status"
+#~ msgstr "Review pool status"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Live I/O"
+msgstr "Live I/O"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Pool status and performance"
+msgstr "Pool status and performance"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "<0/> Pools"
+msgstr "<0/> Pools"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Capacity, integrity, and scan state."
+msgstr "Capacity, integrity, and scan state."
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Topology"
+msgstr "Topology"
+
+#~ msgid "{0} VDEVs · {1} disks"
+#~ msgstr "{0} VDEVs · {1} disks"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "No imported ZFS pools found"
+msgstr "No imported ZFS pools found"
+
+#. 0: selectedScopeLabel.toLowerCase()
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Historical logical I/O for {0}."
+msgstr "Historical logical I/O for {0}."
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Performance metric"
+msgstr "Performance metric"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "History range"
+msgstr "History range"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "<0/> Node ARC"
+msgstr "<0/> Node ARC"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Node-wide cache efficiency, sizing, composition, and pressure."
+msgstr "Node-wide cache efficiency, sizing, composition, and pressure."
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "ARC hit rate"
+msgstr "ARC hit rate"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Demand"
+msgstr "Demand"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Prefetch"
+msgstr "Prefetch"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "ARC size"
+msgstr "ARC size"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Adaptive target"
+msgstr "Adaptive target"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Maximum target"
+msgstr "Maximum target"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Minimum target"
+msgstr "Minimum target"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Memory compression"
+msgstr "Memory compression"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Headers"
+msgstr "Headers"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Evictions"
+msgstr "Evictions"
+
+#. 0: arc.evictionsPerSecond.toFixed(1)
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "{0}/s"
+msgstr "{0}/s"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Memory throttle"
+msgstr "Memory throttle"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "Reclaim shortfalls"
+msgstr "Reclaim shortfalls"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "L2ARC size"
+msgstr "L2ARC size"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "L2ARC hit rate"
+msgstr "L2ARC hit rate"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "L2ARC devices"
+msgstr "L2ARC devices"
+
+#: src/lib/components/custom/ZFS/Dashboard/ARCPanel.svelte
+msgid "The first cache sample appears after the collector starts."
+msgstr "The first cache sample appears after the collector starts."
+
+#~ msgid "No scan recorded"
+#~ msgstr "No scan recorded"
+
+#~ msgid "Scan"
+#~ msgstr "Scan"
+
+#~ msgid "{0} disks · {1} data VDEVs"
+#~ msgstr "{0} disks · {1} data VDEVs"
+
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
+msgid "No known errors"
+msgstr "No known errors"
+
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
+msgid "Status unavailable"
+msgstr "Status unavailable"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Pool verification"
+msgstr "Pool verification"
+
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
+msgid "No scrub recorded"
+msgstr "No scrub recorded"
+
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
+msgid "Resilver"
+msgstr "Resilver"
+
+#. 0: name.toLowerCase(); 1: completed.toLocaleDateString([], { month\\: 'short', day\\: 'numeric' })
+#: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
+msgid "Last {0} clean · {1}"
+msgstr "Last {0} clean · {1}"
+
+#. 0: summary.dataVdevs; 1: summary.dataVdevs === 1 ? '' \\: 's'; 2: summary.disks; 3: summary.disks === 1 ? '' \\: 's'
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "{0} VDEV{1} · {2} disk{3}"
+msgstr "{0} VDEV{1} · {2} disk{3}"

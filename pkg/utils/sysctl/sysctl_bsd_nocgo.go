@@ -42,6 +42,16 @@ func GetInt64(name string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
+func GetUint64(name string) (uint64, error) {
+	b, err := runSysctl("-n", name)
+	if err != nil {
+		return 0, err
+	}
+
+	s := strings.TrimSpace(string(b))
+	return strconv.ParseUint(s, 10, 64)
+}
+
 func GetString(name string) (string, error) {
 	b, err := runSysctl("-n", name)
 	if err != nil {

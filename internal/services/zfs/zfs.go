@@ -31,6 +31,8 @@ type Service struct {
 	GZFS                      *gzfs.Client
 	Libvirt                   libvirtServiceInterfaces.LibvirtServiceInterface
 	syncMutex                 *sync.Mutex
+	poolIOMutex               sync.RWMutex
+	poolIOStats               map[string]poolIOStat
 	cacheInvalidationMutex    sync.Mutex
 	cacheInvalidationSequence uint64
 	pendingCacheInvalidations map[string]uint64
@@ -44,6 +46,7 @@ func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInte
 		GZFS:                      gzfsClient,
 		Libvirt:                   libvirt,
 		syncMutex:                 &sync.Mutex{},
+		poolIOStats:               make(map[string]poolIOStat),
 		pendingCacheInvalidations: make(map[string]uint64, 2),
 	}
 }
