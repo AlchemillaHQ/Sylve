@@ -37,6 +37,7 @@
 
 	let username = $state('');
 	let password = $state('');
+	let passwordVisible = $state(false);
 	let language = $derived(storage.language ?? 'en');
 	let authType = $state('sylve');
 	let remember = $state(false);
@@ -122,15 +123,29 @@
 			</div>
 			<div class="flex items-center gap-2">
 				<Label for="password" class="w-44">Password</Label>
-				<Input
-					id="password"
-					type="password"
-					placeholder="●●●●●●●●"
-					autocomplete="off"
-					class="h-8 w-full"
-					bind:value={password}
-					required
-				/>
+				<div class="relative w-full">
+					<Input
+						id="password"
+						type={passwordVisible ? 'text' : 'password'}
+						placeholder="●●●●●●●●"
+						autocomplete="off"
+						class="h-8 w-full pr-9"
+						bind:value={password}
+						required
+					/>
+					<button
+						type="button"
+						class="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md transition-colors focus-visible:ring-2 focus-visible:outline-none"
+						onclick={() => (passwordVisible = !passwordVisible)}
+						aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+						aria-pressed={passwordVisible}
+					>
+						<span
+							class={passwordVisible ? 'icon-[lucide--eye-off] size-4' : 'icon-[lucide--eye] size-4'}
+							aria-hidden="true"
+						></span>
+					</button>
+				</div>
 			</div>
 
 			<div class="flex items-center gap-2">

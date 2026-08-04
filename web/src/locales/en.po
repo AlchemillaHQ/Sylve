@@ -19235,3 +19235,11 @@ msgstr "Legacy VM restor"
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Create separate VM and Jail branches."
 msgstr "Create separate VM and Jail branches."
+
+#: src/lib/components/custom/Login.svelte
+msgid "Hide password"
+msgstr "Hide password"
+
+#: src/lib/components/custom/Login.svelte
+msgid "Show password"
+msgstr "Show password"
