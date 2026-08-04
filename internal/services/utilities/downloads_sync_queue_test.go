@@ -141,3 +141,41 @@ func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T)
 		t.Fatalf("error=%q", stored.Error)
 	}
 }
+
+func TestSyncPathDoesNotRequeueRunningPathDownload(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	enqueueCalls := 0
+	service := &Service{
+		DB: db,
+		enqueueDownloadStartFn: func(
+			_ context.Context,
+			_ utilitiesServiceInterfaces.DownloadStartPayload,
+		) error {
+			enqueueCalls++
+			return nil
+		},
+	}
+	pending := utilitiesModels.Downloads{
+		UUID:      "running-path-uuid",
+		Path:      "/tmp/running-path-destination",
+		Name:      "running.img",
+		Type:      utilitiesModels.DownloadTypePath,
+		URL:       "/tmp/running-path-source",
+		Progress:  0,
+		Status:    utilitiesModels.DownloadStatusPending,
+		CreatedAt: time.Now().Add(-3 * time.Minute),
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !service.beginDownloadStart(pending.ID) {
+		t.Fatal("failed to mark download start as running")
+	}
+	defer service.endDownloadStart(pending.ID)
+
+	service.syncPath(&pending)
+
+	if enqueueCalls != 0 {
+		t.Fatalf("running path download was requeued %d times", enqueueCalls)
+	}
+}

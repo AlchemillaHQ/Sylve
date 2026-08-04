@@ -254,6 +254,13 @@ func (s *Service) endDownloadStart(id uint) {
 	s.downloadStartRunMu.Unlock()
 }
 
+func (s *Service) isDownloadStartRunning(id uint) bool {
+	s.downloadStartRunMu.Lock()
+	_, running := s.downloadStartRunning[id]
+	s.downloadStartRunMu.Unlock()
+	return running
+}
+
 func (s *Service) clearDownloadSyncQueued() {
 	s.syncQueueMu.Lock()
 	s.downloadSyncQueued = false

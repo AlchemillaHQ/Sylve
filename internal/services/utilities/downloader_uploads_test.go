@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -438,6 +439,14 @@ func TestAbortDownloaderUploadIsIdempotent(t *testing.T) {
 func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
 	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "image")
+	sourceInfo, err := os.Stat(record.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceIdentity, err := uploadCore.IdentityFromFileInfo(sourceInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	service.enqueueDownloadStartFn = func(
 		_ context.Context,
 		_ utilitiesServiceInterfaces.DownloadStartPayload,
@@ -474,6 +483,17 @@ func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *t
 	if string(content) != "image" {
 		t.Fatalf("destination content=%q", content)
 	}
+	destinationInfo, err := os.Stat(download.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destinationIdentity, err := uploadCore.IdentityFromFileInfo(destinationInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if destinationIdentity != sourceIdentity {
+		t.Fatalf("upload was copied instead of published: source=%+v destination=%+v", sourceIdentity, destinationIdentity)
+	}
 	if _, err := os.Stat(record.Path); !os.IsNotExist(err) {
 		t.Fatalf("completed staging source was not released: %v", err)
 	}
@@ -491,6 +511,148 @@ func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *t
 	}
 	if retry.DownloadID != completion.DownloadID {
 		t.Fatalf("completion retry returned download %d want %d", retry.DownloadID, completion.DownloadID)
+	}
+}
+
+func TestCompletedDownloaderUploadPublishDoesNotReplaceLateDestination(t *testing.T) {
+	service, staging := newDownloaderUploadTestService(t)
+	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "uploaded")
+	service.enqueueDownloadStartFn = func(
+		_ context.Context,
+		_ utilitiesServiceInterfaces.DownloadStartPayload,
+	) error {
+		return nil
+	}
+
+	completion, err := service.CompleteDownloaderUpload(
+		context.Background(),
+		record.ID,
+		7,
+		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
+			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("complete upload: %v", err)
+	}
+	var download utilitiesModels.Downloads
+	if err := service.DB.First(&download, completion.DownloadID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(download.Path, []byte("late destination"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = service.StartDownload(&completion.DownloadID)
+	if !errors.Is(err, ErrDownloaderUploadDestinationExists) {
+		t.Fatalf("start error=%v want destination collision", err)
+	}
+	content, err := os.ReadFile(download.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "late destination" {
+		t.Fatalf("late destination was replaced with %q", content)
+	}
+	if _, err := os.Stat(record.Path); err != nil {
+		t.Fatalf("staged source was lost after collision: %v", err)
+	}
+	if err := service.DB.First(&download, completion.DownloadID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if download.Status != utilitiesModels.DownloadStatusFailed {
+		t.Fatalf("status=%q want failed", download.Status)
+	}
+
+	if err := service.DeleteDownload(int(completion.DownloadID)); err != nil {
+		t.Fatalf("delete failed upload: %v", err)
+	}
+	if _, err := os.Stat(record.Path); !os.IsNotExist(err) {
+		t.Fatalf("delete left completed upload source: %v", err)
+	}
+	var uploadCount int64
+	if err := service.DB.Model(&utilitiesModels.Upload{}).Where("id = ?", record.ID).Count(&uploadCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if uploadCount != 0 {
+		t.Fatal("delete left completed upload identity")
+	}
+}
+
+func TestCompletedDownloaderUploadRecoversInterruptedPublish(t *testing.T) {
+	service, staging := newDownloaderUploadTestService(t)
+	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "uploaded")
+	service.enqueueDownloadStartFn = func(
+		_ context.Context,
+		_ utilitiesServiceInterfaces.DownloadStartPayload,
+	) error {
+		return nil
+	}
+
+	completion, err := service.CompleteDownloaderUpload(
+		context.Background(),
+		record.ID,
+		7,
+		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
+			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("complete upload: %v", err)
+	}
+	var download utilitiesModels.Downloads
+	if err := service.DB.First(&download, completion.DownloadID).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate termination after the no-replace link was created but before
+	// the staging name was unlinked or the download row was finalized.
+	if err := os.Link(record.Path, download.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.StartDownload(&completion.DownloadID); err != nil {
+		t.Fatalf("recover interrupted publish: %v", err)
+	}
+	if _, err := os.Stat(record.Path); !os.IsNotExist(err) {
+		t.Fatalf("recovery left staged source: %v", err)
+	}
+	if err := service.DB.First(&download, completion.DownloadID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if download.Status != utilitiesModels.DownloadStatusDone || download.Progress != 100 {
+		t.Fatalf("recovered download was not finalized: %+v", download)
+	}
+}
+
+func TestCopyFileNoReplaceNeverExposesOrOverwritesPartialDestination(t *testing.T) {
+	directory := t.TempDir()
+	source := filepath.Join(directory, "source.img")
+	destination := filepath.Join(directory, "destination.img")
+	if err := os.WriteFile(source, []byte("uploaded"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(destination, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyFileNoReplace(source, destination); err == nil {
+		t.Fatal("copy unexpectedly replaced destination")
+	}
+	content, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "existing" {
+		t.Fatalf("destination content=%q", content)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".sylve-upload-") {
+			t.Fatalf("copy left partial destination %q", entry.Name())
+		}
 	}
 }
 

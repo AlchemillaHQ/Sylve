@@ -519,9 +519,12 @@ func (s *Service) StartDownload(id *uint) error {
 
 		// If source is already the final destination, avoid self-copy/truncation.
 		if sourcePath != destPath {
-			err := utils.CopyFile(sourcePath, destPath)
+			publishedUpload, err := s.publishCompletedDownloaderUpload(sourcePath, destPath)
+			if err == nil && !publishedUpload {
+				err = utils.CopyFile(sourcePath, destPath)
+			}
 			if err != nil {
-				logger.L.Error().Uint("download_id", *id).Err(err).Msg("file_copy_failed")
+				logger.L.Error().Uint("download_id", *id).Err(err).Msg("path_publish_failed")
 				download.Status = utilitiesModels.DownloadStatusFailed
 				download.Error = err.Error()
 				s.DB.Model(download).Select("Status", "Error").Updates(map[string]any{
@@ -535,7 +538,7 @@ func (s *Service) StartDownload(id *uint) error {
 						"error":      err.Error(),
 					})
 				}
-				return fmt.Errorf("file_copy_failed: %w", err)
+				return fmt.Errorf("path_publish_failed: %w", err)
 			}
 		} else {
 			if _, err := os.Stat(destPath); err != nil {
@@ -1130,6 +1133,9 @@ func (s *Service) syncPath(download *utilitiesModels.Downloads) {
 
 	// Check if this is a stale pending path download that never got processed
 	if download.Status == utilitiesModels.DownloadStatusPending {
+		if s.isDownloadStartRunning(download.ID) {
+			return
+		}
 		staleWindow := time.Now().Add(-2 * time.Minute)
 		if download.CreatedAt.Before(staleWindow) {
 			logger.L.Info().Msgf("syncPath: stale pending path download (ID=%d), enqueuing start job", download.ID)
@@ -1206,6 +1212,12 @@ func (s *Service) DeleteDownload(id int) error {
 	for _, file := range download.Files {
 		if err := s.DB.Delete(&file).Error; err != nil {
 			logger.L.Debug().Msgf("Failed to delete downloaded file: %v", err)
+			return err
+		}
+	}
+	if download.Type == utilitiesModels.DownloadTypePath {
+		if err := s.removeCompletedDownloaderUploadSource(download.URL); err != nil {
+			logger.L.Warn().Msgf("Failed to remove completed upload source: %v", err)
 			return err
 		}
 	}
@@ -1293,6 +1305,12 @@ func (s *Service) BulkDeleteDownload(ids []int) error {
 				return err
 			}
 		}
+		if download.Type == utilitiesModels.DownloadTypePath {
+			if err := s.removeCompletedDownloaderUploadSource(download.URL); err != nil {
+				logger.L.Warn().Msgf("Failed to remove completed upload source: %v", err)
+				return err
+			}
+		}
 
 		if s.TelemetryDB != nil {
 			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "Cancelled", "deleted_by_user", map[string]any{
@@ -1304,6 +1322,14 @@ func (s *Service) BulkDeleteDownload(ids []int) error {
 		if err := s.DB.Delete(&download).Error; err != nil {
 			logger.L.Debug().Msgf("Failed to delete download: %v", err)
 			return err
+		}
+		if err := s.DB.Where(
+			"path = ? AND scope = ? AND status = ?",
+			download.URL,
+			utilitiesModels.UploadScopeDownloader,
+			utilitiesModels.UploadStatusCompleted,
+		).Delete(&utilitiesModels.Upload{}).Error; err != nil {
+			logger.L.Warn().Msgf("Failed to delete completed upload identity: %v", err)
 		}
 	}
 

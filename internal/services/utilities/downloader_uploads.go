@@ -12,9 +12,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -388,6 +390,120 @@ func (s *Service) removeCompletedDownloaderUploadSource(sourcePath string) error
 	if err != nil {
 		return fmt.Errorf("remove completed upload source: %w", err)
 	}
+	return nil
+}
+
+// publishCompletedDownloaderUpload promotes a staged downloader upload into
+// its reserved destination without copying it when both paths are on the same
+// filesystem. It returns false when sourcePath is an ordinary path download
+// rather than a completed downloader upload.
+func (s *Service) publishCompletedDownloaderUpload(sourcePath, destinationPath string) (bool, error) {
+	if s == nil || s.DB == nil {
+		return false, nil
+	}
+
+	var record utilitiesModels.Upload
+	err := s.DB.Where(
+		"path = ? AND scope = ? AND status = ?",
+		sourcePath,
+		utilitiesModels.UploadScopeDownloader,
+		utilitiesModels.UploadStatusCompleted,
+	).First(&record).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return true, fmt.Errorf("lookup completed upload source: %w", err)
+	}
+
+	identity := uploadCore.FileIdentity{
+		Device: record.Device,
+		Inode:  record.Inode,
+	}
+
+	// A worker may have been interrupted after publishing but before updating
+	// the download row. A same-inode destination proves that publication
+	// completed and makes the retry idempotent.
+	if destinationInfo, statErr := os.Lstat(destinationPath); statErr == nil {
+		if destinationInfo.Size() != record.Size || !uploadCore.MatchesFileInfo(identity, destinationInfo) {
+			return true, ErrDownloaderUploadDestinationExists
+		}
+		if _, removeErr := uploadCore.RemoveIfSame(sourcePath, identity); removeErr != nil {
+			return true, fmt.Errorf("remove already-published upload source: %w", removeErr)
+		}
+		return true, nil
+	} else if !os.IsNotExist(statErr) {
+		return true, fmt.Errorf("inspect downloader destination: %w", statErr)
+	}
+
+	sourceInfo, err := os.Lstat(sourcePath)
+	if err != nil {
+		return true, fmt.Errorf("inspect completed upload source: %w", err)
+	}
+	if sourceInfo.Size() != record.Size || !uploadCore.MatchesFileInfo(identity, sourceInfo) {
+		return true, ErrDownloaderUploadFileUnavailable
+	}
+
+	if err := uploadCore.PublishNoReplace(sourcePath, destinationPath); err == nil {
+		return true, nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		// PublishNoReplace can be interrupted between linking and unlinking.
+		// Reinspect before reporting failure so that state is recoverable.
+		if destinationInfo, statErr := os.Lstat(destinationPath); statErr == nil &&
+			destinationInfo.Size() == record.Size &&
+			uploadCore.MatchesFileInfo(identity, destinationInfo) {
+			if _, removeErr := uploadCore.RemoveIfSame(sourcePath, identity); removeErr != nil {
+				return true, fmt.Errorf("remove published upload source: %w", removeErr)
+			}
+			return true, nil
+		}
+		return true, fmt.Errorf("publish completed upload: %w", err)
+	}
+
+	// A separately mounted uploads directory cannot use hard links. Preserve
+	// compatibility with that layout, but publish via a private temporary file
+	// so an interrupted copy never exposes a partial final destination.
+	if err := copyFileNoReplace(sourcePath, destinationPath); err != nil {
+		return true, fmt.Errorf("copy completed upload across filesystems: %w", err)
+	}
+	if _, err := uploadCore.RemoveIfSame(sourcePath, identity); err != nil {
+		logger.L.Warn().Err(err).Msg("failed to remove cross-filesystem upload source")
+	}
+	return true, nil
+}
+
+func copyFileNoReplace(sourcePath, destinationPath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer source.Close()
+
+	destination, partialPath, err := uploadCore.CreateRandomPartial(filepath.Dir(destinationPath))
+	if err != nil {
+		return fmt.Errorf("create destination partial: %w", err)
+	}
+	published := false
+	defer func() {
+		_ = destination.Close()
+		if !published {
+			_ = os.Remove(partialPath)
+		}
+	}()
+
+	if _, err := io.Copy(destination, source); err != nil {
+		return fmt.Errorf("copy source: %w", err)
+	}
+	if err := destination.Sync(); err != nil {
+		return fmt.Errorf("sync destination partial: %w", err)
+	}
+	if err := destination.Close(); err != nil {
+		return fmt.Errorf("close destination partial: %w", err)
+	}
+	if err := uploadCore.PublishNoReplace(partialPath, destinationPath); err != nil {
+		return fmt.Errorf("publish destination: %w", err)
+	}
+	published = true
 	return nil
 }
 
