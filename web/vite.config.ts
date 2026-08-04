@@ -18,7 +18,10 @@ export default defineConfig(({ mode }) => ({
         })
     ].filter(Boolean),
     optimizeDeps: {
-        exclude: ['@battlefieldduck/xterm-svelte']
+        exclude: [
+            '@battlefieldduck/xterm-svelte',
+            '@alchemilla/svelte-echarts'
+        ]
     },
     build: {
         target: 'esnext'

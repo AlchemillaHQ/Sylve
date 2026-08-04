@@ -144,8 +144,10 @@
 			});
 			const result = fullRefresh ? incoming : mergeSummaryHistory(current, incoming);
 
-			if (fullRefresh) lastHistoryFullRefreshAt = Date.now();
-			void updateCache(key, result);
+			if (fullRefresh) {
+				lastHistoryFullRefreshAt = Date.now();
+				void updateCache(key, incoming);
+			}
 			return result;
 		},
 		{
