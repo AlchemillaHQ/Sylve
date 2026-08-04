@@ -292,7 +292,6 @@ msgstr "Replikation"
 msgid "Policies"
 msgstr "Richtlinien"
 
-#: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Data Center"
 msgstr "Datenzentrum"
@@ -878,6 +877,9 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -9097,7 +9099,6 @@ msgstr "Leader-IP ist erforderlich"
 msgid "Leader IP (192.168.1.1)"
 msgstr "Leader-IP (192.168.1.1)"
 
-#: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Templates"
 msgstr "Vorlagen"
@@ -18912,9 +18913,6 @@ msgid "<0/>Write"
 msgstr ""
 
 #: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-msgid ""
-msgstr ""
-
 #: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Live ZFS telemetry is stale. Historical data remains available."
@@ -19132,4 +19130,85 @@ msgstr ""
 #. 0: summary.dataVdevs; 1: summary.dataVdevs === 1 ? '' \\: 's'; 2: summary.disks; 3: summary.disks === 1 ? '' \\: 's'
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "{0} VDEV{1} · {2} disk{3}"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Folder View"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Server View"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Resource tree view"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Group by node"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Group by resource type"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Tree settings"
+msgstr ""
+
+#~ msgid "Customize how resources are arranged in the sidebar."
+#~ msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Sort guests by"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Applied within each resource group."
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Guest ID"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Group templates"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Keep VM and jail templates in a dedicated Templates branch."
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Group guest types"
+msgstr ""
+
+#~ msgid "Separate virtual machines and jails in Server View. Folder View already groups by type."
+#~ msgstr ""
+
+#~ msgid "<0/> Reset defaults"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Save settings"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Tree Settings"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Legacy VM restor"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Create separate VM and Jail branches."
 msgstr ""

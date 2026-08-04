@@ -1,13 +1,19 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import {
-		collectIds,
 		getClusterResourcesResult,
-		getNodesResult,
-		hasSavedClusterIds,
-		loadClusterIds,
-		saveOpenIds
+		getNodesResult
 	} from '$lib/api/cluster/cluster';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
+	import { hasSavedOpenIds, loadOpenIds, saveOpenIds } from '$lib/left-panel';
+	import {
+		buildResourceTree,
+		collectResourceTreeIds,
+		type ResourceTreeNodeInput,
+		type ResourceTreePreferences,
+		type ResourceTreeResource,
+		type ResourceTreeView
+	} from '$lib/resource-tree';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
@@ -23,41 +29,37 @@
 		nodes: ClusterNode[];
 	}
 
+	interface Props {
+		preferences: ResourceTreePreferences;
+	}
+
+	let { preferences }: Props = $props();
+
 	const emptyClusterSidebarSnapshot: ClusterSidebarSnapshot = {
 		resources: [],
 		nodes: []
 	};
 
-	let openIds = $state(
-		(() => {
-			const savedIds = loadClusterIds();
-			return savedIds.size > 0 ? savedIds : new Set<string>(['datacenter']);
-		})()
-	);
+	let openIdsByView = $state<Record<ResourceTreeView, Set<string>>>({
+		server: loadOpenIds('cluster', 'server'),
+		folder: loadOpenIds('cluster', 'folder')
+	});
+	let initializedViews = $state<Record<ResourceTreeView, boolean>>({
+		server: false,
+		folder: false
+	});
+	let openIds = $derived(openIdsByView[preferences.view]);
 
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-	let hasInitializedOpenIds = $state(false);
-
-	function isSameSet(a: Set<string>, b: Set<string>): boolean {
-		if (a.size !== b.size) {
-			return false;
-		}
-
-		for (const value of a) {
-			if (!b.has(value)) {
-				return false;
-			}
-		}
-
-		return true;
-	}
 
 	const toggleOpen = (id: string) => {
-		if (openIds.has(id)) openIds.delete(id);
-		else openIds.add(id);
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		openIds = new Set(openIds);
-		saveOpenIds(openIds);
+		const view = preferences.view;
+		const nextOpenIds = new SvelteSet(openIdsByView[view]);
+		if (nextOpenIds.has(id)) nextOpenIds.delete(id);
+		else nextOpenIds.add(id);
+
+		openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
+		saveOpenIds(nextOpenIds, 'cluster', view);
 	};
 
 	async function refetchClusterResources() {
@@ -110,6 +112,7 @@
 
 	let cluster = $derived(clusterSidebarSnapshot.current.resources);
 	let nodes = $derived(clusterSidebarSnapshot.current.nodes);
+	let nodesById = $derived(new Map(nodes.map((node) => [node.nodeUUID, node])));
 
 	let globalNextGuestId = $derived.by(() => {
 		const guestIds = cluster.flatMap((resource) => [
@@ -124,18 +127,14 @@
 		return Math.max(...guestIds) + 1;
 	});
 
-	const tree = $derived([
-		{
-			id: 'datacenter',
-			label: 'Data Center',
-			icon: 'ant-design--cluster-outlined',
-			href: '/datacenter/summary',
-			children: cluster.map((n) => {
+	let treeNodes = $derived.by((): ResourceTreeNodeInput[] => {
+		return cluster.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
-				let mergedChildren = [
+				const resources: ResourceTreeResource[] = [
 					...(n.jails ?? []).map((j) => ({
 						id: `jail-${j.ctId}`,
 						sortId: j.ctId,
+						sortName: j.name,
 						resourceId: j.ctId,
 						resourceType: 'jail' as const,
 						nodeHostname: n.hostname,
@@ -147,6 +146,7 @@
 					...(n.vms ?? []).map((vm) => ({
 						id: `vm-${vm.rid}`,
 						sortId: vm.rid,
+						sortName: vm.name,
 						resourceId: vm.rid,
 						resourceType: 'vm' as const,
 						nodeHostname: n.hostname,
@@ -158,48 +158,30 @@
 							: vm.state === DomainState.DomainNostate
 								? 'orphan'
 								: 'inactive') as 'active' | 'inactive' | 'orphan'
-					}))
-				].sort((a, b) => a.sortId - b.sortId);
-
-				const templateChildren = (n.jailTemplates ?? [])
-					.map((template) => ({
+					})),
+					...(n.jailTemplates ?? []).map((template) => ({
 						id: `jail-template-${n.nodeUUID}-${template.id}`,
 						sortId: template.id,
+						sortName: template.name,
 						resourceId: template.id,
-						resourceType: 'jail-template' as 'jail-template' | 'vm-template',
+						resourceType: 'jail-template' as const,
 						nodeHostname: n.hostname,
 						label: template.name,
 						icon: 'mdi--file-tree-outline'
+					})),
+					...(n.vmTemplates ?? []).map((template) => ({
+						id: `vm-template-${n.nodeUUID}-${template.id}`,
+						sortId: template.id,
+						sortName: template.name,
+						resourceId: template.id,
+						resourceType: 'vm-template' as const,
+						nodeHostname: n.hostname,
+						label: template.name,
+						icon: 'mdi--monitor-shimmer'
 					}))
-					.concat(
-						(n.vmTemplates ?? []).map((template) => ({
-							id: `vm-template-${n.nodeUUID}-${template.id}`,
-							sortId: template.id,
-							resourceId: template.id,
-							resourceType: 'vm-template' as 'jail-template' | 'vm-template',
-							nodeHostname: n.hostname,
-							label: template.name,
-							icon: 'mdi--monitor-shimmer'
-						}))
-					)
-					.sort((a, b) => a.sortId - b.sortId)
-					.map(({ sortId: _sortId, ...item }) => item);
-
-				const nodeChildren = [
-					...mergedChildren,
-					...(templateChildren.length > 0
-						? [
-								{
-									id: `templates-${n.nodeUUID}`,
-									label: 'Templates',
-									icon: 'mdi--layers-outline',
-									children: templateChildren
-								}
-							]
-						: [])
 				];
 
-				const found = nodes.find((node) => node.nodeUUID === n.nodeUUID);
+				const found = nodesById.get(n.nodeUUID);
 				const isOffline = found?.status === 'offline';
 
 				return {
@@ -207,12 +189,23 @@
 					label: nodeLabel,
 					icon: isOffline ? 'mdi--server-off' : 'fluent--storage-20-filled',
 					href: isOffline ? `/inactive-node` : `/${nodeLabel}/summary`,
-					children: isOffline ? [] : nodeChildren,
+					resources: isOffline ? [] : resources,
 					nextGuestId: globalNextGuestId
 				};
-			})
-		}
-	]);
+			});
+	});
+
+	// @wc-ignore
+	const tree = $derived(
+		buildResourceTree({
+			nodes: treeNodes,
+			preferences,
+			rootIcon: 'ant-design--cluster-outlined',
+			nextGuestId: globalNextGuestId
+		})
+	);
+
+	let resourcesReady = $derived(!clusterSidebarSnapshot.loading);
 
 	watch(
 		() => storage.idle,
@@ -231,45 +224,17 @@
 	);
 
 	watch(
-		() => tree,
-		(currentTree) => {
-			if (currentTree.length > 0) {
-				const hasClusterNodes = cluster.length > 0;
-				const allCurrentIds = new Set(collectIds(currentTree));
+		[() => preferences.view, () => tree, () => resourcesReady],
+		([view, currentTree, ready]) => {
+			if (!ready || currentTree.length === 0 || initializedViews[view]) return;
 
-				if (!hasInitializedOpenIds) {
-					const hasSavedIds = hasSavedClusterIds();
-
-					// Wait for cluster data before pruning saved IDs to avoid collapsing everything on refresh.
-					if (hasSavedIds && !hasClusterNodes) {
-						return;
-					}
-
-					if (!hasSavedIds) {
-						openIds = new Set(allCurrentIds);
-						saveOpenIds(openIds);
-					} else {
-						const storedIds = loadClusterIds();
-						openIds = new Set(Array.from(storedIds).filter((id) => allCurrentIds.has(id)));
-						if (!isSameSet(openIds, storedIds)) {
-							saveOpenIds(openIds);
-						}
-					}
-
-					hasInitializedOpenIds = true;
-					return;
-				}
-
-				if (!hasClusterNodes) {
-					return;
-				}
-
-				const filteredIds = new Set(Array.from(openIds).filter((id) => allCurrentIds.has(id)));
-				if (!isSameSet(filteredIds, openIds)) {
-					openIds = filteredIds;
-					saveOpenIds(openIds);
-				}
+			if (!hasSavedOpenIds('cluster', view)) {
+				const nextOpenIds = new Set(collectResourceTreeIds(currentTree));
+				openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
+				saveOpenIds(nextOpenIds, 'cluster', view);
 			}
+
+			initializedViews = { ...initializedViews, [view]: true };
 		}
 	);
 

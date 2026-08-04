@@ -17,22 +17,10 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { handleAPIError } from '$lib/utils/http';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
-
-	interface SidebarProps {
-		id: string;
-		label: string;
-		icon: string;
-		href?: string;
-		state?: 'active' | 'inactive' | 'orphan';
-		resourceId?: number;
-		resourceType?: 'vm' | 'jail' | 'jail-template' | 'vm-template';
-		nodeHostname?: string;
-		nextGuestId?: number;
-		children?: SidebarProps[];
-	}
+	import type { ResourceTreeItem } from '$lib/resource-tree';
 
 	interface Props {
-		item: SidebarProps;
+		item: ResourceTreeItem;
 		openIds: Set<string>;
 		onToggleId: (id: string) => void;
 		nextGuestId?: number;
@@ -58,7 +46,7 @@
 
 	const sidebarActive = 'rounded-md bg-muted dark:bg-muted font-inter font-medium';
 
-	function isItemActive(menuItem: SidebarProps, currentUrl: string): boolean {
+	function isItemActive(menuItem: ResourceTreeItem, currentUrl: string): boolean {
 		if (menuItem.href) {
 			if (currentUrl.startsWith(menuItem.href)) {
 				return true;
@@ -256,8 +244,14 @@
 					{:else}
 						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
 					{/if}
-					<p class="font-inter cursor-pointer whitespace-nowrap">
+					<p
+						class="font-inter cursor-pointer whitespace-nowrap"
+						title={item.meta ? `${item.label} · ${item.meta}` : item.label}
+					>
 						{item.label}
+						{#if item.meta}
+							<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span>
+						{/if}
 					</p>
 				</div>
 
@@ -383,8 +377,14 @@
 				{:else}
 					<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
 				{/if}
-				<p class="font-inter cursor-pointer whitespace-nowrap">
+				<p
+					class="font-inter cursor-pointer whitespace-nowrap"
+					title={item.meta ? `${item.label} · ${item.meta}` : item.label}
+				>
 					{item.label}
+					{#if item.meta}
+						<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span>
+					{/if}
 				</p>
 			</div>
 

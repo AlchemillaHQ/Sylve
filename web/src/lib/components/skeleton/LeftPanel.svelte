@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
@@ -11,61 +12,45 @@
 	import { sameElements } from '$lib/utils/arr';
 	import { getEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { updateCache } from '$lib/utils/http';
+	import {
+		buildResourceTree,
+		collectResourceTreeIds,
+		type ResourceTreePreferences,
+		type ResourceTreeResource,
+		type ResourceTreeView
+	} from '$lib/resource-tree';
 	import { onDestroy } from 'svelte';
 	import { resource, watch } from 'runed';
 	import TreeViewCluster from './TreeViewCluster.svelte';
 
-	interface TreeItem {
-		id: string;
-		label: string;
-		icon: string;
-		href?: string;
-		state?: 'active' | 'inactive';
-		resourceId?: number;
-		resourceType?: 'vm' | 'jail' | 'jail-template' | 'vm-template';
-		nodeHostname?: string;
-		children?: TreeItem[];
+	interface Props {
+		preferences: ResourceTreePreferences;
 	}
 
-	let openIds = $state(loadOpenIds());
-	let hasInitializedOpenIds = $state(false);
+	let { preferences }: Props = $props();
+
+	let openIdsByView = $state<Record<ResourceTreeView, Set<string>>>({
+		server: loadOpenIds('single', 'server'),
+		folder: loadOpenIds('single', 'folder')
+	});
+	let initializedViews = $state<Record<ResourceTreeView, boolean>>({
+		server: false,
+		folder: false
+	});
+	let openIds = $derived(openIdsByView[preferences.view]);
 
 	const toggleOpen = (id: string) => {
-		if (openIds.has(id)) {
-			openIds.delete(id);
+		const view = preferences.view;
+		const nextOpenIds = new SvelteSet(openIdsByView[view]);
+		if (nextOpenIds.has(id)) {
+			nextOpenIds.delete(id);
 		} else {
-			openIds.add(id);
+			nextOpenIds.add(id);
 		}
 
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		openIds = new Set(openIds);
-		saveOpenIds(openIds);
+		openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
+		saveOpenIds(nextOpenIds, 'single', view);
 	};
-
-	function collectIds(nodes: TreeItem[]): string[] {
-		const ids: string[] = [];
-		for (const node of nodes) {
-			ids.push(node.id);
-			if (node.children && node.children.length > 0) {
-				ids.push(...collectIds(node.children));
-			}
-		}
-		return ids;
-	}
-
-	function isSameSet(a: Set<string>, b: Set<string>): boolean {
-		if (a.size !== b.size) {
-			return false;
-		}
-
-		for (const value of a) {
-			if (!b.has(value)) {
-				return false;
-			}
-		}
-
-		return true;
-	}
 
 	let node = $derived.by(() => {
 		const routeHost = page.url.pathname.split('/').filter(Boolean)[0] || '';
@@ -157,11 +142,26 @@
 		}
 	);
 
-	let guestChildren = $derived.by(() => {
-		const merged = [
+	let guestResourceIds = $derived.by(() => {
+		const jailCTIDs = simpleJails.current.map((jail) => jail.ctId);
+		const vmCTIDs = simpleVMs.current.map((vm) => vm.rid);
+		return [...jailCTIDs, ...vmCTIDs].sort((a, b) => a - b);
+	});
+
+	let nextGuestId = $derived.by(() => {
+		if (guestResourceIds.length === 0) {
+			return 100;
+		}
+
+		return Math.max(...guestResourceIds) + 1;
+	});
+
+	let nodeResources = $derived.by((): ResourceTreeResource[] => {
+		return [
 			...simpleVMs.current.map((vm) => ({
 				id: `vm-${vm.rid}`,
 				sortId: vm.rid,
+				sortName: vm.name,
 				resourceId: vm.rid,
 				resourceType: 'vm' as const,
 				nodeHostname: node,
@@ -175,6 +175,7 @@
 			...simpleJails.current.map((jail) => ({
 				id: `jail-${jail.ctId}`,
 				sortId: jail.ctId,
+				sortName: jail.name,
 				resourceId: jail.ctId,
 				resourceType: 'jail' as const,
 				nodeHostname: node,
@@ -182,71 +183,55 @@
 				icon: 'hugeicons--prison',
 				href: `/${node}/jail/${jail.ctId}/summary`,
 				state: (jail.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+			})),
+			...simpleJailTemplates.current.map((template) => ({
+				id: `jail-template-${template.id}`,
+				sortId: template.id,
+				sortName: template.name,
+				resourceId: template.id,
+				resourceType: 'jail-template' as const,
+				nodeHostname: node,
+				label: template.name,
+				icon: 'icon-park-outline--prison'
+			})),
+			...simpleVMTemplates.current.map((template) => ({
+				id: `vm-template-${template.id}`,
+				sortId: template.id,
+				sortName: template.name,
+				resourceId: template.id,
+				resourceType: 'vm-template' as const,
+				nodeHostname: node,
+				label: template.name,
+				icon: 'mdi--monitor-shimmer'
 			}))
-		].sort((a, b) => a.sortId - b.sortId);
-
-		return merged.map(({ sortId: _sortId, ...item }) => item);
-	}) as TreeItem[];
-
-	let templateChildren = $derived.by(() => {
-		const jailTemplates = (simpleJailTemplates.current || []).map((template) => ({
-			id: `jail-template-${template.id}`,
-			sortId: template.id,
-			resourceId: template.id,
-			resourceType: 'jail-template' as const,
-			nodeHostname: node,
-			label: template.name,
-			icon: 'icon-park-outline--prison'
-		}));
-
-		const vmTemplates = (simpleVMTemplates.current || []).map((template) => ({
-			id: `vm-template-${template.id}`,
-			sortId: template.id,
-			resourceId: template.id,
-			resourceType: 'vm-template' as const,
-			nodeHostname: node,
-			label: template.name,
-			icon: 'mdi--monitor-shimmer'
-		}));
-
-		return [...jailTemplates, ...vmTemplates]
-			.sort((a, b) => a.sortId - b.sortId)
-			.map(({ sortId: _sortId, ...item }) => item);
-	}) as TreeItem[];
+		];
+	});
 
 	// @wc-ignore
-	const tree = $derived([
-		{
-			id: 'datacenter',
-			label: 'Data Center',
-			icon: 'fa-solid--server',
-			href: '/datacenter/summary',
-			children: [
+	const tree = $derived(
+		buildResourceTree({
+			nodes: [
 				{
 					id: `node-${node}`,
 					label: node,
 					icon: 'fluent--storage-20-filled',
 					href: `/${node}/summary`,
-					children:
-						guestChildren.length > 0 || templateChildren.length > 0
-							? [
-									...guestChildren,
-									...(templateChildren.length > 0
-										? [
-												{
-													id: `templates-${node}`,
-													label: 'Templates',
-													icon: 'mdi--layers-outline',
-													children: templateChildren
-												}
-											]
-										: [])
-								]
-							: undefined
+					resources: nodeResources,
+					nextGuestId
 				}
-			]
-		}
-	]) as TreeItem[];
+			],
+			preferences,
+			rootIcon: 'fa-solid--server',
+			nextGuestId
+		})
+	);
+
+	let resourcesReady = $derived(
+		!simpleVMs.loading &&
+			!simpleJails.loading &&
+			!simpleJailTemplates.loading &&
+			!simpleVMTemplates.loading
+	);
 
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
 	async function refetchPanelResources() {
@@ -311,52 +296,19 @@
 	);
 
 	watch(
-		() => tree,
-		(currentTree) => {
-			if (currentTree.length === 0) {
-				return;
+		[() => preferences.view, () => tree, () => resourcesReady],
+		([view, currentTree, ready]) => {
+			if (!ready || currentTree.length === 0 || initializedViews[view]) return;
+
+			if (!hasSavedOpenIds('single', view)) {
+				const nextOpenIds = new Set(collectResourceTreeIds(currentTree));
+				openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
+				saveOpenIds(nextOpenIds, 'single', view);
 			}
 
-			const allCurrentIds = new Set(collectIds(currentTree));
-			if (!hasInitializedOpenIds) {
-				if (!hasSavedOpenIds()) {
-					openIds = new Set(allCurrentIds);
-					saveOpenIds(openIds);
-				} else {
-					const filteredInitialIds = new Set(
-						Array.from(openIds).filter((id) => allCurrentIds.has(id))
-					);
-					if (!isSameSet(filteredInitialIds, openIds)) {
-						openIds = filteredInitialIds;
-						saveOpenIds(openIds);
-					}
-				}
-
-				hasInitializedOpenIds = true;
-				return;
-			}
-
-			const filtered = new Set(Array.from(openIds).filter((id) => allCurrentIds.has(id)));
-			if (!isSameSet(filtered, openIds)) {
-				openIds = filtered;
-				saveOpenIds(openIds);
-			}
+			initializedViews = { ...initializedViews, [view]: true };
 		}
 	);
-
-	let guestResourceIds = $derived.by(() => {
-		const jailCTIDs = simpleJails.current.map((jail) => jail.ctId);
-		const vmCTIDs = simpleVMs.current.map((vm) => vm.rid);
-		return [...jailCTIDs, ...vmCTIDs].sort();
-	});
-
-	let nextGuestId = $derived.by(() => {
-		if (guestResourceIds.length === 0) {
-			return 100;
-		}
-
-		return Math.max(...guestResourceIds) + 1;
-	});
 </script>
 
 <div class="flex h-full min-h-0 flex-col px-1.5 pt-1">

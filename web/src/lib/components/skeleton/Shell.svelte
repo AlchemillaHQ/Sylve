@@ -5,9 +5,15 @@
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
+	import {
+		DEFAULT_RESOURCE_TREE_PREFERENCES,
+		normalizeResourceTreePreferences,
+		type ResourceTreePreferences
+	} from '$lib/resource-tree';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
+	import ResourceTreeToolbar from './ResourceTreeToolbar.svelte';
 	import { fade } from 'svelte/transition';
-	import { resource, watch } from 'runed';
+	import { PersistedState, resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
 
 	interface Props {
@@ -37,6 +43,13 @@
 
 	let details = $derived(clusterDetails.current);
 	let clustered = $derived(details?.cluster?.enabled ?? Boolean(storage.clusterToken));
+	const resourceTreePreferences = new PersistedState<ResourceTreePreferences>(
+		'sylve-resource-tree-preferences-v1',
+		DEFAULT_RESOURCE_TREE_PREFERENCES
+	);
+	let treePreferences = $derived(
+		normalizeResourceTreePreferences(resourceTreePreferences.current)
+	);
 
 	let leftPaneDefaultSize = $state(12);
 	let topPaneDefaultSize = $state(90);
@@ -47,6 +60,10 @@
 	function handleLifecycleActiveChange(active: boolean) {
 		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
 		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
+	}
+
+	function updateTreePreferences(preferences: ResourceTreePreferences) {
+		resourceTreePreferences.current = normalizeResourceTreePreferences(preferences);
 	}
 </script>
 
@@ -66,12 +83,18 @@
 						autoSaveId="child-left-pane-auto-save"
 					>
 						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
-							<div class="h-full" transition:fade|global={{ duration: 400 }}>
-								{#if clustered}
-									<LeftPanelClustered />
-								{:else}
-									<LeftPanel />
-								{/if}
+							<div class="flex h-full min-h-0 flex-col">
+								<ResourceTreeToolbar
+									preferences={treePreferences}
+									onChange={updateTreePreferences}
+								/>
+								<div class="min-h-0 flex-1" transition:fade|global={{ duration: 400 }}>
+									{#if clustered}
+										<LeftPanelClustered preferences={treePreferences} />
+									{:else}
+										<LeftPanel preferences={treePreferences} />
+									{/if}
+								</div>
 							</div>
 						</Resizable.Pane>
 						<Resizable.Handle withHandle />
