@@ -115,9 +115,12 @@ under sponsorship from the FreeBSD Foundation.
 				summary.statusUnavailable > 0)
 	);
 	let attentionText = $derived.by(() => {
-		if (snapshot.current.stale) return 'Live ZFS telemetry is stale. Historical data remains available.';
-		if (summary.errors > 0) return `${summary.errors} ZFS error${summary.errors === 1 ? '' : 's'} require review in the selected scope.`;
-		if (healthRank(summary.health) > 1) return `Pool state is ${summary.health}. Review pool and device status.`;
+		if (snapshot.current.stale)
+			return 'Live ZFS telemetry is stale. Historical data remains available.';
+		if (summary.errors > 0)
+			return `${summary.errors} ZFS error${summary.errors === 1 ? '' : 's'} require review in the selected scope.`;
+		if (healthRank(summary.health) > 1)
+			return `Pool state is ${summary.health}. Review pool and device status.`;
 		return `Detailed device status is unavailable for ${summary.statusUnavailable} pool${summary.statusUnavailable === 1 ? '' : 's'}.`;
 	});
 	let sampledLabel = $derived(
@@ -151,7 +154,10 @@ under sponsorship from the FreeBSD Foundation.
 	watch(
 		[() => data.hostname, () => snapshot.current.pools.map((pool) => pool.guid).join('|')],
 		([hostname, poolGUIDs], [previousHostname]) => {
-			if (hostname !== previousHostname || (selectedPool !== ALL_POOLS && !poolGUIDs.split('|').includes(selectedPool))) {
+			if (
+				hostname !== previousHostname ||
+				(selectedPool !== ALL_POOLS && !poolGUIDs.split('|').includes(selectedPool))
+			) {
 				selectedPool = ALL_POOLS;
 			}
 		},
@@ -174,18 +180,23 @@ under sponsorship from the FreeBSD Foundation.
 <div class="dashboard-root">
 	<header class="dashboard-toolbar">
 		<div class="flex min-w-0 items-center gap-3">
-			<span class="icon-[file-icons--openzfs] size-5 shrink-0 text-blue-500" aria-hidden="true"></span>
+			<span class="icon-[file-icons--openzfs] size-5 shrink-0 text-blue-500" aria-hidden="true"
+			></span>
 			<div class="min-w-0">
 				<div class="flex flex-wrap items-center gap-2">
 					<h1 class="text-lg font-semibold tracking-tight">ZFS</h1>
 					<Badge
 						variant="outline"
-						class={snapshot.current.stale ? 'border-amber-500/30 text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}
+						class={snapshot.current.stale
+							? 'border-amber-500/30 text-amber-600 dark:text-amber-400'
+							: 'text-muted-foreground'}
 					>
 						{snapshot.current.stale ? 'Stale' : sampledLabel}
 					</Badge>
 				</div>
-				<p class="text-muted-foreground truncate text-xs">Operational storage and performance on {data.hostname}</p>
+				<p class="text-muted-foreground truncate text-xs">
+					Operational storage and performance on {data.hostname}
+				</p>
 			</div>
 		</div>
 
@@ -213,7 +224,10 @@ under sponsorship from the FreeBSD Foundation.
 				aria-label="Refresh dashboard"
 				title="Refresh dashboard"
 			>
-				<span class={['icon-[mdi--refresh] size-4', refreshing && 'animate-spin']} aria-hidden="true"></span>
+				<span
+					class={['icon-[mdi--refresh] size-4', refreshing && 'animate-spin']}
+					aria-hidden="true"
+				></span>
 			</Button>
 		</div>
 	</header>
@@ -222,10 +236,18 @@ under sponsorship from the FreeBSD Foundation.
 		<section class="summary-grid" aria-label="ZFS operational summary">
 			<OperationalStat
 				label="Storage health"
-				value={focusedPools.length > 0 ? `${summary.online} / ${focusedPools.length} online` : 'No pools'}
-				detail={summary.errors > 0 ? `${summary.errors} known errors` : summary.statusUnavailable > 0 ? 'Some device status unavailable' : 'No known pool or device errors'}
+				value={focusedPools.length > 0
+					? `${summary.online} / ${focusedPools.length} online`
+					: 'No pools'}
+				detail={summary.errors > 0
+					? `${summary.errors} known errors`
+					: summary.statusUnavailable > 0
+						? 'Some device status unavailable'
+						: 'No known pool or device errors'}
 				footer={selectedScopeLabel}
-				iconClass={healthTone === 'success' ? 'icon-[mdi--shield-check-outline]' : 'icon-[mdi--shield-alert-outline]'}
+				iconClass={healthTone === 'success'
+					? 'icon-[mdi--shield-check-outline]'
+					: 'icon-[mdi--shield-alert-outline]'}
 				tone={healthTone}
 			/>
 
@@ -244,7 +266,7 @@ under sponsorship from the FreeBSD Foundation.
 				value={verification.value}
 				detail={verification.detail}
 				footer={verification.footer}
-				iconClass="icon-[mdi--shield-search-outline]"
+				iconClass="icon-[lets-icons--check-fill]"
 				tone={verification.tone}
 				progress={verification.progress}
 			/>
@@ -280,7 +302,10 @@ under sponsorship from the FreeBSD Foundation.
 					<div class="flex items-start justify-between gap-3">
 						<div>
 							<h2 class="flex items-center gap-2 text-sm font-semibold">
-								<span class="icon-[mdi--database-check-outline] size-4 text-blue-500" aria-hidden="true"></span>
+								<span
+									class="icon-[mdi--database-check-outline] size-4 text-blue-500"
+									aria-hidden="true"
+								></span>
 								Pools
 							</h2>
 							<p class="text-muted-foreground mt-1 text-xs">Capacity, integrity, and scan state.</p>
@@ -297,12 +322,33 @@ under sponsorship from the FreeBSD Foundation.
 							onSelect={(guid) => (selectedPool = guid)}
 						/>
 						<div class="detail-grid p-4">
-							<div><p class="text-muted-foreground text-xs">Topology</p><p class="mt-1 text-sm font-medium tabular-nums">{summary.dataVdevs} VDEV{summary.dataVdevs === 1 ? '' : 's'} · {summary.disks} disk{summary.disks === 1 ? '' : 's'}</p></div>
-							<div><p class="text-muted-foreground text-xs">Fragmentation</p><p class="mt-1 text-sm font-medium tabular-nums">{summary.fragmentation.toFixed(0)}%</p></div>
-							<div><p class="text-muted-foreground text-xs">Dedup ratio</p><p class="mt-1 text-sm font-medium tabular-nums">{summary.dedupRatio.toFixed(2)}×</p></div>
+							<div>
+								<p class="text-muted-foreground text-xs">Topology</p>
+								<p class="mt-1 text-sm font-medium tabular-nums">
+									{summary.dataVdevs} VDEV{summary.dataVdevs === 1 ? '' : 's'} · {summary.disks} disk{summary.disks ===
+									1
+										? ''
+										: 's'}
+								</p>
+							</div>
+							<div>
+								<p class="text-muted-foreground text-xs">Fragmentation</p>
+								<p class="mt-1 text-sm font-medium tabular-nums">
+									{summary.fragmentation.toFixed(0)}%
+								</p>
+							</div>
+							<div>
+								<p class="text-muted-foreground text-xs">Dedup ratio</p>
+								<p class="mt-1 text-sm font-medium tabular-nums">
+									{summary.dedupRatio.toFixed(2)}×
+								</p>
+							</div>
 						</div>
 					{:else}
-						<div class="text-muted-foreground flex min-h-64 flex-col items-center justify-center gap-2 p-4 text-center" role="status">
+						<div
+							class="text-muted-foreground flex min-h-64 flex-col items-center justify-center gap-2 p-4 text-center"
+							role="status"
+						>
 							<span class="icon-[bi--hdd-stack] size-7" aria-hidden="true"></span>
 							<p class="text-sm font-medium">No imported ZFS pools found</p>
 						</div>
@@ -315,24 +361,25 @@ under sponsorship from the FreeBSD Foundation.
 					<div class="performance-header">
 						<div>
 							<h2 class="flex items-center gap-2 text-sm font-semibold">
-								<span class="icon-[mdi--chart-timeline-variant] size-4 text-blue-500" aria-hidden="true"></span>
+								<span
+									class="icon-[mdi--chart-timeline-variant] size-4 text-blue-500"
+									aria-hidden="true"
+								></span>
 								Performance
 							</h2>
-							<p class="text-muted-foreground mt-1 text-xs">Historical logical I/O for {selectedScopeLabel.toLowerCase()}.</p>
+							<p class="text-muted-foreground mt-1 text-xs">
+								Historical logical I/O for {selectedScopeLabel.toLowerCase()}.
+							</p>
 						</div>
 						<div class="chart-controls">
 							<div class="segmented" role="group" aria-label="Performance metric">
-								{#each [
-									{ value: 'bandwidth', label: 'Bandwidth' },
-									{ value: 'operations', label: 'IOPS' },
-									{ value: 'latency', label: 'Latency' }
-								] as metric (metric.value)}
+								{#each [{ value: 'bandwidth', label: 'Bandwidth' }, { value: 'operations', label: 'IOPS' }, { value: 'latency', label: 'Latency' }] as metric (metric.value)}
 									<button
 										type="button"
 										class:active={performanceMetric === metric.value}
 										onclick={() => (performanceMetric = metric.value as PerformanceMetric)}
-										aria-pressed={performanceMetric === metric.value}
-									>{metric.label}</button>
+										aria-pressed={performanceMetric === metric.value}>{metric.label}</button
+									>
 								{/each}
 							</div>
 							<div class="segmented" role="group" aria-label="History range">
@@ -341,8 +388,8 @@ under sponsorship from the FreeBSD Foundation.
 										type="button"
 										class:active={selectedRange === range.value}
 										onclick={() => (selectedRange = range.value)}
-										aria-pressed={selectedRange === range.value}
-									>{range.label}</button>
+										aria-pressed={selectedRange === range.value}>{range.label}</button
+									>
 								{/each}
 							</div>
 						</div>
@@ -363,7 +410,9 @@ under sponsorship from the FreeBSD Foundation.
 					<span class="icon-[mdi--memory] size-4 text-blue-500" aria-hidden="true"></span>
 					Node ARC
 				</h2>
-				<p class="text-muted-foreground mt-1 text-xs">Node-wide cache efficiency, sizing, composition, and pressure.</p>
+				<p class="text-muted-foreground mt-1 text-xs">
+					Node-wide cache efficiency, sizing, composition, and pressure.
+				</p>
 			</Card.Header>
 			<Card.Content class="px-4 pt-2 pb-4">
 				<ARCPanel arc={snapshot.current.arc} />
@@ -435,7 +484,9 @@ under sponsorship from the FreeBSD Foundation.
 		color: var(--muted-foreground);
 		font-size: 0.75rem;
 		line-height: 1rem;
-		transition: background-color 150ms, color 150ms;
+		transition:
+			background-color 150ms,
+			color 150ms;
 	}
 
 	.segmented button:hover {

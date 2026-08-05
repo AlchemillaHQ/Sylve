@@ -6093,7 +6093,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -19200,11 +19200,8 @@ msgstr ""
 msgid "Tree Settings"
 msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Legacy VM restor"
-msgstr ""
+#~ msgid "Legacy VM restor"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Create separate VM and Jail branches."

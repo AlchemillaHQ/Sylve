@@ -6093,8 +6093,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -19226,8 +19226,6 @@ msgstr "Save settings"
 msgid "Tree Settings"
 msgstr "Tree Settings"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "Legacy VM restor"
 msgstr "Legacy VM restor"

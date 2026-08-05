@@ -119,7 +119,7 @@ func RegisterRoutes(r *gin.Engine,
 	health.Use(middleware.EnsureAuthenticated(authService))
 	{
 		health.GET("/basic", BasicHealthCheckHandler(systemService))
-		health.POST("/basic", BasicHealthCheckHandler(systemService))
+		health.POST("/basic", BasicHealthCheckWithClusterKeyHandler(systemService))
 		health.GET("/http", HTTPHealthCheckHandler)
 	}
 
