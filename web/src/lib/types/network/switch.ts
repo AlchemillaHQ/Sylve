@@ -35,7 +35,8 @@ export const StandardSwitchSchema = z.object({
 	dhcp: z.boolean().optional(),
 	slaac: z.boolean(),
 	disableIPv6: z.boolean(),
-	defaultRoute: z.boolean()
+	defaultRoute: z.boolean(),
+	disableBridgeOffloads: z.boolean().optional().default(false)
 });
 
 export const ManualSwitchSchema = z.object({

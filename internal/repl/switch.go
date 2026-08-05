@@ -238,6 +238,9 @@ func buildStandardSwitchCreateRequest(
 	if request.DefaultRoute, err = switchCreateBoolOption(options, "--default-route"); err != nil {
 		return consoleprotocol.StandardSwitchCreateRequest{}, err
 	}
+	if request.DisableBridgeOffloads, err = switchCreateBoolOption(options, "--disable-bridge-offloads"); err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
 	request.Network4Manual = switchCreateStringOption(options, "--network4-manual")
 	request.Gateway4Manual = switchCreateStringOption(options, "--gateway4-manual")
 	request.Network6Manual = switchCreateStringOption(options, "--network6-manual")
@@ -278,30 +281,32 @@ func switchCreateStringOption(options map[string]string, name string) string {
 }
 
 var standardSwitchEditOptionNames = map[string]bool{
-	"--mtu":             true,
-	"--vlan":            true,
-	"--network4":        true,
-	"--gateway4":        true,
-	"--network6":        true,
-	"--gateway6":        true,
-	"--network4-manual": true,
-	"--gateway4-manual": true,
-	"--network6-manual": true,
-	"--gateway6-manual": true,
-	"--ports":           true,
-	"--private":         true,
-	"--dhcp":            true,
-	"--disable-ipv6":    true,
-	"--slaac":           true,
-	"--default-route":   true,
+	"--mtu":                     true,
+	"--vlan":                    true,
+	"--network4":                true,
+	"--gateway4":                true,
+	"--network6":                true,
+	"--gateway6":                true,
+	"--network4-manual":         true,
+	"--gateway4-manual":         true,
+	"--network6-manual":         true,
+	"--gateway6-manual":         true,
+	"--ports":                   true,
+	"--private":                 true,
+	"--dhcp":                    true,
+	"--disable-ipv6":            true,
+	"--slaac":                   true,
+	"--default-route":           true,
+	"--disable-bridge-offloads": true,
 }
 
 var standardSwitchEditBooleanOptionNames = map[string]bool{
-	"--private":       true,
-	"--dhcp":          true,
-	"--disable-ipv6":  true,
-	"--slaac":         true,
-	"--default-route": true,
+	"--private":                 true,
+	"--dhcp":                    true,
+	"--disable-ipv6":            true,
+	"--slaac":                   true,
+	"--default-route":           true,
+	"--disable-bridge-offloads": true,
 }
 
 var manualSwitchEditOptionNames = map[string]bool{
@@ -384,6 +389,9 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
 	if request.DefaultRoute, err = switchEditBoolOption(options, "--default-route"); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if request.DisableBridgeOffloads, err = switchEditBoolOption(options, "--disable-bridge-offloads"); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
 	if !standardSwitchEditChanged(request) {
@@ -552,6 +560,7 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 			standard.DisableIPv6,
 			standard.SLAAC,
 			standard.DefaultRoute,
+			standard.DisableBridgeOffloads,
 			manual,
 		); err != nil {
 			return switchCreateResult{}, fmt.Errorf("failed_to_create_standard_switch: %w", err)
@@ -587,22 +596,23 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 }
 
 type standardSwitchEditConfig struct {
-	MTU            int
-	VLAN           int
-	Network4       uint
-	Gateway4       uint
-	Network6       uint
-	Gateway6       uint
-	Network4Manual string
-	Gateway4Manual string
-	Network6Manual string
-	Gateway6Manual string
-	DisableIPv6    bool
-	SLAAC          bool
-	Private        bool
-	DefaultRoute   bool
-	DHCP           bool
-	Ports          []string
+	MTU                   int
+	VLAN                  int
+	Network4              uint
+	Gateway4              uint
+	Network6              uint
+	Gateway6              uint
+	Network4Manual        string
+	Gateway4Manual        string
+	Network6Manual        string
+	Gateway6Manual        string
+	DisableIPv6           bool
+	SLAAC                 bool
+	Private               bool
+	DefaultRoute          bool
+	DisableBridgeOffloads bool
+	DHCP                  bool
+	Ports                 []string
 }
 
 func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switchEditResult, error) {
@@ -648,6 +658,7 @@ func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switch
 			config.DisableIPv6,
 			config.SLAAC,
 			config.DefaultRoute,
+			config.DisableBridgeOffloads,
 			manual,
 		); err != nil {
 			return switchEditResult{}, fmt.Errorf("failed_to_update_standard_switch: %w", err)
@@ -713,18 +724,19 @@ func manualSwitchForEdit(ctx *Context, id uint) (networkModels.ManualSwitch, err
 
 func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch) standardSwitchEditConfig {
 	config := standardSwitchEditConfig{
-		MTU:            switchModel.MTU,
-		VLAN:           switchModel.VLAN,
-		Network4Manual: switchModel.NetworkManual,
-		Gateway4Manual: switchModel.GatewayManual,
-		Network6Manual: switchModel.Network6Manual,
-		Gateway6Manual: switchModel.Gateway6Manual,
-		DisableIPv6:    switchModel.DisableIPv6,
-		SLAAC:          switchModel.SLAAC,
-		Private:        switchModel.Private,
-		DefaultRoute:   switchModel.DefaultRoute,
-		DHCP:           switchModel.DHCP,
-		Ports:          make([]string, 0, len(switchModel.Ports)),
+		MTU:                   switchModel.MTU,
+		VLAN:                  switchModel.VLAN,
+		Network4Manual:        switchModel.NetworkManual,
+		Gateway4Manual:        switchModel.GatewayManual,
+		Network6Manual:        switchModel.Network6Manual,
+		Gateway6Manual:        switchModel.Gateway6Manual,
+		DisableIPv6:           switchModel.DisableIPv6,
+		SLAAC:                 switchModel.SLAAC,
+		Private:               switchModel.Private,
+		DefaultRoute:          switchModel.DefaultRoute,
+		DisableBridgeOffloads: switchModel.DisableBridgeOffloads,
+		DHCP:                  switchModel.DHCP,
+		Ports:                 make([]string, 0, len(switchModel.Ports)),
 	}
 	if switchModel.NetworkID != nil {
 		config.Network4 = *switchModel.NetworkID
@@ -775,6 +787,9 @@ func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request co
 	}
 	if request.DefaultRoute != nil {
 		config.DefaultRoute = *request.DefaultRoute
+	}
+	if request.DisableBridgeOffloads != nil {
+		config.DisableBridgeOffloads = *request.DisableBridgeOffloads
 	}
 	if len(config.Ports) == 0 {
 		return fmt.Errorf("switch_ports_required")
@@ -839,7 +854,8 @@ func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest
 		request.DHCP != nil ||
 		request.DisableIPv6 != nil ||
 		request.SLAAC != nil ||
-		request.DefaultRoute != nil
+		request.DefaultRoute != nil ||
+		request.DisableBridgeOffloads != nil
 }
 
 func formatSwitches(result switchListResult) string {

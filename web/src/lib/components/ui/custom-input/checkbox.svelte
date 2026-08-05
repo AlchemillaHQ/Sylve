@@ -43,8 +43,8 @@
 				{/snippet}
 			</Tooltip.Trigger>
 		</div>
-		<Tooltip.Content side="top" sideOffset={2}>
-			<p>{title}</p>
+		<Tooltip.Content side="top" sideOffset={2} class="max-w-xs whitespace-normal">
+			<p class="text-justify leading-relaxed [text-align-last:justify]">{title}</p>
 		</Tooltip.Content>
 	</Tooltip.Root>
 {:else}

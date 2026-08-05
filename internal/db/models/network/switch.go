@@ -56,6 +56,10 @@ type StandardSwitch struct {
 	DisableIPv6  bool `json:"disableIPv6" gorm:"default:false"`
 	Private      bool `json:"private" gorm:"default:false"`
 	DefaultRoute bool `json:"defaultRoute" gorm:"default:false"`
+	// DisableBridgeOffloads keeps FreeBSD from changing bridge-member
+	// capabilities as transient tap and epair interfaces come and go.
+	// Sorts flapping issues (Please tell @hayzam if you faced flapping before/after enabling this option).
+	DisableBridgeOffloads bool `json:"disableBridgeOffloads" gorm:"default:false"`
 
 	Ports []NetworkPort `json:"ports" gorm:"foreignKey:SwitchID;constraint:OnDelete:CASCADE"`
 

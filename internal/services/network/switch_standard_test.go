@@ -83,6 +83,121 @@ func TestNormalizeIPv6GatewayForRouteKeepsGlobalAddressUnchanged(t *testing.T) {
 	}
 }
 
+func TestDisableBridgeMemberOffloadsOnlyChangesEnabledCapabilities(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name: name,
+				Capabilities: iface.Capabilities{
+					Enabled: iface.Flags{Raw: ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapTSO6 | ifcapLRO},
+				},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	if err := disableBridgeMemberOffloads("testport0"); err != nil {
+		t.Fatalf("disable bridge offloads: %v", err)
+	}
+
+	want := "/sbin/ifconfig testport0 -txcsum -txcsum6 -tso -lro"
+	if len(commands) != 1 || commands[0] != want {
+		t.Fatalf("offload commands = %v, want [%q]", commands, want)
+	}
+}
+
+func TestDisableBridgeMemberOffloadsIsNoOpWhenAlreadyDisabled(t *testing.T) {
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			t.Fatalf("unexpected command: %s %s", command, strings.Join(args, " "))
+			return "", nil
+		},
+	})
+
+	if err := disableBridgeMemberOffloads("testport0"); err != nil {
+		t.Fatalf("already-disabled interface returned error: %v", err)
+	}
+}
+
+func TestDisableBridgeMemberOffloadsSkipsTransientInterfaces(t *testing.T) {
+	tests := []struct {
+		name         string
+		interfaceObj *iface.Interface
+	}{
+		{name: "tap_fixture0", interfaceObj: &iface.Interface{Driver: "tap"}},
+		{name: "epair_fixture0a", interfaceObj: &iface.Interface{}},
+		{name: "vnet_fixture0", interfaceObj: &iface.Interface{Groups: []string{"vnet"}}},
+		{name: "bridge_fixture0", interfaceObj: &iface.Interface{Groups: []string{"bridge"}}},
+	}
+
+	interfaces := make(map[string]*iface.Interface, len(tests))
+	for _, test := range tests {
+		test.interfaceObj.Name = test.name
+		test.interfaceObj.Capabilities.Enabled.Raw = ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapLRO
+		interfaces[test.name] = test.interfaceObj
+	}
+
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return interfaces[name], nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			t.Fatalf("unexpected command: %s %s", command, strings.Join(args, " "))
+			return "", nil
+		},
+	})
+
+	for _, test := range tests {
+		if err := disableBridgeMemberOffloads(test.name); err != nil {
+			t.Fatalf("transient interface %s returned error: %v", test.name, err)
+		}
+	}
+}
+
+func TestAddBridgeMemberDisablesOffloadsBeforeAttachment(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name: name,
+				Capabilities: iface.Capabilities{
+					Enabled: iface.Flags{Raw: ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapLRO},
+				},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	if err := addBridgeMember("testbridge0", "testport0", 0, 0, true); err != nil {
+		t.Fatalf("add bridge member: %v", err)
+	}
+
+	offloadCommand := "/sbin/ifconfig testport0 -txcsum -txcsum6 -tso -lro"
+	attachCommand := "/sbin/ifconfig testbridge0 addm testport0 up"
+	offloadIndex, attachIndex := -1, -1
+	for index, command := range commands {
+		if command == offloadCommand {
+			offloadIndex = index
+		}
+		if command == attachCommand {
+			attachIndex = index
+		}
+	}
+	if offloadIndex == -1 || attachIndex == -1 || offloadIndex >= attachIndex {
+		t.Fatalf("offloads must be disabled before bridge attachment, commands: %v", commands)
+	}
+}
+
 func TestNormalizeStandardSwitchAddressModes(t *testing.T) {
 	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
 		network4ID:  1,
@@ -152,6 +267,7 @@ func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		networkModels.StandardSwitchManualAddresses{},
 	)
 	if err == nil {
@@ -178,6 +294,7 @@ func TestNewStandardSwitchRejectsInvalidVLAN(t *testing.T) {
 		0,
 		0,
 		[]string{"em0"},
+		false,
 		false,
 		false,
 		false,
@@ -224,6 +341,7 @@ func TestNewStandardSwitchRejectsPortOverlapDeterministically(t *testing.T) {
 		0,
 		0,
 		[]string{"em0"},
+		false,
 		false,
 		false,
 		false,
@@ -1446,6 +1564,7 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 		false,
 		false,
 		false,
+		true,
 		networkModels.StandardSwitchManualAddresses{
 			Network4: "10.81.0.254/24",
 			Gateway4: "10.81.0.1",
@@ -1471,6 +1590,9 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 	}
 	if got.Network(4) != "10.81.0.254/24" || got.Gateway(6) != "fe80::1" {
 		t.Fatalf("helpers did not resolve manual values: net4=%q gw6=%q", got.Network(4), got.Gateway(6))
+	}
+	if !got.DisableBridgeOffloads {
+		t.Fatal("expected bridge offload policy to be persisted")
 	}
 }
 
@@ -1501,6 +1623,7 @@ func TestNewStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 		0,
 		0,
 		[]string{},
+		false,
 		false,
 		false,
 		false,
@@ -1562,6 +1685,7 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 		false,
 		false,
 		false,
+		true,
 		networkModels.StandardSwitchManualAddresses{Network4: "10.9.0.1/24"},
 	)
 	if err != nil {
@@ -1577,6 +1701,9 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 	}
 	if got.NetworkManual != "10.9.0.1/24" {
 		t.Fatalf("expected NetworkManual set, got %q", got.NetworkManual)
+	}
+	if !got.DisableBridgeOffloads {
+		t.Fatal("expected bridge offload policy to be updated")
 	}
 }
 
@@ -1621,6 +1748,7 @@ func TestEditStandardSwitchManualToObjectClearsManual(t *testing.T) {
 		0,
 		0,
 		[]string{},
+		false,
 		false,
 		false,
 		false,

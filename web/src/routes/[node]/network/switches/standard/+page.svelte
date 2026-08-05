@@ -103,7 +103,8 @@
 			ports: [] as string[],
 			dhcp: false,
 			slaac: false,
-			defaultRoute: false
+			defaultRoute: false,
+			disableBridgeOffloads: true
 		},
 		editSwitch: {
 			oldName: '',
@@ -122,7 +123,8 @@
 			ports: [] as string[],
 			dhcp: false,
 			slaac: false,
-			defaultRoute: false
+			defaultRoute: false,
+			disableBridgeOffloads: false
 		},
 		deleteSwitch: {
 			open: false,
@@ -288,6 +290,7 @@
 					activeModal.disableIPv6,
 					activeModal.slaac,
 					activeModal.defaultRoute,
+					activeModal.disableBridgeOffloads,
 					manual
 				);
 
@@ -317,6 +320,7 @@
 					activeModal.slaac,
 					activeModal.dhcp,
 					activeModal.defaultRoute,
+					activeModal.disableBridgeOffloads,
 					manual
 				);
 
@@ -393,6 +397,8 @@
 			confirmModals.editSwitch.dhcp = (activeRow.dhcp as boolean) || false;
 			confirmModals.editSwitch.slaac = (activeRow.slaac as boolean) || false;
 			confirmModals.editSwitch.defaultRoute = (activeRow.defaultRoute as boolean) || false;
+			confirmModals.editSwitch.disableBridgeOffloads =
+				(activeRow.disableBridgeOffloads as boolean) || false;
 
 			comboBoxes.ports.value = activeRow.ports.map((port: { name: string }) => port.name);
 		}
@@ -412,6 +418,7 @@
 		confirmModals.newSwitch.private = false;
 		confirmModals.newSwitch.dhcp = false;
 		confirmModals.newSwitch.slaac = false;
+		confirmModals.newSwitch.disableBridgeOffloads = true;
 
 		confirmModals.editSwitch.name = '';
 		confirmModals.editSwitch.mtu = '';
@@ -422,6 +429,7 @@
 		confirmModals.editSwitch.private = false;
 		confirmModals.editSwitch.dhcp = false;
 		confirmModals.editSwitch.slaac = false;
+		confirmModals.editSwitch.disableBridgeOffloads = false;
 
 		comboBoxes.ipv4.value = '';
 		comboBoxes.ipv4Gw.value = '';
@@ -664,7 +672,7 @@
 				></CustomComboBox>
 			{/if}
 
-			<div class="flex items-center gap-2">
+			<div class="grid grid-cols-3 items-center gap-x-4 gap-y-2">
 				<CustomCheckbox
 					label="Private"
 					bind:checked={confirmModals[confirmModals.active].private}
@@ -687,6 +695,13 @@
 					label="Disable IPV6"
 					bind:checked={confirmModals[confirmModals.active].disableIPv6}
 					classes="flex items-center gap-2 mt-1"
+				></CustomCheckbox>
+
+				<CustomCheckbox
+					label="Disable Bridge Offloads"
+					bind:checked={confirmModals[confirmModals.active].disableBridgeOffloads}
+					classes="flex items-center gap-2 mt-1"
+					title="Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
 				></CustomCheckbox>
 
 				{#if !confirmModals[confirmModals.active].dhcp}

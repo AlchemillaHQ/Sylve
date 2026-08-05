@@ -47,6 +47,7 @@ export async function createSwitch(
 	disableIPv6: boolean,
 	slaac: boolean,
 	defaultRoute: boolean,
+	disableBridgeOffloads: boolean,
 	manual: SwitchManualAddresses = emptyManualAddresses
 ): Promise<APIResponse> {
 	const body = {
@@ -63,6 +64,7 @@ export async function createSwitch(
 		disableIPv6,
 		slaac,
 		defaultRoute,
+		disableBridgeOffloads,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,
@@ -90,6 +92,7 @@ export async function updateSwitch(
 	slaac: boolean,
 	dhcp: boolean,
 	defaultRoute: boolean,
+	disableBridgeOffloads: boolean,
 	manual: SwitchManualAddresses = emptyManualAddresses
 ): Promise<APIResponse> {
 	const body = {
@@ -106,6 +109,7 @@ export async function updateSwitch(
 		slaac,
 		dhcp,
 		defaultRoute,
+		disableBridgeOffloads,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,

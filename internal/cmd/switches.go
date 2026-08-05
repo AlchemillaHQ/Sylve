@@ -53,6 +53,7 @@ func newSwitchesCommand() *cli.Command {
 					&cli.BoolFlag{Name: "disable-ipv6", Usage: "Disable IPv6 on a standard switch"},
 					&cli.BoolFlag{Name: "slaac", Usage: "Enable SLAAC on a standard switch"},
 					&cli.BoolFlag{Name: "default-route", Usage: "Install the standard switch default route"},
+					&cli.BoolFlag{Name: "disable-bridge-offloads", Usage: "Disable TX checksum, TSO, and LRO on standard switch ports"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
 					request, err := buildSwitchCreatePayload(command)
@@ -108,6 +109,7 @@ func newSwitchesCommand() *cli.Command {
 					&cli.BoolFlag{Name: "disable-ipv6", Usage: "Set standard switch IPv6 disabled state"},
 					&cli.BoolFlag{Name: "slaac", Usage: "Set standard switch SLAAC mode"},
 					&cli.BoolFlag{Name: "default-route", Usage: "Set standard switch default route state"},
+					&cli.BoolFlag{Name: "disable-bridge-offloads", Usage: "Set bridge port offload disabling"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
 					request, err := buildSwitchEditPayload(command)
@@ -139,6 +141,7 @@ var standardSwitchCreateOptionNames = []string{
 	"disable-ipv6",
 	"slaac",
 	"default-route",
+	"disable-bridge-offloads",
 }
 
 func buildSwitchCreatePayload(command *cli.Command) (consoleprotocol.SwitchCreatePayload, error) {
@@ -208,23 +211,24 @@ func buildStandardSwitchCreateRequest(command *cli.Command, name string) (consol
 	}
 
 	return consoleprotocol.StandardSwitchCreateRequest{
-		Name:           name,
-		MTU:            mtu,
-		VLAN:           vlan,
-		Network4:       network4,
-		Gateway4:       gateway4,
-		Network6:       network6,
-		Gateway6:       gateway6,
-		Network4Manual: strings.TrimSpace(command.String("network4-manual")),
-		Gateway4Manual: strings.TrimSpace(command.String("gateway4-manual")),
-		Network6Manual: strings.TrimSpace(command.String("network6-manual")),
-		Gateway6Manual: strings.TrimSpace(command.String("gateway6-manual")),
-		Ports:          ports,
-		Private:        command.Bool("private"),
-		DHCP:           command.Bool("dhcp"),
-		DisableIPv6:    command.Bool("disable-ipv6"),
-		SLAAC:          command.Bool("slaac"),
-		DefaultRoute:   command.Bool("default-route"),
+		Name:                  name,
+		MTU:                   mtu,
+		VLAN:                  vlan,
+		Network4:              network4,
+		Gateway4:              gateway4,
+		Network6:              network6,
+		Gateway6:              gateway6,
+		Network4Manual:        strings.TrimSpace(command.String("network4-manual")),
+		Gateway4Manual:        strings.TrimSpace(command.String("gateway4-manual")),
+		Network6Manual:        strings.TrimSpace(command.String("network6-manual")),
+		Gateway6Manual:        strings.TrimSpace(command.String("gateway6-manual")),
+		Ports:                 ports,
+		Private:               command.Bool("private"),
+		DHCP:                  command.Bool("dhcp"),
+		DisableIPv6:           command.Bool("disable-ipv6"),
+		SLAAC:                 command.Bool("slaac"),
+		DefaultRoute:          command.Bool("default-route"),
+		DisableBridgeOffloads: command.Bool("disable-bridge-offloads"),
 	}, nil
 }
 
@@ -337,6 +341,7 @@ func buildStandardSwitchEditRequest(command *cli.Command, id uint) (consoleproto
 	request.DisableIPv6 = optionalSwitchEditBool(command, "disable-ipv6")
 	request.SLAAC = optionalSwitchEditBool(command, "slaac")
 	request.DefaultRoute = optionalSwitchEditBool(command, "default-route")
+	request.DisableBridgeOffloads = optionalSwitchEditBool(command, "disable-bridge-offloads")
 
 	if !standardSwitchEditChanged(request) {
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
@@ -413,5 +418,6 @@ func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest
 		request.DHCP != nil ||
 		request.DisableIPv6 != nil ||
 		request.SLAAC != nil ||
-		request.DefaultRoute != nil
+		request.DefaultRoute != nil ||
+		request.DisableBridgeOffloads != nil
 }

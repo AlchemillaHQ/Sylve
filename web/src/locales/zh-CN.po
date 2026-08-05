@@ -19217,3 +19217,26 @@ msgstr ""
 #: src/lib/components/custom/Login.svelte
 msgid "Show password"
 msgstr ""
+
+#~ msgid "Disable bridge offloads"
+#~ msgstr ""
+
+#~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once."
+#~ msgstr ""
+
+#~ msgid "Legacy VM restore points cannot prove that every disk root is completemsg"
+#~ msgstr ""
+
+#~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option stops enforcement but does not re-enable offloads."
+#~ msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Disable Bridge Offloads"
+msgstr ""
+
+#~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed."
+#~ msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
+msgstr ""

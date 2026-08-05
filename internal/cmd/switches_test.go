@@ -41,7 +41,7 @@ func TestSwitchCreateCommandBuildsStandardPayload(t *testing.T) {
 
 	err := command.Run(context.Background(), []string{
 		"switches", "create", "--type", "standard", "--name", "private-lan",
-		"--network4", "7", "--ports", "igb0, igb1", "--private", "--dhcp=false",
+		"--network4", "7", "--ports", "igb0, igb1", "--private", "--dhcp=false", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("run switch create command: %v", err)
@@ -51,6 +51,9 @@ func TestSwitchCreateCommandBuildsStandardPayload(t *testing.T) {
 	}
 	if got.Standard.Name != "private-lan" || got.Standard.Network4 != 7 || !got.Standard.Private || got.Standard.DHCP {
 		t.Fatalf("unexpected standard payload: %#v", got.Standard)
+	}
+	if !got.Standard.DisableBridgeOffloads {
+		t.Fatalf("expected bridge offloads to be disabled: %#v", got.Standard)
 	}
 	if len(got.Standard.Ports) != 2 || got.Standard.Ports[1] != "igb1" {
 		t.Fatalf("unexpected standard ports: %#v", got.Standard.Ports)
@@ -117,7 +120,7 @@ func TestSwitchEditCommandBuildsPartialStandardPayload(t *testing.T) {
 
 	err := command.Run(context.Background(), []string{
 		"switches", "edit", "--type", "standard", "--id", "7",
-		"--mtu", "9000", "--dhcp=false", "--ports", "igb0, igb1",
+		"--mtu", "9000", "--dhcp=false", "--ports", "igb0, igb1", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("run switch edit command: %v", err)
@@ -130,6 +133,9 @@ func TestSwitchEditCommandBuildsPartialStandardPayload(t *testing.T) {
 	}
 	if got.Standard.DHCP == nil || *got.Standard.DHCP {
 		t.Fatalf("expected explicit false DHCP patch: %#v", got.Standard)
+	}
+	if got.Standard.DisableBridgeOffloads == nil || !*got.Standard.DisableBridgeOffloads {
+		t.Fatalf("expected bridge offload patch: %#v", got.Standard)
 	}
 	if got.Standard.Ports == nil || len(*got.Standard.Ports) != 2 || (*got.Standard.Ports)[1] != "igb1" {
 		t.Fatalf("unexpected ports patch: %#v", got.Standard.Ports)

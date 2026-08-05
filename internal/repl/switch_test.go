@@ -18,7 +18,7 @@ import (
 
 func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	request, err := buildConsoleSwitchCreateRequest([]string{
-		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--private", "--dhcp=false",
+		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--private", "--dhcp=false", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -28,6 +28,9 @@ func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	}
 	if request.Standard.Name != "private-lan" || request.Standard.Network4 != 7 || !request.Standard.Private || request.Standard.DHCP {
 		t.Fatalf("unexpected standard request: %#v", request.Standard)
+	}
+	if !request.Standard.DisableBridgeOffloads {
+		t.Fatalf("expected bridge offloads to be disabled: %#v", request.Standard)
 	}
 	if len(request.Standard.Ports) != 2 || request.Standard.Ports[1] != "igb1" {
 		t.Fatalf("unexpected standard ports: %#v", request.Standard.Ports)
@@ -87,7 +90,7 @@ func TestBuildConsoleSwitchEditRequestStandard(t *testing.T) {
 
 func TestBuildConsoleSwitchEditRequestAcceptsFlagStyleBooleans(t *testing.T) {
 	request, err := buildConsoleSwitchEditRequest([]string{
-		"standard", "7", "--dhcp", "--private=false", "--slaac", "false",
+		"standard", "7", "--dhcp", "--private=false", "--slaac", "false", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -100,6 +103,9 @@ func TestBuildConsoleSwitchEditRequestAcceptsFlagStyleBooleans(t *testing.T) {
 	}
 	if request.Standard.SLAAC == nil || *request.Standard.SLAAC {
 		t.Fatalf("legacy explicit false was not retained: %#v", request.Standard)
+	}
+	if request.Standard.DisableBridgeOffloads == nil || !*request.Standard.DisableBridgeOffloads {
+		t.Fatalf("bridge offload flag was not parsed: %#v", request.Standard)
 	}
 }
 
