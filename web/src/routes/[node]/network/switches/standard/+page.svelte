@@ -701,7 +701,7 @@
 					label="Disable Bridge Offloads"
 					bind:checked={confirmModals[confirmModals.active].disableBridgeOffloads}
 					classes="flex items-center gap-2 mt-1"
-					title="Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
+					title="Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
 				></CustomCheckbox>
 
 				{#if !confirmModals[confirmModals.active].dhcp}

@@ -53,7 +53,7 @@ func newSwitchesCommand() *cli.Command {
 					&cli.BoolFlag{Name: "disable-ipv6", Usage: "Disable IPv6 on a standard switch"},
 					&cli.BoolFlag{Name: "slaac", Usage: "Enable SLAAC on a standard switch"},
 					&cli.BoolFlag{Name: "default-route", Usage: "Install the standard switch default route"},
-					&cli.BoolFlag{Name: "disable-bridge-offloads", Usage: "Disable TX checksum, TSO, and LRO on standard switch ports"},
+					&cli.BoolFlag{Name: "disable-bridge-offloads", Usage: "Disable bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on standard switch ports"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
 					request, err := buildSwitchCreatePayload(command)

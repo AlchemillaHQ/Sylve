@@ -90,7 +90,7 @@ func TestDisableBridgeMemberOffloadsOnlyChangesEnabledCapabilities(t *testing.T)
 			return &iface.Interface{
 				Name: name,
 				Capabilities: iface.Capabilities{
-					Enabled: iface.Flags{Raw: ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapTSO6 | ifcapLRO},
+					Enabled: iface.Flags{Raw: ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapTSO6 | ifcapLRO | ifcapTOE4 | ifcapTOE6 | ifcapMEXTPG},
 				},
 			}, nil
 		},
@@ -104,7 +104,7 @@ func TestDisableBridgeMemberOffloadsOnlyChangesEnabledCapabilities(t *testing.T)
 		t.Fatalf("disable bridge offloads: %v", err)
 	}
 
-	want := "/sbin/ifconfig testport0 -txcsum -txcsum6 -tso -lro"
+	want := "/sbin/ifconfig testport0 -txcsum -txcsum6 -tso -lro -toe -mextpg"
 	if len(commands) != 1 || commands[0] != want {
 		t.Fatalf("offload commands = %v, want [%q]", commands, want)
 	}
@@ -140,7 +140,7 @@ func TestDisableBridgeMemberOffloadsSkipsTransientInterfaces(t *testing.T) {
 	interfaces := make(map[string]*iface.Interface, len(tests))
 	for _, test := range tests {
 		test.interfaceObj.Name = test.name
-		test.interfaceObj.Capabilities.Enabled.Raw = ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapLRO
+		test.interfaceObj.Capabilities.Enabled.Raw = ifcapTXCSUM | ifcapTXCSUMIPv6 | ifcapTSO4 | ifcapLRO | ifcapTOE4 | ifcapMEXTPG
 		interfaces[test.name] = test.interfaceObj
 	}
 

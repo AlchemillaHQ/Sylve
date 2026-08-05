@@ -31,12 +31,17 @@ var (
 	syncDeleteBridge = deleteStandardBridge
 )
 
+// Capability bits that FreeBSD if_bridge synchronizes across its members,
+// plus LRO, which if_bridge always strips.
 const (
 	ifcapTXCSUM     uint32 = 1 << 1
 	ifcapTSO4       uint32 = 1 << 8
 	ifcapTSO6       uint32 = 1 << 9
 	ifcapLRO        uint32 = 1 << 10
+	ifcapTOE4       uint32 = 1 << 14
+	ifcapTOE6       uint32 = 1 << 15
 	ifcapTXCSUMIPv6 uint32 = 1 << 22
+	ifcapMEXTPG     uint32 = 1 << 26
 )
 
 func (s *Service) GetStandardSwitches() ([]networkModels.StandardSwitch, error) {
@@ -1165,7 +1170,7 @@ func deleteStandardBridge(sw networkModels.StandardSwitch) error {
 }
 
 func bridgeOffloadDisableArgs(enabled uint32) []string {
-	args := make([]string, 0, 4)
+	args := make([]string, 0, 6)
 	if enabled&ifcapTXCSUM != 0 {
 		args = append(args, "-txcsum")
 	}
@@ -1177,6 +1182,12 @@ func bridgeOffloadDisableArgs(enabled uint32) []string {
 	}
 	if enabled&ifcapLRO != 0 {
 		args = append(args, "-lro")
+	}
+	if enabled&(ifcapTOE4|ifcapTOE6) != 0 {
+		args = append(args, "-toe")
+	}
+	if enabled&ifcapMEXTPG != 0 {
+		args = append(args, "-mextpg")
 	}
 	return args
 }
