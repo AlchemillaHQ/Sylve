@@ -736,7 +736,7 @@ func IntraClusterImportJail(
 		}
 	} else {
 		ops.RuntimeState = func(guestID uint) (targetMigrationRuntimeState, error) {
-			active, err := jailService.IsJailActive(guestID)
+			active, err := jailService.IsJailRunning(guestID)
 			if err != nil {
 				return targetMigrationRuntimeUnsafe, err
 			}

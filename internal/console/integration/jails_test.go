@@ -343,10 +343,13 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	assertJailAction(t, output, ctid, "stop")
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
 	waitForConsoleJailRunning(t, suite, ctid, false)
-	if !hasInterfaceGroup(consoleInterface(t, epairA).Groups, "sylve") {
-		t.Fatalf("stopped VNET host epair %s is not marked as Sylve-managed", epairA)
+	for _, epair := range []string{epairA, epairB} {
+		assertConsoleInterfaceMissing(t, epair)
 	}
-	consoleInterface(t, epairB)
+	bridge = consoleBridge(t, standard.BridgeName)
+	if len(bridge.BridgeMembers) != 0 {
+		t.Fatalf("stopped VNET bridge members = %#v, want none", bridge.BridgeMembers)
+	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"jails", "delete", "--ctid", strconv.FormatUint(uint64(ctid), 10), "--purge", "--json")

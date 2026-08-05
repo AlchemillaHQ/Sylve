@@ -14,11 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
-	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func setEpairTestHooks(t *testing.T, list func() ([]*iface.Interface, error), run func(string, ...string) (string, error)) {
@@ -105,13 +102,61 @@ func TestDeleteEpairUsesMarkedHostSideWhenPeerIsUnmarked(t *testing.T) {
 	}
 }
 
-func TestSyncEpairsLeavesUnmanagedHostPairsAlone(t *testing.T) {
-	svc, _ := newNetworkServiceForTest(t, &jailModels.Jail{}, &jailModels.Network{})
+func TestDeleteEpairFailsClosedWhenOnlyPeerExists(t *testing.T) {
+	called := false
+	setEpairTestHooks(t,
+		func() ([]*iface.Interface, error) {
+			return []*iface.Interface{{Name: "aaadx_net4b"}}, nil
+		},
+		func(string, ...string) (string, error) {
+			called = true
+			return "", nil
+		},
+	)
+
+	err := (&Service{}).DeleteEpair("aaadx_net4")
+	if err == nil || !errors.Is(err, networkServiceInterfaces.ErrEpairStateConflict) {
+		t.Fatalf("DeleteEpair error = %v", err)
+	}
+	if called {
+		t.Fatal("peer without an ownership sentinel triggered ifconfig")
+	}
+}
+
+func TestEnsureEpairCreatesMissingPair(t *testing.T) {
+	var commands []string
+	setEpairTestHooks(t,
+		func() ([]*iface.Interface, error) { return nil, nil },
+		func(command string, args ...string) (string, error) {
+			commands = append(commands, command+" "+strings.Join(args, " "))
+			if len(args) == 2 && args[0] == "epair" && args[1] == "create" {
+				return "epair0a\n", nil
+			}
+			return "", nil
+		},
+	)
+
+	if err := (&Service{}).EnsureEpair("aaadx_net4"); err != nil {
+		t.Fatalf("EnsureEpair: %v", err)
+	}
+	want := []string{
+		"/sbin/ifconfig epair create",
+		"/sbin/ifconfig epair0a name aaadx_net4a",
+		"/sbin/ifconfig epair0b name aaadx_net4b",
+		"/sbin/ifconfig aaadx_net4a group sylve",
+		"/sbin/ifconfig aaadx_net4b group sylve",
+	}
+	if fmt.Sprint(commands) != fmt.Sprint(want) {
+		t.Fatalf("EnsureEpair commands = %v, want %v", commands, want)
+	}
+}
+
+func TestEnsureEpairReusesCompleteManagedPair(t *testing.T) {
 	var commands []string
 	setEpairTestHooks(t,
 		func() ([]*iface.Interface, error) {
 			return []*iface.Interface{
-				{Name: "aaadx_net4a"},
+				{Name: "aaadx_net4a", Groups: []string{sylveEpairGroup}},
 				{Name: "aaadx_net4b"},
 			}, nil
 		},
@@ -121,82 +166,76 @@ func TestSyncEpairsLeavesUnmanagedHostPairsAlone(t *testing.T) {
 		},
 	)
 
-	if err := svc.SyncEpairs(false); err != nil {
-		t.Fatalf("SyncEpairs: %v", err)
+	if err := (&Service{}).EnsureEpair("aaadx_net4"); err != nil {
+		t.Fatalf("EnsureEpair: %v", err)
 	}
-	if len(commands) != 1 || commands[0] != "/usr/sbin/jls path" {
-		t.Fatalf("SyncEpairs commands = %v, want only jls", commands)
-	}
-}
-
-func TestSyncEpairsRejectsUnmanagedExpectedPair(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &jailModels.Jail{}, &jailModels.Network{}, &networkModels.ManualSwitch{})
-	manual := networkModels.ManualSwitch{Name: "test-switch", Bridge: "test-bridge"}
-	if err := db.Create(&manual).Error; err != nil {
-		t.Fatalf("create manual switch: %v", err)
-	}
-	jail := jailModels.Jail{CTID: 42, Name: "test-jail"}
-	if err := db.Create(&jail).Error; err != nil {
-		t.Fatalf("create jail: %v", err)
-	}
-	network := jailModels.Network{JailID: jail.ID, Name: "initial", SwitchID: manual.ID, SwitchType: "manual"}
-	if err := db.Create(&network).Error; err != nil {
-		t.Fatalf("create jail network: %v", err)
-	}
-	name := utils.HashIntToNLetters(int(jail.CTID), 5) + "_net" + fmt.Sprint(network.ID) + "a"
-	var commands []string
-	setEpairTestHooks(t,
-		func() ([]*iface.Interface, error) {
-			return []*iface.Interface{{Name: name}}, nil
-		},
-		func(command string, args ...string) (string, error) {
-			commands = append(commands, command+" "+strings.Join(args, " "))
-			return "", nil
-		},
-	)
-
-	err := svc.SyncEpairs(false)
-	if err == nil || !errors.Is(err, networkServiceInterfaces.ErrEpairOwnershipConflict) || !strings.Contains(err.Error(), "refusing to adopt unmanaged epair") {
-		t.Fatalf("SyncEpairs error = %v", err)
-	}
-	if fmt.Sprint(commands) != fmt.Sprint([]string{"/usr/sbin/jls path"}) {
-		t.Fatalf("SyncEpairs commands = %v, want only jls", commands)
+	if len(commands) != 0 {
+		t.Fatalf("complete pair triggered commands: %v", commands)
 	}
 }
 
-func TestSyncEpairsAcceptsUnmarkedVNETPeer(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &jailModels.Jail{}, &jailModels.Network{}, &networkModels.ManualSwitch{})
-	manual := networkModels.ManualSwitch{Name: "test-switch", Bridge: "test-bridge"}
-	if err := db.Create(&manual).Error; err != nil {
-		t.Fatalf("create manual switch: %v", err)
-	}
-	jail := jailModels.Jail{CTID: 42, Name: "test-jail"}
-	if err := db.Create(&jail).Error; err != nil {
-		t.Fatalf("create jail: %v", err)
-	}
-	network := jailModels.Network{JailID: jail.ID, Name: "initial", SwitchID: manual.ID, SwitchType: "manual"}
-	if err := db.Create(&network).Error; err != nil {
-		t.Fatalf("create jail network: %v", err)
-	}
-	base := utils.HashIntToNLetters(int(jail.CTID), 5) + "_net" + fmt.Sprint(network.ID)
-	var commands []string
+func TestEnsureEpairRejectsUnmanagedExpectedPair(t *testing.T) {
+	called := false
 	setEpairTestHooks(t,
 		func() ([]*iface.Interface, error) {
 			return []*iface.Interface{
-				{Name: base + "a", Groups: []string{sylveEpairGroup}},
-				{Name: base + "b"},
+				{Name: "aaadx_net4a"},
+				{Name: "aaadx_net4b"},
 			}, nil
 		},
-		func(command string, args ...string) (string, error) {
-			commands = append(commands, command+" "+strings.Join(args, " "))
+		func(string, ...string) (string, error) {
+			called = true
 			return "", nil
 		},
 	)
 
-	if err := svc.SyncEpairs(false); err != nil {
-		t.Fatalf("SyncEpairs: %v", err)
+	err := (&Service{}).EnsureEpair("aaadx_net4")
+	if err == nil || !errors.Is(err, networkServiceInterfaces.ErrEpairOwnershipConflict) {
+		t.Fatalf("EnsureEpair error = %v", err)
 	}
-	if fmt.Sprint(commands) != fmt.Sprint([]string{"/usr/sbin/jls path"}) {
-		t.Fatalf("SyncEpairs commands = %v, want only jls", commands)
+	if called {
+		t.Fatal("unmanaged pair triggered ifconfig")
+	}
+}
+
+func TestEnsureEpairFailsClosedWhenPeerIsNotHostVisible(t *testing.T) {
+	called := false
+	setEpairTestHooks(t,
+		func() ([]*iface.Interface, error) {
+			return []*iface.Interface{{Name: "aaadx_net4a", Groups: []string{sylveEpairGroup}}}, nil
+		},
+		func(string, ...string) (string, error) {
+			called = true
+			return "", nil
+		},
+	)
+
+	err := (&Service{}).EnsureEpair("aaadx_net4")
+	if err == nil || !errors.Is(err, networkServiceInterfaces.ErrEpairStateConflict) {
+		t.Fatalf("EnsureEpair error = %v", err)
+	}
+	if called {
+		t.Fatal("partial pair triggered ifconfig")
+	}
+}
+
+func TestEnsureEpairFailsClosedWhenHostSideIsMissing(t *testing.T) {
+	called := false
+	setEpairTestHooks(t,
+		func() ([]*iface.Interface, error) {
+			return []*iface.Interface{{Name: "aaadx_net4b"}}, nil
+		},
+		func(string, ...string) (string, error) {
+			called = true
+			return "", nil
+		},
+	)
+
+	err := (&Service{}).EnsureEpair("aaadx_net4")
+	if err == nil || !errors.Is(err, networkServiceInterfaces.ErrEpairStateConflict) {
+		t.Fatalf("EnsureEpair error = %v", err)
+	}
+	if called {
+		t.Fatal("partial pair triggered ifconfig")
 	}
 }

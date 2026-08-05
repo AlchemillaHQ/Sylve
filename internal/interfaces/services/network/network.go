@@ -15,7 +15,10 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 )
 
-var ErrEpairOwnershipConflict = errors.New("epair ownership conflict")
+var (
+	ErrEpairOwnershipConflict = errors.New("epair ownership conflict")
+	ErrEpairStateConflict     = errors.New("epair state conflict")
+)
 
 type NetworkServiceInterface interface {
 	SyncStandardSwitches(previous *networkModels.StandardSwitch, action string) error
@@ -54,7 +57,7 @@ type NetworkServiceInterface interface {
 	GetObjectEntryByID(id uint) (string, error)
 	GetBridgeNameByIDType(id uint, swType string) (string, error)
 	CreateEpair(name string) error
-	SyncEpairs(forceStart bool) error
+	EnsureEpair(name string) error
 	DeleteEpair(name string) error
 	StartFirewallMonitor(ctx context.Context)
 	EnableWireGuardService(ctx context.Context) error

@@ -65,7 +65,7 @@ type Service struct {
 	DB                         *gorm.DB
 	TelemetryDB                *gorm.DB
 	syncMutex                  sync.Mutex
-	epairSyncMutex             sync.Mutex
+	epairMutex                 sync.Mutex
 	firewallMutex              sync.Mutex
 	firewallCounterSampleMutex sync.Mutex
 	firewallCounterStateMutex  sync.Mutex

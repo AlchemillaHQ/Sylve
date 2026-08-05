@@ -100,8 +100,22 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 		if err := s.SyncNetwork(uint(ctId), jailWithNetworks); err != nil {
 			return fmt.Errorf("failed to sync jail network before start: %w", err)
 		}
+		if err := s.ensureJailEpairs(jail); err != nil {
+			return fmt.Errorf("failed to prepare jail network before start: %w", err)
+		}
 
 		return nil
+	}
+
+	cleanupStoppedEpairs := func(reason string) {
+		if err := s.cleanupJailEpairsIfStopped(jail); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Int("ct_id", ctId).
+				Str("action", action).
+				Str("reason", reason).
+				Msg("jail_epair_cleanup_incomplete")
+		}
 	}
 
 	emitWithFreshState := func(reason string) {
@@ -118,7 +132,7 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 
 	switch action {
 	case "start":
-		active, err := s.IsJailActive(uint(ctId))
+		active, err := jailEpairRuntimeState(s, uint(ctId))
 		if err != nil {
 			return fmt.Errorf("failed to check if jail is active: %w", err)
 		}
@@ -128,10 +142,12 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 		}
 
 		if err := ensureNetworkReady(); err != nil {
+			cleanupStoppedEpairs("start_preparation_failed")
 			return err
 		}
 
 		if out, err := run("-v", "-f", jailConf, "-c", jailName); err != nil {
+			cleanupStoppedEpairs("start_command_failed")
 			return fmt.Errorf("failed to start jail %s: %v\n%s", jailName, err, out)
 		}
 		jail.StartedAt = &now
@@ -149,6 +165,7 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
 			}
 		}
+		cleanupStoppedEpairs("stop_complete")
 		jail.StoppedAt = &now
 		jail.IntentionallyStopped = true
 		if err := s.DB.Save(&jail).Error; err != nil {
@@ -163,12 +180,24 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
 			}
 		}
+		if err := s.verifyJailInactive(jail.CTID); err != nil {
+			return fmt.Errorf("failed to verify jail stopped before restart: %w", err)
+		}
+		if err := s.cleanupJailEpairs(jail); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Int("ct_id", ctId).
+				Str("action", action).
+				Msg("jail_epair_cleanup_incomplete")
+		}
 
 		if err := ensureNetworkReady(); err != nil {
+			cleanupStoppedEpairs("restart_preparation_failed")
 			return err
 		}
 
 		if out, err := run("-f", jailConf, "-c", jailName); err != nil {
+			cleanupStoppedEpairs("restart_start_command_failed")
 			return fmt.Errorf("failed to start jail %s: %v\n%s", jailName, err, out)
 		}
 		jail.StartedAt = &now
@@ -238,6 +267,13 @@ func (s *Service) ForceStopJail(ctID uint) error {
 		if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 			return fmt.Errorf("failed to force stop jail %s: %v\n%s", jailName, err, out)
 		}
+	}
+	if err := s.cleanupJailEpairsIfStopped(jail); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("ct_id", ctID).
+			Str("action", "force_stop").
+			Msg("jail_epair_cleanup_incomplete")
 	}
 
 	now := time.Now().UTC()

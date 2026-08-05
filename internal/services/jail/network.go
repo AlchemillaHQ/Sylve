@@ -457,11 +457,6 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 		return fmt.Errorf("failed_to_create_network: %w", err)
 	}
 
-	err := s.NetworkService.SyncEpairs(false)
-	if err != nil {
-		return fmt.Errorf("failed_to_sync_epairs: %w", err)
-	}
-
 	if err := s.DB.Preload("Networks").
 		Where("ct_id = ?", ctId).
 		First(&jail).Error; err != nil {
@@ -493,7 +488,7 @@ func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
 
 	epair := fmt.Sprintf("%s_%s", s.GetCTIDHash(ctId), fmt.Sprintf("net%d", network.ID))
 	err = s.NetworkService.DeleteEpair(epair)
-	if err != nil {
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "not found") {
 		return err
 	}
 
@@ -527,12 +522,6 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 	if err != nil {
 		return err
 	}
-	if !jail.InheritIPv4 && !jail.InheritIPv6 && len(jail.Networks) > 0 {
-		if err := s.NetworkService.SyncEpairs(false); err != nil {
-			return err
-		}
-	}
-
 	lines := strings.Split(cfg, "\n")
 	for i := 0; i < len(lines); i++ {
 		if strings.Contains(lines[i], "vnet;") ||
@@ -981,8 +970,6 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 		return fmt.Errorf("switch_not_found")
 	}
 
-	switchChanged := network.SwitchID != switchId || network.SwitchType != switchType
-
 	network.Name = req.Name
 	network.SwitchID = switchId
 	network.SwitchType = switchType
@@ -1128,12 +1115,6 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 
 	if err := s.DB.Save(&network).Error; err != nil {
 		return fmt.Errorf("failed_to_update_network: %w", err)
-	}
-
-	if switchChanged {
-		if err := s.NetworkService.SyncEpairs(false); err != nil {
-			return fmt.Errorf("failed_to_sync_epairs: %w", err)
-		}
 	}
 
 	if err := s.DB.Preload("Networks").Where("ct_id = ?", jail.CTID).First(&jail).Error; err != nil {
