@@ -94,6 +94,27 @@ func TestGetSystemHostname_Error(t *testing.T) {
 	}
 }
 
+func TestGetSystemHostname_NotConfigured(t *testing.T) {
+	original := getHostname
+	defer resetHostnameCacheForTest()
+	defer func() { getHostname = original }()
+
+	for _, value := range []string{"", " \t\n"} {
+		resetHostnameCacheForTest()
+		getHostname = func() (string, error) {
+			return value, nil
+		}
+
+		hostname, err := GetSystemHostname()
+		if !errors.Is(err, ErrSystemHostnameNotConfigured) {
+			t.Fatalf("expected ErrSystemHostnameNotConfigured for %q, got %v", value, err)
+		}
+		if hostname != "" {
+			t.Fatalf("expected empty hostname for %q, got %q", value, hostname)
+		}
+	}
+}
+
 func TestGetUptime_Success(t *testing.T) {
 	original := getUptime
 	defer func() { getUptime = original }()

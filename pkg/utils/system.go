@@ -9,6 +9,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -30,6 +31,9 @@ var getUptime = uptime.Get
 var getLoadAvg = loadavg.Get
 var stat = os.Stat
 
+// ErrSystemHostnameNotConfigured indicates that the operating system returned no usable hostname.
+var ErrSystemHostnameNotConfigured = errors.New("system_hostname_not_configured")
+
 var cachedHostname string
 var hostnameOnce sync.Once
 var hostnameErr error
@@ -47,6 +51,14 @@ func GetSystemUUID() (string, error) {
 func GetSystemHostname() (string, error) {
 	hostnameOnce.Do(func() {
 		cachedHostname, hostnameErr = getHostname()
+		if hostnameErr != nil {
+			return
+		}
+
+		cachedHostname = strings.TrimSpace(cachedHostname)
+		if cachedHostname == "" {
+			hostnameErr = ErrSystemHostnameNotConfigured
+		}
 	})
 
 	return cachedHostname, hostnameErr

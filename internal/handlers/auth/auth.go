@@ -9,6 +9,7 @@
 package authHandlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -39,6 +40,25 @@ type LoginConfig struct {
 	PAMEnabled bool `json:"pamEnabled"`
 }
 
+func writeLoginHostnameError(c *gin.Context, err error) {
+	status := http.StatusInternalServerError
+	message := "internal_server_error"
+	errorText := err.Error()
+
+	if errors.Is(err, utils.ErrSystemHostnameNotConfigured) {
+		status = http.StatusServiceUnavailable
+		message = utils.ErrSystemHostnameNotConfigured.Error()
+		errorText = message
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   errorText,
+		Data:    nil,
+	})
+}
+
 func LoginConfigHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
@@ -62,6 +82,7 @@ func LoginConfigHandler() gin.HandlerFunc {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "System Hostname Not Configured"
 // @Router /auth/login [post]
 func LoginHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -96,12 +117,7 @@ func LoginHandler(authService *auth.Service) gin.HandlerFunc {
 		hostname, err := utils.GetSystemHostname()
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeLoginHostnameError(c, err)
 			return
 		}
 

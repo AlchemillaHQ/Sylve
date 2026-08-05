@@ -305,12 +305,7 @@ func FinishPasskeyLoginHandler(authService *auth.Service) gin.HandlerFunc {
 		clusterToken, _ := authService.CreateClusterJWT(user.ID, user.Username, auth.AuthTypeSylvePasskey, "")
 		hostname, err := utils.GetSystemHostname()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeLoginHostnameError(c, err)
 			return
 		}
 

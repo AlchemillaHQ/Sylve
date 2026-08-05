@@ -20,6 +20,10 @@ import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib
 import { sha256 } from '$lib/utils/string';
 import { toast } from 'svelte-sonner';
 
+const SYSTEM_HOSTNAME_NOT_CONFIGURED = 'system_hostname_not_configured';
+const SYSTEM_HOSTNAME_NOT_CONFIGURED_MESSAGE =
+    'System hostname is not configured. Set one and restart Sylve.';
+
 async function parseJSONResponse(response: Response): Promise<any> {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json') && !contentType.includes('+json')) {
@@ -33,16 +37,64 @@ async function parseJSONResponse(response: Response): Promise<any> {
     }
 }
 
-function applySuccessfulLogin(payload: any): boolean {
-    if (!payload?.hostname || !payload?.token) {
+function readStringField(payload: unknown, field: string): string {
+    if (typeof payload !== 'object' || payload === null) return '';
+
+    const value = (payload as Record<string, unknown>)[field];
+    return typeof value === 'string' ? value : '';
+}
+
+function hasMissingHostname(payload: unknown): boolean {
+    return (
+        readStringField(payload, 'token').trim() !== '' &&
+        readStringField(payload, 'hostname').trim() === ''
+    );
+}
+
+function hasErrorCode(data: APIResponse, code: string): boolean {
+    if (data.message === code) return true;
+
+    const errors = Array.isArray(data.error) ? data.error : [data.error];
+    return errors.some((error) => typeof error === 'string' && error.includes(code));
+}
+
+function showLoginFailure(
+    data: APIResponse,
+    path: string,
+    httpStatus: number,
+    fallback: string
+): void {
+    handleAPIError(data, {
+        method: 'POST',
+        path,
+        httpStatus
+    });
+
+    let message = fallback;
+    if (hasErrorCode(data, SYSTEM_HOSTNAME_NOT_CONFIGURED)) {
+        message = SYSTEM_HOSTNAME_NOT_CONFIGURED_MESSAGE;
+    } else if (hasErrorCode(data, 'only_admin_allowed')) {
+        message = 'Only admin users can log in';
+    }
+
+    toast.error(message, {
+        position: 'bottom-center'
+    });
+}
+
+function applySuccessfulLogin(payload: unknown): boolean {
+    const hostname = readStringField(payload, 'hostname').trim();
+    const token = readStringField(payload, 'token');
+
+    if (!hostname || !token.trim()) {
         return false;
     }
 
-    storage.localHostname = payload.hostname;
-    storage.hostname = payload.hostname;
-    storage.nodeId = payload.nodeId || '';
-    storage.token = payload.token || '';
-    storage.clusterToken = payload.clusterToken || '';
+    storage.localHostname = hostname;
+    storage.hostname = hostname;
+    storage.nodeId = readStringField(payload, 'nodeId');
+    storage.token = token;
+    storage.clusterToken = readStringField(payload, 'clusterToken');
 
     return true;
 }
@@ -128,36 +180,21 @@ export async function login(
                 await clearCachedAPIData();
                 return true;
             } else {
-                toast.error('Invalid response received', {
-                    position: 'bottom-center'
-                });
+                toast.error(
+                    hasMissingHostname(responseData.data)
+                        ? SYSTEM_HOSTNAME_NOT_CONFIGURED_MESSAGE
+                        : 'Invalid response received',
+                    {
+                        position: 'bottom-center'
+                    }
+                );
             }
 
             return false;
         }
 
         const data = (responseData || {}) as APIResponse;
-        handleAPIError(data, {
-            method: 'POST',
-            path: '/api/auth/login',
-            httpStatus: response.status
-        });
-
-        if (data.error) {
-            if (data.error.includes('only_admin_allowed')) {
-                toast.error('Only admin users can log in', {
-                    position: 'bottom-center'
-                });
-            } else {
-                toast.error('Authentication failed', {
-                    position: 'bottom-center'
-                });
-            }
-        } else {
-            toast.error('Authentication failed', {
-                position: 'bottom-center'
-            });
-        }
+        showLoginFailure(data, '/api/auth/login', response.status, 'Authentication failed');
 
         return false;
     } catch (error) {
@@ -246,26 +283,27 @@ export async function loginWithPasskey(remember: boolean): Promise<boolean> {
         });
 
         const finishData = await parseJSONResponse(finishResponse);
-        if (finishResponse.status === 200 && finishData?.data && applySuccessfulLogin(finishData.data)) {
-            await clearCachedAPIData();
-            return true;
+        if (finishResponse.status === 200 && finishData?.data) {
+            if (applySuccessfulLogin(finishData.data)) {
+                await clearCachedAPIData();
+                return true;
+            }
+
+            if (hasMissingHostname(finishData.data)) {
+                toast.error(SYSTEM_HOSTNAME_NOT_CONFIGURED_MESSAGE, {
+                    position: 'bottom-center'
+                });
+                return false;
+            }
         }
 
         const data = (finishData || {}) as APIResponse;
-        handleAPIError(data, {
-            method: 'POST',
-            path: '/api/auth/passkeys/login/finish',
-            httpStatus: finishResponse.status
-        });
-        if (data.error && typeof data.error === 'string' && data.error.includes('only_admin_allowed')) {
-            toast.error('Only admin users can log in', {
-                position: 'bottom-center'
-            });
-        } else {
-            toast.error('Passkey authentication failed', {
-                position: 'bottom-center'
-            });
-        }
+        showLoginFailure(
+            data,
+            '/api/auth/passkeys/login/finish',
+            finishResponse.status,
+            'Passkey authentication failed'
+        );
         return false;
     } catch (error) {
         if (error instanceof DOMException && error.name === 'NotAllowedError') {
