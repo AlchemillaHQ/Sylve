@@ -52,6 +52,14 @@ type Network struct {
 	SLAAC bool `json:"slaac" gorm:"default:false"`
 
 	VLAN *int `json:"vlan" gorm:"default:0"`
+
+	CARP         bool                  `json:"carp" gorm:"default:false"`
+	CARPVHID     *int                  `json:"carpVhid"`
+	CARPAdvSkew  *int                  `json:"carpAdvSkew" gorm:"default:0"`
+	CARPPassword string                `json:"carpPassword" gorm:"column:carp_password"`
+	CARPIPv4ID   *uint                 `json:"carpIpv4Id" gorm:"column:carp_ipv4_id"`
+	CARPIPv4Obj  *networkModels.Object `json:"carpIpv4Obj" gorm:"foreignKey:CARPIPv4ID"`
+
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {
@@ -101,6 +109,8 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 			utils.GetVal(n.IPv4GwID),
 			utils.GetVal(n.IPv6ID),
 			utils.GetVal(n.IPv6GwID),
+			utils.GetVal(n.CARPIPv4ID),
+
 		}).
 		Find(&[]networkModels.Object{}).
 		Error

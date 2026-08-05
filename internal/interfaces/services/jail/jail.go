@@ -70,6 +70,13 @@ type CreateJailRequest struct {
 
 	VLAN *int `json:"vlan"`
 
+	CARP         *bool  `json:"carp"`
+	CARPVHID     *int   `json:"carpVhid"`
+	CARPAdvSkew  *int   `json:"carpAdvSkew"`
+	CARPPassword string `json:"carpPassword"`
+	CARPIPv4     *int   `json:"carpIpv4"`
+	CARPIPv4Raw  string `json:"carpIpv4Raw"`
+
 	ResourceLimits *bool  `json:"resourceLimits"`
 	Cores          *int   `json:"cores"`
 	Memory         *int   `json:"memory"`
@@ -130,6 +137,12 @@ type AddJailNetworkRequest struct {
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`
 	VLAN           *int   `json:"vlan"`
+	CARP		   *bool  `json:"carp"`
+	CARPVHID       *int   `json:"carpVhid"`
+	CARPAdvSkew    *int   `json:"carpAdvSkew"`
+	CARPPassword   string `json:"carpPassword"`
+	CARPIPv4       *uint  `json:"carpIpv4"`
+	CARPIPv4Raw    string `json:"carpIpv4Raw"`
 }
 
 type EditJailNetworkRequest struct {
@@ -150,6 +163,12 @@ type EditJailNetworkRequest struct {
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`
 	VLAN           *int   `json:"vlan"`
+	CARP		   *bool  `json:"carp"`
+	CARPVHID       *int   `json:"carpVhid"`
+	CARPAdvSkew    *int   `json:"carpAdvSkew"`
+	CARPPassword   string `json:"carpPassword"`
+	CARPIPv4       *uint  `json:"carpIpv4"`
+	CARPIPv4Raw    string `json:"carpIpv4Raw"`
 }
 
 type DeleteJailResult struct {

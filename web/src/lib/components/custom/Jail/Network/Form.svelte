@@ -15,8 +15,8 @@
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { toast } from 'svelte-sonner';
 	import { addNetwork, updateNetwork as updateNetworkAPI } from '$lib/api/jail/jail';
-import { parseNumberOrZero } from '$lib/utils/string';
-import { watch } from 'runed';
+	import { parseNumberOrZero } from '$lib/utils/string';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -64,7 +64,12 @@ import { watch } from 'runed';
 		dhcp: false,
 		slaac: false,
 		defaultGateway: false,
-		vlan: 0
+		vlan: 0,
+		carp: false,
+		carpVhid: 0,
+		carpAdvSkew: 0,
+		carpPassword: '',
+		carpIpv4: ''
 	};
 
 	let properties = $state(options);
@@ -99,6 +104,11 @@ import { watch } from 'runed';
 			open: false,
 			value: '',
 			options: generateIPOptions(networkObjects, 'ipv6')
+		},
+		carpIpv4: {
+			open: false,
+			value: '',
+			options: generateNetworkOptions(networkObjects, 'ipv4')
 		}
 	});
 
@@ -124,7 +134,15 @@ import { watch } from 'runed';
 		dhcp: selectedNetwork?.dhcp ?? false,
 		slaac: selectedNetwork?.slaac ?? false,
 		defaultGateway: selectedNetwork?.defaultGateway ?? false,
-		vlan: selectedNetwork?.vlan ?? 0
+		vlan: selectedNetwork?.vlan ?? 0,
+		carp: selectedNetwork?.carp ?? false,
+		carpVhid: selectedNetwork?.carpVhid ?? 0,
+		carpAdvSkew: selectedNetwork?.carpAdvSkew ?? 0,
+		carpPassword: selectedNetwork?.carpPassword ?? '',
+		carpIpv4:
+			selectedNetwork && selectedNetwork.carp && selectedNetwork.carpIpv4Id
+				? selectedNetwork.carpIpv4Id.toString()
+				: ''
 	};
 
 	let editProperties = $state(editOptions);
@@ -159,6 +177,11 @@ import { watch } from 'runed';
 			open: false,
 			value: editOptions.ipv6gw,
 			options: generateIPOptions(networkObjects, 'ipv6')
+		},
+		carpIpv4: {
+			open: false,
+			value: editOptions.carpIpv4,
+			options: generateNetworkOptions(networkObjects, 'ipv4')
 		}
 	});
 
@@ -168,6 +191,7 @@ import { watch } from 'runed';
 		comboBoxes.ipv4Gw.value = '';
 		comboBoxes.ipv6.value = '';
 		comboBoxes.ipv6Gw.value = '';
+		comboBoxes.carpIpv4.value = '';
 	}
 
 	function resetEditComboBoxes() {
@@ -177,6 +201,7 @@ import { watch } from 'runed';
 		editComboBoxes.ipv4Gw.value = editOptions.ipv4gw;
 		editComboBoxes.ipv6.value = editOptions.ipv6;
 		editComboBoxes.ipv6Gw.value = editOptions.ipv6gw;
+		editComboBoxes.carpIpv4.value = editOptions.carpIpv4;
 	}
 
 	watch(
@@ -203,10 +228,7 @@ import { watch } from 'runed';
 		}
 	);
 
-	function resolveField(
-		val: string,
-		objects: NetworkObject[]
-	): { id: number; raw: string } {
+	function resolveField(val: string, objects: NetworkObject[]): { id: number; raw: string } {
 		if (!val) return { id: 0, raw: '' };
 		const obj = objects.find((o) => String(o.id) === val);
 		if (obj) return { id: obj.id, raw: '' };
@@ -218,6 +240,15 @@ import { watch } from 'runed';
 			properties.defaultGateway = false;
 		}
 	});
+
+	watch(
+		() => properties.dhcp,
+		(dhcp) => {
+			if (dhcp) {
+				properties.carpEnabled = false;
+			}
+		}
+	);
 
 	watch(
 		() => editProperties.dhcp,
@@ -249,6 +280,15 @@ import { watch } from 'runed';
 		}
 	});
 
+	watch(
+		() => editProperties.dhcp,
+		(dhcp) => {
+			if (dhcp) {
+				editProperties.carpEnabled = false;
+			}
+		}
+	);
+
 	async function addSwitch() {
 		let toastOptions = {
 			position: 'bottom-center' as const
@@ -275,25 +315,61 @@ import { watch } from 'runed';
 			return;
 		}
 
-		const mac = resolveField(comboBoxes.mac.value, networkObjects.filter((o) => o.type === 'Mac'));
-		const ipv4 = resolveField(comboBoxes.ipv4.value, networkObjects.filter((o) => o.type === 'Network'));
-		const ipv4Gw = resolveField(comboBoxes.ipv4Gw.value, networkObjects.filter((o) => o.type === 'Host'));
-		const ipv6 = resolveField(comboBoxes.ipv6.value, networkObjects.filter((o) => o.type === 'Network'));
-		const ipv6Gw = resolveField(comboBoxes.ipv6Gw.value, networkObjects.filter((o) => o.type === 'Host'));
+		if (properties.carp) {
+			if (!properties.carpVhid || !properties.carpPassword || !comboBoxes.carpIpv4.value) {
+				toast.error('VHID, password and CARP IP are required for CARP', toastOptions);
+				return;
+			}
+		}
+		const mac = resolveField(
+			comboBoxes.mac.value,
+			networkObjects.filter((o) => o.type === 'Mac')
+		);
+		const ipv4 = resolveField(
+			comboBoxes.ipv4.value,
+			networkObjects.filter((o) => o.type === 'Network')
+		);
+		const ipv4Gw = resolveField(
+			comboBoxes.ipv4Gw.value,
+			networkObjects.filter((o) => o.type === 'Host')
+		);
+		const ipv6 = resolveField(
+			comboBoxes.ipv6.value,
+			networkObjects.filter((o) => o.type === 'Network')
+		);
+		const ipv6Gw = resolveField(
+			comboBoxes.ipv6Gw.value,
+			networkObjects.filter((o) => o.type === 'Host')
+		);
+		const carpIpv4 = resolveField(
+			comboBoxes.carpIpv4.value,
+			networkObjects.filter((o) => o.type === 'Network')
+		);
 
 		const response = await addNetwork(
 			jail.ctId,
 			properties.name,
 			comboBoxes.sw.value,
-			mac.id, mac.raw,
-			ipv4.id, ipv4.raw,
-			ipv4Gw.id, ipv4Gw.raw,
-			ipv6.id, ipv6.raw,
-			ipv6Gw.id, ipv6Gw.raw,
+			mac.id,
+			mac.raw,
+			ipv4.id,
+			ipv4.raw,
+			ipv4Gw.id,
+			ipv4Gw.raw,
+			ipv6.id,
+			ipv6.raw,
+			ipv6Gw.id,
+			ipv6Gw.raw,
 			properties.dhcp,
 			properties.slaac,
 			properties.defaultGateway,
-			parseNumberOrZero(properties.vlan)
+			parseNumberOrZero(properties.vlan),
+			properties.carp,
+			parseNumberOrZero(properties.carpVhid),
+			parseNumberOrZero(properties.carpAdvSkew),
+			properties.carpPassword,
+			carpIpv4.id,
+			carpIpv4.raw
 		);
 
 		reload = true;
@@ -335,25 +411,67 @@ import { watch } from 'runed';
 			return;
 		}
 
-		const mac = resolveField(editComboBoxes.mac.value, networkObjects.filter((o) => o.type === 'Mac'));
-		const ipv4 = resolveField(editComboBoxes.ipv4.value, networkObjects.filter((o) => o.type === 'Network'));
-		const ipv4Gw = resolveField(editComboBoxes.ipv4Gw.value, networkObjects.filter((o) => o.type === 'Host'));
-		const ipv6 = resolveField(editComboBoxes.ipv6.value, networkObjects.filter((o) => o.type === 'Network'));
-		const ipv6Gw = resolveField(editComboBoxes.ipv6Gw.value, networkObjects.filter((o) => o.type === 'Host'));
+		if (editProperties.carpEnabled) {
+			if (
+				!editProperties.carpVhid ||
+				!editProperties.carpPassword ||
+				!editComboBoxes.carpIpv4.value
+			) {
+				toast.error('VHID, password and CARP IP are required for CARP', toastOptions);
+				return;
+			}
+		}
+
+		const mac = resolveField(
+			editComboBoxes.mac.value,
+			networkObjects.filter((o) => o.type === 'Mac')
+		);
+		const ipv4 = resolveField(
+			editComboBoxes.ipv4.value,
+			networkObjects.filter((o) => o.type === 'Network')
+		);
+		const ipv4Gw = resolveField(
+			editComboBoxes.ipv4Gw.value,
+			networkObjects.filter((o) => o.type === 'Host')
+		);
+		const ipv6 = resolveField(
+			editComboBoxes.ipv6.value,
+			networkObjects.filter((o) => o.type === 'Network')
+		);
+		const ipv6Gw = resolveField(
+			editComboBoxes.ipv6Gw.value,
+			networkObjects.filter((o) => o.type === 'Host')
+		);
+
+		const carpIpv4 = resolveField(
+			editComboBoxes.carpIpv4.value,
+			networkObjects.filter((o) => o.type === 'Network')
+		);
 
 		const response = await updateNetworkAPI(
 			selectedNetwork.id,
 			editProperties.name,
 			editComboBoxes.sw.value,
-			mac.id, mac.raw,
-			ipv4.id, ipv4.raw,
-			ipv4Gw.id, ipv4Gw.raw,
-			ipv6.id, ipv6.raw,
-			ipv6Gw.id, ipv6Gw.raw,
+			mac.id,
+			mac.raw,
+			ipv4.id,
+			ipv4.raw,
+			ipv4Gw.id,
+			ipv4Gw.raw,
+			ipv6.id,
+			ipv6.raw,
+			ipv6Gw.id,
+			ipv6Gw.raw,
 			editProperties.dhcp,
 			editProperties.slaac,
 			editProperties.defaultGateway,
-			parseNumberOrZero(editProperties.vlan)
+			parseNumberOrZero(editProperties.vlan),
+			editProperties.carp,
+			parseNumberOrZero(editProperties.carpVhid),
+			parseNumberOrZero(editProperties.carpAdvSkew),
+			editProperties.carpPassword,
+			carpIpv4.id,
+			carpIpv4.raw
 		);
 
 		reload = true;
@@ -525,7 +643,56 @@ import { watch } from 'runed';
 							disabled={hasDefaultGateway}
 						/>
 					{/if}
+
+					{#if jail.type === 'freebsd'}
+						<CustomCheckbox
+							bind:checked={properties.carp}
+							label="CARP (Failover VIP)"
+							classes="flex items-center gap-2"
+							disabled={properties.dhcp}
+						/>
+					{/if}
 				</div>
+
+				{#if jail.type === 'freebsd' && properties.carp}
+					<div class="mt-2 grid grid-cols-4 gap-4 items-end">
+						<CustomValueInput
+							label="VHID"
+							placeholder="1-255"
+							bind:value={properties.carpVhid}
+							classes="flex-1 space-y-1"
+							type="number"
+						/>
+
+						<CustomValueInput
+							label="Advertising Skew"
+							placeholder="0"
+							bind:value={properties.carpAdvSkew}
+							classes="flex-1 space-y-1"
+							type="number"
+						/>
+
+						<CustomValueInput
+							label="Password"
+							placeholder="Shared CARP password"
+							bind:value={properties.carpPassword}
+							classes="flex-1 space-y-1"
+							type="password"
+						/>
+
+						<CustomComboBox
+							bind:open={comboBoxes.carpIpv4.open}
+							label="Virtual IP"
+							placeholder="Select or type an IPv4 CIDR"
+							bind:value={comboBoxes.carpIpv4.value}
+							data={comboBoxes.carpIpv4.options}
+							classes="flex-1 space-y-1"
+							triggerWidth="w-full"
+							width="w-full"
+							allowCustom={true}
+						/>
+					</div>
+				{/if}
 			{/if}
 		{:else}
 			<div class="grid grid-cols-4 gap-4 items-end">
@@ -651,7 +818,56 @@ import { watch } from 'runed';
 							disabled={hasDefaultGateway}
 						/>
 					{/if}
+
+					{#if jail.type === 'freebsd'}
+						<CustomCheckbox
+							bind:checked={editProperties.carp}
+							label="CARP (Failover VIP)"
+							classes="flex items-center gap-2"
+							disabled={editProperties.dhcp}
+						/>
+					{/if}
 				</div>
+
+				{#if jail.type === 'freebsd' && editProperties.carp}
+					<div class="mt-2 grid grid-cols-4 gap-4 items-end">
+						<CustomValueInput
+							label="VHID"
+							placeholder="1-255"
+							bind:value={editProperties.carpVhid}
+							classes="flex-1 space-y-1"
+							type="number"
+						/>
+
+						<CustomValueInput
+							label="Advertising Skew"
+							placeholder="0"
+							bind:value={editProperties.carpAdvSkew}
+							classes="flex-1 space-y-1"
+							type="number"
+						/>
+
+						<CustomValueInput
+							label="Password"
+							placeholder="Shared CARP password"
+							bind:value={editProperties.carpPassword}
+							classes="flex-1 space-y-1"
+							type="password"
+						/>
+
+						<CustomComboBox
+							bind:open={editComboBoxes.carpIpv4.open}
+							label="Virtual IP"
+							placeholder="Select or type an IPv4 CIDR"
+							bind:value={editComboBoxes.carpIpv4.value}
+							data={editComboBoxes.carpIpv4.options}
+							classes="flex-1 space-y-1"
+							triggerWidth="w-full"
+							width="w-full"
+							allowCustom={true}
+						/>
+					</div>
+				{/if}
 			{/if}
 		{/if}
 
