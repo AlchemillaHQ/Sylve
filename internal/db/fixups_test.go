@@ -15,10 +15,71 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestDeduplicateMdnsRecordsBeforeIdentityIndex(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
+	if err := dbConn.Exec(`
+		CREATE TABLE mdns_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT,
+			type TEXT,
+			port INTEGER
+		)
+	`).Error; err != nil {
+		t.Fatalf("create legacy mDNS records table: %v", err)
+	}
+	if err := dbConn.Exec(`
+		INSERT INTO mdns_records (id, name, type, port) VALUES
+			(1, 'printer', '_ipp._tcp', 631),
+			(2, 'printer', '_ipp._tcp', 8631),
+			(3, 'printer', '_printer._tcp', 9100),
+			(4, 'printer', '_ipp._tcp', 10631)
+	`).Error; err != nil {
+		t.Fatalf("seed duplicate mDNS records: %v", err)
+	}
+
+	deduplicateMdnsRecords(dbConn)
+	deduplicateMdnsRecords(dbConn)
+
+	var rows []struct {
+		ID   uint
+		Name string
+		Type string
+		Port int
+	}
+	if err := dbConn.Table("mdns_records").Order("id ASC").Find(&rows).Error; err != nil {
+		t.Fatalf("list deduplicated mDNS records: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected two unique records, got %+v", rows)
+	}
+	if rows[0].ID != 1 || rows[0].Port != 631 || rows[1].ID != 3 {
+		t.Fatalf("deduplication did not retain the oldest identities: %+v", rows)
+	}
+
+	var migrationCount int64
+	if err := dbConn.Model(&models.Migrations{}).
+		Where("name = ?", "deduplicate_mdns_record_identity_1").
+		Count(&migrationCount).Error; err != nil {
+		t.Fatalf("count mDNS deduplication migration: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected one migration marker, got %d", migrationCount)
+	}
+
+	if err := dbConn.AutoMigrate(&mdnsModels.MdnsRecord{}); err != nil {
+		t.Fatalf("apply mDNS identity index: %v", err)
+	}
+	duplicate := mdnsModels.MdnsRecord{Name: "printer", Type: "_ipp._tcp", Port: 9999}
+	if err := dbConn.Create(&duplicate).Error; err == nil {
+		t.Fatal("expected the identity index to reject a duplicate mDNS record")
+	}
+}
 
 func TestClearReplicatedManagedBackupTargetKeyPaths(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t,

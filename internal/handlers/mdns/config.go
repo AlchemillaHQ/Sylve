@@ -15,6 +15,8 @@ import (
 	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 
 	"github.com/gin-gonic/gin"
+
+	_ "github.com/alchemillahq/sylve/internal/db/models/mdns"
 )
 
 type MdnsSettingsRequest struct {
@@ -22,13 +24,14 @@ type MdnsSettingsRequest struct {
 	Hostname   string `json:"hostname"`
 }
 
-// @Summary Get mDNS Settings
-// @Description Retrieve mDNS service discovery settings
+// @Summary Get mDNS settings
+// @Description Retrieve the mDNS service discovery settings
 // @Tags mDNS
 // @Accept json
 // @Produce json
-// @Success 200 {object} internal.APIResponse[mdnsModels.MdnsSettings] "mDNS settings"
-// @Failure 500 {string} string "Internal server error"
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[mdnsModels.MdnsSettings] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /mdns/config [get]
 func GetSettings(mdnsService mdnsInterfaces.MdnsServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -52,16 +55,17 @@ func GetSettings(mdnsService mdnsInterfaces.MdnsServiceInterface) gin.HandlerFun
 	}
 }
 
-// @Summary Set mDNS Settings
-// @Description Update mDNS service discovery settings
+// @Summary Update mDNS settings
+// @Description Update the mDNS service discovery settings
 // @Tags mDNS
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param request body MdnsSettingsRequest true "mDNS Settings"
-// @Success 200 {string} string "mDNS settings updated"
-// @Failure 400 {string} string "Invalid request"
-// @Failure 500 {string} string "Internal server error"
-// @Router /mdns/config [post]
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /mdns/config [put]
 func SetSettings(mdnsService mdnsInterfaces.MdnsServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req MdnsSettingsRequest

@@ -57,6 +57,61 @@ func TestRespondClosesConnectionAfterRegistrationFailure(t *testing.T) {
 	}
 }
 
+func TestRespondReadyReportsRegistrationResult(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		conn := newCloseTrackingConn()
+		responder := newResponder(conn)
+		service, err := NewService(Config{Name: "Test", Type: "_test._tcp", Port: 1234})
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		responder.addManaged(service)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		ready := make(chan error, 1)
+		done := make(chan error, 1)
+		go func() {
+			done <- responder.RespondReady(ctx, ready)
+		}()
+
+		if err := <-ready; err != nil {
+			t.Fatalf("unexpected readiness error: %v", err)
+		}
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected canceled responder, got %v", err)
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		conn := newCloseTrackingConn()
+		responder := newResponder(conn)
+		responder.probe = func(context.Context, Service) (Service, error) {
+			return Service{}, errors.New("probe failed")
+		}
+		service, err := NewService(Config{Name: "Test", Type: "_test._tcp", Port: 1234})
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		if _, err := responder.Add(service); err != nil {
+			t.Fatalf("failed to add service: %v", err)
+		}
+
+		ready := make(chan error, 1)
+		done := make(chan error, 1)
+		go func() {
+			done <- responder.RespondReady(context.Background(), ready)
+		}()
+
+		if err := <-ready; err == nil || err.Error() != "probe failed" {
+			t.Fatalf("expected readiness failure, got %v", err)
+		}
+		if err := <-done; err == nil || err.Error() != "probe failed" {
+			t.Fatalf("expected responder failure, got %v", err)
+		}
+	})
+}
+
 func TestRemove(t *testing.T) {
 	cfg := Config{
 		Name: "Test",

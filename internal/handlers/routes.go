@@ -270,7 +270,7 @@ func RegisterRoutes(r *gin.Engine,
 	mdnsGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		mdnsGroup.GET("/config", mdnsHandlers.GetSettings(mdnsService))
-		mdnsGroup.POST("/config", mdnsHandlers.SetSettings(mdnsService))
+		mdnsGroup.PUT("/config", mdnsHandlers.SetSettings(mdnsService))
 
 		mdnsGroup.GET("/records", mdnsHandlers.GetRecords(mdnsService))
 		mdnsGroup.POST("/records", mdnsHandlers.CreateRecord(mdnsService))

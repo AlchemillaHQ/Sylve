@@ -94,6 +94,16 @@ func (r *responder) Add(srv Service) (ServiceHandle, error) {
 }
 
 func (r *responder) Respond(ctx context.Context) error {
+	return r.respondReady(ctx, nil)
+}
+
+// RespondReady behaves like Respond and reports whether initial service
+// registration succeeded before entering the response loop.
+func (r *responder) RespondReady(ctx context.Context, ready chan<- error) error {
+	return r.respondReady(ctx, ready)
+}
+
+func (r *responder) respondReady(ctx context.Context, ready chan<- error) error {
 	defer r.Close()
 
 	r.mutex.Lock()
@@ -114,7 +124,13 @@ func (r *responder) Respond(ctx context.Context) error {
 	r.mutex.Unlock()
 
 	if err != nil {
+		if ready != nil {
+			ready <- err
+		}
 		return err
+	}
+	if ready != nil {
+		ready <- nil
 	}
 
 	watchCtx, stopWatcher := context.WithCancel(ctx)

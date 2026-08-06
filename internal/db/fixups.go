@@ -239,6 +239,7 @@ func enforceBasicSettingsSingleton(db *gorm.DB) error {
 
 func PreMigrationFixups(db *gorm.DB) {
 	deduplicateJailHooks(db)
+	deduplicateMdnsRecords(db)
 }
 
 func runNetworkDeltaMigration(db *gorm.DB) {
@@ -880,6 +881,58 @@ func deduplicateJailHooks(db *gorm.DB) {
 	})
 
 	logger.L.Info().Msg("Deduplicated jail hooks and migrated schema")
+}
+
+func deduplicateMdnsRecords(db *gorm.DB) {
+	const name = "deduplicate_mdns_record_identity_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for deduplicate_mdns_records")
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("mdns_records") {
+		if err := db.Table("migrations").Create(map[string]any{"name": name}).Error; err != nil {
+			logger.L.Err(err).Msg("failed recording deduplicate_mdns_records migration")
+		}
+		return
+	}
+
+	var duplicatesRemoved int64
+	err := db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Exec(`
+			DELETE FROM mdns_records
+			WHERE id NOT IN (
+				SELECT MIN(id)
+				FROM mdns_records
+				GROUP BY name, type
+			)
+		`)
+		if result.Error != nil {
+			return fmt.Errorf("failed removing duplicate mdns records: %w", result.Error)
+		}
+		duplicatesRemoved = result.RowsAffected
+
+		if err := tx.Table("migrations").Create(map[string]any{"name": name}).Error; err != nil {
+			return fmt.Errorf("failed recording deduplicate_mdns_records migration: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		logger.L.Err(err).Msg("failed deduplicating mdns records")
+		return
+	}
+
+	if duplicatesRemoved > 0 {
+		logger.L.Warn().Int64("duplicates_removed", duplicatesRemoved).Msg("Removed duplicate mDNS records")
+	}
 }
 
 func backfillUserSystemData(db *gorm.DB) {

@@ -171,6 +171,8 @@
 		'/api/auth/passkeys/users': 'Passkey',
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
+		'/api/mdns/config': 'mDNS Config',
+		'/api/mdns/records': 'mDNS Record',
 		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
 		'/api/info/terminal': 'Host Terminal - Session',
