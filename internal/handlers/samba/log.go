@@ -19,18 +19,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary Get Samba Audit Logs
-// @Description Retrieve Samba audit logs
+// @Summary Get Samba audit logs
+// @Description Retrieve paginated Samba audit logs
 // @Tags Samba
 // @Accept json
 // @Produce json
-// @Param hash query string true "Auth hash"
-// @Param page query int false "Page number (default 1)"
-// @Param size query int false "Page size  (default 100)"
-// @Param sort[0][field] query string false "Field to sort by (e.g. id, action, share, created_at)"
-// @Param sort[0][dir]   query string false "Sort direction (asc or desc)"
-// @Success 200 {object} internal.APIResponse[sambaServiceInterfaces.AuditLogsResponse] "Samba audit logs"
-// @Failure 500 {string} string "Internal server error"
+// @Security BearerAuth
+// @Param hash query string false "SHA-256 token hash alternative to Bearer authentication"
+// @Param page query int false "Page number" default(1) minimum(1)
+// @Param size query int false "Page size" default(100) minimum(1)
+// @Param sort[0][field] query string false "Sort field" Enums(id,action,share,path,createdAt,created_at)
+// @Param sort[0][dir] query string false "Sort direction" Enums(asc,desc)
+// @Success 200 {object} internal.APIResponse[sambaServiceInterfaces.AuditLogsResponse] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/audit-logs [get]
 func GetAuditLogs(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {

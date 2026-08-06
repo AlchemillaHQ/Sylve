@@ -3493,6 +3493,7 @@ msgstr "ट्रांसफर"
 msgid "Moved"
 msgstr "स्थानांतरित"
 
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Total"
 msgstr "कुल"
@@ -6092,7 +6093,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -12684,12 +12685,16 @@ msgstr ""
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Read"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Write"
 msgstr ""
 
@@ -18791,8 +18796,9 @@ msgstr ""
 msgid "Bandwidth"
 msgstr ""
 
-#~ msgid "IOPS"
-#~ msgstr ""
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid "IOPS"
+msgstr ""
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Latency"
@@ -18891,8 +18897,6 @@ msgstr ""
 msgid "<0/>Write"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Live ZFS telemetry is stale. Historical data remains available."
 msgstr ""
@@ -19182,9 +19186,8 @@ msgstr ""
 msgid "Tree Settings"
 msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Legacy VM restor"
-msgstr ""
+#~ msgid "Legacy VM restor"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Create separate VM and Jail branches."
@@ -19217,9 +19220,8 @@ msgstr ""
 #~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed."
 #~ msgstr ""
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
-msgstr ""
+#~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
+#~ msgstr ""
 
 #~ msgid "DELETE /api/info/notes"
 #~ msgstr ""
@@ -19233,11 +19235,8 @@ msgstr ""
 #~ msgid "A scrub is a"
 #~ msgstr ""
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Legacy VM restore points cannot prove that every disk root is completems"
-msgstr ""
+#~ msgid "Legacy VM restore points cannot prove that every disk root is completems"
+#~ msgstr ""
 
 #~ msgid "DELETE /api/zfs/datasets"
 #~ msgstr ""
@@ -19250,4 +19249,12 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Dataset - Delete"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid "Avg latency"
 msgstr ""

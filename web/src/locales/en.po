@@ -3493,6 +3493,7 @@ msgstr "Transfer"
 msgid "Moved"
 msgstr "Moved"
 
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Total"
 msgstr "Total"
@@ -6092,8 +6093,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -12684,12 +12685,16 @@ msgstr "Home Directory Permissions"
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Read"
 msgstr "Read"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Write"
 msgstr "Write"
 
@@ -18814,8 +18819,9 @@ msgstr "<0/> Performance"
 msgid "Bandwidth"
 msgstr "Bandwidth"
 
-#~ msgid "IOPS"
-#~ msgstr "IOPS"
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid "IOPS"
+msgstr "IOPS"
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Latency"
@@ -18914,8 +18920,6 @@ msgstr "<0/>Read"
 msgid "<0/>Write"
 msgstr "<0/>Write"
 
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Live ZFS telemetry is stale. Historical data remains available."
 msgstr "Live ZFS telemetry is stale. Historical data remains available."
@@ -19205,9 +19209,8 @@ msgstr "Save settings"
 msgid "Tree Settings"
 msgstr "Tree Settings"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Legacy VM restor"
-msgstr "Legacy VM restor"
+#~ msgid "Legacy VM restor"
+#~ msgstr "Legacy VM restor"
 
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Create separate VM and Jail branches."
@@ -19240,9 +19243,8 @@ msgstr "Disable Bridge Offloads"
 #~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed."
 #~ msgstr "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed."
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
-msgstr "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
+#~ msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
+#~ msgstr "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
 
 #~ msgid "DELETE /api/info/notes"
 #~ msgstr "DELETE /api/info/notes"
@@ -19256,11 +19258,8 @@ msgstr "Disables TX checksum, TSO, and LRO on selected ports before bridge attac
 #~ msgid "A scrub is a"
 #~ msgstr "A scrub is a"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Legacy VM restore points cannot prove that every disk root is completems"
-msgstr "Legacy VM restore points cannot prove that every disk root is completems"
+#~ msgid "Legacy VM restore points cannot prove that every disk root is completems"
+#~ msgstr "Legacy VM restore points cannot prove that every disk root is completems"
 
 #~ msgid "DELETE /api/zfs/datasets"
 #~ msgstr "DELETE /api/zfs/datasets"
@@ -19274,3 +19273,11 @@ msgstr "Legacy VM restore points cannot prove that every disk root is completems
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Dataset - Delete"
 msgstr "ZFS Dataset - Delete"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
+msgstr "Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
+
+#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
+msgid "Avg latency"
+msgstr "Avg latency"

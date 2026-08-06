@@ -1,13 +1,10 @@
 <script lang="ts">
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
-	import { storage } from '$lib';
 	import type { Column } from '$lib/types/components/tree-table';
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import type { Dataset } from '$lib/types/zfs/dataset';
-	import { sha256 } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
-	import { onMount } from 'svelte';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -74,23 +71,11 @@
 		rows: []
 	});
 
-	let hash = $state('');
 	let reload = $state(false);
-
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-	});
 </script>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash}
-			<TreeTable
-				name="smb-audit-log-tt"
-				data={table}
-				ajaxURL="/api/samba/audit-logs?hash={hash}"
-				bind:reload
-			/>
-		{/if}
+		<TreeTable name="smb-audit-log-tt" data={table} ajaxURL="/api/samba/audit-logs" bind:reload />
 	</div>
 </div>

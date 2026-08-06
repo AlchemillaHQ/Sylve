@@ -253,11 +253,11 @@ func RegisterRoutes(r *gin.Engine,
 	samba.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		samba.GET("/config", sambaHandlers.GetGlobalConfig(sambaService))
-		samba.POST("/config", sambaHandlers.SetGlobalConfig(sambaService))
+		samba.PUT("/config", sambaHandlers.SetGlobalConfig(sambaService))
 
 		samba.GET("/shares", sambaHandlers.GetShares(sambaService))
 		samba.POST("/shares", sambaHandlers.CreateShare(sambaService))
-		samba.PUT("/shares", sambaHandlers.UpdateShare(sambaService))
+		samba.PUT("/shares/:id", sambaHandlers.UpdateShare(sambaService))
 		samba.PUT("/shares/:id/enabled", sambaHandlers.SetShareEnabled(sambaService))
 		samba.DELETE("/shares/:id", sambaHandlers.DeleteShare(sambaService))
 

@@ -91,6 +91,24 @@ func setAppleExtensions(t *testing.T, service *Service, enabled bool) error {
 	)
 }
 
+func TestSetGlobalConfigClassifiesInvalidInput(t *testing.T) {
+	err := (&Service{}).SetGlobalConfig(
+		context.Background(),
+		"",
+		"WORKGROUP",
+		"Sylve SMB Server",
+		"lo0",
+		false,
+		false,
+	)
+	if !errors.Is(err, ErrInvalidGlobalConfig) {
+		t.Fatalf("expected ErrInvalidGlobalConfig, got %v", err)
+	}
+	if err.Error() != "unixCharset, workgroup, and serverString cannot be empty" {
+		t.Fatalf("unexpected validation detail: %q", err.Error())
+	}
+}
+
 func mdnsServiceCount(t *testing.T, service *Service) int {
 	t.Helper()
 

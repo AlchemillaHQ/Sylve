@@ -9,6 +9,7 @@
 package sambaHandlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -23,17 +24,26 @@ type SambaConfigRequest struct {
 	Workgroup          string `json:"workgroup"`
 	ServerString       string `json:"serverString"`
 	Interfaces         string `json:"interfaces"`
-	BindInterfacesOnly *bool  `json:"bindInterfacesOnly"`
-	AppleExtensions    *bool  `json:"appleExtensions"`
+	BindInterfacesOnly bool   `json:"bindInterfacesOnly"`
+	AppleExtensions    bool   `json:"appleExtensions"`
 }
 
-// @Summary Get Samba Global Configuration
-// @Description Retrieve Samba global configuration settings
+func sambaConfigServiceErrorStatus(err error) int {
+	if errors.Is(err, samba.ErrInvalidGlobalConfig) {
+		return http.StatusBadRequest
+	}
+
+	return http.StatusInternalServerError
+}
+
+// @Summary Get Samba global configuration
+// @Description Retrieve the Samba global configuration settings
 // @Tags Samba
 // @Accept json
 // @Produce json
-// @Success 200 {object} internal.APIResponse[[]sambaModels.SambaSettings] "Samba global configuration"
-// @Failure 500 {string} string "Internal server error"
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[sambaModels.SambaSettings] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/config [get]
 func GetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -57,20 +67,21 @@ func GetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Set Samba Global Configuration
-// @Description Set Samba global configuration settings
+// @Summary Update Samba global configuration
+// @Description Update the Samba global configuration settings
 // @Tags Samba
 // @Accept json
 // @Produce json
-// @Param request body SambaConfigRequest true "Samba Global Configuration"
-// @Success 200 {string} string "Samba global configuration updated successfully"
-// @Failure 400 {string} string "Invalid request"
-// @Failure 500 {string} string "Internal server error"
-// @Router /samba/config [post]
+// @Security BearerAuth
+// @Param request body SambaConfigRequest true "Samba global configuration"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /samba/config [put]
 func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req SambaConfigRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
+		if err := strictJSONBind(c, &req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
@@ -80,16 +91,6 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			return
 		}
 
-		bindInterfaces := false
-		if req.BindInterfacesOnly != nil {
-			bindInterfaces = *req.BindInterfacesOnly
-		}
-
-		appleExtensions := false
-		if req.AppleExtensions != nil {
-			appleExtensions = *req.AppleExtensions
-		}
-
 		ctx := c.Request.Context()
 		err := smbService.SetGlobalConfig(
 			ctx,
@@ -97,11 +98,11 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			req.Workgroup,
 			req.ServerString,
 			req.Interfaces,
-			bindInterfaces,
-			appleExtensions)
+			req.BindInterfacesOnly,
+			req.AppleExtensions)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			c.JSON(sambaConfigServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_set_samba_config",
 				Error:   err.Error(),

@@ -10,6 +10,7 @@ package samba
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,24 @@ import (
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 	"gorm.io/gorm"
 )
+
+var ErrInvalidGlobalConfig = errors.New("invalid_samba_global_config")
+
+type invalidGlobalConfigError struct {
+	detail error
+}
+
+func (e *invalidGlobalConfigError) Error() string {
+	return e.detail.Error()
+}
+
+func (e *invalidGlobalConfigError) Unwrap() []error {
+	return []error{ErrInvalidGlobalConfig, e.detail}
+}
+
+func invalidGlobalConfig(format string, args ...any) error {
+	return &invalidGlobalConfigError{detail: fmt.Errorf(format, args...)}
+}
 
 const (
 	sambaACLType    = "nfsv4"
@@ -115,7 +134,7 @@ func (s *Service) SetGlobalConfig(
 	bindInterfacesOnly bool,
 	appleExtensions bool) error {
 	if unixCharset == "" || workgroup == "" || serverString == "" {
-		return fmt.Errorf("unixCharset, workgroup, and serverString cannot be empty")
+		return invalidGlobalConfig("unixCharset, workgroup, and serverString cannot be empty")
 	}
 
 	if interfaces == "" {
@@ -125,15 +144,15 @@ func (s *Service) SetGlobalConfig(
 	supportedCharsets := sambaSupportedCharsets()
 
 	if !utils.StringInSlice(unixCharset, supportedCharsets) {
-		return fmt.Errorf("unsupported unixCharset: %s", unixCharset)
+		return invalidGlobalConfig("unsupported unixCharset: %s", unixCharset)
 	}
 
 	if !utils.IsValidWorkgroup(workgroup) {
-		return fmt.Errorf("invalid workgroup name: %s", workgroup)
+		return invalidGlobalConfig("invalid workgroup name: %s", workgroup)
 	}
 
 	if !utils.IsValidServerString(serverString) || strings.ContainsAny(serverString, "\r\n\x00") {
-		return fmt.Errorf("invalid server string: %s", serverString)
+		return invalidGlobalConfig("invalid server string: %s", serverString)
 	}
 
 	interfacesList := strings.Split(interfaces, ",")
@@ -143,7 +162,7 @@ func (s *Service) SetGlobalConfig(
 		eIface = strings.TrimSpace(eIface)
 		_, err := sambaGetInterface(eIface)
 		if err != nil && !strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("invalid interface '%s': %w", eIface, err)
+			return invalidGlobalConfig("invalid interface '%s': %v", eIface, err)
 		} else if err != nil && strings.Contains(err.Error(), "not found") {
 			logger.L.Warn().Str("interface", eIface).Msg("Interface not found, continuing without it")
 			interfacesList = utils.RemoveStringFromSlice(interfacesList, eIface)
