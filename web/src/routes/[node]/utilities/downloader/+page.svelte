@@ -263,23 +263,17 @@
 		}
 	}
 
-	async function handleDelete() {
-		if (activeRows && activeRows.length == 1) {
+	function handleDelete() {
+		if (!activeRows?.length) return;
+
+		if (activeRows.length === 1) {
 			modalState.isDelete = true;
 			modalState.title = activeRows[0].name;
+			return;
 		}
 
-		if (activeRows && activeRows.length > 1) {
-			for (const row of activeRows) {
-				if (row.type !== 'http' && row.type !== 'torrent') {
-					modalState.isBulkDelete = false;
-					modalState.title = '';
-					return;
-				}
-			}
-			modalState.isBulkDelete = true;
-			modalState.title = `${activeRows.length} downloads`;
-		}
+		modalState.isBulkDelete = true;
+		modalState.title = `${activeRows.length} downloads`;
 	}
 
 	async function handleDownload() {
