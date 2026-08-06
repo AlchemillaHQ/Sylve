@@ -18,6 +18,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -123,12 +124,21 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	}
 
 	basicSettings.Pools = pools
-	return s.DB.Transaction(func(tx *gorm.DB) error {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(&basicSettings).Error; err != nil {
 			return err
 		}
 		return db.InvalidateZFSCaches(tx)
-	})
+	}); err != nil {
+		return err
+	}
+
+	if s.OnUsablePoolsChanged != nil {
+		if err := s.OnUsablePoolsChanged(ctx); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to reconcile ZFS telemetry after usable pools changed")
+		}
+	}
+	return nil
 }
 
 func (s *Service) ToggleDHCPServer(enable bool) error {

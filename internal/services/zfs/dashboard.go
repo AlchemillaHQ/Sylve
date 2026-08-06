@@ -180,10 +180,12 @@ func (s *Service) GetDashboardSnapshot(ctx context.Context) (zfsServiceInterface
 		GeneratedAt: now.UnixMilli(),
 	}
 
-	pools, err := s.GZFS.Zpool.List(ctx)
+	scope, err := s.loadManagedPoolScope(ctx)
 	if err != nil {
-		return result, fmt.Errorf("list pools for dashboard snapshot: %w", err)
+		return result, fmt.Errorf("load managed pools for dashboard snapshot: %w", err)
 	}
+	pools := scope.pools
+	s.setManagedPoolIOPools(pools)
 	sort.Slice(pools, func(i, j int) bool {
 		if pools[i] == nil {
 			return false
@@ -478,9 +480,10 @@ func downsampleARCRows(rows []infoModels.ZFSARCHistorical, previous *infoModels.
 	return points
 }
 
-func maxDashboardCursors(tx *gorm.DB) (zfsServiceInterfaces.DashboardCursors, error) {
+func maxDashboardCursors(tx *gorm.DB, scope managedPoolScope) (zfsServiceInterfaces.DashboardCursors, error) {
 	var cursors zfsServiceInterfaces.DashboardCursors
-	if err := tx.Model(&infoModels.ZPoolHistorical{}).Select("COALESCE(MAX(id), 0)").Scan(&cursors.Pool).Error; err != nil {
+	poolCursorQuery := scope.filterHistoricalPools(tx.Model(&infoModels.ZPoolHistorical{}))
+	if err := poolCursorQuery.Select("COALESCE(MAX(id), 0)").Scan(&cursors.Pool).Error; err != nil {
 		return cursors, fmt.Errorf("read zpool dashboard cursor: %w", err)
 	}
 	if err := tx.Model(&infoModels.ZFSARCHistorical{}).Select("COALESCE(MAX(id), 0)").Scan(&cursors.ARC).Error; err != nil {
@@ -498,19 +501,27 @@ func (s *Service) GetDashboardHistory(ctx context.Context, query zfsServiceInter
 	if !query.To.After(query.From) {
 		return result, fmt.Errorf("invalid dashboard history window")
 	}
+	query.PoolGUID = strings.TrimSpace(query.PoolGUID)
+	scope, err := s.loadManagedPoolScope(ctx)
+	if err != nil {
+		return result, fmt.Errorf("load managed pools for dashboard history: %w", err)
+	}
+	if query.PoolGUID != "" && !scope.containsGUID(query.PoolGUID) {
+		return result, classifyError(ErrPoolNotFound, "dashboard_pool_not_managed")
+	}
 	resolution := dashboardResolution(query.From, query.To, query.MaxPoints)
 	result.ResolutionSeconds = int64(resolution / time.Second)
 
-	err := s.TelemetryDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		cursors, err := maxDashboardCursors(tx)
+	err = s.TelemetryDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		cursors, err := maxDashboardCursors(tx, scope)
 		if err != nil {
 			return err
 		}
 		result.Cursors = cursors
 
-		poolQuery := tx.
+		poolQuery := scope.filterHistoricalPools(tx.
 			Where("created_at >= ? AND created_at <= ?", query.From, query.To).
-			Order("guid ASC, created_at ASC")
+			Order("guid ASC, created_at ASC"))
 		if query.PoolGUID != "" {
 			poolQuery = poolQuery.Where("guid = ?", query.PoolGUID)
 		}
@@ -549,15 +560,25 @@ func (s *Service) GetDashboardHistoryDelta(ctx context.Context, query zfsService
 		ARC:         make([]zfsServiceInterfaces.DashboardARCPoint, 0),
 		GeneratedAt: time.Now().UTC().UnixMilli(),
 	}
+	query.PoolGUID = strings.TrimSpace(query.PoolGUID)
+	scope, err := s.loadManagedPoolScope(ctx)
+	if err != nil {
+		return result, fmt.Errorf("load managed pools for dashboard delta: %w", err)
+	}
+	if query.PoolGUID != "" && !scope.containsGUID(query.PoolGUID) {
+		return result, classifyError(ErrPoolNotFound, "dashboard_pool_not_managed")
+	}
 
-	err := s.TelemetryDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		cursors, err := maxDashboardCursors(tx)
+	err = s.TelemetryDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		cursors, err := maxDashboardCursors(tx, scope)
 		if err != nil {
 			return err
 		}
 		result.Cursors = cursors
 
-		poolQuery := tx.Where("id > ?", query.PoolAfter).Order("id ASC").Limit(dashboardDeltaLimit + 1)
+		poolQuery := scope.filterHistoricalPools(
+			tx.Where("id > ?", query.PoolAfter).Order("id ASC").Limit(dashboardDeltaLimit + 1),
+		)
 		if query.PoolGUID != "" {
 			poolQuery = poolQuery.Where("guid = ?", query.PoolGUID)
 		}

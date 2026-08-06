@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -163,13 +164,18 @@ type retentionValues struct {
 func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
+	guid = strings.TrimSpace(guid)
+	name = strings.TrimSpace(name)
+	if guid == "" || name == "" {
+		return classifyError(ErrInvalidRequest, "snapshot_guid_and_name_required")
+	}
 	if err := validateUserSnapshotNamespace(name); err != nil {
 		return err
 	}
 
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
-	if err != nil {
-		return err
+	if err != nil || dataset == nil {
+		return datasetLookupError(err, "dataset_with_guid_%s_not_found", guid)
 	}
 	if err := s.requireUserSnapshotCreationAllowed(ctx, dataset.Name, recursive); err != nil {
 		return err
@@ -177,10 +183,13 @@ func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, 
 
 	shot, err := dataset.Snapshot(ctx, name, recursive)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			return classifyError(ErrConflict, "%v", err)
+		}
 		return err
 	}
 
-	if shot.Name != dataset.Name+"@"+name {
+	if shot == nil || shot.Name != dataset.Name+"@"+name {
 		return fmt.Errorf("snapshot_creation_failed")
 	}
 
@@ -195,8 +204,8 @@ func (s *Service) DeleteSnapshot(ctx context.Context, guid string, recursive boo
 
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 
-	if err != nil {
-		return err
+	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
+		return datasetLookupError(err, "snapshot_with_guid_%s_not_found", guid)
 	}
 
 	err = dataset.Destroy(ctx, recursive, false)
@@ -205,7 +214,7 @@ func (s *Service) DeleteSnapshot(ctx context.Context, guid string, recursive boo
 		return err
 	}
 
-	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "create")
+	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "delete")
 
 	return nil
 }
@@ -243,7 +252,7 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 		keepMonthly = r.KeepMonthly
 		keepYearly = r.KeepYearly
 	default:
-		return "", retentionValues{}, fmt.Errorf("invalid_request_type")
+		return "", retentionValues{}, classifyError(ErrInvalidRequest, "invalid_request_type")
 	}
 
 	simplePresent := keepLast != nil || maxAgeDays != nil
@@ -251,7 +260,7 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 		keepWeekly != nil || keepMonthly != nil || keepYearly != nil
 
 	if simplePresent && gfsPresent {
-		return "", retentionValues{}, fmt.Errorf("retention_conflict: simple and GFS cannot be set together")
+		return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_conflict: simple and GFS cannot be set together")
 	}
 
 	val := retentionValues{
@@ -269,7 +278,7 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 		val.KeepHourly, val.KeepDaily, val.KeepWeekly, val.KeepMonthly, val.KeepYearly,
 	} {
 		if v < 0 {
-			return "", retentionValues{}, fmt.Errorf("invalid_retention: values must be >= 0")
+			return "", retentionValues{}, classifyError(ErrInvalidRequest, "invalid_retention: values must be >= 0")
 		}
 	}
 
@@ -291,6 +300,11 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 }
 
 func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest) error {
+	req.GUID = strings.TrimSpace(req.GUID)
+	req.Prefix = strings.TrimSpace(req.Prefix)
+	if req.GUID == "" || req.Prefix == "" {
+		return classifyError(ErrInvalidRequest, "periodic_snapshot_guid_and_prefix_required")
+	}
 	if err := validatePeriodicSnapshotPrefix(req.Prefix); err != nil {
 		return err
 	}
@@ -299,7 +313,7 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 	if req.Interval != nil {
 		interval = *req.Interval
 	}
-	cronExpr := req.CronExpr
+	cronExpr := strings.TrimSpace(req.CronExpr)
 
 	var recursive bool
 	if req.Recursive != nil {
@@ -307,7 +321,15 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 	}
 
 	if (interval == 0 && cronExpr == "") || (interval != 0 && cronExpr != "") {
-		return fmt.Errorf("invalid_schedule: specify either interval or cronExpr")
+		return classifyError(ErrInvalidRequest, "invalid_schedule: specify either interval or cronExpr")
+	}
+	if interval < 0 {
+		return classifyError(ErrInvalidRequest, "invalid_schedule: interval must be greater than zero")
+	}
+	if cronExpr != "" {
+		if _, err := cron.ParseStandard(cronExpr); err != nil {
+			return classifyError(ErrInvalidRequest, "invalid_schedule: %v", err)
+		}
 	}
 
 	_, rvals, err := validateAndNormalizeRetention(req, "create")
@@ -316,8 +338,8 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 	}
 
 	ds, err := s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
-	if err != nil {
-		return fmt.Errorf("dataset_with_guid_not_found")
+	if err != nil || ds == nil {
+		return datasetLookupError(err, "dataset_with_guid_not_found")
 	}
 
 	snapshot := zfsModels.PeriodicSnapshot{
@@ -339,6 +361,9 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 	}
 
 	if err := s.DB.Create(&snapshot).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return classifyError(ErrConflict, "%v", err)
+		}
 		return err
 	}
 
@@ -373,17 +398,24 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 	return nil
 }
 
-func (s *Service) ModifyPeriodicSnapshotRetention(req zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest) error {
-	var job zfsModels.PeriodicSnapshot
-	if err := s.DB.
-		Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("id = ?", req.ID).
-		First(&job).Error; err != nil {
+func (s *Service) ModifyPeriodicSnapshotRetention(
+	ctx context.Context,
+	id uint,
+	req zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest,
+) error {
+	rtype, rvals, err := validateAndNormalizeRetention(req, "modify")
+	if err != nil {
 		return err
 	}
 
-	rtype, rvals, err := validateAndNormalizeRetention(req, "modify")
-	if err != nil {
+	var job zfsModels.PeriodicSnapshot
+	if err := s.DB.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", id).
+		First(&job).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return classifyError(ErrSnapshotJobNotFound, "periodic_snapshot_job_%d_not_found", id)
+		}
 		return err
 	}
 
@@ -439,27 +471,30 @@ func (s *Service) ModifyPeriodicSnapshotRetention(req zfsServiceInterfaces.Modif
 			}
 		}
 	case retentionNone:
-		return fmt.Errorf("no_retention_values_provided")
+		return classifyError(ErrInvalidRequest, "no_retention_values_provided")
 	}
 
 	if len(updates) == 0 {
 		return nil
 	}
 
-	if err := s.DB.Model(&job).Updates(updates).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Model(&job).Updates(updates).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Service) DeletePeriodicSnapshot(guid string) error {
+func (s *Service) DeletePeriodicSnapshot(ctx context.Context, id uint) error {
 	var snapshot zfsModels.PeriodicSnapshot
 
-	if err := s.DB.Where("guid = ?", guid).First(&snapshot).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where("id = ?", id).First(&snapshot).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return classifyError(ErrSnapshotJobNotFound, "periodic_snapshot_job_%d_not_found", id)
+		}
 		return err
 	}
 
-	if err := s.DB.Delete(&snapshot).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Delete(&snapshot).Error; err != nil {
 		return err
 	}
 
@@ -767,8 +802,8 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMore
 	defer s.syncMutex.Unlock()
 
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
-	if err != nil {
-		return err
+	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
+		return datasetLookupError(err, "snapshot_with_guid_%s_not_found", guid)
 	}
 
 	err = dataset.Rollback(ctx, destroyMoreRecent)
@@ -786,8 +821,11 @@ func (s *Service) RollbackSnapshotByName(ctx context.Context, snapshotName strin
 	defer s.syncMutex.Unlock()
 
 	dataset, err := s.GZFS.ZFS.Get(ctx, snapshotName, false)
-	if err != nil {
-		return fmt.Errorf("snapshot_not_found: %v", err)
+	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
+		if err != nil {
+			return datasetLookupError(err, "snapshot_not_found: %v", err)
+		}
+		return datasetLookupError(nil, "snapshot_not_found: %s", snapshotName)
 	}
 
 	err = dataset.Rollback(ctx, destroyMoreRecent)

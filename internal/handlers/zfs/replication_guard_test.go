@@ -28,12 +28,12 @@ func TestReplicationCreateFilesystemGuardRestoresBody(t *testing.T) {
 			if err := c.ShouldBindJSON(&req); err != nil {
 				t.Fatalf("downstream body decode failed: %v", err)
 			}
-			called = req.Name == "child" && req.Parent == "tank/data" && req.Properties["parent"] == "tank/data"
+			called = req.Name == "child" && req.Parent == "tank/data" && req.Properties["compression"] == "zstd"
 			c.Status(http.StatusNoContent)
 		},
 	)
 	body, _ := json.Marshal(CreateFilesystemRequest{
-		Name: "child", Parent: "tank/data", Properties: map[string]string{"parent": "tank/data"},
+		Name: "child", Parent: "tank/data", Properties: map[string]string{"compression": "zstd"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -44,7 +44,7 @@ func TestReplicationCreateFilesystemGuardRestoresBody(t *testing.T) {
 	}
 }
 
-func TestReplicationCreateFilesystemGuardRejectsParentMismatch(t *testing.T) {
+func TestReplicationCreateFilesystemGuardRejectsMissingParent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &zfsService.Service{}
 	router := gin.New()
@@ -54,13 +54,13 @@ func TestReplicationCreateFilesystemGuardRejectsParentMismatch(t *testing.T) {
 		func(c *gin.Context) { called = true },
 	)
 	body, _ := json.Marshal(CreateFilesystemRequest{
-		Name: "child", Parent: "tank/safe", Properties: map[string]string{"parent": "tank/protected"},
+		Name: "child", Properties: map[string]string{"parent": "tank/legacy"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, req)
 	if response.Code != http.StatusBadRequest || called {
-		t.Fatalf("mismatched parents were not rejected: status=%d called=%v body=%s", response.Code, called, response.Body.String())
+		t.Fatalf("missing parent was not rejected: status=%d called=%v body=%s", response.Code, called, response.Body.String())
 	}
 }

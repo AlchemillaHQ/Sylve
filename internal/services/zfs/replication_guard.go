@@ -240,14 +240,14 @@ func (s *Service) RequireReplicationDatasetCreateAllowed(ctx context.Context, pr
 }
 
 func (s *Service) RequireReplicationDatasetGUIDMutationAllowed(ctx context.Context, guids ...string) error {
+	if s == nil || s.GZFS == nil {
+		return fmt.Errorf("replication_dataset_guard_unavailable")
+	}
 	names := make([]string, 0, len(guids))
 	for _, guid := range guids {
 		dataset, err := s.GZFS.ZFS.GetByGUID(ctx, strings.TrimSpace(guid), false)
-		if err != nil {
-			return fmt.Errorf("replication_dataset_guid_lookup_failed_%s: %w", guid, err)
-		}
-		if dataset == nil {
-			return fmt.Errorf("replication_dataset_guid_not_found:%s", guid)
+		if err != nil || dataset == nil {
+			return datasetLookupError(err, "replication_dataset_guid_not_found:%s", guid)
 		}
 		names = append(names, dataset.Name)
 	}
@@ -255,12 +255,12 @@ func (s *Service) RequireReplicationDatasetGUIDMutationAllowed(ctx context.Conte
 }
 
 func (s *Service) RequireReplicationPoolMutationAllowed(ctx context.Context, guid string) error {
-	pool, err := s.GZFS.Zpool.GetByGUID(ctx, strings.TrimSpace(guid))
-	if err != nil {
-		return fmt.Errorf("replication_pool_guid_lookup_failed: %w", err)
+	if s == nil || s.GZFS == nil {
+		return fmt.Errorf("replication_dataset_guard_unavailable")
 	}
-	if pool == nil {
-		return fmt.Errorf("replication_pool_guid_not_found:%s", strings.TrimSpace(guid))
+	pool, err := s.GZFS.Zpool.GetByGUID(ctx, strings.TrimSpace(guid))
+	if err != nil || pool == nil {
+		return poolLookupError(err, "replication_pool_guid_not_found:%s", strings.TrimSpace(guid))
 	}
 	return s.RequireReplicationDatasetMutationAllowed(ctx, pool.Name)
 }

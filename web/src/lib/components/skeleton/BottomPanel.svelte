@@ -193,7 +193,6 @@
 		'/api/system/ppt-devices': 'PCI Passthrough',
 		'/api/system/tunables': 'System Tunable',
 		'/api/zfs/datasets/filesystem': 'ZFS Filesystem',
-		'/api/zfs/datasets/volume/flash': 'ZFS Volume - Flash',
 		'/api/zfs/datasets/volume': 'ZFS Volume',
 		'/api/samba/shares': 'Samba Share',
 		'/api/auth/groups/users': 'Auth Group - Members',
@@ -202,10 +201,7 @@
 		'/api/auth/users/pam': 'Auth User - PAM',
 		'/api/auth/users': 'Auth User',
 		'/api/samba/config': 'Samba Config - Edit',
-		'/api/zfs/datasets/bulk-delete': 'ZFS Dataset - Bulk Delete',
-		'/api/zfs/datasets/bulk-delete-by-names': 'ZFS Dataset - Bulk Delete By Names',
 		'/api/zfs/datasets/snapshot/periodic': 'ZFS Periodic Snapshot',
-		'/api/zfs/datasets/snapshot/rollback': 'ZFS Snapshot - Rollback',
 		'/api/zfs/datasets/snapshot': 'ZFS Snapshot',
 		'/api/vm/start': 'VM - Start',
 		'/api/vm/stop': 'VM - Stop',
@@ -345,29 +341,38 @@
 		'/api/health': 'Health Check'
 	});
 
-	const methodPathToActionMap: Record<string, string> = {
-		'DELETE /api/info/notes': 'Notes - Bulk Delete',
-		'POST /api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
-		'PUT /api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
-		'DELETE /api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
-		'POST /api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
-		'POST /api/certificates': 'TLS Certificate - Create',
-		'PUT /api/certificates/:id': 'TLS Certificate - Update',
-		'DELETE /api/certificates/:id': 'TLS Certificate - Delete',
-		'POST /api/certificates/:id/activate': 'TLS Certificate - Schedule Activation',
-		'DELETE /api/certificates/:id/activate':
-			'TLS Certificate - Cancel Pending Activation',
-		'POST /api/certificates/:id/renew': 'TLS Certificate - Renew',
-		'POST /api/certificates/:id/retry': 'TLS Certificate - Retry Issuance',
-		'POST /api/certificates/:id/download': 'TLS Certificate - Download',
-		'GET /api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - View',
-		'POST /api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
-		'POST /api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
-		'GET /api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View',
-		'POST /api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create',
-		'PUT /api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update',
-		'DELETE /api/disk/smart/self-test/schedules/:id':
-			'Disk - S.M.A.R.T. Self-Test Schedule - Delete'
+	const methodPathToActionMap: Record<string, Record<string, string>> = {
+		DELETE: {
+			'/api/info/notes': 'Notes - Bulk Delete',
+			'/api/zfs/datasets': 'ZFS Dataset - Delete',
+			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
+			'/api/certificates/:id': 'TLS Certificate - Delete',
+			'/api/certificates/:id/activate': 'TLS Certificate - Cancel Pending Activation',
+			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Delete'
+		},
+		POST: {
+			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
+			'/api/zfs/datasets/volume/:id/flash': 'ZFS Volume - Flash',
+			'/api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
+			'/api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
+			'/api/certificates': 'TLS Certificate - Create',
+			'/api/certificates/:id/activate': 'TLS Certificate - Schedule Activation',
+			'/api/certificates/:id/renew': 'TLS Certificate - Renew',
+			'/api/certificates/:id/retry': 'TLS Certificate - Retry Issuance',
+			'/api/certificates/:id/download': 'TLS Certificate - Download',
+			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
+			'/api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
+			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create'
+		},
+		PUT: {
+			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
+			'/api/certificates/:id': 'TLS Certificate - Update',
+			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update'
+		},
+		GET: {
+			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - View',
+			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View'
+		}
 	};
 
 	const sortedPathToActionEntries = $derived.by(() =>
@@ -409,8 +414,7 @@
 				.map((s) => (/^\d+$/.test(s) ? ':id' : s))
 				.join('/');
 
-			const methodPathAction =
-				methodPathToActionMap[`${method.toUpperCase()} ${normalizedPath}`];
+			const methodPathAction = methodPathToActionMap[method.toUpperCase()]?.[normalizedPath];
 			const matchedEntry = methodPathAction
 				? undefined
 				: sortedPathToActionEntries.find(([prefix]) => normalizedPath.startsWith(prefix));
@@ -790,9 +794,7 @@
 													class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
 												></span>
 											{:else if record.status === 'failed'}
-												<span
-													class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"
-												></span>
+												<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
 											{/if}
 											<span class={record.status === 'failed' ? 'text-destructive' : ''}>
 												{formatStatus(record.status)}

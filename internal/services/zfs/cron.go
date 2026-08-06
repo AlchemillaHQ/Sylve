@@ -28,29 +28,34 @@ func (s *Service) StoreStats() {
 		logger.L.Debug().Err(arcErr).Msg("zfs_cron: ARC telemetry unavailable")
 	}
 
-	pools, err := s.GZFS.Zpool.List(ctx)
+	s.poolTelemetryMutex.Lock()
+	defer s.poolTelemetryMutex.Unlock()
+
+	scope, err := s.loadManagedPoolScope(ctx)
 	if err != nil {
-		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to list zpools")
-		pools = nil
+		logger.L.Debug().Err(err).Msg("zfs_cron: failed to load managed pools")
+		scope.pools = nil
+	} else {
+		s.setManagedPoolIOPools(scope.pools)
 	}
 
-	stats := make([]infoModels.ZPoolHistorical, 0, len(pools))
-	for _, pool := range pools {
+	stats := make([]infoModels.ZPoolHistorical, 0, len(scope.pools))
+	for _, pool := range scope.pools {
 		if pool == nil {
 			continue
 		}
 
 		ioStat := s.getPoolIOStat(pool.Name, now)
 		stats = append(stats, infoModels.ZPoolHistorical{
-			Name:                       pool.Name,
-			GUID:                       pool.PoolGUID,
-			Health:                     string(pool.State),
-			WorstHealth:                string(pool.State),
-			Allocated:                  pool.Alloc,
-			Size:                       pool.Size,
-			Free:                       pool.Free,
-			Fragmentation:              pool.Fragmentation,
-			DedupRatio:                 pool.DedupRatio,
+			Name:                   pool.Name,
+			GUID:                   pool.PoolGUID,
+			Health:                 string(pool.State),
+			WorstHealth:            string(pool.State),
+			Allocated:              pool.Alloc,
+			Size:                   pool.Size,
+			Free:                   pool.Free,
+			Fragmentation:          pool.Fragmentation,
+			DedupRatio:             pool.DedupRatio,
 			ReadIOPS:               ioStat.ReadIOPS,
 			WriteIOPS:              ioStat.WriteIOPS,
 			ReadBytesPerSecond:     ioStat.ReadBytesPerSecond,
@@ -94,54 +99,50 @@ func (s *Service) RemoveNonExistentPools() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	existingPools, err := s.GZFS.Zpool.List(ctx)
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("zfs_cron: failed to list zpools")
-		return
+	if err := s.ReconcileManagedPoolTelemetry(ctx); err != nil {
+		logger.L.Debug().Err(err).Msg("zfs_cron: failed to reconcile managed pool telemetry")
 	}
+}
 
-	existingGUIDs := make(map[string]struct{}, len(existingPools))
-	existingNames := make(map[string]struct{}, len(existingPools))
-	for _, pool := range existingPools {
-		if pool == nil {
-			continue
-		}
-		existingGUIDs[pool.PoolGUID] = struct{}{}
-		existingNames[pool.Name] = struct{}{}
+func (s *Service) ReconcileManagedPoolTelemetry(ctx context.Context) error {
+	s.poolTelemetryMutex.Lock()
+	defer s.poolTelemetryMutex.Unlock()
+
+	scope, err := s.loadManagedPoolScope(ctx)
+	if err != nil {
+		return err
 	}
+	s.setManagedPoolIOPools(scope.pools)
 
 	var storedPools []struct {
 		GUID string
 		Name string
 	}
-	if err := s.TelemetryDB.
+	if err := s.TelemetryDB.WithContext(ctx).
 		Model(&infoModels.ZPoolHistorical{}).
 		Distinct("guid", "name").
 		Find(&storedPools).Error; err != nil {
-
-		logger.L.Debug().Err(err).Msg("zfs_cron: failed to load historical pool names")
-		return
+		return err
 	}
 
 	guidsToDelete := make(map[string]struct{})
 	namesToDelete := make(map[string]struct{})
 	for _, stored := range storedPools {
-		if stored.GUID != "" {
-			if _, exists := existingGUIDs[stored.GUID]; !exists {
-				guidsToDelete[stored.GUID] = struct{}{}
-			}
+		if scope.allowsHistoricalPool(stored.GUID, stored.Name) {
 			continue
 		}
-		if _, exists := existingNames[stored.Name]; !exists {
+		if stored.GUID != "" {
+			guidsToDelete[stored.GUID] = struct{}{}
+		} else {
 			namesToDelete[stored.Name] = struct{}{}
 		}
 	}
 
 	if len(guidsToDelete) == 0 && len(namesToDelete) == 0 {
-		return
+		return nil
 	}
 
-	query := s.TelemetryDB.Unscoped()
+	query := s.TelemetryDB.WithContext(ctx).Unscoped()
 	if len(guidsToDelete) > 0 && len(namesToDelete) > 0 {
 		query = query.Where("guid IN ? OR (guid = '' AND name IN ?)", mapKeys(guidsToDelete), mapKeys(namesToDelete))
 	} else if len(guidsToDelete) > 0 {
@@ -152,8 +153,7 @@ func (s *Service) RemoveNonExistentPools() {
 	result := query.Delete(&infoModels.ZPoolHistorical{})
 
 	if result.Error != nil {
-		logger.L.Debug().Err(result.Error).Msg("zfs_cron: failed to delete non-existent pool entries")
-		return
+		return result.Error
 	}
 
 	if result.RowsAffected > 0 {
@@ -161,11 +161,12 @@ func (s *Service) RemoveNonExistentPools() {
 			Int64("deleted_count", result.RowsAffected).
 			Strs("guids", mapKeys(guidsToDelete)).
 			Strs("legacy_names", mapKeys(namesToDelete)).
-			Msg("zfs_cron: deleted non-existent pool entries")
+			Msg("zfs_cron: deleted unmanaged pool entries")
 	}
 
 	s.SignalDSChange("", "", db.ZFSCacheKindGenericDataset, "remove_nonexistent_pool")
 	s.SignalDSChange("", "", db.ZFSCacheKindSnapshot, "remove_nonexistent_pool")
+	return nil
 }
 
 func (s *Service) Cron(ctx context.Context) {

@@ -164,7 +164,6 @@
 		const isInheriting = properties.encryption === 'inherit';
 
 		const props: Record<string, string | undefined> = {
-			parent: properties.parent.value,
 			atime: properties.atime,
 			checksum: properties.checksum,
 			compression: properties.compression,

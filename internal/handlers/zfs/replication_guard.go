@@ -5,6 +5,7 @@ package zfsHandlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,8 +22,7 @@ type ReplicationMutationGuardOperation string
 const (
 	ReplicationGuardDatasetGUID      ReplicationMutationGuardOperation = "dataset_guid"
 	ReplicationGuardPoolGUID         ReplicationMutationGuardOperation = "pool_guid"
-	ReplicationGuardBulkGUIDs        ReplicationMutationGuardOperation = "bulk_guids"
-	ReplicationGuardBulkNames        ReplicationMutationGuardOperation = "bulk_names"
+	ReplicationGuardBulkTargets      ReplicationMutationGuardOperation = "bulk_targets"
 	ReplicationGuardCreateFilesystem ReplicationMutationGuardOperation = "create_filesystem"
 	ReplicationGuardEditFilesystem   ReplicationMutationGuardOperation = "edit_filesystem"
 	ReplicationGuardCreateVolume     ReplicationMutationGuardOperation = "create_volume"
@@ -52,7 +52,13 @@ func abortReplicationMutationGuard(c *gin.Context, err error) {
 	if strings.Contains(err.Error(), "replication_protected_dataset_mutation_blocked") {
 		status = http.StatusConflict
 		message = "replication_protected_dataset_mutation_blocked"
-	} else if strings.Contains(err.Error(), "replication_dataset_create_parent_mismatch") ||
+	} else if errors.Is(err, zfs.ErrPoolNotFound) {
+		status = http.StatusNotFound
+		message = "pool_not_found"
+	} else if errors.Is(err, zfs.ErrDatasetNotFound) {
+		status = http.StatusNotFound
+		message = "dataset_not_found"
+	} else if errors.Is(err, zfs.ErrInvalidRequest) ||
 		strings.Contains(err.Error(), "replication_dataset_guard_name_required") {
 		status = http.StatusBadRequest
 		message = "invalid_request"
@@ -78,56 +84,49 @@ func ReplicationDatasetMutationGuard(
 			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		case ReplicationGuardPoolGUID:
 			err = zfsService.RequireReplicationPoolMutationAllowed(ctx, c.Param("guid"))
-		case ReplicationGuardBulkGUIDs:
-			var req BulkDeleteRequest
-			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, req.GUIDs...)
-			}
-		case ReplicationGuardBulkNames:
-			var req BulkDeleteByNameRequest
-			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetMutationAllowed(ctx, req.Names...)
+		case ReplicationGuardBulkTargets:
+			var targets []zfsServiceInterfaces.DatasetDeletionTarget
+			if targets, err = datasetDeletionTargetsQuery(c); err == nil {
+				names := make([]string, 0, len(targets))
+				for _, target := range targets {
+					names = append(names, target.Name)
+				}
+				err = zfsService.RequireReplicationDatasetMutationAllowed(ctx, names...)
 			}
 		case ReplicationGuardCreateFilesystem:
 			var req CreateFilesystemRequest
 			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
 				requestParent := normalizedGuardDataset(req.Parent)
-				propertyParent := normalizedGuardDataset(req.Properties["parent"])
-				if requestParent == "" || propertyParent == "" || requestParent != propertyParent {
-					err = fmt.Errorf("replication_dataset_create_parent_mismatch")
+				requestName := normalizedGuardDataset(req.Name)
+				if requestParent == "" || requestName == "" {
+					err = invalidZFSRequest("filesystem name and parent are required")
 				} else {
 					err = zfsService.RequireReplicationDatasetCreateAllowed(
-						ctx, propertyParent+"/"+normalizedGuardDataset(req.Name),
+						ctx, requestParent+"/"+requestName,
 					)
 				}
 			}
 		case ReplicationGuardEditFilesystem:
-			var req EditFilesystemRequest
-			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, req.GUID)
-			}
+			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		case ReplicationGuardCreateVolume:
 			var req CreateVolumeRequest
 			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetCreateAllowed(
-					ctx, normalizedGuardDataset(req.Parent)+"/"+normalizedGuardDataset(req.Name),
-				)
+				requestParent := normalizedGuardDataset(req.Parent)
+				requestName := normalizedGuardDataset(req.Name)
+				if requestParent == "" || requestName == "" {
+					err = invalidZFSRequest("volume name and parent are required")
+				} else {
+					err = zfsService.RequireReplicationDatasetCreateAllowed(
+						ctx, requestParent+"/"+requestName,
+					)
+				}
 			}
 		case ReplicationGuardEditVolume:
-			var req zfsServiceInterfaces.EditVolumeRequest
-			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, req.GUID)
-			}
+			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		case ReplicationGuardFlashVolume:
-			var req FlashVolumeRequest
-			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, req.GUID)
-			}
+			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		case ReplicationGuardRollbackSnapshot:
-			var req RollbackSnapshotRequest
-			if err = decodeAndRestoreMutationBody(c, &req); err == nil {
-				err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, req.GUID)
-			}
+			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		default:
 			err = fmt.Errorf("replication_dataset_guard_operation_invalid")
 		}

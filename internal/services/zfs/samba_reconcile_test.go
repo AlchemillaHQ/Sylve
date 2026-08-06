@@ -16,11 +16,12 @@ func TestDatasetGUIDsInTreesIncludesRecursiveDescendants(t *testing.T) {
 		{Name: "tank", GUID: "pool"},
 		{Name: "tank/shared", GUID: "shared"},
 		{Name: "tank/shared/child", GUID: "child"},
+		{Name: "tank/shared@snapshot", GUID: "snapshot"},
 		{Name: "tank/shared-other", GUID: "other"},
 	}
 
 	got := datasetGUIDsInTrees(datasets, []*gzfs.Dataset{datasets[1]})
-	want := []string{"shared", "child"}
+	want := []string{"shared", "child", "snapshot"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("datasetGUIDsInTrees() = %v, want %v", got, want)
 	}

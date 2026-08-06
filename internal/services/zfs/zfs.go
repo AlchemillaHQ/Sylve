@@ -15,10 +15,8 @@ import (
 	"sync"
 
 	"github.com/alchemillahq/gzfs"
-	"github.com/alchemillahq/sylve/internal/db/models"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
-	"github.com/alchemillahq/sylve/internal/logger"
 
 	"gorm.io/gorm"
 )
@@ -31,12 +29,15 @@ type Service struct {
 	GZFS                      *gzfs.Client
 	Libvirt                   libvirtServiceInterfaces.LibvirtServiceInterface
 	syncMutex                 *sync.Mutex
+	poolTelemetryMutex        sync.Mutex
 	poolIOMutex               sync.RWMutex
 	poolIOStats               map[string]poolIOStat
+	managedPoolIONames        map[string]struct{}
 	cacheInvalidationMutex    sync.Mutex
 	cacheInvalidationSequence uint64
 	pendingCacheInvalidations map[string]uint64
 	OnDatasetsDeleted         func(context.Context, []string) error
+	listHostPools             func(context.Context) ([]*gzfs.ZPool, error)
 }
 
 func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
@@ -47,6 +48,7 @@ func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInte
 		Libvirt:                   libvirt,
 		syncMutex:                 &sync.Mutex{},
 		poolIOStats:               make(map[string]poolIOStat),
+		managedPoolIONames:        make(map[string]struct{}),
 		pendingCacheInvalidations: make(map[string]uint64, 2),
 	}
 }
@@ -59,7 +61,7 @@ func datasetGUIDsInTrees(datasets []*gzfs.Dataset, roots []*gzfs.Dataset) []stri
 			continue
 		}
 		for _, root := range roots {
-			if root != nil && (dataset.Name == root.Name || strings.HasPrefix(dataset.Name, root.Name+"/")) {
+			if root != nil && datasetNameInTree(dataset.Name, root.Name) {
 				if _, exists := seen[dataset.GUID]; !exists {
 					seen[dataset.GUID] = struct{}{}
 					guids = append(guids, dataset.GUID)
@@ -69,6 +71,16 @@ func datasetGUIDsInTrees(datasets []*gzfs.Dataset, roots []*gzfs.Dataset) []stri
 		}
 	}
 	return guids
+}
+
+func datasetNameInTree(name, root string) bool {
+	if name == root {
+		return true
+	}
+	if strings.Contains(root, "@") {
+		return false
+	}
+	return strings.HasPrefix(name, root+"/") || strings.HasPrefix(name, root+"@")
 }
 
 func (s *Service) notifyDatasetsDeleted(ctx context.Context, guids []string) error {
@@ -95,24 +107,11 @@ func (s *Service) PoolFromDataset(ctx context.Context, name string) (string, err
 }
 
 func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
-	var basicSettings models.BasicSettings
-	var pools []*gzfs.ZPool
-
-	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return pools, err
+	scope, err := s.loadManagedPoolScope(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	for _, name := range basicSettings.Pools {
-		pool, err := s.GZFS.Zpool.Get(ctx, strings.TrimSpace(name))
-		if err != nil {
-			logger.L.Warn().Err(err).Str("pool", name).Msg("skipping missing pool")
-			continue
-		}
-
-		pools = append(pools, pool)
-	}
-
-	return pools, nil
+	return scope.pools, nil
 }
 
 func (s *Service) GetDisksUsage(ctx context.Context) (zfsServiceInterfaces.SimpleZFSDiskUsage, error) {

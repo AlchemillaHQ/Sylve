@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
@@ -103,10 +104,33 @@ func (s *Service) setPoolIOStat(name string, stat poolIOStat) {
 	s.poolIOMutex.Lock()
 	defer s.poolIOMutex.Unlock()
 
+	if _, managed := s.managedPoolIONames[name]; !managed {
+		delete(s.poolIOStats, name)
+		return
+	}
 	if s.poolIOStats == nil {
 		s.poolIOStats = make(map[string]poolIOStat)
 	}
 	s.poolIOStats[name] = stat
+}
+
+func (s *Service) setManagedPoolIOPools(pools []*gzfs.ZPool) {
+	managedNames := make(map[string]struct{}, len(pools))
+	for _, pool := range pools {
+		if pool == nil || strings.TrimSpace(pool.Name) == "" {
+			continue
+		}
+		managedNames[pool.Name] = struct{}{}
+	}
+
+	s.poolIOMutex.Lock()
+	defer s.poolIOMutex.Unlock()
+	s.managedPoolIONames = managedNames
+	for name := range s.poolIOStats {
+		if _, managed := managedNames[name]; !managed {
+			delete(s.poolIOStats, name)
+		}
+	}
 }
 
 func (s *Service) getPoolIOStat(name string, now time.Time) poolIOStat {

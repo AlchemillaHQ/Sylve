@@ -9,6 +9,7 @@
 package system
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -40,7 +41,8 @@ type Service struct {
 	tunList     func() ([]sysctl.Tunable, error)
 	tunDescribe func(string) (sysctl.Tunable, bool, error)
 
-	MdnsRebuild func() error
+	MdnsRebuild          func() error
+	OnUsablePoolsChanged func(context.Context) error
 }
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {

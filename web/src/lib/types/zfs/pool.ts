@@ -276,15 +276,6 @@ export const PoolStatPointSchema = z.object({
 	time: z.number()
 });
 
-export const PoolStatPointsSchema = z.record(z.string(), z.array(PoolStatPointSchema));
-
-export const PoolStatPointsResponseSchema = z.object({
-	poolStatPoint: PoolStatPointsSchema,
-	intervalMap: z.array(
-		z.object({ value: z.number().transform((v) => v.toString()), label: z.string() })
-	)
-});
-
 export const ZFSDashboardPoolSeriesSchema = z.object({
 	guid: z.string(),
 	name: z.string(),
@@ -412,7 +403,6 @@ export type ReplaceDevice = z.infer<typeof ReplaceDeviceSchema>;
 export type CreateZpool = z.infer<typeof CreateZpoolSchema>;
 export type ZpoolRaidType = z.infer<typeof ZpoolRaidTypeSchema>;
 export type VdevType = z.infer<typeof VdevTypeSchema>;
-export type PoolStatPointsResponse = z.infer<typeof PoolStatPointsResponseSchema>;
 export type PoolStatPoint = z.infer<typeof PoolStatPointSchema>;
 export type ZFSDashboardPoolSeries = z.infer<typeof ZFSDashboardPoolSeriesSchema>;
 export type ZFSDashboardARCPoint = z.infer<typeof ZFSDashboardARCPointSchema>;

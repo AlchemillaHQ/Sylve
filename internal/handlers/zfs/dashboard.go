@@ -48,8 +48,8 @@ func parseDashboardUintQuery(c *gin.Context, name string, required bool) (uint, 
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.DashboardSnapshot]
-// @Failure 500 {object} internal.APIResponse[any]
+// @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.DashboardSnapshot] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/dashboard/snapshot [get]
 func DashboardSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -72,12 +72,13 @@ func DashboardSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
-// @Param rangeSeconds query int false "History range in seconds"
-// @Param maxPoints query int false "Maximum points per series"
+// @Param rangeSeconds query int false "History range in seconds" minimum(60) maximum(6048000) default(86400)
+// @Param maxPoints query int false "Maximum points per series" minimum(120) maximum(2000) default(900)
 // @Param poolGuid query string false "Optional pool GUID"
-// @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.DashboardHistory]
-// @Failure 400 {object} internal.APIResponse[any]
-// @Failure 500 {object} internal.APIResponse[any]
+// @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.DashboardHistory] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Pool Not Managed"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/dashboard/history [get]
 func DashboardHistory(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -113,9 +114,7 @@ func DashboardHistory(zfsService *zfs.Service) gin.HandlerFunc {
 			MaxPoints: maxPoints,
 		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status: "error", Message: "zfs_dashboard_history_failed", Error: err.Error(), Data: nil,
-			})
+			writeZFSServiceError(c, err, "zfs_dashboard_history_failed")
 			return
 		}
 
@@ -130,12 +129,13 @@ func DashboardHistory(zfsService *zfs.Service) gin.HandlerFunc {
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
-// @Param poolAfter query int true "Last received pool telemetry row ID"
-// @Param arcAfter query int true "Last received ARC telemetry row ID"
+// @Param poolAfter query int true "Last received pool telemetry row ID" minimum(0)
+// @Param arcAfter query int true "Last received ARC telemetry row ID" minimum(0)
 // @Param poolGuid query string false "Optional pool GUID"
-// @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.DashboardHistory]
-// @Failure 400 {object} internal.APIResponse[any]
-// @Failure 500 {object} internal.APIResponse[any]
+// @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.DashboardHistory] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Pool Not Managed"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/dashboard/history/delta [get]
 func DashboardHistoryDelta(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -160,9 +160,7 @@ func DashboardHistoryDelta(zfsService *zfs.Service) gin.HandlerFunc {
 			PoolGUID:  strings.TrimSpace(c.Query("poolGuid")),
 		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status: "error", Message: "zfs_dashboard_delta_failed", Error: err.Error(), Data: nil,
-			})
+			writeZFSServiceError(c, err, "zfs_dashboard_delta_failed")
 			return
 		}
 

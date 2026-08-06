@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { bulkDeleteByNames } from '$lib/api/zfs/datasets';
+	import { bulkDelete } from '$lib/api/zfs/datasets';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
@@ -20,7 +20,7 @@
 	async function onConfirm() {
 		const targets = [...datasets];
 		if (targets.length > 0) {
-			const response = await bulkDeleteByNames(targets);
+			const response = await bulkDelete(targets);
 
 			if (response.status === 'success') {
 				open = false;

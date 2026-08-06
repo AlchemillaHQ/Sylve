@@ -67,7 +67,7 @@
 			for (const id of shadowDeleted) {
 				const snapshot = periodicSnapshots.find((s) => s.id === id);
 				if (snapshot) {
-					const response = await deletePeriodicSnapshot(snapshot.guid);
+					const response = await deletePeriodicSnapshot(snapshot.id);
 					reload = true;
 					if (response.error) {
 						handleAPIError(response);
@@ -122,7 +122,7 @@
 				</Table.Header>
 				<Table.Body>
 					{#if periodicSnapshots && periodicSnapshots.length > 0}
-						{#each periodicSnapshots as snapshot (snapshot.guid)}
+						{#each periodicSnapshots as snapshot (snapshot.id)}
 							<Table.Row class="h-10">
 								<Table.Cell class="pl-6">{snapshot.id}</Table.Cell>
 								<Table.Cell>{getDatasetName(snapshot.guid)}</Table.Cell>

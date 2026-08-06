@@ -363,9 +363,8 @@ msgstr "Auth User"
 msgid "Samba Config - Edit"
 msgstr "Samba Config - Edit"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "ZFS Dataset - Bulk Delete"
-msgstr "ZFS Dataset - Bulk Delete"
+#~ msgid "ZFS Dataset - Bulk Delete"
+#~ msgstr "ZFS Dataset - Bulk Delete"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Snapshot"
@@ -14024,9 +14023,8 @@ msgstr "Auth Group - Members"
 msgid "Auth User - Import"
 msgstr "Auth User - Import"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "ZFS Dataset - Bulk Delete By Names"
-msgstr "ZFS Dataset - Bulk Delete By Names"
+#~ msgid "ZFS Dataset - Bulk Delete By Names"
+#~ msgstr "ZFS Dataset - Bulk Delete By Names"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Periodic Snapshot"
@@ -16248,57 +16246,50 @@ msgstr "Waiting for device"
 msgid "Not reported by device"
 msgstr "Not reported by device"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "GET /api/disk/smart/self-test"
-msgstr "GET /api/disk/smart/self-test"
+#~ msgid "GET /api/disk/smart/self-test"
+#~ msgstr "GET /api/disk/smart/self-test"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test - View"
 msgstr "Disk - S.M.A.R.T. Self-Test - View"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/disk/smart/self-test"
-msgstr "POST /api/disk/smart/self-test"
+#~ msgid "POST /api/disk/smart/self-test"
+#~ msgstr "POST /api/disk/smart/self-test"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test - Start"
 msgstr "Disk - S.M.A.R.T. Self-Test - Start"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/disk/smart/self-test/abort"
-msgstr "POST /api/disk/smart/self-test/abort"
+#~ msgid "POST /api/disk/smart/self-test/abort"
+#~ msgstr "POST /api/disk/smart/self-test/abort"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test - Abort"
 msgstr "Disk - S.M.A.R.T. Self-Test - Abort"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "GET /api/disk/smart/self-test/schedules"
-msgstr "GET /api/disk/smart/self-test/schedules"
+#~ msgid "GET /api/disk/smart/self-test/schedules"
+#~ msgstr "GET /api/disk/smart/self-test/schedules"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test Schedule - View"
 msgstr "Disk - S.M.A.R.T. Self-Test Schedule - View"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/disk/smart/self-test/schedules"
-msgstr "POST /api/disk/smart/self-test/schedules"
+#~ msgid "POST /api/disk/smart/self-test/schedules"
+#~ msgstr "POST /api/disk/smart/self-test/schedules"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test Schedule - Create"
 msgstr "Disk - S.M.A.R.T. Self-Test Schedule - Create"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "PUT /api/disk/smart/self-test/schedules/:id"
-msgstr "PUT /api/disk/smart/self-test/schedules/:id"
+#~ msgid "PUT /api/disk/smart/self-test/schedules/:id"
+#~ msgstr "PUT /api/disk/smart/self-test/schedules/:id"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test Schedule - Update"
 msgstr "Disk - S.M.A.R.T. Self-Test Schedule - Update"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "DELETE /api/disk/smart/self-test/schedules/:id"
-msgstr "DELETE /api/disk/smart/self-test/schedules/:id"
+#~ msgid "DELETE /api/disk/smart/self-test/schedules/:id"
+#~ msgstr "DELETE /api/disk/smart/self-test/schedules/:id"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - S.M.A.R.T. Self-Test Schedule - Delete"
@@ -17733,33 +17724,29 @@ msgstr "Cancel Pending"
 #~ msgid "Dynamic DNS Entry - View"
 #~ msgstr "Dynamic DNS Entry - View"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/dynamic-dns/entries"
-msgstr "POST /api/dynamic-dns/entries"
+#~ msgid "POST /api/dynamic-dns/entries"
+#~ msgstr "POST /api/dynamic-dns/entries"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Dynamic DNS Entry - Create"
 msgstr "Dynamic DNS Entry - Create"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "PUT /api/dynamic-dns/entries/:id"
-msgstr "PUT /api/dynamic-dns/entries/:id"
+#~ msgid "PUT /api/dynamic-dns/entries/:id"
+#~ msgstr "PUT /api/dynamic-dns/entries/:id"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Dynamic DNS Entry - Update"
 msgstr "Dynamic DNS Entry - Update"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "DELETE /api/dynamic-dns/entries/:id"
-msgstr "DELETE /api/dynamic-dns/entries/:id"
+#~ msgid "DELETE /api/dynamic-dns/entries/:id"
+#~ msgstr "DELETE /api/dynamic-dns/entries/:id"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Dynamic DNS Entry - Delete"
 msgstr "Dynamic DNS Entry - Delete"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/dynamic-dns/entries/:id/sync"
-msgstr "POST /api/dynamic-dns/entries/:id/sync"
+#~ msgid "POST /api/dynamic-dns/entries/:id/sync"
+#~ msgstr "POST /api/dynamic-dns/entries/:id/sync"
 
 #~ msgid "GET /api/certificates"
 #~ msgstr "GET /api/certificates"
@@ -17767,9 +17754,8 @@ msgstr "POST /api/dynamic-dns/entries/:id/sync"
 #~ msgid "TLS Certificate - View"
 #~ msgstr "TLS Certificate - View"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/certificates"
-msgstr "POST /api/certificates"
+#~ msgid "POST /api/certificates"
+#~ msgstr "POST /api/certificates"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Create"
@@ -17787,49 +17773,43 @@ msgstr "TLS Certificate - Create"
 #~ msgid "TLS Certificate - Domain Check"
 #~ msgstr "TLS Certificate - Domain Check"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "PUT /api/certificates/:id"
-msgstr "PUT /api/certificates/:id"
+#~ msgid "PUT /api/certificates/:id"
+#~ msgstr "PUT /api/certificates/:id"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Update"
 msgstr "TLS Certificate - Update"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "DELETE /api/certificates/:id"
-msgstr "DELETE /api/certificates/:id"
+#~ msgid "DELETE /api/certificates/:id"
+#~ msgstr "DELETE /api/certificates/:id"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Delete"
 msgstr "TLS Certificate - Delete"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/certificates/:id/activate"
-msgstr "POST /api/certificates/:id/activate"
+#~ msgid "POST /api/certificates/:id/activate"
+#~ msgstr "POST /api/certificates/:id/activate"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Schedule Activation"
 msgstr "TLS Certificate - Schedule Activation"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "DELETE /api/certificates/:id/activate"
-msgstr "DELETE /api/certificates/:id/activate"
+#~ msgid "DELETE /api/certificates/:id/activate"
+#~ msgstr "DELETE /api/certificates/:id/activate"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Cancel Pending Activation"
 msgstr "TLS Certificate - Cancel Pending Activation"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/certificates/:id/renew"
-msgstr "POST /api/certificates/:id/renew"
+#~ msgid "POST /api/certificates/:id/renew"
+#~ msgstr "POST /api/certificates/:id/renew"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Renew"
 msgstr "TLS Certificate - Renew"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/certificates/:id/retry"
-msgstr "POST /api/certificates/:id/retry"
+#~ msgid "POST /api/certificates/:id/retry"
+#~ msgstr "POST /api/certificates/:id/retry"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Retry Issuance"
@@ -17946,9 +17926,8 @@ msgstr "Select a Sylve.app hostname"
 msgid "Sylve will create a private P-256 key locally and request the certificate through Sylve.app. Issuance continues in the background and does not activate the certificate."
 msgstr "Sylve will create a private P-256 key locally and request the certificate through Sylve.app. Issuance continues in the background and does not activate the certificate."
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "POST /api/certificates/:id/download"
-msgstr "POST /api/certificates/:id/download"
+#~ msgid "POST /api/certificates/:id/download"
+#~ msgstr "POST /api/certificates/:id/download"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "TLS Certificate - Download"
@@ -19265,6 +19244,33 @@ msgstr "Disable Bridge Offloads"
 msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
 msgstr "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
 
+#~ msgid "DELETE /api/info/notes"
+#~ msgstr "DELETE /api/info/notes"
+
+#~ msgid "Drop files here t"
+#~ msgstr "Drop files here t"
+
+#~ msgid "Checking source encry"
+#~ msgstr "Checking source encry"
+
+#~ msgid "A scrub is a"
+#~ msgstr "A scrub is a"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Legacy VM restore points cannot prove that every disk root is completems"
+msgstr "Legacy VM restore points cannot prove that every disk root is completems"
+
+#~ msgid "DELETE /api/zfs/datasets"
+#~ msgstr "DELETE /api/zfs/datasets"
+
+#~ msgid "POST /api/zfs/datasets/snapshot/:id/rollback"
+#~ msgstr "POST /api/zfs/datasets/snapshot/:id/rollback"
+
+#~ msgid "POST /api/zfs/datasets/volume/:id/flash"
+#~ msgstr "POST /api/zfs/datasets/volume/:id/flash"
+
 #: src/lib/components/skeleton/BottomPanel.svelte
-msgid "DELETE /api/info/notes"
-msgstr "DELETE /api/info/notes"
+msgid "ZFS Dataset - Delete"
+msgstr "ZFS Dataset - Delete"

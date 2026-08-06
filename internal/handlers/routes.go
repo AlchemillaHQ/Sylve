@@ -174,20 +174,19 @@ func RegisterRoutes(r *gin.Engine,
 		zfs.GET("/dashboard/snapshot", zfsHandlers.DashboardSnapshot(zfsService))
 		zfs.GET("/dashboard/history", zfsHandlers.DashboardHistory(zfsService))
 		zfs.GET("/dashboard/history/delta", zfsHandlers.DashboardHistoryDelta(zfsService))
-		zfs.GET("/pool/stats/:interval/:limit", zfsHandlers.PoolStats(zfsService))
 		pools := zfs.Group("/pools")
 		{
 			pools.GET("", zfsHandlers.GetPools(zfsService, systemService))
 			pools.GET("/disks-usage", zfsHandlers.GetDisksUsage(zfsService))
 			pools.POST("", zfsHandlers.CreatePool(infoService, zfsService))
-			pools.PATCH("", zfsHandlers.EditPool(infoService, zfsService))
+			pools.PATCH("/:guid", zfsHandlers.EditPool(infoService, zfsService))
 			pools.GET("/:guid/status", zfsHandlers.GetPoolStatus(zfsService))
 			pools.POST("/:guid/scrub", zfsHandlers.ScrubPool(infoService, zfsService))
 			pools.DELETE("/:guid",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardPoolGUID),
 				zfsHandlers.DeletePool(infoService, zfsService),
 			)
-			pools.PATCH("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
+			pools.POST("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
 			pools.POST("/:guid/detach", zfsHandlers.DetachDevice(infoService, zfsService))
 		}
 
@@ -197,7 +196,7 @@ func RegisterRoutes(r *gin.Engine,
 			datasets.GET("/paginated", zfsHandlers.GetPaginatedDatasets(zfsService))
 
 			datasets.POST("/snapshot", zfsHandlers.CreateSnapshot(zfsService))
-			datasets.POST("/snapshot/rollback",
+			datasets.POST("/snapshot/:guid/rollback",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardRollbackSnapshot),
 				zfsHandlers.RollbackSnapshot(zfsService),
 			)
@@ -208,15 +207,14 @@ func RegisterRoutes(r *gin.Engine,
 
 			datasets.GET("/snapshot/periodic", zfsHandlers.GetPeriodicSnapshots(zfsService))
 			datasets.POST("/snapshot/periodic", zfsHandlers.CreatePeriodicSnapshot(zfsService))
-			datasets.PATCH("/snapshot/periodic", zfsHandlers.ModifyPeriodicSnapshotRetention(zfsService))
-
-			datasets.DELETE("/snapshot/periodic/:guid", zfsHandlers.DeletePeriodicSnapshot(zfsService))
+			datasets.PATCH("/snapshot/periodic/:id", zfsHandlers.ModifyPeriodicSnapshotRetention(zfsService))
+			datasets.DELETE("/snapshot/periodic/:id", zfsHandlers.DeletePeriodicSnapshot(zfsService))
 
 			datasets.POST("/filesystem",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardCreateFilesystem),
 				zfsHandlers.CreateFilesystem(zfsService),
 			)
-			datasets.PATCH("/filesystem",
+			datasets.PATCH("/filesystem/:guid",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardEditFilesystem),
 				zfsHandlers.EditFilesystem(zfsService),
 			)
@@ -229,11 +227,11 @@ func RegisterRoutes(r *gin.Engine,
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardCreateVolume),
 				zfsHandlers.CreateVolume(zfsService),
 			)
-			datasets.PATCH("/volume",
+			datasets.PATCH("/volume/:guid",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardEditVolume),
 				zfsHandlers.EditVolume(zfsService),
 			)
-			datasets.POST("/volume/flash",
+			datasets.POST("/volume/:guid/flash",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardFlashVolume),
 				zfsHandlers.FlashVolume(zfsService),
 			)
@@ -242,13 +240,9 @@ func RegisterRoutes(r *gin.Engine,
 				zfsHandlers.DeleteVolume(zfsService),
 			)
 
-			datasets.POST("/bulk-delete",
-				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardBulkGUIDs),
+			datasets.DELETE("",
+				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardBulkTargets),
 				zfsHandlers.BulkDeleteDataset(zfsService),
-			)
-			datasets.POST("/bulk-delete-by-names",
-				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardBulkNames),
-				zfsHandlers.BulkDeleteDatasetsByName(zfsService),
 			)
 		}
 	}

@@ -76,13 +76,7 @@ export const GroupedByPoolSchema = z.object({
     volumes: z.array(DatasetSchema).default([])
 });
 
-export const PaginatedDatasetsResponseSchema = z.object({
-    last_page: z.number(),
-    data: DatasetSchema.array().default([])
-});
-
 export type GZFSDatasetType = z.infer<typeof GZFSDatasetTypeSchema>;
 export type Dataset = z.infer<typeof DatasetSchema>;
 export type GroupedByPool = z.infer<typeof GroupedByPoolSchema>;
 export type PeriodicSnapshot = z.infer<typeof PeriodicSnapshotSchema>;
-export type PaginatedDatasetsResponse = z.infer<typeof PaginatedDatasetsResponseSchema>;

@@ -56,7 +56,7 @@
 		properties.editing = true;
 
 		const response = await editPool(
-			pool.name,
+			pool.guid,
 			{
 				comment: properties.comment,
 				autoexpand: properties.autoexpand,

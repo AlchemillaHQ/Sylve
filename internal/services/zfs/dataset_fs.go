@@ -18,29 +18,37 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
-func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[string]string) error {
+func (s *Service) CreateFilesystem(ctx context.Context, name string, parent string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	parent := ""
+	name = strings.TrimSpace(name)
+	parent = strings.Trim(strings.TrimSpace(parent), "/")
+	if name == "" || parent == "" {
+		return classifyError(ErrInvalidRequest, "filesystem_name_and_parent_required")
+	}
+	parentDataset, err := s.GZFS.ZFS.Get(ctx, parent, false)
+	if err != nil || parentDataset == nil {
+		return datasetLookupError(err, "parent_dataset_%s_not_found", parent)
+	}
+	if parentDataset.Type != gzfs.DatasetTypeFilesystem {
+		return classifyError(ErrInvalidRequest, "parent_dataset_must_be_a_filesystem")
+	}
 
-	for k, v := range props {
-		if k == "parent" {
-			parent = v
-			continue
+	cleanProps := make(map[string]string, len(props))
+	for key, value := range props {
+		if key != "parent" {
+			cleanProps[key] = value
 		}
 	}
 
-	if parent == "" {
-		return fmt.Errorf("parent_not_found")
-	}
-
 	name = fmt.Sprintf("%s/%s", parent, name)
-	delete(props, "parent")
-
-	dataset, err := s.GZFS.ZFS.CreateFilesystem(ctx, name, props)
+	dataset, err := s.GZFS.ZFS.CreateFilesystem(ctx, name, cleanProps)
 
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			return classifyError(ErrConflict, "%v", err)
+		}
 		return err
 	}
 
@@ -50,7 +58,7 @@ func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[s
 
 	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "create")
 
-	if isEncryptionRequested(props) {
+	if isEncryptionRequested(cleanProps) {
 		if err := registerEncryptionKey(ctx, dataset); err != nil {
 			logger.L.Warn().Err(err).Str("dataset", dataset.Name).Msg("register_encryption_key_failed")
 		}
@@ -65,8 +73,8 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 
-	if err != nil {
-		return err
+	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeFilesystem {
+		return datasetLookupError(err, "filesystem with guid %s not found", guid)
 	}
 
 	if mp, ok := props["mountpoint"]; ok && mp == "" {
@@ -77,15 +85,11 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 		props["quota"] = strings.ReplaceAll(q, " ", "")
 	}
 
-	if dataset != nil {
-		err := s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
-		if err == nil {
-			s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
-		}
-		return err
+	err = s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
+	if err == nil {
+		s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 	}
-
-	return fmt.Errorf("filesystem with guid %s not found", guid)
+	return err
 }
 
 func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
@@ -94,12 +98,8 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 
 	foundFS, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 
-	if err != nil {
-		return err
-	}
-
-	if foundFS == nil {
-		return fmt.Errorf("filesystem with guid %s not found", guid)
+	if err != nil || foundFS == nil || foundFS.Type != gzfs.DatasetTypeFilesystem {
+		return datasetLookupError(err, "filesystem with guid %s not found", guid)
 	}
 
 	if err := validateDatasetDeletionTargets(foundFS); err != nil {
@@ -107,21 +107,11 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	}
 
 	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+	relativeName := strings.TrimPrefix(foundFS.Name, foundFS.Pool+"/")
 	for _, name := range noDelete {
-		if strings.HasSuffix(foundFS.Name, name) {
-			return fmt.Errorf("cannot_delete_critical_filesystem")
+		if relativeName == name {
+			return classifyError(ErrConflict, "cannot_delete_critical_filesystem")
 		}
-	}
-
-	var count int64
-	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
-		Where("guid = ?", guid).
-		Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to check if dataset is in use: %w", err)
-	}
-
-	if count > 0 {
-		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
 	allDatasets, err := s.GZFS.ZFS.List(ctx, true, "")
@@ -129,14 +119,34 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return fmt.Errorf("failed to list datasets before deletion: %w", err)
 	}
 	affectedGUIDs := datasetGUIDsInTrees(allDatasets, []*gzfs.Dataset{foundFS})
+	if len(affectedGUIDs) == 0 {
+		affectedGUIDs = []string{guid}
+	}
 
-	wasEncrypted := foundFS.IsEncrypted()
+	var count int64
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
+		Where("guid IN ?", affectedGUIDs).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check if dataset is in use: %w", err)
+	}
+	if count > 0 {
+		return classifyError(ErrConflict, "dataset_in_use_by_vm")
+	}
 
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err
 	}
 
-	if wasEncrypted {
+	cleanedRoot := false
+	for _, dataset := range allDatasets {
+		if dataset != nil && datasetNameInTree(dataset.Name, foundFS.Name) && dataset.IsEncrypted() {
+			cleanupEncryptionKeyForDataset(dataset)
+			if dataset.GUID == foundFS.GUID {
+				cleanedRoot = true
+			}
+		}
+	}
+	if !cleanedRoot && foundFS.IsEncrypted() {
 		cleanupEncryptionKeyForDataset(foundFS)
 	}
 

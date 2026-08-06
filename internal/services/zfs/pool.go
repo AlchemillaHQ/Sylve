@@ -28,8 +28,8 @@ import (
 
 func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error) {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
-		return nil, fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return nil, poolLookupError(err, "pool_not_found")
 	}
 
 	status, err := pool.Status(ctx)
@@ -42,8 +42,8 @@ func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolSt
 
 func (s *Service) ScrubPool(ctx context.Context, guid string) error {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
 	err = pool.Scrub(ctx)
@@ -59,7 +59,7 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	defer s.syncMutex.Unlock()
 
 	if !utils.IsValidZFSPoolName(req.Name) {
-		return fmt.Errorf("invalid_pool_name")
+		return classifyError(ErrInvalidRequest, "invalid_pool_name")
 	}
 
 	names, err := s.GZFS.Zpool.GetPoolNames(ctx)
@@ -69,7 +69,7 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 
 	for _, existingName := range names {
 		if strings.EqualFold(existingName, req.Name) {
-			return fmt.Errorf("pool_name_taken")
+			return classifyError(ErrConflict, "pool_name_taken")
 		}
 	}
 
@@ -82,7 +82,7 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	}
 
 	if len(req.Vdevs) == 0 {
-		return fmt.Errorf("at_least_one_vdev_required")
+		return classifyError(ErrInvalidRequest, "at_least_one_vdev_required")
 	}
 
 	for _, vdev := range req.Vdevs {
@@ -92,10 +92,10 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		}
 		minDisks, ok := validRaidMinDisks[raidType]
 		if !ok {
-			return fmt.Errorf("vdev %s has invalid raid type: %s", vdev.Name, raidType)
+			return classifyError(ErrInvalidRequest, "vdev %s has invalid raid type: %s", vdev.Name, raidType)
 		}
 		if len(vdev.VdevDevices) < minDisks {
-			return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, raidType, minDisks)
+			return classifyError(ErrInvalidRequest, "vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, raidType, minDisks)
 		}
 	}
 
@@ -106,6 +106,8 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 			t = zfsServiceInterfaces.VdevTypeData
 		}
 		switch t {
+		case zfsServiceInterfaces.VdevTypeData:
+			dataVdevs = append(dataVdevs, vdev)
 		case zfsServiceInterfaces.VdevTypeLog:
 			logVdevs = append(logVdevs, vdev)
 		case zfsServiceInterfaces.VdevTypeCache:
@@ -115,12 +117,12 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		case zfsServiceInterfaces.VdevTypeDedup:
 			dedupVdevs = append(dedupVdevs, vdev)
 		default:
-			dataVdevs = append(dataVdevs, vdev)
+			return classifyError(ErrInvalidRequest, "vdev %s has invalid type: %s", vdev.Name, t)
 		}
 	}
 
 	if len(dataVdevs) == 0 {
-		return fmt.Errorf("at_least_one_data_vdev_required")
+		return classifyError(ErrInvalidRequest, "at_least_one_data_vdev_required")
 	}
 
 	var args []string
@@ -218,64 +220,54 @@ func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string
 	return nil
 }
 
-func (s *Service) EditPool(ctx context.Context, name string, props map[string]string, spares []string) error {
+func (s *Service) EditPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
-
-	seen := make(map[string]struct{})
-
-	for i, dev := range spares {
-		dev = filepath.Clean(dev)
-
-		if dev == "" || dev == "." || dev == "/" {
-			return fmt.Errorf("invalid_spare_device %q", dev)
-		}
-
-		if !strings.HasPrefix(dev, "/dev/") {
-			return fmt.Errorf("invalid_spare_device %s: must be under /dev", dev)
-		}
-
-		if _, ok := seen[dev]; ok {
-			return fmt.Errorf("duplicate_spare_device %s", dev)
-		}
-		seen[dev] = struct{}{}
-
-		spares[i] = dev
+	if len(props) == 0 && spares == nil {
+		return classifyError(ErrInvalidRequest, "no_pool_changes_provided")
 	}
 
-	pool, err := s.GZFS.Zpool.Get(ctx, name)
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
-	}
-
-	currentByPath := make(map[string]struct{})
-	currentByBase := make(map[string]string)
-
-	for _, dev := range pool.Spares {
-		if dev == nil || dev.Path == "" {
-			continue
+	requestedSpares := make([]string, 0)
+	if spares != nil {
+		requestedSpares = append(requestedSpares, (*spares)...)
+		seen := make(map[string]struct{}, len(requestedSpares))
+		for i, dev := range requestedSpares {
+			dev = filepath.Clean(dev)
+			if dev == "" || dev == "." || dev == "/" {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %q", dev)
+			}
+			if !strings.HasPrefix(dev, "/dev/") {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %s: must be under /dev", dev)
+			}
+			if _, ok := seen[dev]; ok {
+				return classifyError(ErrInvalidRequest, "duplicate_spare_device %s", dev)
+			}
+			seen[dev] = struct{}{}
+			requestedSpares[i] = dev
 		}
-		currentByPath[dev.Path] = struct{}{}
-		currentByBase[filepath.Base(dev.Path)] = dev.Path
 	}
 
-	minSize, err := pool.RequiredSpareSize(ctx)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_minimum_spare_size: %v", err)
+	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
-	for _, dev := range spares {
-		sz, err := disk.GetDiskSize(dev)
+	if len(requestedSpares) > 0 {
+		minSize, err := pool.RequiredSpareSize(ctx)
 		if err != nil {
-			return fmt.Errorf("invalid_spare_device %s: %v", dev, err)
+			return fmt.Errorf("failed_to_get_minimum_spare_size: %v", err)
 		}
-
-		if sz == 0 {
-			return fmt.Errorf("invalid_spare_device %s: size is zero", dev)
-		}
-
-		if sz < minSize {
-			return fmt.Errorf("spare_device %s is too small, minimum size is %d bytes", dev, minSize)
+		for _, dev := range requestedSpares {
+			sz, err := disk.GetDiskSize(dev)
+			if err != nil {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %s: %v", dev, err)
+			}
+			if sz == 0 {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %s: size is zero", dev)
+			}
+			if sz < minSize {
+				return classifyError(ErrInvalidRequest, "spare_device %s is too small, minimum size is %d bytes", dev, minSize)
+			}
 		}
 	}
 
@@ -283,6 +275,19 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 		if err := pool.SetProperty(ctx, prop, val); err != nil {
 			return fmt.Errorf("failed_to_set_property %s: %v", prop, err)
 		}
+	}
+	if spares == nil {
+		return nil
+	}
+
+	currentByPath := make(map[string]struct{})
+	currentByBase := make(map[string]string)
+	for _, dev := range pool.Spares {
+		if dev == nil || dev.Path == "" {
+			continue
+		}
+		currentByPath[dev.Path] = struct{}{}
+		currentByBase[filepath.Base(dev.Path)] = dev.Path
 	}
 
 	currentSet := make(map[string]string)
@@ -295,7 +300,7 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 	}
 
 	newSet := make(map[string]struct{})
-	for _, dev := range spares {
+	for _, dev := range requestedSpares {
 		newSet[filepath.Base(dev)] = struct{}{}
 	}
 
@@ -309,7 +314,7 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 
 	time.Sleep(500 * time.Millisecond)
 
-	for _, dev := range spares {
+	for _, dev := range requestedSpares {
 		if _, ok := currentByPath[dev]; ok {
 			continue
 		}
@@ -334,8 +339,8 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
 
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
 	datasets, err := pool.Datasets(ctx, gzfs.DatasetTypeAll)
@@ -348,7 +353,7 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 			inUse := s.IsDatasetInUse(ds.GUID, true)
 
 			if inUse {
-				return fmt.Errorf("dataset %s is in use and cannot be deleted", ds.Name)
+				return classifyError(ErrConflict, "dataset %s is in use and cannot be deleted", ds.Name)
 			}
 		}
 	}
@@ -397,13 +402,16 @@ func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) e
 	defer s.syncMutex.Unlock()
 
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
+	}
 
 	if err := pool.ReplaceDevice(ctx, old, latest, false); err != nil {
-		return fmt.Errorf("failed_to_replace_device %s: %v", old, err)
+		return classifyError(ErrConflict, "failed_to_replace_device %s: %v", old, err)
 	}
 
 	pool, err = s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
+	if err != nil || pool == nil {
 		return fmt.Errorf("pool_not_found_after_replace")
 	}
 
@@ -449,12 +457,12 @@ func (s *Service) DetachDevice(ctx context.Context, guid, device string) error {
 	defer s.syncMutex.Unlock()
 
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
 	if err := pool.Detach(ctx, device); err != nil {
-		return fmt.Errorf("detach_failed: %v", err)
+		return classifyError(ErrConflict, "detach_failed: %v", err)
 	}
 
 	return nil
