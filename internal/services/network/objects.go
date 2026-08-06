@@ -9,8 +9,9 @@
 package network
 
 import (
+	"errors"
 	"fmt"
-	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -171,8 +172,22 @@ func (s *Service) populateObjectUsage(objects []networkModels.Object) error {
 			return err
 		}
 	}
-	for _, column := range []string{"network_object_id", "network6_object_id", "gateway_address_object_id", "gateway6_address_object_id"} {
+	for _, column := range []string{
+		"address_object_id",
+		"address6_object_id",
+		"network_object_id",
+		"network6_object_id",
+		"gateway_address_object_id",
+		"gateway6_address_object_id",
+	} {
 		if err := markFromColumn("standard_switches", column, ""); err != nil {
+			return err
+		}
+	}
+
+	// Static route references must remain valid when their backing objects change.
+	for _, column := range []string{"destination_obj_id", "gateway_obj_id"} {
+		if err := markFromColumn("static_routes", column, "route"); err != nil {
 			return err
 		}
 	}
@@ -199,7 +214,7 @@ func validateType(oType string) error {
 	}
 
 	if !validTypes[oType] {
-		return fmt.Errorf("invalid object type: %s", oType)
+		return invalidNetworkObject("invalid_network_object_type", nil)
 	}
 
 	return nil
@@ -207,7 +222,7 @@ func validateType(oType string) error {
 
 func validateValues(oType string, values []string) error {
 	if len(values) == 0 {
-		return fmt.Errorf("values cannot be empty for type: %s", oType)
+		return invalidNetworkObject("network_object_values_required", nil)
 	}
 
 	if oType == "Host" {
@@ -220,11 +235,11 @@ func validateValues(oType string, values []string) error {
 			} else if utils.IsValidIPv6(value) {
 				isIPv6 = true
 			} else {
-				return fmt.Errorf("invalid host value: %s", value)
+				return invalidNetworkObject("invalid_network_object_host_value", nil)
 			}
 
 			if isIPv4 && isIPv6 {
-				return fmt.Errorf("cannot mix IPv4 and IPv6 in host values")
+				return invalidNetworkObject("mixed_network_object_host_families", nil)
 			}
 		}
 	}
@@ -239,11 +254,11 @@ func validateValues(oType string, values []string) error {
 			} else if utils.IsValidIPv6CIDR(value) {
 				isIPv6 = true
 			} else {
-				return fmt.Errorf("invalid network value: %s", value)
+				return invalidNetworkObject("invalid_network_object_network_value", nil)
 			}
 
 			if isIPv4 && isIPv6 {
-				return fmt.Errorf("cannot mix IPv4 and IPv6 in network values")
+				return invalidNetworkObject("mixed_network_object_network_families", nil)
 			}
 		}
 	}
@@ -251,46 +266,42 @@ func validateValues(oType string, values []string) error {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
-			return fmt.Errorf("value cannot be empty for type: %s", oType)
+			return invalidNetworkObject("network_object_value_required", nil)
 		}
 
 		if oType == "Port" {
 			if !isValidPortToken(value) {
-				return fmt.Errorf("invalid port value: %s", value)
+				return invalidNetworkObject("invalid_network_object_port_value", nil)
 			}
 		}
 
 		if oType == "Country" {
 			if !utils.IsValidCountryCode(value) {
-				return fmt.Errorf("invalid country code: %s", value)
+				return invalidNetworkObject("invalid_network_object_country_value", nil)
 			}
 		}
 
 		if oType == "Mac" {
 			if !utils.IsValidMAC(value) {
-				return fmt.Errorf("invalid MAC address: %s", value)
+				return invalidNetworkObject("invalid_network_object_mac_value", nil)
 			}
 		}
 
 		if oType == "FQDN" {
 			if !utils.IsValidFQDN(value) {
-				return fmt.Errorf("invalid FQDN: %s", value)
+				return invalidNetworkObject("invalid_network_object_fqdn_value", nil)
 			}
 		}
 
 		if oType == "List" {
-			parsed, err := url.ParseRequestURI(value)
-			if err != nil || parsed == nil {
-				return fmt.Errorf("invalid list source url: %s", value)
-			}
-			if parsed.Scheme != "http" && parsed.Scheme != "https" {
-				return fmt.Errorf("invalid list source url scheme: %s", value)
+			if err := validateNetworkObjectListURL(value); err != nil {
+				return err
 			}
 		}
 
 		if oType == "DUID" {
 			if !utils.IsValidDUID(value) {
-				return fmt.Errorf("invalid DUID: %s", value)
+				return invalidNetworkObject("invalid_network_object_duid_value", nil)
 			}
 		}
 	}
@@ -298,202 +309,110 @@ func validateValues(oType string, values []string) error {
 	return nil
 }
 
+func normalizeNetworkObjectInput(name string, oType string, values []string) (string, string, []string, error) {
+	name = strings.TrimSpace(name)
+	oType = strings.TrimSpace(oType)
+
+	if name == "" {
+		return "", "", nil, invalidNetworkObject("network_object_name_required", nil)
+	}
+	if len(name) > MaxNetworkObjectNameBytes {
+		return "", "", nil, invalidNetworkObject("network_object_name_too_long", nil)
+	}
+	if len(values) == 0 {
+		return "", "", nil, invalidNetworkObject("network_object_values_required", nil)
+	}
+	if len(values) > MaxNetworkObjectValues {
+		return "", "", nil, invalidNetworkObject("too_many_network_object_values", nil)
+	}
+	if oType == "List" && len(values) > MaxNetworkObjectListSources {
+		return "", "", nil, invalidNetworkObject("too_many_network_object_list_sources", nil)
+	}
+
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return "", "", nil, invalidNetworkObject("network_object_value_required", nil)
+		}
+		if len(value) > MaxNetworkObjectValueBytes {
+			return "", "", nil, invalidNetworkObject("network_object_value_too_long", nil)
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+
+	if err := validateType(oType); err != nil {
+		return "", "", nil, err
+	}
+	if err := validateValues(oType, normalized); err != nil {
+		return "", "", nil, err
+	}
+
+	return name, oType, normalized, nil
+}
+
+func normalizeNetworkObjectIDs(ids []uint) ([]uint, error) {
+	if len(ids) == 0 {
+		return nil, invalidNetworkObject("network_object_ids_required", nil)
+	}
+	if len(ids) > MaxBulkNetworkObjectDeleteIDs {
+		return nil, invalidNetworkObject("too_many_network_object_ids", nil)
+	}
+
+	normalized := make([]uint, 0, len(ids))
+	seen := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			return nil, invalidNetworkObject("invalid_network_object_id", nil)
+		}
+		if _, ok := seen[id]; ok {
+			return nil, invalidNetworkObject("duplicate_network_object_id", nil)
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+
+	return normalized, nil
+}
+
+func networkObjectMatchesInput(object networkModels.Object, name string, oType string, values []string) bool {
+	if object.Name != name || object.Type != oType {
+		return false
+	}
+
+	stored := make([]string, 0, len(object.Entries))
+	for _, entry := range object.Entries {
+		stored = append(stored, entry.Value)
+	}
+	return slices.Equal(uniqueStrings(stored), uniqueStrings(values))
+}
+
 func (s *Service) IsObjectUsed(id uint) (bool, string, error) {
 	var object networkModels.Object
-
 	if err := s.DB.First(&object, id).Error; err != nil {
-		return false, "", fmt.Errorf("failed to find object with ID %d: %w", id, err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, "", networkObjectNotFound(err)
+		}
+		return false, "", err
 	}
 
-	if object.Type == "Host" {
-		var switches []networkModels.StandardSwitch
-		var jailNetworks []jailModels.Network
-		var dhcpLeases []networkModels.DHCPStaticLease
-
-		if err := s.DB.
-			Preload("NetworkObj.Entries").
-			Preload("Network6Obj.Entries").
-			Preload("GatewayAddressObj.Entries").
-			Preload("Gateway6AddressObj.Entries").
-			Find(&switches).Error; err != nil {
-			return true, "", err
-		}
-
-		if err := s.DB.Find(&jailNetworks).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find jail networks: %d %w", id, err)
-		}
-
-		if err := s.DB.Preload("IPObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
-		}
-
-		for _, sw := range switches {
-			if sw.GatewayAddressObj != nil {
-				if sw.GatewayAddressObj.ID == id {
-					return true, "", nil
-				}
-			}
-
-			if sw.Gateway6AddressObj != nil {
-				if sw.Gateway6AddressObj.ID == id {
-					return true, "", nil
-				}
-			}
-		}
-
-		for _, jn := range jailNetworks {
-			if jn.IPv4ID != nil {
-				if *jn.IPv4ID == id {
-					return true, "", nil
-				}
-			}
-
-			if jn.IPv4GwID != nil {
-				if *jn.IPv4GwID == id {
-					return true, "", nil
-				}
-			}
-
-			if jn.IPv6ID != nil {
-				if *jn.IPv6ID == id {
-					return true, "", nil
-				}
-			}
-
-			if jn.IPv6GwID != nil {
-				if *jn.IPv6GwID == id {
-					return true, "", nil
-				}
-			}
-
-			if jn.MacID != nil {
-				if *jn.MacID == id {
-					return true, "", nil
-				}
-			}
-		}
-
-		for _, dl := range dhcpLeases {
-			if dl.IPObject != nil {
-				if dl.IPObject.ID == id {
-					return true, "", nil
-				}
-			}
-		}
-
-		return false, "", nil
+	objects := []networkModels.Object{object}
+	if err := s.populateObjectUsage(objects); err != nil {
+		return false, "", err
 	}
 
-	if object.Type == "Mac" {
-		var vmNetworks []vmModels.Network
-		var jailNetworks []jailModels.Network
-		var dhcpLeases []networkModels.DHCPStaticLease
-
-		if err := s.DB.Where("mac_id = ?", id).Find(&vmNetworks).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find VM networks using object %d: %w", id, err)
-		}
-
-		if len(vmNetworks) > 0 {
-			return true, "", nil
-		}
-
-		if err := s.DB.Where("mac_id = ?", id).Find(&jailNetworks).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
-		}
-
-		if len(jailNetworks) > 0 {
-			return true, "", nil
-		}
-
-		if err := s.DB.Preload("MACObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
-		}
-
-		for _, dl := range dhcpLeases {
-			if dl.MACObject != nil {
-				if dl.MACObject.ID == id {
-					return true, "dhcp", nil
-				}
-			}
-		}
-
-		return false, "", nil
-	}
-
-	if object.Type == "Network" {
-		var jailNetworks []jailModels.Network
-		if err := s.DB.Where("ipv4_id = ? OR ipv4_gw_id = ? OR ipv6_id = ? OR ipv6_gw_id = ?", id, id, id, id).Find(&jailNetworks).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
-		}
-
-		if len(jailNetworks) > 0 {
-			return true, "", nil
-		}
-
-		var switches []networkModels.StandardSwitch
-
-		if err := s.DB.Where("network_object_id = ? OR network6_object_id = ?", id, id).Find(&switches).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find switches using object %d: %w", id, err)
-		}
-
-		if len(switches) > 0 {
-			return true, "", nil
-		}
-	}
-
-	if object.Type == "DUID" {
-		var dhcpLeases []networkModels.DHCPStaticLease
-		if err := s.DB.Preload("DUIDObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, "", fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
-		}
-
-		for _, dl := range dhcpLeases {
-			if dl.DUIDObject != nil {
-				if dl.DUIDObject.ID == id {
-					return true, "dhcp", nil
-				}
-			}
-		}
-	}
-
-	{
-		var trafficCount int64
-		if err := s.DB.
-			Model(&networkModels.FirewallTrafficRule{}).
-			Where("source_obj_id = ? OR dest_obj_id = ? OR src_port_obj_id = ? OR dst_port_obj_id = ?", id, id, id, id).
-			Count(&trafficCount).Error; err != nil {
-			return true, "", fmt.Errorf("failed to check firewall traffic rule usage for object %d: %w", id, err)
-		}
-		if trafficCount > 0 {
-			return true, "firewall", nil
-		}
-	}
-
-	{
-		var natCount int64
-		if err := s.DB.
-			Model(&networkModels.FirewallNATRule{}).
-			Where(
-				"source_obj_id = ? OR dest_obj_id = ? OR translate_to_obj_id = ? OR dnat_target_obj_id = ? OR dst_port_obj_id = ? OR redirect_port_obj_id = ?",
-				id, id, id, id, id, id,
-			).
-			Count(&natCount).Error; err != nil {
-			return true, "", fmt.Errorf("failed to check firewall nat rule usage for object %d: %w", id, err)
-		}
-		if natCount > 0 {
-			return true, "firewall", nil
-		}
-	}
-
-	return false, "", nil
+	return objects[0].IsUsed, objects[0].IsUsedBy, nil
 }
 
 func (s *Service) CreateObject(name string, oType string, values []string) (uint, error) {
-	if err := validateType(oType); err != nil {
-		return 0, err
-	}
-
-	if err := validateValues(oType, values); err != nil {
+	var err error
+	name, oType, values, err = normalizeNetworkObjectInput(name, oType, values)
+	if err != nil {
 		return 0, err
 	}
 
@@ -506,7 +425,7 @@ func (s *Service) CreateObject(name string, oType string, values []string) (uint
 	}
 
 	if count > 0 {
-		return 0, fmt.Errorf("object_with_name_already_exists: %s", name)
+		return 0, networkObjectConflict("network_object_name_conflict", nil)
 	}
 
 	entries := make([]networkModels.ObjectEntry, len(values))
@@ -527,6 +446,9 @@ func (s *Service) CreateObject(name string, oType string, values []string) (uint
 	}
 
 	if err := s.DB.Create(&object).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return 0, networkObjectConflict("network_object_name_conflict", err)
+		}
 		return 0, err
 	}
 
@@ -550,70 +472,84 @@ func (s *Service) CreateObject(name string, oType string, values []string) (uint
 }
 
 func (s *Service) DeleteObject(id uint) error {
-	used, _, err := s.IsObjectUsed(id)
-	if err != nil {
-		return fmt.Errorf("failed to check if object %d is used: %w", id, err)
-	}
-
-	if used {
-		return fmt.Errorf("object %d is currently in use and cannot be deleted", id)
-	}
-
-	var object networkModels.Object
-	if err := s.DB.Preload("Entries").Preload("Resolutions").First(&object, id).Error; err != nil {
-		return fmt.Errorf("failed to find object with ID %d: %w", id, err)
-	}
-	if err := s.hydrateListSnapshotResolutions(&object); err != nil {
-		return err
-	}
-	previousState := cloneObjectState(object)
-
-	if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectListSnapshot{}).Error; err != nil {
-		return fmt.Errorf("failed to delete list snapshots for object %d: %w", id, err)
-	}
-
-	if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
-		return fmt.Errorf("failed to delete resolutions for object %d: %w", id, err)
-	}
-
-	if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
-		return fmt.Errorf("failed to delete entries for object %d: %w", id, err)
-	}
-
-	if err := s.DB.Delete(&networkModels.Object{}, id).Error; err != nil {
-		return fmt.Errorf("failed to delete object %d: %w", id, err)
-	}
-
-	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {
-			return fmt.Errorf("failed to apply firewall after object %d deletion: %w (rollback_failed: %v)", id, err, rollbackErr)
-		}
-		return err
-	}
-
-	return nil
+	return s.deleteObjects([]uint{id})
 }
 
 func (s *Service) BulkDeleteObjects(ids []uint) error {
-	for _, id := range ids {
-		used, _, err := s.IsObjectUsed(id)
-		if err != nil {
-			return fmt.Errorf("failed to check if object %d is used: %w", id, err)
-		}
+	return s.deleteObjects(ids)
+}
 
-		if used {
-			var obj networkModels.Object
-			if dErr := s.DB.First(&obj, id).Error; dErr == nil {
-				return fmt.Errorf("object '%s' is in use and cannot be deleted", obj.Name)
-			}
-			return fmt.Errorf("object %d is in use and cannot be deleted", id)
+func (s *Service) deleteObjects(ids []uint) error {
+	ids, err := normalizeNetworkObjectIDs(ids)
+	if err != nil {
+		return err
+	}
+
+	var objects []networkModels.Object
+	if err := s.DB.
+		Preload("Entries").
+		Preload("Resolutions").
+		Where("id IN ?", ids).
+		Find(&objects).Error; err != nil {
+		return err
+	}
+
+	byID := make(map[uint]*networkModels.Object, len(objects))
+	for i := range objects {
+		byID[objects[i].ID] = &objects[i]
+	}
+	for _, id := range ids {
+		if byID[id] == nil {
+			return networkObjectNotFound(gorm.ErrRecordNotFound)
 		}
 	}
 
+	if err := s.populateObjectUsage(objects); err != nil {
+		return err
+	}
+
+	previousStates := make([]networkModels.Object, 0, len(ids))
 	for _, id := range ids {
-		if err := s.DeleteObject(id); err != nil {
+		object := byID[id]
+		if object.IsUsed {
+			return networkObjectConflict("network_object_in_use", nil)
+		}
+		if err := s.hydrateListSnapshotResolutions(object); err != nil {
 			return err
 		}
+		previousStates = append(previousStates, cloneObjectState(*object))
+	}
+
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("object_id IN ?", ids).Delete(&networkModels.ObjectListSnapshot{}).Error; err != nil {
+			return fmt.Errorf("failed to delete network object list snapshots: %w", err)
+		}
+		if err := tx.Where("object_id IN ?", ids).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+			return fmt.Errorf("failed to delete network object resolutions: %w", err)
+		}
+		if err := tx.Where("object_id IN ?", ids).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+			return fmt.Errorf("failed to delete network object entries: %w", err)
+		}
+		result := tx.Where("id IN ?", ids).Delete(&networkModels.Object{})
+		if result.Error != nil {
+			return fmt.Errorf("failed to delete network objects: %w", result.Error)
+		}
+		if result.RowsAffected != int64(len(ids)) {
+			return fmt.Errorf("network object delete count mismatch: got %d want %d", result.RowsAffected, len(ids))
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := s.ApplyFirewallIfEnabled(); err != nil {
+		if rollbackErr := s.restoreObjectStates(previousStates); rollbackErr != nil {
+			return fmt.Errorf("failed to apply firewall after network object deletion: %w (rollback_failed: %v)", err, rollbackErr)
+		}
+		if reapplyErr := s.ApplyFirewallIfEnabled(); reapplyErr != nil {
+			return fmt.Errorf("failed to apply firewall after network object deletion: %w (firewall_restore_failed: %v)", err, reapplyErr)
+		}
+		return err
 	}
 
 	return nil
@@ -675,6 +611,21 @@ func (s *Service) hydrateListSnapshotResolutions(object *networkModels.Object) e
 }
 
 func (s *Service) restoreObjectState(previous networkModels.Object) error {
+	return s.restoreObjectStates([]networkModels.Object{previous})
+}
+
+func (s *Service) restoreObjectStates(previous []networkModels.Object) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		for _, object := range previous {
+			if err := restoreObjectState(tx, object); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func restoreObjectState(tx *gorm.DB, previous networkModels.Object) error {
 	restored := networkModels.Object{
 		ID:                     previous.ID,
 		Name:                   previous.Name,
@@ -690,63 +641,61 @@ func (s *Service) restoreObjectState(previous networkModels.Object) error {
 		UpdatedAt:              previous.UpdatedAt,
 	}
 
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&restored).Error; err != nil {
-			return fmt.Errorf("failed to restore object %d: %w", previous.ID, err)
-		}
+	if err := tx.Save(&restored).Error; err != nil {
+		return fmt.Errorf("failed to restore object %d: %w", previous.ID, err)
+	}
 
-		if err := tx.Where("object_id = ?", previous.ID).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
-			return fmt.Errorf("failed to clear object %d entries during rollback: %w", previous.ID, err)
-		}
-		if err := tx.Where("object_id = ?", previous.ID).Delete(&networkModels.ObjectListSnapshot{}).Error; err != nil {
-			return fmt.Errorf("failed to clear object %d list snapshots during rollback: %w", previous.ID, err)
-		}
-		if err := tx.Where("object_id = ?", previous.ID).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
-			return fmt.Errorf("failed to clear object %d resolutions during rollback: %w", previous.ID, err)
-		}
+	if err := tx.Where("object_id = ?", previous.ID).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+		return fmt.Errorf("failed to clear object %d entries during rollback: %w", previous.ID, err)
+	}
+	if err := tx.Where("object_id = ?", previous.ID).Delete(&networkModels.ObjectListSnapshot{}).Error; err != nil {
+		return fmt.Errorf("failed to clear object %d list snapshots during rollback: %w", previous.ID, err)
+	}
+	if err := tx.Where("object_id = ?", previous.ID).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+		return fmt.Errorf("failed to clear object %d resolutions during rollback: %w", previous.ID, err)
+	}
 
-		for _, entry := range previous.Entries {
-			row := networkModels.ObjectEntry{
-				ObjectID:  previous.ID,
-				Value:     entry.Value,
-				CreatedAt: entry.CreatedAt,
-				UpdatedAt: entry.UpdatedAt,
+	for _, entry := range previous.Entries {
+		row := networkModels.ObjectEntry{
+			ObjectID:  previous.ID,
+			Value:     entry.Value,
+			CreatedAt: entry.CreatedAt,
+			UpdatedAt: entry.UpdatedAt,
+		}
+		if err := tx.Create(&row).Error; err != nil {
+			return fmt.Errorf("failed to restore object %d entry: %w", previous.ID, err)
+		}
+	}
+
+	if previous.Type != "List" {
+		for _, resolution := range previous.Resolutions {
+			row := networkModels.ObjectResolution{
+				ObjectID:      previous.ID,
+				ResolvedIP:    resolution.ResolvedIP,
+				ResolvedValue: resolution.ResolvedValue,
+				CreatedAt:     resolution.CreatedAt,
+				UpdatedAt:     resolution.UpdatedAt,
 			}
 			if err := tx.Create(&row).Error; err != nil {
-				return fmt.Errorf("failed to restore object %d entry: %w", previous.ID, err)
+				return fmt.Errorf("failed to restore object %d resolution: %w", previous.ID, err)
 			}
 		}
+	}
 
-		if previous.Type != "List" {
-			for _, resolution := range previous.Resolutions {
-				row := networkModels.ObjectResolution{
-					ObjectID:      previous.ID,
-					ResolvedIP:    resolution.ResolvedIP,
-					ResolvedValue: resolution.ResolvedValue,
-					CreatedAt:     resolution.CreatedAt,
-					UpdatedAt:     resolution.UpdatedAt,
-				}
-				if err := tx.Create(&row).Error; err != nil {
-					return fmt.Errorf("failed to restore object %d resolution: %w", previous.ID, err)
-				}
+	if previous.Type == "List" {
+		values := make([]string, 0, len(previous.Resolutions))
+		for _, resolution := range previous.Resolutions {
+			v := strings.TrimSpace(resolution.ResolvedValue)
+			if v != "" {
+				values = append(values, v)
 			}
 		}
-
-		if previous.Type == "List" {
-			values := make([]string, 0, len(previous.Resolutions))
-			for _, resolution := range previous.Resolutions {
-				v := strings.TrimSpace(resolution.ResolvedValue)
-				if v != "" {
-					values = append(values, v)
-				}
-			}
-			if err := storeListSnapshot(tx, previous.ID, previous.ResolutionChecksum, values); err != nil {
-				return fmt.Errorf("failed to restore object %d list snapshot: %w", previous.ID, err)
-			}
+		if err := storeListSnapshot(tx, previous.ID, previous.ResolutionChecksum, values); err != nil {
+			return fmt.Errorf("failed to restore object %d list snapshot: %w", previous.ID, err)
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 func (s *Service) replaceObjectWithValues(id uint, name string, oType string, values []string, autoUpdate bool, refreshInterval uint, preserveResolutions bool) error {
@@ -796,12 +745,31 @@ func (s *Service) replaceObjectWithValues(id uint, name string, oType string, va
 }
 
 func (s *Service) EditObject(id uint, name string, oType string, values []string) error {
-	if err := validateType(oType); err != nil {
+	if id == 0 {
+		return invalidNetworkObject("invalid_network_object_id", nil)
+	}
+
+	var err error
+	name, oType, values, err = normalizeNetworkObjectInput(name, oType, values)
+	if err != nil {
 		return err
 	}
 
-	if err := validateValues(oType, values); err != nil {
+	var object networkModels.Object
+	if err := s.DB.Preload("Entries").
+		Preload("Resolutions").
+		First(&object, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return networkObjectNotFound(err)
+		}
 		return err
+	}
+	if err := s.hydrateListSnapshotResolutions(&object); err != nil {
+		return err
+	}
+
+	if networkObjectMatchesInput(object, name, oType, values) {
+		return nil
 	}
 
 	var count int64
@@ -813,23 +781,30 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 	}
 
 	if count > 0 {
-		return fmt.Errorf("object_with_name_already_exists: %s", name)
+		return networkObjectConflict("network_object_name_conflict", nil)
 	}
 
 	used, _, err := s.IsObjectUsed(id)
 	if err != nil {
-		return fmt.Errorf("failed to check if object %d is used: %w", id, err)
-	}
-
-	var object networkModels.Object
-	if err := s.DB.Preload("Entries").
-		Preload("Resolutions").
-		First(&object, id).Error; err != nil {
-		return fmt.Errorf("failed to find object with ID %d: %w", id, err)
-	}
-	if err := s.hydrateListSnapshotResolutions(&object); err != nil {
 		return err
 	}
+
+	if used && object.Type != oType {
+		return networkObjectConflict("network_object_type_in_use", nil)
+	}
+
+	if used && len(values) != 1 && s.DB.Migrator().HasTable(&networkModels.StaticRoute{}) {
+		var staticRouteCount int64
+		if err := s.DB.Model(&networkModels.StaticRoute{}).
+			Where("destination_obj_id = ? OR gateway_obj_id = ?", id, id).
+			Count(&staticRouteCount).Error; err != nil {
+			return err
+		}
+		if staticRouteCount > 0 {
+			return networkObjectConflict("network_object_route_requires_one_value", nil)
+		}
+	}
+
 	previousState := cloneObjectState(object)
 
 	autoUpdate, refreshInterval := objectRefreshSettings(oType)
@@ -869,31 +844,17 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 			/* Object was used in a VM, but now we're changing it to something else, we can't do that */
 			if len(vmNetworks) > 0 && oType != "Mac" {
-				return fmt.Errorf("cannot_change_object_type_vm")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			/* MAC Used in a VM */
 			if len(vmNetworks) > 0 && oType == "Mac" {
 				if len(values) != 1 {
-					return fmt.Errorf("cannot edit object %d, it is used by %d VM networks, please ensure only one MAC is provided", id, len(vmNetworks))
-				}
-
-				hasChange := false
-
-				if object.Name != name || object.Type != oType {
-					hasChange = true
+					return networkObjectConflict("network_object_vm_requires_one_mac", nil)
 				}
 
 				object.Name = name
 				object.Type = oType
-
-				for _, value := range values {
-					for _, entry := range object.Entries {
-						if entry.Value == value && !hasChange {
-							return fmt.Errorf("no_detected_changes")
-						}
-					}
-				}
 
 				if s.LibVirt.IsVirtualizationEnabled() {
 					active, err := s.LibVirt.IsDomainInactive(vm.RID)
@@ -903,16 +864,12 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 
 					if !active {
-						return fmt.Errorf("cannot_change_object_of_active_vm")
+						return networkObjectConflict("network_object_active_vm_conflict", nil)
 					}
 				}
 
 				if err := s.DB.Save(&object).Error; err != nil {
 					return fmt.Errorf("failed to update object %d: %w", id, err)
-				}
-
-				if object.Name != name || object.Type != oType {
-					hasChange = true
 				}
 
 				if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
@@ -942,7 +899,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 			/* Object was used in a Jail, but now we're changing it to something else, we can't do that */
 			if len(jailNetworks) > 0 && oType != "Mac" {
-				return fmt.Errorf("cannot_change_object_type_jail")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			/* MAC Used in a Jail */
@@ -957,31 +914,17 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 			/* Object was used in DHCP leases, but now we're changing it to something else, we can't do that */
 			if len(dhcpLeases) > 0 && oType != "Mac" {
-				return fmt.Errorf("cannot_change_object_type_dhcp")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			/* MAC Used in DHCP leases */
 			if len(dhcpLeases) > 0 && oType == "Mac" {
 				if len(values) != 1 {
-					return fmt.Errorf("cannot edit object %d, it is used by %d DHCP leases, please ensure only one MAC is provided", id, len(dhcpLeases))
-				}
-
-				hasChange := false
-
-				if object.Name != name || object.Type != oType {
-					hasChange = true
+					return networkObjectConflict("network_object_dhcp_requires_one_mac", nil)
 				}
 
 				object.Name = name
 				object.Type = oType
-
-				for _, value := range values {
-					for _, entry := range object.Entries {
-						if entry.Value == value && !hasChange {
-							return fmt.Errorf("no_detected_changes")
-						}
-					}
-				}
 
 				if err := s.DB.Save(&object).Error; err != nil {
 					return fmt.Errorf("failed to update object %d: %w", id, err)
@@ -1024,30 +967,16 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(switches) > 0 && oType != "Host" {
-				return fmt.Errorf("cannot_change_object_type_host_used_in_switches")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			if len(switches) > 0 && oType == "Host" {
 				if len(values) != 1 {
-					return fmt.Errorf("cannot edit object %d, it is used by %d standard switches, please ensure only one IP is provided", id, len(switches))
-				}
-
-				hasChange := false
-
-				if object.Name != name || object.Type != oType {
-					hasChange = true
+					return networkObjectConflict("network_object_switch_requires_one_host", nil)
 				}
 
 				object.Name = name
 				object.Type = oType
-
-				for _, value := range values {
-					for _, entry := range object.Entries {
-						if entry.Value == value && !hasChange {
-							return fmt.Errorf("no_detected_changes")
-						}
-					}
-				}
 
 				if err := s.DB.Save(&object).Error; err != nil {
 					return fmt.Errorf("failed to update object %d: %w", id, err)
@@ -1083,7 +1012,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(jailNetworks) > 0 && oType != "Host" {
-				return fmt.Errorf("cannot_change_object_type_jail")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			if len(jailNetworks) > 0 && oType == "Host" {
@@ -1102,31 +1031,17 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 			/* Object was used in DHCP leases, but now we're changing it to something else, we can't do that */
 			if len(dhcpLeases) > 0 && oType != "Host" {
-				return fmt.Errorf("cannot_change_object_type_dhcp")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			/* IP Used in DHCP leases */
 			if len(dhcpLeases) > 0 && oType == "Host" {
 				if len(values) != 1 {
-					return fmt.Errorf("cannot edit object %d, it is used by %d DHCP leases, please ensure only one IP is provided", id, len(dhcpLeases))
-				}
-
-				hasChange := false
-
-				if object.Name != name || object.Type != oType {
-					hasChange = true
+					return networkObjectConflict("network_object_dhcp_requires_one_host", nil)
 				}
 
 				object.Name = name
 				object.Type = oType
-
-				for _, value := range values {
-					for _, entry := range object.Entries {
-						if entry.Value == value && !hasChange {
-							return fmt.Errorf("no_detected_changes")
-						}
-					}
-				}
 
 				if err := s.DB.Save(&object).Error; err != nil {
 					return fmt.Errorf("failed to update object %d: %w", id, err)
@@ -1169,30 +1084,16 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(switches) > 0 && oType != "Network" {
-				return fmt.Errorf("cannot_change_object_type_network_used_in_switches")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			if len(switches) > 0 && oType == "Network" {
 				if len(values) != 1 {
-					return fmt.Errorf("cannot edit object %d, it is used by %d standard switches, please ensure only one network is provided", id, len(switches))
-				}
-
-				hasChange := false
-
-				if object.Name != name || object.Type != oType {
-					hasChange = true
+					return networkObjectConflict("network_object_switch_requires_one_network", nil)
 				}
 
 				object.Name = name
 				object.Type = oType
-
-				for _, value := range values {
-					for _, entry := range object.Entries {
-						if entry.Value == value && !hasChange {
-							return fmt.Errorf("no_detected_changes")
-						}
-					}
-				}
 
 				if err := s.DB.Save(&object).Error; err != nil {
 					return fmt.Errorf("failed to update object %d: %w", id, err)
@@ -1228,7 +1129,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(jailNetworks) > 0 && oType != "Network" {
-				return fmt.Errorf("cannot_change_object_type_jail")
+				return networkObjectConflict("network_object_type_in_use", nil)
 			}
 
 			if len(jailNetworks) > 0 && oType == "Network" {
@@ -1249,10 +1150,6 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 		}
 	}
 
-	if err := s.ReconcileObjectStaticRoutes(id); err != nil {
-		logger.L.Error().Err(err).Uint("object_id", id).Msg("failed_to_reconcile_static_routes_after_object_edit")
-	}
-
 	if oType == "FQDN" || oType == "List" {
 		if err := s.RefreshObjectByID(id); err != nil {
 			if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {
@@ -1267,12 +1164,27 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 		return err
 	}
 
+	if s.DB.Migrator().HasTable(&networkModels.StaticRoute{}) {
+		if err := s.ReconcileObjectStaticRoutes(id); err != nil {
+			if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {
+				return fmt.Errorf("failed to reconcile static routes after object %d edit: %w (rollback_failed: %v)", id, err, rollbackErr)
+			}
+			if firewallErr := s.ApplyFirewallIfEnabled(); firewallErr != nil {
+				return fmt.Errorf("failed to reconcile static routes after object %d edit: %w (firewall_restore_failed: %v)", id, err, firewallErr)
+			}
+			if routeRestoreErr := s.ReconcileObjectStaticRoutes(id); routeRestoreErr != nil {
+				return fmt.Errorf("failed to reconcile static routes after object %d edit: %w (route_restore_failed: %v)", id, err, routeRestoreErr)
+			}
+			return fmt.Errorf("failed to reconcile static routes after object %d edit: %w", id, err)
+		}
+	}
+
 	return nil
 }
 
 func (s *Service) AddNetworkObjectEditJailTrigger(id uint, name string, oType string, values []string) error {
 	if len(values) != 1 {
-		return fmt.Errorf("at_most_1_entry_allowed")
+		return networkObjectConflict("network_object_jail_requires_one_value", nil)
 	}
 
 	if err := s.DB.Model(&networkModels.Object{}).Where("id = ?", id).Updates(

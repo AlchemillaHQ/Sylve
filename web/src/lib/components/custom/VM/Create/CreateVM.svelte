@@ -98,6 +98,11 @@
 		() => `network-objects-${modal.node || '__default__'}`,
 		async (key) => {
 			const result = await getNetworkObjects(modal.node || undefined);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return [] as NetworkObject[];
+			}
+
 			updateCache(key, result);
 			return result;
 		},
@@ -366,11 +371,11 @@
 										cloudInit={modal.advanced.cloudInit}
 									/>
 								</div>
-							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
+							{:else if value === 'network' && networkSwitches.current && Array.isArray(networkObjects.current)}
 								<div in:fade={{ duration: 200 }}>
 									<Network
 										switches={networkSwitches.current}
-										networkObjects={networkObjects.current as NetworkObject[]}
+										networkObjects={networkObjects.current}
 										bind:switch={modal.network.switch}
 										bind:mac={modal.network.mac}
 										bind:emulation={modal.network.emulation}

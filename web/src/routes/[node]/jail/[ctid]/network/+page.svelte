@@ -2,6 +2,7 @@
 	import { deleteNetwork, getJailById } from '$lib/api/jail/jail';
 	import { getSwitches } from '$lib/api/network/switch';
 	import type { Jail } from '$lib/types/jail/jail';
+	import type { APIResponse } from '$lib/types/common';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -22,10 +23,14 @@
 		ctId: number;
 		jail: Jail;
 		switches: SwitchList;
-		networkObjects: NetworkObject[];
+		networkObjects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
+		? data.networkObjects
+		: ([] as NetworkObject[]);
 
 	// svelte-ignore state_referenced_locally
 	const jail = resource(
@@ -66,16 +71,21 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	const networkObjects = resource(
 		() => `network-objects`,
 		async (key) => {
 			const objects = await getNetworkObjects();
+			if (isAPIResponse(objects)) {
+				handleAPIError(objects);
+				return lastGoodNetworkObjects;
+			}
+
+			lastGoodNetworkObjects = objects;
 			updateCache(key, objects);
 			return objects;
 		},
 		{
-			initialValue: data.networkObjects
+			initialValue: lastGoodNetworkObjects
 		}
 	);
 

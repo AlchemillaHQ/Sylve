@@ -55,7 +55,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/migration"
-	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	networkServicePkg "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
@@ -92,7 +92,7 @@ func RegisterRoutes(r *gin.Engine,
 	infoService *infoService.Service,
 	zfsService *zfsService.Service,
 	diskService *diskServicePkg.Service,
-	networkService *networkService.Service,
+	networkService *networkServicePkg.Service,
 	notificationService *notificationsService.Service,
 	utilitiesService *utilitiesService.Service,
 	systemService *systemService.Service,
@@ -360,13 +360,18 @@ func RegisterRoutes(r *gin.Engine,
 	network := api.Group("/network")
 	network.Use(middleware.EnsureAuthenticated(authService))
 	network.Use(EnsureCorrectHost(db, authService))
+	network.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
 	network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		network.GET("/object", networkHandlers.ListNetworkObjects(networkService))
-		network.POST("/object", networkHandlers.CreateNetworkObject(networkService))
-		network.POST("/object/bulk-delete", networkHandlers.BulkDeleteNetworkObjects(networkService))
-		network.DELETE("/object/:id", networkHandlers.DeleteNetworkObject(networkService))
-		network.PUT("/object/:id", networkHandlers.EditNetworkObject(networkService))
+		objects := network.Group("/object")
+		objects.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			objects.GET("", networkHandlers.ListNetworkObjects(networkService))
+			objects.POST("", networkHandlers.CreateNetworkObject(networkService))
+			objects.DELETE("", networkHandlers.BulkDeleteNetworkObjects(networkService))
+			objects.DELETE("/:id", networkHandlers.DeleteNetworkObject(networkService))
+			objects.PUT("/:id", networkHandlers.EditNetworkObject(networkService))
+		}
 
 		network.GET("/firewall/traffic", networkHandlers.ListFirewallTrafficRules(networkService))
 		network.GET("/firewall/traffic/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))

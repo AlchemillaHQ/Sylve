@@ -176,7 +176,6 @@
 		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
 		'/api/info/terminal': 'Host Terminal - Session',
-		'/api/network/object/bulk-delete': 'Network Object - Bulk Delete',
 		'/api/network/object': 'Network Object',
 		'/api/network/dhcp/config': 'DHCP Config',
 		'/api/network/dhcp/lease/dynamic': 'DHCP Lease - Delete Dynamic',
@@ -344,6 +343,7 @@
 		DELETE: {
 			'/api/info/notes': 'Notes - Bulk Delete',
 			'/api/zfs/datasets': 'ZFS Dataset - Delete',
+			'/api/network/object': 'Network Object - Bulk Delete',
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
 			'/api/certificates/:id': 'TLS Certificate - Delete',
 			'/api/certificates/:id/activate': 'TLS Certificate - Cancel Pending Activation',

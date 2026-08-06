@@ -30,6 +30,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
 
 	// svelte-ignore state_referenced_locally
 	const routes = resource(
@@ -85,21 +87,21 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	const objects = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				return [] as NetworkObject[];
+				return lastGoodObjects;
 			}
 
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[])
+			initialValue: lastGoodObjects
 		}
 	);
 

@@ -9,12 +9,13 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Network from '$lib/components/custom/VM/Hardware/Network.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -27,10 +28,15 @@
 		interfaces: Iface[];
 		switches: SwitchList;
 		rid: number;
-		networkObjects: NetworkObject[];
+		networkObjects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
+		? data.networkObjects
+		: ([] as NetworkObject[]);
+	let networkObjectErrorReported = false;
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
@@ -76,17 +82,25 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-
 	const networkObjects = resource(
-		() => 'networkObjects',
+		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
+			if (isAPIResponse(result)) {
+				if (!networkObjectErrorReported) {
+					handleAPIError(result);
+					networkObjectErrorReported = true;
+				}
+				return lastGoodNetworkObjects;
+			}
+
+			networkObjectErrorReported = false;
+			lastGoodNetworkObjects = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: data.networkObjects
+			initialValue: lastGoodNetworkObjects
 		}
 	);
 

@@ -9,10 +9,12 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -185,8 +187,8 @@ func TestCreateObject_PortRejectsGroupedValues(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected grouped port value to be rejected for %q", tt.name)
 			}
-			if !strings.Contains(err.Error(), "invalid port value") {
-				t.Fatalf("expected invalid port value error, got: %v", err)
+			if !errors.Is(err, ErrInvalidNetworkObject) || NetworkObjectErrorCode(err) != "invalid_network_object_port_value" {
+				t.Fatalf("expected stable invalid port error, got: %v", err)
 			}
 		})
 	}
@@ -467,5 +469,344 @@ func TestGetObjects_UsageLabelingPrefersDHCPForMacAndKeepsHostLegacyOwnerEmpty(t
 	}
 	if hostLoaded.IsUsedBy != "" {
 		t.Fatalf("expected host object owner to remain empty for ip-object dhcp usage, got %q", hostLoaded.IsUsedBy)
+	}
+}
+
+func TestCreateObjectNormalizesNameAndValues(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+	)
+
+	id, err := svc.CreateObject("  web-ports  ", "Port", []string{" 443 ", "443", "8000:9000"})
+	if err != nil {
+		t.Fatalf("expected normalized object creation to succeed: %v", err)
+	}
+
+	var object networkModels.Object
+	if err := db.Preload("Entries").First(&object, id).Error; err != nil {
+		t.Fatalf("load created object: %v", err)
+	}
+	if object.Name != "web-ports" {
+		t.Fatalf("expected trimmed name, got %q", object.Name)
+	}
+	if len(object.Entries) != 2 {
+		t.Fatalf("expected duplicate values to be removed, got %+v", object.Entries)
+	}
+}
+
+func TestNormalizeNetworkObjectInputEnforcesBounds(t *testing.T) {
+	listSources := make([]string, MaxNetworkObjectListSources+1)
+	for i := range listSources {
+		listSources[i] = fmt.Sprintf("https://example.com/list-%d.txt", i)
+	}
+
+	for _, tt := range []struct {
+		name       string
+		objectName string
+		objectType string
+		values     []string
+		code       string
+	}{
+		{"empty name", "   ", "Port", []string{"443"}, "network_object_name_required"},
+		{"long name", strings.Repeat("n", MaxNetworkObjectNameBytes+1), "Port", []string{"443"}, "network_object_name_too_long"},
+		{"long value", "long-value", "Port", []string{strings.Repeat("1", MaxNetworkObjectValueBytes+1)}, "network_object_value_too_long"},
+		{"too many list sources", "many-lists", "List", listSources, "too_many_network_object_list_sources"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, err := normalizeNetworkObjectInput(tt.objectName, tt.objectType, tt.values)
+			if !errors.Is(err, ErrInvalidNetworkObject) || NetworkObjectErrorCode(err) != tt.code {
+				t.Fatalf("expected %q, got %v", tt.code, err)
+			}
+		})
+	}
+}
+
+func TestNormalizeNetworkObjectIDsRequiresBoundedUniquePositiveIDs(t *testing.T) {
+	tooMany := make([]uint, MaxBulkNetworkObjectDeleteIDs+1)
+	for i := range tooMany {
+		tooMany[i] = uint(i + 1)
+	}
+
+	for _, tt := range []struct {
+		name string
+		ids  []uint
+		code string
+	}{
+		{"empty", nil, "network_object_ids_required"},
+		{"zero", []uint{1, 0}, "invalid_network_object_id"},
+		{"duplicate", []uint{1, 1}, "duplicate_network_object_id"},
+		{"too many", tooMany, "too_many_network_object_ids"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := normalizeNetworkObjectIDs(tt.ids)
+			if !errors.Is(err, ErrInvalidNetworkObject) || NetworkObjectErrorCode(err) != tt.code {
+				t.Fatalf("expected %q, got %v", tt.code, err)
+			}
+		})
+	}
+}
+
+func TestEditObjectIdenticalReplacementIsNoOp(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+	)
+
+	object := networkModels.Object{
+		Name: "web-ports",
+		Type: "Port",
+		Entries: []networkModels.ObjectEntry{
+			{Value: "80"},
+			{Value: "443"},
+		},
+	}
+	if err := db.Create(&object).Error; err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+	if len(object.Entries) != 2 {
+		t.Fatalf("expected two seeded entries, got %+v", object.Entries)
+	}
+
+	originalEntryIDs := []uint{object.Entries[0].ID, object.Entries[1].ID}
+	if err := svc.EditObject(object.ID, " web-ports ", "Port", []string{"443", "80", "443"}); err != nil {
+		t.Fatalf("expected identical replacement to succeed: %v", err)
+	}
+
+	var updated networkModels.Object
+	if err := db.Preload("Entries").First(&updated, object.ID).Error; err != nil {
+		t.Fatalf("load object after no-op: %v", err)
+	}
+	if len(updated.Entries) != 2 {
+		t.Fatalf("expected no-op edit to preserve two entries, got %+v", updated.Entries)
+	}
+	gotEntryIDs := []uint{updated.Entries[0].ID, updated.Entries[1].ID}
+	slices.Sort(originalEntryIDs)
+	slices.Sort(gotEntryIDs)
+	if !slices.Equal(gotEntryIDs, originalEntryIDs) {
+		t.Fatalf("expected no-op edit to preserve entry rows, before=%v after=%v", originalEntryIDs, gotEntryIDs)
+	}
+}
+
+func TestIsObjectUsedIncludesStaticRoutesAndStandardSwitchAddresses(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&networkModels.StaticRoute{},
+		&networkModels.StandardSwitch{},
+	)
+
+	objects := []networkModels.Object{
+		{Name: "route-destination", Type: "Network", Entries: []networkModels.ObjectEntry{{Value: "198.51.100.0/24"}}},
+		{Name: "route-gateway", Type: "Host", Entries: []networkModels.ObjectEntry{{Value: "198.51.100.1"}}},
+		{Name: "switch-address4", Type: "Host", Entries: []networkModels.ObjectEntry{{Value: "192.0.2.10"}}},
+		{Name: "switch-address6", Type: "Host", Entries: []networkModels.ObjectEntry{{Value: "2001:db8::10"}}},
+	}
+	for i := range objects {
+		if err := db.Create(&objects[i]).Error; err != nil {
+			t.Fatalf("seed object %q: %v", objects[i].Name, err)
+		}
+	}
+
+	route := networkModels.StaticRoute{
+		Name:             "object-backed-route",
+		Enabled:          true,
+		DestinationType:  "network",
+		Destination:      "198.51.100.0/24",
+		DestinationObjID: &objects[0].ID,
+		Family:           "inet",
+		NextHopMode:      "gateway",
+		Gateway:          "198.51.100.1",
+		GatewayObjID:     &objects[1].ID,
+	}
+	if err := db.Create(&route).Error; err != nil {
+		t.Fatalf("seed static route: %v", err)
+	}
+
+	switchRow := networkModels.StandardSwitch{
+		Name:       "object-address-switch",
+		BridgeName: "bridge-test0",
+		AddressID:  &objects[2].ID,
+		Address6ID: &objects[3].ID,
+	}
+	if err := db.Create(&switchRow).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+
+	for _, tt := range []struct {
+		id      uint
+		owner   string
+		context string
+	}{
+		{objects[0].ID, "route", "static-route destination"},
+		{objects[1].ID, "route", "static-route gateway"},
+		{objects[2].ID, "", "standard-switch IPv4 address"},
+		{objects[3].ID, "", "standard-switch IPv6 address"},
+	} {
+		used, owner, err := svc.IsObjectUsed(tt.id)
+		if err != nil {
+			t.Fatalf("check %s usage: %v", tt.context, err)
+		}
+		if !used || owner != tt.owner {
+			t.Fatalf("expected %s to be used by %q, used=%v owner=%q", tt.context, tt.owner, used, owner)
+		}
+	}
+}
+
+func TestBulkDeleteObjectsPreflightsBeforeMutation(t *testing.T) {
+	t.Run("missing object", func(t *testing.T) {
+		svc, db := newNetworkServiceForTest(t,
+			&networkModels.Object{},
+			&networkModels.ObjectEntry{},
+			&networkModels.ObjectResolution{},
+		)
+		objects := []networkModels.Object{
+			{Name: "keep-one", Type: "Port", Entries: []networkModels.ObjectEntry{{Value: "80"}}},
+			{Name: "keep-two", Type: "Port", Entries: []networkModels.ObjectEntry{{Value: "443"}}},
+		}
+		if err := db.Create(&objects).Error; err != nil {
+			t.Fatalf("seed objects: %v", err)
+		}
+
+		err := svc.BulkDeleteObjects([]uint{objects[0].ID, 999999})
+		if !errors.Is(err, ErrNetworkObjectNotFound) {
+			t.Fatalf("expected not-found preflight error, got %v", err)
+		}
+		var count int64
+		if err := db.Model(&networkModels.Object{}).Count(&count).Error; err != nil {
+			t.Fatalf("count objects: %v", err)
+		}
+		if count != 2 {
+			t.Fatalf("expected missing-ID preflight to preserve both objects, count=%d", count)
+		}
+	})
+
+	t.Run("object in use", func(t *testing.T) {
+		svc, db := newNetworkServiceForTest(t,
+			&networkModels.Object{},
+			&networkModels.ObjectEntry{},
+			&networkModels.ObjectResolution{},
+			&networkModels.StandardSwitch{},
+		)
+		objects := []networkModels.Object{
+			{Name: "free-object", Type: "Host", Entries: []networkModels.ObjectEntry{{Value: "192.0.2.20"}}},
+			{Name: "used-object", Type: "Host", Entries: []networkModels.ObjectEntry{{Value: "192.0.2.21"}}},
+		}
+		if err := db.Create(&objects).Error; err != nil {
+			t.Fatalf("seed objects: %v", err)
+		}
+		if err := db.Create(&networkModels.StandardSwitch{
+			Name:       "uses-object",
+			BridgeName: "bridge-test1",
+			AddressID:  &objects[1].ID,
+		}).Error; err != nil {
+			t.Fatalf("seed switch: %v", err)
+		}
+
+		err := svc.BulkDeleteObjects([]uint{objects[0].ID, objects[1].ID})
+		if !errors.Is(err, ErrNetworkObjectConflict) || NetworkObjectErrorCode(err) != "network_object_in_use" {
+			t.Fatalf("expected in-use conflict, got %v", err)
+		}
+		var count int64
+		if err := db.Model(&networkModels.Object{}).Count(&count).Error; err != nil {
+			t.Fatalf("count objects: %v", err)
+		}
+		if count != 2 {
+			t.Fatalf("expected in-use preflight to preserve both objects, count=%d", count)
+		}
+	})
+}
+
+func TestBulkDeleteObjectsDeletesBatchAndDependents(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+	)
+
+	objects := []networkModels.Object{
+		{Name: "delete-one", Type: "Port", Entries: []networkModels.ObjectEntry{{Value: "80"}}},
+		{Name: "delete-two", Type: "FQDN", Entries: []networkModels.ObjectEntry{{Value: "example.com"}}},
+	}
+	if err := db.Create(&objects).Error; err != nil {
+		t.Fatalf("seed objects: %v", err)
+	}
+	if err := db.Create(&networkModels.ObjectResolution{
+		ObjectID:      objects[1].ID,
+		ResolvedIP:    "192.0.2.30",
+		ResolvedValue: "192.0.2.30",
+	}).Error; err != nil {
+		t.Fatalf("seed resolution: %v", err)
+	}
+
+	if err := svc.BulkDeleteObjects([]uint{objects[0].ID, objects[1].ID}); err != nil {
+		t.Fatalf("bulk delete objects: %v", err)
+	}
+
+	for _, model := range []any{&networkModels.Object{}, &networkModels.ObjectEntry{}, &networkModels.ObjectResolution{}} {
+		var count int64
+		if err := db.Model(model).Count(&count).Error; err != nil {
+			t.Fatalf("count %T rows: %v", model, err)
+		}
+		if count != 0 {
+			t.Fatalf("expected all %T rows to be deleted, count=%d", model, count)
+		}
+	}
+}
+
+func TestBulkDeleteObjectsFirewallFailureRestoresEntireBatch(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&models.BasicSettings{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&networkModels.FirewallAdvancedSettings{},
+		&networkModels.FirewallTrafficRule{},
+		&networkModels.FirewallNATRule{},
+	)
+
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("enable firewall: %v", err)
+	}
+	if err := db.Create(&networkModels.FirewallAdvancedSettings{}).Error; err != nil {
+		t.Fatalf("seed firewall settings: %v", err)
+	}
+	objects := []networkModels.Object{
+		{Name: "restore-one", Type: "Port", Entries: []networkModels.ObjectEntry{{Value: "80"}}},
+		{Name: "restore-two", Type: "Port", Entries: []networkModels.ObjectEntry{{Value: "443"}}},
+	}
+	if err := db.Create(&objects).Error; err != nil {
+		t.Fatalf("seed objects: %v", err)
+	}
+
+	previousRCPath := firewallRCConfPath
+	firewallRCConfPath = filepath.Join(t.TempDir(), "rc.conf")
+	t.Cleanup(func() { firewallRCConfPath = previousRCPath })
+
+	previousRunCommand := firewallRunCommand
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-nf" {
+			return "", fmt.Errorf("forced pf validation failure")
+		}
+		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
+			return "", fmt.Errorf("pf disabled")
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { firewallRunCommand = previousRunCommand })
+
+	if err := svc.BulkDeleteObjects([]uint{objects[0].ID, objects[1].ID}); err == nil {
+		t.Fatal("expected firewall failure")
+	}
+
+	var restored []networkModels.Object
+	if err := db.Preload("Entries").Order("id asc").Find(&restored).Error; err != nil {
+		t.Fatalf("load restored objects: %v", err)
+	}
+	if len(restored) != 2 || len(restored[0].Entries) != 1 || len(restored[1].Entries) != 1 {
+		t.Fatalf("expected the entire batch and its entries to be restored, got %+v", restored)
 	}
 }

@@ -11,7 +11,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CreateData } from '$lib/types/jail/jail';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { getJailCreateErrorMessage, isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { fade } from 'svelte/transition';
@@ -124,6 +124,11 @@
 		() => `network-objects-${modal.node || '__default__'}`,
 		async (key) => {
 			const objects = await getNetworkObjects(modal.node || undefined);
+			if (isAPIResponse(objects)) {
+				handleAPIError(objects);
+				return [] as NetworkObject[];
+			}
+
 			updateCache(key, objects);
 			return objects;
 		}
@@ -376,7 +381,7 @@
 										bind:fstab={modal.storage.fstab}
 									/>
 								</div>
-							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
+							{:else if value === 'network' && networkSwitches.current && Array.isArray(networkObjects.current)}
 								<div in:fade={{ duration: 200 }}>
 									<Network
 										name={modal.name}
@@ -401,7 +406,7 @@
 										bind:refetch={networkRefetch}
 										jailType={modal.advanced.jailType}
 										switches={networkSwitches.current}
-										networkObjects={networkObjects.current as NetworkObject[]}
+										networkObjects={networkObjects.current}
 									/>
 								</div>
 							{:else if value === 'hardware'}

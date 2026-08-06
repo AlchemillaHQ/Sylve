@@ -103,16 +103,23 @@
 		}
 		return out;
 	});
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+
 	const objectsResource = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodObjects;
+			}
+
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.objects as NetworkObject[] }
+		{ initialValue: lastGoodObjects }
 	);
 
 	const objects = $derived(

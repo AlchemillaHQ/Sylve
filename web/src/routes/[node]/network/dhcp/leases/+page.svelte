@@ -34,10 +34,14 @@
 		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
 		dhcpLeases: Leases;
-		networkObjects: NetworkObject[];
+		networkObjects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
+		? data.networkObjects
+		: ([] as NetworkObject[]);
 
 	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
@@ -94,15 +98,20 @@
 		{ initialValue: data.dhcpLeases }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkObjects = resource(
 		() => 'network-objects',
 		async (key) => {
 			const res = await getNetworkObjects();
+			if (isAPIResponse(res)) {
+				handleAPIError(res);
+				return lastGoodNetworkObjects;
+			}
+
+			lastGoodNetworkObjects = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.networkObjects }
+		{ initialValue: lastGoodNetworkObjects }
 	);
 
 	let reload = $state(false);

@@ -11,11 +11,12 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
 	import { generateIPOptions, generateNetworkOptions } from '$lib/utils/network/object';
 	import { generateTableData } from '$lib/utils/network/switch/standard';
@@ -27,10 +28,12 @@
 	interface Data {
 		interfaces: Iface[];
 		switches: SwitchList;
-		objects: NetworkObject[];
+		objects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodNetworkObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
 
 	// svelte-ignore state_referenced_locally
 	const networkInterfaces = resource(
@@ -60,18 +63,19 @@
 		{ initialValue: data.switches }
 	);
 
-	// svelte-ignore state_referenced_locally
 	const networkObjects = resource(
 		() => 'network-objects',
 		async (key) => {
 			const res = await getNetworkObjects();
 			if (isAPIResponse(res)) {
-				return data.objects;
+				handleAPIError(res);
+				return lastGoodNetworkObjects;
 			}
+			lastGoodNetworkObjects = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.objects }
+		{ initialValue: lastGoodNetworkObjects }
 	);
 
 	let query: string = $state('');
