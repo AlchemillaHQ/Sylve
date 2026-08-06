@@ -114,16 +114,26 @@ func CreatePartition(device string, size uint64, ptype string) error {
 }
 
 func CreatePartitions(device string, sizes []uint64) error {
-	err := CheckDevice(device)
-
-	if err != nil {
-		return err
+	if len(sizes) == 0 {
+		return fmt.Errorf("at least one partition size is required")
 	}
 
 	totalRequiredSize := uint64(0)
 
 	for _, size := range sizes {
+		mbytes := uint64(utils.BytesToSize("MB", float64(size)))
+		if mbytes < 1 {
+			return fmt.Errorf("size must be at least 1MB")
+		}
+		if totalRequiredSize > ^uint64(0)-size {
+			return fmt.Errorf("partition size total overflows uint64")
+		}
 		totalRequiredSize += size
+	}
+
+	err := CheckDevice(device)
+	if err != nil {
+		return err
 	}
 
 	diskSize, err := GetDiskSize(device)

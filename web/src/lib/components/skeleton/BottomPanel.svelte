@@ -176,8 +176,6 @@
 		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
 		'/api/info/terminal': 'Host Terminal - Session',
-		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
-		'/api/disk/wipe': 'Disk - Wipe',
 		'/api/network/object/bulk-delete': 'Network Object - Bulk Delete',
 		'/api/network/object': 'Network Object',
 		'/api/network/dhcp/config': 'DHCP Config',
@@ -250,8 +248,6 @@
 		'/api/zfs/pools': 'ZFS Pool',
 		'/api/zfs/pools/:id/scrub': 'ZFS Pool - Scrub',
 		'/api/zfs/pools/:id/replace-device': 'ZFS Pool - Replace Device',
-		'/api/disk/create-partitions': 'Disk - Create Partitions',
-		'/api/disk/delete-partition': 'Disk - Delete Partition',
 		'/api/jail/snapshots/rollback': 'Jail Snapshot - Rollback',
 		'/api/jail/snapshots': 'Jail Snapshot',
 		'/api/jail/network/inheritance': 'Jail - Network Inherit',
@@ -351,6 +347,8 @@
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
 			'/api/certificates/:id': 'TLS Certificate - Delete',
 			'/api/certificates/:id/activate': 'TLS Certificate - Cancel Pending Activation',
+			'/api/disk/:device/partition-table': 'Disk - Clear Partition Table',
+			'/api/disk/partitions/:partition': 'Disk - Delete Partition',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Delete'
 		},
 		POST: {
@@ -362,6 +360,8 @@
 			'/api/certificates/:id/activate': 'TLS Certificate - Schedule Activation',
 			'/api/certificates/:id/renew': 'TLS Certificate - Renew',
 			'/api/certificates/:id/retry': 'TLS Certificate - Retry Issuance',
+			'/api/disk/:device/partition-table': 'Disk - Initialize GPT',
+			'/api/disk/:device/partitions': 'Disk - Create Partitions',
 			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
 			'/api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create'
@@ -404,6 +404,18 @@
 		);
 	});
 
+	function normalizeActionPath(path: string): string {
+		const segments = path.split('/');
+		if (segments[1] === 'api' && segments[2] === 'disk' && segments.length === 5) {
+			if (segments[3] === 'partitions') {
+				segments[4] = ':partition';
+			} else if (segments[4] === 'partition-table' || segments[4] === 'partitions') {
+				segments[3] = ':device';
+			}
+		}
+		return segments.map((segment) => (/^\d+$/.test(segment) ? ':id' : segment)).join('/');
+	}
+
 	let records = $derived.by(() => {
 		if (!auditRecords.current) return [];
 
@@ -414,10 +426,7 @@
 
 			let resolvedAction = method;
 
-			const normalizedPath = path
-				.split('/')
-				.map((s) => (/^\d+$/.test(s) ? ':id' : s))
-				.join('/');
+			const normalizedPath = normalizeActionPath(path);
 
 			const methodPathAction = methodPathToActionMap[method.toUpperCase()]?.[normalizedPath];
 			const matchedEntry = methodPathAction

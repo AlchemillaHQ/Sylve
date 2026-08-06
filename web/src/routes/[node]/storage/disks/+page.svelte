@@ -9,7 +9,12 @@ under sponsorship from the FreeBSD Foundation.
 -->
 
 <script lang="ts">
-	import { destroyDisk, destroyPartition, initializeGPT, listDisks } from '$lib/api/disk/disk';
+	import {
+		clearPartitionTable,
+		destroyPartition,
+		initializeGPT,
+		listDisks
+	} from '$lib/api/disk/disk';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import KvTableModal from '$lib/components/custom/KVTableModal.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -45,6 +50,7 @@ under sponsorship from the FreeBSD Foundation.
 	);
 
 	let reload = $state(false);
+	let initializingGPT = $state(false);
 
 	watch(
 		() => reload,
@@ -142,20 +148,26 @@ under sponsorship from the FreeBSD Foundation.
 			if (activePartition !== null) {
 				wipeModal.title = `This action cannot be undone. This will permanently <b>delete</b> partition <b>${activePartition.name}</b>.`;
 			} else if (activeDisk !== null) {
-				wipeModal.title = `This action cannot be undone. This will permanently <b>wipe</b> disk <b>${activeDisk.device}</b>.`;
+				wipeModal.title = `This action cannot be undone. This will remove the partition table and all partitions from <b>${activeDisk.device}</b>. It does not securely erase all disk data.`;
 			}
 		}
 
 		if (action === 'gpt') {
-			if (activeDisk) {
-				const response = await initializeGPT(activeDisk.device);
-				disks.refetch();
-				if (response.status === 'success') {
-					toast.success(`Disk ${activeDisk.device} initialized with GPT`, {
-						position: 'bottom-center'
-					});
-				} else {
-					handleAPIError(response);
+			if (activeDisk && !initializingGPT) {
+				const selectedDisk = activeDisk;
+				initializingGPT = true;
+				try {
+					const response = await initializeGPT(selectedDisk.device);
+					if (response.status === 'success') {
+						await disks.refetch();
+						toast.success(`Disk ${selectedDisk.device} initialized with GPT`, {
+							position: 'bottom-center'
+						});
+					} else {
+						handleAPIError(response);
+					}
+				} finally {
+					initializingGPT = false;
 				}
 			}
 		}
@@ -251,10 +263,20 @@ under sponsorship from the FreeBSD Foundation.
 	{/if}
 
 	{#if type == 'gpt' && buttonAbilities.gpt.ability}
-		<Button onclick={() => diskAction('gpt')} size="sm" variant="outline" class="h-6.5">
+		<Button
+			onclick={() => diskAction('gpt')}
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+			disabled={initializingGPT}
+		>
 			<div class="flex items-center">
-				<span class="icon-[carbon--logical-partition] mr-1 h-4 w-4"></span>
-				<span>Initialize GPT</span>
+				<span
+					class={initializingGPT
+						? 'icon-[mdi--loading] mr-1 h-4 w-4 animate-spin'
+						: 'icon-[carbon--logical-partition] mr-1 h-4 w-4'}
+				></span>
+				<span>{initializingGPT ? 'Initializing...' : 'Initialize GPT'}</span>
 			</div>
 		</Button>
 	{/if}
@@ -263,7 +285,7 @@ under sponsorship from the FreeBSD Foundation.
 		<Button onclick={() => diskAction('wipe')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
 				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-				<span>Wipe Disk</span>
+				<span>Clear Partition Table</span>
 			</div>
 		</Button>
 	{/if}
@@ -332,11 +354,11 @@ under sponsorship from the FreeBSD Foundation.
 	actions={{
 		onConfirm: async () => {
 			if (activeDisk || activePartition) {
-				const message = activeDisk ? 'Disk Wiped' : 'Partition Deleted';
+				const message = activeDisk ? 'Partition Table Cleared' : 'Partition Deleted';
 
 				const result = activeDisk
-					? await destroyDisk(`/dev/${activeDisk.device}`)
-					: await destroyPartition(`/dev/${activePartition?.name}`);
+					? await clearPartitionTable(activeDisk.device)
+					: await destroyPartition(activePartition?.name || '');
 
 				disks.refetch();
 				if (result.status === 'success') {
@@ -345,18 +367,21 @@ under sponsorship from the FreeBSD Foundation.
 				} else {
 					handleAPIError(result);
 					if (
-						(result.status === 'error' && result.message === 'error_wiping_disk') ||
+						(result.status === 'error' && result.message === 'error_clearing_partition_table') ||
 						result.message === 'error_deleting_partition'
 					) {
 						let message = '';
-						if (result.error?.includes('Device busy')) {
+						const errorText = Array.isArray(result.error)
+							? result.error.join(', ')
+							: result.error || '';
+						if (errorText.toLowerCase().includes('busy')) {
 							if (activeDisk) {
-								message = 'Unable to wipe busy disk';
+								message = 'Unable to clear the partition table on a busy disk';
 							} else {
 								message = 'Unable to delete busy partition';
 							}
 						} else {
-							message = `Error ${activeDisk ? 'wiping disk' : 'deleting partition'}: ${result.error}`;
+							message = `Error ${activeDisk ? 'clearing partition table' : 'deleting partition'}: ${errorText}`;
 						}
 
 						toast.error(message, { position: 'bottom-center' });
@@ -372,6 +397,8 @@ under sponsorship from the FreeBSD Foundation.
 		}
 	}}
 	customTitle={wipeModal.title}
+	confirmLabel={activeDisk ? 'Clear Partition Table' : 'Delete Partition'}
+	loadingLabel={activeDisk ? 'Clearing partition table...' : 'Deleting partition...'}
 ></AlertDialog>
 
 <CreatePartition

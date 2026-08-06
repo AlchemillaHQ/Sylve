@@ -318,9 +318,8 @@ msgstr "标准交换机"
 msgid "Disk - Initialize GPT"
 msgstr "磁盘 - 初始化 GPT"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Disk - Wipe"
-msgstr "磁盘 - 擦除"
+#~ msgid "Disk - Wipe"
+#~ msgstr "磁盘 - 擦除"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Network Object"
@@ -2897,12 +2896,10 @@ msgstr "NVMe"
 msgid "This action cannot be undone. This will permanently <b>delete</b> partition <b>{0}</b>."
 msgstr "此操作无法撤销。这将永久<b>删除</b>分区 <b>{0}</b>。"
 
-#. 0: activeDisk.device
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
-msgstr "此操作无法撤销。这将永久<b>擦除</b>磁盘 <b>{0}</b>。"
+#~ msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
+#~ msgstr "此操作无法撤销。这将永久<b>擦除</b>磁盘 <b>{0}</b>。"
 
-#. 0: activeDisk.device
+#. 0: selectedDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Disk {0} initialized with GPT"
 msgstr "磁盘 {0} 已使用 GPT 初始化"
@@ -2915,10 +2912,10 @@ msgstr "S.M.A.R.T. 值"
 msgid "Initialize GPT"
 msgstr "初始化 GPT"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Wipe Disk"
-msgstr "擦除磁盘"
+#~ msgid "Wipe Disk"
+#~ msgstr "擦除磁盘"
 
+#: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Delete Partition"
 msgstr "删除分区"
@@ -2927,27 +2924,24 @@ msgstr "删除分区"
 msgid "Create Partition"
 msgstr "创建分区"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Disk Wiped"
-msgstr "磁盘已擦除"
+#~ msgid "Disk Wiped"
+#~ msgstr "磁盘已擦除"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partition Deleted"
 msgstr "分区已删除"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Device busy"
-msgstr "设备忙"
+#~ msgid "Device busy"
+#~ msgstr "设备忙"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Unable to wipe busy disk"
-msgstr "无法擦除忙碌中的磁盘"
+#~ msgid "Unable to wipe busy disk"
+#~ msgstr "无法擦除忙碌中的磁盘"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Unable to delete busy partition"
 msgstr "无法删除忙碌中的分区"
 
-#. 0: activeDisk ? 'wiping disk' \\: 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'clearing partition table' \\: 'deleting partition'; 1: errorText
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "错误 {0}: {1}"
@@ -16868,6 +16862,7 @@ msgid "Initialization needs attention"
 msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
 msgid "Initializing..."
 msgstr ""
 
@@ -19261,4 +19256,45 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Avg latency"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - Clear Partition Table"
+msgstr ""
+
+#~ msgid "This schedule is starting or running and cannot be edited until the test finishes.msgs"
+#~ msgstr ""
+
+#. 0: activeDisk.device
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "This action cannot be undone. This will remove the partition table and all partitions from <b>{0}</b>. It does not securely erase all disk data."
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Clear Partition Table"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Partition Table Cleared"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Unable to clear the partition table on a busy disk"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Clearing partition table..."
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Deleting partition..."
+msgstr ""
+
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+msgid "Partition limit reached"
+msgstr ""
+
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+msgid "<0/> Saving..."
 msgstr ""

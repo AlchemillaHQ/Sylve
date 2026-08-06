@@ -75,6 +75,7 @@ type Service struct {
 	physicalDiskCache         map[string]physicalDiskResolveCacheEntry
 	physicalDiskCacheMu       sync.Mutex
 	physicalDiskSource        func() ([]diskServiceInterfaces.DiskInfo, error)
+	zpoolDeviceSource         func(context.Context) (map[string]string, error)
 	smartDataSource           func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error)
 	ataPowerModeSource        func(string) (smart.ATAPowerMode, error)
 	scsiPowerModeSource       func(string) (smart.SCSIPowerMode, error)
@@ -469,43 +470,6 @@ func (s *Service) GetDiskSize(device string) (uint64, error) {
 	}
 
 	return size, nil
-}
-
-func (s *Service) DestroyPartitionTable(device string) error {
-	s.DiskOperationMutex.Lock()
-	defer s.DiskOperationMutex.Unlock()
-
-	return destroyPartitionTable(
-		device,
-		func(device string) (uint64, error) {
-			return resolveWholeDiskSize(device, diskUtils.CheckDevice, s.physicalDisks)
-		},
-		diskUtils.DestroyDisk,
-		openDiskForWrite,
-	)
-}
-
-func (s *Service) InitializeGPT(device string) error {
-	s.DiskOperationMutex.Lock()
-	defer s.DiskOperationMutex.Unlock()
-
-	output, err := utils.RunCommand("/sbin/gpart", "create", "-s", "gpt", device)
-	if err != nil {
-		if strings.Contains(output, "File exists") {
-			return fmt.Errorf("gpt_partition_table_already_exists")
-		}
-
-		return fmt.Errorf("failed_to_create_gpt_partition_table %s", output)
-	}
-
-	baseDevice := strings.TrimPrefix(device, "/dev/")
-	expectedOutput := fmt.Sprintf("%s created", baseDevice)
-
-	if !strings.Contains(output, expectedOutput) {
-		return fmt.Errorf("failed_to_create_gpt_partition_table %s", output)
-	}
-
-	return nil
 }
 
 func (s *Service) IsDiskGPT(device string, sectorSize int) bool {

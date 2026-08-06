@@ -42,8 +42,9 @@ function normalizeDiskAPIResult<T>(response: unknown, schema: z.ZodType<T>): T |
 }
 
 export async function listDisks(smart: 'full' | 'none' = 'full'): Promise<Disk[]> {
-	const endpoint = smart === 'none' ? '/disk/list?smart=none' : '/disk/list';
-	return await apiRequest(endpoint, z.array(DiskSchema), 'GET');
+	const endpoint = smart === 'none' ? '/disk?smart=none' : '/disk';
+	const response = await apiRequest(endpoint, z.array(DiskSchema), 'GET');
+	return Array.isArray(response) ? response : [];
 }
 
 export async function getSmartSelfTest(
@@ -72,9 +73,14 @@ export async function startSmartSelfTest(
 export async function abortSmartSelfTest(
 	device: string
 ): Promise<SmartSelfTestDetails | APIResponse> {
-	const response = await apiRequest('/disk/smart/self-test/abort', SmartSelfTestDetailsSchema, 'POST', {
-		device
-	});
+	const response = await apiRequest(
+		'/disk/smart/self-test/abort',
+		SmartSelfTestDetailsSchema,
+		'POST',
+		{
+			device
+		}
+	);
 	return normalizeDiskAPIResult(response, SmartSelfTestDetailsSchema);
 }
 
@@ -122,34 +128,39 @@ export async function updateSmartSelfTestSchedule(
 }
 
 export async function deleteSmartSelfTestSchedule(id: number): Promise<APIResponse> {
+	return await apiRequest(`/disk/smart/self-test/schedules/${id}`, APIResponseSchema, 'DELETE');
+}
+
+function diskPathSegment(device: string): string {
+	return encodeURIComponent(device.replace(/^\/dev\//, ''));
+}
+
+export async function destroyPartition(partition: string): Promise<APIResponse> {
 	return await apiRequest(
-		`/disk/smart/self-test/schedules/${id}`,
+		`/disk/partitions/${diskPathSegment(partition)}`,
 		APIResponseSchema,
 		'DELETE'
 	);
 }
 
-export async function destroyDisk(disk: string): Promise<APIResponse> {
-	return await apiRequest(`/disk/wipe`, APIResponseSchema, 'POST', {
-		device: disk
-	});
-}
-
-export async function destroyPartition(partition: string): Promise<APIResponse> {
-	return await apiRequest(`/disk/delete-partition`, APIResponseSchema, 'POST', {
-		device: partition
-	});
-}
-
 export async function initializeGPT(disk: string): Promise<APIResponse> {
-	return await apiRequest(`/disk/initialize-gpt`, APIResponseSchema, 'POST', {
-		device: disk
-	});
+	return await apiRequest(
+		`/disk/${diskPathSegment(disk)}/partition-table`,
+		APIResponseSchema,
+		'POST'
+	);
+}
+
+export async function clearPartitionTable(disk: string): Promise<APIResponse> {
+	return await apiRequest(
+		`/disk/${diskPathSegment(disk)}/partition-table`,
+		APIResponseSchema,
+		'DELETE'
+	);
 }
 
 export async function createPartitions(disk: string, sizes: number[]): Promise<APIResponse> {
-	return await apiRequest(`/disk/create-partitions`, APIResponseSchema, 'POST', {
-		device: disk,
+	return await apiRequest(`/disk/${diskPathSegment(disk)}/partitions`, APIResponseSchema, 'POST', {
 		sizes
 	});
 }

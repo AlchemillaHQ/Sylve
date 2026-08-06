@@ -45,6 +45,15 @@ func selfTestScheduleErrorStatus(err error) int {
 	}
 }
 
+// @Summary List S.M.A.R.T. self-test schedules
+// @Description List all configured S.M.A.R.T. self-test schedules
+// @Tags Disk
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]disk.SelfTestScheduleView] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /disk/smart/self-test/schedules [get]
 func ListSelfTestSchedules(service diskSelfTestScheduleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		schedules, err := service.ListSelfTestSchedules(c.Request.Context())
@@ -66,16 +75,26 @@ func ListSelfTestSchedules(service diskSelfTestScheduleService) gin.HandlerFunc 
 	}
 }
 
+// @Summary Create a S.M.A.R.T. self-test schedule
+// @Description Create and validate a scheduled S.M.A.R.T. self-test for a physical disk
+// @Tags Disk
+// @Accept json
+// @Produce json
+// @Param request body disk.SelfTestScheduleInput true "S.M.A.R.T. self-test schedule"
+// @Security BearerAuth
+// @Success 201 {object} internal.APIResponse[disk.SelfTestScheduleView] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 422 {object} internal.APIResponse[any] "Unprocessable Entity"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /disk/smart/self-test/schedules [post]
 func CreateSelfTestSchedule(service diskSelfTestScheduleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input disk.SelfTestScheduleInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDiskJSON(c, &input, disk.SelfTestScheduleInput{}) {
 			return
 		}
 		schedule, err := service.CreateSelfTestSchedule(c.Request.Context(), input)
@@ -97,6 +116,23 @@ func CreateSelfTestSchedule(service diskSelfTestScheduleService) gin.HandlerFunc
 	}
 }
 
+// @Summary Update a S.M.A.R.T. self-test schedule
+// @Description Replace a configured S.M.A.R.T. self-test schedule
+// @Tags Disk
+// @Accept json
+// @Produce json
+// @Param id path int true "Schedule ID"
+// @Param request body disk.SelfTestScheduleInput true "S.M.A.R.T. self-test schedule"
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[disk.SelfTestScheduleView] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 422 {object} internal.APIResponse[any] "Unprocessable Entity"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /disk/smart/self-test/schedules/{id} [put]
 func UpdateSelfTestSchedule(service diskSelfTestScheduleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
@@ -110,13 +146,7 @@ func UpdateSelfTestSchedule(service diskSelfTestScheduleService) gin.HandlerFunc
 			return
 		}
 		var input disk.SelfTestScheduleInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDiskJSON(c, &input, disk.SelfTestScheduleInput{}) {
 			return
 		}
 		schedule, err := service.UpdateSelfTestSchedule(c.Request.Context(), uint(id), input)
@@ -138,6 +168,19 @@ func UpdateSelfTestSchedule(service diskSelfTestScheduleService) gin.HandlerFunc
 	}
 }
 
+// @Summary Delete a S.M.A.R.T. self-test schedule
+// @Description Delete a configured S.M.A.R.T. self-test schedule
+// @Tags Disk
+// @Accept json
+// @Produce json
+// @Param id path int true "Schedule ID"
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /disk/smart/self-test/schedules/{id} [delete]
 func DeleteSelfTestSchedule(service diskSelfTestScheduleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)

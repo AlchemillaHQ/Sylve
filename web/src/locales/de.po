@@ -318,9 +318,8 @@ msgstr "Standard-Switch"
 msgid "Disk - Initialize GPT"
 msgstr "Festplatte - GPT initialisieren"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Disk - Wipe"
-msgstr "Festplatte - Löschen"
+#~ msgid "Disk - Wipe"
+#~ msgstr "Festplatte - Löschen"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Network Object"
@@ -2897,12 +2896,10 @@ msgstr "NVMe"
 msgid "This action cannot be undone. This will permanently <b>delete</b> partition <b>{0}</b>."
 msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Dadurch wird die Partition <b>{0}</b> dauerhaft <b>gelöscht</b>."
 
-#. 0: activeDisk.device
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
-msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Dadurch wird das Laufwerk <b>{0}</b> dauerhaft <b>gelöscht</b>."
+#~ msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
+#~ msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Dadurch wird das Laufwerk <b>{0}</b> dauerhaft <b>gelöscht</b>."
 
-#. 0: activeDisk.device
+#. 0: selectedDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Disk {0} initialized with GPT"
 msgstr "Laufwerk {0} mit GPT initialisiert"
@@ -2915,10 +2912,10 @@ msgstr "S.M.A.R.T-Werte"
 msgid "Initialize GPT"
 msgstr "GPT initialisieren"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Wipe Disk"
-msgstr "Laufwerk löschen"
+#~ msgid "Wipe Disk"
+#~ msgstr "Laufwerk löschen"
 
+#: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Delete Partition"
 msgstr "Partition löschen"
@@ -2927,27 +2924,24 @@ msgstr "Partition löschen"
 msgid "Create Partition"
 msgstr "Partition erstellen"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Disk Wiped"
-msgstr "Laufwerk gelöscht"
+#~ msgid "Disk Wiped"
+#~ msgstr "Laufwerk gelöscht"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partition Deleted"
 msgstr "Partition gelöscht"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Device busy"
-msgstr "Gerät belegt"
+#~ msgid "Device busy"
+#~ msgstr "Gerät belegt"
 
-#: src/routes/[node]/storage/disks/+page.svelte
-msgid "Unable to wipe busy disk"
-msgstr "Belegtes Laufwerk kann nicht gelöscht werden"
+#~ msgid "Unable to wipe busy disk"
+#~ msgstr "Belegtes Laufwerk kann nicht gelöscht werden"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Unable to delete busy partition"
 msgstr "Belegte Partition kann nicht gelöscht werden"
 
-#. 0: activeDisk ? 'wiping disk' \\: 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'clearing partition table' \\: 'deleting partition'; 1: errorText
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Fehler {0}: {1}"
@@ -16871,6 +16865,7 @@ msgid "Initialization needs attention"
 msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
 msgid "Initializing..."
 msgstr ""
 
@@ -19264,4 +19259,45 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Avg latency"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - Clear Partition Table"
+msgstr ""
+
+#~ msgid "This schedule is starting or running and cannot be edited until the test finishes.msgs"
+#~ msgstr ""
+
+#. 0: activeDisk.device
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "This action cannot be undone. This will remove the partition table and all partitions from <b>{0}</b>. It does not securely erase all disk data."
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Clear Partition Table"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Partition Table Cleared"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Unable to clear the partition table on a busy disk"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Clearing partition table..."
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Deleting partition..."
+msgstr ""
+
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+msgid "Partition limit reached"
+msgstr ""
+
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+msgid "<0/> Saving..."
 msgstr ""

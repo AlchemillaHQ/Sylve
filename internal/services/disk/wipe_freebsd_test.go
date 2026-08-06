@@ -12,6 +12,7 @@ package disk
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -428,8 +429,8 @@ func TestDestroyPartitionTableMDIntegration(t *testing.T) {
 
 		service := disk.service()
 		err := service.DestroyPartitionTable(disk.device)
-		if err == nil || !strings.Contains(err.Error(), "Device busy") {
-			t.Fatalf("wipe mounted GPT error = %v; want Device busy", err)
+		if !errors.Is(err, ErrDiskOperationConflict) {
+			t.Fatalf("clear mounted GPT error = %v; want ErrDiskOperationConflict", err)
 		}
 
 		assertMDIntegrationGpartTable(t, disk, true)

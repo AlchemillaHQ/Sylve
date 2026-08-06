@@ -94,19 +94,33 @@ func TestListSmartNoneUsesInventoryPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &diskListHandlerStub{}
 	router := gin.New()
-	router.GET("/disk/list", List(service))
+	router.GET("/disk", List(service))
 
-	request := httptest.NewRequest(http.MethodGet, "/disk/list?smart=none", nil)
+	request := httptest.NewRequest(http.MethodGet, "/disk?smart=none", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || service.noneCalls != 1 || service.fullCalls != 0 {
 		t.Fatalf("status=%d full=%d none=%d body=%s", response.Code, service.fullCalls, service.noneCalls, response.Body.String())
 	}
 
-	request = httptest.NewRequest(http.MethodGet, "/disk/list", nil)
+	request = httptest.NewRequest(http.MethodGet, "/disk", nil)
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || service.noneCalls != 1 || service.fullCalls != 1 {
+		t.Fatalf("status=%d full=%d none=%d body=%s", response.Code, service.fullCalls, service.noneCalls, response.Body.String())
+	}
+}
+
+func TestListRejectsInvalidSmartMode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &diskListHandlerStub{}
+	router := gin.New()
+	router.GET("/disk", List(service))
+
+	request := httptest.NewRequest(http.MethodGet, "/disk?smart=invalid", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || service.noneCalls != 0 || service.fullCalls != 0 {
 		t.Fatalf("status=%d full=%d none=%d body=%s", response.Code, service.fullCalls, service.noneCalls, response.Body.String())
 	}
 }

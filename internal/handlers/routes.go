@@ -46,7 +46,7 @@ import (
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
-	diskService "github.com/alchemillahq/sylve/internal/services/disk"
+	diskServicePkg "github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
@@ -91,7 +91,7 @@ func RegisterRoutes(r *gin.Engine,
 	authService *authService.Service,
 	infoService *infoService.Service,
 	zfsService *zfsService.Service,
-	diskService *diskService.Service,
+	diskService *diskServicePkg.Service,
 	networkService *networkService.Service,
 	notificationService *notificationsService.Service,
 	utilitiesService *utilitiesService.Service,
@@ -339,9 +339,11 @@ func RegisterRoutes(r *gin.Engine,
 	disk := api.Group("/disk")
 	disk.Use(middleware.EnsureAuthenticated(authService))
 	disk.Use(EnsureCorrectHost(db, authService))
+	disk.Use(middleware.RequireLocalAdminForWrites(authService))
 	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))
 	{
-		disk.GET("/list", diskHandlers.List(diskService))
+		disk.GET("", diskHandlers.List(diskService))
 		disk.GET("/smart/self-test", diskHandlers.GetSelfTestInfo(diskService))
 		disk.POST("/smart/self-test", diskHandlers.StartSelfTest(diskService))
 		disk.POST("/smart/self-test/abort", diskHandlers.StopSelfTest(diskService))
@@ -349,10 +351,10 @@ func RegisterRoutes(r *gin.Engine,
 		disk.POST("/smart/self-test/schedules", diskHandlers.CreateSelfTestSchedule(diskService))
 		disk.PUT("/smart/self-test/schedules/:id", diskHandlers.UpdateSelfTestSchedule(diskService))
 		disk.DELETE("/smart/self-test/schedules/:id", diskHandlers.DeleteSelfTestSchedule(diskService))
-		disk.POST("/wipe", diskHandlers.WipeDisk(diskService, infoService))
-		disk.POST("/initialize-gpt", diskHandlers.InitializeGPT(diskService, infoService))
-		disk.POST("/create-partitions", diskHandlers.CreatePartition(infoService))
-		disk.POST("/delete-partition", diskHandlers.DeletePartition(infoService))
+		disk.DELETE("/partitions/:partition", diskHandlers.DeletePartition(diskService))
+		disk.POST("/:device/partition-table", diskHandlers.InitializeGPT(diskService))
+		disk.DELETE("/:device/partition-table", diskHandlers.ClearPartitionTable(diskService))
+		disk.POST("/:device/partitions", diskHandlers.CreatePartitions(diskService))
 	}
 
 	network := api.Group("/network")
