@@ -24,9 +24,11 @@ import (
 )
 
 var (
-	ErrInvalidEntry  = errors.New("invalid dynamic DNS entry")
-	ErrEntryNotFound = errors.New("dynamic DNS entry not found")
-	ErrEntryInUse    = errors.New("dynamic DNS entry is in use")
+	ErrInvalidEntry        = errors.New("invalid dynamic DNS entry")
+	ErrEntryNotFound       = errors.New("dynamic DNS entry not found")
+	ErrEntryInUse          = errors.New("dynamic DNS entry is in use")
+	ErrEntryConflict       = errors.New("dynamic DNS entry conflicts with an existing entry")
+	ErrProviderUnavailable = errors.New("dynamic DNS provider is unavailable")
 )
 
 const (
@@ -51,14 +53,21 @@ type familySyncResult struct {
 	retryAfter           time.Duration
 }
 
+type entryOperationLock struct {
+	mu   sync.Mutex
+	refs uint
+}
+
 type Service struct {
 	DB        *gorm.DB
 	providers map[string]DNSProvider
 	sources   map[string]IPSourceResolver
 
-	now         func() time.Time
-	syncTimeout time.Duration
-	syncMu      sync.Mutex
+	now          func() time.Time
+	syncTimeout  time.Duration
+	targetMu     sync.Mutex
+	entryLocksMu sync.Mutex
+	entryLocks   map[uint]*entryOperationLock
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -83,7 +92,40 @@ func NewService(db *gorm.DB) *Service {
 		},
 		now:         time.Now,
 		syncTimeout: 20 * time.Second,
+		entryLocks:  make(map[uint]*entryOperationLock),
 	}
+}
+
+func (s *Service) lockEntryOperation(id uint) func() {
+	s.entryLocksMu.Lock()
+	if s.entryLocks == nil {
+		s.entryLocks = make(map[uint]*entryOperationLock)
+	}
+	lock := s.entryLocks[id]
+	if lock == nil {
+		lock = &entryOperationLock{}
+		s.entryLocks[id] = lock
+	}
+	lock.refs++
+	s.entryLocksMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+
+		s.entryLocksMu.Lock()
+		lock.refs--
+		if lock.refs == 0 && s.entryLocks[id] == lock {
+			delete(s.entryLocks, id)
+		}
+		s.entryLocksMu.Unlock()
+	}
+}
+
+func (s *Service) withTargetMutation(operation func() error) error {
+	s.targetMu.Lock()
+	defer s.targetMu.Unlock()
+	return operation()
 }
 
 func (s *Service) ListEntries(ctx context.Context) ([]EntryView, error) {
@@ -104,7 +146,19 @@ func (s *Service) CreateEntry(ctx context.Context, input EntryInput) (*EntryView
 	if err != nil {
 		return nil, err
 	}
-	if err := s.DB.WithContext(ctx).Create(&entry).Error; err != nil {
+
+	err = s.withTargetMutation(func() error {
+		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := ensureTargetAvailable(tx, 0, entry); err != nil {
+				return err
+			}
+			return tx.Create(&entry).Error
+		})
+	})
+	if err != nil {
+		if errors.Is(err, ErrEntryConflict) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to create dynamic DNS entry: %w", err)
 	}
 
@@ -113,8 +167,8 @@ func (s *Service) CreateEntry(ctx context.Context, input EntryInput) (*EntryView
 }
 
 func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*EntryView, error) {
-	s.syncMu.Lock()
-	defer s.syncMu.Unlock()
+	unlockEntry := s.lockEntryOperation(id)
+	defer unlockEntry()
 
 	var existing dynamicDNSModels.Entry
 	if err := s.DB.WithContext(ctx).First(&existing, id).Error; err != nil {
@@ -139,19 +193,25 @@ func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*
 	entry.ID = existing.ID
 	entry.CreatedAt = existing.CreatedAt
 
-	if err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if entry.Provider != existing.Provider || entry.Hostname != existing.Hostname {
-			inUse, err := entryReferencedByCertificate(tx, existing.ID)
-			if err != nil {
+	err = s.withTargetMutation(func() error {
+		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := ensureTargetAvailable(tx, existing.ID, entry); err != nil {
 				return err
 			}
-			if inUse {
-				return fmt.Errorf("%w: provider and hostname cannot be changed while a managed certificate uses this entry", ErrEntryInUse)
+			if entry.Provider != existing.Provider || entry.Hostname != existing.Hostname {
+				inUse, err := entryReferencedByCertificate(tx, existing.ID)
+				if err != nil {
+					return err
+				}
+				if inUse {
+					return fmt.Errorf("%w: provider and hostname cannot be changed while a managed certificate uses this entry", ErrEntryInUse)
+				}
 			}
-		}
-		return tx.Save(&entry).Error
-	}); err != nil {
-		if errors.Is(err, ErrEntryInUse) {
+			return tx.Save(&entry).Error
+		})
+	})
+	if err != nil {
+		if errors.Is(err, ErrEntryInUse) || errors.Is(err, ErrEntryConflict) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to update dynamic DNS entry: %w", err)
@@ -161,27 +221,79 @@ func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*
 	return &view, nil
 }
 
-func (s *Service) DeleteEntry(ctx context.Context, id uint) error {
-	s.syncMu.Lock()
-	defer s.syncMu.Unlock()
+func ensureTargetAvailable(db *gorm.DB, excludeID uint, entry dynamicDNSModels.Entry) error {
+	query := db.Model(&dynamicDNSModels.Entry{}).
+		Select("id", "record_type").
+		Where(
+			"provider = ? AND hostname = ? AND record_type IN ?",
+			entry.Provider,
+			entry.Hostname,
+			overlappingRecordTypes(entry.RecordType),
+		)
+	if excludeID != 0 {
+		query = query.Where("id <> ?", excludeID)
+	}
 
-	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		inUse, err := entryReferencedByCertificate(tx, id)
-		if err != nil {
-			return err
-		}
-		if inUse {
-			return fmt.Errorf("%w: delete the managed certificate before deleting this entry", ErrEntryInUse)
-		}
-		result := tx.Delete(&dynamicDNSModels.Entry{}, id)
-		if result.Error != nil {
-			return fmt.Errorf("failed to delete dynamic DNS entry: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return ErrEntryNotFound
-		}
+	var conflicts []dynamicDNSModels.Entry
+	if err := query.Order("id ASC").Limit(1).Find(&conflicts).Error; err != nil {
+		return fmt.Errorf("failed to check dynamic DNS target availability: %w", err)
+	}
+	if len(conflicts) == 0 {
 		return nil
+	}
+
+	conflict := conflicts[0]
+	return fmt.Errorf(
+		"%w: entry %d already manages %s records for %q with provider %q",
+		ErrEntryConflict,
+		conflict.ID,
+		conflict.RecordType,
+		entry.Hostname,
+		entry.Provider,
+	)
+}
+
+func overlappingRecordTypes(recordType string) []string {
+	switch recordType {
+	case dynamicDNSModels.RecordTypeA:
+		return []string{dynamicDNSModels.RecordTypeA, dynamicDNSModels.RecordTypeBoth}
+	case dynamicDNSModels.RecordTypeAAAA:
+		return []string{dynamicDNSModels.RecordTypeAAAA, dynamicDNSModels.RecordTypeBoth}
+	case dynamicDNSModels.RecordTypeBoth:
+		return []string{
+			dynamicDNSModels.RecordTypeA,
+			dynamicDNSModels.RecordTypeAAAA,
+			dynamicDNSModels.RecordTypeBoth,
+		}
+	default:
+		return []string{recordType}
+	}
+}
+
+func (s *Service) DeleteEntry(ctx context.Context, id uint) error {
+	unlockEntry := s.lockEntryOperation(id)
+	defer unlockEntry()
+
+	err := s.withTargetMutation(func() error {
+		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			inUse, err := entryReferencedByCertificate(tx, id)
+			if err != nil {
+				return err
+			}
+			if inUse {
+				return fmt.Errorf("%w: delete the managed certificate before deleting this entry", ErrEntryInUse)
+			}
+			result := tx.Delete(&dynamicDNSModels.Entry{}, id)
+			if result.Error != nil {
+				return fmt.Errorf("failed to delete dynamic DNS entry: %w", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return ErrEntryNotFound
+			}
+			return nil
+		})
 	})
+	return err
 }
 
 func entryReferencedByCertificate(db *gorm.DB, id uint) (bool, error) {
@@ -199,8 +311,8 @@ func (s *Service) SyncEntry(ctx context.Context, id uint) (*EntryView, error) {
 }
 
 func (s *Service) syncEntryByID(ctx context.Context, id uint, requireEnabled bool) (*EntryView, error) {
-	s.syncMu.Lock()
-	defer s.syncMu.Unlock()
+	unlockEntry := s.lockEntryOperation(id)
+	defer unlockEntry()
 
 	var entry dynamicDNSModels.Entry
 	if err := s.DB.WithContext(ctx).First(&entry, id).Error; err != nil {
@@ -328,7 +440,7 @@ func (s *Service) prepareEntry(ctx context.Context, input EntryInput, existing *
 	if needsValidation {
 		providerSettings, err = provider.Validate(ctx, secret, hostname, recordType, providerSettings)
 		if err != nil {
-			return dynamicDNSModels.Entry{}, invalidEntry("provider validation failed: %v", redactSecret(err.Error(), secret))
+			return dynamicDNSModels.Entry{}, providerValidationError(err, secret)
 		}
 	}
 
@@ -720,6 +832,14 @@ func isRecordType(recordType string) bool {
 
 func invalidEntry(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidEntry, fmt.Sprintf(format, args...))
+}
+
+func providerValidationError(err error, secret string) error {
+	detail := redactSecret(err.Error(), secret)
+	if kind, _, ok := providerErrorDetails(err); ok && kind != providerErrorPermanent {
+		return fmt.Errorf("%w: provider validation failed: %s", ErrProviderUnavailable, detail)
+	}
+	return invalidEntry("provider validation failed: %s", detail)
 }
 
 func sameSettings(first, second map[string]string) bool {

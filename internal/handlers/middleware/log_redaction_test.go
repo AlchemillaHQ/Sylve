@@ -193,6 +193,58 @@ func TestUploadAuditDoesNotReadMultipartOrRecordSensitivePayloads(t *testing.T) 
 	}
 }
 
+func TestRedactedJSONAuditDoesNotReadRequestBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("UserID", uint(7))
+		c.Set("Username", "admin")
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+
+	wantBody := []byte(`{"hostname":"router.example.com","token":"private-token"}`)
+	trackedBody := &auditTrackingReadCloser{reader: bytes.NewReader(wantBody)}
+	readsBeforeHandler := -1
+	var receivedBody []byte
+	router.POST("/api/dynamic-dns/entries", func(c *gin.Context) {
+		readsBeforeHandler = trackedBody.reads
+		var err error
+		receivedBody, err = io.ReadAll(c.Request.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/dynamic-dns/entries", nil)
+	request.Body = trackedBody
+	request.ContentLength = int64(len(wantBody))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if readsBeforeHandler != 0 {
+		t.Fatalf("audit middleware read sensitive JSON body %d times before handler", readsBeforeHandler)
+	}
+	if !bytes.Equal(receivedBody, wantBody) {
+		t.Fatalf("handler body=%q want=%q", receivedBody, wantBody)
+	}
+
+	var record infoModels.AuditRecord
+	if err := auditDB.First(&record).Error; err != nil {
+		t.Fatalf("load audit record: %v", err)
+	}
+	if strings.Contains(record.Action, "private-token") || !strings.Contains(record.Action, "[REDACTED]") {
+		t.Fatalf("sensitive JSON audit was not redacted: %s", record.Action)
+	}
+}
+
 func TestBodyWriterCanSkipSensitiveResponseCapture(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	response := httptest.NewRecorder()

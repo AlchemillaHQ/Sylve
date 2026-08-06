@@ -438,30 +438,29 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 				act.Body = "[OMITTED: multipart]"
 			}
 		} else if c.Request.Body != nil && c.Request.ContentLength > 0 {
-			buf := new(bytes.Buffer)
-			tee := io.TeeReader(c.Request.Body, buf)
 			if redactPayload {
 				act.Body = "[REDACTED]"
-			}
-
-			var body interface{}
-			if err := json.NewDecoder(tee).Decode(&body); err != nil {
-				logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
 			} else {
-				if !redactPayload {
+				buf := new(bytes.Buffer)
+				tee := io.TeeReader(c.Request.Body, buf)
+
+				var body interface{}
+				if err := json.NewDecoder(tee).Decode(&body); err != nil {
+					logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
+				} else {
 					act.Body = sanitizeAuditPayload(body)
 				}
-			}
 
-			restoredBody := io.NopCloser(buf)
-			if limit, ok := c.Get(requestBodyLimitContextKey); ok {
-				if maxBytes, valid := limit.(int64); valid && maxBytes > 0 {
-					c.Request.Body = http.MaxBytesReader(c.Writer, restoredBody, maxBytes)
+				restoredBody := io.NopCloser(buf)
+				if limit, ok := c.Get(requestBodyLimitContextKey); ok {
+					if maxBytes, valid := limit.(int64); valid && maxBytes > 0 {
+						c.Request.Body = http.MaxBytesReader(c.Writer, restoredBody, maxBytes)
+					} else {
+						c.Request.Body = restoredBody
+					}
 				} else {
 					c.Request.Body = restoredBody
 				}
-			} else {
-				c.Request.Body = restoredBody
 			}
 		}
 

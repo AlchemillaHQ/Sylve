@@ -35,11 +35,48 @@ func dynamicDNSErrorStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, dynamicdns.ErrEntryInUse):
 		return http.StatusConflict
+	case errors.Is(err, dynamicdns.ErrEntryConflict):
+		return http.StatusConflict
+	case errors.Is(err, dynamicdns.ErrProviderUnavailable):
+		return http.StatusBadGateway
 	default:
 		return http.StatusInternalServerError
 	}
 }
 
+func bindDynamicDNSEntryInput(c *gin.Context, input *dynamicdns.EntryInput) bool {
+	if err := c.ShouldBindJSON(input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "dynamic_dns_request_too_large",
+				Error:   "dynamic DNS request body is too large",
+				Data:    nil,
+			})
+			return false
+		}
+
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_dynamic_dns_entry",
+			Error:   err.Error(),
+			Data:    nil,
+		})
+		return false
+	}
+	return true
+}
+
+// @Summary List Dynamic DNS entries
+// @Description List all configured Dynamic DNS entries
+// @Tags Dynamic DNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]dynamicdns.EntryView] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /dynamic-dns/entries [get]
 func ListEntries(service dynamicDNSService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		entries, err := service.ListEntries(c.Request.Context())
@@ -61,16 +98,24 @@ func ListEntries(service dynamicDNSService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Create a Dynamic DNS entry
+// @Description Create and validate a Dynamic DNS entry
+// @Tags Dynamic DNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body dynamicdns.EntryInput true "Dynamic DNS entry"
+// @Success 201 {object} internal.APIResponse[dynamicdns.EntryView] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /dynamic-dns/entries [post]
 func CreateEntry(service dynamicDNSService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input dynamicdns.EntryInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_dynamic_dns_entry",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDynamicDNSEntryInput(c, &input) {
 			return
 		}
 
@@ -93,6 +138,22 @@ func CreateEntry(service dynamicDNSService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Update a Dynamic DNS entry
+// @Description Update and validate an existing Dynamic DNS entry
+// @Tags Dynamic DNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Dynamic DNS entry ID" minimum(1)
+// @Param request body dynamicdns.EntryInput true "Dynamic DNS entry"
+// @Success 200 {object} internal.APIResponse[dynamicdns.EntryView] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /dynamic-dns/entries/{id} [put]
 func UpdateEntry(service dynamicDNSService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := dynamicDNSEntryID(c)
@@ -101,13 +162,7 @@ func UpdateEntry(service dynamicDNSService) gin.HandlerFunc {
 		}
 
 		var input dynamicdns.EntryInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_dynamic_dns_entry",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDynamicDNSEntryInput(c, &input) {
 			return
 		}
 
@@ -130,6 +185,19 @@ func UpdateEntry(service dynamicDNSService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete a Dynamic DNS entry
+// @Description Delete an existing Dynamic DNS entry
+// @Tags Dynamic DNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Dynamic DNS entry ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /dynamic-dns/entries/{id} [delete]
 func DeleteEntry(service dynamicDNSService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := dynamicDNSEntryID(c)
@@ -155,6 +223,18 @@ func DeleteEntry(service dynamicDNSService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Synchronize a Dynamic DNS entry
+// @Description Resolve and publish the current addresses for a Dynamic DNS entry
+// @Tags Dynamic DNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Dynamic DNS entry ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[dynamicdns.EntryView] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /dynamic-dns/entries/{id}/sync [post]
 func SyncEntry(service dynamicDNSService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := dynamicDNSEntryID(c)

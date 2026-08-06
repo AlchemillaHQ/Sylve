@@ -11,12 +11,19 @@ package dynamicdns
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
 )
+
+type cloudflareRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f cloudflareRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 func TestCloudflareValidateDiscoversZone(t *testing.T) {
 	var zoneLookups []string
@@ -55,6 +62,125 @@ func TestCloudflareValidateDiscoversZone(t *testing.T) {
 	}
 	if strings.Join(zoneLookups, ",") != "router.example.com,example.com" {
 		t.Fatalf("unexpected zone lookup order: %#v", zoneLookups)
+	}
+}
+
+func TestCloudflareValidateClassifiesProviderResponses(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantKind   providerErrorKind
+	}{
+		{
+			name:       "invalid token",
+			statusCode: http.StatusUnauthorized,
+			body:       `{"success":false,"errors":[{"code":10000,"message":"authentication error"}]}`,
+			wantKind:   providerErrorPermanent,
+		},
+		{
+			name:       "API rejection",
+			statusCode: http.StatusOK,
+			body:       `{"success":false,"errors":[{"code":10000,"message":"authentication error"}]}`,
+			wantKind:   providerErrorPermanent,
+		},
+		{
+			name:       "rate limited",
+			statusCode: http.StatusTooManyRequests,
+			body:       `{"success":false,"errors":[{"code":1015,"message":"rate limited"}]}`,
+			wantKind:   providerErrorTransient,
+		},
+		{
+			name:       "server unavailable",
+			statusCode: http.StatusServiceUnavailable,
+			body:       `{"success":false,"errors":[{"code":1001,"message":"try later"}]}`,
+			wantKind:   providerErrorTransient,
+		},
+		{
+			name:       "malformed response",
+			statusCode: http.StatusOK,
+			body:       `{`,
+			wantKind:   providerErrorTransient,
+		},
+		{
+			name:       "missing success status",
+			statusCode: http.StatusOK,
+			body:       `{"result":{"status":"active"}}`,
+			wantKind:   providerErrorTransient,
+		},
+		{
+			name:       "missing token status",
+			statusCode: http.StatusOK,
+			body:       `{"success":true,"result":{}}`,
+			wantKind:   providerErrorTransient,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(test.statusCode)
+				if _, err := writer.Write([]byte(test.body)); err != nil {
+					t.Fatalf("write Cloudflare response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			provider := &CloudflareProvider{BaseURL: server.URL, Client: server.Client()}
+			_, err := provider.Validate(context.Background(), "test-token", "router.example.com", "A", nil)
+			kind, _, ok := providerErrorDetails(err)
+			if !ok || kind != test.wantKind {
+				t.Fatalf("unexpected provider classification: err=%v kind=%v", err, kind)
+			}
+			if strings.Contains(err.Error(), "test-token") {
+				t.Fatalf("provider error exposed token: %v", err)
+			}
+		})
+	}
+}
+
+func TestCloudflareValidateTreatsMissingZoneIDAsTransient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/user/tokens/verify":
+			writeCloudflareResponse(t, writer, map[string]any{
+				"success": true,
+				"result":  map[string]string{"status": "active"},
+			})
+		case "/zones":
+			writeCloudflareResponse(t, writer, map[string]any{
+				"success": true,
+				"result": []map[string]string{{
+					"name": request.URL.Query().Get("name"),
+				}},
+			})
+		default:
+			t.Fatalf("unexpected Cloudflare request path %q", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	provider := &CloudflareProvider{BaseURL: server.URL, Client: server.Client()}
+	_, err := provider.Validate(context.Background(), "test-token", "router.example.com", "A", nil)
+	kind, _, ok := providerErrorDetails(err)
+	if !ok || kind != providerErrorTransient {
+		t.Fatalf("missing zone ID was not transient: %v", err)
+	}
+}
+
+func TestCloudflareValidateClassifiesNetworkFailureAsTransient(t *testing.T) {
+	provider := &CloudflareProvider{
+		BaseURL: "https://api.cloudflare.test",
+		Client: &http.Client{Transport: cloudflareRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("network unavailable")
+		})},
+	}
+
+	_, err := provider.Validate(context.Background(), "test-token", "router.example.com", "A", nil)
+	kind, _, ok := providerErrorDetails(err)
+	if !ok || kind != providerErrorTransient {
+		t.Fatalf("network failure was not transient: %v", err)
 	}
 }
 

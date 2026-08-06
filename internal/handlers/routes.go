@@ -282,6 +282,7 @@ func RegisterRoutes(r *gin.Engine,
 	dynamicDNSGroup.Use(middleware.EnsureAuthenticated(authService))
 	dynamicDNSGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	dynamicDNSGroup.Use(EnsureCorrectHost(db, authService))
+	dynamicDNSGroup.Use(middleware.LimitRequestBody(dynamicdns.MaxRequestBodyBytes))
 	dynamicDNSGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		dynamicDNSGroup.GET("/entries", dynamicDNSHandlers.ListEntries(dynamicDNSService))

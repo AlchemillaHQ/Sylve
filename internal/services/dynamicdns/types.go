@@ -21,7 +21,9 @@ const (
 	DefaultIntervalMinutes uint = 10
 	MinimumIntervalMinutes uint = 1
 	MaximumIntervalMinutes uint = 24 * 60
-	DefaultSTUNServer           = "stun.l.google.com:19302"
+	// MaxRequestBodyBytes allows credentials and provider/source settings with generous JSON overhead.
+	MaxRequestBodyBytes int64 = 64 * 1024
+	DefaultSTUNServer         = "stun.l.google.com:19302"
 
 	SourceSettingInterface  = "interface"
 	SourceSettingIPv4       = "ipv4"

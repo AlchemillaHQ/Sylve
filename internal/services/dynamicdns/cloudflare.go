@@ -80,7 +80,11 @@ func (p *CloudflareProvider) Validate(ctx context.Context, token, hostname, _ st
 	if err := p.do(ctx, token, http.MethodGet, "/user/tokens/verify", nil, &tokenStatus); err != nil {
 		return nil, fmt.Errorf("failed to verify cloudflare API token: %w", err)
 	}
-	if !strings.EqualFold(tokenStatus.Result.Status, "active") {
+	tokenState := strings.TrimSpace(tokenStatus.Result.Status)
+	if tokenState == "" {
+		return nil, newProviderError(providerErrorTransient, 0, fmt.Errorf("invalid cloudflare response: token status is missing"))
+	}
+	if !strings.EqualFold(tokenState, "active") {
 		return nil, fmt.Errorf("cloudflare API token is not active")
 	}
 
@@ -163,6 +167,9 @@ func (p *CloudflareProvider) findZone(ctx context.Context, token, hostname strin
 		}
 		for _, zone := range response.Result {
 			if strings.EqualFold(zone.Name, candidate) {
+				if strings.TrimSpace(zone.ID) == "" {
+					return cloudflareZone{}, newProviderError(providerErrorTransient, 0, fmt.Errorf("invalid cloudflare response: zone ID is missing"))
+				}
 				return zone, nil
 			}
 		}
@@ -203,7 +210,7 @@ func (p *CloudflareProvider) do(ctx context.Context, token, method, endpoint str
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return fmt.Errorf("failed to encode cloudflare request: %w", err)
+			return newProviderError(providerErrorTransient, 0, fmt.Errorf("failed to encode cloudflare request: %w", err))
 		}
 		body = bytes.NewReader(encoded)
 	}
@@ -211,7 +218,7 @@ func (p *CloudflareProvider) do(ctx context.Context, token, method, endpoint str
 	baseURL := strings.TrimRight(p.BaseURL, "/")
 	req, err := http.NewRequestWithContext(ctx, method, baseURL+endpoint, body)
 	if err != nil {
-		return fmt.Errorf("failed to create cloudflare request: %w", err)
+		return newProviderError(providerErrorTransient, 0, fmt.Errorf("failed to create cloudflare request: %w", err))
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
@@ -225,41 +232,56 @@ func (p *CloudflareProvider) do(ctx context.Context, token, method, endpoint str
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("cloudflare request failed: %w", err)
+		return newProviderError(providerErrorTransient, 0, fmt.Errorf("cloudflare request failed: %w", err))
 	}
 	defer response.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return fmt.Errorf("failed to read cloudflare response: %w", err)
+		return newProviderError(providerErrorTransient, 0, fmt.Errorf("failed to read cloudflare response: %w", err))
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("cloudflare API returned HTTP %d: %s", response.StatusCode, cloudflareErrorMessage(data))
+		return newProviderError(
+			cloudflareHTTPErrorKind(response.StatusCode),
+			0,
+			fmt.Errorf("cloudflare API returned HTTP %d: %s", response.StatusCode, cloudflareErrorMessage(data)),
+		)
 	}
 	if err := json.Unmarshal(data, result); err != nil {
-		return fmt.Errorf("invalid cloudflare response: %w", err)
+		return newProviderError(providerErrorTransient, 0, fmt.Errorf("invalid cloudflare response: %w", err))
 	}
 
 	return cloudflareResponseError(data)
 }
 
+func cloudflareHTTPErrorKind(statusCode int) providerErrorKind {
+	if statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError &&
+		statusCode != http.StatusRequestTimeout && statusCode != http.StatusTooManyRequests {
+		return providerErrorPermanent
+	}
+	return providerErrorTransient
+}
+
 func cloudflareResponseError(data []byte) error {
 	var response struct {
-		Success bool `json:"success"`
+		Success *bool `json:"success"`
 		Errors  []struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return fmt.Errorf("invalid cloudflare response: %w", err)
+		return newProviderError(providerErrorTransient, 0, fmt.Errorf("invalid cloudflare response: %w", err))
 	}
-	if response.Success {
+	if response.Success == nil {
+		return newProviderError(providerErrorTransient, 0, fmt.Errorf("invalid cloudflare response: success status is missing"))
+	}
+	if *response.Success {
 		return nil
 	}
 
 	if len(response.Errors) == 0 {
-		return fmt.Errorf("cloudflare API request was unsuccessful")
+		return newProviderError(providerErrorPermanent, 0, fmt.Errorf("cloudflare API request was unsuccessful"))
 	}
 
 	messages := make([]string, 0, len(response.Errors))
@@ -270,7 +292,11 @@ func cloudflareResponseError(data []byte) error {
 		}
 		messages = append(messages, fmt.Sprintf("%d: %s", apiError.Code, apiError.Message))
 	}
-	return fmt.Errorf("cloudflare API request failed: %s", strings.Join(messages, "; "))
+	return newProviderError(
+		providerErrorPermanent,
+		0,
+		fmt.Errorf("cloudflare API request failed: %s", strings.Join(messages, "; ")),
+	)
 }
 
 func cloudflareErrorMessage(data []byte) string {
