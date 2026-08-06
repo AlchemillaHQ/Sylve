@@ -119,16 +119,16 @@ func RegisterRoutes(r *gin.Engine,
 	health.Use(middleware.EnsureAuthenticated(authService))
 	{
 		health.GET("/basic", BasicHealthCheckHandler(systemService))
-		health.POST("/basic", BasicHealthCheckWithClusterKeyHandler(systemService))
 		health.GET("/http", HTTPHealthCheckHandler)
 	}
 
 	basic := api.Group("/basic")
 	basic.Use(middleware.EnsureAuthenticated(authService))
+	requireBasicAdmin := middleware.RequireLocalAdmin(authService)
 	{
 		basic.GET("/settings", basicHandlers.GetBasicSettings(systemService))
-		basic.POST("/initialize", basicHandlers.Initialize(systemService))
-		basic.PUT("/system/reboot", basicHandlers.RebootSystem(systemService))
+		basic.POST("/initialize", requireBasicAdmin, basicHandlers.Initialize(systemService))
+		basic.POST("/system/reboot", requireBasicAdmin, basicHandlers.RebootSystem(systemService))
 	}
 
 	info := api.Group("/info")

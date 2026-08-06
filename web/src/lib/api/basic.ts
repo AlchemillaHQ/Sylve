@@ -8,12 +8,7 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import {
-	InitializeResponseSchema,
-	type InitializeResponse,
-	BasicSettingsSchema,
-	type BasicSettings
-} from '$lib/types/basic';
+import { InitializeResponseSchema, type InitializeResponse } from '$lib/types/basic';
 import { apiRequest } from '$lib/utils/http';
 
 export async function initialize(pools: string[], services: string[]): Promise<InitializeResponse> {
@@ -40,8 +35,4 @@ export async function initialize(pools: string[], services: string[]): Promise<I
 		message: 'Invalid initialization response',
 		error: 'The server response did not match the expected initialization format.'
 	};
-}
-
-export async function getBasicSettings(hostname?: string): Promise<BasicSettings> {
-	return await apiRequest('/basic/settings', BasicSettingsSchema, 'GET', undefined, { hostname });
 }

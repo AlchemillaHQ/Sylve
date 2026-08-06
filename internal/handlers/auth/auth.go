@@ -59,9 +59,15 @@ func writeLoginHostnameError(c *gin.Context, err error) {
 	})
 }
 
+// @Summary Get Login Configuration
+// @Description Retrieve the public authentication configuration used by the login page
+// @Tags Authentication
+// @Produce json
+// @Success 200 {object} internal.APIResponse[LoginConfig] "Success"
+// @Router /auth/login/config [get]
 func LoginConfigHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[LoginConfig]{
 			Status:  "success",
 			Message: "login_config_retrieved",
 			Error:   "",

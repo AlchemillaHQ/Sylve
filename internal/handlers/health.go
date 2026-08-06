@@ -9,6 +9,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -19,17 +20,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type BasicHealthCheckRequest struct {
-	ClusterKey string `json:"clusterKey"`
-}
-
 // @Summary Basic health check
 // @Description Retrieve the system's basic health information
 // @Tags Health
 // @Produce json
 // @Security BearerAuth
+// @Param X-Cluster-Key header string false "Cluster key authentication"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /health/basic [get]
 func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -45,6 +44,15 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 		}
 
 		b, err := systemService.GetBasicSettings()
+		if err != nil && !errors.Is(err, system.ErrBasicSettingsNotFound) {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "health_check_unavailable",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
@@ -57,20 +65,6 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 			},
 		})
 	}
-}
-
-// @Summary Basic health check with cluster authentication
-// @Description Retrieve the system's basic health information. A cluster key may be supplied instead of bearer authentication.
-// @Tags Health
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param request body BasicHealthCheckRequest false "Optional cluster-key authentication"
-// @Success 200 {object} internal.APIResponse[any] "Success"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /health/basic [post]
-func BasicHealthCheckWithClusterKeyHandler(systemService *system.Service) gin.HandlerFunc {
-	return BasicHealthCheckHandler(systemService)
 }
 
 // @Summary HTTP health check

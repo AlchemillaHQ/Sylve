@@ -61,6 +61,7 @@ const (
 	ClusterTokenUseInternalControl = "internal_control"
 	ClusterInternalAuthType        = "internal-cluster"
 	AuthTypeSylvePasskey           = "sylve-passkey"
+	ClusterKeyHeader               = "X-Cluster-Key"
 )
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {

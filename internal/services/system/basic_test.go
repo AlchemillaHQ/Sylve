@@ -10,6 +10,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -69,8 +70,14 @@ func TestNormalizeInitializeRequestRejectsDuplicateAndUnknownServices(t *testing
 	if errs[0].Error() != "duplicate_service_mdns" {
 		t.Fatalf("unexpected duplicate service error: %v", errs[0])
 	}
+	if got := ClassifyInitializationError(errs[0]); got != InitializationErrorBadRequest {
+		t.Fatalf("duplicate service classification = %v, want bad request", got)
+	}
 	if errs[1].Error() != "unsupported_service_unknown" {
 		t.Fatalf("unexpected unknown service error: %v", errs[1])
+	}
+	if got := ClassifyInitializationError(errs[1]); got != InitializationErrorBadRequest {
+		t.Fatalf("unknown service classification = %v, want bad request", got)
 	}
 	if !slices.Equal(normalized.Services, []models.AvailableService{models.Mdns}) {
 		t.Fatalf("expected only the first valid service, got %v", normalized.Services)
@@ -107,6 +114,9 @@ func TestInitializeSerializesConcurrentRequests(t *testing.T) {
 			continue
 		}
 		if len(errs) == 1 && errs[0].Error() == "system_already_initialized" {
+			if got := ClassifyInitializationError(errs[0]); got != InitializationErrorConflict {
+				t.Fatalf("already initialized classification = %v, want conflict", got)
+			}
 			alreadyInitialized++
 			continue
 		}
@@ -129,5 +139,15 @@ func TestInitializeSerializesConcurrentRequests(t *testing.T) {
 	}
 	if settings[0].ID != 1 {
 		t.Fatalf("expected canonical basic settings ID 1, got %d", settings[0].ID)
+	}
+}
+
+func TestGetBasicSettingsReturnsNotFoundSentinel(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	service := &Service{DB: database}
+
+	_, err := service.GetBasicSettings()
+	if !errors.Is(err, ErrBasicSettingsNotFound) {
+		t.Fatalf("error = %v, want ErrBasicSettingsNotFound", err)
 	}
 }

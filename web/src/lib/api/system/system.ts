@@ -17,7 +17,7 @@ const BasicHealthResponseSchema = APIResponseSchema.extend({
 });
 
 export async function rebootSystem(): Promise<APIResponse> {
-	return apiRequest('/basic/system/reboot', APIResponseSchema, 'PUT');
+	return apiRequest('/basic/system/reboot', APIResponseSchema, 'POST');
 }
 
 export async function getBasicHealth(): Promise<BasicHealth | APIResponse> {

@@ -19,7 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
+	authSvc "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -42,7 +42,7 @@ func isPublicSignedDownloadRequest(method, path string) bool {
 	return err == nil
 }
 
-func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
+func EnsureAuthenticated(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		isWSAuthPath := strings.HasPrefix(path, "/api/vnc/") ||
@@ -142,8 +142,15 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 			return
 		}
 
-		if (path == "/api/cluster/accept-join" || strings.HasPrefix(path, "/api/health/basic")) &&
-			c.Request.Method == http.MethodPost {
+		if path == "/api/health/basic" && c.Request.Method == http.MethodGet {
+			clusterKey := strings.TrimSpace(c.GetHeader(authSvc.ClusterKeyHeader))
+			if clusterKey != "" && authService.IsValidClusterKey(clusterKey) {
+				c.Next()
+				return
+			}
+		}
+
+		if path == "/api/cluster/accept-join" && c.Request.Method == http.MethodPost {
 			raw, err := io.ReadAll(c.Request.Body)
 			if err == nil {
 				c.Request.Body = io.NopCloser(bytes.NewBuffer(raw))
@@ -221,11 +228,11 @@ func RequireClusterScope() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "cluster_scope_required"})
 			return
 		}
-		if strings.TrimSpace(c.GetString("ClusterTokenUse")) != authService.ClusterTokenUseInternalControl {
+		if strings.TrimSpace(c.GetString("ClusterTokenUse")) != authSvc.ClusterTokenUseInternalControl {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "internal_cluster_token_required"})
 			return
 		}
-		if strings.TrimSpace(c.GetString("AuthType")) != authService.ClusterInternalAuthType {
+		if strings.TrimSpace(c.GetString("AuthType")) != authSvc.ClusterInternalAuthType {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "internal_cluster_auth_type_required"})
 			return
 		}

@@ -23,10 +23,11 @@
 	import { getSimpleJails } from '$lib/api/jail/jail';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
+	import { getBasicSettings } from '$lib/api/system/settings';
+	import type { BasicSettings } from '$lib/types/system/settings';
 	import { type CPUPin, type CreateData } from '$lib/types/vm/vm';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
-	import { getBasicSettings } from '$lib/api/basic';
 	import { resource, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { type NetworkObject } from '$lib/types/network/object';
@@ -91,6 +92,7 @@
 	};
 
 	let modal: CreateData = $state(options);
+	const emptyBasicSettings: BasicSettings = { pools: [], services: [], initialized: false };
 
 	const networkObjects = resource(
 		() => `network-objects-${modal.node || '__default__'}`,
@@ -173,12 +175,17 @@
 
 	const basicSettings = resource(
 		() => `basic-settings-${modal.node || '__default__'}`,
-		async (key) => {
+		async (key, _previousKey, { data: previousSettings }) => {
 			const result = await getBasicSettings(modal.node || undefined);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousSettings ?? emptyBasicSettings;
+			}
+
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: { pools: [], services: [], initialized: false } }
+		{ initialValue: emptyBasicSettings }
 	);
 
 	watch([() => open, () => minimize], ([open, minimize]) => {

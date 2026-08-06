@@ -64,8 +64,8 @@ type basicHealthData struct {
 	SylveVersion string `json:"sylveVersion"`
 }
 
-func fetchNodeVersionFromHealth(healthURL string, payload any, headers map[string]string) (string, error) {
-	body, _, err := utils.HTTPPostJSONRead(healthURL, payload, headers)
+func fetchNodeVersionFromHealth(healthURL string, headers map[string]string) (string, error) {
+	body, _, err := utils.HTTPGetJSONRead(healthURL, headers)
 	if err != nil {
 		return "", err
 	}
@@ -302,7 +302,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			leaderAPIHost,
 		)
 
-		leaderVersion, err := fetchNodeVersionFromHealth(healthURL, req, headers)
+		leaderVersion, err := fetchNodeVersionFromHealth(healthURL, headers)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -504,8 +504,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
 			joinerVersion, err := fetchNodeVersionFromHealth(
 				joinerHealthURL,
-				map[string]any{"clusterKey": req.ClusterKey},
-				map[string]string{},
+				map[string]string{auth.ClusterKeyHeader: req.ClusterKey},
 			)
 			if err != nil || joinerVersion == "" {
 				reason := "joiner_version_unavailable"

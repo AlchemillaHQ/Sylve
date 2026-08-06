@@ -15,11 +15,4 @@ export const InitializeResponseSchema = APIResponseSchema.extend({
 	data: z.array(z.string()).nullable().optional()
 });
 
-export const BasicSettingsSchema = z.object({
-	pools: z.array(z.string()),
-	services: z.array(z.string()),
-	initialized: z.boolean()
-});
-
 export type InitializeResponse = z.infer<typeof InitializeResponseSchema>;
-export type BasicSettings = z.infer<typeof BasicSettingsSchema>;
