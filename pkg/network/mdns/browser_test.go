@@ -24,18 +24,38 @@ func TestBrowse(t *testing.T) {
 		t.Fatal(err)
 	}
 	localhost = strings.TrimSuffix(strings.Replace(localhost, " ", "-", -1), ".local") // replace spaces with dashes and remove .local suffix
-	for tName, hostValue := range map[string]string{
-		"regular host": "My-Computer",
-		"empty host":   "",
-		"ip address":   "192.168.0.1",
-	} {
-		t.Run(tName, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+	tests := []struct {
+		name        string
+		serviceName string
+		serviceType string
+		host        string
+	}{
+		{
+			name:        "regular host",
+			serviceName: "My Regular Service",
+			serviceType: "_test-regular._tcp",
+			host:        "My-Computer",
+		},
+		{
+			name:        "empty host",
+			serviceName: "My Empty Host Service",
+			serviceType: "_test-empty._tcp",
+			host:        "",
+		},
+		{
+			name:        "ip address",
+			serviceName: "My IP Service",
+			serviceType: "_test-ip._tcp",
+			host:        "192.168.0.1",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			cfg := Config{
-				Name:   "My Service",
-				Type:   "_test._tcp",
-				Host:   hostValue,
+				Name:   test.serviceName,
+				Type:   test.serviceType,
+				Host:   test.host,
 				Port:   12334,
 				Ifaces: []string{testIface.Name},
 			}
@@ -47,25 +67,40 @@ func TestBrowse(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			go func() {
-				_ = rs.Respond(ctx)
-			}()
+			defer rs.Close()
 
 			_, err = rs.Add(srv)
 			if err != nil {
 				t.Fatal(err)
-
 			}
 
-			resultChan := make(chan BrowseEntry)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ready := make(chan error, 1)
+			respondDone := make(chan error, 1)
 			go func() {
-				_ = LookupType(ctx, fmt.Sprintf("%s.local.", cfg.Type), func(entry BrowseEntry) {
+				respondDone <- rs.(*responder).RespondReady(ctx, ready)
+			}()
+			defer func() {
+				cancel()
+				<-respondDone
+			}()
+			if err := <-ready; err != nil {
+				t.Fatal(err)
+			}
+
+			resultChan := make(chan BrowseEntry, 1)
+			lookupDone := make(chan error, 1)
+			go func() {
+				lookupDone <- LookupType(ctx, fmt.Sprintf("%s.local.", cfg.Type), func(entry BrowseEntry) {
 					select {
 					case resultChan <- entry:
 					default:
 					}
 				}, func(entry BrowseEntry) {})
+			}()
+			defer func() {
+				cancel()
+				<-lookupDone
 			}()
 
 			select {
@@ -75,7 +110,7 @@ func TestBrowse(t *testing.T) {
 				if entry.Name != cfg.Name {
 					t.Fatalf("is=%v want=%v", entry.Name, cfg.Name)
 				}
-				if tName == "empty host" {
+				if test.name == "empty host" {
 					if entry.Host != localhost {
 						t.Fatalf("is=%v want=%v", entry.Host, localhost)
 					}
