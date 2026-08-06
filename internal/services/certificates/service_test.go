@@ -178,6 +178,9 @@ func TestPendingActivationCanBeReplacedAndCancelled(t *testing.T) {
 	if err := service.CancelPendingActivation(ctx, first.ID); !errors.Is(err, ErrCertificateConflict) {
 		t.Fatalf("expected mismatched cancellation conflict, got %v", err)
 	}
+	if err := service.CancelPendingActivation(ctx, second.ID+1000); !errors.Is(err, ErrCertificateNotFound) {
+		t.Fatalf("expected missing certificate cancellation to return not found, got %v", err)
+	}
 	if err := service.DeleteCertificate(ctx, second.ID); !errors.Is(err, ErrCertificateConflict) {
 		t.Fatalf("expected pending delete conflict, got %v", err)
 	}

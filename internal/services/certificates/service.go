@@ -35,14 +35,22 @@ import (
 
 type issueCertificateFunc func(context.Context, string, bool) ([]byte, []byte, error)
 
+type certificateOperationLock struct {
+	mu   sync.Mutex
+	refs uint
+}
+
 type Service struct {
 	DB *gorm.DB
 
-	activeCertificate atomic.Pointer[tls.Certificate]
-	challenges        *challengeManager
-	mutations         sync.Mutex
-	managedProcessing sync.Mutex
-	managedBrokerMu   sync.Mutex
+	activeCertificate  atomic.Pointer[tls.Certificate]
+	challenges         *challengeManager
+	createMu           sync.Mutex
+	acmeMu             sync.Mutex
+	selectionMu        sync.Mutex
+	managedProcessing  sync.Mutex
+	certificateLocksMu sync.Mutex
+	certificateLocks   map[uint]*certificateOperationLock
 
 	now               func() time.Time
 	issueCertificate  issueCertificateFunc
@@ -58,6 +66,7 @@ func NewService(db *gorm.DB) *Service {
 	service := &Service{
 		DB:                db,
 		challenges:        newChallengeManager(),
+		certificateLocks:  make(map[uint]*certificateOperationLock),
 		now:               time.Now,
 		resolver:          net.DefaultResolver,
 		stunResolver:      dynamicdns.NewSTUNResolver(),
@@ -67,6 +76,38 @@ func NewService(db *gorm.DB) *Service {
 	}
 	service.issueCertificate = service.obtainLetsEncryptCertificate
 	return service
+}
+
+func (s *Service) lockCertificateOperation(id uint) func() {
+	s.certificateLocksMu.Lock()
+	if s.certificateLocks == nil {
+		s.certificateLocks = make(map[uint]*certificateOperationLock)
+	}
+	lock := s.certificateLocks[id]
+	if lock == nil {
+		lock = &certificateOperationLock{}
+		s.certificateLocks[id] = lock
+	}
+	lock.refs++
+	s.certificateLocksMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+
+		s.certificateLocksMu.Lock()
+		lock.refs--
+		if lock.refs == 0 && s.certificateLocks[id] == lock {
+			delete(s.certificateLocks, id)
+		}
+		s.certificateLocksMu.Unlock()
+	}
+}
+
+func (s *Service) issueCertificateSerially(ctx context.Context, domain string, staging bool) ([]byte, []byte, error) {
+	s.acmeMu.Lock()
+	defer s.acmeMu.Unlock()
+	return s.issueCertificate(ctx, domain, staging)
 }
 
 func (s *Service) Initialize(ctx context.Context, legacy *internal.TLSConfig) error {
@@ -217,8 +258,8 @@ func (s *Service) ExportCertificateArchive(ctx context.Context, id uint) ([]byte
 }
 
 func (s *Service) CreateCertificate(ctx context.Context, input CertificateInput) (*CertificateView, error) {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
 	if err := validateCertificateInputSize(input); err != nil {
 		return nil, err
 	}
@@ -240,11 +281,11 @@ func (s *Service) CreateCertificate(ctx context.Context, input CertificateInput)
 		return nil, fmt.Errorf("%w: a certificate named %q already exists", ErrCertificateConflict, name)
 	}
 
-	selection, err := s.certificateSelection(ctx)
-	if err != nil {
-		return nil, err
-	}
 	if input.Type == models.CertificateTypeSylveManaged {
+		selection, err := s.certificateSelection(ctx)
+		if err != nil {
+			return nil, err
+		}
 		return s.createManagedCertificate(ctx, name, input, selection)
 	}
 
@@ -253,6 +294,10 @@ func (s *Service) CreateCertificate(ctx context.Context, input CertificateInput)
 		return nil, err
 	}
 	material, renewedAt, err := s.materialForCreate(ctx, input.Type, domain, input)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := s.certificateSelection(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +314,8 @@ func (s *Service) CreateCertificate(ctx context.Context, input CertificateInput)
 }
 
 func (s *Service) UpdateCertificate(ctx context.Context, id uint, input CertificateInput) (*CertificateView, error) {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	unlockCertificate := s.lockCertificateOperation(id)
+	defer unlockCertificate()
 	if err := validateCertificateInputSize(input); err != nil {
 		return nil, err
 	}
@@ -333,8 +378,8 @@ func (s *Service) UpdateCertificate(ctx context.Context, id uint, input Certific
 }
 
 func (s *Service) DeleteCertificate(ctx context.Context, id uint) error {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	unlockCertificate := s.lockCertificateOperation(id)
+	defer unlockCertificate()
 
 	certificate, err := s.getCertificate(ctx, id)
 	if err != nil {
@@ -343,20 +388,19 @@ func (s *Service) DeleteCertificate(ctx context.Context, id uint) error {
 	if certificate.Type == models.CertificateTypeSystemDefault {
 		return fmt.Errorf("%w: the system default certificate cannot be deleted", ErrCertificateConflict)
 	}
+	s.selectionMu.Lock()
 	selection, err := s.certificateSelection(ctx)
+	if err == nil && selection.activeID == id {
+		err = fmt.Errorf("%w: the active certificate cannot be deleted", ErrCertificateConflict)
+	}
+	if err == nil && selection.pendingID == id {
+		err = fmt.Errorf("%w: cancel pending activation before deleting the certificate", ErrCertificateConflict)
+	}
+	s.selectionMu.Unlock()
 	if err != nil {
 		return err
 	}
-	if selection.activeID == id {
-		return fmt.Errorf("%w: the active certificate cannot be deleted", ErrCertificateConflict)
-	}
-	if selection.pendingID == id {
-		return fmt.Errorf("%w: cancel pending activation before deleting the certificate", ErrCertificateConflict)
-	}
 	if certificate.Type == models.CertificateTypeSylveManaged {
-		s.managedBrokerMu.Lock()
-		defer s.managedBrokerMu.Unlock()
-
 		order, err := s.managedOrderForCertificate(ctx, id)
 		if err != nil {
 			return err
@@ -390,8 +434,8 @@ func (s *Service) DeleteCertificate(ctx context.Context, id uint) error {
 }
 
 func (s *Service) ActivateCertificate(ctx context.Context, id uint) (*CertificateView, error) {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	unlockCertificate := s.lockCertificateOperation(id)
+	defer unlockCertificate()
 
 	certificate, err := s.getCertificate(ctx, id)
 	if err != nil {
@@ -406,7 +450,8 @@ func (s *Service) ActivateCertificate(ctx context.Context, id uint) (*Certificat
 	}
 
 	var activeID uint
-	if err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	s.selectionMu.Lock()
+	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var settings models.CertificateSettings
 		if err := tx.First(&settings, 1).Error; err != nil {
 			return err
@@ -416,7 +461,9 @@ func (s *Service) ActivateCertificate(ctx context.Context, id uint) (*Certificat
 		}
 		activeID = settings.ActiveCertificateID
 		return tx.Model(&settings).Update("pending_certificate_id", id).Error
-	}); err != nil {
+	})
+	s.selectionMu.Unlock()
+	if err != nil {
 		return nil, fmt.Errorf("activate certificate: %w", err)
 	}
 
@@ -429,9 +476,15 @@ func (s *Service) ActivateCertificate(ctx context.Context, id uint) (*Certificat
 }
 
 func (s *Service) CancelPendingActivation(ctx context.Context, id uint) error {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	unlockCertificate := s.lockCertificateOperation(id)
+	defer unlockCertificate()
 
+	if _, err := s.getCertificate(ctx, id); err != nil {
+		return err
+	}
+
+	s.selectionMu.Lock()
+	defer s.selectionMu.Unlock()
 	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var settings models.CertificateSettings
 		if err := tx.First(&settings, 1).Error; err != nil {
@@ -448,8 +501,8 @@ func (s *Service) CancelPendingActivation(ctx context.Context, id uint) error {
 }
 
 func (s *Service) RenewCertificate(ctx context.Context, id uint) (*CertificateView, error) {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	unlockCertificate := s.lockCertificateOperation(id)
+	defer unlockCertificate()
 
 	certificate, err := s.getCertificate(ctx, id)
 	if err != nil {
@@ -474,7 +527,7 @@ func (s *Service) RenewCertificate(ctx context.Context, id uint) (*CertificateVi
 		if err := validateCertificateRenewalDue(certificate, s.currentTime()); err != nil {
 			return nil, err
 		}
-		certificatePEM, privateKeyPEM, err = s.issueCertificate(ctx, certificate.Domain, certificate.Staging)
+		certificatePEM, privateKeyPEM, err = s.issueCertificateSerially(ctx, certificate.Domain, certificate.Staging)
 		if err != nil {
 			err = fmt.Errorf("%w: %v", ErrIssuanceFailed, err)
 		}
@@ -558,7 +611,7 @@ func (s *Service) materialForCreate(ctx context.Context, certificateType models.
 		if net.ParseIP(domain) != nil || strings.HasPrefix(domain, "*.") {
 			return certificateMaterial{}, nil, invalidCertificate("Let's Encrypt requires a non-wildcard DNS hostname")
 		}
-		certificatePEM, privateKeyPEM, err = s.issueCertificate(ctx, domain, input.Staging)
+		certificatePEM, privateKeyPEM, err = s.issueCertificateSerially(ctx, domain, input.Staging)
 		if err != nil {
 			return certificateMaterial{}, nil, fmt.Errorf("%w: %v", ErrIssuanceFailed, err)
 		}
@@ -617,7 +670,7 @@ func (s *Service) materialForUpdate(ctx context.Context, certificate models.Cert
 			return certificateMaterial{}, nil, invalidCertificate("Let's Encrypt requires a non-wildcard DNS hostname")
 		}
 		if domain != certificate.Domain || input.Staging != certificate.Staging {
-			certificatePEM, privateKeyPEM, issueErr := s.issueCertificate(ctx, domain, input.Staging)
+			certificatePEM, privateKeyPEM, issueErr := s.issueCertificateSerially(ctx, domain, input.Staging)
 			if issueErr != nil {
 				return certificateMaterial{}, nil, fmt.Errorf("%w: %v", ErrIssuanceFailed, issueErr)
 			}

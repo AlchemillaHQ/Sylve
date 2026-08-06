@@ -69,6 +69,22 @@ func shouldRedactAuditPayload(path string) bool {
 		path == "/api/utilities/downloads/signed-url"
 }
 
+func isImportantAuditGetPath(path string) bool {
+	if utils.Contains(importantGetPaths, path) || strings.Contains(path, "vnc") {
+		return true
+	}
+
+	const certificateArchivePrefix = "/api/certificates/"
+	if !strings.HasPrefix(path, certificateArchivePrefix) {
+		return false
+	}
+	id, ok := strings.CutSuffix(strings.TrimPrefix(path, certificateArchivePrefix), "/archive")
+	if !ok {
+		return false
+	}
+	return id != "" && !strings.Contains(id, "/")
+}
+
 func auditPathMatches(path, prefix string) bool {
 	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
@@ -381,7 +397,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			return
 		}
 
-		if !utils.Contains(importantGetPaths, c.Request.URL.Path) && !strings.Contains(c.Request.URL.Path, "vnc") {
+		if !isImportantAuditGetPath(c.Request.URL.Path) {
 			if c.Request.Method == "OPTIONS" || c.Request.Method == "HEAD" || c.Request.Method == "GET" {
 				c.Next()
 				return

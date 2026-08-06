@@ -361,17 +361,19 @@
 			'/api/certificates/:id/activate': 'TLS Certificate - Schedule Activation',
 			'/api/certificates/:id/renew': 'TLS Certificate - Renew',
 			'/api/certificates/:id/retry': 'TLS Certificate - Retry Issuance',
-			'/api/certificates/:id/download': 'TLS Certificate - Download',
 			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
 			'/api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create'
 		},
 		PUT: {
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
-			'/api/certificates/:id': 'TLS Certificate - Update',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update'
 		},
+		PATCH: {
+			'/api/certificates/:id': 'TLS Certificate - Update'
+		},
 		GET: {
+			'/api/certificates/:id/archive': 'TLS Certificate - Download',
 			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - View',
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View'
 		}

@@ -302,13 +302,13 @@ func RegisterRoutes(r *gin.Engine,
 		certificateGroup.GET("", certificateHandlers.List(certificateService))
 		certificateGroup.POST("", certificateHandlers.Create(certificateService))
 		certificateGroup.GET("/domain-check", certificateHandlers.CheckDomain(certificateService))
-		certificateGroup.PUT("/:id", certificateHandlers.Update(certificateService))
+		certificateGroup.PATCH("/:id", certificateHandlers.Update(certificateService))
 		certificateGroup.DELETE("/:id", certificateHandlers.Delete(certificateService))
 		certificateGroup.POST("/:id/activate", certificateHandlers.Activate(certificateService))
 		certificateGroup.DELETE("/:id/activate", certificateHandlers.CancelActivation(certificateService))
 		certificateGroup.POST("/:id/renew", certificateHandlers.Renew(certificateService))
 		certificateGroup.POST("/:id/retry", certificateHandlers.Retry(certificateService))
-		certificateGroup.POST("/:id/download", certificateHandlers.Download(certificateService))
+		certificateGroup.GET("/:id/archive", middleware.RequireLocalAdmin(authService), certificateHandlers.Download(certificateService))
 	}
 
 	iscsiGroup := api.Group("/iscsi")

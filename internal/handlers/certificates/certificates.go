@@ -15,6 +15,7 @@ import (
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/gin-gonic/gin"
 )
@@ -35,6 +36,15 @@ type certificateArchiveService interface {
 	ExportCertificateArchive(context.Context, uint) ([]byte, error)
 }
 
+// @Summary List TLS certificates
+// @Description List all configured public TLS certificates without exposing stored PEM material
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]certificates.CertificateView] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /certificates [get]
 func List(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := service.ListCertificates(c.Request.Context())
@@ -48,6 +58,19 @@ func List(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Download a TLS certificate archive
+// @Description Download a ZIP archive containing the certificate chain and private key
+// @Tags Certificates
+// @Accept json
+// @Produce application/zip
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Success 200 {file} file "Certificate archive"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /certificates/{id}/archive [get]
 func Download(service certificateArchiveService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -69,6 +92,20 @@ func Download(service certificateArchiveService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Create a TLS certificate
+// @Description Create an imported, self-signed, Let's Encrypt, or Sylve.app Managed TLS certificate
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body certificates.CertificateInput true "Certificate settings"
+// @Success 201 {object} internal.APIResponse[certificates.CertificateView] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /certificates [post]
 func Create(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input certificates.CertificateInput
@@ -86,6 +123,22 @@ func Create(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Update a TLS certificate
+// @Description Update the settings or material of an existing TLS certificate
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Param request body certificates.CertificateInput true "Certificate settings"
+// @Success 200 {object} internal.APIResponse[certificates.CertificateView] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /certificates/{id} [patch]
 func Update(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -107,6 +160,20 @@ func Update(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete a TLS certificate
+// @Description Delete an existing TLS certificate that is neither active nor pending activation
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /certificates/{id} [delete]
 func Delete(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -123,6 +190,19 @@ func Delete(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Schedule TLS certificate activation
+// @Description Select a ready TLS certificate to become active after Sylve restarts
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[certificates.CertificateView] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /certificates/{id}/activate [post]
 func Activate(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -140,6 +220,19 @@ func Activate(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Cancel pending TLS certificate activation
+// @Description Cancel the pending activation of the specified TLS certificate
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /certificates/{id}/activate [delete]
 func CancelActivation(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -156,6 +249,21 @@ func CancelActivation(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Renew a TLS certificate
+// @Description Renew an eligible Let's Encrypt or Sylve.app Managed TLS certificate
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[certificates.CertificateView] "Renewed"
+// @Success 202 {object} internal.APIResponse[certificates.CertificateView] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /certificates/{id}/renew [post]
 func Renew(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -167,12 +275,32 @@ func Renew(service certificateService) gin.HandlerFunc {
 			certificateError(c, "error_renewing_certificate", err)
 			return
 		}
-		c.JSON(http.StatusOK, internal.APIResponse[*certificates.CertificateView]{
-			Status: "success", Message: "certificate_renewed", Data: item,
+		status := http.StatusOK
+		message := "certificate_renewed"
+		if item.Type == models.CertificateTypeSylveManaged {
+			status = http.StatusAccepted
+			message = "certificate_renewal_started"
+		}
+		c.JSON(status, internal.APIResponse[*certificates.CertificateView]{
+			Status: "success", Message: message, Data: item,
 		})
 	}
 }
 
+// @Summary Retry managed TLS certificate issuance
+// @Description Start a new issuance attempt for a failed Sylve.app Managed TLS certificate
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Certificate ID" minimum(1)
+// @Success 202 {object} internal.APIResponse[certificates.CertificateView] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /certificates/{id}/retry [post]
 func Retry(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := certificateID(c)
@@ -190,6 +318,18 @@ func Retry(service certificateService) gin.HandlerFunc {
 	}
 }
 
+// @Summary Check TLS certificate domain resolution
+// @Description Compare a DNS hostname's resolved addresses with public addresses detected for this node
+// @Tags Certificates
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param domain query string true "DNS hostname"
+// @Success 200 {object} internal.APIResponse[certificates.DomainCheckResult] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
+// @Router /certificates/domain-check [get]
 func CheckDomain(service certificateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		result, err := service.CheckDomain(c.Request.Context(), c.Query("domain"))
@@ -230,15 +370,17 @@ func certificateID(c *gin.Context) (uint, bool) {
 func certificateError(c *gin.Context, message string, err error) {
 	status := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, certificates.ErrInvalidCertificate),
-		errors.Is(err, certificates.ErrNotRenewable),
-		errors.Is(err, certificates.ErrRenewalNotDue):
+	case errors.Is(err, certificates.ErrInvalidCertificate):
 		status = http.StatusBadRequest
 	case errors.Is(err, certificates.ErrCertificateNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, certificates.ErrCertificateConflict):
+	case errors.Is(err, certificates.ErrCertificateConflict),
+		errors.Is(err, certificates.ErrNotRenewable),
+		errors.Is(err, certificates.ErrRenewalNotDue):
 		status = http.StatusConflict
-	case errors.Is(err, certificates.ErrIssuanceFailed), errors.Is(err, certificates.ErrDomainCheckFailed):
+	case errors.Is(err, certificates.ErrIssuanceFailed),
+		errors.Is(err, certificates.ErrDomainCheckFailed),
+		errors.Is(err, certificates.ErrManagedBrokerRequestFailed):
 		status = http.StatusBadGateway
 	}
 	c.JSON(status, internal.APIResponse[any]{

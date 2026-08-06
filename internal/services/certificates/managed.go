@@ -126,8 +126,8 @@ func (s *Service) updateManagedCertificate(ctx context.Context, certificate mode
 }
 
 func (s *Service) RetryManagedCertificate(ctx context.Context, id uint) (*CertificateView, error) {
-	s.mutations.Lock()
-	defer s.mutations.Unlock()
+	unlockCertificate := s.lockCertificateOperation(id)
+	defer unlockCertificate()
 
 	certificate, err := s.getCertificate(ctx, id)
 	if err != nil {
@@ -139,8 +139,6 @@ func (s *Service) RetryManagedCertificate(ctx context.Context, id uint) (*Certif
 	if certificateMaterialAvailable(certificate) {
 		return nil, fmt.Errorf("%w: use renewal for a ready managed certificate", ErrCertificateConflict)
 	}
-	s.managedBrokerMu.Lock()
-	defer s.managedBrokerMu.Unlock()
 	order, err := s.managedOrderForCertificate(ctx, certificate.ID)
 	if err != nil {
 		return nil, err
@@ -173,6 +171,7 @@ func (s *Service) RetryManagedCertificate(ctx context.Context, id uint) (*Certif
 	return &view, nil
 }
 
+// queueManagedRenewal is called with the certificate operation lock held.
 func (s *Service) queueManagedRenewal(ctx context.Context, certificate models.Certificate) (*models.ManagedCertificateOrder, error) {
 	if certificate.Type != models.CertificateTypeSylveManaged || !certificateMaterialAvailable(certificate) {
 		return nil, ErrNotRenewable
@@ -184,8 +183,6 @@ func (s *Service) queueManagedRenewal(ctx context.Context, certificate models.Ce
 	if err != nil {
 		return nil, err
 	}
-	s.managedBrokerMu.Lock()
-	defer s.managedBrokerMu.Unlock()
 	existing, err := s.managedOrderForCertificate(ctx, certificate.ID)
 	if err != nil {
 		return nil, err
@@ -366,7 +363,7 @@ func (s *Service) queueDueManagedRenewals(ctx context.Context) {
 	}
 
 	for _, certificate := range certificates {
-		s.mutations.Lock()
+		unlockCertificate := s.lockCertificateOperation(certificate.ID)
 		current, err := s.getCertificate(ctx, certificate.ID)
 		if err == nil {
 			existing, stateErr := s.managedOrderForCertificate(ctx, current.ID)
@@ -376,7 +373,7 @@ func (s *Service) queueDueManagedRenewals(ctx context.Context) {
 				_, err = s.queueManagedRenewal(ctx, current)
 			}
 		}
-		s.mutations.Unlock()
+		unlockCertificate()
 		if err != nil {
 			logger.L.Error().Err(err).Uint("certificateID", certificate.ID).Msg("managed_certificate_renewal_queue_failed")
 		}
@@ -384,8 +381,15 @@ func (s *Service) queueDueManagedRenewals(ctx context.Context) {
 }
 
 func (s *Service) processManagedOrder(ctx context.Context, orderID uint) error {
-	s.managedBrokerMu.Lock()
-	defer s.managedBrokerMu.Unlock()
+	var candidate models.ManagedCertificateOrder
+	if err := s.DB.WithContext(ctx).Select("certificate_id").First(&candidate, orderID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return fmt.Errorf("load managed certificate order: %w", err)
+	}
+	unlockCertificate := s.lockCertificateOperation(candidate.CertificateID)
+	defer unlockCertificate()
 
 	var order models.ManagedCertificateOrder
 	if err := s.DB.WithContext(ctx).First(&order, orderID).Error; err != nil {

@@ -53,10 +53,10 @@ func TestDownloadCertificateArchive(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &certificateArchiveStub{archive: []byte("zip-data")}
 	router := gin.New()
-	router.POST("/certificates/:id/download", Download(service))
+	router.GET("/certificates/:id/archive", Download(service))
 
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/certificates/42/download", nil))
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/certificates/42/archive", nil))
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d want=%d", response.Code, http.StatusOK)
@@ -101,10 +101,10 @@ func TestDownloadCertificateArchiveErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := &certificateArchiveStub{err: test.err}
 			router := gin.New()
-			router.POST("/certificates/:id/download", Download(service))
+			router.GET("/certificates/:id/archive", Download(service))
 
 			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/certificates/"+test.id+"/download", nil))
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/certificates/"+test.id+"/archive", nil))
 			if response.Code != test.wantStatus {
 				t.Fatalf("status=%d want=%d body=%s", response.Code, test.wantStatus, response.Body.String())
 			}

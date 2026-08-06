@@ -112,13 +112,13 @@ func (s *Service) getManagedBrokerOrder(ctx context.Context, token, orderID stri
 func (s *Service) cancelManagedBrokerOrder(ctx context.Context, token, orderID string) error {
 	status, data, headers, err := s.doManagedBrokerRequest(ctx, token, http.MethodDelete, "/api/tls/orders/"+orderID, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrManagedBrokerRequestFailed, err)
 	}
 	switch status {
 	case http.StatusOK, http.StatusAccepted, http.StatusNoContent, http.StatusNotFound:
 		return nil
 	default:
-		return s.managedBrokerResponseError(status, headers, data)
+		return fmt.Errorf("%w: %w", ErrManagedBrokerRequestFailed, s.managedBrokerResponseError(status, headers, data))
 	}
 }
 

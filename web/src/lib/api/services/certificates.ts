@@ -33,7 +33,7 @@ export async function updateCertificate(
 	input: CertificateInput,
 	hostname: string
 ): Promise<Certificate | APIResponse> {
-	return await apiRequest(`/certificates/${id}`, CertificateSchema, 'PUT', input, { hostname });
+	return await apiRequest(`/certificates/${id}`, CertificateSchema, 'PATCH', input, { hostname });
 }
 
 export async function deleteCertificate(id: number, hostname: string): Promise<APIResponse> {
@@ -78,8 +78,11 @@ export async function retryCertificateIssuance(
 	});
 }
 
-export async function downloadCertificate(id: number, hostname: string): Promise<Blob | APIResponse> {
-	const response = await api.post<unknown>(`/certificates/${id}/download`, undefined, {
+export async function downloadCertificate(
+	id: number,
+	hostname: string
+): Promise<Blob | APIResponse> {
+	const response = await api.get<unknown>(`/certificates/${id}/archive`, {
 		responseType: 'blob',
 		headers: { 'X-Current-Hostname': hostname }
 	});

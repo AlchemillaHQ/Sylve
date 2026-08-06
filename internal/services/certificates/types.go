@@ -26,13 +26,14 @@ import (
 )
 
 var (
-	ErrInvalidCertificate  = errors.New("invalid certificate")
-	ErrCertificateNotFound = errors.New("certificate not found")
-	ErrCertificateConflict = errors.New("certificate conflict")
-	ErrNotRenewable        = errors.New("certificate is not renewable")
-	ErrRenewalNotDue       = errors.New("certificate renewal is not due")
-	ErrIssuanceFailed      = errors.New("certificate issuance failed")
-	ErrDomainCheckFailed   = errors.New("domain check failed")
+	ErrInvalidCertificate         = errors.New("invalid certificate")
+	ErrCertificateNotFound        = errors.New("certificate not found")
+	ErrCertificateConflict        = errors.New("certificate conflict")
+	ErrNotRenewable               = errors.New("certificate is not renewable")
+	ErrRenewalNotDue              = errors.New("certificate renewal is not due")
+	ErrIssuanceFailed             = errors.New("certificate issuance failed")
+	ErrDomainCheckFailed          = errors.New("domain check failed")
+	ErrManagedBrokerRequestFailed = errors.New("managed certificate broker request failed")
 )
 
 const (

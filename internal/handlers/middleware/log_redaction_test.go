@@ -49,7 +49,7 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		{path: "/api/dynamic-dns/entries", want: true},
 		{path: "/api/certificates", want: true},
 		{path: "/api/certificates/2/activate", want: true},
-		{path: "/api/certificates/2/download", want: true},
+		{path: "/api/certificates/2/archive", want: true},
 		{path: "/api/utilities/downloads/signed-url", want: true},
 		{path: "/api/system/file-explorer/upload", want: true},
 		{path: "/api/utilities/downloader-uploads", want: true},
@@ -60,6 +60,25 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 	for _, tc := range cases {
 		if got := shouldRedactAuditPayload(tc.path); got != tc.want {
 			t.Fatalf("path=%s expected=%v got=%v", tc.path, tc.want, got)
+		}
+	}
+}
+
+func TestCertificateArchiveIsAnImportantAuditedGet(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "/api/certificates/2/archive", want: true},
+		{path: "/api/certificates/not-a-number/archive", want: true},
+		{path: "/api/certificates/archive", want: false},
+		{path: "/api/certificates/2/archive/extra", want: false},
+		{path: "/api/certificates/domain-check", want: false},
+	}
+
+	for _, test := range tests {
+		if got := isImportantAuditGetPath(test.path); got != test.want {
+			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
 		}
 	}
 }
@@ -275,12 +294,12 @@ func TestCertificateDownloadAuditDoesNotCaptureResponse(t *testing.T) {
 		c.Next()
 	})
 	router.Use(RequestLoggerMiddleware(auditDB, nil))
-	router.POST("/api/certificates/:id/download", func(c *gin.Context) {
+	router.GET("/api/certificates/:id/archive", func(c *gin.Context) {
 		c.Data(http.StatusOK, "application/zip", []byte("PRIVATE KEY MATERIAL"))
 	})
 
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/certificates/2/download", nil))
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/certificates/2/archive", nil))
 	if response.Code != http.StatusOK || response.Body.String() != "PRIVATE KEY MATERIAL" {
 		t.Fatalf("unexpected client response: status=%d body=%q", response.Code, response.Body.String())
 	}

@@ -381,6 +381,85 @@ func TestDeleteManagedCertificateCancelsSubmittedOrder(t *testing.T) {
 	}
 }
 
+func TestDeleteManagedCertificateReportsBrokerCancellationFailure(t *testing.T) {
+	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
+	service, created := newPendingManagedTestCertificate(t, now)
+	order := loadManagedTestOrder(t, service, created.ID)
+	if err := service.DB.Model(&order).Update("submitted_at", now).Error; err != nil {
+		t.Fatalf("mark managed order submitted: %v", err)
+	}
+	useFailingManagedCancellation(t, service)
+
+	err := service.DeleteCertificate(context.Background(), created.ID)
+	if !errors.Is(err, ErrManagedBrokerRequestFailed) {
+		t.Fatalf("expected managed broker failure, got %v", err)
+	}
+	if _, err := service.getCertificate(context.Background(), created.ID); err != nil {
+		t.Fatalf("broker failure removed certificate: %v", err)
+	}
+	current := loadManagedTestOrder(t, service, created.ID)
+	if current.OrderID != order.OrderID {
+		t.Fatalf("broker failure replaced managed order: before=%q after=%q", order.OrderID, current.OrderID)
+	}
+}
+
+func TestRetryManagedCertificateReportsBrokerCancellationFailure(t *testing.T) {
+	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
+	service, created := newPendingManagedTestCertificate(t, now)
+	order := loadManagedTestOrder(t, service, created.ID)
+	if err := service.DB.Model(&order).Updates(map[string]any{
+		"status":       models.ManagedCertificateOrderStatusFailed,
+		"error":        "issuance_failed",
+		"submitted_at": now,
+	}).Error; err != nil {
+		t.Fatalf("fail submitted managed order: %v", err)
+	}
+	useFailingManagedCancellation(t, service)
+
+	_, err := service.RetryManagedCertificate(context.Background(), created.ID)
+	if !errors.Is(err, ErrManagedBrokerRequestFailed) {
+		t.Fatalf("expected managed broker failure, got %v", err)
+	}
+	current := loadManagedTestOrder(t, service, created.ID)
+	if current.OrderID != order.OrderID || current.Status != models.ManagedCertificateOrderStatusFailed {
+		t.Fatalf("broker failure replaced failed managed order: %#v", current)
+	}
+}
+
+func TestRenewManagedCertificateReportsBrokerCancellationFailure(t *testing.T) {
+	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
+	service, created := newPendingManagedTestCertificate(t, now)
+	notBefore := now.Add(-time.Hour)
+	notAfter := now.Add(renewalWindow)
+	if err := service.DB.Model(&models.Certificate{}).Where("id = ?", created.ID).Updates(map[string]any{
+		"certificate_pem": "certificate",
+		"private_key_pem": "private-key",
+		"not_before":      notBefore,
+		"not_after":       notAfter,
+	}).Error; err != nil {
+		t.Fatalf("make managed certificate renewable: %v", err)
+	}
+	order := loadManagedTestOrder(t, service, created.ID)
+	if err := service.DB.Model(&order).Updates(map[string]any{
+		"operation":    models.ManagedCertificateOperationRenewal,
+		"status":       models.ManagedCertificateOrderStatusFailed,
+		"error":        "renewal_failed",
+		"submitted_at": now,
+	}).Error; err != nil {
+		t.Fatalf("fail submitted managed renewal: %v", err)
+	}
+	useFailingManagedCancellation(t, service)
+
+	_, err := service.RenewCertificate(context.Background(), created.ID)
+	if !errors.Is(err, ErrManagedBrokerRequestFailed) {
+		t.Fatalf("expected managed broker failure, got %v", err)
+	}
+	current := loadManagedTestOrder(t, service, created.ID)
+	if current.OrderID != order.OrderID || current.Status != models.ManagedCertificateOrderStatusFailed {
+		t.Fatalf("broker failure replaced failed managed renewal: %#v", current)
+	}
+}
+
 func TestManagedBrokerAttemptReservationFencesStaleWorker(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	service, created := newPendingManagedTestCertificate(t, now)
@@ -638,6 +717,19 @@ func newPendingManagedTestCertificate(t *testing.T, now time.Time) (*Service, *C
 		t.Fatalf("create managed certificate: %v", err)
 	}
 	return service, created
+}
+
+func useFailingManagedCancellation(t *testing.T, service *Service) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete {
+			t.Errorf("managed cancellation method=%s want=%s", request.Method, http.MethodDelete)
+		}
+		http.Error(writer, "broker unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	service.managedBrokerURL = server.URL
+	service.managedHTTPClient = server.Client()
 }
 
 func createManagedTestEntry(t *testing.T, service *Service) dynamicDNSModels.Entry {
