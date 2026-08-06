@@ -12,6 +12,7 @@ import (
 	"encoding/xml"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -25,9 +26,10 @@ type ctladmIsList struct {
 }
 
 func (s *Service) GetStatus() (map[string]string, error) {
-	out, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0, 1}, "-L")
+	out, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-L")
 	if err != nil {
-		return nil, err
+		logger.L.Error().Err(err).Msg("failed to get iSCSI initiator status")
+		return nil, applyFailed("failed_to_get_status", err)
 	}
 
 	result := make(map[string]string)
@@ -54,12 +56,14 @@ func (s *Service) GetStatus() (map[string]string, error) {
 func (s *Service) GetTargetSessions() (map[string]int, error) {
 	out, err := utils.RunCommandAllowExitCode("/usr/sbin/ctladm", []int{0}, "islist", "-x")
 	if err != nil {
-		return nil, err
+		logger.L.Error().Err(err).Msg("failed to get iSCSI target sessions")
+		return nil, applyFailed("failed_to_get_target_sessions", err)
 	}
 
 	var list ctladmIsList
 	if err := xml.Unmarshal([]byte(out), &list); err != nil {
-		return nil, err
+		logger.L.Error().Err(err).Msg("failed to parse iSCSI target sessions")
+		return nil, applyFailed("failed_to_parse_target_sessions", err)
 	}
 
 	result := make(map[string]int)

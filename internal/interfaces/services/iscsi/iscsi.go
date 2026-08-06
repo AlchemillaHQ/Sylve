@@ -25,9 +25,9 @@ type ISCSIServiceInterface interface {
 	UpdateTarget(id uint, targetName, alias, authMethod, chapName, chapSecret, mutualChapName, mutualChapSecret string) error
 	DeleteTarget(id uint) error
 	AddPortal(targetID uint, address string, port int) error
-	RemovePortal(id uint) error
+	RemovePortal(targetID, id uint) error
 	AddLUN(targetID uint, lunNumber int, zvol string) error
-	RemoveLUN(id uint) error
+	RemoveLUN(targetID, id uint) error
 	GenerateTargetConfig() (string, error)
 	WriteTargetConfig(reload bool) error
 }

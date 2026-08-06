@@ -43,8 +43,7 @@ export async function updateInitiator(
     tgtChapName: string = '',
     tgtChapSecret: string = ''
 ): Promise<APIResponse> {
-    return await apiRequest('/iscsi/initiators', APIResponseSchema, 'PUT', {
-        id,
+    return await apiRequest(`/iscsi/initiators/${id}`, APIResponseSchema, 'PUT', {
         nickname,
         targetAddress,
         targetName,

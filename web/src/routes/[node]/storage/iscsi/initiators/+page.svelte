@@ -116,9 +116,15 @@
 		properties.edit.open = true;
 	}
 
-	function validateChapSecrets(): boolean {
+	function validateChapSecrets(existingAuthMethod?: string): boolean {
 		if (form.authMethod === 'CHAP' || form.authMethod === 'MutualCHAP') {
-			if (form.chapSecret.length < 12 || form.chapSecret.length > 16) {
+			const preservesExistingSecret =
+				form.chapSecret.length === 0 &&
+				(existingAuthMethod === 'CHAP' || existingAuthMethod === 'MutualCHAP');
+			if (
+				!preservesExistingSecret &&
+				(form.chapSecret.length < 12 || form.chapSecret.length > 16)
+			) {
 				toast.error('CHAP Secret must be 12-16 characters (RFC 3720)', {
 					position: 'bottom-center'
 				});
@@ -126,7 +132,12 @@
 			}
 		}
 		if (form.authMethod === 'MutualCHAP') {
-			if (form.tgtChapSecret.length < 12 || form.tgtChapSecret.length > 16) {
+			const preservesExistingTargetSecret =
+				form.tgtChapSecret.length === 0 && existingAuthMethod === 'MutualCHAP';
+			if (
+				!preservesExistingTargetSecret &&
+				(form.tgtChapSecret.length < 12 || form.tgtChapSecret.length > 16)
+			) {
 				toast.error('Target CHAP Secret must be 12-16 characters (RFC 3720)', {
 					position: 'bottom-center'
 				});
@@ -163,7 +174,8 @@
 
 	async function submitEdit() {
 		if (!activeRow) return;
-		if (!validateChapSecrets()) return;
+		const initiator = initiators.current.find((item) => item.id === Number(activeRow?.id));
+		if (!initiator || !validateChapSecrets(initiator.authMethod)) return;
 		loading = true;
 		const response = await updateInitiator(
 			Number(activeRow.id),

@@ -1,11 +1,14 @@
 package iscsi
 
 import (
+	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func newInitiatorTestService(t *testing.T) *Service {
@@ -19,7 +22,7 @@ func newInitiatorTestService(t *testing.T) *Service {
 func TestCreateInitiatorMissingNickname(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	err := svc.CreateInitiator("", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "None", "", "", "", "")
-	if err == nil || err.Error() != "nickname_required" {
+	if err == nil || !errors.Is(err, ErrInvalidRequest) || err.Error() != "nickname_required" {
 		t.Fatalf("expected nickname_required, got %v", err)
 	}
 }
@@ -44,7 +47,7 @@ func TestCreateInitiatorDuplicateNickname(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	svc.DB.Create(&iscsiModels.ISCSIInitiator{Nickname: "fblock0", TargetAddress: "192.168.1.10", TargetName: "iqn.2025-01.com.example:target0"})
 	err := svc.CreateInitiator("fblock0", "192.168.1.11", "iqn.2025-01.com.example:target1", "", "None", "", "", "", "")
-	if err == nil || err.Error() != "initiator_with_nickname_exists" {
+	if err == nil || !errors.Is(err, ErrConflict) || err.Error() != "initiator_with_nickname_exists" {
 		t.Fatalf("expected initiator_with_nickname_exists, got %v", err)
 	}
 }
@@ -81,10 +84,42 @@ func TestCreateInitiatorMutualCHAPRequiresBothCredentials(t *testing.T) {
 	}
 }
 
+func TestCreateInitiatorNormalizesIPv6TargetAddress(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	err := svc.CreateInitiator(
+		"fblock0",
+		"2001:db8::10",
+		"iqn.2025-01.com.example:target0",
+		"",
+		"None",
+		"",
+		"",
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("CreateInitiator: %v", err)
+	}
+
+	var initiator iscsiModels.ISCSIInitiator
+	if err := svc.DB.First(&initiator).Error; err != nil {
+		t.Fatalf("load initiator: %v", err)
+	}
+	if initiator.TargetAddress != "[2001:db8::10]" {
+		t.Fatalf("target address = %q, want bracketed IPv6", initiator.TargetAddress)
+	}
+}
+
 func TestUpdateInitiatorNotFound(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	err := svc.UpdateInitiator(999, "fblock0", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "None", "", "", "", "")
-	if err == nil || !strings.Contains(err.Error(), "initiator_not_found") {
+	if err == nil || !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "initiator_not_found") {
 		t.Fatalf("expected initiator_not_found error, got %v", err)
 	}
 }
@@ -92,7 +127,7 @@ func TestUpdateInitiatorNotFound(t *testing.T) {
 func TestDeleteInitiatorNotFound(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	err := svc.DeleteInitiator(999)
-	if err == nil || !strings.Contains(err.Error(), "initiator_not_found") {
+	if err == nil || !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "initiator_not_found") {
 		t.Fatalf("expected initiator_not_found error, got %v", err)
 	}
 }
@@ -162,5 +197,96 @@ func TestGenerateInitiatorConfig(t *testing.T) {
 	}
 	if !strings.Contains(cfg, "secretpassw0rd") {
 		t.Error("config should contain CHAP secret")
+	}
+}
+
+func TestUpdateInitiatorPreservesOmittedSecrets(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command("true")
+	})
+	defer restoreCommand()
+
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.168.1.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "MutualCHAP",
+		CHAPName:      "chap-user",
+		CHAPSecret:    "secretpassw0rd",
+		TgtCHAPName:   "target-user",
+		TgtCHAPSecret: "targetpassw0rd",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create initiator fixture: %v", err)
+	}
+
+	err := svc.UpdateInitiator(
+		initiator.ID,
+		initiator.Nickname,
+		initiator.TargetAddress,
+		initiator.TargetName,
+		initiator.InitiatorName,
+		initiator.AuthMethod,
+		initiator.CHAPName,
+		"",
+		initiator.TgtCHAPName,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("update initiator: %v", err)
+	}
+
+	var updated iscsiModels.ISCSIInitiator
+	if err := svc.DB.First(&updated, initiator.ID).Error; err != nil {
+		t.Fatalf("load updated initiator: %v", err)
+	}
+	if updated.CHAPSecret != initiator.CHAPSecret || updated.TgtCHAPSecret != initiator.TgtCHAPSecret {
+		t.Fatalf("secrets changed: chap=%q target=%q", updated.CHAPSecret, updated.TgtCHAPSecret)
+	}
+}
+
+func TestUpdateInitiatorClearsUnusedSecrets(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command("true")
+	})
+	defer restoreCommand()
+
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.168.1.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "CHAP",
+		CHAPName:      "chap-user",
+		CHAPSecret:    "secretpassw0rd",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create initiator fixture: %v", err)
+	}
+
+	if err := svc.UpdateInitiator(
+		initiator.ID,
+		initiator.Nickname,
+		initiator.TargetAddress,
+		initiator.TargetName,
+		initiator.InitiatorName,
+		"None",
+		initiator.CHAPName,
+		"",
+		"",
+		"",
+	); err != nil {
+		t.Fatalf("update initiator: %v", err)
+	}
+
+	var updated iscsiModels.ISCSIInitiator
+	if err := svc.DB.First(&updated, initiator.ID).Error; err != nil {
+		t.Fatalf("load updated initiator: %v", err)
+	}
+	if updated.CHAPName != "" || updated.CHAPSecret != "" || updated.TgtCHAPName != "" || updated.TgtCHAPSecret != "" {
+		t.Fatalf("unused credentials were retained: %+v", updated)
 	}
 }

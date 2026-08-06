@@ -150,9 +150,15 @@
 		properties.edit.open = true;
 	}
 
-	function validateChapSecrets(): boolean {
+	function validateChapSecrets(existingAuthMethod?: string): boolean {
 		if (form.authMethod === 'CHAP' || form.authMethod === 'MutualCHAP') {
-			if (form.chapSecret.length < 12 || form.chapSecret.length > 16) {
+			const preservesExistingSecret =
+				form.chapSecret.length === 0 &&
+				(existingAuthMethod === 'CHAP' || existingAuthMethod === 'MutualCHAP');
+			if (
+				!preservesExistingSecret &&
+				(form.chapSecret.length < 12 || form.chapSecret.length > 16)
+			) {
 				toast.error('CHAP Secret must be 12-16 characters (RFC 3720)', {
 					position: 'bottom-center'
 				});
@@ -160,7 +166,12 @@
 			}
 		}
 		if (form.authMethod === 'MutualCHAP') {
-			if (form.mutualChapSecret.length < 12 || form.mutualChapSecret.length > 16) {
+			const preservesExistingMutualSecret =
+				form.mutualChapSecret.length === 0 && existingAuthMethod === 'MutualCHAP';
+			if (
+				!preservesExistingMutualSecret &&
+				(form.mutualChapSecret.length < 12 || form.mutualChapSecret.length > 16)
+			) {
 				toast.error('Mutual CHAP Secret must be 12-16 characters (RFC 3720)', {
 					position: 'bottom-center'
 				});
@@ -195,7 +206,7 @@
 
 	async function submitEdit() {
 		if (!activeTarget) return;
-		if (!validateChapSecrets()) return;
+		if (!validateChapSecrets(activeTarget.authMethod)) return;
 		loading = true;
 		const response = await updateTarget(
 			activeTarget.id,
@@ -251,8 +262,9 @@
 	}
 
 	async function submitRemovePortal(portalId: number) {
+		if (!activeTarget) return;
 		loading = true;
-		const response = await removePortal(portalId);
+		const response = await removePortal(activeTarget.id, portalId);
 		loading = false;
 		if (response.status === 'error') {
 			handleAPIError(response);
@@ -294,8 +306,9 @@
 	}
 
 	async function submitRemoveLUN(lunId: number) {
+		if (!activeTarget) return;
 		loading = true;
-		const response = await removeLUN(lunId);
+		const response = await removeLUN(activeTarget.id, lunId);
 		loading = false;
 		if (response.status === 'error') {
 			handleAPIError(response);

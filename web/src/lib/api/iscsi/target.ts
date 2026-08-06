@@ -44,8 +44,7 @@ export async function updateTarget(
     mutualChapName: string = '',
     mutualChapSecret: string = ''
 ): Promise<APIResponse> {
-    return await apiRequest('/iscsi/targets', APIResponseSchema, 'PUT', {
-        id,
+    return await apiRequest(`/iscsi/targets/${id}`, APIResponseSchema, 'PUT', {
         targetName,
         alias,
         authMethod,
@@ -71,8 +70,8 @@ export async function addPortal(
     });
 }
 
-export async function removePortal(portalId: number): Promise<APIResponse> {
-    return await apiRequest(`/iscsi/targets/portals/${portalId}`, APIResponseSchema, 'DELETE');
+export async function removePortal(targetId: number, portalId: number): Promise<APIResponse> {
+    return await apiRequest(`/iscsi/targets/${targetId}/portals/${portalId}`, APIResponseSchema, 'DELETE');
 }
 
 export async function addLUN(
@@ -86,6 +85,6 @@ export async function addLUN(
     });
 }
 
-export async function removeLUN(lunId: number): Promise<APIResponse> {
-    return await apiRequest(`/iscsi/targets/luns/${lunId}`, APIResponseSchema, 'DELETE');
+export async function removeLUN(targetId: number, lunId: number): Promise<APIResponse> {
+    return await apiRequest(`/iscsi/targets/${targetId}/luns/${lunId}`, APIResponseSchema, 'DELETE');
 }

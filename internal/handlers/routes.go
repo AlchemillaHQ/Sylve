@@ -313,24 +313,26 @@ func RegisterRoutes(r *gin.Engine,
 
 	iscsiGroup := api.Group("/iscsi")
 	iscsiGroup.Use(middleware.EnsureAuthenticated(authService))
+	iscsiGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	iscsiGroup.Use(EnsureCorrectHost(db, authService))
+	iscsiGroup.Use(middleware.LimitRequestBody(iscsi.MaxRequestBodyBytes))
 	iscsiGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		iscsiGroup.GET("/initiators", iscsiHandlers.GetInitiators(iscsiService))
 		iscsiGroup.POST("/initiators", iscsiHandlers.CreateInitiator(iscsiService))
-		iscsiGroup.PUT("/initiators", iscsiHandlers.UpdateInitiator(iscsiService))
+		iscsiGroup.PUT("/initiators/:id", iscsiHandlers.UpdateInitiator(iscsiService))
 		iscsiGroup.DELETE("/initiators/:id", iscsiHandlers.DeleteInitiator(iscsiService))
 		iscsiGroup.POST("/initiators/:id/connect", iscsiHandlers.ConnectInitiator(iscsiService))
 		iscsiGroup.GET("/status", iscsiHandlers.GetStatus(iscsiService))
 
 		iscsiGroup.GET("/targets", iscsiHandlers.GetTargets(iscsiService))
 		iscsiGroup.POST("/targets", iscsiHandlers.CreateTarget(iscsiService))
-		iscsiGroup.PUT("/targets", iscsiHandlers.UpdateTarget(iscsiService))
-		iscsiGroup.DELETE("/targets/:id", iscsiHandlers.DeleteTarget(iscsiService))
-		iscsiGroup.POST("/targets/:id/portals", iscsiHandlers.AddPortal(iscsiService))
-		iscsiGroup.DELETE("/targets/portals/:portalId", iscsiHandlers.RemovePortal(iscsiService))
-		iscsiGroup.POST("/targets/:id/luns", iscsiHandlers.AddLUN(iscsiService))
-		iscsiGroup.DELETE("/targets/luns/:lunId", iscsiHandlers.RemoveLUN(iscsiService))
+		iscsiGroup.PUT("/targets/:targetId", iscsiHandlers.UpdateTarget(iscsiService))
+		iscsiGroup.DELETE("/targets/:targetId", iscsiHandlers.DeleteTarget(iscsiService))
+		iscsiGroup.POST("/targets/:targetId/portals", iscsiHandlers.AddPortal(iscsiService))
+		iscsiGroup.DELETE("/targets/:targetId/portals/:portalId", iscsiHandlers.RemovePortal(iscsiService))
+		iscsiGroup.POST("/targets/:targetId/luns", iscsiHandlers.AddLUN(iscsiService))
+		iscsiGroup.DELETE("/targets/:targetId/luns/:lunId", iscsiHandlers.RemoveLUN(iscsiService))
 		iscsiGroup.GET("/target-sessions", iscsiHandlers.GetTargetSessions(iscsiService))
 	}
 
