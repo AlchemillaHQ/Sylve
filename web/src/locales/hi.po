@@ -6093,7 +6093,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -19203,8 +19203,9 @@ msgstr ""
 msgid "Tree Settings"
 msgstr ""
 
-#~ msgid "Legacy VM restor"
-#~ msgstr ""
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Legacy VM restor"
+msgstr ""
 
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Create separate VM and Jail branches."
@@ -19239,4 +19240,8 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Disables TX checksum, TSO, and LRO on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable offloads."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DELETE /api/info/notes"
 msgstr ""

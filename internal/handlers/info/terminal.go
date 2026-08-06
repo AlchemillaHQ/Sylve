@@ -266,6 +266,14 @@ func (sm *hostSessionManager) KillSession(sessionID string) {
 	}
 }
 
+// @Summary Open a host terminal WebSocket
+// @Description Upgrade the connection to an authenticated host terminal WebSocket
+// @Tags Info
+// @Param auth query string true "Hex-encoded WebSocket authentication payload"
+// @Success 101 {string} string "Switching Protocols"
+// @Failure 400 {string} string "WebSocket upgrade failed"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Router /info/terminal [get]
 func HandleHostTerminal(c *gin.Context) {
 	conn, err := hostTerminalWSUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

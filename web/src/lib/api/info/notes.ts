@@ -37,5 +37,8 @@ export const updateNote = async (
 };
 
 export const deleteNotes = async (ids: number[]): Promise<APIResponse> => {
-	return (await notesRequest('/info/notes/bulk-delete', 'POST', { ids })) as APIResponse;
+	const query = new URLSearchParams();
+	for (const id of ids) query.append('ids', String(id));
+
+	return (await notesRequest(`/info/notes?${query.toString()}`, 'DELETE')) as APIResponse;
 };

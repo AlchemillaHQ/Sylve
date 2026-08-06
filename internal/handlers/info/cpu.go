@@ -23,10 +23,10 @@ import (
 
 // @Summary Get Current CPU information
 // @Description Retrieves real-time CPU info
-// @Tags system
-// @Accept json
+// @Tags Info
 // @Produce json
-// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.CPUInfo]
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.CPUInfo] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/cpu [get]
 func RealTimeCPUInfoHandler(infoService *info.Service) gin.HandlerFunc {
@@ -54,10 +54,10 @@ func RealTimeCPUInfoHandler(infoService *info.Service) gin.HandlerFunc {
 
 // @Summary Get Historical CPU information
 // @Description Retrieves historical CPU info
-// @Tags system
-// @Accept json
+// @Tags Info
 // @Produce json
-// @Success 200 {object} internal.APIResponse[[]infoModels.CPU]
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]infoModels.CPU] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/cpu/historical [get]
 func HistoricalCPUInfoHandler(infoService *info.Service) gin.HandlerFunc {

@@ -22,7 +22,6 @@ import (
 // @Summary Get RAM Info
 // @Description Get the RAM information about the system
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[infoServiceInterfaces.RAMInfo] "Success"
@@ -51,19 +50,12 @@ func RAMInfo(infoService *info.Service) gin.HandlerFunc {
 	}
 }
 
-type HistoricalRamInfoResponse struct {
-	Status  string           `json:"status"`
-	Message string           `json:"message"`
-	Error   string           `json:"error"`
-	Data    []infoModels.RAM `json:"data"`
-}
-
 // @Summary Get Historical RAM information
 // @Description Retrieves historical RAM info
-// @Tags system
-// @Accept json
+// @Tags Info
 // @Produce json
-// @Success 200 {object} HistoricalRamInfoResponse
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]infoModels.RAM] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/ram/historical [get]
 func HistoricalRAMInfoHandler(infoService *info.Service) gin.HandlerFunc {
@@ -91,7 +83,6 @@ func HistoricalRAMInfoHandler(infoService *info.Service) gin.HandlerFunc {
 // @Summary Get Swap Info
 // @Description Get the Swap information about the system
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[infoServiceInterfaces.SwapInfo] "Success"
@@ -122,10 +113,10 @@ func SwapInfo(infoService *info.Service) gin.HandlerFunc {
 
 // @Summary Get Historical Swap information
 // @Description Retrieves historical Swap info
-// @Tags system
-// @Accept json
+// @Tags Info
 // @Produce json
-// @Success 200 {object} internal.APIResponse[[]infoModels.Swap]
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]infoModels.Swap] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/swap/historical [get]
 func HistoricalSwapInfoHandler(infoService *info.Service) gin.HandlerFunc {

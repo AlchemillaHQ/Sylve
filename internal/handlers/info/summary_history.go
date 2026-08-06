@@ -22,10 +22,11 @@ import (
 
 // @Summary Get node summary chart history
 // @Description Retrieves the complete CPU, RAM, and network history used by the node summary page
-// @Tags system
+// @Tags Info
 // @Produce json
-// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.SummaryHistory]
-// @Failure 500 {object} internal.APIResponse[any]
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.SummaryHistory] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/summary/history [get]
 func SummaryHistoryHandler(infoService *info.Service) gin.HandlerFunc {
 	return summaryHistoryHandler(infoService, false)
@@ -33,14 +34,15 @@ func SummaryHistoryHandler(infoService *info.Service) gin.HandlerFunc {
 
 // @Summary Get node summary chart history deltas
 // @Description Retrieves CPU, RAM, and network rows newer than the supplied per-series cursors
-// @Tags system
+// @Tags Info
 // @Produce json
-// @Param cpuAfter query int true "Last received CPU row ID"
-// @Param ramAfter query int true "Last received RAM row ID"
-// @Param networkAfter query int true "Last received network row ID"
-// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.SummaryHistory]
-// @Failure 400 {object} internal.APIResponse[any]
-// @Failure 500 {object} internal.APIResponse[any]
+// @Security BearerAuth
+// @Param cpuAfter query int true "Last received CPU row ID" minimum(0)
+// @Param ramAfter query int true "Last received RAM row ID" minimum(0)
+// @Param networkAfter query int true "Last received network row ID" minimum(0)
+// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.SummaryHistory] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/summary/history/delta [get]
 func SummaryHistoryDeltaHandler(infoService *info.Service) gin.HandlerFunc {
 	return summaryHistoryHandler(infoService, true)

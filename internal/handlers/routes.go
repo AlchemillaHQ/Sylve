@@ -155,9 +155,9 @@ func RegisterRoutes(r *gin.Engine,
 		{
 			notes.GET("", infoHandlers.NotesHandler(infoService))
 			notes.POST("", infoHandlers.NotesHandler(infoService))
+			notes.DELETE("", infoHandlers.NotesHandler(infoService))
 			notes.DELETE("/:id", infoHandlers.NotesHandler(infoService))
 			notes.PUT("/:id", infoHandlers.NotesHandler(infoService))
-			notes.POST("/bulk-delete", infoHandlers.NotesHandler(infoService))
 		}
 
 		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))

@@ -25,7 +25,7 @@ import (
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]clusterModels.ClusterNote] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes [get]
+// @Router /cluster/notes [get]
 func Notes(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		notes, err := cS.ListNotes()
@@ -54,11 +54,11 @@ func Notes(cS *cluster.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body NoteRequest true "Create Note Request"
+// @Param request body internal.NoteRequest true "Create Note Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes [post]
+// @Router /cluster/notes [post]
 func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -104,11 +104,11 @@ func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Note ID"
-// @Param request body NoteRequest true "Update Note Request"
+// @Param request body internal.NoteRequest true "Update Note Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/{id} [put]
+// @Router /cluster/notes/{id} [put]
 func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -168,7 +168,7 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/{id} [delete]
+// @Router /cluster/notes/{id} [delete]
 func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := utils.GetIdFromParam(c)
@@ -233,11 +233,11 @@ func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body BulkDeleteRequest true "Bulk Delete Notes Request"
+// @Param request body internal.BulkDeleteRequest true "Bulk Delete Notes Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/bulk-delete [post]
+// @Router /cluster/notes/bulk-delete [post]
 func BulkDeleteNotes(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {

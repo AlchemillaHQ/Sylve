@@ -170,7 +170,6 @@
 		'/api/auth/passkeys/register/finish': 'Passkey - Register - Finish',
 		'/api/auth/passkeys/users': 'Passkey',
 		'/api/auth/login': 'Login',
-		'/api/info/notes/bulk-delete': 'Notes - Bulk Delete',
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
@@ -347,6 +346,7 @@
 	});
 
 	const methodPathToActionMap: Record<string, string> = {
+		'DELETE /api/info/notes': 'Notes - Bulk Delete',
 		'POST /api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
 		'PUT /api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
 		'DELETE /api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
