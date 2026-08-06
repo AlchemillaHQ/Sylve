@@ -216,7 +216,7 @@ func TestSyncNetworkRendersCarpAliasLine(t *testing.T) {
 	}
 
 	ctidHash := svc.GetCTIDHash(ctid)
-	wantLine := fmt.Sprintf(`ifconfig_%s_net7b_alias0="vhid 12 pass s3cr3t advskew 20 inet alias 10.50.0.100 netmask 255.255.255.0"`, ctidHash)
+	wantLine := fmt.Sprintf(`ifconfig_%s_net7b_alias0="vhid 12 pass s3cr3t advskew 20 alias 10.50.0.100 netmask 255.255.255.0"`, ctidHash)
 	if !strings.Contains(string(gotRCConf), wantLine) {
 		t.Fatalf("rc.conf missing expected CARP alias line, got:\n%s\nwant substring:\n%s", gotRCConf, wantLine)
 	}

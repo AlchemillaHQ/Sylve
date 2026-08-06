@@ -865,7 +865,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 						rcConfLines = append(rcConfLines, fmt.Sprintf(
 
 							// RC script was complaning of INET missing. to double check and remove comment.
-							"ifconfig_%s_%sb_alias0=\"vhid %d pass %s advskew %d inet alias %s netmask %s\"",
+							"ifconfig_%s_%sb_alias0=\"vhid %d pass %s advskew %d alias %s netmask %s\"",
 							ctidHash, networkId, vhid, n.CARPPassword, advskew, carpIP, carpMask,
 						))
 					}
@@ -1266,7 +1266,7 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 			}
 
 			// Check with Hayzam for name.
-			
+
 			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-CARP-IPv4", jail.Name, dbSwName))
 			carpIPv4Obj := networkModels.Object{Name: name, Type: "Network"}
 			if err := s.DB.Create(&carpIPv4Obj).Error; err != nil {

@@ -1432,7 +1432,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 					advskew = *network.CARPAdvSkew
 				}
 
-				lineCarp := fmt.Sprintf("%s_alias0=\"vhid %d pass %s advskew %d inet alias %s netmask %s\"\n",
+				lineCarp := fmt.Sprintf("%s_alias0=\"vhid %d pass %s advskew %d alias %s netmask %s\"\n",
 					ifName, vhid, network.CARPPassword, advskew, carpIP, carpMask)
 				if !strings.Contains(existing, lineCarp) {
 					rcToAppend.WriteString(lineCarp)
