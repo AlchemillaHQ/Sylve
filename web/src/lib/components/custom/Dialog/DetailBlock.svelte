@@ -34,19 +34,19 @@
 	}
 </script>
 
-<section class="overflow-hidden rounded-lg border {className}">
-	<div class="bg-muted/50 flex items-center justify-between gap-3 border-b px-3 py-2">
-		<h3 class="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{label}</h3>
+<section class="overflow-hidden rounded-md border {className}">
+	<div class="bg-muted/50 flex items-center justify-between gap-3 border-b px-2.5 py-1.5">
+		<h3 class="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">{label}</h3>
 		<button
 			type="button"
-			class="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+			class="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
 			onclick={copyValue}
 		>
-			<span class="icon-[mdi--content-copy] h-3.5 w-3.5"></span>
+			<span class="icon-[mdi--content-copy] h-3 w-3"></span>
 			Copy
 		</button>
 	</div>
 	<pre
-		class="bg-muted/15 max-h-72 overflow-auto p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all focus-visible:outline-none">{text}</pre
+		class="bg-muted/15 max-h-48 overflow-auto p-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all focus-visible:outline-none">{text}</pre
 	>
 </section>
