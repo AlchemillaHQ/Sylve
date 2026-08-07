@@ -1,22 +1,26 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { SwitchListSchema, type SwitchList } from '$lib/types/network/switch';
 import { apiRequest } from '$lib/utils/http';
+import z from 'zod/v4';
 
 export async function getSwitches(hostname?: string): Promise<SwitchList> {
 	return await apiRequest('/network/switch', SwitchListSchema, 'GET', undefined, { hostname });
 }
 
-export async function createManualSwitch(name: string, bridge: string): Promise<APIResponse> {
+export async function createManualSwitch(
+	name: string,
+	bridge: string
+): Promise<number | APIResponse> {
 	const body = {
 		name,
 		bridge
 	};
 
-	return await apiRequest('/network/manual-switch', APIResponseSchema, 'POST', body);
+	return await apiRequest('/network/switch/manual', z.number().int().positive(), 'POST', body);
 }
 
 export async function deleteManualSwitch(id: number): Promise<APIResponse> {
-	return await apiRequest(`/network/manual-switch/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequest(`/network/switch/manual/${id}`, APIResponseSchema, 'DELETE');
 }
 
 export type SwitchManualAddresses = {

@@ -243,7 +243,7 @@
 		'/api/vm/options/tpm': 'VM Options - TPM',
 		'/api/vm/migrate': 'VM - Migrate',
 		'/api/vm': 'VM',
-		'/api/network/manual-switch': 'Manual Switch',
+		'/api/network/switch/manual': 'Manual Switch',
 		'/api/zfs/pools': 'ZFS Pool',
 		'/api/zfs/pools/:id/scrub': 'ZFS Pool - Scrub',
 		'/api/zfs/pools/:id/replace-device': 'ZFS Pool - Replace Device',

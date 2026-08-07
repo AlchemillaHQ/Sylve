@@ -110,6 +110,24 @@
 			modals.deleteSwitch.id = activeRow.id as number;
 		}
 	}
+
+	function deleteErrorMessage(error: APIResponse['error']): string {
+		if (typeof error !== 'string') return 'Error deleting switch';
+		switch (error) {
+			case 'manual_switch_in_use_by_vm':
+				return 'Switch is in use by a VM';
+			case 'manual_switch_in_use_by_jail':
+				return 'Switch is in use by a jail';
+			case 'manual_switch_in_use_by_dhcp_config':
+				return 'Switch is enabled in the DHCP configuration';
+			case 'manual_switch_in_use_by_dhcp_range':
+				return 'Switch is in use by a DHCP range';
+			case 'manual_switch_not_found':
+				return 'Switch no longer exists';
+			default:
+				return 'Error deleting switch';
+		}
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -154,21 +172,16 @@
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteManualSwitch(modals.deleteSwitch.id);
-			reload = true;
-			if (isAPIResponse(result) && result.status === 'success') {
-				toast.success(`Switch ${modals.deleteSwitch.name} deleted`, {
-					position: 'bottom-center'
-				});
-			} else {
-				if (result && result.error) {
-					if (result.error === 'switch_in_use_by_vm') {
-						toast.error('Switch is in use by a VM', { position: 'bottom-center' });
-					} else {
-						toast.error('Error deleting switch', { position: 'bottom-center' });
-					}
-				}
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error(deleteErrorMessage(result.error), { position: 'bottom-center' });
+				return;
 			}
 
+			toast.success(`Switch ${modals.deleteSwitch.name} deleted`, {
+				position: 'bottom-center'
+			});
+			reload = true;
 			modals.deleteSwitch.open = false;
 			modals.deleteSwitch.name = '';
 			modals.deleteSwitch.id = 0;

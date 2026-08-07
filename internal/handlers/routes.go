@@ -442,8 +442,12 @@ func RegisterRoutes(r *gin.Engine,
 
 		network.GET("/interface", networkHandlers.ListInterfaces())
 
-		network.POST("/manual-switch", networkHandlers.CreateManualSwitch(networkService))
-		network.DELETE("/manual-switch/:id", networkHandlers.DeleteManualSwitch(networkService))
+		manualSwitches := network.Group("/switch/manual")
+		manualSwitches.Use(middleware.RequireLocalAdmin(authService))
+		{
+			manualSwitches.POST("", networkHandlers.CreateManualSwitch(networkService))
+			manualSwitches.DELETE("/:id", networkHandlers.DeleteManualSwitch(networkService))
+		}
 
 		network.GET("/switch", networkHandlers.ListSwitches(networkService))
 		network.POST("/switch/standard", networkHandlers.CreateStandardSwitch(networkService))
