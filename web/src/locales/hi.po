@@ -1004,7 +1004,6 @@ msgid "Delete"
 msgstr "हटाएं"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -1189,6 +1188,7 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -4758,6 +4758,7 @@ msgstr "डिफ़ॉल्ट नियमसेट के लिए खा�
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -6085,7 +6086,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6802,6 +6803,7 @@ msgstr "क्लीन स्लेट"
 msgid "Optional note about why this snapshot was taken"
 msgstr "यह स्नैपशॉट क्यों लिया गया था, इसके बारे में वैकल्पिक नोट"
 
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -7029,6 +7031,8 @@ msgid "Switch is in use by a VM"
 msgstr "स्विच किसी VM द्वारा उपयोग में है"
 
 #: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Error deleting switch"
 msgstr "स्विच हटाने में त्रुटि"
@@ -7141,7 +7145,7 @@ msgstr "अमान्य VLAN"
 msgid "There is already a switch with a default route"
 msgstr "डिफ़ॉल्ट रूट के साथ पहले से ही एक स्विच मौजूद है"
 
-#. 0: confirmModals.newSwitch.name
+#. 0: normalizedName
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} created"
 msgstr "स्विच {0} बनाया गया"
@@ -7989,9 +7993,8 @@ msgstr "पहचानकर्ता आवश्यक है"
 msgid "IP Address is required"
 msgstr "आईपी एड्रेस आवश्यक है"
 
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Invalid selection"
-msgstr "अमान्य चयन"
+#~ msgid "Invalid selection"
+#~ msgstr "अमान्य चयन"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Identifier must be a MAC for IPv4 ranges"
@@ -8017,13 +8020,11 @@ msgstr "लीज़ बनाने में विफल"
 msgid "Lease created"
 msgstr "लीज़ बनाई गई"
 
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Failed to edit lease"
-msgstr "लीज़ को संपादित करने में विफल"
+#~ msgid "Failed to edit lease"
+#~ msgstr "लीज़ को संपादित करने में विफल"
 
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Lease edited"
-msgstr "लीज़ संपादित की गई"
+#~ msgid "Lease edited"
+#~ msgstr "लीज़ संपादित की गई"
 
 #~ msgid "{0} DHCP Lease"
 #~ msgstr "{0} DHCP लीज़"
@@ -8054,40 +8055,27 @@ msgid "IP Type is required"
 msgstr "IP प्रकार आवश्यक है"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "No switch selected"
 msgstr "कोई स्विच नहीं चुना गया"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Failed to find interface for selected switch"
 msgstr "चयनित स्विच के लिए इंटरफ़ेस खोजने में विफल"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "IP Range not in switch subnet"
-msgstr "IP श्रेणी स्विच सबनेट में नहीं है"
+#~ msgid "IP Range not in switch subnet"
+#~ msgstr "IP श्रेणी स्विच सबनेट में नहीं है"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Selected interface has no IPv4 address"
 msgstr "चयनित इंटरफ़ेस में कोई IPv4 पता नहीं है"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Selected interface has no usable IPv6 address"
 msgstr "चयनित इंटरफ़ेस में कोई उपयोग योग्य IPv6 पता नहीं है"
 
-#. 0: ipv6.ip; 1: ipv6.prefixLength
-#. 0: ipv6.ip; 1: ipv6.prefixLength
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "IP Range not in switch subnet ({0}/{1})"
-msgstr "IP श्रेणी स्विच सबनेट ({0}/{1}) में नहीं है"
+#~ msgid "IP Range not in switch subnet ({0}/{1})"
+#~ msgstr "IP श्रेणी स्विच सबनेट ({0}/{1}) में नहीं है"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Expiry is required"
 msgstr "समाप्ति आवश्यक है"
@@ -8100,9 +8088,8 @@ msgstr "DHCP श्रेणी बनाने में त्रुटि"
 msgid "Created DHCP range"
 msgstr "DHCP श्रेणी बनाई गई"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "No DHCP range selected"
-msgstr "कोई DHCP श्रेणी नहीं चुनी गई"
+#~ msgid "No DHCP range selected"
+#~ msgstr "कोई DHCP श्रेणी नहीं चुनी गई"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Error updating DHCP range"
@@ -8134,6 +8121,7 @@ msgstr "केवल RA"
 msgid "Invalid name"
 msgstr "अमान्य नाम"
 
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Failed to create manual switch"
 msgstr "मैन्युअल स्विच बनाने में विफल"
@@ -9854,7 +9842,7 @@ msgstr ""
 msgid "Create VM - {0}"
 msgstr ""
 
-#. 0: modals.delete.type; 1: activeRow?.hostname || activeRow?.ip || ''
+#. 0: modals.delete.type; 1: escapeHTML(modals.delete.display)
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "This action cannot be undone. This will permanently delete {0} DHCP lease for <b>{1}</b>"
 msgstr ""
@@ -10070,6 +10058,8 @@ msgstr ""
 #~ msgid "VM name"
 #~ msgstr ""
 
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -10142,9 +10132,8 @@ msgstr ""
 msgid "At least one CPU must be left unpinned"
 msgstr ""
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "Invalid expiry format, resetting to 12h"
-msgstr ""
+#~ msgid "Invalid expiry format, resetting to 12h"
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Failed to import storage"
@@ -13745,6 +13734,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Saving…"
 msgstr ""
@@ -13752,6 +13742,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Creating…"
 msgstr ""
@@ -19579,4 +19570,130 @@ msgstr ""
 
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 msgid "Invalid pre-shared key - must be a valid 32-byte base64-encoded WireGuard key"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Switches"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Delete Static"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Update"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Comments must be 4096 characters or fewer"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Selected objects must contain exactly one value"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Failed to save lease"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Lease saved"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "IP range is invalid or is not in the switch subnet"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Both IPv6 range addresses must be set, or both left empty"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Invalid expiry format"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Expiry is outside the supported range"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "A maximum of 16 DNS servers is allowed"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Invalid switch selection"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "A maximum of 256 switches is allowed"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is in use by a jail"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is enabled in the DHCP configuration"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is in use by a DHCP range"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is referenced by a static route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is referenced by a firewall rule"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by Dynamic DNS"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by mDNS"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by Samba"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by WireGuard"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch still contains an unmanaged interface"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch no longer exists"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "<0/> Saving…"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "<0/> Creating…"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Select a bridge"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "<0/> Creating..."
 msgstr ""

@@ -293,7 +293,6 @@
 		'/api/network/firewall/nat': 'Firewall NAT Rule',
 		'/api/network/firewall/advanced': 'Firewall - Advanced Rules',
 		'/api/network/route': 'Static Route',
-		'/api/network/wireguard/server/toggle': 'WireGuard Server - Toggle (Legacy)',
 		'/api/network/wireguard/server/peer': 'WireGuard Peer',
 		'/api/network/wireguard/server': 'WireGuard Server',
 		'/api/network/wireguard/clients': 'WireGuard - Client',
@@ -342,6 +341,11 @@
 			'/api/info/notes': 'Notes - Bulk Delete',
 			'/api/zfs/datasets': 'ZFS Dataset - Delete',
 			'/api/network/object': 'Network Object - Bulk Delete',
+			'/api/network/object/:id': 'Network Object - Delete',
+			'/api/network/route/:id': 'Static Route - Delete',
+			'/api/network/switch/manual/:id': 'Manual Switch - Delete',
+			'/api/network/switch/standard/:id': 'Standard Switch - Delete',
+			'/api/network/dhcp/range/:id': 'DHCP Range - Delete',
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
 			'/api/certificates/:id': 'TLS Certificate - Delete',
 			'/api/certificates/:id/activate': 'TLS Certificate - Cancel Pending Activation',
@@ -359,6 +363,11 @@
 		POST: {
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
 			'/api/zfs/datasets/volume/:id/flash': 'ZFS Volume - Flash',
+			'/api/network/object': 'Network Object - Create',
+			'/api/network/route': 'Static Route - Create',
+			'/api/network/switch/manual': 'Manual Switch - Create',
+			'/api/network/switch/standard': 'Standard Switch - Create',
+			'/api/network/dhcp/range': 'DHCP Range - Create',
 			'/api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
 			'/api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
 			'/api/certificates': 'TLS Certificate - Create',
@@ -378,6 +387,11 @@
 			'/api/network/dhcp/lease': 'DHCP Lease - Create'
 		},
 		PUT: {
+			'/api/network/object/:id': 'Network Object - Update',
+			'/api/network/route/:id': 'Static Route - Update',
+			'/api/network/switch/standard/:id': 'Standard Switch - Update',
+			'/api/network/dhcp/config': 'DHCP Config - Update',
+			'/api/network/dhcp/range/:id': 'DHCP Range - Update',
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update',
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Update',
@@ -439,6 +453,16 @@
 		return segments.map((segment) => (/^\d+$/.test(segment) ? ':id' : segment)).join('/');
 	}
 
+	function itemIDFromActionPath(path: string, normalizedPath: string): number | string | undefined {
+		if (!normalizedPath.endsWith('/:id')) return undefined;
+
+		const segment = path.split('/').filter(Boolean).at(-1);
+		if (!segment || !/^\d+$/.test(segment)) return undefined;
+
+		const numericID = Number(segment);
+		return Number.isSafeInteger(numericID) ? numericID : segment;
+	}
+
 	let records = $derived.by(() => {
 		if (!auditRecords.current) return [];
 
@@ -481,15 +505,19 @@
 							break;
 						case 'DELETE':
 							resolvedAction = `${label} - Delete`;
-							recordCopy.action.body = {
-								id: record.id
-							};
 							break;
 						default:
 							resolvedAction = label;
 					}
 				} else {
 					resolvedAction = label;
+				}
+			}
+
+			if (method.toUpperCase() === 'DELETE') {
+				const itemID = itemIDFromActionPath(path, normalizedPath);
+				if (itemID !== undefined) {
+					recordCopy.action.body = { id: itemID };
 				}
 			}
 

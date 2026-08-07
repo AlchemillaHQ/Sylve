@@ -264,7 +264,17 @@ func TestNetworkObjectRoutesUseWriteAuthorizationAndPreLoggerBodyLimit(t *testin
 	}
 	limitIndex := strings.Index(string(routesSource), "network.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))")
 	loggerIndex := strings.Index(string(routesSource), "network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
+	correctHostIndex := strings.Index(string(routesSource), "network.Use(EnsureCorrectHost(db, authService))")
+	if correctHostIndex < 0 || limitIndex < 0 || correctHostIndex > limitIndex {
+		t.Error("selected-node proxy middleware must run before local network body processing")
+	}
 	if limitIndex < 0 || loggerIndex < 0 || limitIndex > loggerIndex {
 		t.Error("network request-body limit must be installed before request logging")
+	}
+
+	diskLimitIndex := strings.Index(string(routesSource), "disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))")
+	diskLoggerIndex := strings.Index(string(routesSource), "disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
+	if diskLimitIndex < 0 || diskLoggerIndex < 0 || diskLimitIndex > diskLoggerIndex {
+		t.Error("disk request-body limit must be installed before request logging")
 	}
 }

@@ -163,6 +163,7 @@ func writeFirewallNATRuleError(c *gin.Context, message string, fallbackCode stri
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkModels.FirewallTrafficRule] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/firewall/traffic [get]
@@ -194,6 +195,7 @@ func ListFirewallTrafficRules(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkServiceInterfaces.FirewallTrafficRuleCounter] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/firewall/traffic/counters [get]
@@ -226,6 +228,7 @@ func ListFirewallTrafficRuleCounters(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body networkServiceInterfaces.UpsertFirewallTrafficRuleRequest true "Create Firewall Traffic Rule Request"
 // @Success 201 {object} internal.APIResponse[uint] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -261,6 +264,7 @@ func CreateFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Traffic Rule ID" minimum(1)
 // @Param request body networkServiceInterfaces.UpsertFirewallTrafficRuleRequest true "Update Firewall Traffic Rule Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
@@ -302,6 +306,7 @@ func EditFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Traffic Rule ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -337,6 +342,7 @@ func DeleteFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body []networkServiceInterfaces.FirewallReorderRequest true "Complete Traffic Rule Reorder Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -372,6 +378,7 @@ func ReorderFirewallTrafficRules(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkModels.FirewallNATRule] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/firewall/nat [get]
@@ -403,6 +410,7 @@ func ListFirewallNATRules(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkServiceInterfaces.FirewallNATRuleCounter] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/firewall/nat/counters [get]
@@ -452,6 +460,7 @@ func isFirewallLiveHitAction(action string) bool {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param cursor query int false "Return hits after this cursor; 0 initializes the live stream" minimum(0) default(0)
 // @Param limit query int false "Maximum hits to return; values above 2000 are capped" minimum(1) maximum(2000) default(200)
 // @Param ruleType query string false "Rule type" Enums(traffic,nat)
@@ -550,6 +559,7 @@ func ListFirewallLiveHits(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body networkServiceInterfaces.UpsertFirewallNATRuleRequest true "Create Firewall NAT Rule Request"
 // @Success 201 {object} internal.APIResponse[uint] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -585,6 +595,7 @@ func CreateFirewallNATRule(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "NAT Rule ID" minimum(1)
 // @Param request body networkServiceInterfaces.UpsertFirewallNATRuleRequest true "Update Firewall NAT Rule Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
@@ -626,6 +637,7 @@ func EditFirewallNATRule(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "NAT Rule ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -661,6 +673,7 @@ func DeleteFirewallNATRule(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body []networkServiceInterfaces.FirewallReorderRequest true "Complete NAT Rule Reorder Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -744,6 +757,7 @@ func writeFirewallAdvancedError(c *gin.Context, message string, fallbackCode str
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[networkModels.FirewallAdvancedSettings] "Success"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
@@ -777,6 +791,7 @@ func GetFirewallAdvancedSettings(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body networkServiceInterfaces.FirewallAdvancedRequest true "Firewall Advanced Settings Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -811,6 +826,7 @@ func UpdateFirewallAdvancedSettings(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body networkServiceInterfaces.FirewallAdvancedRequest true "Firewall Advanced Settings Preview Request"
 // @Success 200 {object} internal.APIResponse[networkServiceInterfaces.RenderedConfigResponse] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -845,6 +861,7 @@ func PreviewRenderedConfig(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[networkServiceInterfaces.RenderedConfigResponse] "Success"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"

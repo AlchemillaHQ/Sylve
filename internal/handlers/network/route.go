@@ -91,6 +91,7 @@ func writeStaticRouteError(c *gin.Context, message string, err error) {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkModels.StaticRoute] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/route [get]
@@ -123,6 +124,7 @@ func ListStaticRoutes(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body networkServiceInterfaces.UpsertStaticRouteRequest true "Static Route Request"
 // @Success 201 {object} internal.APIResponse[uint] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -159,6 +161,7 @@ func CreateStaticRoute(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Static Route ID"
 // @Param request body networkServiceInterfaces.UpsertStaticRouteRequest true "Static Route Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
@@ -200,6 +203,7 @@ func EditStaticRoute(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Static Route ID"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -233,6 +237,7 @@ func DeleteStaticRoute(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Firewall NAT Rule ID"
 // @Success 200 {object} internal.APIResponse[[]networkServiceInterfaces.StaticRouteSuggestion] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"

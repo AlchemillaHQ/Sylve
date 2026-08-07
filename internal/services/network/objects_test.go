@@ -13,14 +13,39 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"gorm.io/gorm"
 )
+
+func newDHCPObjectEditServiceForTest(t *testing.T) (*Service, *gorm.DB) {
+	t.Helper()
+	return newNetworkServiceForTest(t,
+		&models.BasicSettings{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&networkModels.ManualSwitch{},
+		&networkModels.DHCPConfig{},
+		&networkModels.DHCPRange{},
+		&networkModels.DHCPStaticLease{},
+		&networkModels.FirewallAdvancedSettings{},
+		&networkModels.FirewallTrafficRule{},
+		&networkModels.FirewallNATRule{},
+		&vmModels.Network{},
+		&jailModels.Network{},
+	)
+}
 
 func TestEditObject_UsedFirewallListUpdatesEntriesAndResolutions(t *testing.T) {
 	svc, db := newNetworkServiceForTest(t,
@@ -469,6 +494,266 @@ func TestGetObjects_UsageLabelingPrefersDHCPForMacAndKeepsHostLegacyOwnerEmpty(t
 	}
 	if hostLoaded.IsUsedBy != "" {
 		t.Fatalf("expected host object owner to remain empty for ip-object dhcp usage, got %q", hostLoaded.IsUsedBy)
+	}
+}
+
+func TestDUIDObjectReferencedByDHCPIsMarkedUsedAndProtectedFromDeletion(t *testing.T) {
+	svc, db := newDHCPObjectEditServiceForTest(t)
+
+	ipObject := createDHCPLeaseObject(t, db, "ipv6-host", "Host", "2001:db8::20")
+	duidObject := createDHCPLeaseObject(t, db, "client-duid", "DUID", testDHCPDUID)
+	dhcpRange := networkModels.DHCPRange{
+		Type:    "ipv6",
+		StartIP: "2001:db8::10",
+		EndIP:   "2001:db8::100",
+	}
+	if err := db.Create(&dhcpRange).Error; err != nil {
+		t.Fatalf("seed IPv6 DHCP range: %v", err)
+	}
+	lease := networkModels.DHCPStaticLease{
+		Hostname:     "client-v6",
+		IPObjectID:   &ipObject.ID,
+		DUIDObjectID: &duidObject.ID,
+		DHCPRangeID:  dhcpRange.ID,
+	}
+	if err := db.Create(&lease).Error; err != nil {
+		t.Fatalf("seed IPv6 DHCP lease: %v", err)
+	}
+
+	objects, err := svc.GetObjects()
+	if err != nil {
+		t.Fatalf("list network objects: %v", err)
+	}
+	var loaded *networkModels.Object
+	for i := range objects {
+		if objects[i].ID == duidObject.ID {
+			loaded = &objects[i]
+			break
+		}
+	}
+	if loaded == nil || !loaded.IsUsed || loaded.IsUsedBy != "dhcp" {
+		t.Fatalf("DUID DHCP usage was not reported correctly: %#v", loaded)
+	}
+
+	err = svc.DeleteObject(duidObject.ID)
+	if !errors.Is(err, ErrNetworkObjectConflict) || NetworkObjectErrorCode(err) != "network_object_in_use" {
+		t.Fatalf("expected DUID deletion to be blocked as in-use, got %v", err)
+	}
+	var count int64
+	if err := db.Model(&networkModels.Object{}).Where("id = ?", duidObject.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count protected DUID object: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("protected DUID object was deleted, count=%d", count)
+	}
+}
+
+func TestEditDHCPReferencedObjectsAppliesUpdatedDNSMasqConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		objectType     string
+		oldValue       string
+		newValue       string
+		expectedConfig string
+	}{
+		{
+			name:           "host",
+			objectType:     "Host",
+			oldValue:       "192.0.2.20",
+			newValue:       "192.0.2.21",
+			expectedConfig: "dhcp-host=" + testDHCPMAC + ",192.0.2.21,client-v4,infinite",
+		},
+		{
+			name:           "mac",
+			objectType:     "Mac",
+			oldValue:       testDHCPMAC,
+			newValue:       "02:00:00:00:00:02",
+			expectedConfig: "dhcp-host=02:00:00:00:00:02,192.0.2.20,client-v4,infinite",
+		},
+		{
+			name:           "duid",
+			objectType:     "DUID",
+			oldValue:       testDHCPDUID,
+			newValue:       "00:01:00:01:2a:bc:de:f1",
+			expectedConfig: "dhcp-host=id:00:01:00:01:2a:bc:de:f1,[2001:db8::20],client-v6,infinite",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db := newDHCPObjectEditServiceForTest(t)
+			seedDHCPConfig(t, db, "lan", nil, true)
+
+			target := createDHCPLeaseObject(t, db, test.name+"-target", test.objectType, test.oldValue)
+			var lease networkModels.DHCPStaticLease
+			if test.objectType == "DUID" {
+				ipObject := createDHCPLeaseObject(t, db, "ipv6-host", "Host", "2001:db8::20")
+				dhcpRange := networkModels.DHCPRange{Type: "ipv6", StartIP: "2001:db8::10", EndIP: "2001:db8::100"}
+				if err := db.Create(&dhcpRange).Error; err != nil {
+					t.Fatalf("seed IPv6 range: %v", err)
+				}
+				lease = networkModels.DHCPStaticLease{
+					Hostname:     "client-v6",
+					IPObjectID:   &ipObject.ID,
+					DUIDObjectID: &target.ID,
+					DHCPRangeID:  dhcpRange.ID,
+				}
+			} else {
+				hostObject := target
+				macObject := target
+				if test.objectType != "Host" {
+					hostObject = createDHCPLeaseObject(t, db, "ipv4-host", "Host", "192.0.2.20")
+				}
+				if test.objectType != "Mac" {
+					macObject = createDHCPLeaseObject(t, db, "client-mac", "Mac", testDHCPMAC)
+				}
+				dhcpRange := networkModels.DHCPRange{Type: "ipv4", StartIP: "192.0.2.10", EndIP: "192.0.2.100"}
+				if err := db.Create(&dhcpRange).Error; err != nil {
+					t.Fatalf("seed IPv4 range: %v", err)
+				}
+				lease = networkModels.DHCPStaticLease{
+					Hostname:    "client-v4",
+					IPObjectID:  &hostObject.ID,
+					MACObjectID: &macObject.ID,
+					DHCPRangeID: dhcpRange.ID,
+				}
+			}
+			if err := db.Create(&lease).Error; err != nil {
+				t.Fatalf("seed DHCP lease: %v", err)
+			}
+
+			restartCalls := 0
+			configPath := configureDHCPRuntimeForTest(t, svc, "old config\n", func() error {
+				restartCalls++
+				return nil
+			})
+			if err := svc.EditObject(target.ID, target.Name, target.Type, []string{test.newValue}); err != nil {
+				t.Fatalf("edit DHCP-referenced %s object: %v", test.objectType, err)
+			}
+			if restartCalls != 1 {
+				t.Fatalf("dnsmasq restart calls=%d want=1", restartCalls)
+			}
+			config, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatalf("read rendered DHCP config: %v", err)
+			}
+			if !strings.Contains(string(config), test.expectedConfig) {
+				t.Fatalf("updated DHCP config does not contain %q:\n%s", test.expectedConfig, config)
+			}
+		})
+	}
+}
+
+func TestEditDHCPReferencedObjectRollsBackOnRestartFailure(t *testing.T) {
+	svc, db := newDHCPObjectEditServiceForTest(t)
+	seedDHCPConfig(t, db, "lan", nil, true)
+	hostObject := createDHCPLeaseObject(t, db, "ipv4-host", "Host", "192.0.2.20")
+	macObject := createDHCPLeaseObject(t, db, "client-mac", "Mac", testDHCPMAC)
+	dhcpRange := networkModels.DHCPRange{Type: "ipv4", StartIP: "192.0.2.10", EndIP: "192.0.2.100"}
+	if err := db.Create(&dhcpRange).Error; err != nil {
+		t.Fatalf("seed IPv4 range: %v", err)
+	}
+	if err := db.Create(&networkModels.DHCPStaticLease{
+		Hostname:    "client-v4",
+		IPObjectID:  &hostObject.ID,
+		MACObjectID: &macObject.ID,
+		DHCPRangeID: dhcpRange.ID,
+	}).Error; err != nil {
+		t.Fatalf("seed DHCP lease: %v", err)
+	}
+
+	restartCalls := 0
+	configPath := configureDHCPRuntimeForTest(t, svc, "old config\n", func() error {
+		restartCalls++
+		if restartCalls == 1 {
+			return errors.New("restart failed")
+		}
+		return nil
+	})
+
+	err := svc.EditObject(hostObject.ID, hostObject.Name, hostObject.Type, []string{"192.0.2.21"})
+	if err == nil || !strings.Contains(err.Error(), "failed to apply DHCP configuration") {
+		t.Fatalf("expected DHCP apply failure, got %v", err)
+	}
+	if restartCalls != 2 {
+		t.Fatalf("restart calls=%d want failed apply plus runtime restore", restartCalls)
+	}
+	var restored networkModels.Object
+	if err := db.Preload("Entries").First(&restored, hostObject.ID).Error; err != nil {
+		t.Fatalf("reload restored host object: %v", err)
+	}
+	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.20" {
+		t.Fatalf("host object was not rolled back: %#v", restored.Entries)
+	}
+	config, err := os.ReadFile(configPath)
+	if err != nil || string(config) != "old config\n" {
+		t.Fatalf("runtime config was not restored exactly, data=%q err=%v", config, err)
+	}
+}
+
+func TestEditDHCPReferencedObjectRestoresDNSMasqAfterLaterFirewallFailure(t *testing.T) {
+	svc, db := newDHCPObjectEditServiceForTest(t)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("enable firewall: %v", err)
+	}
+	if err := db.Create(&networkModels.FirewallAdvancedSettings{}).Error; err != nil {
+		t.Fatalf("seed firewall settings: %v", err)
+	}
+	seedDHCPConfig(t, db, "lan", nil, true)
+	hostObject := createDHCPLeaseObject(t, db, "ipv4-host", "Host", "192.0.2.20")
+	macObject := createDHCPLeaseObject(t, db, "client-mac", "Mac", testDHCPMAC)
+	dhcpRange := networkModels.DHCPRange{Type: "ipv4", StartIP: "192.0.2.10", EndIP: "192.0.2.100"}
+	if err := db.Create(&dhcpRange).Error; err != nil {
+		t.Fatalf("seed IPv4 range: %v", err)
+	}
+	if err := db.Create(&networkModels.DHCPStaticLease{
+		Hostname:    "client-v4",
+		IPObjectID:  &hostObject.ID,
+		MACObjectID: &macObject.ID,
+		DHCPRangeID: dhcpRange.ID,
+	}).Error; err != nil {
+		t.Fatalf("seed DHCP lease: %v", err)
+	}
+
+	restartCalls := 0
+	configPath := configureDHCPRuntimeForTest(t, svc, "old config\n", func() error {
+		restartCalls++
+		return nil
+	})
+	previousRCPath := firewallRCConfPath
+	firewallRCConfPath = filepath.Join(t.TempDir(), "rc.conf")
+	t.Cleanup(func() { firewallRCConfPath = previousRCPath })
+	previousRunCommand := firewallRunCommand
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-nf" {
+			return "", errors.New("forced PF validation failure")
+		}
+		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
+			return "", errors.New("PF disabled")
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { firewallRunCommand = previousRunCommand })
+
+	if err := svc.EditObject(hostObject.ID, hostObject.Name, hostObject.Type, []string{"192.0.2.21"}); err == nil {
+		t.Fatal("expected firewall apply failure")
+	}
+	if restartCalls != 2 {
+		t.Fatalf("restart calls=%d want DHCP apply plus rollback apply", restartCalls)
+	}
+	var restored networkModels.Object
+	if err := db.Preload("Entries").First(&restored, hostObject.ID).Error; err != nil {
+		t.Fatalf("reload restored host object: %v", err)
+	}
+	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.20" {
+		t.Fatalf("host object was not rolled back: %#v", restored.Entries)
+	}
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read restored DHCP config: %v", err)
+	}
+	if !strings.Contains(string(config), testDHCPMAC+",192.0.2.20") || strings.Contains(string(config), "192.0.2.21") {
+		t.Fatalf("DHCP runtime did not return to the previous object value:\n%s", config)
 	}
 }
 

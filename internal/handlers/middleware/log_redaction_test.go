@@ -11,6 +11,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -104,6 +105,8 @@ func TestSanitizeAuditPayloadRedactsWireGuardKeys(t *testing.T) {
 		"enabled":      false,
 		"privateKey":   "server-private-key",
 		"preSharedKey": "peer-preshared-key",
+		"psk":          "short-preshared-key",
+		"publicKey":    "peer-public-key",
 	})
 
 	encoded, err := json.Marshal(payload)
@@ -111,11 +114,16 @@ func TestSanitizeAuditPayloadRedactsWireGuardKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := string(encoded)
-	if strings.Contains(result, "server-private-key") || strings.Contains(result, "peer-preshared-key") {
+	if strings.Contains(result, "server-private-key") ||
+		strings.Contains(result, "peer-preshared-key") ||
+		strings.Contains(result, "short-preshared-key") {
 		t.Fatalf("wireguard key material leaked into audit payload: %s", result)
 	}
 	if !strings.Contains(result, `"enabled":false`) {
 		t.Fatalf("safe state field was not preserved: %s", result)
+	}
+	if !strings.Contains(result, "peer-public-key") {
+		t.Fatalf("public key was unexpectedly redacted: %s", result)
 	}
 }
 
@@ -368,6 +376,79 @@ func TestCertificateBodyLimitPreservesRequestForHandler(t *testing.T) {
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestRequestLoggerReplaysCompleteBodyIncludingTrailingBytes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("UserID", uint(1))
+		c.Set("Username", "admin")
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+
+	wantBody := []byte("{\"name\":\"router\"}\ntrailing-data")
+	var receivedBody []byte
+	router.POST("/api/network/object", func(c *gin.Context) {
+		var err error
+		receivedBody, err = io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/network/object", bytes.NewReader(wantBody))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !bytes.Equal(receivedBody, wantBody) {
+		t.Fatalf("handler body=%q want=%q", receivedBody, wantBody)
+	}
+}
+
+func TestRequestLoggerPreservesBodyLimitErrorForHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("UserID", uint(1))
+		c.Set("Username", "admin")
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.Use(LimitRequestBody(16))
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+	router.POST("/api/network/object", func(c *gin.Context) {
+		_, err := io.ReadAll(c.Request.Body)
+		var tooLarge *http.MaxBytesError
+		if !errors.As(err, &tooLarge) {
+			c.String(http.StatusBadRequest, "expected MaxBytesError, got %v", err)
+			return
+		}
+		c.Status(http.StatusRequestEntityTooLarge)
+	})
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/network/object",
+		strings.NewReader(`{"name":"body-that-exceeds-the-limit"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

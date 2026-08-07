@@ -340,8 +340,8 @@ func RegisterRoutes(r *gin.Engine,
 	disk.Use(middleware.EnsureAuthenticated(authService))
 	disk.Use(EnsureCorrectHost(db, authService))
 	disk.Use(middleware.RequireLocalAdminForWrites(authService))
-	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))
+	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		disk.GET("", diskHandlers.List(diskService))
 		disk.GET("/smart/self-test", diskHandlers.GetSelfTestInfo(diskService))

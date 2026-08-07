@@ -114,6 +114,7 @@ func isSensitiveAuditKey(key string) bool {
 		"otp",
 		"privatekey",
 		"presharedkey",
+		"psk",
 		"sshkey",
 		"credential",
 		"sessiondata",
@@ -322,6 +323,15 @@ type bodyWriter struct {
 	capture bool
 }
 
+type replayReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (r *replayReadCloser) Close() error {
+	return r.closer.Close()
+}
+
 func (w bodyWriter) Write(b []byte) (int, error) {
 	if w.capture {
 		w.body.Write(b)
@@ -458,8 +468,9 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			if redactPayload {
 				act.Body = "[REDACTED]"
 			} else {
+				originalBody := c.Request.Body
 				buf := new(bytes.Buffer)
-				tee := io.TeeReader(c.Request.Body, buf)
+				tee := io.TeeReader(originalBody, buf)
 
 				var body interface{}
 				if err := json.NewDecoder(tee).Decode(&body); err != nil {
@@ -468,15 +479,12 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 					act.Body = sanitizeAuditPayload(body)
 				}
 
-				restoredBody := io.NopCloser(buf)
-				if limit, ok := c.Get(requestBodyLimitContextKey); ok {
-					if maxBytes, valid := limit.(int64); valid && maxBytes > 0 {
-						c.Request.Body = http.MaxBytesReader(c.Writer, restoredBody, maxBytes)
-					} else {
-						c.Request.Body = restoredBody
-					}
-				} else {
-					c.Request.Body = restoredBody
+				// Replay everything consumed by the audit decoder, then continue
+				// from the original reader. Keeping the original reader preserves
+				// any MaxBytesReader state and its *http.MaxBytesError.
+				c.Request.Body = &replayReadCloser{
+					Reader: io.MultiReader(bytes.NewReader(buf.Bytes()), originalBody),
+					closer: originalBody,
 				}
 			}
 		}

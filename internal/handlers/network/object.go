@@ -103,6 +103,7 @@ func writeNetworkObjectError(c *gin.Context, message string, err error) {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkModels.Object] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/object [get]
@@ -135,6 +136,7 @@ func ListNetworkObjects(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body CreateOrEditNetworkObjectRequest true "Create Network Object Request"
 // @Success 201 {object} internal.APIResponse[uint] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -171,6 +173,7 @@ func CreateNetworkObject(svc *network.Service) gin.HandlerFunc {
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Object ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -206,6 +209,7 @@ func DeleteNetworkObject(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param id path int true "Object ID" minimum(1)
 // @Param request body CreateOrEditNetworkObjectRequest true "Update Network Object Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
@@ -249,6 +253,7 @@ func EditNetworkObject(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body BulkDeleteNetworkObjectsRequest true "Bulk Delete Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"

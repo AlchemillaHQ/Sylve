@@ -25,6 +25,7 @@ var listInterfaces = iface.List
 // @Tags Network
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]*iface.Interface] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/interface [get]

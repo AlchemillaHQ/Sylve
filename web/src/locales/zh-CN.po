@@ -1004,7 +1004,6 @@ msgid "Delete"
 msgstr "删除"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -1189,6 +1188,7 @@ msgstr "这是一条笔记"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -4758,6 +4758,7 @@ msgstr "留空以使用默认规则集"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -6085,7 +6086,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6800,6 +6801,7 @@ msgstr "初始状态"
 msgid "Optional note about why this snapshot was taken"
 msgstr "关于拍摄此快照原因的可选备注"
 
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -7027,6 +7029,8 @@ msgid "Switch is in use by a VM"
 msgstr "交换机正在被虚拟机使用"
 
 #: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Error deleting switch"
 msgstr "删除交换机时出错"
@@ -7139,7 +7143,7 @@ msgstr "无效的 VLAN"
 msgid "There is already a switch with a default route"
 msgstr "已存在具有默认路由的交换机"
 
-#. 0: confirmModals.newSwitch.name
+#. 0: normalizedName
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} created"
 msgstr "交换机 {0} 已创建"
@@ -7987,9 +7991,8 @@ msgstr "必须提供标识符"
 msgid "IP Address is required"
 msgstr "必须提供 IP 地址"
 
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Invalid selection"
-msgstr "无效选择"
+#~ msgid "Invalid selection"
+#~ msgstr "无效选择"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Identifier must be a MAC for IPv4 ranges"
@@ -8015,13 +8018,11 @@ msgstr "创建租约失败"
 msgid "Lease created"
 msgstr "租约已创建"
 
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Failed to edit lease"
-msgstr "编辑租约失败"
+#~ msgid "Failed to edit lease"
+#~ msgstr "编辑租约失败"
 
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Lease edited"
-msgstr "租约已编辑"
+#~ msgid "Lease edited"
+#~ msgstr "租约已编辑"
 
 #~ msgid "{0} DHCP Lease"
 #~ msgstr ""
@@ -8052,40 +8053,27 @@ msgid "IP Type is required"
 msgstr "IP 类型为必填项"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "No switch selected"
 msgstr "未选择交换机"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Failed to find interface for selected switch"
 msgstr "未找到所选交换机的接口"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "IP Range not in switch subnet"
-msgstr "IP 范围不在交换机子网内"
+#~ msgid "IP Range not in switch subnet"
+#~ msgstr "IP 范围不在交换机子网内"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Selected interface has no IPv4 address"
 msgstr "所选接口没有 IPv4 地址"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Selected interface has no usable IPv6 address"
 msgstr "所选接口没有可用的 IPv6 地址"
 
-#. 0: ipv6.ip; 1: ipv6.prefixLength
-#. 0: ipv6.ip; 1: ipv6.prefixLength
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "IP Range not in switch subnet ({0}/{1})"
-msgstr "IP 范围不在交换机子网内 ({0}/{1})"
+#~ msgid "IP Range not in switch subnet ({0}/{1})"
+#~ msgstr "IP 范围不在交换机子网内 ({0}/{1})"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Expiry is required"
 msgstr "过期时间为必填项"
@@ -8098,9 +8086,8 @@ msgstr "创建 DHCP 范围时出错"
 msgid "Created DHCP range"
 msgstr "已创建 DHCP 范围"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "No DHCP range selected"
-msgstr "未选择 DHCP 范围"
+#~ msgid "No DHCP range selected"
+#~ msgstr "未选择 DHCP 范围"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Error updating DHCP range"
@@ -8132,6 +8119,7 @@ msgstr "仅 RA"
 msgid "Invalid name"
 msgstr "无效名称"
 
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Failed to create manual switch"
 msgstr "创建手动交换机失败"
@@ -9851,7 +9839,7 @@ msgstr "选择或输入压缩方式"
 msgid "Create VM - {0}"
 msgstr "创建虚拟机 - {0}"
 
-#. 0: modals.delete.type; 1: activeRow?.hostname || activeRow?.ip || ''
+#. 0: modals.delete.type; 1: escapeHTML(modals.delete.display)
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "This action cannot be undone. This will permanently delete {0} DHCP lease for <b>{1}</b>"
 msgstr "此操作无法撤消。将永久删除 <b>{1}</b> 的 {0} DHCP 租约"
@@ -10067,6 +10055,8 @@ msgstr "此虚拟机当前由另一个节点拥有"
 #~ msgid "VM name"
 #~ msgstr ""
 
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -10139,9 +10129,8 @@ msgstr "将此选项设置为 <0>开启</0> 将为该 Jail 的所有 MAC 地址�
 msgid "At least one CPU must be left unpinned"
 msgstr "至少需要保留一个 CPU 不固定"
 
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-msgid "Invalid expiry format, resetting to 12h"
-msgstr "无效的过期格式，正在重置为 12 小时"
+#~ msgid "Invalid expiry format, resetting to 12h"
+#~ msgstr "无效的过期格式，正在重置为 12 小时"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Failed to import storage"
@@ -13742,6 +13731,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Saving…"
 msgstr ""
@@ -13749,6 +13739,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Creating…"
 msgstr ""
@@ -19576,4 +19567,130 @@ msgstr ""
 
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 msgid "Invalid pre-shared key - must be a valid 32-byte base64-encoded WireGuard key"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Switches"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Delete Static"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Update"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Comments must be 4096 characters or fewer"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Selected objects must contain exactly one value"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Failed to save lease"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Lease saved"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "IP range is invalid or is not in the switch subnet"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Both IPv6 range addresses must be set, or both left empty"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Invalid expiry format"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Expiry is outside the supported range"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "A maximum of 16 DNS servers is allowed"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Invalid switch selection"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "A maximum of 256 switches is allowed"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is in use by a jail"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is enabled in the DHCP configuration"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is in use by a DHCP range"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is referenced by a static route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is referenced by a firewall rule"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by Dynamic DNS"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by mDNS"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by Samba"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is used by WireGuard"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch still contains an unmanaged interface"
+msgstr ""
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch no longer exists"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "<0/> Saving…"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "<0/> Creating…"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Select a bridge"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "<0/> Creating..."
 msgstr ""

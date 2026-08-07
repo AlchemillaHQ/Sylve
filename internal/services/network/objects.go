@@ -19,7 +19,6 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/alchemillahq/sylve/internal/logger"
 	utils "github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -157,7 +156,7 @@ func (s *Service) populateObjectUsage(objects []networkModels.Object) error {
 	if err := markFromColumn("dhcp_static_leases", "mac_object_id", "dhcp"); err != nil {
 		return err
 	}
-	if err := markFromColumn("dhcp_static_leases", "duid_object_id", "dhcp"); err != nil {
+	if err := markFromColumn("dhcp_static_leases", "d_uid_object_id", "dhcp"); err != nil {
 		return err
 	}
 
@@ -407,6 +406,35 @@ func (s *Service) IsObjectUsed(id uint) (bool, string, error) {
 	}
 
 	return objects[0].IsUsed, objects[0].IsUsedBy, nil
+}
+
+func (s *Service) isObjectReferencedByDHCP(id uint) (bool, error) {
+	const table = "dhcp_static_leases"
+	if !s.DB.Migrator().HasTable(table) {
+		return false, nil
+	}
+
+	columns := []string{"ip_object_id", "mac_object_id", "d_uid_object_id"}
+	conditions := make([]string, 0, len(columns))
+	args := make([]interface{}, 0, len(columns))
+	for _, column := range columns {
+		if s.DB.Migrator().HasColumn(table, column) {
+			conditions = append(conditions, column+" = ?")
+			args = append(args, id)
+		}
+	}
+	if len(conditions) == 0 {
+		return false, nil
+	}
+
+	var count int64
+	if err := s.DB.Table(table).
+		Where(strings.Join(conditions, " OR "), args...).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 func (s *Service) CreateObject(name string, oType string, values []string) (uint, error) {
@@ -793,6 +821,23 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 		return networkObjectConflict("network_object_type_in_use", nil)
 	}
 
+	dhcpReferenced, err := s.isObjectReferencedByDHCP(id)
+	if err != nil {
+		return err
+	}
+	if dhcpReferenced && len(values) != 1 {
+		switch object.Type {
+		case "Host":
+			return networkObjectConflict("network_object_dhcp_requires_one_host", nil)
+		case "Mac":
+			return networkObjectConflict("network_object_dhcp_requires_one_mac", nil)
+		case "DUID":
+			return networkObjectConflict("network_object_dhcp_requires_one_duid", nil)
+		default:
+			return networkObjectConflict("network_object_dhcp_requires_one_value", nil)
+		}
+	}
+
 	if used && len(values) != 1 && s.DB.Migrator().HasTable(&networkModels.StaticRoute{}) {
 		var staticRouteCount int64
 		if err := s.DB.Model(&networkModels.StaticRoute{}).
@@ -806,6 +851,18 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 	}
 
 	previousState := cloneObjectState(object)
+	dhcpApplied := false
+	rollbackObjectEdit := func() error {
+		if err := s.restoreObjectState(previousState); err != nil {
+			return err
+		}
+		if dhcpApplied {
+			if err := s.WriteDHCPConfig(); err != nil {
+				return fmt.Errorf("failed to restore DHCP configuration: %w", err)
+			}
+		}
+		return nil
+	}
 
 	autoUpdate, refreshInterval := objectRefreshSettings(oType)
 
@@ -944,11 +1001,6 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err := s.WriteDHCPConfig()
-				if err != nil {
-					logger.L.Error().Err(err).Msgf("failed to write DHCP config after editing object %d", id)
-				}
-
 				updated = true
 			}
 		}
@@ -1061,11 +1113,6 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err := s.WriteDHCPConfig()
-				if err != nil {
-					logger.L.Error().Err(err).Msgf("failed to write DHCP config after editing object %d", id)
-				}
-
 				updated = true
 			}
 		}
@@ -1150,15 +1197,25 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 		}
 	}
 
+	if dhcpReferenced {
+		if err := s.WriteDHCPConfig(); err != nil {
+			if rollbackErr := rollbackObjectEdit(); rollbackErr != nil {
+				return fmt.Errorf("failed to apply DHCP configuration after object %d edit: %w (rollback_failed: %v)", id, err, rollbackErr)
+			}
+			return fmt.Errorf("failed to apply DHCP configuration after object %d edit: %w", id, err)
+		}
+		dhcpApplied = true
+	}
+
 	if oType == "FQDN" || oType == "List" {
 		if err := s.RefreshObjectByID(id); err != nil {
-			if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {
+			if rollbackErr := rollbackObjectEdit(); rollbackErr != nil {
 				return fmt.Errorf("failed to refresh dynamic object %d after edit: %w (rollback_failed: %v)", id, err, rollbackErr)
 			}
 			return err
 		}
 	} else if err := s.ApplyFirewallIfEnabled(); err != nil {
-		if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {
+		if rollbackErr := rollbackObjectEdit(); rollbackErr != nil {
 			return fmt.Errorf("failed to apply firewall after object %d edit: %w (rollback_failed: %v)", id, err, rollbackErr)
 		}
 		return err
@@ -1166,7 +1223,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 	if s.DB.Migrator().HasTable(&networkModels.StaticRoute{}) {
 		if err := s.ReconcileObjectStaticRoutes(id); err != nil {
-			if rollbackErr := s.restoreObjectState(previousState); rollbackErr != nil {
+			if rollbackErr := rollbackObjectEdit(); rollbackErr != nil {
 				return fmt.Errorf("failed to reconcile static routes after object %d edit: %w (rollback_failed: %v)", id, err, rollbackErr)
 			}
 			if firewallErr := s.ApplyFirewallIfEnabled(); firewallErr != nil {
