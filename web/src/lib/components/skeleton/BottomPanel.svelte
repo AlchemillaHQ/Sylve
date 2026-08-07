@@ -762,16 +762,16 @@
 			{/if}
 
 			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
-				<Table.Root class="w-full table-auto border-collapse">
+				<Table.Root class="w-full table-auto border-collapse text-xs">
 					<Table.Header class="bg-background sticky top-0 z-10">
 						<Table.Row class="dark:hover:bg-background ">
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+							<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
 								>Start Time</Table.Head
 							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+							<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
 								>End Time</Table.Head
 							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white">
+							<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white">
 								{#if clustered && hostnameOptions.length > 0}
 									<div class="w-44 max-w-full">
 										<SimpleSelect
@@ -792,13 +792,13 @@
 									Node
 								{/if}
 							</Table.Head>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+							<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
 								>User</Table.Head
 							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+							<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
 								>Action</Table.Head
 							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
+							<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
 								>Status</Table.Head
 							>
 						</Table.Row>
@@ -807,16 +807,16 @@
 					<Table.Body class="pb-32">
 						{#each records as record, i (i)}
 							<Table.Row>
-								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2"
+								<Table.Cell class="text-wrap px-3 py-1">{convertDbTime(record.started)}</Table.Cell>
+								<Table.Cell class="text-wrap px-3 py-1">{convertDbTime(record.ended)}</Table.Cell>
+								<Table.Cell class="text-wrap px-3 py-1">{record.node}</Table.Cell>
+								<Table.Cell class="text-wrap px-3 py-1"
 									>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
 								>
 								<Table.Cell class="p-0">
 									<button
 										type="button"
-										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-7 w-full items-center px-3 py-1 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
 										aria-label={`View request details for ${record.resolvedAction}`}
 										onclick={() => openAuditDetails(record, 'request')}
 									>
@@ -826,7 +826,7 @@
 								<Table.Cell class="p-0">
 									<button
 										type="button"
-										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-7 w-full items-center px-3 py-1 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
 										aria-label={`View response details for ${record.resolvedAction}`}
 										onclick={() => openAuditDetails(record, 'response')}
 									>
