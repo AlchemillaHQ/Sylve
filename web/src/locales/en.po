@@ -32,6 +32,11 @@ msgstr "Console"
 msgid "Storage"
 msgstr "Storage"
 
+
+msgid "CARP (Failover VIP)"
+msgstr "CARP (Failover VIP)"
+
+
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte

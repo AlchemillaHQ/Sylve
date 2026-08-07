@@ -385,6 +385,7 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 		"nullfs",
 		"netlink",
 		"nlsysevent",
+		
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
@@ -397,6 +398,10 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 
 	if slices.Contains(basicSettings.Services, models.WireGuard) {
 		requiredModules = append(requiredModules, "if_wg")
+	}
+
+	if slices.Contains(basicSettings.Services, models.Jails) {
+		requiredModules = append(requiredModules, "carp")
 	}
 
 	for _, module := range requiredModules {

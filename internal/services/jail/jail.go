@@ -368,6 +368,14 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 	if data.Type != jailModels.JailTypeFreeBSD && data.Type != jailModels.JailTypeLinux {
 		return fmt.Errorf("invalid_jail_type")
 	}
+
+	if data.CARP != nil && *data.CARP {
+		dhcp := data.DHCP != nil && *data.DHCP
+		if err := validateCarpConfig(data.Type, dhcp, true, data.CARPVHID, data.CARPAdvSkew, data.CARPPassword); err != nil {
+			return err
+		}
+	}
+
 	if data.ResourceLimits != nil && *data.ResourceLimits && (data.Cores == nil || data.Memory == nil) {
 		return fmt.Errorf("resource_limits_require_cores_and_memory")
 	}
@@ -1402,6 +1410,34 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 					}
 				}
 			}
+			
+			if network.CARP && network.CARPIPv4ID != nil {
+				carpIPv4CIDR, err := s.NetworkService.GetObjectEntryByID(*network.CARPIPv4ID)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_get_carp_ipv4_object: %w", err)
+				}
+
+				carpIP, carpMask, err := utils.SplitIPv4AndMask(carpIPv4CIDR)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_split_carp_ipv4_address_and_mask: %w", err)
+				}
+
+				vhid := 0
+				if network.CARPVHID != nil {
+					vhid = *network.CARPVHID
+				}
+
+				advskew := 0
+				if network.CARPAdvSkew != nil {
+					advskew = *network.CARPAdvSkew
+				}
+
+				lineCarp := fmt.Sprintf("%s_alias0=\"vhid %d pass %s advskew %d alias %s netmask %s\"\n",
+					ifName, vhid, network.CARPPassword, advskew, carpIP, carpMask)
+				if !strings.Contains(existing, lineCarp) {
+					rcToAppend.WriteString(lineCarp)
+				}
+			}
 
 			if network.SLAAC {
 				if !strings.Contains(existing, lineSLAAC) {
@@ -1753,6 +1789,10 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 
 	jail.ResolvConf = data.ResolvConf
 
+	if data.CARP != nil && *data.CARP && !slices.Contains(data.AllowedOptions, "allow.raw_sockets") {
+		data.AllowedOptions = append(data.AllowedOptions, "allow.raw_sockets")
+	}
+
 	jail.AllowedOptions = data.AllowedOptions
 	jail.Type = data.Type
 	jail.MetadataEnv = data.MetadataEnv
@@ -1909,7 +1949,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			macStr = macEntry.Value
 		}
 
-		var ipv4ID, ipv4GwID, ipv6ID, ipv6GwID *uint
+		var ipv4ID, ipv4GwID, ipv6ID, ipv6GwID, carpIPv4ID  *uint
 		ipv4ID, err = resolveRawIP(data.IPv4, data.IPv4Raw, tx, "Network", fmt.Sprintf("%s-%s-IPv4", data.Name, swName), &autoCreatedIDs)
 		if err != nil {
 			return
@@ -1925,6 +1965,15 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		ipv6GwID, err = resolveRawIP(data.IPv6Gw, data.IPv6GwRaw, tx, "Host", fmt.Sprintf("%s-%s-IPv6-GW", data.Name, swName), &autoCreatedIDs)
 		if err != nil {
 			return
+		}
+
+		carp := data.CARP != nil && *data.CARP
+
+		if  carp {
+			carpIPv4ID, err = resolveRawIP(data.CARPIPv4, data.CARPIPv4Raw, tx, "Network", fmt.Sprintf("%s-%s-CARP-IPv4", data.Name, swName), &autoCreatedIDs)
+			if err != nil {
+				return
+			}
 		}
 
 		dhcp := false
@@ -1960,6 +2009,11 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			SLAAC:          slaac,
 			DefaultGateway: true,
 			VLAN:           &vlan,
+			CARP:    		carp,
+			CARPVHID:       data.CARPVHID,
+			CARPAdvSkew:    data.CARPAdvSkew,
+			CARPPassword:   data.CARPPassword,
+			CARPIPv4ID:     carpIPv4ID,
 		}
 
 		if err = tx.Create(&network).Error; err != nil {

@@ -32,6 +32,12 @@ export interface CreateData {
         slaac: boolean;
         resolvConf: string;
         vlan: number;
+        carp: boolean;
+        carpVhid: number;
+        carpAdvSkew: number;
+        carpPassword: string;
+        carpIpv4: number;
+        carpIpv4Raw: string;
     };
     hardware: {
         cpuCores: number;
@@ -90,7 +96,13 @@ export const NetworkSchema = z.object({
     dhcp: z.boolean().nullable().default(false),
     slaac: z.boolean().nullable().default(false),
     defaultGateway: z.boolean().default(false),
-    vlan: z.number().int().min(0).max(4095).optional().default(0)
+    vlan: z.number().int().min(0).max(4095).optional().default(0),
+    carp: z.boolean().nullable().default(false),
+    carpVhid: z.number().int().nullable().optional(),
+    carpAdvSkew: z.number().int().nullable().optional(),
+    carpIpv4Id: z.number().int().nullable().optional(),
+    carpIpv4Obj: NetworkObjectSchema.optional().nullable(),
+    carpPassword: z.string().optional().nullable()
 });
 
 export const JailHookPhaseSchema = z.enum([

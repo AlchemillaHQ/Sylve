@@ -121,6 +121,43 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
             toast.error('Invalid IPv6 gateway address', toastConfig);
             return false;
         }
+
+        if (modal.network.carp) {
+            if (modal.advanced.jailType === 'linux') {
+                toast.error('CARP is only supported on FreeBSD jails', toastConfig);
+                return false;
+            }
+
+            if (modal.network.dhcp) {
+                toast.error('CARP cannot be combined with DHCP', toastConfig);
+                return false;
+            }
+
+            if (!modal.network.carpVhid || modal.network.carpVhid < 1 || modal.network.carpVhid > 255) {
+                toast.error('Invalid CARP VHID (1-255 required)', toastConfig);
+                return false;
+            }
+
+            if (modal.network.carpAdvSkew < 0 || modal.network.carpAdvSkew > 254) {
+                toast.error('Invalid CARP advertising skew (0-254 required)', toastConfig);
+                return false;
+            }
+
+            if (!modal.network.carpPassword) {
+                toast.error('CARP password is required', toastConfig);
+                return false;
+            }
+
+            if (!modal.network.carpIpv4 && !modal.network.carpIpv4Raw) {
+                toast.error('CARP floating IP is required', toastConfig);
+                return false;
+            }
+
+            if (modal.network.carpIpv4Raw && !isValidIPv4(modal.network.carpIpv4Raw, true)) {
+                toast.error('Invalid CARP IPv4 (CIDR required)', toastConfig);
+                return false;
+            }
+        }
     }
 
     if (modal.advanced.metadata.env.length > 2048 || modal.advanced.metadata.meta.length > 2048) {
@@ -155,6 +192,10 @@ const jailCreateErrorMessageByCode: Record<string, string> = {
     base_is_not_a_directory:
         'Selected base image path is not a directory. Re-extract the base/rootfs and retry.',
     base_path_does_not_exist: 'Selected base image could not be found on disk.',
+    cannot_enable_carp_with_dhcp: 'CARP cannot be combined with DHCP on the same network.',
+    carp_ip4_required: 'A CARP floating IPv4 address is required.',
+    carp_only_supported_on_freebsd_jails: 'CARP is only supported on FreeBSD jails.',
+    carp_password_required: 'A CARP shared password is required.',
     download_uuid_required: 'A base image is required to create a jail.',
     guest_id_already_in_use:
         'This numeric guest ID is already used by a VM or jail. Choose a different ID.',
@@ -165,6 +206,8 @@ const jailCreateErrorMessageByCode: Record<string, string> = {
     guest_identity_inventory_unavailable:
         'Could not verify guest IDs on every cluster node. Check node health and retry.',
     invalid_ct_id: 'Invalid jail ID. Use a value between 1 and 9999.',
+    invalid_carp_advskew: 'Invalid CARP advertising skew. Use a value between 0 and 254.',
+    invalid_carp_vhid: 'Invalid CARP VHID. Use a value between 1 and 255.',
     invalid_hostname: 'Invalid hostname.',
     invalid_ipv4_gateway: 'Invalid IPv4 gateway selection.',
     invalid_ipv6_gateway: 'Invalid IPv6 gateway selection.',

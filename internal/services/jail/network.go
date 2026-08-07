@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,6 +34,35 @@ func validateAssignableJailIPv6CIDR(cidr string) error {
 	if !utils.IsAssignableIPv6CIDR(cidr) {
 		return fmt.Errorf("invalid_ip6_cidr_not_assignable")
 	}
+	return nil
+}
+
+
+func validateCarpConfig(jailType jailModels.JailType, dhcp bool, carp bool, vhid *int, advskew *int, password string) error {
+	if !carp {
+		return nil
+	}
+
+	if jailType != jailModels.JailTypeFreeBSD {
+		return fmt.Errorf("carp_only_supported_on_freebsd_jails")
+	}
+
+	if dhcp {
+		return fmt.Errorf("cannot_enable_carp_with_dhcp")
+	}
+
+	if vhid == nil || *vhid < 1 || *vhid > 255 {
+		return fmt.Errorf("invalid_carp_vhid")
+	}
+
+	if advskew != nil && (*advskew < 0 || *advskew > 254) {
+		return fmt.Errorf("invalid_carp_advskew")
+	}
+
+	if strings.TrimSpace(password) == "" {
+		return fmt.Errorf("carp_password_required")
+	}
+
 	return nil
 }
 
@@ -217,6 +247,7 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 	dhcp := false
 	slaac := false
 	defaultGateway := false
+	carp := false
 
 	if req.IP4 != nil {
 		ip4 = *req.IP4
@@ -248,6 +279,10 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 
 	if req.DefaultGateway != nil {
 		defaultGateway = *req.DefaultGateway
+	}
+
+	if req.CARP != nil {
+		carp = *req.CARP
 	}
 
 	vlan := 0
@@ -447,6 +482,49 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 		}
 	} else {
 		network.SLAAC = true
+	}
+
+	network.CARP = carp
+
+	if carp {
+		carpIP4 := uint(0)
+		if req.CARPIPv4 != nil {
+			carpIP4 = *req.CARPIPv4
+		}
+
+		if carpIP4 != 0 {
+			carpIPv4CIDR, err := s.NetworkService.GetObjectEntryByID(carpIP4)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_carp_ip4_object: %w", err)
+			}
+			if err := validateAssignableJailIPv4CIDR(carpIPv4CIDR); err != nil {
+				return err
+			}
+			network.CARPIPv4ID = &carpIP4
+
+		} else if req.CARPIPv4Raw != "" {
+			if err := validateAssignableJailIPv4CIDR(req.CARPIPv4Raw); err != nil {
+				return err
+			}
+
+			// Check with @Hayzam for the object naming strategy
+
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-CARP-IPv4", jail.Name, dbSwName))
+			carpIPv4Obj := networkModels.Object{Name: name, Type: "Network"}
+			if err := s.DB.Create(&carpIPv4Obj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_carp_ipv4_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: carpIPv4Obj.ID, Value: req.CARPIPv4Raw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_carp_ipv4_entry: %w", err)
+			}
+			network.CARPIPv4ID = &carpIPv4Obj.ID
+		} else {
+			return fmt.Errorf("carp_ip4_required")
+		}
+
+		network.CARPVHID = req.CARPVHID
+		network.CARPAdvSkew = req.CARPAdvSkew
+		network.CARPPassword = req.CARPPassword
 	}
 
 	network.Name = req.Name
@@ -764,6 +842,34 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 						}
 					}
 
+					if n.CARP && n.CARPIPv4ID != nil {
+						carpIPv4CIDR, err := s.NetworkService.GetObjectEntryByID(*n.CARPIPv4ID)
+						if err != nil {
+							return fmt.Errorf("failed to get carp ipv4 address: %w", err)
+						}
+						carpIP, carpMask, err := utils.SplitIPv4AndMask(carpIPv4CIDR)
+						if err != nil {
+							return fmt.Errorf("failed to split carp ipv4 address and mask: %w", err)
+						}
+
+						vhid := 0
+						if n.CARPVHID != nil {
+							vhid = *n.CARPVHID
+						}
+
+						advskew := 0
+						if n.CARPAdvSkew != nil {
+							advskew = *n.CARPAdvSkew
+						}
+
+						rcConfLines = append(rcConfLines, fmt.Sprintf(
+
+							// RC script was complaning of INET missing. to double check and remove comment.
+							"ifconfig_%s_%sb_alias0=\"vhid %d pass %s advskew %d alias %s netmask %s\"",
+							ctidHash, networkId, vhid, n.CARPPassword, advskew, carpIP, carpMask,
+						))
+					}
+
 					if n.SLAAC {
 						rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 accept_rtadv\"", ctidHash, networkId))
 						rcConfLines = append(rcConfLines, "rtsold_enable=\"YES\"")
@@ -874,6 +980,8 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	dhcp := false
 	slaac := false
 	defaultGateway := false
+	carp := false
+
 
 	if req.IP4 != nil {
 		ip4 = *req.IP4
@@ -906,6 +1014,11 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	if req.DefaultGateway != nil {
 		defaultGateway = *req.DefaultGateway
 	}
+
+	if req.CARP != nil {
+		carp = *req.CARP
+	}
+
 
 	vlan := 0
 	if req.VLAN != nil {
@@ -941,6 +1054,16 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	if jail.Type == jailModels.JailTypeLinux {
 		if dhcp || slaac {
 			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
+		}
+	}
+	
+	if err := validateCarpConfig(jail.Type, dhcp, carp, req.CARPVHID, req.CARPAdvSkew, req.CARPPassword); err != nil {
+		return err
+	}
+
+	if carp && !slices.Contains(jail.AllowedOptions, "allow.raw_sockets") {
+		if err := s.ModifyAllowedOptions(jail.CTID, append(append([]string{}, jail.AllowedOptions...), "allow.raw_sockets")); err != nil {
+			return fmt.Errorf("failed_to_enable_carp_raw_sockets: %w", err)
 		}
 	}
 
@@ -982,6 +1105,12 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	network.DHCP = false
 	network.SLAAC = false
 	network.DefaultGateway = defaultGateway
+
+	network.CARP = false
+	network.CARPVHID = nil
+	network.CARPAdvSkew = nil
+	network.CARPPassword = ""
+	network.CARPIPv4ID = nil
 
 	if macId == 0 {
 		if req.MACRaw != "" {
@@ -1111,6 +1240,49 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 		}
 	} else {
 		network.SLAAC = true
+	}
+
+
+	if carp {
+		network.CARP = true
+
+		carpIP4 := uint(0)
+		if req.CARPIPv4 != nil {
+			carpIP4 = *req.CARPIPv4
+		}
+
+		if carpIP4 != 0 {
+			carpIPv4CIDR, err := s.NetworkService.GetObjectEntryByID(carpIP4)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_carp_ip4_object: %w", err)
+			}
+			if err := validateAssignableJailIPv4CIDR(carpIPv4CIDR); err != nil {
+				return err
+			}
+			network.CARPIPv4ID = &carpIP4
+		} else if req.CARPIPv4Raw != "" {
+			if err := validateAssignableJailIPv4CIDR(req.CARPIPv4Raw); err != nil {
+				return err
+			}
+
+			// Check with Hayzam for name.
+
+			name := uniqueObjectName(s.DB, fmt.Sprintf("%s-%s-CARP-IPv4", jail.Name, dbSwName))
+			carpIPv4Obj := networkModels.Object{Name: name, Type: "Network"}
+			if err := s.DB.Create(&carpIPv4Obj).Error; err != nil {
+				return fmt.Errorf("failed_to_create_carp_ipv4_object: %w", err)
+			}
+			if err := s.DB.Create(&networkModels.ObjectEntry{ObjectID: carpIPv4Obj.ID, Value: req.CARPIPv4Raw}).Error; err != nil {
+				return fmt.Errorf("failed_to_create_carp_ipv4_entry: %w", err)
+			}
+			network.CARPIPv4ID = &carpIPv4Obj.ID
+		} else {
+			return fmt.Errorf("carp_ip4_required")
+		}
+
+		network.CARPVHID = req.CARPVHID
+		network.CARPAdvSkew = req.CARPAdvSkew
+		network.CARPPassword = req.CARPPassword
 	}
 
 	if err := s.DB.Save(&network).Error; err != nil {

@@ -70,7 +70,13 @@
 			dhcp: false,
 			slaac: false,
 			resolvConf: '',
-			vlan: 0
+			vlan: 0,
+			carp: false,
+			carpVhid: 0,
+			carpAdvSkew: 0,
+			carpPassword: '',
+			carpIpv4: 0,
+			carpIpv4Raw: ''
 		},
 		hardware: {
 			cpuCores: 1,
@@ -398,6 +404,12 @@
 										bind:slaac={modal.network.slaac}
 										bind:resolvConf={modal.network.resolvConf}
 										bind:vlan={modal.network.vlan}
+										bind:carp={modal.network.carp}
+										bind:carpVhid={modal.network.carpVhid}
+										bind:carpAdvSkew={modal.network.carpAdvSkew}
+										bind:carpPassword={modal.network.carpPassword}
+										bind:carpIpv4={modal.network.carpIpv4}
+										bind:carpIpv4Raw={modal.network.carpIpv4Raw}
 										bind:refetch={networkRefetch}
 										jailType={modal.advanced.jailType}
 										switches={networkSwitches.current}

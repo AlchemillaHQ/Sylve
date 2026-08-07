@@ -39,6 +39,12 @@
 		slaac: boolean;
 		resolvConf: string;
 		vlan: number;
+        carp: boolean;
+		carpVhid: number;
+		carpAdvSkew: number;
+		carpPassword: string;
+		carpIpv4: number;
+		carpIpv4Raw: string;
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
 		jailType: 'freebsd' | 'linux';
@@ -65,6 +71,12 @@
 		slaac = $bindable(),
 		resolvConf = $bindable(),
 		vlan = $bindable(),
+        carp = $bindable(),
+		carpVhid = $bindable(),
+		carpAdvSkew = $bindable(),
+		carpPassword = $bindable(),
+		carpIpv4 = $bindable(),
+		carpIpv4Raw = $bindable(),
 		switches,
 		networkObjects,
 		jailType,
@@ -117,7 +129,12 @@
 		ipv6Gateway: {
 			open: false,
 			value: ''
+		},
+        carpIpv4: {
+			open: false,
+			value: ''
 		}
+
 	});
 
 	let checkBoxes = $state({
@@ -162,6 +179,13 @@
 				slaac = false;
 				checkBoxes.dhcp = false;
 				checkBoxes.slaac = false;
+                carp = false;
+				carpVhid = 0;
+				carpAdvSkew = 0;
+				carpPassword = '';
+				carpIpv4 = 0;
+				carpIpv4Raw = '';
+				comboBoxes.carpIpv4.value = '';
 			} else if (current !== 'Inherit') {
 				inheritIPv4 = false;
 				inheritIPv6 = false;
@@ -188,6 +212,8 @@
 				ipv4Raw = '';
 				ipv4GatewayRaw = '';
 				dhcp = true;
+   				carp = false;
+
 			} else {
 				if (comboBoxes.ipv4.value) {
 					const r = resolveField(comboBoxes.ipv4.value, usable.ipv4);
@@ -260,6 +286,17 @@
 			comboBoxes.ipv4Gateway.value = '';
 			comboBoxes.ipv6.value = '';
 			comboBoxes.ipv6Gateway.value = '';
+   			comboBoxes.carpIpv4.value = '';
+
+		}
+	);
+
+    watch(
+		() => comboBoxes.carpIpv4.value,
+		(current) => {
+			const r = resolveField(current, usable.ipv4);
+			carpIpv4 = r.id;
+			carpIpv4Raw = r.raw;
 		}
 	);
 
@@ -271,8 +308,10 @@
 			if (current === 'linux') {
 				checkBoxes.dhcp = false;
 				checkBoxes.slaac = false;
-				dhcp = false;
+				dhcp  = false;
 				slaac = false;
+   				carp  = false;
+
 			}
 		}
 	);
@@ -281,7 +320,7 @@
 		open: false,
 		name: '',
 		type: 'Network(s)' as 'Network(s)' | 'Host(s)' | 'MAC(s)' | 'DUID(s)',
-		ocType: 'ipv4-net' as 'ipv4-net' | 'ipv6-net' | 'ipv4-gw' | 'ipv6-gw' | 'mac',
+		ocType: 'ipv4-net' as 'ipv4-net' | 'ipv6-net' | 'ipv4-gw' | 'ipv6-gw' | 'mac' | 'carp-ipv4-net',
 		value: ''
 	});
 </script>
@@ -493,7 +532,69 @@
 					bind:checked={checkBoxes.slaac}
 					classes="flex items-center gap-2"
 				></CustomCheckbox>
+                <CustomCheckbox
+					label="CARP (Failover VIP)"
+					bind:checked={carp}
+					classes="flex items-center gap-2"
+					disabled={checkBoxes.dhcp}
+				></CustomCheckbox>
 			</div>
+
+
+            {#if carp}
+				<div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-4">
+					<CustomValueInput
+						label="VHID"
+						placeholder="1-255"
+						bind:value={carpVhid}
+						classes="flex-1 space-y-1"
+						type="number"
+					/>
+
+					<CustomValueInput
+						label="Advertising Skew"
+						placeholder="0"
+						bind:value={carpAdvSkew}
+						classes="flex-1 space-y-1"
+						type="number"
+					/>
+
+					<CustomValueInput
+						label="Password"
+						placeholder="Shared CARP password"
+						bind:value={carpPassword}
+						classes="flex-1 space-y-1"
+						type="password"
+					/>
+
+					<CustomComboBox
+						bind:open={comboBoxes.carpIpv4.open}
+						label="Virtual IP"
+						bind:value={comboBoxes.carpIpv4.value}
+						data={generateNetworkOptions(usable.ipv4, 'IPv4')}
+						classes="flex-1 space-y-1"
+						placeholder="Select or type an IPv4 CIDR"
+						width="w-full"
+						allowCustom={true}
+						topRightButton={{
+							icon: 'icon-[oui--generate]',
+							tooltip: 'Create new CARP IPv4 Network',
+							function: async () => {
+								objectCreator.name = name
+									? `${name} CARP IPv4`
+									: ctId
+										? `Jail ${ctId} CARP IPv4`
+										: `CARP IPv4 Network ${getDashedDate()}`;
+								objectCreator.type = 'Network(s)';
+								objectCreator.ocType = 'carp-ipv4-net';
+								objectCreator.open = true;
+
+								return '';
+							}
+						}}
+					></CustomComboBox>
+				</div>
+			{/if}
 		{/if}
 	{:else if nwSwitch === 'Inherit'}
 		<div class="mt-1 flex flex-row gap-4">
@@ -582,6 +683,11 @@
 					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
 					if (createdObj) {
 						comboBoxes.mac.value = createdObj.id.toString();
+					}
+                } else if (objectCreator.ocType === 'carp-ipv4-net') {
+					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
+					if (createdObj) {
+						comboBoxes.carpIpv4.value = createdObj.id.toString();
 					}
 				}
 			}, 500);
