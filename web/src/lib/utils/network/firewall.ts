@@ -8,6 +8,9 @@ type TranslateMode = 'interface' | 'address' | string;
 
 export interface FirewallTrafficRulePayload {
 	name: string;
+	description?: string;
+	priority?: number;
+	action: 'pass' | 'block' | string;
 	direction: RuleDirection;
 	protocol: RuleProtocol;
 	family: RuleFamily;
@@ -52,18 +55,26 @@ export interface RuleValidationResult {
 	error?: string;
 }
 
-function parseFamily(family: RuleFamily): { value: 'any' | 'inet' | 'inet6' | null; error?: string } {
-	const normalized = String(family ?? '').trim().toLowerCase();
+function parseFamily(family: RuleFamily): {
+	value: 'any' | 'inet' | 'inet6' | null;
+	error?: string;
+} {
+	const normalized = String(family ?? '')
+		.trim()
+		.toLowerCase();
 	if (normalized === 'any' || normalized === 'inet' || normalized === 'inet6') {
 		return { value: normalized };
 	}
 	return { value: null, error: `Unsupported address family: ${String(family ?? '')}` };
 }
 
-function parseProtocol(
-	protocol: RuleProtocol
-): { value: 'any' | 'tcp' | 'udp' | 'icmp' | null; error?: string } {
-	const normalized = String(protocol ?? '').trim().toLowerCase();
+function parseProtocol(protocol: RuleProtocol): {
+	value: 'any' | 'tcp' | 'udp' | 'icmp' | null;
+	error?: string;
+} {
+	const normalized = String(protocol ?? '')
+		.trim()
+		.toLowerCase();
 	if (
 		normalized === 'any' ||
 		normalized === 'tcp' ||
@@ -75,32 +86,36 @@ function parseProtocol(
 	return { value: null, error: `Unsupported protocol: ${String(protocol ?? '')}` };
 }
 
-function parseDirection(
-	direction: RuleDirection
-): { value: 'in' | 'out' | null; error?: string } {
-	const normalized = String(direction ?? '').trim().toLowerCase();
+function parseDirection(direction: RuleDirection): { value: 'in' | 'out' | null; error?: string } {
+	const normalized = String(direction ?? '')
+		.trim()
+		.toLowerCase();
 	if (normalized === 'in' || normalized === 'out') {
 		return { value: normalized };
 	}
 	return { value: null, error: `Unsupported direction: ${String(direction ?? '')}` };
 }
 
-function parseNATType(natType: NATType): { value: 'snat' | 'dnat' | 'binat' | null; error?: string } {
-	const normalized = String(natType ?? '').trim().toLowerCase();
-	if (
-		normalized === 'snat' ||
-		normalized === 'dnat' ||
-		normalized === 'binat'
-	) {
+function parseNATType(natType: NATType): {
+	value: 'snat' | 'dnat' | 'binat' | null;
+	error?: string;
+} {
+	const normalized = String(natType ?? '')
+		.trim()
+		.toLowerCase();
+	if (normalized === 'snat' || normalized === 'dnat' || normalized === 'binat') {
 		return { value: normalized };
 	}
 	return { value: null, error: `Unsupported NAT type: ${String(natType ?? '')}` };
 }
 
-function parseTranslateMode(
-	mode: TranslateMode
-): { value: 'interface' | 'address' | null; error?: string } {
-	const normalized = String(mode ?? '').trim().toLowerCase();
+function parseTranslateMode(mode: TranslateMode | undefined): {
+	value: 'interface' | 'address' | null;
+	error?: string;
+} {
+	const normalized = String(mode ?? '')
+		.trim()
+		.toLowerCase();
 	if (normalized === '') {
 		return { value: 'interface' };
 	}
@@ -191,10 +206,7 @@ function validateRawPortSelector(raw: string | undefined, fieldLabel: string): s
 	return null;
 }
 
-function validateInterfaceList(
-	values: string[] | undefined,
-	fieldLabel: string
-): string | null {
+function validateInterfaceList(values: string[] | undefined, fieldLabel: string): string | null {
 	if (!values) return null;
 	if (!Array.isArray(values)) return `${fieldLabel} must be an array`;
 	for (const value of values) {
@@ -205,11 +217,62 @@ function validateInterfaceList(
 	return null;
 }
 
+function validateTrafficInterfaceList(
+	values: string[] | undefined,
+	fieldLabel: string
+): string | null {
+	const basicError = validateInterfaceList(values, fieldLabel);
+	if (basicError) return basicError;
+	if (!values) return null;
+	if (values.length > 64) return `${fieldLabel} cannot contain more than 64 entries`;
+
+	const seen = new Set<string>();
+	for (const value of values) {
+		const name = String(value ?? '').trim();
+		if (name.length > 64 || !/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(name)) {
+			return `${fieldLabel} contains an invalid interface name`;
+		}
+		if (seen.has(name)) return `${fieldLabel} contains a duplicate interface`;
+		seen.add(name);
+	}
+
+	return null;
+}
+
+function validateTrafficSelectorPair(
+	raw: string | undefined,
+	objectId: number | null | undefined,
+	fieldLabel: string
+): string | null {
+	if (String(raw ?? '').length > 2048) return `${fieldLabel} is too long`;
+	if (objectId !== null && objectId !== undefined) {
+		if (!Number.isInteger(objectId) || objectId <= 0) return `${fieldLabel} object is invalid`;
+		if (String(raw ?? '').trim() !== '') {
+			return `${fieldLabel} cannot use both a raw value and an object`;
+		}
+	}
+	return null;
+}
+
 export function validateFirewallTrafficRulePayload(
 	payload: FirewallTrafficRulePayload
 ): RuleValidationResult {
-	if (!String(payload.name ?? '').trim()) {
+	const name = String(payload.name ?? '').trim();
+	if (!name) {
 		return { valid: false, error: 'Rule name is required' };
+	}
+	if (name.length > 128) return { valid: false, error: 'Rule name cannot exceed 128 characters' };
+	if (String(payload.description ?? '').trim().length > 2048) {
+		return { valid: false, error: 'Rule description cannot exceed 2048 characters' };
+	}
+	if (
+		payload.priority !== undefined &&
+		(!Number.isInteger(payload.priority) || payload.priority <= 0 || payload.priority > 1_000_000)
+	) {
+		return { valid: false, error: 'Priority must be a positive whole number' };
+	}
+	if (payload.action !== 'pass' && payload.action !== 'block') {
+		return { valid: false, error: 'Unsupported firewall action' };
 	}
 
 	const familyResult = parseFamily(payload.family);
@@ -222,9 +285,12 @@ export function validateFirewallTrafficRulePayload(
 	const protocol = protocolResult.value;
 	const direction = directionResult.value;
 
-	const ingressError = validateInterfaceList(payload.ingressInterfaces, 'Ingress interfaces');
+	const ingressError = validateTrafficInterfaceList(
+		payload.ingressInterfaces,
+		'Ingress interfaces'
+	);
 	if (ingressError) return { valid: false, error: ingressError };
-	const egressError = validateInterfaceList(payload.egressInterfaces, 'Egress interfaces');
+	const egressError = validateTrafficInterfaceList(payload.egressInterfaces, 'Egress interfaces');
 	if (egressError) return { valid: false, error: egressError };
 	const ingressInterfaces = (payload.ingressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
 	const egressInterfaces = (payload.egressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
@@ -235,10 +301,33 @@ export function validateFirewallTrafficRulePayload(
 		return { valid: false, error: 'Outbound rules do not use ingress interfaces' };
 	}
 
-	const sourceError = validateFamilyAgainstRawAddress(payload.sourceRaw, family, true, true, 'Source');
+	const selectorPairs = [
+		[payload.sourceRaw, payload.sourceObjId, 'Source'],
+		[payload.destRaw, payload.destObjId, 'Destination'],
+		[payload.srcPortsRaw, payload.srcPortObjId, 'Source ports'],
+		[payload.dstPortsRaw, payload.dstPortObjId, 'Destination ports']
+	] as const;
+	for (const [raw, objectId, label] of selectorPairs) {
+		const selectorError = validateTrafficSelectorPair(raw, objectId, label);
+		if (selectorError) return { valid: false, error: selectorError };
+	}
+
+	const sourceError = validateFamilyAgainstRawAddress(
+		payload.sourceRaw,
+		family,
+		true,
+		true,
+		'Source'
+	);
 	if (sourceError) return { valid: false, error: sourceError };
 
-	const destError = validateFamilyAgainstRawAddress(payload.destRaw, family, true, true, 'Destination');
+	const destError = validateFamilyAgainstRawAddress(
+		payload.destRaw,
+		family,
+		true,
+		true,
+		'Destination'
+	);
 	if (destError) return { valid: false, error: destError };
 
 	if (protocol !== 'tcp' && protocol !== 'udp') {
@@ -258,7 +347,9 @@ export function validateFirewallTrafficRulePayload(
 	return { valid: true };
 }
 
-export function validateFirewallNATRulePayload(payload: FirewallNATRulePayload): RuleValidationResult {
+export function validateFirewallNATRulePayload(
+	payload: FirewallNATRulePayload
+): RuleValidationResult {
 	if (!String(payload.name ?? '').trim()) {
 		return { valid: false, error: 'Rule name is required' };
 	}
@@ -287,9 +378,21 @@ export function validateFirewallNATRulePayload(payload: FirewallNATRulePayload):
 	const ingressInterfaces = (payload.ingressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
 	const egressInterfaces = (payload.egressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
 
-	const sourceError = validateFamilyAgainstRawAddress(payload.sourceRaw, family, true, true, 'Source');
+	const sourceError = validateFamilyAgainstRawAddress(
+		payload.sourceRaw,
+		family,
+		true,
+		true,
+		'Source'
+	);
 	if (sourceError) return { valid: false, error: sourceError };
-	const destError = validateFamilyAgainstRawAddress(payload.destRaw, family, true, true, 'Destination');
+	const destError = validateFamilyAgainstRawAddress(
+		payload.destRaw,
+		family,
+		true,
+		true,
+		'Destination'
+	);
 	if (destError) return { valid: false, error: destError };
 	const translateError = validateFamilyAgainstRawAddress(
 		payload.translateToRaw,
@@ -324,7 +427,10 @@ export function validateFirewallNATRulePayload(payload: FirewallNATRulePayload):
 
 	if (natType === 'snat' || natType === 'binat') {
 		if (egressInterfaces.length === 0) {
-			return { valid: false, error: `${natType.toUpperCase()} requires at least one egress interface` };
+			return {
+				valid: false,
+				error: `${natType.toUpperCase()} requires at least one egress interface`
+			};
 		}
 		if (ingressInterfaces.length > 0 && !policyRoutingEnabled) {
 			return {
@@ -354,7 +460,10 @@ export function validateFirewallNATRulePayload(payload: FirewallNATRulePayload):
 					error: 'Translate target is required when Translate Mode is Specific Address'
 				};
 			}
-			if (String(payload.translateToRaw ?? '').trim() !== '' && (payload.translateToObjId ?? 0) > 0) {
+			if (
+				String(payload.translateToRaw ?? '').trim() !== '' &&
+				(payload.translateToObjId ?? 0) > 0
+			) {
 				return {
 					valid: false,
 					error: 'Choose either translate target raw value or object, not both'

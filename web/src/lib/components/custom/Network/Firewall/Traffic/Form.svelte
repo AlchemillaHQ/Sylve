@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { createFirewallTrafficRule, updateFirewallTrafficRule } from '$lib/api/network/firewall';
+	import {
+		createFirewallTrafficRule,
+		updateFirewallTrafficRule,
+		type FirewallTrafficRuleUpsertRequest
+	} from '$lib/api/network/firewall';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -27,7 +31,7 @@
 		interfaces: Iface[];
 		switches: SwitchList;
 		wgClients?: WireGuardClient[];
-		afterChange: () => void;
+		afterChange: () => void | Promise<void>;
 	}
 
 	let {
@@ -92,13 +96,14 @@
 	};
 
 	function defaultForm(): Form {
+		const maxPriority = trafficRules.reduce((maximum, rule) => Math.max(maximum, rule.priority), 0);
 		return {
 			name: '',
 			description: '',
 			enabled: true,
 			log: false,
 			quick: false,
-			priority: trafficRules.length + 1,
+			priority: maxPriority + 1,
 			action: 'pass',
 			direction: 'in',
 			protocol: 'any',
@@ -112,34 +117,32 @@
 		};
 	}
 
-	let form = $state(defaultForm());
+	function formForRule(rule: FirewallTrafficRule | null): Form {
+		if (!rule) return defaultForm();
+		return {
+			name: rule.name,
+			description: rule.description ?? '',
+			enabled: rule.enabled ?? true,
+			log: rule.log ?? false,
+			quick: rule.quick ?? false,
+			priority: rule.priority,
+			action: rule.action,
+			direction: rule.direction,
+			protocol: rule.protocol,
+			family: rule.family ?? 'any',
+			ingressInterfaces: [...(rule.ingressInterfaces ?? [])],
+			egressInterfaces: [...(rule.egressInterfaces ?? [])],
+			source: addrToForm(rule.sourceRaw, rule.sourceObjId),
+			dest: addrToForm(rule.destRaw, rule.destObjId),
+			srcPort: addrToForm(rule.srcPortsRaw, rule.srcPortObjId),
+			dstPort: addrToForm(rule.dstPortsRaw, rule.dstPortObjId)
+		};
+	}
 
-	$effect(() => {
-		if (open) {
-			if (editingRule) {
-				form = {
-					name: editingRule.name,
-					description: editingRule.description ?? '',
-					enabled: editingRule.enabled ?? true,
-					log: editingRule.log ?? false,
-					quick: editingRule.quick ?? false,
-					priority: editingRule.priority,
-					action: editingRule.action,
-					direction: editingRule.direction,
-					protocol: editingRule.protocol,
-					family: editingRule.family ?? 'any',
-					ingressInterfaces: editingRule.ingressInterfaces ?? [],
-					egressInterfaces: editingRule.egressInterfaces ?? [],
-					source: addrToForm(editingRule.sourceRaw, editingRule.sourceObjId),
-					dest: addrToForm(editingRule.destRaw, editingRule.destObjId),
-					srcPort: addrToForm(editingRule.srcPortsRaw, editingRule.srcPortObjId),
-					dstPort: addrToForm(editingRule.dstPortsRaw, editingRule.dstPortObjId)
-				};
-			} else {
-				form = defaultForm();
-			}
-		}
-	});
+	// This dialog is conditionally mounted, so the form intentionally snapshots its opening rule.
+	// svelte-ignore state_referenced_locally
+	let form = $state(formForRule(editingRule));
+	let saving = $state(false);
 
 	let cbOpen = $state({
 		ingressInterfaces: false,
@@ -219,31 +222,13 @@
 	const isOutbound = $derived(form.direction === 'out');
 
 	function resetForm() {
-		if (editingRule) {
-			form = {
-				name: editingRule.name,
-				description: editingRule.description ?? '',
-				enabled: editingRule.enabled ?? true,
-				log: editingRule.log ?? false,
-				quick: editingRule.quick ?? false,
-				priority: editingRule.priority,
-				action: editingRule.action,
-				direction: editingRule.direction,
-				protocol: editingRule.protocol,
-				family: editingRule.family ?? 'any',
-				ingressInterfaces: editingRule.ingressInterfaces ?? [],
-				egressInterfaces: editingRule.egressInterfaces ?? [],
-				source: addrToForm(editingRule.sourceRaw, editingRule.sourceObjId),
-				dest: addrToForm(editingRule.destRaw, editingRule.destObjId),
-				srcPort: addrToForm(editingRule.srcPortsRaw, editingRule.srcPortObjId),
-				dstPort: addrToForm(editingRule.dstPortsRaw, editingRule.dstPortObjId)
-			};
-		} else {
-			form = defaultForm();
-		}
+		if (saving) return;
+		form = formForRule(editingRule);
 	}
 
 	async function save() {
+		if (saving) return;
+
 		if (!form.name.trim()) {
 			toast.error('Rule name is required', { position: 'bottom-center' });
 			return;
@@ -254,7 +239,7 @@
 		const sp = showPorts ? resolvePort(form.srcPort) : { raw: '', objId: null };
 		const dp = showPorts ? resolvePort(form.dstPort) : { raw: '', objId: null };
 
-		const payload = {
+		const payload: FirewallTrafficRuleUpsertRequest = {
 			name: form.name.trim(),
 			description: form.description.trim(),
 			enabled: form.enabled,
@@ -283,21 +268,34 @@
 			return;
 		}
 
-		const result =
-			edit && id
-				? await updateFirewallTrafficRule(id, payload)
-				: await createFirewallTrafficRule(payload);
+		saving = true;
+		try {
+			const result =
+				edit && id
+					? await updateFirewallTrafficRule(id, payload)
+					: await createFirewallTrafficRule(payload);
 
-		if (typeof result === 'number' || ('status' in result && result.status === 'success')) {
-			toast.success(`Traffic rule ${edit ? 'updated' : 'created'}`, { position: 'bottom-center' });
-			afterChange();
-			open = false;
-			form = defaultForm();
-		} else {
+			if (typeof result === 'number' || ('status' in result && result.status === 'success')) {
+				await afterChange();
+				toast.success(`Traffic rule ${edit ? 'updated' : 'created'}`, {
+					position: 'bottom-center'
+				});
+				form = defaultForm();
+				open = false;
+				return;
+			}
+
 			handleAPIError(result);
 			toast.error(`Failed to ${edit ? 'update' : 'create'} traffic rule`, {
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			console.error('Failed to save firewall traffic rule', error);
+			toast.error(`Failed to ${edit ? 'update' : 'create'} traffic rule`, {
+				position: 'bottom-center'
+			});
+		} finally {
+			saving = false;
 		}
 	}
 </script>
@@ -305,10 +303,16 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-[96%] overflow-hidden p-5 lg:max-w-3xl md:max-w-2xl"
-		showCloseButton={true}
-		showResetButton={true}
+		showCloseButton={!saving}
+		showResetButton={!saving}
 		onReset={resetForm}
-		onClose={() => (open = false)}
+		onClose={() => {
+			if (!saving) open = false;
+		}}
+		onEscapeKeydown={(event) => {
+			if (saving) event.preventDefault();
+		}}
+		aria-busy={saving}
 	>
 		<Dialog.Header>
 			<Dialog.Title>
@@ -501,8 +505,17 @@
 
 		<Dialog.Footer class="pt-2">
 			<div class="flex items-center gap-2">
-				<Button size="sm" variant="outline" onclick={() => (open = false)}>Cancel</Button>
-				<Button size="sm" onclick={save}>{edit ? 'Save' : 'Create'}</Button>
+				<Button size="sm" variant="outline" onclick={() => (open = false)} disabled={saving}
+					>Cancel</Button
+				>
+				<Button size="sm" onclick={save} disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						{edit ? 'Saving...' : 'Creating...'}
+					{:else}
+						{edit ? 'Save' : 'Create'}
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

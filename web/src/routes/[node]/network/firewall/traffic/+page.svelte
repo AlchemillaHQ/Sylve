@@ -50,14 +50,24 @@
 	} = $props();
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodTrafficRules = Array.isArray(data.trafficRules)
+		? data.trafficRules
+		: ([] as FirewallTrafficRule[]);
+
 	const trafficRulesResource = resource(
 		() => 'firewall-traffic-rules',
 		async (key) => {
 			const result = await getFirewallTrafficRules();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodTrafficRules;
+			}
+
+			lastGoodTrafficRules = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.trafficRules as FirewallTrafficRule[] }
+		{ initialValue: lastGoodTrafficRules }
 	);
 
 	const trafficRules = $derived(
@@ -68,6 +78,7 @@
 
 	let counterFetchIntent: 'auto' | 'manual' = 'auto';
 	let countersUpdating = $state(false);
+	let reordering = $state(false);
 	let lastGoodCounters: FirewallTrafficRuleCounter[] = [];
 
 	const countersResource = resource(
@@ -295,6 +306,8 @@
 	}
 
 	async function handleRowMoved(rows: Row[]) {
+		if (reordering) return;
+
 		const visibleRows = rows.filter((row) => row.visible !== false);
 		const payload: FirewallReorderRequest[] = visibleRows.map((row, index) => ({
 			id: Number(row.id),
@@ -304,13 +317,17 @@
 			await trafficRulesResource.refetch();
 			return;
 		}
-		const result = await reorderFirewallTrafficRules(payload);
-		if (result.status === 'success') {
+
+		reordering = true;
+		try {
+			const result = await reorderFirewallTrafficRules(payload);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to reorder traffic rules', { position: 'bottom-center' });
+			}
 			await trafficRulesResource.refetch();
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to reorder traffic rules', { position: 'bottom-center' });
-			await trafficRulesResource.refetch();
+		} finally {
+			reordering = false;
 		}
 	}
 
@@ -484,13 +501,20 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
+				disabled={reordering}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
 		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
-			<Button onclick={() => (modals.delete.open = true)} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={() => (modals.delete.open = true)}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={reordering}
+			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
@@ -500,21 +524,34 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
-		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6">
+		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6" disabled={reordering}>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{@render button('edit-rule')}
 		{@render button('delete-rule')}
 
-		<Button
-			onclick={() => refreshCounters('manual')}
-			size="sm"
-			variant="outline"
-			class="ml-auto h-6"
-			title="Refresh Counters"
-		>
-			<span class="icon-[mdi--refresh] h-4 w-4"></span>
-		</Button>
+		<div class="ml-auto flex items-center gap-2">
+			{#if reordering}
+				<span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					Saving order...
+				</span>
+			{/if}
+			<Button
+				onclick={() => refreshCounters('manual')}
+				size="sm"
+				variant="outline"
+				class="h-6"
+				title="Refresh Counters"
+				disabled={countersUpdating}
+			>
+				<span
+					class={countersUpdating
+						? 'icon-[mdi--loading] h-4 w-4 animate-spin'
+						: 'icon-[mdi--refresh] h-4 w-4'}
+				></span>
+			</Button>
+		</div>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
@@ -546,7 +583,9 @@
 		{switches}
 		{wgClients}
 		edit={false}
-		afterChange={() => trafficRulesResource.refetch()}
+		afterChange={async () => {
+			await trafficRulesResource.refetch();
+		}}
 	/>
 {/if}
 
@@ -560,7 +599,9 @@
 		{wgClients}
 		edit={true}
 		id={modals.edit.id}
-		afterChange={() => trafficRulesResource.refetch()}
+		afterChange={async () => {
+			await trafficRulesResource.refetch();
+		}}
 	/>
 {/if}
 

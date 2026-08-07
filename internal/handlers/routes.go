@@ -373,12 +373,16 @@ func RegisterRoutes(r *gin.Engine,
 			objects.PUT("/:id", networkHandlers.EditNetworkObject(networkService))
 		}
 
-		network.GET("/firewall/traffic", networkHandlers.ListFirewallTrafficRules(networkService))
-		network.GET("/firewall/traffic/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
-		network.POST("/firewall/traffic", networkHandlers.CreateFirewallTrafficRule(networkService))
-		network.PUT("/firewall/traffic/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
-		network.PUT("/firewall/traffic/:id", networkHandlers.EditFirewallTrafficRule(networkService))
-		network.DELETE("/firewall/traffic/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
+		traffic := network.Group("/firewall/traffic")
+		traffic.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			traffic.GET("", networkHandlers.ListFirewallTrafficRules(networkService))
+			traffic.GET("/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
+			traffic.POST("", networkHandlers.CreateFirewallTrafficRule(networkService))
+			traffic.PUT("/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
+			traffic.PUT("/:id", networkHandlers.EditFirewallTrafficRule(networkService))
+			traffic.DELETE("/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
+		}
 
 		network.GET("/firewall/nat", networkHandlers.ListFirewallNATRules(networkService))
 		network.GET("/firewall/nat/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))

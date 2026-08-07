@@ -9,6 +9,7 @@
 package networkHandlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,18 +17,96 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/gin-gonic/gin"
 )
 
+func bindFirewallTrafficJSON(c *gin.Context, destination any) bool {
+	if err := c.ShouldBindJSON(destination); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "firewall_traffic_request_too_large",
+				Error:   "firewall_traffic_request_too_large",
+				Data:    nil,
+			})
+			return false
+		}
+
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_request",
+			Error:   "invalid_firewall_traffic_request",
+			Data:    nil,
+		})
+		return false
+	}
+	return true
+}
+
+func firewallTrafficRulePathID(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_id",
+			Error:   "invalid_firewall_traffic_rule_id",
+			Data:    nil,
+		})
+		return 0, false
+	}
+	return uint(id), true
+}
+
+func firewallTrafficRuleErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, network.ErrInvalidFirewallTrafficRule):
+		return http.StatusBadRequest
+	case errors.Is(err, network.ErrFirewallTrafficRuleNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, network.ErrHiddenFirewallRuleMutation), errors.Is(err, network.ErrFirewallTrafficRuleConflict):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func writeFirewallTrafficRuleError(c *gin.Context, message string, fallbackCode string, err error) {
+	status := firewallTrafficRuleErrorStatus(err)
+	code := fallbackCode
+	if status != http.StatusInternalServerError {
+		code = network.FirewallTrafficRuleErrorCode(err)
+	} else {
+		logger.L.Error().Err(err).Str("operation", message).Msg("firewall_traffic_rule_request_failed")
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   code,
+		Data:    nil,
+	})
+}
+
+// @Summary List Firewall Traffic Rules
+// @Description List all user-visible firewall traffic rules in evaluation order
+// @Tags Network
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]networkModels.FirewallTrafficRule] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic [get]
 func ListFirewallTrafficRules(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rules, err := svc.GetFirewallTrafficRules()
 		if err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_list_firewall_traffic_rules")
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_list_firewall_traffic_rules",
-				Error:   err.Error(),
+				Error:   "firewall_traffic_rule_list_failed",
 				Data:    nil,
 			})
 			return
@@ -42,14 +121,23 @@ func ListFirewallTrafficRules(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary List Firewall Traffic Rule Counters
+// @Description List cumulative packet and byte counters for user-visible firewall traffic rules
+// @Tags Network
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]networkServiceInterfaces.FirewallTrafficRuleCounter] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic/counters [get]
 func ListFirewallTrafficRuleCounters(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		counters, err := svc.GetFirewallTrafficRuleCounters()
 		if err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_list_firewall_traffic_rule_counters")
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_list_firewall_traffic_rule_counters",
-				Error:   err.Error(),
+				Error:   "firewall_traffic_rule_counter_list_failed",
 				Data:    nil,
 			})
 			return
@@ -64,31 +152,33 @@ func ListFirewallTrafficRuleCounters(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Create Firewall Traffic Rule
+// @Description Create and apply a firewall traffic rule
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body networkServiceInterfaces.UpsertFirewallTrafficRuleRequest true "Create Firewall Traffic Rule Request"
+// @Success 201 {object} internal.APIResponse[uint] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic [post]
 func CreateFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req networkServiceInterfaces.UpsertFirewallTrafficRuleRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindFirewallTrafficJSON(c, &req) {
 			return
 		}
 
 		id, err := svc.CreateFirewallTrafficRule(&req)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_create_firewall_traffic_rule",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeFirewallTrafficRuleError(c, "failed_to_create_firewall_traffic_rule", "firewall_traffic_rule_create_failed", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[uint]{
+		c.JSON(http.StatusCreated, internal.APIResponse[uint]{
 			Status:  "success",
 			Message: "firewall_traffic_rule_created",
 			Error:   "",
@@ -97,41 +187,36 @@ func CreateFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Update Firewall Traffic Rule
+// @Description Replace and apply an existing user-managed firewall traffic rule
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Traffic Rule ID" minimum(1)
+// @Param request body networkServiceInterfaces.UpsertFirewallTrafficRuleRequest true "Update Firewall Traffic Rule Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic/{id} [put]
 func EditFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_id",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		id, ok := firewallTrafficRulePathID(c)
+		if !ok {
 			return
 		}
 
 		var req networkServiceInterfaces.UpsertFirewallTrafficRuleRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindFirewallTrafficJSON(c, &req) {
 			return
 		}
 
-		if err := svc.EditFirewallTrafficRule(uint(id), &req); err != nil {
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "hidden_firewall_rule_managed_by_wireguard") {
-				status = http.StatusBadRequest
-			}
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_edit_firewall_traffic_rule",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := svc.EditFirewallTrafficRule(id, &req); err != nil {
+			writeFirewallTrafficRuleError(c, "failed_to_edit_firewall_traffic_rule", "firewall_traffic_rule_update_failed", err)
 			return
 		}
 
@@ -144,30 +229,28 @@ func EditFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete Firewall Traffic Rule
+// @Description Delete and apply one user-managed firewall traffic rule by ID
+// @Tags Network
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Traffic Rule ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic/{id} [delete]
 func DeleteFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_id",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		id, ok := firewallTrafficRulePathID(c)
+		if !ok {
 			return
 		}
 
-		if err := svc.DeleteFirewallTrafficRule(uint(id)); err != nil {
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "hidden_firewall_rule_managed_by_wireguard") {
-				status = http.StatusBadRequest
-			}
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_firewall_traffic_rule",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := svc.DeleteFirewallTrafficRule(id); err != nil {
+			writeFirewallTrafficRuleError(c, "failed_to_delete_firewall_traffic_rule", "firewall_traffic_rule_delete_failed", err)
 			return
 		}
 
@@ -180,30 +263,30 @@ func DeleteFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Reorder Firewall Traffic Rules
+// @Description Replace the evaluation order of all user-visible firewall traffic rules and apply it
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body []networkServiceInterfaces.FirewallReorderRequest true "Complete Traffic Rule Reorder Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic/reorder [put]
 func ReorderFirewallTrafficRules(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req []networkServiceInterfaces.FirewallReorderRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindFirewallTrafficJSON(c, &req) {
 			return
 		}
 
 		if err := svc.ReorderFirewallTrafficRules(req); err != nil {
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "hidden_firewall_rule_managed_by_wireguard") {
-				status = http.StatusBadRequest
-			}
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_reorder_firewall_traffic_rules",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeFirewallTrafficRuleError(c, "failed_to_reorder_firewall_traffic_rules", "firewall_traffic_rule_reorder_failed", err)
 			return
 		}
 

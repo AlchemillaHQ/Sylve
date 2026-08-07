@@ -11,26 +11,26 @@ package networkServiceInterfaces
 import "time"
 
 type UpsertFirewallTrafficRuleRequest struct {
-	Name              string   `json:"name" binding:"required"`
-	Description       string   `json:"description"`
+	Name              string   `json:"name" binding:"required,max=128"`
+	Description       string   `json:"description" binding:"max=2048"`
 	Enabled           *bool    `json:"enabled"`
 	Log               *bool    `json:"log"`
 	Quick             *bool    `json:"quick"`
-	Priority          *int     `json:"priority"`
+	Priority          *int     `json:"priority" binding:"omitempty,gt=0,lte=1000000"`
 	Action            string   `json:"action" binding:"required,oneof=pass block"`
 	Direction         string   `json:"direction" binding:"required,oneof=in out"`
 	Protocol          string   `json:"protocol" binding:"required,oneof=any tcp udp icmp"`
-	IngressInterfaces []string `json:"ingressInterfaces"`
-	EgressInterfaces  []string `json:"egressInterfaces"`
+	IngressInterfaces []string `json:"ingressInterfaces" binding:"max=64,unique,dive,required,max=64"`
+	EgressInterfaces  []string `json:"egressInterfaces" binding:"max=64,unique,dive,required,max=64"`
 	Family            string   `json:"family" binding:"required,oneof=any inet inet6"`
-	SourceRaw         string   `json:"sourceRaw"`
-	SourceObjID       *uint    `json:"sourceObjId"`
-	DestRaw           string   `json:"destRaw"`
-	DestObjID         *uint    `json:"destObjId"`
-	SrcPortsRaw       string   `json:"srcPortsRaw"`
-	SrcPortObjID      *uint    `json:"srcPortObjId"`
-	DstPortsRaw       string   `json:"dstPortsRaw"`
-	DstPortObjID      *uint    `json:"dstPortObjId"`
+	SourceRaw         string   `json:"sourceRaw" binding:"max=2048"`
+	SourceObjID       *uint    `json:"sourceObjId" binding:"omitempty,gt=0"`
+	DestRaw           string   `json:"destRaw" binding:"max=2048"`
+	DestObjID         *uint    `json:"destObjId" binding:"omitempty,gt=0"`
+	SrcPortsRaw       string   `json:"srcPortsRaw" binding:"max=2048"`
+	SrcPortObjID      *uint    `json:"srcPortObjId" binding:"omitempty,gt=0"`
+	DstPortsRaw       string   `json:"dstPortsRaw" binding:"max=2048"`
+	DstPortObjID      *uint    `json:"dstPortObjId" binding:"omitempty,gt=0"`
 }
 
 type UpsertFirewallNATRuleRequest struct {
@@ -71,8 +71,8 @@ type FirewallAdvancedRequest struct {
 }
 
 type FirewallReorderRequest struct {
-	ID       uint `json:"id" binding:"required"`
-	Priority int  `json:"priority" binding:"required"`
+	ID       uint `json:"id" binding:"required,gt=0"`
+	Priority int  `json:"priority" binding:"required,gt=0,lte=1024"`
 }
 
 type FirewallTrafficRuleCounter struct {

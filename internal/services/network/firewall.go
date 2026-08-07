@@ -9,6 +9,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -42,14 +43,13 @@ const (
 	defaultAllowRuleOutName = "Allow Outbound All"
 )
 
-const errHiddenFirewallRuleMutation = "hidden_firewall_rule_managed_by_wireguard"
-
 var firewallRCConfPath = "/etc/rc.conf"
 var firewallRunCommand = utils.RunCommand
 var pfValidationLinePattern = regexp.MustCompile(`^(.+?):([0-9]+):\s*(.+)$`)
 var pfTrafficRuleLabelPattern = regexp.MustCompile(`label\s+"sylve_trf_([0-9]+)"`)
 var pfNATRuleLabelPattern = regexp.MustCompile(`(?:label\s+"sylve_nat_([0-9]+)"|tag\s+"?sylve_nat_([0-9]+)"?)`)
 var pfTrafficRuleCounterPattern = regexp.MustCompile(`Packets:\s*([0-9]+)\s+Bytes:\s*([0-9]+)`)
+var firewallInterfaceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
 
 func buildPFDisabledConfig() string {
 	var b strings.Builder
@@ -515,18 +515,6 @@ func (s *Service) moveNATRulePriority(tx *gorm.DB, ruleID uint, currentPriority 
 		Update("priority", gorm.Expr("priority - 1")).Error
 }
 
-func snapshotTrafficPriorities(tx *gorm.DB) (map[uint]int, error) {
-	var rules []networkModels.FirewallTrafficRule
-	if err := tx.Select("id,priority").Find(&rules).Error; err != nil {
-		return nil, err
-	}
-	out := make(map[uint]int, len(rules))
-	for _, rule := range rules {
-		out[rule.ID] = rule.Priority
-	}
-	return out, nil
-}
-
 func snapshotNATPriorities(tx *gorm.DB) (map[uint]int, error) {
 	var rules []networkModels.FirewallNATRule
 	if err := tx.Select("id,priority").Find(&rules).Error; err != nil {
@@ -539,13 +527,65 @@ func snapshotNATPriorities(tx *gorm.DB) (map[uint]int, error) {
 	return out, nil
 }
 
-func restoreTrafficPriorities(tx *gorm.DB, snapshot map[uint]int) error {
-	for id, priority := range snapshot {
-		if err := tx.Model(&networkModels.FirewallTrafficRule{}).Where("id = ?", id).Update("priority", priority).Error; err != nil {
+func snapshotFirewallTrafficRules(tx *gorm.DB) ([]networkModels.FirewallTrafficRule, error) {
+	var rules []networkModels.FirewallTrafficRule
+	if err := tx.Order("id ASC").Find(&rules).Error; err != nil {
+		return nil, err
+	}
+
+	for i := range rules {
+		rules[i].IngressInterfaces = append([]string(nil), rules[i].IngressInterfaces...)
+		rules[i].EgressInterfaces = append([]string(nil), rules[i].EgressInterfaces...)
+	}
+
+	return rules, nil
+}
+
+func restoreFirewallTrafficRules(tx *gorm.DB, snapshot []networkModels.FirewallTrafficRule) error {
+	if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&networkModels.FirewallTrafficRule{}).Error; err != nil {
+		return err
+	}
+	if len(snapshot) == 0 {
+		return nil
+	}
+	for i := range snapshot {
+		desired := snapshot[i]
+		insert := desired
+		if err := tx.Create(&insert).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&networkModels.FirewallTrafficRule{}).
+			Where("id = ?", desired.ID).
+			Select(
+				"name", "description", "visible", "enabled", "log", "quick", "priority",
+				"action", "direction", "protocol", "ingress_interfaces", "egress_interfaces",
+				"family", "source_raw", "source_obj_id", "dest_raw", "dest_obj_id",
+				"src_ports_raw", "src_port_obj_id", "dst_ports_raw", "dst_port_obj_id",
+				"created_at", "updated_at",
+			).
+			Updates(&desired).Error; err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *Service) restoreFirewallTrafficRulesAfterApplyFailure(
+	snapshot []networkModels.FirewallTrafficRule,
+	applyErr error,
+	reapply func() error,
+) error {
+	if rollbackErr := s.DB.Transaction(func(tx *gorm.DB) error {
+		return restoreFirewallTrafficRules(tx, snapshot)
+	}); rollbackErr != nil {
+		return errors.Join(applyErr, fmt.Errorf("firewall traffic rule rollback failed: %w", rollbackErr))
+	}
+
+	if reapplyErr := reapply(); reapplyErr != nil {
+		return errors.Join(applyErr, fmt.Errorf("restoring previous firewall configuration failed: %w", reapplyErr))
+	}
+
+	return applyErr
 }
 
 func restoreNATPriorities(tx *gorm.DB, snapshot map[uint]int) error {
@@ -744,42 +784,188 @@ func (s *Service) validateFirewallHostObjectRef(id *uint, field string) error {
 	}
 }
 
+func validateFirewallTrafficInterfaceList(values []string, field string) error {
+	if len(values) > MaxFirewallTrafficRuleInterfaces {
+		return invalidFirewallTrafficRule(fmt.Errorf("too_many_%s_interfaces", field))
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		name := strings.TrimSpace(value)
+		if name == "" {
+			return invalidFirewallTrafficRule(fmt.Errorf("empty_%s_interface", field))
+		}
+		if len(name) > MaxFirewallTrafficRuleInterfaceBytes || !firewallInterfaceNamePattern.MatchString(name) {
+			return invalidFirewallTrafficRule(fmt.Errorf("invalid_%s_interface", field))
+		}
+		if _, ok := seen[name]; ok {
+			return invalidFirewallTrafficRule(fmt.Errorf("duplicate_%s_interface", field))
+		}
+		seen[name] = struct{}{}
+	}
+
+	return nil
+}
+
+func validateFirewallTrafficSelectorPair(raw string, objectID *uint, field string) error {
+	if objectID != nil && *objectID == 0 {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_%s_object_id", field))
+	}
+	if strings.TrimSpace(raw) != "" && objectID != nil {
+		return invalidFirewallTrafficRule(fmt.Errorf("%s_raw_and_object_are_mutually_exclusive", field))
+	}
+	return nil
+}
+
+func (s *Service) validateFirewallTrafficAddressObjectRef(id *uint, field string) error {
+	if id == nil {
+		return nil
+	}
+	if *id == 0 {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_%s_object_id", field))
+	}
+
+	var object networkModels.Object
+	if err := s.DB.Select("id,type").First(&object, *id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return invalidFirewallTrafficRule(fmt.Errorf("%s_object_not_found", field))
+		}
+		return fmt.Errorf("load %s firewall object: %w", field, err)
+	}
+
+	switch object.Type {
+	case "Host", "Network", "FQDN", "List":
+		return nil
+	default:
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_%s_object_type", field))
+	}
+}
+
+func (s *Service) validateFirewallTrafficPortObjectRef(id *uint, field string) error {
+	if id == nil {
+		return nil
+	}
+	if *id == 0 {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_%s_object_id", field))
+	}
+
+	var object networkModels.Object
+	if err := s.DB.Select("id,type").First(&object, *id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return invalidFirewallTrafficRule(fmt.Errorf("%s_object_not_found", field))
+		}
+		return fmt.Errorf("load %s firewall object: %w", field, err)
+	}
+	if object.Type != "Port" {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_%s_object_type", field))
+	}
+
+	return nil
+}
+
 func (s *Service) validateFirewallTrafficRuleRequest(req *networkServiceInterfaces.UpsertFirewallTrafficRuleRequest) error {
+	if req == nil {
+		return invalidFirewallTrafficRule(fmt.Errorf("missing_firewall_traffic_rule"))
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" || len(name) > MaxFirewallTrafficRuleNameBytes {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_name"))
+	}
+	if len(strings.TrimSpace(req.Description)) > MaxFirewallTrafficRuleDescriptionBytes {
+		return invalidFirewallTrafficRule(fmt.Errorf("firewall_traffic_rule_description_too_long"))
+	}
+	if req.Priority != nil && (*req.Priority <= 0 || *req.Priority > MaxFirewallTrafficRulePriority) {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_priority"))
+	}
+
+	action := strings.TrimSpace(strings.ToLower(req.Action))
 	direction := normalizeDirection(req.Direction)
 	family := normalizeFamily(req.Family)
 	protocol := normalizeProtocol(req.Protocol)
 	ingress := normalizeInterfaceList(req.IngressInterfaces)
 	egress := normalizeInterfaceList(req.EgressInterfaces)
 
+	if action != "pass" && action != "block" {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_action"))
+	}
+	if direction != "in" && direction != "out" {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_direction"))
+	}
+	if family != "any" && family != "inet" && family != "inet6" {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_family"))
+	}
+	if protocol != "any" && protocol != "tcp" && protocol != "udp" && protocol != "icmp" {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_protocol"))
+	}
+	if err := validateFirewallTrafficInterfaceList(req.IngressInterfaces, "ingress"); err != nil {
+		return err
+	}
+	if err := validateFirewallTrafficInterfaceList(req.EgressInterfaces, "egress"); err != nil {
+		return err
+	}
+
+	selectors := []struct {
+		raw      string
+		objectID *uint
+		field    string
+	}{
+		{raw: req.SourceRaw, objectID: req.SourceObjID, field: "source"},
+		{raw: req.DestRaw, objectID: req.DestObjID, field: "destination"},
+		{raw: req.SrcPortsRaw, objectID: req.SrcPortObjID, field: "source_port"},
+		{raw: req.DstPortsRaw, objectID: req.DstPortObjID, field: "destination_port"},
+	}
+	for _, selector := range selectors {
+		if len(selector.raw) > MaxFirewallTrafficRuleSelectorBytes {
+			return invalidFirewallTrafficRule(fmt.Errorf("%s_selector_too_long", selector.field))
+		}
+		if err := validateFirewallTrafficSelectorPair(selector.raw, selector.objectID, selector.field); err != nil {
+			return err
+		}
+	}
+
 	switch direction {
 	case "in":
 		if len(egress) > 0 {
-			return fmt.Errorf("in_direction_rejects_egress_interfaces")
+			return invalidFirewallTrafficRule(fmt.Errorf("in_direction_rejects_egress_interfaces"))
 		}
 	case "out":
 		if len(ingress) > 0 {
-			return fmt.Errorf("out_direction_rejects_ingress_interfaces")
+			return invalidFirewallTrafficRule(fmt.Errorf("out_direction_rejects_ingress_interfaces"))
 		}
 	}
 
 	if err := validateFamilyAgainstRawAddress(req.SourceRaw, family, true, "source_raw", true); err != nil {
-		return err
+		return invalidFirewallTrafficRule(err)
 	}
 	if err := validateFamilyAgainstRawAddress(req.DestRaw, family, true, "dest_raw", true); err != nil {
-		return err
+		return invalidFirewallTrafficRule(err)
 	}
 
 	if protocol != "tcp" && protocol != "udp" {
 		if hasPortSelector(req.SrcPortsRaw, req.SrcPortObjID) || hasPortSelector(req.DstPortsRaw, req.DstPortObjID) {
-			return fmt.Errorf("ports_require_tcp_or_udp_protocol")
+			return invalidFirewallTrafficRule(fmt.Errorf("ports_require_tcp_or_udp_protocol"))
 		}
 	} else {
 		if err := validateRawPortSelector(req.SrcPortsRaw, "src_ports_raw"); err != nil {
-			return err
+			return invalidFirewallTrafficRule(err)
 		}
 		if err := validateRawPortSelector(req.DstPortsRaw, "dst_ports_raw"); err != nil {
-			return err
+			return invalidFirewallTrafficRule(err)
 		}
+	}
+
+	if err := s.validateFirewallTrafficAddressObjectRef(req.SourceObjID, "source"); err != nil {
+		return err
+	}
+	if err := s.validateFirewallTrafficAddressObjectRef(req.DestObjID, "destination"); err != nil {
+		return err
+	}
+	if err := s.validateFirewallTrafficPortObjectRef(req.SrcPortObjID, "source_port"); err != nil {
+		return err
+	}
+	if err := s.validateFirewallTrafficPortObjectRef(req.DstPortObjID, "destination_port"); err != nil {
+		return err
 	}
 
 	return nil
@@ -916,19 +1102,15 @@ func (s *Service) validateFirewallNATRuleRequest(req *networkServiceInterfaces.U
 }
 
 func (s *Service) CreateFirewallTrafficRule(req *networkServiceInterfaces.UpsertFirewallTrafficRuleRequest) (uint, error) {
+	s.firewallTrafficMutationMutex.Lock()
+	defer s.firewallTrafficMutationMutex.Unlock()
+
 	if err := s.validateFirewallTrafficRuleRequest(req); err != nil {
 		return 0, err
 	}
-	if err := s.validateFirewallAddressObjectRef(req.SourceObjID); err != nil {
-		return 0, err
-	}
-	if err := s.validateFirewallAddressObjectRef(req.DestObjID); err != nil {
-		return 0, err
-	}
-	if err := s.validateFirewallPortObjectRef(req.SrcPortObjID); err != nil {
-		return 0, err
-	}
-	if err := s.validateFirewallPortObjectRef(req.DstPortObjID); err != nil {
+
+	trafficSnapshot, err := snapshotFirewallTrafficRules(s.DB)
+	if err != nil {
 		return 0, err
 	}
 
@@ -980,11 +1162,6 @@ func (s *Service) CreateFirewallTrafficRule(req *networkServiceInterfaces.Upsert
 		DstPortObjID:      req.DstPortObjID,
 	}
 
-	prioritySnapshot, err := snapshotTrafficPriorities(s.DB)
-	if err != nil {
-		return 0, err
-	}
-
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		maxHidden, maxHiddenErr := s.maxHiddenTrafficPriority(tx)
 		if maxHiddenErr != nil {
@@ -1004,46 +1181,39 @@ func (s *Service) CreateFirewallTrafficRule(req *networkServiceInterfaces.Upsert
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Transaction(func(tx *gorm.DB) error {
-			if deleteErr := tx.Delete(&networkModels.FirewallTrafficRule{}, rule.ID).Error; deleteErr != nil {
-				return deleteErr
-			}
-			return restoreTrafficPriorities(tx, prioritySnapshot)
-		})
-		return 0, err
+		return 0, s.restoreFirewallTrafficRulesAfterApplyFailure(trafficSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return rule.ID, nil
 }
 
 func (s *Service) EditFirewallTrafficRule(id uint, req *networkServiceInterfaces.UpsertFirewallTrafficRuleRequest) error {
+	if id == 0 {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_id"))
+	}
+
+	s.firewallTrafficMutationMutex.Lock()
+	defer s.firewallTrafficMutationMutex.Unlock()
+
 	if err := s.validateFirewallTrafficRuleRequest(req); err != nil {
-		return err
-	}
-	if err := s.validateFirewallAddressObjectRef(req.SourceObjID); err != nil {
-		return err
-	}
-	if err := s.validateFirewallAddressObjectRef(req.DestObjID); err != nil {
-		return err
-	}
-	if err := s.validateFirewallPortObjectRef(req.SrcPortObjID); err != nil {
-		return err
-	}
-	if err := s.validateFirewallPortObjectRef(req.DstPortObjID); err != nil {
 		return err
 	}
 
 	var current networkModels.FirewallTrafficRule
 	if err := s.DB.First(&current, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return firewallTrafficRuleNotFound(err)
+		}
 		return err
 	}
 	if !current.Visible {
-		return fmt.Errorf(errHiddenFirewallRuleMutation)
+		return ErrHiddenFirewallRuleMutation
 	}
 
-	previous := current
-	previous.IngressInterfaces = append([]string(nil), current.IngressInterfaces...)
-	previous.EgressInterfaces = append([]string(nil), current.EgressInterfaces...)
+	trafficSnapshot, err := snapshotFirewallTrafficRules(s.DB)
+	if err != nil {
+		return err
+	}
 
 	targetPriority := current.Priority
 	if req.Priority != nil {
@@ -1076,11 +1246,6 @@ func (s *Service) EditFirewallTrafficRule(id uint, req *networkServiceInterfaces
 	current.DstPortsRaw = normalizeFirewallRequestStrings(req.DstPortsRaw)
 	current.DstPortObjID = req.DstPortObjID
 
-	prioritySnapshot, err := snapshotTrafficPriorities(s.DB)
-	if err != nil {
-		return err
-	}
-
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		maxHidden, maxHiddenErr := s.maxHiddenTrafficPriority(tx)
 		if maxHiddenErr != nil {
@@ -1099,25 +1264,34 @@ func (s *Service) EditFirewallTrafficRule(id uint, req *networkServiceInterfaces
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Transaction(func(tx *gorm.DB) error {
-			if saveErr := tx.Save(&previous).Error; saveErr != nil {
-				return saveErr
-			}
-			return restoreTrafficPriorities(tx, prioritySnapshot)
-		})
-		return err
+		return s.restoreFirewallTrafficRulesAfterApplyFailure(trafficSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil
 }
 
 func (s *Service) DeleteFirewallTrafficRule(id uint) error {
+	if id == 0 {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_id"))
+	}
+
+	s.firewallTrafficMutationMutex.Lock()
+	defer s.firewallTrafficMutationMutex.Unlock()
+
 	var rule networkModels.FirewallTrafficRule
 	if err := s.DB.First(&rule, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return firewallTrafficRuleNotFound(err)
+		}
 		return err
 	}
 	if !rule.Visible {
-		return fmt.Errorf(errHiddenFirewallRuleMutation)
+		return ErrHiddenFirewallRuleMutation
+	}
+
+	trafficSnapshot, err := snapshotFirewallTrafficRules(s.DB)
+	if err != nil {
+		return err
 	}
 
 	if err := s.DB.Delete(&rule).Error; err != nil {
@@ -1125,54 +1299,72 @@ func (s *Service) DeleteFirewallTrafficRule(id uint) error {
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Create(&rule).Error
-		return err
+		return s.restoreFirewallTrafficRulesAfterApplyFailure(trafficSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil
 }
 
 func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.FirewallReorderRequest) error {
-	if len(req) == 0 {
-		return nil
+	if len(req) == 0 || len(req) > MaxFirewallTrafficRuleReorderItems {
+		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_reorder_size"))
 	}
 
+	s.firewallTrafficMutationMutex.Lock()
+	defer s.firewallTrafficMutationMutex.Unlock()
+
 	ids := make([]uint, 0, len(req))
-	seen := make(map[uint]struct{}, len(req))
+	seenIDs := make(map[uint]struct{}, len(req))
+	seenPriorities := make(map[int]struct{}, len(req))
 	for _, item := range req {
 		if item.ID == 0 {
-			return fmt.Errorf("invalid_rule_id")
+			return invalidFirewallTrafficRule(fmt.Errorf("invalid_rule_id"))
 		}
-		if _, ok := seen[item.ID]; ok {
-			return fmt.Errorf("duplicate_rule_id: %d", item.ID)
+		if _, ok := seenIDs[item.ID]; ok {
+			return invalidFirewallTrafficRule(fmt.Errorf("duplicate_rule_id"))
 		}
-		seen[item.ID] = struct{}{}
+		if item.Priority <= 0 || item.Priority > len(req) {
+			return invalidFirewallTrafficRule(fmt.Errorf("invalid_reorder_priority"))
+		}
+		if _, ok := seenPriorities[item.Priority]; ok {
+			return invalidFirewallTrafficRule(fmt.Errorf("duplicate_priority_in_reorder_request"))
+		}
+		seenIDs[item.ID] = struct{}{}
+		seenPriorities[item.Priority] = struct{}{}
 		ids = append(ids, item.ID)
 	}
 
-	var existing []networkModels.FirewallTrafficRule
-	if err := s.DB.Select("id,priority,visible").Where("id IN ?", ids).Find(&existing).Error; err != nil {
+	var submitted []networkModels.FirewallTrafficRule
+	if err := s.DB.Select("id,visible").Where("id IN ?", ids).Find(&submitted).Error; err != nil {
 		return err
 	}
-	if len(existing) != len(ids) {
-		return fmt.Errorf("some_firewall_traffic_rules_not_found")
+	if len(submitted) != len(ids) {
+		return firewallTrafficRuleNotFound(fmt.Errorf("some_firewall_traffic_rules_not_found"))
 	}
-
-	previous := make(map[uint]int, len(existing))
-	for _, rule := range existing {
+	for _, rule := range submitted {
 		if !rule.Visible {
-			return fmt.Errorf(errHiddenFirewallRuleMutation)
+			return ErrHiddenFirewallRuleMutation
 		}
-		previous[rule.ID] = rule.Priority
 	}
 
-	seenPriorities := make(map[int]struct{}, len(req))
-	for _, item := range req {
-		p := normalizePriority(item.Priority)
-		if _, ok := seenPriorities[p]; ok {
-			return fmt.Errorf("duplicate_priority_in_reorder_request: %d", p)
+	var visibleIDs []uint
+	if err := s.DB.Model(&networkModels.FirewallTrafficRule{}).
+		Where("visible = ?", true).
+		Pluck("id", &visibleIDs).Error; err != nil {
+		return err
+	}
+	if len(visibleIDs) != len(req) {
+		return firewallTrafficRuleConflict(fmt.Errorf("reorder_requires_all_visible_rules"))
+	}
+	for _, id := range visibleIDs {
+		if _, ok := seenIDs[id]; !ok {
+			return firewallTrafficRuleConflict(fmt.Errorf("reorder_requires_all_visible_rules"))
 		}
-		seenPriorities[p] = struct{}{}
+	}
+
+	trafficSnapshot, err := snapshotFirewallTrafficRules(s.DB)
+	if err != nil {
+		return err
 	}
 
 	maxHidden, err := s.maxHiddenTrafficPriority(s.DB)
@@ -1182,7 +1374,7 @@ func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.Fir
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		for _, item := range req {
-			targetPriority := normalizePriority(item.Priority) + maxHidden
+			targetPriority := item.Priority + maxHidden
 			if err := tx.Model(&networkModels.FirewallTrafficRule{}).Where("id = ?", item.ID).Update("priority", targetPriority).Error; err != nil {
 				return err
 			}
@@ -1193,15 +1385,7 @@ func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.Fir
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Transaction(func(tx *gorm.DB) error {
-			for id, priority := range previous {
-				if updateErr := tx.Model(&networkModels.FirewallTrafficRule{}).Where("id = ?", id).Update("priority", priority).Error; updateErr != nil {
-					return updateErr
-				}
-			}
-			return nil
-		})
-		return err
+		return s.restoreFirewallTrafficRulesAfterApplyFailure(trafficSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil

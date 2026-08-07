@@ -2726,8 +2726,8 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 	}
 
 	err := svc.ReorderFirewallTrafficRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: ruleA.ID, Priority: 1010},
-		{ID: ruleB.ID, Priority: 1000},
+		{ID: ruleA.ID, Priority: 2},
+		{ID: ruleB.ID, Priority: 1},
 	})
 	if err != nil {
 		t.Fatalf("expected reorder to succeed, got: %v", err)
@@ -2742,7 +2742,7 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 		t.Fatalf("failed to reload rule B: %v", err)
 	}
 
-	if refreshedA.Priority != 1010 || refreshedB.Priority != 1000 {
+	if refreshedA.Priority != 2 || refreshedB.Priority != 1 {
 		t.Fatalf("unexpected reordered priorities: A=%d B=%d", refreshedA.Priority, refreshedB.Priority)
 	}
 }
