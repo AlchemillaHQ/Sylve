@@ -221,6 +221,10 @@ func TestRegisteredFirewallNATRoutesMatchSourceAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	routeHandlerSource, err := os.ReadFile(filepath.Join(handlerDir, "route.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	registered := map[string]struct{}{}
 	routePattern := regexp.MustCompile(`(?m)^\s*nat\.(GET|POST|PUT|PATCH|DELETE)\("([^"]*)"`)
@@ -231,7 +235,8 @@ func TestRegisteredFirewallNATRoutesMatchSourceAnnotations(t *testing.T) {
 
 	annotated := map[string]struct{}{}
 	annotationPattern := regexp.MustCompile(`(?m)^// @Router (/network/firewall/nat\S*) \[(get|post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(handlerSource), -1) {
+	annotationSource := string(handlerSource) + "\n" + string(routeHandlerSource)
+	for _, match := range annotationPattern.FindAllStringSubmatch(annotationSource, -1) {
 		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
 	}
 
@@ -245,7 +250,7 @@ func TestRegisteredFirewallNATRoutesMatchSourceAnnotations(t *testing.T) {
 			t.Errorf("source annotation has no matching registered route: %s", route)
 		}
 	}
-	if len(registered) != 6 || len(annotated) != 6 {
+	if len(registered) != 7 || len(annotated) != 7 {
 		t.Fatalf("unexpected route totals: registered=%d annotated=%d", len(registered), len(annotated))
 	}
 

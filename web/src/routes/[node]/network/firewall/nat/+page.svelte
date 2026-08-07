@@ -72,6 +72,7 @@
 	let counterFetchIntent: 'auto' | 'manual' = 'auto';
 	let countersUpdating = $state(false);
 	let reordering = $state(false);
+	let suggestingRoute = $state(false);
 	let lastGoodCounters: FirewallNATRuleCounter[] = [];
 
 	const countersResource = resource(
@@ -178,12 +179,6 @@
 			prefill: null as Partial<StaticRoute> | null,
 			suggestions: [] as Partial<StaticRoute>[]
 		}
-	});
-
-	$effect(() => {
-		if (modals.routeSuggestion.open) return;
-		modals.routeSuggestion.prefill = null;
-		modals.routeSuggestion.suggestions = [];
 	});
 
 	function resolveInterfaceName(name: string): string {
@@ -348,37 +343,52 @@
 	}
 
 	async function openRouteSuggestionHelper() {
+		if (suggestingRoute) return;
 		if (!activeRow || activeRow.length !== 1) return;
 		const selected = activeRow[0];
 		const natID = Number(selected?.id ?? 0);
 		if (!natID) return;
 
-		const response = await suggestStaticRoutesFromNATRule(natID);
-		if (!Array.isArray(response) || response.length === 0) {
+		modals.routeSuggestion.prefill = null;
+		modals.routeSuggestion.suggestions = [];
+		suggestingRoute = true;
+		try {
+			const response = await suggestStaticRoutesFromNATRule(natID);
 			if (!Array.isArray(response)) {
 				handleAPIError(response);
+				return;
 			}
-			toast.error('No route suggestion available for this NAT rule', { position: 'bottom-center' });
-			return;
-		}
+			if (response.length === 0) {
+				toast.error('No route suggestion available for this NAT rule', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		modals.routeSuggestion.suggestions = response.map((item) => {
-			const suggestion = item as StaticRouteSuggestion;
-			return {
-				name: suggestion.name,
-				description: suggestion.description,
-				enabled: suggestion.enabled,
-				fib: suggestion.fib,
-				destinationType: suggestion.destinationType,
-				destination: suggestion.destination,
-				family: suggestion.family,
-				nextHopMode: suggestion.nextHopMode,
-				gateway: suggestion.gateway,
-				interface: suggestion.interface
-			} as Partial<StaticRoute>;
-		});
-		modals.routeSuggestion.prefill = modals.routeSuggestion.suggestions[0] ?? null;
-		modals.routeSuggestion.open = true;
+			modals.routeSuggestion.suggestions = response.map((item) => {
+				const suggestion = item as StaticRouteSuggestion;
+				return {
+					name: suggestion.name,
+					description: suggestion.description,
+					enabled: suggestion.enabled,
+					fib: suggestion.fib,
+					destinationType: suggestion.destinationType,
+					destination: suggestion.destination,
+					family: suggestion.family,
+					nextHopMode: suggestion.nextHopMode,
+					gateway: suggestion.gateway,
+					gatewayZone: suggestion.gatewayZone,
+					interface: suggestion.interface
+				} as Partial<StaticRoute>;
+			});
+			modals.routeSuggestion.prefill = modals.routeSuggestion.suggestions[0] ?? null;
+			modals.routeSuggestion.open = true;
+		} catch (error) {
+			console.error('Failed to load static route suggestions', error);
+			toast.error('Failed to load route suggestions', { position: 'bottom-center' });
+		} finally {
+			suggestingRoute = false;
+		}
 	}
 
 	let columns: Column[] = $derived([
@@ -566,13 +576,13 @@
 					size="sm"
 					variant="outline"
 					class="h-6.5"
-					disabled={reordering}
+					disabled={reordering || suggestingRoute}
 				>
 					<SpanWithIcon
-						icon="icon-[mdi--routes-clock]"
+						icon={suggestingRoute ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--routes-clock]'}
 						size="h-4 w-4"
 						gap="gap-2"
-						title="Route Helper"
+						title={suggestingRoute ? 'Finding Route...' : 'Route Helper'}
 					/>
 				</Button>
 			{/if}

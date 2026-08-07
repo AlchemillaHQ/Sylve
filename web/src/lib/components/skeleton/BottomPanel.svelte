@@ -292,7 +292,6 @@
 		'/api/network/firewall/nat/reorder': 'Firewall NAT Rule - Reorder',
 		'/api/network/firewall/nat': 'Firewall NAT Rule',
 		'/api/network/firewall/advanced': 'Firewall - Advanced Rules',
-		'/api/network/route/suggest-from-nat': 'Static Route - Suggest From NAT',
 		'/api/network/route': 'Static Route',
 		'/api/network/wireguard/server/toggle': 'WireGuard - Server Toggle',
 		'/api/network/wireguard/server/peer/toggle': 'WireGuard - Peer Toggle',

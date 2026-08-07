@@ -389,6 +389,7 @@ func RegisterRoutes(r *gin.Engine,
 		{
 			nat.GET("", networkHandlers.ListFirewallNATRules(networkService))
 			nat.GET("/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
+			nat.GET("/:id/route-suggestions", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
 			nat.POST("", networkHandlers.CreateFirewallNATRule(networkService))
 			nat.PUT("/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
 			nat.PUT("/:id", networkHandlers.EditFirewallNATRule(networkService))
@@ -405,11 +406,14 @@ func RegisterRoutes(r *gin.Engine,
 			advanced.GET("/rendered", networkHandlers.GetRenderedConfig(networkService))
 		}
 
-		network.GET("/route", networkHandlers.ListStaticRoutes(networkService))
-		network.POST("/route", networkHandlers.CreateStaticRoute(networkService))
-		network.PUT("/route/:id", networkHandlers.EditStaticRoute(networkService))
-		network.DELETE("/route/:id", networkHandlers.DeleteStaticRoute(networkService))
-		network.POST("/route/suggest-from-nat/:id", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
+		routes := network.Group("/route")
+		routes.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			routes.GET("", networkHandlers.ListStaticRoutes(networkService))
+			routes.POST("", networkHandlers.CreateStaticRoute(networkService))
+			routes.PUT("/:id", networkHandlers.EditStaticRoute(networkService))
+			routes.DELETE("/:id", networkHandlers.DeleteStaticRoute(networkService))
+		}
 
 		network.GET("/wireguard/server", networkHandlers.GetWireGuardServer(networkService))
 		network.POST("/wireguard/server", networkHandlers.InitWireGuardServer(networkService))
