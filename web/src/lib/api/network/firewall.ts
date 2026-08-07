@@ -46,6 +46,43 @@ export interface FirewallTrafficRuleUpsertRequest {
 	dstPortObjId: number | null;
 }
 
+export interface FirewallNATRuleUpsertRequest {
+	name: string;
+	description?: string;
+	enabled?: boolean;
+	log?: boolean;
+	priority?: number;
+	natType: 'snat' | 'dnat' | 'binat';
+	policyRoutingEnabled?: boolean;
+	policyRouteGateway?: string;
+	ingressInterfaces: string[];
+	egressInterfaces: string[];
+	family: 'any' | 'inet' | 'inet6';
+	protocol: 'any' | 'tcp' | 'udp' | 'icmp';
+	sourceRaw: string;
+	sourceObjId: number | null;
+	destRaw: string;
+	destObjId: number | null;
+	translateMode?: 'interface' | 'address';
+	translateToRaw: string;
+	translateToObjId: number | null;
+	dnatTargetRaw: string;
+	dnatTargetObjId: number | null;
+	dstPortsRaw: string;
+	dstPortObjId: number | null;
+	redirectPortsRaw: string;
+	redirectPortObjId: number | null;
+}
+
+export interface FirewallAdvancedRequest {
+	preRules: string;
+	preNatDecl: string;
+	postNatDecl: string;
+	preTrafficAnchor: string;
+	postTrafficAnchor: string;
+	postRules: string;
+}
+
 export async function getFirewallTrafficRules(): Promise<FirewallTrafficRule[] | APIResponse> {
 	return await apiRequest(
 		'/network/firewall/traffic',
@@ -122,13 +159,21 @@ export async function reorderFirewallTrafficRules(
 }
 
 export async function getFirewallNATRules(): Promise<FirewallNATRule[] | APIResponse> {
-	return await apiRequest('/network/firewall/nat', FirewallNATRuleSchema.array(), 'GET');
+	return await apiRequest(
+		'/network/firewall/nat',
+		FirewallNATRuleSchema.array(),
+		'GET',
+		undefined,
+		{
+			preserveErrors: true
+		}
+	);
 }
 
 export async function createFirewallNATRule(
-	payload: Record<string, unknown>
+	payload: FirewallNATRuleUpsertRequest
 ): Promise<number | APIResponse> {
-	return await apiRequest('/network/firewall/nat', z.number(), 'POST', payload);
+	return await apiRequest('/network/firewall/nat', z.number().int().positive(), 'POST', payload);
 }
 
 export async function getFirewallNATRuleCounters(): Promise<
@@ -168,7 +213,7 @@ export async function getFirewallNATRuleCounters(): Promise<
 
 export async function updateFirewallNATRule(
 	id: number,
-	payload: Record<string, unknown>
+	payload: FirewallNATRuleUpsertRequest
 ): Promise<APIResponse> {
 	return await apiRequest(`/network/firewall/nat/${id}`, APIResponseSchema, 'PUT', payload);
 }
@@ -189,14 +234,9 @@ export async function getFirewallAdvancedSettings(): Promise<
 	return await apiRequest('/network/firewall/advanced', FirewallAdvancedSettingsSchema, 'GET');
 }
 
-export async function previewRenderedConfig(fields: {
-	preRules: string;
-	preNatDecl: string;
-	postNatDecl: string;
-	preTrafficAnchor: string;
-	postTrafficAnchor: string;
-	postRules: string;
-}): Promise<RenderedConfig | APIResponse> {
+export async function previewRenderedConfig(
+	fields: FirewallAdvancedRequest
+): Promise<RenderedConfig | APIResponse> {
 	return await apiRequest(
 		'/network/firewall/advanced/preview',
 		RenderedConfigSchema,
@@ -210,14 +250,9 @@ export async function getRenderedConfigOnDisk(): Promise<RenderedConfig | APIRes
 	return await apiRequest('/network/firewall/advanced/rendered', RenderedConfigSchema, 'GET');
 }
 
-export async function updateFirewallAdvancedSettings(fields: {
-	preRules: string;
-	preNatDecl: string;
-	postNatDecl: string;
-	preTrafficAnchor: string;
-	postTrafficAnchor: string;
-	postRules: string;
-}): Promise<APIResponse> {
+export async function updateFirewallAdvancedSettings(
+	fields: FirewallAdvancedRequest
+): Promise<APIResponse> {
 	return await apiRequest('/network/firewall/advanced', APIResponseSchema, 'PUT', fields);
 }
 

@@ -1076,6 +1076,35 @@ func TestGetFirewallLiveHitsCursorPagination(t *testing.T) {
 	}
 }
 
+func TestGetFirewallLiveHitsCapsRequestedLimit(t *testing.T) {
+	svc, _ := newNetworkServiceForTest(t)
+	runtime := svc.getFirewallTelemetryRuntime()
+
+	now := time.Now().UTC()
+	hits := make([]networkServiceInterfaces.FirewallLiveHitEvent, 0, firewallLiveMaxLimit+2)
+	for i := int64(1); i <= int64(firewallLiveMaxLimit+2); i++ {
+		hits = append(hits, networkServiceInterfaces.FirewallLiveHitEvent{
+			Cursor: i, Timestamp: now, RuleType: "traffic", RuleID: 1,
+		})
+	}
+
+	runtime.mu.Lock()
+	runtime.liveCursor = int64(len(hits))
+	runtime.liveHits = hits
+	runtime.mu.Unlock()
+
+	resp, err := svc.GetFirewallLiveHits(1, firewallLiveMaxLimit+500, nil)
+	if err != nil {
+		t.Fatalf("expected live hits query to succeed, got: %v", err)
+	}
+	if len(resp.Items) != firewallLiveMaxLimit {
+		t.Fatalf("expected capped result length %d, got %d", firewallLiveMaxLimit, len(resp.Items))
+	}
+	if resp.NextCursor != int64(firewallLiveMaxLimit+1) {
+		t.Fatalf("unexpected next cursor after capped page: %d", resp.NextCursor)
+	}
+}
+
 func TestGetFirewallLiveHitsInitialCursorBootstrapsWithoutHistory(t *testing.T) {
 	svc, _ := newNetworkServiceForTest(t)
 	runtime := svc.getFirewallTelemetryRuntime()
@@ -2750,8 +2779,8 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 func TestReorderFirewallNATRulesRejectsDuplicateIDs(t *testing.T) {
 	svc := &Service{}
 	err := svc.ReorderFirewallNATRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: 1, Priority: 1000},
-		{ID: 1, Priority: 1010},
+		{ID: 1, Priority: 1},
+		{ID: 1, Priority: 2},
 	})
 	if err == nil {
 		t.Fatal("expected duplicate id validation error")

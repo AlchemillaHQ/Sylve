@@ -288,8 +288,9 @@
 		'/api/network/firewall/traffic/counters': 'Firewall Traffic Counters',
 		'/api/network/firewall/traffic/reorder': 'Firewall Traffic Rule - Reorder',
 		'/api/network/firewall/traffic': 'Firewall Traffic Rule',
-		'/api/network/firewall/nat/reorder': 'Firewall - NAT Reorder',
-		'/api/network/firewall/nat': 'Firewall - NAT Rule',
+		'/api/network/firewall/nat/counters': 'Firewall NAT Counters',
+		'/api/network/firewall/nat/reorder': 'Firewall NAT Rule - Reorder',
+		'/api/network/firewall/nat': 'Firewall NAT Rule',
 		'/api/network/firewall/advanced': 'Firewall - Advanced Rules',
 		'/api/network/route/suggest-from-nat': 'Static Route - Suggest From NAT',
 		'/api/network/route': 'Static Route',
@@ -351,7 +352,8 @@
 			'/api/disk/:device/partition-table': 'Disk - Clear Partition Table',
 			'/api/disk/partitions/:partition': 'Disk - Delete Partition',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Delete',
-			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Delete'
+			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Delete',
+			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete'
 		},
 		POST: {
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
@@ -367,13 +369,17 @@
 			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
 			'/api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create',
-			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Create'
+			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Create',
+			'/api/network/firewall/nat': 'Firewall NAT Rule - Create'
 		},
 		PUT: {
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update',
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Update',
-			'/api/network/firewall/traffic/reorder': 'Firewall Traffic Rule - Reorder'
+			'/api/network/firewall/traffic/reorder': 'Firewall Traffic Rule - Reorder',
+			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Update',
+			'/api/network/firewall/nat/reorder': 'Firewall NAT Rule - Reorder',
+			'/api/network/firewall/advanced': 'Firewall Advanced Rules - Update'
 		},
 		PATCH: {
 			'/api/certificates/:id': 'TLS Certificate - Update'

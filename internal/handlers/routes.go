@@ -384,18 +384,26 @@ func RegisterRoutes(r *gin.Engine,
 			traffic.DELETE("/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
 		}
 
-		network.GET("/firewall/nat", networkHandlers.ListFirewallNATRules(networkService))
-		network.GET("/firewall/nat/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
-		network.POST("/firewall/nat", networkHandlers.CreateFirewallNATRule(networkService))
-		network.PUT("/firewall/nat/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
-		network.PUT("/firewall/nat/:id", networkHandlers.EditFirewallNATRule(networkService))
-		network.DELETE("/firewall/nat/:id", networkHandlers.DeleteFirewallNATRule(networkService))
-		network.GET("/firewall/logs/live", networkHandlers.ListFirewallLiveHits(networkService))
+		nat := network.Group("/firewall/nat")
+		nat.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			nat.GET("", networkHandlers.ListFirewallNATRules(networkService))
+			nat.GET("/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
+			nat.POST("", networkHandlers.CreateFirewallNATRule(networkService))
+			nat.PUT("/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
+			nat.PUT("/:id", networkHandlers.EditFirewallNATRule(networkService))
+			nat.DELETE("/:id", networkHandlers.DeleteFirewallNATRule(networkService))
+		}
+		network.GET("/firewall/logs/live", middleware.RequireLocalAdmin(authService), networkHandlers.ListFirewallLiveHits(networkService))
 
-		network.GET("/firewall/advanced", networkHandlers.GetFirewallAdvancedSettings(networkService))
-		network.PUT("/firewall/advanced", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
-		network.POST("/firewall/advanced/preview", networkHandlers.PreviewRenderedConfig(networkService))
-		network.GET("/firewall/advanced/rendered", networkHandlers.GetRenderedConfig(networkService))
+		advanced := network.Group("/firewall/advanced")
+		advanced.Use(middleware.RequireLocalAdmin(authService))
+		{
+			advanced.GET("", networkHandlers.GetFirewallAdvancedSettings(networkService))
+			advanced.PUT("", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
+			advanced.POST("/preview", networkHandlers.PreviewRenderedConfig(networkService))
+			advanced.GET("/rendered", networkHandlers.GetRenderedConfig(networkService))
+		}
 
 		network.GET("/route", networkHandlers.ListStaticRoutes(networkService))
 		network.POST("/route", networkHandlers.CreateStaticRoute(networkService))

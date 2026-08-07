@@ -4777,7 +4777,6 @@ msgstr "Mac"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
-#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
@@ -5379,7 +5378,6 @@ msgid "Failed to create network object"
 msgstr "Failed to create network object"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Object with this name already exists"
 msgstr "Object with this name already exists"
 
@@ -5387,21 +5385,17 @@ msgstr "Object with this name already exists"
 msgid "Created object"
 msgstr "Created object"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Host object used in switch, only one IP is allowed"
-msgstr "Host object used in switch, only one IP is allowed"
+#~ msgid "Host object used in switch, only one IP is allowed"
+#~ msgstr "Host object used in switch, only one IP is allowed"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "No changes detected"
-msgstr "No changes detected"
+#~ msgid "No changes detected"
+#~ msgstr "No changes detected"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Cannot change type of object that is in use"
-msgstr "Cannot change type of object that is in use"
+#~ msgid "Cannot change type of object that is in use"
+#~ msgstr "Cannot change type of object that is in use"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Cannot change object of active VM"
-msgstr "Cannot change object of active VM"
+#~ msgid "Cannot change object of active VM"
+#~ msgstr "Cannot change object of active VM"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Failed to update network object"
@@ -6805,6 +6799,8 @@ msgstr "Clean Slate"
 msgid "Optional note about why this snapshot was taken"
 msgstr "Optional note about why this snapshot was taken"
 
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -10070,6 +10066,8 @@ msgstr "This VM is owned by another node right now"
 #~ msgid "VM name"
 #~ msgstr "VM name"
 
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
@@ -10193,13 +10191,11 @@ msgstr "Firewall"
 msgid "Toggle - Firewall"
 msgstr "Toggle - Firewall"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Firewall - Traffic Rule"
-msgstr "Firewall - Traffic Rule"
+#~ msgid "Firewall - Traffic Rule"
+#~ msgstr "Firewall - Traffic Rule"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Firewall - NAT Rule"
-msgstr "Firewall - NAT Rule"
+#~ msgid "Firewall - NAT Rule"
+#~ msgstr "Firewall - NAT Rule"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Firewall - Advanced Rules"
@@ -10253,6 +10249,8 @@ msgstr "Invalid list source URL: {0}"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "List"
@@ -10524,7 +10522,9 @@ msgstr "Create Traffic Rule"
 
 #. 0: edit ? 'update' \\: 'create'
 #. 0: edit ? 'update' \\: 'create'
+#. 0: edit ? 'update' \\: 'create'
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 msgid "Failed to {0} traffic rule"
 msgstr "Failed to {0} traffic rule"
@@ -10698,7 +10698,9 @@ msgstr "Index"
 
 #. 0: edit ? 'update' \\: 'create'
 #. 0: edit ? 'update' \\: 'create'
+#. 0: edit ? 'update' \\: 'create'
 #: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "Failed to {0} NAT rule"
 msgstr "Failed to {0} NAT rule"
@@ -13933,13 +13935,11 @@ msgstr "Network Object - Bulk Delete"
 msgid "DHCP Config"
 msgstr "DHCP Config"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Firewall - Traffic Reorder"
-msgstr "Firewall - Traffic Reorder"
+#~ msgid "Firewall - Traffic Reorder"
+#~ msgstr "Firewall - Traffic Reorder"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Firewall - NAT Reorder"
-msgstr "Firewall - NAT Reorder"
+#~ msgid "Firewall - NAT Reorder"
+#~ msgstr "Firewall - NAT Reorder"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Static Route - Suggest From NAT"
@@ -19321,9 +19321,133 @@ msgstr "Deleting partition..."
 msgid "Partition limit reached"
 msgstr "Partition limit reached"
 
-#: src/lib/components/custom/Disk/CreatePartition.svelte
-msgid "<0/> Saving..."
-msgstr "<0/> Saving..."
-e
-msgid "<0/> Saving..."
-msgstr "<0/> Saving..."
+#~ msgid "<0/> Saving..."
+#~ msgstr "<0/> Saving..."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Counters"
+msgstr "Firewall Traffic Counters"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule - Reorder"
+msgstr "Firewall Traffic Rule - Reorder"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule"
+msgstr "Firewall Traffic Rule"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Counters"
+msgstr "Firewall NAT Counters"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Rule - Reorder"
+msgstr "Firewall NAT Rule - Reorder"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Rule"
+msgstr "Firewall NAT Rule"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule - Delete"
+msgstr "Firewall Traffic Rule - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Rule - Delete"
+msgstr "Firewall NAT Rule - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule - Create"
+msgstr "Firewall Traffic Rule - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Rule - Create"
+msgstr "Firewall NAT Rule - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule - Update"
+msgstr "Firewall Traffic Rule - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Rule - Update"
+msgstr "Firewall NAT Rule - Update"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Name must be 128 characters or fewer"
+msgstr "Name must be 128 characters or fewer"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "A List object can contain at most 16 source URLs"
+msgstr "A List object can contain at most 16 source URLs"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "A network object can contain at most 1024 values"
+msgstr "A network object can contain at most 1024 values"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Each network object value must be 2048 characters or fewer"
+msgstr "Each network object value must be 2048 characters or fewer"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Cannot change the type of an object that is in use"
+msgstr "Cannot change the type of an object that is in use"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Cannot change the MAC object of an active VM"
+msgstr "Cannot change the MAC object of an active VM"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "This object is in use and must contain exactly one MAC address"
+msgstr "This object is in use and must contain exactly one MAC address"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "This object is in use and must contain exactly one IP address"
+msgstr "This object is in use and must contain exactly one IP address"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "This object is in use and must contain exactly one network"
+msgstr "This object is in use and must contain exactly one network"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "This object is in use and must contain exactly one value"
+msgstr "This object is in use and must contain exactly one value"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "The remote list is larger than the supported limit"
+msgstr "The remote list is larger than the supported limit"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "The remote source took too long to respond"
+msgstr "The remote source took too long to respond"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "The remote network object source is unavailable"
+msgstr "The remote network object source is unavailable"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "The remote list contains unsupported data"
+msgstr "The remote list contains unsupported data"
+
+#~ msgid "Notification config updatedmsgs"
+#~ msgstr "Notification config updatedmsgs"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM T"
+msgstr "VM T"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Savem"
+msgstr "<0/> Savem"
+
+#~ msgid "Encryption: <0>Enabled (keys a"
+#~ msgstr "Encryption: <0>Enabled (keys a"
+
+#~ msgid "Custom expr"
+#~ msgstr "Custom expr"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "<0/> Saving order..."
+msgstr "<0/> Saving order..."

@@ -68,6 +68,8 @@ type Service struct {
 	epairMutex                   sync.Mutex
 	firewallMutex                sync.Mutex
 	firewallTrafficMutationMutex sync.Mutex
+	firewallNATMutationMutex     sync.Mutex
+	firewallAdvancedMutex        sync.Mutex
 	firewallCounterSampleMutex   sync.Mutex
 	firewallCounterStateMutex    sync.Mutex
 	firewallMonOnce              sync.Once

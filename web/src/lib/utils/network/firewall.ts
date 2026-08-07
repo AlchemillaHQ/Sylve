@@ -28,6 +28,10 @@ export interface FirewallTrafficRulePayload {
 
 export interface FirewallNATRulePayload {
 	name: string;
+	description?: string;
+	enabled?: boolean;
+	log?: boolean;
+	priority?: number;
 	natType: NATType;
 	policyRoutingEnabled?: boolean | null;
 	policyRouteGateway?: string;
@@ -217,7 +221,7 @@ function validateInterfaceList(values: string[] | undefined, fieldLabel: string)
 	return null;
 }
 
-function validateTrafficInterfaceList(
+function validateFirewallInterfaceList(
 	values: string[] | undefined,
 	fieldLabel: string
 ): string | null {
@@ -239,7 +243,7 @@ function validateTrafficInterfaceList(
 	return null;
 }
 
-function validateTrafficSelectorPair(
+function validateFirewallSelectorPair(
 	raw: string | undefined,
 	objectId: number | null | undefined,
 	fieldLabel: string
@@ -285,12 +289,12 @@ export function validateFirewallTrafficRulePayload(
 	const protocol = protocolResult.value;
 	const direction = directionResult.value;
 
-	const ingressError = validateTrafficInterfaceList(
+	const ingressError = validateFirewallInterfaceList(
 		payload.ingressInterfaces,
 		'Ingress interfaces'
 	);
 	if (ingressError) return { valid: false, error: ingressError };
-	const egressError = validateTrafficInterfaceList(payload.egressInterfaces, 'Egress interfaces');
+	const egressError = validateFirewallInterfaceList(payload.egressInterfaces, 'Egress interfaces');
 	if (egressError) return { valid: false, error: egressError };
 	const ingressInterfaces = (payload.ingressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
 	const egressInterfaces = (payload.egressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
@@ -308,7 +312,7 @@ export function validateFirewallTrafficRulePayload(
 		[payload.dstPortsRaw, payload.dstPortObjId, 'Destination ports']
 	] as const;
 	for (const [raw, objectId, label] of selectorPairs) {
-		const selectorError = validateTrafficSelectorPair(raw, objectId, label);
+		const selectorError = validateFirewallSelectorPair(raw, objectId, label);
 		if (selectorError) return { valid: false, error: selectorError };
 	}
 
@@ -350,8 +354,19 @@ export function validateFirewallTrafficRulePayload(
 export function validateFirewallNATRulePayload(
 	payload: FirewallNATRulePayload
 ): RuleValidationResult {
-	if (!String(payload.name ?? '').trim()) {
+	const name = String(payload.name ?? '').trim();
+	if (!name) {
 		return { valid: false, error: 'Rule name is required' };
+	}
+	if (name.length > 128) return { valid: false, error: 'Rule name cannot exceed 128 characters' };
+	if (String(payload.description ?? '').trim().length > 2048) {
+		return { valid: false, error: 'Rule description cannot exceed 2048 characters' };
+	}
+	if (
+		payload.priority !== undefined &&
+		(!Number.isInteger(payload.priority) || payload.priority <= 0 || payload.priority > 1_000_000)
+	) {
+		return { valid: false, error: 'Priority must be a positive whole number' };
 	}
 
 	const natTypeResult = parseNATType(payload.natType);
@@ -369,14 +384,33 @@ export function validateFirewallNATRulePayload(
 	const translateMode = translateModeResult.value;
 	const policyRoutingEnabled = Boolean(payload.policyRoutingEnabled);
 	const policyRouteGateway = String(payload.policyRouteGateway ?? '').trim();
+	if (policyRouteGateway.length > 64) {
+		return { valid: false, error: 'Policy route gateway cannot exceed 64 characters' };
+	}
 
-	const ingressError = validateInterfaceList(payload.ingressInterfaces, 'Ingress interfaces');
+	const ingressError = validateFirewallInterfaceList(
+		payload.ingressInterfaces,
+		'Ingress interfaces'
+	);
 	if (ingressError) return { valid: false, error: ingressError };
-	const egressError = validateInterfaceList(payload.egressInterfaces, 'Egress interfaces');
+	const egressError = validateFirewallInterfaceList(payload.egressInterfaces, 'Egress interfaces');
 	if (egressError) return { valid: false, error: egressError };
 
 	const ingressInterfaces = (payload.ingressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
 	const egressInterfaces = (payload.egressInterfaces ?? []).map((x) => x.trim()).filter(Boolean);
+
+	const selectorPairs = [
+		[payload.sourceRaw, payload.sourceObjId, 'Source'],
+		[payload.destRaw, payload.destObjId, 'Destination'],
+		[payload.translateToRaw, payload.translateToObjId, 'Translate target'],
+		[payload.dnatTargetRaw, payload.dnatTargetObjId, 'DNAT target'],
+		[payload.dstPortsRaw, payload.dstPortObjId, 'Destination ports'],
+		[payload.redirectPortsRaw, payload.redirectPortObjId, 'Redirect ports']
+	] as const;
+	for (const [raw, objectId, label] of selectorPairs) {
+		const selectorError = validateFirewallSelectorPair(raw, objectId, label);
+		if (selectorError) return { valid: false, error: selectorError };
+	}
 
 	const sourceError = validateFamilyAgainstRawAddress(
 		payload.sourceRaw,

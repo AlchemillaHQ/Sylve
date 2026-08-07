@@ -515,16 +515,18 @@ func (s *Service) moveNATRulePriority(tx *gorm.DB, ruleID uint, currentPriority 
 		Update("priority", gorm.Expr("priority - 1")).Error
 }
 
-func snapshotNATPriorities(tx *gorm.DB) (map[uint]int, error) {
+func snapshotFirewallNATRules(tx *gorm.DB) ([]networkModels.FirewallNATRule, error) {
 	var rules []networkModels.FirewallNATRule
-	if err := tx.Select("id,priority").Find(&rules).Error; err != nil {
+	if err := tx.Order("id ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
-	out := make(map[uint]int, len(rules))
-	for _, rule := range rules {
-		out[rule.ID] = rule.Priority
+
+	for i := range rules {
+		rules[i].IngressInterfaces = append([]string(nil), rules[i].IngressInterfaces...)
+		rules[i].EgressInterfaces = append([]string(nil), rules[i].EgressInterfaces...)
 	}
-	return out, nil
+
+	return rules, nil
 }
 
 func snapshotFirewallTrafficRules(tx *gorm.DB) ([]networkModels.FirewallTrafficRule, error) {
@@ -588,45 +590,96 @@ func (s *Service) restoreFirewallTrafficRulesAfterApplyFailure(
 	return applyErr
 }
 
-func restoreNATPriorities(tx *gorm.DB, snapshot map[uint]int) error {
-	for id, priority := range snapshot {
-		if err := tx.Model(&networkModels.FirewallNATRule{}).Where("id = ?", id).Update("priority", priority).Error; err != nil {
+func restoreFirewallNATRules(tx *gorm.DB, snapshot []networkModels.FirewallNATRule) error {
+	if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&networkModels.FirewallNATRule{}).Error; err != nil {
+		return err
+	}
+	if len(snapshot) == 0 {
+		return nil
+	}
+	for i := range snapshot {
+		desired := snapshot[i]
+		insert := desired
+		if err := tx.Create(&insert).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&networkModels.FirewallNATRule{}).
+			Where("id = ?", desired.ID).
+			Select(
+				"name", "description", "visible", "enabled", "log", "priority", "nat_type",
+				"policy_routing_enabled", "policy_route_gateway", "ingress_interfaces", "egress_interfaces",
+				"family", "protocol", "source_raw", "source_obj_id", "dest_raw", "dest_obj_id",
+				"translate_mode", "translate_to_raw", "translate_to_obj_id", "dnat_target_raw",
+				"dnat_target_obj_id", "dst_ports_raw", "dst_port_obj_id", "redirect_ports_raw",
+				"redirect_port_obj_id", "created_at", "updated_at",
+			).
+			Updates(&desired).Error; err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) validateFirewallAddressObjectRef(id *uint) error {
-	if id == nil || *id == 0 {
+func (s *Service) restoreFirewallNATRulesAfterApplyFailure(
+	snapshot []networkModels.FirewallNATRule,
+	applyErr error,
+	reapply func() error,
+) error {
+	if rollbackErr := s.DB.Transaction(func(tx *gorm.DB) error {
+		return restoreFirewallNATRules(tx, snapshot)
+	}); rollbackErr != nil {
+		return errors.Join(applyErr, fmt.Errorf("firewall NAT rule rollback failed: %w", rollbackErr))
+	}
+
+	if reapplyErr := reapply(); reapplyErr != nil {
+		return errors.Join(applyErr, fmt.Errorf("restoring previous firewall configuration failed: %w", reapplyErr))
+	}
+
+	return applyErr
+}
+
+func (s *Service) validateFirewallNATAddressObjectRef(id *uint, field string) error {
+	if id == nil {
 		return nil
+	}
+	if *id == 0 {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_id", field))
 	}
 
 	var object networkModels.Object
 	if err := s.DB.Select("id,type").First(&object, *id).Error; err != nil {
-		return fmt.Errorf("invalid_object_ref: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return invalidFirewallNATRule(fmt.Errorf("%s_object_not_found", field))
+		}
+		return fmt.Errorf("load %s NAT object: %w", field, err)
 	}
 
 	switch object.Type {
 	case "Host", "Network", "FQDN", "List":
 		return nil
 	default:
-		return fmt.Errorf("invalid_object_type_for_address_selector: %s", object.Type)
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_type", field))
 	}
 }
 
-func (s *Service) validateFirewallPortObjectRef(id *uint) error {
-	if id == nil || *id == 0 {
+func (s *Service) validateFirewallNATPortObjectRef(id *uint, field string) error {
+	if id == nil {
 		return nil
+	}
+	if *id == 0 {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_id", field))
 	}
 
 	var object networkModels.Object
 	if err := s.DB.Select("id,type").First(&object, *id).Error; err != nil {
-		return fmt.Errorf("invalid_object_ref: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return invalidFirewallNATRule(fmt.Errorf("%s_object_not_found", field))
+		}
+		return fmt.Errorf("load %s NAT object: %w", field, err)
 	}
 
 	if object.Type != "Port" {
-		return fmt.Errorf("invalid_object_type_for_port_selector: %s", object.Type)
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_type", field))
 	}
 
 	return nil
@@ -766,22 +819,32 @@ func validateRawPortSelector(raw string, field string) error {
 	return nil
 }
 
-func (s *Service) validateFirewallHostObjectRef(id *uint, field string) error {
-	if id == nil || *id == 0 {
+func (s *Service) validateFirewallNATSingleHostObjectRef(id *uint, family string, field string) error {
+	if id == nil {
 		return nil
+	}
+	if *id == 0 {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_id", field))
 	}
 
 	var object networkModels.Object
-	if err := s.DB.Select("id,type").First(&object, *id).Error; err != nil {
-		return fmt.Errorf("invalid_object_ref_for_%s: %w", field, err)
+	if err := s.DB.Preload("Entries").Select("id,type").First(&object, *id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return invalidFirewallNATRule(fmt.Errorf("%s_object_not_found", field))
+		}
+		return fmt.Errorf("load %s NAT object: %w", field, err)
+	}
+	if object.Type != "Host" {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_type", field))
+	}
+	if len(object.Entries) != 1 {
+		return invalidFirewallNATRule(fmt.Errorf("%s_object_requires_single_address", field))
+	}
+	if err := validateFamilyAgainstRawAddress(object.Entries[0].Value, family, false, field, false); err != nil {
+		return invalidFirewallNATRule(err)
 	}
 
-	switch object.Type {
-	case "Host", "FQDN":
-		return nil
-	default:
-		return fmt.Errorf("invalid_object_type_for_%s: %s", field, object.Type)
-	}
+	return nil
 }
 
 func validateFirewallTrafficInterfaceList(values []string, field string) error {
@@ -971,131 +1034,215 @@ func (s *Service) validateFirewallTrafficRuleRequest(req *networkServiceInterfac
 	return nil
 }
 
+func validateFirewallNATInterfaceList(values []string, field string) error {
+	if len(values) > MaxFirewallNATRuleInterfaces {
+		return invalidFirewallNATRule(fmt.Errorf("too_many_%s_interfaces", field))
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		name := strings.TrimSpace(value)
+		if name == "" {
+			return invalidFirewallNATRule(fmt.Errorf("empty_%s_interface", field))
+		}
+		if len(name) > MaxFirewallNATRuleInterfaceBytes || !firewallInterfaceNamePattern.MatchString(name) {
+			return invalidFirewallNATRule(fmt.Errorf("invalid_%s_interface", field))
+		}
+		if _, ok := seen[name]; ok {
+			return invalidFirewallNATRule(fmt.Errorf("duplicate_%s_interface", field))
+		}
+		seen[name] = struct{}{}
+	}
+
+	return nil
+}
+
+func validateFirewallNATSelectorPair(raw string, objectID *uint, field string) error {
+	if len(raw) > MaxFirewallNATRuleSelectorBytes {
+		return invalidFirewallNATRule(fmt.Errorf("%s_selector_too_long", field))
+	}
+	if objectID != nil && *objectID == 0 {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_%s_object_id", field))
+	}
+	if strings.TrimSpace(raw) != "" && objectID != nil {
+		return invalidFirewallNATRule(fmt.Errorf("%s_raw_and_object_are_mutually_exclusive", field))
+	}
+	return nil
+}
+
 func (s *Service) validateFirewallNATRuleRequest(req *networkServiceInterfaces.UpsertFirewallNATRuleRequest) error {
+	if req == nil {
+		return invalidFirewallNATRule(fmt.Errorf("missing_firewall_nat_rule"))
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" || len(name) > MaxFirewallNATRuleNameBytes {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_name"))
+	}
+	if len(strings.TrimSpace(req.Description)) > MaxFirewallNATRuleDescriptionBytes {
+		return invalidFirewallNATRule(fmt.Errorf("firewall_nat_rule_description_too_long"))
+	}
+	if req.Priority != nil && (*req.Priority <= 0 || *req.Priority > MaxFirewallNATRulePriority) {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_priority"))
+	}
+	if len(strings.TrimSpace(req.PolicyRouteGateway)) > MaxFirewallNATRulePolicyGatewayBytes {
+		return invalidFirewallNATRule(fmt.Errorf("policy_route_gateway_too_long"))
+	}
+
 	natType := normalizeNATType(req.NATType)
 	family := normalizeFamily(req.Family)
 	protocol := normalizeProtocol(req.Protocol)
+	translateMode := normalizeTranslateMode(req.TranslateMode)
+	if strings.TrimSpace(req.NATType) == "" || (natType != "snat" && natType != "dnat" && natType != "binat") {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_type"))
+	}
+	if strings.TrimSpace(req.Family) == "" || (family != "any" && family != "inet" && family != "inet6") {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_family"))
+	}
+	if strings.TrimSpace(req.Protocol) == "" || (protocol != "any" && protocol != "tcp" && protocol != "udp" && protocol != "icmp") {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_protocol"))
+	}
+	if strings.TrimSpace(req.TranslateMode) != "" && translateMode != "interface" && translateMode != "address" {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_translate_mode"))
+	}
+
+	if err := validateFirewallNATInterfaceList(req.IngressInterfaces, "ingress"); err != nil {
+		return err
+	}
+	if err := validateFirewallNATInterfaceList(req.EgressInterfaces, "egress"); err != nil {
+		return err
+	}
 	ingress := normalizeInterfaceList(req.IngressInterfaces)
 	egress := normalizeInterfaceList(req.EgressInterfaces)
-	translateMode := normalizeTranslateMode(req.TranslateMode)
-	policyRoutingEnabled := req.PolicyRoutingEnabled != nil && *req.PolicyRoutingEnabled
-	policyRouteGateway := strings.TrimSpace(req.PolicyRouteGateway)
 
-	if err := validateFamilyAgainstRawAddress(req.SourceRaw, family, true, "source_raw", true); err != nil {
-		return err
+	selectors := []struct {
+		raw      string
+		objectID *uint
+		field    string
+	}{
+		{raw: req.SourceRaw, objectID: req.SourceObjID, field: "source"},
+		{raw: req.DestRaw, objectID: req.DestObjID, field: "destination"},
+		{raw: req.TranslateToRaw, objectID: req.TranslateToObjID, field: "translate_to"},
+		{raw: req.DNATTargetRaw, objectID: req.DNATTargetObjID, field: "dnat_target"},
+		{raw: req.DstPortsRaw, objectID: req.DstPortObjID, field: "destination_port"},
+		{raw: req.RedirectPortsRaw, objectID: req.RedirectPortObjID, field: "redirect_port"},
 	}
-	if err := validateFamilyAgainstRawAddress(req.DestRaw, family, true, "dest_raw", true); err != nil {
-		return err
-	}
-	if err := validateFamilyAgainstRawAddress(req.TranslateToRaw, family, false, "translate_to_raw", false); err != nil {
-		return err
-	}
-	if err := validateFamilyAgainstRawAddress(req.DNATTargetRaw, family, false, "dnat_target_raw", false); err != nil {
-		return err
+	for _, selector := range selectors {
+		if err := validateFirewallNATSelectorPair(selector.raw, selector.objectID, selector.field); err != nil {
+			return err
+		}
 	}
 
-	if err := s.validateFirewallAddressObjectRef(req.SourceObjID); err != nil {
+	for _, address := range []struct {
+		value           string
+		allowCIDR       bool
+		allowAnyLiteral bool
+		field           string
+	}{
+		{value: req.SourceRaw, allowCIDR: true, allowAnyLiteral: true, field: "source_raw"},
+		{value: req.DestRaw, allowCIDR: true, allowAnyLiteral: true, field: "dest_raw"},
+		{value: req.TranslateToRaw, allowCIDR: false, allowAnyLiteral: false, field: "translate_to_raw"},
+		{value: req.DNATTargetRaw, allowCIDR: false, allowAnyLiteral: false, field: "dnat_target_raw"},
+	} {
+		if err := validateFamilyAgainstRawAddress(address.value, family, address.allowCIDR, address.field, address.allowAnyLiteral); err != nil {
+			return invalidFirewallNATRule(err)
+		}
+	}
+
+	if err := s.validateFirewallNATAddressObjectRef(req.SourceObjID, "source"); err != nil {
 		return err
 	}
-	if err := s.validateFirewallAddressObjectRef(req.DestObjID); err != nil {
+	if err := s.validateFirewallNATAddressObjectRef(req.DestObjID, "destination"); err != nil {
 		return err
 	}
-	if err := s.validateFirewallHostObjectRef(req.TranslateToObjID, "translate_to_obj"); err != nil {
+	if err := s.validateFirewallNATSingleHostObjectRef(req.TranslateToObjID, family, "translate_to"); err != nil {
 		return err
 	}
-	if err := s.validateFirewallHostObjectRef(req.DNATTargetObjID, "dnat_target_obj"); err != nil {
+	if err := s.validateFirewallNATSingleHostObjectRef(req.DNATTargetObjID, family, "dnat_target"); err != nil {
 		return err
 	}
-	if err := s.validateFirewallPortObjectRef(req.DstPortObjID); err != nil {
+	if err := s.validateFirewallNATPortObjectRef(req.DstPortObjID, "destination_port"); err != nil {
 		return err
 	}
-	if err := s.validateFirewallPortObjectRef(req.RedirectPortObjID); err != nil {
+	if err := s.validateFirewallNATPortObjectRef(req.RedirectPortObjID, "redirect_port"); err != nil {
 		return err
 	}
 
 	hasDNATMatchPort := hasPortSelector(req.DstPortsRaw, req.DstPortObjID)
 	hasDNATRewritePort := hasPortSelector(req.RedirectPortsRaw, req.RedirectPortObjID)
 	if err := validateRawPortSelector(req.DstPortsRaw, "dst_ports_raw"); err != nil {
-		return err
+		return invalidFirewallNATRule(err)
 	}
 	if err := validateRawPortSelector(req.RedirectPortsRaw, "redirect_ports_raw"); err != nil {
-		return err
+		return invalidFirewallNATRule(err)
 	}
 	if (hasDNATMatchPort || hasDNATRewritePort) && protocol != "tcp" && protocol != "udp" {
-		return fmt.Errorf("dnat_ports_require_tcp_or_udp_protocol")
+		return invalidFirewallNATRule(fmt.Errorf("dnat_ports_require_tcp_or_udp_protocol"))
 	}
 	if hasDNATRewritePort && !hasDNATMatchPort {
-		return fmt.Errorf("redirect_port_requires_destination_port_match")
+		return invalidFirewallNATRule(fmt.Errorf("redirect_port_requires_destination_port_match"))
 	}
 
+	policyRoutingEnabled := req.PolicyRoutingEnabled != nil && *req.PolicyRoutingEnabled
+	policyRouteGateway := strings.TrimSpace(req.PolicyRouteGateway)
 	switch natType {
 	case "snat", "binat":
 		if len(egress) == 0 {
 			if policyRoutingEnabled {
-				return fmt.Errorf("policy_routing_requires_exactly_one_egress_interface")
+				return invalidFirewallNATRule(fmt.Errorf("policy_routing_requires_exactly_one_egress_interface"))
 			}
-			return fmt.Errorf("%s_requires_egress_interface", natType)
+			return invalidFirewallNATRule(fmt.Errorf("%s_requires_egress_interface", natType))
 		}
 		if len(ingress) > 0 && !policyRoutingEnabled {
-			return fmt.Errorf("%s_ingress_interfaces_require_policy_routing", natType)
+			return invalidFirewallNATRule(fmt.Errorf("%s_ingress_interfaces_require_policy_routing", natType))
 		}
 		if hasSelector(req.DNATTargetRaw, req.DNATTargetObjID) ||
 			hasPortSelector(req.DstPortsRaw, req.DstPortObjID) ||
 			hasPortSelector(req.RedirectPortsRaw, req.RedirectPortObjID) {
-			return fmt.Errorf("%s_rejects_dnat_only_fields", natType)
+			return invalidFirewallNATRule(fmt.Errorf("%s_rejects_dnat_only_fields", natType))
 		}
 
 		if translateMode == "interface" {
 			if hasSelector(req.TranslateToRaw, req.TranslateToObjID) {
-				return fmt.Errorf("translate_to_fields_not_allowed_for_translate_mode_interface")
+				return invalidFirewallNATRule(fmt.Errorf("translate_to_fields_not_allowed_for_translate_mode_interface"))
 			}
-		} else {
-			if !hasSelector(req.TranslateToRaw, req.TranslateToObjID) {
-				return fmt.Errorf("translate_mode_address_requires_translate_target")
-			}
-			if strings.TrimSpace(req.TranslateToRaw) != "" && req.TranslateToObjID != nil {
-				return fmt.Errorf("translate_to_raw_and_translate_to_obj_are_mutually_exclusive")
-			}
+		} else if !hasSelector(req.TranslateToRaw, req.TranslateToObjID) {
+			return invalidFirewallNATRule(fmt.Errorf("translate_mode_address_requires_translate_target"))
 		}
 
 		if policyRoutingEnabled {
 			if len(egress) != 1 {
-				return fmt.Errorf("policy_routing_requires_exactly_one_egress_interface")
+				return invalidFirewallNATRule(fmt.Errorf("policy_routing_requires_exactly_one_egress_interface"))
 			}
 			if policyRouteGateway == "" {
-				return fmt.Errorf("policy_route_gateway_required_when_policy_routing_enabled")
+				return invalidFirewallNATRule(fmt.Errorf("policy_route_gateway_required_when_policy_routing_enabled"))
 			}
 			if family != "inet" && family != "inet6" {
-				return fmt.Errorf("policy_route_gateway_requires_explicit_family")
+				return invalidFirewallNATRule(fmt.Errorf("policy_route_gateway_requires_explicit_family"))
 			}
 			if err := validateFamilyAgainstRawAddress(policyRouteGateway, family, false, "policy_route_gateway", false); err != nil {
-				return err
+				return invalidFirewallNATRule(err)
 			}
 		}
 	case "dnat":
 		if len(ingress) == 0 {
-			return fmt.Errorf("dnat_requires_ingress_interface")
+			return invalidFirewallNATRule(fmt.Errorf("dnat_requires_ingress_interface"))
 		}
 		if len(egress) > 0 {
-			return fmt.Errorf("dnat_rejects_egress_interfaces")
+			return invalidFirewallNATRule(fmt.Errorf("dnat_rejects_egress_interfaces"))
 		}
 		if policyRoutingEnabled {
-			return fmt.Errorf("dnat_rejects_policy_routing")
+			return invalidFirewallNATRule(fmt.Errorf("dnat_rejects_policy_routing"))
 		}
 		if strings.TrimSpace(req.TranslateMode) != "" {
-			return fmt.Errorf("dnat_rejects_translate_mode")
+			return invalidFirewallNATRule(fmt.Errorf("dnat_rejects_translate_mode"))
 		}
 		if hasSelector(req.TranslateToRaw, req.TranslateToObjID) {
-			return fmt.Errorf("dnat_rejects_snat_translation_fields")
+			return invalidFirewallNATRule(fmt.Errorf("dnat_rejects_snat_translation_fields"))
 		}
 		if !hasSelector(req.DNATTargetRaw, req.DNATTargetObjID) {
-			return fmt.Errorf("dnat_requires_target_host")
+			return invalidFirewallNATRule(fmt.Errorf("dnat_requires_target_host"))
 		}
-		if strings.TrimSpace(req.DNATTargetRaw) != "" && req.DNATTargetObjID != nil {
-			return fmt.Errorf("dnat_target_raw_and_dnat_target_obj_are_mutually_exclusive")
-		}
-	default:
-		return fmt.Errorf("invalid_nat_type: %s", natType)
 	}
 
 	return nil
@@ -1392,7 +1539,15 @@ func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.Fir
 }
 
 func (s *Service) CreateFirewallNATRule(req *networkServiceInterfaces.UpsertFirewallNATRuleRequest) (uint, error) {
+	s.firewallNATMutationMutex.Lock()
+	defer s.firewallNATMutationMutex.Unlock()
+
 	if err := s.validateFirewallNATRuleRequest(req); err != nil {
+		return 0, err
+	}
+
+	natSnapshot, err := snapshotFirewallNATRules(s.DB)
+	if err != nil {
 		return 0, err
 	}
 
@@ -1448,11 +1603,6 @@ func (s *Service) CreateFirewallNATRule(req *networkServiceInterfaces.UpsertFire
 		rule.PolicyRouteGateway = normalizeFirewallRequestStrings(req.PolicyRouteGateway)
 	}
 
-	prioritySnapshot, err := snapshotNATPriorities(s.DB)
-	if err != nil {
-		return 0, err
-	}
-
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		maxHidden, maxHiddenErr := s.maxHiddenNATPriority(tx)
 		if maxHiddenErr != nil {
@@ -1472,34 +1622,39 @@ func (s *Service) CreateFirewallNATRule(req *networkServiceInterfaces.UpsertFire
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Transaction(func(tx *gorm.DB) error {
-			if deleteErr := tx.Delete(&networkModels.FirewallNATRule{}, rule.ID).Error; deleteErr != nil {
-				return deleteErr
-			}
-			return restoreNATPriorities(tx, prioritySnapshot)
-		})
-		return 0, err
+		return 0, s.restoreFirewallNATRulesAfterApplyFailure(natSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return rule.ID, nil
 }
 
 func (s *Service) EditFirewallNATRule(id uint, req *networkServiceInterfaces.UpsertFirewallNATRuleRequest) error {
+	if id == 0 {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_id"))
+	}
+
+	s.firewallNATMutationMutex.Lock()
+	defer s.firewallNATMutationMutex.Unlock()
+
 	if err := s.validateFirewallNATRuleRequest(req); err != nil {
 		return err
 	}
 
 	var current networkModels.FirewallNATRule
 	if err := s.DB.First(&current, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return firewallNATRuleNotFound(err)
+		}
 		return err
 	}
 	if !current.Visible {
-		return fmt.Errorf(errHiddenFirewallRuleMutation)
+		return ErrHiddenFirewallRuleMutation
 	}
 
-	previous := current
-	previous.IngressInterfaces = append([]string(nil), current.IngressInterfaces...)
-	previous.EgressInterfaces = append([]string(nil), current.EgressInterfaces...)
+	natSnapshot, err := snapshotFirewallNATRules(s.DB)
+	if err != nil {
+		return err
+	}
 
 	targetPriority := current.Priority
 	if req.Priority != nil {
@@ -1538,11 +1693,6 @@ func (s *Service) EditFirewallNATRule(id uint, req *networkServiceInterfaces.Ups
 		current.PolicyRouteGateway = normalizeFirewallRequestStrings(req.PolicyRouteGateway)
 	}
 
-	prioritySnapshot, err := snapshotNATPriorities(s.DB)
-	if err != nil {
-		return err
-	}
-
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		maxHidden, maxHiddenErr := s.maxHiddenNATPriority(tx)
 		if maxHiddenErr != nil {
@@ -1561,25 +1711,34 @@ func (s *Service) EditFirewallNATRule(id uint, req *networkServiceInterfaces.Ups
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Transaction(func(tx *gorm.DB) error {
-			if saveErr := tx.Save(&previous).Error; saveErr != nil {
-				return saveErr
-			}
-			return restoreNATPriorities(tx, prioritySnapshot)
-		})
-		return err
+		return s.restoreFirewallNATRulesAfterApplyFailure(natSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil
 }
 
 func (s *Service) DeleteFirewallNATRule(id uint) error {
+	if id == 0 {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_id"))
+	}
+
+	s.firewallNATMutationMutex.Lock()
+	defer s.firewallNATMutationMutex.Unlock()
+
 	var rule networkModels.FirewallNATRule
 	if err := s.DB.First(&rule, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return firewallNATRuleNotFound(err)
+		}
 		return err
 	}
 	if !rule.Visible {
-		return fmt.Errorf(errHiddenFirewallRuleMutation)
+		return ErrHiddenFirewallRuleMutation
+	}
+
+	natSnapshot, err := snapshotFirewallNATRules(s.DB)
+	if err != nil {
+		return err
 	}
 
 	if err := s.DB.Delete(&rule).Error; err != nil {
@@ -1587,54 +1746,72 @@ func (s *Service) DeleteFirewallNATRule(id uint) error {
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Create(&rule).Error
-		return err
+		return s.restoreFirewallNATRulesAfterApplyFailure(natSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil
 }
 
 func (s *Service) ReorderFirewallNATRules(req []networkServiceInterfaces.FirewallReorderRequest) error {
-	if len(req) == 0 {
-		return nil
+	if len(req) == 0 || len(req) > MaxFirewallNATRuleReorderItems {
+		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_reorder_size"))
 	}
 
+	s.firewallNATMutationMutex.Lock()
+	defer s.firewallNATMutationMutex.Unlock()
+
 	ids := make([]uint, 0, len(req))
-	seen := make(map[uint]struct{}, len(req))
+	seenIDs := make(map[uint]struct{}, len(req))
+	seenPriorities := make(map[int]struct{}, len(req))
 	for _, item := range req {
 		if item.ID == 0 {
-			return fmt.Errorf("invalid_rule_id")
+			return invalidFirewallNATRule(fmt.Errorf("invalid_rule_id"))
 		}
-		if _, ok := seen[item.ID]; ok {
-			return fmt.Errorf("duplicate_rule_id: %d", item.ID)
+		if _, ok := seenIDs[item.ID]; ok {
+			return invalidFirewallNATRule(fmt.Errorf("duplicate_rule_id"))
 		}
-		seen[item.ID] = struct{}{}
+		if item.Priority <= 0 || item.Priority > len(req) {
+			return invalidFirewallNATRule(fmt.Errorf("invalid_reorder_priority"))
+		}
+		if _, ok := seenPriorities[item.Priority]; ok {
+			return invalidFirewallNATRule(fmt.Errorf("duplicate_priority_in_reorder_request"))
+		}
+		seenIDs[item.ID] = struct{}{}
+		seenPriorities[item.Priority] = struct{}{}
 		ids = append(ids, item.ID)
 	}
 
-	var existing []networkModels.FirewallNATRule
-	if err := s.DB.Select("id,priority,visible").Where("id IN ?", ids).Find(&existing).Error; err != nil {
+	var submitted []networkModels.FirewallNATRule
+	if err := s.DB.Select("id,visible").Where("id IN ?", ids).Find(&submitted).Error; err != nil {
 		return err
 	}
-	if len(existing) != len(ids) {
-		return fmt.Errorf("some_firewall_nat_rules_not_found")
+	if len(submitted) != len(ids) {
+		return firewallNATRuleNotFound(fmt.Errorf("some_firewall_nat_rules_not_found"))
 	}
-
-	previous := make(map[uint]int, len(existing))
-	for _, rule := range existing {
+	for _, rule := range submitted {
 		if !rule.Visible {
-			return fmt.Errorf(errHiddenFirewallRuleMutation)
+			return ErrHiddenFirewallRuleMutation
 		}
-		previous[rule.ID] = rule.Priority
 	}
 
-	seenPriorities := make(map[int]struct{}, len(req))
-	for _, item := range req {
-		p := normalizePriority(item.Priority)
-		if _, ok := seenPriorities[p]; ok {
-			return fmt.Errorf("duplicate_priority_in_reorder_request: %d", p)
+	var visibleIDs []uint
+	if err := s.DB.Model(&networkModels.FirewallNATRule{}).
+		Where("visible = ?", true).
+		Pluck("id", &visibleIDs).Error; err != nil {
+		return err
+	}
+	if len(visibleIDs) != len(req) {
+		return firewallNATRuleConflict(fmt.Errorf("reorder_requires_all_visible_rules"))
+	}
+	for _, id := range visibleIDs {
+		if _, ok := seenIDs[id]; !ok {
+			return firewallNATRuleConflict(fmt.Errorf("reorder_requires_all_visible_rules"))
 		}
-		seenPriorities[p] = struct{}{}
+	}
+
+	natSnapshot, err := snapshotFirewallNATRules(s.DB)
+	if err != nil {
+		return err
 	}
 
 	maxHidden, err := s.maxHiddenNATPriority(s.DB)
@@ -1644,7 +1821,7 @@ func (s *Service) ReorderFirewallNATRules(req []networkServiceInterfaces.Firewal
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		for _, item := range req {
-			targetPriority := normalizePriority(item.Priority) + maxHidden
+			targetPriority := item.Priority + maxHidden
 			if err := tx.Model(&networkModels.FirewallNATRule{}).Where("id = ?", item.ID).Update("priority", targetPriority).Error; err != nil {
 				return err
 			}
@@ -1655,21 +1832,23 @@ func (s *Service) ReorderFirewallNATRules(req []networkServiceInterfaces.Firewal
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Transaction(func(tx *gorm.DB) error {
-			for id, priority := range previous {
-				if updateErr := tx.Model(&networkModels.FirewallNATRule{}).Where("id = ?", id).Update("priority", priority).Error; updateErr != nil {
-					return updateErr
-				}
-			}
-			return nil
-		})
-		return err
+		return s.restoreFirewallNATRulesAfterApplyFailure(natSnapshot, err, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil
 }
 
 func (s *Service) UpdateFirewallAdvancedSettings(req *networkServiceInterfaces.FirewallAdvancedRequest) error {
+	s.firewallAdvancedMutex.Lock()
+	defer s.firewallAdvancedMutex.Unlock()
+
+	if err := validateFirewallAdvancedRequest(req); err != nil {
+		return err
+	}
+	if _, err := s.PreviewRenderedConfig(req); err != nil {
+		return err
+	}
+
 	current, err := s.GetFirewallAdvancedSettings()
 	if err != nil {
 		return err
@@ -1688,11 +1867,57 @@ func (s *Service) UpdateFirewallAdvancedSettings(req *networkServiceInterfaces.F
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.DB.Save(&previous).Error
-		return err
+		applyErr := err
+		var validationErr *pfValidationError
+		if errors.As(err, &validationErr) {
+			applyErr = invalidFirewallAdvancedSettings(err)
+		}
+		return s.restoreFirewallAdvancedSettingsAfterApplyFailure(previous, applyErr, s.ApplyFirewallIfEnabled)
 	}
 
 	return nil
+}
+
+func validateFirewallAdvancedRequest(req *networkServiceInterfaces.FirewallAdvancedRequest) error {
+	if req == nil {
+		return invalidFirewallAdvancedSettings(fmt.Errorf("missing_firewall_advanced_settings"))
+	}
+
+	sections := []struct {
+		name  string
+		value string
+	}{
+		{name: "pre_rules", value: req.PreRules},
+		{name: "pre_nat_decl", value: req.PreNatDecl},
+		{name: "post_nat_decl", value: req.PostNatDecl},
+		{name: "pre_traffic_anchor", value: req.PreTrafficAnchor},
+		{name: "post_traffic_anchor", value: req.PostTrafficAnchor},
+		{name: "post_rules", value: req.PostRules},
+	}
+
+	for _, section := range sections {
+		if len(section.value) > MaxFirewallAdvancedSectionBytes {
+			return invalidFirewallAdvancedSettings(fmt.Errorf("%s_too_large", section.name))
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) restoreFirewallAdvancedSettingsAfterApplyFailure(
+	previous networkModels.FirewallAdvancedSettings,
+	applyErr error,
+	reapply func() error,
+) error {
+	if rollbackErr := s.DB.Save(&previous).Error; rollbackErr != nil {
+		return errors.Join(applyErr, fmt.Errorf("firewall advanced settings rollback failed: %w", rollbackErr))
+	}
+
+	if reapplyErr := reapply(); reapplyErr != nil {
+		return errors.Join(applyErr, fmt.Errorf("restoring previous firewall configuration failed: %w", reapplyErr))
+	}
+
+	return applyErr
 }
 
 func (s *Service) renderCurrentConfig(tmpDir, preRules, preNatDecl, postNatDecl, preTrafficAnchor, postTrafficAnchor, postRules string) (*networkServiceInterfaces.RenderedConfigResponse, error) {
@@ -1756,6 +1981,10 @@ func (s *Service) renderCurrentConfig(tmpDir, preRules, preNatDecl, postNatDecl,
 }
 
 func (s *Service) PreviewRenderedConfig(req *networkServiceInterfaces.FirewallAdvancedRequest) (*networkServiceInterfaces.RenderedConfigResponse, error) {
+	if err := validateFirewallAdvancedRequest(req); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := os.MkdirTemp("", "sylve-pf-preview-*")
 	if err != nil {
 		return nil, err
@@ -1781,34 +2010,52 @@ func (s *Service) PreviewRenderedConfig(req *networkServiceInterfaces.FirewallAd
 	}
 
 	if _, err := firewallRunCommand("/sbin/pfctl", "-nf", tmpMainPath); err != nil {
-		return nil, formatPFValidationError(err, map[string]string{
+		return nil, invalidFirewallAdvancedSettings(formatPFValidationError(err, map[string]string{
 			"pf.conf":            rendered.PfConf,
 			"object-tables.conf": rendered.ObjectTables,
 			"nat-rules.conf":     rendered.NatRules,
 			"traffic-rules.conf": rendered.TrafficRules,
-		})
+		}))
 	}
 
 	return rendered, nil
 }
 
 func (s *Service) GetRenderedConfigOnDisk() (*networkServiceInterfaces.RenderedConfigResponse, error) {
-	resp := &networkServiceInterfaces.RenderedConfigResponse{}
+	pfConf, err := readOptionalFirewallConfigFile(pfMainConfPath)
+	if err != nil {
+		return nil, err
+	}
+	objectTables, err := readOptionalFirewallConfigFile(pfObjectTablesPath)
+	if err != nil {
+		return nil, err
+	}
+	natRules, err := readOptionalFirewallConfigFile(pfNatRulesPath)
+	if err != nil {
+		return nil, err
+	}
+	trafficRules, err := readOptionalFirewallConfigFile(pfTrafficRulesPath)
+	if err != nil {
+		return nil, err
+	}
 
-	if data, err := os.ReadFile(pfMainConfPath); err == nil {
-		resp.PfConf = string(data)
-	}
-	if data, err := os.ReadFile(pfObjectTablesPath); err == nil {
-		resp.ObjectTables = string(data)
-	}
-	if data, err := os.ReadFile(pfNatRulesPath); err == nil {
-		resp.NatRules = string(data)
-	}
-	if data, err := os.ReadFile(pfTrafficRulesPath); err == nil {
-		resp.TrafficRules = string(data)
-	}
+	return &networkServiceInterfaces.RenderedConfigResponse{
+		PfConf:       pfConf,
+		ObjectTables: objectTables,
+		NatRules:     natRules,
+		TrafficRules: trafficRules,
+	}, nil
+}
 
-	return resp, nil
+func readOptionalFirewallConfigFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read firewall configuration %s: %w", filepath.Base(path), err)
+	}
+	return string(data), nil
 }
 
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
@@ -2109,6 +2356,18 @@ func pfValidationHint(path string, message string, line string) string {
 	return ""
 }
 
+type pfValidationError struct {
+	message string
+}
+
+func (e *pfValidationError) Error() string {
+	return e.message
+}
+
+func newPFValidationError(message string) error {
+	return &pfValidationError{message: message}
+}
+
 func formatPFValidationError(err error, candidates map[string]string) error {
 	output := extractCommandOutput(err.Error())
 	lines := strings.Split(output, "\n")
@@ -2154,12 +2413,12 @@ func formatPFValidationError(err error, candidates map[string]string) error {
 	hints = uniqueSortedValues(hints)
 	if len(hints) == 0 {
 		if hasContext {
-			return fmt.Errorf("pf_validation_failed: %s", detailText)
+			return newPFValidationError(fmt.Sprintf("pf_validation_failed: %s", detailText))
 		}
-		return fmt.Errorf("pf_validation_failed: %s", output)
+		return newPFValidationError(fmt.Sprintf("pf_validation_failed: %s", output))
 	}
 
-	return fmt.Errorf("pf_validation_failed: %s | hint: %s", detailText, strings.Join(hints, " | "))
+	return newPFValidationError(fmt.Sprintf("pf_validation_failed: %s | hint: %s", detailText, strings.Join(hints, " | ")))
 }
 
 func buildPFMainConfig(preRules string, preNatDecl string, postNatDecl string, preTrafficAnchor string, postTrafficAnchor string, postRules string, objectTablesContent string, natPath string, trafficPath string) string {
