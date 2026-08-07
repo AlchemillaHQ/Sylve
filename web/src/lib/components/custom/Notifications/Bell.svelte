@@ -305,7 +305,11 @@
 </Button>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[95%] !max-w-[50vw] p-5" showCloseButton={false}>
+	<Dialog.Content
+		class="flex resize flex-col overflow-auto p-5"
+		style="width: 50vw; min-width: 420px; min-height: 320px; max-width: 95vw; max-height: 90vh;"
+		showCloseButton={false}
+	>
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<SpanWithIcon
@@ -324,7 +328,7 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="flex h-[40vh] min-h-0 min-w-0 flex-col overflow-hidden">
+		<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 			<ModalTable
 				rows={tableRows}
 				columns={notificationColumns}

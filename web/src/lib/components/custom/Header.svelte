@@ -62,7 +62,7 @@
 </script>
 
 <header
-	class="bg-background sticky top-0 z-40 flex h-14 items-center gap-3 border-x border-b px-2 md:h-[4vh]"
+	class="bg-background sticky top-0 z-40 flex h-14 items-center gap-3 border-b px-2 md:h-[4vh]"
 >
 	<div class="flex items-center lg:hidden">
 		<Sheet.Root bind:open={mobileMenuOpen}>
