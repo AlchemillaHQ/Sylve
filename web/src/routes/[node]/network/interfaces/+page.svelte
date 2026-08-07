@@ -5,6 +5,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { type Iface } from '$lib/types/network/iface';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
@@ -27,10 +28,13 @@
 		jails: Jail[];
 		vms: VM[];
 		switches: SwitchList;
-		wgClients: WireGuardClient[];
+		wgClients: WireGuardClient[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	let initialWireGuardClients = $derived(
+		Array.isArray(data.wgClients) ? data.wgClients : ([] as WireGuardClient[])
+	);
 
 	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
@@ -52,12 +56,12 @@
 		async (key) => {
 			const res = await getWireGuardClients();
 			if (isAPIResponse(res)) {
-				return data.wgClients;
+				return initialWireGuardClients;
 			}
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.wgClients }
+		{ initialValue: initialWireGuardClients }
 	);
 
 	// svelte-ignore state_referenced_locally

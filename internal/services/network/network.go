@@ -71,6 +71,8 @@ type Service struct {
 	firewallNATMutationMutex     sync.Mutex
 	firewallAdvancedMutex        sync.Mutex
 	staticRouteMutationMutex     sync.Mutex
+	wireGuardServerMutationMutex sync.Mutex
+	wireGuardClientMutationMutex sync.Mutex
 	firewallCounterSampleMutex   sync.Mutex
 	firewallCounterStateMutex    sync.Mutex
 	firewallMonOnce              sync.Once

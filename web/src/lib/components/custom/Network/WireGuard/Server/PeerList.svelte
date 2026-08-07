@@ -6,13 +6,23 @@
 
 	interface Props {
 		peers: WireGuardServerPeer[];
+		disabled?: boolean;
+		togglingPeerID?: number | null;
 		onEdit: (peer: WireGuardServerPeer) => void;
 		onToggle: (id: number) => void;
 		onExport: (id: number) => void;
 		onDelete: (id: number) => void;
 	}
 
-	let { peers, onEdit, onToggle, onExport, onDelete }: Props = $props();
+	let {
+		peers,
+		disabled = false,
+		togglingPeerID = null,
+		onEdit,
+		onToggle,
+		onExport,
+		onDelete
+	}: Props = $props();
 
 	function formatHandshake(time: string): string {
 		if (!time || time.startsWith('0001')) return 'Never';
@@ -99,19 +109,25 @@
 									variant="ghost"
 									class="h-7 w-7"
 									title={peer.enabled ? 'Disable' : 'Enable'}
+									{disabled}
 									onclick={() => onToggle(peer.id)}
 								>
-									<span
-										class="icon size-6 {peer.enabled
-											? 'icon-[mdi--toggle-switch] text-green-500'
-											: 'icon-[mdi--toggle-switch-off-outline] text-red-500'}"
-									></span>
+									{#if togglingPeerID === peer.id}
+										<span class="icon icon-[mdi--loading] size-4 animate-spin"></span>
+									{:else}
+										<span
+											class="icon size-6 {peer.enabled
+												? 'icon-[mdi--toggle-switch] text-green-500'
+												: 'icon-[mdi--toggle-switch-off-outline] text-red-500'}"
+										></span>
+									{/if}
 								</Button>
 								<Button
 									size="icon"
 									variant="ghost"
 									class="h-7 w-7"
 									title="Export config"
+									{disabled}
 									onclick={() => onExport(peer.id)}
 								>
 									<span class="icon icon-[mdi--export-variant] size-3.5"></span>
@@ -121,6 +137,7 @@
 									variant="ghost"
 									class="h-7 w-7"
 									title="Edit"
+									{disabled}
 									onclick={() => onEdit(peer)}
 								>
 									<span class="icon icon-[mdi--pencil-outline] size-3.5"></span>
@@ -130,6 +147,7 @@
 									variant="ghost"
 									class="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
 									title="Delete peer"
+									{disabled}
 									onclick={() => onDelete(peer.id)}
 								>
 									<span class="icon icon-[mdi--trash-can-outline] size-3.5"></span>

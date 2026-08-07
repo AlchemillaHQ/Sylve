@@ -175,6 +175,10 @@ func (s *Service) ApplyFirewallIfEnabled() error {
 }
 
 func (s *Service) SyncFirewallRuntimeState() error {
+	if err := s.reconcileWireGuardManagedFirewallRowsForCurrentState(); err != nil {
+		return fmt.Errorf("failed to reconcile wireguard-managed firewall rules: %w", err)
+	}
+
 	if s.IsFirewallServiceEnabled() {
 		return s.ApplyFirewallConfig()
 	}

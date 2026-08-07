@@ -415,23 +415,30 @@ func RegisterRoutes(r *gin.Engine,
 			routes.DELETE("/:id", networkHandlers.DeleteStaticRoute(networkService))
 		}
 
-		network.GET("/wireguard/server", networkHandlers.GetWireGuardServer(networkService))
-		network.POST("/wireguard/server", networkHandlers.InitWireGuardServer(networkService))
-		network.PUT("/wireguard/server", networkHandlers.EditWireGuardServer(networkService))
-		network.DELETE("/wireguard/server", networkHandlers.DeinitWireGuardServer(networkService))
-		network.PUT("/wireguard/server/toggle", networkHandlers.ToggleWireGuardServer(networkService))
+		wireGuardServer := network.Group("/wireguard/server")
+		wireGuardServer.Use(middleware.RequireLocalAdmin(authService))
+		{
+			wireGuardServer.GET("", networkHandlers.GetWireGuardServer(networkService))
+			wireGuardServer.POST("", networkHandlers.InitWireGuardServer(networkService))
+			wireGuardServer.PUT("", networkHandlers.EditWireGuardServer(networkService))
+			wireGuardServer.PATCH("", networkHandlers.SetWireGuardServerEnabled(networkService))
+			wireGuardServer.DELETE("", networkHandlers.DeinitWireGuardServer(networkService))
 
-		network.POST("/wireguard/server/peer", networkHandlers.AddWireGuardServerPeer(networkService))
-		network.PUT("/wireguard/server/peer/:peerId", networkHandlers.EditWireGuardServerPeer(networkService))
-		network.PUT("/wireguard/server/peer/toggle/:peerId", networkHandlers.ToggleWireGuardServerPeer(networkService))
-		network.DELETE("/wireguard/server/peer/:peerId", networkHandlers.RemoveWireGuardServerPeer(networkService))
-		network.DELETE("/wireguard/server/peer/bulk-delete", networkHandlers.RemoveWireGuardServerPeers(networkService))
+			wireGuardServer.POST("/peer", networkHandlers.AddWireGuardServerPeer(networkService))
+			wireGuardServer.PUT("/peer/:peerId", networkHandlers.EditWireGuardServerPeer(networkService))
+			wireGuardServer.PATCH("/peer/:peerId", networkHandlers.SetWireGuardServerPeerEnabled(networkService))
+			wireGuardServer.DELETE("/peer/:peerId", networkHandlers.RemoveWireGuardServerPeer(networkService))
+		}
 
-		network.GET("/wireguard/clients", networkHandlers.GetWireGuardClients(networkService))
-		network.POST("/wireguard/clients", networkHandlers.CreateWireGuardClient(networkService))
-		network.PUT("/wireguard/clients/:clientId", networkHandlers.EditWireGuardClient(networkService))
-		network.DELETE("/wireguard/clients/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
-		network.PUT("/wireguard/clients/toggle/:clientId", networkHandlers.ToggleWireGuardClient(networkService))
+		wireGuardClients := network.Group("/wireguard/clients")
+		wireGuardClients.Use(middleware.RequireLocalAdmin(authService))
+		{
+			wireGuardClients.GET("", networkHandlers.GetWireGuardClients(networkService))
+			wireGuardClients.POST("", networkHandlers.CreateWireGuardClient(networkService))
+			wireGuardClients.PUT("/:clientId", networkHandlers.EditWireGuardClient(networkService))
+			wireGuardClients.PATCH("/:clientId", networkHandlers.SetWireGuardClientEnabled(networkService))
+			wireGuardClients.DELETE("/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
+		}
 
 		network.GET("/interface", networkHandlers.ListInterfaces(networkService))
 

@@ -99,6 +99,26 @@ func TestSanitizeAuditQuery(t *testing.T) {
 	}
 }
 
+func TestSanitizeAuditPayloadRedactsWireGuardKeys(t *testing.T) {
+	payload := sanitizeAuditPayload(map[string]interface{}{
+		"enabled":      false,
+		"privateKey":   "server-private-key",
+		"preSharedKey": "peer-preshared-key",
+	})
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := string(encoded)
+	if strings.Contains(result, "server-private-key") || strings.Contains(result, "peer-preshared-key") {
+		t.Fatalf("wireguard key material leaked into audit payload: %s", result)
+	}
+	if !strings.Contains(result, `"enabled":false`) {
+		t.Fatalf("safe state field was not preserved: %s", result)
+	}
+}
+
 func TestUploadAuditDoesNotReadMultipartOrRecordSensitivePayloads(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

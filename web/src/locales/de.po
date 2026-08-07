@@ -1876,6 +1876,7 @@ msgstr "Sind Sie sicher?"
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -4652,6 +4653,7 @@ msgstr "Benutzerdefinierte Jail-Lebenszyklus-Hooks (exec.*-Skripte)"
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enable"
@@ -4783,6 +4785,7 @@ msgstr "Mac"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -6802,6 +6805,7 @@ msgstr "Optionale Notiz, warum dieser Snapshot erstellt wurde"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -10069,6 +10073,7 @@ msgstr "Diese VM gehört derzeit einem anderen Node"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
@@ -11051,6 +11056,7 @@ msgstr "Suche:"
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -11074,25 +11080,21 @@ msgstr "WireGuard"
 msgid "Toggle - WireGuard"
 msgstr "Umschalten - WireGuard"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard - Server"
-msgstr "WireGuard - Server"
+#~ msgid "WireGuard - Server"
+#~ msgstr "WireGuard - Server"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard - Server Toggle"
-msgstr "WireGuard - Server-Umschalter"
+#~ msgid "WireGuard - Server Toggle"
+#~ msgstr "WireGuard - Server-Umschalter"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard - Server Peer"
-msgstr "WireGuard - Server-Peer"
+#~ msgid "WireGuard - Server Peer"
+#~ msgstr "WireGuard - Server-Peer"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "WireGuard - Client"
 msgstr "WireGuard - Client"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard - Client Toggle"
-msgstr "WireGuard - Client-Umschalter"
+#~ msgid "WireGuard - Client Toggle"
+#~ msgstr "WireGuard - Client-Umschalter"
 
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "WireGuard service is disabled"
@@ -11110,9 +11112,8 @@ msgstr "WireGuard-Server aktualisiert"
 msgid "Failed to save WireGuard server"
 msgstr "Speichern des WireGuard-Servers fehlgeschlagen"
 
-#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
-msgid "WireGuard server toggled"
-msgstr "WireGuard-Server umgeschaltet"
+#~ msgid "WireGuard server toggled"
+#~ msgstr "WireGuard-Server umgeschaltet"
 
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Failed to toggle WireGuard server"
@@ -11138,13 +11139,11 @@ msgstr "Peer hinzugefügt"
 msgid "Failed to save peer"
 msgstr "Speichern des Peers fehlgeschlagen"
 
-#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
-msgid "Peer toggled"
-msgstr "Peer umgeschaltet"
+#~ msgid "Peer toggled"
+#~ msgstr "Peer umgeschaltet"
 
-#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
-msgid "Failed to toggle peer"
-msgstr "Umschalten des Peers fehlgeschlagen"
+#~ msgid "Failed to toggle peer"
+#~ msgstr "Umschalten des Peers fehlgeschlagen"
 
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Peer removed"
@@ -11225,9 +11224,8 @@ msgstr "Peers"
 msgid "<0/> Add Peer"
 msgstr "<0/> Peer hinzufügen"
 
-#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
-msgid "Initialize the server first to manage peers."
-msgstr "Initialisieren Sie zuerst den Server, um Peers zu verwalten."
+#~ msgid "Initialize the server first to manage peers."
+#~ msgstr "Initialisieren Sie zuerst den Server, um Peers zu verwalten."
 
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 msgid "No peers configured yet."
@@ -11283,6 +11281,7 @@ msgstr "Persistentes Keepalive"
 #~ msgid "This will remove the WireGuard server runtime state and peer records. Continue?"
 #~ msgstr "Dadurch werden der Laufzeitzustand des WireGuard-Servers und die Peer-Datensätze entfernt. Fortfahren?"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "WireGuard Peer"
 msgstr "WireGuard-Peer"
@@ -11303,9 +11302,8 @@ msgstr "Speichern des Clients fehlgeschlagen"
 #~ msgid "Client toggled"
 #~ msgstr "Client toggled"
 
-#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
-msgid "Failed to toggle client"
-msgstr "Umschalten des Clients fehlgeschlagen"
+#~ msgid "Failed to toggle client"
+#~ msgstr "Umschalten des Clients fehlgeschlagen"
 
 #~ msgid "Client removed"
 #~ msgstr "Client removed"
@@ -11528,14 +11526,13 @@ msgstr "Next Hop"
 #~ msgid "Iface: {0}"
 #~ msgstr "Iface: {0}"
 
-#. 0: String(activeRow?.name ?? '')
+#. 0: routeName
 #: src/routes/[node]/network/routes/+page.svelte
 msgid "Route {0} deleted"
 msgstr "Route {0} gelöscht"
 
-#: src/routes/[node]/network/routes/+page.svelte
-msgid "Failed to delete route"
-msgstr "Route konnte nicht gelöscht werden"
+#~ msgid "Failed to delete route"
+#~ msgstr "Route konnte nicht gelöscht werden"
 
 #~ msgid "Iface: {0} ({1})"
 #~ msgstr "Iface: {0} ({1})"
@@ -11886,7 +11883,7 @@ msgstr "Peer exportieren - {0}"
 msgid "Client \"{0}\" removed"
 msgstr "Client \"{0}\" entfernt"
 
-#. 0: name; 1: status === 'disabled' ? 'enabled' \\: 'disabled'
+#. 0: name; 1: enable ? 'enabled' \\: 'disabled'
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 msgid "Client \"{0}\" {1}"
 msgstr "Client \"{0}\" {1}"
@@ -13920,21 +13917,18 @@ msgstr ""
 #~ msgid "Firewall - NAT Reorder"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Static Route - Suggest From NAT"
-msgstr ""
+#~ msgid "Static Route - Suggest From NAT"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Static Route"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard - Peer Toggle"
-msgstr ""
+#~ msgid "WireGuard - Peer Toggle"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard - Peer Bulk Delete"
-msgstr ""
+#~ msgid "WireGuard - Peer Bulk Delete"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Replication Policy - Run"
@@ -14759,6 +14753,7 @@ msgstr ""
 msgid "This action permanently removes the selected peer."
 msgstr ""
 
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 msgid "Saving Changes..."
 msgstr ""
@@ -19410,9 +19405,8 @@ msgstr ""
 #~ msgid "Notification config updatedmsgs"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "VM T"
-msgstr ""
+#~ msgid "VM T"
+#~ msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "<0/> Savem"
@@ -19427,4 +19421,162 @@ msgstr ""
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 msgid "<0/> Saving order..."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Toggle (Legacy)"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Deinitialize"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Initialize"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Advanced Rules - Update"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Update"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Update State"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Enable"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Server - Disable"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Legacy VM"
+msgstr ""
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "The current WireGuard server state could not be loaded"
+msgstr ""
+
+#. 0: enabled ? 'enabled' \\: 'disabled'
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard server {0}"
+msgstr ""
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Unable to refresh the WireGuard server. Displaying the last known state; changes are disabled until the connection recovers."
+msgstr ""
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Unable to load the WireGuard server. Changes are disabled until the connection recovers."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Peer - Delete"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Client - Delete"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Peer - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Client - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Peer - Update"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Client - Update"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Peer - Update State"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Client - Update State"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Peer - Enable"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Peer - Disable"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Client - Enable"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard Client - Disable"
+msgstr ""
+
+#. 0: enable ? 'enable' \\: 'disable'
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Failed to {0} client"
+msgstr ""
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Deleting Client..."
+msgstr ""
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Enabling Client..."
+msgstr ""
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Disabling Client..."
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Remote endpoint port must be between 1 and 65535"
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Peer public key must be a valid WireGuard key"
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Private key must be a valid WireGuard key"
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Pre-shared key must be a valid WireGuard key"
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "At least one client address is required"
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Creating Client..."
+msgstr ""
+
+#. 0: enabled ? 'enabled' \\: 'disabled'
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Peer {0}"
+msgstr ""
+
+#. 0: enabled ? 'enable' \\: 'disable'
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Failed to {0} peer"
+msgstr ""
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Invalid pre-shared key - must be a valid 32-byte base64-encoded WireGuard key"
 msgstr ""

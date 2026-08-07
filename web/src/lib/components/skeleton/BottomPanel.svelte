@@ -293,12 +293,9 @@
 		'/api/network/firewall/nat': 'Firewall NAT Rule',
 		'/api/network/firewall/advanced': 'Firewall - Advanced Rules',
 		'/api/network/route': 'Static Route',
-		'/api/network/wireguard/server/toggle': 'WireGuard - Server Toggle',
-		'/api/network/wireguard/server/peer/toggle': 'WireGuard - Peer Toggle',
-		'/api/network/wireguard/server/peer/bulk-delete': 'WireGuard - Peer Bulk Delete',
-		'/api/network/wireguard/server/peer': 'WireGuard - Server Peer',
-		'/api/network/wireguard/server': 'WireGuard - Server',
-		'/api/network/wireguard/clients/toggle': 'WireGuard - Client Toggle',
+		'/api/network/wireguard/server/toggle': 'WireGuard Server - Toggle (Legacy)',
+		'/api/network/wireguard/server/peer': 'WireGuard Peer',
+		'/api/network/wireguard/server': 'WireGuard Server',
 		'/api/network/wireguard/clients': 'WireGuard - Client',
 		'/api/cluster/notes/bulk-delete': 'DC Notes - Bulk Delete',
 		'/api/cluster/notes': 'DC Notes',
@@ -352,7 +349,10 @@
 			'/api/disk/partitions/:partition': 'Disk - Delete Partition',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Delete',
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Delete',
-			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete'
+			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete',
+			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Delete',
+			'/api/network/wireguard/server': 'WireGuard Server - Deinitialize',
+			'/api/network/wireguard/clients/:id': 'WireGuard Client - Delete'
 		},
 		POST: {
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
@@ -369,7 +369,10 @@
 			'/api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create',
 			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Create',
-			'/api/network/firewall/nat': 'Firewall NAT Rule - Create'
+			'/api/network/firewall/nat': 'Firewall NAT Rule - Create',
+			'/api/network/wireguard/server/peer': 'WireGuard Peer - Create',
+			'/api/network/wireguard/server': 'WireGuard Server - Initialize',
+			'/api/network/wireguard/clients': 'WireGuard Client - Create'
 		},
 		PUT: {
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
@@ -378,10 +381,16 @@
 			'/api/network/firewall/traffic/reorder': 'Firewall Traffic Rule - Reorder',
 			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Update',
 			'/api/network/firewall/nat/reorder': 'Firewall NAT Rule - Reorder',
-			'/api/network/firewall/advanced': 'Firewall Advanced Rules - Update'
+			'/api/network/firewall/advanced': 'Firewall Advanced Rules - Update',
+			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Update',
+			'/api/network/wireguard/server': 'WireGuard Server - Update',
+			'/api/network/wireguard/clients/:id': 'WireGuard Client - Update'
 		},
 		PATCH: {
-			'/api/certificates/:id': 'TLS Certificate - Update'
+			'/api/certificates/:id': 'TLS Certificate - Update',
+			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Update State',
+			'/api/network/wireguard/server': 'WireGuard Server - Update State',
+			'/api/network/wireguard/clients/:id': 'WireGuard Client - Update State'
 		},
 		GET: {
 			'/api/certificates/:id/archive': 'TLS Certificate - Download',
@@ -477,6 +486,36 @@
 					}
 				} else {
 					resolvedAction = label;
+				}
+			}
+
+			if (method.toUpperCase() === 'PATCH' && normalizedPath === '/api/network/wireguard/server') {
+				if (recordCopy.action.body?.enabled === true) {
+					resolvedAction = 'WireGuard Server - Enable';
+				} else if (recordCopy.action.body?.enabled === false) {
+					resolvedAction = 'WireGuard Server - Disable';
+				}
+			}
+
+			if (
+				method.toUpperCase() === 'PATCH' &&
+				normalizedPath === '/api/network/wireguard/server/peer/:id'
+			) {
+				if (recordCopy.action.body?.enabled === true) {
+					resolvedAction = 'WireGuard Peer - Enable';
+				} else if (recordCopy.action.body?.enabled === false) {
+					resolvedAction = 'WireGuard Peer - Disable';
+				}
+			}
+
+			if (
+				method.toUpperCase() === 'PATCH' &&
+				normalizedPath === '/api/network/wireguard/clients/:id'
+			) {
+				if (recordCopy.action.body?.enabled === true) {
+					resolvedAction = 'WireGuard Client - Enable';
+				} else if (recordCopy.action.body?.enabled === false) {
+					resolvedAction = 'WireGuard Client - Disable';
 				}
 			}
 

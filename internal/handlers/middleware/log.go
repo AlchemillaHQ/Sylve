@@ -113,6 +113,7 @@ func isSensitiveAuditKey(key string) bool {
 		"totp",
 		"otp",
 		"privatekey",
+		"presharedkey",
 		"sshkey",
 		"credential",
 		"sessiondata",
