@@ -9,38 +9,106 @@
 package networkHandlers
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary Get DHCP Leases
-// @Description Retrieve both active (file-based) and static (DB-based) DHCP leases
+func bindDHCPLeaseJSON(c *gin.Context, destination any) bool {
+	if err := c.ShouldBindJSON(destination); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "dhcp_lease_request_too_large",
+				Error:   "dhcp_lease_request_too_large",
+				Data:    nil,
+			})
+			return false
+		}
+
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_request",
+			Error:   "invalid_dhcp_lease_request",
+			Data:    nil,
+		})
+		return false
+	}
+	return true
+}
+
+func dhcpLeasePathID(c *gin.Context) (uint, bool) {
+	parsed, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || parsed == 0 || uint64(uint(parsed)) != parsed {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_request",
+			Error:   "invalid_dhcp_lease_id",
+			Data:    nil,
+		})
+		return 0, false
+	}
+	return uint(parsed), true
+}
+
+func dhcpLeaseErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, network.ErrInvalidDHCPLease):
+		return http.StatusBadRequest
+	case errors.Is(err, network.ErrDHCPLeaseNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, network.ErrDHCPLeaseConflict):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func writeDHCPLeaseError(c *gin.Context, message string, err error) {
+	status := dhcpLeaseErrorStatus(err)
+	if status == http.StatusInternalServerError {
+		logger.L.Error().Err(err).Str("operation", message).Msg("dhcp_lease_request_failed")
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   network.DHCPLeaseErrorCode(err),
+		Data:    nil,
+	})
+}
+
+// @Summary List DHCP leases
+// @Description Retrieve active runtime leases and configured static DHCP leases
 // @Tags Network
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[networkServiceInterfaces.Leases] "Success"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/dhcp/lease [get]
 func GetDHCPLeases(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		leases, err := svc.GetLeases()
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			logger.L.Error().Err(err).Msg("dhcp_leases_retrieval_failed")
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_dhcp_leases",
-				Error:   err.Error(),
+				Error:   "dhcp_leases_retrieval_failed",
 				Data:    nil,
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[networkServiceInterfaces.Leases]{
+		c.JSON(http.StatusOK, internal.APIResponse[networkServiceInterfaces.Leases]{
 			Status:  "success",
 			Message: "dhcp_leases_retrieved",
 			Error:   "",
@@ -49,84 +117,79 @@ func GetDHCPLeases(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Create DHCP Lease
-// @Description Create a new static DHCP lease
+// @Summary Create a static DHCP lease
+// @Description Create and apply a new static DHCP lease
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param data body networkServiceInterfaces.CreateStaticMapRequest true "Request Body"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param request body networkServiceInterfaces.CreateStaticMapRequest true "Create Static DHCP Lease Request"
+// @Success 201 {object} internal.APIResponse[uint] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/dhcp/lease [post]
 func CreateDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req networkServiceInterfaces.CreateStaticMapRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_body",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDHCPLeaseJSON(c, &req) {
 			return
 		}
 
-		if err := svc.CreateStaticMap(&req); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_create_dhcp_lease",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		id, err := svc.CreateStaticMap(&req)
+		if err != nil {
+			writeDHCPLeaseError(c, "failed_to_create_dhcp_lease", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusCreated, internal.APIResponse[uint]{
 			Status:  "success",
 			Message: "dhcp_lease_created",
 			Error:   "",
-			Data:    nil,
+			Data:    id,
 		})
 	}
 }
 
-// @Summary Update DHCP Lease
-// @Description Update an existing static DHCP lease by ID
+// @Summary Update a static DHCP lease
+// @Description Replace and apply an existing static DHCP lease by ID
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param data body networkServiceInterfaces.ModifyStaticMapRequest true "Request Body"
+// @Param id path int true "DHCP Lease ID" minimum(1)
+// @Param request body networkServiceInterfaces.ModifyStaticMapRequest true "Update Static DHCP Lease Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/dhcp/lease [put]
+// @Router /network/dhcp/lease/{id} [put]
 func UpdateDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		id, ok := dhcpLeasePathID(c)
+		if !ok {
+			return
+		}
+
 		var req networkServiceInterfaces.ModifyStaticMapRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_body",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDHCPLeaseJSON(c, &req) {
 			return
 		}
 
-		if err := svc.ModifyStaticMap(&req); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_update_dhcp_lease",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := svc.ModifyStaticMap(id, &req); err != nil {
+			writeDHCPLeaseError(c, "failed_to_update_dhcp_lease", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "dhcp_lease_updated",
 			Error:   "",
@@ -135,52 +198,32 @@ func UpdateDHCPLease(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Delete DHCP Lease
-// @Description Delete a static DHCP lease by ID
+// @Summary Delete a static DHCP lease
+// @Description Delete and apply a static DHCP lease by ID
 // @Tags Network
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Lease ID"
+// @Param id path int true "DHCP Lease ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/dhcp/lease/{id} [delete]
 func DeleteDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idParam := c.Param("id")
-		if idParam == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "lease_id_required",
-				Error:   "lease_id_required",
-				Data:    nil,
-			})
+		id, ok := dhcpLeasePathID(c)
+		if !ok {
 			return
 		}
 
-		id, err := strconv.Atoi(idParam)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_lease_id",
-				Error:   "invalid_lease_id",
-				Data:    nil,
-			})
+		if err := svc.DeleteStaticMap(id); err != nil {
+			writeDHCPLeaseError(c, "failed_to_delete_dhcp_lease", err)
 			return
 		}
 
-		if err := svc.DeleteStaticMap(uint(id)); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_dhcp_lease",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "dhcp_lease_deleted",
 			Error:   "",
@@ -189,41 +232,34 @@ func DeleteDHCPLease(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Delete Dynamic DHCP Lease
-// @Description Delete an active DHCP lease by identifier (MAC or DUID) and IP
+// @Summary Delete a dynamic DHCP lease
+// @Description Delete an active DHCP lease matching the exact identifier and IP pair
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param data body networkServiceInterfaces.DeleteDynamicLeaseRequest true "Request Body"
+// @Param request body networkServiceInterfaces.DeleteDynamicLeaseRequest true "Delete Dynamic DHCP Lease Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/dhcp/lease/dynamic [post]
+// @Router /network/dhcp/lease/dynamic [delete]
 func DeleteDynamicDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req networkServiceInterfaces.DeleteDynamicLeaseRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_body",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindDHCPLeaseJSON(c, &req) {
 			return
 		}
 
 		if err := svc.DeleteDynamicLease(&req); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_dynamic_dhcp_lease",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeDHCPLeaseError(c, "failed_to_delete_dynamic_dhcp_lease", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "dynamic_dhcp_lease_deleted",
 			Error:   "",

@@ -139,20 +139,32 @@ export async function apiRequest<T extends z.ZodType>(
             return apiResponse.data as z.infer<T>;
         }
 
-        if (apiResponse.data.data) {
-            const parsedResult = schema.safeParse(apiResponse.data.data);
-            if (parsedResult.success) {
-                setReloadFlag();
-                return parsedResult.data;
-            } else {
-                console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
-                setReloadFlag();
-                return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
-            }
+        const parsedResult = schema.safeParse(apiResponse.data.data);
+        if (parsedResult.success) {
+            setReloadFlag();
+            return parsedResult.data;
         }
 
+        // Response schemas describe the complete API envelope rather than its
+        // data field. Preserve that existing use case before reporting a data
+        // contract failure.
+        const parsedEnvelope = schema.safeParse(apiResponse.data);
+        if (parsedEnvelope.success) {
+            setReloadFlag();
+            return parsedEnvelope.data;
+        }
+
+        console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
         setReloadFlag();
-        return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
+        const invalidResponse: APIResponse = {
+            status: 'error',
+            message: 'Invalid response data',
+            error: 'The server response data did not match the expected format.',
+            data: apiResponse.data.data
+        };
+        registerErrorContext(invalidResponse, errorContext);
+        stageErrorDetail(invalidResponse, errorContext);
+        return getDefaultValue(schema, invalidResponse, options?.preserveErrors);
     } catch (error) {
         if (isRequestCancellation(error)) throw error;
         setReloadFlag();

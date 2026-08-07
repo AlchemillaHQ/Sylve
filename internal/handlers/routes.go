@@ -459,19 +459,31 @@ func RegisterRoutes(r *gin.Engine,
 			standardSwitches.DELETE("/:id", networkHandlers.DeleteStandardSwitch(networkService))
 		}
 
-		network.GET("/dhcp/config", networkHandlers.GetDHCPConfig(networkService))
-		network.PUT("/dhcp/config", networkHandlers.ModifyDHCPConfig(networkService))
+		dhcpConfig := network.Group("/dhcp/config")
+		dhcpConfig.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			dhcpConfig.GET("", networkHandlers.GetDHCPConfig(networkService))
+			dhcpConfig.PUT("", networkHandlers.ModifyDHCPConfig(networkService))
+		}
 
-		network.GET("/dhcp/range", networkHandlers.GetDHCPRanges(networkService))
-		network.POST("/dhcp/range", networkHandlers.CreateDHCPRange(networkService))
-		network.PUT("/dhcp/range/:id", networkHandlers.ModifyDHCPRange(networkService))
-		network.DELETE("/dhcp/range/:id", networkHandlers.DeleteDHCPRange(networkService))
+		dhcpRanges := network.Group("/dhcp/range")
+		dhcpRanges.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			dhcpRanges.GET("", networkHandlers.GetDHCPRanges(networkService))
+			dhcpRanges.POST("", networkHandlers.CreateDHCPRange(networkService))
+			dhcpRanges.PUT("/:id", networkHandlers.ModifyDHCPRange(networkService))
+			dhcpRanges.DELETE("/:id", networkHandlers.DeleteDHCPRange(networkService))
+		}
 
-		network.GET("/dhcp/lease", networkHandlers.GetDHCPLeases(networkService))
-		network.POST("/dhcp/lease", networkHandlers.CreateDHCPLease(networkService))
-		network.PUT("/dhcp/lease", networkHandlers.UpdateDHCPLease(networkService))
-		network.DELETE("/dhcp/lease/:id", networkHandlers.DeleteDHCPLease(networkService))
-		network.POST("/dhcp/lease/dynamic", networkHandlers.DeleteDynamicDHCPLease(networkService))
+		dhcpLeases := network.Group("/dhcp/lease")
+		dhcpLeases.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			dhcpLeases.GET("", networkHandlers.GetDHCPLeases(networkService))
+			dhcpLeases.POST("", networkHandlers.CreateDHCPLease(networkService))
+			dhcpLeases.PUT("/:id", networkHandlers.UpdateDHCPLease(networkService))
+			dhcpLeases.DELETE("/dynamic", networkHandlers.DeleteDynamicDHCPLease(networkService))
+			dhcpLeases.DELETE("/:id", networkHandlers.DeleteDHCPLease(networkService))
+		}
 	}
 
 	system := api.Group("/system")

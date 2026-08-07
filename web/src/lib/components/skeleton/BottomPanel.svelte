@@ -179,7 +179,6 @@
 		'/api/info/terminal': 'Host Terminal - Session',
 		'/api/network/object': 'Network Object',
 		'/api/network/dhcp/config': 'DHCP Config',
-		'/api/network/dhcp/lease/dynamic': 'DHCP Lease - Delete Dynamic',
 		'/api/network/dhcp/range': 'DHCP Range',
 		'/api/network/dhcp/lease': 'DHCP Lease',
 		'/api/system/file-explorer/delete': 'File Explorer - Delete',
@@ -353,7 +352,9 @@
 			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete',
 			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Delete',
 			'/api/network/wireguard/server': 'WireGuard Server - Deinitialize',
-			'/api/network/wireguard/clients/:id': 'WireGuard Client - Delete'
+			'/api/network/wireguard/clients/:id': 'WireGuard Client - Delete',
+			'/api/network/dhcp/lease/dynamic': 'DHCP Lease - Delete Dynamic',
+			'/api/network/dhcp/lease/:id': 'DHCP Lease - Delete Static'
 		},
 		POST: {
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
@@ -373,7 +374,8 @@
 			'/api/network/firewall/nat': 'Firewall NAT Rule - Create',
 			'/api/network/wireguard/server/peer': 'WireGuard Peer - Create',
 			'/api/network/wireguard/server': 'WireGuard Server - Initialize',
-			'/api/network/wireguard/clients': 'WireGuard Client - Create'
+			'/api/network/wireguard/clients': 'WireGuard Client - Create',
+			'/api/network/dhcp/lease': 'DHCP Lease - Create'
 		},
 		PUT: {
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
@@ -385,7 +387,8 @@
 			'/api/network/firewall/advanced': 'Firewall Advanced Rules - Update',
 			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Update',
 			'/api/network/wireguard/server': 'WireGuard Server - Update',
-			'/api/network/wireguard/clients/:id': 'WireGuard Client - Update'
+			'/api/network/wireguard/clients/:id': 'WireGuard Client - Update',
+			'/api/network/dhcp/lease/:id': 'DHCP Lease - Update'
 		},
 		PATCH: {
 			'/api/certificates/:id': 'TLS Certificate - Update',

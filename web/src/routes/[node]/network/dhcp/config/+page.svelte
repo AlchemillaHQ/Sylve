@@ -8,7 +8,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { DHCPConfig } from '$lib/types/network/dhcp';
+	import { emptyDHCPConfig, isDHCPConfig, type DHCPConfig } from '$lib/types/network/dhcp';
 	import {
 		emptySwitchList,
 		isSwitchList,
@@ -23,12 +23,14 @@
 
 	interface Data {
 		switches: SwitchList | APIResponse;
-		dhcpConfig: DHCPConfig;
+		dhcpConfig: DHCPConfig | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 	// svelte-ignore state_referenced_locally
 	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+	// svelte-ignore state_referenced_locally
+	let lastGoodDHCPConfig = isDHCPConfig(data.dhcpConfig) ? data.dhcpConfig : emptyDHCPConfig();
 
 	let networkSwitches = resource(
 		() => 'network-switches',
@@ -46,15 +48,20 @@
 		{ initialValue: lastGoodSwitches }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let dhcpConfig = resource(
 		() => 'dhcp-config',
 		async (key) => {
 			const res = await getDHCPConfig();
+			if (!isDHCPConfig(res)) {
+				handleAPIError(res);
+				return lastGoodDHCPConfig;
+			}
+
+			lastGoodDHCPConfig = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.dhcpConfig }
+		{ initialValue: lastGoodDHCPConfig }
 	);
 
 	let reload = $state(false);

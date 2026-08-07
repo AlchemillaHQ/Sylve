@@ -71,6 +71,7 @@ type Service struct {
 	firewallNATMutationMutex     sync.Mutex
 	firewallAdvancedMutex        sync.Mutex
 	staticRouteMutationMutex     sync.Mutex
+	dhcpRuntimeMutex             sync.Mutex
 	wireGuardServerMutationMutex sync.Mutex
 	wireGuardClientMutationMutex sync.Mutex
 	firewallCounterSampleMutex   sync.Mutex
@@ -87,6 +88,7 @@ type Service struct {
 	wgClientMetricsCache         map[uint]*wgClientMetricsCache
 	listSnapshotMigrationOnce    sync.Once
 	wireGuardUDPPortInUse        func(port int) bool
+	dhcpRuntime                  dhcpRuntimeOperations
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)
