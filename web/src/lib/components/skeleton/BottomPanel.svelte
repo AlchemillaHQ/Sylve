@@ -24,12 +24,14 @@
 	interface Props {
 		clustered?: boolean;
 		onLifecycleActiveChange?: (active: boolean) => void;
+		collapsed?: boolean;
+		onToggle?: () => void;
 	}
 
 	type AuditDetailSection = 'request' | 'response';
 	type ResolvedAuditRecord = AuditRecord & { resolvedAction: string };
 
-	let { clustered = false, onLifecycleActiveChange }: Props = $props();
+	let { clustered = false, onLifecycleActiveChange, collapsed = false, onToggle }: Props = $props();
 
 	let selectedHostname = $state(storage.hostname || '');
 	const effectiveHostname = $derived(selectedHostname || storage.hostname || '');
@@ -710,7 +712,33 @@
 	}
 </script>
 
-<Tabs.Root value="cluster" class="flex h-full w-full flex-col">
+<div class="flex h-full w-full flex-col">
+	<div class="flex h-8 shrink-0 items-center justify-between border-x border-t px-3">
+		<div class="flex items-center gap-2">
+			<span class="text-xs font-semibold text-muted-foreground">Log</span>
+			{#if collapsed && activeLifecycleCount > 0}
+				<span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+					<span class="icon-[mdi--loading] h-3 w-3 animate-spin"></span>
+					{activeLifecycleCount} active
+				</span>
+			{/if}
+		</div>
+		<button
+			type="button"
+			class="hover:bg-muted/40 focus-visible:ring-ring rounded p-0.5 focus-visible:ring-2 focus-visible:outline-none"
+			aria-label={collapsed ? 'Show log panel' : 'Hide log panel'}
+			onclick={onToggle}
+		>
+			<span
+				class="icon-[{collapsed
+					? 'material-symbols--keyboard-arrow-right'
+					: 'material-symbols--keyboard-arrow-down'}] h-5 w-5"
+			></span>
+		</button>
+	</div>
+
+	{#if !collapsed}
+	<Tabs.Root value="cluster" class="flex h-full min-h-0 w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
 		<div class="relative flex h-full flex-col" transition:fade|global={{ duration: 400 }}>
 			{#if activeLifecycleCount > 0}
@@ -823,7 +851,9 @@
 			</div>
 		</div>
 	</Tabs.Content>
-</Tabs.Root>
+	</Tabs.Root>
+	{/if}
+</div>
 
 <AuditDetailModal
 	bind:open={auditDetailModal.open}
