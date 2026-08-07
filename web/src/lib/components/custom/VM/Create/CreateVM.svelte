@@ -31,6 +31,7 @@
 	import { resource, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { type NetworkObject } from '$lib/types/network/object';
+	import { emptySwitchList, isSwitchList } from '$lib/types/network/switch';
 
 	interface Props {
 		open: boolean;
@@ -93,6 +94,7 @@
 
 	let modal: CreateData = $state(options);
 	const emptyBasicSettings: BasicSettings = { pools: [], services: [], initialized: false };
+	let lastGoodNetworkSwitches = emptySwitchList();
 
 	const networkObjects = resource(
 		() => `network-objects-${modal.node || '__default__'}`,
@@ -113,9 +115,16 @@
 		() => `network-switches-${modal.node || '__default__'}`,
 		async (key) => {
 			const result = await getSwitches(modal.node || undefined);
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodNetworkSwitches;
+			}
+
+			lastGoodNetworkSwitches = result;
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: lastGoodNetworkSwitches }
 	);
 
 	const pciDevices = resource(

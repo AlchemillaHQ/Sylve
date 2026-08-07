@@ -23,7 +23,7 @@
 	} from '$lib/types/network/firewall';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
@@ -160,24 +160,24 @@
 	);
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	const switchesResource = resource(
 		() => 'network-switches',
 		async (key) => {
 			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.switches as SwitchList }
+		{ initialValue: lastGoodSwitches }
 	);
 
-	const switches = $derived(
-		switchesResource.current &&
-			typeof switchesResource.current === 'object' &&
-			!Array.isArray(switchesResource.current) &&
-			'status' in switchesResource.current
-			? { standard: [], manual: [] }
-			: ((switchesResource.current as SwitchList) ?? { standard: [], manual: [] })
-	);
+	const switches = $derived(switchesResource.current);
 
 	const wgClients = $derived(
 		Array.isArray(data.wgClients) ? (data.wgClients as WireGuardClient[]) : []

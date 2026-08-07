@@ -11,7 +11,13 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
+	import {
+		emptySwitchList,
+		isSwitchList,
+		type ManualSwitch,
+		type StandardSwitch,
+		type SwitchList
+	} from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
@@ -23,7 +29,7 @@
 
 	interface Data {
 		vm: VM;
-		switches: SwitchList;
+		switches: SwitchList | APIResponse;
 		rid: number;
 		networkObjects: NetworkObject[] | APIResponse;
 	}
@@ -33,21 +39,28 @@
 	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
 		? data.networkObjects
 		: ([] as NetworkObject[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	let networkObjectErrorReported = false;
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
-	// svelte-ignore state_referenced_locally
 	const switches = resource(
-		() => 'networkSwitches',
+		() => 'network-switches',
 		async (key) => {
 			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
 			lazy: true,
-			initialValue: data.switches
+			initialValue: lastGoodSwitches
 		}
 	);
 

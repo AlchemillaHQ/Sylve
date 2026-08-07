@@ -6,30 +6,44 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { DHCPConfig } from '$lib/types/network/dhcp';
-	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
-	import { updateCache } from '$lib/utils/http';
+	import {
+		emptySwitchList,
+		isSwitchList,
+		type ManualSwitch,
+		type StandardSwitch,
+		type SwitchList
+	} from '$lib/types/network/switch';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
-		switches: SwitchList;
+		switches: SwitchList | APIResponse;
 		dhcpConfig: DHCPConfig;
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	// svelte-ignore state_referenced_locally

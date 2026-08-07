@@ -10,7 +10,7 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/network/switch/manual';
 	import { resource, watch } from 'runed';
@@ -18,12 +18,14 @@
 
 	interface Data {
 		interfaces: Iface[] | APIResponse;
-		switches: SwitchList;
+		switches: SwitchList | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 	// svelte-ignore state_referenced_locally
 	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
@@ -40,18 +42,19 @@
 		{ initialValue: lastGoodInterfaces }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
-			if (isAPIResponse(res)) {
-				return data.switches;
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
 			}
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	const usable = $derived.by(() => {
@@ -168,6 +171,7 @@
 
 <AlertDialog
 	open={modals.deleteSwitch.open}
+	keepOpenOnConfirm={true}
 	names={{ parent: 'switch', element: modals.deleteSwitch.name }}
 	actions={{
 		onConfirm: async () => {

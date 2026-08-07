@@ -37,7 +37,7 @@ type NetworkServiceInterface interface {
 		slaac bool,
 		defaultRoute bool,
 		disableBridgeOffloads bool,
-		manual networkModels.StandardSwitchManualAddresses) error
+		manual networkModels.StandardSwitchManualAddresses) (uint, error)
 
 	EditStandardSwitch(id uint,
 		mtu int,
@@ -54,7 +54,7 @@ type NetworkServiceInterface interface {
 		defaultRoute bool,
 		disableBridgeOffloads bool,
 		manual networkModels.StandardSwitchManualAddresses) error
-	DeleteStandardSwitch(id int) error
+	DeleteStandardSwitch(id uint) error
 	IsObjectUsed(id uint) (bool, string, error)
 	GetObjectEntryByID(id uint) (string, error)
 	GetBridgeNameByIDType(id uint, swType string) (string, error)

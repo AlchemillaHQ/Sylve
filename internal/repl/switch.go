@@ -493,7 +493,7 @@ func listSwitches(ctx *Context) (switchListResult, error) {
 }
 
 func deleteSwitch(ctx *Context, switchType string, id uint) (switchDeleteResult, error) {
-	if id == 0 || id > uint(^uint(0)>>1) {
+	if id == 0 {
 		return switchDeleteResult{}, fmt.Errorf("invalid_switch_id")
 	}
 	if ctx == nil || ctx.Network == nil {
@@ -505,7 +505,7 @@ func deleteSwitch(ctx *Context, switchType string, id uint) (switchDeleteResult,
 		return switchDeleteResult{}, err
 	}
 	if switchType == "standard" {
-		if err := ctx.Network.DeleteStandardSwitch(int(id)); err != nil {
+		if err := ctx.Network.DeleteStandardSwitch(id); err != nil {
 			return switchDeleteResult{}, fmt.Errorf("failed_to_delete_standard_switch: %w", err)
 		}
 	} else if err := ctx.Network.DeleteManualSwitch(id); err != nil {
@@ -546,7 +546,7 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 			Network6: standard.Network6Manual,
 			Gateway6: standard.Gateway6Manual,
 		}
-		if err := ctx.Network.NewStandardSwitch(
+		id, err := ctx.Network.NewStandardSwitch(
 			standard.Name,
 			standard.MTU,
 			standard.VLAN,
@@ -562,19 +562,11 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 			standard.DefaultRoute,
 			standard.DisableBridgeOffloads,
 			manual,
-		); err != nil {
+		)
+		if err != nil {
 			return switchCreateResult{}, fmt.Errorf("failed_to_create_standard_switch: %w", err)
 		}
-		switches, err := ctx.Network.GetStandardSwitches()
-		if err != nil {
-			return switchCreateResult{}, fmt.Errorf("reload_created_standard_switch: %w", err)
-		}
-		for _, created := range switches {
-			if created.Name == standard.Name {
-				return switchCreateResult{Created: true, ID: created.ID, Type: switchType, Name: standard.Name}, nil
-			}
-		}
-		return switchCreateResult{}, fmt.Errorf("reload_created_standard_switch: switch_not_found")
+		return switchCreateResult{Created: true, ID: id, Type: switchType, Name: standard.Name}, nil
 
 	case "manual":
 		if request.Manual == nil {

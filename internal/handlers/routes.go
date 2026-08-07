@@ -450,9 +450,14 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		network.GET("/switch", networkHandlers.ListSwitches(networkService))
-		network.POST("/switch/standard", networkHandlers.CreateStandardSwitch(networkService))
-		network.DELETE("/switch/standard/:id", networkHandlers.DeleteStandardSwitch(networkService))
-		network.PUT("/switch/standard", networkHandlers.UpdateStandardSwitch(networkService))
+
+		standardSwitches := network.Group("/switch/standard")
+		standardSwitches.Use(middleware.RequireLocalAdmin(authService))
+		{
+			standardSwitches.POST("", networkHandlers.CreateStandardSwitch(networkService))
+			standardSwitches.PUT("/:id", networkHandlers.UpdateStandardSwitch(networkService))
+			standardSwitches.DELETE("/:id", networkHandlers.DeleteStandardSwitch(networkService))
+		}
 
 		network.GET("/dhcp/config", networkHandlers.GetDHCPConfig(networkService))
 		network.PUT("/dhcp/config", networkHandlers.ModifyDHCPConfig(networkService))

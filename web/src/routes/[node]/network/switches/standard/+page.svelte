@@ -15,7 +15,7 @@
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
 	import { generateIPOptions, generateNetworkOptions } from '$lib/utils/network/object';
@@ -27,7 +27,7 @@
 
 	interface Data {
 		interfaces: Iface[] | APIResponse;
-		switches: SwitchList;
+		switches: SwitchList | APIResponse;
 		objects: NetworkObject[] | APIResponse;
 	}
 
@@ -36,6 +36,8 @@
 	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
 	// svelte-ignore state_referenced_locally
 	let lastGoodNetworkObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 
 	const networkInterfaces = resource(
 		() => 'network-interfaces',
@@ -52,18 +54,19 @@
 		{ initialValue: lastGoodInterfaces }
 	);
 
-	// svelte-ignore state_referenced_locally
 	const switches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
-			if (isAPIResponse(res)) {
-				return data.switches;
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
 			}
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	const networkObjects = resource(
@@ -163,9 +166,12 @@
 		}
 	});
 
-	const ipv4NetworkOptions = $derived(generateNetworkOptions(networkObjects.current, 'IPv4'));
+	const singleEntryNetworkObjects = $derived(
+		networkObjects.current.filter((object) => object.entries?.length === 1)
+	);
+	const ipv4NetworkOptions = $derived(generateNetworkOptions(singleEntryNetworkObjects, 'IPv4'));
 	const ipv4GatewayOptions = $derived(generateIPOptions(networkObjects.current, 'IPv4'));
-	const ipv6NetworkOptions = $derived(generateNetworkOptions(networkObjects.current, 'IPv6'));
+	const ipv6NetworkOptions = $derived(generateNetworkOptions(singleEntryNetworkObjects, 'IPv6'));
 	const ipv6GatewayOptions = $derived(generateIPOptions(networkObjects.current, 'IPv6'));
 
 	function splitObjectOrManual(
@@ -183,6 +189,7 @@
 	}
 
 	let reload = $state(false);
+	let saving = $state(false);
 
 	watch(
 		() => reload,
@@ -197,9 +204,12 @@
 	);
 
 	async function confirmAction() {
+		if (saving) return;
+
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
 			const activeModal = confirmModals[confirmModals.active];
-			if (!isValidSwitchName(activeModal.name)) {
+			const normalizedName = activeModal.name.trim();
+			if (!isValidSwitchName(normalizedName)) {
 				toast.error('Invalid switch name', {
 					position: 'bottom-center'
 				});
@@ -207,11 +217,8 @@
 				return;
 			}
 
-			if (
-				activeModal.mtu !== '' &&
-				activeModal.mtu !== null &&
-				!isValidMTU(parseInt(activeModal.mtu))
-			) {
+			const mtu = activeModal.mtu.trim() === '' ? 1500 : Number.parseInt(activeModal.mtu, 10);
+			if (!Number.isFinite(mtu) || !isValidMTU(mtu)) {
 				toast.error('Invalid MTU', {
 					position: 'bottom-center'
 				});
@@ -219,11 +226,8 @@
 				return;
 			}
 
-			if (
-				activeModal.vlan !== '' &&
-				activeModal.vlan !== null &&
-				!isValidVLAN(parseInt(activeModal.vlan))
-			) {
+			const vlan = activeModal.vlan.trim() === '' ? 0 : Number.parseInt(activeModal.vlan, 10);
+			if (!Number.isFinite(vlan) || !isValidVLAN(vlan)) {
 				toast.error('Invalid VLAN', {
 					position: 'bottom-center'
 				});
@@ -282,69 +286,71 @@
 				return;
 			}
 
-			if (confirmModals.active === 'newSwitch') {
-				const created = await createSwitch(
-					activeModal.name,
-					parseInt(activeModal.mtu),
-					parseInt(activeModal.vlan),
-					net4.id,
-					gw4.id,
-					net6.id,
-					gw6.id,
-					activeModal.private,
-					activeModal.dhcp,
-					comboBoxes.ports.value,
-					activeModal.disableIPv6,
-					activeModal.slaac,
-					activeModal.defaultRoute,
-					activeModal.disableBridgeOffloads,
-					manual
-				);
+			saving = true;
+			try {
+				if (confirmModals.active === 'newSwitch') {
+					const created = await createSwitch(
+						normalizedName,
+						mtu,
+						vlan,
+						net4.id,
+						gw4.id,
+						net6.id,
+						gw6.id,
+						activeModal.private,
+						comboBoxes.ports.value,
+						activeModal.disableIPv6,
+						activeModal.slaac,
+						activeModal.dhcp,
+						activeModal.defaultRoute,
+						activeModal.disableBridgeOffloads,
+						manual
+					);
 
-				reload = true;
+					if (isAPIResponse(created)) {
+						handleAPIError(created);
+						toast.error('Error creating switch', { position: 'bottom-center' });
+						return;
+					}
 
-				if (isAPIResponse(created) && created.status === 'success') {
-					toast.success(`Switch ${confirmModals.newSwitch.name} created`, {
+					toast.success(`Switch ${normalizedName} created`, {
 						position: 'bottom-center'
 					});
 				} else {
-					toast.error('Error creating switch', {
-						position: 'bottom-center'
-					});
-				}
-			} else {
-				const edited = await updateSwitch(
-					activeRow?.id as number,
-					parseInt(activeModal.mtu),
-					parseInt(activeModal.vlan),
-					net4.id,
-					gw4.id,
-					net6.id,
-					gw6.id,
-					activeModal.private,
-					comboBoxes.ports.value,
-					activeModal.disableIPv6,
-					activeModal.slaac,
-					activeModal.dhcp,
-					activeModal.defaultRoute,
-					activeModal.disableBridgeOffloads,
-					manual
-				);
+					const edited = await updateSwitch(
+						activeRow?.id as number,
+						mtu,
+						vlan,
+						net4.id,
+						gw4.id,
+						net6.id,
+						gw6.id,
+						activeModal.private,
+						comboBoxes.ports.value,
+						activeModal.disableIPv6,
+						activeModal.slaac,
+						activeModal.dhcp,
+						activeModal.defaultRoute,
+						activeModal.disableBridgeOffloads,
+						manual
+					);
 
-				reload = true;
+					if (edited.status !== 'success') {
+						handleAPIError(edited);
+						toast.error('Error updating switch', { position: 'bottom-center' });
+						return;
+					}
 
-				if (isAPIResponse(edited) && edited.status === 'success') {
 					toast.success(`Switch ${confirmModals.editSwitch.name} updated`, {
 						position: 'bottom-center'
 					});
-				} else {
-					toast.error('Error updating switch', {
-						position: 'bottom-center'
-					});
 				}
-			}
 
-			resetModal(true);
+				reload = true;
+				resetModal(true);
+			} finally {
+				saving = false;
+			}
 		}
 	}
 
@@ -361,14 +367,46 @@
 		}
 	}
 
+	function deleteErrorMessage(error: APIResponse['error']): string {
+		if (typeof error !== 'string') return 'Error deleting switch';
+		switch (error) {
+			case 'standard_switch_in_use_by_vm':
+				return 'Switch is in use by a VM';
+			case 'standard_switch_in_use_by_jail':
+				return 'Switch is in use by a jail';
+			case 'standard_switch_in_use_by_dhcp_config':
+				return 'Switch is enabled in the DHCP configuration';
+			case 'standard_switch_in_use_by_dhcp_range':
+				return 'Switch is in use by a DHCP range';
+			case 'standard_switch_in_use_by_static_route':
+				return 'Switch is referenced by a static route';
+			case 'standard_switch_in_use_by_firewall':
+				return 'Switch is referenced by a firewall rule';
+			case 'standard_switch_in_use_by_dynamic_dns':
+				return 'Switch is used by Dynamic DNS';
+			case 'standard_switch_in_use_by_mdns':
+				return 'Switch is used by mDNS';
+			case 'standard_switch_in_use_by_samba':
+				return 'Switch is used by Samba';
+			case 'standard_switch_in_use_by_wireguard':
+				return 'Switch is used by WireGuard';
+			case 'standard_switch_runtime_member_conflict':
+				return 'Switch still contains an unmanaged interface';
+			case 'standard_switch_not_found':
+				return 'Switch no longer exists';
+			default:
+				return 'Error deleting switch';
+		}
+	}
+
 	function handleEdit() {
 		if (activeRow && Object.keys(activeRow).length > 0) {
 			confirmModals.active = 'editSwitch';
 			confirmModals.editSwitch.open = true;
 			confirmModals.editSwitch.oldName = activeRow.name;
 			confirmModals.editSwitch.name = activeRow.name;
-			confirmModals.editSwitch.mtu = activeRow.mtu as string;
-			confirmModals.editSwitch.vlan = activeRow.vlan === '-' ? '' : (activeRow.vlan as string);
+			confirmModals.editSwitch.mtu = String(activeRow.mtu ?? '');
+			confirmModals.editSwitch.vlan = activeRow.vlan === '-' ? '' : String(activeRow.vlan ?? '');
 
 			comboBoxes.ipv4.value = '';
 			comboBoxes.ipv4Gw.value = '';
@@ -425,6 +463,7 @@
 		confirmModals.newSwitch.private = false;
 		confirmModals.newSwitch.dhcp = false;
 		confirmModals.newSwitch.slaac = false;
+		confirmModals.newSwitch.defaultRoute = false;
 		confirmModals.newSwitch.disableBridgeOffloads = true;
 
 		confirmModals.editSwitch.name = '';
@@ -436,6 +475,7 @@
 		confirmModals.editSwitch.private = false;
 		confirmModals.editSwitch.dhcp = false;
 		confirmModals.editSwitch.slaac = false;
+		confirmModals.editSwitch.defaultRoute = false;
 		confirmModals.editSwitch.disableBridgeOffloads = false;
 
 		comboBoxes.ipv4.value = '';
@@ -723,13 +763,35 @@
 			<Dialog.Footer class="flex justify-between gap-2 ">
 				<div class="flex gap-2">
 					{#if confirmModals.active === 'editSwitch'}
-						<Button onclick={confirmAction} type="submit" size="sm" class="w-full lg:w-28"
-							>Save</Button
+						<Button
+							onclick={confirmAction}
+							type="submit"
+							size="sm"
+							class="w-full lg:w-28"
+							disabled={saving}
 						>
+							{#if saving}
+								<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+								Saving…
+							{:else}
+								Save
+							{/if}
+						</Button>
 					{:else}
-						<Button onclick={confirmAction} type="submit" size="sm" class="w-full lg:w-28"
-							>Create</Button
+						<Button
+							onclick={confirmAction}
+							type="submit"
+							size="sm"
+							class="w-full lg:w-28"
+							disabled={saving}
 						>
+							{#if saving}
+								<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+								Creating…
+							{:else}
+								Create
+							{/if}
+						</Button>
 					{/if}
 				</div>
 			</Dialog.Footer>
@@ -739,25 +801,21 @@
 
 <AlertDialog
 	open={confirmModals.deleteSwitch.open}
+	keepOpenOnConfirm={true}
 	names={{ parent: 'switch', element: confirmModals.deleteSwitch.name }}
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteSwitch(confirmModals.deleteSwitch.id);
-			reload = true;
-			if (isAPIResponse(result) && result.status === 'success') {
-				toast.success(`Switch ${confirmModals.deleteSwitch.name} deleted`, {
-					position: 'bottom-center'
-				});
-			} else {
-				if (result && result.error) {
-					if (result.error === 'switch_in_use_by_vm') {
-						toast.error('Switch is in use by a VM', { position: 'bottom-center' });
-					} else {
-						toast.error('Error deleting switch', { position: 'bottom-center' });
-					}
-				}
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error(deleteErrorMessage(result.error), { position: 'bottom-center' });
+				return;
 			}
 
+			toast.success(`Switch ${confirmModals.deleteSwitch.name} deleted`, {
+				position: 'bottom-center'
+			});
+			reload = true;
 			resetModal(true);
 		},
 		onCancel: () => {

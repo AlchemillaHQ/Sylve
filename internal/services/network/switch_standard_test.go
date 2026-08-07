@@ -9,21 +9,24 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
 type syncStubSet struct {
-	ifaceGet     func(string) (*iface.Interface, error)
-	createBridge func(networkModels.StandardSwitch) error
-	editBridge   func(networkModels.StandardSwitch, networkModels.StandardSwitch) error
-	deleteBridge func(networkModels.StandardSwitch) error
-	runCommand   func(string, ...string) (string, error)
+	ifaceGet              func(string) (*iface.Interface, error)
+	createBridge          func(networkModels.StandardSwitch) error
+	editBridge            func(networkModels.StandardSwitch, networkModels.StandardSwitch) error
+	deleteBridge          func(networkModels.StandardSwitch) error
+	runCommand            func(string, ...string) (string, error)
+	runCommandWithContext func(context.Context, string, ...string) (string, error)
 }
 
 func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
@@ -34,12 +37,14 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	origEdit := syncEditBridge
 	origDelete := syncDeleteBridge
 	origRun := syncRunCommand
+	origRunWithContext := syncRunCommandWithContext
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
 		syncCreateBridge = origCreate
 		syncEditBridge = origEdit
 		syncDeleteBridge = origDelete
 		syncRunCommand = origRun
+		syncRunCommandWithContext = origRunWithContext
 	})
 
 	if stubs.ifaceGet != nil {
@@ -56,6 +61,9 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	}
 	if stubs.runCommand != nil {
 		syncRunCommand = stubs.runCommand
+	}
+	if stubs.runCommandWithContext != nil {
+		syncRunCommandWithContext = stubs.runCommandWithContext
 	}
 }
 
@@ -253,7 +261,7 @@ func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 		&networkModels.NetworkPort{},
 	)
 
-	err := svc.NewStandardSwitch(
+	_, err := svc.NewStandardSwitch(
 		"switch-invalid-mtu",
 		90000,
 		0,
@@ -273,8 +281,8 @@ func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid_mtu error, got nil")
 	}
-	if err.Error() != "invalid_mtu" {
-		t.Fatalf("expected invalid_mtu error, got %q", err.Error())
+	if !errors.Is(err, ErrInvalidStandardSwitch) || StandardSwitchErrorCode(err) != "invalid_standard_switch_mtu" {
+		t.Fatalf("expected invalid_standard_switch_mtu error, got %q", err.Error())
 	}
 }
 
@@ -285,7 +293,7 @@ func TestNewStandardSwitchRejectsInvalidVLAN(t *testing.T) {
 		&networkModels.NetworkPort{},
 	)
 
-	err := svc.NewStandardSwitch(
+	_, err := svc.NewStandardSwitch(
 		"switch-invalid-vlan",
 		1500,
 		5000,
@@ -305,8 +313,8 @@ func TestNewStandardSwitchRejectsInvalidVLAN(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid_vlan error, got nil")
 	}
-	if err.Error() != "invalid_vlan" {
-		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
+	if !errors.Is(err, ErrInvalidStandardSwitch) || StandardSwitchErrorCode(err) != "invalid_standard_switch_vlan" {
+		t.Fatalf("expected invalid_standard_switch_vlan error, got %q", err.Error())
 	}
 }
 
@@ -332,7 +340,7 @@ func TestNewStandardSwitchRejectsPortOverlapDeterministically(t *testing.T) {
 		t.Fatalf("failed to seed existing port: %v", err)
 	}
 
-	err := svc.NewStandardSwitch(
+	_, err := svc.NewStandardSwitch(
 		"candidate",
 		1500,
 		10,
@@ -353,9 +361,8 @@ func TestNewStandardSwitchRejectsPortOverlapDeterministically(t *testing.T) {
 		t.Fatal("expected port_overlap error, got nil")
 	}
 
-	want := `port_overlap: em0 (used by switch "existing" vlan=10)`
-	if !strings.Contains(err.Error(), want) {
-		t.Fatalf("expected error to contain %q, got %q", want, err.Error())
+	if !errors.Is(err, ErrStandardSwitchConflict) || StandardSwitchErrorCode(err) != "standard_switch_port_conflict" {
+		t.Fatalf("expected standard_switch_port_conflict, got %v", err)
 	}
 }
 
@@ -1442,50 +1449,50 @@ func TestValidateStandardSwitchManual(t *testing.T) {
 			name:    "network4 object and manual are mutually exclusive",
 			net4Id:  5,
 			manual:  networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1/24"},
-			wantErr: "network4_object_and_manual_mutually_exclusive",
+			wantErr: "standard_switch_network4_source_conflict",
 		},
 		{
 			name:    "gateway4 object and manual are mutually exclusive",
 			gw4Id:   5,
 			manual:  networkModels.StandardSwitchManualAddresses{Gateway4: "10.0.0.254"},
-			wantErr: "gateway4_object_and_manual_mutually_exclusive",
+			wantErr: "standard_switch_gateway4_source_conflict",
 		},
 		{
 			name:    "network6 object and manual are mutually exclusive",
 			net6Id:  5,
 			manual:  networkModels.StandardSwitchManualAddresses{Network6: "2001:db8::1/64"},
-			wantErr: "network6_object_and_manual_mutually_exclusive",
+			wantErr: "standard_switch_network6_source_conflict",
 		},
 		{
 			name:    "gateway6 object and manual are mutually exclusive",
 			gw6Id:   5,
 			manual:  networkModels.StandardSwitchManualAddresses{Gateway6: "fe80::1"},
-			wantErr: "gateway6_object_and_manual_mutually_exclusive",
+			wantErr: "standard_switch_gateway6_source_conflict",
 		},
 		{
 			name:    "network4 manual without prefix is rejected",
 			manual:  networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1"},
-			wantErr: "invalid_network4_manual",
+			wantErr: "invalid_standard_switch_network4_manual",
 		},
 		{
 			name:    "network4 manual that is actually IPv6 is rejected",
 			manual:  networkModels.StandardSwitchManualAddresses{Network4: "2001:db8::/64"},
-			wantErr: "invalid_network4_manual",
+			wantErr: "invalid_standard_switch_network4_manual",
 		},
 		{
 			name:    "gateway4 manual that is a CIDR is rejected",
 			manual:  networkModels.StandardSwitchManualAddresses{Gateway4: "10.0.0.0/24"},
-			wantErr: "invalid_gateway4_manual",
+			wantErr: "invalid_standard_switch_gateway4_manual",
 		},
 		{
 			name:    "network6 manual that is actually IPv4 is rejected",
 			manual:  networkModels.StandardSwitchManualAddresses{Network6: "10.0.0.0/24"},
-			wantErr: "invalid_network6_manual",
+			wantErr: "invalid_standard_switch_network6_manual",
 		},
 		{
 			name:    "gateway6 manual that is IPv4 is rejected",
 			manual:  networkModels.StandardSwitchManualAddresses{Gateway6: "10.0.0.1"},
-			wantErr: "invalid_gateway6_manual",
+			wantErr: "invalid_standard_switch_gateway6_manual",
 		},
 	}
 
@@ -1550,7 +1557,7 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 		createBridge: func(networkModels.StandardSwitch) error { return nil },
 	})
 
-	err := svc.NewStandardSwitch(
+	_, err := svc.NewStandardSwitch(
 		"manual-store",
 		1500,
 		0,
@@ -1614,7 +1621,7 @@ func TestNewStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 		t.Fatalf("failed to seed object: %v", err)
 	}
 
-	err := svc.NewStandardSwitch(
+	_, err := svc.NewStandardSwitch(
 		"conflict-sw",
 		1500,
 		0,
@@ -1634,7 +1641,7 @@ func TestNewStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected mutual-exclusivity error, got nil")
 	}
-	if !strings.Contains(err.Error(), "network4_object_and_manual_mutually_exclusive") {
+	if StandardSwitchErrorCode(err) != "standard_switch_network4_source_conflict" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -1651,7 +1658,7 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 	obj := networkModels.Object{
 		Name:    "net-obj-edit",
 		Type:    "Network",
-		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.0/24"}},
+		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.1/24"}},
 	}
 	if err := db.Create(&obj).Error; err != nil {
 		t.Fatalf("failed to seed object: %v", err)
@@ -1719,7 +1726,7 @@ func TestEditStandardSwitchManualToObjectClearsManual(t *testing.T) {
 	obj := networkModels.Object{
 		Name:    "net-obj-m2o",
 		Type:    "Network",
-		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.0/24"}},
+		Entries: []networkModels.ObjectEntry{{Value: "10.0.0.1/24"}},
 	}
 	if err := db.Create(&obj).Error; err != nil {
 		t.Fatalf("failed to seed object: %v", err)
@@ -1844,7 +1851,7 @@ func TestCreateStandardBridgeAppliesManualIPv6ScopedLinkLocalGateway(t *testing.
 	}
 }
 
-func TestEditStandardBridgePreservesSvmVlanMembers(t *testing.T) {
+func TestEditStandardBridgePreservesNonDatabaseMembers(t *testing.T) {
 	var commands []string
 	getCalls := 0
 	stubSyncFunctions(t, syncStubSet{
@@ -1854,14 +1861,11 @@ func TestEditStandardBridgePreservesSvmVlanMembers(t *testing.T) {
 				return &iface.Interface{
 					Name: name,
 					BridgeMembers: []iface.BridgeMember{
-						{Name: "epair0a.100"},
+						{Name: "custom0"},
 					},
 				}, nil
 			}
-			return &iface.Interface{
-				Name:   name,
-				Groups: []string{"svm-vlan", "vlan"},
-			}, nil
+			return &iface.Interface{Name: name}, nil
 		},
 		runCommand: func(command string, args ...string) (string, error) {
 			full := strings.Join(append([]string{command}, args...), " ")
@@ -1883,14 +1887,243 @@ func TestEditStandardBridgePreservesSvmVlanMembers(t *testing.T) {
 		t.Fatalf("expected edit bridge success, got %v", err)
 	}
 
-	var sawSvmVlanAttach bool
+	var sawMemberAttach bool
 	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-svm-vlan-preserve addm epair0a.100 up" {
-			sawSvmVlanAttach = true
+		if cmd == "/sbin/ifconfig vm-svm-vlan-preserve addm custom0 up" {
+			sawMemberAttach = true
 			break
 		}
 	}
-	if !sawSvmVlanAttach {
-		t.Fatalf("expected svm-vlan member to be reattached, got commands: %v", commands)
+	if !sawMemberAttach {
+		t.Fatalf("expected non-database member to be reattached, got commands: %v", commands)
+	}
+}
+
+func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(string) (*iface.Interface, error) {
+			return nil, errors.New("interface not found")
+		},
+		createBridge: func(networkModels.StandardSwitch) error {
+			return errors.New("runtime create failed")
+		},
+	})
+
+	_, err := svc.NewStandardSwitch(
+		"runtime-failure",
+		1500,
+		0,
+		0,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		false,
+		false,
+		false,
+		true,
+		networkModels.StandardSwitchManualAddresses{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "runtime create failed") {
+		t.Fatalf("expected runtime create failure, got %v", err)
+	}
+
+	var switchCount, portCount int64
+	if err := db.Model(&networkModels.StandardSwitch{}).Count(&switchCount).Error; err != nil {
+		t.Fatalf("count switches: %v", err)
+	}
+	if err := db.Model(&networkModels.NetworkPort{}).Count(&portCount).Error; err != nil {
+		t.Fatalf("count ports: %v", err)
+	}
+	if switchCount != 0 || portCount != 0 {
+		t.Fatalf("runtime failure left database rows: switches=%d ports=%d", switchCount, portCount)
+	}
+}
+
+func TestEditStandardSwitchRollsBackDatabaseAndRestoresRuntime(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	sw := networkModels.StandardSwitch{
+		Name:       "rollback-edit",
+		BridgeName: "vm-rollback-edit",
+		MTU:        1500,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+
+	var deletedRuntime networkModels.StandardSwitch
+	var restoredRuntime networkModels.StandardSwitch
+	var commands []string
+	bridgeLookups := 0
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			switch name {
+			case sw.BridgeName:
+				bridgeLookups++
+				if bridgeLookups == 1 {
+					return &iface.Interface{
+						Name:          name,
+						BridgeMembers: []iface.BridgeMember{{Name: "tap0"}},
+					}, nil
+				}
+				return &iface.Interface{Name: name}, nil
+			case "tap0":
+				return &iface.Interface{Name: name}, nil
+			default:
+				return nil, errors.New("interface not found")
+			}
+		},
+		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error {
+			return errors.New("runtime edit failed")
+		},
+		deleteBridge: func(current networkModels.StandardSwitch) error {
+			deletedRuntime = current
+			return nil
+		},
+		createBridge: func(previous networkModels.StandardSwitch) error {
+			restoredRuntime = previous
+			return nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	err := svc.EditStandardSwitch(
+		sw.ID,
+		9000,
+		0,
+		0,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		false,
+		false,
+		false,
+		true,
+		networkModels.StandardSwitchManualAddresses{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "runtime edit failed") {
+		t.Fatalf("expected runtime edit failure, got %v", err)
+	}
+
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, sw.ID).Error; err != nil {
+		t.Fatalf("reload switch: %v", err)
+	}
+	if persisted.MTU != 1500 {
+		t.Fatalf("database update was not rolled back: MTU=%d", persisted.MTU)
+	}
+	if deletedRuntime.MTU != 9000 {
+		t.Fatalf("expected attempted runtime state to be cleaned, got MTU=%d", deletedRuntime.MTU)
+	}
+	if restoredRuntime.MTU != 1500 {
+		t.Fatalf("expected previous runtime state to be restored, got MTU=%d", restoredRuntime.MTU)
+	}
+	if len(commands) != 2 || commands[0] != "/sbin/ifconfig vm-rollback-edit addm tap0 up" ||
+		commands[1] != "/sbin/ifconfig tap0 up" {
+		t.Fatalf("expected extra bridge member to be restored, commands=%v", commands)
+	}
+}
+
+func TestDeleteStandardBridgeDestroysEveryManagedVLAN(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, Groups: []string{"svm-vlan"}}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		BridgeName: "vm-vlan-delete",
+		VLAN:       100,
+		Ports: []networkModels.NetworkPort{
+			{Name: "em0"},
+			{Name: "em1"},
+		},
+	}
+	if err := deleteStandardBridge(sw); err != nil {
+		t.Fatalf("delete standard bridge: %v", err)
+	}
+
+	for _, expected := range []string{
+		"/sbin/ifconfig em0.100 destroy",
+		"/sbin/ifconfig em1.100 destroy",
+	} {
+		found := false
+		for _, command := range commands {
+			if command == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %q in commands: %v", expected, commands)
+		}
+	}
+}
+
+func TestCreateStandardBridgeDefaultsLegacyZeroMTU(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge101\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:        "legacy-mtu",
+		BridgeName:  "vm-legacy-mtu",
+		DisableIPv6: true,
+	}
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create standard bridge: %v", err)
+	}
+
+	for _, command := range commands {
+		if command == "/sbin/ifconfig vm-legacy-mtu mtu 1500" {
+			return
+		}
+	}
+	t.Fatalf("expected legacy zero MTU to normalize to 1500, commands: %v", commands)
+}
+
+func TestStandardSwitchDeletePreflightDetectsSambaInterfaceUsage(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t, &sambaModels.SambaSettings{})
+	if err := db.Create(&sambaModels.SambaSettings{Interfaces: "lo0, vm-samba"}).Error; err != nil {
+		t.Fatalf("seed Samba settings: %v", err)
+	}
+
+	err := svc.checkStandardSwitchExternalUsage("vm-samba")
+	if !errors.Is(err, ErrStandardSwitchInUse) {
+		t.Fatalf("expected in-use error, got %v", err)
+	}
+	if code := StandardSwitchErrorCode(err); code != "standard_switch_in_use_by_samba" {
+		t.Fatalf("unexpected error code: %q", code)
 	}
 }

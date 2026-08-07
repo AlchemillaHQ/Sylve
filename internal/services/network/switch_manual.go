@@ -27,7 +27,7 @@ var (
 )
 
 func (s *Service) GetManualSwitches() ([]networkModels.ManualSwitch, error) {
-	var switches []networkModels.ManualSwitch
+	switches := make([]networkModels.ManualSwitch, 0)
 	if err := s.DB.Find(&switches).Error; err != nil {
 		return nil, err
 	}
@@ -35,6 +35,9 @@ func (s *Service) GetManualSwitches() ([]networkModels.ManualSwitch, error) {
 }
 
 func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.ManualSwitch, error) {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
 	name, bridge, err := normalizeManualSwitch(name, bridge)
 	if err != nil {
 		return nil, err
@@ -65,6 +68,9 @@ func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.Manual
 }
 
 func (s *Service) DeleteManualSwitch(id uint) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
 	var sw networkModels.ManualSwitch
 	if err := s.DB.First(&sw, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -85,6 +91,9 @@ func (s *Service) DeleteManualSwitch(id uint) error {
 }
 
 func (s *Service) UpdateManualSwitch(id uint, name, bridge string) (*networkModels.ManualSwitch, error) {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
 	var oldSw networkModels.ManualSwitch
 	if err := s.DB.First(&oldSw, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

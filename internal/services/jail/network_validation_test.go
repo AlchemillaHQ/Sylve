@@ -51,8 +51,8 @@ func (f *jailNetworkValidationFakeNetworkService) NewStandardSwitch(
 	_ bool,
 	_ bool,
 	_ networkModels.StandardSwitchManualAddresses,
-) error {
-	return nil
+) (uint, error) {
+	return 1, nil
 }
 
 func (f *jailNetworkValidationFakeNetworkService) EditStandardSwitch(
@@ -75,7 +75,7 @@ func (f *jailNetworkValidationFakeNetworkService) EditStandardSwitch(
 	return nil
 }
 
-func (f *jailNetworkValidationFakeNetworkService) DeleteStandardSwitch(_ int) error {
+func (f *jailNetworkValidationFakeNetworkService) DeleteStandardSwitch(_ uint) error {
 	return nil
 }
 

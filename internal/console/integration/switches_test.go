@@ -199,7 +199,7 @@ func cleanupStandardSwitch(t *testing.T, suite *consoleIntegrationSuite, name st
 		}
 		return
 	}
-	if err := suite.network.DeleteStandardSwitch(int(standard.ID)); err != nil {
+	if err := suite.network.DeleteStandardSwitch(standard.ID); err != nil {
 		t.Errorf("delete standard switch %s during cleanup: %v", name, err)
 	}
 }

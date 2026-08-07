@@ -11,7 +11,7 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import type { DHCPConfig, DHCPRange, Leases } from '$lib/types/network/dhcp';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
@@ -27,7 +27,7 @@
 	import { type APIResponse } from '$lib/types/common';
 
 	interface Data {
-		switches: SwitchList;
+		switches: SwitchList | APIResponse;
 		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
 		dhcpLeases: Leases;
@@ -39,16 +39,23 @@
 	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
 		? data.networkObjects
 		: ([] as NetworkObject[]);
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	// svelte-ignore state_referenced_locally

@@ -9,7 +9,7 @@ export async function load({ params }) {
 
 	const [vm, switches, networkObjects] = await Promise.all([
 		cachedFetch(`vm-${rid}`, async () => getVmById(rid, 'rid'), cacheDuration),
-		cachedFetch('networkSwitches', async () => await getSwitches(), cacheDuration),
+		cachedFetch('network-switches', async () => await getSwitches(), cacheDuration),
 		cachedFetch('network-objects', async () => await getNetworkObjects(), cacheDuration)
 	]);
 

@@ -18,7 +18,7 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { getVMs } from '$lib/api/vm/vm';
 	import { getSwitches } from '$lib/api/network/switch';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { getWireGuardClients } from '$lib/api/network/wireguard';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { resource } from 'runed';
@@ -27,29 +27,32 @@
 		interfaces: Iface[] | APIResponse;
 		jails: Jail[];
 		vms: VM[];
-		switches: SwitchList;
+		switches: SwitchList | APIResponse;
 		wgClients: WireGuardClient[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 	// svelte-ignore state_referenced_locally
 	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	let initialWireGuardClients = $derived(
 		Array.isArray(data.wgClients) ? data.wgClients : ([] as WireGuardClient[])
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
-			if (isAPIResponse(res)) {
-				return data.switches;
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
 			}
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	// svelte-ignore state_referenced_locally

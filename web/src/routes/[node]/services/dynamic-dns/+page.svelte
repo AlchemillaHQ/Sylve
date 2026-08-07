@@ -16,7 +16,7 @@
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { DynamicDNSEntry } from '$lib/types/services/dynamic-dns';
 	import { convertDbTime } from '$lib/utils/time';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -28,7 +28,7 @@
 	interface Data {
 		entries: DynamicDNSEntry[];
 		interfaces: Iface[] | APIResponse;
-		switches?: SwitchList;
+		switches?: SwitchList | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -73,23 +73,23 @@
 	);
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	const switchesResource = resource(
 		() => 'network-switches',
 		async (key) => {
 			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.switches ?? { standard: [], manual: [] } }
+		{ initialValue: lastGoodSwitches }
 	);
-	const switches = $derived(
-		switchesResource.current &&
-			typeof switchesResource.current === 'object' &&
-			!Array.isArray(switchesResource.current) &&
-			'status' in switchesResource.current
-			? { standard: [], manual: [] }
-			: ((switchesResource.current as SwitchList) ?? { standard: [], manual: [] })
-	);
+	const switches = $derived(switchesResource.current);
 
 	let activeRow = $state<Row[] | null>(null);
 	let query = $state('');

@@ -98,8 +98,8 @@ export function generateNanoId(seed?: string): string {
 }
 
 export function isValidSwitchName(name: string): boolean {
-    const regex = /^[a-zA-Z0-9-_]+$/;
-    return regex.test(name);
+    const normalized = name.trim();
+    return normalized.length > 0 && normalized.length <= 128 && /^[A-Za-z0-9_-]+$/.test(normalized);
 }
 
 export function isValidIPv4(ip: string, cidr = false): boolean {

@@ -25,6 +25,7 @@
 	import { getPools } from '$lib/api/zfs/pool';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
+	import { emptySwitchList, isSwitchList } from '$lib/types/network/switch';
 
 	interface Props {
 		open: boolean;
@@ -101,6 +102,7 @@
 	};
 
 	let modal: CreateData = $state(options);
+	let lastGoodNetworkSwitches = emptySwitchList();
 
 	let downloads = resource(
 		() => `downloads-${modal.node || '__default__'}`,
@@ -115,9 +117,16 @@
 		() => `network-switches-${modal.node || '__default__'}`,
 		async (key) => {
 			const switches = await getSwitches(modal.node || undefined);
+			if (!isSwitchList(switches)) {
+				handleAPIError(switches);
+				return lastGoodNetworkSwitches;
+			}
+
+			lastGoodNetworkSwitches = switches;
 			updateCache(key, switches);
 			return switches;
-		}
+		},
+		{ initialValue: lastGoodNetworkSwitches }
 	);
 
 	let networkObjects = resource(
