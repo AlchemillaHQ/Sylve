@@ -71,152 +71,78 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="z-[70] flex max-h-[90vh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+		class="z-[70] flex max-h-[80vh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
 		overlayClass="z-[70] backdrop-blur-sm"
 		showCloseButton={false}
 		onInteractOutside={() => (open = false)}
 	>
-		<div class="flex items-start justify-between gap-4 border-b px-5 py-4">
+		<div class="flex items-start justify-between gap-3 border-b px-4 py-3">
 			<div class="min-w-0">
-				<div class="flex items-center gap-2.5">
-					<span class="icon-[mdi--clipboard-text-clock-outline] text-primary h-5 w-5 shrink-0"></span>
-					<Dialog.Title class="truncate text-base font-semibold">Audit Record Details</Dialog.Title>
-				</div>
-				<Dialog.Description class="mt-1.5 truncate pl-7">
-					{record?.resolvedAction || 'Request and response details'}
-				</Dialog.Description>
+				<Dialog.Title class="truncate text-sm font-semibold">
+					{record?.resolvedAction || 'Audit Record Details'}
+				</Dialog.Title>
+				<Dialog.Description class="sr-only">Request and response details</Dialog.Description>
 			</div>
 			<Dialog.Close
 				aria-label="Close audit record details"
-				class="text-muted-foreground focus-visible:ring-ring inline-flex h-8 w-8 shrink-0 items-center justify-center opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:outline-none"
+				class="text-muted-foreground focus-visible:ring-ring inline-flex h-6 w-6 shrink-0 items-center justify-center opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:outline-none"
 				onclick={() => (open = false)}
 			>
-				<span class="icon-[mdi--close] h-5 w-5"></span>
+				<span class="icon-[mdi--close] h-4 w-4"></span>
 			</Dialog.Close>
 		</div>
 
 		{#if record}
-			<div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-				<div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-					<div class="rounded-lg border px-3 py-2.5">
-						<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-							Record ID
-						</div>
-						<div class="mt-1 font-mono text-sm font-semibold">#{record.id}</div>
-					</div>
-					<div class="rounded-lg border px-3 py-2.5">
-						<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-							Status
-						</div>
-						<span
-							class="mt-1 inline-flex rounded-md px-2 py-0.5 text-xs font-semibold {statusClass(record.status)}"
-						>
-							{statusLabel(record.status)}
-						</span>
-					</div>
-					<div class="rounded-lg border px-3 py-2.5">
-						<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-							Node
-						</div>
-						<div class="mt-1 truncate font-mono text-sm font-semibold">{record.node}</div>
-					</div>
-					<div class="rounded-lg border px-3 py-2.5">
-						<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-							Duration
-						</div>
-						<div class="mt-1 font-mono text-sm font-semibold">
-							{duration(record.started, record.ended)}
-						</div>
-					</div>
-				</div>
-
-				<div class="grid gap-3 md:grid-cols-2">
-					<div class="rounded-lg border px-3 py-2.5">
-						<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-							Actor
-						</div>
-						<div class="mt-1 text-sm font-medium">{record.user}@{record.authType || 'cluster'}</div>
-					</div>
-					<div class="rounded-lg border px-3 py-2.5">
-						<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-							Timeline
-						</div>
-						<div class="mt-1 text-sm">
-							{convertDbTime(record.started)}
-							<span class="text-muted-foreground px-1.5">to</span>
-							{convertDbTime(record.ended)}
-						</div>
-					</div>
-				</div>
-
-				<div class="grid gap-4">
-					<section
-						class="flex max-h-[45vh] min-w-0 flex-col gap-3 overflow-hidden rounded-xl border p-4 {initialSection ===
-						'request'
-							? 'border-primary/60 ring-primary/15 ring-2'
-							: ''}"
+			<div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+					<span
+						class="inline-flex items-center rounded px-1.5 py-0.5 font-semibold {statusClass(
+							record.status
+						)}"
 					>
-						<div class="flex shrink-0 items-center gap-2">
-							<span class="icon-[mdi--upload-network-outline] text-primary h-4 w-4"></span>
-							<h3 class="text-sm font-semibold">Request</h3>
-						</div>
-						<div class="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
-							<div class="rounded-lg border px-3 py-2.5">
-								<div
-									class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase"
-								>
-									Endpoint
-								</div>
-								<div class="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs">
-									<span class="bg-muted rounded px-1.5 py-0.5 font-semibold">
-										{record.action.method}
-									</span>
-									<span class="break-all">{record.action.path}</span>
-								</div>
-							</div>
-							{#if record.action.query}
-								<DetailBlock label="Query" value={record.action.query} copyLabel="Query" />
-							{/if}
-							{#if hasRequestBody}
-								<DetailBlock
-									label="Request Payload"
-									value={record.action.body}
-									copyLabel="Request payload"
-								/>
-							{:else}
-								<p class="text-muted-foreground text-sm">No request payload was recorded.</p>
-							{/if}
-						</div>
-					</section>
-
-					<section
-						class="flex max-h-[45vh] min-w-0 flex-col gap-3 overflow-hidden rounded-xl border p-4 {initialSection ===
-						'response'
-							? 'border-primary/60 ring-primary/15 ring-2'
-							: ''}"
-					>
-						<div class="flex shrink-0 items-center gap-2">
-							<span class="icon-[mdi--download-network-outline] text-primary h-4 w-4"></span>
-							<h3 class="text-sm font-semibold">Response</h3>
-						</div>
-						<div class="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
-							{#if record.error}
-								<DetailBlock label="Recorded Error" value={record.error} copyLabel="Error" />
-							{/if}
-							{#if hasResponse}
-								<DetailBlock
-									label="Response Payload"
-									value={record.action.response}
-									copyLabel="Response"
-								/>
-							{:else if !record.error}
-								<p class="text-muted-foreground text-sm">No response or error was recorded.</p>
-							{/if}
-						</div>
-					</section>
+						{statusLabel(record.status)}
+					</span>
+					<span class="bg-muted rounded px-1.5 py-0.5 font-mono font-semibold">
+						{record.action.method}
+					</span>
+					<span class="min-w-0 truncate font-mono">{record.action.path}</span>
+					<span class="text-muted-foreground ml-auto whitespace-nowrap">
+						#{record.id} · {record.user}@{record.authType || 'cluster'} · {record.node}
+					</span>
+				</div>
+				<div class="text-muted-foreground text-xs">
+					{convertDbTime(record.started)}
+					<span class="px-1">→</span>
+					{convertDbTime(record.ended)}
+					<span class="px-1">·</span>
+					{duration(record.started, record.ended)}
 				</div>
 
-				<DetailBlock label="Raw Audit Record" value={record} copyLabel="Audit record" />
+				{#if record.action.query}
+					<DetailBlock label="Query" value={record.action.query} copyLabel="Query" />
+				{/if}
+				{#if hasRequestBody}
+					<DetailBlock
+						label="Request Payload"
+						value={record.action.body}
+						copyLabel="Request payload"
+						class={initialSection === 'request' ? 'border-primary/60 ring-primary/15 ring-1' : ''}
+					/>
+				{/if}
+				{#if record.error}
+					<DetailBlock label="Error" value={record.error} copyLabel="Error" />
+				{/if}
+				{#if hasResponse}
+					<DetailBlock
+						label="Response Payload"
+						value={record.action.response}
+						copyLabel="Response"
+						class={initialSection === 'response' ? 'border-primary/60 ring-primary/15 ring-1' : ''}
+					/>
+				{/if}
+				{#if !hasRequestBody && !hasResponse && !record.error}
+					<p class="text-muted-foreground text-sm">No additional request/response details were recorded.</p>
+				{/if}
 			</div>
 		{/if}
 	</Dialog.Content>

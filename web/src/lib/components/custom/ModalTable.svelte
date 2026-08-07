@@ -96,6 +96,11 @@ under sponsorship from the FreeBSD Foundation.
 ></div>
 
 <style>
+	:global(.s-modal-table-container.tabulator .tabulator-tableholder .tabulator-placeholder) {
+		position: sticky;
+		left: 0;
+	}
+
 	:global(.s-modal-table-container.tabulator) {
 		display: flex;
 		min-height: 0;

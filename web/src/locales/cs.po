@@ -235,13 +235,11 @@ msgstr "Uzel — <0/>"
 msgid "Discord"
 msgstr ""
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "Help"
 msgstr "Nápověda"
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "Sponsor"
 msgstr ""
 
@@ -452,6 +450,7 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -536,7 +535,10 @@ msgstr "Chybný požadavek"
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -556,7 +558,6 @@ msgstr "Doba startu"
 msgid "End Time"
 msgstr "Doba konce"
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -587,7 +588,6 @@ msgid "Action"
 msgstr "Akce"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -630,6 +630,7 @@ msgstr "Stav"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -1396,6 +1397,7 @@ msgstr "Dočasné úložiště"
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
@@ -3271,6 +3273,7 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -3379,6 +3382,8 @@ msgid "Success"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -3608,6 +3613,7 @@ msgstr ""
 msgid "Target connectivity validated"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -4426,7 +4432,6 @@ msgid "Select Type"
 msgstr "Vybrat typ"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "Koncový bod"
@@ -6088,7 +6093,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -9058,8 +9063,7 @@ msgstr ""
 msgid "No create actions are available."
 msgstr ""
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "Documentation"
 msgstr ""
 
@@ -9195,6 +9199,7 @@ msgstr ""
 #~ msgid "Create Jail - Template"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -10954,6 +10959,7 @@ msgstr ""
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 msgid "Log"
@@ -14491,22 +14497,31 @@ msgstr ""
 msgid "Demotion"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Migrate"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migration request failed"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migration completed successfully"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
@@ -14514,10 +14529,14 @@ msgstr ""
 msgid "Migration failed"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cancel failed"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
@@ -14525,6 +14544,8 @@ msgid "Migration cancelled"
 msgstr ""
 
 #. 0: guestName || `${guestTypeLabel()} ${guestId}`
+#. 0: guestName || `${guestTypeLabel()} ${guestId}`
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migrate {0}"
 msgstr ""
@@ -14535,6 +14556,7 @@ msgstr ""
 #~ msgid "Select a target node to migrate this guest to."
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cancel Migration"
 msgstr ""
@@ -14554,6 +14576,7 @@ msgstr ""
 #~ msgid "Migration not allowed:"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Target node is valid for migration."
 msgstr ""
@@ -14562,10 +14585,13 @@ msgstr ""
 #~ msgstr ""
 
 #. 0: n.cpu; 1: Math.round(n.memory / 1024 / 1024 / 1024)
+#. 0: n.cpu; 1: Math.round(n.memory / 1024 / 1024 / 1024)
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "{0} CPU cores · {1} GB RAM"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "No other online nodes available in the cluster."
 msgstr ""
@@ -14611,42 +14637,52 @@ msgstr ""
 #~ msgid "Current active no"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Preflight check"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Initial replication"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Stop source"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Final sync"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Start on target"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Policy adjustment"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cleanup source"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Finalize"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Replicating: "
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migration in progress. This dialog can be closed and will continue in the background."
 msgstr ""
@@ -14654,10 +14690,12 @@ msgstr ""
 #~ msgid "Select which cluster node to migrate this {0} to."
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migration not allowed"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Ready to migrate"
 msgstr ""
@@ -14669,6 +14707,8 @@ msgstr ""
 #~ msgstr ""
 
 #. 0: guestTypeLabel()
+#. 0: guestTypeLabel()
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Select which node to migrate this {0} to."
 msgstr ""
@@ -14676,14 +14716,17 @@ msgstr ""
 #~ msgid "✓ Ready to migrate"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "⚠ Warnings"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Validating..."
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migrating..."
 msgstr ""
@@ -14694,6 +14737,7 @@ msgstr ""
 #~ msgid "The {0} will be <0>stopped</0> on the source node, its datasets transferred over the network, and then <1>started</1> on the target node. There will be a brief downtime during the transfer."
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Live migration is under active development. <0>Donate to the FreeBSD Foundation</0> to help fund work like this."
 msgstr ""
@@ -14704,57 +14748,72 @@ msgstr ""
 #~ msgid "This is not live migration"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "This is <0>not</0> live migration"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "The VM will be <0>stopped</0> on the source node, its datasets transferred over the network, and then <1>started</1> on the target node. There will be a brief downtime during the transfer."
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Starting…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Finalizing…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cancelled"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Validating prerequisites…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Replicating datasets…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Stopping guest on source…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Syncing final changes…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Starting guest on target…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Adjusting cluster policies…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cleaning up source…"
 msgstr ""
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Complete"
 msgstr ""
@@ -15139,6 +15198,8 @@ msgid "<0/> Remove stale entry"
 msgstr ""
 
 #. 0: formatted
+#. 0: formatted
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Migration completed with warnings: {0}"
 msgstr ""
@@ -16347,14 +16408,17 @@ msgstr ""
 msgid "Notification - Dismiss All"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Revalidating target before cutover…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Resuming migration safely…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Waiting to retry the migration safely…"
 msgstr ""
@@ -16419,14 +16483,18 @@ msgstr ""
 msgid "This will permanently delete the jail <0/> <1/> <2/>"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cancellation is no longer available because migration cutover has started."
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Importing guest on target (kept stopped)…"
 msgstr ""
 
+#: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
 msgid "Cancellation requested…"
@@ -16782,29 +16850,23 @@ msgstr ""
 msgid "Close audit record details"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Record ID"
-msgstr ""
+#~ msgid "Record ID"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Duration"
-msgstr ""
+#~ msgid "Duration"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Actor"
-msgstr ""
+#~ msgid "Actor"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Timeline"
-msgstr ""
+#~ msgid "Timeline"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "to"
-msgstr ""
+#~ msgid "to"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Request"
-msgstr ""
+#~ msgid "Request"
+#~ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
@@ -16819,34 +16881,28 @@ msgstr ""
 msgid "Request payload"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No request payload was recorded."
-msgstr ""
+#~ msgid "No request payload was recorded."
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Recorded Error"
-msgstr ""
+#~ msgid "Recorded Error"
+#~ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response Payload"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No response or error was recorded."
-msgstr ""
+#~ msgid "No response or error was recorded."
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Raw Audit Record"
-msgstr ""
+#~ msgid "Raw Audit Record"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Audit record"
-msgstr ""
+#~ msgid "Audit record"
+#~ msgstr ""
 
 #~ msgid "Migrat"
 #~ msgstr ""
@@ -19322,4 +19378,35 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "<0/> Saving..."
+msgstr ""
+
+#. 0: activeLifecycleCount
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "<0/> {0} active"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Show log panel"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Hide log panel"
+msgstr ""
+
+#~ msgid "VMs running"
+#~ msgstr ""
+
+#~ msgid "Jails running"
+#~ msgstr ""
+
+#~ msgid "No ZFS pools found."
+#~ msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No additional request/response details were recorded."
+msgstr ""
+
+#. 0: record.resolvedAction
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "View details for {0}"
 msgstr ""

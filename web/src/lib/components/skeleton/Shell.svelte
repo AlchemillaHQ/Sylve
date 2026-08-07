@@ -62,6 +62,17 @@
 		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
 	}
 
+	let bottomPaneRef = $state<{ collapse: () => void; expand: () => void } | undefined>();
+	let bottomPanelCollapsed = $state(false);
+
+	function toggleBottomPanel() {
+		if (bottomPanelCollapsed) {
+			bottomPaneRef?.expand();
+		} else {
+			bottomPaneRef?.collapse();
+		}
+	}
+
 	function updateTreePreferences(preferences: ResourceTreePreferences) {
 		resourceTreePreferences.current = normalizeResourceTreePreferences(preferences);
 	}
@@ -107,8 +118,22 @@
 
 				<Resizable.Handle withHandle />
 
-				<Resizable.Pane class="h-full min-h-20" defaultSize={bottomPaneDefaultSize}>
-					<BottomPanel {clustered} onLifecycleActiveChange={handleLifecycleActiveChange} />
+				<Resizable.Pane
+					class="h-full min-h-8"
+					defaultSize={bottomPaneDefaultSize}
+					minSize={10}
+					collapsible={true}
+					collapsedSize={4}
+					bind:this={bottomPaneRef}
+					onCollapse={() => (bottomPanelCollapsed = true)}
+					onExpand={() => (bottomPanelCollapsed = false)}
+				>
+					<BottomPanel
+						{clustered}
+						onLifecycleActiveChange={handleLifecycleActiveChange}
+						collapsed={bottomPanelCollapsed}
+						onToggle={toggleBottomPanel}
+					/>
 				</Resizable.Pane>
 			</Resizable.PaneGroup>
 		</div>
