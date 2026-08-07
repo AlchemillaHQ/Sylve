@@ -710,6 +710,22 @@
 				return status;
 		}
 	}
+
+	function statusColorClass(status: string): string {
+		switch (status) {
+			case 'success':
+				return 'text-green-600 dark:text-green-500';
+			case 'failed':
+			case 'client_error':
+			case 'server_error':
+				return 'text-destructive';
+			case 'pending':
+			case 'started':
+				return 'text-yellow-600 dark:text-yellow-500';
+			default:
+				return '';
+		}
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -830,15 +846,15 @@
 										aria-label={`View response details for ${record.resolvedAction}`}
 										onclick={() => openAuditDetails(record, 'response')}
 									>
-										<div class="flex items-center gap-1">
+										<div class="flex items-center gap-1 {statusColorClass(record.status)}">
 											{#if record.status === 'pending'}
-												<span
-													class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
-												></span>
+												<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
 											{:else if record.status === 'failed'}
-												<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
+												<span class="icon-[mdi--alert-circle] h-3.5 w-3.5"></span>
+											{:else if record.status === 'success'}
+												<span class="icon-[mdi--check-circle] h-3.5 w-3.5"></span>
 											{/if}
-											<span class={record.status === 'failed' ? 'text-destructive' : ''}>
+											<span>
 												{formatStatus(record.status)}
 											</span>
 										</div>
