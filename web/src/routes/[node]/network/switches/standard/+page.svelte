@@ -26,27 +26,30 @@
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList;
 		objects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
 	let lastGoodNetworkObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
 
-	// svelte-ignore state_referenced_locally
 	const networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
 			if (isAPIResponse(res)) {
-				return data.interfaces;
+				handleAPIError(res);
+				return lastGoodInterfaces;
 			}
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	// svelte-ignore state_referenced_locally

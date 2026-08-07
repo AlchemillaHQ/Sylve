@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { detachNetwork } from '$lib/api/vm/network';
@@ -11,7 +10,6 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
@@ -25,7 +23,6 @@
 
 	interface Data {
 		vm: VM;
-		interfaces: Iface[];
 		switches: SwitchList;
 		rid: number;
 		networkObjects: NetworkObject[] | APIResponse;
@@ -39,20 +36,6 @@
 	let networkObjectErrorReported = false;
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
-
-	// svelte-ignore state_referenced_locally
-	const interfaces = resource(
-		() => 'networkInterfaces',
-		async (key) => {
-			const result = await getInterfaces();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.interfaces
-		}
-	);
 
 	// svelte-ignore state_referenced_locally
 	const switches = resource(
@@ -107,7 +90,6 @@
 	useInterval(() => 1000, {
 		callback: () => {
 			if (storage.visible) {
-				interfaces.refetch();
 				switches.refetch();
 				vm.refetch();
 				networkObjects.refetch();
@@ -118,7 +100,6 @@
 	watch(
 		() => storage.visible,
 		() => {
-			interfaces.refetch();
 			switches.refetch();
 			vm.refetch();
 			networkObjects.refetch();

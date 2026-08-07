@@ -11,6 +11,7 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
@@ -26,7 +27,7 @@
 
 	interface Data {
 		entries: DynamicDNSEntry[];
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches?: SwitchList;
 	}
 
@@ -49,16 +50,23 @@
 	const entries = $derived(
 		Array.isArray(entriesResource.current) ? (entriesResource.current as DynamicDNSEntry[]) : []
 	);
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+
 	const interfacesResource = resource(
-		() => 'network-ifaces',
+		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 	const interfaces = $derived(
 		Array.isArray(interfacesResource.current) ? (interfacesResource.current as Iface[]) : []
@@ -196,9 +204,7 @@
 				icons.push(renderWithIcon('mdi:alert-circle-outline', 'Partial', 'text-amber-400'));
 				break;
 			case 'pending':
-				icons.push(
-					renderWithIcon('mdi:progress-clock', 'Publication pending', 'text-amber-400')
-				);
+				icons.push(renderWithIcon('mdi:progress-clock', 'Publication pending', 'text-amber-400'));
 				break;
 			case 'error':
 				icons.push(renderWithIcon('mdi:close-circle-outline', 'Error', 'text-red-400'));

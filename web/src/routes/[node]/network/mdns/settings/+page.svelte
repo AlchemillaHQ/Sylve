@@ -6,19 +6,22 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { MdnsSettings } from '$lib/types/network/mdns';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		settings: MdnsSettings;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
 
 	// svelte-ignore state_referenced_locally
 	let settings = resource(
@@ -31,15 +34,20 @@
 		{ initialValue: data.settings }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
+			if (isAPIResponse(res)) {
+				handleAPIError(res);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	let reload = $state(false);
@@ -90,11 +98,18 @@
 							return '<span class="focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium transition-[color,box-shadow] focus-visible:ring-[3px] [&>svg]:pointer-events-none [&>svg]:size-3 bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 dark:border-transparent">All</span>';
 						}
 
-						const arr = value.split(',').map((v: string) => v.trim()).filter(Boolean);
+						const arr = value
+							.split(',')
+							.map((v: string) => v.trim())
+							.filter(Boolean);
 						let html = '';
 						for (let i = 0; i < arr.length; i++) {
 							const iface = usableIfaces.find((ifc) => ifc.name === arr[i]);
-							const label = iface ? (iface.description !== '' ? iface.description : iface.name) : arr[i];
+							const label = iface
+								? iface.description !== ''
+									? iface.description
+									: iface.name
+								: arr[i];
 							html += `<span class="focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium transition-[color,box-shadow] focus-visible:ring-[3px] [&>svg]:pointer-events-none [&>svg]:size-3 bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 dark:border-transparent${i > 0 ? ' ml-1.5' : ''}">${label}</span>`;
 						}
 						return html;
@@ -110,7 +125,11 @@
 
 		const rows = [
 			{ id: generateNanoId('interfaces'), property: 'Interfaces', value: s.interfaces || '' },
-			{ id: generateNanoId('hostname'), property: 'Hostname', value: s.hostname || 'System Hostname' }
+			{
+				id: generateNanoId('hostname'),
+				property: 'Hostname',
+				value: s.hostname || 'System Hostname'
+			}
 		];
 
 		return { columns, rows };

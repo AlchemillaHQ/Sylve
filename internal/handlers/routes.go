@@ -440,7 +440,7 @@ func RegisterRoutes(r *gin.Engine,
 			wireGuardClients.DELETE("/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
 		}
 
-		network.GET("/interface", networkHandlers.ListInterfaces(networkService))
+		network.GET("/interface", networkHandlers.ListInterfaces())
 
 		network.POST("/manual-switch", networkHandlers.CreateManualSwitch(networkService))
 		network.DELETE("/manual-switch/:id", networkHandlers.DeleteManualSwitch(networkService))

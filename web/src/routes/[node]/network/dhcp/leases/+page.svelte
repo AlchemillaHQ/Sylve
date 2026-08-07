@@ -6,13 +6,11 @@
 		deleteDHCPLease,
 		deleteDynamicDHCPLease
 	} from '$lib/api/network/dhcp';
-	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
 	import CreateOrEdit from '$lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import type { DHCPConfig, DHCPRange, Leases } from '$lib/types/network/dhcp';
-	import type { Iface } from '$lib/types/network/iface';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -29,7 +27,6 @@
 	import { type APIResponse } from '$lib/types/common';
 
 	interface Data {
-		interfaces: Iface[];
 		switches: SwitchList;
 		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
@@ -42,17 +39,6 @@
 	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
 		? data.networkObjects
 		: ([] as NetworkObject[]);
-
-	// svelte-ignore state_referenced_locally
-	let networkInterfaces = resource(
-		() => 'network-interfaces',
-		async (key) => {
-			const res = await getInterfaces();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.interfaces }
-	);
 
 	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
@@ -120,7 +106,6 @@
 		() => reload,
 		(current) => {
 			if (current) {
-				networkInterfaces.refetch();
 				networkSwitches.refetch();
 				dhcpConfig.refetch();
 				dhcpRanges.refetch();

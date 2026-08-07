@@ -8,7 +8,7 @@ import { cachedFetch } from '$lib/utils/http';
 export async function load() {
 	const [routes, interfaces, switches, objects] = await Promise.all([
 		getStaticRoutes(),
-		cachedFetch('network-ifaces', async () => await getInterfaces(), SEVEN_DAYS),
+		cachedFetch('network-interfaces', async () => await getInterfaces(), SEVEN_DAYS),
 		cachedFetch('network-switches', async () => await getSwitches(), SEVEN_DAYS),
 		cachedFetch('network-objects', async () => await getNetworkObjects(), SEVEN_DAYS)
 	]);

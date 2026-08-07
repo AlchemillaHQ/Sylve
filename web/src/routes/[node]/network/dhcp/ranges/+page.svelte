@@ -8,6 +8,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { DHCPConfig, DHCPRange } from '$lib/types/network/dhcp';
 	import type { Iface } from '$lib/types/network/iface';
@@ -19,26 +20,29 @@
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList;
 		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
 			if (isAPIResponse(res)) {
-				return data.interfaces;
+				handleAPIError(res);
+				return lastGoodInterfaces;
 			}
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	// svelte-ignore state_referenced_locally

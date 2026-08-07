@@ -38,7 +38,7 @@
 	interface Data {
 		trafficRules: FirewallTrafficRule[] | APIResponse;
 		objects: NetworkObject[] | APIResponse;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList | APIResponse;
 		wgClients: WireGuardClient[] | APIResponse;
 	}
@@ -136,16 +136,23 @@
 	const objects = $derived(
 		Array.isArray(objectsResource.current) ? (objectsResource.current as NetworkObject[]) : []
 	);
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+
 	const interfacesResource = resource(
-		() => 'network-ifaces',
+		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	const interfaces = $derived(

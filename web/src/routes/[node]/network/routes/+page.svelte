@@ -25,7 +25,7 @@
 
 	interface Data {
 		routes: StaticRoute[] | APIResponse;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList;
 		objects: NetworkObject[] | APIResponse;
 	}
@@ -35,6 +35,8 @@
 	let lastGoodRoutes = Array.isArray(data.routes) ? data.routes : ([] as StaticRoute[]);
 	// svelte-ignore state_referenced_locally
 	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
 	// svelte-ignore state_referenced_locally
 	let lastGoodSwitches = data.switches ?? { standard: [], manual: [] };
 
@@ -55,21 +57,21 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	const interfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				return [];
+				return lastGoodInterfaces;
 			}
 
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[])
+			initialValue: lastGoodInterfaces
 		}
 	);
 

@@ -56,8 +56,27 @@ export const MediaSchema = z.object({
 
 export const ND6Schema = FlagsSchema;
 
+export const STPSchema = z.object({
+	priority: z.number(),
+	hellotime: z.number(),
+	fwddelay: z.number(),
+	maxage: z.number(),
+	holdcnt: z.number(),
+	proto: z.string(),
+	rootId: z.string(),
+	rootPriority: z.number(),
+	ifcost: z.number(),
+	port: z.number()
+});
+
 export const BridgeMemberSchema = z.object({
-	name: z.string()
+	name: z.string(),
+	flags: FlagsSchema,
+	ifmaxaddr: z.number(),
+	state: z.number(),
+	priority: z.number(),
+	port: z.number(),
+	pathCost: z.number()
 });
 
 export const IfaceSchema = z.object({
@@ -74,6 +93,10 @@ export const IfaceSchema = z.object({
 	driver: z.string().default(''),
 	model: z.string().default(''),
 	description: z.string().default(''),
+	bridgeId: z.string().default(''),
+	stp: STPSchema.nullable(),
+	maxaddr: z.number(),
+	timeout: z.number(),
 	ipv4: z.array(IPv4Schema).default([]).nullable().optional(),
 	ipv6: z.array(IPv6Schema).default([]).nullable().optional(),
 	media: MediaSchema.nullable().optional(),

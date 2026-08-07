@@ -8,7 +8,7 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { type Iface } from '$lib/types/network/iface';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, getCleanIfaceData } from '$lib/utils/network/iface';
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CellComponent } from 'tabulator-tables';
@@ -24,7 +24,7 @@
 	import { resource } from 'runed';
 
 	interface Data {
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		jails: Jail[];
 		vms: VM[];
 		switches: SwitchList;
@@ -32,6 +32,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
 	let initialWireGuardClients = $derived(
 		Array.isArray(data.wgClients) ? data.wgClients : ([] as WireGuardClient[])
 	);
@@ -64,18 +66,19 @@
 		{ initialValue: initialWireGuardClients }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
 			if (isAPIResponse(res)) {
-				return data.interfaces;
+				handleAPIError(res);
+				return lastGoodInterfaces;
 			}
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	// svelte-ignore state_referenced_locally
