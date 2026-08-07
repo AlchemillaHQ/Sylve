@@ -631,6 +631,7 @@ msgstr "状态"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -19312,4 +19313,9 @@ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "No additional request/response details were recorded."
+msgstr ""
+
+#. 0: record.resolvedAction
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "View details for {0}"
 msgstr ""
