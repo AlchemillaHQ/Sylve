@@ -469,25 +469,20 @@ msgstr "Cloud Init Template"
 msgid "Basic Settings - ZFS Pools"
 msgstr "Basic Settings - ZFS Pools"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - DHCP Server"
-msgstr "Toggle - DHCP Server"
+#~ msgid "Toggle - DHCP Server"
+#~ msgstr "Toggle - DHCP Server"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - WoL Server"
-msgstr "Toggle - WoL Server"
+#~ msgid "Toggle - WoL Server"
+#~ msgstr "Toggle - WoL Server"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - Samba Server"
-msgstr "Toggle - Samba Server"
+#~ msgid "Toggle - Samba Server"
+#~ msgstr "Toggle - Samba Server"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - Jails"
-msgstr "Toggle - Jails"
+#~ msgid "Toggle - Jails"
+#~ msgstr "Toggle - Jails"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - Virtualization"
-msgstr "Toggle - Virtualization"
+#~ msgid "Toggle - Virtualization"
+#~ msgstr "Toggle - Virtualization"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Notes"
@@ -1767,6 +1762,7 @@ msgstr "Leader Node"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/Dialog/ValueViewer.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -2138,6 +2134,7 @@ msgstr "Select Pools"
 msgid "Services"
 msgstr "Services"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2151,6 +2148,7 @@ msgstr "Virtualization"
 
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2162,6 +2160,7 @@ msgstr "Virtualization"
 msgid "Jails"
 msgstr "Jails"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2171,6 +2170,7 @@ msgstr "Jails"
 msgid "Samba Server"
 msgstr "Samba Server"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2659,9 +2659,8 @@ msgstr "Failed to import device into passthrough management"
 msgid "Device removed from passthrough"
 msgstr "Device removed from passthrough"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
-msgid "Device is in use by a VM, failed to remove"
-msgstr "Device is in use by a VM, failed to remove"
+#~ msgid "Device is in use by a VM, failed to remove"
+#~ msgstr "Device is in use by a VM, failed to remove"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to remove device from passthrough"
@@ -2719,6 +2718,7 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -2792,6 +2792,7 @@ msgstr "Enabled"
 msgid "Disabled"
 msgstr "Disabled"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2853,9 +2854,7 @@ msgid "Edit {0}"
 msgstr "Edit {0}"
 
 #. 0: activeRow?.property
-#. 0: activeRow?.property
 #: src/routes/[node]/settings/system/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Toggle {0}"
 msgstr "Toggle {0}"
 
@@ -2865,9 +2864,7 @@ msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the ho
 msgstr "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 
 #. 0: serviceName
-#. 0: serviceName
 #: src/routes/[node]/settings/system/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Failed to toggle {0}"
 msgstr "Failed to toggle {0}"
 
@@ -2956,9 +2953,8 @@ msgstr "Failed to create {0} \"{1}\""
 msgid "Renamed successfully"
 msgstr "Renamed successfully"
 
-#: src/routes/[node]/storage/explorer/+page.svelte
-msgid "Failed to rename"
-msgstr "Failed to rename"
+#~ msgid "Failed to rename"
+#~ msgstr "Failed to rename"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Files"
@@ -3001,15 +2997,13 @@ msgstr "{0} items"
 msgid "{0} folders, {1} files"
 msgstr "{0} folders, {1} files"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' \\: 'file'; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: item.type === 'folder' ? 'folder' \\: 'file'; 1: item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' \\: ''
-#: src/routes/[node]/storage/explorer/+page.svelte
-msgid "Failed to delete {0} item{1}."
-msgstr "Failed to delete {0} item{1}."
+#~ msgid "Failed to delete {0} item{1}."
+#~ msgstr "Failed to delete {0} item{1}."
 
 #. 0: modal.template?.name
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
@@ -4655,6 +4649,7 @@ msgstr "Custom Jail Lifecycle Hooks (exec.* scripts)"
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enable"
 msgstr "Enable"
@@ -5972,6 +5967,7 @@ msgstr "Enable or disable TPM (Trusted Platform Module) emulation for this virtu
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Disable"
 msgstr "Disable"
 
@@ -9941,8 +9937,9 @@ msgstr "Upload Type"
 msgid "Select Upload Type"
 msgstr "Select Upload Type"
 
-#~ msgid "Move"
-#~ msgstr "Move"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Move"
+msgstr "Move"
 
 #~ msgid "Complete Upload"
 #~ msgstr "Complete Upload"
@@ -10169,6 +10166,7 @@ msgstr "Select ZFS filesystem"
 msgid "Read-only share"
 msgstr "Read-only share"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -10181,9 +10179,8 @@ msgstr "Read-only share"
 msgid "Firewall"
 msgstr "Firewall"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - Firewall"
-msgstr "Toggle - Firewall"
+#~ msgid "Toggle - Firewall"
+#~ msgstr "Toggle - Firewall"
 
 #~ msgid "Firewall - Traffic Rule"
 #~ msgstr "Firewall - Traffic Rule"
@@ -10486,9 +10483,8 @@ msgstr "Create NAT Rule"
 msgid "Advanced firewall settings updated"
 msgstr "Advanced firewall settings updated"
 
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
-msgid "Failed to update advanced settings"
-msgstr "Failed to update advanced settings"
+#~ msgid "Failed to update advanced settings"
+#~ msgstr "Failed to update advanced settings"
 
 #~ msgid "Global PF text injected before and after Sylve anchors in <0/>."
 #~ msgstr "Global PF text injected before and after Sylve anchors in <0/>."
@@ -11055,6 +11051,7 @@ msgstr "WireGuard Server"
 #~ msgid "WireGuard Clients"
 #~ msgstr "WireGuard Clients"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -11065,9 +11062,8 @@ msgstr "WireGuard Server"
 msgid "WireGuard"
 msgstr "WireGuard"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - WireGuard"
-msgstr "Toggle - WireGuard"
+#~ msgid "Toggle - WireGuard"
+#~ msgstr "Toggle - WireGuard"
 
 #~ msgid "WireGuard - Server"
 #~ msgstr "WireGuard - Server"
@@ -12197,8 +12193,9 @@ msgstr "Bootstrap failed to start: {0}"
 msgid "Bootstrap Jail Bases"
 msgstr "Bootstrap Jail Bases"
 
-#~ msgid "<0/> Loading..."
-#~ msgstr "<0/> Loading..."
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Loading..."
+msgstr "<0/> Loading..."
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "No supported versions available."
@@ -13982,9 +13979,8 @@ msgstr "DC Backup Target - Restore"
 msgid "File Explorer - Batch Copy/Move"
 msgstr "File Explorer - Batch Copy/Move"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "File Explorer - Copy/Move"
-msgstr "File Explorer - Copy/Move"
+#~ msgid "File Explorer - Copy/Move"
+#~ msgstr "File Explorer - Copy/Move"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "File Explorer - Rename"
@@ -14847,7 +14843,9 @@ msgstr "Writable"
 msgid "Tunable {0} updated"
 msgstr "Tunable {0} updated"
 
+#. 0: serviceName
 #. 0: editModal.name
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
 msgid "Failed to update {0}"
 msgstr "Failed to update {0}"
@@ -15154,13 +15152,11 @@ msgstr "Magnet"
 msgid "Records"
 msgstr "Records"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - iSCSI"
-msgstr "Toggle - iSCSI"
+#~ msgid "Toggle - iSCSI"
+#~ msgstr "Toggle - iSCSI"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Toggle - mDNS"
-msgstr "Toggle - mDNS"
+#~ msgid "Toggle - mDNS"
+#~ msgstr "Toggle - mDNS"
 
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Managed by Samba"
@@ -16717,6 +16713,7 @@ msgstr "Error Details"
 
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/stores/error-details.svelte.ts
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "The request could not be completed."
 msgstr "The request could not be completed."
 
@@ -19307,8 +19304,11 @@ msgstr "Deleting partition..."
 msgid "Partition limit reached"
 msgstr "Partition limit reached"
 
-#~ msgid "<0/> Saving..."
-#~ msgstr "<0/> Saving..."
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Saving..."
+msgstr "<0/> Saving..."
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Firewall Traffic Counters"
@@ -19422,9 +19422,8 @@ msgstr "The remote list contains unsupported data"
 #~ msgid "VM T"
 #~ msgstr "VM T"
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-msgid "<0/> Savem"
-msgstr "<0/> Savem"
+#~ msgid "<0/> Savem"
+#~ msgstr "<0/> Savem"
 
 #~ msgid "Encryption: <0>Enabled (keys a"
 #~ msgstr "Encryption: <0>Enabled (keys a"
@@ -19437,9 +19436,8 @@ msgstr "<0/> Savem"
 msgid "<0/> Saving order..."
 msgstr "<0/> Saving order..."
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "WireGuard Server - Toggle (Legacy)"
-msgstr "WireGuard Server - Toggle (Legacy)"
+#~ msgid "WireGuard Server - Toggle (Legacy)"
+#~ msgstr "WireGuard Server - Toggle (Legacy)"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "WireGuard Server - Deinitialize"
@@ -19469,11 +19467,8 @@ msgstr "WireGuard Server - Enable"
 msgid "WireGuard Server - Disable"
 msgstr "WireGuard Server - Disable"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Legacy VM"
-msgstr "Legacy VM"
+#~ msgid "Legacy VM"
+#~ msgstr "Legacy VM"
 
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "The current WireGuard server state could not be loaded"
@@ -19717,6 +19712,192 @@ msgstr "<0/> Creating…"
 msgid "Select a bridge"
 msgstr "Select a bridge"
 
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "<0/> Creating..."
 msgstr "<0/> Creating..."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Upload Revert"
+msgstr "File Explorer - Upload Revert"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PCI Passthrough - Disable"
+msgstr "PCI Passthrough - Disable"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Object - Delete"
+msgstr "Network Object - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Static Route - Delete"
+msgstr "Static Route - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Manual Switch - Delete"
+msgstr "Manual Switch - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Standard Switch - Delete"
+msgstr "Standard Switch - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Range - Delete"
+msgstr "DHCP Range - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "PCI Passthrough - Enable"
+msgstr "PCI Passthrough - Enable"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Object - Create"
+msgstr "Network Object - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Static Route - Create"
+msgstr "Static Route - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Manual Switch - Create"
+msgstr "Manual Switch - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Standard Switch - Create"
+msgstr "Standard Switch - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Range - Create"
+msgstr "DHCP Range - Create"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Object - Update"
+msgstr "Network Object - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Static Route - Update"
+msgstr "Static Route - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Standard Switch - Update"
+msgstr "Standard Switch - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Config - Update"
+msgstr "DHCP Config - Update"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Range - Update"
+msgstr "DHCP Range - Update"
+
+#. 0: move ? 'Move' \\: 'Copy'
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Batch {0}"
+msgstr "File Explorer - Batch {0}"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Service"
+msgstr "Service"
+
+#~ msgid "Gue"
+#~ msgstr "Gue"
+
+#. 0: folderId
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to load folder \"{0}\""
+msgstr "Failed to load folder \"{0}\""
+
+#. 0: move ? 'move' \\: 'copy'; 1: sources.length === 1 ? 'item' \\: `${sources.length} items`
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to {0} {1}"
+msgstr "Failed to {0} {1}"
+
+#. 0: id.split('/').pop() || id
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to rename \"{0}\""
+msgstr "Failed to rename \"{0}\""
+
+#. 0: paths.length
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to delete {0} items."
+msgstr "Failed to delete {0} items."
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Moving"
+msgstr "Moving"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Copying"
+msgstr "Copying"
+
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+msgid "<0/> Renaming..."
+msgstr "<0/> Renaming..."
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device is already attached to ppt; import it instead"
+msgstr "Device is already attached to ppt; import it instead"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device is already managed for passthrough"
+msgstr "Device is already managed for passthrough"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device is not currently attached to ppt"
+msgstr "Device is not currently attached to ppt"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Passthrough removed. Reboot required to restore the host driver."
+msgstr "Passthrough removed. Reboot required to restore the host driver."
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device is assigned to a VM and cannot be removed"
+msgstr "Device is assigned to a VM and cannot be removed"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Applying..."
+msgstr "Applying..."
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Failed to load route suggestions"
+msgstr "Failed to load route suggestions"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Finding Route..."
+msgstr "Finding Route..."
+
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "Disabling..."
+msgstr "Disabling..."
+
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "Enabling..."
+msgstr "Enabling..."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Generating preview..."
+msgstr "Generating preview..."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Loading on-disk configuration..."
+msgstr "Loading on-disk configuration..."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Advanced firewall settings could not be loaded."
+msgstr "Advanced firewall settings could not be loaded."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Editing and saving are disabled so an empty form cannot overwrite the current rules."
+msgstr "Editing and saving are disabled so an empty form cannot overwrite the current rules."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Retrying..."
+msgstr "<0/> Retrying..."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Retry"
+msgstr "<0/> Retry"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Generating..."
+msgstr "<0/> Generating..."

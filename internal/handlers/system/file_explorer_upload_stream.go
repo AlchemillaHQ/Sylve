@@ -17,6 +17,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -104,7 +106,7 @@ func newFileExplorerUploadHandler(
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[UploadFileResponse]{
+		c.JSON(http.StatusCreated, internal.APIResponse[UploadFileResponse]{
 			Status:  "success",
 			Message: "file_uploaded",
 			Error:   "",
@@ -125,6 +127,13 @@ func validateFileExplorerUploadDestination(
 			errors.New("path query parameter is required"),
 		)
 	}
+	if strings.IndexByte(rawDestination, 0) >= 0 {
+		return "", uploadCore.NewFailure(
+			http.StatusBadRequest,
+			"invalid_destination",
+			errors.New("destination path contains a null byte"),
+		)
+	}
 
 	destination := filepath.Clean(rawDestination)
 	if !filepath.IsAbs(destination) {
@@ -143,14 +152,7 @@ func validateFileExplorerUploadDestination(
 
 	info, err := os.Stat(destination)
 	if err != nil {
-		if errors.Is(err, os.ErrPermission) {
-			return "", uploadCore.FilesystemFailure(err, "destination_stat_failed")
-		}
-		return "", uploadCore.NewFailure(
-			http.StatusBadRequest,
-			"invalid_destination",
-			err,
-		)
+		return "", fileExplorerUploadDestinationFailure(err, "destination_stat_failed")
 	}
 	if !info.IsDir() {
 		return "", uploadCore.NewFailure(
@@ -162,21 +164,31 @@ func validateFileExplorerUploadDestination(
 
 	resolvedDestination, err := filepath.EvalSymlinks(destination)
 	if err != nil {
-		return "", uploadCore.NewFailure(
-			http.StatusBadRequest,
-			"invalid_destination",
-			err,
-		)
+		return "", fileExplorerUploadDestinationFailure(err, "destination_resolution_failed")
 	}
 	if err := systemService.EnsureFileExplorerMutationAllowed(resolvedDestination); err != nil {
-		return "", uploadCore.NewFailure(
-			http.StatusConflict,
-			"restore_in_progress",
-			err,
-		)
+		return "", fileExplorerUploadMutationFailure(err)
 	}
 
 	return resolvedDestination, nil
+}
+
+func fileExplorerUploadDestinationFailure(err error, fallbackCode string) *uploadCore.Failure {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return uploadCore.NewFailure(http.StatusNotFound, "destination_not_found", err)
+	case errors.Is(err, syscall.ENOTDIR):
+		return uploadCore.NewFailure(http.StatusBadRequest, "invalid_destination", err)
+	default:
+		return uploadCore.FilesystemFailure(err, fallbackCode)
+	}
+}
+
+func fileExplorerUploadMutationFailure(err error) *uploadCore.Failure {
+	if errors.Is(err, system.ErrFileExplorerRestoreInProgress) {
+		return uploadCore.NewFailure(http.StatusConflict, "restore_in_progress", err)
+	}
+	return uploadCore.NewFailure(http.StatusInternalServerError, "mutation_guard_failed", err)
 }
 
 func receiveFileExplorerMultipartUpload(
@@ -199,11 +211,7 @@ func receiveFileExplorerMultipartUpload(
 		Open: func(name string) (*os.File, string, string, *uploadCore.Failure) {
 			finalPath := filepath.Join(destination, name)
 			if err := systemService.EnsureFileExplorerMutationAllowed(finalPath); err != nil {
-				return nil, "", "", uploadCore.NewFailure(
-					http.StatusConflict,
-					"restore_in_progress",
-					err,
-				)
+				return nil, "", "", fileExplorerUploadMutationFailure(err)
 			}
 			if _, err := os.Lstat(finalPath); err == nil {
 				return nil, "", "", uploadCore.NewFailure(
@@ -232,11 +240,7 @@ func receiveFileExplorerMultipartUpload(
 	}()
 
 	if err := systemService.EnsureFileExplorerMutationAllowed(staged.FinalPath); err != nil {
-		return UploadFileResponse{}, uploadCore.NewFailure(
-			http.StatusConflict,
-			"restore_in_progress",
-			err,
-		)
+		return UploadFileResponse{}, fileExplorerUploadMutationFailure(err)
 	}
 	if err := uploadCore.PublishNoReplace(staged.PartialPath, staged.FinalPath); err != nil {
 		if errors.Is(err, os.ErrExist) {

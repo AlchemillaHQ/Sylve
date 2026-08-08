@@ -34,8 +34,11 @@
 	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'basic-settings',
-		async () => {
+		async (_key, _previousKey, { data: previousSettings }): Promise<BasicSettings> => {
 			const results = await getBasicSettings();
+			if (isAPIResponse(results)) {
+				return previousSettings ?? data.basicSettings;
+			}
 			updateCache('basic-settings', results);
 			return results;
 		},
@@ -364,11 +367,7 @@
 {/if}
 
 {#if modals.snapshot.delete.open && activeDatasets && activeDatasets.length >= 1}
-	<DeleteSnapshot
-		bind:open={modals.snapshot.delete.open}
-		datasets={activeDatasets}
-		bind:reload
-	/>
+	<DeleteSnapshot bind:open={modals.snapshot.delete.open} datasets={activeDatasets} bind:reload />
 {/if}
 
 {#if modals.snapshot.periodics.open && activePeriodics && activePeriodics.length > 0}

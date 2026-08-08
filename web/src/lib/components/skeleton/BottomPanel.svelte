@@ -183,7 +183,6 @@
 		'/api/network/dhcp/lease': 'DHCP Lease',
 		'/api/system/file-explorer/delete': 'File Explorer - Delete',
 		'/api/system/file-explorer/copy-or-move-batch': 'File Explorer - Batch Copy/Move',
-		'/api/system/file-explorer/copy-or-move': 'File Explorer - Copy/Move',
 		'/api/system/file-explorer/rename': 'File Explorer - Rename',
 		'/api/system/file-explorer/upload': 'File Explorer - Upload',
 		'/api/system/file-explorer': 'File Explorer',
@@ -276,15 +275,6 @@
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
-		'/api/system/basic-settings/services/dhcp-server/toggle': 'Toggle - DHCP Server',
-		'/api/system/basic-settings/services/wol-server/toggle': 'Toggle - WoL Server',
-		'/api/system/basic-settings/services/samba-server/toggle': 'Toggle - Samba Server',
-		'/api/system/basic-settings/services/jails/toggle': 'Toggle - Jails',
-		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
-		'/api/system/basic-settings/services/firewall/toggle': 'Toggle - Firewall',
-		'/api/system/basic-settings/services/wireguard/toggle': 'Toggle - WireGuard',
-		'/api/system/basic-settings/services/iscsi/toggle': 'Toggle - iSCSI',
-		'/api/system/basic-settings/services/mdns/toggle': 'Toggle - mDNS',
 		'/api/network/firewall/traffic/counters': 'Firewall Traffic Counters',
 		'/api/network/firewall/traffic/reorder': 'Firewall Traffic Rule - Reorder',
 		'/api/network/firewall/traffic': 'Firewall Traffic Rule',
@@ -339,6 +329,8 @@
 	const methodPathToActionMap: Record<string, Record<string, string>> = {
 		DELETE: {
 			'/api/info/notes': 'Notes - Bulk Delete',
+			'/api/system/file-explorer/upload': 'File Explorer - Upload Revert',
+			'/api/system/ppt-devices/:id': 'PCI Passthrough - Disable',
 			'/api/zfs/datasets': 'ZFS Dataset - Delete',
 			'/api/network/object': 'Network Object - Bulk Delete',
 			'/api/network/object/:id': 'Network Object - Delete',
@@ -361,6 +353,7 @@
 			'/api/network/dhcp/lease/:id': 'DHCP Lease - Delete Static'
 		},
 		POST: {
+			'/api/system/ppt-devices': 'PCI Passthrough - Enable',
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
 			'/api/zfs/datasets/volume/:id/flash': 'ZFS Volume - Flash',
 			'/api/network/object': 'Network Object - Create',
@@ -416,6 +409,18 @@
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View'
 		}
 	};
+
+	const basicSettingsServiceLabels = new Map([
+		['dhcp-server', 'DHCP Server'],
+		['wol-server', 'WoL Server'],
+		['samba-server', 'Samba Server'],
+		['jails', 'Jails'],
+		['virtualization', 'Virtualization'],
+		['firewall', 'Firewall'],
+		['wireguard', 'WireGuard'],
+		['iscsi', 'iSCSI'],
+		['mdns', 'mDNS']
+	]);
 
 	const sortedPathToActionEntries = $derived.by(() =>
 		Object.entries(pathToActionMap).sort(([a], [b]) => b.length - a.length)
@@ -514,10 +519,33 @@
 				}
 			}
 
+			if (
+				method.toUpperCase() === 'POST' &&
+				normalizedPath === '/api/system/file-explorer/copy-or-move-batch'
+			) {
+				const move = recordCopy.action.body?.move === true || recordCopy.action.body?.cut === true;
+				resolvedAction = `File Explorer - Batch ${move ? 'Move' : 'Copy'}`;
+			}
+
 			if (method.toUpperCase() === 'DELETE') {
 				const itemID = itemIDFromActionPath(path, normalizedPath);
 				if (itemID !== undefined) {
 					recordCopy.action.body = { id: itemID };
+				}
+			}
+
+			if (method.toUpperCase() === 'PATCH') {
+				const serviceStateMatch = path.match(/^\/api\/system\/basic-settings\/services\/([^/]+)$/);
+				if (serviceStateMatch) {
+					const service = serviceStateMatch[1] ?? 'Service';
+					const label = basicSettingsServiceLabels.get(service) ?? service;
+					if (recordCopy.action.body?.enabled === true) {
+						resolvedAction = `${label} - Enable`;
+					} else if (recordCopy.action.body?.enabled === false) {
+						resolvedAction = `${label} - Disable`;
+					} else {
+						resolvedAction = `${label} - Update State`;
+					}
 				}
 			}
 

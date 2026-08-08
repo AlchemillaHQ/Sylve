@@ -102,6 +102,7 @@ func newSelectedNodeUploadProxyRouter(t *testing.T, remoteURL string) *gin.Engin
 		c.String(http.StatusTeapot, "upload reached origin handler")
 	}
 	router.POST("/api/system/file-explorer/upload", unexpectedLocalHandler)
+	router.DELETE("/api/system/file-explorer/upload", unexpectedLocalHandler)
 	router.POST("/api/utilities/downloader-uploads", unexpectedLocalHandler)
 	return router
 }
@@ -327,5 +328,55 @@ func TestSelectedNodeUploadCancellationReachesRemoteHandler(t *testing.T) {
 				t.Fatal("selected-node proxy did not return after cancellation")
 			}
 		})
+	}
+}
+
+func TestSelectedNodeUploadRevertProxiesRequestBody(t *testing.T) {
+	const requestBody = `{"data":{"uploadId":"opaque-upload-id"}}`
+	var remoteMethod string
+	var remoteBody string
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		remoteMethod = request.Method
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read remote request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		remoteBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","message":"file_deleted","error":"","data":null}`))
+	}))
+	defer remote.Close()
+
+	router := newSelectedNodeUploadProxyRouter(t, remote.URL)
+	origin := httptest.NewServer(router)
+	defer origin.Close()
+	request, err := http.NewRequest(
+		http.MethodDelete,
+		origin.URL+"/api/system/file-explorer/upload",
+		strings.NewReader(requestBody),
+	)
+	if err != nil {
+		t.Fatalf("create revert request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Current-Hostname", "remote-node")
+
+	response, err := origin.Client().Do(request)
+	if err != nil {
+		t.Fatalf("proxy revert request: %v", err)
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read revert response: %v", err)
+	}
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.StatusCode, responseBody)
+	}
+	if remoteMethod != http.MethodDelete || remoteBody != requestBody {
+		t.Fatalf("remote request method=%q body=%q", remoteMethod, remoteBody)
 	}
 }

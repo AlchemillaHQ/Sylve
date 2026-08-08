@@ -14,7 +14,7 @@
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import { type VMCPUPinning, type CPUPin, type VM, type VMDomain } from '$lib/types/vm/vm';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import type { CellComponent, RowComponent } from 'tabulator-tables';
 	import { resource, watch } from 'runed';
@@ -50,8 +50,12 @@
 	// svelte-ignore state_referenced_locally
 	const pciDevices = resource(
 		() => 'pciDevices',
-		async (key) => {
-			const result = (await getPCIDevices()) as PCIDevice[];
+		async (key, _previousKey, { data: previousDevices }): Promise<PCIDevice[]> => {
+			const result = await getPCIDevices();
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousDevices ?? [];
+			}
 			updateCache(key, result);
 			return result;
 		},
@@ -63,8 +67,12 @@
 	// svelte-ignore state_referenced_locally
 	const pptDevices = resource(
 		() => 'pptDevices',
-		async (key) => {
-			const result = (await getPPTDevices()) as PPTDevice[];
+		async (key, _previousKey, { data: previousDevices }): Promise<PPTDevice[]> => {
+			const result = await getPPTDevices();
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousDevices ?? [];
+			}
 			updateCache(key, result);
 			return result;
 		},
@@ -269,7 +277,12 @@
 				const functionC = Number(functionStr);
 
 				for (const pci of pciDevices.current) {
-					if (pci.bus === bus && pci.device === deviceC && pci['function'] === functionC) {
+					if (
+						pci.domain === dev.domain &&
+						pci.bus === bus &&
+						pci.device === deviceC &&
+						pci['function'] === functionC
+					) {
 						labels.push(`${pci.names.vendor} ${pci.names.device}`);
 					}
 				}

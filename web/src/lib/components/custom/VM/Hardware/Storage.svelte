@@ -10,7 +10,7 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import { normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { getISOs } from '$lib/utils/utilities/downloader';
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -270,9 +270,14 @@
 
 				const parent = getPathParent(properties.rawPath);
 				const files = await getFiles(parent);
+				if (isAPIResponse(files)) {
+					handleAPIError(files);
+					return;
+				}
 				const found = files.filter((file) => file.id === properties.rawPath);
 				if (!found || found.length !== 1) {
 					toast.error('Unable to find disk', toastOptions);
+					return;
 				}
 			} else if (storageType === 'zvol') {
 				if (!zvolCombobox.value) {

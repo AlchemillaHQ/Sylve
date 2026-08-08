@@ -570,12 +570,12 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 
 	deleteOutput := runSylveFailure(t, suite.binaryPath, suite.configPath,
 		"objects", "delete", "--id", strconv.FormatUint(uint64(addressObject.ID), 10))
-	if !strings.Contains(strings.ToLower(deleteOutput), "in use") {
+	if !strings.Contains(deleteOutput, "network_object_in_use") {
 		t.Fatalf("CLI delete referenced address output = %q", deleteOutput)
 	}
 	deleteError := runREPLCommandFailure(t, suite.socketPath,
 		"objects delete "+strconv.FormatUint(uint64(gatewayObject.ID), 10))
-	if !strings.Contains(strings.ToLower(deleteError), "in use") {
+	if !strings.Contains(deleteError, "network_object_in_use") {
 		t.Fatalf("REPL delete referenced gateway error = %q", deleteError)
 	}
 

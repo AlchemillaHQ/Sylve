@@ -11,6 +11,7 @@
 		onClose: () => void;
 		onReset: () => void;
 		onCreate: () => void;
+		loading?: boolean;
 	}
 
 	let {
@@ -19,16 +20,24 @@
 		name = $bindable(''),
 		onClose,
 		onReset,
-		onCreate
+		onCreate,
+		loading = false
 	}: Props = $props();
 </script>
 
 <Dialog.Root bind:open={isOpen}>
 	<Dialog.Content
-		onInteractOutside={onClose}
+		onInteractOutside={(event) => {
+			if (loading) event.preventDefault();
+			else onClose();
+		}}
+		onEscapeKeydown={(event) => {
+			if (loading) event.preventDefault();
+		}}
+		aria-busy={loading}
 		class="fixed flex transform flex-col gap-4 overflow-auto p-6 transition-all duration-300 ease-in-out lg:max-w-md"
-		showCloseButton={true}
-		showResetButton={true}
+		showCloseButton={!loading}
+		showResetButton={!loading}
 		{onClose}
 		{onReset}
 	>
@@ -51,8 +60,19 @@
 		</div>
 		<Dialog.Footer class="mt-2">
 			<div class="flex items-center justify-end space-x-4">
-				<Button onclick={onCreate} size="sm" type="button" class="h-8 w-full lg:w-28">
-					Create
+				<Button
+					onclick={onCreate}
+					disabled={loading || !name.trim()}
+					size="sm"
+					type="button"
+					class="h-8 w-full lg:w-28"
+				>
+					{#if loading}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Creating...
+					{:else}
+						Create
+					{/if}
 				</Button>
 			</div>
 		</Dialog.Footer>

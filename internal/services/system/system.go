@@ -29,17 +29,24 @@ type Service struct {
 	syncMutex               sync.Mutex
 	achMutex                sync.Mutex
 	serviceSettingsMutex    sync.Mutex
+	dhcpServiceStateApply   func(bool) error
 	GZFS                    *gzfs.Client
 	DiskService             diskServiceInterfaces.DiskServiceInterface
 	diskSmartConfigMu       sync.RWMutex
 	diskSmartConfigs        map[string]diskSmartConfig
 	diskSmartConfigSnapshot bool
 
-	tunMutex    sync.Mutex
-	tunCache    []sysctl.Tunable
-	tunCachedAt time.Time
-	tunList     func() ([]sysctl.Tunable, error)
-	tunDescribe func(string) (sysctl.Tunable, bool, error)
+	tunMutex         sync.Mutex
+	tunCache         []sysctl.Tunable
+	tunCachedAt      time.Time
+	tunList          func() ([]sysctl.Tunable, error)
+	tunDescribe      func(string) (sysctl.Tunable, bool, error)
+	tunMutationMutex sync.Mutex
+	tunRead          func(string) (string, error)
+	tunApply         func(string, string) error
+
+	fileExplorerMutationMutex sync.Mutex
+	fileExplorerRename        func(string, string) error
 
 	MdnsRebuild          func() error
 	OnUsablePoolsChanged func(context.Context) error

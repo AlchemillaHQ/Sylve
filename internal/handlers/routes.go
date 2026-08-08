@@ -58,7 +58,7 @@ import (
 	networkServicePkg "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
-	systemService "github.com/alchemillahq/sylve/internal/services/system"
+	systemServicePkg "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
@@ -95,7 +95,7 @@ func RegisterRoutes(r *gin.Engine,
 	networkService *networkServicePkg.Service,
 	notificationService *notificationsService.Service,
 	utilitiesService *utilitiesService.Service,
-	systemService *systemService.Service,
+	systemService *systemServicePkg.Service,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
 	mdnsService *mdns.Service,
@@ -488,39 +488,53 @@ func RegisterRoutes(r *gin.Engine,
 
 	system := api.Group("/system")
 	system.Use(middleware.EnsureAuthenticated(authService))
+	system.Use(middleware.RequireLocalAdminForWrites(authService))
 	system.Use(EnsureCorrectHost(db, authService))
-	system.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+
+	systemJSON := system.Group("")
+	systemJSON.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
+	systemJSON.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		system.GET("/pci-devices", systemHandlers.ListDevices())
-		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
-		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
-		system.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
-		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
-		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
-		system.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
-		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
-		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService, networkService))
-		system.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
-		system.PUT("/tunables", systemHandlers.SetTunable(systemService))
+		systemJSON.GET("/pci-devices", systemHandlers.ListDevices())
+		systemJSON.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
+		systemJSON.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
+		systemJSON.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
+		systemJSON.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
+		systemJSON.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
+		systemJSON.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
+		systemJSON.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
+		systemJSON.PATCH("/basic-settings/services/:service", systemHandlers.SetServiceState(systemService, networkService))
+		systemJSON.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
+		systemJSON.PUT("/tunables", systemHandlers.SetTunable(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")
 	fileExplorer.Use(middleware.RequireLocalAdmin(authService))
 	{
-		fileExplorer.GET("", systemHandlers.Files(systemService))
-		fileExplorer.POST("", systemHandlers.AddFileOrFolder(systemService))
+		fileExplorerCore := fileExplorer.Group("")
+		fileExplorerCore.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
+		fileExplorerCore.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			fileExplorerCore.GET("", systemHandlers.Files(systemService))
+			fileExplorerCore.POST("", systemHandlers.AddFileOrFolder(systemService))
+			fileExplorerCore.POST("/delete", systemHandlers.DeleteFilesOrFolders(systemService))
+			fileExplorerCore.POST("/rename", systemHandlers.RenameFileOrFolder(systemService))
+			fileExplorerCore.POST("/copy-or-move-batch", systemHandlers.CopyOrMoveFilesOrFolders(systemService))
+		}
 
-		fileExplorer.POST("/delete", systemHandlers.DeleteFilesOrFolders(systemService))
-		fileExplorer.DELETE("", systemHandlers.DeleteFileOrFolder(systemService))
+		fileExplorerTransfer := fileExplorer.Group("")
+		fileExplorerTransfer.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			fileExplorerTransfer.GET("/download", systemHandlers.DownloadFile(systemService))
+			fileExplorerTransfer.POST("/upload", systemHandlers.UploadFile(systemService, uploadAdmission))
+		}
 
-		fileExplorer.POST("/rename", systemHandlers.RenameFileOrFolder(systemService))
-		fileExplorer.GET("/download", systemHandlers.DownloadFile(systemService))
-
-		fileExplorer.POST("/copy-or-move", systemHandlers.CopyOrMoveFileOrFolder(systemService))
-		fileExplorer.POST("/copy-or-move-batch", systemHandlers.CopyOrMoveFilesOrFolders(systemService))
-
-		fileExplorer.POST("/upload", systemHandlers.UploadFile(systemService, uploadAdmission))
-		fileExplorer.DELETE("/upload", systemHandlers.DeleteUpload(systemService))
+		fileExplorerRevert := fileExplorer.Group("")
+		fileExplorerRevert.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
+		fileExplorerRevert.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			fileExplorerRevert.DELETE("/upload", systemHandlers.DeleteUpload(systemService))
+		}
 	}
 
 	vm := api.Group("/vm")

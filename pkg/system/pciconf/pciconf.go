@@ -16,8 +16,8 @@ type PCIDevice struct {
 	Rev       uint8  `json:"rev"`
 	HDR       uint8  `json:"hdr"`
 	Vendor    uint16 `json:"vendor"`
-	SubVendor uint16 `json:"subvendor"`
-	SubDevice uint16 `json:"subdevice"`
+	SubVendor uint16 `json:"subVendor"`
+	SubDevice uint16 `json:"subDevice"`
 	Names     struct {
 		Vendor   string `json:"vendor"`
 		Device   string `json:"device"`

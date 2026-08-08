@@ -2,10 +2,11 @@ import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { resolveNodeHostname } from '$lib/utils/enabled-services';
 
-export function getFilePondRequestHeaders(): Record<string, string> {
+export function getFilePondRequestHeaders(selectedHostname?: string): Record<string, string> {
 	if (!browser) return {};
 
 	const hostname =
+		selectedHostname?.trim() ||
 		resolveNodeHostname(window.location.pathname) ||
 		storage.localHostname?.trim() ||
 		storage.hostname?.trim();

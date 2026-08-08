@@ -4,10 +4,18 @@ import type { CellComponent } from 'tabulator-tables';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon } from '../table';
 
+export function findPPTDevice(device: PCIDevice, pptDevices: PPTDevice[]): PPTDevice | undefined {
+	const id = `${device.bus}/${device.device}/${device['function']}`;
+	return pptDevices.find((ppt) => ppt.domain === device.domain && ppt.deviceID === id);
+}
+
 function getPassthroughStatus(device: PCIDevice, pptDevices: PPTDevice[]): string {
+	const mappedDevice = findPPTDevice(device, pptDevices);
+	if (device.domain !== 0 && !mappedDevice) return 'unsupported-domain';
+	if (mappedDevice && !device.name.startsWith('ppt')) return 'managed-not-attached';
+
 	if (device.name.startsWith('ppt')) {
-		const id = `${device.bus}/${device.device}/${device['function']}`;
-		if (pptDevices.some((ppt) => ppt.deviceID === id)) {
+		if (mappedDevice) {
 			return 'passed-through-in-db';
 		} else {
 			return 'passed-through-not-in-db';
@@ -76,6 +84,20 @@ export function generateTableData(
 						'text-yellow-500',
 						'This device is on ppt but not managed by Sylve yet. Import it to manage from here.'
 					);
+				} else if (status === 'unsupported-domain') {
+					return renderWithIcon(
+						'wpf:connected',
+						device,
+						'text-orange-500',
+						'Only PCI domain 0 is supported for new passthrough mappings'
+					);
+				} else if (status === 'managed-not-attached') {
+					return renderWithIcon(
+						'wpf:connected',
+						device,
+						'text-orange-500',
+						'This managed mapping is not currently attached to ppt. It can be disabled or may require a reboot.'
+					);
 				}
 
 				return device;
@@ -111,7 +133,9 @@ export function generateTableData(
 	for (const device of pciDevices) {
 		const id = generateNumberFromString(
 			device.name +
+				device.domain +
 				device.bus +
+				device.unit +
 				(device.class || '') +
 				(device.device || '') +
 				(device['function'] || '') +
@@ -120,11 +144,8 @@ export function generateTableData(
 
 		const deviceId = `${device.bus}/${device.device}/${device['function']}`;
 
-		let pptId = '';
-		if (device.name.startsWith('ppt')) {
-			const pptDevice = pptDevices.find((ppt) => ppt.deviceID === deviceId);
-			pptId = pptDevice ? pptDevice.id.toString() : '';
-		}
+		const pptDevice = findPPTDevice(device, pptDevices);
+		const pptId = pptDevice ? pptDevice.id.toString() : '';
 
 		rows.push({
 			status: getPassthroughStatus(device, pptDevices),
@@ -151,7 +172,6 @@ export function getPCIDeviceId(device: PCIDevice): string {
 }
 
 export function getPPTDeviceId(device: PCIDevice, pptDevices: PPTDevice[]): number {
-	const id = `${device.bus}/${device.device}/${device['function']}`;
-	const pptDevice = pptDevices.find((ppt) => ppt.deviceID === id);
+	const pptDevice = findPPTDevice(device, pptDevices);
 	return pptDevice?.id || 0;
 }

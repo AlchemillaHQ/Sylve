@@ -1,4 +1,4 @@
-import { getBasicSettings } from '$lib/api/system/settings';
+import { basicSettingsOrFallback, getBasicSettings } from '$lib/api/system/settings';
 import { getDownloads } from '$lib/api/utilities/downloader';
 import { getDatasets } from '$lib/api/zfs/datasets';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
@@ -21,6 +21,6 @@ export async function load() {
 	return {
 		datasets: datasets,
 		downloads: downloads,
-		settings: settings
+		settings: basicSettingsOrFallback(settings)
 	};
 }

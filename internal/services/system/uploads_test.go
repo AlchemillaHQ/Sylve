@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -71,8 +72,8 @@ func TestFileExplorerUploadIdentityDoesNotFollowReplacementSymlink(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFile) {
-		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadNotFile)
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadConflict) {
+		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadConflict)
 	}
 	content, err := os.ReadFile(target)
 	if err != nil {
@@ -103,8 +104,8 @@ func TestFileExplorerUploadIdentityDoesNotDeleteReplacementFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
-		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadNotFound)
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadConflict) {
+		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadConflict)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -112,6 +113,34 @@ func TestFileExplorerUploadIdentityDoesNotDeleteReplacementFile(t *testing.T) {
 	}
 	if string(content) != "replacement" {
 		t.Fatalf("replacement file changed to %q", content)
+	}
+}
+
+func TestFileExplorerUploadIdentityDoesNotDeleteReplacementDirectory(t *testing.T) {
+	service := &Service{
+		DB: testutil.NewSQLiteTestDB(t, &utilitiesModels.Upload{}),
+	}
+	path := filepath.Join(t.TempDir(), "uploaded.iso")
+	if err := os.WriteFile(path, []byte("upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	if err != nil {
+		t.Fatalf("register upload: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadConflict) {
+		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadConflict)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Fatalf("replacement directory changed: info=%v err=%v", info, err)
 	}
 }
 
@@ -170,5 +199,96 @@ func TestFileExplorerUploadIdentityPersistsAcrossServiceRestart(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("persistent revert left uploaded file: %v", err)
+	}
+}
+
+func TestFileExplorerUploadIdentityTreatsMissingFileAsReverted(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Upload{})
+	service := &Service{DB: database}
+	path := filepath.Join(t.TempDir(), "uploaded.iso")
+	if err := os.WriteFile(path, []byte("upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	if err != nil {
+		t.Fatalf("register upload: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); err != nil {
+		t.Fatalf("revert missing file: %v", err)
+	}
+	var count int64
+	if err := database.Model(&utilitiesModels.Upload{}).Where("id = ?", uploadID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("successful idempotent revert left upload identity")
+	}
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+		t.Fatalf("second revert error=%v want=%v", err, ErrFileExplorerUploadNotFound)
+	}
+}
+
+func TestFileExplorerUploadIdentityExpiresWithoutDeletingFile(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Upload{})
+	service := &Service{DB: database}
+	path := filepath.Join(t.TempDir(), "uploaded.iso")
+	if err := os.WriteFile(path, []byte("upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	if err != nil {
+		t.Fatalf("register upload: %v", err)
+	}
+	expiredAt := time.Now().Add(-fileExplorerUploadIdentityTTL - time.Minute)
+	if err := database.Model(&utilitiesModels.Upload{}).
+		Where("id = ?", uploadID).
+		Update("created_at", expiredAt).Error; err != nil {
+		t.Fatalf("expire upload identity: %v", err)
+	}
+
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+		t.Fatalf("expired revert error=%v want=%v", err, ErrFileExplorerUploadNotFound)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "upload" {
+		t.Fatalf("expired identity changed file content=%q err=%v", content, err)
+	}
+	var count int64
+	if err := database.Model(&utilitiesModels.Upload{}).Where("id = ?", uploadID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("expired upload identity was not consumed")
+	}
+}
+
+func TestFileExplorerUploadIdentityIsBoundToNode(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Upload{})
+	service := &Service{DB: database}
+	path := filepath.Join(t.TempDir(), "uploaded.iso")
+	if err := os.WriteFile(path, []byte("upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	if err != nil {
+		t.Fatalf("register upload: %v", err)
+	}
+	if err := database.Model(&utilitiesModels.Upload{}).
+		Where("id = ?", uploadID).
+		Update("node", "different-node").Error; err != nil {
+		t.Fatalf("change identity node: %v", err)
+	}
+
+	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+		t.Fatalf("foreign-node revert error=%v want=%v", err, ErrFileExplorerUploadNotFound)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "upload" {
+		t.Fatalf("foreign-node revert changed file content=%q err=%v", content, err)
 	}
 }

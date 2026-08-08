@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -27,7 +29,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var hostname string
+var hostname string // Test override; production resolves the cached system hostname at registration.
 
 var secureTransport = &http.Transport{
 	MaxIdleConns:          64,
@@ -212,43 +214,117 @@ func injectForwardClusterAuth(c *gin.Context, authService *authService.Service) 
 	c.Request.URL.RawQuery = query.Encode()
 }
 
+func isBearerWebSocketProtocol(value string) bool {
+	parts := strings.Split(value, ",")
+	return len(parts) == 2 &&
+		strings.TrimSpace(parts[0]) == "Bearer" &&
+		strings.TrimSpace(parts[1]) != ""
+}
+
+func requestedHostname(request *http.Request) (string, bool, error) {
+	if request == nil {
+		return "", false, nil
+	}
+
+	_, hasHostnameHeader := request.Header[http.CanonicalHeaderKey("X-Current-Hostname")]
+	hasAuthQuery := request.URL != nil && request.URL.Query().Has("auth")
+	webSocketProtocol := request.Header.Get("Sec-WebSocket-Protocol")
+	hasRoutingProtocol := strings.TrimSpace(webSocketProtocol) != "" &&
+		!isBearerWebSocketProtocol(webSocketProtocol)
+	if !hasHostnameHeader && !hasAuthQuery && !hasRoutingProtocol {
+		return "", false, nil
+	}
+
+	requestCopy := request.Clone(request.Context())
+	headers := request.Header
+	if isBearerWebSocketProtocol(webSocketProtocol) {
+		headers = request.Header.Clone()
+		headers.Del("Sec-WebSocket-Protocol")
+	}
+
+	requested, err := utils.GetCurrentHostnameFromHeader(headers, requestCopy)
+	if err != nil {
+		return "", true, err
+	}
+
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return "", true, errors.New("selected node hostname is empty")
+	}
+
+	return requested, true, nil
+}
+
+func abortSelectedNodeRequest(c *gin.Context, status int, code, requested string) {
+	var data any
+	if requested != "" {
+		data = map[string]string{"hostname": requested}
+	}
+
+	c.AbortWithStatusJSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: code,
+		Error:   code,
+		Data:    data,
+	})
+}
+
 func EnsureCorrectHost(db *gorm.DB, authService *authService.Service) gin.HandlerFunc {
+	localHostname := strings.TrimSpace(hostname)
+	var localHostnameErr error
+	if localHostname == "" {
+		localHostname, localHostnameErr = utils.GetSystemHostname()
+		localHostname = strings.TrimSpace(localHostname)
+	}
+
 	return func(c *gin.Context) {
-		var err error
-
-		if hostname == "" {
-			hostname, err = utils.GetSystemHostname()
-			if err != nil {
-				c.Next()
-				return
-			}
+		reqHost, selected, err := requestedHostname(c.Request)
+		if !selected {
+			c.Next()
+			return
 		}
-
-		requestCopy := c.Request.Clone(c.Request.Context())
-
-		reqHost, err := utils.GetCurrentHostnameFromHeader(c.Request.Header, requestCopy)
 		if err != nil {
+			abortSelectedNodeRequest(c, http.StatusBadRequest, "invalid_selected_node", "")
+			return
+		}
+
+		if localHostnameErr != nil || localHostname == "" {
+			abortSelectedNodeRequest(c, http.StatusInternalServerError, "local_hostname_unavailable", reqHost)
+			return
+		}
+
+		if reqHost == localHostname {
 			c.Next()
 			return
 		}
 
-		if reqHost != hostname {
-			var node clusterModels.ClusterNode
-			if err := db.Where("hostname = ?", reqHost).First(&node).Error; err != nil {
-				c.Next()
-				return
-			}
-
-			if node.Status == "online" {
-				injectForwardClusterAuth(c, authService)
-				ReverseProxyInsecure(c, fmt.Sprintf("https://%s", node.API))
-				return
-			}
-
-			c.Next()
+		if db == nil {
+			abortSelectedNodeRequest(c, http.StatusInternalServerError, "selected_node_lookup_failed", reqHost)
 			return
 		}
 
-		c.Next()
+		var node clusterModels.ClusterNode
+		if err := db.Where("hostname = ?", reqHost).First(&node).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				abortSelectedNodeRequest(c, http.StatusNotFound, "selected_node_not_found", reqHost)
+			} else {
+				abortSelectedNodeRequest(c, http.StatusInternalServerError, "selected_node_lookup_failed", reqHost)
+			}
+			return
+		}
+
+		if strings.TrimSpace(node.Status) != "online" {
+			abortSelectedNodeRequest(c, http.StatusServiceUnavailable, "selected_node_offline", reqHost)
+			return
+		}
+
+		apiAddress := strings.TrimSpace(node.API)
+		if apiAddress == "" {
+			abortSelectedNodeRequest(c, http.StatusServiceUnavailable, "selected_node_unavailable", reqHost)
+			return
+		}
+
+		injectForwardClusterAuth(c, authService)
+		ReverseProxyInsecure(c, fmt.Sprintf("https://%s", apiAddress))
 	}
 }

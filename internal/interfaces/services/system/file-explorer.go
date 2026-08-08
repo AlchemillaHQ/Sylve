@@ -8,7 +8,10 @@
 
 package systemServiceInterfaces
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 type FileNode struct {
 	ID   string    `json:"id"`
@@ -16,4 +19,15 @@ type FileNode struct {
 	Type string    `json:"type"`
 	Lazy bool      `json:"lazy,omitempty"`
 	Size int64     `json:"size,omitempty"`
+}
+
+type FileTransferItem struct {
+	Source      string `json:"source" binding:"required"`
+	Destination string `json:"destination" binding:"required"`
+}
+
+type FileDownload struct {
+	Reader  io.ReadSeekCloser
+	Name    string
+	ModTime time.Time
 }

@@ -56,7 +56,7 @@
 		</div>
 	</div>
 	<div>
-		{#each items as item}
+		{#each items as item (item.id)}
 			{@const itemName = item.id.split('/').pop() || item.id}
 			{@const FileIcon = getFileIcon(itemName)}
 			{@const isSelected = selectedItems.has(item.id)}

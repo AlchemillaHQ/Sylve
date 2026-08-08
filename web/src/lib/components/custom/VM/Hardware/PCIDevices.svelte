@@ -4,7 +4,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Label from '$lib/components/ui/label/label.svelte';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
@@ -30,6 +29,7 @@
 		let options = [];
 
 		for (const pptDevice of pptDevices) {
+			if (pptDevice.domain !== 0) continue;
 			const device = pptDevice.deviceID;
 			if (device) {
 				const split = device.split('/');
@@ -38,6 +38,8 @@
 				const functionC = Number(split[2]);
 				for (const pciDevice of pciDevices) {
 					if (
+						pciDevice.name.startsWith('ppt') &&
+						pciDevice.domain === pptDevice.domain &&
 						pciDevice.bus === bus &&
 						pciDevice.device === deviceC &&
 						pciDevice.function === functionC
@@ -61,36 +63,42 @@
 		return options;
 	});
 
-	// svelte-ignore state_referenced_locally
-	let options = {
-		combobox: {
-			open: false,
-			value: vm?.pciDevices?.map((device) => device.toString()) || [],
-			options: pciOptions
-		}
-	};
+	function initialProperties() {
+		return {
+			combobox: {
+				open: false,
+				value: vm?.pciDevices?.map((device) => device.toString()) || []
+			}
+		};
+	}
 
-	let properties = $state(options);
+	let properties = $state(initialProperties());
+	let saving = $state(false);
 
 	async function modify() {
-		if (vm) {
-			const response = await modifyPPT(
-				vm.rid,
-				properties.combobox.value.map((id) => Number(id)) || []
-			);
+		if (vm && !saving) {
+			saving = true;
+			try {
+				const response = await modifyPPT(
+					vm.rid,
+					properties.combobox.value.map((id) => Number(id)) || []
+				);
 
-			reload = true;
+				if (response.status !== 'success') {
+					handleAPIError(response);
+					toast.error('Failed to modify PCI devices', {
+						position: 'bottom-center'
+					});
+					return;
+				}
 
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to modify PCI devices', {
-					position: 'bottom-center'
-				});
-			} else {
+				reload = true;
 				toast.success('PCI devices modified', {
 					position: 'bottom-center'
 				});
 				open = false;
+			} finally {
+				saving = false;
 			}
 		}
 	}
@@ -101,10 +109,10 @@
 		class="w-full min-w-0 p-5"
 		showResetButton={true}
 		onReset={() => {
-			properties = options;
+			properties = initialProperties();
 		}}
 		onClose={() => {
-			properties = options;
+			properties = initialProperties();
 			open = false;
 		}}
 	>
@@ -123,7 +131,7 @@
 			<CustomComboBox
 				bind:open={properties.combobox.open}
 				bind:value={properties.combobox.value}
-				data={properties.combobox.options}
+				data={pciOptions}
 				onValueChange={(value) => {
 					properties.combobox.value = value as string[];
 				}}
@@ -137,7 +145,14 @@
 		</div>
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

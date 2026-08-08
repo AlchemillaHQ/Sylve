@@ -27,7 +27,7 @@ const fileExplorerUploadIdentityTTL = 24 * time.Hour
 
 var (
 	ErrFileExplorerUploadNotFound = errors.New("file_explorer_upload_not_found")
-	ErrFileExplorerUploadNotFile  = errors.New("file_explorer_upload_not_file")
+	ErrFileExplorerUploadConflict = errors.New("file_explorer_upload_conflict")
 )
 
 // RegisterFileExplorerUpload returns an opaque, short-lived identity that can
@@ -43,7 +43,7 @@ func (s *Service) RegisterFileExplorerUpload(path string, userID uint) (string, 
 		return "", fmt.Errorf("file_explorer_upload_stat_failed: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return "", ErrFileExplorerUploadNotFile
+		return "", ErrFileExplorerUploadConflict
 	}
 
 	identity, err := uploadCore.IdentityFromFileInfo(info)
@@ -132,12 +132,18 @@ func (s *Service) DeleteFileExplorerUpload(uploadID string, userID uint) error {
 		Inode:  record.Inode,
 	})
 	switch {
-	case errors.Is(err, uploadCore.ErrNotRegularFile):
-		return ErrFileExplorerUploadNotFile
-	case errors.Is(err, uploadCore.ErrFileReplaced):
-		return ErrFileExplorerUploadNotFound
+	case err == nil:
+		// The original file was removed, or it was already absent. In either
+		// case, the requested state has been reached and the identity is
+		// consumed below.
+	case errors.Is(err, os.ErrNotExist):
+		// The file disappeared between identity validation and removal. Treat the
+		// requested state as reached and consume the identity below.
+	case errors.Is(err, uploadCore.ErrNotRegularFile),
+		errors.Is(err, uploadCore.ErrFileReplaced):
+		return ErrFileExplorerUploadConflict
 	case err != nil:
-		return fmt.Errorf("file_explorer_upload_delete_failed: %w", err)
+		return wrapFileExplorerIOError(record.Path, err)
 	}
 
 	if err := s.DB.Delete(&record).Error; err != nil {

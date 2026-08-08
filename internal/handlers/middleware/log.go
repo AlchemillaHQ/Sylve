@@ -30,7 +30,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var hostname string
 var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/jail/console"}
 
 type claim struct {
@@ -392,17 +391,12 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		panic("request logger middleware requires a non-nil telemetry database")
 	}
 	auditDB := telemetryDB
+	nodeHostname := "unknown"
+	if storedHostname, err := utils.GetSystemHostname(); err == nil {
+		nodeHostname = storedHostname
+	}
 
 	return func(c *gin.Context) {
-		if hostname == "" {
-			stored, err := utils.GetSystemHostname()
-			if err != nil {
-				hostname = "unknown"
-			} else {
-				hostname = stored
-			}
-		}
-
 		if strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") {
 			c.Next()
 			return
@@ -498,7 +492,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			UserID:   claims.UserID,
 			User:     claims.Username,
 			AuthType: claims.AuthType,
-			Node:     hostname,
+			Node:     nodeHostname,
 			Started:  time.Now(),
 			Action:   string(actJSON),
 			Status:   "started",

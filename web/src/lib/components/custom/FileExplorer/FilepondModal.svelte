@@ -6,6 +6,7 @@
 	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 	import { storage } from '$lib';
 	import { revertFileExplorerUpload } from '$lib/api/system/file-explorer';
+	import { reload } from '$lib/stores/api.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import {
 		getFilePondRequestHeaders,
@@ -16,6 +17,7 @@
 	interface Props {
 		isOpen: boolean;
 		onClose: () => void;
+		hostname?: string;
 		currentPath?: string;
 		droppedFiles?: File[];
 		onUploadComplete?: () => void;
@@ -24,6 +26,7 @@
 	let {
 		isOpen = $bindable(false),
 		onClose,
+		hostname,
 		currentPath = '/',
 		droppedFiles = [],
 		onUploadComplete
@@ -45,7 +48,7 @@
 			return;
 		}
 
-		void revertFileExplorerUpload(uploadId).then((result) => {
+		void revertFileExplorerUpload(uploadId, hostname).then((result) => {
 			if (result.status === 'success') {
 				load();
 				return;
@@ -58,7 +61,7 @@
 		process: {
 			url: `/api/system/file-explorer/upload?path=${encodeURIComponent(currentPath)}`,
 			method: 'POST' as const,
-			headers: getFilePondRequestHeaders(),
+			headers: getFilePondRequestHeaders(hostname),
 			onload: (response: string) => parseFilePondUploadID(response),
 			onerror: (response: string) => parseFilePondUploadError(response)
 		},
@@ -66,6 +69,7 @@
 	}));
 
 	function handleProcessFile(error: unknown, _file: unknown) {
+		reload.auditLog = true;
 		if (!error) onUploadComplete?.();
 	}
 

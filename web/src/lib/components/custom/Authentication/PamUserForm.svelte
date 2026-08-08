@@ -13,7 +13,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { Group, User } from '$lib/types/auth';
 	import type { FileNode } from '$lib/types/system/file-explorer';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 
@@ -135,9 +135,21 @@
 	});
 
 	const hiddenRootDirs = new Set([
-		'/bin', '/boot', '/dev', '/entropy', '/lib', '/libexec',
-		'/net', '/proc', '/rescue', '/sbin', '/sys', '/usr', '/var',
-		'/etc', '/compat'
+		'/bin',
+		'/boot',
+		'/dev',
+		'/entropy',
+		'/lib',
+		'/libexec',
+		'/net',
+		'/proc',
+		'/rescue',
+		'/sbin',
+		'/sys',
+		'/usr',
+		'/var',
+		'/etc',
+		'/compat'
 	]);
 
 	let dirPicker = $state({
@@ -172,6 +184,11 @@
 		dirPicker.currentPath = path;
 		try {
 			const all = await getFiles(path === '/' ? undefined : path);
+			if (isAPIResponse(all)) {
+				handleAPIError(all);
+				dirPicker.items = [];
+				return;
+			}
 			dirPicker.items = all.filter(
 				(f) => f.type === 'folder' && (path !== '/' || !hiddenRootDirs.has(f.id))
 			);
@@ -653,30 +670,42 @@
 							<div class="space-y-1.5">
 								<Label class="text-sm">Home Directory Permissions</Label>
 								<div class="bg-muted rounded-md p-3 space-y-2">
-									{#each ['user', 'group', 'other'] as entity}
+									{#each ['user', 'group', 'other'] as entity (entity)}
 										<div class="flex items-center gap-4">
 											<span class="w-12 text-sm capitalize">{entity}</span>
 											<div class="flex flex-1 items-center justify-evenly">
 												<div class="flex items-center gap-2">
 													<Checkbox
 														id={`perm-${entity}-read`}
-														bind:checked={properties.perms[entity as keyof typeof properties.perms].read}
+														bind:checked={
+															properties.perms[entity as keyof typeof properties.perms].read
+														}
 													/>
-													<Label for={`perm-${entity}-read`} class="cursor-pointer text-xs">Read</Label>
+													<Label for={`perm-${entity}-read`} class="cursor-pointer text-xs"
+														>Read</Label
+													>
 												</div>
 												<div class="flex items-center gap-2">
 													<Checkbox
 														id={`perm-${entity}-write`}
-														bind:checked={properties.perms[entity as keyof typeof properties.perms].write}
+														bind:checked={
+															properties.perms[entity as keyof typeof properties.perms].write
+														}
 													/>
-													<Label for={`perm-${entity}-write`} class="cursor-pointer text-xs">Write</Label>
+													<Label for={`perm-${entity}-write`} class="cursor-pointer text-xs"
+														>Write</Label
+													>
 												</div>
 												<div class="flex items-center gap-2">
 													<Checkbox
 														id={`perm-${entity}-exec`}
-														bind:checked={properties.perms[entity as keyof typeof properties.perms].exec}
+														bind:checked={
+															properties.perms[entity as keyof typeof properties.perms].exec
+														}
 													/>
-													<Label for={`perm-${entity}-exec`} class="cursor-pointer text-xs">Exec</Label>
+													<Label for={`perm-${entity}-exec`} class="cursor-pointer text-xs"
+														>Exec</Label
+													>
 												</div>
 											</div>
 										</div>
@@ -709,7 +738,9 @@
 							<div class="flex flex-wrap items-center gap-4 pt-2">
 								<div class="flex items-center gap-2">
 									<Checkbox id="disable-password" bind:checked={properties.disablePassword} />
-									<Label for="disable-password" class="cursor-pointer text-sm">Disable Password</Label>
+									<Label for="disable-password" class="cursor-pointer text-sm"
+										>Disable Password</Label
+									>
 								</div>
 								<div class="flex items-center gap-2">
 									<Checkbox id="locked" bind:checked={properties.locked} />

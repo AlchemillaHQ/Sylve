@@ -1,6 +1,6 @@
 import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
 export async function load() {
 	const cacheDuration = SEVEN_DAYS;
@@ -10,7 +10,7 @@ export async function load() {
 	]);
 
 	return {
-		pciDevices,
-		pptDevices
+		pciDevices: isAPIResponse(pciDevices) ? [] : pciDevices,
+		pptDevices: isAPIResponse(pptDevices) ? [] : pptDevices
 	};
 }

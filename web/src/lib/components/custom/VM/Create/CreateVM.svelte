@@ -6,7 +6,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import type { PCIDevice } from '$lib/types/system/pci';
+	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import { generatePassword } from '$lib/utils/string';
 	import {
 		getNextGuestId,
@@ -129,8 +129,12 @@
 
 	const pciDevices = resource(
 		() => `pci-devices-${modal.node || '__default__'}`,
-		async (key) => {
+		async (key, _previousKey, { data: previousDevices }): Promise<PCIDevice[]> => {
 			const result = await getPCIDevices(modal.node || undefined);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousDevices ?? [];
+			}
 			updateCache(key, result);
 			return result;
 		},
@@ -139,8 +143,12 @@
 
 	const pptDevices = resource(
 		() => `ppt-devices-${modal.node || '__default__'}`,
-		async (key) => {
+		async (key, _previousKey, { data: previousDevices }): Promise<PPTDevice[]> => {
 			const result = await getPPTDevices(modal.node || undefined);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousDevices ?? [];
+			}
 			updateCache(key, result);
 			return result;
 		},
@@ -230,8 +238,14 @@
 	);
 
 	let passablePci: PCIDevice[] = $derived.by(() => {
-		if (!pciDevices.current) return [];
-		return pciDevices.current.filter((device) => device.name.startsWith('ppt'));
+		if (!pciDevices.current || !pptDevices.current) return [];
+		return pciDevices.current.filter((device) => {
+			if (device.domain !== 0 || !device.name.startsWith('ppt')) return false;
+			const deviceID = `${device.bus}/${device.device}/${device.function}`;
+			return pptDevices.current.some(
+				(mapping) => mapping.domain === device.domain && mapping.deviceID === deviceID
+			);
+		});
 	});
 
 	const tabs = [
