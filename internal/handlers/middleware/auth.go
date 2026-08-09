@@ -42,12 +42,24 @@ func isPublicSignedDownloadRequest(method, path string) bool {
 	return err == nil
 }
 
+func isVMConsoleWebSocketPath(path string) bool {
+	const prefix = "/api/vm/"
+	const suffix = "/console"
+
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return false
+	}
+
+	rid := strings.TrimPrefix(strings.TrimSuffix(path, suffix), prefix)
+	return rid != "" && !strings.Contains(rid, "/")
+}
+
 func EnsureAuthenticated(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		isWSAuthPath := strings.HasPrefix(path, "/api/vnc/") ||
 			path == "/api/info/terminal" ||
-			path == "/api/vm/console" ||
+			isVMConsoleWebSocketPath(path) ||
 			path == "/api/jail/console"
 		isSSEPath := path == "/api/events/stream"
 

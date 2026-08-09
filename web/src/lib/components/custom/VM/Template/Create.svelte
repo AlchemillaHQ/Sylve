@@ -14,7 +14,7 @@
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import SimpleSelect from '../../SimpleSelect.svelte';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
@@ -86,9 +86,13 @@
 			availablePools = pools || [];
 			template = vmTemplate;
 
+			const availablePoolNames = new Set((pools || []).map((pool) => pool.name));
+			const fallbackPool = pools?.[0]?.name || '';
 			const mapping: Record<number, string> = {};
 			for (const storage of vmTemplate.storages || []) {
-				mapping[storage.sourceStorageId] = storage.pool || pools?.[0]?.name || '';
+				mapping[storage.sourceStorageId] = availablePoolNames.has(storage.pool)
+					? storage.pool
+					: fallbackPool;
 			}
 			storagePoolBySourceId = mapping;
 		} catch {
@@ -126,7 +130,7 @@
 
 		if (createMode === 'single') {
 			const rid = Number(singleRID);
-			if (rid < 1 || rid > 9999) {
+			if (!Number.isSafeInteger(rid) || rid < 1 || rid > 9999) {
 				return 'Invalid RID';
 			}
 			if (singleName && !isValidVMName(singleName)) {
@@ -137,10 +141,13 @@
 			const count = Number(multipleCount);
 			const endRID = startRID + count - 1;
 
-			if (count < 1) {
+			if (!Number.isSafeInteger(count) || count < 1) {
 				return 'Count must be positive';
 			}
-			if (startRID < 1 || endRID > 9999) {
+			if (count > 200) {
+				return 'Count cannot exceed 200';
+			}
+			if (!Number.isSafeInteger(startRID) || startRID < 1 || endRID > 9999) {
 				return 'Invalid RID range';
 			}
 			if (multipleNamePrefix && !isValidVMName(multipleNamePrefix)) {
@@ -229,11 +236,10 @@
 						};
 
 			const result = await createVMFromTemplate(templateId, payload, hostname);
-			if (result.error) {
+			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				if (!Array.isArray(result.error)) {
-					toast.error(createErrorMessage(result.error), { position: 'bottom-center' });
-				}
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				toast.error(createErrorMessage(error), { position: 'bottom-center' });
 				return;
 			}
 

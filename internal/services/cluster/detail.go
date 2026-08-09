@@ -99,7 +99,7 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 			jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
 			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates/simple", base)
 			vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
-			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates/simple", base)
+			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
 
 			headers := map[string]string{
 				"Accept":          "application/json",

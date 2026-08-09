@@ -386,6 +386,7 @@ msgid "VM - Reboot"
 msgstr "VM - Reboot"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Update Description"
 msgstr "VM - Update Description"
 
@@ -3133,8 +3134,8 @@ msgstr "Deleting Virtual Machine"
 
 #. 0: vm.current.name; 1: vm.current.rid
 #. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
+#. 0: target.name; 1: target.rid
+#. 0: target.name; 1: target.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -3144,8 +3145,8 @@ msgstr "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-e
 
 #. 0: vm.current.name; 1: vm.current.rid
 #. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
+#. 0: target.name; 1: target.rid
+#. 0: target.name; 1: target.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -5648,7 +5649,7 @@ msgstr "Cloud-Init Network Config"
 msgid "VM Name"
 msgstr "VM Name"
 
-#. 0: modal.name
+#. 0: data.name
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Created VM {0}"
 msgstr "Created VM {0}"
@@ -10024,6 +10025,7 @@ msgstr "Jail {0} MAC"
 #~ msgid "<0/> Note"
 #~ msgstr "<0/> Note"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Update Name"
 msgstr "VM - Update Name"
@@ -15083,8 +15085,8 @@ msgstr "Removing..."
 msgid "Removing Stale VM Entry"
 msgstr "Removing Stale VM Entry"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
+#. 0: target.name; 1: target.rid
+#. 0: target.name; 1: target.rid
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Removing stale registration for VM <b>{0} ({1})</b>; datasets are preserved"
@@ -19901,3 +19903,47 @@ msgstr "<0/> Retry"
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "<0/> Generating..."
 msgstr "<0/> Generating..."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Purge Registration"
+msgstr "VM - Purge Registration"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Delete"
+msgstr "VM - Delete"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Create"
+msgstr "VM - Create"
+
+#. 0: vmIdentityLabel(bodyRID, bodyName)
+#. 0: bodyName.trim()
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Create - {0}"
+msgstr "VM - Create - {0}"
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Purge Registration - {0}"
+msgstr "VM - Purge Registration - {0}"
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Force Delete - {0}"
+msgstr "VM - Force Delete - {0}"
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Delete - {0}"
+msgstr "VM - Delete - {0}"
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Update Description - {0}"
+msgstr "VM - Update Description - {0}"
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Update Name - {0}"
+msgstr "VM - Update Name - {0}"

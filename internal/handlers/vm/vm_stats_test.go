@@ -33,8 +33,8 @@ func newVMStatsHandlerRouter(t *testing.T) *gin.Engine {
 	service := &libvirt.Service{DB: database}
 
 	router := gin.New()
-	router.GET("/vm/stats/:rid", GetVMStatsBootstrap(service))
-	router.GET("/vm/stats/:rid/:step", GetVMStats(service))
+	router.GET("/vm/:rid/stats", GetVMStatsBootstrap(service))
+	router.GET("/vm/:rid/stats/:step", GetVMStats(service))
 	return router
 }
 
@@ -42,7 +42,7 @@ func TestVMStatsRoutesReturnBootstrapAndCompatibleEmptyRange(t *testing.T) {
 	router := newVMStatsHandlerRouter(t)
 
 	bootstrapRecorder := httptest.NewRecorder()
-	router.ServeHTTP(bootstrapRecorder, httptest.NewRequest(http.MethodGet, "/vm/stats/107", nil))
+	router.ServeHTTP(bootstrapRecorder, httptest.NewRequest(http.MethodGet, "/vm/107/stats", nil))
 	if bootstrapRecorder.Code != http.StatusOK {
 		t.Fatalf("bootstrap status = %d, body = %s", bootstrapRecorder.Code, bootstrapRecorder.Body.String())
 	}
@@ -55,7 +55,7 @@ func TestVMStatsRoutesReturnBootstrapAndCompatibleEmptyRange(t *testing.T) {
 	}
 
 	explicitRecorder := httptest.NewRecorder()
-	router.ServeHTTP(explicitRecorder, httptest.NewRequest(http.MethodGet, "/vm/stats/107/hourly", nil))
+	router.ServeHTTP(explicitRecorder, httptest.NewRequest(http.MethodGet, "/vm/107/stats/hourly", nil))
 	if explicitRecorder.Code != http.StatusOK {
 		t.Fatalf("explicit status = %d, body = %s", explicitRecorder.Code, explicitRecorder.Body.String())
 	}
@@ -76,9 +76,9 @@ func TestVMStatsRoutesValidateRIDStepAndNotFound(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{path: "/vm/stats/not-a-rid", wantStatus: http.StatusBadRequest, wantCode: "invalid_rid_format"},
-		{path: "/vm/stats/107/not-a-step", wantStatus: http.StatusBadRequest, wantCode: "invalid_stats_step"},
-		{path: "/vm/stats/999", wantStatus: http.StatusNotFound, wantCode: "vm_not_found"},
+		{path: "/vm/not-a-rid/stats", wantStatus: http.StatusBadRequest, wantCode: "invalid_rid_format"},
+		{path: "/vm/107/stats/not-a-step", wantStatus: http.StatusBadRequest, wantCode: "invalid_stats_step"},
+		{path: "/vm/999/stats", wantStatus: http.StatusNotFound, wantCode: "vm_not_found"},
 	}
 
 	for _, tt := range tests {

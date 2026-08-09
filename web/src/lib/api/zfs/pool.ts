@@ -31,6 +31,17 @@ export async function getPools(all?: boolean, hostname?: string): Promise<Zpool[
 	return await apiRequest(url, ZpoolSchema.array(), 'GET', undefined, { hostname });
 }
 
+export async function getPoolsResult(
+	all?: boolean,
+	options?: NodeAPIRequestOptions
+): Promise<Zpool[] | APIResponse> {
+	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
+	return await apiRequest(url, ZpoolSchema.array(), 'GET', undefined, {
+		...options,
+		preserveErrors: true
+	});
+}
+
 export async function getPoolsResponse(all?: boolean, hostname?: string): Promise<PoolsResponse> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
 	const response = await apiRequest(url, PoolsResponseSchema, 'GET', undefined, {
@@ -54,7 +65,7 @@ export async function getPoolsDiskUsage(): Promise<number> {
 	try {
 		const response = await apiRequest('/zfs/pools/disks-usage', PoolsDiskUsageSchema, 'GET');
 		return response.usage || 0;
-	} catch (error) {
+	} catch {
 		return 0;
 	}
 }
@@ -63,7 +74,7 @@ export async function getPoolsDiskUsageFull(): Promise<PoolsDiskUsage> {
 	try {
 		const response = await apiRequest('/zfs/pools/disks-usage', PoolsDiskUsageSchema, 'GET');
 		return response;
-	} catch (error) {
+	} catch {
 		return { total: 0, usage: 0 };
 	}
 }

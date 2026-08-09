@@ -81,12 +81,12 @@ type ModifyCPURequest struct {
 }
 
 type ModifyVNCRequest struct {
-	VNCEnabled    *bool  `json:"vncEnabled"`
+	VNCEnabled    *bool  `json:"vncEnabled" binding:"required"`
 	VNCPort       int    `json:"vncPort"`
 	VNCBind       string `json:"vncBind"`
 	VNCResolution string `json:"vncResolution" binding:"required"`
-	VNCPassword   string `json:"vncPassword" binding:"required"`
-	VNCWait       *bool  `json:"vncWait"`
+	VNCPassword   string `json:"vncPassword"`
+	VNCWait       *bool  `json:"vncWait" binding:"required"`
 }
 
 type QemuGuestAgentInfo struct {
@@ -130,18 +130,24 @@ type QGANetworkStatistics struct {
 }
 
 type NetworkAttachRequest struct {
-	RID        uint   `json:"rid" binding:"required"`
+	RID        uint   `json:"-"`
 	SwitchName string `json:"switchName" binding:"required"`
 	Emulation  string `json:"emulation" binding:"required"`
-	MacId      *uint  `json:"macId"`
+	MacID      *uint  `json:"macId"`
 }
 
 type NetworkUpdateRequest struct {
-	NetworkID  uint   `json:"networkId" binding:"required"`
-	SwitchName string `json:"switchName" binding:"required"`
-	Emulation  string `json:"emulation" binding:"required"`
-	MacId      *uint  `json:"macId"`
-	Enable     *bool  `json:"enable"`
+	RID        uint    `json:"-"`
+	NetworkID  uint    `json:"-"`
+	SwitchName *string `json:"switchName"`
+	Emulation  *string `json:"emulation"`
+	MacID      *uint   `json:"macId"`
+	Enable     *bool   `json:"enable"`
+}
+
+type NetworkDetachRequest struct {
+	RID       uint `json:"-"`
+	NetworkID uint `json:"-"`
 }
 
 type VMTemplateStoragePoolAssignment struct {

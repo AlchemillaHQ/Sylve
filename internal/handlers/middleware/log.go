@@ -69,7 +69,7 @@ func shouldRedactAuditPayload(path string) bool {
 }
 
 func isImportantAuditGetPath(path string) bool {
-	if utils.Contains(importantGetPaths, path) || strings.Contains(path, "vnc") {
+	if utils.Contains(importantGetPaths, path) || isVMConsoleWebSocketPath(path) || strings.Contains(path, "vnc") {
 		return true
 	}
 
@@ -175,6 +175,36 @@ func sanitizeAuditPayload(v interface{}) interface{} {
 	default:
 		return typed
 	}
+}
+
+func isVMCloudInitAuditPath(path string) bool {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) != 5 || segments[0] != "api" || segments[1] != "vm" {
+		return false
+	}
+
+	return (segments[2] != "" &&
+		segments[3] == "options" && segments[4] == "cloud-init") ||
+		(segments[2] == "options" && segments[3] == "cloud-init" &&
+			segments[4] != "")
+}
+
+func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
+	sanitized := sanitizeAuditPayload(value)
+	if !isVMCloudInitAuditPath(path) {
+		return sanitized
+	}
+
+	payload, ok := sanitized.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+	for _, key := range []string{"data", "metadata", "networkConfig"} {
+		if _, exists := payload[key]; exists {
+			payload[key] = "[REDACTED]"
+		}
+	}
+	return payload
 }
 
 func isMultipartAuditRequest(request *http.Request) bool {
@@ -470,7 +500,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 				if err := json.NewDecoder(tee).Decode(&body); err != nil {
 					logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
 				} else {
-					act.Body = sanitizeAuditPayload(body)
+					act.Body = sanitizeAuditPayloadForPath(c.Request.URL.Path, body)
 				}
 
 				// Replay everything consumed by the audit decoder, then continue

@@ -61,11 +61,14 @@ func writeVMStatsServiceError(c *gin.Context, err error) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID"
+// @Param step path string true "Statistics resolution" Enums(minutely,hourly,daily,weekly,monthly,yearly)
 // @Success 200 {object} internal.APIResponse[[]vmModels.VMStats] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "VM Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/stats/:rid/:step [get]
+// @Router /vm/{rid}/stats/{step} [get]
 func GetVMStats(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, ok := parseVMStatsRID(c)
@@ -105,11 +108,13 @@ func GetVMStats(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID"
 // @Success 200 {object} internal.APIResponse[db.StatsBootstrap[vmModels.VMStats]] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "VM Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/stats/:rid [get]
+// @Router /vm/{rid}/stats [get]
 func GetVMStatsBootstrap(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, ok := parseVMStatsRID(c)

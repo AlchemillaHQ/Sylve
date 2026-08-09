@@ -84,6 +84,25 @@ func TestCertificateArchiveIsAnImportantAuditedGet(t *testing.T) {
 	}
 }
 
+func TestVMConsoleIsAnImportantAuditedGet(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "/api/vm/107/console", want: true},
+		{path: "/api/vm/not-a-rid/console", want: true},
+		{path: "/api/vm/console", want: true},
+		{path: "/api/vm/107/console/extra", want: false},
+		{path: "/api/vm/107/logs", want: false},
+	}
+
+	for _, test := range tests {
+		if got := isImportantAuditGetPath(test.path); got != test.want {
+			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
+		}
+	}
+}
+
 func TestSanitizeAuditQuery(t *testing.T) {
 	query := sanitizeAuditQuery("/api/vm/console", "auth=secret&hash=hidden&rid=7")
 	if strings.Contains(query, "secret") || strings.Contains(query, "hidden") {
@@ -97,6 +116,14 @@ func TestSanitizeAuditQuery(t *testing.T) {
 	}
 	if got := sanitizeAuditQuery("/api/vm/console", "%zz"); got != "[REDACTED]" {
 		t.Fatalf("malformed query=%q", got)
+	}
+
+	query = sanitizeAuditQuery("/api/vm/7/console", "auth=secret&baudrate=115200")
+	if strings.Contains(query, "secret") {
+		t.Fatalf("normalized console query leaked a credential: %s", query)
+	}
+	if !strings.Contains(query, "baudrate=115200") || !strings.Contains(query, "%5BREDACTED%5D") {
+		t.Fatalf("normalized console query lost safe values or redaction: %s", query)
 	}
 }
 
@@ -124,6 +151,44 @@ func TestSanitizeAuditPayloadRedactsWireGuardKeys(t *testing.T) {
 	}
 	if !strings.Contains(result, "peer-public-key") {
 		t.Fatalf("public key was unexpectedly redacted: %s", result)
+	}
+}
+
+func TestSanitizeAuditPayloadForVMCloudInitRedactsOnlyDocuments(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{
+		"/api/vm/101/options/cloud-init",
+		"/api/vm/options/cloud-init/101",
+	} {
+		t.Run(path, func(t *testing.T) {
+			result, ok := sanitizeAuditPayloadForPath(path, map[string]interface{}{
+				"rid":           float64(101),
+				"data":          "#cloud-config\npassword: secret",
+				"metadata":      "instance-id: vm-101",
+				"networkConfig": "version: 2",
+				"enabled":       false,
+			}).(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected sanitized map, got %T", result)
+			}
+			for _, key := range []string{"data", "metadata", "networkConfig"} {
+				if result[key] != "[REDACTED]" {
+					t.Fatalf("%s was not redacted: %#v", key, result[key])
+				}
+			}
+			if result["rid"] != float64(101) || result["enabled"] != false {
+				t.Fatalf("safe VM option fields were not preserved: %#v", result)
+			}
+		})
+	}
+
+	unrelated, ok := sanitizeAuditPayloadForPath("/api/vm/101/options/wol", map[string]interface{}{
+		"data":    "safe unrelated value",
+		"enabled": false,
+	}).(map[string]interface{})
+	if !ok || unrelated["data"] != "safe unrelated value" || unrelated["enabled"] != false {
+		t.Fatalf("unrelated VM option payload was unexpectedly redacted: %#v", unrelated)
 	}
 }
 

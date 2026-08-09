@@ -13,6 +13,7 @@
 	import CPUSelector from '../Extra/CPUSelector.svelte';
 
 	interface Props {
+		node: string;
 		sockets: number;
 		cores: number;
 		threads: number;
@@ -26,6 +27,7 @@
 	}
 
 	let {
+		node,
 		sockets = $bindable(),
 		cores = $bindable(),
 		threads = $bindable(),
@@ -41,10 +43,10 @@
 	let humanSize = $state(formatBytesBinary(memory || 1024 * 1024 * 1024));
 	let coreSelectionLimit = $derived.by(() => sockets * cores * threads);
 
-	$effect(() => {
-		const bytes = parseSizeInputToBytes(humanSize);
+	function updateMemory(value: string | number) {
+		const bytes = parseSizeInputToBytes(String(value));
 		memory = bytes ?? 1024 * 1024 * 1024;
-	});
+	}
 
 	let checkboxItems = $derived.by(() =>
 		pptDevices
@@ -98,7 +100,7 @@
 
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-end">
 			<div>
-				<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {vms} {coreSelectionLimit} />
+				<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {node} {vms} {coreSelectionLimit} />
 			</div>
 
 			<CustomValueInput
@@ -106,6 +108,7 @@
 				placeholder="10G"
 				bind:value={humanSize}
 				classes="flex-1 space-y-1.5"
+				onChange={updateMemory}
 				onBlur={() => {
 					const normalized = normalizeSizeInputExact(humanSize);
 					if (normalized !== null) {

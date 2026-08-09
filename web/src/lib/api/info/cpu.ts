@@ -4,6 +4,7 @@ import {
 	type CPUInfo,
 	type CPUInfoHistorical
 } from '$lib/types/info/cpu';
+import type { APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
 import type { NodeAPIRequestOptions } from '$lib/utils/http';
 
@@ -29,4 +30,13 @@ export async function getCPUInfo(
 		);
 	}
 	return await apiRequest('/info/cpu', CPUInfoSchema, 'GET', undefined, options);
+}
+
+export async function getCPUInfoResult(
+	options?: NodeAPIRequestOptions
+): Promise<CPUInfo | APIResponse> {
+	return await apiRequest('/info/cpu', CPUInfoSchema, 'GET', undefined, {
+		...options,
+		preserveErrors: true
+	});
 }

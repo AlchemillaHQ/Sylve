@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getDownloadsByUType } from '$lib/api/utilities/downloader';
@@ -44,7 +46,7 @@
 		name: '',
 		id: 0,
 		description: '',
-		node: '',
+		node: String(page.params.node || storage.localHostname || storage.hostname || ''),
 		storage: {
 			type: 'zvol',
 			pool: '',
@@ -282,16 +284,18 @@
 
 	async function create() {
 		const data = $state.snapshot(modal);
-		if (isValidCreateData(data, downloadsByUtype.current || [])) {
-			loading = true;
-			const response = await newVM(data);
-			loading = false;
+		if (!isValidCreateData(data, downloadsByUtype.current || [])) return;
+
+		loading = true;
+		try {
+			const response = await newVM(data, data.node);
 			if (response.status === 'success') {
-				toast.success(`Created VM ${modal.name}`, {
+				toast.success(`Created VM ${data.name}`, {
 					duration: 3000,
 					position: 'bottom-center'
 				});
 				open = false;
+				reloadStore.leftPanel = true;
 			} else {
 				handleAPIError(response);
 				toast.error(getVMCreateErrorMessage(response), {
@@ -299,8 +303,8 @@
 					position: 'bottom-center'
 				});
 			}
-
-			reloadStore.leftPanel = true;
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -311,10 +315,10 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[90%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-[720px]"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[90%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-6 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-[720px]"
 		showCloseButton={false}
 	>
-		<Dialog.Header class="p-0">
+		<Dialog.Header>
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<span class="icon-[material-symbols--monitor-outline-rounded] h-5 w-5"></span>
@@ -407,6 +411,7 @@
 							{:else if value === 'hardware'}
 								<div in:fade={{ duration: 200 }}>
 									<Hardware
+										node={modal.node}
 										devices={passablePci}
 										vms={vms.current}
 										pptDevices={pptDevices.current}

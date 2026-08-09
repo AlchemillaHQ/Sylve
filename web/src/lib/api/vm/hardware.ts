@@ -1,26 +1,47 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import type { CPUPin, VM } from '$lib/types/vm/vm';
-import { apiRequest } from '$lib/utils/http';
+import type { CPUPin } from '$lib/types/vm/vm';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 
 export async function modifyCPU(
 	rid: number,
 	cpuSockets: number,
 	cpuCores: number,
 	cpuThreads: number,
-	cpuPinning: CPUPin[]
+	cpuPinning: CPUPin[],
+	options?: NodeAPIRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/cpu/${rid}`, APIResponseSchema, 'PUT', {
-		cpuSockets,
-		cpuCores,
-		cpuThreads,
-		cpuPinning
-	});
+	return await apiRequest(
+		`/vm/${rid}/hardware/cpu`,
+		APIResponseSchema,
+		'PUT',
+		{
+			cpuSockets,
+			cpuCores,
+			cpuThreads,
+			cpuPinning
+		},
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }
 
-export async function modifyRAM(rid: number, ram: number): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/ram/${rid}`, APIResponseSchema, 'PUT', {
-		ram
-	});
+export async function modifyRAM(
+	rid: number,
+	ram: number,
+	options?: NodeAPIRequestOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/vm/${rid}/hardware/ram`,
+		APIResponseSchema,
+		'PUT',
+		{ ram },
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }
 
 export async function modifyVNC(
@@ -30,20 +51,41 @@ export async function modifyVNC(
 	vncBind: string,
 	vncResolution: string,
 	vncPassword: string,
-	vncWait: boolean
+	vncWait: boolean,
+	options?: NodeAPIRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/vnc/${rid}`, APIResponseSchema, 'PUT', {
-		vncEnabled,
-		vncPort,
-		vncBind,
-		vncResolution,
-		vncPassword,
-		vncWait
-	});
+	return await apiRequest(
+		`/vm/${rid}/hardware/vnc`,
+		APIResponseSchema,
+		'PUT',
+		{
+			vncEnabled,
+			vncPort,
+			vncBind,
+			vncResolution,
+			vncPassword,
+			vncWait
+		},
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }
 
-export async function modifyPPT(rid: number, pciDevices: number[]): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/ppt/${rid}`, APIResponseSchema, 'PUT', {
-		pciDevices
-	});
+export async function modifyPPT(
+	rid: number,
+	pciDevices: number[],
+	options?: NodeAPIRequestOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/vm/${rid}/hardware/pci-devices`,
+		APIResponseSchema,
+		'PUT',
+		{ pciDevices },
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }

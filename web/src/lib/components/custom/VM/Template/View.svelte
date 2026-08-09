@@ -9,7 +9,6 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { isAPIResponse } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
-	import { sleep } from '$lib/utils';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -43,7 +42,6 @@
 
 	async function loadTemplate() {
 		loading = true;
-		await sleep(300);
 		try {
 			const result = await getVMTemplateById(templateId, hostname);
 			if (isAPIResponse(result) && result.status === 'error') {
@@ -109,7 +107,9 @@
 									<div class="text-xs text-muted-foreground">Template ID</div>
 									<div class="font-medium">{template.id}</div>
 									<div class="text-xs text-muted-foreground">Source VM</div>
-									<div class="font-medium">{template.sourceVmName || '-'}</div>
+									<div class="font-medium">
+										{template.sourceVmName || 'Unknown'} (RID {template.sourceVmRid})
+									</div>
 									<div class="text-xs text-muted-foreground">Updated</div>
 									<div class="font-medium">{dateToAgo(template.updatedAt)}</div>
 								</div>

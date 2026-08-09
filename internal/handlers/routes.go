@@ -539,70 +539,77 @@ func RegisterRoutes(r *gin.Engine,
 
 	vm := api.Group("/vm")
 	vm.Use(middleware.EnsureAuthenticated(authService))
+	vm.Use(middleware.RequireLocalAdminForWrites(authService))
 	vm.Use(EnsureCorrectHost(db, authService))
+	vm.Use(middleware.LimitRequestBody(libvirt.MaxRequestBodyBytes))
 	vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		vm.POST("/migrate/:rid", migrationHandlers.MigrateVM(migrationService, lifecycleService))
-		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
+		vm.POST("/:rid/migrations", migrationHandlers.MigrateVM(migrationService, lifecycleService))
+		vm.POST("/:rid/actions/:action", vmHandlers.VMActionHandler(libvirtService, lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
-		vm.GET("/templates/simple", vmHandlers.ListVMTemplatesSimple(libvirtService))
-		vm.GET("/templates/:id", vmHandlers.GetVMTemplateByID(libvirtService))
-		vm.POST("/templates/convert/:rid", vmHandlers.ConvertVMToTemplate(libvirtService, lifecycleService))
-		vm.POST("/templates/create/:id", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService))
-		vm.DELETE("/templates/:id", vmHandlers.DeleteVMTemplate(libvirtService))
-		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
-		vm.GET("/snapshots/:id", vmHandlers.ListVMSnapshots(libvirtService))
-		vm.POST("/snapshots/:id", vmHandlers.CreateVMSnapshot(libvirtService))
-		vm.POST("/snapshots/rollback/:id/:snapshotId",
-			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+		vm.GET("/templates", vmHandlers.ListVMTemplatesSimple(libvirtService))
+		vm.GET("/templates/:templateId", vmHandlers.GetVMTemplateByID(libvirtService))
+		vm.POST("/:rid/templates", vmHandlers.ConvertVMToTemplate(libvirtService, lifecycleService))
+		vm.POST("/templates/:templateId/vms", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService))
+		vm.DELETE("/templates/:templateId", vmHandlers.DeleteVMTemplate(libvirtService, lifecycleService))
+		vm.GET("/simple/:rid", vmHandlers.GetSimpleVMByRID(libvirtService))
+		vm.GET("/:rid/snapshots", vmHandlers.ListVMSnapshots(libvirtService))
+		vm.POST("/:rid/snapshots", vmHandlers.CreateVMSnapshot(libvirtService))
+		vm.POST("/:rid/snapshots/:snapshotId/rollback",
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.RollbackVMSnapshot(libvirtService),
 		)
-		vm.DELETE("/snapshots/:id/:snapshotId",
-			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+		vm.DELETE("/:rid/snapshots/:snapshotId",
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.DeleteVMSnapshot(libvirtService),
 		)
-		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
+		vm.GET("/:rid", vmHandlers.GetVMByRID(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
-		vm.DELETE("/:id",
-			vmHandlers.RequireVMDeletionDetached(libvirtService, "id"),
-			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+		vm.DELETE("/:rid/registration",
+			vmHandlers.RequireVMDeletionDetached(libvirtService, "rid"),
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
+			vmHandlers.PurgeVMRegistration(libvirtService),
+		)
+		vm.DELETE("/:rid",
+			vmHandlers.RequireVMDeletionDetached(libvirtService, "rid"),
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.RemoveVM(libvirtService),
 		)
-		vm.GET("/domain/:rid", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
-		vm.GET("/logs/:rid", vmHandlers.GetVMLogs(libvirtService))
-		vm.GET("/stats/:rid", vmHandlers.GetVMStatsBootstrap(libvirtService))
-		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
-		vm.PUT("/description", vmHandlers.UpdateVMDescription(libvirtService))
-		vm.PUT("/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
+		vm.GET("/:rid/domain", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
+		vm.GET("/:rid/logs", vmHandlers.GetVMLogs(libvirtService))
+		vm.GET("/:rid/stats", vmHandlers.GetVMStatsBootstrap(libvirtService))
+		vm.GET("/:rid/stats/:step", vmHandlers.GetVMStats(libvirtService))
+		vm.PATCH("/:rid/description", vmHandlers.UpdateVMDescription(libvirtService))
+		vm.PATCH("/:rid/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
 
-		vm.POST("/storage/detach", vmHandlers.StorageDetach(libvirtService))
-		vm.POST("/storage/attach", vmHandlers.StorageAttach(libvirtService))
-		vm.PUT("/storage/update", vmHandlers.StorageUpdate(libvirtService))
+		vm.POST("/:rid/storage", vmHandlers.StorageAttach(libvirtService))
+		vm.PATCH("/:rid/storage/:storageId", vmHandlers.StorageUpdate(libvirtService))
+		vm.DELETE("/:rid/storage/:storageId", vmHandlers.StorageDetach(libvirtService))
 
-		vm.POST("/network/detach", vmHandlers.NetworkDetach(libvirtService))
-		vm.POST("/network/attach", vmHandlers.NetworkAttach(libvirtService))
-		vm.PUT("/network/update", vmHandlers.NetworkUpdate(libvirtService))
+		vm.POST("/:rid/networks", vmHandlers.NetworkAttach(libvirtService))
+		vm.PATCH("/:rid/networks/:networkId", vmHandlers.NetworkUpdate(libvirtService))
+		vm.DELETE("/:rid/networks/:networkId", vmHandlers.NetworkDetach(libvirtService))
 
-		vm.PUT("/hardware/cpu/:rid", vmHandlers.ModifyCPU(libvirtService))
-		vm.PUT("/hardware/ram/:rid", vmHandlers.ModifyRAM(libvirtService))
-		vm.PUT("/hardware/vnc/:rid", vmHandlers.ModifyVNC(libvirtService))
-		vm.PUT("/hardware/ppt/:rid", vmHandlers.ModifyPassthroughDevices(libvirtService))
+		vm.PUT("/:rid/hardware/cpu", vmHandlers.ModifyCPU(libvirtService))
+		vm.PUT("/:rid/hardware/ram", vmHandlers.ModifyRAM(libvirtService))
+		vm.PUT("/:rid/hardware/vnc", vmHandlers.ModifyVNC(libvirtService))
+		vm.PUT("/:rid/hardware/pci-devices", vmHandlers.ModifyPassthroughDevices(libvirtService))
 
-		vm.PUT("/options/wol/:rid", vmHandlers.ModifyWakeOnLan(libvirtService))
-		vm.PUT("/options/boot-order/:rid", vmHandlers.ModifyBootOrder(libvirtService))
-		vm.PUT("/options/clock/:rid", vmHandlers.ModifyClock(libvirtService))
-		vm.PUT("/options/serial-console/:rid", vmHandlers.ModifySerialConsole(libvirtService))
-		vm.PUT("/options/shutdown-wait-time/:rid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
-		vm.PUT("/options/cloud-init/:rid", vmHandlers.ModifyCloudInitData(libvirtService))
-		vm.PUT("/options/boot-rom/:rid", vmHandlers.ModifyBootROM(libvirtService))
-		vm.PUT("/options/extra-bhyve-options/:rid", vmHandlers.ModifyExtraBhyveOptions(libvirtService))
-		vm.PUT("/options/ignore-umsrs/:rid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
-		vm.PUT("/options/qemu-guest-agent/:rid", vmHandlers.ModifyQemuGuestAgent(libvirtService))
-		vm.PUT("/options/tpm/:rid", vmHandlers.ModifyTPM(libvirtService))
-		vm.GET("/qga/:rid", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
+		vm.PUT("/:rid/options/wol", vmHandlers.ModifyWakeOnLan(libvirtService))
+		vm.PUT("/:rid/options/boot-order", vmHandlers.ModifyBootOrder(libvirtService))
+		vm.PUT("/:rid/options/clock", vmHandlers.ModifyClock(libvirtService))
+		vm.PUT("/:rid/options/serial-console", vmHandlers.ModifySerialConsole(libvirtService))
+		vm.PUT("/:rid/options/shutdown-wait-time", vmHandlers.ModifyShutdownWaitTime(libvirtService))
+		vm.PUT("/:rid/options/cloud-init", vmHandlers.ModifyCloudInitData(libvirtService))
+		vm.PUT("/:rid/options/boot-rom", vmHandlers.ModifyBootROM(libvirtService))
+		vm.PUT("/:rid/options/extra-bhyve-options", vmHandlers.ModifyExtraBhyveOptions(libvirtService))
+		vm.PUT("/:rid/options/ignore-umsrs", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
+		vm.PUT("/:rid/options/qemu-guest-agent", vmHandlers.ModifyQemuGuestAgent(libvirtService))
+		vm.PUT("/:rid/options/tpm", vmHandlers.ModifyTPM(libvirtService))
+		vm.GET("/:rid/guest-agent", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
 
-		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
+		vm.GET("/:rid/console", middleware.RequireLocalAdmin(authService), vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
 	}
 
 	jail := api.Group("/jail")

@@ -1,24 +1,26 @@
 <script lang="ts">
-	import { getDownloads } from '$lib/api/utilities/downloader';
+	import { getDownloadsResult } from '$lib/api/utilities/downloader';
 	import { storageDetach } from '$lib/api/vm/storage';
-	import { getVmById, getVMs } from '$lib/api/vm/vm';
-	import { getDatasets } from '$lib/api/zfs/datasets';
-	import { getPools } from '$lib/api/zfs/pool';
+	import { getVmByIdResult, getVMsResult } from '$lib/api/vm/vm';
+	import { getDatasetsResult } from '$lib/api/zfs/datasets';
+	import { getPoolsResult } from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Storage from '$lib/components/custom/VM/Hardware/Storage.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import type { Zpool } from '$lib/types/zfs/pool';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { escapeHTML } from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
-	import { getContext } from 'svelte';
+	import { getContext, onMount, untrack } from 'svelte';
 
 	interface Data {
 		vms: VM[];
@@ -27,81 +29,128 @@
 		volumes: Dataset[];
 		pools: Zpool[];
 		downloads: Download[];
-		rid: string;
+		rid: number;
+		node: string;
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
-	// svelte-ignore state_referenced_locally
+	const lastVMsByNode: Record<string, VM[]> = Object.create(null);
+	lastVMsByNode[initialData.node] = initialData.vms;
 	const vms = resource(
-		() => 'vm-list',
-		async (key) => {
-			const result = await getVMs();
-			updateCache(key, result);
+		() => data.node,
+		async (node) => {
+			const result = await getVMsResult({ hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastVMsByNode[node] ?? data.vms;
+			}
+			lastVMsByNode[node] = result;
+			await updateCache('vm-list', result, node);
 			return result;
 		},
 		{
-			initialValue: data.vms
+			initialValue: initialData.vms
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const vmIdentity = (node: string, rid: number) => `${node}\u0000${rid}`;
+	const lastVMByIdentity: Record<string, VM> = Object.create(null);
+	lastVMByIdentity[vmIdentity(initialData.node, initialData.rid)] = initialData.vm;
 	const vm = resource(
-		() => `vm-${data.rid}`,
-		async (key) => {
-			const result = await getVmById(Number(data.rid), 'rid');
-			updateCache(key, result);
+		() => [data.node, data.rid] as const,
+		async ([node, rid]) => {
+			const result = await getVmByIdResult(rid, { hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastVMByIdentity[vmIdentity(node, rid)] ?? data.vm;
+			}
+			lastVMByIdentity[vmIdentity(node, rid)] = result;
+			await updateCache(`vm-${rid}`, result, node);
 			return result;
 		},
 		{
-			initialValue: data.vm
+			initialValue: initialData.vm
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastPoolsByNode: Record<string, Zpool[]> = Object.create(null);
+	lastPoolsByNode[initialData.node] = initialData.pools;
 	const pools = resource(
-		() => 'pool-list',
-		async (key) => {
-			const result = await getPools();
-			updateCache(key, result);
+		() => data.node,
+		async (node) => {
+			const result = await getPoolsResult(false, { hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastPoolsByNode[node] ?? data.pools;
+			}
+			lastPoolsByNode[node] = result;
+			await updateCache('pool-list', result, node);
 			return result;
 		},
 		{
-			initialValue: data.pools
+			initialValue: initialData.pools
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	const datasets = resource(
-		() => 'zfs-filesystems',
-		async (key) => {
-			const results = await Promise.all([
-				getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
-				getDatasets(GZFSDatasetTypeSchema.enum.VOLUME)
-			]);
-
-			const result = [...results[0], ...results[1]];
-			updateCache(key, result);
-
+	const lastFilesystemsByNode: Record<string, Dataset[]> = Object.create(null);
+	lastFilesystemsByNode[initialData.node] = initialData.filesystems;
+	const filesystems = resource(
+		() => data.node,
+		async (node) => {
+			const result = await getDatasetsResult(GZFSDatasetTypeSchema.enum.FILESYSTEM, node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastFilesystemsByNode[node] ?? data.filesystems;
+			}
+			lastFilesystemsByNode[node] = result;
+			await updateCache('zfs-filesystems', result, node);
 			return result;
 		},
 		{
-			initialValue: [...data.filesystems, ...data.volumes]
+			initialValue: initialData.filesystems
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastVolumesByNode: Record<string, Dataset[]> = Object.create(null);
+	lastVolumesByNode[initialData.node] = initialData.volumes;
+	const volumes = resource(
+		() => data.node,
+		async (node) => {
+			const result = await getDatasetsResult(GZFSDatasetTypeSchema.enum.VOLUME, node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastVolumesByNode[node] ?? data.volumes;
+			}
+			lastVolumesByNode[node] = result;
+			await updateCache('zfs-volumes', result, node);
+			return result;
+		},
+		{
+			initialValue: initialData.volumes
+		}
+	);
+
+	const lastDownloadsByNode: Record<string, Download[]> = Object.create(null);
+	lastDownloadsByNode[initialData.node] = initialData.downloads;
 	const downloads = resource(
-		() => 'download-list',
-		async (key) => {
-			const result = await getDownloads();
-			updateCache(key, result);
+		() => data.node,
+		async (node) => {
+			const result = await getDownloadsResult({ hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastDownloadsByNode[node] ?? data.downloads;
+			}
+			lastDownloadsByNode[node] = result;
+			await updateCache('download-list', result, node);
 			return result;
 		},
 		{
-			initialValue: data.downloads
+			initialValue: initialData.downloads
 		}
 	);
 
@@ -109,35 +158,43 @@
 		vm.refetch();
 		vms.refetch();
 		pools.refetch();
-		datasets.refetch();
-		downloads.refetch();
+		filesystems.refetch();
+		volumes.refetch();
 	}
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let tableData = $derived(generateTableData(vm.current, datasets.current, downloads.current));
+	let datasets = $derived([...filesystems.current, ...volumes.current]);
+	let tableData = $derived(generateTableData(vm.current, datasets, downloads.current));
 
-	let options = {
-		attach: {
-			open: false
-		},
-		detach: {
-			open: false,
-			id: null as number | null,
-			name: ''
-		},
-		edit: {
-			open: false,
-			id: null as number | null
-		}
-	};
+	function createPageOptions() {
+		return {
+			attach: {
+				open: false
+			},
+			detach: {
+				open: false,
+				id: null as number | null,
+				name: ''
+			},
+			edit: {
+				open: false,
+				id: null as number | null
+			}
+		};
+	}
 
-	let properties = $state(options);
+	let properties = $state(createPageOptions());
 	let reload = $state(false);
 
 	watch(
 		() => reload,
-		() => {
+		(value) => {
+			if (!value) return;
 			refreshData();
 			reload = false;
 		}
@@ -215,11 +272,12 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.current.name}</b>. The underlying disk dataset/file will NOT be deleted.`}
+	customTitle={`This will detach the storage ${escapeHTML(properties.detach.name)} from the VM <b>${escapeHTML(vm.current.name)}</b>. The underlying disk dataset/file will NOT be deleted.`}
 	actions={{
 		onConfirm: async () => {
-			let response = await storageDetach(Number(data.rid), properties.detach.id as number);
-			reload = true;
+			const response = await storageDetach(data.rid, properties.detach.id as number, {
+				hostname: data.node
+			});
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach storage', {
@@ -230,15 +288,13 @@
 				toast.success('Storage detached', {
 					position: 'bottom-center'
 				});
-
 				reload = true;
 			}
 
 			properties.detach.open = false;
 		},
 		onCancel: () => {
-			properties = options;
-			properties.detach.open = false;
+			properties = createPageOptions();
 		}
 	}}
 />
@@ -246,8 +302,9 @@
 {#if properties.attach.open}
 	<Storage
 		bind:open={properties.attach.open}
+		node={data.node}
 		storageId={null}
-		datasets={datasets.current}
+		{datasets}
 		downloads={downloads.current}
 		vm={vm.current}
 		vms={vms.current}
@@ -260,8 +317,9 @@
 {#if properties.edit.open}
 	<Storage
 		bind:open={properties.edit.open}
+		node={data.node}
 		storageId={properties.edit.id}
-		datasets={datasets.current}
+		{datasets}
 		downloads={downloads.current}
 		vm={vm.current}
 		vms={vms.current}

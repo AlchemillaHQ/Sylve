@@ -6,105 +6,116 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
-
 	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
-	import { resource } from 'runed';
-	import { getCPUInfo } from '$lib/api/info/cpu';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM | null;
 		vms: VM[];
 		pinnedCPUs: CPUPin[];
 		reload: boolean;
 	}
 
-	let cpuInfo = resource(
-		() => 'cpu-info',
-		async () => {
-			const result = await getCPUInfo('current');
-			return result;
-		}
-	);
-
 	let {
 		open = $bindable(),
+		node,
 		vm,
 		vms,
 		pinnedCPUs = $bindable(),
 		reload = $bindable(false)
 	}: Props = $props();
 
-	// svelte-ignore state_referenced_locally
-	let options = {
-		cpu: {
-			sockets: vm?.cpuSockets || 1,
-			cores: vm?.cpuCores || 1,
-			threads: vm?.cpuThreads || 1,
-			pinning: vm?.cpuPinning || []
-		}
-	};
+	function initialProperties() {
+		return {
+			cpu: {
+				sockets: vm?.cpuSockets ?? 1,
+				cores: vm?.cpuCores ?? 1,
+				threads: vm?.cpuThreads ?? 1
+			}
+		};
+	}
 
-	let properties = $state(options);
-	let otherVmPinnedIndices = $derived.by(() => {
-		return vms.filter((v) => v.id !== vm?.id).flatMap((v) => v.cpuPinning || []);
-	});
+	function initialPinnedCPUs(): CPUPin[] {
+		return (
+			vm?.cpuPinning?.map((pin) => ({
+				socket: pin.hostSocket,
+				cores: [...pin.hostCpu]
+			})) ?? []
+		);
+	}
 
+	let properties = $state(initialProperties());
 	let isPinningOpen = $state(false);
-
+	let saving = $state(false);
 	let coreSelectionLimit = $derived.by(
-		() => properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads
+		() =>
+			Number(properties.cpu.sockets) * Number(properties.cpu.cores) * Number(properties.cpu.threads)
 	);
 
-	let allPinnedIndices = $derived.by(() => {
-		return [...otherVmPinnedIndices, ...properties.cpu.pinning];
-	});
-
-	let vCPUs = $derived(properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads);
-
-	$effect(() => {
-		if (properties.cpu.pinning.length > vCPUs) {
-			properties.cpu.pinning = properties.cpu.pinning.slice(0, vCPUs);
-		}
-
-		let totalPinned = allPinnedIndices.length;
-
-		if (totalPinned === cpuInfo.current?.logicalCores) {
-			properties.cpu.pinning = properties.cpu.pinning.slice(0, -1);
-			toast.info('At least one CPU must be left unpinned', {
-				position: 'bottom-center'
-			});
-		}
-	});
+	function reset() {
+		properties = initialProperties();
+		pinnedCPUs = initialPinnedCPUs();
+	}
 
 	async function modify() {
-		if (vm) {
-			const response = await modifyCPU(
-				vm.rid,
-				parseInt(properties.cpu.sockets.toString(), 10),
-				parseInt(properties.cpu.cores.toString(), 10),
-				parseInt(properties.cpu.threads.toString(), 10),
-				pinnedCPUs
-			);
+		if (!vm || saving) {
+			if (!vm) toast.error('VM not found', { position: 'bottom-center' });
+			return;
+		}
 
-			reload = true;
-
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to modify CPU', {
-					position: 'bottom-center'
-				});
-			} else {
-				toast.success('vCPUs modified', {
-					position: 'bottom-center'
-				});
-				open = false;
-			}
-		} else {
-			toast.error('VM not found', {
+		const sockets = Number(properties.cpu.sockets);
+		const cores = Number(properties.cpu.cores);
+		const threads = Number(properties.cpu.threads);
+		if (
+			!Number.isSafeInteger(sockets) ||
+			!Number.isSafeInteger(cores) ||
+			!Number.isSafeInteger(threads) ||
+			sockets <= 0 ||
+			cores <= 0 ||
+			threads <= 0
+		) {
+			toast.error('Sockets, cores, and threads must be positive whole numbers', {
 				position: 'bottom-center'
 			});
+			return;
+		}
+
+		const vcpuCount = sockets * cores * threads;
+		if (!Number.isSafeInteger(vcpuCount)) {
+			toast.error('CPU topology is too large', { position: 'bottom-center' });
+			return;
+		}
+		const pinnedCount = pinnedCPUs.reduce((total, pin) => total + pin.cores.length, 0);
+		if (pinnedCount > vcpuCount) {
+			toast.error(`CPU pinning cannot exceed ${vcpuCount} vCPUs`, {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		saving = true;
+		try {
+			const response = await modifyCPU(vm.rid, sockets, cores, threads, pinnedCPUs, {
+				hostname: node
+			});
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify CPU', { position: 'bottom-center' });
+				return;
+			}
+
+			reload = true;
+			toast.success(
+				response.message === 'no_changes_detected' ? 'No CPU changes needed' : 'vCPUs modified',
+				{
+					position: 'bottom-center'
+				}
+			);
+			open = false;
+		} finally {
+			saving = false;
 		}
 	}
 </script>
@@ -113,11 +124,9 @@
 	<Dialog.Content
 		class="w-1/2 overflow-hidden p-5 lg:max-w-2xl"
 		showResetButton={true}
-		onReset={() => {
-			properties = options;
-		}}
+		onReset={reset}
 		onClose={() => {
-			properties = options;
+			reset();
 			open = false;
 		}}
 	>
@@ -134,6 +143,7 @@
 				type="number"
 				classes="space-y-1"
 				placeholder="1"
+				disabled={saving}
 			/>
 
 			<CustomValueInput
@@ -142,6 +152,7 @@
 				type="number"
 				classes="space-y-1"
 				placeholder="1"
+				disabled={saving}
 			/>
 
 			<CustomValueInput
@@ -150,20 +161,33 @@
 				type="number"
 				classes="space-y-1"
 				placeholder="1"
+				disabled={saving}
 			/>
 		</div>
 
 		<div class="grid grid-cols-1 md:grid-cols-2">
 			<div>
-				{#if cpuInfo}
-					<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {vm} {vms} {coreSelectionLimit} />
-				{/if}
+				<CPUSelector
+					bind:open={isPinningOpen}
+					bind:pinnedCPUs
+					{node}
+					{vm}
+					{vms}
+					{coreSelectionLimit}
+				/>
 			</div>
 		</div>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">Save</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

@@ -55,6 +55,7 @@ var (
 	ErrTargetAlreadyHasGuest = fmt.Errorf("target_already_has_guest")
 	ErrSSHUnreachable        = fmt.Errorf("ssh_unreachable")
 	ErrCancelNotAllowed      = fmt.Errorf("cancel_not_allowed_in_current_phase")
+	ErrNotMigrationTask      = fmt.Errorf("not_a_migration_task")
 )
 
 type migrationPayload struct {
@@ -1289,7 +1290,7 @@ func (s *Service) CancelMigration(ctx context.Context, taskID uint) error {
 	}
 
 	if task.Action != "migrate" {
-		return fmt.Errorf("not_a_migration_task")
+		return ErrNotMigrationTask
 	}
 	if task.Status == taskModels.LifecycleTaskStatusSuccess || task.Status == taskModels.LifecycleTaskStatusFailed {
 		return ErrCancelNotAllowed

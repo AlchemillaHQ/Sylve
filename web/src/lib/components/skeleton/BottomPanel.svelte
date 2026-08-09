@@ -328,6 +328,12 @@
 
 	const methodPathToActionMap: Record<string, Record<string, string>> = {
 		DELETE: {
+			'/api/vm/templates/:id': 'VM Template - Delete',
+			'/api/vm/:id/snapshots/:id': 'VM Snapshot - Delete',
+			'/api/vm/:id/storage/:id': 'VM Storage - Detach',
+			'/api/vm/:id/networks/:id': 'VM Network - Detach',
+			'/api/vm/:id/registration': 'VM - Purge Registration',
+			'/api/vm/:id': 'VM - Delete',
 			'/api/info/notes': 'Notes - Bulk Delete',
 			'/api/system/file-explorer/upload': 'File Explorer - Upload Revert',
 			'/api/system/ppt-devices/:id': 'PCI Passthrough - Disable',
@@ -353,6 +359,18 @@
 			'/api/network/dhcp/lease/:id': 'DHCP Lease - Delete Static'
 		},
 		POST: {
+			'/api/vm': 'VM - Create',
+			'/api/vm/:id/storage': 'VM Storage - Attach',
+			'/api/vm/:id/networks': 'VM Network - Attach',
+			'/api/vm/:id/snapshots': 'VM Snapshot - Create',
+			'/api/vm/:id/snapshots/:id/rollback': 'VM Snapshot - Rollback',
+			'/api/vm/:id/templates': 'VM Template - Capture',
+			'/api/vm/templates/:id/vms': 'VM Template - Instantiate',
+			'/api/vm/:id/actions/start': 'VM - Start',
+			'/api/vm/:id/actions/stop': 'VM - Stop',
+			'/api/vm/:id/actions/shutdown': 'VM - Shutdown',
+			'/api/vm/:id/actions/reboot': 'VM - Reboot',
+			'/api/vm/:id/migrations': 'VM - Migrate',
 			'/api/system/ppt-devices': 'PCI Passthrough - Enable',
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
 			'/api/zfs/datasets/volume/:id/flash': 'ZFS Volume - Flash',
@@ -398,6 +416,10 @@
 			'/api/network/dhcp/lease/:id': 'DHCP Lease - Update'
 		},
 		PATCH: {
+			'/api/vm/:id/storage/:id': 'VM Storage - Update',
+			'/api/vm/:id/networks/:id': 'VM Network - Update',
+			'/api/vm/:id/description': 'VM - Update Description',
+			'/api/vm/:id/name': 'VM - Update Name',
 			'/api/certificates/:id': 'TLS Certificate - Update',
 			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Update State',
 			'/api/network/wireguard/server': 'WireGuard Server - Update State',
@@ -430,6 +452,259 @@
 		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
 	});
 
+	function vmIdentityLabel(rid: number, requestName?: unknown): string {
+		const bodyName = typeof requestName === 'string' ? requestName.trim() : '';
+		const name = bodyName || vmNameById.get(rid) || '';
+		return name ? `${name} (RID ${rid})` : `RID ${rid}`;
+	}
+
+	type VMSnapshotAuditTarget = {
+		rid: number;
+		snapshotId?: number;
+		action: 'Create' | 'View' | 'Rollback' | 'Delete';
+	};
+
+	function vmSnapshotAuditTarget(path: string, method: string): VMSnapshotAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let match = path.match(/^\/api\/vm\/(\d+)\/snapshots$/);
+		if (match) {
+			const rid = Number(match[1]);
+			if (upperMethod === 'POST') return { rid, action: 'Create' };
+			if (upperMethod === 'GET') return { rid, action: 'View' };
+		}
+
+		match = path.match(/^\/api\/vm\/(\d+)\/snapshots\/(\d+)\/rollback$/);
+		if (match && upperMethod === 'POST') {
+			return { rid: Number(match[1]), snapshotId: Number(match[2]), action: 'Rollback' };
+		}
+
+		match = path.match(/^\/api\/vm\/(\d+)\/snapshots\/(\d+)$/);
+		if (match && upperMethod === 'DELETE') {
+			return { rid: Number(match[1]), snapshotId: Number(match[2]), action: 'Delete' };
+		}
+
+		// Retain identity extraction for audit records written before the route
+		// hierarchy was corrected.
+		match = path.match(/^\/api\/vm\/snapshots\/rollback\/(\d+)\/(\d+)$/);
+		if (match && upperMethod === 'POST') {
+			return { rid: Number(match[1]), snapshotId: Number(match[2]), action: 'Rollback' };
+		}
+
+		match = path.match(/^\/api\/vm\/snapshots\/(\d+)\/(\d+)$/);
+		if (match && upperMethod === 'DELETE') {
+			return { rid: Number(match[1]), snapshotId: Number(match[2]), action: 'Delete' };
+		}
+
+		match = path.match(/^\/api\/vm\/snapshots\/(\d+)$/);
+		if (match) {
+			const rid = Number(match[1]);
+			if (upperMethod === 'POST') return { rid, action: 'Create' };
+			if (upperMethod === 'GET') return { rid, action: 'View' };
+		}
+
+		return null;
+	}
+
+	type VMStorageAuditTarget = {
+		rid?: number;
+		storageId?: number;
+		action: 'Attach' | 'Update' | 'Detach';
+	};
+
+	function vmStorageAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | null | undefined
+	): VMStorageAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let match = path.match(/^\/api\/vm\/(\d+)\/storage$/);
+		if (match && upperMethod === 'POST') {
+			return { rid: Number(match[1]), action: 'Attach' };
+		}
+
+		match = path.match(/^\/api\/vm\/(\d+)\/storage\/(\d+)$/);
+		if (match && (upperMethod === 'PATCH' || upperMethod === 'DELETE')) {
+			return {
+				rid: Number(match[1]),
+				storageId: Number(match[2]),
+				action: upperMethod === 'PATCH' ? 'Update' : 'Detach'
+			};
+		}
+
+		// Preserve useful identity for records written before storage routes were nested.
+		if (path === '/api/vm/storage/attach' && upperMethod === 'POST') {
+			const rid = Number(body?.rid);
+			return {
+				...(Number.isSafeInteger(rid) && rid > 0 ? { rid } : {}),
+				action: 'Attach'
+			};
+		}
+		if (path === '/api/vm/storage/detach' && upperMethod === 'POST') {
+			const rid = Number(body?.rid);
+			const storageId = Number(body?.storageId);
+			return {
+				...(Number.isSafeInteger(rid) && rid > 0 ? { rid } : {}),
+				...(Number.isSafeInteger(storageId) && storageId > 0 ? { storageId } : {}),
+				action: 'Detach'
+			};
+		}
+		if (path === '/api/vm/storage/update' && upperMethod === 'PUT') {
+			const storageId = Number(body?.id);
+			return {
+				...(Number.isSafeInteger(storageId) && storageId > 0 ? { storageId } : {}),
+				action: 'Update'
+			};
+		}
+
+		return null;
+	}
+
+	type VMNetworkAuditTarget = {
+		rid?: number;
+		networkId?: number;
+		action: 'Attach' | 'Update' | 'Detach';
+	};
+
+	function vmNetworkAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | null | undefined
+	): VMNetworkAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let match = path.match(/^\/api\/vm\/(\d+)\/networks$/);
+		if (match && upperMethod === 'POST') {
+			return { rid: Number(match[1]), action: 'Attach' };
+		}
+
+		match = path.match(/^\/api\/vm\/(\d+)\/networks\/(\d+)$/);
+		if (match && (upperMethod === 'PATCH' || upperMethod === 'DELETE')) {
+			return {
+				rid: Number(match[1]),
+				networkId: Number(match[2]),
+				action: upperMethod === 'PATCH' ? 'Update' : 'Detach'
+			};
+		}
+
+		// Preserve identity for audit records written before network routes were nested.
+		if (path === '/api/vm/network/attach' && upperMethod === 'POST') {
+			const rid = Number(body?.rid);
+			return {
+				...(Number.isSafeInteger(rid) && rid > 0 ? { rid } : {}),
+				action: 'Attach'
+			};
+		}
+		if (path === '/api/vm/network/detach' && upperMethod === 'POST') {
+			const rid = Number(body?.rid);
+			const networkId = Number(body?.networkId);
+			return {
+				...(Number.isSafeInteger(rid) && rid > 0 ? { rid } : {}),
+				...(Number.isSafeInteger(networkId) && networkId > 0 ? { networkId } : {}),
+				action: 'Detach'
+			};
+		}
+		if (path === '/api/vm/network/update' && upperMethod === 'PUT') {
+			const rid = Number(body?.rid);
+			const networkId = Number(body?.networkId);
+			return {
+				...(Number.isSafeInteger(rid) && rid > 0 ? { rid } : {}),
+				...(Number.isSafeInteger(networkId) && networkId > 0 ? { networkId } : {}),
+				action: 'Update'
+			};
+		}
+
+		return null;
+	}
+
+	type VMHardwareAuditTarget = {
+		rid: number;
+		component: 'CPU' | 'RAM' | 'VNC' | 'Passthrough';
+	};
+
+	type VMOptionAuditTarget = {
+		rid: number;
+		option: string;
+	};
+
+	const vmOptionLabels = new Map([
+		['wol', 'Wake-on-LAN'],
+		['boot-order', 'Boot Order'],
+		['clock', 'Clock'],
+		['serial-console', 'Serial Console'],
+		['shutdown-wait-time', 'Shutdown Wait Time'],
+		['cloud-init', 'Cloud-Init'],
+		['boot-rom', 'Boot ROM'],
+		['extra-bhyve-options', 'Extra Bhyve'],
+		['ignore-umsrs', 'Ignore UMSRs'],
+		['qemu-guest-agent', 'QEMU Guest Agent'],
+		['tpm', 'TPM']
+	]);
+
+	function vmOptionAuditTarget(path: string, method: string): VMOptionAuditTarget | null {
+		if (method.toUpperCase() !== 'PUT') return null;
+
+		let match = path.match(/^\/api\/vm\/(\d+)\/options\/([^/]+)$/);
+		let ridSegment = match?.[1];
+		let optionSegment = match?.[2];
+		if (!match) {
+			// Preserve VM identity for records written before option routes were nested under the RID.
+			match = path.match(/^\/api\/vm\/options\/([^/]+)\/(\d+)$/);
+			optionSegment = match?.[1];
+			ridSegment = match?.[2];
+		}
+
+		if (!ridSegment || !optionSegment) return null;
+		const rid = Number(ridSegment);
+		const option = vmOptionLabels.get(optionSegment);
+		return Number.isSafeInteger(rid) && rid > 0 && option ? { rid, option } : null;
+	}
+
+	function vmConsoleAuditRID(path: string, query: string): number | null {
+		const currentMatch = path.match(/^\/api\/vm\/(\d+)\/console$/);
+		if (currentMatch) {
+			const rid = Number(currentMatch[1]);
+			return Number.isSafeInteger(rid) && rid > 0 ? rid : null;
+		}
+
+		if (path !== '/api/vm/console') return null;
+		const rid = Number(new URLSearchParams(query).get('rid'));
+		return Number.isSafeInteger(rid) && rid > 0 ? rid : null;
+	}
+
+	function vmHardwareComponentLabel(component: string): VMHardwareAuditTarget['component'] | null {
+		switch (component) {
+			case 'cpu':
+				return 'CPU';
+			case 'ram':
+				return 'RAM';
+			case 'vnc':
+				return 'VNC';
+			case 'pci-devices':
+			case 'ppt':
+				return 'Passthrough';
+			default:
+				return null;
+		}
+	}
+
+	function vmHardwareAuditTarget(path: string, method: string): VMHardwareAuditTarget | null {
+		if (method.toUpperCase() !== 'PUT') return null;
+
+		let match = path.match(/^\/api\/vm\/(\d+)\/hardware\/(cpu|ram|vnc|pci-devices)$/);
+		if (match) {
+			const component = vmHardwareComponentLabel(match[2]);
+			return component ? { rid: Number(match[1]), component } : null;
+		}
+
+		// Preserve VM identity for audit records written before hardware routes were nested.
+		match = path.match(/^\/api\/vm\/hardware\/(cpu|ram|vnc|ppt)\/(\d+)$/);
+		if (match) {
+			const component = vmHardwareComponentLabel(match[1]);
+			return component ? { rid: Number(match[2]), component } : null;
+		}
+
+		return null;
+	}
+
 	let jailNameByCtId = $derived.by(() => {
 		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
 	});
@@ -445,6 +720,11 @@
 			(simpleVMTemplates.current || []).map((template) => [template.id, template.name])
 		);
 	});
+
+	function vmTemplateIdentityLabel(templateId: number): string {
+		const name = vmTemplateNameById.get(templateId);
+		return name ? `${name} (Template ID ${templateId})` : `Template ID ${templateId}`;
+	}
 
 	function normalizeActionPath(path: string): string {
 		const segments = path.split('/');
@@ -583,12 +863,157 @@
 				resolvedAction = 'Login';
 			}
 
-			if (path === '/api/vm/console') {
-				const params = new URLSearchParams(recordCopy.action?.query || '');
-				const rid = Number(params.get('rid'));
-				if (Number.isFinite(rid) && rid > 0) {
-					const name = vmNameById.get(rid);
-					if (name) resolvedAction += ` - ${name}`;
+			const vmSnapshotTarget = vmSnapshotAuditTarget(path, method);
+			const vmStorageTarget = vmStorageAuditTarget(path, method, recordCopy.action.body);
+			const vmNetworkTarget = vmNetworkAuditTarget(path, method, recordCopy.action.body);
+			const vmOptionTarget = vmOptionAuditTarget(path, method);
+			const vmHardwareTarget = vmHardwareAuditTarget(path, method);
+			const vmConsoleRID = vmConsoleAuditRID(path, recordCopy.action?.query || '');
+			const vmActionMatch = path.match(/^\/api\/vm\/(\d+)\/actions\/(start|stop|shutdown|reboot)$/);
+			const vmMigrationMatch = path.match(/^\/api\/vm\/(\d+)\/migrations$/);
+			const vmTemplateCaptureMatch = path.match(/^\/api\/vm\/(\d+)\/templates$/);
+			const vmTemplateInstantiationMatch = path.match(/^\/api\/vm\/templates\/(\d+)\/vms$/);
+			const vmCoreMatch = path.match(/^\/api\/vm\/(\d+)(?:\/(description|name|registration))?$/);
+			if (vmOptionTarget) {
+				resolvedAction = `VM Options - ${vmOptionTarget.option} - ${vmIdentityLabel(vmOptionTarget.rid)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					...(recordCopy.action.body?.rid === undefined ? { rid: vmOptionTarget.rid } : {})
+				};
+			} else if (vmHardwareTarget) {
+				resolvedAction = `VM Hardware - ${vmHardwareTarget.component} - ${vmIdentityLabel(vmHardwareTarget.rid)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					...(recordCopy.action.body?.rid === undefined ? { rid: vmHardwareTarget.rid } : {})
+				};
+			} else if (vmNetworkTarget) {
+				const identity =
+					vmNetworkTarget.rid !== undefined
+						? vmIdentityLabel(vmNetworkTarget.rid)
+						: vmNetworkTarget.networkId !== undefined
+							? `Network ID ${vmNetworkTarget.networkId}`
+							: 'Unknown VM';
+				resolvedAction = `VM Network - ${vmNetworkTarget.action} - ${identity}`;
+				if (vmNetworkTarget.networkId !== undefined && vmNetworkTarget.rid !== undefined) {
+					resolvedAction += ` - Network ID ${vmNetworkTarget.networkId}`;
+				}
+				if (vmNetworkTarget.action === 'Attach') {
+					const switchName = recordCopy.action.body?.switchName;
+					if (typeof switchName === 'string' && switchName.trim()) {
+						resolvedAction += ` - ${switchName.trim()}`;
+					}
+				}
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					...(vmNetworkTarget.rid !== undefined && recordCopy.action.body?.rid === undefined
+						? { rid: vmNetworkTarget.rid }
+						: {}),
+					...(vmNetworkTarget.networkId !== undefined
+						? { networkId: vmNetworkTarget.networkId }
+						: {})
+				};
+			} else if (vmStorageTarget) {
+				const identity =
+					vmStorageTarget.rid !== undefined
+						? vmIdentityLabel(vmStorageTarget.rid)
+						: vmStorageTarget.storageId !== undefined
+							? `Storage ID ${vmStorageTarget.storageId}`
+							: 'Unknown VM';
+				resolvedAction = `VM Storage - ${vmStorageTarget.action} - ${identity}`;
+				if (vmStorageTarget.storageId !== undefined && vmStorageTarget.rid !== undefined) {
+					resolvedAction += ` - Storage ID ${vmStorageTarget.storageId}`;
+				}
+				if (vmStorageTarget.action === 'Attach') {
+					const storageName = recordCopy.action.body?.name;
+					if (typeof storageName === 'string' && storageName.trim()) {
+						resolvedAction += ` - ${storageName.trim()}`;
+					}
+				}
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					...(vmStorageTarget.rid !== undefined && recordCopy.action.body?.rid === undefined
+						? { rid: vmStorageTarget.rid }
+						: {}),
+					...(vmStorageTarget.storageId !== undefined
+						? { storageId: vmStorageTarget.storageId }
+						: {})
+				};
+			} else if (vmSnapshotTarget) {
+				const identity = vmIdentityLabel(vmSnapshotTarget.rid);
+				const snapshotIdentity =
+					vmSnapshotTarget.snapshotId !== undefined
+						? ' - Snapshot ID ' + vmSnapshotTarget.snapshotId
+						: '';
+				resolvedAction =
+					'VM Snapshot - ' + vmSnapshotTarget.action + ' - ' + identity + snapshotIdentity;
+
+				if (vmSnapshotTarget.action === 'Create') {
+					const snapshotName = recordCopy.action.body?.name;
+					if (typeof snapshotName === 'string' && snapshotName.trim()) {
+						resolvedAction += ' - ' + snapshotName.trim();
+					}
+				}
+				if (vmSnapshotTarget.snapshotId !== undefined) {
+					recordCopy.action.body = {
+						...(recordCopy.action.body || {}),
+						snapshotId: vmSnapshotTarget.snapshotId
+					};
+				}
+			} else if (method.toUpperCase() === 'GET' && vmConsoleRID !== null) {
+				resolvedAction = `VM Console - Session - ${vmIdentityLabel(vmConsoleRID)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					rid: vmConsoleRID
+				};
+			} else if (method.toUpperCase() === 'POST' && path === '/api/vm') {
+				const bodyRID = Number(recordCopy.action.body?.rid);
+				const bodyName = recordCopy.action.body?.name;
+				if (Number.isSafeInteger(bodyRID) && bodyRID > 0) {
+					resolvedAction = `VM - Create - ${vmIdentityLabel(bodyRID, bodyName)}`;
+				} else if (typeof bodyName === 'string' && bodyName.trim()) {
+					resolvedAction = `VM - Create - ${bodyName.trim()}`;
+				}
+			} else if (method.toUpperCase() === 'POST' && vmActionMatch) {
+				const actionRID = Number(vmActionMatch[1]);
+				const action = toTitleCase(vmActionMatch[2] || 'Action');
+				resolvedAction = `VM - ${action} - ${vmIdentityLabel(actionRID)}`;
+			} else if (method.toUpperCase() === 'POST' && vmMigrationMatch) {
+				const migrationRID = Number(vmMigrationMatch[1]);
+				resolvedAction = `VM - Migrate - ${vmIdentityLabel(migrationRID)}`;
+			} else if (method.toUpperCase() === 'POST' && vmTemplateCaptureMatch) {
+				const sourceRID = Number(vmTemplateCaptureMatch[1]);
+				resolvedAction = `VM Template - Capture - ${vmIdentityLabel(sourceRID)}`;
+			} else if (method.toUpperCase() === 'POST' && vmTemplateInstantiationMatch) {
+				const templateId = Number(vmTemplateInstantiationMatch[1]);
+				resolvedAction = `VM Template - Instantiate - ${vmTemplateIdentityLabel(templateId)}`;
+			} else if (vmCoreMatch) {
+				const coreRID = Number(vmCoreMatch[1]);
+				const coreResource = vmCoreMatch[2] || '';
+				const identity = vmIdentityLabel(coreRID);
+				if (method.toUpperCase() === 'DELETE') {
+					const params = new URLSearchParams(recordCopy.action?.query || '');
+					const forceDelete = params.get('force')?.toLowerCase() === 'true';
+					const legacyPurge = params.get('purgeOnly')?.toLowerCase() === 'true';
+					resolvedAction =
+						coreResource === 'registration' || legacyPurge
+							? `VM - Purge Registration - ${identity}`
+							: forceDelete
+								? `VM - Force Delete - ${identity}`
+								: `VM - Delete - ${identity}`;
+				} else if (method.toUpperCase() === 'PATCH' && coreResource === 'description') {
+					resolvedAction = `VM - Update Description - ${identity}`;
+				} else if (method.toUpperCase() === 'PATCH' && coreResource === 'name') {
+					resolvedAction = `VM - Update Name - ${identity}`;
+				} else if (method.toUpperCase() === 'GET' && coreResource === '') {
+					resolvedAction += ` - ${identity}`;
+				}
+			} else if (
+				method.toUpperCase() === 'PUT' &&
+				(path === '/api/vm/description' || path === '/api/vm/name')
+			) {
+				const bodyRID = Number(recordCopy.action.body?.rid);
+				if (Number.isSafeInteger(bodyRID) && bodyRID > 0) {
+					resolvedAction += ` - ${vmIdentityLabel(bodyRID)}`;
 				}
 			} else if (path === '/api/jail/console') {
 				const params = new URLSearchParams(recordCopy.action?.query || '');
@@ -601,29 +1026,25 @@
 				const last = path.split('/').pop() || '';
 				const rid = Number(last);
 				if (Number.isFinite(rid) && rid > 0) {
-					const name = vmNameById.get(rid);
-					if (name) resolvedAction += ` - ${name}`;
+					resolvedAction += ` - ${vmIdentityLabel(rid)}`;
 				}
 			} else if (path.startsWith('/api/vm/templates/convert/')) {
 				const last = path.split('/').pop() || '';
 				const rid = Number(last);
 				if (Number.isFinite(rid) && rid > 0) {
-					const name = vmNameById.get(rid);
-					if (name) resolvedAction += ` - ${name}`;
+					resolvedAction += ` - ${vmIdentityLabel(rid)}`;
 				}
 			} else if (path.startsWith('/api/vm/templates/create/')) {
 				const last = path.split('/').pop() || '';
 				const templateId = Number(last);
 				if (Number.isFinite(templateId) && templateId > 0) {
-					const name = vmTemplateNameById.get(templateId);
-					if (name) resolvedAction += ` - ${name}`;
+					resolvedAction += ` - ${vmTemplateIdentityLabel(templateId)}`;
 				}
 			} else if (path.startsWith('/api/vm/templates/')) {
 				const last = path.split('/').pop() || '';
 				const templateId = Number(last);
 				if (Number.isFinite(templateId) && templateId > 0) {
-					const name = vmTemplateNameById.get(templateId);
-					if (name) resolvedAction += ` - ${name}`;
+					resolvedAction += ` - ${vmTemplateIdentityLabel(templateId)}`;
 				}
 			} else if (
 				path.startsWith('/api/jail/') &&

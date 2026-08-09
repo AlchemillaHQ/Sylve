@@ -9,6 +9,8 @@
 package libvirt
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,666 +26,744 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *Service) NetworkDetach(rid uint, networkId uint) error {
-	if err := s.requireVMMutationOwnership(rid); err != nil {
-		return err
-	}
-	if err := s.requireConnection(); err != nil {
-		return err
-	}
+type resolvedVMNetworkSwitch struct {
+	id       uint
+	typeName string
+	name     string
+	bridge   string
+	standard *networkModels.StandardSwitch
+	manual   *networkModels.ManualSwitch
+}
 
-	inactive, err := s.IsDomainInactive(rid)
-	if err != nil {
-		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
-	}
+type networkRuntimeHooks struct {
+	syncVMNetworks func(ctx context.Context, db *gorm.DB, rid uint) error
+}
 
-	if !inactive {
-		return fmt.Errorf("vm_is_active: cannot_detach_network")
+func normalizeVMNetworkContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
 	}
+	return ctx
+}
 
-	xmlDesc, err := s.GetVMXML(rid)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_vm_xml: %w", err)
+func normalizeVMNetworkEmulation(value string) (string, error) {
+	emulation := strings.ToLower(strings.TrimSpace(value))
+	if emulation != "virtio" && emulation != "e1000" {
+		return "", fmt.Errorf("invalid_emulation_type: %s", value)
 	}
+	return emulation, nil
+}
 
+func normalizeVMNetworkMAC(value string) (string, error) {
+	mac := strings.ToLower(strings.TrimSpace(value))
+	if !utils.IsValidMACAddress(mac) {
+		return "", fmt.Errorf("invalid_mac_address: %s", value)
+	}
+	return strings.ReplaceAll(mac, "-", ":"), nil
+}
+
+func findVMNetworkOwnerWithDB(db *gorm.DB, rid uint) (vmModels.VM, error) {
+	var vm vmModels.VM
+	if err := db.Session(&gorm.Session{SkipHooks: true}).
+		Where("rid = ?", rid).
+		First(&vm).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return vm, fmt.Errorf("vm_not_found: %w", err)
+		}
+		return vm, fmt.Errorf("failed_to_find_vm: %w", err)
+	}
+	return vm, nil
+}
+
+func findVMNetworkRecordWithDB(db *gorm.DB, vmID, networkID uint) (vmModels.Network, error) {
 	var network vmModels.Network
-	if err := s.DB.
+	if err := db.Session(&gorm.Session{SkipHooks: true}).
 		Preload("AddressObj").
 		Preload("AddressObj.Entries").
-		First(&network, "id = ?", networkId).Error; err != nil {
-		return fmt.Errorf("failed_to_find_network: %w", err)
-	}
-
-	if err := network.AfterFind(s.DB); err != nil {
-		return err
-	}
-
-	var vm vmModels.VM
-	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
-		return fmt.Errorf("failed_to_find_vm: %w", err)
-	}
-	if network.VMID != vm.ID {
-		return fmt.Errorf("network_not_found")
-	}
-
-	var mac string
-
-	if network.AddressObj == nil || len(network.AddressObj.Entries) == 0 {
-		logger.L.Debug().Msgf("Network detach: network_mac_address_missing for network ID %d, proceeding with detach", networkId)
-	} else {
-		mac = strings.TrimSpace(strings.ToLower(network.AddressObj.Entries[0].Value))
-	}
-
-	if len(mac) != 0 {
-		doc := etree.NewDocument()
-		if err := doc.ReadFromString(xmlDesc); err != nil {
-			return fmt.Errorf("failed_to_parse_vm_xml: %w", err)
+		First(&network, "id = ? AND vm_id = ?", networkID, vmID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return network, fmt.Errorf("network_not_found: %w", err)
 		}
+		return network, fmt.Errorf("failed_to_find_network_record: %w", err)
+	}
+	return network, nil
+}
 
-		found := false
-		for _, iface := range doc.FindElements("//interface[@type='bridge']") {
-			macEl := iface.FindElement("mac")
-			if macEl == nil {
-				continue
+func resolveVMNetworkSwitchByName(db *gorm.DB, name string) (resolvedVMNetworkSwitch, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return resolvedVMNetworkSwitch{}, fmt.Errorf("invalid_switch_name")
+	}
+
+	var standard networkModels.StandardSwitch
+	err := db.First(&standard, "name = ?", name).Error
+	if err == nil {
+		return resolvedVMNetworkSwitch{
+			id:       standard.ID,
+			typeName: "standard",
+			name:     standard.Name,
+			bridge:   standard.BridgeName,
+			standard: &standard,
+		}, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_standard_switch: %w", err)
+	}
+
+	var manual networkModels.ManualSwitch
+	err = db.First(&manual, "name = ?", name).Error
+	if err == nil {
+		return resolvedVMNetworkSwitch{
+			id:       manual.ID,
+			typeName: "manual",
+			name:     manual.Name,
+			bridge:   manual.Bridge,
+			manual:   &manual,
+		}, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_manual_switch: %w", err)
+	}
+
+	return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: %s", name)
+}
+
+func resolveVMNetworkSwitchByID(db *gorm.DB, switchType string, switchID uint) (resolvedVMNetworkSwitch, error) {
+	switch strings.ToLower(strings.TrimSpace(switchType)) {
+	case "standard":
+		var standard networkModels.StandardSwitch
+		if err := db.First(&standard, switchID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: standard:%d", switchID)
 			}
-
-			addrAttr := macEl.SelectAttr("address")
-			if addrAttr == nil {
-				continue
+			return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_standard_switch: %w", err)
+		}
+		return resolvedVMNetworkSwitch{
+			id:       standard.ID,
+			typeName: "standard",
+			name:     standard.Name,
+			bridge:   standard.BridgeName,
+			standard: &standard,
+		}, nil
+	case "manual":
+		var manual networkModels.ManualSwitch
+		if err := db.First(&manual, switchID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: manual:%d", switchID)
 			}
-
-			if strings.EqualFold(strings.TrimSpace(addrAttr.Value), mac) {
-				iface.Parent().RemoveChild(iface)
-				found = true
-				logger.L.Debug().Msgf("Removed interface with MAC: %s", addrAttr.Value)
-				break
-			}
+			return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_manual_switch: %w", err)
 		}
+		return resolvedVMNetworkSwitch{
+			id:       manual.ID,
+			typeName: "manual",
+			name:     manual.Name,
+			bridge:   manual.Bridge,
+			manual:   &manual,
+		}, nil
+	default:
+		return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: %s:%d", switchType, switchID)
+	}
+}
 
-		if !found {
-			logger.L.Debug().Msgf("Network detach: network_interface_not_found_in_xml: %s", mac)
-			if err := s.DB.Delete(&network).Error; err != nil {
-				return fmt.Errorf("failed_to_delete_network_record: %w", err)
-			}
-			return nil
+func resolveVMNetworkMACObject(db *gorm.DB, macID uint) (networkModels.Object, string, error) {
+	var macObject networkModels.Object
+	if err := db.Preload("Entries").First(&macObject, macID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return macObject, "", fmt.Errorf("mac_object_not_found: %w", err)
 		}
-
-		newXML, err := doc.WriteToString()
-		if err != nil {
-			return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
-		}
-
-		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
-		if err != nil {
-			return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
-		}
-
-		if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
-			return fmt.Errorf("failed_to_undefine_domain: %w", err)
-		}
-
-		if _, err := s.conn().DomainDefineXML(newXML); err != nil {
-			return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
-		}
+		return macObject, "", fmt.Errorf("failed_to_find_mac_object: %w", err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(macObject.Type), "Mac") {
+		return macObject, "", fmt.Errorf("invalid_mac_object_type: %s", macObject.Type)
+	}
+	if len(macObject.Entries) == 0 {
+		return macObject, "", fmt.Errorf("mac_object_has_no_entries: %d", macID)
+	}
+	if len(macObject.Entries) != 1 {
+		return macObject, "", fmt.Errorf("mac_object_has_multiple_entries: %d", macID)
 	}
 
-	if err := s.DB.Delete(&network).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_network_record: %w", err)
-	}
-
-	err = s.WriteVMJson(rid)
+	mac, err := normalizeVMNetworkMAC(macObject.Entries[0].Value)
 	if err != nil {
-		logger.L.Error().Err(err).Msg("Failed to write VM JSON after network detach")
+		return macObject, "", err
+	}
+	return macObject, mac, nil
+}
+
+func ensureVMNetworkMACAvailable(db *gorm.DB, macID, excludeNetworkID uint, mac string) error {
+	var vmRefs int64
+	if err := db.Session(&gorm.Session{SkipHooks: true}).
+		Model(&vmModels.Network{}).
+		Joins("LEFT JOIN object_entries AS vm_mac_entries ON vm_mac_entries.object_id = vm_networks.mac_id").
+		Where("vm_networks.id <> ?", excludeNetworkID).
+		Where(
+			"vm_networks.mac_id = ? OR LOWER(TRIM(vm_networks.mac)) = ? OR LOWER(TRIM(vm_mac_entries.value)) = ?",
+			macID,
+			mac,
+			mac,
+		).
+		Count(&vmRefs).Error; err != nil {
+		return fmt.Errorf("failed_to_check_vm_network_mac_usage: %w", err)
+	}
+	if vmRefs > 0 {
+		return fmt.Errorf("mac_address_already_in_use: %s", mac)
+	}
+
+	var jailRefs int64
+	if err := db.Session(&gorm.Session{SkipHooks: true}).
+		Model(&jailModels.Network{}).
+		Joins("LEFT JOIN object_entries AS jail_mac_entries ON jail_mac_entries.object_id = jail_networks.mac_id").
+		Where("jail_networks.mac_id = ? OR LOWER(TRIM(jail_mac_entries.value)) = ?", macID, mac).
+		Count(&jailRefs).Error; err != nil {
+		return fmt.Errorf("failed_to_check_jail_network_mac_usage: %w", err)
+	}
+	if jailRefs > 0 {
+		return fmt.Errorf("mac_address_already_in_use: %s", mac)
 	}
 
 	return nil
 }
 
-func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachRequest) error {
+func createVMNetworkMACObject(
+	db *gorm.DB,
+	vmName string,
+	switchName string,
+) (networkModels.Object, string, error) {
+	base := fmt.Sprintf("%s-%s", strings.TrimSpace(vmName), strings.TrimSpace(switchName))
+	name := base
+	for suffix := 0; ; suffix++ {
+		if suffix > 0 {
+			name = fmt.Sprintf("%s-%d", base, suffix)
+		}
+
+		var exists int64
+		if err := db.Model(&networkModels.Object{}).Where("name = ?", name).Count(&exists).Error; err != nil {
+			return networkModels.Object{}, "", fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
+		}
+		if exists == 0 {
+			break
+		}
+	}
+
+	mac, err := normalizeVMNetworkMAC(utils.GenerateRandomMAC())
+	if err != nil {
+		return networkModels.Object{}, "", fmt.Errorf("failed_to_generate_mac_address: %w", err)
+	}
+	macObject := networkModels.Object{Name: name, Type: "Mac"}
+	if err := db.Create(&macObject).Error; err != nil {
+		return networkModels.Object{}, "", fmt.Errorf("failed_to_create_mac_object: %w", err)
+	}
+	entry := networkModels.ObjectEntry{ObjectID: macObject.ID, Value: mac}
+	if err := db.Create(&entry).Error; err != nil {
+		return networkModels.Object{}, "", fmt.Errorf("failed_to_create_mac_entry: %w", err)
+	}
+	macObject.Entries = []networkModels.ObjectEntry{entry}
+	return macObject, mac, nil
+}
+
+func loadVMNetworkResponseWithDB(db *gorm.DB, vmID, networkID uint) (vmModels.Network, error) {
+	network, err := findVMNetworkRecordWithDB(db, vmID, networkID)
+	if err != nil {
+		return network, err
+	}
+	sw, err := resolveVMNetworkSwitchByID(db, network.SwitchType, network.SwitchID)
+	if err != nil {
+		return network, err
+	}
+	network.StandardSwitch = sw.standard
+	network.ManualSwitch = sw.manual
+	return network, nil
+}
+
+func (s *Service) normalizeNetworkRuntimeHooks(hooks networkRuntimeHooks) networkRuntimeHooks {
+	if hooks.syncVMNetworks == nil {
+		hooks.syncVMNetworks = func(ctx context.Context, db *gorm.DB, rid uint) error {
+			return s.syncVMNetworksWithDB(ctx, db, rid)
+		}
+	}
+	return hooks
+}
+
+func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uint) error {
+	if db == nil {
+		return fmt.Errorf("db_not_initialized")
+	}
+	ctx = normalizeVMNetworkContext(ctx)
+
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+	shutoff, err := s.IsDomainShutOff(rid)
+	if err != nil {
+		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
+	}
+	if !shutoff {
+		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
+	}
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+	xmlDesc, err := s.conn().DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xmlDesc); err != nil {
+		return fmt.Errorf("failed_to_parse_vm_xml: %w", err)
+	}
+	domainElement := doc.Root()
+	if domainElement == nil || domainElement.Tag != "domain" {
+		return fmt.Errorf("malformed_vm_xml: missing_domain_element")
+	}
+	devicesElement := domainElement.FindElement("devices")
+	if devicesElement == nil {
+		devicesElement = domainElement.CreateElement("devices")
+	}
+
+	// VM network rows are authoritative for bridge interfaces managed by Sylve.
+	// Rebuilding them also removes stale legacy/raw-MAC interfaces reliably.
+	for _, iface := range doc.FindElements("//interface[@type='bridge']") {
+		if parent := iface.Parent(); parent != nil {
+			parent.RemoveChild(iface)
+		}
+	}
+
+	vm, err := findVMNetworkOwnerWithDB(db, rid)
+	if err != nil {
+		return err
+	}
+	var networks []vmModels.Network
+	if err := db.Session(&gorm.Session{SkipHooks: true}).
+		Preload("AddressObj").
+		Preload("AddressObj.Entries").
+		Where("vm_id = ?", vm.ID).
+		Order("id ASC").
+		Find(&networks).Error; err != nil {
+		return fmt.Errorf("failed_to_list_vm_networks: %w", err)
+	}
+
+	for _, network := range networks {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("network_sync_cancelled: %w", err)
+		}
+		if !network.Enable {
+			continue
+		}
+
+		var mac string
+		if network.MacID != nil && *network.MacID > 0 {
+			_, mac, err = resolveVMNetworkMACObject(db, *network.MacID)
+		} else {
+			mac, err = normalizeVMNetworkMAC(network.MAC)
+			if strings.TrimSpace(network.MAC) == "" {
+				err = fmt.Errorf("network_mac_address_missing: %d", network.ID)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_network_mac_%d: %w", network.ID, err)
+		}
+
+		sw, err := resolveVMNetworkSwitchByID(db, network.SwitchType, network.SwitchID)
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_network_switch_%d: %w", network.ID, err)
+		}
+		emulation, err := normalizeVMNetworkEmulation(network.Emulation)
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_network_emulation_%d: %w", network.ID, err)
+		}
+
+		iface := devicesElement.CreateElement("interface")
+		iface.CreateAttr("type", "bridge")
+		macElement := iface.CreateElement("mac")
+		macElement.CreateAttr("address", mac)
+		sourceElement := iface.CreateElement("source")
+		sourceElement.CreateAttr("bridge", sw.bridge)
+		modelElement := iface.CreateElement("model")
+		modelElement.CreateAttr("type", emulation)
+	}
+
+	newXML, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
+	}
+	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+	if err := s.writeVMJsonWithDB(db, rid); err != nil {
+		return fmt.Errorf("failed_to_write_vm_json_after_network_sync: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) restoreVMNetworkMutation(rid uint, oldXML string) error {
+	var restoreErr error
+	if strings.TrimSpace(oldXML) != "" {
+		if _, err := s.conn().DomainDefineXML(oldXML); err != nil {
+			restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_domain_xml: %w", err))
+		}
+	}
+	if err := s.WriteVMJson(rid); err != nil {
+		restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_vm_json: %w", err))
+	}
+	return restoreErr
+}
+
+func (s *Service) NetworkAttach(
+	req libvirtServiceInterfaces.NetworkAttachRequest,
+	ctx context.Context,
+) (*vmModels.Network, error) {
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("db_not_initialized")
+	}
+	s.crudMutex.Lock()
+	defer s.crudMutex.Unlock()
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	if req.RID == 0 {
+		return nil, fmt.Errorf("invalid_rid")
+	}
+	req.SwitchName = strings.TrimSpace(req.SwitchName)
+	if req.SwitchName == "" {
+		return nil, fmt.Errorf("invalid_switch_name")
+	}
+	emulation, err := normalizeVMNetworkEmulation(req.Emulation)
+	if err != nil {
+		return nil, err
+	}
+	req.Emulation = emulation
+
+	vm, err := findVMNetworkOwnerWithDB(s.DB, req.RID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireVMMutationOwnership(req.RID); err != nil {
+		return nil, err
+	}
+	shutoff, err := s.IsDomainShutOff(req.RID)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
+	}
+	if !shutoff {
+		return nil, fmt.Errorf("domain_state_not_shutoff: %d", req.RID)
+	}
+	oldXML, err := s.GetVMXML(req.RID)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_capture_domain_xml: %w", err)
+	}
+
+	network, err := s.networkAttachApply(normalizeVMNetworkContext(ctx), req, vm, networkRuntimeHooks{})
+	if err == nil {
+		return network, nil
+	}
+	if restoreErr := s.restoreVMNetworkMutation(req.RID, oldXML); restoreErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("network_reconciliation_failed: %w", restoreErr))
+	}
+	return nil, err
+}
+
+func (s *Service) networkAttachApply(
+	ctx context.Context,
+	req libvirtServiceInterfaces.NetworkAttachRequest,
+	vm vmModels.VM,
+	hooks networkRuntimeHooks,
+) (*vmModels.Network, error) {
+	hooks = s.normalizeNetworkRuntimeHooks(hooks)
+	var result vmModels.Network
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		sw, err := resolveVMNetworkSwitchByName(tx, req.SwitchName)
+		if err != nil {
+			return err
+		}
+
+		var macObject networkModels.Object
+		var mac string
+		if req.MacID == nil || *req.MacID == 0 {
+			macObject, mac, err = createVMNetworkMACObject(tx, vm.Name, sw.name)
+		} else {
+			macObject, mac, err = resolveVMNetworkMACObject(tx, *req.MacID)
+		}
+		if err != nil {
+			return err
+		}
+		if err := ensureVMNetworkMACAvailable(tx, macObject.ID, 0, mac); err != nil {
+			return err
+		}
+
+		macID := macObject.ID
+		network := vmModels.Network{
+			VMID:       vm.ID,
+			SwitchID:   sw.id,
+			SwitchType: sw.typeName,
+			MacID:      &macID,
+			AddressObj: &macObject,
+			Emulation:  req.Emulation,
+			Enable:     true,
+		}
+		if err := tx.Create(&network).Error; err != nil {
+			return fmt.Errorf("failed_to_create_network_record: %w", err)
+		}
+		if err := hooks.syncVMNetworks(ctx, tx, req.RID); err != nil {
+			return fmt.Errorf("failed_to_sync_vm_networks: %w", err)
+		}
+
+		result, err = loadVMNetworkResponseWithDB(tx, vm.ID, network.ID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (s *Service) NetworkUpdate(
+	req libvirtServiceInterfaces.NetworkUpdateRequest,
+	ctx context.Context,
+) (*vmModels.Network, error) {
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("db_not_initialized")
+	}
+	s.crudMutex.Lock()
+	defer s.crudMutex.Unlock()
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	if req.RID == 0 {
+		return nil, fmt.Errorf("invalid_rid")
+	}
+	if req.NetworkID == 0 {
+		return nil, fmt.Errorf("invalid_network_id")
+	}
+	if req.SwitchName == nil && req.Emulation == nil && req.MacID == nil && req.Enable == nil {
+		return nil, fmt.Errorf("empty_network_update")
+	}
+	if req.SwitchName != nil {
+		value := strings.TrimSpace(*req.SwitchName)
+		if value == "" {
+			return nil, fmt.Errorf("invalid_switch_name")
+		}
+		req.SwitchName = &value
+	}
+	if req.Emulation != nil {
+		value, err := normalizeVMNetworkEmulation(*req.Emulation)
+		if err != nil {
+			return nil, err
+		}
+		req.Emulation = &value
+	}
+
+	vm, err := findVMNetworkOwnerWithDB(s.DB, req.RID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := findVMNetworkRecordWithDB(s.DB, vm.ID, req.NetworkID); err != nil {
+		return nil, err
+	}
+	if err := s.requireVMMutationOwnership(req.RID); err != nil {
+		return nil, err
+	}
+	shutoff, err := s.IsDomainShutOff(req.RID)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
+	}
+	if !shutoff {
+		return nil, fmt.Errorf("domain_state_not_shutoff: %d", req.RID)
+	}
+	oldXML, err := s.GetVMXML(req.RID)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_capture_domain_xml: %w", err)
+	}
+
+	network, err := s.networkUpdateApply(normalizeVMNetworkContext(ctx), req, vm, networkRuntimeHooks{})
+	if err == nil {
+		return network, nil
+	}
+	if restoreErr := s.restoreVMNetworkMutation(req.RID, oldXML); restoreErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("network_reconciliation_failed: %w", restoreErr))
+	}
+	return nil, err
+}
+
+func (s *Service) networkUpdateApply(
+	ctx context.Context,
+	req libvirtServiceInterfaces.NetworkUpdateRequest,
+	vm vmModels.VM,
+	hooks networkRuntimeHooks,
+) (*vmModels.Network, error) {
+	hooks = s.normalizeNetworkRuntimeHooks(hooks)
+	var result vmModels.Network
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		network, err := findVMNetworkRecordWithDB(tx, vm.ID, req.NetworkID)
+		if err != nil {
+			return err
+		}
+
+		var sw resolvedVMNetworkSwitch
+		if req.SwitchName != nil {
+			sw, err = resolveVMNetworkSwitchByName(tx, *req.SwitchName)
+		} else {
+			sw, err = resolveVMNetworkSwitchByID(tx, network.SwitchType, network.SwitchID)
+		}
+		if err != nil {
+			return err
+		}
+
+		emulation := network.Emulation
+		if req.Emulation != nil {
+			emulation = *req.Emulation
+		}
+		emulation, err = normalizeVMNetworkEmulation(emulation)
+		if err != nil {
+			return err
+		}
+
+		enabled := network.Enable
+		if req.Enable != nil {
+			enabled = *req.Enable
+		}
+
+		var macObject networkModels.Object
+		var macID *uint
+		var mac string
+		switch {
+		case req.MacID != nil && *req.MacID == 0:
+			macObject, mac, err = createVMNetworkMACObject(tx, vm.Name, sw.name)
+			if err == nil {
+				id := macObject.ID
+				macID = &id
+			}
+		case req.MacID != nil:
+			macObject, mac, err = resolveVMNetworkMACObject(tx, *req.MacID)
+			if err == nil {
+				id := macObject.ID
+				macID = &id
+			}
+		case network.MacID != nil && *network.MacID > 0:
+			macObject, mac, err = resolveVMNetworkMACObject(tx, *network.MacID)
+			if err == nil {
+				id := macObject.ID
+				macID = &id
+			}
+		default:
+			if strings.TrimSpace(network.MAC) == "" {
+				err = fmt.Errorf("network_mac_address_missing: %d", network.ID)
+			} else {
+				mac, err = normalizeVMNetworkMAC(network.MAC)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		macObjectID := uint(0)
+		if macID != nil {
+			macObjectID = *macID
+		}
+		if err := ensureVMNetworkMACAvailable(tx, macObjectID, network.ID, mac); err != nil {
+			return err
+		}
+
+		updates := map[string]any{
+			"switch_id":   sw.id,
+			"switch_type": sw.typeName,
+			"emulation":   emulation,
+			"enable":      enabled,
+			"mac_id":      macID,
+			"mac":         "",
+		}
+		if macID == nil {
+			updates["mac"] = mac
+		}
+		if err := tx.Model(&vmModels.Network{}).
+			Where("id = ? AND vm_id = ?", network.ID, vm.ID).
+			Updates(updates).Error; err != nil {
+			return fmt.Errorf("failed_to_update_network_record: %w", err)
+		}
+		if err := hooks.syncVMNetworks(ctx, tx, req.RID); err != nil {
+			return fmt.Errorf("failed_to_sync_vm_networks: %w", err)
+		}
+
+		result, err = loadVMNetworkResponseWithDB(tx, vm.ID, network.ID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (s *Service) NetworkDetach(
+	req libvirtServiceInterfaces.NetworkDetachRequest,
+	ctx context.Context,
+) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("db_not_initialized")
+	}
+	s.crudMutex.Lock()
+	defer s.crudMutex.Unlock()
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	if req.RID == 0 {
+		return fmt.Errorf("invalid_rid")
+	}
+	if req.NetworkID == 0 {
+		return fmt.Errorf("invalid_network_id")
+	}
+	vm, err := findVMNetworkOwnerWithDB(s.DB, req.RID)
+	if err != nil {
+		return err
+	}
+	if _, err := findVMNetworkRecordWithDB(s.DB, vm.ID, req.NetworkID); err != nil {
+		return err
+	}
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return err
 	}
-	if err := s.requireConnection(); err != nil {
-		return err
-	}
-
-	inactive, err := s.IsDomainInactive(req.RID)
+	shutoff, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
-		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
+		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
 	}
-
-	if !inactive {
-		return fmt.Errorf("vm_is_active: cannot_attach_network")
+	if !shutoff {
+		return fmt.Errorf("domain_state_not_shutoff: %d", req.RID)
 	}
-
-	if req.Emulation == "" || (req.Emulation != "virtio" && req.Emulation != "e1000") {
-		return fmt.Errorf("invalid_emulation_type: %s", req.Emulation)
-	}
-
-	macObjId := uint(0)
-	if req.MacId != nil {
-		macObjId = *req.MacId
-	}
-
-	swType := ""
-
-	var stdSwitch networkModels.StandardSwitch
-	if err := s.DB.First(&stdSwitch, "name = ?", req.SwitchName).Error; err == nil {
-		swType = "standard"
-	}
-
-	var manualSwitch networkModels.ManualSwitch
-	if err := s.DB.First(&manualSwitch, "name = ?", req.SwitchName).Error; err == nil {
-		swType = "manual"
-	}
-
-	if swType == "" {
-		return fmt.Errorf("switch_not_found: %s", req.SwitchName)
-	}
-
-	vms, err := s.ListVMs()
+	oldXML, err := s.GetVMXML(req.RID)
 	if err != nil {
-		return fmt.Errorf("failed_to_list_vms: %w", err)
+		return fmt.Errorf("failed_to_capture_domain_xml: %w", err)
 	}
 
-	var vm *vmModels.VM
-	for i := range vms {
-		if vms[i].RID == req.RID {
-			vm = &vms[i]
-			break
-		}
+	err = s.networkDetachApply(normalizeVMNetworkContext(ctx), req, vm.ID, networkRuntimeHooks{})
+	if err == nil {
+		return nil
 	}
-	if vm == nil {
-		return fmt.Errorf("vm_not_found")
+	if restoreErr := s.restoreVMNetworkMutation(req.RID, oldXML); restoreErr != nil {
+		return errors.Join(err, fmt.Errorf("network_reconciliation_failed: %w", restoreErr))
 	}
-
-	var sw any
-
-	switch swType {
-	case "standard":
-		sw = stdSwitch
-	case "manual":
-		sw = manualSwitch
-	default:
-		return fmt.Errorf("unknown_switch_type: %s", swType)
-	}
-
-	if macObjId == 0 {
-		macAddress := utils.GenerateRandomMAC()
-
-		var base string
-
-		switch v := sw.(type) {
-		case networkModels.StandardSwitch:
-			base = fmt.Sprintf("%s-%s", vm.Name, v.Name)
-		case networkModels.ManualSwitch:
-			base = fmt.Sprintf("%s-%s", vm.Name, v.Name)
-		default:
-			return fmt.Errorf("invalid switch type %T", v)
-		}
-
-		name := base
-
-		for i := 0; ; i++ {
-			if i > 0 {
-				name = fmt.Sprintf("%s-%d", base, i)
-			}
-
-			var exists int64
-
-			if err := s.DB.
-				Model(&networkModels.Object{}).
-				Where("name = ?", name).
-				Limit(1).
-				Count(&exists).Error; err != nil {
-				return fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
-			}
-
-			if exists == 0 {
-				break
-			}
-		}
-
-		macObj := networkModels.Object{
-			Name: name,
-			Type: "Mac",
-		}
-
-		if err := s.DB.Create(&macObj).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_object: %w", err)
-		}
-
-		macEntry := networkModels.ObjectEntry{
-			ObjectID: macObj.ID,
-			Value:    macAddress,
-		}
-
-		if err := s.DB.Create(&macEntry).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_entry: %w", err)
-		}
-
-		macObjId = macObj.ID
-	} else {
-		var macObj networkModels.Object
-		if err := s.DB.Preload("Entries").First(&macObj, macObjId).Error; err != nil {
-			return fmt.Errorf("failed_to_find_mac_object: %w", err)
-		}
-
-		if macObj.Type != "Mac" {
-			return fmt.Errorf("invalid_mac_object_type: %s", macObj.Type)
-		}
-
-		if len(macObj.Entries) == 0 {
-			return fmt.Errorf("mac_object_has_no_entries: %d", macObjId)
-		}
-
-		var otherNetworks []vmModels.Network
-		if err := s.DB.Where("mac_id = ? AND vm_id != ?", macObjId, vm.ID).
-			Find(&otherNetworks).Error; err != nil {
-			return fmt.Errorf("failed_to_find_other_networks_using_mac_object: %w", err)
-		}
-	}
-
-	var switchId uint
-
-	switch v := sw.(type) {
-	case networkModels.StandardSwitch:
-		switchId = v.ID
-	case networkModels.ManualSwitch:
-		switchId = v.ID
-	default:
-		return fmt.Errorf("invalid switch type %T", v)
-	}
-
-	network := vmModels.Network{
-		VMID:       vm.ID,
-		SwitchID:   switchId,
-		SwitchType: swType,
-		MacID:      &macObjId,
-		Emulation:  req.Emulation,
-		Enable:     true,
-	}
-
-	if err := s.DB.Create(&network).Error; err != nil {
-		return fmt.Errorf("failed_to_create_network_record: %w", err)
-	}
-
-	var macAddress string
-
-	if macObjId != 0 {
-		var macObj networkModels.Object
-		if err := s.DB.Preload("Entries").First(&macObj, macObjId).Error; err != nil {
-			return fmt.Errorf("failed_to_find_mac_object: %w", err)
-		}
-		if len(macObj.Entries) == 0 {
-			return fmt.Errorf("mac_object_has_no_entries: %d", macObjId)
-		}
-		macAddress = macObj.Entries[0].Value
-	}
-
-	xmlDesc, err := s.GetVMXML(req.RID)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_vm_xml: %w", err)
-	}
-
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xmlDesc); err != nil {
-		return fmt.Errorf("failed_to_parse_vm_xml: %w", err)
-	}
-
-	domainEl := doc.SelectElement("domain")
-	if domainEl == nil {
-		return fmt.Errorf("malformed_vm_xml: missing <domain> element")
-	}
-
-	devicesEl := domainEl.FindElement("devices")
-	if devicesEl == nil {
-		devicesEl = etree.NewElement("devices")
-		domainEl.AddChild(devicesEl)
-	}
-
-	ifaceEl := etree.NewElement("interface")
-	ifaceEl.CreateAttr("type", "bridge")
-
-	macEl := etree.NewElement("mac")
-	macEl.CreateAttr("address", macAddress)
-	ifaceEl.AddChild(macEl)
-
-	sourceEl := etree.NewElement("source")
-
-	switch swType {
-	case "manual":
-		manualSwitch := sw.(networkModels.ManualSwitch)
-		sourceEl.CreateAttr("bridge", manualSwitch.Bridge)
-	case "standard":
-		stdSwitch := sw.(networkModels.StandardSwitch)
-		sourceEl.CreateAttr("bridge", stdSwitch.BridgeName)
-	}
-
-	ifaceEl.AddChild(sourceEl)
-
-	modelEl := etree.NewElement("model")
-	modelEl.CreateAttr("type", network.Emulation)
-	ifaceEl.AddChild(modelEl)
-
-	devicesEl.AddChild(ifaceEl)
-
-	newXML, err := doc.WriteToString()
-	if err != nil {
-		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
-	}
-
-	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(req.RID)))
-	if err != nil {
-		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
-	}
-
-	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
-		return fmt.Errorf("failed_to_undefine_domain: %w", err)
-	}
-
-	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
-		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
-	}
-
-	err = s.WriteVMJson(vm.RID)
-	if err != nil {
-		logger.L.Error().Err(err).Msg("Failed to write VM JSON after network attach")
-	}
-
-	return nil
+	return err
 }
 
-func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateRequest) error {
-	var network vmModels.Network
-	if err := s.DB.
-		Preload("AddressObj").
-		Preload("AddressObj.Entries").
-		First(&network, "id = ?", req.NetworkID).Error; err != nil {
-		return fmt.Errorf("failed_to_find_network: %w", err)
-	}
-
-	var vm vmModels.VM
-	if err := s.DB.First(&vm, "id = ?", network.VMID).Error; err != nil {
-		return fmt.Errorf("failed_to_find_vm: %w", err)
-	}
-	if err := s.requireVMMutationOwnership(vm.RID); err != nil {
-		return err
-	}
-	if err := s.requireConnection(); err != nil {
-		return err
-	}
-
-	if req.Emulation == "" || (req.Emulation != "virtio" && req.Emulation != "e1000") {
-		return fmt.Errorf("invalid_emulation_type: %s", req.Emulation)
-	}
-
-	inactive, err := s.IsDomainInactive(vm.RID)
-	if err != nil {
-		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
-	}
-
-	if !inactive {
-		return fmt.Errorf("vm_is_active: cannot_update_network")
-	}
-
-	oldMac := ""
-	if network.AddressObj != nil && len(network.AddressObj.Entries) > 0 {
-		oldMac = strings.TrimSpace(strings.ToLower(network.AddressObj.Entries[0].Value))
-	}
-
-	if oldMac == "" {
-		return fmt.Errorf("network_mac_address_missing")
-	}
-
-	switchID := uint(0)
-	switchType := ""
-	bridgeName := ""
-	dbSwName := ""
-
-	var stdSwitch networkModels.StandardSwitch
-	if err := s.DB.First(&stdSwitch, "name = ?", req.SwitchName).Error; err == nil {
-		switchID = stdSwitch.ID
-		switchType = "standard"
-		bridgeName = stdSwitch.BridgeName
-		dbSwName = stdSwitch.Name
-	} else {
-		var manualSwitch networkModels.ManualSwitch
-		if err := s.DB.First(&manualSwitch, "name = ?", req.SwitchName).Error; err == nil {
-			switchID = manualSwitch.ID
-			switchType = "manual"
-			bridgeName = manualSwitch.Bridge
-			dbSwName = manualSwitch.Name
+func (s *Service) networkDetachApply(
+	ctx context.Context,
+	req libvirtServiceInterfaces.NetworkDetachRequest,
+	vmID uint,
+	hooks networkRuntimeHooks,
+) error {
+	hooks = s.normalizeNetworkRuntimeHooks(hooks)
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		network, err := findVMNetworkRecordWithDB(tx, vmID, req.NetworkID)
+		if err != nil {
+			return err
 		}
-	}
-
-	if switchType == "" || switchID == 0 {
-		return fmt.Errorf("switch_not_found: %s", req.SwitchName)
-	}
-
-	var macObjId uint
-	if network.MacID != nil {
-		macObjId = *network.MacID
-	}
-
-	forceNewMac := false
-	if req.MacId != nil {
-		if *req.MacId == 0 {
-			forceNewMac = true
-		} else {
-			macObjId = *req.MacId
+		if err := tx.Delete(&network).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_network_record: %w", err)
 		}
-	}
-
-	newMac := ""
-
-	if forceNewMac || macObjId == 0 {
-		macAddress := utils.GenerateRandomMAC()
-		base := fmt.Sprintf("%s-%s", vm.Name, dbSwName)
-		name := base
-
-		for i := 0; ; i++ {
-			if i > 0 {
-				name = fmt.Sprintf("%s-%d", base, i)
-			}
-
-			var exists int64
-			if err := s.DB.
-				Model(&networkModels.Object{}).
-				Where("name = ?", name).
-				Limit(1).
-				Count(&exists).Error; err != nil {
-				return fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
-			}
-
-			if exists == 0 {
-				break
-			}
+		if err := hooks.syncVMNetworks(ctx, tx, req.RID); err != nil {
+			return fmt.Errorf("failed_to_sync_vm_networks: %w", err)
 		}
-
-		macObj := networkModels.Object{
-			Name: name,
-			Type: "Mac",
-		}
-
-		if err := s.DB.Create(&macObj).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_object: %w", err)
-		}
-
-		macEntry := networkModels.ObjectEntry{
-			ObjectID: macObj.ID,
-			Value:    macAddress,
-		}
-
-		if err := s.DB.Create(&macEntry).Error; err != nil {
-			return fmt.Errorf("failed_to_create_mac_entry: %w", err)
-		}
-
-		macObjId = macObj.ID
-		newMac = macAddress
-	} else {
-		var macObj networkModels.Object
-		if err := s.DB.Preload("Entries").First(&macObj, macObjId).Error; err != nil {
-			return fmt.Errorf("failed_to_find_mac_object: %w", err)
-		}
-
-		if macObj.Type != "Mac" {
-			return fmt.Errorf("invalid_mac_object_type: %s", macObj.Type)
-		}
-
-		if len(macObj.Entries) == 0 {
-			return fmt.Errorf("mac_object_has_no_entries: %d", macObjId)
-		}
-
-		var count int64
-		if err := s.DB.Model(&vmModels.Network{}).
-			Where("mac_id = ? AND id != ?", macObjId, network.ID).
-			Count(&count).Error; err != nil {
-			return fmt.Errorf("failed_to_find_other_networks_using_mac_object: %w", err)
-		}
-
-		if count > 0 {
-			return fmt.Errorf("mac_object_already_in_use: %d", macObjId)
-		}
-
-		newMac = macObj.Entries[0].Value
-	}
-
-	if strings.TrimSpace(newMac) == "" {
-		newMac = oldMac
-	}
-
-	xmlDesc, err := s.GetVMXML(vm.RID)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_vm_xml: %w", err)
-	}
-
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xmlDesc); err != nil {
-		return fmt.Errorf("failed_to_parse_vm_xml: %w", err)
-	}
-
-	var ifaceEl *etree.Element
-	for _, iface := range doc.FindElements("//interface[@type='bridge']") {
-		macEl := iface.FindElement("mac")
-		if macEl == nil {
-			continue
-		}
-		addrAttr := macEl.SelectAttr("address")
-		if addrAttr == nil {
-			continue
-		}
-
-		if strings.EqualFold(strings.TrimSpace(addrAttr.Value), oldMac) {
-			ifaceEl = iface
-			break
-		}
-	}
-
-	if network.Enable && ifaceEl == nil {
-		root := doc.Root()
-		devicesEl := root.FindElement("devices")
-		if devicesEl == nil {
-			devicesEl = root.CreateElement("devices")
-		}
-		ifaceEl = devicesEl.CreateElement("interface")
-		ifaceEl.CreateAttr("type", "bridge")
-	}
-
-	if ifaceEl == nil {
-		return fmt.Errorf("network_interface_not_found_in_xml: %s", oldMac)
-	}
-
-	macEl := ifaceEl.FindElement("mac")
-	if macEl == nil {
-		macEl = etree.NewElement("mac")
-		ifaceEl.AddChild(macEl)
-	}
-	if addrAttr := macEl.SelectAttr("address"); addrAttr != nil {
-		addrAttr.Value = newMac
-	} else {
-		macEl.CreateAttr("address", newMac)
-	}
-
-	sourceEl := ifaceEl.FindElement("source")
-	if sourceEl == nil {
-		sourceEl = etree.NewElement("source")
-		ifaceEl.AddChild(sourceEl)
-	}
-	if bridgeAttr := sourceEl.SelectAttr("bridge"); bridgeAttr != nil {
-		bridgeAttr.Value = bridgeName
-	} else {
-		sourceEl.CreateAttr("bridge", bridgeName)
-	}
-
-	modelEl := ifaceEl.FindElement("model")
-	if modelEl == nil {
-		modelEl = etree.NewElement("model")
-		ifaceEl.AddChild(modelEl)
-	}
-	if typeAttr := modelEl.SelectAttr("type"); typeAttr != nil {
-		typeAttr.Value = req.Emulation
-	} else {
-		modelEl.CreateAttr("type", req.Emulation)
-	}
-
-	if !network.Enable && ifaceEl != nil {
-		devicesEl := doc.FindElement("//devices")
-		if devicesEl == nil {
-			devicesEl = doc.Root().CreateElement("devices")
-		}
-		devicesEl.RemoveChild(ifaceEl)
-	}
-
-	newXML, err := doc.WriteToString()
-	if err != nil {
-		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
-	}
-
-	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
-	if err != nil {
-		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
-	}
-
-	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
-		return fmt.Errorf("failed_to_undefine_domain: %w", err)
-	}
-
-	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
-		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
-	}
-
-	network.SwitchID = switchID
-	network.SwitchType = switchType
-	network.Emulation = req.Emulation
-
-	updates := map[string]any{
-		"switch_id":   network.SwitchID,
-		"switch_type": network.SwitchType,
-		"emulation":   network.Emulation,
-	}
-	if req.Enable != nil {
-		network.Enable = *req.Enable
-		updates["enable"] = network.Enable
-	}
-	if macObjId != 0 {
-		updates["mac_id"] = macObjId
-	} else {
-		updates["mac_id"] = nil
-	}
-
-	if err := s.DB.Model(&vmModels.Network{}).
-		Where("id = ?", network.ID).
-		Updates(updates).Error; err != nil {
-		return fmt.Errorf("failed_to_update_network_record: %w", err)
-	}
-
-	err = s.WriteVMJson(vm.RID)
-	if err != nil {
-		logger.L.Error().Err(err).Msg("Failed to write VM JSON after network update")
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (s *Service) FindAndChangeMAC(rid uint, oldMac string, newMac string) error {

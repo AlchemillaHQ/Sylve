@@ -173,11 +173,11 @@ func newVMsCommand() *cli.Command {
 						return err
 					}
 					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkAttach, consoleprotocol.VMNetworkAttachPayload{
+						RID: rid,
 						Request: libvirtServiceInterfaces.NetworkAttachRequest{
-							RID:        rid,
 							SwitchName: command.String("switch"),
 							Emulation:  command.String("emulation"),
-							MacId:      macID,
+							MacID:      macID,
 						},
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))

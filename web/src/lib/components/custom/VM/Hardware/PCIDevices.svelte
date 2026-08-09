@@ -12,6 +12,7 @@
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM | null;
 		pciDevices: PCIDevice[];
 		pptDevices: PPTDevice[];
@@ -20,6 +21,7 @@
 
 	let {
 		open = $bindable(),
+		node,
 		vm,
 		pciDevices,
 		pptDevices,
@@ -81,7 +83,8 @@
 			try {
 				const response = await modifyPPT(
 					vm.rid,
-					properties.combobox.value.map((id) => Number(id)) || []
+					properties.combobox.value.map((id) => Number(id)),
+					{ hostname: node }
 				);
 
 				if (response.status !== 'success') {
@@ -136,7 +139,7 @@
 					properties.combobox.value = value as string[];
 				}}
 				placeholder="Select PCI Devices"
-				disabled={false}
+				disabled={saving}
 				disallowEmpty={false}
 				multiple={true}
 				width="w-full"

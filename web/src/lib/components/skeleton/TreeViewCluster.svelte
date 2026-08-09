@@ -8,16 +8,22 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { actionVm, convertVMToTemplate, deleteVMTemplate, purgeVMRegistration } from '$lib/api/vm/vm';
+	import {
+		actionVm,
+		captureVMTemplate,
+		deleteVMTemplate,
+		purgeVMRegistration
+	} from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { slide } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
 	import SidebarElement from './TreeViewCluster.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import type { ResourceTreeItem } from '$lib/resource-tree';
+	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
 	interface Props {
 		item: ResourceTreeItem;
@@ -99,13 +105,22 @@
 			return;
 		}
 
+		let result: Awaited<ReturnType<typeof actionVm>> | Awaited<ReturnType<typeof jailAction>>;
 		if (item.resourceType === 'jail') {
 			if (action !== 'start' && action !== 'stop') {
 				return;
 			}
-			await jailAction(item.resourceId, action, item.nodeHostname);
+			result = await jailAction(item.resourceId, action, item.nodeHostname);
 		} else {
-			await actionVm(item.resourceId, action, item.nodeHostname);
+			result = await actionVm(item.resourceId, action, item.nodeHostname);
+		}
+
+		if (isAPIResponse(result) && result.status === 'error') {
+			handleAPIError(result);
+			toast.error(`Failed to ${action} ${item.resourceType === 'vm' ? 'VM' : 'jail'}`, {
+				position: 'bottom-center'
+			});
+			return;
 		}
 
 		reload.leftPanel = true;
@@ -128,37 +143,46 @@
 		try {
 			const result =
 				item.resourceType === 'vm'
-					? await convertVMToTemplate(item.resourceId, { name }, item.nodeHostname)
+					? await captureVMTemplate(item.resourceId, { name }, item.nodeHostname)
 					: await convertJailToTemplate(item.resourceId, { name }, item.nodeHostname);
-			if (result.error) {
+			if (isAPIResponse(result) && result.status === 'error') {
 				handleAPIError(result);
-				if (!Array.isArray(result.error)) {
-					const err = (result.error || '').toLowerCase();
-					if (err.includes('template_name_already_in_use')) {
-						toast.error('Template name already in use', { position: 'bottom-center' });
-						return;
-					}
-
-					if (err.includes('template_name_required')) {
-						toast.error('Template name is required', { position: 'bottom-center' });
-						return;
-					}
-
-					if (err.includes('vm_must_be_shut_off')) {
-						toast.error('VM must be shut off to convert to template', {
-							position: 'bottom-center'
-						});
-						return;
-					}
-
-					toast.error('Failed to convert to template', { position: 'bottom-center' });
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				const err = (error || '').toLowerCase();
+				if (err.includes('template_name_already_in_use')) {
+					toast.error('Template name already in use', { position: 'bottom-center' });
 					return;
 				}
+
+				if (err.includes('template_name_required')) {
+					toast.error('Template name is required', { position: 'bottom-center' });
+					return;
+				}
+
+				if (err.includes('vm_must_be_shut_off')) {
+					toast.error('VM must be shut off to capture as a template', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
+				toast.error(
+					item.resourceType === 'vm'
+						? 'Failed to capture VM template'
+						: 'Failed to convert jail to template',
+					{ position: 'bottom-center' }
+				);
+				return;
 			}
 
 			convertTemplateOpen = false;
 			reload.leftPanel = true;
-			toast.success('Template conversion queued', { position: 'bottom-center' });
+			toast.success(
+				item.resourceType === 'vm'
+					? 'VM template capture queued'
+					: 'Jail template conversion queued',
+				{ position: 'bottom-center' }
+			);
 		} finally {
 			convertTemplateLoading = false;
 		}
@@ -172,7 +196,8 @@
 				item.resourceType === 'vm-template'
 					? await deleteVMTemplate(item.resourceId, item.nodeHostname)
 					: await deleteJailTemplate(item.resourceId, item.nodeHostname);
-			if (result.error) {
+			if (result.status === 'error') {
+				handleAPIError(result);
 				toast.error('Failed to delete template', { position: 'bottom-center' });
 				return;
 			}
@@ -186,10 +211,12 @@
 	};
 
 	const handleRemoveVMEntry = async () => {
-		if (!item.resourceId) return;
+		const rid = item.resourceId;
+		const hostname = item.nodeHostname;
+		if (!rid || !hostname) return;
 		deleteVMLoading = true;
 		try {
-			const result = await purgeVMRegistration(item.resourceId, true, item.nodeHostname);
+			const result = await purgeVMRegistration(rid, true, hostname);
 			if (result.error) {
 				if (result.message === 'vm_not_orphaned' || result.error.includes('vm_not_orphaned')) {
 					deleteVMOpen = false;
@@ -206,10 +233,11 @@
 
 			deleteVMOpen = false;
 			reload.leftPanel = true;
+			await removeStaleCacheByRID(rid, hostname);
 			toast.success('VM entry removed (datasets preserved)', { position: 'bottom-center' });
 
 			if (item.href && activeUrl.startsWith(item.href.replace(/\/summary$/, ''))) {
-				useSafeGoto(`/${item.nodeHostname}/summary`, { replaceState: false, noScroll: false });
+				useSafeGoto(`/${hostname}/summary`, { replaceState: false, noScroll: false });
 			}
 		} finally {
 			deleteVMLoading = false;
@@ -250,7 +278,8 @@
 					>
 						{item.label}
 						{#if item.meta}
-							<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span>
+							<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span
+							>
 						{/if}
 					</p>
 				</div>
@@ -451,7 +480,7 @@
 					{#if convertTemplateLoading}
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
-						Convert
+						{item.resourceType === 'vm' ? 'Create Template' : 'Convert'}
 					{/if}
 				</Button>
 			</Dialog.Footer>

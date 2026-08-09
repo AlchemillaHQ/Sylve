@@ -7,6 +7,7 @@
 	import {
 		actionVm,
 		deleteVM,
+		forceDeleteVM,
 		getSimpleVMById,
 		getVMDomain,
 		purgeVMRegistration
@@ -16,7 +17,6 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { storage } from '$lib';
 	import { reload, vmPowerSignal } from '$lib/stores/api.svelte';
-	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
@@ -32,38 +32,73 @@
 	let { children }: Props = $props();
 
 	let rid = $derived.by(() => {
-		const value = Number(page.url.pathname.split('/')[3]);
-		return Number.isFinite(value) ? value : 0;
+		const value = Number(page.params.rid);
+		return Number.isSafeInteger(value) && value > 0 ? value : 0;
 	});
 	let node = $derived(String(page.params.node || ''));
+	let vmIdentity = $derived(`${node}\u0000${rid}`);
 
-	const vm = resource(
+	type SimpleVMSnapshot = { identity: string; vm: SimpleVm };
+	type VMDomainSnapshot = { identity: string; domain: VMDomain };
+	const initialPageData = page.data as {
+		node?: string;
+		rid?: number;
+		vm?: SimpleVm | null;
+		domain?: VMDomain | null;
+	};
+	const initialIdentity = `${String(initialPageData.node || '')}\u0000${Number(initialPageData.rid || 0)}`;
+
+	const vmResource = resource(
 		[() => node, () => rid],
-		async ([hostname, currentRid], _, { signal }): Promise<SimpleVm | null> => {
-			if (!currentRid) return null;
-			const result = await getSimpleVMById(currentRid, 'rid', { hostname, signal });
+		async ([hostname, currentRid], _, { signal }): Promise<SimpleVMSnapshot | null> => {
+			if (!currentRid || !hostname) return null;
+			const result = await getSimpleVMById(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
-				return null;
+				throw new Error(result.message || result.error?.toString() || 'Unable to load VM');
 			}
-			updateCache(`simple-vm-${currentRid}`, result, hostname);
-			return result;
+			await updateCache(`simple-vm-${currentRid}`, result, hostname);
+			return { identity: `${hostname}\u0000${currentRid}`, vm: result };
 		},
-		{ initialValue: (page.data as { vm?: SimpleVm | null }).vm ?? null }
+		{
+			initialValue: initialPageData.vm
+				? { identity: initialIdentity, vm: initialPageData.vm }
+				: null
+		}
 	);
 
-	const domain = resource(
+	const domainResource = resource(
 		[() => node, () => rid],
-		async ([hostname, currentRid], _, { signal }): Promise<VMDomain | null> => {
-			if (!currentRid) return null;
+		async ([hostname, currentRid], _, { signal }): Promise<VMDomainSnapshot | null> => {
+			if (!currentRid || !hostname) return null;
 			const result = await getVMDomain(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
-				return null;
+				throw new Error(result.message || result.error?.toString() || 'Unable to load VM domain');
 			}
-			updateCache(`vm-domain-${currentRid}`, result, hostname);
-			return result;
+			await updateCache(`vm-domain-${currentRid}`, result, hostname);
+			return { identity: `${hostname}\u0000${currentRid}`, domain: result };
 		},
-		{ initialValue: (page.data as { domain?: VMDomain | null }).domain ?? null }
+		{
+			initialValue: initialPageData.domain
+				? { identity: initialIdentity, domain: initialPageData.domain }
+				: null
+		}
 	);
+
+	const vm = {
+		get current(): SimpleVm | null {
+			if (vmResource.error || vmResource.current?.identity !== vmIdentity) return null;
+			return vmResource.current.vm;
+		},
+		refetch: () => vmResource.refetch()
+	};
+
+	const domain = {
+		get current(): VMDomain | null {
+			if (domainResource.error || domainResource.current?.identity !== vmIdentity) return null;
+			return domainResource.current.domain;
+		},
+		refetch: () => domainResource.refetch()
+	};
 
 	setContext('vmDomain', domain);
 
@@ -174,58 +209,66 @@
 
 	async function handleDelete() {
 		if (!vm.current || isDeleteInFlight) return;
+		const target = {
+			rid: vm.current.rid,
+			name: vm.current.name,
+			hostname: node
+		};
+		const wasForceDelete = modalState.forceDelete;
+		const wasPurgeOnly = modalState.purgeOnly;
+
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
-		modalState.loading.title = modalState.purgeOnly
+		modalState.loading.title = wasPurgeOnly
 			? 'Removing Stale VM Entry'
-			: modalState.forceDelete
+			: wasForceDelete
 				? 'Force Deleting Virtual Machine'
 				: 'Deleting Virtual Machine';
-		modalState.loading.description = modalState.purgeOnly
-			? `Removing stale registration for VM <b>${vm.current.name} (${vm.current.rid})</b>; datasets are preserved`
-			: modalState.forceDelete
-				? `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being force deleted with best-effort cleanup`
-				: `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
+		modalState.loading.description = wasPurgeOnly
+			? `Removing stale registration for VM <b>${target.name} (${target.rid})</b>; datasets are preserved`
+			: wasForceDelete
+				? `Please wait while VM <b>${target.name} (${target.rid})</b> is being force deleted with best-effort cleanup`
+				: `Please wait while VM <b>${target.name} (${target.rid})</b> is being deleted`;
 
-		await sleep(1000);
-		const result = modalState.purgeOnly
-			? await purgeVMRegistration(vm.current.rid, modalState.deleteMACs)
-			: await deleteVM(
-					vm.current.rid,
-					modalState.deleteMACs,
-					modalState.deleteRAWDisks,
-					modalState.deleteVolumes,
-					modalState.forceDelete
+		try {
+			const result = wasPurgeOnly
+				? await purgeVMRegistration(target.rid, modalState.deleteMACs, target.hostname)
+				: wasForceDelete
+					? await forceDeleteVM(target.rid, modalState.deleteMACs, target.hostname)
+					: await deleteVM(
+							target.rid,
+							modalState.deleteMACs,
+							modalState.deleteRAWDisks,
+							modalState.deleteVolumes,
+							target.hostname
+						);
+
+			if (result.status === 'error') {
+				await Promise.all([vm.refetch(), domain.refetch()]);
+				toast.error(
+					result.message === 'guest_delete_requires_replication_policy_removed'
+						? 'Remove the replication policy before deleting this VM'
+						: wasPurgeOnly
+							? 'Error removing VM entry'
+							: wasForceDelete
+								? 'Error force deleting VM'
+								: 'Error deleting VM',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
 				);
-		modalState.loading.open = false;
-		reload.leftPanel = true;
-		const wasForceDelete = modalState.forceDelete;
-		const wasPurgeOnly = modalState.purgeOnly;
-		modalState.forceDelete = false;
-		modalState.purgeOnly = false;
+				return;
+			}
 
-		if (result.status === 'error') {
-			isDeleteInFlight = false;
-			await refreshVmDomain();
-			toast.error(
-				result.message === 'guest_delete_requires_replication_policy_removed'
-					? 'Remove the replication policy before deleting this VM'
-					: wasPurgeOnly
-						? 'Error removing VM entry'
-						: wasForceDelete
-							? 'Error force deleting VM'
-							: 'Error deleting VM',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+			reload.leftPanel = true;
 			const deletionData = parseGuestDeletionData(result.data);
 			const cleanupWarnings = deletionData.warnings;
 			const retainedDatasets = deletionData.retainedDatasets;
-			await useSafeGoto(`/${storage.hostname}/summary`);
+			await removeStaleCacheByRID(target.rid, target.hostname);
+			await useSafeGoto(`/${target.hostname}/summary`);
+
 			if (wasPurgeOnly && result.message === 'vm_registration_purged_with_warnings') {
 				toast.warning('VM entry removed with warnings; datasets preserved', {
 					duration: 5000,
@@ -257,20 +300,22 @@
 					position: 'bottom-center'
 				});
 			}
-
-			removeStaleCacheByRID(vm.current.rid);
+		} finally {
+			modalState.loading.open = false;
+			modalState.forceDelete = false;
+			modalState.purgeOnly = false;
+			isDeleteInFlight = false;
 		}
 	}
 
 	async function handleStart() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'start');
-		domain.refetch();
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'start', node);
 
-		if (result.status === 'error') {
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error starting VM',
 				{
@@ -278,7 +323,8 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'start';
@@ -294,13 +340,12 @@
 
 	async function handleStop() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'stop');
-		domain.refetch();
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'stop', node);
 
-		if (result.status === 'error') {
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error stopping VM',
 				{
@@ -308,12 +353,13 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'stop';
 
-			if (result.message === 'vm_force_stop_requested') {
+			if (result.outcome === 'force_stop_requested') {
 				toast.warning('Force stop requested', {
 					duration: 5000,
 					position: 'bottom-center'
@@ -331,13 +377,12 @@
 
 	async function handleForceStop() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'stop');
-		domain.refetch();
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'stop', node);
 
-		if (result.status === 'error') {
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error requesting force stop',
 				{
@@ -346,6 +391,7 @@
 				}
 			);
 		} else {
+			reload.leftPanel = true;
 			toast.warning('Force stop requested', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -357,13 +403,12 @@
 
 	async function handleShutdown() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'shutdown');
-		domain.refetch();
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'shutdown', node);
 
-		if (result.status === 'error') {
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error shutting down VM',
 				{
@@ -371,7 +416,8 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'shutdown';
@@ -387,13 +433,12 @@
 
 	async function handleReboot() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'reboot');
-		domain.refetch();
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'reboot', node);
 
-		if (result.status === 'error') {
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error rebooting VM',
 				{
@@ -401,7 +446,8 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'reboot';

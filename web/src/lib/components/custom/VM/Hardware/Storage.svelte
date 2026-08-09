@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { getFiles } from '$lib/api/system/file-explorer';
-	import { storageImport, storageNew, storageUpdate } from '$lib/api/vm/storage';
+	import {
+		storageAttach,
+		storageUpdate,
+		type StorageAttachRequest,
+		type StorageUpdateRequest
+	} from '$lib/api/vm/storage';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -22,6 +27,7 @@
 
 	interface Props {
 		open: boolean;
+		node: string;
 		datasets: Dataset[];
 		downloads: Download[];
 		vm: VM;
@@ -34,6 +40,7 @@
 
 	let {
 		open = $bindable(),
+		node,
 		datasets,
 		downloads,
 		vm,
@@ -76,35 +83,42 @@
 	type StorageDiskType = 'raw' | 'zvol' | 'image' | 'filesystem';
 	type StorageEmulation = 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk' | 'virtio-9p';
 
-	let options = {
-		name: '',
-		type: 'new' as StorageAttachType,
-		diskType: 'zvol' as StorageDiskType,
-		rawPath: '',
-		dataset: '',
-		size: '',
-		filesystemTarget: '',
-		filesystemReadOnly: false,
-		emulation: 'ahci-hd' as StorageEmulation,
-		pool: '',
-		bootOrder: null as number | null,
-		loading: false
-	};
+	function createAttachOptions() {
+		return {
+			name: '',
+			type: 'new' as StorageAttachType,
+			diskType: 'zvol' as StorageDiskType,
+			rawPath: '',
+			dataset: '',
+			size: '',
+			filesystemTarget: '',
+			filesystemReadOnly: false,
+			emulation: 'ahci-hd' as StorageEmulation,
+			pool: '',
+			bootOrder: null as number | null,
+			loading: false
+		};
+	}
 
-	// svelte-ignore state_referenced_locally
-	let editOptions = {
-		name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
-		size: selectedStorage ? (normalizeSizeInputExact(selectedStorageDisplaySize) ?? '') : '',
-		emulation: selectedStorage ? selectedStorage.emulation : ('ahci-hd' as StorageEmulation),
-		filesystemTarget: selectedStorage?.filesystemTarget || '',
-		filesystemReadOnly: selectedStorage?.readOnly ?? false,
-		enable: selectedStorage ? (selectedStorage.enable ?? true) : true,
-		bootOrder: selectedStorage ? selectedStorage.bootOrder : 0,
-		loading: false
-	};
+	function createEditOptions() {
+		return {
+			name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
+			size: selectedStorage ? (normalizeSizeInputExact(selectedStorageDisplaySize) ?? '') : '',
+			emulation: selectedStorage
+				? selectedStorage.type === 'filesystem'
+					? ('virtio-9p' as StorageEmulation)
+					: selectedStorage.emulation
+				: ('ahci-hd' as StorageEmulation),
+			filesystemTarget: selectedStorage?.filesystemTarget || '',
+			filesystemReadOnly: selectedStorage?.readOnly ?? false,
+			enable: selectedStorage ? (selectedStorage.enable ?? true) : true,
+			bootOrder: selectedStorage ? selectedStorage.bootOrder : 0,
+			loading: false
+		};
+	}
 
-	let properties = $state(options);
-	let editProperties = $state(editOptions);
+	let properties = $state(createAttachOptions());
+	let editProperties = $state(createEditOptions());
 
 	let images = $derived(getISOs(downloads, true));
 	let usedDatasets = $derived.by(() => {
@@ -156,14 +170,25 @@
 
 	function setDiskType(value: string) {
 		properties.diskType = value as StorageDiskType;
-		if (properties.diskType !== 'image') {
-			return;
+		if (properties.diskType === 'filesystem') {
+			properties.type = 'new';
+			properties.emulation = 'virtio-9p';
+		} else if (properties.emulation === 'virtio-9p') {
+			properties.emulation = 'ahci-hd';
 		}
+		if (properties.diskType === 'image') {
+			properties.pool = '';
+			properties.rawPath = '';
+			zvolCombobox.value = '';
+			filesystemCombobox.value = '';
+		}
+	}
 
-		properties.pool = '';
-		properties.rawPath = '';
-		zvolCombobox.value = '';
-		filesystemCombobox.value = '';
+	function setAttachType(value: string) {
+		properties.type = value as StorageAttachType;
+		if (properties.type === 'new' && properties.diskType === 'image') {
+			setDiskType('zvol');
+		}
 	}
 
 	let filesystemDatasetOptions = $derived.by(() =>
@@ -174,24 +199,6 @@
 				label: `${dataset.name} (${dataset.mountpoint})`
 			}))
 	);
-
-	$effect(() => {
-		if (properties.diskType === 'filesystem' && properties.type !== 'new') {
-			properties.type = 'new';
-		}
-
-		if (properties.diskType === 'filesystem') {
-			properties.emulation = 'virtio-9p';
-		} else if (properties.emulation === 'virtio-9p') {
-			properties.emulation = 'ahci-hd';
-		}
-	});
-
-	$effect(() => {
-		if (isFilesystemStorageEdit) {
-			editProperties.emulation = 'virtio-9p';
-		}
-	});
 
 	const toastOptions = {
 		position: 'bottom-center' as const
@@ -226,16 +233,19 @@
 		}
 	}
 
+	function resetAttachForm() {
+		properties = createAttachOptions();
+		zvolCombobox = { open: false, value: '' };
+		imageCombobox = { open: false, value: '' };
+		filesystemCombobox = { open: false, value: '' };
+	}
+
 	async function attach() {
-		if (
-			properties.name.trim() === '' ||
-			properties.name.length === 0 ||
-			properties.name.length > 128
-		) {
+		const name = properties.name.trim();
+		if (name === '' || name.length > 128) {
 			toast.error('Invalid storage name', toastOptions);
 			return;
 		}
-
 		if (
 			properties.pool === '' &&
 			properties.diskType !== 'image' &&
@@ -244,167 +254,170 @@
 			toast.error('No ZFS pool selected', toastOptions);
 			return;
 		}
-
 		if (properties.diskType !== 'filesystem') {
-			if (properties.bootOrder === null) {
-				toast.error('Please specify a boot order', toastOptions);
+			const bootOrder = Number(properties.bootOrder);
+			if (!Number.isInteger(bootOrder) || bootOrder < 0) {
+				toast.error('Please specify a valid boot order', toastOptions);
 				return;
-			} else if (usedBootOrders.includes(Number(properties.bootOrder))) {
+			}
+			if (usedBootOrders.includes(bootOrder)) {
 				toast.error('Boot order already in use', toastOptions);
 				return;
 			}
 		}
 
-		if (properties.type === 'import') {
-			const storageType = properties.diskType;
-			if (storageType === 'filesystem') {
-				toast.error('Filesystem storage cannot be imported', toastOptions);
-				return;
-			}
-
-			if (storageType === 'raw') {
-				if (!isValidAbsPath(properties.rawPath)) {
-					toast.error('Invalid disk path', toastOptions);
+		properties.loading = true;
+		try {
+			let request: StorageAttachRequest;
+			const emulation = properties.emulation as Exclude<StorageEmulation, 'virtio-9p'>;
+			if (properties.type === 'import') {
+				if (properties.diskType === 'filesystem') {
+					toast.error('Filesystem storage cannot be imported', toastOptions);
 					return;
 				}
-
-				const parent = getPathParent(properties.rawPath);
-				const files = await getFiles(parent);
-				if (isAPIResponse(files)) {
-					handleAPIError(files);
-					return;
+				if (properties.diskType === 'raw') {
+					const rawPath = properties.rawPath.trim();
+					if (!isValidAbsPath(rawPath)) {
+						toast.error('Invalid disk path', toastOptions);
+						return;
+					}
+					const files = await getFiles(getPathParent(rawPath), node);
+					if (isAPIResponse(files)) {
+						handleAPIError(files);
+						return;
+					}
+					if (!files.some((file) => file.id === rawPath)) {
+						toast.error('Unable to find disk', toastOptions);
+						return;
+					}
+					request = {
+						attachType: 'import',
+						storageType: 'raw',
+						name,
+						rawPath,
+						pool: properties.pool,
+						emulation,
+						bootOrder: Number(properties.bootOrder)
+					};
+				} else if (properties.diskType === 'zvol') {
+					if (!zvolCombobox.value) {
+						toast.error('Please select a ZFS Volume', toastOptions);
+						return;
+					}
+					request = {
+						attachType: 'import',
+						storageType: 'zvol',
+						name,
+						dataset: zvolCombobox.value,
+						pool: properties.pool,
+						emulation,
+						bootOrder: Number(properties.bootOrder)
+					};
+				} else {
+					if (!imageCombobox.value) {
+						toast.error('Please select an ISO/Image', toastOptions);
+						return;
+					}
+					request = {
+						attachType: 'import',
+						storageType: 'image',
+						name,
+						downloadUUID: imageCombobox.value,
+						emulation,
+						bootOrder: Number(properties.bootOrder)
+					};
 				}
-				const found = files.filter((file) => file.id === properties.rawPath);
-				if (!found || found.length !== 1) {
-					toast.error('Unable to find disk', toastOptions);
-					return;
-				}
-			} else if (storageType === 'zvol') {
-				if (!zvolCombobox.value) {
-					toast.error('Please select a ZFS Volume', toastOptions);
-					return;
-				}
-			}
-
-			properties.loading = true;
-
-			const response = await storageImport(
-				vm.rid,
-				properties.name,
-				imageCombobox.value,
-				storageType,
-				storageType === 'raw' ? properties.rawPath : '',
-				storageType === 'zvol' ? zvolCombobox.value : '',
-				properties.emulation === 'virtio-9p' ? 'ahci-hd' : properties.emulation,
-				properties.pool,
-				Number(properties.bootOrder)
-			);
-
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to import storage', {
-					position: 'bottom-center'
-				});
-
-				return;
-			}
-
-			toast.success('Storage imported', toastOptions);
-			reload = true;
-			properties = options;
-			open = false;
-		} else if (properties.type === 'new') {
-			let parsedSize: number | undefined = undefined;
-			if (properties.diskType !== 'image' && properties.diskType !== 'filesystem') {
-				if (properties.size === '') {
-					toast.error('Please specify a size', toastOptions);
-					return;
-				}
-
-				const parsed = parseSizeInputToBytes(properties.size);
-				if (parsed === null) {
-					toast.error('Invalid size format', toastOptions);
-					return;
-				}
-				parsedSize = parsed;
-			}
-
-			if (properties.diskType === 'filesystem') {
+			} else if (properties.diskType === 'filesystem') {
+				const target = properties.filesystemTarget.trim();
 				if (!filesystemCombobox.value) {
 					toast.error('Please select a ZFS filesystem dataset', toastOptions);
 					return;
 				}
-
-				if (!isValid9PTargetName(properties.filesystemTarget.trim())) {
+				if (!isValid9PTargetName(target)) {
 					toast.error(
 						"Invalid 9P target name (letters, numbers, '.', '_' and '-' only)",
 						toastOptions
 					);
 					return;
 				}
+				request = {
+					attachType: 'new',
+					storageType: 'filesystem',
+					name,
+					dataset: filesystemCombobox.value,
+					filesystemTarget: target,
+					readOnly: properties.filesystemReadOnly,
+					emulation: 'virtio-9p'
+				};
+			} else {
+				if (properties.diskType === 'image') {
+					toast.error('Images must be imported', toastOptions);
+					return;
+				}
+				const parsedSize = parseSizeInputToBytes(properties.size);
+				if (parsedSize === null || parsedSize <= 0) {
+					toast.error('Invalid size format', toastOptions);
+					return;
+				}
+				request = {
+					attachType: 'new',
+					storageType: properties.diskType as 'raw' | 'zvol',
+					name,
+					size: parsedSize,
+					pool: properties.pool,
+					emulation,
+					bootOrder: Number(properties.bootOrder)
+				};
 			}
 
-			const response = await storageNew(
-				vm.rid,
-				properties.name,
-				properties.diskType,
-				parsedSize,
-				properties.diskType === 'filesystem' ? 'virtio-9p' : properties.emulation,
-				properties.pool,
-				properties.diskType === 'filesystem' ? undefined : Number(properties.bootOrder),
-				properties.diskType === 'filesystem' ? filesystemCombobox.value : '',
-				properties.diskType === 'filesystem' ? properties.filesystemTarget.trim() : '',
-				properties.diskType === 'filesystem' ? properties.filesystemReadOnly : false
-			);
-
-			reload = true;
-
-			if (response.error) {
+			const response = await storageAttach(vm.rid, request, { hostname: node });
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
-				toast.error('Failed to attach storage', {
-					position: 'bottom-center'
-				});
-
+				toast.error(
+					properties.type === 'import' ? 'Failed to import storage' : 'Failed to attach storage',
+					toastOptions
+				);
 				return;
 			}
 
-			toast.success('Storage attached', toastOptions);
-			properties = options;
+			toast.success(
+				properties.type === 'import' ? 'Storage imported' : 'Storage attached',
+				toastOptions
+			);
+			reload = true;
+			resetAttachForm();
 			open = false;
+		} catch {
+			toast.error('Failed to attach storage', toastOptions);
+		} finally {
+			properties.loading = false;
 		}
 	}
 
 	async function update() {
-		if (
-			editProperties.name.trim() === '' ||
-			editProperties.name.length === 0 ||
-			editProperties.name.length > 128
-		) {
+		if (!selectedStorage) {
+			toast.error('Unable to find storage', toastOptions);
+			return;
+		}
+		const name = editProperties.name.trim();
+		if (name === '' || name.length > 128) {
 			toast.error('Invalid storage name', toastOptions);
 			return;
 		}
 
 		let parsedSize: number | undefined = undefined;
 		if (!isImageStorageEdit && !isFilesystemStorageEdit) {
-			if (editProperties.size === '') {
-				toast.error('Please specify a size', toastOptions);
-				return;
-			}
-
 			const parsed = parseSizeInputToBytes(editProperties.size);
-			if (parsed === null) {
+			if (parsed === null || parsed <= 0) {
 				toast.error('Invalid size format', toastOptions);
 				return;
 			}
 			parsedSize = parsed;
 
-			if (selectedStorage) {
-				// Allow a small tolerance (epsilon) to avoid floating-point rounding issues
-				const EPSILON = 1024; // 1 KB tolerance
-				if (parsedSize < selectedStorage.size - EPSILON) {
-					toast.error('New size cannot be smaller than current size', toastOptions);
-					return;
-				}
+			const EPSILON = 1024;
+			if (parsedSize < selectedStorage.size - EPSILON) {
+				toast.error('New size cannot be smaller than current size', toastOptions);
+				return;
 			}
 		}
 
@@ -417,12 +430,13 @@
 		}
 
 		if (!isFilesystemStorageEdit) {
-			if (editProperties.bootOrder === null) {
-				toast.error('Please specify a boot order', toastOptions);
+			const bootOrder = Number(editProperties.bootOrder);
+			if (!Number.isInteger(bootOrder) || bootOrder < 0) {
+				toast.error('Please specify a valid boot order', toastOptions);
 				return;
 			}
 
-			if (usedBootOrders.includes(Number(editProperties.bootOrder))) {
+			if (usedBootOrders.includes(bootOrder)) {
 				toast.error('Boot order already in use', toastOptions);
 				return;
 			}
@@ -439,44 +453,54 @@
 					fDataset.type === GZFSDatasetTypeSchema.enum.VOLUME &&
 					fDataset.properties.volblocksize
 				) {
-					blockSize = Number(fDataset.properties.volblocksize);
+					const value = Number(fDataset.properties.volblocksize);
+					if (Number.isFinite(value) && value > 0) blockSize = value;
 				} else if (
 					fDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM &&
 					fDataset.properties.recordsize
 				) {
-					blockSize = Number(fDataset.properties.recordsize);
+					const value = Number(fDataset.properties.recordsize);
+					if (Number.isFinite(value) && value > 0) blockSize = value;
 				}
 			}
 
 			roundedSize = roundUpToBlock(parsedSize, blockSize);
 		}
 
+		const request: StorageUpdateRequest = {
+			name,
+			emulation: isFilesystemStorageEdit ? 'virtio-9p' : editProperties.emulation,
+			enable: editProperties.enable,
+			...(roundedSize !== undefined ? { size: roundedSize } : {}),
+			...(!isFilesystemStorageEdit ? { bootOrder: Number(editProperties.bootOrder) } : {}),
+			...(isFilesystemStorageEdit
+				? {
+						filesystemTarget: editProperties.filesystemTarget.trim(),
+						readOnly: editProperties.filesystemReadOnly
+					}
+				: {})
+		};
+
 		editProperties.loading = true;
-		const response = await storageUpdate(
-			selectedStorage ? selectedStorage.id : 0,
-			editProperties.name,
-			roundedSize,
-			isFilesystemStorageEdit ? 'virtio-9p' : editProperties.emulation,
-			isFilesystemStorageEdit ? undefined : Number(editProperties.bootOrder),
-			editProperties.enable,
-			isFilesystemStorageEdit ? editProperties.filesystemTarget.trim() : undefined,
-			isFilesystemStorageEdit ? editProperties.filesystemReadOnly : undefined
-		);
-
-		reload = true;
-
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to update storage', {
-				position: 'bottom-center'
+		try {
+			const response = await storageUpdate(vm.rid, selectedStorage.id, request, {
+				hostname: node
 			});
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to update storage', toastOptions);
+				return;
+			}
 
-			return;
+			toast.success('Storage updated', toastOptions);
+			reload = true;
+			editProperties = createEditOptions();
+			open = false;
+		} catch {
+			toast.error('Failed to update storage', toastOptions);
+		} finally {
+			editProperties.loading = false;
 		}
-
-		toast.success('Storage updated', toastOptions);
-		editProperties = editOptions;
-		open = false;
 	}
 </script>
 
@@ -488,16 +512,16 @@
 		showResetButton={true}
 		onReset={() => {
 			if (selectedStorage) {
-				editProperties = editOptions;
+				editProperties = createEditOptions();
 			} else {
-				properties = options;
+				resetAttachForm();
 			}
 		}}
 		onClose={() => {
 			if (selectedStorage) {
-				editProperties = editOptions;
+				editProperties = createEditOptions();
 			} else {
-				properties = options;
+				resetAttachForm();
 			}
 			open = false;
 		}}
@@ -530,7 +554,7 @@
 						{ value: 'import', label: 'Import' }
 					]}
 					bind:value={properties.type}
-					onChange={(value) => (properties.type = value as StorageAttachType)}
+					onChange={setAttachType}
 					disabled={properties.diskType === 'filesystem'}
 				/>
 
@@ -790,6 +814,7 @@
 				>
 					{#if properties.loading || editProperties.loading}
 						<span class="icon-[eos-icons--loading] mr-2 h-4 w-4 animate-spin"></span>
+						<span>{selectedStorage ? 'Saving...' : 'Attaching...'}</span>
 					{:else}
 						<span>{selectedStorage ? 'Save Changes' : 'Attach Storage'}</span>
 					{/if}

@@ -144,8 +144,8 @@ func TestBuildVMTemplateTargets(t *testing.T) {
 		if len(targets) != 1 {
 			t.Fatalf("expected 1 target, got %d", len(targets))
 		}
-		if targets[0].Name != "webvm" {
-			t.Fatalf("expected default name webvm, got %q", targets[0].Name)
+		if targets[0].Name != "webvm-220" {
+			t.Fatalf("expected default name webvm-220, got %q", targets[0].Name)
 		}
 	})
 
@@ -431,6 +431,89 @@ func TestCreateVMsFromTemplateStopsOnFirstFailure(t *testing.T) {
 	}
 	if len(calls) != 1 {
 		t.Fatalf("expected create to stop on first failure, calls=%d", len(calls))
+	}
+}
+
+func TestCreateVMsFromTemplateRollsBackEarlierTargetsInReverseOrder(t *testing.T) {
+	svc := &Service{}
+	created := make([]uint, 0, 3)
+	cleaned := make([]uint, 0, 2)
+
+	svc.preflightCreateVMTemplateFn = func(
+		context.Context,
+		uint,
+		libvirtServiceInterfaces.CreateFromTemplateRequest,
+	) (vmTemplateCreatePlan, error) {
+		return vmTemplateCreatePlan{
+			Template: vmModels.VMTemplate{ID: 77},
+			Targets: []vmTemplateCreateTarget{
+				{RID: 501, Name: "vm-501"},
+				{RID: 502, Name: "vm-502"},
+				{RID: 503, Name: "vm-503"},
+			},
+			StoragePools: map[uint]string{},
+		}, nil
+	}
+	svc.createVMTemplateTargetFn = func(
+		_ context.Context,
+		_ vmModels.VMTemplate,
+		target vmTemplateCreateTarget,
+		_ map[uint]string,
+		_ libvirtServiceInterfaces.CreateFromTemplateRequest,
+	) error {
+		created = append(created, target.RID)
+		if target.RID == 503 {
+			return templateTestError{msg: "third target failed"}
+		}
+		return nil
+	}
+	svc.cleanupVMTemplateTargetFn = func(_ context.Context, rid uint) {
+		cleaned = append(cleaned, rid)
+	}
+
+	err := svc.CreateVMsFromTemplate(context.Background(), 77, libvirtServiceInterfaces.CreateFromTemplateRequest{
+		Mode: "multiple",
+	})
+	if err == nil || !strings.Contains(err.Error(), "third target failed") {
+		t.Fatalf("expected third target failure, got %v", err)
+	}
+	if !reflect.DeepEqual(created, []uint{501, 502, 503}) {
+		t.Fatalf("created targets = %v", created)
+	}
+	if !reflect.DeepEqual(cleaned, []uint{502, 501}) {
+		t.Fatalf("cleanup order = %v, want [502 501]", cleaned)
+	}
+}
+
+func TestVMTemplateCleanupContextOutlivesRequestCancellation(t *testing.T) {
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	cancelRequest()
+
+	cleanupCtx, cancelCleanup := vmTemplateCleanupContext(requestCtx)
+	defer cancelCleanup()
+
+	if err := cleanupCtx.Err(); err != nil {
+		t.Fatalf("cleanup context inherited request cancellation: %v", err)
+	}
+	if _, ok := cleanupCtx.Deadline(); !ok {
+		t.Fatal("cleanup context must have a deadline")
+	}
+}
+
+func TestVMTemplateParentDatasetName(t *testing.T) {
+	if got := vmTemplateParentDatasetName(vmModels.VMTemplateStorage{Pool: "zroot"}, 17); got != "zroot/sylve/virtual-machines/templates/17" {
+		t.Fatalf("parent dataset = %q", got)
+	}
+
+	storage := vmModels.VMTemplateStorage{
+		TemplateDataset: "tank/sylve/virtual-machines/templates/23/raw-4",
+	}
+	if got := vmTemplateParentDatasetName(storage, 23); got != "tank/sylve/virtual-machines/templates/23" {
+		t.Fatalf("derived parent dataset = %q", got)
+	}
+
+	if got := vmTemplateParentDatasetName(vmModels.VMTemplateStorage{TemplateDataset: "unrelated/path"}, 23); got != "" {
+		t.Fatalf("unexpected parent for malformed path: %q", got)
 	}
 }
 

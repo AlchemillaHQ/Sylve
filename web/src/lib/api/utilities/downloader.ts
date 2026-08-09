@@ -10,10 +10,20 @@ import {
 	type UTypeGroupedDownload
 } from '$lib/types/utilities/downloader';
 import { apiRequest } from '$lib/utils/http';
+import type { NodeAPIRequestOptions } from '$lib/utils/http';
 
 export async function getDownloads(hostname?: string): Promise<Download[]> {
 	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET', undefined, {
 		hostname
+	});
+}
+
+export async function getDownloadsResult(
+	options?: NodeAPIRequestOptions
+): Promise<Download[] | APIResponse> {
+	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET', undefined, {
+		...options,
+		preserveErrors: true
 	});
 }
 

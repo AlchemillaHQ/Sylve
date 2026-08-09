@@ -9,31 +9,41 @@
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
+		if (saving) return;
 		const tpmEmulation = !vm.tpmEmulation;
-		const response = await modifyTPM(vm.rid, tpmEmulation);
+		saving = true;
+		try {
+			const response = await modifyTPM(vm.rid, tpmEmulation, { hostname: node });
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error(`Failed to ${tpmEmulation ? 'enable' : 'disable'} TPM emulation`, {
-				position: 'bottom-center'
-			});
-			return;
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error(`Failed to ${tpmEmulation ? 'enable' : 'disable'} TPM emulation`, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No TPM-emulation changes needed'
+					: `TPM emulation ${tpmEmulation ? 'enabled' : 'disabled'}`,
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success(`TPM emulation ${tpmEmulation ? 'enabled' : 'disabled'}`, {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
@@ -62,12 +72,15 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">
-					{#if vm.tpmEmulation}
-						Disable
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else if vm.tpmEmulation}
+						Disable TPM
 					{:else}
-						Enable
-					{/if} TPM
+						Enable TPM
+					{/if}
 				</Button>
 			</div>
 		</Dialog.Footer>

@@ -12,7 +12,9 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
+	migrationService "github.com/alchemillahq/sylve/internal/services/migration"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type cancelMigrationServiceStub struct {
@@ -71,7 +73,39 @@ func TestCancelMigrationHandlerAcknowledgesRequestWithoutClaimingCompletion(t *t
 }
 
 func TestCancelMigrationHandlerRejectsPostCutoverRequest(t *testing.T) {
-	service := &cancelMigrationServiceStub{cancelErr: errors.New("cancel_not_allowed_in_current_phase")}
+	service := &cancelMigrationServiceStub{cancelErr: migrationService.ErrCancelNotAllowed}
+	recorder := performCancelMigrationRequest(t, service)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response internal.APIResponse[any]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Status != "error" || response.Message != "cancel_not_allowed_in_current_phase" {
+		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestCancelMigrationHandlerReturnsNotFoundForMissingTask(t *testing.T) {
+	service := &cancelMigrationServiceStub{cancelErr: gorm.ErrRecordNotFound}
+	recorder := performCancelMigrationRequest(t, service)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response internal.APIResponse[any]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "migration_task_not_found" {
+		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestCancelMigrationHandlerRejectsNonMigrationTask(t *testing.T) {
+	service := &cancelMigrationServiceStub{cancelErr: migrationService.ErrNotMigrationTask}
 	recorder := performCancelMigrationRequest(t, service)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", recorder.Code, recorder.Body.String())
@@ -81,7 +115,7 @@ func TestCancelMigrationHandlerRejectsPostCutoverRequest(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if response.Status != "error" || response.Message != "cancel_not_allowed_in_current_phase" {
+	if response.Message != "not_a_migration_task" {
 		t.Fatalf("response = %+v", response)
 	}
 }

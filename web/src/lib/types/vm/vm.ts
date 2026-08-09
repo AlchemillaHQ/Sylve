@@ -3,308 +3,326 @@ import { NetworkObjectSchema } from '../network/object';
 import { GFSStepSchema, StatsHistoryStateSchema } from '../common';
 
 export interface CPUPin {
-    socket: number;
-    cores: number[];
+	socket: number;
+	cores: number[];
 }
 
-export type VMBootRom = 'uefi' | 'none';
+export type VMBootRom = 'uefi' | 'uboot' | 'none';
 
 export interface CreateData {
-    name: string;
-    node: string;
-    id: number;
-    description: string;
-    storage: {
-        type: string;
-        pool: string;
-        size: number;
-        emulation: string;
-        iso: string;
-    };
-    network: {
-        switch: string;
-        mac: string;
-        emulation: string;
-    };
-    hardware: {
-        sockets: number;
-        cores: number;
-        threads: number;
-        memory: number;
-        passthroughIds: number[];
-        pinnedCPUs: CPUPin[];
-        isPinningOpen: boolean;
-    };
-    advanced: {
-        vncEnabled: boolean;
-        serial: boolean;
-        vncPort: number;
-        vncBind: string;
-        vncPassword: string;
-        vncWait: boolean;
-        vncResolution: string;
-        startAtBoot: boolean;
-        bootOrder: number;
-        tpmEmulation: boolean;
-        timeOffset: 'utc' | 'localtime';
-        bootRom: VMBootRom;
-        cloudInit: {
-            enabled: boolean;
-            data: string;
-            metadata: string;
-            networkConfig: string;
-        };
-        extraBhyveOptionsEnabled: boolean;
-        extraBhyveOptions: string;
-        ignoreUmsrs: boolean;
-        qemuGuestAgent: boolean;
-    };
+	name: string;
+	node: string;
+	id: number;
+	description: string;
+	storage: {
+		type: string;
+		pool: string;
+		size: number;
+		emulation: string;
+		iso: string;
+	};
+	network: {
+		switch: string;
+		mac: string;
+		emulation: string;
+	};
+	hardware: {
+		sockets: number;
+		cores: number;
+		threads: number;
+		memory: number;
+		passthroughIds: number[];
+		pinnedCPUs: CPUPin[];
+		isPinningOpen: boolean;
+	};
+	advanced: {
+		vncEnabled: boolean;
+		serial: boolean;
+		vncPort: number;
+		vncBind: string;
+		vncPassword: string;
+		vncWait: boolean;
+		vncResolution: string;
+		startAtBoot: boolean;
+		bootOrder: number;
+		tpmEmulation: boolean;
+		timeOffset: 'utc' | 'localtime';
+		bootRom: VMBootRom;
+		cloudInit: {
+			enabled: boolean;
+			data: string;
+			metadata: string;
+			networkConfig: string;
+		};
+		extraBhyveOptionsEnabled: boolean;
+		extraBhyveOptions: string;
+		ignoreUmsrs: boolean;
+		qemuGuestAgent: boolean;
+	};
 }
 
 export type VMStorageType = 'raw' | 'zvol' | 'image' | 'filesystem';
 export type VMStorageEmulationType = 'virtio-blk' | 'virtio-9p' | 'ahci-hd' | 'ahci-cd' | 'nvme';
 
 export const VMStorageDatasetSchema = z.object({
-    id: z.number().int(),
-    pool: z.string(),
-    name: z.string(),
-    guid: z.string()
+	id: z.number().int(),
+	pool: z.string(),
+	name: z.string(),
+	guid: z.string()
 });
 
 export const VMStorageSchema = z.object({
-    id: z.number().int(),
-    vmId: z.number().int().optional(),
-    name: z.string().optional(),
-    type: z.enum(['raw', 'zvol', 'image', 'filesystem']),
-    enable: z.boolean().optional().default(true),
-    uuid: z.string().optional(),
-    pool: z.string().optional().default(''),
-    datasetId: z.number().int().nullable(),
-    dataset: VMStorageDatasetSchema.nullable(),
-    size: z.number().int(),
-    emulation: z.enum(['virtio-blk', 'virtio-9p', 'ahci-hd', 'ahci-cd', 'nvme']),
-    filesystemTarget: z.string().optional().default(''),
-    readOnly: z.boolean().optional().default(false),
-    recordSize: z.number().int().optional(),
-    volBlockSize: z.number().int().optional(),
-    bootOrder: z.number().int().optional()
+	id: z.number().int(),
+	vmId: z.number().int().optional(),
+	name: z.string().optional(),
+	type: z.enum(['raw', 'zvol', 'image', 'filesystem']),
+	enable: z.boolean().optional().default(true),
+	uuid: z.string().optional(),
+	pool: z.string().optional().default(''),
+	datasetId: z.number().int().nullable(),
+	dataset: VMStorageDatasetSchema.nullable(),
+	size: z.number().int(),
+	emulation: z.enum(['virtio-blk', 'virtio-9p', 'ahci-hd', 'ahci-cd', 'nvme']),
+	filesystemTarget: z.string().optional().default(''),
+	readOnly: z.boolean().optional().default(false),
+	recordSize: z.number().int().optional(),
+	volBlockSize: z.number().int().optional(),
+	bootOrder: z.number().int().optional()
 });
 
 export const VMNetworkSchema = z.object({
-    id: z.number().int(),
-    mac: z.string(),
-    macId: z.number().int().optional().nullable(),
-    macObj: NetworkObjectSchema.optional().nullable(),
-    switchId: z.number().int(),
-    switchType: z.enum(['standard', 'manual']),
-    emulation: z.string(),
-    enable: z.boolean().optional().default(true),
-    vmId: z.number().int().optional()
+	id: z.number().int(),
+	mac: z.string(),
+	macId: z.number().int().optional().nullable(),
+	macObj: NetworkObjectSchema.optional().nullable(),
+	switchId: z.number().int(),
+	switchType: z.enum(['standard', 'manual']),
+	emulation: z.string(),
+	enable: z.boolean().optional().default(true),
+	vmId: z.number().int().optional()
 });
 
 export const VMCPUPinningSchema = z.object({
-    id: z.number().int(),
-    vmId: z.number().int(),
-    hostSocket: z.number().int(),
-    hostCpu: z.array(z.number().int())
+	id: z.number().int(),
+	vmId: z.number().int(),
+	hostSocket: z.number().int(),
+	hostCpu: z.array(z.number().int())
 });
 
 export enum DomainState {
-    DomainNostate = 0,
-    DomainRunning = 1,
-    DomainBlocked = 2,
-    DomainPaused = 3,
-    DomainShutdown = 4,
-    DomainShutoff = 5,
-    DomainCrashed = 6,
-    DomainPmsuspended = 7
+	DomainNostate = 0,
+	DomainRunning = 1,
+	DomainBlocked = 2,
+	DomainPaused = 3,
+	DomainShutdown = 4,
+	DomainShutoff = 5,
+	DomainCrashed = 6,
+	DomainPmsuspended = 7
 }
 
 export const DomainStateSchema = z.enum(DomainState);
 
 export const VMSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    description: z.string(),
-    rid: z.number().int(),
-    cpuSockets: z.number().int(),
-    cpuCores: z.number().int(),
-    cpuThreads: z.number().int(),
-    ram: z.number().int(),
-    serial: z.boolean(),
-    vncEnabled: z.boolean(),
-    vncPort: z.number().int(),
-    vncBind: z.string(),
-    vncPassword: z.string(),
-    vncResolution: z.string(),
-    vncWait: z.boolean(),
-    startAtBoot: z.boolean(),
-    startOrder: z.number().int(),
-    wol: z.boolean(),
-    timeOffset: z.enum(['utc', 'localtime']),
-    state: DomainStateSchema,
-    storages: z.array(VMStorageSchema),
-    networks: z.array(VMNetworkSchema),
-    pciDevices: z.union([z.array(z.number().int()), z.null()]),
-    cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
-    shutdownWaitTime: z.number().int(),
-    cloudInitData: z.string().nullable(),
-    cloudInitMetaData: z.string().nullable(),
-    cloudInitNetworkConfig: z.string().nullable(),
-    bootRom: z.enum(['uefi', 'none']),
-    extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
-    ignoreUMSR: z.boolean(),
-    qemuGuestAgent: z.boolean(),
-    tpmEmulation: z.boolean(),
+	id: z.number().int(),
+	name: z.string(),
+	description: z.string(),
+	rid: z.number().int(),
+	cpuSockets: z.number().int(),
+	cpuCores: z.number().int(),
+	cpuThreads: z.number().int(),
+	ram: z.number().int(),
+	serial: z.boolean(),
+	vncEnabled: z.boolean(),
+	vncPort: z.number().int(),
+	vncBind: z.string(),
+	vncPassword: z.string(),
+	vncResolution: z.string(),
+	vncWait: z.boolean(),
+	startAtBoot: z.boolean(),
+	startOrder: z.number().int(),
+	wol: z.boolean(),
+	timeOffset: z.enum(['utc', 'localtime']),
+	state: DomainStateSchema,
+	storages: z.array(VMStorageSchema),
+	networks: z.array(VMNetworkSchema),
+	pciDevices: z.union([z.array(z.number().int()), z.null()]),
+	cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
+	shutdownWaitTime: z.number().int(),
+	cloudInitData: z.string().nullable(),
+	cloudInitMetaData: z.string().nullable(),
+	cloudInitNetworkConfig: z.string().nullable(),
+	bootRom: z.enum(['uefi', 'uboot', 'none']),
+	extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
+	ignoreUMSR: z.boolean(),
+	qemuGuestAgent: z.boolean(),
+	tpmEmulation: z.boolean(),
 
-    createdAt: z.string(),
-    updatedAt: z.string(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
 
-    startedAt: z.string().nullable(),
-    stoppedAt: z.string().nullable()
+	startedAt: z.string().nullable(),
+	stoppedAt: z.string().nullable()
 });
 
 export const VMStatSchema = z.object({
-    vmId: z.number().int().default(0),
-    cpuUsage: z.number().default(0),
-    memoryUsage: z.number().default(0),
-    memoryUsed: z.number().default(0),
-    createdAt: z.string().default(new Date(0).toISOString())
+	vmId: z.number().int().default(0),
+	cpuUsage: z.number().default(0),
+	memoryUsage: z.number().default(0),
+	memoryUsed: z.number().default(0),
+	createdAt: z.string().default(new Date(0).toISOString())
 });
 
 export const VMStatsBootstrapSchema = z.object({
-    points: z.array(VMStatSchema),
-    resolvedStep: GFSStepSchema.nullable(),
-    lastSampleAt: z.string().nullable(),
-    historyState: StatsHistoryStateSchema
+	points: z.array(VMStatSchema),
+	resolvedStep: GFSStepSchema.nullable(),
+	lastSampleAt: z.string().nullable(),
+	historyState: StatsHistoryStateSchema
 });
 
 export const VMLogsSchema = z.object({
-    logs: z.string()
+	logs: z.string()
 });
 
 export const VMDomainSchema = z.object({
-    id: z.number().int(),
-    uuid: z.string(),
-    name: z.string(),
-    status: z.string(),
-    pendingAction: z.string().optional().default(''),
-    overrideRequested: z.boolean().optional().default(false)
+	id: z.number().int(),
+	uuid: z.string(),
+	name: z.string(),
+	status: z.string(),
+	pendingAction: z.string().optional().default(''),
+	overrideRequested: z.boolean().optional().default(false)
 });
 
 export const SimpleVmSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    rid: z.number().int(),
-    vncPort: z.number(),
-    state: DomainStateSchema,
-    cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()])
+	id: z.number().int(),
+	name: z.string(),
+	rid: z.number().int(),
+	vncPort: z.number(),
+	state: DomainStateSchema,
+	cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()])
 });
 
 export const SimpleVmTemplateSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    sourceVmName: z.string()
+	id: z.number().int(),
+	name: z.string(),
+	sourceVmName: z.string()
 });
 
 export const VMTemplateStorageSchema = z.object({
-    sourceStorageId: z.number().int(),
-    type: z.enum(['raw', 'zvol', 'image']),
-    emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
-    pool: z.string(),
-    size: z.number(),
-    enable: z.boolean().optional().default(true),
-    bootOrder: z.number().int(),
-    recordSize: z.number().int(),
-    volBlockSize: z.number().int(),
-    templateDataset: z.string(),
-    estimatedBytes: z.number()
+	sourceStorageId: z.number().int(),
+	type: z.enum(['raw', 'zvol', 'image']),
+	emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
+	pool: z.string(),
+	size: z.number(),
+	enable: z.boolean().optional().default(true),
+	bootOrder: z.number().int(),
+	recordSize: z.number().int(),
+	volBlockSize: z.number().int(),
+	templateDataset: z.string(),
+	estimatedBytes: z.number()
 });
 
 export const VMTemplateNetworkSchema = z.object({
-    name: z.string(),
-    switchName: z.string(),
-    switchType: z.string(),
-    emulation: z.string()
+	name: z.string(),
+	switchName: z.string(),
+	switchType: z.string(),
+	emulation: z.string()
 });
 
 export const VMTemplateSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    sourceVmName: z.string(),
-    description: z.string(),
-    cpuSockets: z.number().int(),
-    cpuCores: z.number().int(),
-    cpuThreads: z.number().int(),
-    ram: z.number().int(),
-    tpmEmulation: z.boolean(),
-    shutdownWaitTime: z.number().int(),
-    serial: z.boolean(),
-    vncEnabled: z.boolean(),
-    vncBind: z.string(),
-    vncResolution: z.string(),
-    vncWait: z.boolean(),
-    startAtBoot: z.boolean(),
-    startOrder: z.number().int(),
-    wol: z.boolean(),
-    timeOffset: z.enum(['utc', 'localtime']),
-    apic: z.boolean(),
-    acpi: z.boolean(),
-    cloudInitData: z.string().nullable(),
-    cloudInitMetaData: z.string().nullable(),
-    cloudInitNetworkConfig: z.string().nullable(),
-    bootRom: z.enum(['uefi', 'none']),
-    extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
-    ignoreUMSR: z.boolean(),
-    qemuGuestAgent: z.boolean(),
-    storages: z.array(VMTemplateStorageSchema).default([]),
-    networks: z.array(VMTemplateNetworkSchema).default([]),
-    createdAt: z.string(),
-    updatedAt: z.string()
+	id: z.number().int(),
+	name: z.string(),
+	sourceVmName: z.string(),
+	sourceVmRid: z.number().int().nonnegative(),
+	description: z.string(),
+	cpuSockets: z.number().int(),
+	cpuCores: z.number().int(),
+	cpuThreads: z.number().int(),
+	ram: z.number().int(),
+	tpmEmulation: z.boolean(),
+	shutdownWaitTime: z.number().int(),
+	serial: z.boolean(),
+	vncEnabled: z.boolean(),
+	vncBind: z.string(),
+	vncResolution: z.string(),
+	vncWait: z.boolean(),
+	startAtBoot: z.boolean(),
+	startOrder: z.number().int(),
+	wol: z.boolean(),
+	timeOffset: z.enum(['utc', 'localtime']),
+	apic: z.boolean(),
+	acpi: z.boolean(),
+	cloudInitData: z.string().nullable(),
+	cloudInitMetaData: z.string().nullable(),
+	cloudInitNetworkConfig: z.string().nullable(),
+	bootRom: z.enum(['uefi', 'uboot', 'none']),
+	extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
+	ignoreUMSR: z.boolean(),
+	qemuGuestAgent: z.boolean(),
+	storages: z.array(VMTemplateStorageSchema).default([]),
+	networks: z.array(VMTemplateNetworkSchema).default([]),
+	createdAt: z.string(),
+	updatedAt: z.string()
 });
 
 export const QGAOSInfoSchema = z.object({
-    name: z.string(),
-    'kernel-release': z.string(),
-    version: z.string(),
-    'pretty-name': z.string(),
-    'version-id': z.string(),
-    'kernel-version': z.string(),
-    machine: z.string(),
-    id: z.string()
+	name: z.string(),
+	'kernel-release': z.string(),
+	version: z.string(),
+	'pretty-name': z.string(),
+	'version-id': z.string(),
+	'kernel-version': z.string(),
+	machine: z.string(),
+	id: z.string()
 });
 
 export const QGANetworkIPAddressSchema = z.object({
-    'ip-address-type': z.enum(['ipv4', 'ipv6']),
-    'ip-address': z.string(),
-    prefix: z.number().int()
+	'ip-address-type': z.enum(['ipv4', 'ipv6']),
+	'ip-address': z.string(),
+	prefix: z.number().int()
 });
 
 export const QGANetworkStatisticsSchema = z.object({
-    'tx-packets': z.number().int(),
-    'tx-errs': z.number().int(),
-    'rx-bytes': z.number().int(),
-    'rx-dropped': z.number().int(),
-    'rx-packets': z.number().int(),
-    'rx-errs': z.number().int(),
-    'tx-bytes': z.number().int(),
-    'tx-dropped': z.number().int()
+	'tx-packets': z.number().int(),
+	'tx-errs': z.number().int(),
+	'rx-bytes': z.number().int(),
+	'rx-dropped': z.number().int(),
+	'rx-packets': z.number().int(),
+	'rx-errs': z.number().int(),
+	'tx-bytes': z.number().int(),
+	'tx-dropped': z.number().int()
 });
 
 export const QGANetworkInterfaceSchema = z.object({
-    name: z.string().nullable(),
-    'ip-addresses': z.array(QGANetworkIPAddressSchema).nullable(),
-    statistics: QGANetworkStatisticsSchema.nullable(),
-    'hardware-address': z.string().nullable()
+	name: z.string().nullable(),
+	'ip-addresses': z.array(QGANetworkIPAddressSchema).nullable(),
+	statistics: QGANetworkStatisticsSchema.nullable(),
+	'hardware-address': z.string().nullable()
 });
 
 export const QGAInfoSchema = z.object({
-    osInfo: QGAOSInfoSchema,
-    interfaces: z.array(QGANetworkInterfaceSchema).nullable()
+	osInfo: QGAOSInfoSchema,
+	interfaces: z.array(QGANetworkInterfaceSchema).nullable()
 });
 
-export const OutcomeResponseSchema = z.object({
-    outcome: z.string()
+export const VMActionResponseSchema = z.object({
+	taskId: z.number().int().positive(),
+	rid: z.number().int().positive(),
+	action: z.enum(['start', 'stop', 'shutdown', 'reboot']),
+	outcome: z.string()
+});
+
+export const VMTemplateCaptureTaskResponseSchema = z.object({
+	taskId: z.number().int().positive(),
+	sourceRid: z.number().int().positive(),
+	action: z.literal('convert'),
+	outcome: z.string()
+});
+
+export const VMTemplateInstantiationTaskResponseSchema = z.object({
+	taskId: z.number().int().positive(),
+	templateId: z.number().int().positive(),
+	action: z.literal('create'),
+	outcome: z.string()
 });
 
 export type VM = z.infer<typeof VMSchema>;
@@ -323,10 +341,14 @@ export type VMTemplateNetwork = z.infer<typeof VMTemplateNetworkSchema>;
 export type QGAInfo = z.infer<typeof QGAInfoSchema>;
 export type VMLifecycleAction = 'start' | 'stop' | 'shutdown' | 'reboot';
 export type VMLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
-export type OutcomeResponse = z.infer<typeof OutcomeResponseSchema>;
+export type VMActionResponse = z.infer<typeof VMActionResponseSchema>;
+export type VMTemplateCaptureTaskResponse = z.infer<typeof VMTemplateCaptureTaskResponseSchema>;
+export type VMTemplateInstantiationTaskResponse = z.infer<
+	typeof VMTemplateInstantiationTaskResponseSchema
+>;
 
 export interface VMLifecycleBadgeStyle {
-    variant: VMLifecycleBadgeVariant;
-    className: string;
-    label: string;
+	variant: VMLifecycleBadgeVariant;
+	className: string;
+	label: string;
 }

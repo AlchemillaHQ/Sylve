@@ -386,6 +386,7 @@ msgid "VM - Reboot"
 msgstr "VM - रिबूट"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Update Description"
 msgstr "VM - विवरण अपडेट करें"
 
@@ -3133,8 +3134,8 @@ msgstr "वर्चुअल मशीन को हटाया जा रह�
 
 #. 0: vm.current.name; 1: vm.current.rid
 #. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
+#. 0: target.name; 1: target.rid
+#. 0: target.name; 1: target.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -3144,8 +3145,8 @@ msgstr "कृपया प्रतीक्षा करें जब तक V
 
 #. 0: vm.current.name; 1: vm.current.rid
 #. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
+#. 0: target.name; 1: target.rid
+#. 0: target.name; 1: target.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -5648,7 +5649,7 @@ msgstr "Cloud-Init नेटवर्क कॉन्फ़िगरेशन"
 msgid "VM Name"
 msgstr "VM नाम"
 
-#. 0: modal.name
+#. 0: data.name
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Created VM {0}"
 msgstr "VM {0} बनाया गया"
@@ -10024,6 +10025,7 @@ msgstr ""
 #~ msgid "<0/> Note"
 #~ msgstr ""
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Update Name"
 msgstr ""
@@ -15060,8 +15062,8 @@ msgstr ""
 msgid "Removing Stale VM Entry"
 msgstr ""
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
+#. 0: target.name; 1: target.rid
+#. 0: target.name; 1: target.rid
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Removing stale registration for VM <b>{0} ({1})</b>; datasets are preserved"
@@ -19877,4 +19879,48 @@ msgstr ""
 
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "<0/> Generating..."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Purge Registration"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Delete"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Create"
+msgstr ""
+
+#. 0: vmIdentityLabel(bodyRID, bodyName)
+#. 0: bodyName.trim()
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Create - {0}"
+msgstr ""
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Purge Registration - {0}"
+msgstr ""
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Force Delete - {0}"
+msgstr ""
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Delete - {0}"
+msgstr ""
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Update Description - {0}"
+msgstr ""
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Update Name - {0}"
 msgstr ""
