@@ -51,7 +51,7 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		{path: "/api/certificates", want: true},
 		{path: "/api/certificates/2/activate", want: true},
 		{path: "/api/certificates/2/archive", want: true},
-		{path: "/api/utilities/downloads/signed-url", want: true},
+		{path: "/api/utilities/downloads/signed-url", want: false},
 		{path: "/api/system/file-explorer/upload", want: true},
 		{path: "/api/utilities/downloader-uploads", want: true},
 		{path: "/api/utilities/downloader-uploads/id/complete", want: false},
@@ -61,6 +61,101 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 	for _, tc := range cases {
 		if got := shouldRedactAuditPayload(tc.path); got != tc.want {
 			t.Fatalf("path=%s expected=%v got=%v", tc.path, tc.want, got)
+		}
+	}
+}
+
+func TestSignedDownloadAuditKeepsIdentityAndRedactsCapability(t *testing.T) {
+	body := sanitizeAuditPayloadForPath(
+		"/api/utilities/downloads/signed-url",
+		map[string]interface{}{
+			"name":       "installer.iso",
+			"parentUUID": "parent-uuid",
+			"sig":        "must-not-be-stored",
+			"url":        "must-not-be-stored",
+		},
+	)
+	bodyMap, ok := body.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected body type: %T", body)
+	}
+	if bodyMap["name"] != "installer.iso" || bodyMap["parentUUID"] != "parent-uuid" {
+		t.Fatalf("safe identity omitted: %+v", bodyMap)
+	}
+	if _, exists := bodyMap["sig"]; exists {
+		t.Fatalf("signature retained: %+v", bodyMap)
+	}
+	if _, exists := bodyMap["url"]; exists {
+		t.Fatalf("capability URL retained: %+v", bodyMap)
+	}
+
+	response := sanitizeAuditResponseForPath(
+		"/api/utilities/downloads/signed-url",
+		map[string]interface{}{
+			"status":  "success",
+			"message": "signed_url_generated",
+			"error":   "",
+			"data": map[string]interface{}{
+				"url":       "/api/utilities/downloads/id?sig=must-not-be-stored",
+				"expiresAt": "2026-08-10T10:00:00Z",
+			},
+		},
+	)
+	responseMap, ok := response.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected response type: %T", response)
+	}
+	data, ok := responseMap["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected response data: %+v", responseMap)
+	}
+	if data["url"] != "[REDACTED]" || data["expiresAt"] != "2026-08-10T10:00:00Z" {
+		t.Fatalf("unexpected sanitized response: %+v", responseMap)
+	}
+}
+
+func TestCloudInitTemplateAuditKeepsIdentityAndRedactsDocuments(t *testing.T) {
+	path := "/api/utilities/cloud-init/templates/7"
+	body, ok := sanitizeAuditPayloadForPath(path, map[string]interface{}{
+		"name":          "Base Template",
+		"user":          "#cloud-config\npassword: private",
+		"meta":          "instance-id: private",
+		"networkConfig": "version: 2",
+	}).(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected body type: %T", body)
+	}
+	if body["name"] != "Base Template" {
+		t.Fatalf("template identity was lost: %+v", body)
+	}
+	for _, key := range []string{"user", "meta", "networkConfig"} {
+		if body[key] != "[REDACTED]" {
+			t.Fatalf("%s was not redacted: %+v", key, body)
+		}
+	}
+
+	response, ok := sanitizeAuditResponseForPath(path, map[string]interface{}{
+		"status":  "success",
+		"message": "template_edited",
+		"error":   "",
+		"data": map[string]interface{}{
+			"id":            float64(7),
+			"name":          "Base Template",
+			"user":          "private user data",
+			"meta":          "private metadata",
+			"networkConfig": "private network data",
+		},
+	}).(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected response type: %T", response)
+	}
+	data, ok := response["data"].(map[string]interface{})
+	if !ok || data["id"] != float64(7) || data["name"] != "Base Template" {
+		t.Fatalf("response identity was lost: %+v", response)
+	}
+	for _, key := range []string{"user", "meta", "networkConfig"} {
+		if data[key] != "[REDACTED]" {
+			t.Fatalf("response %s was not redacted: %+v", key, data)
 		}
 	}
 }
@@ -175,6 +270,54 @@ func TestSanitizeAuditPayloadRedactsWireGuardKeys(t *testing.T) {
 	}
 	if !strings.Contains(result, "peer-public-key") {
 		t.Fatalf("public key was unexpectedly redacted: %s", result)
+	}
+}
+
+func TestSanitizeDownloadCreateAuditPayloadRedactsSourceURL(t *testing.T) {
+	result, ok := sanitizeAuditPayloadForPath(
+		"/api/utilities/downloads",
+		map[string]interface{}{
+			"url":                    "https://user:password@example.test/private.img?token=secret",
+			"filename":               "private.img",
+			"downloadType":           "uncategorized",
+			"automaticExtraction":    false,
+			"automaticRawConversion": false,
+		},
+	).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sanitized map, got %T", result)
+	}
+	if result["url"] != "[REDACTED]" {
+		t.Fatalf("download source URL was not redacted: %#v", result)
+	}
+	if result["filename"] != "private.img" || result["downloadType"] != "uncategorized" {
+		t.Fatalf("safe download metadata was not preserved: %#v", result)
+	}
+}
+
+func TestSanitizeDownloadAuditResponseRedactsSourceURL(t *testing.T) {
+	result, ok := sanitizeAuditResponseForPath(
+		"/api/utilities/downloads/42",
+		map[string]interface{}{
+			"status": "success",
+			"data": map[string]interface{}{
+				"id":    float64(42),
+				"name":  "private.img",
+				"type":  "http",
+				"uType": "uncategorized",
+				"url":   "https://user:password@example.test/private.img?token=secret",
+			},
+		},
+	).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sanitized response map, got %T", result)
+	}
+	data, ok := result["data"].(map[string]interface{})
+	if !ok || data["url"] != "[REDACTED]" {
+		t.Fatalf("download response URL was not redacted: %#v", result)
+	}
+	if data["id"] != float64(42) || data["name"] != "private.img" || data["type"] != "http" {
+		t.Fatalf("safe download response identity was not preserved: %#v", data)
 	}
 }
 
@@ -373,6 +516,7 @@ func TestUploadAuditDoesNotReadMultipartOrRecordSensitivePayloads(t *testing.T) 
 					"data": gin.H{
 						"path":     "/private/storage/confidential-disk.raw",
 						"uploadId": "opaque-but-private-upload-id",
+						"name":     "confidential-disk.raw",
 					},
 				})
 			})
@@ -428,21 +572,43 @@ func TestUploadAuditDoesNotReadMultipartOrRecordSensitivePayloads(t *testing.T) 
 			if recorded.Method != http.MethodPost || recorded.Path != path {
 				t.Fatalf("unexpected audit metadata: %+v", recorded)
 			}
-			if recorded.Query != "[REDACTED]" ||
-				recorded.Body != "[REDACTED]" ||
-				recorded.Response != "[REDACTED]" {
+			if recorded.Query != "[REDACTED]" || recorded.Body != "[REDACTED]" {
 				t.Fatalf("upload audit was not metadata-only: %+v", recorded)
+			}
+			if path == "/api/system/file-explorer/upload" {
+				if recorded.Response != "[REDACTED]" {
+					t.Fatalf("file explorer response was not redacted: %+v", recorded)
+				}
+			} else {
+				responsePayload, ok := recorded.Response.(map[string]interface{})
+				if !ok {
+					t.Fatalf("downloader receipt was not retained: %#v", recorded.Response)
+				}
+				data, ok := responsePayload["data"].(map[string]interface{})
+				if !ok ||
+					data["uploadId"] != "opaque-but-private-upload-id" ||
+					data["name"] != "confidential-disk.raw" {
+					t.Fatalf("downloader receipt identity was not retained: %#v", responsePayload)
+				}
+				if _, leaked := data["path"]; leaked {
+					t.Fatalf("downloader receipt retained a host path: %#v", responsePayload)
+				}
 			}
 
 			for _, secret := range []string{
 				"reusable-query-hash",
 				"/private/storage",
-				"confidential-disk.raw",
 				"TOP SECRET FILE CONTENT",
-				"opaque-but-private-upload-id",
 			} {
 				if strings.Contains(records[0].Action, secret) {
 					t.Fatalf("audit action leaked %q: %s", secret, records[0].Action)
+				}
+			}
+			if path == "/api/system/file-explorer/upload" {
+				for _, secret := range []string{"confidential-disk.raw", "opaque-but-private-upload-id"} {
+					if strings.Contains(records[0].Action, secret) {
+						t.Fatalf("file explorer audit action leaked %q: %s", secret, records[0].Action)
+					}
 				}
 			}
 		})

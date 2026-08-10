@@ -18,6 +18,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
@@ -36,6 +37,9 @@ func Fixups(db *gorm.DB) error {
 		return err
 	}
 	if err := migrateReplicationTransitionEvents(db); err != nil {
+		return err
+	}
+	if err := normalizeDownloadUncategorizedType(db); err != nil {
 		return err
 	}
 
@@ -58,6 +62,38 @@ func Fixups(db *gorm.DB) error {
 	cleanupStaleAvahi(db)
 
 	return nil
+}
+
+func normalizeDownloadUncategorizedType(db *gorm.DB) error {
+	const migrationName = "normalize_download_uncategorized_type_1"
+	const legacyValue = "uncategoried"
+
+	if !db.Migrator().HasTable(&utilitiesModels.Downloads{}) {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking download category migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		if err := tx.Model(&utilitiesModels.Downloads{}).
+			Where("u_type = ?", legacyValue).
+			UpdateColumn("u_type", utilitiesModels.DownloadUTypeOther).Error; err != nil {
+			return fmt.Errorf("failed normalizing download categories: %w", err)
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: migrationName}).Error; err != nil {
+			return fmt.Errorf("failed recording download category migration: %w", err)
+		}
+		return nil
+	})
 }
 
 func migrateReplicationTransitionEvents(db *gorm.DB) error {

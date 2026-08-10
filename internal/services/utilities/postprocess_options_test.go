@@ -125,7 +125,7 @@ func TestUpdateDownloadRejectsKnownTarAndRawCombinationBeforeMutation(t *testing
 	service := &Service{DB: database}
 	enabled := true
 
-	err := service.UpdateDownload(download.ID, utilitiesServiceInterfaces.UpdateDownloadRequest{
+	_, err := service.UpdateDownload(download.ID, utilitiesServiceInterfaces.UpdateDownloadRequest{
 		AutomaticRawConversion: &enabled,
 	})
 	if !errors.Is(err, ErrDownloaderPostProcessOptions) {

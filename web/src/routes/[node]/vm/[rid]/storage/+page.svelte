@@ -15,7 +15,12 @@
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import type { Zpool } from '$lib/types/zfs/pool';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { escapeHTML } from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
@@ -139,15 +144,22 @@
 	lastDownloadsByNode[initialData.node] = initialData.downloads;
 	const downloads = resource(
 		() => data.node,
-		async (node) => {
-			const result = await getDownloadsResult({ hostname: node });
-			if (isAPIResponse(result)) {
-				handleAPIError(result);
-				return lastDownloadsByNode[node] ?? data.downloads;
+		async (node, _previousNode, { signal }) => {
+			const fallback = () =>
+				lastDownloadsByNode[node] ?? (data.node === node ? data.downloads : []);
+			try {
+				const result = await getDownloadsResult({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return fallback();
+				}
+				lastDownloadsByNode[node] = result;
+				await updateCache('download-list', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return fallback();
+				throw error;
 			}
-			lastDownloadsByNode[node] = result;
-			await updateCache('download-list', result, node);
-			return result;
 		},
 		{
 			initialValue: initialData.downloads

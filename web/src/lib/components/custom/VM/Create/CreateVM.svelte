@@ -3,12 +3,13 @@
 	import { storage } from '$lib';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
-	import { getDownloadsByUType } from '$lib/api/utilities/downloader';
+	import { getDownloadsByUTypeResult } from '$lib/api/utilities/downloader';
 	import { getSimpleVMs, newVM } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
+	import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 	import { generatePassword } from '$lib/utils/string';
 	import {
 		getNextGuestId,
@@ -28,7 +29,12 @@
 	import { getBasicSettings } from '$lib/api/system/settings';
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import { type CPUPin, type CreateData } from '$lib/types/vm/vm';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
 	import { fade } from 'svelte/transition';
@@ -157,12 +163,24 @@
 		{ initialValue: [] }
 	);
 
+	const lastGoodDownloadsByNode: Record<string, UTypeGroupedDownload[]> = Object.create(null);
 	const downloadsByUtype = resource(
-		() => `downloads-by-utype-${modal.node || '__default__'}`,
-		async (key) => {
-			const result = await getDownloadsByUType(modal.node || undefined);
-			updateCache(key, result);
-			return result;
+		() => modal.node || '__default__',
+		async (node, _previousNode, { signal }) => {
+			const hostname = node === '__default__' ? undefined : node;
+			try {
+				const result = await getDownloadsByUTypeResult({ hostname, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGoodDownloadsByNode[node] ?? [];
+				}
+				lastGoodDownloadsByNode[node] = result;
+				await updateCache('downloads-by-utype', result, hostname);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGoodDownloadsByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{ initialValue: [] }
 	);
@@ -427,6 +445,7 @@
 							{:else if value === 'advanced'}
 								<div in:fade={{ duration: 200 }}>
 									<Advanced
+										node={modal.node}
 										bind:vncEnabled={modal.advanced.vncEnabled}
 										bind:serial={modal.advanced.serial}
 										bind:vncPort={modal.advanced.vncPort}

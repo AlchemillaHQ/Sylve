@@ -10,7 +10,9 @@ package utilities
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,34 +23,49 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
-	valid "github.com/asaskevich/govalidator"
 	"github.com/cavaliergopher/grab/v3"
 	"github.com/cenkalti/rain/v2/torrent"
+	"gorm.io/gorm"
+)
+
+var (
+	ErrDownloadInvalid          = errors.New("invalid_download_request")
+	ErrDownloadUnprocessable    = errors.New("download_request_unprocessable")
+	ErrDownloadConflict         = errors.New("download_conflict")
+	ErrDownloadNotFound         = errors.New("download_not_found")
+	ErrDownloadActive           = errors.New("download_active")
+	ErrDownloadInUse            = errors.New("download_in_use")
+	ErrDownloadCleanup          = errors.New("download_cleanup_failed")
+	ErrDownloadQueueUnavailable = errors.New("download_queue_unavailable")
 )
 
 func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
-	var downloads []utilitiesModels.Downloads
+	downloads := make([]utilitiesModels.Downloads, 0)
 
-	if err := s.DB.Preload("Files").Find(&downloads).Error; err != nil {
+	if err := s.DB.Preload("Files").Order("id ASC").Find(&downloads).Error; err != nil {
 		logger.L.Error().Msgf("Failed to list downloads: %v", err)
 		return nil, err
 	}
 
-	var pendingCount int16
-	for _, dl := range downloads {
-		if dl.Status != utilitiesModels.DownloadStatusDone &&
-			(dl.Status == utilitiesModels.DownloadStatusPending || dl.Status == utilitiesModels.DownloadStatusProcessing) &&
-			dl.Progress < 100 {
-			pendingCount++
+	needsSync := false
+	for i := range downloads {
+		dl := &downloads[i]
+		if dl.Files == nil {
+			dl.Files = make([]utilitiesModels.DownloadedFile, 0)
+		}
+		if dl.Status == utilitiesModels.DownloadStatusPending ||
+			dl.Status == utilitiesModels.DownloadStatusProcessing {
+			needsSync = true
 		}
 	}
 
-	if pendingCount > 0 {
+	if needsSync {
 		s.maybeEnqueueDownloadSync()
 	}
 
@@ -56,10 +73,11 @@ func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
 }
 
 func (s *Service) ListDownloadsByUType() ([]utilitiesServiceInterfaces.UTypeGroupedDownload, error) {
-	var downloads []utilitiesModels.Downloads
-	var grouped []utilitiesServiceInterfaces.UTypeGroupedDownload
+	downloads := make([]utilitiesModels.Downloads, 0)
+	grouped := make([]utilitiesServiceInterfaces.UTypeGroupedDownload, 0)
 
-	if err := s.DB.Find(&downloads).Error; err != nil {
+	if err := s.DB.Order("id ASC").Find(&downloads).Error; err != nil {
+		logger.L.Error().Err(err).Msg("Failed to list completed download choices")
 		return grouped, err
 	}
 
@@ -108,6 +126,9 @@ func (s *Service) GetDownload(uuid string) (*utilitiesModels.Downloads, error) {
 		logger.L.Error().Msgf("Failed to get download: %v", err)
 		return nil, err
 	}
+	if download.Files == nil {
+		download.Files = make([]utilitiesModels.DownloadedFile, 0)
+	}
 
 	return &download, nil
 }
@@ -118,330 +139,181 @@ func (s *Service) GetDownloadByID(id uint) (*utilitiesModels.Downloads, error) {
 		logger.L.Error().Msgf("Failed to get download by ID: %v", err)
 		return nil, err
 	}
+	if download.Files == nil {
+		download.Files = make([]utilitiesModels.DownloadedFile, 0)
+	}
 
 	return &download, nil
 }
 
-func (s *Service) GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.Downloads, *utilitiesModels.DownloadedFile, error) {
-	var download utilitiesModels.Downloads
-
-	if err := s.DB.Preload("Files").Where("uuid = ?", uuid).First(&download).Error; err != nil {
-		logger.L.Error().Msgf("Failed to get download by UUID: %v", err)
-		return nil, nil, err
-	}
-
-	if download.Type != utilitiesModels.DownloadTypeTorrent {
-		return nil, nil, fmt.Errorf("download_is_not_torrent")
-	}
-
-	var file utilitiesModels.DownloadedFile
-	found := false
-
-	for _, f := range download.Files {
-		if f.Name == name {
-			file = f
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return nil, nil, fmt.Errorf("file_not_found")
-	}
-
-	return &download, &file, nil
-}
-
-func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
-	if strings.TrimSpace(uuid) == "" || id <= 0 {
-		return "", fmt.Errorf("invalid_download_reference")
-	}
-
-	dl, err := s.GetDownload(uuid)
-	if err != nil {
-		logger.L.Error().Msgf("Failed to get download by UUID: %v", err)
-		return "", err
-	}
-
-	switch dl.Type {
-	case "torrent":
-		var file utilitiesModels.DownloadedFile
-		if err := s.DB.Where("id = ?", id).First(&file).Error; err != nil {
-			logger.L.Error().Msgf("Failed to get file by ID: %v", err)
-			return "", err
-		}
-		if file.DownloadID != int(dl.ID) {
-			return "", fmt.Errorf("file_not_found")
-		}
-
-		var download utilitiesModels.Downloads
-		if err := s.DB.Where("id = ?", file.DownloadID).First(&download).Error; err != nil {
-			logger.L.Error().Msgf("Failed to get download by ID: %v", err)
-			return "", err
-		}
-
-		fullPath := path.Join(download.Path, file.Name)
-
-		return fullPath, nil
-	case "http":
-		if id != int(dl.ID) {
-			return "", fmt.Errorf("file_not_found")
-		}
-		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
-	case "path":
-		if id != int(dl.ID) {
-			return "", fmt.Errorf("file_not_found")
-		}
-		return dl.Path, nil
-	}
-
-	return "", fmt.Errorf("unsupported_download_type")
-}
-
 func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileRequest) (uint, error) {
-	var fileName string
-	if req.Filename != nil && *req.Filename != "" {
-		fileName = *req.Filename
-	} else {
-		fileName = ""
+	source := strings.TrimSpace(req.URL)
+	if source == "" {
+		return 0, fmt.Errorf("%w: source is required", ErrDownloadInvalid)
+	}
+	if !validDownloaderUploadType(req.DownloadType) {
+		return 0, fmt.Errorf("%w: unsupported download type", ErrDownloadUnprocessable)
 	}
 
-	var ignoreTLS bool
-	if req.IgnoreTLS != nil && *req.IgnoreTLS {
-		ignoreTLS = true
-	} else {
-		ignoreTLS = false
+	requestedName := ""
+	if req.Filename != nil {
+		requestedName = strings.TrimSpace(*req.Filename)
+		if requestedName == "" {
+			return 0, fmt.Errorf("%w: filename cannot be blank", ErrDownloadUnprocessable)
+		}
+		if err := utils.IsValidFilename(requestedName); err != nil {
+			return 0, fmt.Errorf("%w: invalid filename", ErrDownloadUnprocessable)
+		}
 	}
 
-	var automaticExtraction bool
-	if req.AutomaticExtraction != nil && *req.AutomaticExtraction {
-		automaticExtraction = true
-	} else {
-		automaticExtraction = false
+	automaticExtraction := req.AutomaticExtraction != nil && *req.AutomaticExtraction
+	automaticRawConversion := req.AutomaticRawConversion != nil && *req.AutomaticRawConversion
+	ignoreTLS := req.IgnoreTLS != nil && *req.IgnoreTLS
+
+	download := utilitiesModels.Downloads{
+		URL:                    source,
+		UUID:                   utils.GenerateDeterministicUUID(source),
+		Name:                   requestedName,
+		Progress:               0,
+		Size:                   0,
+		Files:                  make([]utilitiesModels.DownloadedFile, 0),
+		UType:                  req.DownloadType,
+		Status:                 utilitiesModels.DownloadStatusPending,
+		AutomaticExtraction:    automaticExtraction,
+		AutomaticRawConversion: automaticRawConversion,
+		IgnoreTLS:              ignoreTLS,
 	}
 
-	var automaticRawConversion bool
-	if req.AutomaticRawConversion != nil && *req.AutomaticRawConversion {
-		automaticRawConversion = true
-	} else {
-		automaticRawConversion = false
+	switch {
+	case utils.IsMagnetURI(source):
+		if automaticExtraction || automaticRawConversion {
+			return 0, fmt.Errorf("%w: torrent post-processing is not supported", ErrDownloadUnprocessable)
+		}
+		download.Type = utilitiesModels.DownloadTypeTorrent
+		download.Path = filepath.Join("/non-existent", download.UUID)
+		download.IgnoreTLS = false
+
+	case isHTTPDownloadSource(source):
+		parsed, err := url.Parse(source)
+		if err != nil {
+			return 0, fmt.Errorf("%w: invalid HTTP URL", ErrDownloadUnprocessable)
+		}
+		if download.Name == "" {
+			download.Name, err = filenameFromDownloadURL(parsed)
+			if err != nil {
+				return 0, err
+			}
+		}
+		download.Type = utilitiesModels.DownloadTypeHTTP
+		download.Path = filepath.Clean(filepath.Join(config.GetDownloadsPath("http"), download.Name))
+
+	case filepath.IsAbs(source):
+		sourcePath := filepath.Clean(source)
+		info, err := os.Stat(sourcePath)
+		if err != nil {
+			return 0, fmt.Errorf("%w: source file is unavailable", ErrDownloadUnprocessable)
+		}
+		if !info.Mode().IsRegular() {
+			return 0, fmt.Errorf("%w: source is not a regular file", ErrDownloadUnprocessable)
+		}
+		file, err := os.Open(sourcePath)
+		if err != nil {
+			return 0, fmt.Errorf("%w: source file is not readable", ErrDownloadUnprocessable)
+		}
+		if err := file.Close(); err != nil {
+			return 0, fmt.Errorf("inspect source file: %w", err)
+		}
+		if download.Name == "" {
+			download.Name = filepath.Base(sourcePath)
+			if err := utils.IsValidFilename(download.Name); err != nil {
+				return 0, fmt.Errorf("%w: invalid inferred filename", ErrDownloadUnprocessable)
+			}
+		}
+		download.URL = sourcePath
+		download.Type = utilitiesModels.DownloadTypePath
+		download.Path = filepath.Clean(filepath.Join(config.GetDownloadsPath("path"), download.Name))
+		download.IgnoreTLS = false
+
+	default:
+		return 0, fmt.Errorf("%w: use a magnet URI, HTTP(S) URL, or absolute path", ErrDownloadUnprocessable)
 	}
 
-	url := req.URL
-	downloadType := req.DownloadType
-
-	exists, err := utils.Exists[utilitiesModels.Downloads](s.DB, "url = ?", url)
-	if err != nil {
+	if err := ValidateDownloaderPostProcessOptions(
+		filepath.Base(download.Path),
+		download.AutomaticExtraction,
+		download.AutomaticRawConversion,
+	); err != nil {
 		return 0, err
 	}
-
-	if exists {
-		logger.L.Info().Msgf("Download already exists: %s", url)
-		return 0, fmt.Errorf("url_already_exists")
+	if download.Type != utilitiesModels.DownloadTypeTorrent && download.URL != download.Path {
+		if err := ensureDownloadDestinationAvailable(download.Path); err != nil {
+			return 0, err
+		}
 	}
 
-	tmpUUID := utils.GenerateDeterministicUUID(url)
-
-	if utils.IsMagnetURI(url) {
-		download := utilitiesModels.Downloads{
-			URL:                    url,
-			UUID:                   tmpUUID,
-			Path:                   fmt.Sprintf("/non-existent/%s", tmpUUID),
-			Type:                   utilitiesModels.DownloadTypeTorrent,
-			Name:                   fileName,
-			Size:                   0,
-			Progress:               0,
-			Files:                  []utilitiesModels.DownloadedFile{},
-			Status:                 utilitiesModels.DownloadStatusPending,
-			AutomaticExtraction:    false,
-			UType:                  downloadType,
-			AutomaticRawConversion: false,
-			IgnoreTLS:              true,
-		}
-
-		if err := s.DB.Create(&download).Error; err != nil {
-			logger.L.Error().Msgf("Failed to create download record: %v", err)
-			return 0, err
-		}
-
-		err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
-			ID: download.ID,
-		})
-
-		if err != nil {
-			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
-			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
-			return 0, err
-		}
-
-		return download.ID, nil
-	} else if valid.IsURL(url) {
-		uuid := utils.GenerateDeterministicUUID(url)
-		destDir := config.GetDownloadsPath("http")
-
-		var finalName string
-
-		if fileName != "" {
-			err := utils.IsValidFilename(fileName)
-			if err != nil {
-				return 0, fmt.Errorf("invalid_filename: %w", err)
-			}
-
-			finalName = fileName
-		} else {
-			finalName = path.Base(url)
-
-			if idx := strings.Index(finalName, "?"); idx != -1 {
-				finalName = finalName[:idx]
-			}
-
-			finalName = strings.ReplaceAll(finalName, " ", "_")
-			if finalName == "" {
-				return 0, fmt.Errorf("invalid_filename")
-			}
-		}
-
-		filePath := path.Join(destDir, finalName)
-
-		if err := ValidateDownloaderPostProcessOptions(
-			finalName,
-			automaticExtraction,
-			automaticRawConversion,
-		); err != nil {
-			return 0, err
-		}
-
-		if _, err := os.Stat(filePath); err == nil {
-			err := os.Remove(filePath)
-			if err != nil {
-				return 0, fmt.Errorf("failed_to_remove_incomplete_file: %w", err)
-			}
-		}
-
-		download := utilitiesModels.Downloads{
-			URL:                    url,
-			UUID:                   uuid,
-			Path:                   filePath,
-			Type:                   utilitiesModels.DownloadTypeHTTP,
-			Name:                   finalName,
-			Size:                   0,
-			Progress:               0,
-			Files:                  []utilitiesModels.DownloadedFile{},
-			Status:                 utilitiesModels.DownloadStatusPending,
-			UType:                  downloadType,
-			AutomaticExtraction:    automaticExtraction,
-			AutomaticRawConversion: automaticRawConversion,
-			IgnoreTLS:              ignoreTLS,
-		}
-
-		if err := s.DB.Create(&download).Error; err != nil {
-			logger.L.Error().Msgf("Failed to create download record: %v", err)
-			return 0, err
-		}
-
-		err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
-			ID: download.ID,
-		})
-
-		if err != nil {
-			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
-			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
-			return 0, err
-		}
-
-		return download.ID, nil
-	} else if utils.IsAbsPath(url) {
-		sourceInfo, err := os.Stat(url)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return 0, fmt.Errorf("file_not_found")
-			}
-			return 0, fmt.Errorf("source_stat_failed: %w", err)
-		}
-		if !sourceInfo.Mode().IsRegular() {
-			return 0, fmt.Errorf("source_not_regular_file")
-		}
-		sourceFile, err := os.Open(url)
-		if err != nil {
-			return 0, fmt.Errorf("source_not_readable: %w", err)
-		}
-		if err := sourceFile.Close(); err != nil {
-			return 0, fmt.Errorf("source_close_failed: %w", err)
-		}
-
-		var finalName string
-
-		if fileName != "" {
-			err := utils.IsValidFilename(fileName)
-			if err != nil {
-				return 0, fmt.Errorf("invalid_filename: %w", err)
-			}
-
-			finalName = fileName
-		} else {
-			finalName = path.Base(url)
-			if finalName == "" {
-				return 0, fmt.Errorf("invalid_filename")
-			}
-		}
-
-		sourcePath := path.Clean(url)
-		destDir := config.GetDownloadsPath("path")
-		destPath := path.Clean(path.Join(destDir, finalName))
-
-		if err := ValidateDownloaderPostProcessOptions(
-			finalName,
-			automaticExtraction,
-			automaticRawConversion,
-		); err != nil {
-			return 0, err
-		}
-
-		// Never delete the source file; only replace an existing destination when they differ.
-		if sourcePath != destPath {
-			if _, err := os.Stat(destPath); err == nil {
-				err := os.Remove(destPath)
-				if err != nil {
-					return 0, fmt.Errorf("failed_to_remove_existing_file: %w", err)
-				}
-			}
-		}
-
-		download := utilitiesModels.Downloads{
-			URL:                    sourcePath,
-			UUID:                   utils.GenerateDeterministicUUID(url),
-			Path:                   destPath,
-			Type:                   utilitiesModels.DownloadTypePath,
-			Name:                   finalName,
-			Size:                   0,
-			Progress:               0,
-			Files:                  []utilitiesModels.DownloadedFile{},
-			Status:                 utilitiesModels.DownloadStatusPending,
-			AutomaticExtraction:    automaticExtraction,
-			AutomaticRawConversion: automaticRawConversion,
-			UType:                  downloadType,
-			IgnoreTLS:              ignoreTLS,
-		}
-
-		if err := s.DB.Create(&download).Error; err != nil {
-			logger.L.Error().Msgf("Failed to create download record: %v", err)
-			return 0, fmt.Errorf("failed_to_create_download_record: %w", err)
-		}
-
-		err = s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
-			ID: download.ID,
-		})
-
-		if err != nil {
-			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
-			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
-			return 0, err
-		}
-
-		return download.ID, nil
+	var collisionCount int64
+	if err := s.DB.Model(&utilitiesModels.Downloads{}).
+		Where("url = ? OR path = ?", download.URL, download.Path).
+		Count(&collisionCount).Error; err != nil {
+		return 0, fmt.Errorf("check download identity: %w", err)
+	}
+	if collisionCount > 0 {
+		return 0, ErrDownloadConflict
 	}
 
-	return 0, fmt.Errorf("invalid_url")
+	if err := s.DB.Create(&download).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return 0, ErrDownloadConflict
+		}
+		return 0, fmt.Errorf("create download: %w", err)
+	}
+
+	if err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
+		ID: download.ID,
+	}); err != nil {
+		logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to enqueue download start job")
+		if updateErr := s.DB.Model(&download).UpdateColumn("error", ErrDownloadQueueUnavailable.Error()).Error; updateErr != nil {
+			logger.L.Error().Uint("download_id", download.ID).Err(updateErr).Msg("Failed to persist queue error")
+		}
+		return download.ID, fmt.Errorf("%w: %v", ErrDownloadQueueUnavailable, err)
+	}
+
+	return download.ID, nil
+}
+
+func isHTTPDownloadSource(source string) bool {
+	parsed, err := url.ParseRequestURI(source)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
+func filenameFromDownloadURL(parsed *url.URL) (string, error) {
+	if parsed == nil {
+		return "", fmt.Errorf("%w: invalid HTTP URL", ErrDownloadUnprocessable)
+	}
+	name, err := url.PathUnescape(path.Base(parsed.EscapedPath()))
+	if err != nil {
+		return "", fmt.Errorf("%w: invalid URL filename", ErrDownloadUnprocessable)
+	}
+	name = strings.ReplaceAll(strings.TrimSpace(name), " ", "_")
+	if err := utils.IsValidFilename(name); err != nil {
+		return "", fmt.Errorf("%w: URL requires an explicit filename", ErrDownloadUnprocessable)
+	}
+	return name, nil
+}
+
+func ensureDownloadDestinationAvailable(destination string) error {
+	_, err := os.Lstat(destination)
+	switch {
+	case err == nil:
+		return ErrDownloadConflict
+	case os.IsNotExist(err):
+		return nil
+	default:
+		return fmt.Errorf("inspect download destination: %w", err)
+	}
 }
 
 func (s *Service) StartDownload(id *uint) error {
@@ -459,13 +331,26 @@ func (s *Service) StartDownload(id *uint) error {
 		return err
 	}
 	if download.Status == utilitiesModels.DownloadStatusDone ||
-		download.Status == utilitiesModels.DownloadStatusFailed ||
-		(download.Type == utilitiesModels.DownloadTypePath &&
-			download.Status == utilitiesModels.DownloadStatusProcessing) {
+		download.Status == utilitiesModels.DownloadStatusFailed {
 		return nil
 	}
+	if download.Status == utilitiesModels.DownloadStatusProcessing &&
+		(download.Type == utilitiesModels.DownloadTypeHTTP || download.Type == utilitiesModels.DownloadTypePath) {
+		info, err := os.Stat(download.Path)
+		if err != nil || !info.Mode().IsRegular() {
+			return s.failDownload(download, fmt.Errorf("download_payload_unavailable"))
+		}
+		if !download.AutomaticExtraction && !download.AutomaticRawConversion {
+			return s.finishDownload(download, download.ExtractedPath)
+		}
+		return s.enqueuePostProcOnce(download.ID)
+	}
 
-	if utils.IsMagnetURI(download.URL) {
+	switch download.Type {
+	case utilitiesModels.DownloadTypeTorrent:
+		if !utils.IsMagnetURI(download.URL) {
+			return s.failDownload(download, fmt.Errorf("invalid_torrent_source"))
+		}
 		torrentOpts := torrent.AddTorrentOptions{
 			ID:                utils.GenerateDeterministicUUID(download.URL),
 			StopAfterDownload: false,
@@ -492,14 +377,31 @@ func (s *Service) StartDownload(id *uint) error {
 		download.UUID = t.ID()
 		download.Path = t.Dir()
 		download.Name = t.Name()
+		download.Error = ""
 
 		if err := s.DB.Save(download).Error; err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("failed_to_update_download_record")
 			return fmt.Errorf("failed_to_update_download_record: %w", err)
 		}
-	} else if valid.IsURL(download.URL) {
-		destDir := config.GetDownloadsPath("http")
-		req, _ := grab.NewRequest(path.Join(destDir, download.Name), download.URL)
+	case utilitiesModels.DownloadTypeHTTP:
+		if !isHTTPDownloadSource(download.URL) {
+			return s.failDownload(download, fmt.Errorf("invalid_http_source"))
+		}
+		if download.Error != "" {
+			if err := s.DB.Model(download).UpdateColumn("error", "").Error; err != nil {
+				return fmt.Errorf("clear_download_error: %w", err)
+			}
+			download.Error = ""
+		}
+		if download.Progress == 0 {
+			if err := ensureDownloadDestinationAvailable(download.Path); err != nil {
+				return s.failDownload(download, err)
+			}
+		}
+		req, err := grab.NewRequest(download.Path, download.URL)
+		if err != nil {
+			return s.failDownload(download, fmt.Errorf("create_http_request: %w", err))
+		}
 
 		var resp *grab.Response
 
@@ -512,16 +414,19 @@ func (s *Service) StartDownload(id *uint) error {
 		s.httpRspMu.Lock()
 		s.httpResponses[download.UUID] = resp
 		s.httpRspMu.Unlock()
-	} else if utils.IsAbsPath(download.URL) {
-		destDir := config.GetDownloadsPath("path")
-		destPath := path.Clean(path.Join(destDir, download.Name))
-		sourcePath := path.Clean(download.URL)
+
+	case utilitiesModels.DownloadTypePath:
+		destPath := filepath.Clean(download.Path)
+		sourcePath := filepath.Clean(download.URL)
+		if !filepath.IsAbs(sourcePath) || !filepath.IsAbs(destPath) {
+			return s.failDownload(download, fmt.Errorf("invalid_path_source"))
+		}
 
 		// If source is already the final destination, avoid self-copy/truncation.
 		if sourcePath != destPath {
 			publishedUpload, err := s.publishCompletedDownloaderUpload(sourcePath, destPath)
 			if err == nil && !publishedUpload {
-				err = utils.CopyFile(sourcePath, destPath)
+				err = copyFileNoReplace(sourcePath, destPath)
 			}
 			if err != nil {
 				logger.L.Error().Uint("download_id", *id).Err(err).Msg("path_publish_failed")
@@ -615,26 +520,28 @@ func (s *Service) StartDownload(id *uint) error {
 		}
 
 		if needPostProc {
-			err = db.EnqueueJSON(context.Background(), "utils-download-postproc", &utilitiesServiceInterfaces.DownloadPostProcPayload{
-				ID: download.ID,
-			})
-
-			if err != nil {
+			if err := s.enqueuePostProcOnce(download.ID); err != nil {
 				logger.L.Error().Uint("download_id", *id).Err(err).Msg("failed_to_enqueue_postproc")
 				return fmt.Errorf("failed_to_enqueue_postproc: %w", err)
 			}
 		}
+
+	default:
+		return s.failDownload(download, fmt.Errorf("unsupported_download_type"))
 	}
 
 	return nil
 }
 
-func (s *Service) StartPostProcess(id *uint) error {
+func (s *Service) StartPostProcess(id *uint) (resultErr error) {
 	if id == nil {
 		return fmt.Errorf("download_is_nil")
 	}
 
 	defer func() {
+		if resultErr != nil {
+			return
+		}
 		s.inflightMu.Lock()
 		delete(s.inflight, *id)
 		s.inflightMu.Unlock()
@@ -655,7 +562,7 @@ func (s *Service) StartPostProcess(id *uint) error {
 		return s.finishDownload(&d, "")
 	}
 	if err := ValidateDownloaderPostProcessOptions(
-		d.Name,
+		filepath.Base(d.Path),
 		d.AutomaticExtraction,
 		d.AutomaticRawConversion,
 	); err != nil {
@@ -737,13 +644,20 @@ func (s *Service) StartPostProcess(id *uint) error {
 }
 
 func (s *Service) enqueuePostProcOnce(id uint) error {
+	s.downloadStartRunMu.Lock()
+	if _, deleting := s.downloadDeleting[id]; deleting {
+		s.downloadStartRunMu.Unlock()
+		return ErrDownloadActive
+	}
 	s.inflightMu.Lock()
 	if _, ok := s.inflight[id]; ok {
 		s.inflightMu.Unlock()
+		s.downloadStartRunMu.Unlock()
 		return nil
 	}
 	s.inflight[id] = struct{}{}
 	s.inflightMu.Unlock()
+	s.downloadStartRunMu.Unlock()
 
 	err := db.EnqueueJSON(context.Background(), "utils-download-postproc", &utilitiesServiceInterfaces.DownloadPostProcPayload{
 		ID: id,
@@ -809,15 +723,39 @@ func (s *Service) failDownload(d *utilitiesModels.Downloads, cause error) error 
 	return err
 }
 
-func (s *Service) UpdateDownload(id uint, req utilitiesServiceInterfaces.UpdateDownloadRequest) error {
+func (s *Service) UpdateDownload(
+	id uint,
+	req utilitiesServiceInterfaces.UpdateDownloadRequest,
+) (*utilitiesModels.Downloads, error) {
+	if id == 0 {
+		return nil, ErrDownloadInvalid
+	}
+	if req.Name == nil && req.UType == nil && req.AutomaticExtraction == nil &&
+		req.AutomaticRawConversion == nil {
+		return nil, fmt.Errorf("%w: at least one field is required", ErrDownloadInvalid)
+	}
+
 	var d utilitiesModels.Downloads
 	if err := s.DB.First(&d, "id = ?", id).Error; err != nil {
-		return fmt.Errorf("download_not_found: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDownloadNotFound
+		}
+		return nil, fmt.Errorf("load download: %w", err)
+	}
+	if d.Status == utilitiesModels.DownloadStatusPending ||
+		d.Status == utilitiesModels.DownloadStatusProcessing {
+		return nil, ErrDownloadActive
 	}
 
 	effectiveName := d.Name
 	if req.Name != nil {
-		effectiveName = *req.Name
+		effectiveName = strings.TrimSpace(*req.Name)
+		if err := utils.IsValidFilename(effectiveName); err != nil {
+			return nil, fmt.Errorf("%w: invalid filename", ErrDownloadUnprocessable)
+		}
+	}
+	if req.UType != nil && !validDownloaderUploadType(*req.UType) {
+		return nil, fmt.Errorf("%w: unsupported download type", ErrDownloadUnprocessable)
 	}
 	effectiveExtraction := d.AutomaticExtraction
 	if req.AutomaticExtraction != nil {
@@ -827,59 +765,80 @@ func (s *Service) UpdateDownload(id uint, req utilitiesServiceInterfaces.UpdateD
 	if req.AutomaticRawConversion != nil {
 		effectiveRawConversion = *req.AutomaticRawConversion
 	}
+	if d.Type == utilitiesModels.DownloadTypeTorrent &&
+		(effectiveExtraction || effectiveRawConversion) {
+		return nil, fmt.Errorf("%w: torrent post-processing is not supported", ErrDownloadUnprocessable)
+	}
 	if err := ValidateDownloaderPostProcessOptions(
-		effectiveName,
+		filepath.Base(d.Path),
 		effectiveExtraction,
 		effectiveRawConversion,
 	); err != nil {
-		return err
+		return nil, err
 	}
 
 	updates := map[string]any{}
 
 	if req.Name != nil {
-		updates["name"] = *req.Name
+		updates["name"] = effectiveName
 	}
 	if req.UType != nil {
 		updates["u_type"] = *req.UType
 	}
 
-	needPostProc := false
+	needPostProc := d.ExtractedPath == "" && ((req.AutomaticExtraction != nil && *req.AutomaticExtraction && !d.AutomaticExtraction) ||
+		(req.AutomaticRawConversion != nil && *req.AutomaticRawConversion && !d.AutomaticRawConversion))
 
 	if req.AutomaticExtraction != nil {
 		updates["automatic_extraction"] = *req.AutomaticExtraction
-		if *req.AutomaticExtraction && d.ExtractedPath == "" {
-			needPostProc = true
-		}
 	}
 	if req.AutomaticRawConversion != nil {
 		updates["automatic_raw_conversion"] = *req.AutomaticRawConversion
-		if *req.AutomaticRawConversion && d.ExtractedPath == "" {
-			needPostProc = true
-		}
 	}
 
-	if len(updates) > 0 {
-		if err := s.DB.Model(&d).Updates(updates).Error; err != nil {
-			return fmt.Errorf("update_download: %w", err)
-		}
+	if needPostProc && d.Status != utilitiesModels.DownloadStatusDone {
+		return nil, fmt.Errorf("%w: post-processing requires a completed download", ErrDownloadActive)
+	}
+	if needPostProc {
+		updates["status"] = utilitiesModels.DownloadStatusProcessing
+		updates["error"] = ""
 	}
 
-	if needPostProc && d.Status == utilitiesModels.DownloadStatusDone {
-		s.DB.Model(&d).Update("status", utilitiesModels.DownloadStatusProcessing)
+	if err := s.DB.Model(&d).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("update download: %w", err)
+	}
+
+	if needPostProc {
 		if err := s.enqueuePostProcOnce(d.ID); err != nil {
-			s.DB.Model(&d).Updates(map[string]any{
-				"status": utilitiesModels.DownloadStatusFailed,
-				"error":  fmt.Sprintf("failed to enqueue post-processing: %v", err),
-			})
-			return fmt.Errorf("enqueue_post_proc: %w", err)
+			compensation := map[string]any{
+				"name":                     d.Name,
+				"u_type":                   d.UType,
+				"automatic_extraction":     d.AutomaticExtraction,
+				"automatic_raw_conversion": d.AutomaticRawConversion,
+				"status":                   d.Status,
+				"error":                    d.Error,
+			}
+			if restoreErr := s.DB.Model(&d).Updates(compensation).Error; restoreErr != nil {
+				logger.L.Error().Uint("download_id", d.ID).Err(restoreErr).Msg("Failed to compensate download update")
+			}
+			return nil, fmt.Errorf("%w: %v", ErrDownloadQueueUnavailable, err)
 		}
 	}
 
-	return nil
+	var updated utilitiesModels.Downloads
+	if err := s.DB.Preload("Files").First(&updated, id).Error; err != nil {
+		return nil, fmt.Errorf("reload download: %w", err)
+	}
+	if updated.Files == nil {
+		updated.Files = make([]utilitiesModels.DownloadedFile, 0)
+	}
+	return &updated, nil
 }
 
 func (s *Service) SyncDownloadProgress() error {
+	s.downloadSyncRunMu.Lock()
+	defer s.downloadSyncRunMu.Unlock()
+
 	var downloads []utilitiesModels.Downloads
 	if err := s.DB.
 		Where("progress < 100 OR status IN (?, ?)",
@@ -889,6 +848,9 @@ func (s *Service) SyncDownloadProgress() error {
 	}
 
 	for _, d := range downloads {
+		if s.isDownloadDeleting(d.ID) {
+			continue
+		}
 		switch d.Type {
 		case utilitiesModels.DownloadTypeTorrent:
 			s.syncTorrent(&d)
@@ -910,20 +872,9 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 
 	t := s.BTTClient.GetTorrent(download.UUID)
 	if t == nil {
-		if download.Status == utilitiesModels.DownloadStatusProcessing {
-			staleWindow := time.Now().Add(-5 * time.Minute)
-			if download.UpdatedAt.Before(staleWindow) {
-				download.Error = "torrent_lost_from_client"
-				download.Status = utilitiesModels.DownloadStatusFailed
-				s.DB.Model(download).Select("Error", "Status").Updates(download)
-				if s.TelemetryDB != nil {
-					db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
-						"downloadId": download.ID,
-						"status":     "failed",
-						"error":      download.Error,
-					})
-				}
-			}
+		if download.Status == utilitiesModels.DownloadStatusPending ||
+			download.Status == utilitiesModels.DownloadStatusProcessing {
+			s.maybeRecoverDownloadStart(download)
 		}
 		return
 	}
@@ -957,10 +908,8 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 	isFinished := total > 0 && have == total
 
 	if isFinished {
-		download.Status = utilitiesModels.DownloadStatusDone
-		download.Progress = 100
-		if err := s.DB.Model(download).Select("Progress", "Status").Updates(download).Error; err != nil {
-			logger.L.Error().Err(err).Msgf("Failed to save completed status for download %s", download.UUID)
+		if err := s.persistCompletedTorrent(download, t); err != nil {
+			logger.L.Error().Err(err).Msgf("Failed to persist completed torrent %s", download.UUID)
 			return
 		}
 		if err := s.BTTClient.RemoveTorrent(download.UUID, true); err != nil {
@@ -983,6 +932,117 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 	if err != nil {
 		logger.L.Error().Err(err).Msgf("Failed to update database for download %s", download.UUID)
 	}
+}
+
+func (s *Service) persistCompletedTorrent(
+	download *utilitiesModels.Downloads,
+	t *torrent.Torrent,
+) error {
+	if download == nil || t == nil {
+		return errors.New("completed torrent is unavailable")
+	}
+
+	files, err := t.Files()
+	if err != nil {
+		return fmt.Errorf("read completed torrent files: %w", err)
+	}
+	catalog := make([]completedTorrentFile, 0, len(files))
+	for _, file := range files {
+		catalog = append(catalog, completedTorrentFile{
+			Path: file.Path(),
+			Size: file.Length(),
+		})
+	}
+	return s.persistCompletedTorrentFiles(download, catalog)
+}
+
+type completedTorrentFile struct {
+	Path string
+	Size int64
+}
+
+func (s *Service) persistCompletedTorrentFiles(
+	download *utilitiesModels.Downloads,
+	files []completedTorrentFile,
+) error {
+	if download == nil {
+		return errors.New("completed torrent is unavailable")
+	}
+	if len(files) == 0 {
+		return errors.New("completed torrent contains no files")
+	}
+
+	torrentRoot := filepath.Clean(config.GetDownloadsPath("torrents"))
+	downloadRoot := filepath.Clean(filepath.Join(torrentRoot, download.UUID))
+	if !managedDescendant(torrentRoot, downloadRoot) || filepath.Clean(download.Path) != downloadRoot {
+		return errors.New("completed torrent has an unsafe path")
+	}
+
+	rows := make([]utilitiesModels.DownloadedFile, 0, len(files))
+	for _, file := range files {
+		relativePath := filepath.Clean(file.Path)
+		if relativePath == "." || relativePath == ".." || filepath.IsAbs(relativePath) ||
+			strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
+			return errors.New("completed torrent contains an unsafe file path")
+		}
+		candidate := filepath.Clean(filepath.Join(downloadRoot, relativePath))
+		if !managedDescendant(downloadRoot, candidate) {
+			return errors.New("completed torrent file escapes its managed root")
+		}
+		resolvedCandidate, err := resolveSignedDownloadPath(downloadRoot, candidate)
+		if err != nil {
+			return fmt.Errorf("inspect completed torrent file: %w", err)
+		}
+		info, err := os.Stat(resolvedCandidate)
+		if err != nil {
+			return fmt.Errorf("stat completed torrent file: %w", err)
+		}
+
+		rows = append(rows, utilitiesModels.DownloadedFile{
+			DownloadID: int(download.ID),
+			Name:       relativePath,
+			Size:       info.Size(),
+		})
+	}
+
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("download_id = ?", download.ID).
+			Delete(&utilitiesModels.DownloadedFile{}).Error; err != nil {
+			return fmt.Errorf("replace completed torrent file catalog: %w", err)
+		}
+		if err := tx.Create(&rows).Error; err != nil {
+			return fmt.Errorf("persist completed torrent file catalog: %w", err)
+		}
+
+		result := tx.Model(&utilitiesModels.Downloads{}).
+			Where("id = ? AND status IN (?, ?)",
+				download.ID,
+				utilitiesModels.DownloadStatusPending,
+				utilitiesModels.DownloadStatusProcessing,
+			).
+			Updates(map[string]any{
+				"error":    "",
+				"name":     download.Name,
+				"progress": 100,
+				"size":     download.Size,
+				"status":   utilitiesModels.DownloadStatusDone,
+			})
+		if result.Error != nil {
+			return fmt.Errorf("persist completed torrent state: %w", result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("completed torrent state changed")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	download.Error = ""
+	download.Progress = 100
+	download.Status = utilitiesModels.DownloadStatusDone
+	return nil
 }
 
 func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
@@ -1044,65 +1104,21 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 		return
 	}
 
-	freshWindow := time.Now().Add(-30 * time.Second)
-	if download.CreatedAt.After(freshWindow) &&
-		download.Status == utilitiesModels.DownloadStatusPending &&
-		download.Progress == 0 {
-		logger.L.Debug().Msgf(
-			"syncHTTP: fresh pending HTTP download with no response yet, skipping (ID=%d)",
-			download.ID,
-		)
-		return
-	}
-
-	staleWindow := time.Now().Add(-5 * time.Minute)
-	if download.Status == utilitiesModels.DownloadStatusPending &&
-		download.Progress == 0 &&
-		download.CreatedAt.Before(staleWindow) {
-		logger.L.Warn().Msgf(
-			"syncHTTP: stale pending HTTP download with no response (ID=%d), marking failed",
-			download.ID,
-		)
-		download.Error = "no_active_http_response"
-		download.Status = "failed"
-		s.DB.Model(download).Select("Error", "Status").Updates(download)
-		if s.TelemetryDB != nil {
-			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
-				"downloadId": download.ID,
-				"status":     "failed",
-				"error":      download.Error,
-			})
-		}
-		return
-	}
-
-	// HTTP downloads that show progress but have no active grab response were
-	// interrupted (e.g. daemon restart); mark them as failed.
-	if download.Status == utilitiesModels.DownloadStatusPending &&
-		download.Progress > 0 &&
-		download.CreatedAt.Before(freshWindow) {
-		logger.L.Warn().Msgf(
-			"syncHTTP: interrupted HTTP download with no active response (ID=%d), marking failed",
-			download.ID,
-		)
-		download.Error = "download_interrupted"
-		download.Status = "failed"
-		s.DB.Model(download).Select("Error", "Status").Updates(download)
-		if s.TelemetryDB != nil {
-			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "failed", download.Error, map[string]any{
-				"downloadId": download.ID,
-				"status":     "failed",
-				"error":      download.Error,
-			})
-		}
+	if download.Status == utilitiesModels.DownloadStatusPending {
+		s.maybeRecoverDownloadStart(download)
 		return
 	}
 
 	// Recover processing records that lost in-memory HTTP response state (e.g. after restart).
 	if download.Status == utilitiesModels.DownloadStatusProcessing {
-		if info, err := os.Stat(download.Path); err == nil {
-			download.Size = info.Size()
+		info, err := os.Stat(download.Path)
+		if err != nil || !info.Mode().IsRegular() {
+			if failErr := s.failDownload(download, fmt.Errorf("download_payload_unavailable")); failErr != nil {
+				logger.L.Error().Uint("download_id", download.ID).Err(failErr).Msg("Failed to mark missing HTTP payload")
+			}
+			return
 		}
+		download.Size = info.Size()
 
 		if !download.AutomaticExtraction && !download.AutomaticRawConversion {
 			download.Progress = 100
@@ -1131,209 +1147,583 @@ func (s *Service) syncPath(download *utilitiesModels.Downloads) {
 		return
 	}
 
-	// Check if this is a stale pending path download that never got processed
 	if download.Status == utilitiesModels.DownloadStatusPending {
-		if s.isDownloadStartRunning(download.ID) {
+		s.maybeRecoverDownloadStart(download)
+		return
+	}
+
+	if download.Status == utilitiesModels.DownloadStatusProcessing {
+		info, err := os.Stat(download.Path)
+		if err != nil || !info.Mode().IsRegular() {
+			if failErr := s.failDownload(download, fmt.Errorf("download_payload_unavailable")); failErr != nil {
+				logger.L.Error().Uint("download_id", download.ID).Err(failErr).Msg("Failed to mark missing path payload")
+			}
 			return
 		}
-		staleWindow := time.Now().Add(-2 * time.Minute)
-		if download.CreatedAt.Before(staleWindow) {
-			logger.L.Info().Msgf("syncPath: stale pending path download (ID=%d), enqueuing start job", download.ID)
-
-			err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
-				ID: download.ID,
-			})
-
-			if err != nil {
-				logger.L.Error().Msgf("syncPath: failed to enqueue start job for download ID=%d: %v", download.ID, err)
-				download.Error = "failed_to_enqueue_start_job"
-				s.DB.Model(download).Select("Error").Updates(download)
+		if !download.AutomaticExtraction && !download.AutomaticRawConversion {
+			if err := s.finishDownload(download, download.ExtractedPath); err != nil {
+				logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to finish path download")
 			}
+			return
+		}
+		if err := s.enqueuePostProcOnce(download.ID); err != nil {
+			logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to recover path post-processing")
 		}
 	}
 }
 
-func (s *Service) DeleteDownload(id int) error {
-	var download utilitiesModels.Downloads
-	if err := s.DB.Where("id = ?", id).First(&download).Error; err != nil {
-		logger.L.Debug().Msgf("Failed to find download: %v", err)
-		return err
+func (s *Service) maybeRecoverDownloadStart(download *utilitiesModels.Downloads) {
+	if download == nil || s.isDownloadStartRunning(download.ID) || s.isDownloadDeleting(download.ID) {
+		return
 	}
 
-	if download.Type == "torrent" {
-		torrent := s.BTTClient.GetTorrent(download.UUID)
-		if torrent != nil {
-			if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
-				logger.L.Debug().Msgf("Failed to remove torrent: %v", err)
-				return err
-			}
+	lastChange := download.UpdatedAt
+	if lastChange.IsZero() {
+		lastChange = download.CreatedAt
+	}
+	queueFailed := download.Error == ErrDownloadQueueUnavailable.Error()
+	if !queueFailed && lastChange.After(time.Now().Add(-30*time.Second)) {
+		return
+	}
+
+	if err := s.enqueueDownloadStartOnce(context.Background(), utilitiesServiceInterfaces.DownloadStartPayload{
+		ID: download.ID,
+	}); err != nil {
+		logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to recover download start job")
+		download.Error = ErrDownloadQueueUnavailable.Error()
+		if updateErr := s.DB.Model(download).UpdateColumn("error", download.Error).Error; updateErr != nil {
+			logger.L.Error().Uint("download_id", download.ID).Err(updateErr).Msg("Failed to persist download recovery error")
+		}
+		return
+	}
+
+	if download.Error != "" {
+		download.Error = ""
+		if err := s.DB.Model(download).UpdateColumn("error", "").Error; err != nil {
+			logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to clear download recovery error")
+		}
+	}
+}
+
+type downloadCleanupPath struct {
+	Path       string
+	Recursive  bool
+	ClearFlags bool
+}
+
+type downloadCleanupPlan struct {
+	Paths []downloadCleanupPath
+}
+
+type downloadVMReferenceRow struct {
+	DownloadUUID string `gorm:"column:download_uuid"`
+	StorageID    uint   `gorm:"column:storage_id"`
+	VMID         uint   `gorm:"column:vm_id"`
+	VMRID        uint   `gorm:"column:vm_rid"`
+	VMName       string `gorm:"column:vm_name"`
+}
+
+func newDownloadDeleteResult() utilitiesServiceInterfaces.DownloadDeleteResult {
+	return utilitiesServiceInterfaces.DownloadDeleteResult{
+		Deleted: make([]utilitiesServiceInterfaces.DownloadDeleteItem, 0),
+		Failed:  make([]utilitiesServiceInterfaces.DownloadDeleteFailure, 0),
+	}
+}
+
+func downloadDeleteItem(download utilitiesModels.Downloads) utilitiesServiceInterfaces.DownloadDeleteItem {
+	return utilitiesServiceInterfaces.DownloadDeleteItem{
+		ID:   download.ID,
+		UUID: download.UUID,
+		Name: download.Name,
+		Type: download.Type,
+	}
+}
+
+func downloadDeleteFailure(
+	download *utilitiesModels.Downloads,
+	id uint,
+	code string,
+) utilitiesServiceInterfaces.DownloadDeleteFailure {
+	failure := utilitiesServiceInterfaces.DownloadDeleteFailure{
+		ID:            id,
+		Code:          code,
+		RetainedPaths: make([]string, 0),
+		VMReferences:  make([]utilitiesServiceInterfaces.DownloadDeleteVMReference, 0),
+	}
+	if download != nil {
+		failure.ID = download.ID
+		failure.UUID = download.UUID
+		failure.Name = download.Name
+		failure.Type = download.Type
+	}
+	return failure
+}
+
+func managedDescendant(root, candidate string) bool {
+	root = filepath.Clean(root)
+	candidate = filepath.Clean(candidate)
+	if !filepath.IsAbs(root) || !filepath.IsAbs(candidate) {
+		return false
+	}
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil || rel == "." || rel == ".." || filepath.IsAbs(rel) {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func managedPathAtOrBelow(root, candidate string) bool {
+	return filepath.Clean(root) == filepath.Clean(candidate) || managedDescendant(root, candidate)
+}
+
+func addDownloadCleanupPath(
+	plan *downloadCleanupPlan,
+	path string,
+	recursive bool,
+	clearFlags bool,
+) error {
+	path = filepath.Clean(path)
+	for _, existing := range plan.Paths {
+		if existing.Path == path || (existing.Recursive && managedDescendant(existing.Path, path)) {
+			return nil
 		}
 	}
 
-	if download.Type == utilitiesModels.DownloadTypeHTTP || download.Type == utilitiesModels.DownloadTypePath {
-		if download.UType == utilitiesModels.DownloadUTypeBase && download.ExtractedPath != "" {
-			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-			_, err := utils.RunCommand("/bin/chflags", "-R", "noschg", extractsPath)
+	info, err := os.Lstat(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect managed cleanup path: %w", err)
+	}
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("managed cleanup path is a symbolic link")
+		}
+		if recursive && !info.IsDir() {
+			return fmt.Errorf("managed cleanup path is not a directory")
+		}
+		if !recursive && !info.Mode().IsRegular() {
+			return fmt.Errorf("managed cleanup path is not a regular file")
+		}
+	}
 
-			if err != nil {
-				logger.L.Error().Msgf("Failed to change flags for extracts folder: %v", err)
+	if recursive {
+		filtered := make([]downloadCleanupPath, 0, len(plan.Paths)+1)
+		for _, existing := range plan.Paths {
+			if managedDescendant(path, existing.Path) {
+				continue
 			}
+			filtered = append(filtered, existing)
+		}
+		plan.Paths = filtered
+	}
+	plan.Paths = append(plan.Paths, downloadCleanupPath{
+		Path:       path,
+		Recursive:  recursive,
+		ClearFlags: clearFlags,
+	})
+	return nil
+}
 
-			if _, err := os.Stat(extractsPath); err == nil {
-				if err := os.RemoveAll(extractsPath); err != nil {
-					logger.L.Error().Msgf("Failed to remove extracts folder: %v", err)
+func buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadCleanupPlan, error) {
+	plan := downloadCleanupPlan{Paths: make([]downloadCleanupPath, 0, 2)}
+	extractedBase := filepath.Clean(config.GetDownloadsPath("extracted"))
+	extractedRoot := filepath.Clean(filepath.Join(extractedBase, download.UUID))
+	if !managedDescendant(extractedBase, extractedRoot) {
+		return plan, fmt.Errorf("unsafe extracted download path")
+	}
+	if err := addDownloadCleanupPath(&plan, extractedRoot, true, true); err != nil {
+		return plan, err
+	}
+
+	switch download.Type {
+	case utilitiesModels.DownloadTypeHTTP, utilitiesModels.DownloadTypePath:
+		managedRootName := "http"
+		if download.Type == utilitiesModels.DownloadTypePath {
+			managedRootName = "path"
+		}
+		managedRoot := filepath.Clean(config.GetDownloadsPath(managedRootName))
+		primaryPath := filepath.Clean(download.Path)
+		if !managedDescendant(managedRoot, primaryPath) && !managedDescendant(extractedRoot, primaryPath) {
+			return plan, fmt.Errorf("unsafe managed download path")
+		}
+		if err := addDownloadCleanupPath(&plan, primaryPath, false, false); err != nil {
+			return plan, err
+		}
+
+		if download.ExtractedPath != "" {
+			extractedPath := filepath.Clean(download.ExtractedPath)
+			if extractedPath != primaryPath && !managedPathAtOrBelow(extractedRoot, extractedPath) {
+				return plan, fmt.Errorf("unsafe stored extracted path")
+			}
+		}
+
+	case utilitiesModels.DownloadTypeTorrent:
+		torrentBase := filepath.Clean(config.GetDownloadsPath("torrents"))
+		expectedPath := filepath.Clean(filepath.Join(torrentBase, download.UUID))
+		if !managedDescendant(torrentBase, expectedPath) {
+			return plan, fmt.Errorf("unsafe torrent download path")
+		}
+		placeholder := filepath.Clean(filepath.Join("/non-existent", download.UUID))
+		storedPath := filepath.Clean(download.Path)
+		if storedPath != placeholder {
+			if storedPath != expectedPath {
+				return plan, fmt.Errorf("unexpected torrent download path")
+			}
+			if err := addDownloadCleanupPath(&plan, storedPath, true, false); err != nil {
+				return plan, err
+			}
+		}
+
+	default:
+		return plan, fmt.Errorf("unsupported download type")
+	}
+
+	return plan, nil
+}
+
+func retainedDownloadPaths(plan downloadCleanupPlan) []string {
+	retained := make([]string, 0)
+	for _, target := range plan.Paths {
+		if _, err := os.Lstat(target.Path); err == nil || !errors.Is(err, os.ErrNotExist) {
+			retained = append(retained, target.Path)
+		}
+	}
+	return retained
+}
+
+func removeDownloadCleanupPath(target downloadCleanupPath) error {
+	info, err := os.Lstat(target.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect cleanup target: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("cleanup target changed to a symbolic link")
+	}
+
+	if target.Recursive {
+		if !info.IsDir() {
+			return fmt.Errorf("cleanup target changed to a non-directory")
+		}
+		if target.ClearFlags {
+			if _, statErr := os.Stat("/bin/chflags"); statErr == nil {
+				if _, err := utils.RunCommand("/bin/chflags", "-R", "noschg", target.Path); err != nil {
+					return fmt.Errorf("clear cleanup target flags: %w", err)
 				}
 			}
 		}
-
-		var dType string
-		if download.Type == utilitiesModels.DownloadTypeHTTP {
-			dType = "http"
-		} else if download.Type == utilitiesModels.DownloadTypePath {
-			dType = "path"
-		} else if download.Type == utilitiesModels.DownloadTypeTorrent {
-			dType = "torrent"
+		if err := os.RemoveAll(target.Path); err != nil {
+			return fmt.Errorf("remove cleanup directory: %w", err)
 		}
+		return nil
+	}
 
-		err := utils.DeleteFile(path.Join(config.GetDownloadsPath(dType), download.Name))
-		if err != nil {
-			logger.L.Debug().Msgf("Failed to delete download file: %v", err)
-			return err
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("cleanup target changed to a non-regular file")
+	}
+	if err := os.Remove(target.Path); err != nil {
+		return fmt.Errorf("remove cleanup file: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) findDownloadVMReferences(
+	downloads []utilitiesModels.Downloads,
+) (map[string][]utilitiesServiceInterfaces.DownloadDeleteVMReference, error) {
+	references := make(map[string][]utilitiesServiceInterfaces.DownloadDeleteVMReference)
+	uuids := make([]string, 0, len(downloads))
+	for _, download := range downloads {
+		if strings.TrimSpace(download.UUID) != "" {
+			uuids = append(uuids, download.UUID)
 		}
+	}
+	if len(uuids) == 0 {
+		return references, nil
+	}
 
-		extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-		if _, err := os.Stat(extractsPath); err == nil {
-			if err := os.RemoveAll(extractsPath); err != nil {
-				logger.L.Error().Msgf("Failed to remove extracts folder: %v", err)
+	var rows []downloadVMReferenceRow
+	if err := s.DB.Model(&vmModels.Storage{}).
+		Select(
+			"vm_storages.download_uuid AS download_uuid, vm_storages.id AS storage_id, "+
+				"vm_storages.vm_id AS vm_id, COALESCE(vms.rid, 0) AS vm_rid, "+
+				"COALESCE(vms.name, '') AS vm_name",
+		).
+		Joins("LEFT JOIN vms ON vms.id = vm_storages.vm_id").
+		Where("vm_storages.download_uuid IN ?", uuids).
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("find download VM references: %w", err)
+	}
+
+	for _, row := range rows {
+		references[row.DownloadUUID] = append(
+			references[row.DownloadUUID],
+			utilitiesServiceInterfaces.DownloadDeleteVMReference{
+				StorageID: row.StorageID,
+				VMID:      row.VMID,
+				VMRID:     row.VMRID,
+				VMName:    row.VMName,
+			},
+		)
+	}
+	return references, nil
+}
+
+func appendDownloadReferenceFailures(
+	result *utilitiesServiceInterfaces.DownloadDeleteResult,
+	downloads []utilitiesModels.Downloads,
+	references map[string][]utilitiesServiceInterfaces.DownloadDeleteVMReference,
+) bool {
+	found := false
+	for i := range downloads {
+		download := &downloads[i]
+		vmReferences := references[download.UUID]
+		if len(vmReferences) == 0 {
+			continue
+		}
+		failure := downloadDeleteFailure(download, download.ID, "download_in_use")
+		failure.VMReferences = vmReferences
+		result.Failed = append(result.Failed, failure)
+		found = true
+	}
+	return found
+}
+
+func (s *Service) stopDownloadActivity(download utilitiesModels.Downloads) error {
+	if download.Type == utilitiesModels.DownloadTypeHTTP {
+		s.httpRspMu.Lock()
+		response := s.httpResponses[download.UUID]
+		delete(s.httpResponses, download.UUID)
+		s.httpRspMu.Unlock()
+		if response != nil {
+			if err := response.Cancel(); err != nil && !errors.Is(err, context.Canceled) {
+				logger.L.Debug().Uint("download_id", download.ID).Err(err).Msg("HTTP download stopped before deletion")
 			}
 		}
 	}
 
-	for _, file := range download.Files {
-		if err := s.DB.Delete(&file).Error; err != nil {
-			logger.L.Debug().Msgf("Failed to delete downloaded file: %v", err)
+	if download.Type == utilitiesModels.DownloadTypeTorrent && s.BTTClient != nil {
+		if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
+			return fmt.Errorf("stop torrent before deletion: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) deletePreparedDownload(
+	download utilitiesModels.Downloads,
+	plan downloadCleanupPlan,
+) error {
+	if err := s.stopDownloadActivity(download); err != nil {
+		return err
+	}
+	for _, target := range plan.Paths {
+		if err := removeDownloadCleanupPath(target); err != nil {
 			return err
 		}
 	}
 	if download.Type == utilitiesModels.DownloadTypePath {
 		if err := s.removeCompletedDownloaderUploadSource(download.URL); err != nil {
-			logger.L.Warn().Msgf("Failed to remove completed upload source: %v", err)
-			return err
+			return fmt.Errorf("remove completed upload source: %w", err)
 		}
 	}
 
-	if s.TelemetryDB != nil {
-		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "Cancelled", "deleted_by_user", map[string]any{
-			"download_id": download.ID,
-			"status":      "Cancelled",
-		})
-	}
-
-	if err := s.DB.Delete(&download).Error; err != nil {
-		logger.L.Debug().Msgf("Failed to delete download: %v", err)
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("download_id = ?", download.ID).
+			Delete(&utilitiesModels.DownloadedFile{}).Error; err != nil {
+			return fmt.Errorf("delete downloaded file rows: %w", err)
+		}
+		if download.Type == utilitiesModels.DownloadTypePath {
+			if err := tx.Where(
+				"path = ? AND scope = ? AND status = ?",
+				download.URL,
+				utilitiesModels.UploadScopeDownloader,
+				utilitiesModels.UploadStatusCompleted,
+			).Delete(&utilitiesModels.Upload{}).Error; err != nil {
+				return fmt.Errorf("delete completed upload identity: %w", err)
+			}
+		}
+		deleted := tx.Where("id = ?", download.ID).Delete(&utilitiesModels.Downloads{})
+		if deleted.Error != nil {
+			return fmt.Errorf("delete download row: %w", deleted.Error)
+		}
+		if deleted.RowsAffected != 1 {
+			return ErrDownloadNotFound
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
-	if err := s.DB.Where(
-		"path = ? AND scope = ? AND status = ?",
-		download.URL,
-		utilitiesModels.UploadScopeDownloader,
-		utilitiesModels.UploadStatusCompleted,
-	).Delete(&utilitiesModels.Upload{}).Error; err != nil {
-		logger.L.Warn().Msgf("Failed to delete completed upload identity: %v", err)
-	}
 
+	s.downloadStartQueueMu.Lock()
+	delete(s.downloadStartQueued, download.ID)
+	s.downloadStartQueueMu.Unlock()
+	s.inflightMu.Lock()
+	delete(s.inflight, download.ID)
+	s.inflightMu.Unlock()
+
+	if s.TelemetryDB != nil {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "cancelled", "deleted_by_user", map[string]any{
+			"downloadId": download.ID,
+			"status":     "cancelled",
+		})
+	}
 	return nil
 }
 
+func (s *Service) markDownloadDeleteCleanupFailed(download utilitiesModels.Downloads) {
+	if err := s.DB.Model(&utilitiesModels.Downloads{}).
+		Where("id = ?", download.ID).
+		Updates(map[string]any{
+			"status": utilitiesModels.DownloadStatusFailed,
+			"error":  ErrDownloadCleanup.Error(),
+		}).Error; err != nil {
+		logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to persist download cleanup failure")
+	}
+}
+
+func (s *Service) DeleteDownloads(
+	ids []int,
+) (utilitiesServiceInterfaces.DownloadDeleteResult, error) {
+	result := newDownloadDeleteResult()
+	if s == nil || s.DB == nil || len(ids) == 0 {
+		return result, ErrDownloadInvalid
+	}
+
+	requested := make([]uint, 0, len(ids))
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return result, ErrDownloadInvalid
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		requested = append(requested, uint(id))
+	}
+	if len(requested) == 0 {
+		return result, ErrDownloadInvalid
+	}
+
+	var found []utilitiesModels.Downloads
+	if err := s.DB.Where("id IN ?", requested).Find(&found).Error; err != nil {
+		return result, fmt.Errorf("load downloads for deletion: %w", err)
+	}
+	byID := make(map[uint]utilitiesModels.Downloads, len(found))
+	for _, download := range found {
+		byID[download.ID] = download
+	}
+
+	downloads := make([]utilitiesModels.Downloads, 0, len(requested))
+	missing := false
+	for _, id := range requested {
+		download, ok := byID[id]
+		if !ok {
+			result.Failed = append(result.Failed, downloadDeleteFailure(nil, id, "download_not_found"))
+			missing = true
+			continue
+		}
+		downloads = append(downloads, download)
+	}
+	if missing {
+		return result, ErrDownloadNotFound
+	}
+
+	plans := make(map[uint]downloadCleanupPlan, len(downloads))
+	unsafeCleanup := false
+	for i := range downloads {
+		download := &downloads[i]
+		plan, err := buildDownloadCleanupPlan(*download)
+		if err != nil {
+			logger.L.Warn().Uint("download_id", download.ID).Err(err).Msg("Rejected unsafe download cleanup plan")
+			failure := downloadDeleteFailure(download, download.ID, "download_cleanup_unsafe")
+			for _, candidate := range []string{download.Path, download.ExtractedPath} {
+				candidate = strings.TrimSpace(candidate)
+				if candidate != "" && !utils.Contains(failure.RetainedPaths, candidate) {
+					failure.RetainedPaths = append(failure.RetainedPaths, candidate)
+				}
+			}
+			result.Failed = append(result.Failed, failure)
+			unsafeCleanup = true
+			continue
+		}
+		plans[download.ID] = plan
+	}
+	if unsafeCleanup {
+		return result, ErrDownloadConflict
+	}
+
+	references, err := s.findDownloadVMReferences(downloads)
+	if err != nil {
+		return result, err
+	}
+	if appendDownloadReferenceFailures(&result, downloads, references) {
+		return result, ErrDownloadInUse
+	}
+
+	acquired := make([]uint, 0, len(downloads))
+	active := false
+	for i := range downloads {
+		download := &downloads[i]
+		if !s.beginDownloadDeletion(download.ID) {
+			result.Failed = append(result.Failed, downloadDeleteFailure(download, download.ID, "download_active"))
+			active = true
+			continue
+		}
+		acquired = append(acquired, download.ID)
+	}
+	if active {
+		for _, id := range acquired {
+			s.endDownloadDeletion(id)
+		}
+		return result, ErrDownloadActive
+	}
+	defer func() {
+		for _, id := range acquired {
+			s.endDownloadDeletion(id)
+		}
+	}()
+	s.downloadSyncRunMu.Lock()
+	defer s.downloadSyncRunMu.Unlock()
+
+	// Narrow the window in which a VM attachment could appear after the first
+	// preflight. There is intentionally no Jail guard: jail creation copies the
+	// base contents and does not persist the download UUID.
+	references, err = s.findDownloadVMReferences(downloads)
+	if err != nil {
+		return result, err
+	}
+	if appendDownloadReferenceFailures(&result, downloads, references) {
+		return result, ErrDownloadInUse
+	}
+
+	for _, download := range downloads {
+		plan := plans[download.ID]
+		if err := s.deletePreparedDownload(download, plan); err != nil {
+			logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to delete download cleanly")
+			s.markDownloadDeleteCleanupFailed(download)
+			failure := downloadDeleteFailure(&download, download.ID, "download_cleanup_failed")
+			failure.RetainedPaths = retainedDownloadPaths(plan)
+			result.Failed = append(result.Failed, failure)
+			continue
+		}
+		result.Deleted = append(result.Deleted, downloadDeleteItem(download))
+	}
+	if len(result.Failed) > 0 {
+		return result, ErrDownloadCleanup
+	}
+	return result, nil
+}
+
+func (s *Service) DeleteDownload(id int) error {
+	_, err := s.DeleteDownloads([]int{id})
+	return err
+}
+
 func (s *Service) BulkDeleteDownload(ids []int) error {
-	var downloads []utilitiesModels.Downloads
-	if err := s.DB.Where("id IN ?", ids).Find(&downloads).Error; err != nil {
-		return err
-	}
-
-	for _, download := range downloads {
-		if download.Type == "http" {
-			err := utils.DeleteFile(path.Join(config.GetDownloadsPath("http"), download.Name))
-			if err != nil {
-				logger.L.Debug().Msgf("Failed to delete HTTP download file: %v", err)
-			}
-
-			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-			if _, err := os.Stat(extractsPath); err == nil {
-				if err := os.RemoveAll(extractsPath); err != nil {
-					logger.L.Error().Msgf("Failed to remove extracts folder: %v", err)
-				}
-			}
-		}
-
-		if download.Type == "path" {
-			err := utils.DeleteFile(path.Join(config.GetDownloadsPath("path"), download.Name))
-			if err != nil {
-				logger.L.Debug().Msgf("Failed to delete Path download file: %v", err)
-			}
-
-			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-			if _, err := os.Stat(extractsPath); err == nil {
-				if err := os.RemoveAll(extractsPath); err != nil {
-					logger.L.Error().Msgf("Failed to remove extracts folder: %v", err)
-				}
-			}
-		}
-
-		if download.Type == "torrent" {
-			err := utils.DeleteFile(download.Path)
-			if err != nil {
-				logger.L.Debug().Msgf("Failed to delete Torrent download file: %v", err)
-			}
-		}
-	}
-
-	for _, download := range downloads {
-		if download.Type == "torrent" {
-			torrent := s.BTTClient.GetTorrent(download.UUID)
-			if torrent != nil {
-				if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
-					logger.L.Debug().Msgf("Failed to remove torrent: %v", err)
-					return err
-				}
-			}
-		}
-
-		for _, file := range download.Files {
-			if err := s.DB.Delete(&file).Error; err != nil {
-				logger.L.Debug().Msgf("Failed to delete downloaded file: %v", err)
-				return err
-			}
-		}
-		if download.Type == utilitiesModels.DownloadTypePath {
-			if err := s.removeCompletedDownloaderUploadSource(download.URL); err != nil {
-				logger.L.Warn().Msgf("Failed to remove completed upload source: %v", err)
-				return err
-			}
-		}
-
-		if s.TelemetryDB != nil {
-			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "Cancelled", "deleted_by_user", map[string]any{
-				"download_id": download.ID,
-				"status":      "Cancelled",
-			})
-		}
-
-		if err := s.DB.Delete(&download).Error; err != nil {
-			logger.L.Debug().Msgf("Failed to delete download: %v", err)
-			return err
-		}
-		if err := s.DB.Where(
-			"path = ? AND scope = ? AND status = ?",
-			download.URL,
-			utilitiesModels.UploadScopeDownloader,
-			utilitiesModels.UploadStatusCompleted,
-		).Delete(&utilitiesModels.Upload{}).Error; err != nil {
-			logger.L.Warn().Msgf("Failed to delete completed upload identity: %v", err)
-		}
-	}
-
-	return nil
+	_, err := s.DeleteDownloads(ids)
+	return err
 }
 
 func (s *Service) CleanupStaleAuditRecords() {
@@ -1352,9 +1742,9 @@ func (s *Service) CleanupStaleAuditRecords() {
 		}
 		var d utilitiesModels.Downloads
 		if err := s.DB.First(&d, *rec.AsyncJobID).Error; err != nil {
-			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", *rec.AsyncJobID, "Cancelled", "orphaned_audit_record", map[string]any{
-				"download_id": *rec.AsyncJobID,
-				"status":      "Cancelled",
+			db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", *rec.AsyncJobID, "cancelled", "orphaned_audit_record", map[string]any{
+				"downloadId": *rec.AsyncJobID,
+				"status":     "cancelled",
 			})
 		}
 	}

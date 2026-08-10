@@ -59,7 +59,7 @@ import (
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemServicePkg "github.com/alchemillahq/sylve/internal/services/system"
-	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
+	utilitiesServicePkg "github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
 
@@ -94,7 +94,7 @@ func RegisterRoutes(r *gin.Engine,
 	diskService *diskServicePkg.Service,
 	networkService *networkServicePkg.Service,
 	notificationService *notificationsService.Service,
-	utilitiesService *utilitiesService.Service,
+	utilitiesService *utilitiesServicePkg.Service,
 	systemService *systemServicePkg.Service,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
@@ -682,30 +682,37 @@ func RegisterRoutes(r *gin.Engine,
 
 	utilities := api.Group("/utilities")
 	utilities.Use(middleware.EnsureAuthenticated(authService))
+	utilities.Use(middleware.RequireLocalAdminForWrites(authService))
 	utilities.Use(EnsureCorrectHost(db, authService))
-	utilities.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	requireUtilitiesAdmin := middleware.RequireLocalAdmin(authService)
+	utilities.POST(
+		"/downloader-uploads",
+		middleware.RequestLoggerMiddleware(telemetryDB, authService),
+		utilitiesHandlers.UploadDownloaderFile(utilitiesService, uploadAdmission),
+	)
+
+	utilitiesJSON := utilities.Group("")
+	utilitiesJSON.Use(middleware.LimitRequestBody(utilitiesServicePkg.MaxRequestBodyBytes))
+	utilitiesJSON.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		utilities.POST("/downloader-uploads", requireUtilitiesAdmin, utilitiesHandlers.UploadDownloaderFile(utilitiesService, uploadAdmission))
-		utilities.POST("/downloader-uploads/:id/complete", requireUtilitiesAdmin, utilitiesHandlers.CompleteDownloaderUpload(utilitiesService))
-		utilities.DELETE("/downloader-uploads/:id", requireUtilitiesAdmin, utilitiesHandlers.AbortDownloaderUpload(utilitiesService))
+		utilitiesJSON.POST("/downloader-uploads/:id/complete", utilitiesHandlers.CompleteDownloaderUpload(utilitiesService))
+		utilitiesJSON.DELETE("/downloader-uploads/:id", utilitiesHandlers.AbortDownloaderUpload(utilitiesService))
 
-		utilities.POST("/downloads", requireUtilitiesAdmin, utilitiesHandlers.DownloadFile(utilitiesService))
-		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
-		utilities.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
-		utilities.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
-		utilities.PUT("/downloads/:id", requireUtilitiesAdmin, utilitiesHandlers.UpdateDownload(utilitiesService))
-		utilities.DELETE("/downloads/:id", requireUtilitiesAdmin, utilitiesHandlers.DeleteDownload(utilitiesService))
-		utilities.POST("/downloads/bulk-delete", requireUtilitiesAdmin, utilitiesHandlers.BulkDeleteDownload(utilitiesService))
-		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
+		utilitiesJSON.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
+		utilitiesJSON.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
+		utilitiesJSON.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
+		utilitiesJSON.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
+		utilitiesJSON.PATCH("/downloads/:id", utilitiesHandlers.UpdateDownload(utilitiesService))
+		utilitiesJSON.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
+		utilitiesJSON.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
+		utilitiesJSON.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
 
-		utilities.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))
-		utilities.POST("/cloud-init/templates", utilitiesHandlers.AddCloudInitTemplate(utilitiesService))
-		utilities.PUT("/cloud-init/templates/:id", utilitiesHandlers.EditCloudInitTemplate(utilitiesService))
-		utilities.DELETE("/cloud-init/templates/:id", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
+		utilitiesJSON.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))
+		utilitiesJSON.POST("/cloud-init/templates", utilitiesHandlers.AddCloudInitTemplate(utilitiesService))
+		utilitiesJSON.PUT("/cloud-init/templates/:templateId", utilitiesHandlers.EditCloudInitTemplate(utilitiesService))
+		utilitiesJSON.DELETE("/cloud-init/templates/:templateId", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
 	}
 
-	api.GET("/utilities/downloads/:uuid", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+	api.GET("/utilities/downloads/:uuid", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 
 	auth := api.Group("/auth")
 	auth.Use(middleware.EnsureAuthenticated(authService))

@@ -261,6 +261,7 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 
 	switch download.Type {
 	case "http":
+		addCandidate(download.Path)
 		addCandidate(httpMainPath)
 		addCandidate(download.ExtractedPath)
 		addCandidatesFromDir(download.ExtractedPath)

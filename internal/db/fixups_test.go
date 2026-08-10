@@ -17,9 +17,52 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestNormalizeDownloadUncategorizedType(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &utilitiesModels.Downloads{})
+	download := utilitiesModels.Downloads{
+		UUID:     "legacy-download-category",
+		Path:     "/tmp/legacy-download-category.img",
+		Name:     "legacy-download-category.img",
+		Type:     utilitiesModels.DownloadTypePath,
+		URL:      "/tmp/legacy-download-source.img",
+		Progress: 100,
+		Status:   utilitiesModels.DownloadStatusDone,
+		UType:    utilitiesModels.DownloadUType("uncategoried"),
+	}
+	if err := dbConn.Create(&download).Error; err != nil {
+		t.Fatalf("seed legacy download: %v", err)
+	}
+
+	if err := normalizeDownloadUncategorizedType(dbConn); err != nil {
+		t.Fatalf("normalize download category: %v", err)
+	}
+	if err := normalizeDownloadUncategorizedType(dbConn); err != nil {
+		t.Fatalf("repeat download category migration: %v", err)
+	}
+
+	var stored utilitiesModels.Downloads
+	if err := dbConn.First(&stored, download.ID).Error; err != nil {
+		t.Fatalf("load normalized download: %v", err)
+	}
+	if stored.UType != utilitiesModels.DownloadUTypeOther {
+		t.Fatalf("download category=%q want %q", stored.UType, utilitiesModels.DownloadUTypeOther)
+	}
+
+	var migrationCount int64
+	if err := dbConn.Model(&models.Migrations{}).
+		Where("name = ?", "normalize_download_uncategorized_type_1").
+		Count(&migrationCount).Error; err != nil {
+		t.Fatalf("count download category migration: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("migration count=%d want 1", migrationCount)
+	}
+}
 
 func TestDeduplicateMdnsRecordsBeforeIdentityIndex(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})

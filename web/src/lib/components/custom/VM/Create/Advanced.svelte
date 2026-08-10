@@ -15,8 +15,15 @@
 	import { getTemplates } from '$lib/api/utilities/cloud-init';
 	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
 	import { resolutions } from '$lib/utils/vm/vnc';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 
 	interface Props {
+		node: string;
 		vncEnabled: boolean;
 		serial: boolean;
 		vncPort: number;
@@ -42,6 +49,7 @@
 	}
 
 	let {
+		node,
 		vncEnabled = $bindable(),
 		serial = $bindable(),
 		vncPort = $bindable(),
@@ -109,10 +117,26 @@
 		current: ''
 	});
 
-	let cloudInitTemplates = resource(
-		() => 'cloud-init-templates',
-		async (key, prevKey, { signal }) => {
-			return await getTemplates();
+	const lastCloudInitTemplatesByNode: Record<string, CloudInitTemplate[]> = Object.create(null);
+	const cloudInitTemplates = resource(
+		() => node || '__default__',
+		async (selectedNode, _previousNode, { signal }) => {
+			const hostname = selectedNode === '__default__' ? undefined : selectedNode;
+			try {
+				const result = await getTemplates({ hostname, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastCloudInitTemplatesByNode[selectedNode] ?? [];
+				}
+				lastCloudInitTemplatesByNode[selectedNode] = result;
+				await updateCache('cloud-init-templates', result, hostname);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) {
+					return lastCloudInitTemplatesByNode[selectedNode] ?? [];
+				}
+				throw error;
+			}
 		},
 		{ initialValue: [] as CloudInitTemplate[] }
 	);

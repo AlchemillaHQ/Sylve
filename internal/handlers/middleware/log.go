@@ -64,8 +64,12 @@ func shouldRedactAuditPayload(path string) bool {
 		auditPathMatches(path, "/api/auth/passkeys") ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
-		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups")) ||
-		path == "/api/utilities/downloads/signed-url"
+		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups"))
+}
+
+func shouldRedactAuditResponse(path string) bool {
+	return shouldRedactAuditPayload(path) &&
+		strings.TrimSpace(path) != "/api/utilities/downloader-uploads"
 }
 
 func isImportantAuditGetPath(path string) bool {
@@ -180,6 +184,139 @@ func sanitizeAuditPayload(v interface{}) interface{} {
 	}
 }
 
+func sanitizeDownloaderUploadAuditResponse(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"status", "message"} {
+		if field, exists := payload[key]; exists {
+			result[key] = sanitizeAuditPayload(field)
+		}
+	}
+
+	if errorValue, exists := payload["error"]; exists {
+		errorText, errorIsString := errorValue.(string)
+		messageText, messageIsString := payload["message"].(string)
+		if errorIsString && (errorText == "" || (messageIsString && errorText == messageText)) {
+			result["error"] = errorText
+		} else {
+			result["error"] = "[REDACTED]"
+		}
+	}
+
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		safeData := make(map[string]interface{})
+		for _, key := range []string{
+			"uploadId",
+			"name",
+			"bytes",
+			"status",
+			"code",
+			"retryable",
+			"limitBytes",
+		} {
+			if field, exists := data[key]; exists {
+				safeData[key] = sanitizeAuditPayload(field)
+			}
+		}
+		result["data"] = safeData
+	}
+
+	return result
+}
+
+func sanitizeSignedDownloadAuditResponse(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"status", "message"} {
+		if field, exists := payload[key]; exists {
+			result[key] = sanitizeAuditPayload(field)
+		}
+	}
+	if errorValue, exists := payload["error"]; exists {
+		result["error"] = sanitizeAuditPayload(errorValue)
+	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		safeData := make(map[string]interface{})
+		if expiresAt, exists := data["expiresAt"]; exists {
+			safeData["expiresAt"] = sanitizeAuditPayload(expiresAt)
+		}
+		if _, exists := data["url"]; exists {
+			safeData["url"] = "[REDACTED]"
+		}
+		result["data"] = safeData
+	}
+	return result
+}
+
+func isCloudInitTemplateAuditPath(path string) bool {
+	return auditPathMatches(
+		strings.TrimSpace(path),
+		"/api/utilities/cloud-init/templates",
+	)
+}
+
+func sanitizeCloudInitTemplateAuditResponse(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"status", "message", "error"} {
+		if field, exists := payload[key]; exists {
+			result[key] = sanitizeAuditPayload(field)
+		}
+	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		safeData := make(map[string]interface{})
+		for _, key := range []string{"id", "name"} {
+			if field, exists := data[key]; exists {
+				safeData[key] = sanitizeAuditPayload(field)
+			}
+		}
+		for _, key := range []string{"user", "meta", "networkConfig"} {
+			if _, exists := data[key]; exists {
+				safeData[key] = "[REDACTED]"
+			}
+		}
+		result["data"] = safeData
+	}
+	return result
+}
+
+func sanitizeAuditResponseForPath(path string, value interface{}) interface{} {
+	if strings.TrimSpace(path) == "/api/utilities/downloader-uploads" {
+		return sanitizeDownloaderUploadAuditResponse(value)
+	}
+	if strings.TrimSpace(path) == "/api/utilities/downloads/signed-url" {
+		return sanitizeSignedDownloadAuditResponse(value)
+	}
+	if isCloudInitTemplateAuditPath(path) {
+		return sanitizeCloudInitTemplateAuditResponse(value)
+	}
+	sanitized := sanitizeAuditPayload(value)
+	if auditPathMatches(strings.TrimSpace(path), "/api/utilities/downloads") {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return sanitized
+		}
+		if data, ok := payload["data"].(map[string]interface{}); ok {
+			if _, exists := data["url"]; exists {
+				data["url"] = "[REDACTED]"
+			}
+		}
+	}
+	return sanitized
+}
+
 func isVMCloudInitAuditPath(path string) bool {
 	segments := strings.Split(strings.Trim(path, "/"), "/")
 	if len(segments) != 5 || segments[0] != "api" || segments[1] != "vm" {
@@ -290,6 +427,45 @@ func sanitizeJailOptionAuditPayload(path string, sanitized interface{}) interfac
 
 func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
 	sanitized := sanitizeAuditPayload(value)
+	if isCloudInitTemplateAuditPath(path) {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		safePayload := make(map[string]interface{})
+		if name, exists := payload["name"]; exists {
+			safePayload["name"] = name
+		}
+		for _, key := range []string{"user", "meta", "networkConfig"} {
+			if _, exists := payload[key]; exists {
+				safePayload[key] = "[REDACTED]"
+			}
+		}
+		return safePayload
+	}
+	if strings.TrimSpace(path) == "/api/utilities/downloads/signed-url" {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		safePayload := make(map[string]interface{})
+		for _, key := range []string{"name", "parentUUID"} {
+			if field, exists := payload[key]; exists {
+				safePayload[key] = field
+			}
+		}
+		return safePayload
+	}
+	if strings.TrimSpace(path) == "/api/utilities/downloads" {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		if _, exists := payload["url"]; exists {
+			payload["url"] = "[REDACTED]"
+		}
+		sanitized = payload
+	}
 	if isVMCloudInitAuditPath(path) {
 		payload, ok := sanitized.(map[string]interface{})
 		if !ok {
@@ -539,7 +715,8 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		}
 
 		redactPayload := shouldRedactAuditPayload(c.Request.URL.Path)
-		captureResponse := !redactPayload ||
+		redactResponse := shouldRedactAuditResponse(c.Request.URL.Path)
+		captureResponse := !redactResponse ||
 			c.Request.URL.Path == "/api/auth/login" ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/finish"
 		bw := &bodyWriter{
@@ -554,7 +731,6 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		if err != nil && (c.Request.URL.Path == "/api/auth/login" ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/begin" ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/finish" ||
-			c.Request.URL.Path == "/api/utilities/downloads/signed-url" ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/cluster")) {
 
 			if strings.HasPrefix(c.Request.URL.Path, "/api/cluster") {
@@ -651,10 +827,10 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			response = nil
 		}
 
-		if redactPayload {
+		if redactResponse {
 			act.Response = "[REDACTED]"
 		} else {
-			act.Response = sanitizeAuditPayload(response)
+			act.Response = sanitizeAuditResponseForPath(c.Request.URL.Path, response)
 		}
 		actJSON, err = json.Marshal(act)
 		if err != nil {

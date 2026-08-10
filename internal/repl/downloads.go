@@ -125,7 +125,7 @@ func normalizeDownloadRequest(request utilitiesServiceInterfaces.DownloadFileReq
 	}
 
 	switch strings.ToLower(strings.TrimSpace(string(request.DownloadType))) {
-	case "", "other", "uncategorized", "uncategoried":
+	case "", "other", "uncategorized":
 		request.DownloadType = utilitiesModels.DownloadUTypeOther
 	case "base", "base-rootfs":
 		request.DownloadType = utilitiesModels.DownloadUTypeBase

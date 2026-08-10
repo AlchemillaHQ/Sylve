@@ -108,6 +108,9 @@ func TestDownloaderUploadEndpointReturnsOpaqueReceiptWithoutPath(t *testing.T) {
 		payload.Data.Status != utilitiesModels.UploadStatusStaged {
 		t.Fatalf("unexpected receipt: %+v", payload.Data)
 	}
+	if location := response.Header().Get("Location"); location != "/api/utilities/downloader-uploads/"+payload.Data.UploadID {
+		t.Fatalf("Location = %q", location)
+	}
 
 	var record utilitiesModels.Upload
 	if err := database.First(&record, "id = ?", payload.Data.UploadID).Error; err != nil {
@@ -199,5 +202,91 @@ func TestCompleteDownloaderUploadRejectsTarAndRawCombination(t *testing.T) {
 	}
 	if upload.Status != utilitiesModels.UploadStatusStaged {
 		t.Fatalf("invalid completion changed upload state to %q", upload.Status)
+	}
+}
+
+func TestAbortDownloaderUploadReportsCompletedIdentityWithoutRemovingIt(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", root)
+	staging := filepath.Join(root, "downloads", "uploads")
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "downloads", "path"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	database := testutil.NewSQLiteTestDB(
+		t,
+		&utilitiesModels.Upload{},
+		&utilitiesModels.Downloads{},
+		&utilitiesModels.DownloadedFile{},
+	)
+	service := &utilities.Service{DB: database}
+	router := newDownloaderUploadTestRouter(service, staging)
+
+	uploadResponse := httptest.NewRecorder()
+	router.ServeHTTP(uploadResponse, newDownloaderMultipartRequest(t, "installer.iso", "image"))
+	if uploadResponse.Code != http.StatusCreated {
+		t.Fatalf("upload status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
+	}
+	var receipt internal.APIResponse[DownloaderUploadReceipt]
+	if err := json.Unmarshal(uploadResponse.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Model(&utilitiesModels.Upload{}).
+		Where("id = ?", receipt.Data.UploadID).
+		Update("status", utilitiesModels.UploadStatusCompleted).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	abortRequest := httptest.NewRequest(
+		http.MethodDelete,
+		"/uploads/"+receipt.Data.UploadID,
+		nil,
+	)
+	abortRequest.Header.Set("X-Test-User-ID", "7")
+	abortResponse := httptest.NewRecorder()
+	router.ServeHTTP(abortResponse, abortRequest)
+
+	if abortResponse.Code != http.StatusOK {
+		t.Fatalf("abort status=%d body=%s", abortResponse.Code, abortResponse.Body.String())
+	}
+	var payload internal.APIResponse[DownloaderUploadAbortResponse]
+	if err := json.Unmarshal(abortResponse.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Message != "downloader_upload_already_completed" ||
+		payload.Data.Status != string(utilitiesModels.UploadStatusCompleted) {
+		t.Fatalf("unexpected completed abort response: %+v", payload)
+	}
+	if _, err := os.Stat(filepath.Join(staging, utilities.DownloaderUploadFinalName(receipt.Data.UploadID))); err != nil {
+		t.Fatalf("completed source was removed: %v", err)
+	}
+}
+
+func TestDownloaderUploadFailureDoesNotExposeServerPath(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", root)
+	staging := filepath.Join(root, "missing", "uploads")
+	database := testutil.NewSQLiteTestDB(
+		t,
+		&utilitiesModels.Upload{},
+		&utilitiesModels.Downloads{},
+		&utilitiesModels.DownloadedFile{},
+	)
+	service := &utilities.Service{DB: database}
+	router := newDownloaderUploadTestRouter(service, staging)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, newDownloaderMultipartRequest(t, "installer.iso", "image"))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var payload internal.APIResponse[downloaderUploadErrorData]
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Error != "staging_unavailable" || strings.Contains(response.Body.String(), root) {
+		t.Fatalf("failure exposed internal detail: %+v", payload)
 	}
 }

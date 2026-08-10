@@ -2,14 +2,23 @@ import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { resolveNodeHostname } from '$lib/utils/enabled-services';
 
+export function getFilePondRequestHostname(selectedHostname?: string): string {
+	const explicitHostname = selectedHostname?.trim();
+	if (explicitHostname) return explicitHostname;
+	if (!browser) return '';
+
+	return (
+		resolveNodeHostname(window.location.pathname) ||
+		storage.localHostname?.trim() ||
+		storage.hostname?.trim() ||
+		''
+	);
+}
+
 export function getFilePondRequestHeaders(selectedHostname?: string): Record<string, string> {
 	if (!browser) return {};
 
-	const hostname =
-		selectedHostname?.trim() ||
-		resolveNodeHostname(window.location.pathname) ||
-		storage.localHostname?.trim() ||
-		storage.hostname?.trim();
+	const hostname = getFilePondRequestHostname(selectedHostname);
 	const headers: Record<string, string> = {};
 	const token = storage.token?.trim();
 	const clusterToken = storage.clusterToken?.trim();

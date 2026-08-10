@@ -328,3 +328,102 @@ func EnsureCorrectHost(db *gorm.DB, authService *authService.Service) gin.Handle
 		ReverseProxyInsecure(c, fmt.Sprintf("https://%s", apiAddress))
 	}
 }
+
+func abortPublicDownloadRouting(c *gin.Context, status int, code string) {
+	c.AbortWithStatusJSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: code,
+		Error:   code,
+		Data:    nil,
+	})
+}
+
+func reverseProxyPublicDownload(c *gin.Context, backend string) {
+	remote, err := url.Parse(backend)
+	if err != nil {
+		abortPublicDownloadRouting(c, http.StatusInternalServerError, "selected_node_routing_failed")
+		return
+	}
+
+	// The capability is the only credential needed by the public destination.
+	// Do not forward browser credentials that may happen to accompany the link.
+	for _, header := range []string{
+		"Authorization",
+		"Cookie",
+		"Proxy-Authorization",
+		"X-Cluster-Token",
+		"X-Current-Hostname",
+	} {
+		c.Request.Header.Del(header)
+	}
+
+	proxy := newReverseProxy(remote, insecureTransport, false)
+	proxy.ErrorHandler = func(_ http.ResponseWriter, _ *http.Request, proxyErr error) {
+		if proxyErr != nil && !strings.Contains(proxyErr.Error(), "context canceled") {
+			abortPublicDownloadRouting(c, http.StatusBadGateway, "selected_node_forwarding_failed")
+		}
+	}
+	proxy.ServeHTTP(c.Writer, c.Request)
+	c.Abort()
+}
+
+// EnsurePublicDownloadHost routes a signed browser capability to its serving
+// node without trusting an arbitrary destination. The destination node remains
+// responsible for validating the node-bound signature before opening a file.
+func EnsurePublicDownloadHost(db *gorm.DB) gin.HandlerFunc {
+	localHostname := strings.TrimSpace(hostname)
+	var localHostnameErr error
+	if localHostname == "" {
+		localHostname, localHostnameErr = utils.GetSystemHostname()
+		localHostname = strings.TrimSpace(localHostname)
+	}
+
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("X-Content-Type-Options", "nosniff")
+
+		requestedNode := strings.TrimSpace(c.Query("node"))
+		if requestedNode == "" {
+			c.Next()
+			return
+		}
+		if !utils.IsValidHostname(requestedNode) {
+			abortPublicDownloadRouting(c, http.StatusBadRequest, "invalid_selected_node")
+			return
+		}
+		if localHostnameErr != nil || localHostname == "" {
+			abortPublicDownloadRouting(c, http.StatusInternalServerError, "local_hostname_unavailable")
+			return
+		}
+		if requestedNode == localHostname {
+			c.Next()
+			return
+		}
+		if db == nil {
+			abortPublicDownloadRouting(c, http.StatusInternalServerError, "selected_node_lookup_failed")
+			return
+		}
+
+		var node clusterModels.ClusterNode
+		if err := db.Where("hostname = ?", requestedNode).First(&node).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				abortPublicDownloadRouting(c, http.StatusNotFound, "selected_node_not_found")
+			} else {
+				abortPublicDownloadRouting(c, http.StatusInternalServerError, "selected_node_lookup_failed")
+			}
+			return
+		}
+		if strings.TrimSpace(node.Status) != "online" {
+			abortPublicDownloadRouting(c, http.StatusServiceUnavailable, "selected_node_offline")
+			return
+		}
+		apiAddress := strings.TrimSpace(node.API)
+		if apiAddress == "" {
+			abortPublicDownloadRouting(c, http.StatusServiceUnavailable, "selected_node_unavailable")
+			return
+		}
+
+		reverseProxyPublicDownload(c, fmt.Sprintf("https://%s", apiAddress))
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	uploadCore "github.com/alchemillahq/sylve/internal/upload"
@@ -41,6 +42,8 @@ func newDownloaderUploadTestService(t *testing.T) (*Service, string) {
 		&utilitiesModels.Upload{},
 		&utilitiesModels.Downloads{},
 		&utilitiesModels.DownloadedFile{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
 	)
 	service := &Service{
 		DB:            database,

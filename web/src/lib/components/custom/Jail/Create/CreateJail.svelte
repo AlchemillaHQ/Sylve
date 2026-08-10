@@ -4,14 +4,20 @@
 	import { getBootstraps } from '$lib/api/jail/bootstrap';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
-	import { getDownloads } from '$lib/api/utilities/downloader';
+	import { getDownloadsResult } from '$lib/api/utilities/downloader';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CreateData } from '$lib/types/jail/jail';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import type { Download } from '$lib/types/utilities/downloader';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { getJailCreateErrorMessage, isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { fade } from 'svelte/transition';
@@ -103,13 +109,25 @@
 
 	let modal: CreateData = $state(structuredClone(options));
 	let lastGoodNetworkSwitches = emptySwitchList();
+	const lastGoodDownloadsByNode: Record<string, Download[]> = Object.create(null);
 
 	let downloads = resource(
-		() => `downloads-${modal.node || '__default__'}`,
-		async (key) => {
-			const downloads = await getDownloads(modal.node || undefined);
-			updateCache(key, downloads);
-			return downloads;
+		() => modal.node || '__default__',
+		async (node, _previousNode, { signal }) => {
+			const hostname = node === '__default__' ? undefined : node;
+			try {
+				const result = await getDownloadsResult({ hostname, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGoodDownloadsByNode[node] ?? [];
+				}
+				lastGoodDownloadsByNode[node] = result;
+				await updateCache('download-list', result, hostname);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGoodDownloadsByNode[node] ?? [];
+				throw error;
+			}
 		}
 	);
 

@@ -214,7 +214,7 @@
 		'/api/utilities/downloader-uploads': 'Downloader - Upload',
 		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
 		'/api/utilities/downloads/bulk-delete': 'Downloader - Bulk Delete',
-		'/api/utilities/download': 'Downloader',
+		'/api/utilities/downloads': 'Downloader',
 		'/api/vm/storage/detach': 'VM Storage - Detach',
 		'/api/vm/storage/attach': 'VM Storage - Attach',
 		'/api/vm/network/detach': 'VM Network - Detach',
@@ -885,6 +885,238 @@
 		return name ? `${name} (Template ID ${templateId})` : `Template ID ${templateId}`;
 	}
 
+	type DownloaderUploadAuditTarget = {
+		action: 'Stage' | 'Complete' | 'Abort';
+		uploadId?: string;
+		downloadId?: number;
+		name?: string;
+		alreadyCompleted?: boolean;
+	};
+
+	function auditObject(value: unknown): Record<string, unknown> | undefined {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+		return value as Record<string, unknown>;
+	}
+
+	function auditText(value: unknown): string {
+		return typeof value === 'string' ? value.trim() : '';
+	}
+
+	function auditPositiveIDs(value: unknown): number[] {
+		if (!Array.isArray(value)) return [];
+		const ids: number[] = [];
+		for (const item of value) {
+			const id = Number(item);
+			if (!Number.isSafeInteger(id) || id <= 0 || ids.includes(id)) continue;
+			ids.push(id);
+		}
+		return ids;
+	}
+
+	function auditIDListLabel(ids: number[]): string {
+		const visible = ids.slice(0, 6).join(', ');
+		return ids.length > 6 ? `${visible}, +${ids.length - 6} more` : visible;
+	}
+
+	function downloaderUploadAuditTarget(
+		path: string,
+		method: string,
+		responseValue: unknown
+	): DownloaderUploadAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		const response = auditObject(responseValue);
+		const data = auditObject(response?.data);
+
+		if (upperMethod === 'POST' && path === '/api/utilities/downloader-uploads') {
+			return {
+				action: 'Stage',
+				...(auditText(data?.uploadId) ? { uploadId: auditText(data?.uploadId) } : {}),
+				...(auditText(data?.name) ? { name: auditText(data?.name) } : {})
+			};
+		}
+
+		const completionMatch = path.match(/^\/api\/utilities\/downloader-uploads\/([^/]+)\/complete$/);
+		if (upperMethod === 'POST' && completionMatch) {
+			const downloadId = Number(data?.downloadId);
+			return {
+				action: 'Complete',
+				uploadId: completionMatch[1],
+				...(Number.isSafeInteger(downloadId) && downloadId > 0 ? { downloadId } : {})
+			};
+		}
+
+		const abortMatch = path.match(/^\/api\/utilities\/downloader-uploads\/([^/]+)$/);
+		if (upperMethod === 'DELETE' && abortMatch) {
+			return {
+				action: 'Abort',
+				uploadId: abortMatch[1],
+				alreadyCompleted: data?.status === 'completed'
+			};
+		}
+
+		return null;
+	}
+
+	function downloaderUploadActionLabel(target: DownloaderUploadAuditTarget): string {
+		let label = `Downloader Upload - ${target.action}`;
+		if (target.name) label += ` - ${target.name}`;
+		if (target.uploadId) label += ` - Upload ID ${target.uploadId}`;
+		if (target.downloadId) label += ` - Download ID ${target.downloadId}`;
+		if (target.alreadyCompleted) label += ' - Already Completed';
+		return label;
+	}
+
+	type DownloaderAuditTarget = {
+		action: 'Create' | 'Create Link' | 'Update' | 'Delete' | 'Bulk Delete';
+		downloadId?: number;
+		downloadIds?: number[];
+		failedIds?: number[];
+		name?: string;
+		parentUUID?: string;
+		downloadType?: string;
+		category?: string;
+	};
+
+	function downloaderAuditTarget(
+		path: string,
+		method: string,
+		bodyValue: unknown,
+		responseValue: unknown
+	): DownloaderAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		const body = auditObject(bodyValue);
+		const response = auditObject(responseValue);
+		const responseData = auditObject(response?.data);
+		const deletedItems = Array.isArray(responseData?.deleted) ? responseData.deleted : [];
+		const failedItems = Array.isArray(responseData?.failed) ? responseData.failed : [];
+
+		if (upperMethod === 'POST' && path === '/api/utilities/downloads/signed-url') {
+			return {
+				action: 'Create Link',
+				...(auditText(body?.name) ? { name: auditText(body?.name) } : {}),
+				...(auditText(body?.parentUUID)
+					? { parentUUID: auditText(body?.parentUUID) }
+					: {})
+			};
+		}
+
+		if (upperMethod === 'POST' && path === '/api/utilities/downloads') {
+			const responseID = Number(responseData?.id);
+			return {
+				action: 'Create',
+				...(Number.isSafeInteger(responseID) && responseID > 0 ? { downloadId: responseID } : {}),
+				...(auditText(body?.filename) ? { name: auditText(body?.filename) } : {}),
+				...(auditText(body?.downloadType) ? { category: auditText(body?.downloadType) } : {})
+			};
+		}
+
+		if (upperMethod === 'POST' && path === '/api/utilities/downloads/bulk-delete') {
+			const deletedIds = auditPositiveIDs(
+				deletedItems.map((item) => auditObject(item)?.id)
+			);
+			const failedIds = auditPositiveIDs(failedItems.map((item) => auditObject(item)?.id));
+			const requestedIds = auditPositiveIDs(body?.ids);
+			return {
+				action: 'Bulk Delete',
+				downloadIds: deletedIds.length > 0 ? deletedIds : requestedIds,
+				...(failedIds.length > 0 ? { failedIds } : {})
+			};
+		}
+
+		const updateMatch = path.match(/^\/api\/utilities\/downloads\/(\d+)$/);
+		if (upperMethod === 'PATCH' && updateMatch) {
+			const pathID = Number(updateMatch[1]);
+			return {
+				action: 'Update',
+				downloadId: pathID,
+				...(auditText(responseData?.name) || auditText(body?.name)
+					? { name: auditText(responseData?.name) || auditText(body?.name) }
+					: {}),
+				...(auditText(responseData?.type) ? { downloadType: auditText(responseData?.type) } : {}),
+				...(auditText(responseData?.uType) || auditText(body?.uType)
+					? { category: auditText(responseData?.uType) || auditText(body?.uType) }
+					: {})
+			};
+		}
+
+		if (upperMethod === 'DELETE' && updateMatch) {
+			const pathID = Number(updateMatch[1]);
+			const identity =
+				deletedItems.map(auditObject).find((item) => Number(item?.id) === pathID) ||
+				failedItems.map(auditObject).find((item) => Number(item?.id) === pathID);
+			return {
+				action: 'Delete',
+				downloadId: pathID,
+				...(auditText(identity?.name) ? { name: auditText(identity?.name) } : {}),
+				...(auditText(identity?.type) ? { downloadType: auditText(identity?.type) } : {})
+			};
+		}
+
+		return null;
+	}
+
+	function downloaderActionLabel(target: DownloaderAuditTarget): string {
+		let label = `Downloader - ${target.action}`;
+		if (target.name) label += ` - ${target.name}`;
+		if (target.parentUUID) label += ` - Parent ${target.parentUUID}`;
+		if (target.downloadId) label += ` - Download ID ${target.downloadId}`;
+		if (target.downloadIds?.length)
+			label += ` - Download IDs ${auditIDListLabel(target.downloadIds)}`;
+		if (target.failedIds?.length) label += ` - Failed IDs ${auditIDListLabel(target.failedIds)}`;
+		if (target.downloadType) label += ` - ${target.downloadType}`;
+		if (target.category) label += ` - ${target.category}`;
+		return label;
+	}
+
+	type CloudInitTemplateAuditTarget = {
+		action: 'Create' | 'Replace' | 'Delete';
+		templateId?: number;
+		name?: string;
+	};
+
+	function cloudInitTemplateAuditTarget(
+		path: string,
+		method: string,
+		bodyValue: unknown,
+		responseValue: unknown
+	): CloudInitTemplateAuditTarget | null {
+		const basePath = '/api/utilities/cloud-init/templates';
+		const upperMethod = method.toUpperCase();
+		const memberMatch = path.match(/^\/api\/utilities\/cloud-init\/templates\/(\d+)$/);
+		if (path !== basePath && !memberMatch) return null;
+
+		const body = auditObject(bodyValue);
+		const response = auditObject(responseValue);
+		const responseData = auditObject(response?.data);
+		const pathId = memberMatch ? Number(memberMatch[1]) : undefined;
+		const responseId = Number(responseData?.id);
+		const templateId =
+			Number.isSafeInteger(responseId) && responseId > 0
+				? responseId
+				: Number.isSafeInteger(pathId) && Number(pathId) > 0
+					? pathId
+					: undefined;
+		const name = auditText(responseData?.name) || auditText(body?.name) || undefined;
+
+		if (upperMethod === 'POST' && path === basePath) {
+			return { action: 'Create', ...(templateId ? { templateId } : {}), ...(name ? { name } : {}) };
+		}
+		if (upperMethod === 'PUT' && memberMatch) {
+			return { action: 'Replace', ...(templateId ? { templateId } : {}), ...(name ? { name } : {}) };
+		}
+		if (upperMethod === 'DELETE' && memberMatch) {
+			return { action: 'Delete', ...(templateId ? { templateId } : {}), ...(name ? { name } : {}) };
+		}
+		return null;
+	}
+
+	function cloudInitTemplateActionLabel(target: CloudInitTemplateAuditTarget): string {
+		let label = `Cloud-Init Template - ${target.action}`;
+		if (target.name) label += ` - ${target.name}`;
+		if (target.templateId) label += ` - Template ID ${target.templateId}`;
+		return label;
+	}
+
 	function normalizeActionPath(path: string): string {
 		const segments = path.split('/');
 		if (segments[1] === 'api' && segments[2] === 'disk' && segments.length === 5) {
@@ -956,6 +1188,33 @@
 				} else {
 					resolvedAction = label;
 				}
+			}
+
+			const downloaderUploadTarget = downloaderUploadAuditTarget(
+				path,
+				method,
+				recordCopy.action.response
+			);
+			if (downloaderUploadTarget) {
+				resolvedAction = downloaderUploadActionLabel(downloaderUploadTarget);
+			}
+			const downloaderTarget = downloaderAuditTarget(
+				path,
+				method,
+				recordCopy.action.body,
+				recordCopy.action.response
+			);
+			if (downloaderTarget) {
+				resolvedAction = downloaderActionLabel(downloaderTarget);
+			}
+			const cloudInitTarget = cloudInitTemplateAuditTarget(
+				path,
+				method,
+				recordCopy.action.body,
+				recordCopy.action.response
+			);
+			if (cloudInitTarget) {
+				resolvedAction = cloudInitTemplateActionLabel(cloudInitTarget);
 			}
 
 			if (

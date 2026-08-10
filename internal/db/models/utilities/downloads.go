@@ -32,7 +32,7 @@ type DownloadUType string
 const (
 	DownloadUTypeBase      DownloadUType = "base-rootfs"
 	DownloadUTypeCloudInit DownloadUType = "cloud-init"
-	DownloadUTypeOther     DownloadUType = "uncategoried"
+	DownloadUTypeOther     DownloadUType = "uncategorized"
 )
 
 type DownloadedFile struct {
