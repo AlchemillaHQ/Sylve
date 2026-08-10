@@ -103,6 +103,25 @@ func TestVMConsoleIsAnImportantAuditedGet(t *testing.T) {
 	}
 }
 
+func TestJailConsoleIsAnImportantAuditedGet(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "/api/jail/107/console", want: true},
+		{path: "/api/jail/not-a-ctid/console", want: true},
+		{path: "/api/jail/console", want: false},
+		{path: "/api/jail/107/console/extra", want: false},
+		{path: "/api/jail/107/logs", want: false},
+	}
+
+	for _, test := range tests {
+		if got := isImportantAuditGetPath(test.path); got != test.want {
+			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
+		}
+	}
+}
+
 func TestSanitizeAuditQuery(t *testing.T) {
 	query := sanitizeAuditQuery("/api/vm/console", "auth=secret&hash=hidden&rid=7")
 	if strings.Contains(query, "secret") || strings.Contains(query, "hidden") {
@@ -124,6 +143,11 @@ func TestSanitizeAuditQuery(t *testing.T) {
 	}
 	if !strings.Contains(query, "baudrate=115200") || !strings.Contains(query, "%5BREDACTED%5D") {
 		t.Fatalf("normalized console query lost safe values or redaction: %s", query)
+	}
+
+	query = sanitizeAuditQuery("/api/jail/107/console", "auth=secret")
+	if strings.Contains(query, "secret") || !strings.Contains(query, "%5BREDACTED%5D") {
+		t.Fatalf("jail console query leaked a credential: %s", query)
 	}
 }
 
@@ -189,6 +213,126 @@ func TestSanitizeAuditPayloadForVMCloudInitRedactsOnlyDocuments(t *testing.T) {
 	}).(map[string]interface{})
 	if !ok || unrelated["data"] != "safe unrelated value" || unrelated["enabled"] != false {
 		t.Fatalf("unrelated VM option payload was unexpectedly redacted: %#v", unrelated)
+	}
+}
+
+func TestSanitizeAuditPayloadForJailOptions(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		path  string
+		field string
+	}{
+		{path: "/api/jail/101/options/fstab", field: "fstab"},
+		{path: "/api/jail/101/options/resolv-conf", field: "resolvConf"},
+		{path: "/api/jail/101/options/devfs-rules", field: "devFSRules"},
+		{path: "/api/jail/101/options/additional-options", field: "additionalOptions"},
+		{path: "/api/jail/101/options/metadata", field: "metadata"},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			result, ok := sanitizeAuditPayloadForPath(test.path, map[string]interface{}{
+				test.field: "private jail configuration",
+				"enabled":  false,
+			}).(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected sanitized map, got %T", result)
+			}
+			if result[test.field] != "[REDACTED]" {
+				t.Fatalf("%s was not redacted: %#v", test.field, result)
+			}
+			if result["enabled"] != false {
+				t.Fatalf("safe field was not preserved: %#v", result)
+			}
+		})
+	}
+
+	metadata, ok := sanitizeAuditPayloadForPath(
+		"/api/jail/101/options/metadata",
+		map[string]interface{}{"metadata": "private-meta", "env": "private-env"},
+	).(map[string]interface{})
+	if !ok || metadata["metadata"] != "[REDACTED]" || metadata["env"] != "[REDACTED]" {
+		t.Fatalf("metadata values were not redacted: %#v", metadata)
+	}
+
+	lifecycle, ok := sanitizeAuditPayloadForPath(
+		"/api/jail/101/options/lifecycle-hooks",
+		map[string]interface{}{
+			"hooks": map[string]interface{}{
+				"prestart": map[string]interface{}{"enabled": true, "script": "private command"},
+				"stop":     map[string]interface{}{"enabled": false, "script": ""},
+			},
+		},
+	).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected lifecycle map, got %T", lifecycle)
+	}
+	hooks, ok := lifecycle["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected hooks map, got %#v", lifecycle["hooks"])
+	}
+	prestart, ok := hooks["prestart"].(map[string]interface{})
+	if !ok || prestart["script"] != "[REDACTED]" || prestart["enabled"] != true {
+		t.Fatalf("lifecycle script redaction lost safe fields: %#v", hooks)
+	}
+
+	safe, ok := sanitizeAuditPayloadForPath(
+		"/api/jail/101/options/allowed-options",
+		map[string]interface{}{"allowedOptions": []interface{}{"allow.mount"}},
+	).(map[string]interface{})
+	if !ok || len(safe["allowedOptions"].([]interface{})) != 1 {
+		t.Fatalf("safe allowed options were unexpectedly redacted: %#v", safe)
+	}
+}
+
+func TestSanitizeAuditPayloadForJailCreation(t *testing.T) {
+	t.Parallel()
+
+	result, ok := sanitizeAuditPayloadForPath("/api/jail", map[string]interface{}{
+		"ctId":              float64(101),
+		"name":              "web-jail",
+		"pool":              "zroot",
+		"allowedOptions":    []interface{}{"allow.mount"},
+		"fstab":             "private fstab",
+		"resolvConf":        "private resolv.conf",
+		"devfsRuleset":      "private devfs rules",
+		"additionalOptions": "private jail options",
+		"metadataMeta":      "private metadata",
+		"metadataEnv":       "private environment",
+		"hooks": map[string]interface{}{
+			"prestart": map[string]interface{}{"enabled": true, "script": "private command"},
+			"stop":     map[string]interface{}{"enabled": false, "script": ""},
+		},
+	}).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sanitized map, got %T", result)
+	}
+
+	for _, field := range []string{
+		"fstab",
+		"resolvConf",
+		"devfsRuleset",
+		"additionalOptions",
+		"metadataMeta",
+		"metadataEnv",
+	} {
+		if result[field] != "[REDACTED]" {
+			t.Fatalf("%s was not redacted: %#v", field, result[field])
+		}
+	}
+	if result["ctId"] != float64(101) || result["name"] != "web-jail" || result["pool"] != "zroot" {
+		t.Fatalf("safe jail identity fields were not preserved: %#v", result)
+	}
+	allowed, ok := result["allowedOptions"].([]interface{})
+	if !ok || len(allowed) != 1 || allowed[0] != "allow.mount" {
+		t.Fatalf("safe allowed options were not preserved: %#v", result["allowedOptions"])
+	}
+	hooks, ok := result["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected hooks map, got %#v", result["hooks"])
+	}
+	prestart, ok := hooks["prestart"].(map[string]interface{})
+	if !ok || prestart["script"] != "[REDACTED]" || prestart["enabled"] != true {
+		t.Fatalf("creation hook redaction lost safe fields: %#v", hooks)
 	}
 }
 

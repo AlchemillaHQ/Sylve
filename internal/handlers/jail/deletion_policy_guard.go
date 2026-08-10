@@ -7,15 +7,14 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/services/jail"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
 func RequireJailDeletionDetached(jailService *jail.Service, parameter string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctID, err := utils.ParamUint(c, parameter)
-		if err != nil {
-			c.AbortWithStatus(http.StatusBadRequest)
+		ctID, ok := parseJailCTID(c, parameter)
+		if !ok {
+			c.Abort()
 			return
 		}
 		if err := jailService.RequireJailDeletionDetached(ctID); err != nil {

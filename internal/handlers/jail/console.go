@@ -16,11 +16,13 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/creack/pty"
@@ -29,15 +31,15 @@ import (
 )
 
 const (
-	wsReadLimit         = 10 << 20 // 10 MiB
+	wsReadLimit         = 64 << 10 // 64 KiB
 	wsWriteTimeout      = 10 * time.Second
 	wsPongWait          = 60 * time.Second
 	wsPingPeriod        = (wsPongWait * 9) / 10
+	wsHistoryLimit      = 16 << 10 // 16 KiB
 	defaultRows         = 24
 	defaultCols         = 80
 	controlInput   byte = 0
 	controlResize  byte = 1
-	controlKill    byte = 2
 )
 
 type Observer struct {
@@ -62,6 +64,10 @@ func (o *Observer) WriteControl(messageType int, payload []byte, deadline time.T
 }
 
 func (o *Observer) Close() error {
+	if o == nil || o.Conn == nil {
+		return nil
+	}
+
 	o.Mu.Lock()
 	defer o.Mu.Unlock()
 	return o.Conn.Close()
@@ -73,9 +79,11 @@ type TerminalSession struct {
 	Pty       *os.File
 	Observers map[*Observer]struct{}
 
-	Mu        sync.Mutex
-	closeOnce sync.Once
-	closed    bool
+	Mu           sync.Mutex
+	closeOnce    sync.Once
+	closed       bool
+	History      []byte
+	HistoryLimit int
 }
 
 type SessionManager struct {
@@ -130,10 +138,12 @@ func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*Te
 	}
 
 	session := &TerminalSession{
-		ID:        sessionID,
-		Cmd:       cmd,
-		Pty:       ptymx,
-		Observers: make(map[*Observer]struct{}),
+		ID:           sessionID,
+		Cmd:          cmd,
+		Pty:          ptymx,
+		Observers:    make(map[*Observer]struct{}),
+		History:      make([]byte, 0, wsHistoryLimit),
+		HistoryLimit: wsHistoryLimit,
 	}
 
 	sm.sessions[sessionID] = session
@@ -191,37 +201,56 @@ func (ts *TerminalSession) Close(sm *SessionManager) {
 	})
 }
 
-func (ts *TerminalSession) AddObserver(obs *Observer) error {
-	ts.Mu.Lock()
-	defer ts.Mu.Unlock()
+func (ts *TerminalSession) AddObserverAndReplay(obs *Observer) error {
+	// Hold the observer writer while registering it so live PTY output cannot
+	// overtake or duplicate the history snapshot.
+	obs.Mu.Lock()
+	defer obs.Mu.Unlock()
 
+	ts.Mu.Lock()
 	if ts.closed {
+		ts.Mu.Unlock()
 		return errors.New("session is closed")
 	}
 
+	history := append([]byte(nil), ts.History...)
 	ts.Observers[obs] = struct{}{}
-	return nil
+	ts.Mu.Unlock()
+
+	if len(history) == 0 {
+		return nil
+	}
+	_ = obs.Conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+	return obs.Conn.WriteMessage(websocket.BinaryMessage, history)
 }
 
 func (ts *TerminalSession) RemoveObserver(obs *Observer, sm *SessionManager) {
 	ts.Mu.Lock()
 	delete(ts.Observers, obs)
-	remaining := len(ts.Observers)
-	closed := ts.closed
+	closeSession := !ts.closed && len(ts.Observers) == 0
+	if closeSession {
+		// Prevent a new observer from joining between the last disconnect and
+		// session cleanup.
+		ts.closed = true
+	}
 	ts.Mu.Unlock()
 
 	_ = obs.Close()
-
-	if !closed && remaining == 0 {
+	if closeSession {
 		ts.Close(sm)
 	}
 }
 
-func (ts *TerminalSession) BroadcastBinary(payload []byte) {
+func (ts *TerminalSession) BroadcastBinary(payload []byte, sm *SessionManager) {
 	ts.Mu.Lock()
 	if ts.closed {
 		ts.Mu.Unlock()
 		return
+	}
+
+	ts.History = append(ts.History, payload...)
+	if ts.HistoryLimit > 0 && len(ts.History) > ts.HistoryLimit {
+		ts.History = ts.History[len(ts.History)-ts.HistoryLimit:]
 	}
 
 	observers := make([]*Observer, 0, len(ts.Observers))
@@ -233,6 +262,7 @@ func (ts *TerminalSession) BroadcastBinary(payload []byte) {
 	for _, obs := range observers {
 		if err := obs.WriteMessage(websocket.BinaryMessage, payload); err != nil {
 			logger.L.Warn().Err(err).Str("session", ts.ID).Msg("Failed to write PTY output to websocket")
+			ts.RemoveObserver(obs, sm)
 		}
 	}
 }
@@ -256,55 +286,101 @@ func (ts *TerminalSession) PumpOutput(sm *SessionManager) {
 
 		data := make([]byte, n)
 		copy(data, buf[:n])
-		ts.BroadcastBinary(data)
+		ts.BroadcastBinary(data, sm)
 	}
 }
 
-func (sm *SessionManager) KillSession(sessionID string) {
-	sm.mu.RLock()
-	session, exists := sm.sessions[sessionID]
-	sm.mu.RUnlock()
-
-	if exists {
-		session.Close(sm)
-	}
+type jailConsoleService interface {
+	JailExistsByCTID(ctID uint) (bool, error)
+	JailRestoreInProgress(ctID uint) (bool, error)
+	CanMutateProtectedJail(ctID uint) (bool, error)
+	GetStateByCtId(ctID uint) (jailServiceInterfaces.State, error)
 }
 
-func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
+func writeJailConsoleError(c *gin.Context, status int, code string, err error) {
+	detail := code
+	if err != nil {
+		detail = err.Error()
+	}
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: code,
+		Error:   detail,
+		Data:    nil,
+	})
+}
+
+// @Summary Open a jail console WebSocket
+// @Description Validate that the jail console is available and upgrade to an authenticated interactive WebSocket session
+// @Tags Jail
+// @Security BearerAuth
+// @Param ctid path int true "Jail CTID" minimum(1)
+// @Param auth query string true "Hex-encoded WebSocket authentication payload"
+// @Success 101 {string} string "Switching Protocols"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Jail Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /jail/{ctid}/console [get]
+func HandleJailTerminalWebsocket(jailService jailConsoleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctid := c.Query("ctid")
-		if ctid == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "ctid is required"})
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
+			return
+		}
+		ctIDText := strconv.FormatUint(uint64(ctID), 10)
+
+		exists, err := jailService.JailExistsByCTID(ctID)
+		if err != nil {
+			writeJailConsoleError(c, http.StatusInternalServerError, "failed_to_get_jail", err)
+			return
+		}
+		if !exists {
+			writeJailConsoleError(c, http.StatusNotFound, "jail_not_found", nil)
 			return
 		}
 
-		ctidInt, err := strconv.Atoi(ctid)
+		restoring, err := jailService.JailRestoreInProgress(ctID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid ctid"})
+			writeJailConsoleError(c, http.StatusServiceUnavailable, "jail_console_guard_unavailable", err)
+			return
+		}
+		if restoring {
+			writeJailConsoleError(c, http.StatusConflict, "restore_in_progress", nil)
 			return
 		}
 
-		j, err := jailService.GetJailByCTID(uint(ctidInt))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed_to_get_jail"})
-			return
-		}
-		if j == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "jail_not_found"})
-			return
-		}
-		allowed, guardErr := jailService.CanMutateProtectedJail(uint(ctidInt))
+		allowed, guardErr := jailService.CanMutateProtectedJail(ctID)
 		if guardErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "jail_mutation_guard_unavailable"})
+			writeJailConsoleError(c, http.StatusServiceUnavailable, "jail_console_guard_unavailable", guardErr)
 			return
 		}
 		if !allowed {
-			c.JSON(http.StatusConflict, gin.H{"error": "restore_in_progress"})
+			writeJailConsoleError(c, http.StatusForbidden, "replication_lease_not_owned", nil)
+			return
+		}
+
+		state, err := jailService.GetStateByCtId(ctID)
+		if err != nil {
+			writeJailConsoleError(c, http.StatusServiceUnavailable, "jail_state_unavailable", err)
+			return
+		}
+		if !strings.EqualFold(strings.TrimSpace(state.State), "ACTIVE") {
+			writeJailConsoleError(c, http.StatusConflict, "jail_console_requires_active_jail", nil)
+			return
+		}
+
+		if !websocket.IsWebSocketUpgrade(c.Request) {
+			writeJailConsoleError(c, http.StatusBadRequest, "websocket_upgrade_required", nil)
 			return
 		}
 
 		conn, err := WSUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
+			logger.L.Warn().Err(err).Uint("ctid", ctID).Msg("failed to upgrade jail console websocket")
 			return
 		}
 
@@ -314,18 +390,19 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 			return conn.SetReadDeadline(time.Now().Add(wsPongWait))
 		})
 
-		sessionID := "jail-" + ctid
-		session, err := GlobalSessionManager.GetOrCreateSession(sessionID, ctidInt)
+		sessionID := "jail-" + ctIDText
+		session, err := GlobalSessionManager.GetOrCreateSession(sessionID, int(ctID))
 		if err != nil {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte("Error starting session: "+err.Error()))
+			logger.L.Error().Err(err).Uint("ctid", ctID).Msg("failed to start jail console session")
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("Jail console unavailable"))
 			_ = conn.Close()
 			return
 		}
 
 		observer := &Observer{Conn: conn}
-		if err := session.AddObserver(observer); err != nil {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte("Session unavailable"))
-			_ = conn.Close()
+		if err := session.AddObserverAndReplay(observer); err != nil {
+			logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to join jail console session")
+			session.RemoveObserver(observer, GlobalSessionManager)
 			return
 		}
 
@@ -344,6 +421,7 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 					return
 				case <-ticker.C:
 					if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteTimeout)); err != nil {
+						_ = observer.Close()
 						return
 					}
 				}
@@ -408,10 +486,6 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 				}); err != nil {
 					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to resize PTY")
 				}
-
-			case controlKill:
-				GlobalSessionManager.KillSession(sessionID)
-				return
 
 			default:
 				logger.L.Warn().

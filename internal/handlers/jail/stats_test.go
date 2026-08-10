@@ -35,8 +35,8 @@ func newJailStatsHandlerRouter(t *testing.T) *gin.Engine {
 	service := &jail.Service{DB: database}
 
 	router := gin.New()
-	router.GET("/jail/stats/:ctId", GetJailStatsBootstrap(service))
-	router.GET("/jail/stats/:ctId/:step", GetJailStats(service))
+	router.GET("/jail/:ctid/stats", GetJailStatsBootstrap(service))
+	router.GET("/jail/:ctid/stats/:step", GetJailStats(service))
 	return router
 }
 
@@ -44,7 +44,7 @@ func TestJailStatsRoutesReturnBootstrapAndCompatibleEmptyRange(t *testing.T) {
 	router := newJailStatsHandlerRouter(t)
 
 	bootstrapRecorder := httptest.NewRecorder()
-	router.ServeHTTP(bootstrapRecorder, httptest.NewRequest(http.MethodGet, "/jail/stats/104", nil))
+	router.ServeHTTP(bootstrapRecorder, httptest.NewRequest(http.MethodGet, "/jail/104/stats", nil))
 	if bootstrapRecorder.Code != http.StatusOK {
 		t.Fatalf("bootstrap status = %d, body = %s", bootstrapRecorder.Code, bootstrapRecorder.Body.String())
 	}
@@ -57,7 +57,7 @@ func TestJailStatsRoutesReturnBootstrapAndCompatibleEmptyRange(t *testing.T) {
 	}
 
 	explicitRecorder := httptest.NewRecorder()
-	router.ServeHTTP(explicitRecorder, httptest.NewRequest(http.MethodGet, "/jail/stats/104/hourly", nil))
+	router.ServeHTTP(explicitRecorder, httptest.NewRequest(http.MethodGet, "/jail/104/stats/hourly", nil))
 	if explicitRecorder.Code != http.StatusOK {
 		t.Fatalf("explicit status = %d, body = %s", explicitRecorder.Code, explicitRecorder.Body.String())
 	}
@@ -78,9 +78,9 @@ func TestJailStatsRoutesValidateCTIDStepAndNotFound(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{path: "/jail/stats/not-a-ctid", wantStatus: http.StatusBadRequest, wantCode: "invalid_ctid_format"},
-		{path: "/jail/stats/104/not-a-step", wantStatus: http.StatusBadRequest, wantCode: "invalid_stats_step"},
-		{path: "/jail/stats/999", wantStatus: http.StatusNotFound, wantCode: "jail_not_found"},
+		{path: "/jail/not-a-ctid/stats", wantStatus: http.StatusBadRequest, wantCode: "invalid_ctid"},
+		{path: "/jail/104/stats/not-a-step", wantStatus: http.StatusBadRequest, wantCode: "invalid_stats_step"},
+		{path: "/jail/999/stats", wantStatus: http.StatusNotFound, wantCode: "jail_not_found"},
 	}
 
 	for _, tt := range tests {

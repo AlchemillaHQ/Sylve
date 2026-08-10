@@ -48,6 +48,12 @@ func TestClassifyCreateJailError(t *testing.T) {
 			wantCode:   "guest_identity_inventory_unavailable",
 		},
 		{
+			name:       "replication lease denial is forbidden",
+			err:        fmt.Errorf("replication_lease_not_owned"),
+			wantStatus: http.StatusForbidden,
+			wantCode:   "replication_lease_not_owned",
+		},
+		{
 			name:       "existing inventory conflict",
 			err:        fmt.Errorf("guest_identity_inventory_conflict: duplicate ID"),
 			wantStatus: http.StatusConflict,
@@ -58,6 +64,18 @@ func TestClassifyCreateJailError(t *testing.T) {
 			err:        fmt.Errorf("base_is_not_a_directory"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "base_is_not_a_directory",
+		},
+		{
+			name:       "bootstrap and download are mutually exclusive",
+			err:        fmt.Errorf("base_and_bootstrap_name_are_mutually_exclusive"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "base_and_bootstrap_name_are_mutually_exclusive",
+		},
+		{
+			name:       "missing jail dependency is unavailable",
+			err:        fmt.Errorf("failed_to_get_usable_pools: zfs unavailable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "jail_create_dependency_not_ready",
 		},
 		{
 			name:       "runtime wrapper returns runtime failure code",

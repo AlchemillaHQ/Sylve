@@ -90,6 +90,28 @@ func performMigrateVMRequest(
 	return recorder
 }
 
+func performMigrateJailRequest(
+	t *testing.T,
+	path string,
+	migrationService migrationIface.MigrationServiceInterface,
+	lifecycleService migrationLifecycleRequestService,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/jail/:ctid/migrations", func(c *gin.Context) {
+		c.Set("Username", "tester")
+		MigrateJail(migrationService, lifecycleService)(c)
+	})
+
+	body := bytes.NewBufferString(`{"targetNodeUuid":"node-b"}`)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, path, body)
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+	return recorder
+}
+
 func TestMigrateVMQueuesTaskWithStableResponse(t *testing.T) {
 	migrationStub := &migrationRequestServiceStub{
 		result: &migrationIface.ValidateResult{Allowed: true},
@@ -129,6 +151,37 @@ func TestMigrateVMQueuesTaskWithStableResponse(t *testing.T) {
 	}
 }
 
+func TestMigrateJailQueuesTaskWithStableResponse(t *testing.T) {
+	migrationStub := &migrationRequestServiceStub{
+		result: &migrationIface.ValidateResult{Allowed: true},
+	}
+	lifecycleStub := &migrationLifecycleRequestStub{
+		task:    &taskModels.GuestLifecycleTask{ID: 45, GuestType: taskModels.GuestTypeJail, GuestID: 102},
+		outcome: lifecycle.RequestOutcomeQueued,
+	}
+
+	recorder := performMigrateJailRequest(
+		t, "/jail/102/migrations", migrationStub, lifecycleStub,
+	)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202; body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response internal.APIResponse[MigrationTaskResponse]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Status != "success" || response.Message != "jail_migration_queued" ||
+		response.Data.TaskID != 45 || response.Data.GuestID != 102 ||
+		response.Data.Outcome != lifecycle.RequestOutcomeQueued {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if migrationStub.request.GuestType != taskModels.GuestTypeJail ||
+		migrationStub.request.GuestID != 102 || migrationStub.request.TargetNodeUUID != "node-b" {
+		t.Fatalf("unexpected validation request: %+v", migrationStub.request)
+	}
+}
+
 func TestMigrateVMValidationStatusMapping(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -142,6 +195,9 @@ func TestMigrateVMValidationStatusMapping(t *testing.T) {
 		{name: "active task", reason: "guest_has_active_lifecycle_task: shutdown", wantStatus: http.StatusConflict, wantMsg: "migration_conflict"},
 		{name: "target offline", reason: "target_node_offline", wantStatus: http.StatusServiceUnavailable, wantMsg: "migration_target_unavailable"},
 		{name: "database failure", reason: "active_task_lookup_failed: database is locked", wantStatus: http.StatusInternalServerError, wantMsg: "migration_validation_failed"},
+		{name: "jail network database failure", reason: "jail_network_lookup_failed: database is locked", wantStatus: http.StatusInternalServerError, wantMsg: "migration_validation_failed"},
+		{name: "target bridge check failure", reason: "network_1_bridge_check_failed_bridge0: SSH unavailable", wantStatus: http.StatusServiceUnavailable, wantMsg: "migration_target_unavailable"},
+		{name: "target bridge missing", reason: "target_missing_bridge: bridge0", wantStatus: http.StatusConflict, wantMsg: "migration_conflict"},
 	}
 
 	for _, test := range tests {
@@ -214,5 +270,47 @@ func TestMigrateVMRejectsZeroRIDBeforeValidation(t *testing.T) {
 	}
 	if migrationStub.request.GuestID != 0 || lifecycleStub.calls != 0 {
 		t.Fatal("invalid RID reached a service")
+	}
+}
+
+func TestMigrateJailRejectsInvalidCTIDBeforeValidation(t *testing.T) {
+	for _, path := range []string{
+		"/jail/0/migrations",
+		"/jail/-1/migrations",
+		"/jail/not-a-ctid/migrations",
+	} {
+		t.Run(path, func(t *testing.T) {
+			migrationStub := &migrationRequestServiceStub{}
+			lifecycleStub := &migrationLifecycleRequestStub{}
+			recorder := performMigrateJailRequest(t, path, migrationStub, lifecycleStub)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", recorder.Code, recorder.Body.String())
+			}
+			if migrationStub.request.GuestID != 0 || lifecycleStub.calls != 0 {
+				t.Fatal("invalid CTID reached a service")
+			}
+		})
+	}
+}
+
+func TestMigrateJailRejectsMissingLifecycleTask(t *testing.T) {
+	migrationStub := &migrationRequestServiceStub{
+		result: &migrationIface.ValidateResult{Allowed: true},
+	}
+	lifecycleStub := &migrationLifecycleRequestStub{outcome: lifecycle.RequestOutcomeQueued}
+
+	recorder := performMigrateJailRequest(
+		t, "/jail/102/migrations", migrationStub, lifecycleStub,
+	)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response internal.APIResponse[any]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "migration_request_failed" {
+		t.Fatalf("message = %q, want migration_request_failed", response.Message)
 	}
 }

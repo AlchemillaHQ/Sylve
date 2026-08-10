@@ -30,3 +30,24 @@ func TestIsVMConsoleWebSocketPath(t *testing.T) {
 		}
 	}
 }
+
+func TestIsJailConsoleWebSocketPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "/api/jail/107/console", want: true},
+		{path: "/api/jail/not-a-ctid/console", want: true},
+		{path: "/api/jail/console", want: false},
+		{path: "/api/jail//console", want: false},
+		{path: "/api/jail/107/subresource/console", want: false},
+		{path: "/api/jail/107/console/extra", want: false},
+		{path: "/api/vm/107/console", want: false},
+	}
+
+	for _, test := range tests {
+		if got := isJailConsoleWebSocketPath(test.path); got != test.want {
+			t.Fatalf("path=%q websocket=%v want=%v", test.path, got, test.want)
+		}
+	}
+}

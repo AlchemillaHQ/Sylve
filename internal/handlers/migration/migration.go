@@ -64,7 +64,6 @@ type migrationLifecycleRequestService interface {
 type migrateGuestOptions struct {
 	paramName, idName, invalidFormat    string
 	guestType, auditType, queuedMessage string
-	parseSignedID                       bool
 }
 
 // @Summary Queue a Virtual Machine migration
@@ -77,6 +76,7 @@ type migrateGuestOptions struct {
 // @Param request body MigrateGuestRequest true "Migration target"
 // @Success 202 {object} internal.APIResponse[MigrationTaskResponse] "Accepted"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
@@ -94,14 +94,31 @@ func MigrateVM(
 	})
 }
 
+// @Summary Queue a Jail migration
+// @Description Validate and queue an asynchronous migration of a jail to another cluster node
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param ctid path int true "Jail CTID" minimum(1)
+// @Param request body MigrateGuestRequest true "Migration target"
+// @Success 202 {object} internal.APIResponse[MigrationTaskResponse] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /jail/{ctid}/migrations [post]
 func MigrateJail(
 	migrationService migrationIface.MigrationServiceInterface,
 	lifecycleService migrationLifecycleRequestService,
 ) gin.HandlerFunc {
 	return migrateGuest(migrationService, lifecycleService, migrateGuestOptions{
-		paramName: "ctId", idName: "Jail CT ID", invalidFormat: "invalid_ctid_format",
+		paramName: "ctid", idName: "Jail CTID", invalidFormat: "invalid_ctid_format",
 		guestType: taskModels.GuestTypeJail, auditType: "jail_migrate", queuedMessage: "jail_migration_queued",
-		parseSignedID: true,
 	})
 }
 
@@ -119,7 +136,7 @@ func migrateGuest(
 			return
 		}
 
-		guestID, err := parseMigrationGuestID(id, options.parseSignedID)
+		guestID, err := parseMigrationGuestID(id)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status: "error", Message: options.invalidFormat, Error: options.idName + " must be a positive integer",
@@ -129,7 +146,18 @@ func migrateGuest(
 
 		var req MigrateGuestRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{Status: "error", Message: "invalid_request_body", Error: err.Error()})
+			status := http.StatusBadRequest
+			message := "invalid_request_body"
+			detail := err.Error()
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				status = http.StatusRequestEntityTooLarge
+				message = "request_body_too_large"
+				detail = "request_body_too_large"
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status: "error", Message: message, Error: detail, Data: nil,
+			})
 			return
 		}
 
@@ -213,14 +241,7 @@ func migrateGuest(
 	}
 }
 
-func parseMigrationGuestID(id string, signed bool) (uint, error) {
-	if signed {
-		value, err := strconv.ParseInt(id, 10, 0)
-		if err != nil || value <= 0 {
-			return 0, fmt.Errorf("invalid_guest_id")
-		}
-		return uint(value), nil
-	}
+func parseMigrationGuestID(id string) (uint, error) {
 	value, err := strconv.ParseUint(id, 10, 0)
 	if err != nil || value == 0 {
 		return 0, fmt.Errorf("invalid_guest_id")
@@ -271,6 +292,9 @@ func classifyMigrationValidationResult(
 		case code == "replication_policy_lookup_failed",
 			code == "active_task_lookup_failed",
 			code == "replication_event_lookup_failed",
+			code == "jail_lookup_failed",
+			code == "jail_storage_lookup_failed",
+			code == "jail_network_lookup_failed",
 			(strings.HasPrefix(code, "network_") && strings.HasSuffix(code, "_lookup_failed")):
 			return http.StatusInternalServerError, "migration_validation_failed"
 		case code == "target_node_offline",
@@ -282,6 +306,7 @@ func classifyMigrationValidationResult(
 			code == "target_guest_record_check_failed",
 			strings.HasPrefix(code, "target_pool_check_failed_"),
 			strings.HasPrefix(code, "target_guest_check_failed_"),
+			(strings.HasPrefix(code, "network_") && strings.Contains(code, "_bridge_check_failed_")),
 			strings.HasPrefix(code, "target_identity_inventory_"):
 			status = http.StatusServiceUnavailable
 			message = "migration_target_unavailable"

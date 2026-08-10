@@ -50,7 +50,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
-	"github.com/alchemillahq/sylve/internal/services/jail"
+	jailServicePkg "github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/internal/services/mdns"
@@ -102,7 +102,7 @@ func RegisterRoutes(r *gin.Engine,
 	dynamicDNSService *dynamicdns.Service,
 	certificateService *certificates.Service,
 	iscsiService *iscsi.Service,
-	jailService *jail.Service,
+	jailService *jailServicePkg.Service,
 	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
 	zeltaService *zelta.Service,
@@ -614,43 +614,48 @@ func RegisterRoutes(r *gin.Engine,
 
 	jail := api.Group("/jail")
 	jail.Use(middleware.EnsureAuthenticated(authService))
+	jail.Use(middleware.RequireLocalAdminForWrites(authService))
 	jail.Use(EnsureCorrectHost(db, authService))
+	jail.Use(middleware.LimitRequestBody(jailServicePkg.MaxRequestBodyBytes))
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/bootstraps", jailHandlers.ListBootstraps(jailService))
-		jail.POST("/bootstrap", jailHandlers.CreateBootstrap(jailService))
-		jail.DELETE("/bootstrap", jailHandlers.DeleteBootstrap(jailService))
-		jail.GET("/templates/simple", jailHandlers.ListJailTemplatesSimple(jailService))
-		jail.GET("/templates/:id", jailHandlers.GetJailTemplateByID(jailService))
-		jail.POST("/templates/convert/:ctid", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
-		jail.POST("/templates/create/:id", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService))
-		jail.DELETE("/templates/:id", jailHandlers.DeleteJailTemplate(jailService))
-		jail.GET("/simple/:id", jailHandlers.GetSimpleJailByIdentifier(jailService))
-		jail.GET("/state", jailHandlers.ListJailStates(jailService))
-		jail.GET("/state/:id", jailHandlers.GetJailState(jailService, lifecycleService))
+		jail.POST("/bootstraps", jailHandlers.CreateBootstrap(jailService))
+		jail.DELETE("/bootstraps/:name", jailHandlers.DeleteBootstrap(jailService))
+		jail.GET("/templates", jailHandlers.ListJailTemplatesSimple(jailService))
+		jail.GET("/templates/:templateId", jailHandlers.GetJailTemplateByID(jailService))
+		jail.POST("/:ctid/templates", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
+		jail.POST("/templates/:templateId/jails", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService))
+		jail.DELETE("/templates/:templateId", jailHandlers.DeleteJailTemplate(jailService, lifecycleService))
+		jail.GET("/simple/:ctid", jailHandlers.GetSimpleJailByCTID(jailService))
 		jail.GET("", jailHandlers.ListJails(jailService))
-		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
-		jail.GET("/snapshots/:id", jailHandlers.ListJailSnapshots(jailService))
-		jail.POST("/snapshots/:id", jailHandlers.CreateJailSnapshot(jailService))
-		jail.POST("/snapshots/rollback/:id/:snapshotId",
-			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "id"),
+		jail.GET("/:ctid/snapshots", jailHandlers.ListJailSnapshots(jailService))
+		jail.POST("/:ctid/snapshots", jailHandlers.CreateJailSnapshot(jailService))
+		jail.POST("/:ctid/snapshots/:snapshotId/rollback",
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
 			jailHandlers.RollbackJailSnapshot(jailService),
 		)
-		jail.DELETE("/snapshots/:id/:snapshotId",
-			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "id"),
+		jail.DELETE("/:ctid/snapshots/:snapshotId",
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
 			jailHandlers.DeleteJailSnapshot(jailService),
 		)
-		jail.POST("/migrate/:ctId", migrationHandlers.MigrateJail(migrationService, lifecycleService))
-		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
-		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
-		jail.PUT("/name", jailHandlers.UpdateJailName(jailService, clusterService))
-		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
-		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
-		jail.PUT("/cpu", jailHandlers.UpdateJailCPU(jailService))
-		jail.GET("/stats/:ctId", jailHandlers.GetJailStatsBootstrap(jailService))
-		jail.GET("/stats/:ctId/:step", jailHandlers.GetJailStats(jailService))
-		jail.PUT("/resource-limits/:ctId", jailHandlers.UpdateResourceLimits(jailService))
+		jail.GET("/:ctid", jailHandlers.GetJailByCTID(jailService))
+		jail.POST("/:ctid/migrations", migrationHandlers.MigrateJail(migrationService, lifecycleService))
+		jail.POST("/:ctid/actions/:action", jailHandlers.JailAction(jailService, lifecycleService))
+		jail.PATCH("/:ctid/description", jailHandlers.UpdateJailDescription(jailService))
+		jail.PATCH("/:ctid/name", jailHandlers.UpdateJailName(jailService, clusterService))
+		jail.GET("/:ctid/state", jailHandlers.GetJailState(jailService, lifecycleService))
+		jail.GET("/:ctid/logs", jailHandlers.GetJailLogs(jailService))
+		jail.GET("/:ctid/stats", jailHandlers.GetJailStatsBootstrap(jailService))
+		jail.GET("/:ctid/stats/:step", jailHandlers.GetJailStats(jailService))
+		jail.GET("/:ctid/console",
+			middleware.RequireLocalAdmin(authService),
+			jailHandlers.HandleJailTerminalWebsocket(jailService),
+		)
+		jail.PUT("/:ctid/hardware/ram", jailHandlers.UpdateJailMemory(jailService))
+		jail.PUT("/:ctid/hardware/cpu", jailHandlers.UpdateJailCPU(jailService))
+		jail.PUT("/:ctid/hardware/resource-limits", jailHandlers.UpdateResourceLimits(jailService))
 
 		jail.POST("", jailHandlers.CreateJail(jailService))
 		jail.DELETE("/:ctid",
@@ -659,23 +664,20 @@ func RegisterRoutes(r *gin.Engine,
 			jailHandlers.DeleteJail(jailService),
 		)
 
-		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket(jailService))
-		jail.PUT("/network/inheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
-		jail.PUT("/network/disinheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
+		jail.PUT("/:ctid/network/inheritance", jailHandlers.SetNetworkInheritance(jailService))
+		jail.POST("/:ctid/networks", jailHandlers.AddNetwork(jailService))
+		jail.PATCH("/:ctid/networks/:networkId", jailHandlers.EditNetwork(jailService))
+		jail.DELETE("/:ctid/networks/:networkId", jailHandlers.DeleteNetwork(jailService))
 
-		jail.POST("/network", jailHandlers.AddNetwork(jailService))
-		jail.PUT("/network", jailHandlers.EditNetwork(jailService))
-		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
-
-		jail.PUT("/options/wol/:rid", jailHandlers.ModifyWakeOnLan(jailService))
-		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
-		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
-		jail.PUT("/options/resolv-conf/:rid", jailHandlers.ModifyResolvConf(jailService))
-		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
-		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
-		jail.PUT("/options/allowed-options/:rid", jailHandlers.ModifyAllowedOptions(jailService))
-		jail.PUT("/options/metadata/:rid", jailHandlers.ModifyMetadata(jailService))
-		jail.PUT("/options/lifecycle-hooks/:rid", jailHandlers.ModifyLifecycleHooks(jailService))
+		jail.PUT("/:ctid/options/wol", jailHandlers.ModifyWakeOnLan(jailService))
+		jail.PUT("/:ctid/options/boot-order", jailHandlers.ModifyBootOrder(jailService))
+		jail.PUT("/:ctid/options/fstab", jailHandlers.ModifyFstab(jailService))
+		jail.PUT("/:ctid/options/resolv-conf", jailHandlers.ModifyResolvConf(jailService))
+		jail.PUT("/:ctid/options/devfs-rules", jailHandlers.ModifyDevFSRules(jailService))
+		jail.PUT("/:ctid/options/additional-options", jailHandlers.ModifyAdditionalOptions(jailService))
+		jail.PUT("/:ctid/options/allowed-options", jailHandlers.ModifyAllowedOptions(jailService))
+		jail.PUT("/:ctid/options/metadata", jailHandlers.ModifyMetadata(jailService))
+		jail.PUT("/:ctid/options/lifecycle-hooks", jailHandlers.ModifyLifecycleHooks(jailService))
 	}
 
 	utilities := api.Group("/utilities")

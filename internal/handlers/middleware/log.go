@@ -30,7 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/jail/console"}
+var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console"}
 
 type claim struct {
 	UserID   *uint
@@ -69,7 +69,10 @@ func shouldRedactAuditPayload(path string) bool {
 }
 
 func isImportantAuditGetPath(path string) bool {
-	if utils.Contains(importantGetPaths, path) || isVMConsoleWebSocketPath(path) || strings.Contains(path, "vnc") {
+	if utils.Contains(importantGetPaths, path) ||
+		isVMConsoleWebSocketPath(path) ||
+		isJailConsoleWebSocketPath(path) ||
+		strings.Contains(path, "vnc") {
 		return true
 	}
 
@@ -189,9 +192,42 @@ func isVMCloudInitAuditPath(path string) bool {
 			segments[4] != "")
 }
 
-func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
-	sanitized := sanitizeAuditPayload(value)
-	if !isVMCloudInitAuditPath(path) {
+func jailOptionAuditSegment(path string) (string, bool) {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) != 5 || segments[0] != "api" || segments[1] != "jail" {
+		return "", false
+	}
+
+	if segments[2] != "" && segments[3] == "options" && segments[4] != "" {
+		return segments[4], true
+	}
+	return "", false
+}
+
+func redactJailHookScripts(payload map[string]interface{}) {
+	hooksValue, exists := payload["hooks"]
+	if !exists {
+		return
+	}
+	hooks, ok := hooksValue.(map[string]interface{})
+	if !ok {
+		payload["hooks"] = "[REDACTED]"
+		return
+	}
+	for phase, phaseValue := range hooks {
+		phasePayload, ok := phaseValue.(map[string]interface{})
+		if !ok {
+			hooks[phase] = "[REDACTED]"
+			continue
+		}
+		if _, exists := phasePayload["script"]; exists {
+			phasePayload["script"] = "[REDACTED]"
+		}
+	}
+}
+
+func sanitizeJailCreateAuditPayload(path string, sanitized interface{}) interface{} {
+	if strings.TrimSpace(path) != "/api/jail" {
 		return sanitized
 	}
 
@@ -199,12 +235,75 @@ func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
 	if !ok {
 		return "[REDACTED]"
 	}
-	for _, key := range []string{"data", "metadata", "networkConfig"} {
-		if _, exists := payload[key]; exists {
-			payload[key] = "[REDACTED]"
+	for _, field := range []string{
+		"fstab",
+		"resolvConf",
+		"devfsRuleset",
+		"additionalOptions",
+		"metadataMeta",
+		"metadataEnv",
+	} {
+		if _, exists := payload[field]; exists {
+			payload[field] = "[REDACTED]"
 		}
 	}
+	redactJailHookScripts(payload)
 	return payload
+}
+
+func sanitizeJailOptionAuditPayload(path string, sanitized interface{}) interface{} {
+	option, ok := jailOptionAuditSegment(path)
+	if !ok {
+		return sanitized
+	}
+
+	sensitiveFields := map[string][]string{
+		"fstab":              {"fstab"},
+		"resolv-conf":        {"resolvConf"},
+		"devfs-rules":        {"devFSRules"},
+		"additional-options": {"additionalOptions"},
+		"metadata":           {"metadata", "env"},
+	}
+	if fields, sensitive := sensitiveFields[option]; sensitive {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		for _, field := range fields {
+			if _, exists := payload[field]; exists {
+				payload[field] = "[REDACTED]"
+			}
+		}
+		return payload
+	}
+	if option != "lifecycle-hooks" {
+		return sanitized
+	}
+
+	payload, ok := sanitized.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+	redactJailHookScripts(payload)
+	return payload
+}
+
+func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
+	sanitized := sanitizeAuditPayload(value)
+	if isVMCloudInitAuditPath(path) {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		for _, key := range []string{"data", "metadata", "networkConfig"} {
+			if _, exists := payload[key]; exists {
+				payload[key] = "[REDACTED]"
+			}
+		}
+		sanitized = payload
+	}
+	sanitized = sanitizeJailCreateAuditPayload(path, sanitized)
+	return sanitizeJailOptionAuditPayload(path, sanitized)
 }
 
 func isMultipartAuditRequest(request *http.Request) bool {

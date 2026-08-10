@@ -1,42 +1,89 @@
 <script lang="ts">
-	import { getJailById } from '$lib/api/jail/jail';
+	import { getJailByCTID } from '$lib/api/jail/jail';
 	import AllowedOptions from '$lib/components/custom/Jail/Options/AllowedOptions.svelte';
 	import LifecycleHooks from '$lib/components/custom/Jail/Options/LifecycleHooks.svelte';
 	import StartOrder from '$lib/components/custom/Jail/Options/StartOrder.svelte';
 	import TextEdit from '$lib/components/custom/Jail/Options/TextEdit.svelte';
 	import WoL from '$lib/components/custom/Jail/Options/WoL.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { Row } from '$lib/types/components/tree-table';
-	import type { Jail } from '$lib/types/jail/jail';
-	import { updateCache } from '$lib/utils/http';
-	import { generateNanoId, isBoolean } from '$lib/utils/string';
+	import { jailPowerSignal } from '$lib/stores/api.svelte';
+	import type { APIResponse } from '$lib/types/common';
+	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { Jail, JailState } from '$lib/types/jail/jail';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { isBoolean } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
+	import { getContext, onMount } from 'svelte';
 	import type { CellComponent } from 'tabulator-tables';
-	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+
+	type OptionDialog =
+		| 'startOrder'
+		| 'wol'
+		| 'fstab'
+		| 'resolvConf'
+		| 'devfsRules'
+		| 'additionalOptions'
+		| 'allowedOptions'
+		| 'metadata'
+		| 'lifecycleHooks';
 
 	interface Data {
+		node: string;
 		ctId: number;
-		jail: Jail;
+		jail: Jail | null;
+		jailError: APIResponse | null;
 		devFSDisabled: boolean;
+		basicInfoError: APIResponse | null;
+	}
+
+	interface JailResourceValue {
+		identity: string;
+		value: Jail | null;
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialIdentity = () => `${data.node}:${data.ctId}`;
+	const initialJail = () => data.jail;
+	let lastJailIdentity = initialIdentity();
+	let lastJail = initialJail();
 
-	let devFSDisabled = $derived(data.devFSDisabled ?? false);
-
-	// svelte-ignore state_referenced_locally
-	const jail = resource(
-		() => `jail-${data.ctId}`,
-		async (key) => {
-			const jail = await getJailById(data.ctId, 'ctid');
-			updateCache(key, jail);
-			return jail;
+	const jailResource = resource(
+		[() => data.node, () => data.ctId],
+		async ([hostname, ctId], _, { signal }): Promise<JailResourceValue> => {
+			const identity = `${hostname}:${ctId}`;
+			if (lastJailIdentity !== identity) {
+				lastJailIdentity = identity;
+				lastJail = identity === initialIdentity() ? data.jail : null;
+			}
+			const result = await getJailByCTID(ctId, {
+				hostname,
+				signal,
+				preserveErrors: true
+			});
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return { identity, value: lastJail };
+			}
+			lastJail = result;
+			await updateCache(`jail-${ctId}`, result, hostname);
+			return { identity, value: result };
 		},
-		{
-			initialValue: data.jail
-		}
+		{ initialValue: { identity: initialIdentity(), value: initialJail() } }
 	);
+
+	const jailState = getContext<{ current: JailState | null; refetch(): void }>('jailState');
+	let currentJail = $derived(
+		jailResource.current.identity === initialIdentity() ? jailResource.current.value : null
+	);
+	let canMutate = $derived(
+		!!currentJail &&
+			jailState.current?.ctId === data.ctId &&
+			(jailState.current.state === 'ACTIVE' || jailState.current.state === 'INACTIVE') &&
+			!jailState.current.pendingAction
+	);
+	let devFSDisabled = $derived(data.devFSDisabled ?? false);
 
 	let table = $derived({
 		columns: [
@@ -47,112 +94,72 @@
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
 					if (isBoolean(value)) {
-						if (value === true || value === 'true') {
-							return 'Yes';
-						} else if (value === false || value === 'false') {
-							return 'No';
-						}
+						if (value === true || value === 'true') return 'Yes';
+						if (value === false || value === 'false') return 'No';
 					}
-
 					return value;
 				}
 			}
-		],
-		rows: [
-			{
-				id: generateNanoId('startOrder'),
-				property: 'Start At Boot / Start Order',
-				value: `${jail?.current.startAtBoot ? 'Yes' : 'No'} / ${jail?.current.startOrder || 0}`
-			},
-			{
-				id: generateNanoId('wol'),
-				property: 'Wake on LAN',
-				value: jail?.current.wol || false
-			},
-			{
-				id: generateNanoId('fstab'),
-				property: 'FSTab Entries',
-				value: jail?.current.fstab
-					? jail.current.fstab.split('\n')[0] + (jail.current.fstab.includes('\n') ? '…' : '')
-					: '—'
-			},
-			{
-				id: generateNanoId('resolvConf'),
-				property: '/etc/resolv.conf',
-				value: jail?.current.resolvConf
-					? jail.current.resolvConf.split('\n')[0] +
-						(jail.current.resolvConf.includes('\n') ? '…' : '')
-					: '—'
-			},
-			...(devFSDisabled
-				? []
-				: [
-						{
-							id: generateNanoId('devfsRules'),
-							property: 'DevFS Ruleset',
-							value: jail?.current.devfsRuleset
-								? jail.current.devfsRuleset.split('\n')[0] +
-									(jail.current.devfsRuleset.includes('\n') ? '…' : '')
-								: '—'
-						}
-					]),
-			{
-				id: generateNanoId('additionalOptions'),
-				property: 'Additional Options',
-				value: jail?.current.additionalOptions
-					? jail.current.additionalOptions.split('\n')[0] +
-						(jail.current.additionalOptions.includes('\n') ? '…' : '')
-					: '—'
-			},
-			{
-				id: generateNanoId('allowedOptions'),
-				property: 'Allowed Options',
-				value: (() => {
-					const options = jail?.current.allowedOptions || [];
-					if (options.length === 0) return '—';
-					if (options.length === 1) return options[0];
-					return `${options[0]} (+${options.length - 1} more)`;
-				})()
-			},
-			{
-				id: generateNanoId('metadata'),
-				property: 'Metadata',
-				value: (() => {
-					const meta = jail?.current.metadataMeta;
-					const env = jail?.current.metadataEnv;
-
-					if (!meta && !env) return '—';
-
-					const preview = (v: string) => v.split('\n')[0] + (v.includes('\n') ? '…' : '');
-
-					return [meta && `meta: ${preview(meta)}`, env && `env: ${preview(env)}`]
-						.filter(Boolean)
-						.join(' | ');
-				})()
-			},
-			{
-				id: generateNanoId('lifecycleHooks'),
-				property: 'Lifecycle Hooks',
-				value: (() => {
-					const hooks = jail?.current.jailHooks || [];
-					const enabledHooks = hooks.filter(
-						(hook) => hook.enabled && hook.script && hook.script.trim() !== ''
-					);
-
-					if (enabledHooks.length === 0) return '—';
-					if (enabledHooks.length === 1) return enabledHooks[0].phase;
-
-					return `${enabledHooks[0].phase} (+${enabledHooks.length - 1} more)`;
-				})()
-			}
-		]
+		] as Column[],
+		rows: currentJail
+			? [
+					{
+						id: 'startOrder',
+						property: 'Start At Boot / Start Order',
+						value: `${currentJail.startAtBoot ? 'Yes' : 'No'} / ${currentJail.startOrder ?? 0}`
+					},
+					{ id: 'wol', property: 'Wake on LAN', value: currentJail.wol ?? false },
+					{
+						id: 'fstab',
+						property: 'FSTab Entries',
+						value: preview(currentJail.fstab)
+					},
+					{
+						id: 'resolvConf',
+						property: '/etc/resolv.conf',
+						value: preview(currentJail.resolvConf)
+					},
+					...(devFSDisabled
+						? []
+						: [
+								{
+									id: 'devfsRules',
+									property: 'DevFS Ruleset',
+									value: preview(currentJail.devfsRuleset)
+								}
+							]),
+					{
+						id: 'additionalOptions',
+						property: 'Additional Options',
+						value: preview(currentJail.additionalOptions)
+					},
+					{
+						id: 'allowedOptions',
+						property: 'Allowed Options',
+						value: listPreview(currentJail.allowedOptions)
+					},
+					{
+						id: 'metadata',
+						property: 'Metadata',
+						value: metadataPreview(currentJail)
+					},
+					{
+						id: 'lifecycleHooks',
+						property: 'Lifecycle Hooks',
+						value: listPreview(
+							(currentJail.jailHooks || [])
+								.filter((hook) => hook.enabled && hook.script?.trim())
+								.map((hook) => hook.phase)
+						)
+					}
+				]
+			: []
 	});
 
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows = $state<Row[] | null>(null);
+	let activeRow = $derived<Row | null>(activeRows?.[0] ?? null);
 	let query = $state('');
-
-	let properties = $state({
+	let properties = $state<Record<OptionDialog, { open: boolean }>>({
 		startOrder: { open: false },
 		wol: { open: false },
 		fstab: { open: false },
@@ -164,64 +171,88 @@
 		lifecycleHooks: { open: false }
 	});
 
-	let reload = $state(false);
+	function preview(value?: string): string {
+		if (!value) return '—';
+		return value.split('\n')[0] + (value.includes('\n') ? '…' : '');
+	}
+
+	function listPreview(values: string[]): string {
+		if (values.length === 0) return '—';
+		if (values.length === 1) return values[0];
+		return `${values[0]} (+${values.length - 1} more)`;
+	}
+
+	function metadataPreview(jail: Jail): string {
+		if (!jail.metadataMeta && !jail.metadataEnv) return '—';
+		return [
+			jail.metadataMeta && `meta: ${preview(jail.metadataMeta)}`,
+			jail.metadataEnv && `env: ${preview(jail.metadataEnv)}`
+		]
+			.filter(Boolean)
+			.join(' | ');
+	}
+
+	onMount(() => {
+		if (data.jailError) handleAPIError(data.jailError);
+		if (data.basicInfoError) handleAPIError(data.basicInfoError);
+	});
+
+	async function reloadJail() {
+		await jailResource.refetch();
+		jailState.refetch();
+	}
 
 	watch(
-		() => reload,
+		() => jailPowerSignal.token,
 		() => {
-			jail.refetch();
-			reload = false;
+			void reloadJail();
 		}
 	);
 </script>
 
-{#snippet button(
-	type:
-		| 'startOrder'
-		| 'wol'
-		| 'fstab'
-		| 'resolvConf'
-		| 'devfsRules'
-		| 'additionalOptions'
-		| 'allowedOptions'
-		| 'metadata'
-		| 'lifecycleHooks',
-	title: string
-)}
+{#snippet editButton(type: OptionDialog, title: string)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
 		}}
 		size="sm"
 		variant="outline"
-		class="h-6.5"
+		class="h-6.5 disabled:pointer-events-auto!"
+		disabled={!canMutate}
+		title={!canMutate ? 'Wait for the current jail operation to finish' : ''}
 	>
 		<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-1" title="Edit {title}" />
 	</Button>
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	{#if activeRows && activeRows?.length !== 0}
+	{#if activeRow}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-			{#if activeRow.property === 'Start At Boot / Start Order'}
-				{@render button('startOrder', 'Start At Boot / Start Order')}
-			{:else if activeRow.property === 'Wake on LAN'}
-				{@render button('wol', 'Wake on LAN')}
-			{:else if activeRow.property === 'FSTab Entries'}
-				{@render button('fstab', 'FSTab Entries')}
-			{:else if activeRow.property === '/etc/resolv.conf'}
-				{@render button('resolvConf', '/etc/resolv.conf')}
-			{:else if activeRow.property === 'DevFS Ruleset'}
-				{@render button('devfsRules', 'DevFS Ruleset')}
-			{:else if activeRow.property === 'Additional Options'}
-				{@render button('additionalOptions', 'Additional Options')}
-			{:else if activeRow.property === 'Allowed Options'}
-				{@render button('allowedOptions', 'Allowed Options')}
-			{:else if activeRow.property === 'Metadata'}
-				{@render button('metadata', 'Metadata')}
-			{:else if activeRow.property === 'Lifecycle Hooks'}
-				{@render button('lifecycleHooks', 'Lifecycle Hooks')}
+			{#if activeRow.id === 'startOrder'}
+				{@render editButton('startOrder', 'Start At Boot / Start Order')}
+			{:else if activeRow.id === 'wol'}
+				{@render editButton('wol', 'Wake on LAN')}
+			{:else if activeRow.id === 'fstab'}
+				{@render editButton('fstab', 'FSTab Entries')}
+			{:else if activeRow.id === 'resolvConf'}
+				{@render editButton('resolvConf', '/etc/resolv.conf')}
+			{:else if activeRow.id === 'devfsRules'}
+				{@render editButton('devfsRules', 'DevFS Ruleset')}
+			{:else if activeRow.id === 'additionalOptions'}
+				{@render editButton('additionalOptions', 'Additional Options')}
+			{:else if activeRow.id === 'allowedOptions'}
+				{@render editButton('allowedOptions', 'Allowed Options')}
+			{:else if activeRow.id === 'metadata'}
+				{@render editButton('metadata', 'Metadata')}
+			{:else if activeRow.id === 'lifecycleHooks'}
+				{@render editButton('lifecycleHooks', 'Lifecycle Hooks')}
 			{/if}
+		</div>
+	{/if}
+
+	{#if !currentJail}
+		<div class="m-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+			Unable to load this jail's options.
 		</div>
 	{/if}
 
@@ -236,53 +267,84 @@
 	</div>
 </div>
 
-{#if properties.startOrder.open && jail.current}
-	<StartOrder bind:open={properties.startOrder.open} jail={jail.current} bind:reload />
+{#if properties.startOrder.open && currentJail}
+	<StartOrder
+		bind:open={properties.startOrder.open}
+		jail={currentJail}
+		node={data.node}
+		onSaved={reloadJail}
+	/>
 {/if}
 
-{#if properties.wol.open && jail.current}
-	<WoL bind:open={properties.wol.open} jail={jail.current} bind:reload />
+{#if properties.wol.open && currentJail}
+	<WoL bind:open={properties.wol.open} jail={currentJail} node={data.node} onSaved={reloadJail} />
 {/if}
 
-{#if properties.fstab.open && jail.current}
-	<TextEdit bind:open={properties.fstab.open} jail={jail.current} type="fstab" bind:reload />
+{#if properties.fstab.open && currentJail}
+	<TextEdit
+		bind:open={properties.fstab.open}
+		jail={currentJail}
+		type="fstab"
+		node={data.node}
+		onSaved={reloadJail}
+	/>
 {/if}
 
-{#if properties.resolvConf.open && jail.current}
+{#if properties.resolvConf.open && currentJail}
 	<TextEdit
 		bind:open={properties.resolvConf.open}
-		jail={jail.current}
+		jail={currentJail}
 		type="resolvConf"
-		bind:reload
+		node={data.node}
+		onSaved={reloadJail}
 	/>
 {/if}
 
-{#if properties.devfsRules.open && jail.current}
+{#if properties.devfsRules.open && currentJail}
 	<TextEdit
 		bind:open={properties.devfsRules.open}
-		jail={jail.current}
+		jail={currentJail}
 		type="devfsRules"
-		bind:reload
+		node={data.node}
+		onSaved={reloadJail}
 	/>
 {/if}
 
-{#if properties.additionalOptions.open && jail.current}
+{#if properties.additionalOptions.open && currentJail}
 	<TextEdit
 		bind:open={properties.additionalOptions.open}
-		jail={jail.current}
+		jail={currentJail}
 		type="additionalOptions"
-		bind:reload
+		node={data.node}
+		onSaved={reloadJail}
 	/>
 {/if}
 
-{#if properties.allowedOptions.open && jail.current}
-	<AllowedOptions bind:open={properties.allowedOptions.open} jail={jail.current} bind:reload {devFSDisabled} />
+{#if properties.allowedOptions.open && currentJail}
+	<AllowedOptions
+		bind:open={properties.allowedOptions.open}
+		jail={currentJail}
+		node={data.node}
+		onSaved={reloadJail}
+		{devFSDisabled}
+	/>
 {/if}
 
-{#if properties.metadata.open && jail.current}
-	<TextEdit bind:open={properties.metadata.open} jail={jail.current} type="metadata" bind:reload />
+{#if properties.metadata.open && currentJail}
+	<TextEdit
+		bind:open={properties.metadata.open}
+		jail={currentJail}
+		type="metadata"
+		node={data.node}
+		onSaved={reloadJail}
+	/>
 {/if}
 
-{#if properties.lifecycleHooks.open && jail.current}
-	<LifecycleHooks bind:open={properties.lifecycleHooks.open} jail={jail.current} bind:reload />
+{#if properties.lifecycleHooks.open && currentJail}
+	<LifecycleHooks
+		bind:open={properties.lifecycleHooks.open}
+		jail={currentJail}
+		node={data.node}
+		onSaved={reloadJail}
+	/>
 {/if}

@@ -54,13 +54,25 @@ func isVMConsoleWebSocketPath(path string) bool {
 	return rid != "" && !strings.Contains(rid, "/")
 }
 
+func isJailConsoleWebSocketPath(path string) bool {
+	const prefix = "/api/jail/"
+	const suffix = "/console"
+
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return false
+	}
+
+	ctID := strings.TrimPrefix(strings.TrimSuffix(path, suffix), prefix)
+	return ctID != "" && !strings.Contains(ctID, "/")
+}
+
 func EnsureAuthenticated(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		isWSAuthPath := strings.HasPrefix(path, "/api/vnc/") ||
 			path == "/api/info/terminal" ||
 			isVMConsoleWebSocketPath(path) ||
-			path == "/api/jail/console"
+			isJailConsoleWebSocketPath(path)
 		isSSEPath := path == "/api/events/stream"
 
 		if isPublicSignedDownloadRequest(c.Request.Method, path) {

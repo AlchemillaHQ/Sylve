@@ -12,7 +12,6 @@ import (
 	"fmt"
 
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) FindBaseByUUID(uuid string) (string, error) {
@@ -32,9 +31,4 @@ func (s *Service) FindBaseByUUID(uuid string) (string, error) {
 	}
 
 	return download.ExtractedPath, nil
-}
-
-func (s *Service) ExtractBase(mountPoint, baseTxz string) (string, error) {
-	args := []string{"-C", mountPoint, "-xf", baseTxz}
-	return utils.RunCommand("/usr/bin/tar", args...)
 }

@@ -8,11 +8,10 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import type { JailTemplate } from '$lib/types/jail/jail';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { isAPIResponse } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
-	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
@@ -56,12 +55,13 @@
 
 	async function loadTemplate() {
 		loading = true;
-		await sleep(500);
 		try {
 			const result = await getJailTemplateById(templateId, hostname);
-			if (isAPIResponse(result) && result.status === 'error') {
+			if (isAPIResponse(result)) {
 				template = null;
-				toast.error(result.error?.[0] || 'Failed to load template details', {
+				handleAPIError(result);
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				toast.error(error || 'Failed to load template details', {
 					position: 'bottom-center'
 				});
 				return;

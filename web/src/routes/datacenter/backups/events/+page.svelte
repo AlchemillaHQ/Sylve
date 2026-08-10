@@ -91,8 +91,21 @@
 		reload = true;
 	}
 
-	let jails = $state<Jail[]>([]);
-	let jailsLoading = $state(false);
+	let selectedNodeHostname = $derived(
+		nodes.current.find((node) => node.nodeUUID === selectedNodeId)?.hostname.trim() || ''
+	);
+	let jailsResource = resource(
+		() => selectedNodeHostname,
+		async (hostname, _, { signal }): Promise<Jail[]> => {
+			if (!hostname) return [];
+			const result = await getJails(hostname, signal);
+			await updateCache('jail-list', result, hostname);
+			return result;
+		},
+		{ initialValue: [] as Jail[] }
+	);
+	let jails = $derived(jailsResource.current);
+	let jailsLoading = $derived(jailsResource.loading);
 	let progressEventId = $state(0);
 	let progressNodeId = $state('');
 	let progressModal = $state({
@@ -122,24 +135,8 @@
 		}
 	}
 
-	async function loadJails() {
-		if (jails.length > 0 || jailsLoading) return;
-		jailsLoading = true;
-		try {
-			const res = await getJails();
-			updateCache('jail-list', res);
-			jails = res;
-			if (hash) {
-				reload = true;
-			}
-		} finally {
-			jailsLoading = false;
-		}
-	}
-
 	onMount(async () => {
 		hash = await sha256(storage.token || '', 1);
-		loadJails();
 	});
 
 	function parseEndpoint(raw: string): { host: string; dataset: string; snapshot: string } {

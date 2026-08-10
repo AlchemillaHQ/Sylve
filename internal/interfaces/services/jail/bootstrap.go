@@ -68,6 +68,25 @@ type BootstrapEntry struct {
 	Error      string `json:"error"`
 }
 
+// BootstrapCreateResult describes whether a create request queued new work or
+// found an already completed bootstrap.
+type BootstrapCreateResult struct {
+	Pool    string `json:"pool"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Outcome string `json:"outcome"`
+}
+
+// BootstrapDeleteResult describes the idempotent result of deleting one exact
+// bootstrap member.
+type BootstrapDeleteResult struct {
+	Pool           string `json:"pool"`
+	Name           string `json:"name"`
+	Outcome        string `json:"outcome"`
+	DatasetDeleted bool   `json:"datasetDeleted"`
+	RecordDeleted  bool   `json:"recordDeleted"`
+}
+
 // BootstrapRequest is the payload for CreateBootstrap.
 type BootstrapRequest struct {
 	Pool  string `json:"pool" binding:"required"`

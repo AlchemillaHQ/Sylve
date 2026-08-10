@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +17,75 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+type jailFileSnapshot struct {
+	path    string
+	data    []byte
+	mode    os.FileMode
+	existed bool
+}
+
+func captureJailFile(path string) (jailFileSnapshot, error) {
+	snapshot := jailFileSnapshot{path: path}
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return snapshot, nil
+	}
+	if err != nil {
+		return snapshot, fmt.Errorf("failed_to_stat_jail_file: %w", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return snapshot, fmt.Errorf("failed_to_read_jail_file: %w", err)
+	}
+	snapshot.data = data
+	snapshot.mode = info.Mode().Perm()
+	snapshot.existed = true
+	return snapshot, nil
+}
+
+func captureJailFiles(paths []string) ([]jailFileSnapshot, error) {
+	seen := make(map[string]struct{}, len(paths))
+	snapshots := make([]jailFileSnapshot, 0, len(paths))
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		if _, exists := seen[path]; exists {
+			continue
+		}
+		seen[path] = struct{}{}
+
+		snapshot, err := captureJailFile(path)
+		if err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots, nil
+}
+
+func restoreJailFiles(snapshots []jailFileSnapshot) error {
+	var restoreErr error
+	for _, snapshot := range snapshots {
+		if snapshot.existed {
+			if err := os.MkdirAll(filepath.Dir(snapshot.path), 0o755); err != nil {
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_prepare_jail_file_restore: %w", err))
+				continue
+			}
+			if err := utils.AtomicWriteFile(snapshot.path, snapshot.data, snapshot.mode); err != nil {
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_jail_file: %w", err))
+			}
+			continue
+		}
+		if err := os.Remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_remove_new_jail_file: %w", err))
+		}
+	}
+	return restoreErr
+}
 
 func (s *Service) GetJailConfig(ctid uint) (string, error) {
 	if ctid == 0 {
@@ -58,7 +127,7 @@ func (s *Service) SaveJailConfig(ctid uint, cfg string) error {
 	}
 
 	jailConfigPath := filepath.Join(jailDir, fmt.Sprintf("%d.conf", ctid))
-	if err := os.WriteFile(jailConfigPath, []byte(cfg), 0644); err != nil {
+	if err := utils.AtomicWriteFile(jailConfigPath, []byte(cfg), 0644); err != nil {
 		return fmt.Errorf("failed_to_write_jail_config: %w", err)
 	}
 
@@ -94,45 +163,6 @@ func (s *Service) GetHookScriptPath(ctid uint, hookName string) (string, error) 
 	return hookScriptPath, nil
 }
 
-func (s *Service) RemoveSylveAdditionsFromHook(content string) string {
-	// Remove Sylve network sections first
-	content = s.RemoveSylveNetworkFromHook(content)
-
-	const start = "### Start User-Managed Hook ###"
-	const end = "### End User-Managed Hook ###"
-
-	// Always preserve shebang if it exists
-	lines := strings.Split(content, "\n")
-	shebang := ""
-	if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
-		shebang = lines[0] + "\n"
-	}
-
-	si := strings.Index(content, start)
-	if si == -1 {
-		// No user-managed section found, return just shebang
-		if shebang == "" {
-			return "#!/bin/sh\n"
-		}
-		return shebang
-	}
-
-	ei := strings.Index(content[si:], end)
-	if ei == -1 {
-		// No end marker, return shebang + everything from start
-		return shebang + content[si:]
-	}
-
-	ei = si + ei + len(end)
-
-	// Return shebang + user-managed section
-	userSection := content[si:ei]
-	if shebang == "" {
-		return "#!/bin/sh\n" + userSection
-	}
-	return shebang + userSection
-}
-
 func (s *Service) ensureShebang(content string) string {
 	// If completely empty, return just shebang
 	if strings.TrimSpace(content) == "" {
@@ -164,31 +194,6 @@ func (s *Service) GetJailBaseMountPoint(ctid uint) (string, error) {
 	}
 
 	return matches[1], nil
-}
-
-func (s *Service) AddSylveAdditionsToHook(content string, additions string) string {
-	const start = "### Start User-Managed Hook ###"
-	const end = "### End User-Managed Hook ###"
-
-	// Ensure content has proper shebang
-	content = s.ensureShebang(content)
-
-	si := strings.Index(content, start)
-	if si == -1 {
-		// No existing user-managed section, add it
-		return content + "\n" + start + "\n" + additions + "\n" + end + "\n"
-	}
-
-	ei := strings.Index(content[si:], end)
-	if ei == -1 {
-		// No end marker, add additions and end marker
-		return content + additions + "\n" + end + "\n"
-	}
-
-	ei = si + ei + len(end)
-
-	// Replace existing user-managed section
-	return content[:si] + start + "\n" + additions + "\n" + end + content[ei:]
 }
 
 func (s *Service) AddSylveNetworkToHook(content string, networkContent string) string {

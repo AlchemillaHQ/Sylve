@@ -97,7 +97,7 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 
 			base := "https://" + n.API
 			jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
-			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates/simple", base)
+			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates", base)
 			vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
 			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
 

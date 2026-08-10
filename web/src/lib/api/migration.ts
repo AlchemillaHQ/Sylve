@@ -28,7 +28,7 @@ export async function migrateJail(
 	hostname?: string
 ): Promise<MigrationTaskResponse | APIResponse> {
 	return await apiRequest(
-		`/jail/migrate/${ctId}`,
+		`/jail/${ctId}/migrations`,
 		MigrationTaskResponseSchema,
 		'POST',
 		{ targetNodeUuid },

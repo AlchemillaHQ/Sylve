@@ -21,7 +21,9 @@ import (
 	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
@@ -412,6 +414,7 @@ func TestPreflightConvertJailToTemplateInsufficientPoolSpace(t *testing.T) {
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
+		&taskModels.GuestLifecycleTask{},
 	)
 
 	j := jailModels.Jail{CTID: 106, Name: "j106", Type: jailModels.JailTypeFreeBSD}
@@ -438,6 +441,9 @@ func TestPreflightConvertJailToTemplateInsufficientPoolSpace(t *testing.T) {
 	}
 
 	svc := newTemplateTestService(t, dbConn, runner, "zroot")
+	svc.liveStateByCTID = map[uint]jailServiceInterfaces.State{
+		106: {CTID: 106, State: "INACTIVE"},
+	}
 	err := svc.PreflightConvertJailToTemplate(context.Background(), 106, ConvertToTemplateRequest{Name: "tmpl-106"})
 	if err == nil || !strings.Contains(err.Error(), "insufficient_pool_space") {
 		t.Fatalf("expected insufficient_pool_space, got %v", err)
@@ -563,5 +569,148 @@ func TestEnsureUniqueJailTemplateName(t *testing.T) {
 
 	if err := svc.ensureUniqueJailTemplateName("base template"); err == nil || !strings.Contains(err.Error(), "template_name_already_in_use") {
 		t.Fatalf("expected template_name_already_in_use, got %v", err)
+	}
+}
+
+func TestValidateJailTemplateDatasetPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		pool    string
+		dataset string
+		valid   bool
+	}{
+		{name: "template child", pool: "zroot", dataset: "zroot/sylve/jails/templates/base-1", valid: true},
+		{name: "shared parent", pool: "zroot", dataset: "zroot/sylve/jails/templates", valid: false},
+		{name: "jail dataset", pool: "zroot", dataset: "zroot/sylve/jails/101", valid: false},
+		{name: "different pool", pool: "zroot", dataset: "tank/sylve/jails/templates/base-1", valid: false},
+		{name: "invalid pool", pool: "zroot/child", dataset: "zroot/child/sylve/jails/templates/base-1", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateJailTemplateDatasetPath(tt.pool, tt.dataset)
+			if tt.valid && err != nil {
+				t.Fatalf("expected valid path, got %v", err)
+			}
+			if !tt.valid && err == nil {
+				t.Fatal("expected invalid_template_dataset_path")
+			}
+		})
+	}
+}
+
+func TestRunJailTemplateCreatePlanRollsBackInReverseWithCleanupContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	created := make([]uint, 0)
+	cleaned := make([]uint, 0)
+
+	err := runJailTemplateCreatePlan(
+		ctx,
+		[]createTarget{{CTID: 101}, {CTID: 102}, {CTID: 103}},
+		func(_ context.Context, target createTarget) error {
+			if target.CTID == 103 {
+				cancel()
+				return fmt.Errorf("target_create_failed")
+			}
+			created = append(created, target.CTID)
+			return nil
+		},
+		func(cleanupCtx context.Context, target createTarget) error {
+			if cleanupCtx.Err() != nil {
+				return fmt.Errorf("cleanup_context_cancelled")
+			}
+			cleaned = append(cleaned, target.CTID)
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "target_create_failed") {
+		t.Fatalf("expected target_create_failed, got %v", err)
+	}
+	if !reflect.DeepEqual(created, []uint{101, 102}) {
+		t.Fatalf("created targets = %v, want [101 102]", created)
+	}
+	if !reflect.DeepEqual(cleaned, []uint{102, 101}) {
+		t.Fatalf("cleanup order = %v, want [102 101]", cleaned)
+	}
+}
+
+func newJailTemplateCapturePreflightService(t *testing.T, state string) (*Service, *gorm.DB) {
+	t.Helper()
+
+	dbConn := testutil.NewSQLiteTestDB(t,
+		&jailModels.JailTemplate{},
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&jailModels.JailHooks{},
+		&jailModels.JailSnapshot{},
+		&jailModels.Network{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&taskModels.GuestLifecycleTask{},
+	)
+	j := jailModels.Jail{CTID: 106, Name: "j106", Type: jailModels.JailTypeFreeBSD}
+	if err := dbConn.Create(&j).Error; err != nil {
+		t.Fatalf("failed to seed jail: %v", err)
+	}
+
+	svc := &Service{
+		DB: dbConn,
+		liveStateByCTID: map[uint]jailServiceInterfaces.State{
+			106: {CTID: 106, State: state},
+		},
+	}
+	return svc, dbConn
+}
+
+func TestPreflightConvertJailToTemplateRequiresStoppedSource(t *testing.T) {
+	svc, _ := newJailTemplateCapturePreflightService(t, "ACTIVE")
+	err := svc.PreflightConvertJailToTemplate(t.Context(), 106, ConvertToTemplateRequest{Name: "tmpl-106"})
+	if err == nil || !strings.Contains(err.Error(), "jail_must_be_stopped") {
+		t.Fatalf("expected jail_must_be_stopped, got %v", err)
+	}
+}
+
+func TestPreflightConvertJailToTemplateRejectsActiveJailTask(t *testing.T) {
+	svc, dbConn := newJailTemplateCapturePreflightService(t, "INACTIVE")
+	if err := dbConn.Create(&taskModels.GuestLifecycleTask{
+		GuestType: taskModels.GuestTypeJail,
+		GuestID:   106,
+		Action:    "start",
+		Status:    taskModels.LifecycleTaskStatusQueued,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed lifecycle task: %v", err)
+	}
+
+	err := svc.PreflightConvertJailToTemplate(t.Context(), 106, ConvertToTemplateRequest{Name: "tmpl-106"})
+	if err == nil || !strings.Contains(err.Error(), "jail_has_active_lifecycle_task") {
+		t.Fatalf("expected jail_has_active_lifecycle_task, got %v", err)
+	}
+}
+
+func TestDeleteJailTemplateRejectsActiveCreation(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.JailTemplate{}, &taskModels.GuestLifecycleTask{})
+	template := jailModels.JailTemplate{
+		Name:        "Template 7",
+		Pool:        "zroot",
+		RootDataset: "zroot/sylve/jails/templates/template-7",
+		Type:        jailModels.JailTypeFreeBSD,
+	}
+	if err := dbConn.Create(&template).Error; err != nil {
+		t.Fatalf("failed to seed template: %v", err)
+	}
+	if err := dbConn.Create(&taskModels.GuestLifecycleTask{
+		GuestType: taskModels.GuestTypeJailTemplate,
+		GuestID:   template.ID,
+		Action:    "create",
+		Status:    taskModels.LifecycleTaskStatusRunning,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed lifecycle task: %v", err)
+	}
+
+	svc := &Service{DB: dbConn}
+	err := svc.DeleteJailTemplate(t.Context(), template.ID)
+	if err == nil || !strings.Contains(err.Error(), "jail_template_in_use") {
+		t.Fatalf("expected jail_template_in_use, got %v", err)
 	}
 }

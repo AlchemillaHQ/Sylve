@@ -13,6 +13,7 @@
 	import Bootstrap from './Bootstrap.svelte';
 
 	interface Props {
+		hostname?: string;
 		ctId: number;
 		pools: Zpool[];
 		pool: string;
@@ -24,6 +25,7 @@
 	}
 
 	let {
+		hostname,
 		ctId,
 		pools,
 		downloads,
@@ -194,6 +196,7 @@
 <Bootstrap
 	bind:open={bootstrapModalOpen}
 	{pool}
+	{hostname}
 	onComplete={() => {
 		bootstrapRefetch = true;
 	}}

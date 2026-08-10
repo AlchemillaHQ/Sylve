@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -23,7 +22,6 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
-	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -34,8 +32,6 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	cpuid "github.com/klauspost/cpuid/v2"
-
 	"gorm.io/gorm"
 )
 
@@ -69,8 +65,11 @@ type Service struct {
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once
 
+	bootstrapUseMu         sync.RWMutex
 	bootstrapActiveMu      sync.Map
 	bootstrapHostReleaseFn func() (string, error)
+	hardwareOps            jailHardwareOps
+	optionOps              jailOptionHostOps
 }
 
 func (s *Service) SetGuestIdentityAvailabilityChecker(
@@ -115,27 +114,8 @@ func NewJailService(
 	return s
 }
 
-func (s *Service) IsJailEnabled() bool {
-	var basicSettings models.BasicSettings
-	err := s.DB.First(&basicSettings).Error
-
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return false
-		} else {
-			return false
-		}
-	} else {
-		if !slices.Contains(basicSettings.Services, models.Jails) {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (s *Service) GetJails() ([]jailModels.Jail, error) {
-	var jails []jailModels.Jail
+	jails := make([]jailModels.Jail, 0)
 	if err := s.DB.
 		Preload("Storages").
 		Preload("JailHooks").
@@ -160,38 +140,6 @@ func (s *Service) GetJails() ([]jailModels.Jail, error) {
 		return nil, fmt.Errorf("failed_to_fetch_jails: %w", err)
 	}
 	return jails, nil
-}
-
-func (s *Service) GetJail(id uint) (*jailModels.Jail, error) {
-	var jail jailModels.Jail
-	if err := s.DB.
-		Preload("Storages").
-		Preload("JailHooks").
-		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC, id ASC")
-		}).
-		Preload("Networks").
-		Preload("Networks.MacAddressObj").
-		Preload("Networks.MacAddressObj.Entries").
-		Preload("Networks.MacAddressObj.Resolutions").
-		Preload("Networks.IPv4Obj").
-		Preload("Networks.IPv4Obj.Entries").
-		Preload("Networks.IPv4Obj.Resolutions").
-		Preload("Networks.IPv4GwObj").
-		Preload("Networks.IPv4GwObj.Entries").
-		Preload("Networks.IPv4GwObj.Resolutions").
-		Preload("Networks.IPv6Obj").
-		Preload("Networks.IPv6Obj.Entries").
-		Preload("Networks.IPv6Obj.Resolutions").
-		Preload("Networks.IPv6GwObj").
-		Preload("Networks.IPv6GwObj.Entries").
-		Preload("Networks.IPv6GwObj.Resolutions").
-		First(&jail, "id = ?", id).Error; err != nil {
-		logger.L.Error().Err(err).Msgf("get_jail: failed to fetch jail with id %d", id)
-		return nil, fmt.Errorf("failed_to_fetch_jail: %w", err)
-	}
-
-	return &jail, nil
 }
 
 func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
@@ -230,8 +178,19 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 	return &jail, nil
 }
 
+func (s *Service) JailExistsByCTID(ctID uint) (bool, error) {
+	var count int64
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctID).
+		Limit(1).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("failed_to_check_jail_exists: %w", err)
+	}
+	return count > 0, nil
+}
+
 func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
-	var jails []jailModels.Jail
+	jails := make([]jailModels.Jail, 0)
 
 	if err := s.DB.Model(&jailModels.Jail{}).
 		Select("id, name, ct_id, resource_limits, cores, memory").
@@ -240,16 +199,18 @@ func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 		return nil, fmt.Errorf("failed_to_fetch_jails_simple: %w", err)
 	}
 
-	var list []jailServiceInterfaces.SimpleList
-	var states []jailServiceInterfaces.State
-
-	states, err := s.GetStates()
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_get_states: %w", err)
+	list := make([]jailServiceInterfaces.SimpleList, 0, len(jails))
+	states, stateErr := s.GetStates()
+	statesAvailable := stateErr == nil
+	if stateErr != nil {
+		logger.L.Warn().Err(stateErr).Msg("get_jails_simple: runtime state unavailable")
 	}
 
 	for _, jail := range jails {
 		state := "INACTIVE"
+		if !statesAvailable {
+			state = "UNKNOWN"
+		}
 
 		for _, s := range states {
 			if s.CTID == jail.CTID {
@@ -268,24 +229,16 @@ func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 	return list, nil
 }
 
-func (s *Service) GetSimpleJail(identifier int, byCTID bool) (jailServiceInterfaces.SimpleList, error) {
-	if !s.IsJailEnabled() {
-		return jailServiceInterfaces.SimpleList{}, nil
+func (s *Service) GetSimpleJailByCTID(ctID uint) (jailServiceInterfaces.SimpleList, error) {
+	if ctID == 0 {
+		return jailServiceInterfaces.SimpleList{}, fmt.Errorf("invalid_ct_id")
 	}
-
 	var jail jailModels.Jail
-
-	query := s.DB.
+	if err := s.DB.
 		Model(&jailModels.Jail{}).
-		Select("id", "name", "ct_id", "resource_limits", "cores", "memory")
-
-	if byCTID {
-		query = query.Where("ct_id = ?", identifier)
-	} else {
-		query = query.Where("id = ?", identifier)
-	}
-
-	if err := query.First(&jail).Error; err != nil {
+		Select("id", "name", "ct_id", "resource_limits", "cores", "memory").
+		Where("ct_id = ?", ctID).
+		First(&jail).Error; err != nil {
 		return jailServiceInterfaces.SimpleList{}, fmt.Errorf("failed_to_get_simple_jail: %w", err)
 	}
 
@@ -309,22 +262,6 @@ func simpleJailListItem(jail jailModels.Jail, state string) jailServiceInterface
 		Cores:          jail.Cores,
 		Memory:         jail.Memory,
 	}
-}
-
-func (s *Service) GetJailType(ctId uint) (jailModels.JailType, error) {
-	var jail struct {
-		Type jailModels.JailType
-	}
-
-	if err := s.DB.Model(&jailModels.Jail{}).
-		Select("type").
-		Where("ct_id = ?", ctId).
-		First(&jail).Error; err != nil {
-		logger.L.Error().Err(err).Msgf("get_jail_type: failed to fetch jail type for ct_id %d", ctId)
-		return "", fmt.Errorf("failed_to_get_jail_type: %w", err)
-	}
-
-	return jail.Type, nil
 }
 
 func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error {
@@ -572,16 +509,21 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		}
 	}
 
-	if !utils.IsValidJailAllowedOpts(data.AllowedOptions) {
-		return fmt.Errorf("invalid_jail_allowed_options")
-	}
-
-	if config.IsDevFSDisabled() && slices.Contains(data.AllowedOptions, "allow.mount.devfs") {
-		return fmt.Errorf("devfs_management_disabled")
+	if _, err := normalizeJailAllowedOptions(data.AllowedOptions); err != nil {
+		return err
 	}
 
 	if data.StartOrder < 0 {
 		return fmt.Errorf("start_order_must_be_greater_than_or_equal_to_0")
+	}
+	if data.AdditionalOptions != "" && containsJailOptionMarker(data.AdditionalOptions) {
+		return fmt.Errorf("reserved_jail_option_marker")
+	}
+	if err := validateJailMetadata(data.MetadataMeta, data.MetadataEnv); err != nil {
+		return err
+	}
+	if err := validateLifecycleHooks(data.Hooks); err != nil {
+		return err
 	}
 
 	if s.guestIdentityChecker != nil {
@@ -1124,46 +1066,15 @@ func (s *Service) CreateHardwareConfig(data jailModels.Jail) (string, string, er
 
 	ctidHash := s.GetCTIDHash(data.CTID)
 
-	jails, err := s.GetJails()
-	if err != nil {
-		return "", "", fmt.Errorf("failed_to_get_jails: %w", err)
-	}
-
-	numLogicalCores := cpuid.CPU.LogicalCores
-	coreUsage := map[int]int{}
-	for _, jail := range jails {
-		for _, core := range jail.CPUSet {
-			coreUsage[core]++
+	if cpuCores > 0 {
+		if len(data.CPUSet) != cpuCores {
+			return "", "", fmt.Errorf("jail_hardware_state_invalid")
 		}
-	}
-
-	type CoreCount struct {
-		Core  int
-		Count int
-	}
-
-	var allCores []CoreCount
-	for i := 0; i < numLogicalCores; i++ {
-		allCores = append(allCores, CoreCount{Core: i, Count: coreUsage[i]})
-	}
-
-	sort.Slice(allCores, func(i, j int) bool {
-		return allCores[i].Count < allCores[j].Count
-	})
-
-	if cpuCores > 0 && len(allCores) > 0 {
-		selectedCores := []int{}
-		for i := 0; i < cpuCores && i < len(allCores); i++ {
-			selectedCores = append(selectedCores, allCores[i].Core)
-		}
-		if len(selectedCores) > 0 {
-			coreListStr := strings.Trim(strings.Replace(fmt.Sprint(selectedCores), " ", ",", -1), "[]")
-			cpuCfg = fmt.Sprintf("cpuset -l %s -j %s", coreListStr, ctidHash)
-		}
+		cpuCfg = fmt.Sprintf("cpuset -l %s -j %s", jailHardwareCPUList(data.CPUSet), ctidHash)
 	}
 
 	if memory > 0 {
-		memoryMB := memory / (1024 * 1024)
+		memoryMB := (int64(memory) + jailHardwareMiB - 1) / jailHardwareMiB
 		memoryCfg = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", ctidHash, memoryMB)
 	}
 
@@ -1491,16 +1402,8 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		return "", fmt.Errorf("failed_to_create_hardware_config: %w", err)
 	}
 
-	if cpuCfg != "" {
-		postStartCfg += cpuCfg + "\n"
-	}
-
-	if memoryCfg != "" {
-		postStartCfg += memoryCfg + "\n"
-	}
-
 	if cpuCfg != "" || memoryCfg != "" {
-		postStartCfg += "\n"
+		postStartCfg = jailHardwareManagedBlock(cpuCfg, memoryCfg) + "\n" + postStartCfg
 	}
 
 	// Logging & env
@@ -1588,58 +1491,20 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		cfg += fmt.Sprintf("\tmount.fstab = \"%s\";\n\n", fstabPath)
 	}
 
-	// User additional options
-	if data.AdditionalOptions != "" {
-		cfg += "\n### These are user-defined additional options ###\n"
-		cfg += "\n" + data.AdditionalOptions + "\n"
+	// User additional options remain intentionally raw, but live in a dedicated
+	// managed block so later option updates cannot confuse them with Sylve lines.
+	if block := jailAdditionalOptionsConfigBlock(data.AdditionalOptions); block != "" {
+		cfg += "\n" + block + "\n"
 	}
 
-	if data.MetadataMeta != "" {
-		cfg += fmt.Sprintf("\tmeta = \"%s\";\n", data.MetadataMeta)
-	}
-
-	if data.MetadataEnv != "" {
-		cfg += fmt.Sprintf("\tenv = \"%s\";\n", data.MetadataEnv)
+	if block := jailMetadataConfigBlock(data.MetadataMeta, data.MetadataEnv); block != "" {
+		cfg += "\n" + block + "\n"
 	}
 
 	cfg += "\n\tpersist;\n"
 	cfg += "}\n"
 
 	return cfg, nil
-}
-
-func (s *Service) rollbackJailCreation(ctx context.Context, state *jailServiceInterfaces.JailCreationState) {
-	if state == nil {
-		return
-	}
-
-	if state.JailDir != "" {
-		if err := os.RemoveAll(state.JailDir); err != nil {
-			logger.L.Error().Err(err).Str("jail_dir", state.JailDir).
-				Msg("rollback_jail_creation: failed to remove jail directory")
-		}
-	}
-
-	if state.DatasetName != "" {
-		ds, err := s.GZFS.ZFS.Get(ctx, state.DatasetName, false)
-		if err != nil {
-			logger.L.Error().Err(err).Str("dataset", state.DatasetName).
-				Msg("rollback_jail_creation: failed to get dataset")
-		} else if ds != nil {
-			err := ds.Destroy(ctx, true, false)
-			if err != nil {
-				logger.L.Error().Err(err).Str("dataset", state.DatasetName).
-					Msg("rollback_jail_creation: failed to destroy dataset")
-			}
-		}
-	}
-
-	if !config.IsDevFSDisabled() && state.CTID != 0 {
-		if err := s.RemoveDevfsRulesForCTID(state.CTID); err != nil {
-			logger.L.Error().Err(err).Uint("ctid", state.CTID).
-				Msg("rollback_jail_creation: failed to remove devfs rules block")
-		}
-	}
 }
 
 func uniqueObjectName(tx *gorm.DB, base string) string {
@@ -1699,13 +1564,51 @@ func resolveRawIP(ptr *int, raw string, tx *gorm.DB, objType, baseName string, a
 func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) (err error) {
 	s.createMutex.Lock()
 	defer s.createMutex.Unlock()
+	if strings.TrimSpace(data.BootstrapName) != "" {
+		s.bootstrapUseMu.RLock()
+		defer s.bootstrapUseMu.RUnlock()
+	}
 
 	if err = s.ValidateCreate(ctx, data); err != nil {
 		logger.L.Debug().Err(err).Msg("create_jail: validation failed")
 		return err
 	}
+	normalizedAllowedOptions, normalizeAllowedErr := normalizeJailAllowedOptions(data.AllowedOptions)
+	if normalizeAllowedErr != nil {
+		return normalizeAllowedErr
+	}
+	data.AllowedOptions = normalizedAllowedOptions
 
 	ctid := *data.CTID
+	var initialHardware jailHardwareState
+	if data.ResourceLimits != nil && *data.ResourceLimits {
+		ops := s.jailHardwareOps()
+		logicalCores := ops.HostLogicalCores()
+		if logicalCores < 1 {
+			return fmt.Errorf("host_cpu_unavailable")
+		}
+		if *data.Cores < 1 || *data.Cores > logicalCores {
+			return fmt.Errorf("invalid_cores")
+		}
+		hostMemory, memoryErr := ops.HostMemoryTotal()
+		if memoryErr != nil {
+			return fmt.Errorf("failed_to_get_host_memory: %w", memoryErr)
+		}
+		normalizedMemory, memoryErr := normalizeJailHardwareMemory(int64(*data.Memory), hostMemory)
+		if memoryErr != nil {
+			return memoryErr
+		}
+		cpuSet, cpuErr := s.selectJailHardwareCPUSet(ctid, *data.Cores, logicalCores)
+		if cpuErr != nil {
+			return cpuErr
+		}
+		initialHardware = jailHardwareState{
+			resourceLimits: true,
+			memory:         normalizedMemory,
+			cores:          *data.Cores,
+			cpuSet:         cpuSet,
+		}
+	}
 	if replicationguard.GuestOperationSchemaReady(s.DB) {
 		allowed, leaseErr := s.canMutateProtectedJail(ctid)
 		if leaseErr != nil {
@@ -1798,10 +1701,12 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	if jail.ResourceLimits != nil && *jail.ResourceLimits {
-		jail.Cores = *data.Cores
-		jail.Memory = *data.Memory
+		jail.Cores = initialHardware.cores
+		jail.CPUSet = append([]int(nil), initialHardware.cpuSet...)
+		jail.Memory = int(initialHardware.memory)
 	} else {
 		jail.Cores = 0
+		jail.CPUSet = []int{}
 		jail.Memory = 0
 	}
 
@@ -2479,23 +2384,23 @@ func (s *Service) deleteJailWithRuntimeOptions(
 	return result, nil
 }
 
-func (s *Service) UpdateDescription(id uint, description string) error {
-	if id == 0 {
-		return fmt.Errorf("invalid_jail_id")
+func (s *Service) UpdateDescription(ctID uint, description string) error {
+	if ctID == 0 {
+		return fmt.Errorf("invalid_ct_id")
 	}
 
 	if len(description) > 1024 {
 		return fmt.Errorf("invalid_description")
 	}
 
-	var ctid uint
-	if err := s.DB.Model(&jailModels.Jail{}).
-		Select("ct_id").
-		Where("id = ?", id).
-		Take(&ctid).Error; err != nil {
-		return fmt.Errorf("failed_to_fetch_jail_ctid: %w", err)
+	var jail jailModels.Jail
+	if err := s.DB.Select("id", "ct_id").Where("ct_id = ?", ctID).First(&jail).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("jail_not_found")
+		}
+		return fmt.Errorf("failed_to_get_jail: %w", err)
 	}
-	allowed, leaseErr := s.canMutateProtectedJail(ctid)
+	allowed, leaseErr := s.canMutateProtectedJail(ctID)
 	if leaseErr != nil {
 		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
 	}
@@ -2504,7 +2409,7 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 	}
 
 	if err := s.DB.Model(&jailModels.Jail{}).
-		Where("id = ?", id).
+		Where("ct_id = ?", ctID).
 		Update("description", description).Error; err != nil {
 
 		logger.L.Error().Err(err).
@@ -2513,75 +2418,72 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 		return fmt.Errorf("failed_to_update_jail_description: %w", err)
 	}
 
-	if ctid != 0 {
-		_ = s.WriteJailJSON(ctid)
+	if err := s.WriteJailJSON(ctID); err != nil {
+		return fmt.Errorf("failed_to_sync_jail_metadata: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Service) UpdateName(id uint, name string) (uint, error) {
-	if id == 0 {
-		return 0, fmt.Errorf("invalid_jail_id")
+func (s *Service) UpdateName(ctID uint, name string) error {
+	if ctID == 0 {
+		return fmt.Errorf("invalid_ct_id")
 	}
 
 	name = strings.TrimSpace(name)
 	if name == "" || !utils.IsValidVMName(name) {
-		return 0, fmt.Errorf("invalid_vm_name")
+		return fmt.Errorf("invalid_vm_name")
 	}
 
 	var jail jailModels.Jail
-	if err := s.DB.Select("id", "ct_id", "name").Where("id = ?", id).First(&jail).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return 0, fmt.Errorf("jail_not_found")
+	if err := s.DB.Select("id", "ct_id", "name").Where("ct_id = ?", ctID).First(&jail).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("jail_not_found")
 		}
-		return 0, fmt.Errorf("failed_to_get_jail: %w", err)
+		return fmt.Errorf("failed_to_get_jail: %w", err)
 	}
 
-	ctid := jail.CTID
-	allowed, leaseErr := s.canMutateProtectedJail(ctid)
+	allowed, leaseErr := s.canMutateProtectedJail(ctID)
 	if leaseErr != nil {
-		return 0, fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
 	}
 	if !allowed {
-		return 0, fmt.Errorf("replication_lease_not_owned")
+		return fmt.Errorf("replication_lease_not_owned")
 	}
 
 	var count int64
-	if err := s.DB.Model(&jailModels.Jail{}).Where("name = ? AND id <> ?", name, id).Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("failed_to_check_jail_name_conflict: %w", err)
+	if err := s.DB.Model(&jailModels.Jail{}).Where("name = ? AND ct_id <> ?", name, ctID).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_check_jail_name_conflict: %w", err)
 	}
 	if count > 0 {
-		return 0, fmt.Errorf("jail_name_already_in_use")
+		return fmt.Errorf("jail_name_already_in_use")
 	}
 
-	if strings.TrimSpace(jail.Name) == name {
-		return ctid, nil
-	}
+	if strings.TrimSpace(jail.Name) != name {
+		if err := s.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&jailModels.Jail{}).Where("ct_id = ?", ctID).Update("name", name).Error; err != nil {
+				return fmt.Errorf("failed_to_update_jail_name: %w", err)
+			}
 
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&jailModels.Jail{}).Where("id = ?", id).Update("name", name).Error; err != nil {
-			return fmt.Errorf("failed_to_update_jail_name: %w", err)
+			if err := tx.Model(&jailModels.JailTemplate{}).
+				Where("source_jail_ctid = ?", ctID).
+				Update("source_jail_name", name).Error; err != nil {
+				return fmt.Errorf("failed_to_update_jail_template_source_name: %w", err)
+			}
+
+			return nil
+		}); err != nil {
+			return err
 		}
-
-		if err := tx.Model(&jailModels.JailTemplate{}).
-			Where("source_jail_ctid = ?", ctid).
-			Update("source_jail_name", name).Error; err != nil {
-			return fmt.Errorf("failed_to_update_jail_template_source_name: %w", err)
-		}
-
-		return nil
-	}); err != nil {
-		return 0, err
 	}
 
-	if ctid != 0 {
-		_ = s.WriteJailJSON(ctid)
+	if err := s.WriteJailJSON(ctID); err != nil {
+		return fmt.Errorf("failed_to_sync_jail_metadata: %w", err)
 	}
 
-	s.emitLeftPanelRefresh(fmt.Sprintf("jail_rename_%d", ctid))
+	s.emitLeftPanelRefresh(fmt.Sprintf("jail_rename_%d", ctID))
 
-	return ctid, nil
+	return nil
 }
 
 func (s *Service) WriteJailJSON(ctId uint) error {
@@ -2613,7 +2515,7 @@ func (s *Service) WriteJailJSON(ctId uint) error {
 			return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
 		}
 
-		if err := os.WriteFile(jailJsonPath, jailJsonData, 0644); err != nil {
+		if err := utils.AtomicWriteFile(jailJsonPath, jailJsonData, 0644); err != nil {
 			return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
 		}
 	}

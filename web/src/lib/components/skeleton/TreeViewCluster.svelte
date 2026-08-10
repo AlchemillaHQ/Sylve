@@ -89,50 +89,98 @@
 	let convertTemplateName = $state('');
 	let deleteVMOpen = $state(false);
 	let deleteVMLoading = $state(false);
+	let actionInFlight = $state(false);
 
 	function baseGuestName(label: string): string {
 		return label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim();
 	}
 
 	const openConvertTemplateDialog = () => {
+		if (item.state === 'active') {
+			toast.error(
+				item.resourceType === 'vm'
+					? 'VM must be shut off to capture as a template'
+					: 'Jail must be stopped to capture as a template',
+				{ position: 'bottom-center' }
+			);
+			return;
+		}
 		const baseName = baseGuestName(item.label) || 'template';
 		convertTemplateName = `${baseName} Template`;
 		convertTemplateOpen = true;
 	};
 
 	const handleActionClick = async (action: 'start' | 'reboot' | 'shutdown' | 'stop') => {
-		if (item.resourceId === undefined || item.resourceType === undefined) {
+		if (
+			actionInFlight ||
+			item.resourceId === undefined ||
+			!item.nodeHostname ||
+			(item.resourceType !== 'jail' && item.resourceType !== 'vm')
+		) {
 			return;
 		}
 
-		let result: Awaited<ReturnType<typeof actionVm>> | Awaited<ReturnType<typeof jailAction>>;
-		if (item.resourceType === 'jail') {
-			if (action !== 'start' && action !== 'stop') {
+		const resourceType = item.resourceType;
+		const resourceId = item.resourceId;
+		const hostname = item.nodeHostname;
+		actionInFlight = true;
+
+		try {
+			let result: Awaited<ReturnType<typeof actionVm>> | Awaited<ReturnType<typeof jailAction>>;
+			if (resourceType === 'jail') {
+				if (action !== 'start' && action !== 'stop') {
+					return;
+				}
+				result = await jailAction(resourceId, action, hostname);
+			} else {
+				result = await actionVm(resourceId, action, hostname);
+			}
+
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				toast.error(`Failed to ${action} ${resourceType === 'vm' ? 'VM' : 'jail'}`, {
+					position: 'bottom-center'
+				});
 				return;
 			}
-			result = await jailAction(item.resourceId, action, item.nodeHostname);
-		} else {
-			result = await actionVm(item.resourceId, action, item.nodeHostname);
-		}
 
-		if (isAPIResponse(result) && result.status === 'error') {
-			handleAPIError(result);
-			toast.error(`Failed to ${action} ${item.resourceType === 'vm' ? 'VM' : 'jail'}`, {
+			reload.leftPanel = true;
+
+			console.log(`[cluster-tree] ${action} ${resourceType}`, {
+				id: resourceId,
+				hostname
+			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : `Failed to ${action} ${resourceType}`, {
 				position: 'bottom-center'
 			});
-			return;
+		} finally {
+			actionInFlight = false;
 		}
-
-		reload.leftPanel = true;
-
-		console.log(`[cluster-tree] ${action} ${item.resourceType}`, {
-			id: item.resourceId,
-			hostname: item.nodeHostname
-		});
 	};
 
 	const handleConvertToTemplate = async () => {
-		if (!item.resourceId) return;
+		if (
+			convertTemplateLoading ||
+			item.resourceId === undefined ||
+			!item.nodeHostname ||
+			(item.resourceType !== 'vm' && item.resourceType !== 'jail')
+		) {
+			return;
+		}
+		if (item.state === 'active') {
+			toast.error(
+				item.resourceType === 'vm'
+					? 'VM must be shut off to capture as a template'
+					: 'Jail must be stopped to capture as a template',
+				{ position: 'bottom-center' }
+			);
+			return;
+		}
+
+		const resourceId = item.resourceId;
+		const resourceType = item.resourceType;
+		const hostname = item.nodeHostname;
 		const name = convertTemplateName.trim();
 		if (!name) {
 			toast.error('Template name is required', { position: 'bottom-center' });
@@ -142,10 +190,10 @@
 		convertTemplateLoading = true;
 		try {
 			const result =
-				item.resourceType === 'vm'
-					? await captureVMTemplate(item.resourceId, { name }, item.nodeHostname)
-					: await convertJailToTemplate(item.resourceId, { name }, item.nodeHostname);
-			if (isAPIResponse(result) && result.status === 'error') {
+				resourceType === 'vm'
+					? await captureVMTemplate(resourceId, { name }, hostname)
+					: await convertJailToTemplate(resourceId, { name }, hostname);
+			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				const error = Array.isArray(result.error) ? result.error[0] : result.error;
 				const err = (error || '').toLowerCase();
@@ -165,9 +213,15 @@
 					});
 					return;
 				}
+				if (err.includes('jail_must_be_stopped')) {
+					toast.error('Jail must be stopped to capture as a template', {
+						position: 'bottom-center'
+					});
+					return;
+				}
 
 				toast.error(
-					item.resourceType === 'vm'
+					resourceType === 'vm'
 						? 'Failed to capture VM template'
 						: 'Failed to convert jail to template',
 					{ position: 'bottom-center' }
@@ -178,24 +232,36 @@
 			convertTemplateOpen = false;
 			reload.leftPanel = true;
 			toast.success(
-				item.resourceType === 'vm'
-					? 'VM template capture queued'
-					: 'Jail template conversion queued',
+				resourceType === 'vm' ? 'VM template capture queued' : 'Jail template conversion queued',
 				{ position: 'bottom-center' }
 			);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to capture template', {
+				position: 'bottom-center'
+			});
 		} finally {
 			convertTemplateLoading = false;
 		}
 	};
 
 	const handleDeleteTemplate = async () => {
-		if (!item.resourceId) return;
+		if (
+			deleteTemplateLoading ||
+			item.resourceId === undefined ||
+			!item.nodeHostname ||
+			(item.resourceType !== 'vm-template' && item.resourceType !== 'jail-template')
+		) {
+			return;
+		}
+		const resourceId = item.resourceId;
+		const resourceType = item.resourceType;
+		const hostname = item.nodeHostname;
 		deleteTemplateLoading = true;
 		try {
 			const result =
-				item.resourceType === 'vm-template'
-					? await deleteVMTemplate(item.resourceId, item.nodeHostname)
-					: await deleteJailTemplate(item.resourceId, item.nodeHostname);
+				resourceType === 'vm-template'
+					? await deleteVMTemplate(resourceId, hostname)
+					: await deleteJailTemplate(resourceId, hostname);
 			if (result.status === 'error') {
 				handleAPIError(result);
 				toast.error('Failed to delete template', { position: 'bottom-center' });
@@ -205,6 +271,10 @@
 			deleteTemplateOpen = false;
 			reload.leftPanel = true;
 			toast.success('Template deleted', { position: 'bottom-center' });
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to delete template', {
+				position: 'bottom-center'
+			});
 		} finally {
 			deleteTemplateLoading = false;
 		}
@@ -298,43 +368,75 @@
 			<ContextMenu.Content>
 				{#if item.resourceType === 'jail'}
 					{#if item.state === 'active'}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('stop')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onclick={() => void handleActionClick('stop')}
+						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
 						</ContextMenu.Item>
 					{:else}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onclick={() => void handleActionClick('start')}
+						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
 							Start
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Separator />
-					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+					<ContextMenu.Item
+						class="gap-2"
+						disabled={item.state === 'active' || convertTemplateLoading}
+						onclick={() => openConvertTemplateDialog()}
+					>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Create Template
 					</ContextMenu.Item>
 				{:else if item.resourceType === 'vm'}
 					{#if item.state === 'active'}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('reboot')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onclick={() => void handleActionClick('reboot')}
+						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
 							Reboot
 						</ContextMenu.Item>
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('shutdown')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onclick={() => void handleActionClick('shutdown')}
+						>
 							<span class="icon-[mdi--power] h-4 w-4"></span>
 							Shutdown
 						</ContextMenu.Item>
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('stop')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onclick={() => void handleActionClick('stop')}
+						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
 						</ContextMenu.Item>
 					{:else}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onclick={() => void handleActionClick('start')}
+						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
 							Start
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Separator />
-					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+					<ContextMenu.Item
+						class="gap-2"
+						disabled={item.state === 'active' || convertTemplateLoading}
+						onclick={() => openConvertTemplateDialog()}
+					>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Create Template
 					</ContextMenu.Item>

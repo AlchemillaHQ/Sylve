@@ -101,7 +101,7 @@
 		}
 	};
 
-	let modal: CreateData = $state(options);
+	let modal: CreateData = $state(structuredClone(options));
 	let lastGoodNetworkSwitches = emptySwitchList();
 
 	let downloads = resource(
@@ -194,12 +194,21 @@
 	let bootstrapRefetch = $state(false);
 
 	let bootstraps = resource(
-		() => (open && modal.storage.pool ? `bootstraps-${modal.storage.pool}` : null),
+		() =>
+			open && modal.storage.pool
+				? `${modal.node || '__default__'}:bootstraps-${modal.storage.pool}`
+				: null,
 		async (key) => {
 			if (!modal.storage.pool) return [] as BootstrapEntry[];
-			const result = await getBootstraps(modal.storage.pool);
+			const result = await getBootstraps(modal.storage.pool, {
+				hostname: modal.node || undefined
+			});
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return [] as BootstrapEntry[];
+			}
 			if (key !== null) {
-				updateCache(key, result);
+				updateCache(`bootstraps-${modal.storage.pool}`, result, modal.node || undefined);
 			}
 			return result;
 		},
@@ -262,10 +271,11 @@
 	);
 
 	function resetModal() {
-		modal = options;
+		modal = structuredClone(options);
 	}
 
 	async function create() {
+		if (creating) return;
 		const data = $state.snapshot(modal);
 
 		if (data.hardware.resourceLimits === false) {
@@ -281,17 +291,14 @@
 			data.storage.bootstrapName = '';
 		}
 
-		if (!(await isValidCreateData(data))) {
-			return;
-		} else {
-			creating = true;
-			const response = await newJail(data);
-			creating = false;
+		if (!(await isValidCreateData(data))) return;
 
-			if (response.error) {
+		creating = true;
+		try {
+			const response = await newJail(data, data.node || undefined);
+
+			if (response.status !== 'success') {
 				handleAPIError(response);
-
-				reload.leftPanel = true;
 				toast.error(getJailCreateErrorMessage(response), {
 					position: 'bottom-center'
 				});
@@ -300,20 +307,27 @@
 
 			open = false;
 			reload.leftPanel = true;
+			resetModal();
 
 			toast.success(`Jail ${data.name} created`, {
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to create jail', {
+				position: 'bottom-center'
+			});
+		} finally {
+			creating = false;
 		}
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-6 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 		showCloseButton={false}
 	>
-		<Dialog.Header class="p-0">
+		<Dialog.Header>
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<span class="icon-[hugeicons--prison] h-5 w-5"></span>
@@ -380,6 +394,7 @@
 							{:else if value === 'storage' && pools.current && downloads.current && jails.current}
 								<div in:fade={{ duration: 200 }}>
 									<Storage
+										hostname={modal.node || undefined}
 										downloads={downloads.current}
 										pools={pools.current}
 										bootstraps={bootstraps.current}

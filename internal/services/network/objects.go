@@ -587,12 +587,24 @@ func (s *Service) IsObjectUsedByJail(id uint) (bool, []uint, error) {
 	var jailNetworks []jailModels.Network
 	var jailIds []uint
 
-	if err := s.DB.Where("mac_id = ? OR ipv4_id = ? OR ipv6_id = ?", id, id, id).Find(&jailNetworks).Error; err != nil {
+	if err := s.DB.Where(
+		"mac_id = ? OR ipv4_id = ? OR ipv4_gw_id = ? OR ipv6_id = ? OR ipv6_gw_id = ?",
+		id,
+		id,
+		id,
+		id,
+		id,
+	).Find(&jailNetworks).Error; err != nil {
 		return false, []uint{}, fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
 	}
 
 	if len(jailNetworks) > 0 {
+		seen := make(map[uint]struct{}, len(jailNetworks))
 		for _, jn := range jailNetworks {
+			if _, exists := seen[jn.JailID]; exists {
+				continue
+			}
+			seen[jn.JailID] = struct{}{}
 			jailIds = append(jailIds, jn.JailID)
 		}
 

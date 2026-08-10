@@ -97,3 +97,16 @@ func TestGetJailUsageEmptyExplicitRangeSerializesAsArray(t *testing.T) {
 		t.Fatalf("explicit empty jail usage JSON = %s, want []", encoded)
 	}
 }
+
+func TestJailExistsByCTIDUsesPublicCTID(t *testing.T) {
+	service, jail := newJailStatsTestService(t)
+
+	exists, err := service.JailExistsByCTID(jail.CTID)
+	if err != nil || !exists {
+		t.Fatalf("existing jail result = (%v, %v), want (true, nil)", exists, err)
+	}
+	exists, err = service.JailExistsByCTID(999)
+	if err != nil || exists {
+		t.Fatalf("missing jail result = (%v, %v), want (false, nil)", exists, err)
+	}
+}

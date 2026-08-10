@@ -713,9 +713,9 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 	if err := s.DB.Raw(`
 		SELECT jn.switch_id, jn.switch_type
 		FROM jail_networks jn
-		WHERE jn.jid = ?
-	`, sourceJail.ID).Scan(&jailNetworks).Error; err != nil {
-		logger.L.Debug().Err(err).Uint("ct_id", ctID).Msg("failed_to_query_jail_networks_during_validation")
+			WHERE jn.jid = ?
+		`, sourceJail.ID).Scan(&jailNetworks).Error; err != nil {
+		return []string{fmt.Sprintf("jail_network_lookup_failed: %v", err)}
 	}
 
 	for _, pool := range jailStorages {
@@ -758,7 +758,7 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 			continue
 		}
 		if !bridgeExists {
-			reasons = append(reasons, fmt.Sprintf("warning_target_missing_bridge: %s", bridge))
+			reasons = append(reasons, fmt.Sprintf("target_missing_bridge: %s", bridge))
 		}
 	}
 

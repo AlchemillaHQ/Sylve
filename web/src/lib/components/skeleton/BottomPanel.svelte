@@ -211,8 +211,6 @@
 		'/api/vm/templates/convert': 'VM Template - Convert',
 		'/api/vm/templates/create': 'VM Template - Create',
 		'/api/vm/templates': 'VM Template',
-		'/api/jail/action/start': 'Jail - Start',
-		'/api/jail/action/stop': 'Jail - Stop',
 		'/api/utilities/downloader-uploads': 'Downloader - Upload',
 		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
 		'/api/utilities/downloads/bulk-delete': 'Downloader - Bulk Delete',
@@ -246,32 +244,7 @@
 		'/api/zfs/pools': 'ZFS Pool',
 		'/api/zfs/pools/:id/scrub': 'ZFS Pool - Scrub',
 		'/api/zfs/pools/:id/replace-device': 'ZFS Pool - Replace Device',
-		'/api/jail/snapshots/rollback': 'Jail Snapshot - Rollback',
-		'/api/jail/snapshots': 'Jail Snapshot',
-		'/api/jail/network/inheritance': 'Jail - Network Inherit',
-		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
-		'/api/jail/network': 'Jail Network',
-		'/api/jail/description': 'Jail - Update Description',
-		'/api/jail/name': 'Jail - Update Name',
-		'/api/jail/templates/convert': 'Jail Template - Convert',
-		'/api/jail/templates/create': 'Jail Template - Create',
-		'/api/jail/templates': 'Jail Template',
-		'/api/jail/action/restart': 'Jail - Restart',
-		'/api/jail/bootstrap': 'Jail - Bootstrap',
-		'/api/jail/memory': 'Jail - Update Memory',
-		'/api/jail/cpu': 'Jail - Update CPU',
-		'/api/jail/resource-limits': 'Jail - Resource Limits',
-		'/api/jail/console': 'Jail Console - Session',
-		'/api/jail/options/wol': 'Jail Options - Wake-on-LAN',
-		'/api/jail/options/boot-order': 'Jail Options - Boot Order',
-		'/api/jail/options/fstab': 'Jail Options - FSTab',
-		'/api/jail/options/resolv-conf': 'Jail Options - Resolv.conf',
-		'/api/jail/options/devfs-rules': 'Jail Options - DevFS Rules',
-		'/api/jail/options/additional-options': 'Jail Options - Additional',
-		'/api/jail/options/allowed-options': 'Jail Options - Allowed',
-		'/api/jail/options/metadata': 'Jail Options - Metadata',
-		'/api/jail/options/lifecycle-hooks': 'Jail Options - Lifecycle Hooks',
-		'/api/jail/migrate': 'Jail - Migrate',
+		'/api/jail/bootstraps': 'Jail Bootstrap',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
@@ -329,11 +302,14 @@
 	const methodPathToActionMap: Record<string, Record<string, string>> = {
 		DELETE: {
 			'/api/vm/templates/:id': 'VM Template - Delete',
+			'/api/jail/templates/:id': 'Jail Template - Delete',
 			'/api/vm/:id/snapshots/:id': 'VM Snapshot - Delete',
 			'/api/vm/:id/storage/:id': 'VM Storage - Detach',
 			'/api/vm/:id/networks/:id': 'VM Network - Detach',
 			'/api/vm/:id/registration': 'VM - Purge Registration',
 			'/api/vm/:id': 'VM - Delete',
+			'/api/jail/:id': 'Jail - Delete',
+			'/api/jail/:id/networks/:id': 'Jail Network - Delete',
 			'/api/info/notes': 'Notes - Bulk Delete',
 			'/api/system/file-explorer/upload': 'File Explorer - Upload Revert',
 			'/api/system/ppt-devices/:id': 'PCI Passthrough - Disable',
@@ -360,17 +336,25 @@
 		},
 		POST: {
 			'/api/vm': 'VM - Create',
+			'/api/jail': 'Jail - Create',
+			'/api/jail/:id/networks': 'Jail Network - Create',
 			'/api/vm/:id/storage': 'VM Storage - Attach',
 			'/api/vm/:id/networks': 'VM Network - Attach',
 			'/api/vm/:id/snapshots': 'VM Snapshot - Create',
 			'/api/vm/:id/snapshots/:id/rollback': 'VM Snapshot - Rollback',
 			'/api/vm/:id/templates': 'VM Template - Capture',
 			'/api/vm/templates/:id/vms': 'VM Template - Instantiate',
+			'/api/jail/:id/templates': 'Jail Template - Capture',
+			'/api/jail/templates/:id/jails': 'Jail Template - Instantiate',
 			'/api/vm/:id/actions/start': 'VM - Start',
 			'/api/vm/:id/actions/stop': 'VM - Stop',
 			'/api/vm/:id/actions/shutdown': 'VM - Shutdown',
 			'/api/vm/:id/actions/reboot': 'VM - Reboot',
 			'/api/vm/:id/migrations': 'VM - Migrate',
+			'/api/jail/:id/actions/start': 'Jail - Start',
+			'/api/jail/:id/actions/stop': 'Jail - Stop',
+			'/api/jail/:id/actions/restart': 'Jail - Restart',
+			'/api/jail/:id/migrations': 'Jail - Migrate',
 			'/api/system/ppt-devices': 'PCI Passthrough - Enable',
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
 			'/api/zfs/datasets/volume/:id/flash': 'ZFS Volume - Flash',
@@ -398,6 +382,19 @@
 			'/api/network/dhcp/lease': 'DHCP Lease - Create'
 		},
 		PUT: {
+			'/api/jail/:id/network/inheritance': 'Jail Network - Update Inheritance',
+			'/api/jail/:id/hardware/ram': 'Jail Hardware - RAM',
+			'/api/jail/:id/hardware/cpu': 'Jail Hardware - CPU',
+			'/api/jail/:id/hardware/resource-limits': 'Jail Hardware - Resource Limits',
+			'/api/jail/:id/options/wol': 'Jail Options - Wake-on-LAN',
+			'/api/jail/:id/options/boot-order': 'Jail Options - Boot Order',
+			'/api/jail/:id/options/fstab': 'Jail Options - FSTab',
+			'/api/jail/:id/options/resolv-conf': 'Jail Options - Resolv.conf',
+			'/api/jail/:id/options/devfs-rules': 'Jail Options - DevFS Rules',
+			'/api/jail/:id/options/additional-options': 'Jail Options - Additional',
+			'/api/jail/:id/options/allowed-options': 'Jail Options - Allowed',
+			'/api/jail/:id/options/metadata': 'Jail Options - Metadata',
+			'/api/jail/:id/options/lifecycle-hooks': 'Jail Options - Lifecycle Hooks',
 			'/api/network/object/:id': 'Network Object - Update',
 			'/api/network/route/:id': 'Static Route - Update',
 			'/api/network/switch/standard/:id': 'Standard Switch - Update',
@@ -420,6 +417,9 @@
 			'/api/vm/:id/networks/:id': 'VM Network - Update',
 			'/api/vm/:id/description': 'VM - Update Description',
 			'/api/vm/:id/name': 'VM - Update Name',
+			'/api/jail/:id/description': 'Jail - Update Description',
+			'/api/jail/:id/name': 'Jail - Update Name',
+			'/api/jail/:id/networks/:id': 'Jail Network - Update',
 			'/api/certificates/:id': 'TLS Certificate - Update',
 			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Update State',
 			'/api/network/wireguard/server': 'WireGuard Server - Update State',
@@ -670,6 +670,13 @@
 		return Number.isSafeInteger(rid) && rid > 0 ? rid : null;
 	}
 
+	function jailConsoleAuditCTID(path: string): number | null {
+		const match = path.match(/^\/api\/jail\/(\d+)\/console$/);
+		if (!match) return null;
+		const ctId = Number(match[1]);
+		return Number.isSafeInteger(ctId) && ctId > 0 ? ctId : null;
+	}
+
 	function vmHardwareComponentLabel(component: string): VMHardwareAuditTarget['component'] | null {
 		switch (component) {
 			case 'cpu':
@@ -709,11 +716,163 @@
 		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
 	});
 
+	function jailIdentityLabel(ctId: number, requestName?: unknown): string {
+		const bodyName = typeof requestName === 'string' ? requestName.trim() : '';
+		const name = bodyName || jailNameByCtId.get(ctId) || '';
+		return name ? `${name} (CTID ${ctId})` : `CTID ${ctId}`;
+	}
+
+	type JailOptionAuditTarget = {
+		ctId: number;
+		option: string;
+		enabled?: boolean;
+	};
+
+	const jailOptionLabels = new Map([
+		['wol', 'Wake-on-LAN'],
+		['boot-order', 'Boot Order'],
+		['fstab', 'FSTab'],
+		['resolv-conf', 'Resolv.conf'],
+		['devfs-rules', 'DevFS Rules'],
+		['additional-options', 'Additional Options'],
+		['allowed-options', 'Allowed Options'],
+		['metadata', 'Metadata'],
+		['lifecycle-hooks', 'Lifecycle Hooks']
+	]);
+
+	function jailOptionAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | undefined
+	): JailOptionAuditTarget | null {
+		if (method.toUpperCase() !== 'PUT') return null;
+
+		const match = path.match(/^\/api\/jail\/(\d+)\/options\/([^/]+)$/);
+		if (!match) return null;
+		const ctId = Number(match[1]);
+		const optionSegment = match[2];
+		const option = jailOptionLabels.get(optionSegment);
+		if (!Number.isSafeInteger(ctId) || ctId <= 0 || !option) return null;
+		return {
+			ctId,
+			option,
+			...(optionSegment === 'wol' && typeof body?.enabled === 'boolean'
+				? { enabled: body.enabled }
+				: {})
+		};
+	}
+
+	type JailHardwareAuditTarget = {
+		ctId: number;
+		component: 'RAM' | 'CPU' | 'Resource Limits';
+		enabled?: boolean;
+	};
+
+	function jailHardwareAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | undefined
+	): JailHardwareAuditTarget | null {
+		if (method.toUpperCase() !== 'PUT') return null;
+
+		const match = path.match(/^\/api\/jail\/(\d+)\/hardware\/(ram|cpu|resource-limits)$/);
+		if (!match) return null;
+		const ctId = Number(match[1]);
+		if (!Number.isSafeInteger(ctId) || ctId <= 0) return null;
+		const component = match[2] === 'ram' ? 'RAM' : match[2] === 'cpu' ? 'CPU' : 'Resource Limits';
+		return {
+			ctId,
+			component,
+			...(component === 'Resource Limits' && typeof body?.enabled === 'boolean'
+				? { enabled: body.enabled }
+				: {})
+		};
+	}
+
+	type JailSnapshotAuditTarget = {
+		ctId: number;
+		snapshotId?: number;
+		action: 'Create' | 'Rollback' | 'Delete';
+	};
+
+	function jailSnapshotAuditTarget(path: string, method: string): JailSnapshotAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let match = path.match(/^\/api\/jail\/(\d+)\/snapshots$/);
+		if (match && upperMethod === 'POST') {
+			return { ctId: Number(match[1]), action: 'Create' };
+		}
+
+		match = path.match(/^\/api\/jail\/(\d+)\/snapshots\/(\d+)\/rollback$/);
+		if (match && upperMethod === 'POST') {
+			return { ctId: Number(match[1]), snapshotId: Number(match[2]), action: 'Rollback' };
+		}
+
+		match = path.match(/^\/api\/jail\/(\d+)\/snapshots\/(\d+)$/);
+		if (match && upperMethod === 'DELETE') {
+			return { ctId: Number(match[1]), snapshotId: Number(match[2]), action: 'Delete' };
+		}
+
+		return null;
+	}
+
+	type JailNetworkAuditTarget = {
+		ctId: number;
+		networkId?: number;
+		action: 'Create' | 'Update' | 'Delete' | 'Update Inheritance';
+	};
+
+	function jailNetworkAuditTarget(path: string, method: string): JailNetworkAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let match = path.match(/^\/api\/jail\/(\d+)\/networks$/);
+		if (match && upperMethod === 'POST') {
+			return { ctId: Number(match[1]), action: 'Create' };
+		}
+
+		match = path.match(/^\/api\/jail\/(\d+)\/networks\/(\d+)$/);
+		if (match && (upperMethod === 'PATCH' || upperMethod === 'DELETE')) {
+			return {
+				ctId: Number(match[1]),
+				networkId: Number(match[2]),
+				action: upperMethod === 'PATCH' ? 'Update' : 'Delete'
+			};
+		}
+
+		match = path.match(/^\/api\/jail\/(\d+)\/network\/inheritance$/);
+		if (match && upperMethod === 'PUT') {
+			return { ctId: Number(match[1]), action: 'Update Inheritance' };
+		}
+
+		return null;
+	}
+
+	function bootstrapNameFromBody(body: Record<string, unknown> | undefined): string {
+		const major = Number(body?.major);
+		const minor = Number(body?.minor);
+		const type = typeof body?.type === 'string' ? body.type.trim() : '';
+		if (!Number.isSafeInteger(major) || major < 0 || !Number.isSafeInteger(minor) || minor < 0) {
+			return '';
+		}
+		if (!type) return '';
+		return `${major}-${minor}-${type.charAt(0).toUpperCase()}${type.slice(1)}`;
+	}
+
+	function bootstrapIdentityLabel(pool: unknown, name: unknown): string {
+		const poolName = typeof pool === 'string' ? pool.trim() : '';
+		const bootstrapName = typeof name === 'string' ? name.trim() : '';
+		if (poolName && bootstrapName) return `${poolName}/${bootstrapName}`;
+		return bootstrapName || poolName;
+	}
+
 	let templateNameById = $derived.by(() => {
 		return new Map(
 			(simpleJailTemplates.current || []).map((template) => [template.id, template.name])
 		);
 	});
+
+	function jailTemplateIdentityLabel(templateId: number): string {
+		const name = templateNameById.get(templateId);
+		return name ? `${name} (Template ID ${templateId})` : `Template ID ${templateId}`;
+	}
 
 	let vmTemplateNameById = $derived.by(() => {
 		return new Map(
@@ -869,11 +1028,23 @@
 			const vmOptionTarget = vmOptionAuditTarget(path, method);
 			const vmHardwareTarget = vmHardwareAuditTarget(path, method);
 			const vmConsoleRID = vmConsoleAuditRID(path, recordCopy.action?.query || '');
+			const jailConsoleCTID = jailConsoleAuditCTID(path);
 			const vmActionMatch = path.match(/^\/api\/vm\/(\d+)\/actions\/(start|stop|shutdown|reboot)$/);
 			const vmMigrationMatch = path.match(/^\/api\/vm\/(\d+)\/migrations$/);
 			const vmTemplateCaptureMatch = path.match(/^\/api\/vm\/(\d+)\/templates$/);
 			const vmTemplateInstantiationMatch = path.match(/^\/api\/vm\/templates\/(\d+)\/vms$/);
 			const vmCoreMatch = path.match(/^\/api\/vm\/(\d+)(?:\/(description|name|registration))?$/);
+			const jailSnapshotTarget = jailSnapshotAuditTarget(path, method);
+			const jailNetworkTarget = jailNetworkAuditTarget(path, method);
+			const jailOptionTarget = jailOptionAuditTarget(path, method, recordCopy.action.body);
+			const jailHardwareTarget = jailHardwareAuditTarget(path, method, recordCopy.action.body);
+			const jailActionMatch = path.match(/^\/api\/jail\/(\d+)\/actions\/(start|stop|restart)$/);
+			const jailMigrationMatch = path.match(/^\/api\/jail\/(\d+)\/migrations$/);
+			const jailTemplateCaptureMatch = path.match(/^\/api\/jail\/(\d+)\/templates$/);
+			const jailTemplateInstantiationMatch = path.match(/^\/api\/jail\/templates\/(\d+)\/jails$/);
+			const jailTemplateMemberMatch = path.match(/^\/api\/jail\/templates\/(\d+)$/);
+			const jailBootstrapMemberMatch = path.match(/^\/api\/jail\/bootstraps\/([^/]+)$/);
+			const jailCoreMatch = path.match(/^\/api\/jail\/(\d+)(?:\/(description|name))?$/);
 			if (vmOptionTarget) {
 				resolvedAction = `VM Options - ${vmOptionTarget.option} - ${vmIdentityLabel(vmOptionTarget.rid)}`;
 				recordCopy.action.body = {
@@ -965,6 +1136,12 @@
 					...(recordCopy.action.body || {}),
 					rid: vmConsoleRID
 				};
+			} else if (method.toUpperCase() === 'GET' && jailConsoleCTID !== null) {
+				resolvedAction = `Jail Console - Session - ${jailIdentityLabel(jailConsoleCTID)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					ctId: jailConsoleCTID
+				};
 			} else if (method.toUpperCase() === 'POST' && path === '/api/vm') {
 				const bodyRID = Number(recordCopy.action.body?.rid);
 				const bodyName = recordCopy.action.body?.name;
@@ -1004,8 +1181,6 @@
 					resolvedAction = `VM - Update Description - ${identity}`;
 				} else if (method.toUpperCase() === 'PATCH' && coreResource === 'name') {
 					resolvedAction = `VM - Update Name - ${identity}`;
-				} else if (method.toUpperCase() === 'GET' && coreResource === '') {
-					resolvedAction += ` - ${identity}`;
 				}
 			} else if (
 				method.toUpperCase() === 'PUT' &&
@@ -1015,12 +1190,170 @@
 				if (Number.isSafeInteger(bodyRID) && bodyRID > 0) {
 					resolvedAction += ` - ${vmIdentityLabel(bodyRID)}`;
 				}
-			} else if (path === '/api/jail/console') {
+			} else if (jailOptionTarget) {
+				const stateLabel =
+					typeof jailOptionTarget.enabled === 'boolean'
+						? ` - ${jailOptionTarget.enabled ? 'Enable' : 'Disable'}`
+						: '';
+				resolvedAction = `Jail Options - ${jailOptionTarget.option}${stateLabel} - ${jailIdentityLabel(jailOptionTarget.ctId)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					ctId: jailOptionTarget.ctId
+				};
+			} else if (jailHardwareTarget) {
+				const stateLabel =
+					jailHardwareTarget.component === 'Resource Limits' &&
+					typeof jailHardwareTarget.enabled === 'boolean'
+						? ` - ${jailHardwareTarget.enabled ? 'Enable' : 'Disable'}`
+						: '';
+				resolvedAction = `Jail Hardware - ${jailHardwareTarget.component}${stateLabel} - ${jailIdentityLabel(jailHardwareTarget.ctId)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					ctId: jailHardwareTarget.ctId,
+					...(typeof jailHardwareTarget.enabled === 'boolean'
+						? { enabled: jailHardwareTarget.enabled }
+						: {})
+				};
+			} else if (jailNetworkTarget) {
+				const identity = jailIdentityLabel(jailNetworkTarget.ctId);
+				resolvedAction = `Jail Network - ${jailNetworkTarget.action} - ${identity}`;
+				if (jailNetworkTarget.networkId !== undefined) {
+					resolvedAction += ` - Network ID ${jailNetworkTarget.networkId}`;
+				}
+				if (jailNetworkTarget.action === 'Create' || jailNetworkTarget.action === 'Update') {
+					const networkName = recordCopy.action.body?.name;
+					if (typeof networkName === 'string' && networkName.trim()) {
+						resolvedAction += ` - ${networkName.trim()}`;
+					}
+				} else if (jailNetworkTarget.action === 'Update Inheritance') {
+					const ipv4 = recordCopy.action.body?.ipv4 === true;
+					const ipv6 = recordCopy.action.body?.ipv6 === true;
+					const mode = ipv4 && ipv6 ? 'IPv4 + IPv6' : ipv4 ? 'IPv4' : ipv6 ? 'IPv6' : 'Disabled';
+					resolvedAction += ` - ${mode}`;
+				}
+				const networkBody = { ...(recordCopy.action.body || {}) };
+				delete networkBody.id;
+				recordCopy.action.body = {
+					...networkBody,
+					ctId: jailNetworkTarget.ctId,
+					...(jailNetworkTarget.networkId !== undefined
+						? { networkId: jailNetworkTarget.networkId }
+						: {})
+				};
+			} else if (jailSnapshotTarget) {
+				const identity = jailIdentityLabel(jailSnapshotTarget.ctId);
+				const snapshotIdentity =
+					jailSnapshotTarget.snapshotId !== undefined
+						? ` - Snapshot ID ${jailSnapshotTarget.snapshotId}`
+						: '';
+				resolvedAction = `Jail Snapshot - ${jailSnapshotTarget.action} - ${identity}${snapshotIdentity}`;
+
+				if (jailSnapshotTarget.action === 'Create') {
+					const snapshotName = recordCopy.action.body?.name;
+					if (typeof snapshotName === 'string' && snapshotName.trim()) {
+						resolvedAction += ` - ${snapshotName.trim()}`;
+					}
+				}
+
+				const snapshotBody = { ...(recordCopy.action.body || {}) };
+				delete snapshotBody.id;
+				recordCopy.action.body = {
+					...snapshotBody,
+					ctId: jailSnapshotTarget.ctId,
+					...(jailSnapshotTarget.snapshotId !== undefined
+						? { snapshotId: jailSnapshotTarget.snapshotId }
+						: {})
+				};
+			} else if (method.toUpperCase() === 'POST' && path === '/api/jail/bootstraps') {
+				const pool = recordCopy.action.body?.pool;
+				const bootstrapName = bootstrapNameFromBody(recordCopy.action.body);
+				const identity = bootstrapIdentityLabel(pool, bootstrapName);
+				resolvedAction = `Jail Bootstrap - Create${identity ? ` - ${identity}` : ''}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					...(bootstrapName ? { bootstrapName } : {})
+				};
+			} else if (method.toUpperCase() === 'DELETE' && jailBootstrapMemberMatch) {
 				const params = new URLSearchParams(recordCopy.action?.query || '');
-				const ctId = Number(params.get('ctid'));
-				if (Number.isFinite(ctId) && ctId > 0) {
-					const name = jailNameByCtId.get(ctId);
-					if (name) resolvedAction += ` - ${name}`;
+				const pool = params.get('pool') || '';
+				let bootstrapName = jailBootstrapMemberMatch[1] || '';
+				try {
+					bootstrapName = decodeURIComponent(bootstrapName);
+				} catch {
+					// Keep the recorded path segment if it was not valid URI encoding.
+				}
+				const identity = bootstrapIdentityLabel(pool, bootstrapName);
+				resolvedAction = `Jail Bootstrap - Delete${identity ? ` - ${identity}` : ''}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					pool,
+					bootstrapName
+				};
+			} else if (method.toUpperCase() === 'POST' && path === '/api/jail') {
+				const bodyCTID = Number(recordCopy.action.body?.ctId);
+				const bodyName = recordCopy.action.body?.name;
+				if (Number.isSafeInteger(bodyCTID) && bodyCTID > 0) {
+					resolvedAction = `Jail - Create - ${jailIdentityLabel(bodyCTID, bodyName)}`;
+				} else if (typeof bodyName === 'string' && bodyName.trim()) {
+					resolvedAction = `Jail - Create - ${bodyName.trim()}`;
+				}
+			} else if (method.toUpperCase() === 'POST' && jailActionMatch) {
+				const actionCTID = Number(jailActionMatch[1]);
+				const action = toTitleCase(jailActionMatch[2] || 'Action');
+				resolvedAction = `Jail - ${action} - ${jailIdentityLabel(actionCTID)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					ctId: actionCTID
+				};
+			} else if (method.toUpperCase() === 'POST' && jailMigrationMatch) {
+				const migrationCTID = Number(jailMigrationMatch[1]);
+				resolvedAction = `Jail - Migrate - ${jailIdentityLabel(migrationCTID)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					ctId: migrationCTID
+				};
+			} else if (method.toUpperCase() === 'POST' && jailTemplateCaptureMatch) {
+				const sourceCTID = Number(jailTemplateCaptureMatch[1]);
+				resolvedAction = `Jail Template - Capture - ${jailIdentityLabel(sourceCTID)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					ctId: sourceCTID
+				};
+			} else if (method.toUpperCase() === 'POST' && jailTemplateInstantiationMatch) {
+				const templateId = Number(jailTemplateInstantiationMatch[1]);
+				resolvedAction = `Jail Template - Instantiate - ${jailTemplateIdentityLabel(templateId)}`;
+				recordCopy.action.body = {
+					...(recordCopy.action.body || {}),
+					templateId
+				};
+			} else if (jailTemplateMemberMatch) {
+				const templateId = Number(jailTemplateMemberMatch[1]);
+				resolvedAction += ` - ${jailTemplateIdentityLabel(templateId)}`;
+				recordCopy.action.body = { templateId };
+			} else if (jailCoreMatch) {
+				const coreCTID = Number(jailCoreMatch[1]);
+				const coreResource = jailCoreMatch[2] || '';
+				const identity = jailIdentityLabel(
+					coreCTID,
+					coreResource === 'name' ? recordCopy.action.body?.name : undefined
+				);
+				if (method.toUpperCase() === 'DELETE') {
+					resolvedAction = `Jail - Delete - ${identity}`;
+					recordCopy.action.body = { ctId: coreCTID };
+				} else if (method.toUpperCase() === 'PATCH' && coreResource === 'description') {
+					resolvedAction = `Jail - Update Description - ${identity}`;
+					recordCopy.action.body = {
+						...(recordCopy.action.body || {}),
+						ctId: coreCTID
+					};
+				} else if (method.toUpperCase() === 'PATCH' && coreResource === 'name') {
+					resolvedAction = `Jail - Update Name - ${identity}`;
+					recordCopy.action.body = {
+						...(recordCopy.action.body || {}),
+						ctId: coreCTID
+					};
+				} else if (method.toUpperCase() === 'GET' && coreResource === '') {
+					resolvedAction += ` - ${identity}`;
 				}
 			} else if (path.startsWith('/api/vm/') && !path.startsWith('/api/vm/templates/')) {
 				const last = path.split('/').pop() || '';
@@ -1045,38 +1378,6 @@
 				const templateId = Number(last);
 				if (Number.isFinite(templateId) && templateId > 0) {
 					resolvedAction += ` - ${vmTemplateIdentityLabel(templateId)}`;
-				}
-			} else if (
-				path.startsWith('/api/jail/') &&
-				!path.startsWith('/api/jail/templates/') &&
-				!path.startsWith('/api/jail/bootstrap')
-			) {
-				const last = path.split('/').pop() || '';
-				const ctId = Number(last);
-				if (Number.isFinite(ctId) && ctId > 0) {
-					const name = jailNameByCtId.get(ctId);
-					if (name) resolvedAction += ` - ${name}`;
-				}
-			} else if (path.startsWith('/api/jail/templates/convert/')) {
-				const last = path.split('/').pop() || '';
-				const ctId = Number(last);
-				if (Number.isFinite(ctId) && ctId > 0) {
-					const name = jailNameByCtId.get(ctId);
-					if (name) resolvedAction += ` - ${name}`;
-				}
-			} else if (path.startsWith('/api/jail/templates/create/')) {
-				const last = path.split('/').pop() || '';
-				const templateId = Number(last);
-				if (Number.isFinite(templateId) && templateId > 0) {
-					const name = templateNameById.get(templateId);
-					if (name) resolvedAction += ` - ${name}`;
-				}
-			} else if (path.startsWith('/api/jail/templates/')) {
-				const last = path.split('/').pop() || '';
-				const templateId = Number(last);
-				if (Number.isFinite(templateId) && templateId > 0) {
-					const name = templateNameById.get(templateId);
-					if (name) resolvedAction += ` - ${name}`;
 				}
 			}
 
@@ -1176,8 +1477,8 @@
 		if (task.guestType === 'jail-template' && task.action === 'create') {
 			const templateName = templateNameById.get(task.guestId);
 			return templateName
-				? `Create Jail - Template ${templateName}`
-				: `Create Jail - Template ${task.guestId}`;
+				? `Create Jail - Template ${templateName} (Template ID ${task.guestId})`
+				: `Create Jail - Template ID ${task.guestId}`;
 		}
 
 		if (task.guestType === 'jail-template' && task.action === 'convert') {

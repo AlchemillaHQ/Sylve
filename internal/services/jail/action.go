@@ -469,6 +469,10 @@ func (s *Service) jailRestoreInProgress(ctID uint) (bool, error) {
 	return result.RowsAffected != 0 && operation.Operation == clusterModels.ReplicationGuestOperationRestore, nil
 }
 
+func (s *Service) JailRestoreInProgress(ctID uint) (bool, error) {
+	return s.jailRestoreInProgress(ctID)
+}
+
 func (s *Service) canMutateProtectedJailForTransition(ctID uint, transitionRunID string) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {
@@ -517,6 +521,13 @@ func (s *Service) canMutateProtectedJailForAction(ctID uint, transitionRunID, ac
 	default:
 		return s.canMutateProtectedJailForTransition(ctID, "")
 	}
+}
+
+// CanPerformJailAction checks whether this node currently owns the right to
+// request the specified jail lifecycle action. JailAction repeats this check
+// before execution and again while holding the jail action mutex.
+func (s *Service) CanPerformJailAction(ctID uint, action string) (bool, error) {
+	return s.canMutateProtectedJailForAction(ctID, "", action)
 }
 
 func (s *Service) CanMutateProtectedJail(ctID uint) (bool, error) {

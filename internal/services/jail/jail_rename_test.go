@@ -33,6 +33,10 @@ func TestUpdateNameRenamesJailAndTemplateSourceName(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&jailModels.JailHooks{},
+		&jailModels.JailSnapshot{},
+		&jailModels.Network{},
 		&jailModels.JailTemplate{},
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationLease{},
@@ -55,12 +59,8 @@ func TestUpdateNameRenamesJailAndTemplateSourceName(t *testing.T) {
 		t.Fatalf("failed seeding jail template: %v", err)
 	}
 
-	ctid, err := svc.UpdateName(jail.ID, "jail-new")
-	if err != nil {
+	if err := svc.UpdateName(jail.CTID, "jail-new"); err != nil {
 		t.Fatalf("UpdateName failed: %v", err)
-	}
-	if ctid != jail.CTID {
-		t.Fatalf("expected returned ctid %d, got %d", jail.CTID, ctid)
 	}
 
 	var refreshedJail jailModels.Jail
@@ -104,11 +104,11 @@ func TestUpdateNameRejectsInvalidOrDuplicateName(t *testing.T) {
 		t.Fatalf("failed seeding jail-b: %v", err)
 	}
 
-	if _, err := svc.UpdateName(jailA.ID, "invalid name"); err == nil || !strings.Contains(err.Error(), "invalid_vm_name") {
+	if err := svc.UpdateName(jailA.CTID, "invalid name"); err == nil || !strings.Contains(err.Error(), "invalid_vm_name") {
 		t.Fatalf("expected invalid_vm_name, got %v", err)
 	}
 
-	if _, err := svc.UpdateName(jailA.ID, "jail-b"); err == nil || !strings.Contains(err.Error(), "jail_name_already_in_use") {
+	if err := svc.UpdateName(jailA.CTID, "jail-b"); err == nil || !strings.Contains(err.Error(), "jail_name_already_in_use") {
 		t.Fatalf("expected jail_name_already_in_use, got %v", err)
 	}
 }
@@ -161,7 +161,7 @@ func TestUpdateNameDeniedWhenReplicationLeaseNotOwned(t *testing.T) {
 		t.Fatalf("failed seeding replication lease: %v", err)
 	}
 
-	if _, err := svc.UpdateName(jail.ID, "jail-new"); err == nil || !strings.Contains(err.Error(), "replication_lease_not_owned") {
+	if err := svc.UpdateName(jail.CTID, "jail-new"); err == nil || !strings.Contains(err.Error(), "replication_lease_not_owned") {
 		t.Fatalf("expected replication_lease_not_owned, got %v", err)
 	}
 }
