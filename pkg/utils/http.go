@@ -82,7 +82,6 @@ func GetCurrentHostnameFromHeader(r http.Header, rC *http.Request) (string, erro
 
 		var obj struct {
 			Hostname string `json:"hostname"`
-			Token    string `json:"token"`
 		}
 
 		if err := json.Unmarshal(data, &obj); err != nil {
