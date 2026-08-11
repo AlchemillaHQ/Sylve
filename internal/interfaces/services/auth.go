@@ -11,6 +11,7 @@ package serviceInterfaces
 import (
 	"context"
 	"crypto/tls"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 )
@@ -21,6 +22,11 @@ type CustomClaims struct {
 	AuthType string `json:"authType"`
 	TokenUse string `json:"tokenUse,omitempty"`
 	Admin    bool   `json:"admin,omitempty"`
+}
+
+type ScopedValidationResult struct {
+	CustomClaims
+	ExpiresAt time.Time
 }
 
 // CreateUserOpts contains create-time-only parameters not stored directly on the model.
@@ -70,7 +76,7 @@ type AuthServiceInterface interface {
 	RevokeJWT(token string) error
 	VerifyTokenInDb(token string) bool
 	ValidateToken(tokenString string) (CustomClaims, error)
-	ValidateScopedJWT(tokenString, expectedScope string) (CustomClaims, error)
+	ValidateScopedJWT(tokenString, expectedScope string) (ScopedValidationResult, error)
 	InitSecret(name string, shaRounds int) error
 	GetSecret(name string) (string, error)
 	UpsertSecret(name string, data string) error

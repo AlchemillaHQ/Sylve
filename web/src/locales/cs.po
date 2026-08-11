@@ -1453,9 +1453,8 @@ msgstr ""
 msgid "Failed to reset cluster"
 msgstr "Klastr se nepodařilo resetovat"
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Login required after cluster reset"
-msgstr "Po resetování klastru je vyžadováno přihlášení se"
+#~ msgid "Login required after cluster reset"
+#~ msgstr "Po resetování klastru je vyžadováno přihlášení se"
 
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note deleted"
@@ -1700,9 +1699,8 @@ msgstr "Klastr se nepodařilo vytvořit"
 msgid "Cluster created"
 msgstr "Klastr vytvořen"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-msgid "Login required after initializing cluster"
-msgstr ""
+#~ msgid "Login required after initializing cluster"
+#~ msgstr ""
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
@@ -9279,6 +9277,8 @@ msgstr ""
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Deleting..."
 msgstr ""
 
@@ -10122,9 +10122,8 @@ msgstr ""
 msgid "Version mismatch: this node and the leader must run the same Sylve version"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Login required after joining cluster"
-msgstr ""
+#~ msgid "Login required after joining cluster"
+#~ msgstr ""
 
 #~ msgid "Setting this option to be <0>on</0> will enable Wake on LAN for this jail for all MAC addresses attached to it"
 #~ msgstr ""
@@ -12793,6 +12792,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Loading…"
 msgstr ""
 
@@ -13975,9 +13975,8 @@ msgstr ""
 msgid "Cluster - Resync State"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster - Remove Peer"
-msgstr ""
+#~ msgid "Cluster - Remove Peer"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Backup Job - Restore"
@@ -14199,6 +14198,7 @@ msgstr ""
 msgid "Recursive backup: <0/>"
 msgstr ""
 
+#: src/lib/components/custom/TreeTableRemote.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "X-Current-Hostname"
 msgstr ""
@@ -15020,7 +15020,6 @@ msgstr ""
 #~ msgid "({0} selected)"
 #~ msgstr ""
 
-#~ msgid "No devices available for spares"
 #~ msgstr ""
 
 #~ msgid "No available spare devices"
@@ -17945,6 +17944,7 @@ msgstr ""
 msgid "Download Certificate & Key"
 msgstr ""
 
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Unavailable"
@@ -20955,4 +20955,24 @@ msgstr ""
 
 #: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "This action cannot be undone. It permanently removes the managed Unix account and its home directory, along with the Sylve user record."
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster reset"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Unable to load cluster key"
+msgstr ""
+
+#~ msgid "No devices available for spares"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Reveal Join Key"
+msgstr ""
+
+#. 0: token
+#: src/lib/components/custom/TreeTableRemote.svelte
+msgid "Bearer {0}"
 msgstr ""

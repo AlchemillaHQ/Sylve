@@ -71,6 +71,22 @@ func seedGroup(t *testing.T, svc *Service, name string) models.Group {
 	return g
 }
 
+func seedUserToken(t *testing.T, svc *Service, userID uint, token string) {
+	t.Helper()
+	if err := svc.DB.Create(&models.Token{UserID: userID, Token: token, AuthType: "sylve"}).Error; err != nil {
+		t.Fatalf("failed to seed token: %v", err)
+	}
+}
+
+func userTokenCount(t *testing.T, svc *Service, userID uint) int64 {
+	t.Helper()
+	var count int64
+	if err := svc.DB.Model(&models.Token{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count tokens: %v", err)
+	}
+	return count
+}
+
 func TestListUsersEmpty(t *testing.T) {
 	svc := newLocalTestService(t)
 	users, err := svc.ListUsers()
@@ -727,6 +743,58 @@ func TestEditUserPasswordIsHashed(t *testing.T) {
 		if found.Password == "oldhash" {
 			t.Fatalf("password should have been updated")
 		}
+	}
+}
+
+func TestEditLocalUserRevokesOnlySecurityChanges(t *testing.T) {
+	tests := []struct {
+		name       string
+		change     func(*EditUserOpts)
+		wantTokens int64
+	}{
+		{
+			name: "cosmetic edit preserves sessions",
+			change: func(opts *EditUserOpts) {
+				opts.FullName = "Alice Example"
+				opts.Email = "alice@example.com"
+			},
+			wantTokens: 1,
+		},
+		{
+			name: "username change revokes sessions",
+			change: func(opts *EditUserOpts) {
+				opts.Username = "alice-renamed"
+			},
+		},
+		{
+			name: "administrator change revokes sessions",
+			change: func(opts *EditUserOpts) {
+				opts.Admin = true
+			},
+		},
+		{
+			name: "password change revokes sessions",
+			change: func(opts *EditUserOpts) {
+				opts.Password = "new-secure-password"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc := newLocalTestService(t)
+			user := seedUser(t, svc, models.User{Username: "alice", Password: "old-hash", Source: "local"})
+			seedUserToken(t, svc, user.ID, "session-token")
+			opts := EditUserOpts{Username: user.Username, Admin: user.Admin}
+			test.change(&opts)
+
+			if err := svc.EditUser(user.ID, opts); err != nil {
+				t.Fatalf("edit user: %v", err)
+			}
+			if got := userTokenCount(t, svc, user.ID); got != test.wantTokens {
+				t.Fatalf("token count=%d want=%d", got, test.wantTokens)
+			}
+		})
 	}
 }
 

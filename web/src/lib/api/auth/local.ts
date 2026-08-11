@@ -14,6 +14,7 @@ import {
 import type { APIResponse } from '$lib/types/common';
 import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
+import { authMutation } from './mutations';
 
 export async function listUsers(
 	source?: User['source'],
@@ -51,17 +52,20 @@ export async function createUser(
 	payload: UserPayload,
 	options: NodeAPIRequestOptions = {}
 ): Promise<UserMutationResult | APIResponse> {
-	return await apiRequest('/auth/users', UserMutationResultSchema, 'POST', payload, {
-		...options,
-		preserveErrors: true
-	});
+	return await authMutation(
+		'/auth/users',
+		UserMutationResultSchema,
+		'POST',
+		{ ...payload, auxGroupIds: payload.auxGroupIds ? [...payload.auxGroupIds] : undefined },
+		{ ...options, preserveErrors: true }
+	);
 }
 
 export async function deleteUser(
 	id: number,
 	options: NodeAPIRequestOptions = {}
 ): Promise<UserMutationResult | APIResponse> {
-	return await apiRequest(
+	return await authMutation(
 		`/auth/users/${encodeURIComponent(String(id))}`,
 		UserMutationResultSchema,
 		'DELETE',
@@ -75,11 +79,11 @@ export async function editUser(
 	payload: UserPayload,
 	options: NodeAPIRequestOptions = {}
 ): Promise<UserMutationResult | APIResponse> {
-	return await apiRequest(
+	return await authMutation(
 		`/auth/users/${encodeURIComponent(String(id))}`,
 		UserMutationResultSchema,
 		'PUT',
-		payload,
+		{ ...payload, auxGroupIds: payload.auxGroupIds ? [...payload.auxGroupIds] : undefined },
 		{ ...options, preserveErrors: true }
 	);
 }
@@ -112,20 +116,26 @@ export async function importUser(
 	payload: ImportUserPayload,
 	options: NodeAPIRequestOptions = {}
 ): Promise<UserMutationResult | APIResponse> {
-	return await apiRequest('/auth/users/import', UserMutationResultSchema, 'POST', payload, {
-		...options,
-		preserveErrors: true
-	});
+	return await authMutation(
+		'/auth/users/import',
+		UserMutationResultSchema,
+		'POST',
+		{ ...payload },
+		{ ...options, preserveErrors: true }
+	);
 }
 
 export async function createPamUser(
 	payload: UserPayload,
 	options: NodeAPIRequestOptions = {}
 ): Promise<UserMutationResult | APIResponse> {
-	return await apiRequest('/auth/users/pam', UserMutationResultSchema, 'POST', payload, {
-		...options,
-		preserveErrors: true
-	});
+	return await authMutation(
+		'/auth/users/pam',
+		UserMutationResultSchema,
+		'POST',
+		{ ...payload, auxGroupIds: payload.auxGroupIds ? [...payload.auxGroupIds] : undefined },
+		{ ...options, preserveErrors: true }
+	);
 }
 
 export async function listImportableUsers(

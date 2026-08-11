@@ -147,7 +147,14 @@
 		() => reload.auditLog,
 		(value) => {
 			if (value) {
+				const requestedHostname = reload.auditLogHostname;
+				if (requestedHostname && requestedHostname !== effectiveHostname) {
+					reload.auditLogHostname = null;
+					reload.auditLog = false;
+					return;
+				}
 				auditRecords.refetch().then(() => {
+					reload.auditLogHostname = null;
 					reload.auditLog = false;
 				});
 			}
@@ -271,8 +278,8 @@
 		'/api/cluster/replication/policies': 'DC Replication Policy',
 		'/api/cluster/join': 'Cluster - Join',
 		'/api/cluster/accept-join': 'Cluster - Accept Join',
+		'/api/cluster/join-key': 'Cluster - Reveal Join Key',
 		'/api/cluster/resync-state': 'Cluster - Resync State',
-		'/api/cluster/remove-peer': 'Cluster - Remove Peer',
 		'/api/cluster': 'Cluster',
 		'/api/iscsi/targets/:id/portals/:id': 'iSCSI Target - Remove Portal',
 		'/api/iscsi/targets/:id/portals': 'iSCSI Target - Add Portal',

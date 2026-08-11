@@ -818,6 +818,11 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 			return err
 		}
 	}
+	if opts.SSHPublicKey != user.SSHPublicKey &&
+		opts.SSHPublicKey != "" &&
+		opts.HomeDirectory == "/nonexistent" {
+		return userValidationError("ssh_key_requires_home_directory")
+	}
 	if opts.DoasEnabled && !user.DoasEnabled && !doasAvailableFn() {
 		return userConflictError("doas_unavailable")
 	}
@@ -898,6 +903,13 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 	failIntegration := func(code string, cause error) error {
 		return userIntegrationError(code, cause, applied)
 	}
+	revokeSessions := opts.Password != "" || opts.Admin != user.Admin ||
+		opts.Locked != user.Locked || opts.DisablePassword != user.DisablePassword
+	if revokeSessions {
+		if err := s.revokeUserTokens(s.DB, user.ID); err != nil {
+			return userInternalError("session_revoke_failed", err)
+		}
+	}
 
 	if newPrimaryGroup {
 		exists, err := system.UnixGroupExistsWithError(primaryGroupName)
@@ -958,9 +970,6 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 				return failIntegration("ssh_key_update_failed", err)
 			}
 		} else {
-			if opts.HomeDirectory == "/nonexistent" {
-				return userValidationError("ssh_key_requires_home_directory")
-			}
 			if err := system.WriteSSHAuthorizedKey(opts.HomeDirectory, opts.SSHPublicKey); err != nil {
 				return failIntegration("ssh_key_update_failed", err)
 			}
@@ -1131,17 +1140,23 @@ func (s *Service) deletePamUser(user *models.User) error {
 		}
 	}
 
+	sambaExists := false
 	if sambaToolsAvailableFn() {
-		exists, err := sambaUserExistsFn(user.Username)
+		sambaExists, err = sambaUserExistsFn(user.Username)
 		if err != nil {
 			return failIntegration("samba_user_lookup_failed", err)
 		}
-		if exists {
-			if err := deleteSambaUserFn(user.Username); err != nil {
-				return failIntegration("samba_user_delete_failed", err)
-			}
-			applied = true
+	}
+
+	if err := s.revokeUserTokens(s.DB, user.ID); err != nil {
+		return userInternalError("session_revoke_failed", err)
+	}
+
+	if sambaExists {
+		if err := deleteSambaUserFn(user.Username); err != nil {
+			return failIntegration("samba_user_delete_failed", err)
 		}
+		applied = true
 	}
 	if err := removeDoasPermFn(user.Username); err != nil {
 		return failIntegration("doas_cleanup_failed", err)
@@ -1166,7 +1181,7 @@ func (s *Service) deletePamUser(user *models.User) error {
 
 func (s *Service) deleteUserDatabaseState(userID uint) error {
 	return s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", userID).Delete(&models.Token{}).Error; err != nil {
+		if err := s.revokeUserTokens(tx, userID); err != nil {
 			return err
 		}
 		if err := tx.Where("user_id = ?", userID).Delete(&models.WebAuthnCredential{}).Error; err != nil {

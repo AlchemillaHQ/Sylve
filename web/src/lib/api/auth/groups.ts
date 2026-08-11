@@ -7,6 +7,7 @@ import {
 import type { APIResponse } from '$lib/types/common';
 import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
+import { authMutation } from './mutations';
 
 export async function listGroups(
 	options: NodeAPIRequestOptions = {}
@@ -22,11 +23,11 @@ export async function createGroup(
 	members: string[],
 	options: NodeAPIRequestOptions = {}
 ): Promise<GroupMutationResult | APIResponse> {
-	return await apiRequest(
+	return await authMutation(
 		'/auth/groups',
 		GroupMutationResultSchema,
 		'POST',
-		{ name, members },
+		{ name, members: [...members] },
 		{ ...options, preserveErrors: true }
 	);
 }
@@ -35,7 +36,7 @@ export async function deleteGroup(
 	id: number,
 	options: NodeAPIRequestOptions = {}
 ): Promise<GroupMutationResult | APIResponse> {
-	return await apiRequest(
+	return await authMutation(
 		`/auth/groups/${encodeURIComponent(String(id))}`,
 		GroupMutationResultSchema,
 		'DELETE',
@@ -49,11 +50,11 @@ export async function updateGroupMembers(
 	usernames: string[],
 	options: NodeAPIRequestOptions = {}
 ): Promise<GroupMutationResult | APIResponse> {
-	return await apiRequest(
+	return await authMutation(
 		`/auth/groups/${encodeURIComponent(String(id))}/members`,
 		GroupMutationResultSchema,
 		'PUT',
-		{ usernames },
+		{ usernames: [...usernames] },
 		{ ...options, preserveErrors: true }
 	);
 }

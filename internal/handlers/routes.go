@@ -88,6 +88,11 @@ import (
 // @name X-Cluster-Key
 // @description Exact enabled cluster join key.
 
+// @securityDefinitions.apikey ClusterTokenAuth
+// @in header
+// @name X-Cluster-Token
+// @description Short-lived server-issued cluster token.
+
 // @host      sylve.lan:8181
 // @BasePath  /api
 func RegisterRoutes(r *gin.Engine,
@@ -740,15 +745,17 @@ func RegisterRoutes(r *gin.Engine,
 		authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
 	}
 
-	auth := api.Group("/auth")
-	auth.Use(middleware.EnsureAuthenticated(authService))
-	auth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
-	auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	authManagement := api.Group("/auth")
+	authManagement.Use(middleware.EnsureAuthenticated(authService))
+	authManagement.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	authManagement.Use(middleware.RequireLocalAdmin(authService))
+	authManagement.Use(EnsureCorrectHost(db, authService))
+	authManagement.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 
 	events := api.Group("/events")
 	events.Use(middleware.AuthenticateSSE(authService))
 	{
-		events.GET("/stream", eventsHandlers.StreamSSE(authService))
+		events.GET("/stream", eventsHandlers.StreamSSE())
 	}
 
 	notifications := api.Group("/notifications")
@@ -774,9 +781,7 @@ func RegisterRoutes(r *gin.Engine,
 		notifications.POST("/rules/bulk-update", notificationsHandlers.BulkUpdateRules(notificationService))
 	}
 
-	users := auth.Group("/users")
-	users.Use(EnsureCorrectHost(db, authService))
-	users.Use(middleware.RequireLocalAdmin(authService))
+	users := authManagement.Group("/users")
 	{
 		users.GET("", authHandlers.ListUsersHandler(authService))
 		users.GET("/uid/next", authHandlers.GetNextUIDHandler(authService))
@@ -791,9 +796,7 @@ func RegisterRoutes(r *gin.Engine,
 		users.PUT("/:userId", authHandlers.EditUserHandler(authService))
 	}
 
-	groups := auth.Group("/groups")
-	groups.Use(EnsureCorrectHost(db, authService))
-	groups.Use(middleware.RequireLocalAdmin(authService))
+	groups := authManagement.Group("/groups")
 	{
 		groups.GET("", authHandlers.ListGroupsHandler(authService))
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
@@ -801,9 +804,7 @@ func RegisterRoutes(r *gin.Engine,
 		groups.PUT("/:groupId/members", authHandlers.UpdateGroupMembersHandler(authService))
 	}
 
-	passkeys := auth.Group("/passkeys")
-	passkeys.Use(EnsureCorrectHost(db, authService))
-	passkeys.Use(middleware.RequireLocalAdmin(authService))
+	passkeys := authManagement.Group("/passkeys")
 	{
 		passkeys.POST("/register/begin", authHandlers.BeginPasskeyRegistrationHandler(authService))
 		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))

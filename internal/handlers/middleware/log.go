@@ -134,9 +134,11 @@ func isSensitiveAuditKey(key string) bool {
 		"psk",
 		"sshkey",
 		"credential",
+		"credentials",
 		"sessiondata",
 		"assertion",
-		"challenge":
+		"challenge",
+		"challenges":
 		return true
 	}
 

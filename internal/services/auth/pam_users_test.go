@@ -135,6 +135,7 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	if err := service.DB.Model(&sylveGroup).Association("Users").Append(&user); err != nil {
 		t.Fatalf("associate sylve group: %v", err)
 	}
+	seedUserToken(t, service, user.ID, "password-session")
 
 	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
 		switch command {
@@ -185,8 +186,12 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	if !utils.CheckPasswordHash(password, reloaded.Password) {
 		t.Fatalf("updated Sylve credential does not match submitted password")
 	}
+	if got := userTokenCount(t, service, user.ID); got != 0 {
+		t.Fatalf("password edit left %d sessions", got)
+	}
 	updatedHash := reloaded.Password
 
+	seedUserToken(t, service, user.ID, "cosmetic-session")
 	fullOptions.Password = ""
 	fullOptions.SambaAction = SambaActionKeep
 	if err := service.EditUser(user.ID, fullOptions); err != nil {
@@ -213,6 +218,36 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	if !removed {
 		t.Fatal("explicit Samba remove intent was not applied")
 	}
+	if got := userTokenCount(t, service, user.ID); got != 1 {
+		t.Fatalf("integration-only edits changed session count: %d", got)
+	}
+
+	fullOptions.SambaAction = SambaActionKeep
+	fullOptions.Locked = true
+	if err := service.EditUser(user.ID, fullOptions); err != nil {
+		t.Fatalf("lock PAM user: %v", err)
+	}
+	if got := userTokenCount(t, service, user.ID); got != 0 {
+		t.Fatalf("lock edit left %d sessions", got)
+	}
+
+	seedUserToken(t, service, user.ID, "disable-session")
+	fullOptions.DisablePassword = true
+	if err := service.EditUser(user.ID, fullOptions); err != nil {
+		t.Fatalf("disable PAM password: %v", err)
+	}
+	if got := userTokenCount(t, service, user.ID); got != 0 {
+		t.Fatalf("password-disable edit left %d sessions", got)
+	}
+
+	seedUserToken(t, service, user.ID, "admin-session")
+	fullOptions.Admin = true
+	if err := service.EditUser(user.ID, fullOptions); err != nil {
+		t.Fatalf("promote PAM user: %v", err)
+	}
+	if got := userTokenCount(t, service, user.ID); got != 0 {
+		t.Fatalf("administrator edit left %d sessions", got)
+	}
 }
 
 func TestEditPamUserRequiresPasswordToReenableAuthentication(t *testing.T) {
@@ -228,6 +263,7 @@ func TestEditPamUserRequiresPasswordToReenableAuthentication(t *testing.T) {
 		DisablePassword: true,
 		Source:          "pam",
 	})
+	seedUserToken(t, service, user.ID, "validation-session")
 
 	err := service.EditUser(user.ID, EditUserOpts{
 		Username:        user.Username,
@@ -239,6 +275,9 @@ func TestEditPamUserRequiresPasswordToReenableAuthentication(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "password_required_to_enable") {
 		t.Fatalf("expected password-required error, got: %v", err)
+	}
+	if got := userTokenCount(t, service, user.ID); got != 1 {
+		t.Fatalf("failed validation changed session count: %d", got)
 	}
 }
 
@@ -492,6 +531,7 @@ func TestDeletePamUserRejectsUnsafeCurrentUnixHome(t *testing.T) {
 		HomeDirectory: "/home/alice",
 		Source:        "pam",
 	})
+	seedUserToken(t, service, user.ID, "unsafe-preflight-session")
 	deletedUnixUser := false
 	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
 		if command == "/usr/bin/id" {
@@ -512,5 +552,42 @@ func TestDeletePamUserRejectsUnsafeCurrentUnixHome(t *testing.T) {
 	}
 	if deletedUnixUser {
 		t.Fatal("unsafe Unix account was deleted")
+	}
+	if got := userTokenCount(t, service, user.ID); got != 1 {
+		t.Fatalf("failed preflight changed session count: %d", got)
+	}
+}
+
+func TestDeletePamUserKeepsRevocationAfterLaterFailure(t *testing.T) {
+	service := newLocalTestService(t)
+	stubPAMIntegrations(t)
+	user := seedUser(t, service, models.User{
+		Username:      "alice",
+		Password:      "hashed",
+		UID:           1001,
+		HomeDirectory: "/home/alice",
+		Source:        "pam",
+	})
+	seedUserToken(t, service, user.ID, "delete-session")
+
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		switch command {
+		case "/usr/bin/id":
+			return "uid=1001(alice) gid=1001(alice)", nil
+		case "/usr/sbin/pw":
+			if len(args) >= 3 && args[0] == "usershow" {
+				return "alice:*:1001:1001::0:0:Alice:/home/alice:/bin/sh", nil
+			}
+		}
+		return "", nil
+	}))
+	removeDoasPermFn = func(string) error { return errors.New("doas cleanup failed") }
+
+	err := service.DeleteUser(user.ID)
+	if err == nil || !strings.Contains(err.Error(), "doas_cleanup_failed") {
+		t.Fatalf("expected later cleanup failure, got: %v", err)
+	}
+	if got := userTokenCount(t, service, user.ID); got != 0 {
+		t.Fatalf("later failure restored %d sessions", got)
 	}
 }

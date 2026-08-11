@@ -197,6 +197,8 @@ func GetCluster(cS *cluster.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[JoinKeyResponse] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 409 {object} internal.APIResponse[any] "Cluster join key unavailable"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/join-key [get]
@@ -236,8 +238,13 @@ func GetJoinKey(authService *auth.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param request body CreateClusterRequest true "Create Cluster Request"
 // @Success 201 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster [post]
 func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
@@ -286,7 +293,12 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 // @Param request body JoinClusterRequest true "Join Cluster Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /cluster/join [post]
 func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -492,9 +504,13 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 // @Produce json
 // @Security ClusterKeyAuth
 // @Param request body AcceptJoinRequest true "Accept Join Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 200 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 409 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /cluster/accept-join [post]
 func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -603,6 +619,8 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/reset-node [delete]
 func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
@@ -724,6 +742,8 @@ func ReplicatedStateRepairInternal(cS *cluster.Service, zS *zelta.Service) gin.H
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/resync-state [post]
@@ -790,10 +810,12 @@ func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 // @Tags Cluster
 // @Accept json
 // @Produce json
-// @Security BearerAuth
+// @Security ClusterTokenAuth
 // @Param request body RemovePeerRequest true "Remove Peer Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 409 {object} internal.APIResponse[cluster.PeerRemovalConflict] "Peer owns cluster resources"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /intra-cluster/remove-peer [post]

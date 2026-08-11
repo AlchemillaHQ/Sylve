@@ -28,6 +28,7 @@
 	let admin = $state(false);
 	let submitting = $state(false);
 	let listController: AbortController | null = null;
+	let componentActive = true;
 
 	let userOptions = $derived(
 		importableUsers.map((user) => ({
@@ -75,7 +76,10 @@
 		open = false;
 	}
 
-	onDestroy(() => listController?.abort());
+	onDestroy(() => {
+		componentActive = false;
+		listController?.abort();
+	});
 
 	watch(
 		() => `${open}:${hostname}`,
@@ -103,16 +107,17 @@
 		}
 
 		const username = selectedUsername.value;
+		const requestHostname = hostname;
+		const payload = {
+			username,
+			password: password || undefined,
+			admin
+		};
 		submitting = true;
 		try {
-			const response = await importUser(
-				{
-					username,
-					password: password || undefined,
-					admin
-				},
-				{ hostname }
-			);
+			const response = await importUser(payload, { hostname: requestHostname });
+			if (!componentActive || hostname !== requestHostname || selectedUsername.value !== username)
+				return;
 			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error('Failed to import user', { position: 'bottom-center' });
@@ -123,6 +128,7 @@
 			toast.success(`User "${response.username}" imported`, { position: 'bottom-center' });
 			closeDialog();
 		} catch {
+			if (!componentActive || hostname !== requestHostname) return;
 			toast.error('Failed to import user', { position: 'bottom-center' });
 		} finally {
 			submitting = false;

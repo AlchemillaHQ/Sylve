@@ -19,7 +19,7 @@
 	} from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -32,6 +32,10 @@
 
 	let { data }: { data: Data } = $props();
 	const initialData = untrack(() => data);
+	let pageActive = true;
+	onDestroy(() => {
+		pageActive = false;
+	});
 
 	function generateTableData(users: User[]): { rows: Row[]; columns: Column[] } {
 		const columns: Column[] = [
@@ -127,6 +131,7 @@
 	});
 
 	let reload = $state(false);
+	let deleting = $state(false);
 
 	watch(
 		() => reload,
@@ -176,7 +181,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
-				disabled={!activeRow || activeRow.name === 'admin' || activeRow.name === 'root'}
+				disabled={deleting || !activeRow || activeRow.name === 'admin' || activeRow.name === 'root'}
 				title={activeRow && (activeRow.name === 'admin' || activeRow.name === 'root')
 					? 'Cannot delete this user'
 					: ''}
@@ -272,26 +277,35 @@
 
 <AlertDialog
 	bind:open={modals.delete.open}
+	loading={deleting}
+	loadingLabel="Deleting..."
+	keepOpenOnConfirm={true}
 	names={{
 		parent: 'User',
 		element: activeRow ? (activeRow.name as string) : ''
 	}}
 	actions={{
 		onConfirm: async () => {
-			const response = await deleteUser(Number(activeRow.id), { hostname: data.node });
-			if (isAPIResponse(response)) {
-				handleAPIError(response);
-				toast.error('Failed to delete user', {
-					position: 'bottom-center'
-				});
-			} else {
-				reload = true;
-				toast.success('User deleted', {
-					position: 'bottom-center'
-				});
-			}
+			if (deleting || !activeRow) return;
+			const hostname = data.node;
+			const userID = Number(activeRow.id);
+			deleting = true;
+			try {
+				const response = await deleteUser(userID, { hostname });
+				if (!pageActive || data.node !== hostname || Number(activeRow?.id) !== userID) return;
+				if (isAPIResponse(response)) {
+					handleAPIError(response);
+					toast.error('Failed to delete user', { position: 'bottom-center' });
+					return;
+				}
 
-			modals.delete.open = false;
+				reload = true;
+				activeRows = null;
+				modals.delete.open = false;
+				toast.success('User deleted', { position: 'bottom-center' });
+			} finally {
+				deleting = false;
+			}
 		},
 		onCancel: () => {
 			modals.delete.open = false;

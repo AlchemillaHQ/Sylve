@@ -88,7 +88,8 @@ func TestJWTParserHardening(t *testing.T) {
 				}
 			},
 			validate: func(token string) (serviceInterfaces.CustomClaims, error) {
-				return service.ValidateScopedJWT(token, "sse")
+				result, err := service.ValidateScopedJWT(token, "sse")
+				return result.CustomClaims, err
 			},
 		},
 		{

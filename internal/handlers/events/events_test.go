@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
@@ -53,6 +56,9 @@ func TestCreateSSETokenCreatesLocalScopedCapability(t *testing.T) {
 	if claims.UserID != 7 || claims.Username != "admin" || claims.AuthType != "sylve" {
 		t.Fatalf("unexpected claims: %+v", claims)
 	}
+	if claims.ExpiresAt.IsZero() || time.Until(claims.ExpiresAt) > 10*time.Minute {
+		t.Fatalf("unexpected scoped expiry: %v", claims.ExpiresAt)
+	}
 }
 
 func TestCreateSSETokenRejectsClusterScope(t *testing.T) {
@@ -65,5 +71,29 @@ func TestCreateSSETokenRejectsClusterScope(t *testing.T) {
 
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status=%d want=%d body=%s", recorder.Code, http.StatusForbidden, recorder.Body.String())
+	}
+}
+
+func TestStreamSSEClosesAtAuthenticatedTokenExpiry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(middleware.SSEExpiresAtContextKey, time.Now().Add(50*time.Millisecond))
+		c.Next()
+	})
+	router.GET("/events/stream", StreamSSE())
+
+	started := time.Now()
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/events/stream", nil))
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("stream ignored authenticated expiry: %v", elapsed)
+	}
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if body := response.Body.String(); !strings.Contains(body, "event: reconnect") ||
+		!strings.Contains(body, "token_rotation") {
+		t.Fatalf("stream did not request reconnect at expiry: %s", body)
 	}
 }

@@ -119,6 +119,7 @@
 	let capabilitiesController: AbortController | null = null;
 	let uidController: AbortController | null = null;
 	let directoryController: AbortController | null = null;
+	let componentActive = true;
 
 	function cancelMetadataLoads() {
 		capabilitiesController?.abort();
@@ -194,7 +195,10 @@
 		if (!edit) loadNextUID();
 	});
 
-	onDestroy(cancelMetadataLoads);
+	onDestroy(() => {
+		componentActive = false;
+		cancelMetadataLoads();
+	});
 
 	const tabs = [
 		{ value: 'identity', label: 'Identity' },
@@ -405,14 +409,26 @@
 				? { sambaAction: properties.sambaAction.value }
 				: { createSamba: properties.createSamba })
 		};
+		const requestHostname = hostname;
+		const requestEdit = edit;
+		const requestUserID = edit ? user?.id : undefined;
+		if (requestEdit && requestUserID === undefined) return;
 
 		loading = true;
 		try {
-			const response = edit
-				? await editUser(user!.id, payload, { hostname })
-				: await createPamUser(payload, { hostname });
+			const response = requestEdit
+				? await editUser(requestUserID!, payload, { hostname: requestHostname })
+				: await createPamUser(payload, { hostname: requestHostname });
 
-			if (isAPIResponse(response) && response.status === 'error') {
+			if (
+				!componentActive ||
+				hostname !== requestHostname ||
+				edit !== requestEdit ||
+				(requestEdit && user?.id !== requestUserID)
+			)
+				return;
+
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
 					position: 'bottom-center'
@@ -425,6 +441,7 @@
 			open = false;
 			reset();
 		} catch (error) {
+			if (!componentActive || hostname !== requestHostname) return;
 			console.error('PAM user mutation failed:', error);
 			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
 				position: 'bottom-center'

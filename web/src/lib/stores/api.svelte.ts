@@ -11,6 +11,7 @@
 export const reload = $state({
     leftPanel: false,
     auditLog: false,
+    auditLogHostname: null as string | null,
     clusterDetails: false,
     notifications: false
 });

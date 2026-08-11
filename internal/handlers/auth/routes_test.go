@@ -39,6 +39,7 @@ func TestLoginLifecycleRouteContract(t *testing.T) {
 		`publicAuth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))`,
 		`authSession.POST("/logout", authHandlers.LogoutHandler(authService))`,
 		`authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))`,
+		`events.GET("/stream", eventsHandlers.StreamSSE())`,
 	}
 	for _, registration := range registrations {
 		if !strings.Contains(routes, registration) {
@@ -51,11 +52,14 @@ func TestLoginLifecycleRouteContract(t *testing.T) {
 		}
 	}
 
-	authIndex := strings.Index(routes, "auth.Use(middleware.EnsureAuthenticated(authService))")
-	limitIndex := strings.Index(routes, "auth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))")
-	loggerIndex := strings.Index(routes, "auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
-	if authIndex < 0 || limitIndex < 0 || loggerIndex < 0 || !(authIndex < limitIndex && limitIndex < loggerIndex) {
-		t.Error("auth middleware must be ordered as authentication, request-body limit, and request logging")
+	authIndex := strings.Index(routes, "authManagement.Use(middleware.EnsureAuthenticated(authService))")
+	limitIndex := strings.Index(routes, "authManagement.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))")
+	adminIndex := strings.Index(routes, "authManagement.Use(middleware.RequireLocalAdmin(authService))")
+	routingIndex := strings.Index(routes, "authManagement.Use(EnsureCorrectHost(db, authService))")
+	loggerIndex := strings.Index(routes, "authManagement.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
+	if authIndex < 0 || limitIndex < 0 || adminIndex < 0 || routingIndex < 0 || loggerIndex < 0 ||
+		!(authIndex < limitIndex && limitIndex < adminIndex && adminIndex < routingIndex && routingIndex < loggerIndex) {
+		t.Error("auth management middleware must authenticate, limit, authorize, route, then log")
 	}
 	for _, middleware := range []string{
 		`authSession.Use(middleware.EnsureAuthenticated(authService))`,

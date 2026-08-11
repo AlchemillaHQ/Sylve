@@ -21,7 +21,7 @@
 	import { convertDbTime } from '$lib/utils/time';
 
 	import { resource, watch } from 'runed';
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -34,6 +34,10 @@
 
 	let { data }: { data: Data } = $props();
 	const initialData = untrack(() => data);
+	let pageActive = true;
+	onDestroy(() => {
+		pageActive = false;
+	});
 
 	const lastUsersByNode: Record<string, User[]> = Object.create(null);
 	lastUsersByNode[initialData.node] = initialData.users;
@@ -152,12 +156,11 @@
 
 		creating = true;
 		const hostname = data.node;
+		const name = properties.create.name.trim();
+		const members = [...properties.create.users.value];
 		try {
-			const response = await createGroup(
-				properties.create.name.trim(),
-				properties.create.users.value,
-				{ hostname }
-			);
+			const response = await createGroup(name, members, { hostname });
+			if (!pageActive || data.node !== hostname || !properties.create.open) return;
 
 			if (isAPIResponse(response)) {
 				handleAPIError(response);
@@ -185,14 +188,18 @@
 		if (updating || !activeGroup) return;
 
 		updating = true;
-		const group = activeGroup;
+		const groupID = activeGroup.id;
 		const hostname = data.node;
+		const usernames = withRequiredMembers(properties.modifyUsers.combobox.value, activeGroup);
 		try {
-			const response = await updateGroupMembers(
-				group.id,
-				withRequiredMembers(properties.modifyUsers.combobox.value, group),
-				{ hostname }
-			);
+			const response = await updateGroupMembers(groupID, usernames, { hostname });
+			if (
+				!pageActive ||
+				data.node !== hostname ||
+				activeGroup?.id !== groupID ||
+				!properties.modifyUsers.open
+			)
+				return;
 
 			if (isAPIResponse(response)) {
 				handleAPIError(response);
@@ -529,6 +536,7 @@
 			const groupID = properties.delete.id;
 			try {
 				const result = await deleteGroup(groupID, { hostname });
+				if (!pageActive || data.node !== hostname || properties.delete.id !== groupID) return;
 				if (isAPIResponse(result)) {
 					handleAPIError(result);
 					toast.error('Failed to delete group', {
@@ -540,8 +548,6 @@
 				toast.success('Group deleted', {
 					position: 'bottom-center'
 				});
-				if (data.node !== hostname) return;
-
 				reload = true;
 				activeRows = null;
 				properties.delete.open = false;

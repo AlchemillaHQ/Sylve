@@ -884,8 +884,10 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 		"password":    "super-secret",
 		"sambaAction": "upsert",
 		"nested": map[string]interface{}{
-			"token": "abc",
-			"safe":  "ok",
+			"token":       "abc",
+			"credentials": []interface{}{"ceremony-data"},
+			"challenges":  map[string]interface{}{"value": "nonce"},
+			"safe":        "ok",
 		},
 		"array": []interface{}{
 			map[string]interface{}{"clusterKey": "k1"},
@@ -913,6 +915,12 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 	}
 	if nested["token"] != "[REDACTED]" {
 		t.Fatal("expected_nested_token_to_be_redacted")
+	}
+	if nested["credentials"] != "[REDACTED]" {
+		t.Fatal("expected_nested_credentials_to_be_redacted")
+	}
+	if nested["challenges"] != "[REDACTED]" {
+		t.Fatal("expected_nested_challenges_to_be_redacted")
 	}
 	if nested["safe"] != "ok" {
 		t.Fatal("expected_safe_nested_field_to_be_preserved")

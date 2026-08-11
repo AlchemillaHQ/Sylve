@@ -163,6 +163,10 @@ func isProtectedSystemUser(username string) bool {
 	}
 }
 
+func (s *Service) revokeUserTokens(db *gorm.DB, userID uint) error {
+	return db.Where("user_id = ?", userID).Delete(&models.Token{}).Error
+}
+
 func (s *Service) DeleteUser(userID uint) error {
 	user, err := s.GetUserByID(userID)
 	if err != nil {
@@ -245,20 +249,33 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 		}
 	}
 
+	hashedPassword := ""
+	if opts.Password != "" {
+		hashedPassword, err = utils.HashPassword(opts.Password)
+		if err != nil {
+			return userInternalError("password_hash_failed", err)
+		}
+	}
+
 	updates := map[string]any{
 		"full_name": opts.FullName,
 		"username":  opts.Username,
 		"email":     opts.Email,
 		"admin":     opts.Admin,
 	}
-	if opts.Password != "" {
-		hashed, err := utils.HashPassword(opts.Password)
-		if err != nil {
-			return userInternalError("password_hash_failed", err)
-		}
-		updates["password"] = hashed
+	if hashedPassword != "" {
+		updates["password"] = hashedPassword
 	}
-	if err := s.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+	revokeSessions := opts.Username != user.Username || opts.Admin != user.Admin || opts.Password != ""
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if revokeSessions {
+			return s.revokeUserTokens(tx, user.ID)
+		}
+		return nil
+	}); err != nil {
 		return userInternalError("user_update_failed", err)
 	}
 

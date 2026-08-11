@@ -17,6 +17,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	hub "github.com/alchemillahq/sylve/internal/events"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/gin-gonic/gin"
 )
@@ -106,24 +107,15 @@ func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 	}
 }
 
-func StreamSSE(authService *authService.Service) gin.HandlerFunc {
+func StreamSSE() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		sseToken := c.Query("sse_token")
-		if sseToken == "" {
-			c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
+		expiresAt, ok := c.Get(middleware.SSEExpiresAtContextKey)
+		expiry, validExpiry := expiresAt.(time.Time)
+		if !ok || !validExpiry || expiry.IsZero() {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "missing_sse_token",
-				Error:   "missing_sse_token",
-				Data:    nil,
-			})
-			return
-		}
-
-		if _, err := authService.ValidateScopedJWT(sseToken, "sse"); err != nil {
-			c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_sse_token",
-				Error:   err.Error(),
+				Message: "sse_expiry_unavailable",
+				Error:   "sse_expiry_unavailable",
 				Data:    nil,
 			})
 			return
@@ -158,7 +150,7 @@ func StreamSSE(authService *authService.Service) gin.HandlerFunc {
 		heartbeat := time.NewTicker(25 * time.Second)
 		defer heartbeat.Stop()
 
-		session := time.NewTimer(600 * time.Second)
+		session := time.NewTimer(time.Until(expiry))
 		defer session.Stop()
 
 		for {

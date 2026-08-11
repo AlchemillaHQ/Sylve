@@ -614,41 +614,44 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 	return claims.CustomClaims, nil
 }
 
-func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceInterfaces.CustomClaims, error) {
+func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceInterfaces.ScopedValidationResult, error) {
 	if expectedScope == "" {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("scope_required")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("scope_required")
 	}
 
 	secret, err := s.GetJWTSecret()
 	if err != nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_secret_not_found")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_secret_not_found")
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &ScopedJWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_invalid")
 	}
 
 	claims, ok := token.Claims.(*ScopedJWT)
 	if !ok || !token.Valid {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_invalid")
 	}
 
 	if claims.Scope != expectedScope {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_scope")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("invalid_scope")
 	}
 
 	if claims.ExpiresAt == nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_invalid")
 	}
 
 	if time.Now().After(claims.ExpiresAt.Time) {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_expired")
 	}
 
-	return claims.CustomClaims, nil
+	return serviceInterfaces.ScopedValidationResult{
+		CustomClaims: claims.CustomClaims,
+		ExpiresAt:    claims.ExpiresAt.Time,
+	}, nil
 }
 
 func (s *Service) InitSecret(name string, shaRounds int) error {

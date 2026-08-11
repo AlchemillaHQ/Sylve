@@ -136,6 +136,7 @@ func TestUserPasskeyManagementAllowsCleanupForIneligibleUser(t *testing.T) {
 	if err := svc.DB.Create(&record).Error; err != nil {
 		t.Fatalf("failed_to_seed_credential: %v", err)
 	}
+	seedUserToken(t, svc, user.ID, "passkey-session")
 
 	passkeys, err := svc.ListUserPasskeys(user.ID)
 	if err != nil {
@@ -151,6 +152,9 @@ func TestUserPasskeyManagementAllowsCleanupForIneligibleUser(t *testing.T) {
 	}
 	if deleted.UserID != user.ID || deleted.CredentialID != credentialID || deleted.Label != "Old key" {
 		t.Fatalf("unexpected_deleted_identity: %+v", deleted)
+	}
+	if got := userTokenCount(t, svc, user.ID); got != 1 {
+		t.Fatalf("passkey deletion changed session count: %d", got)
 	}
 
 	if _, err := svc.DeleteUserPasskey(user.ID, credentialID); err == nil || err.Error() != "credential_not_found" {

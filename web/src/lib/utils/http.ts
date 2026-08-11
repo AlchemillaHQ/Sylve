@@ -69,8 +69,11 @@ export async function apiRequest<T extends z.ZodType>(
     body?: unknown,
     options?: APIRequestOptions
 ): Promise<z.infer<T> | APIResponse> {
+    const auditHostname = options?.hostname || null;
+
     function setReloadFlag() {
         if (method !== 'GET' && !options?.skipAuditLog) {
+            reload.auditLogHostname = auditHostname;
             reload.auditLog = true;
         }
     }

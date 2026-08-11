@@ -9,6 +9,7 @@
 	import type { User } from '$lib/types/auth';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
+	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -42,6 +43,10 @@
 
 	let properties = $state(makeDefaults());
 	let loading = $state(false);
+	let componentActive = true;
+	onDestroy(() => {
+		componentActive = false;
+	});
 
 	function reset() {
 		properties = makeDefaults();
@@ -78,6 +83,10 @@
 			return;
 		}
 
+		const requestEdit = edit;
+		const requestUserID = requestEdit ? user?.id : undefined;
+		if (requestEdit && requestUserID === undefined) return;
+
 		const payload = {
 			fullName: properties.fullName,
 			username: properties.username,
@@ -85,13 +94,22 @@
 			password: properties.password,
 			admin: properties.admin
 		};
+		const requestHostname = hostname;
 
 		loading = true;
 		try {
 			const response =
-				edit && user
-					? await editUser(user.id, payload, { hostname })
-					: await createUser(payload, { hostname });
+				requestEdit && requestUserID !== undefined
+					? await editUser(requestUserID, payload, { hostname: requestHostname })
+					: await createUser(payload, { hostname: requestHostname });
+
+			if (
+				!componentActive ||
+				hostname !== requestHostname ||
+				edit !== requestEdit ||
+				(requestEdit && user?.id !== requestUserID)
+			)
+				return;
 
 			if (isAPIResponse(response)) {
 				handleAPIError(response);
@@ -106,6 +124,7 @@
 			open = false;
 			reset();
 		} catch (error) {
+			if (!componentActive || hostname !== requestHostname) return;
 			console.error('User mutation failed:', error);
 			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
 				position: 'bottom-center'

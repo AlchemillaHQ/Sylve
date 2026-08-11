@@ -21,6 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const SSEExpiresAtContextKey = "SSEExpiresAt"
+
 func isVMConsoleWebSocketPath(path string) bool {
 	const prefix = "/api/vm/"
 	const suffix = "/console"
@@ -262,6 +264,7 @@ func AuthenticateSSE(authService *authSvc.Service) gin.HandlerFunc {
 		c.Set("UserID", claims.UserID)
 		c.Set("Username", claims.Username)
 		c.Set("AuthType", claims.AuthType)
+		c.Set(SSEExpiresAtContextKey, claims.ExpiresAt)
 		c.Next()
 	}
 }
