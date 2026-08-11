@@ -268,9 +268,9 @@ func TestFileExplorerDownloadRequiresAuthenticatedCurrentAdmin(t *testing.T) {
 	if err := database.Model(&models.User{}).Where("id = ?", user.ID).Update("admin", false).Error; err != nil {
 		t.Fatalf("demote user: %v", err)
 	}
-	forbidden := testutil.PerformRequest(t, router, http.MethodGet, hashEndpoint, nil, nil)
-	if forbidden.Code != http.StatusForbidden {
-		t.Fatalf("demoted user status = %d; want %d", forbidden.Code, http.StatusForbidden)
+	unauthorized := testutil.PerformRequest(t, router, http.MethodGet, hashEndpoint, nil, nil)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("demoted user status = %d; want %d", unauthorized.Code, http.StatusUnauthorized)
 	}
 }
 

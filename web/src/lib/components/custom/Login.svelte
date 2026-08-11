@@ -21,8 +21,8 @@
 			type: string,
 			remember: boolean,
 			toLoginPath: string
-		) => void;
-		onPasskeyLogin: (remember: boolean, toLoginPath: string) => void;
+		) => void | Promise<void>;
+		onPasskeyLogin: (remember: boolean, toLoginPath: string) => void | Promise<void>;
 		loading: boolean;
 		loadingPasskey: boolean;
 	}
@@ -71,14 +71,30 @@
 		}
 	);
 
+	async function submitPasswordLogin() {
+		if (loading || loadingPasskey) return;
+
+		try {
+			await onLogin(username, password, authType, remember, toLoginPath);
+		} catch (error) {
+			console.error('Login error:', error);
+		}
+	}
+
+	async function submitPasskeyLogin() {
+		if (loading || loadingPasskey) return;
+
+		try {
+			await onPasskeyLogin(remember, toLoginPath);
+		} catch (error) {
+			console.error('Passkey login error:', error);
+		}
+	}
+
 	async function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter') {
+		if (event.key === 'Enter' && !loading && !loadingPasskey) {
 			event.preventDefault();
-			try {
-				onLogin(username, password, authType, remember, toLoginPath);
-			} catch (error) {
-				console.error('Login error:', error);
-			}
+			await submitPasswordLogin();
 		}
 	}
 
@@ -141,7 +157,9 @@
 						aria-pressed={passwordVisible}
 					>
 						<span
-							class={passwordVisible ? 'icon-[lucide--eye-off] size-4' : 'icon-[lucide--eye] size-4'}
+							class={passwordVisible
+								? 'icon-[lucide--eye-off] size-4'
+								: 'icon-[lucide--eye] size-4'}
 							aria-hidden="true"
 						></span>
 					</button>
@@ -193,9 +211,8 @@
 			</div>
 			<div class="flex items-center gap-2">
 				<Button
-					onclick={() => {
-						onPasskeyLogin(remember, toLoginPath);
-					}}
+					onclick={submitPasskeyLogin}
+					disabled={loading || loadingPasskey}
 					size="sm"
 					variant="outline"
 					class="rounded-md"
@@ -252,9 +269,8 @@
 				</Button>
 
 				<Button
-					onclick={() => {
-						onLogin(username, password, authType, remember, toLoginPath);
-					}}
+					onclick={submitPasswordLogin}
+					disabled={loading || loadingPasskey}
 					size="sm"
 					class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
 				>

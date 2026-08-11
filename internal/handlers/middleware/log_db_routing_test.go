@@ -120,3 +120,27 @@ func TestRequestLoggerMiddlewareWritesAuditToTelemetryDB(t *testing.T) {
 		t.Fatalf("expected 1 telemetry db audit row, got %d", telemetryCount)
 	}
 }
+
+func TestRequestLoggerMiddlewareSkipsRoutineSSETokenIssuance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	router := gin.New()
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+	router.POST("/api/auth/sse-tokens", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+	})
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/auth/sse-tokens", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	var count int64
+	if err := auditDB.Model(&infoModels.AuditRecord{}).Count(&count).Error; err != nil {
+		t.Fatalf("count audit records: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("audit record count=%d want=0", count)
+	}
+}

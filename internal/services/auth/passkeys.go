@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/go-webauthn/webauthn/protocol"
@@ -40,6 +41,21 @@ type PasskeyCredentialInfo struct {
 	Label        string    `json:"label"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+func IsPasskeyRegistrationEligible(user models.User) bool {
+	return user.Admin && strings.TrimSpace(user.Password) != ""
+}
+
+func passkeyCredentialInfo(record models.WebAuthnCredential) PasskeyCredentialInfo {
+	return PasskeyCredentialInfo{
+		ID:           record.ID,
+		UserID:       record.UserID,
+		CredentialID: record.CredentialID,
+		Label:        record.Label,
+		CreatedAt:    record.CreatedAt,
+		UpdatedAt:    record.UpdatedAt,
+	}
 }
 
 type passkeyUser struct {
@@ -89,7 +105,7 @@ func parsePasskeyUserHandle(userHandle []byte) (uint, error) {
 	}
 
 	id, err := strconv.ParseUint(string(userHandle), 10, 64)
-	if err != nil {
+	if err != nil || id == 0 || uint64(uint(id)) != id {
 		return 0, fmt.Errorf("invalid_user_handle")
 	}
 
@@ -160,18 +176,34 @@ func (s *Service) loadPasskeyChallenge(requestID, challengeType string) (*models
 	return &challenge, &session, nil
 }
 
-func (s *Service) loadPasskeyUser(userID uint) (*passkeyUser, error) {
+func (s *Service) loadPasskeyTargetUser(userID uint) (models.User, error) {
+	if userID == 0 {
+		return models.User{}, fmt.Errorf("invalid_user_id")
+	}
+
 	var user models.User
 	if err := s.DB.First(&user, userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("user_not_found")
+			return models.User{}, fmt.Errorf("user_not_found")
 		}
 
-		return nil, fmt.Errorf("failed_to_load_user")
+		return models.User{}, fmt.Errorf("failed_to_load_user")
 	}
 
+	return user, nil
+}
+
+func (s *Service) loadPasskeyUser(userID uint) (*passkeyUser, error) {
+	user, err := s.loadPasskeyTargetUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.loadPasskeyUserCredentials(user)
+}
+
+func (s *Service) loadPasskeyUserCredentials(user models.User) (*passkeyUser, error) {
 	var records []models.WebAuthnCredential
-	if err := s.DB.Where("user_id = ?", userID).Find(&records).Error; err != nil {
+	if err := s.DB.Where("user_id = ?", user.ID).Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_load_credentials")
 	}
 
@@ -192,7 +224,14 @@ func (s *Service) loadPasskeyUser(userID uint) (*passkeyUser, error) {
 }
 
 func (s *Service) BeginPasskeyRegistration(userID uint, rpID, origin string) (string, any, error) {
-	user, err := s.loadPasskeyUser(userID)
+	target, err := s.loadPasskeyTargetUser(userID)
+	if err != nil {
+		return "", nil, err
+	}
+	if !IsPasskeyRegistrationEligible(target) {
+		return "", nil, fmt.Errorf("passkey_registration_not_allowed")
+	}
+	user, err := s.loadPasskeyUserCredentials(target)
 	if err != nil {
 		return "", nil, err
 	}
@@ -225,43 +264,58 @@ func (s *Service) BeginPasskeyRegistration(userID uint, rpID, origin string) (st
 	return requestID, creation.Response, nil
 }
 
-func (s *Service) FinishPasskeyRegistration(requestID string, credentialRaw json.RawMessage, label string, rpID, origin string) error {
+func (s *Service) FinishPasskeyRegistration(requestID string, credentialRaw json.RawMessage, label string, rpID, origin string) (PasskeyCredentialInfo, error) {
+	trimmedLabel := strings.TrimSpace(label)
+	if trimmedLabel == "" {
+		return PasskeyCredentialInfo{}, fmt.Errorf("passkey_label_required")
+	}
+	if utf8.RuneCountInString(trimmedLabel) > 128 {
+		return PasskeyCredentialInfo{}, fmt.Errorf("passkey_label_too_long")
+	}
+
 	challenge, session, err := s.loadPasskeyChallenge(requestID, passkeyChallengeTypeRegister)
 	if err != nil {
-		return err
+		return PasskeyCredentialInfo{}, err
 	}
 
 	if challenge.UserID == nil {
-		return fmt.Errorf("challenge_user_not_found")
+		return PasskeyCredentialInfo{}, fmt.Errorf("challenge_user_not_found")
 	}
 
-	user, err := s.loadPasskeyUser(*challenge.UserID)
+	target, err := s.loadPasskeyTargetUser(*challenge.UserID)
 	if err != nil {
-		return err
+		return PasskeyCredentialInfo{}, err
+	}
+	if !IsPasskeyRegistrationEligible(target) {
+		return PasskeyCredentialInfo{}, fmt.Errorf("passkey_registration_not_allowed")
+	}
+	user, err := s.loadPasskeyUserCredentials(target)
+	if err != nil {
+		return PasskeyCredentialInfo{}, err
 	}
 
 	w, err := s.newWebAuthn(rpID, origin)
 	if err != nil {
-		return fmt.Errorf("failed_to_initialize_webauthn")
+		return PasskeyCredentialInfo{}, fmt.Errorf("failed_to_initialize_webauthn")
 	}
 
 	request, err := credentialJSONRequest(credentialRaw)
 	if err != nil {
-		return err
+		return PasskeyCredentialInfo{}, err
 	}
 
 	credential, err := w.FinishRegistration(user, *session, request)
 	if err != nil {
-		return fmt.Errorf("invalid_passkey_registration")
+		return PasskeyCredentialInfo{}, fmt.Errorf("invalid_passkey_registration")
 	}
 
 	data, err := json.Marshal(credential)
 	if err != nil {
-		return fmt.Errorf("failed_to_encode_credential")
+		return PasskeyCredentialInfo{}, fmt.Errorf("failed_to_encode_credential")
 	}
 
 	credentialID := encodeCredentialID(credential.ID)
-	trimmedLabel := strings.TrimSpace(label)
+	var record models.WebAuthnCredential
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var count int64
@@ -273,7 +327,7 @@ func (s *Service) FinishPasskeyRegistration(requestID string, credentialRaw json
 			return fmt.Errorf("passkey_limit_reached")
 		}
 
-		record := models.WebAuthnCredential{
+		record = models.WebAuthnCredential{
 			UserID:       user.model.ID,
 			CredentialID: credentialID,
 			Label:        trimmedLabel,
@@ -300,10 +354,10 @@ func (s *Service) FinishPasskeyRegistration(requestID string, credentialRaw json
 
 		return nil
 	}); err != nil {
-		return err
+		return PasskeyCredentialInfo{}, err
 	}
 
-	return nil
+	return passkeyCredentialInfo(record), nil
 }
 
 func (s *Service) BeginPasskeyLogin(rpID, origin string) (string, any, error) {
@@ -386,6 +440,9 @@ func (s *Service) FinishPasskeyLogin(requestID string, credentialRaw json.RawMes
 	if !loaded.model.Admin {
 		return models.User{}, "", fmt.Errorf("only_admin_allowed")
 	}
+	if loaded.model.Locked {
+		return models.User{}, "", fmt.Errorf("account_locked")
+	}
 
 	data, err := json.Marshal(validatedCredential)
 	if err != nil {
@@ -416,6 +473,10 @@ func (s *Service) FinishPasskeyLogin(requestID string, credentialRaw json.RawMes
 }
 
 func (s *Service) ListUserPasskeys(userID uint) ([]PasskeyCredentialInfo, error) {
+	if _, err := s.loadPasskeyTargetUser(userID); err != nil {
+		return nil, err
+	}
+
 	var records []models.WebAuthnCredential
 	if err := s.DB.Where("user_id = ?", userID).Order("created_at desc").Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_passkeys")
@@ -423,32 +484,40 @@ func (s *Service) ListUserPasskeys(userID uint) ([]PasskeyCredentialInfo, error)
 
 	out := make([]PasskeyCredentialInfo, 0, len(records))
 	for _, record := range records {
-		out = append(out, PasskeyCredentialInfo{
-			ID:           record.ID,
-			UserID:       record.UserID,
-			CredentialID: record.CredentialID,
-			Label:        record.Label,
-			CreatedAt:    record.CreatedAt,
-			UpdatedAt:    record.UpdatedAt,
-		})
+		out = append(out, passkeyCredentialInfo(record))
 	}
 
 	return out, nil
 }
 
-func (s *Service) DeleteUserPasskey(userID uint, credentialID string) error {
+func (s *Service) DeleteUserPasskey(userID uint, credentialID string) (PasskeyCredentialInfo, error) {
+	if _, err := s.loadPasskeyTargetUser(userID); err != nil {
+		return PasskeyCredentialInfo{}, err
+	}
+
 	credentialID = strings.TrimSpace(credentialID)
 	if credentialID == "" {
-		return fmt.Errorf("invalid_credential_id")
+		return PasskeyCredentialInfo{}, fmt.Errorf("invalid_credential_id")
+	}
+	if _, err := base64.RawURLEncoding.DecodeString(credentialID); err != nil {
+		return PasskeyCredentialInfo{}, fmt.Errorf("invalid_credential_id")
 	}
 
-	result := s.DB.Where("user_id = ? AND credential_id = ?", userID, credentialID).Delete(&models.WebAuthnCredential{})
+	var record models.WebAuthnCredential
+	if err := s.DB.Where("user_id = ? AND credential_id = ?", userID, credentialID).First(&record).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return PasskeyCredentialInfo{}, fmt.Errorf("credential_not_found")
+		}
+		return PasskeyCredentialInfo{}, fmt.Errorf("failed_to_load_credential")
+	}
+
+	result := s.DB.Delete(&record)
 	if result.Error != nil {
-		return fmt.Errorf("failed_to_delete_passkey")
+		return PasskeyCredentialInfo{}, fmt.Errorf("failed_to_delete_passkey")
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("credential_not_found")
+		return PasskeyCredentialInfo{}, fmt.Errorf("credential_not_found")
 	}
 
-	return nil
+	return passkeyCredentialInfo(record), nil
 }

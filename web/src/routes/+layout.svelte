@@ -61,12 +61,9 @@
 		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
 
-		const [validToken, validClusterToken] = await Promise.all([
-			isTokenValid(),
-			isClusterTokenValid()
-		]);
+		const [validToken] = await Promise.all([isTokenValid(), isClusterTokenValid()]);
 
-		if (validToken && validClusterToken) {
+		if (validToken) {
 			void startSSEEvents();
 
 			loading.initialization = true;

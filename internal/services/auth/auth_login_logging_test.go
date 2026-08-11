@@ -10,6 +10,7 @@ package auth
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -150,8 +151,12 @@ func TestCreateJWTLogsRateLimitState(t *testing.T) {
 		_, _, _ = service.CreateJWT("admin", "wrong-secret", "sylve", false)
 	}
 	_, _, err := service.CreateJWT("admin", "wrong-secret", "sylve", false)
-	if err == nil || !strings.HasPrefix(err.Error(), "too_many_attempts") {
+	var rateLimitErr *LoginRateLimitError
+	if err == nil || !errors.As(err, &rateLimitErr) {
 		t.Fatalf("expected rate-limit error, got: %v", err)
+	}
+	if rateLimitErr.RetryAfter <= 0 || rateLimitErr.RetryAfter > loginBlockDuration {
+		t.Fatalf("unexpected retry duration: %s", rateLimitErr.RetryAfter)
 	}
 
 	output := logs.String()
@@ -237,5 +242,88 @@ func TestRecordFailedLoginReturnsBlockedSnapshot(t *testing.T) {
 	}
 	if attempt.blockedUntil.Before(time.Now()) {
 		t.Fatalf("expected future block expiry, got: %s", attempt.blockedUntil)
+	}
+}
+
+func TestCreateJWTRejectsIneligibleLocalAdministrators(t *testing.T) {
+	tests := []struct {
+		name          string
+		configureUser func(*models.User)
+		wantError     string
+		wantReason    string
+	}{
+		{
+			name: "locked account",
+			configureUser: func(user *models.User) {
+				user.Locked = true
+			},
+			wantError:  "account_locked",
+			wantReason: "account_locked",
+		},
+		{
+			name: "password authentication disabled",
+			configureUser: func(user *models.User) {
+				user.DisablePassword = true
+			},
+			wantError:  "password_auth_disabled",
+			wantReason: "password_auth_disabled",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			logs := captureAuthLogs(t)
+			service := newAuthTestService(t)
+			user := createLoginTestUser(t, service, "admin", "matching-secret", true)
+			test.configureUser(&user)
+			if err := service.DB.Save(&user).Error; err != nil {
+				t.Fatalf("update test user: %v", err)
+			}
+
+			_, _, err := service.CreateJWT("admin", "matching-secret", "sylve", false)
+			if err == nil || err.Error() != test.wantError {
+				t.Fatalf("expected %s, got: %v", test.wantError, err)
+			}
+			requireLogField(t, logs.String(), "reason", test.wantReason)
+		})
+	}
+}
+
+func TestPruneLoginAttemptsRemovesOnlyExpiredEntries(t *testing.T) {
+	now := time.Now()
+	service := &Service{loginAttempts: map[string]*loginAttempt{
+		"stale": {
+			count:       1,
+			lastAttempt: now.Add(-loginBlockDuration),
+		},
+		"blocked-stale": {
+			count:        maxLoginAttempts,
+			lastAttempt:  now.Add(-loginBlockDuration),
+			blockedUntil: now.Add(-time.Second),
+		},
+		"blocked-active": {
+			count:        maxLoginAttempts,
+			lastAttempt:  now.Add(-loginBlockDuration),
+			blockedUntil: now.Add(time.Minute),
+		},
+		"recent": {
+			count:       1,
+			lastAttempt: now.Add(-time.Minute),
+		},
+	}}
+
+	service.pruneLoginAttempts(now)
+
+	if _, exists := service.loginAttempts["stale"]; exists {
+		t.Fatal("stale login attempt was not pruned")
+	}
+	if _, exists := service.loginAttempts["blocked-stale"]; exists {
+		t.Fatal("expired blocked login attempt was not pruned")
+	}
+	if _, exists := service.loginAttempts["blocked-active"]; !exists {
+		t.Fatal("active block was pruned")
+	}
+	if _, exists := service.loginAttempts["recent"]; !exists {
+		t.Fatal("recent login attempt was pruned")
 	}
 }

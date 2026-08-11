@@ -44,6 +44,9 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		want bool
 	}{
 		{path: "/api/auth/login", want: true},
+		{path: "/api/auth/passkeys/login/begin", want: true},
+		{path: "/api/auth/passkeys/register/begin", want: false},
+		{path: "/api/auth/passkeys/register/finish", want: true},
 		{path: "/api/cluster", want: true},
 		{path: "/api/cluster/join", want: true},
 		{path: "/api/cluster/backups/jobs", want: false},
@@ -62,6 +65,53 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		if got := shouldRedactAuditPayload(tc.path); got != tc.want {
 			t.Fatalf("path=%s expected=%v got=%v", tc.path, tc.want, got)
 		}
+	}
+}
+
+func TestPasskeyRegistrationAuditKeepsOnlySafeManagementIdentity(t *testing.T) {
+	if !shouldRedactAuditResponse("/api/auth/passkeys/register/begin") {
+		t.Fatal("registration challenge response must be redacted")
+	}
+	if shouldRedactAuditResponse("/api/auth/passkeys/register/finish") {
+		t.Fatal("safe registration result should remain available to audit presentation")
+	}
+
+	beginBody := sanitizeAuditPayloadForPath(
+		"/api/auth/passkeys/register/begin",
+		map[string]interface{}{"userId": float64(7)},
+	)
+	beginMap, ok := beginBody.(map[string]interface{})
+	if !ok || beginMap["userId"] != float64(7) {
+		t.Fatalf("registration begin lost safe user identity: %+v", beginBody)
+	}
+
+	finishResponse := sanitizeAuditResponseForPath(
+		"/api/auth/passkeys/register/finish",
+		map[string]interface{}{
+			"status":  "success",
+			"message": "passkey_registered_successfully",
+			"error":   "",
+			"data": map[string]interface{}{
+				"userId":       float64(7),
+				"credentialId": "Y3JlZGVudGlhbA",
+				"label":        "Laptop",
+				"credential":   "must-not-be-stored",
+			},
+		},
+	)
+	responseMap, ok := finishResponse.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected passkey response type: %T", finishResponse)
+	}
+	data, ok := responseMap["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected passkey response data: %+v", responseMap)
+	}
+	if data["userId"] != float64(7) || data["credentialId"] != "Y3JlZGVudGlhbA" || data["label"] != "Laptop" {
+		t.Fatalf("safe passkey identity was not retained: %+v", data)
+	}
+	if data["credential"] != "[REDACTED]" {
+		t.Fatalf("raw credential was retained: %+v", data)
 	}
 }
 
@@ -830,8 +880,9 @@ func TestRequestLoggerPreservesBodyLimitErrorForHandler(t *testing.T) {
 
 func TestSanitizeAuditPayloadNested(t *testing.T) {
 	input := map[string]interface{}{
-		"username": "admin",
-		"password": "super-secret",
+		"username":    "admin",
+		"password":    "super-secret",
+		"sambaAction": "upsert",
 		"nested": map[string]interface{}{
 			"token": "abc",
 			"safe":  "ok",
@@ -851,6 +902,9 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 
 	if out["password"] != "[REDACTED]" {
 		t.Fatal("expected_password_to_be_redacted")
+	}
+	if out["sambaAction"] != "upsert" {
+		t.Fatal("expected_safe_samba_intent_to_be_preserved")
 	}
 
 	nested, ok := out["nested"].(map[string]interface{})

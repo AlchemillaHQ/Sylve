@@ -43,7 +43,7 @@ import (
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
 	zfsHandlers "github.com/alchemillahq/sylve/internal/handlers/zfs"
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
+	authServicePkg "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskServicePkg "github.com/alchemillahq/sylve/internal/services/disk"
@@ -88,7 +88,7 @@ import (
 func RegisterRoutes(r *gin.Engine,
 	environment internal.Environment,
 	proxyToVite bool,
-	authService *authService.Service,
+	authService *authServicePkg.Service,
 	infoService *infoService.Service,
 	zfsService *zfsService.Service,
 	diskService *diskServicePkg.Service,
@@ -716,13 +716,14 @@ func RegisterRoutes(r *gin.Engine,
 
 	auth := api.Group("/auth")
 	auth.Use(middleware.EnsureAuthenticated(authService))
+	auth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		auth.POST("/login", authHandlers.LoginHandler(authService))
 		auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
 		auth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
-		auth.GET("/logout", authHandlers.LogoutHandler(authService))
-		auth.GET("/sse-token", eventsHandlers.CreateSSEToken(authService))
+		auth.POST("/logout", authHandlers.LogoutHandler(authService))
+		auth.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
 	}
 
 	events := api.Group("/events")
@@ -765,8 +766,10 @@ func RegisterRoutes(r *gin.Engine,
 		users.POST("", authHandlers.CreateUserHandler(authService))
 		users.POST("/import", authHandlers.ImportUserHandler(authService))
 		users.POST("/pam", authHandlers.CreatePamUserHandler(authService))
-		users.DELETE("/:id", authHandlers.DeleteUserHandler(authService))
-		users.PUT("", authHandlers.EditUserHandler(authService))
+		users.GET("/:userId/passkeys", authHandlers.ListUserPasskeysHandler(authService))
+		users.DELETE("/:userId/passkeys/:credentialId", authHandlers.DeleteUserPasskeyHandler(authService))
+		users.DELETE("/:userId", authHandlers.DeleteUserHandler(authService))
+		users.PUT("/:userId", authHandlers.EditUserHandler(authService))
 	}
 
 	groups := auth.Group("/groups")
@@ -775,9 +778,8 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		groups.GET("", authHandlers.ListGroupsHandler(authService))
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
-		groups.DELETE("/:id", authHandlers.DeleteGroupHandler(authService))
-		groups.POST("/users", authHandlers.AddUsersToGroupHandler(authService))
-		groups.PUT("/users", authHandlers.UpdateGroupMembersHandler(authService))
+		groups.DELETE("/:groupId", authHandlers.DeleteGroupHandler(authService))
+		groups.PUT("/:groupId/members", authHandlers.UpdateGroupMembersHandler(authService))
 	}
 
 	passkeys := auth.Group("/passkeys")
@@ -786,8 +788,6 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		passkeys.POST("/register/begin", authHandlers.BeginPasskeyRegistrationHandler(authService))
 		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))
-		passkeys.GET("/users/:id", authHandlers.ListUserPasskeysHandler(authService))
-		passkeys.DELETE("/users/:id/:credentialId", authHandlers.DeleteUserPasskeyHandler(authService))
 	}
 
 	intraCluster := api.Group("/intra-cluster")

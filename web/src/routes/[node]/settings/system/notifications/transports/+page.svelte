@@ -11,20 +11,27 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { User } from '$lib/types/auth';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NotificationConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource } from 'runed';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		config: NotificationConfig;
 		users: User[];
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
 
 	// svelte-ignore state_referenced_locally
 	let configResource = resource(
@@ -60,7 +67,13 @@
 			title: 'Type',
 			formatter: (cell: CellComponent) => {
 				const v = cell.getValue();
-				return v === 'ntfy' ? 'ntfy' : v === 'smtp' ? 'SMTP' : v === 'discord' ? 'Discord' : v || '-';
+				return v === 'ntfy'
+					? 'ntfy'
+					: v === 'smtp'
+						? 'SMTP'
+						: v === 'discord'
+							? 'Discord'
+							: v || '-';
 			}
 		},
 		{

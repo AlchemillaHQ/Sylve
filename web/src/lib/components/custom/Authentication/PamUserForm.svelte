@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { addFileOrFolder, getFiles } from '$lib/api/system/file-explorer';
-	import { editUser, createPamUser, getUserCapabilities, getNextUID } from '$lib/api/auth/local';
+	import {
+		editUser,
+		createPamUser,
+		getUserCapabilities,
+		getNextUID,
+		type UserPayload
+	} from '$lib/api/auth/local';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -11,10 +17,12 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import type { Group, User } from '$lib/types/auth';
+	import type { Group, SambaAction, User } from '$lib/types/auth';
 	import type { FileNode } from '$lib/types/system/file-explorer';
-	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
+	import { watch } from 'runed';
+	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -24,6 +32,7 @@
 		user?: User;
 		edit?: boolean;
 		reload?: boolean;
+		hostname: string;
 	}
 
 	let {
@@ -32,7 +41,8 @@
 		groups,
 		user,
 		edit = true,
-		reload = $bindable()
+		reload = $bindable(),
+		hostname
 	}: Props = $props();
 
 	const shellOptions = [
@@ -42,6 +52,11 @@
 		{ value: '/usr/local/bin/bash', label: '/usr/local/bin/bash' },
 		{ value: '/usr/local/bin/zsh', label: '/usr/local/bin/zsh' },
 		{ value: '/usr/sbin/nologin', label: '/usr/sbin/nologin' }
+	];
+	const sambaActionOptions = [
+		{ value: 'keep', label: 'Keep current Samba state' },
+		{ value: 'upsert', label: 'Create or update Samba user' },
+		{ value: 'remove', label: 'Remove Samba user' }
 	];
 
 	let groupOptions = $derived(groups.map((g) => ({ value: String(g.id), label: g.name })));
@@ -90,7 +105,8 @@
 			disablePassword: user?.disablePassword ?? false,
 			locked: user?.locked ?? false,
 			doasEnabled: user?.doasEnabled ?? false,
-			createSamba: false
+			createSamba: false,
+			sambaAction: { open: false, value: 'keep' as SambaAction }
 		};
 	}
 
@@ -98,26 +114,87 @@
 	let activeTab = $state('identity');
 	let doasAvailable = $state(false);
 	let loading = $state(false);
+	let capabilitiesLoading = $state(false);
+	let uidLoading = $state(false);
+	let capabilitiesController: AbortController | null = null;
+	let uidController: AbortController | null = null;
+	let directoryController: AbortController | null = null;
 
-	$effect(() => {
-		if (open) {
-			getUserCapabilities().then((res) => {
-				if (res && !res.error && res.data) {
-					doasAvailable = res.data.doasAvailable;
-				}
+	function cancelMetadataLoads() {
+		capabilitiesController?.abort();
+		uidController?.abort();
+		directoryController?.abort();
+		capabilitiesController = null;
+		uidController = null;
+		directoryController = null;
+		capabilitiesLoading = false;
+		uidLoading = false;
+	}
+
+	async function loadCapabilities() {
+		capabilitiesController?.abort();
+		const controller = new AbortController();
+		capabilitiesController = controller;
+		capabilitiesLoading = true;
+		try {
+			const response = await getUserCapabilities({ hostname, signal: controller.signal });
+			if (controller.signal.aborted) return;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to load user-management capabilities', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			doasAvailable = response.doasAvailable;
+		} catch (error) {
+			if (isRequestCancellation(error)) return;
+			toast.error('Failed to load user-management capabilities', {
+				position: 'bottom-center'
 			});
+		} finally {
+			if (capabilitiesController === controller) {
+				capabilitiesController = null;
+				capabilitiesLoading = false;
+			}
 		}
+	}
+
+	async function loadNextUID() {
+		uidController?.abort();
+		const controller = new AbortController();
+		uidController = controller;
+		uidLoading = true;
+		try {
+			const response = await getNextUID({ hostname, signal: controller.signal });
+			if (controller.signal.aborted) return;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to load the next available UID', { position: 'bottom-center' });
+				return;
+			}
+			properties.uid = response.nextUID;
+		} catch (error) {
+			if (isRequestCancellation(error)) return;
+			toast.error('Failed to load the next available UID', { position: 'bottom-center' });
+		} finally {
+			if (uidController === controller) {
+				uidController = null;
+				uidLoading = false;
+			}
+		}
+	}
+
+	watch([() => open, () => hostname, () => edit, () => user?.id], ([isOpen]) => {
+		cancelMetadataLoads();
+		if (!isOpen) return;
+		doasAvailable = false;
+		properties = makeDefaults();
+		loadCapabilities();
+		if (!edit) loadNextUID();
 	});
 
-	$effect(() => {
-		if (open && !edit) {
-			getNextUID().then((res) => {
-				if (res && !res.error && res.data) {
-					properties.uid = res.data.nextUID;
-				}
-			});
-		}
-	});
+	onDestroy(cancelMetadataLoads);
 
 	const tabs = [
 		{ value: 'identity', label: 'Identity' },
@@ -144,6 +221,7 @@
 		'/net',
 		'/proc',
 		'/rescue',
+		'/root',
 		'/sbin',
 		'/sys',
 		'/usr',
@@ -180,22 +258,32 @@
 	}
 
 	async function loadDir(path: string) {
+		directoryController?.abort();
+		const controller = new AbortController();
+		directoryController = controller;
 		dirPicker.loading = true;
 		dirPicker.currentPath = path;
 		try {
-			const all = await getFiles(path === '/' ? undefined : path);
+			const all = await getFiles(path === '/' ? undefined : path, hostname, controller.signal);
+			if (controller.signal.aborted) return;
 			if (isAPIResponse(all)) {
 				handleAPIError(all);
+				toast.error('Failed to load directories', { position: 'bottom-center' });
 				dirPicker.items = [];
 				return;
 			}
 			dirPicker.items = all.filter(
 				(f) => f.type === 'folder' && (path !== '/' || !hiddenRootDirs.has(f.id))
 			);
-		} catch {
+		} catch (error) {
+			if (isRequestCancellation(error)) return;
+			toast.error('Failed to load directories', { position: 'bottom-center' });
 			dirPicker.items = [];
 		} finally {
-			dirPicker.loading = false;
+			if (directoryController === controller || directoryController === null) {
+				directoryController = null;
+				dirPicker.loading = false;
+			}
 		}
 	}
 
@@ -225,9 +313,10 @@
 			newFolderInput.active = false;
 			return;
 		}
-		const res = await addFileOrFolder(newFolderInput.parentPath, name, true);
+		const res = await addFileOrFolder(newFolderInput.parentPath, name, true, hostname);
 		newFolderInput = { active: false, parentPath: '', name: '' };
 		if (res.error) {
+			handleAPIError(res);
 			toast.error('Failed to create folder', { position: 'bottom-center' });
 		} else {
 			await loadDir(dirPicker.currentPath);
@@ -253,9 +342,15 @@
 		}
 		if (edit && properties.password && properties.password.length < 8)
 			return 'Password must be at least 8 characters';
+		if (properties.password.length > 128) return 'Password must be 128 characters or fewer';
 		if (properties.password && properties.confirmPassword !== properties.password)
 			return 'Passwords do not match';
 		if (properties.uid < 1000) return 'UID must be 1000 or higher';
+		if (properties.uid > 65533) return 'UID must be 65533 or lower';
+		if (edit && user?.disablePassword && !properties.disablePassword && !properties.password)
+			return 'Set a password to enable password authentication';
+		if (edit && properties.sambaAction.value === 'upsert' && !properties.password)
+			return 'Set a password to create or update the Samba user';
 		if (
 			properties.homeDirectory !== '/nonexistent' &&
 			edit &&
@@ -274,12 +369,11 @@
 	}
 
 	async function submit() {
-		loading = true;
+		if (loading || (!edit && uidLoading)) return;
 
 		const error = validate();
 		if (error) {
 			toast.error(error, { position: 'bottom-center' });
-			loading = false;
 			return;
 		}
 
@@ -290,7 +384,7 @@
 
 		const auxGroupIds = properties.auxGroups.value.map((v) => parseInt(v));
 
-		const payload = {
+		const payload: UserPayload = {
 			fullName: properties.fullName,
 			username: properties.username,
 			email: properties.email,
@@ -307,23 +401,36 @@
 			disablePassword: properties.disablePassword,
 			locked: properties.locked,
 			doasEnabled: properties.doasEnabled,
-			createSamba: properties.createSamba
+			...(edit
+				? { sambaAction: properties.sambaAction.value }
+				: { createSamba: properties.createSamba })
 		};
 
-		const response = edit ? await editUser(user!.id, payload) : await createPamUser(payload);
+		loading = true;
+		try {
+			const response = edit
+				? await editUser(user!.id, payload, { hostname })
+				: await createPamUser(payload, { hostname });
 
-		reload = true;
-		loading = false;
+			if (isAPIResponse(response) && response.status === 'error') {
+				handleAPIError(response);
+				toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
-				position: 'bottom-center'
-			});
-		} else {
+			reload = true;
 			toast.success(edit ? 'User edited' : 'User created', { position: 'bottom-center' });
 			open = false;
 			reset();
+		} catch (error) {
+			console.error('PAM user mutation failed:', error);
+			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
+				position: 'bottom-center'
+			});
+		} finally {
+			loading = false;
 		}
 	}
 </script>
@@ -578,7 +685,7 @@
 							/>
 							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 								<CustomValueInput
-									label="Password"
+									label="Unix/PAM + Sylve Password"
 									placeholder={edit ? 'Leave blank to keep current' : '••••••••'}
 									type="password"
 									revealOnFocus={true}
@@ -592,15 +699,28 @@
 									bind:value={properties.confirmPassword}
 								/>
 							</div>
-							<div class="flex items-center gap-6">
+							<div class="flex flex-wrap items-end gap-6">
 								<div class="flex items-center gap-2">
 									<Checkbox id="pam-admin" bind:checked={properties.admin} />
 									<Label for="pam-admin" class="cursor-pointer text-sm">Admin</Label>
 								</div>
-								<div class="flex items-center gap-2">
-									<Checkbox id="create-samba" bind:checked={properties.createSamba} />
-									<Label for="create-samba" class="cursor-pointer text-sm">Samba User</Label>
-								</div>
+								{#if edit}
+									<div class="min-w-64 flex-1">
+										<CustomComboBox
+											label="Samba action"
+											placeholder="Keep current Samba state"
+											bind:open={properties.sambaAction.open}
+											bind:value={properties.sambaAction.value}
+											data={sambaActionOptions}
+											width="w-full"
+										/>
+									</div>
+								{:else}
+									<div class="flex items-center gap-2">
+										<Checkbox id="create-samba" bind:checked={properties.createSamba} />
+										<Label for="create-samba" class="cursor-pointer text-sm">Samba User</Label>
+									</div>
+								{/if}
 							</div>
 						</div>
 					</Tabs.Content>
@@ -645,8 +765,8 @@
 							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 								<CustomValueInput
 									label="UID"
-									placeholder="1000"
-									disabled={edit}
+									placeholder={uidLoading ? 'Loading…' : '1000'}
+									disabled={uidLoading}
 									value={properties.uid}
 									onChange={(v) => {
 										properties.uid = typeof v === 'string' ? parseInt(v) || 0 : v;
@@ -760,7 +880,7 @@
 		{/if}
 
 		<div class="flex justify-end pt-1">
-			<Button onclick={submit} disabled={loading}
+			<Button onclick={submit} disabled={loading || uidLoading || capabilitiesLoading}
 				>{loading ? (edit ? 'Saving…' : 'Creating…') : edit ? 'Save' : 'Create'}</Button
 			>
 		</div>

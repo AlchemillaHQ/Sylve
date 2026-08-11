@@ -26,8 +26,31 @@ type CreateSSETokenResponse struct {
 	ExpiresIn int64  `json:"expiresIn"`
 }
 
+// @Summary Create SSE token
+// @Description Create a short-lived token scoped to the authenticated user's event stream
+// @Tags Authentication
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[CreateSSETokenResponse] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /auth/sse-tokens [post]
 func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("Pragma", "no-cache")
+
+		if c.GetString("AuthScope") != "local" {
+			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "local_session_required",
+				Error:   "local_session_required",
+				Data:    nil,
+			})
+			return
+		}
+
 		userIDAny, hasUserID := c.Get("UserID")
 		usernameAny, hasUsername := c.Get("Username")
 		authTypeAny, hasAuthType := c.Get("AuthType")
@@ -43,7 +66,7 @@ func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 		}
 
 		userID, ok := userIDAny.(uint)
-		if !ok {
+		if !ok || userID == 0 {
 			c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "unauthorized",
@@ -65,7 +88,7 @@ func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_create_sse_token",
-				Error:   err.Error(),
+				Error:   "failed_to_create_sse_token",
 				Data:    nil,
 			})
 			return
@@ -118,7 +141,9 @@ func StreamSSE(authService *authService.Service) gin.HandlerFunc {
 		}
 
 		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("Pragma", "no-cache")
+		c.Header("Referrer-Policy", "no-referrer")
 		c.Header("Connection", "keep-alive")
 		c.Header("X-Accel-Buffering", "no")
 		c.Status(http.StatusOK)

@@ -10,11 +10,15 @@ package authHandlers
 
 import (
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -24,7 +28,7 @@ import (
 type LoginRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=128"`
 	Password string `json:"password" binding:"required,min=3,max=128"`
-	AuthType string `json:"authType"`
+	AuthType string `json:"authType" binding:"required,oneof=sylve pam"`
 	Remember bool   `json:"remember"`
 }
 
@@ -40,10 +44,24 @@ type LoginConfig struct {
 	PAMEnabled bool `json:"pamEnabled"`
 }
 
+func setSensitiveAuthResponseHeaders(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+}
+
+func writeAuthCodeError(c *gin.Context, status int, code string) {
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: code,
+		Error:   code,
+		Data:    nil,
+	})
+}
+
 func writeLoginHostnameError(c *gin.Context, err error) {
 	status := http.StatusInternalServerError
 	message := "internal_server_error"
-	errorText := err.Error()
+	errorText := message
 
 	if errors.Is(err, utils.ErrSystemHostnameNotConfigured) {
 		status = http.StatusServiceUnavailable
@@ -57,6 +75,95 @@ func writeLoginHostnameError(c *gin.Context, err error) {
 		Error:   errorText,
 		Data:    nil,
 	})
+}
+
+func writeLoginServiceError(c *gin.Context, err error) {
+	var rateLimitErr *auth.LoginRateLimitError
+	if errors.As(err, &rateLimitErr) {
+		retryAfter := int(math.Ceil(rateLimitErr.RetryAfter.Seconds()))
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+		c.Header("Retry-After", strconv.Itoa(retryAfter))
+		writeAuthCodeError(c, http.StatusTooManyRequests, "too_many_attempts")
+		return
+	}
+
+	switch err.Error() {
+	case "invalid_credentials":
+		writeAuthCodeError(c, http.StatusUnauthorized, "invalid_credentials")
+	case "invalid_auth_type":
+		writeAuthCodeError(c, http.StatusBadRequest, "invalid_auth_type")
+	case "pam_auth_disabled":
+		writeAuthCodeError(c, http.StatusForbidden, "pam_auth_disabled")
+	case "only_admin_allowed", "account_locked", "password_auth_disabled", "user_not_registered_in_sylve":
+		writeAuthCodeError(c, http.StatusForbidden, err.Error())
+	case "pam_auth_error":
+		writeAuthCodeError(c, http.StatusServiceUnavailable, "authentication_service_unavailable")
+	default:
+		writeAuthCodeError(c, http.StatusInternalServerError, "internal_server_error")
+	}
+}
+
+func completeLogin(
+	c *gin.Context,
+	authService *auth.Service,
+	userID uint,
+	username string,
+	authType string,
+	token string,
+) {
+	completed := false
+	defer func() {
+		if completed || token == "" {
+			return
+		}
+		if err := authService.RevokeJWT(token); err != nil {
+			logger.L.Error().Err(err).Uint("user_id", userID).Msg("failed_to_revoke_incomplete_login_token")
+		}
+	}()
+
+	clusterToken, err := authService.CreateClusterJWT(userID, username, authType, "")
+	if err != nil {
+		if strings.Contains(err.Error(), "cluster_key_not_configured") {
+			clusterToken = ""
+		} else {
+			writeAuthCodeError(c, http.StatusInternalServerError, "cluster_token_creation_failed")
+			return
+		}
+	}
+
+	hostname, err := utils.GetSystemHostname()
+	if err != nil {
+		writeLoginHostnameError(c, err)
+		return
+	}
+
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		writeAuthCodeError(c, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	basicSettings, err := authService.GetBasicSettings()
+	if err != nil && err.Error() != "basic_settings_not_found" {
+		writeAuthCodeError(c, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	c.JSON(http.StatusOK, internal.APIResponse[SuccessfulLogin]{
+		Status:  "success",
+		Message: "login_successful",
+		Error:   "",
+		Data: SuccessfulLogin{
+			Token:         token,
+			ClusterToken:  clusterToken,
+			Hostname:      hostname,
+			NodeID:        nodeID,
+			BasicSettings: basicSettings,
+		},
+	})
+	completed = true
 }
 
 // @Summary Get Login Configuration
@@ -79,23 +186,33 @@ func LoginConfigHandler() gin.HandlerFunc {
 }
 
 // @Summary Login
-// @Description Create a new JWT token
+// @Description Authenticate an administrator and create a local session
 // @Tags Authentication
 // @Param request body LoginRequest true "Login request body"
 // @Accept json
 // @Produce json
-// @Success 200 {object} SuccessfulLogin "Success"
+// @Success 200 {object} internal.APIResponse[SuccessfulLogin] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 429 {object} internal.APIResponse[any] "Too Many Requests"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Failure 503 {object} internal.APIResponse[any] "System Hostname Not Configured"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /auth/login [post]
 func LoginHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		setSensitiveAuthResponseHeaders(c)
 
 		var r LoginRequest
 
 		if err := c.ShouldBindJSON(&r); err != nil {
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				writeAuthCodeError(c, http.StatusRequestEntityTooLarge, "request_body_too_large")
+				return
+			}
+
 			validationErrors := utils.MapValidationErrors(err, LoginRequest{})
 
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -110,91 +227,41 @@ func LoginHandler(authService *auth.Service) gin.HandlerFunc {
 		userId, token, err := authService.CreateJWT(r.Username, r.Password, r.AuthType, r.Remember)
 
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_credentials",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeLoginServiceError(c, err)
 			return
 		}
 
-		clusterToken, _ := authService.CreateClusterJWT(userId, r.Username, r.AuthType, "")
-		hostname, err := utils.GetSystemHostname()
-
-		if err != nil {
-			writeLoginHostnameError(c, err)
-			return
-		}
-
-		nodeId, err := utils.GetSystemUUID()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		basicSettings, err := authService.GetBasicSettings()
-		if err != nil && err.Error() != "basic_settings_not_found" {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "login_successful",
-			Error:   "",
-			Data: SuccessfulLogin{
-				Token:         token,
-				ClusterToken:  clusterToken,
-				Hostname:      hostname,
-				NodeID:        nodeId,
-				BasicSettings: basicSettings,
-			},
-		})
+		completeLogin(c, authService, userId, r.Username, r.AuthType, token)
 	}
 }
 
 // @Summary Logout
 // @Description Revoke a JWT token
 // @Tags Authentication
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /auth/logout [post]
 func LogoutHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token, err := utils.GetTokenFromHeader(c.Request.Header)
+		setSensitiveAuthResponseHeaders(c)
 
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "no_token_provided",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if c.GetString("AuthScope") != "local" {
+			writeAuthCodeError(c, http.StatusForbidden, "local_session_required")
+			return
+		}
+
+		token := strings.TrimSpace(c.GetString("Token"))
+		if token == "" {
+			writeAuthCodeError(c, http.StatusUnauthorized, "no_token_provided")
 			return
 		}
 
 		if err := authService.RevokeJWT(token); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeAuthCodeError(c, http.StatusInternalServerError, "internal_server_error")
 			return
 		}
 

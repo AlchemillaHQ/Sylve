@@ -2,7 +2,11 @@ import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { FileNodeSchema, type FileNode } from '$lib/types/system/file-explorer';
 import { apiRequest } from '$lib/utils/http';
 
-export async function getFiles(id?: string, hostname?: string): Promise<FileNode[] | APIResponse> {
+export async function getFiles(
+	id?: string,
+	hostname?: string,
+	signal?: AbortSignal
+): Promise<FileNode[] | APIResponse> {
 	let url = '/system/file-explorer';
 
 	if (id) {
@@ -11,6 +15,7 @@ export async function getFiles(id?: string, hostname?: string): Promise<FileNode
 
 	return await apiRequest(url, FileNodeSchema.array(), 'GET', undefined, {
 		hostname,
+		signal,
 		preserveErrors: true
 	});
 }

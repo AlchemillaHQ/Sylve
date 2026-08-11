@@ -207,13 +207,17 @@ func TestCreateUserUsernameEmpty(t *testing.T) {
 func TestCreateUserPasswordTooShort(t *testing.T) {
 	svc := newLocalTestService(t)
 	seedBasicSettings(t, svc)
-	user := &models.User{Username: "john", Password: "short"}
+	const submittedPassword = "short"
+	user := &models.User{Username: "john", Password: submittedPassword}
 	err := svc.CreateUser(user, CreateUserOpts{})
 	if err == nil {
 		t.Fatalf("expected error for short password")
 	}
 	if !strings.Contains(err.Error(), "invalid_password_length") {
 		t.Fatalf("expected invalid_password_length, got: %v", err)
+	}
+	if strings.Contains(err.Error(), submittedPassword) {
+		t.Fatalf("password validation error exposed the submitted password: %v", err)
 	}
 }
 
@@ -277,8 +281,8 @@ func TestEditUserNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for non-existent user")
 	}
-	if !strings.Contains(err.Error(), "failed_to_get_user") {
-		t.Fatalf("expected failed_to_get_user, got: %v", err)
+	if !strings.Contains(err.Error(), "user_not_found") {
+		t.Fatalf("expected user_not_found, got: %v", err)
 	}
 }
 
@@ -295,6 +299,32 @@ func TestEditUserCannotChangeAdminUsername(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cannot_change_admin_username") {
 		t.Fatalf("expected cannot_change_admin_username, got: %v", err)
+	}
+}
+
+func TestEditUserCannotDemoteAdmin(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"}
+	if err := svc.DB.Create(&u).Error; err != nil {
+		t.Fatalf("failed to seed admin: %v", err)
+	}
+
+	err := svc.EditUser(u.ID, EditUserOpts{Username: "admin", Admin: false})
+	if err == nil || !strings.Contains(err.Error(), "cannot_demote_admin_user") {
+		t.Fatalf("expected cannot_demote_admin_user, got: %v", err)
+	}
+}
+
+func TestEditUserCannotLockAdmin(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"}
+	if err := svc.DB.Create(&u).Error; err != nil {
+		t.Fatalf("failed to seed admin: %v", err)
+	}
+
+	err := svc.EditUser(u.ID, EditUserOpts{Username: "admin", Admin: true, Locked: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot_lock_admin_user") {
+		t.Fatalf("expected cannot_lock_admin_user, got: %v", err)
 	}
 }
 
@@ -351,12 +381,65 @@ func TestEditUserInvalidEmail(t *testing.T) {
 	}
 }
 
+func TestEditUserCanClearEmail(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := seedUser(t, svc, models.User{
+		Username: "testuser",
+		Password: "hashed",
+		Email:    "old@example.com",
+		Source:   "local",
+	})
+
+	if err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Email: "", Admin: false}); err != nil {
+		t.Fatalf("clear email: %v", err)
+	}
+	found, err := svc.GetUserByID(u.ID)
+	if err != nil {
+		t.Fatalf("reload user: %v", err)
+	}
+	if found.Email != "" {
+		t.Fatalf("expected email to be cleared, got %q", found.Email)
+	}
+}
+
+func TestEditUserRejectsDuplicateUsernameBeforeMutation(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedUser(t, svc, models.User{Username: "alice", Password: "hashed", Source: "local"})
+	bob := seedUser(t, svc, models.User{Username: "bob", Password: "hashed", Source: "local"})
+
+	err := svc.EditUser(bob.ID, EditUserOpts{Username: "alice", Admin: false})
+	if err == nil || !strings.Contains(err.Error(), "username_already_exists") {
+		t.Fatalf("expected username_already_exists, got: %v", err)
+	}
+	found, findErr := svc.GetUserByID(bob.ID)
+	if findErr != nil {
+		t.Fatalf("reload user: %v", findErr)
+	}
+	if found.Username != "bob" {
+		t.Fatalf("duplicate rename mutated username to %q", found.Username)
+	}
+}
+
 func TestEditUserUIDAlreadyInUse(t *testing.T) {
 	svc := newLocalTestService(t)
 	seedUser(t, svc, models.User{Username: "user_a", Password: "hashed", UID: 1001, Source: "pam"})
-	u2 := seedUser(t, svc, models.User{Username: "user_b", Password: "hashed", UID: 1002, Source: "pam"})
+	u2 := seedUser(t, svc, models.User{
+		Username:      "user_b",
+		Password:      "hashed",
+		UID:           1002,
+		Shell:         "/bin/sh",
+		HomeDirectory: "/nonexistent",
+		HomeDirPerms:  0o755,
+		Source:        "pam",
+	})
 
-	err := svc.EditUser(u2.ID, EditUserOpts{Username: "user_b", UID: 1001})
+	err := svc.EditUser(u2.ID, EditUserOpts{
+		Username:      u2.Username,
+		UID:           1001,
+		Shell:         u2.Shell,
+		HomeDirectory: u2.HomeDirectory,
+		HomeDirPerms:  u2.HomeDirPerms,
+	})
 	if err == nil {
 		t.Fatalf("expected error for duplicate UID")
 	}
@@ -377,10 +460,25 @@ func TestEditUserUIDSameAsCurrentNoError(t *testing.T) {
 
 func TestEditUserPrimaryGroupNotFound(t *testing.T) {
 	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed", Source: "pam"})
+	u := seedUser(t, svc, models.User{
+		Username:      "testuser",
+		Password:      "hashed",
+		UID:           1001,
+		Shell:         "/bin/sh",
+		HomeDirectory: "/nonexistent",
+		HomeDirPerms:  0o755,
+		Source:        "pam",
+	})
 
 	badGroupID := uint(999)
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", PrimaryGroupID: &badGroupID})
+	err := svc.EditUser(u.ID, EditUserOpts{
+		Username:       u.Username,
+		UID:            u.UID,
+		Shell:          u.Shell,
+		HomeDirectory:  u.HomeDirectory,
+		HomeDirPerms:   u.HomeDirPerms,
+		PrimaryGroupID: &badGroupID,
+	})
 	if err == nil {
 		t.Fatalf("expected error for non-existent primary group")
 	}
@@ -638,8 +736,8 @@ func TestDeleteUserNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for non-existent user")
 	}
-	if !strings.Contains(err.Error(), "failed_to_get_user") {
-		t.Fatalf("expected failed_to_get_user, got: %v", err)
+	if !strings.Contains(err.Error(), "user_not_found") {
+		t.Fatalf("expected user_not_found, got: %v", err)
 	}
 }
 
@@ -750,12 +848,12 @@ func TestGetUserByUsernamePreloadsGroups(t *testing.T) {
 
 func TestImportUserProtectedSystemUser(t *testing.T) {
 	svc := newLocalTestService(t)
-	_, err := svc.ImportUser("nobody", "", false, CreateUserOpts{})
+	_, err := svc.ImportUser("nobody", "", false)
 	if err == nil {
 		t.Fatalf("expected error for protected system user")
 	}
-	if !strings.Contains(err.Error(), "cannot_import_system_user") {
-		t.Fatalf("expected cannot_import_system_user, got: %v", err)
+	if !strings.Contains(err.Error(), "protected_system_user") {
+		t.Fatalf("expected protected_system_user, got: %v", err)
 	}
 }
 
@@ -764,14 +862,11 @@ func TestImportUserAlreadyExists(t *testing.T) {
 	seedBasicSettings(t, svc)
 	seedUser(t, svc, models.User{Username: "alice", Password: "hashed"})
 
-	_, err := svc.ImportUser("alice", "password123", false, CreateUserOpts{})
+	_, err := svc.ImportUser("alice", "password123", false)
 	if err == nil {
 		t.Fatalf("expected error for already-existing user")
 	}
-	if strings.Contains(err.Error(), "a_local_user_with_this_username_already_exists") {
-		return
-	}
-	if strings.Contains(err.Error(), "user_already_exists") {
+	if strings.Contains(err.Error(), "user_source_conflict") {
 		return
 	}
 	if strings.Contains(err.Error(), "failed_to_get_unix_user_info") {
@@ -832,12 +927,12 @@ func TestImportUserDuplicateWhenLocalExists(t *testing.T) {
 	seedBasicSettings(t, svc)
 	seedUser(t, svc, models.User{Username: "localjohn", Password: "hashed", Source: "local"})
 
-	_, err := svc.ImportUser("localjohn", "password123", false, CreateUserOpts{})
+	_, err := svc.ImportUser("localjohn", "password123", false)
 	if err == nil {
 		t.Fatalf("expected error when local user with same name exists")
 	}
-	if !strings.Contains(err.Error(), "a_local_user_with_this_username_already_exists") {
-		t.Fatalf("expected a_local_user_with_this_username_already_exists, got: %v", err)
+	if !strings.Contains(err.Error(), "user_source_conflict") {
+		t.Fatalf("expected user_source_conflict, got: %v", err)
 	}
 }
 
@@ -891,11 +986,8 @@ func TestListUsersBySourceUnknown(t *testing.T) {
 	seedUser(t, svc, models.User{Username: "local1", Password: "hashed", Source: "local"})
 
 	results, err := svc.ListUsersBySource("bogus")
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(results) != 0 {
-		t.Fatalf("expected 0 users for unknown source, got: %d", len(results))
+	if err == nil || !strings.Contains(err.Error(), "invalid_user_source") {
+		t.Fatalf("expected invalid_user_source, got results=%v err=%v", results, err)
 	}
 }
 

@@ -8,20 +8,30 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Group, User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
+	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
+		node: string;
 		users: User[];
 		groups: Group[];
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
 
 	function generateTableData(users: User[]): { rows: Row[]; columns: Column[] } {
 		const columns: Column[] = [
@@ -64,29 +74,57 @@
 		return { rows, columns };
 	}
 
+	const lastUsersByNode: Record<string, User[]> = Object.create(null);
+	lastUsersByNode[initialData.node] = initialData.users;
 	const users = resource(
-		() => 'users_local',
-		async (key) => {
-			const results = await listUsers('local');
-			updateCache(key, results);
-			return results;
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await listUsers('local', { hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastUsersByNode[node] ?? [];
+				}
+				lastUsersByNode[node] = result;
+				await updateCache('users_local', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastUsersByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{
-			initialValue: data.users
+			initialValue: initialData.users
 		}
 	);
 
+	const lastGroupsByNode: Record<string, Group[]> = Object.create(null);
+	lastGroupsByNode[initialData.node] = initialData.groups;
 	const groups = resource(
-		() => 'groups',
-		async (key) => {
-			const results = await listGroups();
-			updateCache(key, results);
-			return results;
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await listGroups({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGroupsByNode[node] ?? [];
+				}
+				lastGroupsByNode[node] = result;
+				await updateCache('groups', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGroupsByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{
-			initialValue: data.groups
+			initialValue: initialData.groups
 		}
 	);
+
+	onMount(() => {
+		for (const loadError of initialData.loadErrors) handleAPIError(loadError);
+	});
 
 	let reload = $state(false);
 
@@ -105,6 +143,9 @@
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeUser: User | undefined = $derived(
+		activeRow ? users.current.find((user) => user.id === activeRow.id) : undefined
+	);
 
 	let modals = $state({
 		create: { open: false },
@@ -112,6 +153,17 @@
 		edit: { open: false },
 		passkeys: { open: false }
 	});
+
+	watch(
+		() => data.node,
+		() => {
+			activeRows = null;
+			modals.create.open = false;
+			modals.delete.open = false;
+			modals.edit.open = false;
+			modals.passkeys.open = false;
+		}
+	);
 </script>
 
 {#snippet button(type: string)}
@@ -125,7 +177,9 @@
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
 				disabled={!activeRow || activeRow.name === 'admin' || activeRow.name === 'root'}
-				title={activeRow && (activeRow.name === 'admin' || activeRow.name === 'root') ? 'Cannot delete this user' : ''}
+				title={activeRow && (activeRow.name === 'admin' || activeRow.name === 'root')
+					? 'Cannot delete this user'
+					: ''}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
@@ -153,6 +207,9 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
+				title={activeUser?.passkeyEligible
+					? 'Passkeys'
+					: 'View existing passkeys; registration is unavailable for this user'}
 			>
 				<SpanWithIcon icon="icon-[mdi--fingerprint]" size="h-4 w-4" gap="gap-2" title="Passkeys" />
 			</Button>
@@ -186,6 +243,7 @@
 	<LocalUserForm
 		bind:open={modals.create.open}
 		users={users.current}
+		hostname={data.node}
 		bind:reload
 	/>
 {/if}
@@ -195,7 +253,8 @@
 		bind:open={modals.edit.open}
 		users={users.current}
 		edit={true}
-		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
+		user={activeUser}
+		hostname={data.node}
 		bind:reload
 	/>
 {/if}
@@ -205,6 +264,8 @@
 		bind:open={modals.passkeys.open}
 		userId={activeRow.id as number}
 		username={String(activeRow.name || '')}
+		hostname={data.node}
+		registrationEligible={activeUser?.passkeyEligible ?? false}
 		bind:reload
 	/>
 {/if}
@@ -217,14 +278,14 @@
 	}}
 	actions={{
 		onConfirm: async () => {
-			const response = await deleteUser(activeRow.id as string);
-			reload = true;
-			if (response.error) {
+			const response = await deleteUser(Number(activeRow.id), { hostname: data.node });
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error('Failed to delete user', {
 					position: 'bottom-center'
 				});
 			} else {
+				reload = true;
 				toast.success('User deleted', {
 					position: 'bottom-center'
 				});

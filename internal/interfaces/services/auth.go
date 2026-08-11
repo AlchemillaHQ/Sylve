@@ -30,6 +30,15 @@ type CreateUserOpts struct {
 	CreateSamba     bool
 }
 
+type ImportableUnixUser struct {
+	Username      string `json:"username"`
+	FullName      string `json:"fullName"`
+	UID           int    `json:"uid"`
+	GID           int    `json:"gid"`
+	Shell         string `json:"shell"`
+	HomeDirectory string `json:"homeDirectory"`
+}
+
 type EditUserOpts struct {
 	FullName        string
 	Username        string
@@ -47,7 +56,7 @@ type EditUserOpts struct {
 	NewPrimaryGroup bool
 	PrimaryGroupID  *uint
 	AuxGroupIDs     []uint
-	CreateSamba     bool
+	SambaAction     string
 }
 
 type AuthServiceInterface interface {
@@ -71,17 +80,17 @@ type AuthServiceInterface interface {
 	GetBasicSettings() (models.BasicSettings, error)
 
 	ListGroups() ([]models.Group, error)
-	CreateGroup(name string, members []string) error
-	DeleteGroup(id uint) error
-	AddUsersToGroup(usernames []string, groupName string) error
+	CreateGroup(name string, members []string) (models.Group, error)
+	DeleteGroup(id uint) (models.Group, error)
+	SyncGroupMembers(id uint, usernames []string) (models.Group, error)
 
 	ListUsers() ([]models.User, error)
 	ListUsersBySource(source string) ([]models.User, error)
 	GetUserByID(id uint) (*models.User, error)
 	GetUserByUsername(username string) (*models.User, error)
 	CreateUser(user *models.User, opts CreateUserOpts) error
-	ImportUser(username string, password string, admin bool, opts CreateUserOpts) (*models.User, error)
-	ListImportableUnixUsers() ([]models.User, error)
+	ImportUser(username string, password string, admin bool) (*models.User, error)
+	ListImportableUnixUsers() ([]ImportableUnixUser, error)
 	DeleteUser(userID uint) error
 	EditUser(userID uint, opts EditUserOpts) error
 	GetNextUID() (int, error)

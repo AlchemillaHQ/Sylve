@@ -7,7 +7,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type { User } from '$lib/types/auth';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 
@@ -17,6 +17,7 @@
 		user?: User;
 		edit?: boolean;
 		reload?: boolean;
+		hostname: string;
 	}
 
 	let {
@@ -24,7 +25,8 @@
 		users,
 		user,
 		edit = false,
-		reload = $bindable()
+		reload = $bindable(),
+		hostname
 	}: Props = $props();
 
 	function makeDefaults() {
@@ -47,7 +49,10 @@
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
-		if (!(edit && user && properties.username === user.username) && !isValidUsername(properties.username))
+		if (
+			!(edit && user && properties.username === user.username) &&
+			!isValidUsername(properties.username)
+		)
 			return 'Invalid username format';
 		if (!edit && users.some((u) => u.username === properties.username))
 			return 'Username already exists';
@@ -65,12 +70,11 @@
 	}
 
 	async function submit() {
-		loading = true;
+		if (loading) return;
 
 		const error = validate();
 		if (error) {
 			toast.error(error, { position: 'bottom-center' });
-			loading = false;
 			return;
 		}
 
@@ -82,25 +86,32 @@
 			admin: properties.admin
 		};
 
-		let response;
-		if (edit && user) {
-			response = await editUser(user.id, payload);
-		} else {
-			response = await createUser(payload);
-		}
+		loading = true;
+		try {
+			const response =
+				edit && user
+					? await editUser(user.id, payload, { hostname })
+					: await createUser(payload, { hostname });
 
-		reload = true;
-		loading = false;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
-				position: 'bottom-center'
-			});
-		} else {
+			reload = true;
 			toast.success(edit ? 'User edited' : 'User created', { position: 'bottom-center' });
 			open = false;
 			reset();
+		} catch (error) {
+			console.error('User mutation failed:', error);
+			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
+				position: 'bottom-center'
+			});
+		} finally {
+			loading = false;
 		}
 	}
 </script>

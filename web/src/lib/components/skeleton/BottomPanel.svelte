@@ -168,7 +168,6 @@
 		'/api/auth/passkeys/login/finish': 'Login - Passkey - Finish',
 		'/api/auth/passkeys/register/begin': 'Passkey - Register - Begin',
 		'/api/auth/passkeys/register/finish': 'Passkey - Register - Finish',
-		'/api/auth/passkeys/users': 'Passkey',
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
 		'/api/mdns/config': 'mDNS Config',
@@ -193,7 +192,6 @@
 		'/api/zfs/datasets/filesystem': 'ZFS Filesystem',
 		'/api/zfs/datasets/volume': 'ZFS Volume',
 		'/api/samba/shares': 'Samba Share',
-		'/api/auth/groups/users': 'Auth Group - Members',
 		'/api/auth/groups': 'Auth Group',
 		'/api/auth/users/import': 'Auth User - Import',
 		'/api/auth/users/pam': 'Auth User - PAM',
@@ -335,6 +333,8 @@
 			'/api/network/dhcp/lease/:id': 'DHCP Lease - Delete Static'
 		},
 		POST: {
+			'/api/auth/login': 'Login',
+			'/api/auth/logout': 'Logout',
 			'/api/vm': 'VM - Create',
 			'/api/jail': 'Jail - Create',
 			'/api/jail/:id/networks': 'Jail Network - Create',
@@ -994,9 +994,7 @@
 			return {
 				action: 'Create Link',
 				...(auditText(body?.name) ? { name: auditText(body?.name) } : {}),
-				...(auditText(body?.parentUUID)
-					? { parentUUID: auditText(body?.parentUUID) }
-					: {})
+				...(auditText(body?.parentUUID) ? { parentUUID: auditText(body?.parentUUID) } : {})
 			};
 		}
 
@@ -1011,9 +1009,7 @@
 		}
 
 		if (upperMethod === 'POST' && path === '/api/utilities/downloads/bulk-delete') {
-			const deletedIds = auditPositiveIDs(
-				deletedItems.map((item) => auditObject(item)?.id)
-			);
+			const deletedIds = auditPositiveIDs(deletedItems.map((item) => auditObject(item)?.id));
 			const failedIds = auditPositiveIDs(failedItems.map((item) => auditObject(item)?.id));
 			const requestedIds = auditPositiveIDs(body?.ids);
 			return {
@@ -1102,7 +1098,11 @@
 			return { action: 'Create', ...(templateId ? { templateId } : {}), ...(name ? { name } : {}) };
 		}
 		if (upperMethod === 'PUT' && memberMatch) {
-			return { action: 'Replace', ...(templateId ? { templateId } : {}), ...(name ? { name } : {}) };
+			return {
+				action: 'Replace',
+				...(templateId ? { templateId } : {}),
+				...(name ? { name } : {})
+			};
 		}
 		if (upperMethod === 'DELETE' && memberMatch) {
 			return { action: 'Delete', ...(templateId ? { templateId } : {}), ...(name ? { name } : {}) };
@@ -1114,6 +1114,180 @@
 		let label = `Cloud-Init Template - ${target.action}`;
 		if (target.name) label += ` - ${target.name}`;
 		if (target.templateId) label += ` - Template ID ${target.templateId}`;
+		return label;
+	}
+
+	type AuthUserAuditTarget = {
+		action: 'Create' | 'Create PAM' | 'Import' | 'Update' | 'Delete';
+		userId?: number;
+		username?: string;
+	};
+
+	function authUserAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | undefined,
+		response: Record<string, unknown> | undefined
+	): AuthUserAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let action: AuthUserAuditTarget['action'];
+		let pathUserId: number | undefined;
+
+		if (path === '/api/auth/users' && upperMethod === 'POST') {
+			action = 'Create';
+		} else if (path === '/api/auth/users/pam' && upperMethod === 'POST') {
+			action = 'Create PAM';
+		} else if (path === '/api/auth/users/import' && upperMethod === 'POST') {
+			action = 'Import';
+		} else {
+			const match = path.match(/^\/api\/auth\/users\/(\d+)$/);
+			if (!match || (upperMethod !== 'PUT' && upperMethod !== 'DELETE')) return null;
+			action = upperMethod === 'PUT' ? 'Update' : 'Delete';
+			const parsedID = Number(match[1]);
+			if (Number.isSafeInteger(parsedID) && parsedID > 0) pathUserId = parsedID;
+		}
+
+		const responseData = auditObject(response?.data);
+		const responseID = Number(responseData?.id);
+		const bodyID = Number(body?.id);
+		const userId =
+			pathUserId ??
+			(Number.isSafeInteger(responseID) && responseID > 0
+				? responseID
+				: Number.isSafeInteger(bodyID) && bodyID > 0
+					? bodyID
+					: undefined);
+		const responseUsername =
+			typeof responseData?.username === 'string' ? responseData.username.trim() : '';
+		const bodyUsername = typeof body?.username === 'string' ? body.username.trim() : '';
+		const username = responseUsername || bodyUsername || undefined;
+
+		return { action, ...(userId ? { userId } : {}), ...(username ? { username } : {}) };
+	}
+
+	function authUserActionLabel(target: AuthUserAuditTarget): string {
+		let label = `Auth User - ${target.action}`;
+		if (target.username) label += ` - ${target.username}`;
+		if (target.userId) {
+			label += target.username ? ` (User ID ${target.userId})` : ` - User ID ${target.userId}`;
+		}
+		return label;
+	}
+
+	type AuthGroupAuditTarget = {
+		action: 'Create' | 'Replace Members' | 'Delete';
+		groupId?: number;
+		name?: string;
+	};
+
+	function authGroupAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | undefined,
+		response: Record<string, unknown> | undefined
+	): AuthGroupAuditTarget | null {
+		const upperMethod = method.toUpperCase();
+		let action: AuthGroupAuditTarget['action'];
+		let pathGroupId: number | undefined;
+
+		if (path === '/api/auth/groups' && upperMethod === 'POST') {
+			action = 'Create';
+		} else {
+			const memberMatch = path.match(/^\/api\/auth\/groups\/(\d+)\/members$/);
+			const groupMatch = path.match(/^\/api\/auth\/groups\/(\d+)$/);
+			if (memberMatch && upperMethod === 'PUT') {
+				action = 'Replace Members';
+				const parsedID = Number(memberMatch[1]);
+				if (Number.isSafeInteger(parsedID) && parsedID > 0) pathGroupId = parsedID;
+			} else if (groupMatch && upperMethod === 'DELETE') {
+				action = 'Delete';
+				const parsedID = Number(groupMatch[1]);
+				if (Number.isSafeInteger(parsedID) && parsedID > 0) pathGroupId = parsedID;
+			} else {
+				return null;
+			}
+		}
+
+		const responseData = auditObject(response?.data);
+		const responseID = Number(responseData?.id);
+		const groupId =
+			pathGroupId ?? (Number.isSafeInteger(responseID) && responseID > 0 ? responseID : undefined);
+		const name = auditText(responseData?.name) || auditText(body?.name) || undefined;
+
+		return { action, ...(groupId ? { groupId } : {}), ...(name ? { name } : {}) };
+	}
+
+	function authGroupActionLabel(target: AuthGroupAuditTarget): string {
+		let label = `Auth Group - ${target.action}`;
+		if (target.name) label += ` - ${target.name}`;
+		if (target.groupId) {
+			label += target.name ? ` (Group ID ${target.groupId})` : ` - Group ID ${target.groupId}`;
+		}
+		return label;
+	}
+
+	type PasskeyAuditTarget = {
+		action: 'Register - Begin' | 'Register - Finish' | 'Delete';
+		userId?: number;
+		credentialId?: string;
+		label?: string;
+	};
+
+	function passkeyAuditTarget(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | undefined,
+		response: Record<string, unknown> | undefined
+	): PasskeyAuditTarget | null {
+		if (method.toUpperCase() !== 'POST' && method.toUpperCase() !== 'DELETE') return null;
+
+		const responseData = auditObject(response?.data);
+		let action: PasskeyAuditTarget['action'];
+		let pathUserId: number | undefined;
+		let pathCredentialId = '';
+
+		if (method.toUpperCase() === 'POST' && path === '/api/auth/passkeys/register/begin') {
+			action = 'Register - Begin';
+		} else if (method.toUpperCase() === 'POST' && path === '/api/auth/passkeys/register/finish') {
+			action = 'Register - Finish';
+		} else {
+			const match = path.match(/^\/api\/auth\/users\/(\d+)\/passkeys\/([^/]+)$/);
+			if (!match || method.toUpperCase() !== 'DELETE') return null;
+			action = 'Delete';
+			const parsedUserId = Number(match[1]);
+			if (Number.isSafeInteger(parsedUserId) && parsedUserId > 0) pathUserId = parsedUserId;
+			try {
+				pathCredentialId = decodeURIComponent(match[2] || '').trim();
+			} catch {
+				pathCredentialId = (match[2] || '').trim();
+			}
+		}
+
+		const responseUserId = Number(responseData?.userId);
+		const bodyUserId = Number(body?.userId);
+		const userId =
+			pathUserId ??
+			(Number.isSafeInteger(responseUserId) && responseUserId > 0
+				? responseUserId
+				: Number.isSafeInteger(bodyUserId) && bodyUserId > 0
+					? bodyUserId
+					: undefined);
+		const credentialId = auditText(responseData?.credentialId) || pathCredentialId || undefined;
+		const label = auditText(responseData?.label) || undefined;
+
+		return {
+			action,
+			...(userId ? { userId } : {}),
+			...(credentialId ? { credentialId } : {}),
+			...(label ? { label } : {})
+		};
+	}
+
+	function passkeyActionLabel(target: PasskeyAuditTarget): string {
+		let label = `Passkey - ${target.action}`;
+		if (target.label) label += ` - ${target.label}`;
+		if (target.userId) label += ` - User ID ${target.userId}`;
+		if (target.credentialId) label += ` - Credential ID ${target.credentialId}`;
 		return label;
 	}
 
@@ -1229,6 +1403,55 @@
 				const itemID = itemIDFromActionPath(path, normalizedPath);
 				if (itemID !== undefined) {
 					recordCopy.action.body = { id: itemID };
+				}
+			}
+
+			const authUserTarget = authUserAuditTarget(
+				path,
+				method,
+				auditObject(recordCopy.action.body),
+				auditObject(recordCopy.action.response)
+			);
+			if (authUserTarget) {
+				resolvedAction = authUserActionLabel(authUserTarget);
+				recordCopy.action.body = {
+					...(auditObject(recordCopy.action.body) ?? {}),
+					...(authUserTarget.userId ? { id: authUserTarget.userId } : {}),
+					...(authUserTarget.username ? { username: authUserTarget.username } : {})
+				};
+			}
+
+			const authGroupTarget = authGroupAuditTarget(
+				path,
+				method,
+				auditObject(recordCopy.action.body),
+				auditObject(recordCopy.action.response)
+			);
+			if (authGroupTarget) {
+				resolvedAction = authGroupActionLabel(authGroupTarget);
+				recordCopy.action.body = {
+					...(auditObject(recordCopy.action.body) ?? {}),
+					...(authGroupTarget.groupId ? { id: authGroupTarget.groupId } : {}),
+					...(authGroupTarget.name ? { name: authGroupTarget.name } : {})
+				};
+			}
+
+			const passkeyTarget = passkeyAuditTarget(
+				path,
+				method,
+				auditObject(recordCopy.action.body),
+				auditObject(recordCopy.action.response)
+			);
+			if (passkeyTarget) {
+				resolvedAction = passkeyActionLabel(passkeyTarget);
+				const existingBody = auditObject(recordCopy.action.body);
+				if (existingBody) {
+					recordCopy.action.body = {
+						...existingBody,
+						...(passkeyTarget.userId ? { userId: passkeyTarget.userId } : {}),
+						...(passkeyTarget.credentialId ? { credentialId: passkeyTarget.credentialId } : {}),
+						...(passkeyTarget.label ? { label: passkeyTarget.label } : {})
+					};
 				}
 			}
 

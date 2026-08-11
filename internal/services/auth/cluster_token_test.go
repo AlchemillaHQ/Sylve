@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -37,5 +38,18 @@ func TestUserProxyClusterJWTIncludesAdminClaim(t *testing.T) {
 	}
 	if !claims.Admin || claims.TokenUse != ClusterTokenUseUserProxy || claims.UserID != user.ID || claims.Username != user.Username {
 		t.Fatalf("unexpected claims: %#v", claims)
+	}
+}
+
+func TestClusterJWTCannotUseEmptyConfiguredKey(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{Key: "   "}).Error; err != nil {
+		t.Fatalf("create cluster: %v", err)
+	}
+	service := &Service{DB: db}
+
+	if _, err := service.CreateClusterJWT(0, "admin", "sylve", ""); err == nil ||
+		!strings.Contains(err.Error(), "cluster_key_not_configured") {
+		t.Fatalf("expected cluster_key_not_configured, got: %v", err)
 	}
 }

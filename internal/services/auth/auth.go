@@ -31,6 +31,9 @@ import (
 var _ serviceInterfaces.AuthServiceInterface = (*Service)(nil)
 
 const (
+	// MaxRequestBodyBytes bounds JSON request bodies handled by the authentication API.
+	MaxRequestBodyBytes int64 = 1 * 1024 * 1024
+
 	maxLoginAttempts   = 5
 	loginBlockDuration = 15 * time.Minute
 )
@@ -38,6 +41,16 @@ const (
 type loginAttempt struct {
 	count        int
 	blockedUntil time.Time
+	lastAttempt  time.Time
+}
+
+// LoginRateLimitError reports how long a blocked login should wait before retrying.
+type LoginRateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *LoginRateLimitError) Error() string {
+	return "too_many_attempts"
 }
 
 type Service struct {
@@ -87,7 +100,12 @@ func (s *Service) GetClusterKey() (string, error) {
 		return "", fmt.Errorf("cluster_key_not_found")
 	}
 
-	return c.Key, nil
+	key := strings.TrimSpace(c.Key)
+	if key == "" {
+		return "", fmt.Errorf("cluster_key_not_configured")
+	}
+
+	return key, nil
 }
 
 func (s *Service) getTokenExpiry(remember bool) time.Time {
@@ -149,13 +167,20 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 	username = strings.TrimSpace(username)
 
 	// Rate-limit check
+	now := time.Now()
 	s.loginMu.Lock()
 	attempt, exists := s.loginAttempts[username]
-	if exists && time.Now().Before(attempt.blockedUntil) {
+	if exists && !attempt.lastAttempt.IsZero() && now.Sub(attempt.lastAttempt) >= loginBlockDuration &&
+		(attempt.blockedUntil.IsZero() || !now.Before(attempt.blockedUntil)) {
+		delete(s.loginAttempts, username)
+		attempt = nil
+		exists = false
+	}
+	if exists && now.Before(attempt.blockedUntil) {
 		attemptSnapshot := *attempt
 		s.loginMu.Unlock()
 		s.logLoginFailure(username, authType, "rate_limited", attemptSnapshot, nil)
-		return 0, "", fmt.Errorf("too_many_attempts: try again in %s", time.Until(attemptSnapshot.blockedUntil).Round(time.Second))
+		return 0, "", &LoginRateLimitError{RetryAfter: time.Until(attemptSnapshot.blockedUntil)}
 	}
 	s.loginMu.Unlock()
 
@@ -176,6 +201,16 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			attempt := s.recordFailedLogin(username)
 			s.logLoginFailure(username, authType, "password_mismatch", attempt, nil)
 			return 0, "", fmt.Errorf("invalid_credentials")
+		}
+
+		if user.Locked {
+			s.logLoginFailure(username, authType, "account_locked", loginAttempt{}, nil)
+			return 0, "", fmt.Errorf("account_locked")
+		}
+
+		if user.DisablePassword {
+			s.logLoginFailure(username, authType, "password_auth_disabled", loginAttempt{}, nil)
+			return 0, "", fmt.Errorf("password_auth_disabled")
 		}
 
 		if !user.Admin {
@@ -213,6 +248,11 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("user_not_registered_in_sylve")
 		}
 
+		if user.Locked {
+			s.logLoginFailure(username, authType, "account_locked", loginAttempt{}, nil)
+			return 0, "", fmt.Errorf("account_locked")
+		}
+
 		if !user.Admin {
 			attempt := s.recordFailedLogin(username)
 			s.logLoginFailure(username, authType, "admin_required", attempt, nil)
@@ -247,6 +287,7 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 func (s *Service) recordFailedLogin(username string) loginAttempt {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
+	now := time.Now()
 
 	if s.loginAttempts == nil {
 		s.loginAttempts = make(map[string]*loginAttempt)
@@ -254,16 +295,29 @@ func (s *Service) recordFailedLogin(username string) loginAttempt {
 
 	attempt, exists := s.loginAttempts[username]
 	if !exists {
-		attempt = &loginAttempt{count: 1}
+		attempt = &loginAttempt{count: 1, lastAttempt: now}
 		s.loginAttempts[username] = attempt
 		return *attempt
 	}
 	attempt.count++
+	attempt.lastAttempt = now
 	if attempt.count >= maxLoginAttempts {
-		attempt.blockedUntil = time.Now().Add(loginBlockDuration)
+		attempt.blockedUntil = now.Add(loginBlockDuration)
 	}
 
 	return *attempt
+}
+
+func (s *Service) pruneLoginAttempts(now time.Time) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+
+	for username, attempt := range s.loginAttempts {
+		if attempt == nil || (!attempt.lastAttempt.IsZero() && now.Sub(attempt.lastAttempt) >= loginBlockDuration &&
+			(attempt.blockedUntil.IsZero() || !now.Before(attempt.blockedUntil))) {
+			delete(s.loginAttempts, username)
+		}
+	}
 }
 
 func (s *Service) logLoginFailure(username, authType, reason string, attempt loginAttempt, err error) {
@@ -298,8 +352,8 @@ func (s *Service) createClusterJWTWithUse(
 ) (string, error) {
 	var clusterKey string
 
-	if forceSecret != "" {
-		clusterKey = forceSecret
+	if strings.TrimSpace(forceSecret) != "" {
+		clusterKey = strings.TrimSpace(forceSecret)
 	} else {
 		var err error
 
@@ -454,13 +508,11 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 }
 
 func (s *Service) RevokeJWT(token string) error {
-	var tokenRecord models.Token
-
-	if err := s.DB.Where("token = ?", token).First(&tokenRecord).Error; err != nil {
-		return fmt.Errorf("token_not_found")
+	if strings.TrimSpace(token) == "" {
+		return nil
 	}
 
-	if err := s.DB.Delete(&tokenRecord).Error; err != nil {
+	if err := s.DB.Where("token = ?", token).Delete(&models.Token{}).Error; err != nil {
 		return fmt.Errorf("token_delete_failed")
 	}
 
@@ -488,6 +540,9 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 	}
 
 	if user.Locked {
+		return false
+	}
+	if !user.Admin {
 		return false
 	}
 
@@ -670,6 +725,8 @@ func (s *Service) ClearExpiredJWTTokens(ctx context.Context) {
 }
 
 func (s *Service) performTokenCleanup() {
+	s.pruneLoginAttempts(time.Now())
+
 	result := s.DB.Where("expiry < ?", time.Now()).Delete(&models.Token{})
 
 	if result.Error != nil {

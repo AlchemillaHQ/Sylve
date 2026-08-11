@@ -61,15 +61,22 @@ func shouldRedactAuditPayload(path string) bool {
 
 	return isMetadataOnlyUploadAuditPath(path) ||
 		auditPathMatches(path, "/api/auth/login") ||
-		auditPathMatches(path, "/api/auth/passkeys") ||
+		auditPathMatches(path, "/api/auth/passkeys/login") ||
+		path == "/api/auth/passkeys/register/finish" ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
 		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups"))
 }
 
 func shouldRedactAuditResponse(path string) bool {
-	return shouldRedactAuditPayload(path) &&
-		strings.TrimSpace(path) != "/api/utilities/downloader-uploads"
+	path = strings.TrimSpace(path)
+	if path == "/api/auth/passkeys/register/begin" {
+		return true
+	}
+	if path == "/api/auth/passkeys/register/finish" {
+		return false
+	}
+	return shouldRedactAuditPayload(path) && path != "/api/utilities/downloader-uploads"
 }
 
 func isImportantAuditGetPath(path string) bool {
@@ -89,6 +96,10 @@ func isImportantAuditGetPath(path string) bool {
 		return false
 	}
 	return id != "" && !strings.Contains(id, "/")
+}
+
+func isRoutineUnauditedRequest(method, path string) bool {
+	return method == http.MethodPost && strings.TrimSpace(path) == "/api/auth/sse-tokens"
 }
 
 func auditPathMatches(path, prefix string) bool {
@@ -702,7 +713,8 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 	}
 
 	return func(c *gin.Context) {
-		if strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") {
+		if strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") ||
+			isRoutineUnauditedRequest(c.Request.Method, c.Request.URL.Path) {
 			c.Next()
 			return
 		}
