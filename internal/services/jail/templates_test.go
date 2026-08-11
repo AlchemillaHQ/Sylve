@@ -714,3 +714,49 @@ func TestDeleteJailTemplateRejectsActiveCreation(t *testing.T) {
 		t.Fatalf("expected jail_template_in_use, got %v", err)
 	}
 }
+
+func TestValidateJailTemplateNetworksRejectsLinuxAutomaticConfiguration(t *testing.T) {
+	svc := &Service{}
+	for _, network := range []jailModels.JailTemplateNetwork{
+		{DHCP: true},
+		{SLAAC: true},
+	} {
+		err := svc.validateJailTemplateNetworks(jailModels.JailTypeLinux, []jailModels.JailTemplateNetwork{network})
+		if err == nil || !strings.Contains(err.Error(), "cannot_set_dhcp_or_slaac_when_linux_jail") {
+			t.Fatalf("expected Linux automatic configuration to be rejected, got %v", err)
+		}
+	}
+}
+
+func TestValidateJailTemplateNetworksAllowsLinuxStaticConfiguration(t *testing.T) {
+	svc := &Service{}
+	err := svc.validateJailTemplateNetworks(jailModels.JailTypeLinux, []jailModels.JailTemplateNetwork{
+		{DefaultGateway: true},
+		{},
+	})
+	if err != nil {
+		t.Fatalf("expected Linux static-only networks to be accepted, got %v", err)
+	}
+}
+
+func TestValidateJailTemplateNetworksRejectsMultipleDefaultGateways(t *testing.T) {
+	svc := &Service{}
+	err := svc.validateJailTemplateNetworks(jailModels.JailTypeFreeBSD, []jailModels.JailTemplateNetwork{
+		{DHCP: true, DefaultGateway: true},
+		{DHCP: true, DefaultGateway: true},
+	})
+	if err == nil || !strings.Contains(err.Error(), "jail_default_gateway_exists") {
+		t.Fatalf("expected multiple default gateways to be rejected, got %v", err)
+	}
+}
+
+func TestValidateJailTemplateNetworksAllowsMultipleDHCPInterfaces(t *testing.T) {
+	svc := &Service{}
+	err := svc.validateJailTemplateNetworks(jailModels.JailTypeFreeBSD, []jailModels.JailTemplateNetwork{
+		{DHCP: true, DefaultGateway: true},
+		{DHCP: true},
+	})
+	if err != nil {
+		t.Fatalf("expected multiple DHCP interfaces with one default gateway to be accepted, got %v", err)
+	}
+}

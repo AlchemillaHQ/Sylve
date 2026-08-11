@@ -207,19 +207,24 @@ func (s *Service) AddSylveNetworkToHook(content string, networkContent string) s
 	content = s.RemoveSylveNetworkFromHook(content)
 
 	// If no network content, just return cleaned content
-	if strings.TrimSpace(networkContent) == "" {
+	trimmedNetwork := strings.TrimSpace(networkContent)
+	if trimmedNetwork == "" {
 		return content
 	}
 
 	// Add new network content at the end before any user-managed sections
 	userStart := strings.Index(content, "### Start User-Managed Hook ###")
 	if userStart != -1 {
-		// Insert before user-managed section
-		return content[:userStart] + start + "\n" + networkContent + "\n" + end + "\n\n" + content[userStart:]
-	} else {
-		// Add at the end
-		return content + "\n" + start + "\n" + networkContent + "\n" + end + "\n"
+		before := strings.TrimRight(content[:userStart], "\n")
+		after := strings.TrimLeft(content[userStart:], "\n")
+		return before + "\n\n" + start + "\n" + trimmedNetwork + "\n" + end + "\n\n" + after
 	}
+
+	trimmedContent := strings.TrimRight(content, "\n")
+	if trimmedContent == "" {
+		trimmedContent = "#!/bin/sh"
+	}
+	return trimmedContent + "\n\n" + start + "\n" + trimmedNetwork + "\n" + end + "\n"
 }
 
 func (s *Service) AddSylveNetworkToHookAtEnd(content string, networkContent string) string {

@@ -99,7 +99,20 @@ func (s *Service) destroyJailTemplateDatasetIfPresent(
 	return ds.Destroy(ctx, recursive, false)
 }
 
-func (s *Service) validateJailTemplateNetworks(networks []jailModels.JailTemplateNetwork) error {
+func (s *Service) validateJailTemplateNetworks(jailType jailModels.JailType, networks []jailModels.JailTemplateNetwork) error {
+	defaultGatewayCount := 0
+	for _, network := range networks {
+		if jailType == jailModels.JailTypeLinux && (network.DHCP || network.SLAAC) {
+			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
+		}
+		if network.DefaultGateway {
+			defaultGatewayCount++
+			if defaultGatewayCount > 1 {
+				return fmt.Errorf("jail_default_gateway_exists")
+			}
+		}
+	}
+
 	for _, network := range networks {
 		if network.SwitchID == 0 {
 			continue
@@ -406,7 +419,7 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint,
 	}
 
 	templateNetworks := s.buildTemplateNetworks(jail.Networks)
-	if err := s.validateJailTemplateNetworks(templateNetworks); err != nil {
+	if err := s.validateJailTemplateNetworks(jail.Type, templateNetworks); err != nil {
 		return err
 	}
 
@@ -674,7 +687,7 @@ func (s *Service) preflightTemplateTargets(ctx context.Context, template jailMod
 	if len(targets) == 0 {
 		return fmt.Errorf("no_targets")
 	}
-	if err := s.validateJailTemplateNetworks(template.Networks); err != nil {
+	if err := s.validateJailTemplateNetworks(template.Type, template.Networks); err != nil {
 		return err
 	}
 
@@ -859,7 +872,6 @@ func (s *Service) createJailFromTemplateTarget(
 	}
 
 	var createdJail jailModels.Jail
-	macByNetworkIndex := map[int]string{}
 	cleanupCreatedJail := false
 
 	defer func() {
@@ -960,11 +972,10 @@ func (s *Service) createJailFromTemplateTarget(
 		}
 
 		for idx, n := range template.Networks {
-			macID, macAddr, err := s.allocateMACObject(tx, fmt.Sprintf("%s-net-%d", target.Name, idx+1))
+			macID, _, err := s.allocateMACObject(tx, fmt.Sprintf("%s-net-%d", target.Name, idx+1))
 			if err != nil {
 				return err
 			}
-			macByNetworkIndex[idx] = macAddr
 			macIDCopy := macID
 
 			network := jailModels.Network{
@@ -1028,15 +1039,7 @@ func (s *Service) createJailFromTemplateTarget(
 		return fmt.Errorf("failed_to_reload_created_jail: %w", err)
 	}
 
-	firstMAC := ""
-	if len(reloaded.Networks) > 0 {
-		firstMAC = macByNetworkIndex[0]
-		if firstMAC == "" && reloaded.Networks[0].MacID != nil {
-			firstMAC, _ = s.NetworkService.GetObjectEntryByID(*reloaded.Networks[0].MacID)
-		}
-	}
-
-	cfg, err := s.CreateJailConfig(*reloaded, mountPoint, firstMAC)
+	cfg, err := s.CreateJailConfig(*reloaded, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_create_jail_config_from_template: %w", err)
 	}
@@ -1051,8 +1054,8 @@ func (s *Service) createJailFromTemplateTarget(
 		return fmt.Errorf("failed_to_create_jail_metadata_directory: %w", err)
 	}
 
-	if err := s.WriteJailJSON(target.CTID); err != nil {
-		return fmt.Errorf("failed_to_write_jail_json_from_template: %w", err)
+	if err := s.SyncNetwork(target.CTID, *reloaded); err != nil {
+		return fmt.Errorf("failed_to_sync_template_jail_network: %w", err)
 	}
 
 	return nil

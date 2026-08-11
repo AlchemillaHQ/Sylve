@@ -295,7 +295,7 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"vnet;",
-		"vnet.interface = \"" + epairB + "\";",
+		"vnet.interface += \"" + epairB + "\";",
 		"exec.start = \"/bin/sh /etc/rc\";",
 		"exec.stop = \"/bin/sh /etc/rc.shutdown\";",
 		"meta = \"console-integration=static-vnet\";",
@@ -314,8 +314,13 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 		"ifconfig_" + epairB + "_ipv6=\"inet6 " + addresses.jailIPv6CIDR + "\"",
 		"ipv6_defaultrouter=\"" + addresses.bridgeIPv6 + "\"",
 	} {
-		if !strings.Contains(string(rcConf), expected) {
-			t.Fatalf("static VNET rc.conf missing %q:\n%s", expected, rcConf)
+		if got := strings.Count(string(rcConf), expected); got != 1 {
+			t.Fatalf("static VNET rc.conf contains %q %d times, want once:\n%s", expected, got, rcConf)
+		}
+	}
+	for _, marker := range []string{"# >>> Sylve-Managed Network >>>", "# <<< Sylve-Managed Network <<<"} {
+		if got := strings.Count(string(rcConf), marker); got != 1 {
+			t.Fatalf("static VNET rc.conf contains marker %q %d times, want once:\n%s", marker, got, rcConf)
 		}
 	}
 
@@ -328,6 +333,13 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	assertJailAction(t, output, ctid, "start")
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
 	waitForConsoleJailRunning(t, suite, ctid, true)
+	rcConfAfterStart, err := os.ReadFile(filepath.Join(mountPoint, "etc", "rc.conf"))
+	if err != nil {
+		t.Fatalf("read static VNET rc.conf after start: %v", err)
+	}
+	if string(rcConfAfterStart) != string(rcConf) {
+		t.Fatalf("static VNET rc.conf changed during start:\nbefore:\n%s\nafter:\n%s", rcConf, rcConfAfterStart)
+	}
 
 	hostEpair := consoleInterface(t, epairA)
 	if !hasInterfaceGroup(hostEpair.Groups, "sylve") {
@@ -522,7 +534,7 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"vnet;",
-		"vnet.interface = \"" + epairB + "\";",
+		"vnet.interface += \"" + epairB + "\";",
 		"meta = \"console-integration=object-references\";",
 	} {
 		if !strings.Contains(string(config), expected) {
@@ -935,7 +947,7 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read DHCP/SLAAC jail config: %v", err)
 	}
-	for _, expected := range []string{"vnet;", "vnet.interface = \"" + epairB + "\";", "meta = \"console-integration=dhcp-slaac\";"} {
+	for _, expected := range []string{"vnet;", "vnet.interface += \"" + epairB + "\";", "meta = \"console-integration=dhcp-slaac\";"} {
 		if !strings.Contains(string(config), expected) {
 			t.Fatalf("DHCP/SLAAC jail config missing %q:\n%s", expected, config)
 		}
@@ -950,8 +962,13 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 		"ifconfig_" + epairB + "_ipv6=\"inet6 accept_rtadv\"",
 		"rtsold_enable=\"YES\"",
 	} {
-		if !strings.Contains(string(rcConf), expected) {
-			t.Fatalf("DHCP/SLAAC rc.conf missing %q:\n%s", expected, rcConf)
+		if got := strings.Count(string(rcConf), expected); got != 1 {
+			t.Fatalf("DHCP/SLAAC rc.conf contains %q %d times, want once:\n%s", expected, got, rcConf)
+		}
+	}
+	for _, marker := range []string{"# >>> Sylve-Managed Network >>>", "# <<< Sylve-Managed Network <<<"} {
+		if got := strings.Count(string(rcConf), marker); got != 1 {
+			t.Fatalf("DHCP/SLAAC rc.conf contains marker %q %d times, want once:\n%s", marker, got, rcConf)
 		}
 	}
 

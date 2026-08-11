@@ -165,37 +165,151 @@ func jailNetworkMutationFailure(primary error, snapshots []jailFileSnapshot, com
 	return errors.Join(primary, compensationErr, restoreJailFiles(snapshots))
 }
 
-func removeJailNetworkRCConfBlock(content string) string {
-	removeBlock := func(value, start, end string) string {
-		startIndex := strings.Index(value, start)
-		if startIndex < 0 {
-			return value
+func orderedUniqueJailNetworkRCConfLines(lines []string) []string {
+	seen := make(map[string]struct{}, len(lines))
+	unique := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
-		endIndex := strings.Index(value[startIndex+len(start):], end)
-		if endIndex < 0 {
-			return value[:startIndex]
+		if _, exists := seen[line]; exists {
+			continue
 		}
-		endIndex += startIndex + len(start) + len(end)
-		return value[:startIndex] + value[endIndex:]
+		seen[line] = struct{}{}
+		unique = append(unique, line)
 	}
-
-	content = removeBlock(content, jailNetworkRCConfStart, jailNetworkRCConfEnd)
-	if legacyIndex := strings.Index(content, jailNetworkLegacyMark); legacyIndex >= 0 {
-		content = content[:legacyIndex]
-	}
-	trimmed := strings.TrimRight(content, "\n")
-	if trimmed == "" {
-		return ""
-	}
-	return trimmed + "\n"
+	return unique
 }
 
-func replaceJailNetworkRCConfBlock(content string, lines []string) string {
-	content = removeJailNetworkRCConfBlock(content)
-	if len(lines) == 0 {
-		return content
+func jailHookHasCommands(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			return true
+		}
 	}
-	return content + jailNetworkRCConfStart + "\n" + strings.Join(lines, "\n") + "\n" + jailNetworkRCConfEnd + "\n"
+	return false
+}
+
+func isLegacyJailNetworkRCConfLine(line string) bool {
+	key, _, ok := strings.Cut(strings.TrimSpace(line), "=")
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(key, "ifconfig_") ||
+		key == "defaultrouter" ||
+		key == "ipv6_defaultrouter" ||
+		key == "rtsold_enable"
+}
+
+func isSylveJailInterfaceRCConfLine(line, ctidHash string) bool {
+	if ctidHash == "" {
+		return false
+	}
+	key, _, ok := strings.Cut(strings.TrimSpace(line), "=")
+	if !ok {
+		return false
+	}
+	suffix := strings.TrimPrefix(key, "ifconfig_"+ctidHash+"_net")
+	if suffix == key {
+		return false
+	}
+	if strings.HasSuffix(suffix, "_ipv6") {
+		suffix = strings.TrimSuffix(suffix, "_ipv6")
+	}
+	if !strings.HasSuffix(suffix, "b") {
+		return false
+	}
+	networkID := strings.TrimSuffix(suffix, "b")
+	if networkID == "" {
+		return false
+	}
+	for _, character := range networkID {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func replaceJailNetworkRCConfBlock(content, ctidHash string, lines []string) string {
+	desired := orderedUniqueJailNetworkRCConfLines(lines)
+	managed := make(map[string]struct{}, len(desired))
+	for _, line := range desired {
+		managed[line] = struct{}{}
+	}
+
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	contentLines := strings.Split(content, "\n")
+	base := make([]string, 0, len(contentLines))
+	inManagedBlock := false
+	inLegacyBlock := false
+	for _, line := range contentLines {
+		trimmed := strings.TrimSpace(line)
+		if inManagedBlock {
+			if trimmed == jailNetworkRCConfEnd {
+				inManagedBlock = false
+				continue
+			}
+			if trimmed != "" {
+				managed[trimmed] = struct{}{}
+			}
+			continue
+		}
+		if trimmed == jailNetworkRCConfStart {
+			inManagedBlock = true
+			continue
+		}
+		if trimmed == jailNetworkRCConfEnd {
+			continue
+		}
+
+		if inLegacyBlock {
+			if trimmed != "" && isLegacyJailNetworkRCConfLine(trimmed) {
+				managed[trimmed] = struct{}{}
+				continue
+			}
+			inLegacyBlock = false
+		}
+		if trimmed == jailNetworkLegacyMark {
+			inLegacyBlock = true
+			continue
+		}
+		base = append(base, line)
+	}
+
+	filtered := make([]string, 0, len(base))
+	for _, line := range base {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			if _, duplicate := managed[trimmed]; duplicate {
+				continue
+			}
+			if isSylveJailInterfaceRCConfLine(trimmed, ctidHash) {
+				continue
+			}
+		}
+		filtered = append(filtered, line)
+	}
+	for len(filtered) > 0 && strings.TrimSpace(filtered[len(filtered)-1]) == "" {
+		filtered = filtered[:len(filtered)-1]
+	}
+
+	var result strings.Builder
+	if len(filtered) > 0 {
+		result.WriteString(strings.Join(filtered, "\n"))
+		result.WriteByte('\n')
+	}
+	if len(desired) > 0 {
+		result.WriteString(jailNetworkRCConfStart)
+		result.WriteByte('\n')
+		result.WriteString(strings.Join(desired, "\n"))
+		result.WriteByte('\n')
+		result.WriteString(jailNetworkRCConfEnd)
+		result.WriteByte('\n')
+	}
+	return result.String()
 }
 
 func removeJailNetworkConfigLines(lines []string) []string {
@@ -207,6 +321,19 @@ func removeJailNetworkConfigLines(lines []string) []string {
 			continue
 		}
 		filtered = append(filtered, line)
+	}
+	closing := len(filtered) - 1
+	for closing >= 0 && strings.TrimSpace(filtered[closing]) == "" {
+		closing--
+	}
+	if closing >= 0 && strings.TrimSpace(filtered[closing]) == "}" {
+		firstBlank := closing
+		for firstBlank > 0 && strings.TrimSpace(filtered[firstBlank-1]) == "" {
+			firstBlank--
+		}
+		if firstBlank < closing {
+			filtered = append(filtered[:firstBlank], filtered[closing:]...)
+		}
 	}
 	return filtered
 }
@@ -926,10 +1053,11 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 	if restoring {
 		return fmt.Errorf("restore_in_progress")
 	}
-	if s.NetworkService == nil {
+	if len(jail.Networks) > 0 && s.NetworkService == nil {
 		return fmt.Errorf("network_service_unavailable")
 	}
 	sort.Slice(jail.Networks, func(i, j int) bool { return jail.Networks[i].ID < jail.Networks[j].ID })
+	ctidHash := s.GetCTIDHash(ctID)
 
 	mountPoint, err := s.GetJailBaseMountPoint(ctID)
 	if err != nil {
@@ -957,14 +1085,14 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 	}
 
 	rcConfPath := ""
-	rcConfBase := ""
+	rcConfContent := ""
 	if jail.Type == jailModels.JailTypeFreeBSD {
 		rcConfPath = filepath.Join(mountPoint, "etc", "rc.conf")
 		rcConf, readErr := os.ReadFile(rcConfPath)
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 			return fmt.Errorf("failed_to_read_rc_conf: %w", readErr)
 		}
-		rcConfBase = removeJailNetworkRCConfBlock(string(rcConf))
+		rcConfContent = string(rcConf)
 	}
 
 	var jailConfig string
@@ -974,10 +1102,10 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 	if jail.InheritIPv4 || jail.InheritIPv6 {
 		var inherited strings.Builder
 		if jail.InheritIPv4 {
-			inherited.WriteString("\tip4=inherit;\n")
+			inherited.WriteString("\tip4=\"inherit\";\n")
 		}
 		if jail.InheritIPv6 {
-			inherited.WriteString("\tip6=inherit;\n")
+			inherited.WriteString("\tip6=\"inherit\";\n")
 		}
 		jailConfig, err = s.AppendToConfig(ctID, strings.Join(lines, "\n"), inherited.String())
 		if err != nil {
@@ -989,39 +1117,27 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 			return err
 		}
 	} else {
-		ctidHash := s.GetCTIDHash(ctID)
 		preStartPath, ok := hookPaths["pre-start"]
 		if !ok {
 			return fmt.Errorf("hook_script_not_found: pre-start")
 		}
 		postStartPath := hookPaths["post-start"]
-		if jail.Type == jailModels.JailTypeLinux {
-			filtered := make([]string, 0, len(lines))
-			for _, line := range lines {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "exec.start") && strings.Contains(trimmed, "\"/usr/local/sylve/scripts/start.sh\"") {
-					continue
-				}
-				if postStartPath != "" && strings.HasPrefix(trimmed, "exec.poststart") && strings.Contains(trimmed, fmt.Sprintf("\"%s\"", postStartPath)) {
-					continue
-				}
-				filtered = append(filtered, line)
+		filtered := make([]string, 0, len(lines))
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "exec.prestart") && strings.Contains(trimmed, fmt.Sprintf("\"%s\"", preStartPath)) {
+				continue
 			}
-			lines = filtered
+			if jail.Type == jailModels.JailTypeLinux && postStartPath != "" && strings.HasPrefix(trimmed, "exec.poststart") && strings.Contains(trimmed, fmt.Sprintf("\"%s\"", postStartPath)) {
+				continue
+			}
+			filtered = append(filtered, line)
 		}
+		lines = filtered
 
 		var jailCfgBuilder strings.Builder
 		jailCfgBuilder.WriteString("\tvnet;\n")
-		hasManagedPreStart := false
-		for _, line := range lines {
-			if strings.Contains(line, fmt.Sprintf("\"%s\"", preStartPath)) {
-				hasManagedPreStart = true
-				break
-			}
-		}
-		if !hasManagedPreStart {
-			jailCfgBuilder.WriteString(fmt.Sprintf("\texec.prestart += \"%s\";\n", preStartPath))
-		}
+		jailCfgBuilder.WriteString(fmt.Sprintf("\texec.prestart += \"%s\";\n", preStartPath))
 		for _, network := range jail.Networks {
 			if network.SwitchID > 0 {
 				jailCfgBuilder.WriteString(fmt.Sprintf("\tvnet.interface += \"%s_net%db\";\n", ctidHash, network.ID))
@@ -1137,7 +1253,7 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 		}
 		preStartNetwork = preStartBuilder.String()
 		postStartNetwork = postStartBuilder.String()
-		if jail.Type == jailModels.JailTypeLinux && strings.TrimSpace(postStartNetwork) != "" {
+		if jail.Type == jailModels.JailTypeLinux && (strings.TrimSpace(postStartNetwork) != "" || jailHookHasCommands(hookContents["post-start"])) {
 			if postStartPath == "" {
 				return fmt.Errorf("hook_script_not_found: post-start")
 			}
@@ -1173,7 +1289,7 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 		}
 	}
 	if rcConfPath != "" {
-		if err := utils.AtomicWriteFile(rcConfPath, []byte(replaceJailNetworkRCConfBlock(rcConfBase, rcConfLines)), 0o644); err != nil {
+		if err := utils.AtomicWriteFile(rcConfPath, []byte(replaceJailNetworkRCConfBlock(rcConfContent, ctidHash, rcConfLines)), 0o644); err != nil {
 			return fmt.Errorf("failed_to_write_rc_conf: %w", err)
 		}
 	}
