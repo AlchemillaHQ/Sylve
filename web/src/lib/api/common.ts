@@ -88,10 +88,6 @@ function applyRequestDefaults(config: APIRequestConfig): APIRequestConfig {
         nextConfig.headers!.Authorization = `Bearer ${storage.token}`;
     }
 
-    if (storage.clusterToken) {
-        nextConfig.headers!['X-Cluster-Token'] = `Bearer ${storage.clusterToken}`;
-    }
-
     const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
     const pathBasedHost =
         routeHost !== '' &&

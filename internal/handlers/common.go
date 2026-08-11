@@ -10,8 +10,6 @@ package handlers
 
 import (
 	"crypto/tls"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -128,97 +126,96 @@ func ReverseProxyInsecure(c *gin.Context, backend string) {
 	c.Abort()
 }
 
-func resolveForwardClusterToken(c *gin.Context, authService *authService.Service) string {
+func resolveForwardClusterToken(c *gin.Context, service *authService.Service) (string, bool, error) {
 	token := strings.TrimSpace(c.GetString("Token"))
-	scope := strings.TrimSpace(c.GetString("AuthScope"))
-	if token != "" && (scope == "wss-cluster" || scope == "cluster") {
-		return token
+	scope := c.GetString("AuthScope")
+	if scope == "cluster" {
+		if token == "" || c.GetString("ClusterTokenUse") != authService.ClusterTokenUseUserProxy ||
+			c.GetUint("UserID") == 0 || !c.GetBool("ProxyAdmin") {
+			return "", false, fmt.Errorf("validated_user_proxy_required")
+		}
+		return token, true, nil
 	}
 
-	if authService == nil {
-		return ""
+	if scope != "local" || service == nil {
+		return "", false, fmt.Errorf("local_forward_auth_required")
 	}
 
-	userIDRaw, okUserID := c.Get("UserID")
-	usernameRaw, okUsername := c.Get("Username")
-	authTypeRaw, okAuthType := c.Get("AuthType")
-	if !okUserID || !okUsername || !okAuthType {
-		return ""
-	}
-
-	var userID uint
-	switch v := userIDRaw.(type) {
-	case uint:
-		userID = v
-	case float64:
-		userID = uint(v)
-	default:
-		return ""
-	}
-
-	username, ok := usernameRaw.(string)
-	if !ok || strings.TrimSpace(username) == "" {
-		return ""
-	}
-
-	authType, ok := authTypeRaw.(string)
-	if !ok {
-		authType = ""
-	}
-
-	clusterToken, err := authService.CreateClusterJWT(userID, username, authType, "")
+	clusterToken, err := service.CreateUserProxyJWT(
+		c.GetUint("UserID"),
+		c.GetString("Username"),
+		c.GetString("AuthType"),
+	)
 	if err != nil {
-		return ""
+		return "", false, err
 	}
-
-	return clusterToken
+	return clusterToken, false, nil
 }
 
-func injectForwardClusterAuth(c *gin.Context, authService *authService.Service) {
-	clusterToken := resolveForwardClusterToken(c, authService)
-	if clusterToken == "" {
-		return
+func isForwardedConsolePath(path string) bool {
+	if path == "/api/info/terminal" {
+		return true
 	}
-
-	c.Request.Header.Set("X-Cluster-Token", fmt.Sprintf("Bearer %s", clusterToken))
-
-	authHex := c.Query("auth")
-	if authHex == "" {
-		return
+	for _, pattern := range []struct {
+		prefix string
+		suffix string
+	}{
+		{prefix: "/api/vnc/"},
+		{prefix: "/api/vm/", suffix: "/console"},
+		{prefix: "/api/jail/", suffix: "/console"},
+	} {
+		value := strings.TrimPrefix(strings.TrimSuffix(path, pattern.suffix), pattern.prefix)
+		if strings.HasPrefix(path, pattern.prefix) && strings.HasSuffix(path, pattern.suffix) &&
+			value != "" && !strings.Contains(value, "/") {
+			return true
+		}
 	}
+	return false
+}
 
-	var wsAuth struct {
-		Hash     string `json:"hash"`
-		Hostname string `json:"hostname"`
-		Token    string `json:"token"`
-	}
-
-	data, err := hex.DecodeString(authHex)
+func prepareForwardClusterAuth(c *gin.Context, service *authService.Service) error {
+	clusterToken, reused, err := resolveForwardClusterToken(c, service)
 	if err != nil {
-		return
+		return err
 	}
 
-	if err := json.Unmarshal(data, &wsAuth); err != nil {
-		return
+	forwardHop := ""
+	if reused {
+		rawHop := strings.TrimSpace(c.GetHeader("X-Sylve-Cluster-Forward-Hop"))
+		if rawHop != "" && rawHop != "0" {
+			return fmt.Errorf("cluster_forward_loop_detected")
+		}
+		forwardHop = "1"
 	}
 
-	wsAuth.Token = clusterToken
-
-	encoded, err := json.Marshal(wsAuth)
-	if err != nil {
-		return
+	for _, header := range []string{
+		"Authorization",
+		"Proxy-Authorization",
+		"Cookie",
+		"ClusterToken",
+		"X-Cluster-Authorization",
+		authService.ClusterTokenHeader,
+		authService.ClusterKeyHeader,
+		"X-Current-Hostname",
+		"X-Sylve-Cluster-Forward-Hop",
+		"X-Sylve-Backup-Forwarded-By",
+		"X-Sylve-Backup-Forward-Target",
+	} {
+		c.Request.Header.Del(header)
+	}
+	if isForwardedConsolePath(c.Request.URL.Path) {
+		c.Request.Header.Del("Sec-WebSocket-Protocol")
 	}
 
 	query := c.Request.URL.Query()
-	query.Set("auth", hex.EncodeToString(encoded))
+	query.Del("hash")
+	query.Del("auth")
 	c.Request.URL.RawQuery = query.Encode()
-}
-
-func isBearerWebSocketProtocol(value string) bool {
-	parts := strings.Split(value, ",")
-	return len(parts) == 2 &&
-		strings.TrimSpace(parts[0]) == "Bearer" &&
-		strings.TrimSpace(parts[1]) != ""
+	c.Request.Header.Set(authService.ClusterTokenHeader, fmt.Sprintf("Bearer %s", clusterToken))
+	if forwardHop != "" {
+		c.Request.Header.Set("X-Sylve-Cluster-Forward-Hop", forwardHop)
+	}
+	return nil
 }
 
 func requestedHostname(request *http.Request) (string, bool, error) {
@@ -227,22 +224,15 @@ func requestedHostname(request *http.Request) (string, bool, error) {
 	}
 
 	_, hasHostnameHeader := request.Header[http.CanonicalHeaderKey("X-Current-Hostname")]
-	hasAuthQuery := request.URL != nil && request.URL.Query().Has("auth")
-	webSocketProtocol := request.Header.Get("Sec-WebSocket-Protocol")
-	hasRoutingProtocol := strings.TrimSpace(webSocketProtocol) != "" &&
-		!isBearerWebSocketProtocol(webSocketProtocol)
-	if !hasHostnameHeader && !hasAuthQuery && !hasRoutingProtocol {
+	hasAuthQuery := request.URL != nil && request.Method == http.MethodGet &&
+		(request.URL.Path == "/api/system/file-explorer/download" || isForwardedConsolePath(request.URL.Path)) &&
+		request.URL.Query().Has("auth")
+	if !hasHostnameHeader && !hasAuthQuery {
 		return "", false, nil
 	}
 
 	requestCopy := request.Clone(request.Context())
-	headers := request.Header
-	if isBearerWebSocketProtocol(webSocketProtocol) {
-		headers = request.Header.Clone()
-		headers.Del("Sec-WebSocket-Protocol")
-	}
-
-	requested, err := utils.GetCurrentHostnameFromHeader(headers, requestCopy)
+	requested, err := utils.GetCurrentHostnameFromHeader(request.Header, requestCopy)
 	if err != nil {
 		return "", true, err
 	}
@@ -324,7 +314,10 @@ func EnsureCorrectHost(db *gorm.DB, authService *authService.Service) gin.Handle
 			return
 		}
 
-		injectForwardClusterAuth(c, authService)
+		if err := prepareForwardClusterAuth(c, authService); err != nil {
+			abortSelectedNodeRequest(c, http.StatusBadGateway, "selected_node_auth_failed", reqHost)
+			return
+		}
 		ReverseProxyInsecure(c, fmt.Sprintf("https://%s", apiAddress))
 	}
 }
@@ -351,8 +344,14 @@ func reverseProxyPublicDownload(c *gin.Context, backend string) {
 		"Authorization",
 		"Cookie",
 		"Proxy-Authorization",
+		"ClusterToken",
+		"X-Cluster-Authorization",
 		"X-Cluster-Token",
+		"X-Cluster-Key",
 		"X-Current-Hostname",
+		"X-Sylve-Cluster-Forward-Hop",
+		"X-Sylve-Backup-Forwarded-By",
+		"X-Sylve-Backup-Forward-Target",
 	} {
 		c.Request.Header.Del(header)
 	}

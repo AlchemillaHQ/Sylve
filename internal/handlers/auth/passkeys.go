@@ -270,7 +270,7 @@ func FinishPasskeyLoginHandler(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		completeLogin(c, authService, user.ID, user.Username, auth.AuthTypeSylvePasskey, token)
+		completeLogin(c, authService, user.ID, token)
 	}
 }
 

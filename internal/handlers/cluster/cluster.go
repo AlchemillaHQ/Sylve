@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
@@ -41,10 +42,13 @@ type JoinClusterRequest struct {
 type AcceptJoinRequest struct {
 	NodeID      string                               `json:"nodeId" binding:"required"`
 	NodeIP      string                               `json:"nodeIp" binding:"required,ip"`
-	ClusterKey  string                               `json:"clusterKey" binding:"required"`
 	NodeVersion string                               `json:"nodeVersion" binding:"required"`
 	Preflight   bool                                 `json:"preflight"`
 	Inventory   cluster.GuestIdentityInventoryReport `json:"inventory"`
+}
+
+type JoinKeyResponse struct {
+	Key string `json:"key"`
 }
 
 type RemovePeerRequest struct {
@@ -118,7 +122,7 @@ func writeJoinAdmissionError(c *gin.Context, err error) {
 	case strings.HasPrefix(errText, "not_leader;"):
 		message = "not_leader"
 		status = http.StatusConflict
-	case strings.Contains(errText, "add_voter_failed"):
+	case isUncertainJoinOutcome(errText):
 		message = "cluster_join_outcome_uncertain"
 		status = http.StatusServiceUnavailable
 	case strings.Contains(errText, "inventory_unavailable") ||
@@ -138,6 +142,22 @@ func writeJoinAdmissionError(c *gin.Context, err error) {
 		Error:   errText,
 		Data:    nil,
 	})
+}
+
+func isUncertainJoinOutcome(errText string) bool {
+	for _, marker := range []string{
+		"add_nonvoter_failed",
+		"replicated_state_catchup_failed",
+		"replicated_state_verification_failed",
+		"replicated_state_digest_mismatch",
+		"replicated_state_promote_nonvoter_failed",
+		"replicated_state_promote_unfence_failed",
+	} {
+		if strings.Contains(errText, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // @Summary Get Cluster
@@ -171,17 +191,56 @@ func GetCluster(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Reveal Cluster Join Key
+// @Description Reveal the enabled cluster key to a local administrator for node enrollment
+// @Tags Cluster
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[JoinKeyResponse] "Success"
+// @Failure 409 {object} internal.APIResponse[any] "Cluster join key unavailable"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /cluster/join-key [get]
+func GetJoinKey(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("Pragma", "no-cache")
+		c.Header("Referrer-Policy", "no-referrer")
+
+		key, err := authService.GetClusterKey()
+		if err != nil {
+			if strings.Contains(err.Error(), "cluster_key_not_found") ||
+				strings.Contains(err.Error(), "cluster_key_not_configured") {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status: "error", Message: "cluster_join_key_unavailable",
+					Error: "cluster_join_key_unavailable", Data: nil,
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_join_key_lookup_failed",
+				Error: "cluster_join_key_lookup_failed", Data: nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[JoinKeyResponse]{
+			Status: "success", Message: "cluster_join_key_fetched",
+			Error: "", Data: JoinKeyResponse{Key: key},
+		})
+	}
+}
+
 // @Summary Create Cluster
 // @Description Create a cluster given a bootstrapping node IP
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[string] "Success"
+// @Success 201 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster [post]
-func CreateCluster(as *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
+func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -209,37 +268,11 @@ func CreateCluster(as *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.Hand
 			return
 		}
 
-		details, err := cS.GetClusterDetails()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_fetching_cluster_details",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		userId := c.GetUint("UserID")
-		username := c.GetString("Username")
-		authType := c.GetString("AuthType")
-
-		clusterToken, err := as.CreateClusterJWT(userId, username, authType, details.Cluster.Key)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_creating_cluster_token",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusCreated, internal.APIResponse[string]{
+		c.JSON(http.StatusCreated, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "cluster_created",
 			Error:   "",
-			Data:    clusterToken,
+			Data:    nil,
 		})
 	}
 }
@@ -251,11 +284,11 @@ func CreateCluster(as *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.Hand
 // @Produce json
 // @Security BearerAuth
 // @Param request body JoinClusterRequest true "Join Cluster Request"
-// @Success 200 {object} internal.APIResponse[string] "Success"
+// @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/join [post]
-func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.HandlerFunc {
+func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req JoinClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -278,31 +311,32 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			return
 		}
 
-		leaderAPIHost := joinLeaderAPIHost(req.LeaderIP)
-
-		userId := c.GetUint("UserID")
-		username := c.GetString("Username")
-		authType := c.GetString("AuthType")
-
-		clusterToken, err := aS.CreateClusterJWT(userId, username, authType, req.ClusterKey)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_join_token_failed",
-				Error:   err.Error(),
-				Data:    nil,
+		clusterKey := strings.TrimSpace(req.ClusterKey)
+		if clusterKey == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_cluster_key",
+				Error: "cluster_key_required", Data: nil,
 			})
 			return
 		}
-		headers := utils.FlatHeaders(c)
-		headers["X-Cluster-Token"] = clusterToken
+
+		leaderAPIHost := joinLeaderAPIHost(req.LeaderIP)
+		healthHeaders := map[string]string{
+			"Accept":              "application/json",
+			auth.ClusterKeyHeader: clusterKey,
+		}
+		admissionHeaders := map[string]string{
+			"Accept":              "application/json",
+			"Content-Type":        "application/json",
+			auth.ClusterKeyHeader: clusterKey,
+		}
 
 		healthURL := fmt.Sprintf(
 			"https://%s/api/health/basic",
 			leaderAPIHost,
 		)
 
-		leaderVersion, err := fetchNodeVersionFromHealth(healthURL, headers)
+		leaderVersion, err := fetchNodeVersionFromHealth(healthURL, healthHeaders)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -363,12 +397,11 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 		admission := AcceptJoinRequest{
 			NodeID:      localNodeID,
 			NodeIP:      req.NodeIP,
-			ClusterKey:  req.ClusterKey,
 			NodeVersion: localVersion,
 			Preflight:   true,
 			Inventory:   inventory,
 		}
-		leaderResponse, statusCode, err := postJoinAdmission(acceptURL, admission, headers)
+		leaderResponse, statusCode, err := postJoinAdmission(acceptURL, admission, admissionHeaders)
 		if err != nil {
 			if leaderResponse.Message != "" {
 				if statusCode < 400 {
@@ -406,7 +439,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			return
 		}
 
-		err = cS.StartAsJoiner(fsm, req.NodeIP, req.ClusterKey)
+		err = cS.StartAsJoiner(fsm, req.NodeIP, clusterKey)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -418,7 +451,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 		}
 
 		admission.Preflight = false
-		leaderResponse, statusCode, err = postJoinAdmission(acceptURL, admission, headers)
+		leaderResponse, statusCode, err = postJoinAdmission(acceptURL, admission, admissionHeaders)
 		if err != nil {
 			if leaderResponse.Message != "" {
 				if statusCode < 400 {
@@ -427,9 +460,9 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 				c.JSON(statusCode, leaderResponse)
 				return
 			}
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "error_accepting_bad_leader_response",
+				Message: "cluster_join_outcome_uncertain",
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -437,29 +470,17 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 		}
 
 		if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_reconciling_backup_target_ssh_keys",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
+			logger.L.Warn().Err(err).Msg("backup_target_ssh_reconciliation_deferred_after_join")
 		}
 		if err := zS.ReconcileEncryptionKeys(); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_reconciling_encryption_keys",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
+			logger.L.Warn().Err(err).Msg("encryption_key_reconciliation_deferred_after_join")
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[string]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "cluster_joined",
 			Error:   "",
-			Data:    clusterToken,
+			Data:    nil,
 		})
 	}
 }
@@ -469,7 +490,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 // @Tags Cluster
 // @Accept json
 // @Produce json
-// @Security BearerAuth
+// @Security ClusterKeyAuth
 // @Param request body AcceptJoinRequest true "Accept Join Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -477,6 +498,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 // @Router /cluster/accept-join [post]
 func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		clusterKey := c.GetString("ClusterKey")
 		var req AcceptJoinRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -504,7 +526,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
 			joinerVersion, err := fetchNodeVersionFromHealth(
 				joinerHealthURL,
-				map[string]string{auth.ClusterKeyHeader: req.ClusterKey},
+				map[string]string{auth.ClusterKeyHeader: clusterKey},
 			)
 			if err != nil || joinerVersion == "" {
 				reason := "joiner_version_unavailable"
@@ -537,7 +559,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 				c.Request.Context(),
 				req.NodeID,
 				req.NodeIP,
-				req.ClusterKey,
+				clusterKey,
 				req.Inventory,
 			)
 			if err != nil {
@@ -557,7 +579,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			c.Request.Context(),
 			req.NodeID,
 			req.NodeIP,
-			req.ClusterKey,
+			clusterKey,
 			req.Inventory,
 		); err != nil {
 			writeJoinAdmissionError(c, err)
@@ -774,7 +796,7 @@ func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 409 {object} internal.APIResponse[cluster.PeerRemovalConflict] "Peer owns cluster resources"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /cluster/remove-peer [post]
+// @Router /intra-cluster/remove-peer [post]
 func RemovePeer(cS peerRemovalService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req RemovePeerRequest

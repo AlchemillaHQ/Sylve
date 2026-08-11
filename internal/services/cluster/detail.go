@@ -64,13 +64,16 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 	if err != nil {
 		return nil, err
 	}
+	if len(nodes) == 0 {
+		return []clusterServiceInterfaces.NodeResources{}, nil
+	}
 
 	selfHostname, err := utils.GetSystemHostname()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get system hostname: %w", err)
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster jwt: %w", err)
 	}

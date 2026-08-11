@@ -9,13 +9,12 @@
  */
 
 import { browser } from '$app/environment';
-import { deleteDB, storage } from '$lib';
-import { stopSSEEvents } from '$lib/api/events';
+import { storage } from '$lib';
 import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { JWTClaims } from '$lib/types/auth';
 import type { APIResponse } from '$lib/types/common';
 import { kvStorage } from '$lib/types/db';
-import { handleAPIError, suspendAPICacheWrites } from '$lib/utils/http';
+import { handleAPIError } from '$lib/utils/http';
 import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
 import { sha256 } from '$lib/utils/string';
 import { toast } from 'svelte-sonner';
@@ -118,7 +117,6 @@ function applySuccessfulLogin(payload: unknown): boolean {
 	storage.hostname = hostname;
 	storage.nodeId = readStringField(payload, 'nodeId');
 	storage.token = token;
-	storage.clusterToken = readStringField(payload, 'clusterToken');
 
 	return true;
 }
@@ -128,36 +126,6 @@ async function clearCachedAPIData() {
 		await kvStorage.clear();
 	} catch (error) {
 		console.warn('Failed to clear cached API data', error);
-	}
-}
-
-async function clearBrowserState() {
-	suspendAPICacheWrites();
-	stopSSEEvents();
-
-	storage.reset();
-
-	try {
-		localStorage.clear();
-		sessionStorage.clear();
-	} catch (error) {
-		console.warn('Failed to clear browser storage', error);
-	}
-
-	await clearCachedAPIData();
-
-	try {
-		await deleteDB();
-	} catch (error) {
-		console.warn('Failed to delete browser database', error);
-	}
-
-	if (typeof caches === 'undefined') return;
-
-	try {
-		await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
-	} catch (error) {
-		console.warn('Failed to clear browser cache storage', error);
 	}
 }
 
@@ -349,14 +317,6 @@ export function getToken(): string | null {
 	return null;
 }
 
-export function getClusterToken(): string | null {
-	if (browser) {
-		return storage.clusterToken;
-	}
-
-	return null;
-}
-
 export async function isTokenValid(): Promise<boolean> {
 	if (!storage.token) {
 		return false;
@@ -392,47 +352,7 @@ export async function isTokenValid(): Promise<boolean> {
 	return false;
 }
 
-export async function isClusterTokenValid(): Promise<boolean> {
-	try {
-		const clusterToken = storage.clusterToken;
-		if (!clusterToken) {
-			return true;
-		}
-
-		const response = await fetch('/api/health/basic', {
-			headers: {
-				Authorization: `Bearer ${clusterToken}`,
-				'X-Cluster-Token': `Bearer ${clusterToken}`
-			}
-		});
-
-		const responseData = await parseJSONResponse(response);
-
-		if (response.status < 400) {
-			const hostname = readStringField(responseData, 'hostname');
-			const nodeId = readStringField(responseData, 'nodeId');
-			if (hostname) {
-				storage.localHostname = hostname;
-				if (!storage.hostname) {
-					storage.hostname = hostname;
-				}
-			}
-			if (nodeId) {
-				// setLocalStorage('nodeId', response.data.nodeId);
-				storage.nodeId = nodeId;
-			}
-			return true;
-		} else {
-			storage.clusterToken = '';
-		}
-	} catch (_e: unknown) {
-		return false;
-	}
-
-	return false;
-}
-
-export async function logOut(message?: string, options: { clearBrowserState?: boolean } = {}) {
+export async function logOut(message?: string) {
 	const token = storage.token;
 
 	if (token) {
@@ -441,7 +361,6 @@ export async function logOut(message?: string, options: { clearBrowserState?: bo
 	}
 
 	storage.token = '';
-	storage.clusterToken = '';
 	storage.localHostname = '';
 	storage.hostname = '';
 	storage.nodeId = '';
@@ -453,13 +372,6 @@ export async function logOut(message?: string, options: { clearBrowserState?: bo
 		localStorage.removeItem('localHostname');
 		localStorage.removeItem('hostname');
 		localStorage.removeItem('nodeId');
-		localStorage.removeItem('clusterToken');
-	}
-
-	if (options.clearBrowserState && browser) {
-		await clearBrowserState();
-		window.location.replace('/');
-		return;
 	}
 
 	await clearCachedAPIData();

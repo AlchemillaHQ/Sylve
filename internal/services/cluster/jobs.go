@@ -244,10 +244,6 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	return false
 }
 
-func (s *Service) getClusterToken(hostname string) (string, error) {
-	return s.AuthService.CreateClusterJWT(0, hostname, "", "")
-}
-
 func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoServiceInterfaces.NodeInfo, error) {
 	var nodeInfo infoServiceInterfaces.NodeInfo
 
@@ -419,7 +415,11 @@ func (s *Service) PopulateClusterNodes() error {
 		return err
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
+	serviceReadToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
+	if err != nil {
+		return err
+	}
+	internalControlToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
 	if err != nil {
 		return err
 	}
@@ -430,7 +430,7 @@ func (s *Service) PopulateClusterNodes() error {
 	}
 	cfg := cfgFuture.Configuration()
 
-	current := s.collectCurrentClusterInfo(cfg, clusterToken)
+	current := s.collectCurrentClusterInfo(cfg, serviceReadToken)
 
 	changed, err := s.persistCurrentClusterNodes(current)
 	if err != nil {
@@ -491,7 +491,7 @@ func (s *Service) PopulateClusterNodes() error {
 		}
 	}
 
-	s.fanOutHealthSync(syncPayload, clusterToken, cfg, "PopulateClusterNodes")
+	s.fanOutHealthSync(syncPayload, internalControlToken, cfg, "PopulateClusterNodes")
 
 	return nil
 }
@@ -610,7 +610,7 @@ func (s *Service) fastStatusCheckFollower(leaderID raft.ServerID, peerIDs []stri
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: non-leader failed to get cluster token")
 		return
@@ -706,7 +706,7 @@ func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]s
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get cluster token")
 		s.setPeersOfflineWithHysteresis(peerIDs, now)
@@ -794,7 +794,7 @@ func (s *Service) syncClusterHealthToFollowers() {
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
 	if err != nil {
 		return
 	}

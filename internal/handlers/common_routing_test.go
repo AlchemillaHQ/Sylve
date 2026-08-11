@@ -18,6 +18,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -79,6 +80,20 @@ func assertSelectedNodeError(
 	}
 }
 
+func TestResolveForwardClusterTokenReusesValidatedProxy(t *testing.T) {
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Set("AuthScope", "cluster")
+	context.Set("Token", "validated-user-proxy")
+	context.Set("ClusterTokenUse", authService.ClusterTokenUseUserProxy)
+	context.Set("UserID", uint(7))
+	context.Set("ProxyAdmin", true)
+
+	token, reused, err := resolveForwardClusterToken(context, nil)
+	if err != nil || !reused || token != "validated-user-proxy" {
+		t.Fatalf("token=%q reused=%v err=%v", token, reused, err)
+	}
+}
+
 func TestEnsureCorrectHostAllowsLocalRequests(t *testing.T) {
 	useRoutingTestHostname(t, "origin-node")
 	localAuth := encodedRoutingAuth(t, "origin-node")
@@ -100,8 +115,12 @@ func TestEnsureCorrectHostAllowsLocalRequests(t *testing.T) {
 			},
 		},
 		{
-			name: "local node in auth query",
+			name: "auth query is ignored outside maintained paths",
 			path: "/resource?auth=" + url.QueryEscape(localAuth),
+		},
+		{
+			name: "malformed auth query is ignored outside maintained paths",
+			path: "/resource?auth=not-hex",
 		},
 		{
 			name: "bearer websocket authentication without node selection",
@@ -161,17 +180,6 @@ func TestEnsureCorrectHostRejectsMalformedExplicitSelection(t *testing.T) {
 			path: "/resource",
 			headers: http.Header{
 				"X-Current-Hostname": []string{"   "},
-			},
-		},
-		{
-			name: "malformed auth query",
-			path: "/resource?auth=not-hex",
-		},
-		{
-			name: "malformed routing websocket protocol",
-			path: "/resource",
-			headers: http.Header{
-				"Sec-Websocket-Protocol": []string{"not-hex"},
 			},
 		},
 	}

@@ -5,13 +5,7 @@
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { preloadData, onNavigate } from '$app/navigation';
-	import {
-		isClusterTokenValid,
-		isTokenValid,
-		login,
-		loginWithPasskey,
-		isInitialized
-	} from '$lib/api/auth';
+	import { isTokenValid, login, loginWithPasskey, isInitialized } from '$lib/api/auth';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
@@ -61,7 +55,7 @@
 		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
 
-		const [validToken] = await Promise.all([isTokenValid(), isClusterTokenValid()]);
+		const validToken = await isTokenValid();
 
 		if (validToken) {
 			void startSSEEvents();

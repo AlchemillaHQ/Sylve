@@ -313,7 +313,7 @@ func (s *Service) ResetRaftNode() error {
 			return fmt.Errorf("failed_to_get_system_hostname: %v", err)
 		}
 
-		clusterToken, err := s.getClusterToken(hostname)
+		clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
 		if err != nil {
 			return fmt.Errorf("failed_to_get_cluster_token: %v", err)
 		}
@@ -329,7 +329,7 @@ func (s *Service) ResetRaftNode() error {
 		}
 
 		err = utils.HTTPPostJSON(
-			fmt.Sprintf("https://%s/api/cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
+			fmt.Sprintf("https://%s/api/intra-cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
 
 		if err != nil {
 			return fmt.Errorf("failed_to_remove_peer_from_leader: %v", err)

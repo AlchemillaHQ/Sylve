@@ -34,11 +34,11 @@ func TestLoginLifecycleRouteContract(t *testing.T) {
 
 	registrations := []string{
 		`api.GET("/auth/login/config", authHandlers.LoginConfigHandler())`,
-		`auth.POST("/login", authHandlers.LoginHandler(authService))`,
-		`auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))`,
-		`auth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))`,
-		`auth.POST("/logout", authHandlers.LogoutHandler(authService))`,
-		`auth.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))`,
+		`publicAuth.POST("/login", authHandlers.LoginHandler(authService))`,
+		`publicAuth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))`,
+		`publicAuth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))`,
+		`authSession.POST("/logout", authHandlers.LogoutHandler(authService))`,
+		`authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))`,
 	}
 	for _, registration := range registrations {
 		if !strings.Contains(routes, registration) {
@@ -56,6 +56,14 @@ func TestLoginLifecycleRouteContract(t *testing.T) {
 	loggerIndex := strings.Index(routes, "auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
 	if authIndex < 0 || limitIndex < 0 || loggerIndex < 0 || !(authIndex < limitIndex && limitIndex < loggerIndex) {
 		t.Error("auth middleware must be ordered as authentication, request-body limit, and request logging")
+	}
+	for _, middleware := range []string{
+		`authSession.Use(middleware.EnsureAuthenticated(authService))`,
+		`authSession.Use(middleware.RequireLocalSession())`,
+	} {
+		if !strings.Contains(routes, middleware) {
+			t.Errorf("missing local-session middleware: %s", middleware)
+		}
 	}
 
 	annotations := map[string]string{

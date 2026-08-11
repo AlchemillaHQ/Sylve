@@ -30,7 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console"}
+var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/cluster/join-key"}
 
 type claim struct {
 	UserID   *uint

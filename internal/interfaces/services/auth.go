@@ -64,8 +64,8 @@ type AuthServiceInterface interface {
 	GetClusterKey() (string, error)
 	CreateJWT(username, password, authType string, remember bool) (uint, string, error)
 	CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error)
-	CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error)
-	CreateInternalClusterJWT(username string, forceSecret string) (string, error)
+	CreateUserProxyJWT(userId uint, username string, authType string) (string, error)
+	CreateInternalClusterJWT(username string) (string, error)
 	VerifyClusterJWT(tokenString string) (CustomClaims, error)
 	RevokeJWT(token string) error
 	VerifyTokenInDb(token string) bool

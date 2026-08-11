@@ -15,6 +15,8 @@
 	import { fade } from 'svelte/transition';
 	import { PersistedState, resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
+	import type { ClusterDetails } from '$lib/types/cluster/cluster';
+	import { isAPIResponse } from '$lib/utils/http';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -25,9 +27,10 @@
 	const clusterDetails = resource(
 		() => 'cluster-details-shell',
 		async () => {
-			return await getDetails();
+			const result = await getDetails();
+			return isAPIResponse(result) ? null : result;
 		},
-		{}
+		{ initialValue: null as ClusterDetails | null }
 	);
 
 	watch(
@@ -42,7 +45,7 @@
 	);
 
 	let details = $derived(clusterDetails.current);
-	let clustered = $derived(details?.cluster?.enabled ?? Boolean(storage.clusterToken));
+	let clustered = $derived(details?.cluster?.enabled === true);
 	const resourceTreePreferences = new PersistedState<ResourceTreePreferences>(
 		'sylve-resource-tree-preferences-v1',
 		DEFAULT_RESOURCE_TREE_PREFERENCES

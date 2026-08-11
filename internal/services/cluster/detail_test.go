@@ -50,6 +50,17 @@ func TestLocalNodeIDFallsBackToSystemUUID(t *testing.T) {
 	}
 }
 
+func TestResourcesContextStandaloneNeedsNoClusterCredential(t *testing.T) {
+	service := &Service{DB: newClusterServiceTestDB(t, &clusterModels.ClusterNode{})}
+	resources, err := service.ResourcesContext(context.Background())
+	if err != nil {
+		t.Fatalf("standalone resources: %v", err)
+	}
+	if len(resources) != 0 {
+		t.Fatalf("resources=%+v, want empty", resources)
+	}
+}
+
 func TestResourcesContextSkipsKnownOfflinePeer(t *testing.T) {
 	peer := newClusterPeerSimulator()
 	defer peer.Close()

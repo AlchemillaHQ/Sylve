@@ -408,7 +408,7 @@ func (s *Service) fetchBackupJobSafetyValidation(
 		return result, fmt.Errorf("backup_runner_auth_service_unavailable")
 	}
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
 	if err != nil {
 		return result, fmt.Errorf("backup_runner_cluster_token_failed: %w", err)
 	}

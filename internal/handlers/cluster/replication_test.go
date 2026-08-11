@@ -877,7 +877,7 @@ func TestGetClusterHandler(t *testing.T) {
 func TestJoinClusterRejectsInvalidCidr(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.POST("/cluster/join", JoinCluster(nil, nil, nil, nil))
+	r.POST("/cluster/join", JoinCluster(nil, nil, nil))
 
 	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/join",
 		[]byte(`{"nodeId":"n1","nodeIp":"not-a-cidr","nodePort":8181,"clusterKey":"secret","advertiseName":"n1"}`))

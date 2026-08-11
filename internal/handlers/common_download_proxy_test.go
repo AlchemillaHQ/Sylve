@@ -25,31 +25,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestSelectedNodeDownloadUsesEncodedHostnameAndInjectsClusterCredential(t *testing.T) {
+func TestSelectedNodeDownloadStripsOriginCredentialsAndInjectsClusterCredential(t *testing.T) {
 	type downloadAuth struct {
 		Hash     string `json:"hash"`
 		Hostname string `json:"hostname"`
 		Token    string `json:"token,omitempty"`
 	}
 
-	var forwardedAuth downloadAuth
 	var forwardedClusterHeader string
 	var forwardedID string
 	var forwardedHash string
+	var forwardedAuth string
+	var forwardedHeaders http.Header
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		forwardedHeaders = request.Header.Clone()
 		forwardedClusterHeader = request.Header.Get("X-Cluster-Token")
 		forwardedID = request.URL.Query().Get("id")
 		forwardedHash = request.URL.Query().Get("hash")
-
-		authBytes, err := hex.DecodeString(request.URL.Query().Get("auth"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err := json.Unmarshal(authBytes, &forwardedAuth); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		forwardedAuth = request.URL.Query().Get("auth")
 
 		w.Header().Set("Content-Disposition", `attachment; filename="remote.iso"`)
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -63,7 +56,7 @@ func TestSelectedNodeDownloadUsesEncodedHostnameAndInjectsClusterCredential(t *t
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
 	)
-	if err := database.Create(&clusterModels.Cluster{Key: "cluster-secret"}).Error; err != nil {
+	if err := database.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
 	user := models.User{Username: "admin", Admin: true}
@@ -123,6 +116,14 @@ func TestSelectedNodeDownloadUsesEncodedHostnameAndInjectsClusterCredential(t *t
 	if err != nil {
 		t.Fatalf("create origin request: %v", err)
 	}
+	request.Header.Set("Authorization", "Bearer browser-local-token")
+	request.Header.Set("Cookie", "session=browser")
+	request.Header.Set("Proxy-Authorization", "Basic browser")
+	request.Header.Set("X-Cluster-Key", "must-not-forward")
+	request.Header.Set("X-Current-Hostname", "remote-node")
+	request.Header.Set("X-Sylve-Cluster-Forward-Hop", "99")
+	request.Header.Set("X-Sylve-Backup-Forwarded-By", "browser")
+	request.Header.Set("X-Sylve-Backup-Forward-Target", "browser")
 	response, err := origin.Client().Do(request)
 	if err != nil {
 		t.Fatalf("perform origin request: %v", err)
@@ -139,16 +140,24 @@ func TestSelectedNodeDownloadUsesEncodedHostnameAndInjectsClusterCredential(t *t
 	if got := response.Header.Get("Content-Disposition"); got != `attachment; filename="remote.iso"` {
 		t.Fatalf("Content-Disposition = %q", got)
 	}
-	if forwardedID != "/zroot/images/remote.iso" || forwardedHash != "browser-token-hash" {
+	if forwardedID != "/zroot/images/remote.iso" {
 		t.Fatalf("forwarded id=%q hash=%q", forwardedID, forwardedHash)
 	}
-	if forwardedAuth.Hash != "browser-token-hash" || forwardedAuth.Hostname != "remote-node" {
-		t.Fatalf("forwarded auth = %+v", forwardedAuth)
+	if forwardedHash != "" || forwardedAuth != "" {
+		t.Fatalf("origin query credentials leaked: hash=%q auth=%q", forwardedHash, forwardedAuth)
 	}
-	if forwardedAuth.Token == "" {
-		t.Fatal("forwarded auth did not receive a cluster token")
+	if !strings.HasPrefix(forwardedClusterHeader, "Bearer ") || strings.TrimPrefix(forwardedClusterHeader, "Bearer ") == "" {
+		t.Fatalf("cluster credential was not injected: %q", forwardedClusterHeader)
 	}
-	if forwardedClusterHeader != "Bearer "+forwardedAuth.Token {
-		t.Fatalf("cluster header does not match injected auth token")
+	for _, name := range []string{
+		"Authorization", "Cookie", "Proxy-Authorization", "X-Cluster-Key", "X-Current-Hostname",
+		"X-Sylve-Backup-Forwarded-By", "X-Sylve-Backup-Forward-Target",
+	} {
+		if got := forwardedHeaders.Get(name); got != "" {
+			t.Fatalf("origin header %s leaked: %q", name, got)
+		}
+	}
+	if got := forwardedHeaders.Get("X-Sylve-Cluster-Forward-Hop"); got != "" {
+		t.Fatalf("browser forward-hop header leaked: %q", got)
 	}
 }

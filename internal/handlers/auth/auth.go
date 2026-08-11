@@ -34,7 +34,6 @@ type LoginRequest struct {
 
 type SuccessfulLogin struct {
 	Token         string               `json:"token"`
-	ClusterToken  string               `json:"clusterToken"`
 	Hostname      string               `json:"hostname"`
 	NodeID        string               `json:"nodeId"`
 	BasicSettings models.BasicSettings `json:"basicSettings"`
@@ -109,8 +108,6 @@ func completeLogin(
 	c *gin.Context,
 	authService *auth.Service,
 	userID uint,
-	username string,
-	authType string,
 	token string,
 ) {
 	completed := false
@@ -122,16 +119,6 @@ func completeLogin(
 			logger.L.Error().Err(err).Uint("user_id", userID).Msg("failed_to_revoke_incomplete_login_token")
 		}
 	}()
-
-	clusterToken, err := authService.CreateClusterJWT(userID, username, authType, "")
-	if err != nil {
-		if strings.Contains(err.Error(), "cluster_key_not_configured") {
-			clusterToken = ""
-		} else {
-			writeAuthCodeError(c, http.StatusInternalServerError, "cluster_token_creation_failed")
-			return
-		}
-	}
 
 	hostname, err := utils.GetSystemHostname()
 	if err != nil {
@@ -157,7 +144,6 @@ func completeLogin(
 		Error:   "",
 		Data: SuccessfulLogin{
 			Token:         token,
-			ClusterToken:  clusterToken,
 			Hostname:      hostname,
 			NodeID:        nodeID,
 			BasicSettings: basicSettings,
@@ -231,7 +217,7 @@ func LoginHandler(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		completeLogin(c, authService, userId, r.Username, r.AuthType, token)
+		completeLogin(c, authService, userId, token)
 	}
 }
 

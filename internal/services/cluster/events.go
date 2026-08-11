@@ -52,7 +52,7 @@ func (s *Service) EmitLeftPanelRefreshClusterWide(reason string) {
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(strings.TrimSpace(detail.Hostname), "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(strings.TrimSpace(detail.Hostname))
 	if err != nil {
 		logger.L.Warn().
 			Err(err).

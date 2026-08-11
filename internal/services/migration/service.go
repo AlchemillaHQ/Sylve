@@ -464,7 +464,7 @@ func (s *Service) remoteTargetGuestRecord(
 		return nil, fmt.Errorf("target_identity_inventory_endpoint_unavailable")
 	}
 
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration", "")
+	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
 	if err != nil {
 		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
@@ -624,7 +624,7 @@ func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterMod
 		return vmTargetResult{}, false, fmt.Errorf("cluster_auth_unavailable")
 	}
 
-	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration", "")
+	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
 	if tokenErr != nil {
 		return vmTargetResult{}, false, fmt.Errorf("create_cluster_token_failed: %w", tokenErr)
 	}

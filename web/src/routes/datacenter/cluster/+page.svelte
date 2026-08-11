@@ -1,6 +1,9 @@
 <script lang="ts">
-	import { logOut } from '$lib/api/auth';
-	import { getDetails, resetCluster } from '$lib/api/cluster/cluster';
+	import {
+		getDetails,
+		refreshClusterAfterLifecycleChange,
+		resetCluster
+	} from '$lib/api/cluster/cluster';
 	import Create from '$lib/components/custom/Cluster/Create.svelte';
 	import Join from '$lib/components/custom/Cluster/Join.svelte';
 	import JoinInformation from '$lib/components/custom/Cluster/JoinInformation.svelte';
@@ -8,7 +11,6 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { storage } from '$lib';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -216,7 +218,6 @@
 	actions={{
 		onConfirm: async () => {
 			const response = await resetCluster();
-			storage.clusterToken = '';
 			reload = true;
 			if (response.error) {
 				if (response.error.includes('leader_cannot_reset_while_other_nodes_exist')) {
@@ -235,8 +236,11 @@
 				return;
 			}
 
+			await refreshClusterAfterLifecycleChange();
 			modals.reset.open = false;
-			await logOut('Login required after cluster reset', { clearBrowserState: true });
+			toast.success('Cluster reset', {
+				position: 'bottom-center'
+			});
 		},
 		onCancel: () => {
 			modals.reset.open = false;

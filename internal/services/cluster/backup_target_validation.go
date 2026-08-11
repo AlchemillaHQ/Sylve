@@ -232,7 +232,7 @@ func (s *Service) fetchBackupTargetValidation(
 		return update, fmt.Errorf("backup_target_validation_auth_service_unavailable")
 	}
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
 	if err != nil {
 		return update, fmt.Errorf("backup_target_validation_cluster_token_failed: %w", err)
 	}

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { storage } from '$lib';
 	import { handleAPIResponse } from '$lib/api/common';
 	import { setTunable } from '$lib/api/system/tunables';
 	import SingleValueDialog from '$lib/components/custom/Dialog/SingleValue.svelte';
@@ -8,13 +7,10 @@
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { sha256 } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
-	let hash = $state('');
 	let query = $state('');
 	let reload = $state(false);
 	let loading = $state(false);
@@ -42,10 +38,6 @@
 		duration: 5000,
 		position: 'bottom-center' as const
 	};
-
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-	});
 
 	const dashIfEmpty = (cell: CellComponent) => {
 		const value = cell.getValue();
@@ -158,19 +150,17 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash}
-			<TreeTable
-				data={tableData}
-				name="system-tunables-tt"
-				ajaxURL="/api/system/tunables/remote?hash={hash}"
-				bind:query
-				bind:parentActiveRow={activeRows}
-				bind:reload
-				multipleSelect={false}
-				{extraParams}
-				initialSort={[{ column: 'name', dir: 'asc' }]}
-			/>
-		{/if}
+		<TreeTable
+			data={tableData}
+			name="system-tunables-tt"
+			ajaxURL="/api/system/tunables/remote"
+			bind:query
+			bind:parentActiveRow={activeRows}
+			bind:reload
+			multipleSelect={false}
+			{extraParams}
+			initialSort={[{ column: 'name', dir: 'asc' }]}
+		/>
 	</div>
 </div>
 

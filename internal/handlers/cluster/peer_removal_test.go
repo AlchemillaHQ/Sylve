@@ -27,7 +27,7 @@ func (s peerRemovalServiceStub) ClearClusterNode(string) error {
 func TestRemovePeerReturnsStructuredConflict(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/cluster/remove-peer", RemovePeer(peerRemovalServiceStub{
+	router.POST("/intra-cluster/remove-peer", RemovePeer(peerRemovalServiceStub{
 		removeErr: &cluster.PeerRemovalBlockedError{
 			Conflict: cluster.PeerRemovalConflict{
 				NodeID: "node-2",
@@ -42,7 +42,7 @@ func TestRemovePeerReturnsStructuredConflict(t *testing.T) {
 		t,
 		router,
 		http.MethodPost,
-		"/cluster/remove-peer",
+		"/intra-cluster/remove-peer",
 		[]byte(`{"nodeId":"node-2"}`),
 	)
 	if response.Code != http.StatusConflict {

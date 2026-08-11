@@ -36,18 +36,10 @@ export type NodeAPIRequestOptions = Pick<
     'hostname' | 'signal' | 'preserveErrors'
 >;
 
-let cacheWritesSuspended = false;
-
 export function isRequestCancellation(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     const code = 'code' in error ? String(error.code || '') : '';
     return error.name === 'AbortError' || error.name === 'CanceledError' || code === 'ERR_CANCELED';
-}
-
-// A full browser reset reloads the module after storage is cleared. Until then,
-// ignore late requests from the outgoing session so they cannot recreate cache entries.
-export function suspendAPICacheWrites(): void {
-    cacheWritesSuspended = true;
 }
 
 function getScopedCacheKey(key: string, hostname?: string): string {
@@ -106,11 +98,6 @@ export async function apiRequest<T extends z.ZodType>(
 
         if (apiResponse.data) {
             if (apiResponse.data.status && apiResponse.data.status === 'error') {
-                if (apiResponse.data.error && apiResponse.data.error === 'invalid_cluster_token') {
-                    storage.clusterToken = '';
-                    return apiRequest(endpoint, schema, method, body, options);
-                }
-
                 registerErrorContext(apiResponse.data, errorContext);
                 stageErrorDetail(apiResponse.data, errorContext);
                 setReloadFlag();
@@ -206,9 +193,9 @@ export async function cachedFetch<T>(
 ): Promise<T> {
     const scopedKey = getScopedCacheKey(key, hostname);
     const now = Date.now();
-    const entry = cacheWritesSuspended ? null : await kvStorage.getItem<T>(scopedKey);
+    const entry = await kvStorage.getItem<T>(scopedKey);
 
-    if (!cacheWritesSuspended && entry && entry.data !== null) {
+    if (entry && entry.data !== null) {
         const isFresh = now - entry.timestamp < duration;
         const data = entry.data;
 
@@ -231,12 +218,11 @@ export async function cachedFetch<T>(
     const data = await fetchFunction();
 
     if (
-        !cacheWritesSuspended &&
-        (!data ||
-            typeof data !== 'object' ||
-            !('status' in data) ||
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (data as any).status !== 'error')
+        !data ||
+        typeof data !== 'object' ||
+        !('status' in data) ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (data as any).status !== 'error'
     ) {
         await kvStorage.setItem(scopedKey, data);
     }
@@ -245,8 +231,6 @@ export async function cachedFetch<T>(
 }
 
 export async function getCache<T>(key: string, hostname?: string): Promise<T | null> {
-    if (cacheWritesSuspended) return null;
-
     const scopedKey = getScopedCacheKey(key, hostname);
     try {
         const entry = await kvStorage.getItem<T>(scopedKey);
@@ -258,11 +242,8 @@ export async function getCache<T>(key: string, hostname?: string): Promise<T | n
 }
 
 export async function updateCache<T>(key: string, obj: T, hostname?: string): Promise<void> {
-    if (cacheWritesSuspended) return;
-
     const scopedKey = getScopedCacheKey(key, hostname);
     try {
-        if (cacheWritesSuspended) return;
         await kvStorage.setItem(scopedKey, obj);
     } catch (error) {
         console.error(`Failed to update cached data for key "${scopedKey}"`, error);
@@ -270,8 +251,6 @@ export async function updateCache<T>(key: string, obj: T, hostname?: string): Pr
 }
 
 export async function removeCache(key: string, hostname?: string): Promise<void> {
-    if (cacheWritesSuspended) return;
-
     const scopedKey = getScopedCacheKey(key, hostname);
     try {
         await kvStorage.removeItem(scopedKey);

@@ -7,11 +7,37 @@ import {
     type NodeResource
 } from '$lib/types/cluster/cluster';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { apiRequest } from '$lib/utils/http';
+import { reload } from '$lib/stores/api.svelte';
+import { apiRequest, removeCache } from '$lib/utils/http';
 import { z } from 'zod/v4';
+
+const JoinKeySchema = z.object({
+    key: z.string().min(1)
+});
+
+const clusterLifecycleCacheKeys = [
+    'cluster-info',
+    'cluster-details',
+    'cluster-nodes',
+    'cluster-notes',
+    'backup-targets',
+    'replication-policies',
+    'replication-events'
+];
+
+export async function refreshClusterAfterLifecycleChange(): Promise<void> {
+    await Promise.all(clusterLifecycleCacheKeys.map((key) => removeCache(key)));
+    reload.clusterDetails = true;
+}
 
 export async function getDetails(): Promise<ClusterDetails | APIResponse> {
     return await apiRequest('/cluster', ClusterDetailsSchema, 'GET');
+}
+
+export async function getJoinKey(): Promise<z.infer<typeof JoinKeySchema> | APIResponse> {
+    return await apiRequest('/cluster/join-key', JoinKeySchema, 'GET', undefined, {
+        preserveErrors: true
+    });
 }
 
 export async function createCluster(ip: string): Promise<APIResponse> {

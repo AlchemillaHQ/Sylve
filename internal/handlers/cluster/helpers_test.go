@@ -27,7 +27,7 @@ type authForwardStub struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (authForwardStub) CreateClusterJWT(_ uint, _, _, _ string) (string, error) {
+func (authForwardStub) CreateUserProxyJWT(_ uint, _, _ string) (string, error) {
 	return "test-forward-token", nil
 }
 
@@ -158,7 +158,8 @@ func TestForwardToLeader(t *testing.T) {
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	ctx.Set("UserID", uint(1))
 	ctx.Set("Username", "admin")
-	ctx.Set("AuthType", "local")
+	ctx.Set("AuthType", "sylve")
+	ctx.Set("AuthScope", "local")
 
 	forwardToLeader(ctx, s)
 

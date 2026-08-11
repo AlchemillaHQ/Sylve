@@ -75,6 +75,9 @@ const (
 	ClusterInternalAuthType        = "internal-cluster"
 	AuthTypeSylvePasskey           = "sylve-passkey"
 	ClusterKeyHeader               = "X-Cluster-Key"
+	ClusterTokenHeader             = "X-Cluster-Token"
+	clusterTokenTTL                = 5 * time.Minute
+	clusterTokenFutureSkew         = 30 * time.Second
 )
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
@@ -97,7 +100,14 @@ func (s *Service) GetJWTSecret() (string, error) {
 func (s *Service) GetClusterKey() (string, error) {
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
-		return "", fmt.Errorf("cluster_key_not_found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", fmt.Errorf("cluster_key_not_found")
+		}
+		return "", fmt.Errorf("cluster_key_lookup_failed: %w", err)
+	}
+
+	if !c.Enabled {
+		return "", fmt.Errorf("cluster_key_not_configured")
 	}
 
 	key := strings.TrimSpace(c.Key)
@@ -347,37 +357,24 @@ func (s *Service) createClusterJWTWithUse(
 	authType string,
 	admin bool,
 	tokenUse string,
-	forceSecret string,
-	ttl time.Duration,
 ) (string, error) {
-	var clusterKey string
-
-	if strings.TrimSpace(forceSecret) != "" {
-		clusterKey = strings.TrimSpace(forceSecret)
-	} else {
-		var err error
-
-		clusterKey, err = s.GetClusterKey()
-		if err != nil {
-			return "", fmt.Errorf("failed_to_get_cluster_key: %w", err)
-		}
+	clusterKey, err := s.GetClusterKey()
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_cluster_key: %w", err)
 	}
-	tokenUse = strings.TrimSpace(strings.ToLower(tokenUse))
-	if tokenUse == "" {
-		tokenUse = ClusterTokenUseUserProxy
-	}
+
 	switch tokenUse {
 	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
 	default:
 		return "", fmt.Errorf("invalid_cluster_token_use")
 	}
-	if ttl <= 0 {
-		ttl = 24 * time.Hour
-	}
+
+	now := time.Now()
 
 	data := JWT{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(clusterTokenTTL)),
 			ID:        uuid.NewString(),
 		},
 		CustomClaims: serviceInterfaces.CustomClaims{
@@ -397,28 +394,48 @@ func (s *Service) createClusterJWTWithUse(
 	return token, nil
 }
 
-func (s *Service) CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error) {
+func (s *Service) CreateUserProxyJWT(userId uint, username string, authType string) (string, error) {
 	admin := false
 	if userId != 0 {
 		var user models.User
-		if err := s.DB.Select("username", "admin").First(&user, userId).Error; err != nil {
+		if err := s.DB.Select("username", "admin", "locked", "disable_password").First(&user, userId).Error; err != nil {
 			return "", fmt.Errorf("failed_to_load_proxy_user: %w", err)
+		}
+		if user.Locked || !user.Admin {
+			return "", fmt.Errorf("proxy_user_not_authorized")
+		}
+		switch authType {
+		case "sylve":
+			if user.DisablePassword {
+				return "", fmt.Errorf("proxy_user_not_authorized")
+			}
+		case "pam":
+			if !config.IsPAMEnabled() {
+				return "", fmt.Errorf("proxy_user_not_authorized")
+			}
+		case AuthTypeSylvePasskey:
+		default:
+			return "", fmt.Errorf("proxy_auth_type_not_supported")
 		}
 		username = user.Username
 		admin = user.Admin
+	} else {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			username = "cluster"
+		}
 	}
+
 	return s.createClusterJWTWithUse(
 		userId,
 		username,
 		authType,
 		admin,
 		ClusterTokenUseUserProxy,
-		forceSecret,
-		24*time.Hour,
 	)
 }
 
-func (s *Service) CreateInternalClusterJWT(username string, forceSecret string) (string, error) {
+func (s *Service) CreateInternalClusterJWT(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		username = "cluster"
@@ -429,8 +446,6 @@ func (s *Service) CreateInternalClusterJWT(username string, forceSecret string) 
 		ClusterInternalAuthType,
 		false,
 		ClusterTokenUseInternalControl,
-		forceSecret,
-		5*time.Minute,
 	)
 }
 
@@ -471,13 +486,13 @@ func (s *Service) CreateScopedJWT(userID uint, username, authType, scope string,
 
 func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.CustomClaims, error) {
 	clusterKey, err := s.GetClusterKey()
-	if err != nil || clusterKey == "" {
+	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("failed_to_get_cluster_key: %w", err)
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &JWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(clusterKey), nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithoutClaimsValidation())
 
 	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid: %w", err)
@@ -489,24 +504,30 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
-	if claims.ExpiresAt == nil {
+	if claims.ExpiresAt == nil || claims.IssuedAt == nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
-	if time.Now().After(claims.ExpiresAt.Time) {
+	now := time.Now()
+	if !now.Before(claims.ExpiresAt.Time) {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
 	}
-
-	tokenUse := strings.TrimSpace(strings.ToLower(claims.CustomClaims.TokenUse))
-	if tokenUse == "" {
-		tokenUse = ClusterTokenUseUserProxy
+	if claims.IssuedAt.Time.After(now.Add(clusterTokenFutureSkew)) {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
-	switch tokenUse {
+	if claims.NotBefore != nil && now.Before(claims.NotBefore.Time) {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+	if !claims.ExpiresAt.Time.After(claims.IssuedAt.Time) ||
+		claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time) > clusterTokenTTL {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	switch claims.CustomClaims.TokenUse {
 	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
 	default:
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_cluster_token_use")
 	}
-	claims.CustomClaims.TokenUse = tokenUse
 
 	return claims.CustomClaims, nil
 }
@@ -782,8 +803,16 @@ func (s *Service) GetTokenBySHA256(hash string) (string, error) {
 }
 
 func (s *Service) IsValidClusterKey(clusterKey string) bool {
+	if strings.TrimSpace(clusterKey) == "" {
+		return false
+	}
+
 	var count int64
-	s.DB.Model(&clusterModels.Cluster{}).Where("key = ?", clusterKey).Count(&count)
+	if err := s.DB.Model(&clusterModels.Cluster{}).
+		Where("enabled = ? AND key = ?", true, clusterKey).
+		Count(&count).Error; err != nil {
+		return false
+	}
 	return count > 0
 }
 

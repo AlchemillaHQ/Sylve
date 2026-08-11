@@ -21,7 +21,6 @@ type SharedStorage = {
     localHostname: string | null;
     hostname: string | null;
     nodeId: string | null;
-    clusterToken: string | null;
     fileExplorerCurrentPath: string | null;
     visible: boolean | null;
     idle: boolean | null;
@@ -42,7 +41,6 @@ export const storage = createReactiveStorage<SharedStorage>(
         ['localHostname', { storage: 'local' }],
         ['hostname', { storage: 'local' }],
         ['nodeId', { storage: 'local' }],
-        ['clusterToken', { storage: 'local' }],
         ['fileExplorerCurrentPath', { storage: 'local' }],
         ['visible', { storage: 'local' }],
         ['idle', { storage: 'local' }],
@@ -85,13 +83,4 @@ export function getDB(): SylveDB {
     }
 
     return _db;
-}
-
-export async function deleteDB(): Promise<void> {
-    if (_db) {
-        _db.close();
-        _db = null;
-    }
-
-    await Dexie.delete('sylve-db');
 }

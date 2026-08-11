@@ -83,6 +83,11 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 
+// @securityDefinitions.apikey ClusterKeyAuth
+// @in header
+// @name X-Cluster-Key
+// @description Exact enabled cluster join key.
+
 // @host      sylve.lan:8181
 // @BasePath  /api
 func RegisterRoutes(r *gin.Engine,
@@ -114,12 +119,19 @@ func RegisterRoutes(r *gin.Engine,
 	api := r.Group("/api")
 	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
 	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
+	publicAuth := api.Group("/auth")
+	publicAuth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	publicAuth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		publicAuth.POST("/login", authHandlers.LoginHandler(authService))
+		publicAuth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
+		publicAuth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
+	}
 
 	health := api.Group("/health")
-	health.Use(middleware.EnsureAuthenticated(authService))
 	{
-		health.GET("/basic", BasicHealthCheckHandler(systemService))
-		health.GET("/http", HTTPHealthCheckHandler)
+		health.GET("/basic", middleware.AuthenticateBasicHealth(authService), BasicHealthCheckHandler(systemService))
+		health.GET("/http", middleware.EnsureAuthenticated(authService), HTTPHealthCheckHandler)
 	}
 
 	basic := api.Group("/basic")
@@ -161,10 +173,14 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))
-		info.GET("/terminal", infoHandlers.HandleHostTerminal)
-
 		info.GET("/node", infoHandlers.NodeInfo(infoService))
 	}
+	hostTerminal := api.Group("/info")
+	hostTerminal.Use(middleware.EnsureAuthenticated(authService))
+	hostTerminal.Use(middleware.RequireLocalAdmin(authService))
+	hostTerminal.Use(EnsureCorrectHost(db, authService))
+	hostTerminal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	hostTerminal.GET("/terminal", infoHandlers.HandleHostTerminal)
 
 	zfs := api.Group("/zfs")
 	zfs.Use(middleware.EnsureAuthenticated(authService))
@@ -714,20 +730,23 @@ func RegisterRoutes(r *gin.Engine,
 
 	api.GET("/utilities/downloads/:uuid", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 
+	authSession := api.Group("/auth")
+	authSession.Use(middleware.EnsureAuthenticated(authService))
+	authSession.Use(middleware.RequireLocalSession())
+	authSession.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	authSession.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		authSession.POST("/logout", authHandlers.LogoutHandler(authService))
+		authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
+	}
+
 	auth := api.Group("/auth")
 	auth.Use(middleware.EnsureAuthenticated(authService))
 	auth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	{
-		auth.POST("/login", authHandlers.LoginHandler(authService))
-		auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
-		auth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
-		auth.POST("/logout", authHandlers.LogoutHandler(authService))
-		auth.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
-	}
 
 	events := api.Group("/events")
-	events.Use(middleware.EnsureAuthenticated(authService))
+	events.Use(middleware.AuthenticateSSE(authService))
 	{
 		events.GET("/stream", eventsHandlers.StreamSSE(authService))
 	}
@@ -825,7 +844,33 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
+		intraCluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
 	}
+
+	clusterAdmission := api.Group("/cluster")
+	clusterAdmission.Use(middleware.AuthenticateClusterKey(authService))
+	clusterAdmission.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	clusterAdmission.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	clusterAdmission.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
+
+	clusterLocal := api.Group("/cluster")
+	clusterLocal.Use(middleware.EnsureAuthenticated(authService))
+	clusterLocal.Use(middleware.RequireLocalSession())
+	clusterLocal.Use(middleware.RequireLocalAdmin(authService))
+	clusterLocal.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	clusterLocal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
+		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
+		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
+		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
+	}
+
+	clusterAdmin := api.Group("/cluster")
+	clusterAdmin.Use(middleware.EnsureAuthenticated(authService))
+	clusterAdmin.Use(middleware.RequireLocalAdmin(authService))
+	clusterAdmin.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	clusterAdmin.POST("/resync-state", clusterHandlers.ResyncClusterState(clusterService, zeltaService))
 
 	cluster := api.Group("/cluster")
 	cluster.Use(middleware.EnsureAuthenticated(authService))
@@ -835,12 +880,6 @@ func RegisterRoutes(r *gin.Engine,
 		cluster.GET("/resources", clusterHandlers.Resources(clusterService))
 
 		cluster.GET("", clusterHandlers.GetCluster(clusterService))
-		cluster.POST("", clusterHandlers.CreateCluster(authService, clusterService, fsm))
-		cluster.POST("/join", clusterHandlers.JoinCluster(authService, clusterService, zeltaService, fsm))
-		cluster.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
-		cluster.POST("/resync-state", clusterHandlers.ResyncClusterState(clusterService, zeltaService))
-		cluster.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
-		cluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
 	}
 
 	clusterNotes := cluster.Group("/notes")
@@ -906,6 +945,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	vnc := api.Group("/vnc")
 	vnc.Use(middleware.EnsureAuthenticated(authService))
+	vnc.Use(middleware.RequireLocalAdmin(authService))
 	vnc.Use(EnsureCorrectHost(db, authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	vnc.GET("/:port", vncHandler.VNCProxyHandler(libvirtService))

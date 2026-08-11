@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
 	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
-	import { sha256 } from '$lib/utils/string';
+	import { resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { findRow, getAllRows } from '$lib/utils/tree-table';
 	import { watch, Debounced } from 'runed';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -82,7 +82,7 @@
 	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let scroll = $state([0, 0]);
-	let hash = $state('');
+	const ajaxHeaders: Record<string, string> = {};
 
 	const MIN_PAGE_SIZE = 10;
 	const MAX_PAGE_SIZE = 100;
@@ -169,19 +169,17 @@
 		}
 	});
 
-	// https://10.10.30.103/ares/storage/zfs/datasets/snapshots
-	let hostname = new URL(location.href).pathname.split('/').filter(Boolean)[0];
+	function refreshAjaxHeaders() {
+		delete ajaxHeaders.Authorization;
+		delete ajaxHeaders['X-Current-Hostname'];
 
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
+		const token = storage.token?.trim();
+		const hostname = resolveNodeHostname(window.location.pathname);
+		if (token) ajaxHeaders.Authorization = `Bearer ${token}`;
+		if (hostname) ajaxHeaders['X-Current-Hostname'] = hostname;
+	}
 
-		/*
-        export interface AjaxContentType {
-    headers: JSONRecord;
-    body: (url: string, config: any, params: any) => any;
-}
-        */
-
+	onMount(() => {
 		if (tableComponent) {
 			const initialPageSize = estimateInitialPageSize();
 			currentPageSize = initialPageSize;
@@ -192,17 +190,16 @@
 					return response.data;
 				},
 				ajaxParams: () => ({
-					hash,
 					...extraParams,
 					search: query || ''
 				}),
 				ajaxConfig: {
 					method: 'GET',
-					headers: {
-						...(hostname && {
-							'X-Current-Hostname': hostname
-						})
-					}
+					headers: ajaxHeaders
+				},
+				ajaxRequesting: () => {
+					refreshAjaxHeaders();
+					return true;
 				},
 				reactiveData: true,
 				columns: data.columns as ColumnDefinition[],

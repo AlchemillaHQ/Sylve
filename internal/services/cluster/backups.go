@@ -502,7 +502,7 @@ func (s *Service) forwardBackupJobFriendlySourceToLeader(update BackupJobFriendl
 		return fmt.Errorf("auth_service_unavailable")
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
 	if err != nil {
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

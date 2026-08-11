@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
 )
 
@@ -140,7 +141,8 @@ func (s *Service) checkJoinInventory(
 	if details.Cluster == nil {
 		return GuestIdentityInventoryReport{}, false, fmt.Errorf("cluster_not_found")
 	}
-	if details.Cluster.Key != providedKey {
+	if !details.Cluster.Enabled || strings.TrimSpace(details.Cluster.Key) == "" ||
+		providedKey == "" || details.Cluster.Key != providedKey {
 		return GuestIdentityInventoryReport{}, false, fmt.Errorf("invalid_cluster_key")
 	}
 	if s.Raft == nil {
@@ -237,7 +239,10 @@ func (s *Service) AcceptJoinInventory(
 		if _, err := s.resyncClusterStateLocked(ctx); err != nil {
 			return err
 		}
-		return s.PopulateClusterNodes()
+		if err := s.PopulateClusterNodes(); err != nil {
+			logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join_retry")
+		}
+		return nil
 	}
 
 	serverID := raft.ServerID(strings.TrimSpace(nodeID))
@@ -285,5 +290,8 @@ func (s *Service) AcceptJoinInventory(
 
 	// Do not make the joining node wait for the normal monitor interval before
 	// it receives the initial node-health snapshot.
-	return s.PopulateClusterNodes()
+	if err := s.PopulateClusterNodes(); err != nil {
+		logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join")
+	}
+	return nil
 }

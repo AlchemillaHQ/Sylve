@@ -212,7 +212,7 @@ func (s *Service) replicatedStateInternalToken() (string, error) {
 		return "", fmt.Errorf("replicated_state_auth_service_unavailable")
 	}
 	nodeID := strings.TrimSpace(s.guestIdentityInventoryLocalNodeID())
-	token, err := s.AuthService.CreateInternalClusterJWT(nodeID, "")
+	token, err := s.AuthService.CreateInternalClusterJWT(nodeID)
 	if err != nil {
 		return "", fmt.Errorf("replicated_state_cluster_token_failed: %w", err)
 	}

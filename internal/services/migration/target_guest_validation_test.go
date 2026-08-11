@@ -24,7 +24,7 @@ type migrationTargetAuthStub struct {
 	username string
 }
 
-func (s *migrationTargetAuthStub) CreateInternalClusterJWT(username, _ string) (string, error) {
+func (s *migrationTargetAuthStub) CreateInternalClusterJWT(username string) (string, error) {
 	s.username = username
 	return "migration-target-test-token", nil
 }

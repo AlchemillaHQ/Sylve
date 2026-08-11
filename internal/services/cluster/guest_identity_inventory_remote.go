@@ -320,7 +320,7 @@ func (s *Service) collectClusterGuestIdentityInventoriesStrict(
 	if s.AuthService == nil {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_auth_service_unavailable")
 	}
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
 	if err != nil {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
 			"guest_identity_inventory_cluster_token_failed: %w",

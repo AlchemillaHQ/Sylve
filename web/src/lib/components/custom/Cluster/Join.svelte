@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { joinCluster } from '$lib/api/cluster/cluster';
+	import { joinCluster, refreshClusterAfterLifecycleChange } from '$lib/api/cluster/cluster';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -8,7 +8,6 @@
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
-	import { logOut } from '$lib/api/auth';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
@@ -84,17 +83,12 @@
 				return;
 			}
 
-			if (response.data) {
-				if (typeof response.data === 'string') {
-					storage.clusterToken = response.data;
-				}
-			}
-
+			await refreshClusterAfterLifecycleChange();
 			toast.success('Joined cluster', {
 				position: 'bottom-center'
 			});
-
-			await logOut('Login required after joining cluster', { clearBrowserState: true });
+			open = false;
+			properties = options;
 		} else {
 			toast.error('No Node ID available', {
 				position: 'bottom-center'

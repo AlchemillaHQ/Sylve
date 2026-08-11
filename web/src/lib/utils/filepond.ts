@@ -21,10 +21,8 @@ export function getFilePondRequestHeaders(selectedHostname?: string): Record<str
 	const hostname = getFilePondRequestHostname(selectedHostname);
 	const headers: Record<string, string> = {};
 	const token = storage.token?.trim();
-	const clusterToken = storage.clusterToken?.trim();
 
 	if (token) headers.Authorization = `Bearer ${token}`;
-	if (clusterToken) headers['X-Cluster-Token'] = `Bearer ${clusterToken}`;
 	if (hostname) headers['X-Current-Hostname'] = hostname;
 
 	return headers;

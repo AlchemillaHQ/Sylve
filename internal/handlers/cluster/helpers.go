@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -136,6 +137,9 @@ func currentClusterForwardHop(c *gin.Context) (int, error) {
 }
 
 func nextClusterForwardHop(c *gin.Context) (int, error) {
+	if c.GetString("AuthScope") != "cluster" {
+		return 1, nil
+	}
 	hop, err := currentClusterForwardHop(c)
 	if err != nil {
 		return 0, err
@@ -151,24 +155,26 @@ func clusterForwardHeaders(c *gin.Context, cS *cluster.Service, hop int) (map[st
 		return nil, fmt.Errorf("cluster_forward_auth_service_unavailable")
 	}
 
-	userID := c.GetUint("UserID")
-	username := strings.TrimSpace(c.GetString("Username"))
-	authType := strings.TrimSpace(c.GetString("AuthType"))
-	if username == "" {
-		hostname, _ := utils.GetSystemHostname()
-		if hostname != "" {
-			username = hostname
-		} else {
-			username = "cluster"
+	var clusterToken string
+	switch c.GetString("AuthScope") {
+	case "local":
+		var err error
+		clusterToken, err = cS.AuthService.CreateUserProxyJWT(
+			c.GetUint("UserID"),
+			c.GetString("Username"),
+			c.GetString("AuthType"),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("cluster_forward_auth_failed: %w", err)
 		}
-	}
-	if authType == "" {
-		authType = "local"
-	}
-
-	clusterToken, err := cS.AuthService.CreateClusterJWT(userID, username, authType, "")
-	if err != nil {
-		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
+	case "cluster":
+		clusterToken = strings.TrimSpace(c.GetString("Token"))
+		if clusterToken == "" || c.GetString("ClusterTokenUse") != authService.ClusterTokenUseUserProxy ||
+			c.GetUint("UserID") == 0 || !c.GetBool("ProxyAdmin") {
+			return nil, fmt.Errorf("cluster_forward_auth_failed: validated_user_proxy_required")
+		}
+	default:
+		return nil, fmt.Errorf("cluster_forward_auth_failed: authenticated_scope_required")
 	}
 
 	accept := strings.TrimSpace(c.GetHeader("Accept"))
@@ -190,11 +196,11 @@ func clusterForwardHeaders(c *gin.Context, cS *cluster.Service, hop int) (map[st
 	c.Header("X-Request-ID", requestID)
 
 	headers := map[string]string{
-		"Accept":                accept,
-		"Content-Type":          contentType,
-		"X-Cluster-Token":       fmt.Sprintf("Bearer %s", clusterToken),
-		"X-Request-ID":          requestID,
-		clusterForwardHopHeader: strconv.Itoa(hop),
+		"Accept":                       accept,
+		"Content-Type":                 contentType,
+		authService.ClusterTokenHeader: fmt.Sprintf("Bearer %s", clusterToken),
+		"X-Request-ID":                 requestID,
+		clusterForwardHopHeader:        strconv.Itoa(hop),
 	}
 	for _, header := range []string{
 		"X-Correlation-ID",

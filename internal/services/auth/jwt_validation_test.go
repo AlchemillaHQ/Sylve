@@ -44,7 +44,7 @@ func TestJWTParserHardening(t *testing.T) {
 	if err := db.Create(&models.SystemSecrets{Name: "JWTSecret", Data: signingSecret}).Error; err != nil {
 		t.Fatalf("create JWT secret: %v", err)
 	}
-	if err := db.Create(&clusterModels.Cluster{Key: signingSecret}).Error; err != nil {
+	if err := db.Create(&clusterModels.Cluster{Enabled: true, Key: signingSecret}).Error; err != nil {
 		t.Fatalf("create cluster: %v", err)
 	}
 	user := models.User{Username: "admin", Admin: true}
@@ -94,8 +94,12 @@ func TestJWTParserHardening(t *testing.T) {
 		{
 			name: "cluster",
 			claims: func(expiresAt *jwt.NumericDate) jwt.Claims {
+				var issuedAt *jwt.NumericDate
+				if expiresAt != nil {
+					issuedAt = jwt.NewNumericDate(expiresAt.Time.Add(-clusterTokenTTL))
+				}
 				return JWT{
-					RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: expiresAt},
+					RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: expiresAt, IssuedAt: issuedAt},
 					CustomClaims: serviceInterfaces.CustomClaims{
 						UserID:   user.ID,
 						Username: user.Username,
@@ -118,8 +122,8 @@ func TestJWTParserHardening(t *testing.T) {
 		wantError     bool
 		localOnly     bool
 	}{
-		{"valid HS256", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(time.Hour)), false, false},
-		{"reject HS384", jwt.SigningMethodHS384, signingSecret, jwt.NewNumericDate(now.Add(time.Hour)), true, false},
+		{"valid HS256", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(clusterTokenTTL)), false, false},
+		{"reject HS384", jwt.SigningMethodHS384, signingSecret, jwt.NewNumericDate(now.Add(clusterTokenTTL)), true, false},
 		{"reject missing expiry", jwt.SigningMethodHS256, signingSecret, nil, true, false},
 		// Expiry and signature validation are shared library behavior, so one wrapper is sufficient.
 		{"reject expired token", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(-time.Hour)), true, true},
@@ -165,6 +169,75 @@ func TestJWTParserHardening(t *testing.T) {
 						t.Fatalf("unexpected user ID: got %d, want %d", claims.UserID, user.ID)
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestClusterJWTClaimBounds(t *testing.T) {
+	const signingSecret = "cluster-secret"
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{Enabled: true, Key: signingSecret}).Error; err != nil {
+		t.Fatalf("create cluster: %v", err)
+	}
+	service := &Service{DB: db}
+	now := time.Now().Truncate(time.Second)
+
+	tests := []struct {
+		name      string
+		issuedAt  *jwt.NumericDate
+		notBefore *jwt.NumericDate
+		expires   *jwt.NumericDate
+		tokenUse  string
+		wantErr   bool
+	}{
+		{
+			name: "valid five minute token", issuedAt: jwt.NewNumericDate(now),
+			expires:  jwt.NewNumericDate(now.Add(clusterTokenTTL)),
+			tokenUse: ClusterTokenUseUserProxy,
+		},
+		{
+			name: "missing issued at", expires: jwt.NewNumericDate(now.Add(time.Minute)),
+			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
+		},
+		{
+			name: "lifetime over five minutes", issuedAt: jwt.NewNumericDate(now),
+			expires:  jwt.NewNumericDate(now.Add(clusterTokenTTL + time.Second)),
+			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
+		},
+		{
+			name: "issued within clock skew", issuedAt: jwt.NewNumericDate(now.Add(clusterTokenFutureSkew - time.Second)),
+			expires:  jwt.NewNumericDate(now.Add(clusterTokenFutureSkew + time.Minute)),
+			tokenUse: ClusterTokenUseInternalControl,
+		},
+		{
+			name: "issued too far in future", issuedAt: jwt.NewNumericDate(now.Add(clusterTokenFutureSkew + time.Second)),
+			expires:  jwt.NewNumericDate(now.Add(clusterTokenFutureSkew + time.Minute)),
+			tokenUse: ClusterTokenUseInternalControl, wantErr: true,
+		},
+		{
+			name: "not valid yet", issuedAt: jwt.NewNumericDate(now),
+			notBefore: jwt.NewNumericDate(now.Add(time.Minute)), expires: jwt.NewNumericDate(now.Add(time.Minute)),
+			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
+		},
+		{
+			name: "token use must be exact", issuedAt: jwt.NewNumericDate(now),
+			expires: jwt.NewNumericDate(now.Add(time.Minute)), tokenUse: " user_proxy ", wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			token := signJWTForParserTest(t, jwt.SigningMethodHS256, JWT{
+				RegisteredClaims: jwt.RegisteredClaims{
+					IssuedAt: test.issuedAt, NotBefore: test.notBefore, ExpiresAt: test.expires,
+				},
+				CustomClaims: serviceInterfaces.CustomClaims{TokenUse: test.tokenUse},
+			}, signingSecret)
+
+			_, err := service.VerifyClusterJWT(token)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error=%v, wantErr=%v", err, test.wantErr)
 			}
 		})
 	}

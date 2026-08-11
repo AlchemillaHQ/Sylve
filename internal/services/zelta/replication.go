@@ -7331,7 +7331,7 @@ func (s *Service) forwardReplicationPolicyControlReadAtAPIContext(
 		hostname = "cluster"
 	}
 
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT(hostname, "")
+	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT(hostname)
 	if err != nil {
 		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

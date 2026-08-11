@@ -274,7 +274,6 @@
 
 		const auth = toHex(
 			JSON.stringify({
-				hash,
 				hostname: node
 			})
 		);

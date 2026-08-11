@@ -26,7 +26,7 @@ type forwardingAuthStub struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (forwardingAuthStub) CreateInternalClusterJWT(_, _ string) (string, error) {
+func (forwardingAuthStub) CreateInternalClusterJWT(_ string) (string, error) {
 	return "test-cluster-token", nil
 }
 

@@ -20,7 +20,6 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -280,38 +279,5 @@ func TestLoginHandlerRejectsOversizedBody(t *testing.T) {
 	}
 	if response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("Cache-Control=%q want=no-store", response.Header().Get("Cache-Control"))
-	}
-}
-
-func TestCompleteLoginRevokesTokenWhenClusterTokenCreationFails(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Token{}, &clusterModels.Cluster{})
-	service := &authService.Service{DB: db}
-	user := models.User{Username: "admin", Admin: true}
-	if err := db.Create(&user).Error; err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	if err := db.Create(&models.Token{
-		UserID:   user.ID,
-		Token:    "incomplete-login-token",
-		AuthType: "sylve",
-		Expiry:   time.Now().Add(time.Hour),
-	}).Error; err != nil {
-		t.Fatalf("create token: %v", err)
-	}
-
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	completeLogin(ctx, service, user.ID, user.Username, "sylve", "incomplete-login-token")
-
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("status=%d want=%d body=%s", recorder.Code, http.StatusInternalServerError, recorder.Body.String())
-	}
-	var count int64
-	if err := db.Model(&models.Token{}).Where("token = ?", "incomplete-login-token").Count(&count).Error; err != nil {
-		t.Fatalf("count token: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("token count=%d want=0", count)
 	}
 }

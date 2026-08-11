@@ -25,7 +25,7 @@ type guestIdentityInventoryAuthStub struct {
 	usernames []string
 }
 
-func (s *guestIdentityInventoryAuthStub) CreateInternalClusterJWT(username, _ string) (string, error) {
+func (s *guestIdentityInventoryAuthStub) CreateInternalClusterJWT(username string) (string, error) {
 	s.usernames = append(s.usernames, username)
 	if s.err != nil {
 		return "", s.err

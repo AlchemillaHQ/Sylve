@@ -14,9 +14,7 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
-	import { sha256 } from '$lib/utils/string';
 	import { resource, useInterval, watch } from 'runed';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
@@ -26,7 +24,6 @@
 
 	let filterJobId = $state('');
 	let reload = $state(false);
-	let hash = $state('');
 
 	let jobs = resource(
 		() => 'backup-jobs-for-filter',
@@ -134,10 +131,6 @@
 			toast.error('Failed to copy error', { duration: 2000, position: 'bottom-center' });
 		}
 	}
-
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-	});
 
 	function parseEndpoint(raw: string): { host: string; dataset: string; snapshot: string } {
 		const value = (raw || '').trim();
@@ -633,12 +626,12 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash && jailsLoading === false}
+		{#if jailsLoading === false}
 			{#key `${jails.length}-${filterJobId}-${selectedNodeId}`}
 				<TreeTable
 					data={tableData}
 					name="backup-events-tt"
-					ajaxURL="/api/cluster/backups/events/remote?hash={hash}"
+					ajaxURL="/api/cluster/backups/events/remote"
 					bind:query
 					bind:parentActiveRow={activeRows}
 					bind:reload

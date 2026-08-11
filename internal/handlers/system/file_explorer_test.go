@@ -98,7 +98,7 @@ func TestFileExplorerDownloadStreamsRangesAndFormatsFilename(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/system/file-explorer/download", DownloadFile(&system.Service{}))
-	endpoint := "/system/file-explorer/download?id=" + url.QueryEscape(path)
+	endpoint := "/api/system/file-explorer/download?id=" + url.QueryEscape(path)
 
 	response := testutil.PerformRequest(t, router, http.MethodGet, endpoint, nil, nil)
 	if response.Code != http.StatusOK {
@@ -196,7 +196,7 @@ func TestFileExplorerDownloadMapsPathErrors(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/system/file-explorer/download", DownloadFile(&system.Service{}))
+	router.GET("/api/system/file-explorer/download", DownloadFile(&system.Service{}))
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := testutil.PerformRequest(t, router, http.MethodGet, test.endpoint, nil, nil)
@@ -247,14 +247,14 @@ func TestFileExplorerDownloadRequiresAuthenticatedCurrentAdmin(t *testing.T) {
 	if err := os.WriteFile(path, []byte("authorized contents"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	endpoint := "/system/file-explorer/download?id=" + url.QueryEscape(path)
+	endpoint := "/api/system/file-explorer/download?id=" + url.QueryEscape(path)
 	hashEndpoint := endpoint + "&hash=" + url.QueryEscape(utils.SHA256(token, 1))
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(middleware.EnsureAuthenticated(auth))
 	router.Use(middleware.RequireLocalAdmin(auth))
-	router.GET("/system/file-explorer/download", DownloadFile(&system.Service{}))
+	router.GET("/api/system/file-explorer/download", DownloadFile(&system.Service{}))
 
 	unauthenticated := testutil.PerformRequest(t, router, http.MethodGet, endpoint, nil, nil)
 	if unauthenticated.Code != http.StatusUnauthorized {

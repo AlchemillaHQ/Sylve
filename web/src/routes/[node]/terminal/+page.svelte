@@ -151,8 +151,7 @@
 		const wsAuth = toHex(
 			JSON.stringify({
 				hash,
-				hostname: selectedHostname,
-				token: storage.clusterToken || ''
+				hostname: selectedHostname
 			})
 		);
 

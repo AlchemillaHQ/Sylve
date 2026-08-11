@@ -53,7 +53,7 @@ type backupForwardAuthStub struct {
 	calls []backupForwardAuthCall
 }
 
-func (s *backupForwardAuthStub) CreateClusterJWT(userID uint, username, authType, _ string) (string, error) {
+func (s *backupForwardAuthStub) CreateUserProxyJWT(userID uint, username, authType string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, backupForwardAuthCall{userID: userID, username: username, authType: authType})

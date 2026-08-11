@@ -22,6 +22,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 )
@@ -38,7 +39,8 @@ func newClusterForwardTestContext(
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("UserID", uint(7))
 	c.Set("Username", "forward-user")
-	c.Set("AuthType", "local")
+	c.Set("AuthType", "sylve")
+	c.Set("AuthScope", "local")
 	for key, value := range headers {
 		c.Request.Header.Set(key, value)
 	}
@@ -173,6 +175,10 @@ func TestClusterForwardTimeoutClassesAndOneHopLimit(t *testing.T) {
 		`{}`,
 		map[string]string{clusterForwardHopHeader: "1"},
 	)
+	c.Set("AuthScope", "cluster")
+	c.Set("Token", "validated-user-proxy")
+	c.Set("ClusterTokenUse", authService.ClusterTokenUseUserProxy)
+	c.Set("ProxyAdmin", true)
 	_, err := performClusterForward(
 		c,
 		&cluster.Service{AuthService: authForwardStub{}},
