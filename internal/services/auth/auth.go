@@ -477,7 +477,7 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 
 	token, err := jwt.ParseWithClaims(tokenString, &JWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(clusterKey), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid: %w", err)
@@ -486,6 +486,10 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 	claims, ok := token.Claims.(*JWT)
 
 	if !ok || !token.Valid {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	if claims.ExpiresAt == nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
@@ -562,7 +566,7 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 
 	token, err := jwt.ParseWithClaims(tokenString, &JWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
@@ -571,6 +575,10 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 	claims, ok := token.Claims.(*JWT)
 
 	if !ok || !token.Valid {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	if claims.ExpiresAt == nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
@@ -597,7 +605,7 @@ func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceI
 
 	token, err := jwt.ParseWithClaims(tokenString, &ScopedJWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
@@ -609,6 +617,10 @@ func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceI
 
 	if claims.Scope != expectedScope {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_scope")
+	}
+
+	if claims.ExpiresAt == nil {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
 	if time.Now().After(claims.ExpiresAt.Time) {
