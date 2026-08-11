@@ -521,6 +521,10 @@ func TestReplicationRunForwardRejectsLoopsAndUnavailableOwnerCreatesNoOperation(
 		`{}`,
 		map[string]string{clusterForwardHopHeader: "1"},
 	)
+	loopContext.Set("AuthScope", "cluster")
+	loopContext.Set("Token", "validated-user-proxy")
+	loopContext.Set("ClusterTokenUse", authService.ClusterTokenUseUserProxy)
+	loopContext.Set("ProxyAdmin", true)
 	_, err = forwardReplicationRunToNode(loopContext, service, 901, "offline-owner")
 	if err == nil || !strings.Contains(err.Error(), "forward_loop") || forwardCalls != 1 {
 		t.Fatalf("loop result: calls=%d err=%v", forwardCalls, err)

@@ -251,6 +251,7 @@ func newBackupRestoreForwardRouter(
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("AuthScope", "local")
 		c.Set("UserID", userID)
 		c.Set("Username", username)
 		c.Set("AuthType", authType)
@@ -270,6 +271,7 @@ func newBackupRunForwardRouter(
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("AuthScope", "local")
 		c.Set("UserID", userID)
 		c.Set("Username", username)
 		c.Set("AuthType", authType)

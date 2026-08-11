@@ -33,6 +33,13 @@ func (s *guestIdentityInventoryAuthStub) CreateInternalClusterJWT(username strin
 	return "inventory-test-token", nil
 }
 
+func (s *guestIdentityInventoryAuthStub) CreateUserProxyJWT(_ uint, _ string, _ string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	return "inventory-test-token", nil
+}
+
 func registerGuestIdentityInventoryPeer(
 	t *testing.T,
 	sim *clusterPeerSimulator,

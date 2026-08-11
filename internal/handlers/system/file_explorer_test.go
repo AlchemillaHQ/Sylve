@@ -97,7 +97,7 @@ func TestFileExplorerDownloadStreamsRangesAndFormatsFilename(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/system/file-explorer/download", DownloadFile(&system.Service{}))
+	router.GET("/api/system/file-explorer/download", DownloadFile(&system.Service{}))
 	endpoint := "/api/system/file-explorer/download?id=" + url.QueryEscape(path)
 
 	response := testutil.PerformRequest(t, router, http.MethodGet, endpoint, nil, nil)
@@ -164,31 +164,31 @@ func TestFileExplorerDownloadMapsPathErrors(t *testing.T) {
 	}{
 		{
 			name:       "missing id",
-			endpoint:   "/system/file-explorer/download",
+			endpoint:   "/api/system/file-explorer/download",
 			wantStatus: http.StatusBadRequest,
 			wantCode:   system.ErrFileExplorerInvalidPath.Error(),
 		},
 		{
 			name:       "relative path",
-			endpoint:   "/system/file-explorer/download?id=" + url.QueryEscape("relative.img"),
+			endpoint:   "/api/system/file-explorer/download?id=" + url.QueryEscape("relative.img"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   system.ErrFileExplorerInvalidPath.Error(),
 		},
 		{
 			name:       "directory",
-			endpoint:   "/system/file-explorer/download?id=" + url.QueryEscape(root),
+			endpoint:   "/api/system/file-explorer/download?id=" + url.QueryEscape(root),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   system.ErrFileExplorerUnsupportedType.Error(),
 		},
 		{
 			name:       "fifo",
-			endpoint:   "/system/file-explorer/download?id=" + url.QueryEscape(fifo),
+			endpoint:   "/api/system/file-explorer/download?id=" + url.QueryEscape(fifo),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   system.ErrFileExplorerUnsupportedType.Error(),
 		},
 		{
 			name:       "missing file",
-			endpoint:   "/system/file-explorer/download?id=" + url.QueryEscape(filepath.Join(root, "missing.img")),
+			endpoint:   "/api/system/file-explorer/download?id=" + url.QueryEscape(filepath.Join(root, "missing.img")),
 			wantStatus: http.StatusNotFound,
 			wantCode:   system.ErrFileExplorerNotFound.Error(),
 		},

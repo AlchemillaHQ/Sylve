@@ -47,9 +47,10 @@ func newReplicationRunForwardRouter(
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("AuthScope", "local")
 		c.Set("UserID", uint(7))
 		c.Set("Username", "replication-forward-test")
-		c.Set("AuthType", "local")
+		c.Set("AuthType", "sylve")
 		c.Next()
 	})
 	router.POST("/api/cluster/replication/policies/:id/run", RunReplicationPolicyNow(service, runService))

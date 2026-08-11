@@ -21,7 +21,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
@@ -79,7 +81,19 @@ func performSelectedNodeProxyRequest(
 func newSelectedNodeUploadProxyRouter(t *testing.T, remoteURL string) *gin.Engine {
 	t.Helper()
 
-	database := testutil.NewSQLiteTestDB(t, &clusterModels.ClusterNode{})
+	database := testutil.NewSQLiteTestDB(
+		t,
+		&models.User{},
+		&clusterModels.Cluster{},
+		&clusterModels.ClusterNode{},
+	)
+	if err := database.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+	user := models.User{Username: "upload-admin", Admin: true}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
 	if err := database.Create(&clusterModels.ClusterNode{
 		NodeUUID: "remote-node-id",
 		Status:   "online",
@@ -97,7 +111,15 @@ func newSelectedNodeUploadProxyRouter(t *testing.T, remoteURL string) *gin.Engin
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(EnsureCorrectHost(database, nil))
+	router.Use(func(c *gin.Context) {
+		c.Set("Token", "browser-local-token")
+		c.Set("AuthScope", "local")
+		c.Set("UserID", user.ID)
+		c.Set("Username", user.Username)
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.Use(EnsureCorrectHost(database, &authService.Service{DB: database}))
 	unexpectedLocalHandler := func(c *gin.Context) {
 		c.String(http.StatusTeapot, "upload reached origin handler")
 	}
