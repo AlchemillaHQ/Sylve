@@ -305,6 +305,7 @@ msgstr "സ്വഗ്ഗർ"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Login"
 msgstr "ലോഗിൻ"
 
@@ -767,7 +768,6 @@ msgstr "നിങ്ങളുടെ ഉപയോക്തൃനാമം നൽ�
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
-#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password"
@@ -962,6 +962,11 @@ msgstr "കാണുക"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
@@ -1056,6 +1061,7 @@ msgstr "ഇല്ലാതാക്കുക"
 msgid "Edit"
 msgstr "തിരുത്തുക"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -1568,6 +1574,8 @@ msgstr "അസാധുവായ ഇമെയിൽ വിലാസം"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Failed to create user"
 msgstr "യൂസറെ സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
@@ -1583,6 +1591,8 @@ msgstr "യൂസറെ സൃഷ്ടിച്ചു"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Failed to edit user"
 msgstr "യൂസറെ എഡിറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
@@ -1654,6 +1664,10 @@ msgstr "അഡ്മിൻ"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -3027,15 +3041,13 @@ msgstr "{0} \"{1}\" ഇല്ലാതാക്കുന്നതിൽ പര�
 #~ msgid "Failed to delete {0} item{1}."
 #~ msgstr "{0} ഇനങ്ങൾ{1} ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു."
 
-#. 0: modal.template?.name
+#. 0: result.name
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 msgid "Template {0} deleted"
 msgstr "ടെംപ്ലേറ്റ് {0} നീക്കം ചെയ്തു"
 
-#. 0: modal.template?.name
-#: src/routes/[node]/utilities/cloud-init/+page.svelte
-msgid "Failed to delete template {0}"
-msgstr "ടെംപ്ലേറ്റ് {0} നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
+#~ msgid "Failed to delete template {0}"
+#~ msgstr "ടെംപ്ലേറ്റ് {0} നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Please enter a valid URL"
@@ -3049,18 +3061,14 @@ msgstr "സാധുവായ ഒരു Magnet, HTTP URL അല്ലെങ്�
 msgid "Invalid file name"
 msgstr "അസാധുവായ ഫയൽ നാമം"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Download started"
-msgstr "ഡൗൺലോഡ് ആരംഭിച്ചു"
+#~ msgid "Download started"
+#~ msgstr "ഡൗൺലോഡ് ആരംഭിച്ചു"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Download failed"
-msgstr "ഡൗൺലോഡ് പരാജയപ്പെട്ടു"
+#~ msgid "Download failed"
+#~ msgstr "ഡൗൺലോഡ് പരാജയപ്പെട്ടു"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to get download link"
-msgstr "ഡൗൺലോഡ് ലിങ്ക് ലഭിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
+#~ msgid "Failed to get download link"
+#~ msgstr "ഡൗൺലോഡ് ലിങ്ക് ലഭിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download URL copied to clipboard"
@@ -3132,13 +3140,11 @@ msgstr "സ്വയമേവ എക്സ്ട്രാക്റ്റ് ച�
 msgid "Auto-convert to RAW"
 msgstr "സ്വയമേവ RAW-ലേക്ക് മാറ്റുക"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to delete download"
-msgstr "ഡൗൺലോഡ് നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
+#~ msgid "Failed to delete download"
+#~ msgstr "ഡൗൺലോഡ് നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to delete downloads"
-msgstr "ഡൗൺലോഡുകൾ നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
+#~ msgid "Failed to delete downloads"
+#~ msgstr "ഡൗൺലോഡുകൾ നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -5456,10 +5462,8 @@ msgstr "Meta Data ആവശ്യമാണ്"
 msgid "Template {0} {1}"
 msgstr "{0} ടെംപ്ലേറ്റ് {1}"
 
-#. 0: isEdit ? 'update' \\: 'create'; 1: properties.name
-#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-msgid "Failed to {0} template {1}"
-msgstr "{1} ടെംപ്ലേറ്റ് {0} ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
+#~ msgid "Failed to {0} template {1}"
+#~ msgstr "{1} ടെംപ്ലേറ്റ് {0} ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. 0: template?.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -5891,6 +5895,7 @@ msgstr "DB സ്റ്റോറേജ്"
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/pam/+page.svelte
@@ -6073,6 +6078,8 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -6553,6 +6560,7 @@ msgid "Select Replacement Device"
 msgstr "പകരമുള്ള ഉപകരണം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Replace"
 msgstr "മാറ്റുക"
 
@@ -8883,6 +8891,8 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/imported/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Passkeys"
 msgstr ""
@@ -8895,9 +8905,8 @@ msgstr ""
 msgid "Could not start passkey registration"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Invalid registration challenge payload"
-msgstr ""
+#~ msgid "Invalid registration challenge payload"
+#~ msgstr ""
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 msgid "Passkey registration failed"
@@ -8923,6 +8932,7 @@ msgstr ""
 msgid "Failed to register passkey"
 msgstr ""
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 msgid "Failed to delete passkey"
 msgstr ""
@@ -8984,7 +8994,6 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Passkey"
 msgstr ""
 
@@ -9266,6 +9275,7 @@ msgstr ""
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Deleting..."
 msgstr ""
 
@@ -12203,6 +12213,7 @@ msgstr ""
 #~ msgid "<0/> Installed"
 #~ msgstr ""
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Charts/LineBrush/Single.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -12777,6 +12788,7 @@ msgid "Go up"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Loading…"
 msgstr ""
@@ -13652,6 +13664,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Failed to load importable users"
 msgstr ""
 
@@ -13660,10 +13673,11 @@ msgid "Please select a user"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Failed to import user"
 msgstr ""
 
-#. 0: selectedUsername.value
+#. 0: response.username
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "User \"{0}\" imported"
 msgstr ""
@@ -13690,9 +13704,8 @@ msgstr ""
 msgid "Select a Unix user to import…"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "UID:"
-msgstr ""
+#~ msgid "UID:"
+#~ msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Shell:"
@@ -13710,9 +13723,8 @@ msgstr ""
 msgid "Leave blank to use System Auth (PAM)"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "Importing registers the existing Unix user in Sylve. The Unix user, its groups, and home directory are left untouched. If you set a password, the user can log in with Sylve credentials; otherwise they must use System Auth (PAM)."
-msgstr ""
+#~ msgid "Importing registers the existing Unix user in Sylve. The Unix user, its groups, and home directory are left untouched. If you set a password, the user can log in with Sylve credentials; otherwise they must use System Auth (PAM)."
+#~ msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Importing…"
@@ -13980,9 +13992,8 @@ msgstr ""
 msgid "ZFS Volume - Flash"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Auth Group - Members"
-msgstr ""
+#~ msgid "Auth Group - Members"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Auth User - Import"
@@ -14222,9 +14233,8 @@ msgstr ""
 msgid "Create Samba User"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "root is a permanent member of the wheel group and cannot be removed. This restriction is enforced by the system."
-msgstr ""
+#~ msgid "root is a permanent member of the wheel group and cannot be removed. This restriction is enforced by the system."
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 msgid "Encrypted"
@@ -14713,6 +14723,7 @@ msgstr ""
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/Vm/MigrateModal.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Complete"
 msgstr ""
 
@@ -15107,9 +15118,8 @@ msgstr ""
 msgid "Download updated"
 msgstr ""
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to update download"
-msgstr ""
+#~ msgid "Failed to update download"
+#~ msgstr ""
 
 #~ msgid "Edit Download"
 #~ msgstr ""
@@ -17930,6 +17940,7 @@ msgstr ""
 msgid "Certificate download failed"
 msgstr ""
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 msgid "AbortError"
@@ -19306,6 +19317,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "<0/> Saving..."
 msgstr ""
 
@@ -19713,6 +19725,7 @@ msgstr ""
 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "<0/> Creating..."
 msgstr ""
 
@@ -20741,4 +20754,183 @@ msgstr ""
 
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "No console output has been recorded yet."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Logout"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Stage"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Abort"
+msgstr ""
+
+#. 0: target.action
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader Upload - {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Link"
+msgstr ""
+
+#. 0: target.action
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader - {0}"
+msgstr ""
+
+#. 0: target.action
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cloud-Init Template - {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create PAM"
+msgstr ""
+
+#. 0: target.action
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth User - {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Replace Members"
+msgstr ""
+
+#. 0: target.action
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth Group - {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Register - Begin"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Register - Finish"
+msgstr ""
+
+#. 0: target.action
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Passkey - {0}"
+msgstr ""
+
+#~ msgid "Select a dataset to view encryption i"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "UID / GID:"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Importing registers the existing Unix user in Sylve. The Unix password, groups, and home directory are left untouched. If you set a password, it is used only for Sylve authentication; otherwise the user must use System Auth (PAM)."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Keep current Samba state"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Create or update Samba user"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Remove Samba user"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Failed to load user-management capabilities"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Failed to load the next available UID"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Failed to load directories"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Password must be 128 characters or fewer"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "UID must be 65533 or lower"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Set a password to enable password authentication"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Set a password to create or update the Samba user"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Unix/PAM + Sylve Password"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Samba action"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Failed to load passkeys"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey labels must be 128 characters or fewer"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Registration is available only for administrators with Sylve credentials. Existing passkeys can still be removed."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Unable to load passkeys."
+msgstr ""
+
+#. 0: result.id
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download {0} accepted"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to copy download URL"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Creating download link"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Saving Changes"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Creating Template"
+msgstr ""
+
+#. 0: activeGroup?.name === 'wheel' ? ', including root,' \\: ''
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Primary group members{0} cannot be removed here. This restriction is enforced by the system."
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid "View existing passkeys; registration is unavailable for this user"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid "This action cannot be undone. It permanently removes the managed Unix account and its home directory, along with the Sylve user record."
 msgstr ""

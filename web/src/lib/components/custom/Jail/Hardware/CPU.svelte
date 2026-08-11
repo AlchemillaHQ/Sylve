@@ -81,7 +81,7 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<CustomValueInput placeholder="1" bind:value={cores} classes="flex-1 space-y-1" />
+		<CustomValueInput type="number" placeholder="1" bind:value={cores} classes="flex-1 space-y-1" />
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
