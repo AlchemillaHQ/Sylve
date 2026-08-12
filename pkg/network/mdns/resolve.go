@@ -13,6 +13,7 @@ func LookupInstance(ctx context.Context, instance string) (Service, error) {
 	if err != nil {
 		return srv, err
 	}
+	defer conn.Close()
 
 	return lookupInstance(ctx, instance, conn)
 }
@@ -42,19 +43,14 @@ func lookupInstance(ctx context.Context, instance string, conn MDNSConn) (srv Se
 
 	ch := conn.Read(readCtx)
 
-	qs := make(chan *Query)
-	go func() {
-		for _, iface := range MulticastInterfaces() {
-			iface := iface
-			q := &Query{msg: m, iface: iface}
-			qs <- q
+	for _, iface := range MulticastInterfaces() {
+		if err = conn.SendQuery(&Query{msg: m, iface: iface}); err != nil {
+			return
 		}
-	}()
+	}
 
 	for {
 		select {
-		case q := <-qs:
-			conn.SendQuery(q)
 		case req := <-ch:
 			cache.UpdateFrom(req)
 			if s, ok := cache.services[instance]; ok {

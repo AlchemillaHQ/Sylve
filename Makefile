@@ -20,7 +20,8 @@ INTEGRATION_PACKAGES := \
 	./internal/services/network \
 	./internal/services/cluster \
 	./internal/services/zelta \
-	./internal/services/zfs
+	./internal/services/zfs \
+	./pkg/network/mdns
 
 ACCEPTANCE_PACKAGE := ./internal/console/integration
 

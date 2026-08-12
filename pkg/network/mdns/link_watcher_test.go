@@ -2,8 +2,10 @@ package dnssd
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -26,65 +28,61 @@ func newMockLinkWatcher() *mockLinkWatcher {
 }
 
 func TestLinkUpdateReannounce(t *testing.T) {
-	cfg := Config{
-		Name:   "TestLink",
-		Type:   "_test._tcp",
-		Port:   12345,
-		Ifaces: []string{"lo0"},
-	}
-	sv, err := NewService(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sv.ifaceIPs = map[string][]net.IP{
-		"lo0": {net.IP{192, 168, 0, 200}},
-	}
+	synctest.Test(t, func(t *testing.T) {
+		iface, err := loopbackInterface()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	conn := newTestConn()
-	otherConn := newTestConn()
-	conn.in = otherConn.out
-	conn.out = otherConn.in
+		cfg := Config{
+			Name:   "TestLink",
+			Type:   "_test._tcp",
+			Port:   12345,
+			Ifaces: []string{iface.Name},
+		}
+		sv, err := NewService(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sv.ifaceIPs = map[string][]net.IP{
+			iface.Name: {net.IPv4(192, 0, 2, 200)},
+		}
 
-	watcher := newMockLinkWatcher()
+		conn := newTestConn()
+		conn.iface = iface
+		watcher := newMockLinkWatcher()
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+		responder := newResponder(conn)
+		responder.watcher = watcher
+		responder.addManaged(sv)
+		ready := make(chan error, 1)
+		done := make(chan error, 1)
+		go func() {
+			done <- responder.RespondReady(ctx, ready)
+		}()
+		if err := <-ready; err != nil {
+			t.Fatalf("start responder: %v", err)
+		}
 
-	r := newResponder(conn)
-	r.watcher = watcher
-	r.addManaged(sv)
-	go r.Respond(ctx)
+		watcher.ch <- LinkUpdate{Up: true}
+		first := <-conn.sent
+		if !first.Response || len(first.Answer) < 3 {
+			t.Fatalf("first link reannouncement = %v", first)
+		}
+		started := time.Now()
+		second := <-conn.sent
+		if !second.Response || len(second.Answer) != len(first.Answer) {
+			t.Fatalf("second link reannouncement = %v", second)
+		}
+		if elapsed := time.Since(started); elapsed != time.Second {
+			t.Fatalf("logical reannouncement interval = %s, want 1s", elapsed)
+		}
 
-	// Verify initial announce: resolve the service
-	lookupCtx, lookupCancel := context.WithTimeout(ctx, 3*time.Second)
-	defer lookupCancel()
-
-	resolved, err := lookupInstance(lookupCtx, "TestLink._test._tcp.local.", otherConn)
-	if err != nil {
-		t.Fatalf("initial resolution failed: %v", err)
-	}
-	if resolved.Name != "TestLink" {
-		t.Fatalf("unexpected name: %s", resolved.Name)
-	}
-
-	// Send a link update
-	select {
-	case watcher.ch <- LinkUpdate{Up: true}:
-	case <-time.After(time.Second):
-		t.Fatal("timeout sending link update")
-	}
-
-	// Verify the responder is still responding after link update
-	lookupCtx2, lookupCancel2 := context.WithTimeout(ctx, 3*time.Second)
-	defer lookupCancel2()
-
-	resolved2, err := lookupInstance(lookupCtx2, "TestLink._test._tcp.local.", otherConn)
-	if err != nil {
-		t.Fatalf("post-link resolution failed: %v", err)
-	}
-	if resolved2.Name != "TestLink" {
-		t.Fatalf("unexpected name after link update: %s", resolved2.Name)
-	}
-
-	t.Log("link update re-announce test passed")
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatalf("stop responder: %v", err)
+		}
+	})
 }

@@ -44,12 +44,16 @@ func ReprobeService(ctx context.Context, srv Service) (Service, error) {
 func probeService(ctx context.Context, conn MDNSConn, srv Service, delay time.Duration, probeOnce bool) (s Service, e error) {
 	candidate := srv.Copy()
 	prevConflict := probeConflict{}
+	readCtx, readCancel := context.WithCancel(ctx)
+	defer readCancel()
+	requests := conn.Read(readCtx)
 
 	numHostConflicts := 0
 	numNameConflicts := 0
 
 	for i := 1; i <= 100; i++ {
-		conflict, err := probe(ctx, conn, *candidate)
+		drainProbeRequests(requests)
+		conflict, err := probe(ctx, conn, requests, *candidate)
 		if err != nil {
 			e = err
 			return
@@ -86,24 +90,21 @@ func probeService(ctx context.Context, conn MDNSConn, srv Service, delay time.Du
 	return
 }
 
-func probe(ctx context.Context, conn MDNSConn, service Service) (conflict probeConflict, err error) {
+func probe(ctx context.Context, conn MDNSConn, requests <-chan *Request, service Service) (conflict probeConflict, err error) {
 	var queries []*Query
 	for _, iface := range service.Interfaces() {
 		queries = append(queries, probeQuery(service, iface))
 	}
-
-	readCtx, readCancel := context.WithCancel(ctx)
-	defer readCancel()
-
-	conn.Drain(readCtx)
-	ch := conn.Read(readCtx)
 
 	queryTime := time.After(1 * time.Millisecond)
 	queriesCount := 1
 
 	for {
 		select {
-		case rsp := <-ch:
+		case rsp, ok := <-requests:
+			if !ok {
+				return conflict, context.Canceled
+			}
 
 			if rsp.iface == nil {
 				continue
@@ -122,7 +123,9 @@ func probe(ctx context.Context, conn MDNSConn, service Service) (conflict probeC
 				conflict.hostname = true
 			}
 
-			conflict.serviceName = len(reqSRVs) > 0
+			if len(reqSRVs) > 0 {
+				conflict.serviceName = true
+			}
 
 		case <-ctx.Done():
 			err = ctx.Err()
@@ -143,6 +146,19 @@ func probe(ctx context.Context, conn MDNSConn, service Service) (conflict probeC
 			}
 
 			queryTime = time.After(250 * time.Millisecond)
+		}
+	}
+}
+
+func drainProbeRequests(requests <-chan *Request) {
+	for {
+		select {
+		case _, ok := <-requests:
+			if !ok {
+				return
+			}
+		default:
+			return
 		}
 	}
 }

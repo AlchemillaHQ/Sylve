@@ -7,6 +7,7 @@
 // under sponsorship from the FreeBSD Foundation.
 
 #include <sys/param.h>
+#include "_cgo_export.h"
 
 #if __FreeBSD_version >= 1500000
 
@@ -19,8 +20,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdatomic.h>
-
-#include "_cgo_export.h"
 
 static atomic_bool watcher_stop_requested = ATOMIC_VAR_INIT(false);
 
@@ -55,15 +54,18 @@ static inline struct group get_group_id(struct snl_state *state, const char *fam
 
 int start_ifnet_watcher(void) {
     if (atomic_load(&watcher_stop_requested)) {
+        onIFNETWatcherReady(0);
         return 0;
     }
 
     struct snl_state state[1];
     if (!snl_init(state, NETLINK_GENERIC)) {
+        onIFNETWatcherReady(-1);
         return -1;
     }
 
     int result = 0;
+    bool startup_reported = false;
     const struct timeval timeout = {
         .tv_sec = 0,
         .tv_usec = 500000,
@@ -88,6 +90,9 @@ int start_ifnet_watcher(void) {
         result = atomic_load(&watcher_stop_requested) ? 0 : -4;
         goto out;
     }
+
+    onIFNETWatcherReady(0);
+    startup_reported = true;
 
     while (!atomic_load(&watcher_stop_requested)) {
         errno = 0;
@@ -130,6 +135,9 @@ int start_ifnet_watcher(void) {
     }
 
 out:
+    if (!startup_reported) {
+        onIFNETWatcherReady(result);
+    }
     snl_free(state);
     return result;
 }
@@ -141,6 +149,7 @@ void stop_ifnet_watcher(void) {
 #else /* FreeBSD < 15 */
 
 int start_ifnet_watcher(void) {
+    onIFNETWatcherReady(-99);
     return -99;
 }
 

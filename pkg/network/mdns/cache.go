@@ -127,8 +127,9 @@ func (c *Cache) UpdateFrom(req *Request) (adds []*Service, rmvs []*Service) {
 func (c *Cache) removeExpired() []*Service {
 	var outdated []*Service
 	var services = c.services
+	now := time.Now()
 	for key, srv := range services {
-		if time.Now().After(srv.expiration) {
+		if !now.Before(srv.expiration) {
 			outdated = append(outdated, srv)
 			delete(c.services, key)
 		}

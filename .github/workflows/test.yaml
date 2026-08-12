@@ -84,6 +84,7 @@ jobs:
             kldload zfs || true
             kldload pf || true
             kldload vmm || true
+            kldstat -q -m nlsysevent || kldload nlsysevent
             service libvirtd onestart || true
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
