@@ -300,7 +300,7 @@
 		'/api/notifications': 'Notification',
 		'/api/basic/system/reboot': 'System - Reboot',
 		'/api/basic/initialize': 'System - Initialize',
-		'/api/tasks/migration/cancel': 'Migration - Cancel',
+		'/api/tasks/migration/:id/cancel': 'Migration - Cancel',
 		'/api/basic': 'Basic Settings',
 		'/api/health': 'Health Check'
 	});
@@ -1521,6 +1521,7 @@
 			const jailConsoleCTID = jailConsoleAuditCTID(path);
 			const vmActionMatch = path.match(/^\/api\/vm\/(\d+)\/actions\/(start|stop|shutdown|reboot)$/);
 			const vmMigrationMatch = path.match(/^\/api\/vm\/(\d+)\/migrations$/);
+			const migrationCancellationMatch = path.match(/^\/api\/tasks\/migration\/(\d+)\/cancel$/);
 			const vmTemplateCaptureMatch = path.match(/^\/api\/vm\/(\d+)\/templates$/);
 			const vmTemplateInstantiationMatch = path.match(/^\/api\/vm\/templates\/(\d+)\/vms$/);
 			const vmCoreMatch = path.match(/^\/api\/vm\/(\d+)(?:\/(description|name|registration))?$/);
@@ -1535,6 +1536,9 @@
 			const jailTemplateMemberMatch = path.match(/^\/api\/jail\/templates\/(\d+)$/);
 			const jailBootstrapMemberMatch = path.match(/^\/api\/jail\/bootstraps\/([^/]+)$/);
 			const jailCoreMatch = path.match(/^\/api\/jail\/(\d+)(?:\/(description|name))?$/);
+			if (method.toUpperCase() === 'POST' && migrationCancellationMatch) {
+				resolvedAction = `Migration - Cancel - Task ID ${migrationCancellationMatch[1]}`;
+			}
 			if (vmOptionTarget) {
 				resolvedAction = `VM Options - ${vmOptionTarget.option} - ${vmIdentityLabel(vmOptionTarget.rid)}`;
 				recordCopy.action.body = {

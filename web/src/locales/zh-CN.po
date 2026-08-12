@@ -14992,9 +14992,7 @@ msgstr ""
 msgid "Dedup"
 msgstr ""
 
-#~ msgid "({0} selected)"
-#~ msgstr ""
-
+#~ msgid ""
 #~ msgstr ""
 
 #~ msgid "No available spare devices"
@@ -20950,4 +20948,17 @@ msgstr ""
 #. 0: token
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "Bearer {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Notification Rule - Test"
+msgstr ""
+
+#. 0: migrationCancellationMatch[1]
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Migration - Cancel - Task ID {0}"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport is no longer available"
 msgstr ""

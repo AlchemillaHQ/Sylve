@@ -45,10 +45,10 @@ func performCancelMigrationRequest(
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/tasks/migration/cancel/:taskId", CancelMigration(service))
+	router.POST("/tasks/migration/:taskId/cancel", CancelMigration(service))
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/tasks/migration/cancel/41", nil)
+	request := httptest.NewRequest(http.MethodPost, "/tasks/migration/41/cancel", nil)
 	router.ServeHTTP(recorder, request)
 	return recorder
 }
@@ -56,8 +56,8 @@ func performCancelMigrationRequest(
 func TestCancelMigrationHandlerAcknowledgesRequestWithoutClaimingCompletion(t *testing.T) {
 	service := &cancelMigrationServiceStub{}
 	recorder := performCancelMigrationRequest(t, service)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202; body=%s", recorder.Code, recorder.Body.String())
 	}
 	if service.cancelledTaskID != 41 {
 		t.Fatalf("cancelled task ID = %d, want 41", service.cancelledTaskID)
@@ -116,6 +116,22 @@ func TestCancelMigrationHandlerRejectsNonMigrationTask(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if response.Message != "not_a_migration_task" {
+		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestCancelMigrationHandlerDoesNotExposeInternalErrors(t *testing.T) {
+	service := &cancelMigrationServiceStub{cancelErr: errors.New("database password appeared here")}
+	recorder := performCancelMigrationRequest(t, service)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response internal.APIResponse[any]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "cancel_migration_failed" || response.Error != "cancel_migration_failed" {
 		t.Fatalf("response = %+v", response)
 	}
 }

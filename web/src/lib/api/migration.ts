@@ -53,7 +53,7 @@ export async function validateMigration(
 }
 
 export async function cancelMigration(taskId: number, hostname?: string): Promise<APIResponse> {
-	return await apiRequest(`/tasks/migration/cancel/${taskId}`, z.any(), 'POST', undefined, {
+	return await apiRequest(`/tasks/migration/${taskId}/cancel`, z.any(), 'POST', undefined, {
 		hostname,
 		raw: true
 	});

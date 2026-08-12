@@ -964,6 +964,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	tasks := api.Group("/tasks")
 	tasks.Use(middleware.EnsureAuthenticated(authService))
+	tasks.Use(middleware.RequireLocalAdminForWrites(authService))
 	tasks.Use(EnsureCorrectHost(db, authService))
 	tasks.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -976,7 +977,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		migrationTasks := tasks.Group("/migration")
 		{
-			migrationTasks.POST("/cancel/:taskId", migrationHandlers.CancelMigration(migrationService))
+			migrationTasks.POST("/:taskId/cancel", migrationHandlers.CancelMigration(migrationService))
 			migrationTasks.GET("/validate", migrationHandlers.ValidateMigration(migrationService))
 		}
 	}

@@ -357,10 +357,24 @@ func classifyMigrationRequestError(err error) (int, string) {
 	}
 }
 
+// @Summary Request migration cancellation
+// @Description Request cancellation of a queued or pre-cutover guest migration
+// @Tags Tasks
+// @Produce json
+// @Security BearerAuth
+// @Param taskId path int true "Migration task ID" minimum(1)
+// @Success 202 {object} internal.APIResponse[any] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /tasks/migration/{taskId}/cancel [post]
 func CancelMigration(migrationService migrationIface.MigrationServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		taskIDStr := c.Param("taskId")
-		taskID, err := strconv.ParseUint(taskIDStr, 10, 0)
+		taskID, err := strconv.ParseUint(strings.TrimSpace(taskIDStr), 10, strconv.IntSize)
 		if err != nil || taskID == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status: "error", Message: "invalid_task_id", Error: "Migration task ID must be a positive integer",
@@ -370,11 +384,14 @@ func CancelMigration(migrationService migrationIface.MigrationServiceInterface) 
 
 		if err := migrationService.CancelMigration(c.Request.Context(), uint(taskID)); err != nil {
 			status, message := classifyCancelMigrationError(err)
-			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: err.Error()})
+			if status == http.StatusInternalServerError {
+				logger.L.Error().Err(err).Uint64("task_id", taskID).Msg("cancel_migration_failed")
+			}
+			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: message})
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "migration_cancellation_requested",
 		})
@@ -394,34 +411,62 @@ func classifyCancelMigrationError(err error) (int, string) {
 	}
 }
 
+// @Summary Validate a guest migration
+// @Description Run a side-effect-free migration preflight for one VM or jail and target node UUID
+// @Tags Tasks
+// @Produce json
+// @Security BearerAuth
+// @Param guestType query string true "Guest type" Enums(vm,jail)
+// @Param guestId query int true "Positive guest ID" minimum(1)
+// @Param targetNodeUuid query string true "Target cluster node UUID"
+// @Success 200 {object} internal.APIResponse[migrationIface.ValidateResult] "Validation complete"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /tasks/migration/validate [get]
 func ValidateMigration(migrationService migrationIface.MigrationServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		guestType := c.Query("guestType")
-		guestIDStr := c.Query("guestId")
-		targetNodeUUID := c.Query("targetNodeUuid")
+		guestType := strings.ToLower(strings.TrimSpace(c.Query("guestType")))
+		guestIDStr := strings.TrimSpace(c.Query("guestId"))
+		targetNodeUUID := strings.TrimSpace(c.Query("targetNodeUuid"))
 
 		if guestType == "" || guestIDStr == "" || targetNodeUUID == "" {
-			c.JSON(400, internal.APIResponse[any]{Status: "error", Message: "invalid_request", Error: "guestType, guestId, and targetNodeUuid query params are required"})
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_request", Error: "guestType, guestId, and targetNodeUuid query params are required"})
+			return
+		}
+		if guestType != taskModels.GuestTypeVM && guestType != taskModels.GuestTypeJail {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_guest_type", Error: "guestType must be vm or jail"})
 			return
 		}
 
-		guestID, err := strconv.ParseUint(guestIDStr, 10, 0)
+		guestID, err := parseMigrationGuestID(guestIDStr)
 		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{Status: "error", Message: "invalid_guest_id", Error: err.Error()})
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_guest_id", Error: "guestId must be a positive integer"})
 			return
 		}
 
 		result, err := migrationService.ValidateMigration(c.Request.Context(), migrationIface.MigrateRequest{
 			GuestType:      guestType,
-			GuestID:        uint(guestID),
+			GuestID:        guestID,
 			TargetNodeUUID: targetNodeUUID,
 		})
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{Status: "error", Message: "validation_error", Error: err.Error()})
+			status, message := classifyMigrationValidationError(err)
+			if status == http.StatusInternalServerError {
+				logger.L.Error().Err(err).Uint("guest_id", guestID).Str("guest_type", guestType).Msg("migration_validation_failed")
+			}
+			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: message})
+			return
+		}
+		if result == nil {
+			logger.L.Error().Uint("guest_id", guestID).Str("guest_type", guestType).Msg("migration_validation_returned_no_result")
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{Status: "error", Message: "migration_validation_failed", Error: "migration_validation_failed"})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{Status: "success", Message: "validation_complete", Data: result})
+		c.JSON(http.StatusOK, internal.APIResponse[migrationIface.ValidateResult]{Status: "success", Message: "validation_complete", Data: *result})
 	}
 }
 
