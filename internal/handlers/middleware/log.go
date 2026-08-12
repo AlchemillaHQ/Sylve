@@ -855,7 +855,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 
 		cStatus := c.Writer.Status()
 		switch {
-		case cStatus >= 200 && cStatus < 300:
+		case cStatus == http.StatusSwitchingProtocols || (cStatus >= 200 && cStatus < 300):
 			// If the handler flagged an async job, set status to "pending" instead of "success".
 			if jobIDAny, hasAsync := c.Get("AuditAsyncJobID"); hasAsync {
 				if jobID, ok := jobIDAny.(uint); ok {

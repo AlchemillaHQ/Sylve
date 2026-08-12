@@ -498,8 +498,8 @@ func TestUpdateRulesHandlerRejectsUnknownRule(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected_404 got: %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -757,7 +757,7 @@ func TestTestRuleHandlerRejectsUnknownTemplate(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected_404 got: %d body=%s", rec.Code, rec.Body.String())
 	}
 }

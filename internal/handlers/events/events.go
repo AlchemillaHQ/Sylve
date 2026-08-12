@@ -107,6 +107,15 @@ func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Subscribe to server-sent events
+// @Description Open a long-lived event stream using a short-lived SSE query capability
+// @Tags Events
+// @Produce text/event-stream
+// @Param sse_token query string true "Short-lived SSE capability issued by POST /auth/sse-tokens"
+// @Success 200 {string} string "Server-sent event stream"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /events/stream [get]
 func StreamSSE() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		expiresAt, ok := c.Get(middleware.SSEExpiresAtContextKey)

@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +22,51 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
+
+func TestEventsStreamRouteAndSwaggerContract(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve events test path")
+	}
+	dir := filepath.Dir(filename)
+
+	read := func(path string) string {
+		t.Helper()
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(contents)
+	}
+
+	handlerSource := read(filepath.Join(dir, "events.go"))
+	routesSource := read(filepath.Join(dir, "..", "routes.go"))
+	start := strings.Index(handlerSource, "// @Summary Subscribe to server-sent events")
+	end := strings.Index(handlerSource, "func StreamSSE()")
+	if start < 0 || end <= start {
+		t.Fatal("SSE source Swagger block is missing")
+	}
+	streamBlock := handlerSource[start:end]
+
+	for _, required := range []string{
+		"// @Produce text/event-stream",
+		`// @Param sse_token query string true`,
+		"// @Success 200",
+		"// @Failure 401",
+		"// @Failure 500",
+		"// @Router /events/stream [get]",
+	} {
+		if !strings.Contains(streamBlock, required) {
+			t.Errorf("SSE source Swagger block is missing %q", required)
+		}
+	}
+	if strings.Contains(streamBlock, "// @Security BearerAuth") {
+		t.Fatal("SSE stream must not advertise ordinary Bearer authentication")
+	}
+	if strings.Count(routesSource, `events.GET("/stream",`) != 1 {
+		t.Fatal("SSE stream route must be registered exactly once")
+	}
+}
 
 func TestCreateSSETokenCreatesLocalScopedCapability(t *testing.T) {
 	gin.SetMode(gin.TestMode)
