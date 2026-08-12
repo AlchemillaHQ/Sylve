@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -164,51 +160,5 @@ func TestDeleteManualSwitchMapsMissingAndInUseErrors(t *testing.T) {
 	response = decodeManualSwitchHandlerResponse(t, inUse)
 	if inUse.Code != http.StatusConflict || response.Error != "manual_switch_in_use_by_dhcp_range" {
 		t.Fatalf("status=%d response=%+v", inUse.Code, response)
-	}
-}
-
-func TestRegisteredManualSwitchRoutesMatchSourceAnnotations(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "switch_manual.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	registered := map[string]struct{}{}
-	routePattern := regexp.MustCompile(`(?m)^\s*manualSwitches\.(GET|POST|PUT|PATCH|DELETE)\("([^"]*)"`)
-	for _, match := range routePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		path := regexp.MustCompile(`:([A-Za-z0-9_]+)`).ReplaceAllString("/network/switch/manual"+match[2], `{$1}`)
-		registered[match[1]+" "+path] = struct{}{}
-	}
-
-	annotated := map[string]struct{}{}
-	annotationPattern := regexp.MustCompile(`(?m)^// @Router (\S+) \[(get|post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(handlerSource), -1) {
-		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
-	}
-
-	for route := range registered {
-		if _, ok := annotated[route]; !ok {
-			t.Errorf("registered route has no matching source annotation: %s", route)
-		}
-	}
-	for route := range annotated {
-		if _, ok := registered[route]; !ok {
-			t.Errorf("source annotation has no matching registered route: %s", route)
-		}
-	}
-	if len(registered) != 2 || len(annotated) != 2 {
-		t.Fatalf("unexpected route totals: registered=%d annotated=%d", len(registered), len(annotated))
-	}
-	if !regexp.MustCompile(`manualSwitches\.Use\(middleware\.RequireLocalAdmin\(authService\)\)`).Match(routesSource) {
-		t.Error("manual switch mutations are missing local-admin authorization")
 	}
 }

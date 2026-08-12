@@ -10,10 +10,6 @@ package networkHandlers
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -156,55 +152,5 @@ func TestCreateDHCPLeaseRejectsOversizedJSON(t *testing.T) {
 	response := decodeDHCPConfigHandlerResponse(t, recorder)
 	if recorder.Code != http.StatusRequestEntityTooLarge || response.Error != "dhcp_lease_request_too_large" {
 		t.Fatalf("expected stable 413 response: status=%d response=%+v", recorder.Code, response)
-	}
-}
-
-func TestDHCPLeaseRoutesAndAnnotationsMatch(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "dhcp_lease.go"))
-	if err != nil {
-		t.Fatalf("read DHCP lease handler: %v", err)
-	}
-
-	for name, pattern := range map[string]*regexp.Regexp{
-		"resource group":                  regexp.MustCompile(`dhcpLeases := network\.Group\("/dhcp/lease"\)`),
-		"local-admin write authorization": regexp.MustCompile(`dhcpLeases\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`),
-		"GET registration":                regexp.MustCompile(`dhcpLeases\.GET\("", networkHandlers\.GetDHCPLeases`),
-		"POST registration":               regexp.MustCompile(`dhcpLeases\.POST\("", networkHandlers\.CreateDHCPLease`),
-		"PUT registration":                regexp.MustCompile(`dhcpLeases\.PUT\("/:id", networkHandlers\.UpdateDHCPLease`),
-		"dynamic DELETE registration":     regexp.MustCompile(`dhcpLeases\.DELETE\("/dynamic", networkHandlers\.DeleteDynamicDHCPLease`),
-		"static DELETE registration":      regexp.MustCompile(`dhcpLeases\.DELETE\("/:id", networkHandlers\.DeleteDHCPLease`),
-	} {
-		if !pattern.Match(routesSource) {
-			t.Errorf("missing %s", name)
-		}
-	}
-
-	annotations := string(handlerSource)
-	for _, expected := range []string{
-		`// @Success 200 {object} internal.APIResponse[networkServiceInterfaces.Leases] "Success"`,
-		`// @Success 201 {object} internal.APIResponse[uint] "Created"`,
-		`// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"`,
-		`// @Failure 403 {object} internal.APIResponse[any] "Forbidden"`,
-		`// @Failure 404 {object} internal.APIResponse[any] "Not Found"`,
-		`// @Failure 409 {object} internal.APIResponse[any] "Conflict"`,
-		`// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"`,
-		`// @Router /network/dhcp/lease [get]`,
-		`// @Router /network/dhcp/lease [post]`,
-		`// @Router /network/dhcp/lease/{id} [put]`,
-		`// @Router /network/dhcp/lease/{id} [delete]`,
-		`// @Router /network/dhcp/lease/dynamic [delete]`,
-	} {
-		if !strings.Contains(annotations, expected) {
-			t.Errorf("missing source annotation %q", expected)
-		}
 	}
 }

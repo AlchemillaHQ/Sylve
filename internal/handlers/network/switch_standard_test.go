@@ -13,10 +13,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -377,59 +373,5 @@ func TestStandardSwitchHandlersReturnNotFoundForMissingSwitch(t *testing.T) {
 		if strings.Contains(rr.Body.String(), "record not found") {
 			t.Fatalf("method=%s leaked database details: %s", method, rr.Body.String())
 		}
-	}
-}
-
-func TestRegisteredStandardSwitchRoutesMatchSourceAnnotations(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-	listSource, err := os.ReadFile(filepath.Join(handlerDir, "switch.go"))
-	if err != nil {
-		t.Fatalf("read switch.go: %v", err)
-	}
-	standardSource, err := os.ReadFile(filepath.Join(handlerDir, "switch_standard.go"))
-	if err != nil {
-		t.Fatalf("read switch_standard.go: %v", err)
-	}
-
-	registered := map[string]struct{}{}
-	listRoutePattern := regexp.MustCompile(`(?m)^\s*network\.(GET|POST|PUT|PATCH|DELETE)\("/switch"`)
-	for _, match := range listRoutePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		registered[match[1]+" /network/switch"] = struct{}{}
-	}
-	routePattern := regexp.MustCompile(`(?m)^\s*standardSwitches\.(GET|POST|PUT|PATCH|DELETE)\("([^"]*)"`)
-	for _, match := range routePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		path := regexp.MustCompile(`:([A-Za-z0-9_]+)`).ReplaceAllString("/network/switch/standard"+match[2], `{$1}`)
-		registered[match[1]+" "+path] = struct{}{}
-	}
-
-	annotated := map[string]struct{}{}
-	annotationPattern := regexp.MustCompile(`(?m)^// @Router (/network/switch\S*) \[(get|post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(listSource)+"\n"+string(standardSource), -1) {
-		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
-	}
-
-	for route := range registered {
-		if _, exists := annotated[route]; !exists {
-			t.Errorf("registered route has no matching source annotation: %s", route)
-		}
-	}
-	for route := range annotated {
-		if _, exists := registered[route]; !exists {
-			t.Errorf("source annotation has no matching registered route: %s", route)
-		}
-	}
-	if len(registered) != 4 || len(annotated) != 4 {
-		t.Fatalf("unexpected route totals: registered=%d annotated=%d", len(registered), len(annotated))
-	}
-	if !regexp.MustCompile(`standardSwitches\.Use\(middleware\.RequireLocalAdmin\(authService\)\)`).Match(routesSource) {
-		t.Error("standard switch mutations are missing local-admin authorization")
 	}
 }

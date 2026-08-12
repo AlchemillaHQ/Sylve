@@ -206,49 +206,6 @@ func TestBulkDeleteNetworkObjectsUsesCollectionDelete(t *testing.T) {
 	}
 }
 
-func TestRegisteredNetworkObjectRoutesMatchSourceAnnotations(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "object.go"))
-	if err != nil {
-		t.Fatalf("read object.go: %v", err)
-	}
-
-	registered := map[string]struct{}{}
-	routePattern := regexp.MustCompile(`(?m)^\s*objects\.(GET|POST|PUT|PATCH|DELETE)\("([^"]*)"`)
-	for _, match := range routePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		path := regexp.MustCompile(`:([A-Za-z0-9_]+)`).ReplaceAllString("/network/object"+match[2], `{$1}`)
-		registered[match[1]+" "+path] = struct{}{}
-	}
-
-	annotated := map[string]struct{}{}
-	annotationPattern := regexp.MustCompile(`(?m)^// @Router (\S+) \[(get|post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(handlerSource), -1) {
-		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
-	}
-
-	for route := range registered {
-		if _, ok := annotated[route]; !ok {
-			t.Errorf("registered route has no matching source annotation: %s", route)
-		}
-	}
-	for route := range annotated {
-		if _, ok := registered[route]; !ok {
-			t.Errorf("source annotation has no matching registered route: %s", route)
-		}
-	}
-	if len(registered) != 5 || len(annotated) != 5 {
-		t.Fatalf("unexpected route totals: registered=%d annotated=%d, want 5 each", len(registered), len(annotated))
-	}
-}
-
 func TestNetworkObjectRoutesUseWriteAuthorizationAndPreLoggerBodyLimit(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {

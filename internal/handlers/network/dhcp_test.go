@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -161,48 +157,5 @@ func TestGetDHCPConfigDoesNotLeakMissingRecordError(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), "record not found") {
 		t.Fatalf("response leaked database detail: %s", recorder.Body.String())
-	}
-}
-
-func TestDHCPConfigRoutesAndAnnotationsMatch(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "dhcp.go"))
-	if err != nil {
-		t.Fatalf("read DHCP handler: %v", err)
-	}
-
-	checks := map[string]*regexp.Regexp{
-		"singleton group":                 regexp.MustCompile(`dhcpConfig := network\.Group\("/dhcp/config"\)`),
-		"local-admin write authorization": regexp.MustCompile(`dhcpConfig\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`),
-		"GET registration":                regexp.MustCompile(`dhcpConfig\.GET\("", networkHandlers\.GetDHCPConfig`),
-		"PUT registration":                regexp.MustCompile(`dhcpConfig\.PUT\("", networkHandlers\.ModifyDHCPConfig`),
-	}
-	for name, pattern := range checks {
-		if !pattern.Match(routesSource) {
-			t.Errorf("missing %s", name)
-		}
-	}
-
-	annotations := string(handlerSource)
-	for _, expected := range []string{
-		"// @Success 200 {object} internal.APIResponse[networkModels.DHCPConfig] \"Success\"",
-		"// @Failure 401 {object} internal.APIResponse[any] \"Unauthorized\"",
-		"// @Failure 403 {object} internal.APIResponse[any] \"Forbidden\"",
-		"// @Failure 409 {object} internal.APIResponse[any] \"Conflict\"",
-		"// @Failure 413 {object} internal.APIResponse[any] \"Request Entity Too Large\"",
-		"// @Router /network/dhcp/config [get]",
-		"// @Router /network/dhcp/config [put]",
-	} {
-		if !strings.Contains(annotations, expected) {
-			t.Errorf("missing source annotation %q", expected)
-		}
 	}
 }

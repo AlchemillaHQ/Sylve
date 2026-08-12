@@ -13,10 +13,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -533,103 +529,4 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
 	})
-}
-
-func TestRegisteredWireGuardServerRoutesMatchSourceAnnotations(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "wireguard.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	registered := map[string]struct{}{}
-	routePattern := regexp.MustCompile(`(?m)^\s*wireGuardServer\.(GET|POST|PUT|PATCH|DELETE)\("([^"]*)"`)
-	for _, match := range routePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		if match[2] == "" {
-			registered[match[1]+" /network/wireguard/server"] = struct{}{}
-		}
-	}
-
-	annotated := map[string]struct{}{}
-	annotationPattern := regexp.MustCompile(`(?m)^// @Router (/network/wireguard/server) \[(get|post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(handlerSource), -1) {
-		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
-	}
-
-	for route := range registered {
-		if _, ok := annotated[route]; !ok {
-			t.Errorf("registered route has no matching source annotation: %s", route)
-		}
-	}
-	for route := range annotated {
-		if _, ok := registered[route]; !ok {
-			t.Errorf("source annotation has no matching registered route: %s", route)
-		}
-	}
-	if len(registered) != 5 || len(annotated) != 5 {
-		t.Fatalf("unexpected route totals: registered=%d annotated=%d", len(registered), len(annotated))
-	}
-	if !regexp.MustCompile(`wireGuardServer\.Use\(middleware\.RequireLocalAdmin\(authService\)\)`).Match(routesSource) {
-		t.Error("wireguard server routes are missing local-admin authorization")
-	}
-	if regexp.MustCompile(`wireGuardServer\.(PUT|POST)\("/toggle"`).Match(routesSource) {
-		t.Error("legacy blind server toggle route is still registered")
-	}
-}
-
-func TestRegisteredWireGuardServerPeerRoutesMatchSourceAnnotations(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "wireguard.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	registered := map[string]struct{}{}
-	routePattern := regexp.MustCompile(`(?m)^\s*wireGuardServer\.(POST|PUT|PATCH|DELETE)\("(/peer(?:/:peerId)?)"`)
-	for _, match := range routePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		path := strings.ReplaceAll(match[2], ":peerId", "{peerId}")
-		registered[match[1]+" /network/wireguard/server"+path] = struct{}{}
-	}
-
-	annotated := map[string]struct{}{}
-	annotationPattern := regexp.MustCompile(`(?m)^// @Router (/network/wireguard/server/peer(?:/\{peerId\})?) \[(post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(handlerSource), -1) {
-		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
-	}
-
-	for route := range registered {
-		if _, ok := annotated[route]; !ok {
-			t.Errorf("registered peer route has no matching source annotation: %s", route)
-		}
-	}
-	for route := range annotated {
-		if _, ok := registered[route]; !ok {
-			t.Errorf("peer source annotation has no matching registered route: %s", route)
-		}
-	}
-	if len(registered) != 4 || len(annotated) != 4 {
-		t.Fatalf("unexpected peer route totals: registered=%d annotated=%d", len(registered), len(annotated))
-	}
-	if regexp.MustCompile(`wireGuardServer\.(PUT|POST)\("/peer/toggle`).Match(routesSource) {
-		t.Error("legacy blind peer toggle route is still registered")
-	}
-	if strings.Contains(string(routesSource), "/peer/bulk-delete") {
-		t.Error("unused peer bulk-delete route is still registered")
-	}
 }

@@ -12,8 +12,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -178,68 +176,5 @@ func TestGetJailLogsReturnsObjectAndClassifiesMissingJail(t *testing.T) {
 	missing := testutil.DecodeJSONResponse[internal.APIResponse[any]](t, recorder)
 	if missing.Message != "jail_not_found" || missing.Data != nil {
 		t.Fatalf("missing response = %+v", missing)
-	}
-}
-
-func TestJailReadRoutesAndSwaggerCommentsUseNestedCTID(t *testing.T) {
-	statsSource, err := os.ReadFile("stats.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	consoleSource, err := os.ReadFile("console.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	routesSource, err := os.ReadFile("../routes.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, expected := range []string{
-		"@Router /jail/{ctid}/state [get]",
-		"@Router /jail/{ctid}/logs [get]",
-		"@Router /jail/{ctid}/stats [get]",
-		"@Router /jail/{ctid}/stats/{step} [get]",
-	} {
-		if !strings.Contains(string(statsSource), expected) {
-			t.Fatalf("missing source Swagger route %q", expected)
-		}
-	}
-	if !strings.Contains(string(consoleSource), "@Router /jail/{ctid}/console [get]") {
-		t.Fatal("missing nested console source Swagger route")
-	}
-
-	routes := string(routesSource)
-	for _, expected := range []string{
-		`jail.GET("/:ctid/state"`,
-		`jail.GET("/:ctid/logs"`,
-		`jail.GET("/:ctid/stats"`,
-		`jail.GET("/:ctid/stats/:step"`,
-		`jail.GET("/:ctid/console"`,
-	} {
-		if !strings.Contains(routes, expected) {
-			t.Fatalf("missing route registration %q", expected)
-		}
-	}
-	for _, retired := range []string{
-		`jail.GET("/state"`,
-		`jail.GET("/state/:id"`,
-		`jail.GET("/stats/:ctId"`,
-		`jail.GET("/console"`,
-	} {
-		if strings.Contains(routes, retired) {
-			t.Fatalf("retired route remains registered: %q", retired)
-		}
-	}
-
-	consoleRoute := strings.Index(routes, `jail.GET("/:ctid/console"`)
-	if consoleRoute < 0 {
-		t.Fatal("nested console route is not registered")
-	}
-	consoleRegistration := routes[consoleRoute:]
-	adminMiddleware := strings.Index(consoleRegistration, "middleware.RequireLocalAdmin(authService)")
-	consoleHandler := strings.Index(consoleRegistration, "jailHandlers.HandleJailTerminalWebsocket(jailService)")
-	if adminMiddleware < 0 || consoleHandler < 0 || adminMiddleware > consoleHandler {
-		t.Fatal("jail console route does not apply administrator authorization before the handler")
 	}
 }

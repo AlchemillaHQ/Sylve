@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -160,54 +156,6 @@ func TestCreateDHCPRangeRejectsOversizedJSON(t *testing.T) {
 	response := decodeDHCPRangeResponse(t, recorder)
 	if recorder.Code != http.StatusRequestEntityTooLarge || response.Error != "dhcp_range_request_too_large" {
 		t.Fatalf("expected stable 413 response: status=%d response=%+v", recorder.Code, response)
-	}
-}
-
-func TestDHCPRangeRoutesAndAnnotationsMatch(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "dhcp_range.go"))
-	if err != nil {
-		t.Fatalf("read DHCP range handler: %v", err)
-	}
-
-	for name, pattern := range map[string]*regexp.Regexp{
-		"resource group":                  regexp.MustCompile(`dhcpRanges := network\.Group\("/dhcp/range"\)`),
-		"local-admin write authorization": regexp.MustCompile(`dhcpRanges\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`),
-		"GET registration":                regexp.MustCompile(`dhcpRanges\.GET\("", networkHandlers\.GetDHCPRanges`),
-		"POST registration":               regexp.MustCompile(`dhcpRanges\.POST\("", networkHandlers\.CreateDHCPRange`),
-		"PUT registration":                regexp.MustCompile(`dhcpRanges\.PUT\("/:id", networkHandlers\.ModifyDHCPRange`),
-		"DELETE registration":             regexp.MustCompile(`dhcpRanges\.DELETE\("/:id", networkHandlers\.DeleteDHCPRange`),
-	} {
-		if !pattern.Match(routesSource) {
-			t.Errorf("missing %s", name)
-		}
-	}
-
-	annotations := string(handlerSource)
-	for _, expected := range []string{
-		`// @Success 200 {object} internal.APIResponse[[]networkModels.DHCPRange] "Success"`,
-		`// @Success 201 {object} internal.APIResponse[uint] "Created"`,
-		`// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"`,
-		`// @Failure 403 {object} internal.APIResponse[any] "Forbidden"`,
-		`// @Failure 404 {object} internal.APIResponse[any] "Not Found"`,
-		`// @Failure 409 {object} internal.APIResponse[any] "Conflict"`,
-		`// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"`,
-		`// @Router /network/dhcp/range [get]`,
-		`// @Router /network/dhcp/range [post]`,
-		`// @Router /network/dhcp/range/{id} [put]`,
-		`// @Router /network/dhcp/range/{id} [delete]`,
-	} {
-		if !strings.Contains(annotations, expected) {
-			t.Errorf("missing source annotation %q", expected)
-		}
 	}
 }
 

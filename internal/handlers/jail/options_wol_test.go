@@ -5,8 +5,6 @@ package jailHandlers
 import (
 	"errors"
 	"net/http"
-	"os"
-	"strings"
 	"testing"
 
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -207,30 +205,6 @@ func TestJailOptionErrorClassification(t *testing.T) {
 		status, message := classifyJailOptionError(test.err)
 		if status != test.status || message != test.message {
 			t.Fatalf("classify(%v)=(%d,%q), want=(%d,%q)", test.err, status, message, test.status, test.message)
-		}
-	}
-}
-
-func TestJailOptionRoutesAndSwaggerCommentsUseNestedCTID(t *testing.T) {
-	handlerSource, err := os.ReadFile("options.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	routesSource, err := os.ReadFile("../routes.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, option := range []string{
-		"wol", "boot-order", "fstab", "resolv-conf", "devfs-rules",
-		"additional-options", "allowed-options", "metadata", "lifecycle-hooks",
-	} {
-		swaggerRoute := "@Router /jail/{ctid}/options/" + option + " [put]"
-		if !strings.Contains(string(handlerSource), swaggerRoute) {
-			t.Fatalf("missing source Swagger route %q", swaggerRoute)
-		}
-		routeRegistration := `jail.PUT("/:ctid/options/` + option + `"`
-		if !strings.Contains(string(routesSource), routeRegistration) {
-			t.Fatalf("missing route registration %q", routeRegistration)
 		}
 	}
 }

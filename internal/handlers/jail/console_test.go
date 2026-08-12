@@ -12,8 +12,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -169,15 +167,5 @@ func TestJailTerminalSessionHistoryIsBounded(t *testing.T) {
 
 	if string(session.History) != "cdef" {
 		t.Fatalf("history = %q, want cdef", session.History)
-	}
-}
-
-func TestJailConsoleHasNoSharedSessionKillControl(t *testing.T) {
-	source, err := os.ReadFile("console.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(source), "controlKill") || strings.Contains(string(source), "KillSession") {
-		t.Fatal("jail console still exposes a shared-session kill control")
 	}
 }

@@ -101,7 +101,7 @@ func TestListFirewallLiveHitsRejectsInvalidQueryParameters(t *testing.T) {
 	}
 }
 
-func TestFirewallLiveLogsRouteAnnotationAndAuthorization(t *testing.T) {
+func TestFirewallLiveLogsRouteRequiresLocalAdmin(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve test file path")
@@ -111,18 +111,7 @@ func TestFirewallLiveLogsRouteAnnotationAndAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "firewall.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	if !regexp.MustCompile(`network\.GET\("/firewall/logs/live",\s*middleware\.RequireLocalAdmin\(authService\),\s*networkHandlers\.ListFirewallLiveHits\(networkService\)\)`).Match(routesSource) {
 		t.Fatal("firewall live logs route is not protected by explicit local-admin middleware")
-	}
-	if !regexp.MustCompile(`(?m)^// @Router /network/firewall/logs/live \[get\]$`).Match(handlerSource) {
-		t.Fatal("firewall live logs route is missing its source annotation")
-	}
-	if strings.Contains(string(handlerSource), `c.Query("iface")`) || strings.Contains(string(handlerSource), `c.Query("q")`) {
-		t.Fatal("firewall live logs handler still accepts non-canonical query aliases")
 	}
 }

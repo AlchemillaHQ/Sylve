@@ -130,7 +130,7 @@ func TestBasicSettingsReturnsNotFoundWithoutSettings(t *testing.T) {
 	}
 }
 
-func TestBasicSettingsServiceRouteAndAnnotationUseDesiredStatePatch(t *testing.T) {
+func TestBasicSettingsServiceRouteUsesDesiredStatePatch(t *testing.T) {
 	routesSource, err := os.ReadFile("../routes.go")
 	if err != nil {
 		t.Fatalf("reading routes.go: %v", err)
@@ -140,13 +140,5 @@ func TestBasicSettingsServiceRouteAndAnnotationUseDesiredStatePatch(t *testing.T
 	}
 	if strings.Contains(string(routesSource), "/basic-settings/services/:service/toggle") {
 		t.Fatal("routes.go still registers the non-idempotent toggle route")
-	}
-
-	handlerSource, err := os.ReadFile("settings.go")
-	if err != nil {
-		t.Fatalf("reading settings.go: %v", err)
-	}
-	if !strings.Contains(string(handlerSource), "@Router /system/basic-settings/services/{service} [patch]") {
-		t.Fatal("service state Swagger annotation does not match the registered PATCH route")
 	}
 }

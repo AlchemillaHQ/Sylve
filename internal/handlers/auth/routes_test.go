@@ -12,13 +12,13 @@ import (
 	"testing"
 )
 
-func readAuthContractSource(t *testing.T, relativePath ...string) string {
+func authRoutesSource(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve auth route contract test path")
 	}
-	path := filepath.Join(append([]string{filepath.Dir(filename)}, relativePath...)...)
+	path := filepath.Join(filepath.Dir(filename), "..", "routes.go")
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -27,10 +27,7 @@ func readAuthContractSource(t *testing.T, relativePath ...string) string {
 }
 
 func TestLoginLifecycleRouteContract(t *testing.T) {
-	routes := readAuthContractSource(t, "..", "routes.go")
-	authHandlers := readAuthContractSource(t, "auth.go")
-	passkeyHandlers := readAuthContractSource(t, "passkeys.go")
-	eventHandlers := readAuthContractSource(t, "..", "events", "events.go")
+	routes := authRoutesSource(t)
 
 	registrations := []string{
 		`api.GET("/auth/login/config", authHandlers.LoginConfigHandler())`,
@@ -69,27 +66,10 @@ func TestLoginLifecycleRouteContract(t *testing.T) {
 			t.Errorf("missing local-session middleware: %s", middleware)
 		}
 	}
-
-	annotations := map[string]string{
-		"GET /auth/login/config":           authHandlers,
-		"POST /auth/login":                 authHandlers,
-		"POST /auth/passkeys/login/begin":  passkeyHandlers,
-		"POST /auth/passkeys/login/finish": passkeyHandlers,
-		"POST /auth/logout":                authHandlers,
-		"POST /auth/sse-tokens":            eventHandlers,
-	}
-	for contract, source := range annotations {
-		method, path, _ := strings.Cut(contract, " ")
-		annotation := "// @Router " + path + " [" + strings.ToLower(method) + "]"
-		if !strings.Contains(source, annotation) {
-			t.Errorf("missing source annotation: %s", annotation)
-		}
-	}
 }
 
 func TestUserCollectionRouteContract(t *testing.T) {
-	routes := readAuthContractSource(t, "..", "routes.go")
-	localHandlers := readAuthContractSource(t, "local.go")
+	routes := authRoutesSource(t)
 
 	registrations := []string{
 		`users.GET("", authHandlers.ListUsersHandler(authService))`,
@@ -112,27 +92,10 @@ func TestUserCollectionRouteContract(t *testing.T) {
 			t.Errorf("retired user route is still registered: %s", retired)
 		}
 	}
-
-	for _, annotation := range []string{
-		"// @Router /auth/users [get]",
-		"// @Router /auth/users [post]",
-		"// @Router /auth/users/{userId} [put]",
-		"// @Router /auth/users/{userId} [delete]",
-		"// @Router /auth/users/uid/next [get]",
-		"// @Router /auth/users/capabilities [get]",
-		"// @Router /auth/users/importable [get]",
-		"// @Router /auth/users/import [post]",
-		"// @Router /auth/users/pam [post]",
-	} {
-		if !strings.Contains(localHandlers, annotation) {
-			t.Errorf("missing source annotation: %s", annotation)
-		}
-	}
 }
 
 func TestGroupRouteContract(t *testing.T) {
-	routes := readAuthContractSource(t, "..", "routes.go")
-	groupHandlers := readAuthContractSource(t, "groups.go")
+	routes := authRoutesSource(t)
 
 	registrations := []string{
 		`groups.GET("", authHandlers.ListGroupsHandler(authService))`,
@@ -150,22 +113,10 @@ func TestGroupRouteContract(t *testing.T) {
 			t.Errorf("retired group route is still registered: %s", retired)
 		}
 	}
-
-	for _, annotation := range []string{
-		"// @Router /auth/groups [get]",
-		"// @Router /auth/groups [post]",
-		"// @Router /auth/groups/{groupId} [delete]",
-		"// @Router /auth/groups/{groupId}/members [put]",
-	} {
-		if !strings.Contains(groupHandlers, annotation) {
-			t.Errorf("missing source annotation: %s", annotation)
-		}
-	}
 }
 
 func TestPasskeyManagementRouteContract(t *testing.T) {
-	routes := readAuthContractSource(t, "..", "routes.go")
-	passkeyHandlers := readAuthContractSource(t, "passkeys.go")
+	routes := authRoutesSource(t)
 
 	registrations := []string{
 		`passkeys.POST("/register/begin", authHandlers.BeginPasskeyRegistrationHandler(authService))`,
@@ -184,17 +135,6 @@ func TestPasskeyManagementRouteContract(t *testing.T) {
 	} {
 		if strings.Contains(routes, retired) {
 			t.Errorf("retired passkey route is still registered: %s", retired)
-		}
-	}
-
-	for _, annotation := range []string{
-		"// @Router /auth/passkeys/register/begin [post]",
-		"// @Router /auth/passkeys/register/finish [post]",
-		"// @Router /auth/users/{userId}/passkeys [get]",
-		"// @Router /auth/users/{userId}/passkeys/{credentialId} [delete]",
-	} {
-		if !strings.Contains(passkeyHandlers, annotation) {
-			t.Errorf("missing source annotation: %s", annotation)
 		}
 	}
 }

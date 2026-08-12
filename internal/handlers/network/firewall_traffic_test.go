@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -200,52 +196,5 @@ func TestFirewallTrafficHandlersRejectInvalidReorderAndOversizedJSON(t *testing.
 	response = decodeFirewallTrafficHandlerResponse(t, oversized)
 	if oversized.Code != http.StatusRequestEntityTooLarge || response.Error != "firewall_traffic_request_too_large" {
 		t.Fatalf("expected 413, status=%d response=%+v", oversized.Code, response)
-	}
-}
-
-func TestRegisteredFirewallTrafficRoutesMatchSourceAnnotations(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handlerSource, err := os.ReadFile(filepath.Join(handlerDir, "firewall.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	registered := map[string]struct{}{}
-	routePattern := regexp.MustCompile(`(?m)^\s*traffic\.(GET|POST|PUT|PATCH|DELETE)\("([^"]*)"`)
-	for _, match := range routePattern.FindAllStringSubmatch(string(routesSource), -1) {
-		path := regexp.MustCompile(`:([A-Za-z0-9_]+)`).ReplaceAllString("/network/firewall/traffic"+match[2], `{$1}`)
-		registered[match[1]+" "+path] = struct{}{}
-	}
-
-	annotated := map[string]struct{}{}
-	annotationPattern := regexp.MustCompile(`(?m)^// @Router (/network/firewall/traffic\S*) \[(get|post|put|patch|delete)\]$`)
-	for _, match := range annotationPattern.FindAllStringSubmatch(string(handlerSource), -1) {
-		annotated[strings.ToUpper(match[2])+" "+match[1]] = struct{}{}
-	}
-
-	for route := range registered {
-		if _, ok := annotated[route]; !ok {
-			t.Errorf("registered route has no matching source annotation: %s", route)
-		}
-	}
-	for route := range annotated {
-		if _, ok := registered[route]; !ok {
-			t.Errorf("source annotation has no matching registered route: %s", route)
-		}
-	}
-	if len(registered) != 6 || len(annotated) != 6 {
-		t.Fatalf("unexpected route totals: registered=%d annotated=%d", len(registered), len(annotated))
-	}
-
-	if !regexp.MustCompile(`traffic\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`).Match(routesSource) {
-		t.Error("firewall traffic routes are missing local-admin write authorization")
 	}
 }

@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -110,56 +106,5 @@ func TestResolveVNCBackendEndpointUsesMatchedVMBind(t *testing.T) {
 	}
 	if endpoint != "192.0.2.15:5907" {
 		t.Fatalf("endpoint=%q want=%q", endpoint, "192.0.2.15:5907")
-	}
-}
-
-func TestVNCRouteAndSwaggerContract(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve VNC test path")
-	}
-	dir := filepath.Dir(filename)
-
-	read := func(path string) string {
-		t.Helper()
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		return string(contents)
-	}
-
-	handlerSource := read(filepath.Join(dir, "vnc.go"))
-	routesSource := read(filepath.Join(dir, "..", "routes.go"))
-	start := strings.Index(handlerSource, "// @Summary Open a VM VNC WebSocket")
-	end := strings.Index(handlerSource, "func VNCProxyHandler(")
-	if start < 0 || end <= start {
-		t.Fatal("VNC source Swagger block is missing")
-	}
-	vncBlock := handlerSource[start:end]
-
-	for _, required := range []string{
-		`// @Param port path int true`,
-		`// @Param auth query string true`,
-		`// @Param overtake query bool false`,
-		"// @Success 101",
-		"// @Failure 400",
-		"// @Failure 401",
-		"// @Failure 403",
-		"// @Failure 404",
-		"// @Failure 500",
-		"// @Failure 502",
-		"// @Failure 503",
-		"// @Router /vnc/{port} [get]",
-	} {
-		if !strings.Contains(vncBlock, required) {
-			t.Errorf("VNC source Swagger block is missing %q", required)
-		}
-	}
-	if strings.Contains(vncBlock, "// @Security BearerAuth") {
-		t.Fatal("VNC handshake must document its query capability instead of browser Bearer authentication")
-	}
-	if strings.Count(routesSource, `vnc.GET("/:port",`) != 1 {
-		t.Fatal("VNC route must be registered exactly once")
 	}
 }

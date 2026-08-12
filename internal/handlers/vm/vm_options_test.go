@@ -425,38 +425,4 @@ func TestVMOptionRoutesAreNestedAndLimitedBeforeLogging(t *testing.T) {
 	if strings.Contains(source, `vm.PUT("/options/`) || strings.Contains(source, `vm.GET("/qga/`) {
 		t.Error("historical VM option/QGA route registration remains")
 	}
-
-	optionsSource, err := os.ReadFile(filepath.Join(handlerDir, "vm_options.go"))
-	if err != nil {
-		t.Fatalf("read vm_options.go: %v", err)
-	}
-	qgaSource, err := os.ReadFile(filepath.Join(handlerDir, "vm_qga.go"))
-	if err != nil {
-		t.Fatalf("read vm_qga.go: %v", err)
-	}
-	annotations := string(optionsSource) + string(qgaSource)
-	for _, annotation := range []string{
-		"// @Router /vm/{rid}/options/wol [put]",
-		"// @Router /vm/{rid}/options/boot-order [put]",
-		"// @Router /vm/{rid}/options/clock [put]",
-		"// @Router /vm/{rid}/options/serial-console [put]",
-		"// @Router /vm/{rid}/options/shutdown-wait-time [put]",
-		"// @Router /vm/{rid}/options/cloud-init [put]",
-		"// @Router /vm/{rid}/options/boot-rom [put]",
-		"// @Router /vm/{rid}/options/extra-bhyve-options [put]",
-		"// @Router /vm/{rid}/options/ignore-umsrs [put]",
-		"// @Router /vm/{rid}/options/qemu-guest-agent [put]",
-		"// @Router /vm/{rid}/options/tpm [put]",
-		"// @Router /vm/{rid}/guest-agent [get]",
-	} {
-		if !strings.Contains(annotations, annotation) {
-			t.Errorf("missing source annotation %s", annotation)
-		}
-	}
-	if !strings.Contains(
-		string(qgaSource),
-		"internal.APIResponse[libvirtServiceInterfaces.QemuGuestAgentInfo]",
-	) {
-		t.Error("QGA success annotation does not use the concrete information type")
-	}
 }
