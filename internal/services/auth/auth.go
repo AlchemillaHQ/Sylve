@@ -54,10 +54,17 @@ func (e *LoginRateLimitError) Error() string {
 }
 
 type Service struct {
-	DB            *gorm.DB
-	loginMu       sync.Mutex
-	loginAttempts map[string]*loginAttempt
+	DB             *gorm.DB
+	passwordHasher passwordHasher
+	loginMu        sync.Mutex
+	loginAttempts  map[string]*loginAttempt
 }
+
+type passwordHasher interface {
+	Hash(password string) (string, error)
+	Verify(password, encodedHash string) bool
+}
+
 type JWT struct {
 	jwt.RegisteredClaims
 	CustomClaims serviceInterfaces.CustomClaims `json:"custom_claims"`
@@ -81,9 +88,14 @@ const (
 )
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
+	return newAuthService(db, utils.BcryptPasswordHasher{})
+}
+
+func newAuthService(db *gorm.DB, hasher passwordHasher) *Service {
 	return &Service{
-		DB:            db,
-		loginAttempts: make(map[string]*loginAttempt),
+		DB:             db,
+		passwordHasher: hasher,
+		loginAttempts:  make(map[string]*loginAttempt),
 	}
 }
 
@@ -207,7 +219,7 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
-		if !utils.CheckPasswordHash(password, user.Password) {
+		if !s.passwordHasher.Verify(password, user.Password) {
 			attempt := s.recordFailedLogin(username)
 			s.logLoginFailure(username, authType, "password_mismatch", attempt, nil)
 			return 0, "", fmt.Errorf("invalid_credentials")

@@ -29,7 +29,7 @@ func newAuthTestService(t *testing.T) *Service {
 		&models.SystemSecrets{},
 	)
 
-	return &Service{DB: db}
+	return newAuthService(db, fakePasswordHasher{})
 }
 
 func TestGetOrCreatePAMIdentityReuse(t *testing.T) {

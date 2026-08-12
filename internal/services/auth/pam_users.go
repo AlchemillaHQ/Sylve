@@ -317,7 +317,7 @@ func (s *Service) createPamUser(user *models.User, opts CreateUserOpts) error {
 		user.Password = ""
 		return err
 	}
-	hashedPassword, err := utils.HashPassword(plainPassword)
+	hashedPassword, err := s.passwordHasher.Hash(plainPassword)
 	if err != nil {
 		user.Password = ""
 		return userInternalError("password_hash_failed", err)
@@ -593,7 +593,7 @@ func (s *Service) importPamUser(username, sylvePassword string, admin bool) (*mo
 		if len(sylvePassword) < 8 || len(sylvePassword) > 128 {
 			return nil, userValidationError("invalid_password_length")
 		}
-		hashedPassword, err = utils.HashPassword(sylvePassword)
+		hashedPassword, err = s.passwordHasher.Hash(sylvePassword)
 		if err != nil {
 			return nil, userInternalError("password_hash_failed", err)
 		}
@@ -893,7 +893,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 
 	hashedPassword := ""
 	if opts.Password != "" {
-		hashedPassword, err = utils.HashPassword(opts.Password)
+		hashedPassword, err = s.passwordHasher.Hash(opts.Password)
 		if err != nil {
 			return userInternalError("password_hash_failed", err)
 		}

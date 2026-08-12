@@ -13,7 +13,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/pkg/system"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func stubPAMIntegrations(t *testing.T) {
@@ -108,7 +107,7 @@ func TestCreatePamUserSynchronizesUnixSylveAndSambaPasswords(t *testing.T) {
 	if unixPassword != password || sambaPassword != password {
 		t.Fatalf("credential integrations did not receive the submitted plaintext")
 	}
-	if user.Password == password || !utils.CheckPasswordHash(password, user.Password) {
+	if user.Password == password || !service.passwordHasher.Verify(password, user.Password) {
 		t.Fatalf("Sylve credential was not independently hashed")
 	}
 	if user.Source != "pam" || user.ID == 0 {
@@ -183,7 +182,7 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload PAM user: %v", err)
 	}
-	if !utils.CheckPasswordHash(password, reloaded.Password) {
+	if !service.passwordHasher.Verify(password, reloaded.Password) {
 		t.Fatalf("updated Sylve credential does not match submitted password")
 	}
 	if got := userTokenCount(t, service, user.ID); got != 0 {
@@ -422,7 +421,7 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 	if mutatingCommand || passwordInputUsed {
 		t.Fatal("import mutated the existing Unix identity or password")
 	}
-	if user.Source != "pam" || !user.Admin || !utils.CheckPasswordHash(sylvePassword, user.Password) {
+	if user.Source != "pam" || !user.Admin || !service.passwordHasher.Verify(sylvePassword, user.Password) {
 		t.Fatalf("unexpected imported identity: %+v", user)
 	}
 	groupNames := make(map[string]bool, len(user.Groups))

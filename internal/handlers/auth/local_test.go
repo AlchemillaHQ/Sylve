@@ -45,7 +45,7 @@ func newTestAuthService(t *testing.T) *authService.Service {
 		return "", nil
 	}))
 
-	return &authService.Service{DB: db}
+	return authService.NewAuthService(db).(*authService.Service)
 }
 
 func setupRouter(svc *authService.Service) *gin.Engine {

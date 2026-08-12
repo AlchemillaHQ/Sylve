@@ -44,15 +44,12 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 	if err := database.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
 		t.Fatalf("seed cluster key: %v", err)
 	}
-	password, err := utils.HashPassword("correct horse battery staple")
-	if err != nil {
-		t.Fatal(err)
-	}
-	user := models.User{Username: "admin", Password: password, Admin: true}
+	const passwordHash = "$2a$04$q8RMvfpZU3MpIHropi1cfu0QobOdx.lw1SwiSLPC2ctgMMtPw6cc."
+	user := models.User{Username: "admin", Password: passwordHash, Admin: true}
 	if err := database.Create(&user).Error; err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}
-	service := &authSvc.Service{DB: database}
+	service := authSvc.NewAuthService(database).(*authSvc.Service)
 	_, localToken, err := service.CreateJWT(user.Username, "correct horse battery staple", "sylve", false)
 	if err != nil {
 		t.Fatalf("create local token: %v", err)

@@ -222,10 +222,7 @@ func TestFileExplorerDownloadRequiresAuthenticatedCurrentAdmin(t *testing.T) {
 	if err := database.Create(&models.SystemSecrets{Name: "JWTSecret", Data: "test-jwt-secret"}).Error; err != nil {
 		t.Fatalf("seed JWT secret: %v", err)
 	}
-	passwordHash, err := utils.HashPassword("correct horse battery staple")
-	if err != nil {
-		t.Fatal(err)
-	}
+	const passwordHash = "$2a$04$q8RMvfpZU3MpIHropi1cfu0QobOdx.lw1SwiSLPC2ctgMMtPw6cc."
 	user := models.User{
 		Username: "download-admin",
 		Password: passwordHash,
@@ -234,10 +231,7 @@ func TestFileExplorerDownloadRequiresAuthenticatedCurrentAdmin(t *testing.T) {
 	if err := database.Create(&user).Error; err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}
-	auth, ok := authService.NewAuthService(database).(*authService.Service)
-	if !ok {
-		t.Fatal("unexpected auth service implementation")
-	}
+	auth := authService.NewAuthService(database).(*authService.Service)
 	_, token, err := auth.CreateJWT(user.Username, "correct horse battery staple", "sylve", false)
 	if err != nil {
 		t.Fatalf("create admin token: %v", err)

@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -17,6 +18,21 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/system"
 )
+
+type fakePasswordHasher struct {
+	hashErr error
+}
+
+func (f fakePasswordHasher) Hash(password string) (string, error) {
+	if f.hashErr != nil {
+		return "", f.hashErr
+	}
+	return "test-hash:" + password, nil
+}
+
+func (fakePasswordHasher) Verify(password, encodedHash string) bool {
+	return encodedHash == "test-hash:"+password
+}
 
 func newLocalTestService(t *testing.T) *Service {
 	t.Helper()
@@ -38,7 +54,7 @@ func newLocalTestService(t *testing.T) *Service {
 		return "", nil
 	}))
 
-	return &Service{DB: db}
+	return newAuthService(db, fakePasswordHasher{})
 }
 
 func seedBasicSettings(t *testing.T, svc *Service) {
@@ -288,6 +304,27 @@ func TestCreateUserUIDIgnored(t *testing.T) {
 	err := svc.CreateUser(user, CreateUserOpts{})
 	if err != nil {
 		t.Fatalf("CreateUser should ignore UID for local users, got error: %v", err)
+	}
+}
+
+func TestCreateUserHashFailureDoesNotPersistUser(t *testing.T) {
+	svc := newLocalTestService(t)
+	seedBasicSettings(t, svc)
+	hashErr := errors.New("hash failed")
+	svc.passwordHasher = fakePasswordHasher{hashErr: hashErr}
+
+	user := &models.User{Username: "john", Password: "password123"}
+	err := svc.CreateUser(user, CreateUserOpts{})
+	if !errors.Is(err, hashErr) {
+		t.Fatalf("expected hash failure, got: %v", err)
+	}
+
+	var count int64
+	if err := svc.DB.Model(&models.User{}).Where("username = ?", user.Username).Count(&count).Error; err != nil {
+		t.Fatalf("count users after hash failure: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("hash failure persisted %d users", count)
 	}
 }
 

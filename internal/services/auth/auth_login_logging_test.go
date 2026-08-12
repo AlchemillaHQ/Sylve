@@ -19,7 +19,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/rs/zerolog"
 )
 
@@ -39,13 +38,9 @@ func captureAuthLogs(t *testing.T) *bytes.Buffer {
 func createLoginTestUser(t *testing.T, service *Service, username, password string, admin bool) models.User {
 	t.Helper()
 
-	hashed, err := utils.HashPassword(password)
-	if err != nil {
-		t.Fatalf("failed_to_hash_test_password: %v", err)
-	}
 	user := models.User{
 		Username: username,
-		Password: hashed,
+		Password: "test-hash:" + password,
 		Admin:    admin,
 		Source:   "local",
 	}

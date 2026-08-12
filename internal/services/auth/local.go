@@ -99,7 +99,7 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 		return fmt.Errorf("invalid_password_length")
 	}
 
-	hashed, err := utils.HashPassword(user.Password)
+	hashed, err := s.passwordHasher.Hash(user.Password)
 	if err != nil {
 		return fmt.Errorf("failed_to_hash_password: %w", err)
 	}
@@ -251,7 +251,7 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 
 	hashedPassword := ""
 	if opts.Password != "" {
-		hashedPassword, err = utils.HashPassword(opts.Password)
+		hashedPassword, err = s.passwordHasher.Hash(opts.Password)
 		if err != nil {
 			return userInternalError("password_hash_failed", err)
 		}

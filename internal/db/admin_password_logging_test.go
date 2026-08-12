@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -17,10 +18,24 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
+
+type fakePasswordHasher struct {
+	hashErr error
+}
+
+func (f fakePasswordHasher) Hash(password string) (string, error) {
+	if f.hashErr != nil {
+		return "", f.hashErr
+	}
+	return "test-hash:" + password, nil
+}
+
+func (fakePasswordHasher) Verify(password, encodedHash string) bool {
+	return encodedHash == "test-hash:"+password
+}
 
 func captureAdminSetupLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
@@ -43,14 +58,10 @@ func newAdminSetupTestDB(t *testing.T) *gorm.DB {
 func createConfiguredAdminTestUser(t *testing.T, database *gorm.DB, password string) models.User {
 	t.Helper()
 
-	hashed, err := utils.HashPassword(password)
-	if err != nil {
-		t.Fatalf("failed_to_hash_test_password: %v", err)
-	}
 	user := models.User{
 		Username: "admin",
 		Email:    "old@example.test",
-		Password: hashed,
+		Password: "test-hash:" + password,
 		Source:   "local",
 	}
 	if err := database.Create(&user).Error; err != nil {
@@ -62,14 +73,15 @@ func createConfiguredAdminTestUser(t *testing.T, database *gorm.DB, password str
 func TestSetupConfiguredAdminAppliesAndVerifiesForceReset(t *testing.T) {
 	logs := captureAdminSetupLogs(t)
 	database := newAdminSetupTestDB(t)
+	hasher := fakePasswordHasher{}
 	oldUser := createConfiguredAdminTestUser(t, database, "old-admin-secret")
 	const newPassword = "new-admin-secret"
 
-	err := setupConfiguredAdmin(database, internal.BaseConfigAdmin{
+	err := setupConfiguredAdminWithHasher(database, internal.BaseConfigAdmin{
 		Email:              "admin@sylve.local",
 		Password:           newPassword,
 		ForcePasswordReset: true,
-	})
+	}, hasher)
 	if err != nil {
 		t.Fatalf("expected force reset to succeed: %v", err)
 	}
@@ -78,7 +90,7 @@ func TestSetupConfiguredAdminAppliesAndVerifiesForceReset(t *testing.T) {
 	if err := database.Where("username = ?", "admin").First(&persisted).Error; err != nil {
 		t.Fatalf("failed_to_reload_admin: %v", err)
 	}
-	if !utils.CheckPasswordHash(newPassword, persisted.Password) {
+	if !hasher.Verify(newPassword, persisted.Password) {
 		t.Fatal("persisted admin password does not match reset password")
 	}
 	if persisted.Email != "admin@sylve.local" || !persisted.Admin {
@@ -97,14 +109,15 @@ func TestSetupConfiguredAdminAppliesAndVerifiesForceReset(t *testing.T) {
 func TestSetupConfiguredAdminLogsAlreadyMatchingForceReset(t *testing.T) {
 	logs := captureAdminSetupLogs(t)
 	database := newAdminSetupTestDB(t)
+	hasher := fakePasswordHasher{}
 	const password = "matching-admin-secret"
 	createConfiguredAdminTestUser(t, database, password)
 
-	if err := setupConfiguredAdmin(database, internal.BaseConfigAdmin{
+	if err := setupConfiguredAdminWithHasher(database, internal.BaseConfigAdmin{
 		Email:              "old@example.test",
 		Password:           password,
 		ForcePasswordReset: true,
-	}); err != nil {
+	}, hasher); err != nil {
 		t.Fatalf("expected matching reset verification to succeed: %v", err)
 	}
 
@@ -116,12 +129,13 @@ func TestSetupConfiguredAdminLogsAlreadyMatchingForceReset(t *testing.T) {
 func TestSetupConfiguredAdminLogsIgnoredPasswordWithoutForceReset(t *testing.T) {
 	logs := captureAdminSetupLogs(t)
 	database := newAdminSetupTestDB(t)
+	hasher := fakePasswordHasher{}
 	createConfiguredAdminTestUser(t, database, "stored-admin-secret")
 
-	if err := setupConfiguredAdmin(database, internal.BaseConfigAdmin{
+	if err := setupConfiguredAdminWithHasher(database, internal.BaseConfigAdmin{
 		Email:    "old@example.test",
 		Password: "different-config-secret",
-	}); err != nil {
+	}, hasher); err != nil {
 		t.Fatalf("expected admin setup to succeed: %v", err)
 	}
 
@@ -129,7 +143,7 @@ func TestSetupConfiguredAdminLogsIgnoredPasswordWithoutForceReset(t *testing.T) 
 	if err := database.Where("username = ?", "admin").First(&persisted).Error; err != nil {
 		t.Fatalf("failed_to_reload_admin: %v", err)
 	}
-	if !utils.CheckPasswordHash("stored-admin-secret", persisted.Password) {
+	if !hasher.Verify("stored-admin-secret", persisted.Password) {
 		t.Fatal("admin password changed without force reset")
 	}
 	if !strings.Contains(logs.String(), `"outcome":"ignored_force_reset_disabled"`) {
@@ -142,7 +156,11 @@ func TestSetupConfiguredAdminRejectsEmptyForcedPassword(t *testing.T) {
 	database := newAdminSetupTestDB(t)
 	createConfiguredAdminTestUser(t, database, "stored-admin-secret")
 
-	err := setupConfiguredAdmin(database, internal.BaseConfigAdmin{ForcePasswordReset: true})
+	err := setupConfiguredAdminWithHasher(
+		database,
+		internal.BaseConfigAdmin{ForcePasswordReset: true},
+		fakePasswordHasher{},
+	)
 	if err == nil || !strings.Contains(err.Error(), "non-empty configured password") {
 		t.Fatalf("expected empty forced password error, got: %v", err)
 	}
@@ -154,12 +172,13 @@ func TestSetupConfiguredAdminRejectsEmptyForcedPassword(t *testing.T) {
 func TestSetupConfiguredAdminLogsInitialCreation(t *testing.T) {
 	logs := captureAdminSetupLogs(t)
 	database := newAdminSetupTestDB(t)
+	hasher := fakePasswordHasher{}
 	const password = "initial-admin-secret"
 
-	if err := setupConfiguredAdmin(database, internal.BaseConfigAdmin{
+	if err := setupConfiguredAdminWithHasher(database, internal.BaseConfigAdmin{
 		Email:    "admin@sylve.local",
 		Password: password,
-	}); err != nil {
+	}, hasher); err != nil {
 		t.Fatalf("expected initial admin creation to succeed: %v", err)
 	}
 
@@ -167,10 +186,33 @@ func TestSetupConfiguredAdminLogsInitialCreation(t *testing.T) {
 	if err := database.Where("username = ?", "admin").First(&persisted).Error; err != nil {
 		t.Fatalf("failed_to_load_created_admin: %v", err)
 	}
-	if !utils.CheckPasswordHash(password, persisted.Password) || !persisted.Admin {
+	if !hasher.Verify(password, persisted.Password) || !persisted.Admin {
 		t.Fatal("created admin credentials or privileges are invalid")
 	}
 	if !strings.Contains(logs.String(), `"outcome":"created"`) {
 		t.Fatalf("expected creation log, got: %s", logs.String())
+	}
+}
+
+func TestSetupConfiguredAdminHashFailureDoesNotApplyUpdates(t *testing.T) {
+	database := newAdminSetupTestDB(t)
+	user := createConfiguredAdminTestUser(t, database, "old-admin-secret")
+	hashErr := errors.New("hash failed")
+
+	err := setupConfiguredAdminWithHasher(database, internal.BaseConfigAdmin{
+		Email:              "new@example.test",
+		Password:           "new-admin-secret",
+		ForcePasswordReset: true,
+	}, fakePasswordHasher{hashErr: hashErr})
+	if !errors.Is(err, hashErr) {
+		t.Fatalf("expected hash failure, got: %v", err)
+	}
+
+	var persisted models.User
+	if err := database.First(&persisted, user.ID).Error; err != nil {
+		t.Fatalf("reload admin after hash failure: %v", err)
+	}
+	if persisted.Email != user.Email || persisted.Password != user.Password || persisted.Admin != user.Admin {
+		t.Fatalf("hash failure changed admin: before=%+v after=%+v", user, persisted)
 	}
 }
