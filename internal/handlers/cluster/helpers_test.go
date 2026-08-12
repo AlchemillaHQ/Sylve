@@ -196,3 +196,33 @@ func TestForwardToLeaderBadAPIResolution(t *testing.T) {
 		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestForwardToLeaderRejectsOversizedBody(t *testing.T) {
+	r := setupSingleRaftForTest(t, "node-oversized")
+	defer func() { _ = r.Shutdown().Error() }()
+
+	originalResolver := resolveLeaderAPIForForward
+	resolveLeaderAPIForForward = func(*cluster.Service, string, string) string {
+		return "https://leader.invalid"
+	}
+	t.Cleanup(func() { resolveLeaderAPIForForward = originalResolver })
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/cluster/notes",
+		strings.NewReader(`{"title":"oversized"}`),
+	)
+	ctx.Request.Body = http.MaxBytesReader(w, ctx.Request.Body, 4)
+
+	forwardToLeader(ctx, &cluster.Service{Raft: r})
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"message":"request_body_too_large"`) {
+		t.Fatalf("unexpected oversized-body response: %s", w.Body.String())
+	}
+}

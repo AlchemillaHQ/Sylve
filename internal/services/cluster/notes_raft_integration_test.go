@@ -9,10 +9,13 @@
 package cluster
 
 import (
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"gorm.io/gorm"
 )
 
 func notesForNode(node *clusterRaftTestNode) ([]clusterModels.ClusterNote, error) {
@@ -79,6 +82,56 @@ func TestRaftNotesReplicationTwoNodes(t *testing.T) {
 		}
 		return true
 	})
+}
+
+func TestRaftNotesRejectMissingAndPartialMutations(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ClusterNote{})
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	if err := leader.service.ProposeNoteCreate("first", "first content", false); err != nil {
+		t.Fatalf("failed to create note through raft: %v", err)
+	}
+
+	var noteID int
+	waitForClusterCondition(t, 8*time.Second, "note available before rejected mutations", func() bool {
+		notes, err := notesForNode(leader)
+		if err != nil || len(notes) != 1 {
+			return false
+		}
+		noteID = int(notes[0].ID)
+		return noteID > 0
+	})
+
+	if err := leader.service.ProposeNoteUpdate(999999, "missing", "missing content", false); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing raft update error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+	if err := leader.service.ProposeNoteDelete(999999, false); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing raft delete error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	partialPayload, err := json.Marshal(struct {
+		IDs []int `json:"ids"`
+	}{IDs: []int{noteID, 999999}})
+	if err != nil {
+		t.Fatalf("marshal partial bulk payload: %v", err)
+	}
+	err = leader.service.applyRaftCommand(clusterModels.Command{
+		Type:   "note",
+		Action: "bulk_delete",
+		Data:   partialPayload,
+	})
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("partial raft bulk delete error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	notes, err := notesForNode(leader)
+	if err != nil {
+		t.Fatalf("load note after rejected raft mutations: %v", err)
+	}
+	if len(notes) != 1 || int(notes[0].ID) != noteID {
+		t.Fatalf("rejected raft mutations changed notes: %+v", notes)
+	}
 }
 
 func TestRaftNotesReplicationThreeNodes(t *testing.T) {

@@ -167,6 +167,8 @@ func isUncertainJoinOutcome(errText string) bool {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[clusterServiceInterfaces.ClusterDetails] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster [get]
 func GetCluster(cS *cluster.Service) gin.HandlerFunc {
@@ -251,12 +253,7 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
 
@@ -304,12 +301,7 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 	return func(c *gin.Context) {
 		var req JoinClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
 
@@ -507,6 +499,7 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 // @Success 200 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 409 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Conflict"
 // @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
@@ -517,12 +510,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 		clusterKey := c.GetString("ClusterKey")
 		var req AcceptJoinRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
 
@@ -618,7 +606,6 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[any] "Success"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
@@ -741,10 +728,10 @@ func ReplicatedStateRepairInternal(cS *cluster.Service, zS *zelta.Service) gin.H
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 200 {object} internal.APIResponse[cluster.ClusterStateResyncResult] "Success"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
-// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 409 {object} internal.APIResponse[cluster.ClusterStateResyncResult] "Conflict with partial audit/repair result"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/resync-state [post]
 func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {

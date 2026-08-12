@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -18,6 +19,49 @@ import (
 
 func newClusterNoteTestDB(t *testing.T) *gorm.DB {
 	return newClusterServiceTestDB(t, &clusterModels.ClusterNote{})
+}
+
+func TestProposeNoteMissingAndExactBulkBypassRaft(t *testing.T) {
+	db := newClusterNoteTestDB(t)
+	s := &Service{DB: db}
+	notes := []clusterModels.ClusterNote{
+		{Title: "first", Content: "first content"},
+		{Title: "second", Content: "second content"},
+	}
+	if err := db.Create(&notes).Error; err != nil {
+		t.Fatalf("failed to seed notes: %v", err)
+	}
+
+	if err := s.ProposeNoteUpdate(999999, "missing", "missing content", true); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing update error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+	if err := s.ProposeNoteDelete(999999, true); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing delete error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	partialIDs := []int{int(notes[0].ID), 999999}
+	if err := s.ProposeNoteBulkDelete(partialIDs, true); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("partial bulk delete error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	var count int64
+	if err := db.Model(&clusterModels.ClusterNote{}).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count notes after rejected bulk delete: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("rejected bulk delete removed notes: count=%d", count)
+	}
+
+	exactIDs := []int{int(notes[0].ID), int(notes[1].ID)}
+	if err := s.ProposeNoteBulkDelete(exactIDs, true); err != nil {
+		t.Fatalf("exact bulk delete failed: %v", err)
+	}
+	if err := db.Model(&clusterModels.ClusterNote{}).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count notes after exact bulk delete: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("exact bulk delete left %d notes", count)
+	}
 }
 
 func TestListNotesOrdersByID(t *testing.T) {

@@ -886,6 +886,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	cluster := api.Group("/cluster")
 	cluster.Use(middleware.EnsureAuthenticated(authService))
+	cluster.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	cluster.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		cluster.GET("/nodes", clusterHandlers.Nodes(clusterService))

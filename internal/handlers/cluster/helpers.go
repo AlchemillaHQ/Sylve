@@ -49,6 +49,28 @@ const (
 
 type clusterForwardResponse = utils.HTTPReadResponse
 
+func clusterRequestBodyTooLarge(err error) bool {
+	var maxBytesError *http.MaxBytesError
+	return errors.As(err, &maxBytesError)
+}
+
+func writeClusterJSONBindError(c *gin.Context, err error, invalidMessage string) {
+	status := http.StatusBadRequest
+	detail := err.Error()
+	if clusterRequestBodyTooLarge(err) {
+		status = http.StatusRequestEntityTooLarge
+		invalidMessage = "request_body_too_large"
+		detail = "request_body_too_large"
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: invalidMessage,
+		Error:   detail,
+		Data:    nil,
+	})
+}
+
 var clusterForwardHTTP = func(
 	ctx context.Context,
 	method string,
@@ -317,6 +339,15 @@ func forwardToLeader(c *gin.Context, cS *cluster.Service) {
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
+		if clusterRequestBodyTooLarge(err) {
+			c.JSON(http.StatusRequestEntityTooLarge, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "request_body_too_large",
+				Error:   "request_body_too_large",
+				Data:    nil,
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 			Status: "error", Message: "read_request_body_failed", Error: err.Error(),
 		})
