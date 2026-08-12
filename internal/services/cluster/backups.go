@@ -259,6 +259,14 @@ func (s *Service) RunningJobIDsForTarget(targetID uint) ([]uint, error) {
 		}
 	}
 
+	var target clusterModels.BackupTarget
+	if err := s.DB.Select("id").First(&target, targetID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("backup_target_not_found")
+		}
+		return nil, fmt.Errorf("backup_target_lookup_failed: %w", err)
+	}
+
 	var jobIDs []uint
 	err := s.DB.
 		Table("backup_job_operations").
@@ -794,7 +802,10 @@ func (s *Service) buildBackupJob(
 
 	var target clusterModels.BackupTarget
 	if err := s.DB.WithContext(ctx).First(&target, input.TargetID).Error; err != nil {
-		return nil, nil, fmt.Errorf("backup_target_not_found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, fmt.Errorf("backup_target_not_found")
+		}
+		return nil, nil, fmt.Errorf("backup_target_lookup_failed: %w", err)
 	}
 	if _, err := remoteexec.ParseSSHDestination(target.SSHHost); err != nil {
 		return nil, nil, fmt.Errorf("backup_target_ssh_host_invalid: %w", err)

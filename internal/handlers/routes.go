@@ -914,7 +914,7 @@ func RegisterRoutes(r *gin.Engine,
 			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
 			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
 			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService, zeltaService))
-			targets.POST("/validate/:id", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
+			targets.POST("/:id/validate", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
 			targets.GET("/:id/readiness", clusterHandlers.BackupTargetReadiness(clusterService))
 			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(zeltaService))
 			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
@@ -930,7 +930,7 @@ func RegisterRoutes(r *gin.Engine,
 			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
 			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
 			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
-			jobs.POST("/run/:id", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
+			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
 			jobs.GET("/:id/snapshots", clusterHandlers.BackupJobSnapshots(clusterService, zeltaService))
 			jobs.POST("/:id/restore", clusterHandlers.RestoreBackupJob(clusterService, zeltaService))
 		}

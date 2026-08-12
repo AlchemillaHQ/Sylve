@@ -351,7 +351,7 @@ func TestValidateBackupTargetRequiresExplicitVoterInCluster(t *testing.T) {
 	}
 	zStub := &backupTargetZeltaStub{}
 	router := newBackupTargetRouter(cS, zStub)
-	path := "/cluster/backups/targets/validate/91"
+	path := "/cluster/backups/targets/91/validate"
 	rr := performJSONRequest(t, router, http.MethodPost, path, nil)
 	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "validation_node_id_required") {
 		t.Fatalf("missing node status=%d body=%s", rr.Code, rr.Body.String())

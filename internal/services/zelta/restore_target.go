@@ -23,6 +23,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
+	"gorm.io/gorm"
 )
 
 const restoreFromTargetQueueName = "zelta-restore-from-target-run"
@@ -2711,7 +2712,10 @@ func vmDatasetRoot(dataset string) string {
 func (s *Service) getRestoreTarget(targetID uint) (clusterModels.BackupTarget, error) {
 	var target clusterModels.BackupTarget
 	if err := s.DB.First(&target, targetID).Error; err != nil {
-		return clusterModels.BackupTarget{}, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_not_found: %w", err)
+		}
+		return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_lookup_failed: %w", err)
 	}
 	if !target.Enabled {
 		return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_disabled")

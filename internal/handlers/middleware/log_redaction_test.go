@@ -882,6 +882,10 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 	input := map[string]interface{}{
 		"username":    "admin",
 		"password":    "super-secret",
+		"sshKey":      "managed-private-key",
+		"targetId":    float64(11),
+		"jobId":       float64(22),
+		"name":        "nightly-backup",
 		"sambaAction": "upsert",
 		"nested": map[string]interface{}{
 			"token":       "abc",
@@ -904,6 +908,12 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 
 	if out["password"] != "[REDACTED]" {
 		t.Fatal("expected_password_to_be_redacted")
+	}
+	if out["sshKey"] != "[REDACTED]" {
+		t.Fatal("expected_ssh_key_to_be_redacted")
+	}
+	if out["targetId"] != float64(11) || out["jobId"] != float64(22) || out["name"] != "nightly-backup" {
+		t.Fatal("expected_backup_identity_fields_to_be_preserved")
 	}
 	if out["sambaAction"] != "upsert" {
 		t.Fatal("expected_safe_samba_intent_to_be_preserved")

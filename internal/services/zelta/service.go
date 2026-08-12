@@ -2389,7 +2389,9 @@ func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sort
 	}
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
 
 	orderClause := "started_at DESC"
 	if sortField != "" {
@@ -2400,6 +2402,7 @@ func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sort
 		allowed := map[string]bool{
 			"id": true, "source_dataset": true, "target_endpoint": true,
 			"mode": true, "status": true, "started_at": true, "completed_at": true,
+			"error": true,
 		}
 		if allowed[sortField] {
 			orderClause = sortField + " " + dir

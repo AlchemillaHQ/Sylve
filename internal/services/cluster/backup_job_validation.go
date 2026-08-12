@@ -628,7 +628,10 @@ func (s *Service) validateBackupJobOnRunner(
 	}
 	var target clusterModels.BackupTarget
 	if err := s.DB.WithContext(ctx).First(&target, job.TargetID).Error; err != nil {
-		return empty, nil, fmt.Errorf("backup_target_not_found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return empty, nil, fmt.Errorf("backup_target_not_found")
+		}
+		return empty, nil, fmt.Errorf("backup_target_lookup_failed: %w", err)
 	}
 	if !target.Enabled {
 		return empty, nil, fmt.Errorf("backup_target_disabled")

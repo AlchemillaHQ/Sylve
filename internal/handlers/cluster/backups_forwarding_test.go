@@ -277,7 +277,7 @@ func newBackupRunForwardRouter(
 		c.Set("AuthType", authType)
 		c.Next()
 	})
-	router.POST("/api/cluster/backups/jobs/run/:id", RunBackupJobNow(service, runService))
+	router.POST("/api/cluster/backups/jobs/:id/run", RunBackupJobNow(service, runService))
 	return router
 }
 
@@ -413,7 +413,7 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 		if !strings.Contains(capturedURLs[index], "runner-b:8184/api/cluster/backups/jobs/61/restore") {
 			t.Fatalf("forwarded URL %d = %q", index, capturedURLs[index])
 		}
-		var payload restoreBackupJobRequest
+		var payload RestoreBackupJobRequest
 		if err := json.Unmarshal(capturedBodies[index], &payload); err != nil || payload.Snapshot != "@bk_j1_c1_test" || payload.EncryptionKey != "secret" {
 			t.Fatalf("forwarded body %d = %s err=%v", index, capturedBodies[index], err)
 		}
@@ -638,14 +638,58 @@ func TestRunNowUsesSharedRunnerForwardingProtocol(t *testing.T) {
 	response := performBackupForwardRequest(
 		t,
 		newBackupRunForwardRouter(nodes[0].service, ingressRun, 88, "carol", "sylve"),
-		"/api/cluster/backups/jobs/run/64",
+		"/api/cluster/backups/jobs/64/run",
 		[]byte(`{}`),
 		map[string]string{"X-Request-ID": "run-request"},
 	)
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusAccepted {
 		t.Fatalf("run forwarding response=%d body=%s", response.Code, response.Body.String())
 	}
 	if len(ingressRun.enqueued) != 0 || len(runnerRun.enqueued) != 1 || runnerRun.enqueued[0] != 64 {
 		t.Fatalf("run enqueue ingress=%v runner=%v", ingressRun.enqueued, runnerRun.enqueued)
+	}
+}
+
+func TestRunNowReturnsAcceptedAndBindsAsyncAudit(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	target := clusterModels.BackupTarget{
+		ID: 10, Name: "local-target", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true,
+	}
+	job := clusterModels.BackupJob{
+		ID: 65, Name: "local-run", TargetID: target.ID,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/source", CronExpr: "0 0 * * *", Enabled: true,
+	}
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	if err := database.Create(&job).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	var auditJobID any
+	var auditJobType any
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		auditJobID, _ = c.Get("AuditAsyncJobID")
+		auditJobType, _ = c.Get("AuditAsyncJobType")
+	})
+	runService := &backupRunHandlerStub{}
+	router.POST(
+		"/api/cluster/backups/jobs/:id/run",
+		RunBackupJobNow(&clusterService.Service{DB: database}, runService),
+	)
+
+	response := performBackupForwardRequest(
+		t, router, "/api/cluster/backups/jobs/65/run", []byte(`{}`), nil,
+	)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if len(runService.enqueued) != 1 || runService.enqueued[0] != job.ID {
+		t.Fatalf("enqueued=%v", runService.enqueued)
+	}
+	if auditJobID != job.ID || auditJobType != "backup_job_run" {
+		t.Fatalf("audit binding jobID=%v jobType=%v", auditJobID, auditJobType)
 	}
 }

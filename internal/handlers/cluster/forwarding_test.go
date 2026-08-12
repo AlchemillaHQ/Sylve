@@ -143,9 +143,9 @@ func TestClusterForwardTimeoutClassesAndOneHopLimit(t *testing.T) {
 		want   clusterForwardTimeoutClass
 	}{
 		{method: http.MethodGet, path: "/api/cluster/notes", want: clusterForwardShortRead},
-		{method: http.MethodPost, path: "/api/cluster/backups/targets/validate/1", want: clusterForwardValidation},
+		{method: http.MethodPost, path: "/api/cluster/backups/targets/1/validate", want: clusterForwardValidation},
 		{method: http.MethodPost, path: "/api/intra-cluster/backup-target-validation", want: clusterForwardValidation},
-		{method: http.MethodPost, path: "/api/cluster/backups/jobs/run/1", want: clusterForwardDurable},
+		{method: http.MethodPost, path: "/api/cluster/backups/jobs/1/run", want: clusterForwardDurable},
 	}
 	for _, test := range classTests {
 		request := httptest.NewRequest(test.method, test.path, nil)

@@ -267,10 +267,10 @@
 		'/api/cluster/notes/bulk-delete': 'DC Notes - Bulk Delete',
 		'/api/cluster/notes': 'DC Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
-		'/api/cluster/backups/targets/validate': 'DC Backup Target - Validate',
+		'/api/cluster/backups/targets/:id/validate': 'DC Backup Target - Validate',
 		'/api/cluster/backups/targets/:id/restore': 'DC Backup Target - Restore',
 		'/api/cluster/backups/targets': 'DC Backup Target',
-		'/api/cluster/backups/jobs/run': 'DC Backup Job - Run',
+		'/api/cluster/backups/jobs/:id/run': 'DC Backup Job - Run',
 		'/api/cluster/backups/jobs/:id/restore': 'DC Backup Job - Restore',
 		'/api/cluster/backups/jobs': 'DC Backup Job',
 		'/api/cluster/replication/policies/run': 'DC Replication Policy - Run',
@@ -1299,6 +1299,15 @@
 		return label;
 	}
 
+	function backupActionIdentity(path: string): string | null {
+		const match = path.match(
+			/^\/api\/cluster\/backups\/(targets|jobs)\/(\d+)(?:\/(?:validate|run|restore))?$/
+		);
+		if (!match) return null;
+		const id = match[2];
+		return match[1] === 'targets' ? `Target ID ${id}` : `Job ID ${id}`;
+	}
+
 	function normalizeActionPath(path: string): string {
 		const segments = path.split('/');
 		if (segments[1] === 'api' && segments[2] === 'disk' && segments.length === 5) {
@@ -1370,6 +1379,11 @@
 				} else {
 					resolvedAction = label;
 				}
+			}
+
+			const backupIdentity = backupActionIdentity(path);
+			if (backupIdentity && resolvedAction.startsWith('DC Backup ')) {
+				resolvedAction += ` - ${backupIdentity}`;
 			}
 
 			const downloaderUploadTarget = downloaderUploadAuditTarget(
