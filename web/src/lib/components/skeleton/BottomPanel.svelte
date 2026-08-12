@@ -273,8 +273,8 @@
 		'/api/cluster/backups/jobs/:id/run': 'DC Backup Job - Run',
 		'/api/cluster/backups/jobs/:id/restore': 'DC Backup Job - Restore',
 		'/api/cluster/backups/jobs': 'DC Backup Job',
-		'/api/cluster/replication/policies/run': 'DC Replication Policy - Run',
-		'/api/cluster/replication/policies/failover': 'DC Replication Policy - Failover',
+		'/api/cluster/replication/policies/:id/run': 'DC Replication Policy - Run',
+		'/api/cluster/replication/policies/:id/failover': 'DC Replication Policy - Failover',
 		'/api/cluster/replication/policies': 'DC Replication Policy',
 		'/api/cluster/join': 'Cluster - Join',
 		'/api/cluster/accept-join': 'Cluster - Accept Join',
@@ -1308,6 +1308,11 @@
 		return match[1] === 'targets' ? `Target ID ${id}` : `Job ID ${id}`;
 	}
 
+	function replicationActionIdentity(path: string): string | null {
+		const match = path.match(/^\/api\/cluster\/replication\/policies\/(\d+)\/(?:run|failover)$/);
+		return match ? `Policy ID ${match[1]}` : null;
+	}
+
 	function normalizeActionPath(path: string): string {
 		const segments = path.split('/');
 		if (segments[1] === 'api' && segments[2] === 'disk' && segments.length === 5) {
@@ -1384,6 +1389,11 @@
 			const backupIdentity = backupActionIdentity(path);
 			if (backupIdentity && resolvedAction.startsWith('DC Backup ')) {
 				resolvedAction += ` - ${backupIdentity}`;
+			}
+
+			const replicationIdentity = replicationActionIdentity(path);
+			if (replicationIdentity && resolvedAction.startsWith('DC Replication Policy')) {
+				resolvedAction += ` - ${replicationIdentity}`;
 			}
 
 			const downloaderUploadTarget = downloaderUploadAuditTarget(

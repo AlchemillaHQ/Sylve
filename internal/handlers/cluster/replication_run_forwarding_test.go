@@ -198,7 +198,7 @@ func TestReplicationSyncNowThroughEveryIngressQueuesOnlyOnFollowerOwner(t *testi
 			}
 
 			response := performReplicationRunRequest(t, routers[topology.ingress.id], topology.policyID)
-			if response.Code != http.StatusOK ||
+			if response.Code != http.StatusAccepted ||
 				strings.Contains(strings.ToLower(response.Body.String()), "not_leader") {
 				t.Fatalf("response=%d body=%s", response.Code, response.Body.String())
 			}
