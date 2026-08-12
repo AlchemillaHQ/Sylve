@@ -148,7 +148,7 @@ func TestEnsureEncryptionKeyFile(t *testing.T) {
 	})
 }
 
-func TestEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
+func TestIntegrationEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 
@@ -209,7 +209,7 @@ func TestEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
 	}
 }
 
-func TestAutoDiscoverAndRegisterExternalFileKey(t *testing.T) {
+func TestIntegrationAutoDiscoverAndRegisterExternalFileKey(t *testing.T) {
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 

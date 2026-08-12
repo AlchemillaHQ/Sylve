@@ -14,11 +14,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
-func TestValidateMigratedGuestRootsUsesExactRealZFSMultiRootManifest(t *testing.T) {
+func TestIntegrationValidateMigratedGuestRootsUsesExactRealZFSMultiRootManifest(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration manifest integration test in short mode")
-	}
 
 	poolA, client, cleanupA := zfstest.Pool(t)
 	defer cleanupA()
@@ -109,11 +106,8 @@ func TestGeneratedMigrationSnapshotPathUsesExactRootBoundary(t *testing.T) {
 	}
 }
 
-func TestMigrationSnapshotCleanupSurfacesFailureAndPreservesUserSnapshots(t *testing.T) {
+func TestIntegrationMigrationSnapshotCleanupSurfacesFailureAndPreservesUserSnapshots(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration snapshot cleanup integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

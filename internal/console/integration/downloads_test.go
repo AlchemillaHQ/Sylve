@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestDownloadsCLIAndREPLIntegration(t *testing.T) {
+func TestAcceptanceDownloadsCLIAndREPL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}

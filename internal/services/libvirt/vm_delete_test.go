@@ -469,11 +469,8 @@ func TestRemoveVMWithWarningsDatabaseFailureRollsBackAndSkipsStorage(t *testing.
 	assertVMDeleteGraphCounts(t, db, seed, 1)
 }
 
-func TestRemoveVMWithWarningsRealZFSStorageOutcomes(t *testing.T) {
+func TestIntegrationRemoveVMWithWarningsRealZFSStorageOutcomes(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS VM deletion integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

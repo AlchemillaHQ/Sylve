@@ -23,11 +23,8 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
-func TestVerifyMigrationSourceCleanupUsesRealZFSAndMetadata(t *testing.T) {
+func TestIntegrationVerifyMigrationSourceCleanupUsesRealZFSAndMetadata(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration source cleanup integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -79,11 +76,8 @@ func TestVerifyMigrationSourceCleanupUsesRealZFSAndMetadata(t *testing.T) {
 	}
 }
 
-func TestPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
+func TestIntegrationPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration cleanup idempotence test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -117,11 +111,8 @@ func TestPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
 	}
 }
 
-func TestVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) {
+func TestIntegrationVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration source cleanup integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -162,11 +153,8 @@ func TestVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) 
 	}
 }
 
-func TestVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
+func TestIntegrationVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS exported-pool cleanup verification test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -204,11 +192,8 @@ func TestVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
 	}
 }
 
-func TestReconcileCompletedMigrationAfterGuardRemovalUsesRealZFSProof(t *testing.T) {
+func TestIntegrationReconcileCompletedMigrationAfterGuardRemovalUsesRealZFSProof(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS completed-migration reconciliation test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -285,11 +270,8 @@ func TestReconcileCompletedMigrationAfterGuardRemovalUsesRealZFSProof(t *testing
 	}
 }
 
-func TestExecuteMigrationReconcilesFinalizeTaskAfterGuardRemoval(t *testing.T) {
+func TestIntegrationExecuteMigrationReconcilesFinalizeTaskAfterGuardRemoval(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS operation-absent finalize recovery test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -372,11 +354,8 @@ func TestExecuteMigrationReconcilesFinalizeTaskAfterGuardRemoval(t *testing.T) {
 	}
 }
 
-func TestSealedMigrationFailureRemainsRecoverable(t *testing.T) {
+func TestIntegrationSealedMigrationFailureRemainsRecoverable(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS sealed-migration recovery test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -440,11 +419,8 @@ func TestSealedMigrationFailureRemainsRecoverable(t *testing.T) {
 	}
 }
 
-func TestResolveGuestDatasetsDoesNotMatchAdjacentGuestIDs(t *testing.T) {
+func TestIntegrationResolveGuestDatasetsDoesNotMatchAdjacentGuestIDs(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration dataset resolution integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

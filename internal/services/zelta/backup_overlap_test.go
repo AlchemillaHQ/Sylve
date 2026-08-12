@@ -77,7 +77,7 @@ func TestParseBackupPoolGUIDIgnoresMissingIdentityWarningOnly(t *testing.T) {
 	}
 }
 
-func TestLocalBackupPoolIdentityUsesRealZFSPoolGUID(t *testing.T) {
+func TestIntegrationLocalBackupPoolIdentityUsesRealZFSPoolGUID(t *testing.T) {
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
 	dataset := pool + "/source"

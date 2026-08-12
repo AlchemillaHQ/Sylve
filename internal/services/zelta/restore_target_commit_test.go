@@ -181,11 +181,8 @@ func TestRunRestoreFromTargetVMRejectsLegacyBeforeRuntimeOrReceive(t *testing.T)
 	}
 }
 
-func TestLegacyVMRestoreMissingRootSnapshotFailsBeforeStaging(t *testing.T) {
+func TestIntegrationLegacyVMRestoreMissingRootSnapshotFailsBeforeStaging(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS legacy VM restore preflight test in short mode")
-	}
 	requireLocalhostBackupSSH(t)
 
 	poolA, clientA, cleanupA := zfstest.Pool(t)

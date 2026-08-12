@@ -38,7 +38,7 @@ type jailDeleteResult struct {
 	CTID    uint `json:"ctId"`
 }
 
-func TestJailWithoutNetworkFromBootstrapIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithoutNetworkFromBootstrap(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -137,7 +137,7 @@ func TestJailWithoutNetworkFromBootstrapIntegration(t *testing.T) {
 	assertConsoleJailDeleted(t, suite, ctid, dataset, configPath)
 }
 
-func TestJailWithInheritedNetworkIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithInheritedNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -207,7 +207,7 @@ func TestJailWithInheritedNetworkIntegration(t *testing.T) {
 	assertConsoleJailDeleted(t, suite, ctid, dataset, configPath)
 }
 
-func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithStaticVNETNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -397,7 +397,7 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	assertConsoleInterfaceMissing(t, standard.BridgeName)
 }
 
-func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
+func TestFullAcceptanceJailObjectReferenceWorkflow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -671,7 +671,7 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	}
 }
 
-func TestJailFromDownloadedBaseWithTogglesIntegration(t *testing.T) {
+func TestAcceptanceJailFromDownloadedBaseWithToggles(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -866,7 +866,7 @@ func TestJailFromDownloadedBaseWithTogglesIntegration(t *testing.T) {
 	}
 }
 
-func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithDHCPSLAACNetworkConfiguration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}

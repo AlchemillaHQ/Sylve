@@ -29,7 +29,7 @@ type switchListResult struct {
 	Manual   []networkModels.ManualSwitch   `json:"manual"`
 }
 
-func TestSwitchesCLIAndREPLIntegration(t *testing.T) {
+func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}

@@ -15,11 +15,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
-func TestZeltaBackupFailsWhenRequestedSnapshotAlreadyExists(t *testing.T) {
+func TestIntegrationZeltaBackupFailsWhenRequestedSnapshotAlreadyExists(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS snapshot-failure integration test in short mode")
-	}
 
 	poolName, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

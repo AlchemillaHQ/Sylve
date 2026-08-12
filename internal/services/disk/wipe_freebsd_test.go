@@ -359,7 +359,7 @@ func assertMDIntegrationEdgesZero(t *testing.T, disk mdIntegrationDisk) {
 	}
 }
 
-func TestDestroyPartitionTableMDIntegration(t *testing.T) {
+func TestIntegrationDestroyPartitionTableMD(t *testing.T) {
 	requireMDIntegrationHost(t)
 
 	t.Run("recognized GPT", func(t *testing.T) {

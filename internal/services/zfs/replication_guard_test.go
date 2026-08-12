@@ -56,7 +56,7 @@ func newReplicationGuardService(t *testing.T, pool string, client *gzfs.Client) 
 	return &Service{DB: db, GZFS: client}
 }
 
-func TestReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *testing.T) {
+func TestIntegrationReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -83,7 +83,7 @@ func TestReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *tes
 	}
 }
 
-func TestReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
+func TestIntegrationReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -106,7 +106,7 @@ func TestReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
 	}
 }
 
-func TestReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.T) {
+func TestIntegrationReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -125,7 +125,7 @@ func TestReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.
 	}
 }
 
-func TestReplicationDatasetGuardProtectsLegacyEnabledFilesystemShare(t *testing.T) {
+func TestIntegrationReplicationDatasetGuardProtectsLegacyEnabledFilesystemShare(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

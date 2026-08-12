@@ -95,11 +95,8 @@ func setRealZFSReadonly(t *testing.T, dataset string) {
 	}
 }
 
-func TestCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
+func TestIntegrationCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS first-sync integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -238,11 +235,8 @@ func TestCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	}
 }
 
-func TestReplicationSourceSnapshotClonePreflightRealZFS(t *testing.T) {
+func TestIntegrationReplicationSourceSnapshotClonePreflightRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS source clone preflight test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -272,11 +266,8 @@ func TestReplicationSourceSnapshotClonePreflightRealZFS(t *testing.T) {
 	}
 }
 
-func TestCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
+func TestIntegrationCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS failed-source-snapshot cleanup test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -324,11 +315,8 @@ func TestCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
 	}
 }
 
-func TestCleanupPolicyOwnedReplicationSnapshotsRealZFS(t *testing.T) {
+func TestIntegrationCleanupPolicyOwnedReplicationSnapshotsRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS policy-owned snapshot cleanup test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -399,11 +387,8 @@ func TestCleanupPolicyOwnedReplicationSnapshotsRealZFS(t *testing.T) {
 	}
 }
 
-func TestCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS(t *testing.T) {
+func TestIntegrationCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS policy snapshot clone-dependency test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -448,11 +433,8 @@ func TestCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS(t *testing
 	}
 }
 
-func TestReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *testing.T) {
+func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS held policy snapshot lifecycle test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -559,11 +541,8 @@ func TestReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *testing.T) {
 	}
 }
 
-func TestPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS(t *testing.T) {
+func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS policy-generation cancellation integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -704,11 +683,8 @@ func TestPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS
 	}
 }
 
-func TestAbortAndDestroyProvenStagingRealZFS(t *testing.T) {
+func TestIntegrationAbortAndDestroyProvenStagingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS replication cleanup integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -745,11 +721,8 @@ func TestAbortAndDestroyProvenStagingRealZFS(t *testing.T) {
 	}
 }
 
-func TestCleanupStaleReplicationStagingRealZFS(t *testing.T) {
+func TestIntegrationCleanupStaleReplicationStagingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS stale-generation integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -798,11 +771,8 @@ func TestCleanupStaleReplicationStagingRealZFS(t *testing.T) {
 	}
 }
 
-func TestPromoteAndRollbackStagedReplicationRealZFS(t *testing.T) {
+func TestIntegrationPromoteAndRollbackStagedReplicationRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS promotion integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -890,11 +860,8 @@ func TestPromoteAndRollbackStagedReplicationRealZFS(t *testing.T) {
 	}
 }
 
-func TestColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *testing.T) {
+func TestIntegrationColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS cold-start watchdog integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -952,11 +919,8 @@ func TestColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *testing.T) {
 	}
 }
 
-func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing.T) {
+func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS cold-start readonly recovery integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -1108,11 +1072,8 @@ func TestColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing
 	}
 }
 
-func TestVMReplicationSourceRejectsEnabledFilesystemStorageRealZFS(t *testing.T) {
+func TestIntegrationVMReplicationSourceRejectsEnabledFilesystemStorageRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS VM source eligibility integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -1165,11 +1126,8 @@ func TestVMReplicationSourceRejectsEnabledFilesystemStorageRealZFS(t *testing.T)
 	}
 }
 
-func TestRestoredVMFilesystemEligibilityCheckedWhileReadonlyRealZFS(t *testing.T) {
+func TestIntegrationRestoredVMFilesystemEligibilityCheckedWhileReadonlyRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS restored VM eligibility integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

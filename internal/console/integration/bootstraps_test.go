@@ -22,7 +22,7 @@ import (
 
 const bootstrapCreateAttempts = 2
 
-func TestBootstrapsCLIAndREPLIntegration(t *testing.T) {
+func TestFullAcceptanceBootstrapsCLIAndREPL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}

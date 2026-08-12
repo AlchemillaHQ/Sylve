@@ -15,11 +15,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
-func TestActivateTargetGenerationRollsBackAmbiguousArchiveRenameRealZFS(t *testing.T) {
+func TestIntegrationActivateTargetGenerationRollsBackAmbiguousArchiveRenameRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping ambiguous target-generation rename test in short mode")
-	}
 
 	poolName, client, cleanup := zfstest.Pool(t)
 	defer cleanup()

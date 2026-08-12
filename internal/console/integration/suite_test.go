@@ -98,7 +98,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestConsoleIntegrationSuiteFixture(t *testing.T) {
+func TestAcceptanceConsoleSuiteFixture(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}

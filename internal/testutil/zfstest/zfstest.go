@@ -22,8 +22,8 @@ import (
 
 func SkipIfUnavailable(t testing.TB) {
 	t.Helper()
-	if os.Getenv("SYLVE_SKIP_ZFS_TESTS") == "1" {
-		t.Skip("SYLVE_SKIP_ZFS_TESTS=1")
+	if testing.Short() {
+		t.Skip("requires real ZFS; skipped in short mode")
 	}
 	if _, err := exec.LookPath("zpool"); err != nil {
 		t.Skip("zpool binary not found")

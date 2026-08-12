@@ -3400,7 +3400,7 @@ func TestSampleFirewallCountersSkipsWhenFirewallServiceDisabled(t *testing.T) {
 	}
 }
 
-func TestPFConfigValidation(t *testing.T) {
+func TestIntegrationPFConfigValidation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping pfctl integration test in short mode")
 	}

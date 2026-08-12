@@ -36,7 +36,7 @@ jobs:
               -out test-results \
               -setup-duration "${setup_seconds}s" \
               -cache-restored=false \
-              -- env SYLVE_SKIP_ZFS_TESTS=1 make -s GO_TEST_FLAGS=-json test
+              -- make -s GO_TEST_FLAGS=-json test
             test_rc="$?"
             printf '%s\n' "$test_rc" > test-results/unit.rc
             exit 0

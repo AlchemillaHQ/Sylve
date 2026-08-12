@@ -55,11 +55,8 @@ func listActiveGenerations(t *testing.T, activeDataset string) []string {
 	return gens
 }
 
-func TestRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotation(t *testing.T) {
+func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotation(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping foreign-snapshot recovery integration test in short mode")
-	}
 	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
@@ -172,11 +169,8 @@ func firstReplicatedChild(t *testing.T, activeDataset string) (string, bool) {
 	return "", false
 }
 
-func TestRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T) {
+func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping recursive foreign-snapshot recovery integration test in short mode")
-	}
 	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
@@ -262,11 +256,8 @@ func TestRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T) {
 	}
 }
 
-func TestRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
+func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping VM foreign-snapshot recovery integration test in short mode")
-	}
 	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)
@@ -379,11 +370,8 @@ func TestRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	}
 }
 
-func TestRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
+func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping jail foreign-snapshot recovery integration test in short mode")
-	}
 	requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.Pool(t)

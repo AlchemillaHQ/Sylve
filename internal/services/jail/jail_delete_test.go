@@ -430,11 +430,8 @@ func TestDeleteJailMACCleanupFailureIsOnlyAWarning(t *testing.T) {
 	}
 }
 
-func TestDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS jail deletion integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -481,14 +478,11 @@ func TestDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 	}
 }
 
-func TestDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
 	if runtime.GOOS != "freebsd" {
 		t.Skip("FreeBSD file flags are required for this regression test")
 	}
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS jail CTID reuse integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -589,11 +583,8 @@ func TestDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
 	}
 }
 
-func TestDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS jail cleanup-failure integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
@@ -645,11 +636,8 @@ func TestDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
 	}
 }
 
-func TestDeleteJailDependentCloneSurvivesCleanupRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailDependentCloneSurvivesCleanupRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS dependent-clone jail deletion integration test in short mode")
-	}
 
 	pool, client, cleanup := zfstest.Pool(t)
 	defer cleanup()
