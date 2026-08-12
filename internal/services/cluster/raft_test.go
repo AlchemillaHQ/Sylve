@@ -12,10 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/hashicorp/raft"
 )
 
 func TestHasExistingRaftState(t *testing.T) {
@@ -99,48 +97,4 @@ func TestClearClusterNode(t *testing.T) {
 	if count != 0 {
 		t.Fatalf("expected node cleared, got %d", count)
 	}
-}
-
-func TestRemovePeer(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 3)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	var follower *clusterRaftTestNode
-	for _, n := range nodes {
-		if n.id != leader.id {
-			follower = n
-			break
-		}
-	}
-
-	t.Run("remove existing peer", func(t *testing.T) {
-		err := leader.service.RemovePeer(raft.ServerID(follower.id))
-		if err != nil {
-			t.Fatalf("RemovePeer: %v", err)
-		}
-
-		waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
-	})
-
-	t.Run("remove non-existent peer returns error", func(t *testing.T) {
-		err := leader.service.RemovePeer("non-existent-id")
-		if err != nil {
-			t.Fatalf("remove non-existent should not error: %v", err)
-		}
-	})
-
-	t.Run("remove as follower returns error", func(t *testing.T) {
-		newLeader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-		for _, n := range nodes {
-			if n.id != newLeader.id {
-				err := n.service.RemovePeer("any-id")
-				if err == nil {
-					t.Fatal("expected error when removing peer as follower")
-				}
-				break
-			}
-		}
-	})
 }

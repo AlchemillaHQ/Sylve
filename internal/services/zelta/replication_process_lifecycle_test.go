@@ -51,10 +51,10 @@ func seedReplicationProcessPolicy(t *testing.T, db *gorm.DB, policyID uint, node
 	}
 }
 
-func TestPrepareReplicationStartupRenewsBeforeProtectedAutostart(t *testing.T) {
+func TestIntegrationRaftPrepareReplicationStartupRenewsBeforeProtectedAutostart(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	clusterSvc, localNodeID, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+	fixture := SetupZeltaClusterFixture(t, 1)
+	clusterSvc, localNodeID := fixture.ClusterSvc, fixture.LocalNodeID
 	seedReplicationProcessPolicy(t, clusterSvc.DB, 9201, localNodeID)
 
 	service := NewService(clusterSvc.DB, nil, clusterSvc, nil, nil, nil, nil)

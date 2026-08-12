@@ -145,9 +145,8 @@ func seedReplicatedStateForRepair(
 	}
 }
 
-func TestResyncClusterStateSkipsEqualVoters(t *testing.T) {
+func TestIntegrationRaftResyncClusterStateSkipsEqualVoters(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, replicatedStateTestModels()...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	connectReplicatedStateTestDigestHooks(nodes, leader)
 	repairCalls := 0
@@ -195,9 +194,8 @@ func TestResyncClusterStateSkipsEqualVoters(t *testing.T) {
 	}
 }
 
-func TestResyncClusterStateRebuildsDivergentFollowerAndPreservesLocalState(t *testing.T) {
+func TestIntegrationRaftResyncRebuildsFollowerAndPreservesLocalState(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3, replicatedStateTestModels()...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	seedReplicatedStateForRepair(t, leader)
 	waitForClusterCondition(t, 8*time.Second, "authoritative seed convergence", func() bool {
@@ -334,9 +332,8 @@ func TestResyncClusterStateRebuildsDivergentFollowerAndPreservesLocalState(t *te
 	}
 }
 
-func TestResyncClusterStateLeavesFailedRepairUnpromoted(t *testing.T) {
+func TestIntegrationRaftResyncLeavesFailedRepairUnpromoted(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, replicatedStateTestModels()...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var divergent *clusterRaftTestNode
 	for _, node := range nodes {
@@ -390,9 +387,8 @@ func TestResyncClusterStateLeavesFailedRepairUnpromoted(t *testing.T) {
 	}
 }
 
-func TestResyncClusterStateRejectsNonQuiescentFollowerBeforeRemoval(t *testing.T) {
+func TestIntegrationRaftResyncRejectsNonQuiescentFollower(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, replicatedStateTestModels()...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var follower *clusterRaftTestNode
 	for _, node := range nodes {
@@ -448,9 +444,8 @@ func TestResyncClusterStateRejectsNonQuiescentFollowerBeforeRemoval(t *testing.T
 	}
 }
 
-func TestReplicatedStateRepairFenceRejectsLocalRuntimeAdmission(t *testing.T) {
+func TestIntegrationRaftStateRepairFenceRejectsRuntimeAdmission(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 1)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 
 	if err := leader.service.SetReplicatedStateRepairFence(leader.id, true); err != nil {

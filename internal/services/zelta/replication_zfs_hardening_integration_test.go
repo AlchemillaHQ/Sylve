@@ -977,7 +977,6 @@ func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS
 	}
 
 	fx := SetupZeltaClusterFixture(t, 2)
-	defer fx.Cleanup()
 	migrationTargetNodeID := fx.Nodes[1].id
 	vmFenceToken := guestTokens[replicationGuestKey(clusterModels.ReplicationGuestTypeVM, 706)]
 	if err := fx.ClusterSvc.AcquireReplicationGuestOperation(clusterModels.ReplicationGuestOperationAcquire{

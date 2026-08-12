@@ -259,7 +259,6 @@ func (s *Service) collectClusterGuestIdentityInventoriesStrict(
 	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_raft_unavailable")
 	}
-
 	configurationFuture := s.Raft.GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
@@ -267,10 +266,28 @@ func (s *Service) collectClusterGuestIdentityInventoriesStrict(
 			err,
 		)
 	}
+	return s.collectClusterGuestIdentityInventoriesFromConfiguration(ctx, configurationFuture.Configuration())
+}
 
+func (s *Service) collectClusterGuestIdentityInventoriesFromConfiguration(
+	ctx context.Context,
+	configuration raft.Configuration,
+) (map[string]GuestIdentityInventoryReport, GuestIdentityInventoryReport, error) {
+	if s == nil || s.DB == nil {
+		return nil, GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_service_not_initialized")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
+			"guest_identity_inventory_collection_canceled: %w",
+			err,
+		)
+	}
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
 	voters, err := strictGuestIdentityInventoryVoters(
-		configurationFuture.Configuration(),
+		configuration,
 		localNodeID,
 	)
 	if err != nil {

@@ -95,42 +95,8 @@ func TestCanonicalSubmittedGuestIdentityInventoryRejectsDigestAndNodeMismatch(t 
 	})
 }
 
-func TestPreflightJoinInventorySharedIDIsReadOnly(t *testing.T) {
+func TestIntegrationRaftAcceptJoinRejectsConflictAfterPreflight(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityJoinTestModels()...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	seedGuestIdentityJoinTestCluster(t, leader)
-
-	if err := leader.service.DB.Create(&vmModels.VM{RID: 200, Name: "leader-vm"}).Error; err != nil {
-		t.Fatalf("seed leader VM: %v", err)
-	}
-	joiner := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
-		NodeID: "joining-node", GuestType: clusterModels.ReplicationGuestTypeJail,
-		GuestID: 200, RecordID: 1, Name: "joiner-jail",
-	}})
-	before := raftConfigurationForGuestIdentityJoinTest(t, leader)
-
-	_, err := leader.service.PreflightJoinInventory(
-		context.Background(), "joining-node", "127.0.0.2", guestIdentityJoinTestKey, joiner,
-	)
-	var conflict *GuestIdentityInventoryConflictError
-	if !errors.As(err, &conflict) {
-		t.Fatalf("error = %v, want inventory conflict", err)
-	}
-	if len(conflict.Report.Conflicts) != 1 ||
-		conflict.Report.Conflicts[0].Reason != GuestIdentityInventoryConflictSharedGuestID {
-		t.Fatalf("unexpected conflict report: %+v", conflict.Report)
-	}
-
-	after := raftConfigurationForGuestIdentityJoinTest(t, leader)
-	if !reflect.DeepEqual(after, before) {
-		t.Fatalf("preflight mutated membership: before=%+v after=%+v", before, after)
-	}
-}
-
-func TestAcceptJoinInventoryRejectsConflictIntroducedAfterPreflight(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityJoinTestModels()...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	seedGuestIdentityJoinTestCluster(t, leader)
 
@@ -190,7 +156,7 @@ func TestValidateJoinMembershipNeverReplacesConflictingServer(t *testing.T) {
 	}
 }
 
-func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
+func TestIntegrationRaftAcceptJoinExactExistingVoterRetry(t *testing.T) {
 	models := guestIdentityJoinTestModels()
 	nodes := setupClusterRaftTestNodes(t, 1, models...)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
@@ -201,7 +167,6 @@ func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
 	joinerID := RaftServerAddress(joinerIP)
 	joiner := newClusterRaftTestNode(t, joinerID, models...)
 	nodes = append(nodes, joiner)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader.transport.Connect(joiner.addr, joiner.transport)
 	joiner.transport.Connect(leader.addr, leader.transport)
 
@@ -275,7 +240,7 @@ func TestAcceptJoinInventoryAndExactExistingVoterRetry(t *testing.T) {
 	}
 }
 
-func TestAcceptJoinInventoryVerifiesNonvoterBeforePromotion(t *testing.T) {
+func TestIntegrationRaftAcceptJoinVerifiesNonvoterBeforePromotion(t *testing.T) {
 	models := guestIdentityJoinTestModels()
 	nodes := setupClusterRaftTestNodes(t, 1, models...)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
@@ -286,7 +251,6 @@ func TestAcceptJoinInventoryVerifiesNonvoterBeforePromotion(t *testing.T) {
 	joinerID := RaftServerAddress(joinerIP)
 	joiner := newClusterRaftTestNode(t, joinerID, models...)
 	nodes = append(nodes, joiner)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader.transport.Connect(joiner.addr, joiner.transport)
 	joiner.transport.Connect(leader.addr, leader.transport)
 

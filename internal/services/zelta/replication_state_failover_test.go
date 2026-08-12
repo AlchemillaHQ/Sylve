@@ -17,9 +17,8 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-func TestReplicationPolicyStateSurvivesLeaderFailover(t *testing.T) {
+func TestIntegrationRaftReplicationPolicyStateSurvivesLeaderFailover(t *testing.T) {
 	fx := SetupZeltaClusterFixture(t, 3)
-	defer fx.Cleanup()
 
 	leader := fx.LeaderNode()
 	if leader == nil {
@@ -52,6 +51,20 @@ func TestReplicationPolicyStateSurvivesLeaderFailover(t *testing.T) {
 	t.Log("policy seeded on all nodes")
 
 	svc := fx.NewZeltaService()
+	waitForReplicatedResult := func(wantStatus, wantError string) {
+		t.Helper()
+		fx.WaitForCondition(5*time.Second, "replication result convergence", func() bool {
+			for _, node := range fx.Nodes {
+				var current clusterModels.ReplicationPolicy
+				if err := node.db.First(&current, policyID).Error; err != nil ||
+					current.LastStatus != wantStatus || current.LastError != wantError ||
+					current.LastRunAt == nil {
+					return false
+				}
+			}
+			return true
+		})
+	}
 	claimRun := func(token string) {
 		var current clusterModels.ReplicationPolicy
 		if err := leader.db.First(&current, policyID).Error; err != nil {
@@ -73,36 +86,12 @@ func TestReplicationPolicyStateSurvivesLeaderFailover(t *testing.T) {
 
 	claimRun("replication:" + fx.LocalNodeID + ":success")
 	svc.updateReplicationPolicyResult(policy, nil)
-
-	time.Sleep(300 * time.Millisecond)
-	for _, n := range fx.Nodes {
-		var check clusterModels.ReplicationPolicy
-		if err := n.db.First(&check, policyID).Error; err != nil {
-			t.Fatalf("node %s: policy not found: %v", n.id, err)
-		}
-		if check.LastStatus != "success" {
-			t.Errorf("node %s: expected LastStatus=success, got %q", n.id, check.LastStatus)
-		}
-		if check.LastRunAt == nil {
-			t.Errorf("node %s: expected LastRunAt to be set", n.id)
-		}
-	}
+	waitForReplicatedResult("success", "")
 	t.Log("success state replicated to all nodes")
 
 	claimRun("replication:" + fx.LocalNodeID + ":failure")
 	svc.updateReplicationPolicyResult(policy, fmt.Errorf("test_replication_error"))
-
-	time.Sleep(300 * time.Millisecond)
-	for _, n := range fx.Nodes {
-		var check clusterModels.ReplicationPolicy
-		n.db.First(&check, policyID)
-		if check.LastStatus != "failed" {
-			t.Errorf("node %s: expected LastStatus=failed, got %q", n.id, check.LastStatus)
-		}
-		if check.LastError != "test_replication_error" {
-			t.Errorf("node %s: expected LastError=test_replication_error, got %q", n.id, check.LastError)
-		}
-	}
+	waitForReplicatedResult("failed", "test_replication_error")
 	t.Log("failure state replicated to all nodes")
 
 	t.Logf("killing leader %s", leader.id)

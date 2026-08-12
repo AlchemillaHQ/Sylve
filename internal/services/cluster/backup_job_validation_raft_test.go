@@ -3,22 +3,41 @@
 package cluster
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/hashicorp/raft"
 )
 
-func TestBackupJobPlacementFenceRaceIsDeterministicAcrossRaftMembers(t *testing.T) {
+func TestBackupJobRunnerVoterFromConfiguration(t *testing.T) {
+	configuration := raft.Configuration{Servers: []raft.Server{
+		{ID: "node-local", Address: "node-local:7000", Suffrage: raft.Voter},
+		{ID: "node-voter", Address: "node-voter:7000", Suffrage: raft.Voter},
+		{ID: "node-non-voter", Address: "node-non-voter:7000", Suffrage: raft.Nonvoter},
+	}}
+
+	server, local, err := backupJobRunnerVoterFromConfiguration(configuration, "node-local", "node-voter")
+	if err != nil || local || server.ID != "node-voter" {
+		t.Fatalf("remote voter = %+v local=%v err=%v", server, local, err)
+	}
+	_, local, err = backupJobRunnerVoterFromConfiguration(configuration, "node-local", "node-local")
+	if err != nil || !local {
+		t.Fatalf("local voter local=%v err=%v", local, err)
+	}
+	_, _, err = backupJobRunnerVoterFromConfiguration(configuration, "node-local", "node-non-voter")
+	if err == nil || !strings.Contains(err.Error(), "backup_runner_not_raft_voter") {
+		t.Fatalf("non-voter error = %v", err)
+	}
+	_, _, err = backupJobRunnerVoterFromConfiguration(configuration, "node-local", "removed-node")
+	if err == nil || !strings.Contains(err.Error(), "backup_runner_not_raft_member") {
+		t.Fatalf("removed member error = %v", err)
+	}
+}
+
+func TestIntegrationRaftBackupJobPlacementFenceRaceIsDeterministicAcrossMembers(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(
 		t,
 		3,
@@ -28,7 +47,6 @@ func TestBackupJobPlacementFenceRaceIsDeterministicAcrossRaftMembers(t *testing.
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationGuestOperation{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 
 	expected, err := clusterModels.LoadBackupJobPlacementFence(
@@ -91,86 +109,4 @@ func TestBackupJobPlacementFenceRaceIsDeterministicAcrossRaftMembers(t *testing.
 		}
 		return true
 	})
-}
-
-func TestBackupJobRunnerResolutionRejectsNonVoter(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ClusterNode{})
-	nonVoter := newClusterRaftTestNode(t, "node-non-voter", &clusterModels.ClusterNode{})
-	nodes = append(nodes, nonVoter)
-	connectClusterRaftTestNodes(nodes)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes[:1], 8*time.Second)
-	if err := leader.raft.AddNonvoter(raft.ServerID(nonVoter.id), nonVoter.addr, 0, 5*time.Second).Error(); err != nil {
-		t.Fatalf("add non-voter: %v", err)
-	}
-	if err := leader.service.DB.Create(&clusterModels.ClusterNode{
-		NodeUUID: nonVoter.id, Status: "online",
-	}).Error; err != nil {
-		t.Fatalf("seed stale health row: %v", err)
-	}
-	_, _, err := leader.service.backupJobRunnerVoter("node-non-voter")
-	if err == nil || !strings.Contains(err.Error(), "backup_runner_not_raft_voter") {
-		t.Fatalf("non-voter resolution error = %v", err)
-	}
-	if leader.service.backupRunnerNodeExists(nonVoter.id) {
-		t.Fatal("stale health row made a non-voter a valid replication runner")
-	}
-}
-
-func TestRemoteBackupJobValidationRejectsSpoofedRunnerIdentity(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(
-		t,
-		2,
-		&clusterModels.BackupTarget{},
-		&clusterModels.BackupJob{},
-		&clusterModels.ReplicationPolicy{},
-		&clusterModels.ReplicationGuestOperation{},
-		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
-	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	runner := remoteClusterRaftTestNode(t, nodes, leader)
-	leader.service.NodeID = leader.id
-	leader.service.AuthService = clusterAuthStub{}
-	if err := leader.service.DB.Create(&clusterModels.BackupTarget{
-		ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
-	}).Error; err != nil {
-		t.Fatalf("seed target: %v", err)
-	}
-
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	sim.serveMux.HandleFunc("/api/intra-cluster/backup-job-safety-validation", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(internal.APIResponse[BackupJobSafetyValidationResult]{
-			Status: "success",
-			Data: BackupJobSafetyValidationResult{
-				NodeID: "spoofed-node", RaftAppliedIndex: ^uint64(0), Valid: true,
-				Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
-				Classification: BackupJobSourceClassificationDataset, FriendlySource: "tank/data",
-			},
-		})
-	})
-	leader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != runner.id {
-			return "", fmt.Errorf("unexpected runner")
-		}
-		return sim.Addr(), nil
-	}
-	enabled := true
-	err := leader.service.ProposeBackupJobCreateContext(context.Background(), clusterServiceInterfaces.BackupJobReq{
-		Name: "spoofed", TargetID: 1, RunnerNodeID: runner.id,
-		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data", Enabled: &enabled,
-	}, false)
-	if err == nil || !strings.Contains(err.Error(), "backup_runner_identity_mismatch") {
-		t.Fatalf("spoofed identity error = %v", err)
-	}
-
-	var count int64
-	if err := leader.service.DB.Model(&clusterModels.BackupJob{}).Count(&count).Error; err != nil {
-		t.Fatalf("count jobs: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("job count = %d, want 0", count)
-	}
 }

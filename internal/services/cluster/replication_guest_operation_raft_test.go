@@ -11,14 +11,13 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestRaftReplicationGuestOperationSurvivesLeaderFailover(t *testing.T) {
+func TestIntegrationRaftGuestOperationSurvivesLeaderFailover(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3,
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationGuestOperation{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	initialLeader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	policy := clusterModels.ReplicationPolicy{

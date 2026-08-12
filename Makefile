@@ -18,6 +18,7 @@ INTEGRATION_PACKAGES := \
 	./internal/services/libvirt \
 	./internal/services/migration \
 	./internal/services/network \
+	./internal/services/cluster \
 	./internal/services/zelta \
 	./internal/services/zfs
 

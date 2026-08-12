@@ -11,20 +11,16 @@ package zelta
 import (
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
@@ -144,27 +140,23 @@ func newZeltaRaftNode(t *testing.T, id string, models ...any) *zeltaRaftNode {
 		t.Fatalf("raft.NewRaft(%s): %v", id, err)
 	}
 
-	return &zeltaRaftNode{
+	node := &zeltaRaftNode{
 		id: id, addr: addr, transport: transport, raft: r, db: db,
 		cService: &cluster.Service{DB: db, Raft: r},
 	}
+	t.Cleanup(func() { cleanupZeltaRaftNode(node) })
+	return node
 }
 
-func SetupZeltaClusterFixture(t *testing.T, nodeCount int) *ZeltaClusterFixture {
+func SetupZeltaClusterFixture(t *testing.T, nodeCount int, extraModels ...any) *ZeltaClusterFixture {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("requires real in-memory Raft; covered by the native integration lane")
+	}
 
 	if nodeCount < 1 || nodeCount > 5 {
 		t.Fatalf("nodeCount must be 1-5, got %d", nodeCount)
 	}
-
-	cfg := &internal.SylveConfig{
-		Environment: internal.Development,
-		DataPath:    t.TempDir(),
-	}
-	if err := db.SetupQueue(cfg, true, zerolog.New(io.Discard)); err != nil {
-		t.Fatalf("SetupQueue: %v", err)
-	}
-	db.SetupCache(cfg)
 
 	localNodeID, err := utils.GetSystemUUID()
 	if err != nil {
@@ -186,6 +178,7 @@ func SetupZeltaClusterFixture(t *testing.T, nodeCount int) *ZeltaClusterFixture 
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
 	}
+	models = append(models, extraModels...)
 
 	nodes := make([]*zeltaRaftNode, 0, nodeCount)
 	nodeIDs := make([]string, nodeCount)
@@ -327,22 +320,19 @@ func waitVoterCount(t *testing.T, nodes []*zeltaRaftNode, expected int, timeout 
 	t.Fatalf("timed out waiting for %d voters", expected)
 }
 
-func (f *ZeltaClusterFixture) Cleanup() {
-	for _, n := range f.Nodes {
-		if n.raft != nil && n.raft.State() != raft.Shutdown {
-			_ = n.raft.Shutdown().Error()
-		}
-		if n.transport != nil {
-			_ = n.transport.Close()
-		}
-		if n.db != nil {
-			if sqlDB, err := n.db.DB(); err == nil {
-				_ = sqlDB.Close()
-			}
-		}
+func cleanupZeltaRaftNode(node *zeltaRaftNode) {
+	if node == nil {
+		return
 	}
-	if db.CacheDB != nil {
-		_ = db.CacheDB.Close()
-		db.CacheDB = nil
+	if node.raft != nil && node.raft.State() != raft.Shutdown {
+		_ = node.raft.Shutdown().Error()
+	}
+	if node.transport != nil {
+		_ = node.transport.Close()
+	}
+	if node.db != nil {
+		if sqlDB, err := node.db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
 	}
 }

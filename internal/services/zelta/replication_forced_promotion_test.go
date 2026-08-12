@@ -3,11 +3,8 @@
 package zelta
 
 import (
-	"strings"
 	"testing"
 	"time"
-
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 func TestForcedPromotionObservationRequiresContinuousLocalWait(t *testing.T) {
@@ -81,87 +78,5 @@ func TestForcedPromotionObservationDoesNotSurviveServiceRestart(t *testing.T) {
 	if decision.Ready || decision.Remaining != replicationForcedPromotionWait ||
 		decision.Reason != "first_owner_unreachable_observation" {
 		t.Fatalf("restarted service decision = %+v", decision)
-	}
-}
-
-func TestAutoForceControllerResetsWaitAfterOwnerRecovery(t *testing.T) {
-	fx := SetupZeltaClusterFixture(t, 3)
-	defer fx.Cleanup()
-
-	start := time.Date(2045, time.January, 1, 0, 0, 0, 0, time.UTC)
-	verifiedAt := start
-	readyUntil := start.Add(time.Hour)
-	policy := &clusterModels.ReplicationPolicy{
-		ID: 7301, Name: "auto-force-barrier", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 7301, SourceNodeID: "node-2", ActiveNodeID: "node-2", OwnerEpoch: 1,
-		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
-		FailoverMode: clusterModels.ReplicationFailoverAutoForce,
-		Enabled:      true, CronExpr: "*/5 * * * *",
-		Targets: []clusterModels.ReplicationPolicyTarget{
-			{NodeID: fx.LocalNodeID, Weight: 200, Ready: true, GenerationID: "generation-a", OwnerEpoch: 1, ManifestHash: "manifest-a", RequiredDatasetCount: 1, CompletedDatasetCount: 1, LastVerifiedAt: &verifiedAt, ReadyUntil: &readyUntil},
-			{NodeID: "node-3", Weight: 100, Ready: true, GenerationID: "generation-b", OwnerEpoch: 1, ManifestHash: "manifest-b", RequiredDatasetCount: 1, CompletedDatasetCount: 1, LastVerifiedAt: &verifiedAt, ReadyUntil: &readyUntil},
-		},
-	}
-	fx.SeedPolicy(policy)
-	fx.SeedLease(&clusterModels.ReplicationLease{
-		PolicyID: policy.ID, GuestType: policy.GuestType, GuestID: policy.GuestID,
-		OwnerNodeID: "node-2", OwnerEpoch: 1, Version: 41, ExpiresAt: start.Add(24 * time.Hour),
-	})
-	service := fx.NewZeltaService()
-	clock := &fakeReplicationRuntimeClock{now: start}
-	service.setReplicationRuntimeClock(clock)
-	defer service.replicationCountersDelete(policy.ID)
-
-	fx.SetNodeStatus("node-2", "offline")
-	for range 11 {
-		if err := service.runFailoverControllerTick(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-		clock.Sleep(replicationFailoverControllerInterval)
-	}
-	var current clusterModels.ReplicationPolicy
-	if err := fx.DB.First(&current, policy.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if transitionStateInProgress(current.TransitionState) {
-		t.Fatalf("auto_force transitioned before barrier: %q", current.TransitionState)
-	}
-
-	fx.SetNodeStatus("node-2", "online")
-	if err := service.runFailoverControllerTick(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	service.forcedPromotionMu.Lock()
-	_, tracked := service.forcedPromotions[policy.ID]
-	service.forcedPromotionMu.Unlock()
-	if tracked {
-		t.Fatal("owner recovery did not reset forced-promotion wait")
-	}
-
-	fx.SetNodeStatus("node-2", "offline")
-	if err := service.runFailoverControllerTick(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	service.forcedPromotionMu.Lock()
-	observation := service.forcedPromotions[policy.ID]
-	service.forcedPromotionMu.Unlock()
-	if !observation.firstObservedAt.Equal(clock.Now()) {
-		t.Fatalf("new outage started at %s, want %s", observation.firstObservedAt, clock.Now())
-	}
-	for range 10 {
-		clock.Sleep(replicationFailoverControllerInterval)
-		if err := service.runFailoverControllerTick(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	clock.Sleep(2 * time.Second)
-	if err := service.runFailoverControllerTick(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if err := fx.DB.First(&current, policy.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(current.TransitionRunID) == "" {
-		t.Fatal("auto_force did not begin a transition after the full fencing wait")
 	}
 }

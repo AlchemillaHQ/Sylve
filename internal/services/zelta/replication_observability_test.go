@@ -312,9 +312,35 @@ func TestInterruptOrphanedLocalReplicationEventsFinalizesAudit(t *testing.T) {
 	}
 }
 
-func TestReconcileReplicationTransitionEventFinalizesRecoveredPromotion(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func TestIntegrationRaftReplicationTransitionEventReconciliation(t *testing.T) {
+	clusterSvc := SetupZeltaClusterFixture(t, 1).ClusterSvc
+	t.Run("finalizes recovered promotion", func(t *testing.T) {
+		testReconcileReplicationTransitionEventFinalizesRecoveredPromotion(t, clusterSvc)
+	})
+	t.Run("backfills legacy rollback", func(t *testing.T) {
+		testReconcileReplicationTransitionEventBackfillsLegacyRollback(t, clusterSvc)
+	})
+	t.Run("recreates recent missing event", func(t *testing.T) {
+		testReconcileReplicationTransitionEventRecreatesRecentMissingEvent(t, clusterSvc)
+	})
+	t.Run("does not duplicate completed legacy event", func(t *testing.T) {
+		testReconcileReplicationTransitionEventDoesNotDuplicateCompletedLegacyEvent(t, clusterSvc)
+	})
+	t.Run("does not recreate expired history", func(t *testing.T) {
+		testReconcileReplicationTransitionEventDoesNotRecreateExpiredHistory(t, clusterSvc)
+	})
+	t.Run("does not create migration failover event", func(t *testing.T) {
+		testReconcileReplicationTransitionEventDoesNotCreateMigrationFailoverEvent(t, clusterSvc)
+	})
+	t.Run("ensure is idempotent", func(t *testing.T) {
+		testEnsureReplicationTransitionEventIsIdempotent(t, clusterSvc)
+	})
+}
+
+func testReconcileReplicationTransitionEventFinalizesRecoveredPromotion(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	requestedAt := time.Now().UTC().Add(-time.Minute)
@@ -351,15 +377,17 @@ func TestReconcileReplicationTransitionEventFinalizesRecoveredPromotion(t *testi
 	}
 }
 
-func TestReconcileReplicationTransitionEventBackfillsLegacyRollback(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func testReconcileReplicationTransitionEventBackfillsLegacyRollback(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	requestedAt := time.Now().UTC().Add(-time.Minute)
 	completedAt := requestedAt.Add(45 * time.Second)
 	policyID := uint(7002)
 	legacy := clusterModels.ReplicationEvent{
+		ID:       7002,
 		PolicyID: &policyID, EventType: "failover", Status: replicationEventStatusPromoting,
 		Error: "activation_failed", SourceNodeID: "node-a", TargetNodeID: "node-b", StartedAt: requestedAt,
 	}
@@ -388,9 +416,10 @@ func TestReconcileReplicationTransitionEventBackfillsLegacyRollback(t *testing.T
 	}
 }
 
-func TestReconcileReplicationTransitionEventRecreatesRecentMissingEvent(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func testReconcileReplicationTransitionEventRecreatesRecentMissingEvent(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	requestedAt := time.Now().UTC().Add(-time.Minute)
@@ -428,9 +457,10 @@ func TestReconcileReplicationTransitionEventRecreatesRecentMissingEvent(t *testi
 	}
 }
 
-func TestReconcileReplicationTransitionEventDoesNotDuplicateCompletedLegacyEvent(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func testReconcileReplicationTransitionEventDoesNotDuplicateCompletedLegacyEvent(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	requestedAt := time.Now().UTC().Add(-time.Minute)
@@ -464,9 +494,10 @@ func TestReconcileReplicationTransitionEventDoesNotDuplicateCompletedLegacyEvent
 	}
 }
 
-func TestReconcileReplicationTransitionEventDoesNotRecreateExpiredHistory(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func testReconcileReplicationTransitionEventDoesNotRecreateExpiredHistory(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	requestedAt := time.Now().UTC().Add(-2 * replicationTerminalEventRecreateWindow)
@@ -492,9 +523,10 @@ func TestReconcileReplicationTransitionEventDoesNotRecreateExpiredHistory(t *tes
 	}
 }
 
-func TestReconcileReplicationTransitionEventDoesNotCreateMigrationFailoverEvent(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func testReconcileReplicationTransitionEventDoesNotCreateMigrationFailoverEvent(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	requestedAt := time.Now().UTC().Add(-time.Minute)
@@ -511,7 +543,8 @@ func TestReconcileReplicationTransitionEventDoesNotCreateMigrationFailoverEvent(
 		t.Fatalf("reconcile migration transition: %v", err)
 	}
 	var count int64
-	if err := clusterSvc.DB.Model(&clusterModels.ReplicationTransitionEvent{}).Count(&count).Error; err != nil {
+	if err := clusterSvc.DB.Model(&clusterModels.ReplicationTransitionEvent{}).
+		Where("policy_id = ?", policy.ID).Count(&count).Error; err != nil {
 		t.Fatalf("count migration events: %v", err)
 	}
 	if count != 0 {
@@ -519,9 +552,10 @@ func TestReconcileReplicationTransitionEventDoesNotCreateMigrationFailoverEvent(
 	}
 }
 
-func TestEnsureReplicationTransitionEventIsIdempotent(t *testing.T) {
-	clusterSvc, _, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func testEnsureReplicationTransitionEventIsIdempotent(
+	t *testing.T,
+	clusterSvc *clusterService.Service,
+) {
 	service := newTestZeltaService(clusterSvc.DB)
 	service.Cluster = clusterSvc
 	startedAt := time.Now().UTC()
