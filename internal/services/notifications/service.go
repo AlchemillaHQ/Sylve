@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,8 +40,8 @@ import (
 const (
 	defaultNtfyBaseURL = "https://ntfy.sh"
 	defaultSMTPPort    = 587
-	defaultListLimit   = 50
-	maxListLimit       = 500
+	DefaultListLimit   = 50
+	MaxListLimit       = 500
 )
 
 const (
@@ -159,12 +160,7 @@ type DiscordTransportConfigView struct {
 	WebhookURL string `json:"webhookUrl"`
 }
 
-type TransportConfigUpdate struct {
-	Transports []TransportConfigEntryUpdate `json:"transports"`
-}
-
-type TransportConfigEntryUpdate struct {
-	ID      uint                          `json:"id"`
+type TransportInput struct {
 	Name    string                        `json:"name"`
 	Type    string                        `json:"type"`
 	Enabled bool                          `json:"enabled"`
@@ -682,10 +678,10 @@ func (s *Service) List(ctx context.Context, scope ListScope, limit, offset int) 
 	}
 
 	if limit <= 0 {
-		limit = defaultListLimit
+		limit = DefaultListLimit
 	}
-	if limit > maxListLimit {
-		limit = maxListLimit
+	if limit > MaxListLimit {
+		limit = MaxListLimit
 	}
 	if offset < 0 {
 		offset = 0
@@ -1068,145 +1064,131 @@ func (s *Service) GetTransportConfig(ctx context.Context) (TransportConfigView, 
 	return s.toTransportConfigView(configs), nil
 }
 
-func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConfigUpdate) (TransportConfigView, error) {
+func (s *Service) CreateTransport(ctx context.Context, input TransportInput) (TransportConfigView, error) {
+	return s.saveTransport(ctx, 0, input)
+}
+
+func (s *Service) UpdateTransport(ctx context.Context, id uint, input TransportInput) (TransportConfigView, error) {
+	if id == 0 {
+		return TransportConfigView{}, fmt.Errorf("invalid_transport_id")
+	}
+	return s.saveTransport(ctx, id, input)
+}
+
+func (s *Service) saveTransport(ctx context.Context, id uint, input TransportInput) (TransportConfigView, error) {
 	if s == nil || s.DB == nil {
 		return TransportConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
 
-	entries := append([]TransportConfigEntryUpdate{}, input.Transports...)
-
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		keepIDs := make(map[uint]struct{}, len(entries))
+		transportType := normalizeTransportType(input.Type)
+		if transportType != TransportTypeNtfy && transportType != TransportTypeSMTP && transportType != TransportTypeDiscord {
+			return fmt.Errorf("invalid_transport_type")
+		}
 
-		for _, entry := range entries {
-			transportType := normalizeTransportType(entry.Type)
-			if transportType != TransportTypeNtfy && transportType != TransportTypeSMTP && transportType != TransportTypeDiscord {
-				return fmt.Errorf("invalid_transport_type")
+		cfg, err := s.resolveTransportForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+
+		cfg.Name = strings.TrimSpace(input.Name)
+		if cfg.Name == "" {
+			return fmt.Errorf("transport_name_required")
+		}
+		cfg.Type = transportType
+
+		switch transportType {
+		case TransportTypeNtfy:
+			if input.Ntfy == nil {
+				return fmt.Errorf("ntfy_config_required")
 			}
 
-			cfg, err := s.resolveTransportForUpdate(tx, entry.ID)
+			cfg.NtfyEnabled = input.Enabled
+			cfg.NtfyBaseURL = normalizeNtfyBaseURL(input.Ntfy.BaseURL)
+			cfg.NtfyTopic = strings.TrimSpace(input.Ntfy.Topic)
+			cfg.EmailEnabled = false
+			cfg.SMTPHost = ""
+			cfg.SMTPPort = defaultSMTPPort
+			cfg.SMTPUsername = ""
+			cfg.SMTPFrom = ""
+			cfg.SMTPUseTLS = true
+			cfg.EmailRecipients = []string{}
+			cfg.SMTPPassword = ""
+			cfg.DiscordEnabled = false
+			cfg.DiscordWebhookURL = ""
+
+			if input.Ntfy.AuthToken != nil {
+				cfg.NtfyAuthToken = strings.TrimSpace(*input.Ntfy.AuthToken)
+			}
+		case TransportTypeSMTP:
+			if input.Email == nil {
+				return fmt.Errorf("smtp_config_required")
+			}
+
+			normalizedRecipients, err := normalizeRecipients(input.Email.Recipients)
 			if err != nil {
 				return err
 			}
-
-			cfg.Name = strings.TrimSpace(entry.Name)
-			if cfg.Name == "" {
-				return fmt.Errorf("transport_name_required")
-			}
-			cfg.Type = transportType
-
-			if cfg.ID == 0 {
-				if err := tx.Create(&cfg).Error; err != nil {
-					return err
-				}
-			}
-
-			switch transportType {
-			case TransportTypeNtfy:
-				if entry.Ntfy == nil {
-					return fmt.Errorf("ntfy_config_required")
-				}
-
-				cfg.NtfyEnabled = entry.Enabled
-				cfg.NtfyBaseURL = normalizeNtfyBaseURL(entry.Ntfy.BaseURL)
-				cfg.NtfyTopic = strings.TrimSpace(entry.Ntfy.Topic)
-				cfg.EmailEnabled = false
-				cfg.SMTPHost = ""
+			cfg.EmailEnabled = input.Enabled
+			cfg.SMTPHost = strings.TrimSpace(input.Email.SMTPHost)
+			cfg.SMTPPort = input.Email.SMTPPort
+			if cfg.SMTPPort <= 0 {
 				cfg.SMTPPort = defaultSMTPPort
-				cfg.SMTPUsername = ""
-				cfg.SMTPFrom = ""
-				cfg.SMTPUseTLS = true
-				cfg.EmailRecipients = []string{}
-				cfg.SMTPPassword = ""
-				cfg.DiscordEnabled = false
-				cfg.DiscordWebhookURL = ""
+			}
+			cfg.SMTPUsername = strings.TrimSpace(input.Email.SMTPUsername)
+			cfg.SMTPFrom = strings.TrimSpace(input.Email.SMTPFrom)
+			if cfg.SMTPFrom != "" && !utils.IsValidEmail(cfg.SMTPFrom) {
+				return fmt.Errorf("invalid_smtp_from_email")
+			}
+			cfg.SMTPUseTLS = input.Email.SMTPUseTLS
+			cfg.EmailRecipients = normalizedRecipients
+			cfg.NtfyEnabled = false
+			cfg.NtfyBaseURL = defaultNtfyBaseURL
+			cfg.NtfyTopic = ""
+			cfg.NtfyAuthToken = ""
+			cfg.DiscordEnabled = false
+			cfg.DiscordWebhookURL = ""
 
-				if entry.Ntfy.AuthToken != nil {
-					cfg.NtfyAuthToken = strings.TrimSpace(*entry.Ntfy.AuthToken)
-				}
-			case TransportTypeSMTP:
-				if entry.Email == nil {
-					return fmt.Errorf("smtp_config_required")
-				}
+			if input.Email.SMTPPassword != nil {
+				cfg.SMTPPassword = strings.TrimSpace(*input.Email.SMTPPassword)
+			}
+		case TransportTypeDiscord:
+			if input.Discord == nil {
+				return fmt.Errorf("discord_config_required")
+			}
 
-				normalizedRecipients, err := normalizeRecipients(entry.Email.Recipients)
-				if err != nil {
-					return err
-				}
-				cfg.EmailEnabled = entry.Enabled
-				cfg.SMTPHost = strings.TrimSpace(entry.Email.SMTPHost)
-				cfg.SMTPPort = entry.Email.SMTPPort
-				if cfg.SMTPPort <= 0 {
-					cfg.SMTPPort = defaultSMTPPort
-				}
-				cfg.SMTPUsername = strings.TrimSpace(entry.Email.SMTPUsername)
-				cfg.SMTPFrom = strings.TrimSpace(entry.Email.SMTPFrom)
-				if cfg.SMTPFrom != "" && !utils.IsValidEmail(cfg.SMTPFrom) {
-					return fmt.Errorf("invalid_smtp_from_email")
-				}
-				cfg.SMTPUseTLS = entry.Email.SMTPUseTLS
-				cfg.EmailRecipients = normalizedRecipients
-				cfg.NtfyEnabled = false
-				cfg.NtfyBaseURL = defaultNtfyBaseURL
-				cfg.NtfyTopic = ""
-				cfg.NtfyAuthToken = ""
-				cfg.DiscordEnabled = false
-				cfg.DiscordWebhookURL = ""
+			cfg.DiscordEnabled = input.Enabled
+			cfg.NtfyEnabled = false
+			cfg.NtfyBaseURL = defaultNtfyBaseURL
+			cfg.NtfyTopic = ""
+			cfg.NtfyAuthToken = ""
+			cfg.EmailEnabled = false
+			cfg.SMTPHost = ""
+			cfg.SMTPPort = defaultSMTPPort
+			cfg.SMTPUsername = ""
+			cfg.SMTPFrom = ""
+			cfg.SMTPUseTLS = true
+			cfg.EmailRecipients = []string{}
+			cfg.SMTPPassword = ""
 
-				if entry.Email.SMTPPassword != nil {
-					cfg.SMTPPassword = strings.TrimSpace(*entry.Email.SMTPPassword)
-				}
-			case TransportTypeDiscord:
-				if entry.Discord == nil {
-					return fmt.Errorf("discord_config_required")
-				}
-
-				cfg.DiscordEnabled = entry.Enabled
-				cfg.NtfyEnabled = false
-				cfg.NtfyBaseURL = defaultNtfyBaseURL
-				cfg.NtfyTopic = ""
-				cfg.NtfyAuthToken = ""
-				cfg.EmailEnabled = false
-				cfg.SMTPHost = ""
-				cfg.SMTPPort = defaultSMTPPort
-				cfg.SMTPUsername = ""
-				cfg.SMTPFrom = ""
-				cfg.SMTPUseTLS = true
-				cfg.EmailRecipients = []string{}
-				cfg.SMTPPassword = ""
-
-				if entry.Discord.WebhookURL != nil {
-					webhookURL := strings.TrimSpace(*entry.Discord.WebhookURL)
-					if webhookURL != "" && !strings.HasPrefix(webhookURL, "https://discord.com/api/webhooks/") {
+			if input.Discord.WebhookURL != nil {
+				webhookURL := strings.TrimSpace(*input.Discord.WebhookURL)
+				if webhookURL != "" {
+					parsedURL, err := url.Parse(webhookURL)
+					if err != nil || !strings.EqualFold(parsedURL.Scheme, "https") || parsedURL.Hostname() == "" {
 						return fmt.Errorf("invalid_discord_webhook_url")
 					}
-					cfg.DiscordWebhookURL = webhookURL
 				}
-			default:
-				return fmt.Errorf("invalid_transport_type")
+				cfg.DiscordWebhookURL = webhookURL
 			}
-
-			if err := tx.Save(&cfg).Error; err != nil {
-				return err
-			}
-
-			keepIDs[cfg.ID] = struct{}{}
+		default:
+			return fmt.Errorf("invalid_transport_type")
 		}
 
-		var existing []models.NotificationTransportConfig
-		if err := tx.Find(&existing).Error; err != nil {
-			return err
+		if cfg.ID == 0 {
+			return tx.Create(&cfg).Error
 		}
-		for _, cfg := range existing {
-			if _, keep := keepIDs[cfg.ID]; keep {
-				continue
-			}
-			if err := tx.Delete(&cfg).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
+		return tx.Save(&cfg).Error
 	})
 	if err != nil {
 		return TransportConfigView{}, err
@@ -1447,6 +1429,9 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 			return err
 		}
 
+		if rule.UserDisabled {
+			return gorm.ErrRecordNotFound
+		}
 		if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
 			return fmt.Errorf("notification_rule_not_found")
 		}
@@ -1521,13 +1506,14 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 		if err := tx.First(&rule, id).Error; err != nil {
 			return err
 		}
-
-		rule.UserDisabled = true
-		if err := tx.Save(&rule).Error; err != nil {
-			return err
+		if rule.UserDisabled {
+			return gorm.ErrRecordNotFound
+		}
+		if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
+			return fmt.Errorf("notification_rule_not_found")
 		}
 
-		return nil
+		return deleteNotificationRule(tx, &rule)
 	})
 	if err != nil {
 		return RuleConfigView{}, err
@@ -1543,8 +1529,8 @@ func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigVi
 	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
 		return RuleConfigView{}, err
 	}
-	if len(ids) == 0 {
-		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_ids")
+	if err := validateNotificationRuleIDs(ids); err != nil {
+		return RuleConfigView{}, err
 	}
 
 	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
@@ -1557,18 +1543,16 @@ func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigVi
 			return err
 		}
 
-		var rules []models.NotificationKindRule
-		if err := tx.Find(&rules, ids).Error; err != nil {
+		rules, err := loadManagedNotificationRules(tx, ids)
+		if err != nil {
 			return err
 		}
 
-		for _, rule := range rules {
-			rule.UserDisabled = true
-			if err := tx.Save(&rule).Error; err != nil {
+		for idx := range rules {
+			if err := deleteNotificationRule(tx, &rules[idx]); err != nil {
 				return err
 			}
 		}
-
 		return nil
 	})
 	if err != nil {
@@ -1585,8 +1569,8 @@ func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, nt
 	if err := s.MigrateLegacyDiskSmartRecords(ctx); err != nil {
 		return RuleConfigView{}, err
 	}
-	if len(ids) == 0 {
-		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_ids")
+	if err := validateNotificationRuleIDs(ids); err != nil {
+		return RuleConfigView{}, err
 	}
 
 	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
@@ -1599,8 +1583,8 @@ func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, nt
 			return err
 		}
 
-		var rules []models.NotificationKindRule
-		if err := tx.Find(&rules, ids).Error; err != nil {
+		rules, err := loadManagedNotificationRules(tx, ids)
+		if err != nil {
 			return err
 		}
 
@@ -1629,6 +1613,56 @@ func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, nt
 	}
 
 	return s.GetRuleConfig(ctx)
+}
+
+func validateNotificationRuleIDs(ids []uint) error {
+	if len(ids) == 0 {
+		return fmt.Errorf("invalid_notification_rule_ids")
+	}
+
+	seen := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			return fmt.Errorf("invalid_notification_rule_ids")
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("duplicate_notification_rule_id")
+		}
+		seen[id] = struct{}{}
+	}
+	return nil
+}
+
+func loadManagedNotificationRules(tx *gorm.DB, ids []uint) ([]models.NotificationKindRule, error) {
+	var rules []models.NotificationKindRule
+	if err := tx.Where("id IN ?", ids).Find(&rules).Error; err != nil {
+		return nil, err
+	}
+	if len(rules) != len(ids) {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	for _, rule := range rules {
+		if rule.UserDisabled {
+			return nil, gorm.ErrRecordNotFound
+		}
+		if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
+			return nil, gorm.ErrRecordNotFound
+		}
+	}
+	return rules, nil
+}
+
+func deleteNotificationRule(tx *gorm.DB, rule *models.NotificationKindRule) error {
+	templateKey, _, ok := resolveTemplateTargetFromKind(rule.Kind)
+	if !ok {
+		return fmt.Errorf("notification_rule_not_found")
+	}
+	if templateKey == RuleTemplateZFSPoolState {
+		return tx.Delete(rule).Error
+	}
+	rule.UserDisabled = true
+	return tx.Save(rule).Error
 }
 
 func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string) (models.NotificationKindRule, error) {
@@ -1904,6 +1938,13 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 	}
 	for _, rule := range existing {
 		defaultConfig := expectedKinds[rule.Kind]
+		templateKey, _, _ := resolveTemplateTargetFromKind(rule.Kind)
+		if rule.UserDisabled && templateKey == RuleTemplateZFSPoolState {
+			if err := tx.Delete(&rule).Error; err != nil {
+				return err
+			}
+			continue
+		}
 		delete(expectedKinds, rule.Kind)
 		if !rule.UserDisabled && strings.TrimSpace(rule.Config) == "" && defaultConfig != "" {
 			if err := tx.Model(&rule).Update("config", defaultConfig).Error; err != nil {

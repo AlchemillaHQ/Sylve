@@ -293,6 +293,7 @@
 		'/api/notifications/transports': 'Notification Transport',
 		'/api/notifications/rules/bulk-delete': 'Notification Rule - Bulk Delete',
 		'/api/notifications/rules/bulk-update': 'Notification Rule - Bulk Update',
+		'/api/notifications/rules/test': 'Notification Rule - Test',
 		'/api/notifications/rules': 'Notification Rule',
 		'/api/notifications/dismiss-all': 'Notification - Dismiss All',
 		'/api/notifications/:id/dismiss': 'Notification - Dismiss',

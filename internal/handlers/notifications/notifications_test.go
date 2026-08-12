@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -112,6 +113,134 @@ func TestNotificationsListHandlerReturnsItems(t *testing.T) {
 	}
 }
 
+func TestNotificationsListHandlerRejectsInvalidPagination(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.GET("/api/notifications", List(nil))
+
+	for _, query := range []string{
+		"scope=unknown",
+		"limit=invalid",
+		"limit=0",
+		"limit=-1",
+		"limit=501",
+		"offset=invalid",
+		"offset=-1",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/notifications?"+query, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("query=%q status=%d want=%d body=%s", query, rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	}
+}
+
+func TestCountHandlerHidesUnexpectedInternalErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.GET("/api/notifications/count", Count(nil))
+	req := httptest.NewRequest(http.MethodGet, "/api/notifications/count", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d want=%d body=%s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "notifications_service_not_initialized") ||
+		!strings.Contains(rec.Body.String(), `"error":"internal_server_error"`) {
+		t.Fatalf("unexpected internal error response: %s", rec.Body.String())
+	}
+}
+
+func TestTransportMemberHandlersCreateAndUpdateOneResource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	router := gin.New()
+	router.POST("/api/notifications/transports", CreateTransport(svc))
+	router.PUT("/api/notifications/transports/:id", UpdateTransport(svc))
+
+	createBody := []byte(`{"name":"Primary ntfy","type":"ntfy","enabled":true,"ntfy":{"baseUrl":"https://ntfy.sh","topic":"primary"}}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/notifications/transports", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status=%d want=%d body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+
+	var created struct {
+		Data notifications.TransportConfigView `json:"data"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if len(created.Data.Transports) != 1 {
+		t.Fatalf("created transports=%d want=1", len(created.Data.Transports))
+	}
+	createdID := created.Data.Transports[0].ID
+
+	if _, err := svc.CreateTransport(context.Background(), notifications.TransportInput{
+		Name:    "Secondary Discord",
+		Type:    notifications.TransportTypeDiscord,
+		Enabled: true,
+		Discord: &notifications.DiscordTransportConfigUpdate{},
+	}); err != nil {
+		t.Fatalf("seed second transport: %v", err)
+	}
+
+	updateBody := []byte(`{"name":"Primary renamed","type":"ntfy","enabled":false,"ntfy":{"baseUrl":"https://ntfy.sh","topic":"updated"}}`)
+	updateReq := httptest.NewRequest(
+		http.MethodPut,
+		"/api/notifications/transports/"+strconv.FormatUint(uint64(createdID), 10),
+		bytes.NewReader(updateBody),
+	)
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	router.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update status=%d want=%d body=%s", updateRec.Code, http.StatusOK, updateRec.Body.String())
+	}
+
+	var count int64
+	if err := svc.DB.Model(&models.NotificationTransportConfig{}).Count(&count).Error; err != nil {
+		t.Fatalf("count transports: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("transport count=%d want=2", count)
+	}
+}
+
+func TestNotificationJSONBodyLimitReturns413(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	router := gin.New()
+	router.Use(middleware.LimitRequestBody(64))
+	router.POST("/api/notifications/transports", CreateTransport(svc))
+
+	body := `{"name":"` + strings.Repeat("x", 128) + `","type":"ntfy","enabled":true,"ntfy":{"topic":"alerts"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/notifications/transports", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status=%d want=%d body=%s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+	}
+	var count int64
+	if err := svc.DB.Model(&models.NotificationTransportConfig{}).Count(&count).Error; err != nil {
+		t.Fatalf("count transports: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("transport count=%d want=0", count)
+	}
+}
+
 func TestDismissAllHandlerDismissesActiveNotifications(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -165,17 +294,13 @@ func TestTestTransportHandlerSendsNtfyTransport(t *testing.T) {
 		return nil
 	})
 
-	view, err := svc.UpdateTransportConfig(context.Background(), notifications.TransportConfigUpdate{
-		Transports: []notifications.TransportConfigEntryUpdate{
-			{
-				Name:    "Ntfy",
-				Type:    notifications.TransportTypeNtfy,
-				Enabled: false,
-				Ntfy: &notifications.NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "alerts",
-				},
-			},
+	view, err := svc.CreateTransport(context.Background(), notifications.TransportInput{
+		Name:    "Ntfy",
+		Type:    notifications.TransportTypeNtfy,
+		Enabled: false,
+		Ntfy: &notifications.NtfyTransportConfigUpdate{
+			BaseURL: "https://ntfy.sh",
+			Topic:   "alerts",
 		},
 	})
 	if err != nil {
@@ -211,19 +336,15 @@ func TestTestTransportHandlerSendsSMTPTransport(t *testing.T) {
 		return nil
 	})
 
-	view, err := svc.UpdateTransportConfig(context.Background(), notifications.TransportConfigUpdate{
-		Transports: []notifications.TransportConfigEntryUpdate{
-			{
-				Name:    "SMTP",
-				Type:    notifications.TransportTypeSMTP,
-				Enabled: false,
-				Email: &notifications.EmailTransportConfigUpdate{
-					SMTPHost:   "smtp.example.com",
-					SMTPPort:   587,
-					SMTPFrom:   "alerts@example.com",
-					Recipients: []string{"alerts@example.com"},
-				},
-			},
+	view, err := svc.CreateTransport(context.Background(), notifications.TransportInput{
+		Name:    "SMTP",
+		Type:    notifications.TransportTypeSMTP,
+		Enabled: false,
+		Email: &notifications.EmailTransportConfigUpdate{
+			SMTPHost:   "smtp.example.com",
+			SMTPPort:   587,
+			SMTPFrom:   "alerts@example.com",
+			Recipients: []string{"alerts@example.com"},
 		},
 	})
 	if err != nil {
@@ -253,19 +374,15 @@ func TestTestTransportHandlerReturnsBadRequestForInvalidTransportConfig(t *testi
 	gin.SetMode(gin.TestMode)
 
 	svc := newHandlerTestService(t)
-	view, err := svc.UpdateTransportConfig(context.Background(), notifications.TransportConfigUpdate{
-		Transports: []notifications.TransportConfigEntryUpdate{
-			{
-				Name:    "Broken SMTP",
-				Type:    notifications.TransportTypeSMTP,
-				Enabled: true,
-				Email: &notifications.EmailTransportConfigUpdate{
-					SMTPHost:   "",
-					SMTPPort:   587,
-					SMTPFrom:   "alerts@example.com",
-					Recipients: []string{"alerts@example.com"},
-				},
-			},
+	view, err := svc.CreateTransport(context.Background(), notifications.TransportInput{
+		Name:    "Broken SMTP",
+		Type:    notifications.TransportTypeSMTP,
+		Enabled: true,
+		Email: &notifications.EmailTransportConfigUpdate{
+			SMTPHost:   "",
+			SMTPPort:   587,
+			SMTPFrom:   "alerts@example.com",
+			Recipients: []string{"alerts@example.com"},
 		},
 	})
 	if err != nil {
@@ -386,6 +503,90 @@ func TestUpdateRulesHandlerRejectsUnknownRule(t *testing.T) {
 	}
 }
 
+func TestBulkUpdateRulesHandlerRequiresAnExactUniquePositiveSet(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot", "tank"}}).Error; err != nil {
+		t.Fatalf("seed basic settings: %v", err)
+	}
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("load rules: %v", err)
+	}
+	if len(view.Rules) != 2 {
+		t.Fatalf("rules=%d want=2", len(view.Rules))
+	}
+
+	router := gin.New()
+	router.POST("/api/notifications/rules/bulk-update", BulkUpdateRules(svc))
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{
+			name:       "zero",
+			body:       `{"ids":[0],"uiEnabled":false}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "negative",
+			body:       `{"ids":[-1],"uiEnabled":false}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "duplicate",
+			body:       `{"ids":[` + strconv.FormatUint(uint64(view.Rules[0].ID), 10) + `,` + strconv.FormatUint(uint64(view.Rules[0].ID), 10) + `],"uiEnabled":false}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "missing",
+			body:       `{"ids":[` + strconv.FormatUint(uint64(view.Rules[0].ID), 10) + `,999999],"uiEnabled":false}`,
+			wantStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/notifications/rules/bulk-update", strings.NewReader(test.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != test.wantStatus {
+				t.Fatalf("status=%d want=%d body=%s", rec.Code, test.wantStatus, rec.Body.String())
+			}
+		})
+	}
+
+	var unchanged models.NotificationKindRule
+	if err := svc.DB.First(&unchanged, view.Rules[0].ID).Error; err != nil {
+		t.Fatalf("load unchanged rule: %v", err)
+	}
+	if !unchanged.UIEnabled {
+		t.Fatal("invalid bulk requests partially updated a valid rule")
+	}
+
+	validBody := `{"ids":[` + strconv.FormatUint(uint64(view.Rules[0].ID), 10) + `,` + strconv.FormatUint(uint64(view.Rules[1].ID), 10) + `],"uiEnabled":false}`
+	validReq := httptest.NewRequest(http.MethodPost, "/api/notifications/rules/bulk-update", strings.NewReader(validBody))
+	validReq.Header.Set("Content-Type", "application/json")
+	validRec := httptest.NewRecorder()
+	router.ServeHTTP(validRec, validReq)
+	if validRec.Code != http.StatusOK {
+		t.Fatalf("valid status=%d want=%d body=%s", validRec.Code, http.StatusOK, validRec.Body.String())
+	}
+	for _, rule := range view.Rules {
+		var stored models.NotificationKindRule
+		if err := svc.DB.First(&stored, rule.ID).Error; err != nil {
+			t.Fatalf("load updated rule %d: %v", rule.ID, err)
+		}
+		if stored.UIEnabled {
+			t.Fatalf("rule %d was not updated", rule.ID)
+		}
+	}
+}
+
 func TestCreateRuleHandlerRejectsDuplicateRule(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -407,8 +608,8 @@ func TestCreateRuleHandlerRejectsDuplicateRule(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected_409 got: %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -760,6 +760,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	notifications := api.Group("/notifications")
 	notifications.Use(middleware.EnsureAuthenticated(authService))
+	notifications.Use(middleware.RequireLocalAdminForWrites(authService))
 	notifications.Use(EnsureCorrectHost(db, authService))
 	notifications.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -767,18 +768,28 @@ func RegisterRoutes(r *gin.Engine,
 		notifications.GET("/count", notificationsHandlers.Count(notificationService))
 		notifications.POST("/dismiss-all", notificationsHandlers.DismissAll(notificationService))
 		notifications.POST("/:id/dismiss", notificationsHandlers.Dismiss(notificationService))
-		notifications.GET("/transports", notificationsHandlers.GetConfig(notificationService))
-		notifications.PUT("/transports", notificationsHandlers.UpdateConfig(notificationService))
-		notifications.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
-		notifications.POST("/transports/:id/test", notificationsHandlers.TestTransport(notificationService))
-		notifications.GET("/rules", notificationsHandlers.GetRules(notificationService))
-		notifications.POST("/rules/test", notificationsHandlers.TestRule(notificationService))
-		notifications.POST("/rules", notificationsHandlers.CreateRule(notificationService))
-		notifications.PUT("/rules", notificationsHandlers.UpdateRules(notificationService))
-		notifications.PUT("/rules/:id", notificationsHandlers.UpdateRule(notificationService))
-		notifications.DELETE("/rules/:id", notificationsHandlers.DeleteRule(notificationService))
-		notifications.POST("/rules/bulk-delete", notificationsHandlers.BulkDeleteRules(notificationService))
-		notifications.POST("/rules/bulk-update", notificationsHandlers.BulkUpdateRules(notificationService))
+	}
+
+	notificationSettings := api.Group("/notifications")
+	notificationSettings.Use(middleware.EnsureAuthenticated(authService))
+	notificationSettings.Use(middleware.RequireLocalAdmin(authService))
+	notificationSettings.Use(EnsureCorrectHost(db, authService))
+	notificationSettings.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	notificationSettings.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		notificationSettings.GET("/transports", notificationsHandlers.GetTransports(notificationService))
+		notificationSettings.POST("/transports", notificationsHandlers.CreateTransport(notificationService))
+		notificationSettings.PUT("/transports/:id", notificationsHandlers.UpdateTransport(notificationService))
+		notificationSettings.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
+		notificationSettings.POST("/transports/:id/test", notificationsHandlers.TestTransport(notificationService))
+		notificationSettings.GET("/rules", notificationsHandlers.GetRules(notificationService))
+		notificationSettings.POST("/rules/test", notificationsHandlers.TestRule(notificationService))
+		notificationSettings.POST("/rules", notificationsHandlers.CreateRule(notificationService))
+		notificationSettings.PUT("/rules", notificationsHandlers.UpdateRules(notificationService))
+		notificationSettings.PUT("/rules/:id", notificationsHandlers.UpdateRule(notificationService))
+		notificationSettings.DELETE("/rules/:id", notificationsHandlers.DeleteRule(notificationService))
+		notificationSettings.POST("/rules/bulk-delete", notificationsHandlers.BulkDeleteRules(notificationService))
+		notificationSettings.POST("/rules/bulk-update", notificationsHandlers.BulkUpdateRules(notificationService))
 	}
 
 	users := authManagement.Group("/users")

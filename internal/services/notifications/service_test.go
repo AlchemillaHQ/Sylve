@@ -19,6 +19,7 @@ import (
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"gorm.io/gorm"
 )
 
 func newTestService(t *testing.T) *Service {
@@ -37,6 +38,20 @@ func newTestService(t *testing.T) *Service {
 	svc := NewService(db)
 	notifier.SetEmitter(svc)
 	return svc
+}
+
+func createTestTransports(t *testing.T, svc *Service, inputs ...TransportInput) TransportConfigView {
+	t.Helper()
+
+	var view TransportConfigView
+	for _, input := range inputs {
+		var err error
+		view, err = svc.CreateTransport(context.Background(), input)
+		if err != nil {
+			t.Fatalf("create test transport: %v", err)
+		}
+	}
+	return view
 }
 
 type mockDiskService struct {
@@ -302,33 +317,28 @@ func TestTransportSendersRespectConfigAndSuppression(t *testing.T) {
 		return nil
 	})
 
-	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "Primary Ntfy",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "sylve",
-				},
-			},
-			{
-				Name:    "Primary SMTP",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:   "localhost",
-					SMTPPort:   1025,
-					SMTPFrom:   "alerts@example.com",
-					Recipients: []string{"ops@example.com"},
-				},
+	createTestTransports(t, svc,
+		TransportInput{
+			Name:    "Primary Ntfy",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL: "https://ntfy.sh",
+				Topic:   "sylve",
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("update_transport_config_failed: %v", err)
-	}
+		TransportInput{
+			Name:    "Primary SMTP",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:   "localhost",
+				SMTPPort:   1025,
+				SMTPFrom:   "alerts@example.com",
+				Recipients: []string{"ops@example.com"},
+			},
+		},
+	)
 
 	input := notifier.EventInput{
 		Kind:        "network.firewall",
@@ -377,13 +387,10 @@ func TestEmitReportsTotalTransportFailureWhenUIIsDisabled(t *testing.T) {
 	if err := svc.DB.Model(&rule).Update("ui_enabled", false).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{Name: "ntfy", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"}},
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	createTestTransports(t, svc, TransportInput{
+		Name: "ntfy", Type: TransportTypeNtfy, Enabled: true,
+		Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"},
+	})
 	calls := 0
 	svc.SetNtfySender(func(context.Context, models.NotificationTransportConfig, notifier.EventInput, string) error {
 		calls++
@@ -412,15 +419,10 @@ func TestTargetedDeliveryAddressesOneTransportRow(t *testing.T) {
 	if err := svc.DB.Model(&rule).Update("ui_enabled", false).Error; err != nil {
 		t.Fatal(err)
 	}
-	view, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{Name: "first", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "first"}},
-			{Name: "second", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "second"}},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	view := createTestTransports(t, svc,
+		TransportInput{Name: "first", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "first"}},
+		TransportInput{Name: "second", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "second"}},
+	)
 	input := notifier.EventInput{Kind: kind, Title: "targeted", Fingerprint: "targeted"}
 	targets, err := svc.DeliveryTargets(context.Background(), input)
 	if err != nil {
@@ -456,37 +458,32 @@ func TestTransportConfigStoresRecipientsAndSecretFlags(t *testing.T) {
 
 	token := "ntfy-token"
 	password := "smtp-pass"
-	view, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "Ntfy Transport",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL:   "https://ntfy.sh",
-					Topic:     "alerts",
-					AuthToken: &token,
-				},
-			},
-			{
-				Name:    "SMTP Transport",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:     "smtp.example.com",
-					SMTPPort:     587,
-					SMTPUsername: "smtp-user",
-					SMTPFrom:     "alerts@example.com",
-					SMTPUseTLS:   true,
-					Recipients:   []string{"b@example.com", "a@example.com", "a@example.com"},
-					SMTPPassword: &password,
-				},
+	view := createTestTransports(t, svc,
+		TransportInput{
+			Name:    "Ntfy Transport",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL:   "https://ntfy.sh",
+				Topic:     "alerts",
+				AuthToken: &token,
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("update_transport_config_failed: %v", err)
-	}
+		TransportInput{
+			Name:    "SMTP Transport",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     587,
+				SMTPUsername: "smtp-user",
+				SMTPFrom:     "alerts@example.com",
+				SMTPUseTLS:   true,
+				Recipients:   []string{"b@example.com", "a@example.com", "a@example.com"},
+				SMTPPassword: &password,
+			},
+		},
+	)
 
 	if len(view.Transports) == 0 {
 		t.Fatalf("expected_transport_entries")
@@ -531,20 +528,150 @@ func TestTransportConfigStoresRecipientsAndSecretFlags(t *testing.T) {
 	}
 }
 
-func TestUpdateTransportConfigRejectsEmptyTransportName(t *testing.T) {
+func TestTransportMemberUpdatesPreserveOrClearCredentialsWithoutChangingOtherRows(t *testing.T) {
 	svc := newTestService(t)
 
-	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "   ",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "alerts",
-				},
+	token := "ntfy-token"
+	password := "smtp-password"
+	webhook := "https://hooks.example.net/custom/webhook/123/secret"
+	inputs := []TransportInput{
+		{
+			Name:    "ntfy",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL:   "https://ntfy.sh",
+				Topic:     "alerts",
+				AuthToken: &token,
 			},
+		},
+		{
+			Name:    "smtp",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     587,
+				SMTPFrom:     "alerts@example.com",
+				Recipients:   []string{"ops@example.com"},
+				SMTPPassword: &password,
+			},
+		},
+		{
+			Name:    "discord",
+			Type:    TransportTypeDiscord,
+			Enabled: true,
+			Discord: &DiscordTransportConfigUpdate{WebhookURL: &webhook},
+		},
+	}
+
+	var view TransportConfigView
+	var err error
+	for _, input := range inputs {
+		view, err = svc.CreateTransport(context.Background(), input)
+		if err != nil {
+			t.Fatalf("create transport %s: %v", input.Type, err)
+		}
+	}
+	if len(view.Transports) != 3 {
+		t.Fatalf("transports=%d want=3", len(view.Transports))
+	}
+
+	ids := make(map[string]uint, len(view.Transports))
+	for _, transport := range view.Transports {
+		ids[transport.Type] = transport.ID
+	}
+	for _, input := range []TransportInput{
+		{Name: "ntfy renamed", Type: TransportTypeNtfy, Enabled: false, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "updated"}},
+		{Name: "smtp renamed", Type: TransportTypeSMTP, Enabled: false, Email: &EmailTransportConfigUpdate{SMTPHost: "smtp.example.com", SMTPPort: 587, SMTPFrom: "alerts@example.com", Recipients: []string{"ops@example.com"}}},
+		{Name: "discord renamed", Type: TransportTypeDiscord, Enabled: false, Discord: &DiscordTransportConfigUpdate{}},
+	} {
+		if _, err := svc.UpdateTransport(context.Background(), ids[input.Type], input); err != nil {
+			t.Fatalf("update transport %s without credential: %v", input.Type, err)
+		}
+	}
+
+	stored := make(map[string]models.NotificationTransportConfig)
+	var rows []models.NotificationTransportConfig
+	if err := svc.DB.Find(&rows).Error; err != nil {
+		t.Fatalf("load transports: %v", err)
+	}
+	for _, row := range rows {
+		stored[row.Type] = row
+	}
+	if stored[TransportTypeNtfy].NtfyAuthToken != token ||
+		stored[TransportTypeSMTP].SMTPPassword != password ||
+		stored[TransportTypeDiscord].DiscordWebhookURL != webhook {
+		t.Fatalf("omitted credentials were not preserved: %+v", stored)
+	}
+
+	empty := ""
+	clearInputs := []TransportInput{
+		{Name: "ntfy renamed", Type: TransportTypeNtfy, Enabled: false, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "updated", AuthToken: &empty}},
+		{Name: "smtp renamed", Type: TransportTypeSMTP, Enabled: false, Email: &EmailTransportConfigUpdate{SMTPHost: "smtp.example.com", SMTPPort: 587, SMTPFrom: "alerts@example.com", Recipients: []string{"ops@example.com"}, SMTPPassword: &empty}},
+		{Name: "discord renamed", Type: TransportTypeDiscord, Enabled: false, Discord: &DiscordTransportConfigUpdate{WebhookURL: &empty}},
+	}
+	for _, input := range clearInputs {
+		if _, err := svc.UpdateTransport(context.Background(), ids[input.Type], input); err != nil {
+			t.Fatalf("clear transport %s credential: %v", input.Type, err)
+		}
+	}
+
+	rows = nil
+	if err := svc.DB.Find(&rows).Error; err != nil {
+		t.Fatalf("reload transports: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("transport count=%d want=3", len(rows))
+	}
+	for _, row := range rows {
+		if row.NtfyAuthToken != "" || row.SMTPPassword != "" || row.DiscordWebhookURL != "" {
+			t.Fatalf("explicit credential clear failed for transport %+v", row)
+		}
+	}
+
+	if _, err := svc.UpdateTransport(context.Background(), ids[TransportTypeNtfy], clearInputs[0]); err != nil {
+		t.Fatalf("retry member update: %v", err)
+	}
+	var count int64
+	if err := svc.DB.Model(&models.NotificationTransportConfig{}).Count(&count).Error; err != nil {
+		t.Fatalf("count transports after retry: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("transport count after retry=%d want=3", count)
+	}
+}
+
+func TestCreateTransportRejectsInvalidWebhookURLs(t *testing.T) {
+	svc := newTestService(t)
+
+	for _, webhook := range []string{
+		"http://hooks.example.net/webhook",
+		"https:///missing-host",
+		"not-a-url",
+	} {
+		_, err := svc.CreateTransport(context.Background(), TransportInput{
+			Name:    "discord",
+			Type:    TransportTypeDiscord,
+			Enabled: true,
+			Discord: &DiscordTransportConfigUpdate{WebhookURL: &webhook},
+		})
+		if err == nil || err.Error() != "invalid_discord_webhook_url" {
+			t.Fatalf("webhook=%q error=%v want=invalid_discord_webhook_url", webhook, err)
+		}
+	}
+}
+
+func TestCreateTransportRejectsEmptyTransportName(t *testing.T) {
+	svc := newTestService(t)
+
+	_, err := svc.CreateTransport(context.Background(), TransportInput{
+		Name:    "   ",
+		Type:    TransportTypeNtfy,
+		Enabled: true,
+		Ntfy: &NtfyTransportConfigUpdate{
+			BaseURL: "https://ntfy.sh",
+			Topic:   "alerts",
 		},
 	})
 	if err == nil {
@@ -569,33 +696,28 @@ func TestTestTransportSendsForNtfyAndSMTPEvenWhenDisabled(t *testing.T) {
 		return nil
 	})
 
-	view, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "Ntfy Transport",
-				Type:    TransportTypeNtfy,
-				Enabled: false,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "alerts",
-				},
-			},
-			{
-				Name:    "SMTP Transport",
-				Type:    TransportTypeSMTP,
-				Enabled: false,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:   "smtp.example.com",
-					SMTPPort:   587,
-					SMTPFrom:   "alerts@example.com",
-					Recipients: []string{"alerts@example.com"},
-				},
+	view := createTestTransports(t, svc,
+		TransportInput{
+			Name:    "Ntfy Transport",
+			Type:    TransportTypeNtfy,
+			Enabled: false,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL: "https://ntfy.sh",
+				Topic:   "alerts",
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("update_transport_config_failed: %v", err)
-	}
+		TransportInput{
+			Name:    "SMTP Transport",
+			Type:    TransportTypeSMTP,
+			Enabled: false,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:   "smtp.example.com",
+				SMTPPort:   587,
+				SMTPFrom:   "alerts@example.com",
+				Recipients: []string{"alerts@example.com"},
+			},
+		},
+	)
 
 	var ntfyID uint
 	var smtpID uint
@@ -675,33 +797,28 @@ func TestEmitSendsAcrossMultipleTransportRows(t *testing.T) {
 		return nil
 	})
 
-	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "Primary Ntfy",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "ops",
-				},
-			},
-			{
-				Name:    "SMTP Team",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:   "smtp.example.com",
-					SMTPPort:   587,
-					SMTPFrom:   "alerts@example.com",
-					Recipients: []string{"ops@example.com"},
-				},
+	createTestTransports(t, svc,
+		TransportInput{
+			Name:    "Primary Ntfy",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL: "https://ntfy.sh",
+				Topic:   "ops",
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("update_transport_configs_failed: %v", err)
-	}
+		TransportInput{
+			Name:    "SMTP Team",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:   "smtp.example.com",
+				SMTPPort:   587,
+				SMTPFrom:   "alerts@example.com",
+				Recipients: []string{"ops@example.com"},
+			},
+		},
+	)
 
 	view, err := svc.GetTransportConfig(context.Background())
 	if err != nil {
@@ -727,109 +844,6 @@ func TestEmitSendsAcrossMultipleTransportRows(t *testing.T) {
 	if emailCalls != 1 {
 		t.Fatalf("expected_email_called_once got: %d", emailCalls)
 	}
-}
-
-func TestUpdateTransportConfigRemovesOmittedRows(t *testing.T) {
-	svc := newTestService(t)
-
-	firstToken := "first-token"
-	firstPassword := "first-pass"
-
-	view, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "First",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL:   "https://ntfy.sh",
-					Topic:     "first",
-					AuthToken: &firstToken,
-				},
-			},
-			{
-				Name:    "Second",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:     "smtp.first.local",
-					SMTPPort:     587,
-					SMTPFrom:     "first@example.com",
-					Recipients:   []string{"first@example.com"},
-					SMTPPassword: &firstPassword,
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("update_initial_failed: %v", err)
-	}
-
-	if len(view.Transports) != 2 {
-		t.Fatalf("expected_2_transports_after_initial_update got: %d", len(view.Transports))
-	}
-
-	keep := view.Transports[0]
-	remove := view.Transports[1]
-
-	var keepUpdate TransportConfigEntryUpdate
-	if keep.Type == TransportTypeNtfy {
-		if keep.Ntfy == nil {
-			t.Fatalf("expected_ntfy_payload_for_ntfy_transport")
-		}
-		keepUpdate = TransportConfigEntryUpdate{
-			ID:      keep.ID,
-			Name:    keep.Name,
-			Type:    keep.Type,
-			Enabled: keep.Enabled,
-			Ntfy: &NtfyTransportConfigUpdate{
-				BaseURL: keep.Ntfy.BaseURL,
-				Topic:   keep.Ntfy.Topic,
-			},
-		}
-	} else {
-		if keep.Email == nil {
-			t.Fatalf("expected_email_payload_for_smtp_transport")
-		}
-		keepUpdate = TransportConfigEntryUpdate{
-			ID:      keep.ID,
-			Name:    keep.Name,
-			Type:    keep.Type,
-			Enabled: keep.Enabled,
-			Email: &EmailTransportConfigUpdate{
-				SMTPHost:   keep.Email.SMTPHost,
-				SMTPPort:   keep.Email.SMTPPort,
-				SMTPFrom:   keep.Email.SMTPFrom,
-				Recipients: keep.Email.Recipients,
-			},
-		}
-	}
-
-	_, err = svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			keepUpdate,
-		},
-	})
-	if err != nil {
-		t.Fatalf("update_with_omitted_row_failed: %v", err)
-	}
-
-	after, err := svc.GetTransportConfig(context.Background())
-	if err != nil {
-		t.Fatalf("get_after_failed: %v", err)
-	}
-	if len(after.Transports) != 1 {
-		t.Fatalf("expected_1_transport_after_omit got: %d", len(after.Transports))
-	}
-
-	var remaining int64
-	if err := svc.DB.Model(&models.NotificationTransportConfig{}).Where("id = ?", remove.ID).Count(&remaining).Error; err != nil {
-		t.Fatalf("count_removed_transport_failed: %v", err)
-	}
-	if remaining != 0 {
-		t.Fatalf("expected_removed_transport_deleted")
-	}
-
 }
 
 func TestGetRuleConfigAutoSyncsPools(t *testing.T) {
@@ -985,8 +999,57 @@ func TestDeleteRuleRecreatesActivePoolRule(t *testing.T) {
 		t.Fatalf("delete_rule_failed: %v", err)
 	}
 
-	if len(updated.Rules) != 0 {
-		t.Fatalf("expected_no_rules_after_delete got: %d", len(updated.Rules))
+	if len(updated.Rules) != 1 {
+		t.Fatalf("expected_active_pool_rule_recreated got: %d", len(updated.Rules))
+	}
+	if !updated.Rules[0].Active || !updated.Rules[0].UIEnabled || !updated.Rules[0].NtfyEnabled || !updated.Rules[0].EmailEnabled {
+		t.Fatalf("expected_recreated_rule_enabled got: %+v", updated.Rules[0])
+	}
+}
+
+func TestBulkDeleteRulesRequiresAnExactUniquePositiveSet(t *testing.T) {
+	svc := newTestService(t)
+	rules := []models.NotificationKindRule{
+		{Kind: notifier.KindForZFSPoolState("zroot"), UIEnabled: true},
+		{Kind: notifier.KindForZFSPoolState("tank"), UIEnabled: true},
+	}
+	if err := svc.DB.Create(&rules).Error; err != nil {
+		t.Fatalf("seed notification rules: %v", err)
+	}
+
+	for _, test := range []struct {
+		name string
+		ids  []uint
+		code string
+	}{
+		{name: "zero", ids: []uint{0}, code: "invalid_notification_rule_ids"},
+		{name: "duplicate", ids: []uint{rules[0].ID, rules[0].ID}, code: "duplicate_notification_rule_id"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := svc.BulkDeleteRules(context.Background(), test.ids)
+			if err == nil || err.Error() != test.code {
+				t.Fatalf("error=%v want=%s", err, test.code)
+			}
+		})
+	}
+
+	if _, err := svc.BulkDeleteRules(context.Background(), []uint{rules[0].ID, 999999}); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing rule error=%v want record not found", err)
+	}
+	var remaining int64
+	if err := svc.DB.Model(&models.NotificationKindRule{}).Where("id IN ?", []uint{rules[0].ID, rules[1].ID}).Count(&remaining).Error; err != nil {
+		t.Fatalf("count rules after rejected delete: %v", err)
+	}
+	if remaining != 2 {
+		t.Fatalf("rejected bulk delete left %d rules want=2", remaining)
+	}
+
+	view, err := svc.BulkDeleteRules(context.Background(), []uint{rules[0].ID, rules[1].ID})
+	if err != nil {
+		t.Fatalf("valid bulk delete: %v", err)
+	}
+	if len(view.Rules) != 0 {
+		t.Fatalf("rules after valid bulk delete=%d want=0", len(view.Rules))
 	}
 }
 
@@ -1056,36 +1119,31 @@ func TestEmitHonorsUIAndChannelRuleToggles(t *testing.T) {
 		return nil
 	})
 
-	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "ntfy",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "ops",
-				},
-			},
-			{
-				Name:    "smtp",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:   "smtp.example.com",
-					SMTPPort:   587,
-					SMTPFrom:   "ops@example.com",
-					Recipients: []string{"ops@example.com"},
-				},
+	createTestTransports(t, svc,
+		TransportInput{
+			Name:    "ntfy",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL: "https://ntfy.sh",
+				Topic:   "ops",
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("failed_to_seed_transport_config: %v", err)
-	}
+		TransportInput{
+			Name:    "smtp",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:   "smtp.example.com",
+				SMTPPort:   587,
+				SMTPFrom:   "ops@example.com",
+				Recipients: []string{"ops@example.com"},
+			},
+		},
+	)
 
 	kind := notifier.KindForZFSPoolState("zroot")
-	_, err = svc.UpdateRuleConfig(context.Background(), RuleConfigUpdate{
+	_, err := svc.UpdateRuleConfig(context.Background(), RuleConfigUpdate{
 		Rules: []RuleConfigEntryUpdate{
 			{
 				Pool:         "zroot",
@@ -1143,33 +1201,28 @@ func TestDismissDoesNotPersistSuppressionForZFSPoolState(t *testing.T) {
 		return nil
 	})
 
-	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "ntfy",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy: &NtfyTransportConfigUpdate{
-					BaseURL: "https://ntfy.sh",
-					Topic:   "ops",
-				},
-			},
-			{
-				Name:    "smtp",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email: &EmailTransportConfigUpdate{
-					SMTPHost:   "smtp.example.com",
-					SMTPPort:   587,
-					SMTPFrom:   "ops@example.com",
-					Recipients: []string{"ops@example.com"},
-				},
+	createTestTransports(t, svc,
+		TransportInput{
+			Name:    "ntfy",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy: &NtfyTransportConfigUpdate{
+				BaseURL: "https://ntfy.sh",
+				Topic:   "ops",
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("update_transport_config_failed: %v", err)
-	}
+		TransportInput{
+			Name:    "smtp",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email: &EmailTransportConfigUpdate{
+				SMTPHost:   "smtp.example.com",
+				SMTPPort:   587,
+				SMTPFrom:   "ops@example.com",
+				Recipients: []string{"ops@example.com"},
+			},
+		},
+	)
 
 	input := notifier.EventInput{
 		Kind:        notifier.KindForZFSPoolState("test"),
@@ -1270,25 +1323,20 @@ func TestTestRuleSendsThroughTransports(t *testing.T) {
 		return nil
 	})
 
-	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{
-				Name:    "ntfy",
-				Type:    TransportTypeNtfy,
-				Enabled: true,
-				Ntfy:    &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "test"},
-			},
-			{
-				Name:    "smtp",
-				Type:    TransportTypeSMTP,
-				Enabled: true,
-				Email:   &EmailTransportConfigUpdate{SMTPHost: "localhost", SMTPPort: 1025, SMTPFrom: "t@t.com", Recipients: []string{"t@t.com"}},
-			},
+	createTestTransports(t, svc,
+		TransportInput{
+			Name:    "ntfy",
+			Type:    TransportTypeNtfy,
+			Enabled: true,
+			Ntfy:    &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "test"},
 		},
-	})
-	if err != nil {
-		t.Fatalf("update_transport_config_failed: %v", err)
-	}
+		TransportInput{
+			Name:    "smtp",
+			Type:    TransportTypeSMTP,
+			Enabled: true,
+			Email:   &EmailTransportConfigUpdate{SMTPHost: "localhost", SMTPPort: 1025, SMTPFrom: "t@t.com", Recipients: []string{"t@t.com"}},
+		},
+	)
 
 	if err := svc.TestRule(context.Background(), TestRuleInput{
 		TemplateKey: RuleTemplateDiskSmartWearout,
@@ -2035,14 +2083,10 @@ func TestDeleteDiskRuleStaysDeleted(t *testing.T) {
 		emailCalls++
 		return nil
 	})
-	if _, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
-		Transports: []TransportConfigEntryUpdate{
-			{Name: "ntfy", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"}},
-			{Name: "smtp", Type: TransportTypeSMTP, Enabled: true, Email: &EmailTransportConfigUpdate{SMTPHost: "smtp.example.com", SMTPPort: 587, SMTPFrom: "ops@example.com", Recipients: []string{"ops@example.com"}}},
-		},
-	}); err != nil {
-		t.Fatalf("seed_transport_config_failed: %v", err)
-	}
+	createTestTransports(t, svc,
+		TransportInput{Name: "ntfy", Type: TransportTypeNtfy, Enabled: true, Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"}},
+		TransportInput{Name: "smtp", Type: TransportTypeSMTP, Enabled: true, Email: &EmailTransportConfigUpdate{SMTPHost: "smtp.example.com", SMTPPort: 587, SMTPFrom: "ops@example.com", Recipients: []string{"ops@example.com"}}},
+	)
 
 	view, err := svc.GetRuleConfig(context.Background())
 	if err != nil {
