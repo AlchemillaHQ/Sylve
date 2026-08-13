@@ -433,7 +433,7 @@ func TestDeleteJailMACCleanupFailureIsOnlyAWarning(t *testing.T) {
 func TestIntegrationDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	const ctID uint = 691
@@ -484,7 +484,7 @@ func TestIntegrationDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
 	}
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -586,7 +586,7 @@ func TestIntegrationDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
 func TestIntegrationDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	const ctID uint = 692
@@ -639,7 +639,7 @@ func TestIntegrationDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *te
 func TestIntegrationDeleteJailDependentCloneSurvivesCleanupRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	const ctID uint = 693

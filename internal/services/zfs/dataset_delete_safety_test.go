@@ -30,8 +30,7 @@ func TestValidateDatasetDeletionTargetsRejectsPoolRoot(t *testing.T) {
 
 func TestIntegrationDatasetDeletionMethodsRejectPoolRootRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
-	defer cleanup()
+	pool, client := zfstest.DedicatedPool(t)
 
 	ctx := context.Background()
 	childName := pool + "/child"
@@ -140,7 +139,7 @@ func TestIndependentDatasetDeletionRoots(t *testing.T) {
 
 func TestIntegrationBulkDeleteDatasetSnapshotByExactTargetRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	ctx := context.Background()

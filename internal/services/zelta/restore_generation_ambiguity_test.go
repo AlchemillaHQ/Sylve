@@ -18,7 +18,7 @@ import (
 func TestIntegrationActivateTargetGenerationRollsBackAmbiguousArchiveRenameRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	backupRoot := poolName + "/backup"
 	active := backupRoot + "/active"

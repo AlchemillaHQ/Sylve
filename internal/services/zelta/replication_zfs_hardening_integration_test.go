@@ -98,7 +98,7 @@ func setRealZFSReadonly(t *testing.T, dataset string) {
 func TestIntegrationCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	source := pool + "/source/guest"
@@ -238,7 +238,7 @@ func TestIntegrationCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 func TestIntegrationReplicationSourceSnapshotClonePreflightRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	source := pool + "/source"
@@ -269,7 +269,7 @@ func TestIntegrationReplicationSourceSnapshotClonePreflightRealZFS(t *testing.T)
 func TestIntegrationCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	first := pool + "/source/first"
@@ -318,7 +318,7 @@ func TestIntegrationCleanupReplicationSourceSnapshotGroupRealZFS(t *testing.T) {
 func TestIntegrationCleanupPolicyOwnedReplicationSnapshotsRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	firstRoot := pool + "/sylve/virtual-machines/812"
@@ -390,7 +390,7 @@ func TestIntegrationCleanupPolicyOwnedReplicationSnapshotsRealZFS(t *testing.T) 
 func TestIntegrationCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	root := pool + "/sylve/virtual-machines/814"
 	clone := pool + "/dependent-clone"
@@ -436,7 +436,7 @@ func TestIntegrationCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS
 func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	guestID := uint(813)
 	root := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, guestID)
@@ -544,7 +544,7 @@ func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *t
 func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	guestID := uint(731)
@@ -686,7 +686,7 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 func TestIntegrationAbortAndDestroyProvenStagingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	expected := map[string]string{
@@ -724,7 +724,7 @@ func TestIntegrationAbortAndDestroyProvenStagingRealZFS(t *testing.T) {
 func TestIntegrationCleanupStaleReplicationStagingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	target := pool + "/replication/guest"
@@ -774,7 +774,7 @@ func TestIntegrationCleanupStaleReplicationStagingRealZFS(t *testing.T) {
 func TestIntegrationPromoteAndRollbackStagedReplicationRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	target := pool + "/replication/guest"
@@ -863,7 +863,7 @@ func TestIntegrationPromoteAndRollbackStagedReplicationRealZFS(t *testing.T) {
 func TestIntegrationColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	vmRoot := pool + "/sylve/virtual-machines/701"
@@ -922,7 +922,7 @@ func TestIntegrationColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *test
 func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
@@ -1074,7 +1074,7 @@ func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS
 func TestIntegrationVMReplicationSourceRejectsEnabledFilesystemStorageRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	managedRoot := pool + "/sylve/virtual-machines/703"
 	zfstest.EnsureDataset(t, client, managedRoot)
@@ -1128,7 +1128,7 @@ func TestIntegrationVMReplicationSourceRejectsEnabledFilesystemStorageRealZFS(t 
 func TestIntegrationRestoredVMFilesystemEligibilityCheckedWhileReadonlyRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	svc := &Service{GZFS: client}
 

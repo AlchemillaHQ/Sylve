@@ -472,7 +472,7 @@ func TestRemoveVMWithWarningsDatabaseFailureRollsBackAndSkipsStorage(t *testing.
 func TestIntegrationRemoveVMWithWarningsRealZFSStorageOutcomes(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	t.Run("retained dataset remains untouched", func(t *testing.T) {

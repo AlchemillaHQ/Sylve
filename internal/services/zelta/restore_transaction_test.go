@@ -42,7 +42,7 @@ func TestRestoreStagingReceiveOptions(t *testing.T) {
 
 func TestIntegrationPrepareRestoreStagingDatasetRequiresLocalOwnershipRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	service := &Service{GZFS: client}
@@ -80,7 +80,7 @@ func TestIntegrationPrepareRestoreStagingDatasetRequiresLocalOwnershipRealZFS(t 
 
 func TestIntegrationPrepareRestoreStagingDatasetPreservesDependentCloneRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	service := &Service{GZFS: client}
@@ -117,7 +117,7 @@ func TestIntegrationPrepareRestoreStagingDatasetPreservesDependentCloneRealZFS(t
 
 func TestIntegrationRollbackRestorePromotionAfterActivationFailureRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	service := &Service{GZFS: client}
@@ -160,7 +160,7 @@ func TestIntegrationRollbackRestorePromotionAfterActivationFailureRealZFS(t *tes
 
 func TestIntegrationRollbackRestoredDatasetBackupsRemovesNewRootRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	newRoot := pool + "/new-root"
@@ -192,7 +192,7 @@ func TestIntegrationRollbackRestoredDatasetBackupsRemovesNewRootRealZFS(t *testi
 
 func TestIntegrationRollbackPromotedDatasetMissingArchivePreservesDestinationRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	destination := pool + "/live"
@@ -211,7 +211,7 @@ func TestIntegrationRollbackPromotedDatasetMissingArchivePreservesDestinationRea
 
 func TestIntegrationActivateTargetGenerationsRollsBackEarlierSwapRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 
@@ -280,7 +280,7 @@ func TestIntegrationActivateTargetGenerationsRollsBackEarlierSwapRealZFS(t *test
 
 func TestIntegrationRollbackTargetGenerationResumesPartialSwapRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 
@@ -327,7 +327,7 @@ func TestIntegrationRollbackTargetGenerationResumesPartialSwapRealZFS(t *testing
 
 func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 

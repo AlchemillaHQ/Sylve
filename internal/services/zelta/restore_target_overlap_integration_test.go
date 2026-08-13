@@ -33,7 +33,7 @@ func TestIntegrationOOBRestoreRemoteLineageOverlapIsFailSafeRealZFS(t *testing.T
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	backupRoot := poolName + "/target"

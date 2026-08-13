@@ -59,7 +59,7 @@ func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotat
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/foreign")
@@ -173,7 +173,7 @@ func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/rchild")
@@ -260,7 +260,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	vmSource := poolName + "/sylve/virtual-machines/100"
@@ -374,7 +374,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	jailRoot := poolName + "/sylve/jails/42"

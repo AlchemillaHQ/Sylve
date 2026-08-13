@@ -130,8 +130,8 @@ func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
@@ -260,8 +260,8 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 func TestIntegrationRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
@@ -425,7 +425,7 @@ func TestParseAndCompareRestoreDatasetManifest(t *testing.T) {
 func TestIntegrationVerifyNonrecursiveRestoreManifestRequiresExactRootRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	staging := poolName + "/nonrecursive-staging"
 	zfstest.EnsureDataset(t, client, staging)
@@ -473,7 +473,7 @@ func TestIntegrationVerifyNonrecursiveRestoreManifestRequiresExactRootRealZFS(t 
 func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
@@ -533,7 +533,7 @@ func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEph
 func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
@@ -631,7 +631,7 @@ func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t 
 func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"

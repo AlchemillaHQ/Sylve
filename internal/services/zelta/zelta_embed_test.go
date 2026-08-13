@@ -145,8 +145,8 @@ func TestEmbeddedZeltaParsesBracketedIPv6Endpoints(t *testing.T) {
 func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
 	ctx := context.Background()
@@ -212,8 +212,8 @@ func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
 func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")

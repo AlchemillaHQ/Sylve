@@ -18,7 +18,7 @@ import (
 func TestIntegrationZeltaBackupFailsWhenRequestedSnapshotAlreadyExists(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	zfstest.EnsureDataset(t, client, poolName+"/source/child")
 	zfstest.EnsureDataset(t, client, poolName+"/target")

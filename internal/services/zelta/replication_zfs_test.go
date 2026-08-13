@@ -81,7 +81,7 @@ func TestIntegrationValidateReplicationTransitionGenerationForActivation(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pool, client, cleanup := zfstest.Pool(t)
+			pool, client, cleanup := zfstest.SharedPool(t)
 			defer cleanup()
 			root := pool + "/sylve/"
 			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
@@ -163,7 +163,7 @@ func TestIntegrationValidateAlreadyRunningReplicationActivationIgnoresSnapshots(
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pool, client, cleanup := zfstest.Pool(t)
+			pool, client, cleanup := zfstest.SharedPool(t)
 			defer cleanup()
 			root := pool + "/sylve/"
 			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
@@ -223,7 +223,7 @@ func TestIntegrationValidateAlreadyRunningReplicationActivationIgnoresSnapshots(
 
 func TestIntegrationFenceReplicationGuestDatasets(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -252,7 +252,7 @@ func TestIntegrationFenceReplicationGuestDatasets(t *testing.T) {
 
 func TestIntegrationFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -278,7 +278,7 @@ func TestIntegrationFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 
 func TestIntegrationFenceReplicationGuestDatasetsJail(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -303,7 +303,7 @@ func TestIntegrationFenceReplicationGuestDatasetsJail(t *testing.T) {
 
 func TestIntegrationFenceReplicationGuestDatasetsNoMatch(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -329,7 +329,7 @@ func TestFenceReplicationGuestDatasetsNilPolicy(t *testing.T) {
 
 func TestIntegrationUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -360,7 +360,7 @@ func TestIntegrationUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 
 func TestIntegrationFindLocalGuestDatasets(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 

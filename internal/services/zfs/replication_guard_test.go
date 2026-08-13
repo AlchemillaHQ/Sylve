@@ -58,7 +58,7 @@ func newReplicationGuardService(t *testing.T, pool string, client *gzfs.Client) 
 
 func TestIntegrationReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	svc := newReplicationGuardService(t, pool, client)
 	if err := svc.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", 7).Updates(map[string]any{
@@ -85,7 +85,7 @@ func TestIntegrationReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisa
 
 func TestIntegrationReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	zfstest.EnsureDataset(t, client, pool+"/unrelated")
 	svc := newReplicationGuardService(t, pool, client)
@@ -108,7 +108,7 @@ func TestIntegrationReplicationDatasetCreateGuardUsesExactProspectivePath(t *tes
 
 func TestIntegrationReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	standby := pool + "/standby"
 	zfstest.EnsureDataset(t, client, standby)
@@ -127,7 +127,7 @@ func TestIntegrationReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(
 
 func TestIntegrationReplicationDatasetGuardProtectsLegacyEnabledFilesystemShare(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	enabledShare := pool + "/shared/enabled"

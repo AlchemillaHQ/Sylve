@@ -10,12 +10,10 @@ package zfstest
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/alchemillahq/gzfs"
 )
@@ -34,42 +32,6 @@ func SkipIfUnavailable(t testing.TB) {
 	if os.Geteuid() != 0 {
 		t.Skip("must be root to create ZFS pools")
 	}
-}
-
-func Pool(t testing.TB) (poolName string, client *gzfs.Client, cleanup func()) {
-	t.Helper()
-	SkipIfUnavailable(t)
-
-	dir := t.TempDir()
-	poolName = fmt.Sprintf("sylve-test-%d", time.Now().UnixNano())
-
-	f, err := os.CreateTemp("", "sylve-zfs-vdev-*")
-	if err != nil {
-		t.Fatalf("create vdev file: %v", err)
-	}
-	vdevPath := f.Name()
-	if err := f.Truncate(200 * 1024 * 1024); err != nil {
-		f.Close()
-		t.Fatalf("truncate vdev: %v", err)
-	}
-	f.Close()
-
-	cmd := exec.Command("zpool", "create", "-m", dir, poolName, vdevPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		os.Remove(vdevPath)
-		t.Fatalf("zpool create %s: %v\noutput: %s", poolName, err, string(out))
-	}
-
-	client = gzfs.NewClient(gzfs.Options{})
-
-	cleanup = func() {
-		ctx := context.Background()
-		exec.CommandContext(ctx, "zpool", "export", poolName).CombinedOutput()
-		exec.CommandContext(ctx, "zpool", "destroy", "-f", poolName).CombinedOutput()
-		os.Remove(vdevPath)
-	}
-
-	return poolName, client, cleanup
 }
 
 func EnsureDataset(t testing.TB, client *gzfs.Client, name string) {

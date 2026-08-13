@@ -481,7 +481,7 @@ func TestOOBRestorePreflightUsesSharedLiveGuestIDNamespace(t *testing.T) {
 func TestIntegrationOOBRestoreExistingCanonicalDestinationIsNeverReplacedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	restorePath := pool + "/restore-candidate"

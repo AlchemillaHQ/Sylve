@@ -59,8 +59,8 @@ func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")
@@ -176,7 +176,7 @@ func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testi
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	source := poolName + "/source/retained"
 	zfstest.EnsureDataset(t, gzfsClient, source)
@@ -256,8 +256,8 @@ func TestIntegrationRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/reseed")

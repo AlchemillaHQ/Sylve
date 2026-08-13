@@ -149,7 +149,7 @@ func TestEnsureEncryptionKeyFile(t *testing.T) {
 }
 
 func TestIntegrationEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -210,7 +210,7 @@ func TestIntegrationEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
 }
 
 func TestIntegrationAutoDiscoverAndRegisterExternalFileKey(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	keyDir := t.TempDir()

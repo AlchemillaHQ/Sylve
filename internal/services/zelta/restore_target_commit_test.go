@@ -185,10 +185,8 @@ func TestIntegrationLegacyVMRestoreMissingRootSnapshotFailsBeforeStaging(t *test
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolA, clientA, cleanupA := zfstest.Pool(t)
-	defer cleanupA()
-	poolB, _, cleanupB := zfstest.Pool(t)
-	defer cleanupB()
+	poolA, clientA := zfstest.DedicatedPool(t)
+	poolB, _ := zfstest.DedicatedPool(t)
 
 	backupRoot := poolA + "/target"
 	remoteA := backupRoot + "/" + poolA + "/sylve/virtual-machines/42/j-1/active"

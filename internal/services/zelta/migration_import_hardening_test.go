@@ -17,10 +17,8 @@ import (
 func TestIntegrationValidateMigratedGuestRootsUsesExactRealZFSMultiRootManifest(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolA, client, cleanupA := zfstest.Pool(t)
-	defer cleanupA()
-	poolB, _, cleanupB := zfstest.Pool(t)
-	defer cleanupB()
+	poolA, client := zfstest.DedicatedPool(t)
+	poolB, _ := zfstest.DedicatedPool(t)
 
 	const rid = uint(731)
 	rootA := poolA + "/sylve/virtual-machines/731"
@@ -109,7 +107,7 @@ func TestGeneratedMigrationSnapshotPathUsesExactRootBoundary(t *testing.T) {
 func TestIntegrationMigrationSnapshotCleanupSurfacesFailureAndPreservesUserSnapshots(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	root := pool + "/sylve/virtual-machines/732"
 	zfstest.EnsureDataset(t, client, root+"/child")

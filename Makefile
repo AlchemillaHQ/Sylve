@@ -80,7 +80,7 @@ frontend:
 	cp -rf web/build/* internal/assets/web-files/
 
 test:
-	go test $(GO_TEST_FLAGS) -short ./...
+	go test $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest
 
 test-external-preflight:
 	@[ "$$(uname -s)" = "FreeBSD" ] || { echo "external-state tests must run on FreeBSD"; exit 1; }
@@ -89,9 +89,16 @@ test-external-preflight:
 	@command -v zfs >/dev/null || { echo "zfs is required for external-state tests"; exit 1; }
 
 test-integration: test-external-preflight
+	@./scripts/check-zfs-test-leaks.sh
+	@set +e; \
 	go test $(GO_TEST_FLAGS) -count=1 -p=2 \
 		-timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
-		-run '^TestIntegration' $(INTEGRATION_PACKAGES)
+		-run '^TestIntegration' $(INTEGRATION_PACKAGES); \
+	test_rc="$$?"; \
+	./scripts/check-zfs-test-leaks.sh; \
+	leak_rc="$$?"; \
+	if [ "$$test_rc" -ne 0 ]; then exit "$$test_rc"; fi; \
+	exit "$$leak_rc"
 
 test-acceptance: test-external-preflight
 	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \

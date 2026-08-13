@@ -248,7 +248,7 @@ func TestValidateBackupCommitForJobRejectsOtherJob(t *testing.T) {
 }
 
 func TestIntegrationBackupCommitMetadataRoundTripsOnRealZFSSnapshot(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	dataset := pool + "/backup-commit"
 	snapshotName := "bk_jh_real"
