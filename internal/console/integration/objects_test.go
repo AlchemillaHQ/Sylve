@@ -27,6 +27,7 @@ func TestAcceptanceObjectsCLIAndREPL(t *testing.T) {
 		t.Skip("run console integration tests with make test-integration as root")
 	}
 	t.Setenv("SYLVE_DATA_PATH", "")
+	suite := requireConsoleIntegrationSuite(t)
 
 	dataPath := t.TempDir()
 	database := openConsoleDatabase(t, filepath.Join(dataPath, "sylve.db"),
@@ -62,7 +63,7 @@ func TestAcceptanceObjectsCLIAndREPL(t *testing.T) {
 	})
 
 	configPath := writeConsoleConfig(t, dataPath)
-	binaryPath := buildSylveBinary(t)
+	binaryPath := suite.binaryPath
 
 	cliOutput := runSylve(t, binaryPath, configPath,
 		"objects", "create", "--name", "cli-host", "--type", "host", "--value", "192.0.2.10")

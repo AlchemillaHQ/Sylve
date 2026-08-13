@@ -72,6 +72,7 @@ func TestFullAcceptanceBootstrapsCLIAndREPL(t *testing.T) {
 
 func createBootstrapThroughCLI(t *testing.T, suite *consoleIntegrationSuite, bootstrapType string) jailServiceInterfaces.BootstrapEntry {
 	t.Helper()
+	requirePkgbaseAcceptanceHost(t)
 	for attempt := 1; attempt <= bootstrapCreateAttempts; attempt++ {
 		output, err := runBootstrapCLI(t, suite, bootstrapType)
 		if err != nil {
@@ -121,6 +122,7 @@ func runBootstrapCLI(t *testing.T, suite *consoleIntegrationSuite, bootstrapType
 
 func createBootstrapThroughREPL(t *testing.T, suite *consoleIntegrationSuite, bootstrapType string) jailServiceInterfaces.BootstrapEntry {
 	t.Helper()
+	requirePkgbaseAcceptanceHost(t)
 	for attempt := 1; attempt <= bootstrapCreateAttempts; attempt++ {
 		output, err := runBootstrapREPL(t, suite, bootstrapType)
 		if err != nil {
@@ -138,6 +140,22 @@ func createBootstrapThroughREPL(t *testing.T, suite *consoleIntegrationSuite, bo
 		return entry
 	}
 	return jailServiceInterfaces.BootstrapEntry{}
+}
+
+func requirePkgbaseAcceptanceHost(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("pkg"); err != nil {
+		t.Fatalf("pkg is unavailable: %v", err)
+	}
+	keyDir := "/usr/share/keys/pkgbase-15/trusted"
+	if info, err := os.Stat(keyDir); err != nil {
+		t.Fatalf("pkgbase signing keys are unavailable: %v", err)
+	} else if !info.IsDir() {
+		t.Fatalf("pkgbase signing keys path %s is not a directory", keyDir)
+	}
+	if output, err := exec.Command("pkg", "-N").CombinedOutput(); err != nil {
+		t.Fatalf("pkg is not ready: %v: %s", err, strings.TrimSpace(string(output)))
+	}
 }
 
 func runBootstrapREPL(t *testing.T, suite *consoleIntegrationSuite, bootstrapType string) (string, error) {

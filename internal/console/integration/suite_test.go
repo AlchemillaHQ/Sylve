@@ -217,19 +217,10 @@ func requireConsoleIntegrationHost() error {
 		return fmt.Errorf("must run on a FreeBSD kernel, got %q", strings.TrimSpace(string(output)))
 	}
 
-	for _, command := range []string{"zpool", "zfs", "pkg", "jail", "ifconfig", "route", "bhyve", "virsh", "kldstat", "service"} {
+	for _, command := range []string{"zpool", "zfs", "jail", "ifconfig", "route", "bhyve", "virsh", "kldstat", "service"} {
 		if _, err := exec.LookPath(command); err != nil {
 			return fmt.Errorf("required command %q is unavailable: %w", command, err)
 		}
-	}
-	keyDir := "/usr/share/keys/pkgbase-15/trusted"
-	if info, err := os.Stat(keyDir); err != nil {
-		return fmt.Errorf("required pkgbase signing keys %s are unavailable: %w", keyDir, err)
-	} else if !info.IsDir() {
-		return fmt.Errorf("required pkgbase signing keys path %s is not a directory", keyDir)
-	}
-	if output, err := exec.Command("pkg", "-N").CombinedOutput(); err != nil {
-		return fmt.Errorf("pkg is not ready: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	for _, group := range []string{"bridge", "epair"} {
 		if output, err := exec.Command("ifconfig", "-g", group).CombinedOutput(); err != nil {
