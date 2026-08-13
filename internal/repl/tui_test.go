@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/cmd"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -109,7 +110,7 @@ func TestRenderHeaderShowsFullWideStatus(t *testing.T) {
 		ActiveTasks: pointerTo(int64(1)),
 	}
 	plain := ansiEscapePattern.ReplaceAllString(renderHeader(180, "node-a", status), "")
-	for _, want := range []string{"CPU 12%", "RAM 7/16G", "UP 3d4h", "ZFS DEG", "VM 2/5", "J 4/7", "T 1", "v0.2.3"} {
+	for _, want := range []string{"CPU 12%", "RAM 7/16G", "UP 3d4h", "ZFS DEG", "VM 2/5", "J 4/7", "T 1", "v" + cmd.Version} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("wide header %q does not contain %q", plain, want)
 		}
@@ -130,7 +131,7 @@ func TestRenderHeaderUsesCompactTokensBeforeDroppingStatus(t *testing.T) {
 		ActiveTasks: pointerTo(int64(1)),
 	}
 	plain := ansiEscapePattern.ReplaceAllString(renderHeader(91, "node-a", status), "")
-	for _, want := range []string{"C12%", "M44%", "U3d4h", "ZDEG", "V2/5", "J4/7", "T1", "v0.2.3"} {
+	for _, want := range []string{"C12%", "M44%", "U3d4h", "ZDEG", "V2/5", "J4/7", "T1", "v" + cmd.Version} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("compact header %q does not contain %q", plain, want)
 		}
