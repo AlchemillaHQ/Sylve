@@ -95,7 +95,7 @@ func (s *Service) CheckJails() error {
 		return fmt.Errorf("jails_failed_to_check_enforce_statfs: %w", err)
 	}
 
-	if val != 2 {
+	if val != 1 {
 		return fmt.Errorf("jails_enforce_statfs_not_enabled")
 	}
 
