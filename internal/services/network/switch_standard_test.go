@@ -2127,3 +2127,31 @@ func TestStandardSwitchDeletePreflightDetectsSambaInterfaceUsage(t *testing.T) {
 		t.Fatalf("unexpected error code: %q", code)
 	}
 }
+
+// A bridged switch with a port must still be creatable inside an IPv4-only
+// (VNET) jail, where deleting an IPv6 alias on the port returns EPERM.
+func TestCreateStandardBridgeToleratesPortInet6PermissionDenied(t *testing.T) {
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge200\n", nil
+			}
+			if full == "/sbin/ifconfig em0 inet6 -alias" {
+				return "", fmt.Errorf("command execution failed: exit status 1, " +
+					"output: ifconfig: ioctl (SIOCDIFADDR): permission denied")
+			}
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:        "jail-port",
+		BridgeName:  "vm-jail-port",
+		DisableIPv6: true,
+		Ports:       []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("expected create to tolerate inet6 -alias permission denied, got %v", err)
+	}
+}
