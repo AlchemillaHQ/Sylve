@@ -1078,8 +1078,12 @@ func addBridgeMember(br, portName string, mtu, vlan int, disableOffloads bool) e
 		if _, err := syncRunCommand("/sbin/ifconfig", port, "inet", "-alias"); err != nil {
 			return fmt.Errorf("clear inet on %s: %v", port, err)
 		}
+		// An IPv4-only (VNET) jail rejects deleting an IPv6 address with
+		// EPERM ("permission denied"); there is nothing to clear in that
+		// case, so treat it as non-fatal like the "no address" case above.
 		if _, err := syncRunCommand("/sbin/ifconfig", port, "inet6", "-alias"); err != nil &&
-			!strings.Contains(err.Error(), "Can't assign requested address") {
+			!strings.Contains(err.Error(), "Can't assign requested address") &&
+			!strings.Contains(err.Error(), "permission denied") {
 			return fmt.Errorf("clear inet6 on %s: %v", port, err)
 		}
 	}
