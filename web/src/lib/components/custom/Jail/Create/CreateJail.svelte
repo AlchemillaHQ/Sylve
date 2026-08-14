@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails, newJail } from '$lib/api/jail/jail';
 	import { getBootstraps } from '$lib/api/jail/bootstrap';
@@ -52,7 +54,7 @@
 		name: '',
 		hostname: '',
 		id: 0,
-		node: '',
+		node: String(page.params.node || storage.localHostname || storage.hostname || ''),
 		description: '',
 		storage: {
 			pool: '',

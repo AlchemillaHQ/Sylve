@@ -1,11 +1,12 @@
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import { registerPlugin } from 'filepond';
+	import { registerPlugin, type ProcessServerConfigFunction } from 'filepond';
 	import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
 	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 	import { storage } from '$lib';
-	import { revertFileExplorerUpload } from '$lib/api/system/file-explorer';
+	import { addFileOrFolder, revertFileExplorerUpload } from '$lib/api/system/file-explorer';
+	import { isDemoMode } from '$lib/demo/runtime';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import {
@@ -34,7 +35,7 @@
 
 	registerPlugin(FilePondPluginImageExifOrientation, FilePondPluginImagePreview);
 
-	let uploadReady = $derived(Boolean(storage.token?.trim()));
+	let uploadReady = $derived(isDemoMode || Boolean(storage.token?.trim()));
 
 	function getAPIError(result: APIResponse, fallback: string): string {
 		if (Array.isArray(result.error)) return result.error.join(', ');
@@ -57,14 +58,48 @@
 		});
 	}
 
+	const processDemoUpload: ProcessServerConfigFunction = (
+		_fieldName,
+		file,
+		_metadata,
+		load,
+		error,
+		progress,
+		abort
+	) => {
+		let cancelled = false;
+		void addFileOrFolder(currentPath, file.name, false, hostname, file.size)
+			.then((result) => {
+				if (cancelled) return;
+				if (result.status !== 'success') {
+					error(getAPIError(result, 'Failed to upload file'));
+					return;
+				}
+				progress(true, file.size, file.size);
+				load(`demo-upload-${Date.now().toString(36)}`);
+			})
+			.catch(() => {
+				if (!cancelled) error('Failed to upload file');
+			});
+
+		return {
+			abort: () => {
+				cancelled = true;
+				abort();
+			}
+		};
+	};
+
 	let uploadServer = $derived.by(() => ({
-		process: {
-			url: `/api/system/file-explorer/upload?path=${encodeURIComponent(currentPath)}`,
-			method: 'POST' as const,
-			headers: getFilePondRequestHeaders(hostname),
-			onload: (response: string) => parseFilePondUploadID(response),
-			onerror: (response: string) => parseFilePondUploadError(response)
-		},
+		process: isDemoMode
+			? processDemoUpload
+			: {
+					url: `/api/system/file-explorer/upload?path=${encodeURIComponent(currentPath)}`,
+					method: 'POST' as const,
+					headers: getFilePondRequestHeaders(hostname),
+					onload: (response: string) => parseFilePondUploadID(response),
+					onerror: (response: string) => parseFilePondUploadError(response)
+				},
 		revert: revertUpload
 	}));
 

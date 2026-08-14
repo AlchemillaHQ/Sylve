@@ -24,12 +24,14 @@ export async function addFileOrFolder(
 	path: string,
 	name: string,
 	isFolder: boolean,
-	hostname?: string
+	hostname?: string,
+	size?: number
 ): Promise<APIResponse> {
 	const body = {
 		path,
 		name,
-		isFolder
+		isFolder,
+		size
 	};
 
 	return await apiRequest('/system/file-explorer', APIResponseSchema, 'POST', body, { hostname });

@@ -11,6 +11,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Passkey } from '$lib/types/auth';
+	import { isDemoMode } from '$lib/demo/runtime';
 	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import {
 		buildRegistrationOptions,
@@ -124,7 +125,7 @@
 			return;
 		}
 
-		if (!isPasskeySupported()) {
+		if (!isDemoMode && !isPasskeySupported()) {
 			toast.error('Passkeys require HTTPS and browser WebAuthn support', {
 				position: 'bottom-center'
 			});
@@ -149,13 +150,15 @@
 				return;
 			}
 
-			const credential = await navigator.credentials.create({
-				publicKey: buildRegistrationOptions(begin.publicKey),
-				signal: controller.signal
-			});
+			const credential = isDemoMode
+				? { id: `demo-${Date.now().toString(36)}`, type: 'public-key' }
+				: await navigator.credentials.create({
+						publicKey: buildRegistrationOptions(begin.publicKey),
+						signal: controller.signal
+					});
 
 			if (controller.signal.aborted) return;
-			if (!credential || !(credential instanceof PublicKeyCredential)) {
+			if (!isDemoMode && (!credential || !(credential instanceof PublicKeyCredential))) {
 				toast.error('Passkey registration failed', {
 					position: 'bottom-center'
 				});
@@ -164,7 +167,7 @@
 
 			const finish = await finishPasskeyRegistration(
 				begin.requestId,
-				serializeCredential(credential),
+				isDemoMode ? credential : serializeCredential(credential as PublicKeyCredential),
 				trimmedLabel,
 				{ hostname, signal: controller.signal }
 			);

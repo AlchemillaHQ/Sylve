@@ -1,127 +1,64 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy } from "svelte";
   import { fade, fly } from "svelte/transition";
-
-  const labels = {
-    menu: "Menu",
-    blog: "Blog",
-    docs: "Documentation",
-    starGithub: "Star on Github",
-    colorMode: "Theme",
-    toggleTheme: "Toggle",
-  };
 
   let open = $state(false);
 
-  const setBodyScrollLock = (locked: boolean) => {
-    if (typeof document === "undefined") return;
-    document.body.style.overflow = locked ? "hidden" : "";
-    document.body.style.touchAction = locked ? "none" : "";
-  };
-
-  onMount(() => {});
-
   $effect(() => {
-    setBodyScrollLock(open);
-
-    return () => {
-      setBodyScrollLock(false);
-    };
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => (document.body.style.overflow = "");
   });
 
   onDestroy(() => {
-    setBodyScrollLock(false);
+    if (typeof document !== "undefined") document.body.style.overflow = "";
   });
+
+  const close = () => (open = false);
 </script>
 
-<div class="md:hidden">
-  <button
-    class="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-background text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-    onclick={() => {
-      open = true;
-    }}
-    aria-label="Toggle menu"
-  >
-    <span class="icon-[lucide--menu] size-6"></span>
+<div class="mobile-menu">
+  <button class="mobile-menu-trigger" onclick={() => (open = true)} aria-label="Open menu">
+    <span class="icon-[lucide--menu] size-5"></span>
   </button>
 
   {#if open}
-    <button
-      class="fixed inset-0 z-60 bg-black/70 backdrop-blur-[1px]"
-      transition:fade={{ duration: 180 }}
-      onclick={() => {
-        open = false;
-      }}
-      aria-label="Close menu overlay"
-    ></button>
-
-    <aside
-      class="fixed inset-y-0 right-0 z-70 h-full w-[84%] max-w-sm border-l border-border bg-background text-foreground shadow-2xl"
-      transition:fly={{ x: 320, duration: 220, opacity: 0.2 }}
-    >
-      <div class="flex h-full flex-col">
-        <div
-          class="flex items-center justify-between border-b border-border px-4 py-4"
-        >
-          <h2 class="text-left text-base font-semibold tracking-tight">
-            {labels.menu}
-          </h2>
-          <button
-            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-foreground transition-colors hover:bg-accent"
-            onclick={() => {
-              open = false;
-            }}
-            aria-label="Close menu"
-          >
-            <span class="icon-[lucide--x] size-4"></span>
-          </button>
-        </div>
-
-        <nav class="flex flex-col gap-1 px-2 py-3">
-          <a
-            href="/docs/"
-            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            onclick={() => {
-              open = false;
-            }}
-          >
-            {labels.docs}
-          </a>
-          <a
-            href="/blog"
-            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            onclick={() => {
-              open = false;
-            }}
-          >
-            {labels.blog}
-          </a>
-          <a
-            href="https://github.com/AlchemillaHQ/Sylve"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            onclick={() => {
-              open = false;
-            }}
-          >
-            <span class="icon-[mdi--github] size-4"></span>
-            <span>{labels.starGithub}</span>
-          </a>
-        </nav>
-
-        <div class="mt-auto border-t border-border p-4">
-          <button
-            type="button"
-            data-theme-toggle
-            class="inline-flex w-full items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <span class="icon-[lucide--sun] size-4 dark:hidden"></span>
-            <span class="icon-[lucide--moon] hidden size-4 dark:block"></span>
-            <span>{labels.colorMode} {labels.toggleTheme}</span>
-          </button>
-        </div>
+    <button class="mobile-menu-backdrop" transition:fade={{ duration: 140 }} onclick={close} aria-label="Close menu"></button>
+    <aside class="mobile-menu-panel" transition:fly={{ x: 320, duration: 200 }}>
+      <div class="mobile-menu-heading">
+        <span>Navigation</span>
+        <button onclick={close} aria-label="Close menu"><span class="icon-[lucide--x] size-5"></span></button>
+      </div>
+      <nav>
+        <a href="/#capabilities" onclick={close}><small>01</small>Product</a>
+        <a href="/docs/" onclick={close}><small>02</small>Documentation</a>
+        <a href="/blog" onclick={close}><small>03</small>Blog</a>
+        <a href="https://github.com/AlchemillaHQ/Sylve" target="_blank" rel="noopener noreferrer" onclick={close}><small>04</small>GitHub</a>
+      </nav>
+      <div class="mobile-menu-footer">
+        <button type="button" data-theme-toggle>
+          <span class="icon-[lucide--sun] size-4 dark:hidden"></span>
+          <span class="icon-[lucide--moon] hidden size-4 dark:block"></span>
+          Change appearance
+        </button>
+        <a href="/getting-started/" onclick={close}>Get started <span>↗</span></a>
       </div>
     </aside>
   {/if}
 </div>
+
+<style>
+  .mobile-menu { display: none; }
+  .mobile-menu-trigger, .mobile-menu-heading button { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent); border-radius: 7px; background: transparent; color: var(--foreground); }
+  .mobile-menu-backdrop { position: fixed; inset: 0; z-index: 70; border: 0; background: rgb(0 0 0 / 55%); }
+  .mobile-menu-panel { position: fixed; top: 0; right: 0; z-index: 80; display: flex; flex-direction: column; width: min(90vw, 25rem); height: 100dvh; padding: 1.25rem; overflow-y: auto; background: var(--background); color: var(--foreground); border-left: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent); }
+  .mobile-menu-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 1.25rem; border-bottom: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent); font: .7rem "IBM Plex Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
+  nav { display: grid; margin-top: 2rem; }
+  nav a { display: grid; grid-template-columns: 2.2rem 1fr; align-items: center; padding: 1rem 0; border-bottom: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); font-size: 1.45rem; letter-spacing: -.03em; text-decoration: none; }
+  nav small { color: var(--muted-foreground); font: .6rem "IBM Plex Mono", monospace; }
+  .mobile-menu-footer { display: grid; gap: .8rem; margin-top: auto; }
+  .mobile-menu-footer button, .mobile-menu-footer a { display: flex; align-items: center; justify-content: space-between; gap: .6rem; min-height: 2.8rem; padding: 0 .85rem; border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent); border-radius: 7px; background: transparent; color: var(--foreground); font-size: .78rem; text-decoration: none; }
+  .mobile-menu-footer button { justify-content: flex-start; }
+  .mobile-menu-footer a { background: var(--foreground); color: var(--background); }
+  @media (max-width: 900px) { .mobile-menu { display: block; } }
+</style>

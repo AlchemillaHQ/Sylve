@@ -1318,6 +1318,8 @@ msgstr "സ്വീകരിച്ചത്"
 msgid "Sent"
 msgstr "അയച്ചത്"
 
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
@@ -1343,9 +1345,8 @@ msgstr "വിച്ഛേദിക്കുക"
 msgid "Reconnect"
 msgstr "വീണ്ടും ബന്ധിപ്പിക്കുക"
 
-#: src/routes/[node]/terminal/+page.svelte
-msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
-msgstr "ഹോസ്റ്റ് കൺസോൾ വിച്ഛേദിക്കപ്പെട്ടു.<0/> പുതിയൊരു സെഷൻ ആരംഭിക്കുന്നതിനായി \"വീണ്ടും ബന്ധിപ്പിക്കുക\" ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുക."
+#~ msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+#~ msgstr "ഹോസ്റ്റ് കൺസോൾ വിച്ഛേദിക്കപ്പെട്ടു.<0/> പുതിയൊരു സെഷൻ ആരംഭിക്കുന്നതിനായി \"വീണ്ടും ബന്ധിപ്പിക്കുക\" ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുക."
 
 #: src/routes/[node]/terminal/+page.svelte
 msgid "Host terminal"
@@ -13938,6 +13939,7 @@ msgid "DC Replication Policy - Failover"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Replication Policy"
 msgstr ""
 
@@ -14994,9 +14996,6 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Dedup"
 msgstr ""
-
-#~ msgid ""
-#~ msgstr ""
 
 #~ msgid "No available spare devices"
 #~ msgstr ""
@@ -20965,3 +20964,158 @@ msgstr ""
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Transport is no longer available"
 msgstr ""
+
+#. 0: id
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Target ID {0}"
+msgstr ""
+
+#. 0: id
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Job ID {0}"
+msgstr ""
+
+#. 0: match[1]
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Policy ID {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup "
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Browser-compatible image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Demo VMs use a single CPU and a prepared 32-bit image so their console can run locally in the browser."
+msgstr ""
+
+#. 0: formatBytesBinary(profile.memoryBytes)
+#: src/lib/components/custom/VM/Create/DemoProfiles.svelte
+msgid "{0} RAM"
+msgstr ""
+
+#~ msgid "Ready to boot"
+#~ msgstr ""
+
+#~ msgid "Loading {0}"
+#~ msgstr ""
+
+#~ msgid "Loading {0} · {1} of {2}"
+#~ msgstr ""
+
+#~ msgid "The browser VM image could not be loaded."
+#~ msgstr ""
+
+#~ msgid "Starting {0}"
+#~ msgstr ""
+
+#~ msgid "Unable to start the browser VM."
+#~ msgstr ""
+
+#~ msgid "Resume"
+#~ msgstr ""
+
+#~ msgid "Pause"
+#~ msgstr ""
+
+#~ msgid "Restart"
+#~ msgstr ""
+
+#~ msgid "Full screen"
+#~ msgstr ""
+
+#. 0: profile.release; 1: formatBytesBinary(profile.memoryBytes)
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "{0} · {1} RAM"
+msgstr ""
+
+#~ msgid "The emulator runs entirely in this tab. Its image is fetched only after you start it."
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Try again"
+msgstr ""
+
+#~ msgid "Boot browser VM"
+#~ msgstr ""
+
+#~ msgid "Unable to start the demo host."
+#~ msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "FreeBSD demo host"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to attach to the session again."
+msgstr ""
+
+#~ msgid "Home"
+#~ msgstr ""
+
+#~ msgid "End"
+#~ msgstr ""
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to upload file"
+msgstr ""
+
+#~ msgid "Linux {0} 6.6.8-tinycore #1 SMP i686 GNU/Linux"
+#~ msgstr ""
+
+#~ msgid "Demo shell commands: uname -a, hostname, whoami, ip addr, clear"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Tiny Core Linux {0}\r\n"
+#~ "Browser serial bridge for {1}\r\n"
+#~ "\r\n"
+#~ "{2}"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+msgid "FreeBSD jail console"
+msgstr ""
+
+#. 0: jailName
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+msgid "{0} · FreeBSD jail session"
+msgstr ""
+
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+msgid "shared host kernel"
+msgstr ""
+
+#. 0: vmName
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Connecting to {0}"
+msgstr ""
+
+#~ msgid "Booting {0}"
+#~ msgstr ""
+
+#~ msgid "Pointer captured · Esc releases"
+#~ msgstr ""
+
+#~ msgid "Click display to capture pointer"
+#~ msgstr ""
+
+#. 0: vmName
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Capture pointer for {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Capture pointer (Esc to release)"
+msgstr ""
+
+#~ msgid "Resuming {0}"
+#~ msgstr ""
+
+#~ msgid "Loading {0} · {1}"
+#~ msgstr ""

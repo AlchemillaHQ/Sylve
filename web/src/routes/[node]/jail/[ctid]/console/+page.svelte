@@ -13,7 +13,7 @@
 		useInterval,
 		watch
 	} from 'runed';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Component } from 'svelte';
 	import { Xterm, XtermAddon } from '@battlefieldduck/xterm-svelte';
 	import type {
 		ITerminalOptions,
@@ -28,6 +28,7 @@
 	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
 
 	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
 
@@ -39,6 +40,10 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	let DemoJailConsoleComponent = $state<Component<{
+		node: string;
+		jailName: string;
+	}> | null>(null);
 	const initialData = untrack(() => data);
 	let consoleIdentity = $derived(`${data.node}\u0000${data.ctId}`);
 
@@ -444,9 +449,16 @@
 	);
 
 	onMount(() => {
+		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
+		if (isDemoMode) {
+			void import('$lib/components/custom/Jail/DemoJailConsole.svelte').then((module) => {
+				if (!cancelled) DemoJailConsoleComponent = module.default;
+			});
+		}
 
 		return () => {
+			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
@@ -469,7 +481,15 @@
 	});
 </script>
 
-{#if jail.current.state === 'INACTIVE'}
+{#if isDemoMode && jail.current.state === 'ACTIVE'}
+	{#if DemoJailConsoleComponent}
+		<DemoJailConsoleComponent node={data.node} jailName={jail.current.name} />
+	{:else}
+		<div class="bg-background flex h-full w-full items-center justify-center">
+			<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+		</div>
+	{/if}
+{:else if jail.current.state === 'INACTIVE'}
 	<div
 		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>

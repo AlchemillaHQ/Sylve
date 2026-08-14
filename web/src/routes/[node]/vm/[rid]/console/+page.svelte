@@ -10,7 +10,7 @@
 		ITerminalInitOnlyOptions,
 		Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import { onMount, getContext, untrack } from 'svelte';
+	import { onMount, getContext, untrack, type Component } from 'svelte';
 	import { getVmByIdResult } from '$lib/api/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import {
@@ -29,6 +29,8 @@
 	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import type { DemoVMProfile } from '$lib/demo/vm-profiles';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
@@ -41,6 +43,16 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	type ResolveDemoVMProfile = (vm: Pick<VM, 'name' | 'storages'>) => DemoVMProfile | null;
+	let resolveDemoVMProfile = $state<ResolveDemoVMProfile | null>(null);
+	let DemoVMConsoleComponent = $state<Component<{
+		profile: DemoVMProfile;
+		vmName: string;
+		runtimeKey: string;
+		view?: 'vga' | 'serial';
+		powerToken?: number;
+		powerAction?: string;
+	}> | null>(null);
 	const initialData = untrack(() => data);
 	let consoleIdentity = $derived(`${data.node}\u0000${data.rid}`);
 
@@ -72,6 +84,9 @@
 		},
 		refetch: () => vmResource.refetch()
 	};
+	let demoProfile = $derived(
+		isDemoMode && resolveDemoVMProfile ? resolveDemoVMProfile(vm.current) : null
+	);
 
 	function getWSSAuth() {
 		return {
@@ -274,8 +289,10 @@
 	let isConsoleDomainAvailable = $derived(consoleStatusAvailable(normalizedDomainStatus));
 	let showConsoleToolbar = $derived(
 		isConsoleDomainAvailable &&
-			((vm.current.vncEnabled && vm.current.serial) ||
-				(consoleType === 'serial' && vm.current.serial))
+			(isDemoMode
+				? vm.current.vncEnabled && vm.current.serial
+				: (vm.current.vncEnabled && vm.current.serial) ||
+					(consoleType === 'serial' && vm.current.serial))
 	);
 
 	function sendSize(cols: number, rows: number) {
@@ -498,13 +515,24 @@
 	}
 
 	onMount(() => {
+		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
 
-		if (consoleType === 'vnc' && vm.current.vncEnabled) {
+		if (isDemoMode) {
+			void Promise.all([
+				import('$lib/components/custom/VM/DemoVMConsole.svelte'),
+				import('$lib/demo/vm-profiles')
+			]).then(([consoleModule, profileModule]) => {
+				if (cancelled) return;
+				DemoVMConsoleComponent = consoleModule.default;
+				resolveDemoVMProfile = profileModule.resolveDemoVMProfile;
+			});
+		} else if (consoleType === 'vnc' && vm.current.vncEnabled) {
 			startVncLoading();
 		}
 
 		return () => {
+			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
@@ -631,7 +659,7 @@
 				</Button>
 			{/if}
 
-			{#if consoleType === 'serial' && vm.current.serial}
+			{#if !isDemoMode && consoleType === 'serial' && vm.current.serial}
 				{#if serialConnectionState === 'connected'}
 					<Button
 						size="sm"
@@ -692,7 +720,22 @@
 			<div class="max-w-md">The VM runtime state is currently unavailable.</div>
 		</div>
 	{:else if isConsoleDomainAvailable}
-		{#if consoleType === 'vnc' && vm.current.vncEnabled}
+		{#if isDemoMode && demoProfile && DemoVMConsoleComponent}
+			{#key `${data.node}:${data.rid}:${demoProfile.id}:${vm.current.name}`}
+				<DemoVMConsoleComponent
+					profile={demoProfile}
+					vmName={vm.current.name}
+					runtimeKey={String(data.rid)}
+					view={consoleType === 'serial' ? 'serial' : 'vga'}
+					powerToken={vmPowerSignal.rid === data.rid ? vmPowerSignal.token : 0}
+					powerAction={vmPowerSignal.action}
+				/>
+			{/key}
+		{:else if isDemoMode}
+			<div class="bg-background flex min-h-0 w-full flex-1 items-center justify-center">
+				<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+			</div>
+		{:else if consoleType === 'vnc' && vm.current.vncEnabled}
 			<div class="relative flex min-h-0 w-full flex-1 flex-col">
 				{#if !vncLoading}
 					<iframe class="w-full flex-1" src={noVNCSource} title="VM Console"></iframe>

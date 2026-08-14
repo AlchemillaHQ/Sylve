@@ -12,8 +12,8 @@
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import '$lib/utils/i18n';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { mode, ModeWatcher } from 'mode-watcher';
-	import { onMount } from 'svelte';
+	import { mode, ModeWatcher, setMode } from 'mode-watcher';
+	import { onMount, type Component } from 'svelte';
 	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialization/Initialize.svelte';
 	import { sleep } from '$lib/utils';
@@ -39,10 +39,14 @@
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { isAPIResponse } from '$lib/utils/http.js';
 	import ErrorDetailModal from '$lib/components/custom/Dialog/ErrorDetailModal.svelte';
+	import { initializeDemoRuntime, isDemoMode } from '$lib/demo/runtime';
 
 	let { children } = $props();
-	let initialized = $state<boolean | null>(null);
-	let rebooted = $state<boolean>(false);
+	initializeDemoRuntime();
+	let DemoHostRuntimeComponent = $state<Component<{ hostname?: string }> | null>(null);
+
+	let initialized = $state<boolean | null>(isDemoMode ? true : null);
+	let rebooted = $state<boolean>(isDemoMode);
 
 	let loading = $state({
 		throbber: false,
@@ -51,9 +55,43 @@
 		initialization: false
 	});
 
+	function handleDemoMessage(event: MessageEvent) {
+		if (
+			!isDemoMode ||
+			event.source !== window.parent ||
+			event.data?.type !== 'sylve-demo-theme' ||
+			(event.data.theme !== 'light' && event.data.theme !== 'dark')
+		) {
+			return;
+		}
+
+		setMode(event.data.theme);
+	}
+
 	onMount(async () => {
 		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
+
+		if (isDemoMode) {
+			void import('$lib/components/custom/Terminal/DemoHostRuntime.svelte').then(
+				(module) => (DemoHostRuntimeComponent = module.default)
+			);
+			window.addEventListener('message', handleDemoMessage);
+			initialized = true;
+			rebooted = true;
+
+			if (page.url.pathname === '/') {
+				await preloadData('/datacenter/summary');
+				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
+			}
+
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					window.parent.postMessage({ type: 'sylve-demo-ready' }, '*');
+				});
+			});
+			return;
+		}
 
 		const validToken = await isTokenValid();
 
@@ -115,7 +153,8 @@
 	});
 
 	onDestroy(() => {
-		stopSSEEvents();
+		if (isDemoMode) window.removeEventListener('message', handleDemoMessage);
+		if (!isDemoMode) stopSSEEvents();
 	});
 
 	async function handleLogin(
@@ -289,6 +328,7 @@
 	watch(
 		() => storage.token,
 		(token) => {
+			if (isDemoMode) return;
 			if (token) {
 				void startSSEEvents();
 			} else {
@@ -322,6 +362,9 @@
 <Toaster />
 <ErrorDetailModal />
 <ModeWatcher />
+{#if isDemoMode && DemoHostRuntimeComponent}
+	<DemoHostRuntimeComponent hostname={storage.hostname || 'leto'} />
+{/if}
 
 <Tooltip.Provider>
 	{#if loading.throbber}

@@ -8,13 +8,11 @@ import FAQ from "@/components/sections/FAQ.svelte";
 ---
 
 <BaseLayout>
-  <div class="relative pt-24">
-    <Hero />
-    <div class="relative py-12 px-4 sm:px-6 lg:px-8">
-      <SylveExplainer client:load />
-      <Sponsors />
-      <FAQ client:load />
-      <Community />
-    </div>
+  <Hero />
+  <div class="post-demo-flow">
+    <SylveExplainer />
+    <Sponsors />
+    <FAQ client:load />
+    <Community />
   </div>
 </BaseLayout>

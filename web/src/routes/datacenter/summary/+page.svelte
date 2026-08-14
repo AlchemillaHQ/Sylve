@@ -16,7 +16,8 @@
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { resource, watch } from 'runed';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import { resource, useInterval, watch } from 'runed';
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 
@@ -159,14 +160,17 @@
 
 		const totalCPUs = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.cpu ?? 0), 0);
 		const used = normalizedNodes.reduce(
-			(acc, node) =>
-				acc + (Math.max(0, node.cpu ?? 0) * clampPercent(node.cpuUsage ?? 0)) / 100,
+			(acc, node) => acc + (Math.max(0, node.cpu ?? 0) * clampPercent(node.cpuUsage ?? 0)) / 100,
 			0
 		);
 
-		const totalMemory = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.memory ?? 0), 0);
+		const totalMemory = normalizedNodes.reduce(
+			(acc, node) => acc + Math.max(0, node.memory ?? 0),
+			0
+		);
 		const usedMemory = normalizedNodes.reduce(
-			(acc, node) => acc + (Math.max(0, node.memory ?? 0) * clampPercent(node.memoryUsage ?? 0)) / 100,
+			(acc, node) =>
+				acc + (Math.max(0, node.memory ?? 0) * clampPercent(node.memoryUsage ?? 0)) / 100,
 			0
 		);
 
@@ -226,6 +230,16 @@
 		await clusterDetails.refetch();
 		await nodes.refetch();
 	}
+
+	useInterval(() => 1800, {
+		callback: () => {
+			if (!isDemoMode) return;
+			if (!nodes.loading) void nodes.refetch();
+			if (!cpuInfo.loading) void cpuInfo.refetch();
+			if (!ramInfo.loading) void ramInfo.refetch();
+			if (!diskInfo.loading) void diskInfo.refetch();
+		}
+	});
 
 	onMount(() => {
 		lazyArc = import('$lib/components/custom/Charts/Arc.svelte');

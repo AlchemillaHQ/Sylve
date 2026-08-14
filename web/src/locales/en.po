@@ -1318,6 +1318,8 @@ msgstr "Received"
 msgid "Sent"
 msgstr "Sent"
 
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
@@ -1343,9 +1345,8 @@ msgstr "Disconnect"
 msgid "Reconnect"
 msgstr "Reconnect"
 
-#: src/routes/[node]/terminal/+page.svelte
-msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
-msgstr "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+#~ msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+#~ msgstr "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
 
 #: src/routes/[node]/terminal/+page.svelte
 msgid "Host terminal"
@@ -13959,6 +13960,7 @@ msgid "DC Replication Policy - Failover"
 msgstr "DC Replication Policy - Failover"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Replication Policy"
 msgstr "DC Replication Policy"
 
@@ -15017,9 +15019,6 @@ msgstr "Special"
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Dedup"
 msgstr "Dedup"
-
-#~ msgid ""
-#~ msgstr ""
 
 #~ msgid "No available spare devices"
 #~ msgstr "No available spare devices"
@@ -20988,3 +20987,162 @@ msgstr "Migration - Cancel - Task ID {0}"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Transport is no longer available"
 msgstr "Transport is no longer available"
+
+#. 0: id
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Target ID {0}"
+msgstr "Target ID {0}"
+
+#. 0: id
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Job ID {0}"
+msgstr "Job ID {0}"
+
+#. 0: match[1]
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Policy ID {0}"
+msgstr "Policy ID {0}"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup "
+msgstr "DC Backup "
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Browser-compatible image"
+msgstr "Browser-compatible image"
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Demo VMs use a single CPU and a prepared 32-bit image so their console can run locally in the browser."
+msgstr "Demo VMs use a single CPU and a prepared 32-bit image so their console can run locally in the browser."
+
+#. 0: formatBytesBinary(profile.memoryBytes)
+#: src/lib/components/custom/VM/Create/DemoProfiles.svelte
+msgid "{0} RAM"
+msgstr "{0} RAM"
+
+#~ msgid "Ready to boot"
+#~ msgstr "Ready to boot"
+
+#~ msgid "Loading {0}"
+#~ msgstr "Loading {0}"
+
+#~ msgid "Loading {0} · {1} of {2}"
+#~ msgstr "Loading {0} · {1} of {2}"
+
+#~ msgid "The browser VM image could not be loaded."
+#~ msgstr "The browser VM image could not be loaded."
+
+#~ msgid "Starting {0}"
+#~ msgstr "Starting {0}"
+
+#~ msgid "Unable to start the browser VM."
+#~ msgstr "Unable to start the browser VM."
+
+#~ msgid "Resume"
+#~ msgstr "Resume"
+
+#~ msgid "Pause"
+#~ msgstr "Pause"
+
+#~ msgid "Restart"
+#~ msgstr "Restart"
+
+#~ msgid "Full screen"
+#~ msgstr "Full screen"
+
+#. 0: profile.release; 1: formatBytesBinary(profile.memoryBytes)
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "{0} · {1} RAM"
+msgstr "{0} · {1} RAM"
+
+#~ msgid "The emulator runs entirely in this tab. Its image is fetched only after you start it."
+#~ msgstr "The emulator runs entirely in this tab. Its image is fetched only after you start it."
+
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Try again"
+msgstr "Try again"
+
+#~ msgid "Boot browser VM"
+#~ msgstr "Boot browser VM"
+
+#~ msgid "Unable to start the demo host."
+#~ msgstr "Unable to start the demo host."
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "FreeBSD demo host"
+msgstr "FreeBSD demo host"
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to attach to the session again."
+msgstr "The host console has been disconnected.<0/> Click the \"Reconnect\" button to attach to the session again."
+
+#~ msgid "Home"
+#~ msgstr "Home"
+
+#~ msgid "End"
+#~ msgstr "End"
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to upload file"
+msgstr "Failed to upload file"
+
+#~ msgid "Linux {0} 6.6.8-tinycore #1 SMP i686 GNU/Linux"
+#~ msgstr "Linux {0} 6.6.8-tinycore #1 SMP i686 GNU/Linux"
+
+#~ msgid "Demo shell commands: uname -a, hostname, whoami, ip addr, clear"
+#~ msgstr "Demo shell commands: uname -a, hostname, whoami, ip addr, clear"
+
+#~ msgid ""
+#~ "Tiny Core Linux {0}\r\n"
+#~ "Browser serial bridge for {1}\r\n"
+#~ "\r\n"
+#~ "{2}"
+#~ msgstr ""
+#~ "Tiny Core Linux {0}\r\n"
+#~ "Browser serial bridge for {1}\r\n"
+#~ "\r\n"
+#~ "{2}"
+
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+msgid "FreeBSD jail console"
+msgstr "FreeBSD jail console"
+
+#. 0: jailName
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+msgid "{0} · FreeBSD jail session"
+msgstr "{0} · FreeBSD jail session"
+
+#: src/lib/components/custom/Jail/DemoJailConsole.svelte
+msgid "shared host kernel"
+msgstr "shared host kernel"
+
+#. 0: vmName
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Connecting to {0}"
+msgstr "Connecting to {0}"
+
+#~ msgid "Booting {0}"
+#~ msgstr "Booting {0}"
+
+#~ msgid "Pointer captured · Esc releases"
+#~ msgstr "Pointer captured · Esc releases"
+
+#~ msgid "Click display to capture pointer"
+#~ msgstr "Click display to capture pointer"
+
+#. 0: vmName
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Capture pointer for {0}"
+msgstr "Capture pointer for {0}"
+
+#: src/lib/components/custom/VM/DemoVMConsole.svelte
+msgid "Capture pointer (Esc to release)"
+msgstr "Capture pointer (Esc to release)"
+
+#~ msgid "Resuming {0}"
+#~ msgstr "Resuming {0}"
+
+#~ msgid "Loading {0} · {1}"
+#~ msgstr "Loading {0} · {1}"

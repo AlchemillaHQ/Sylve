@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { api } from '$lib/api/common';
+	import { isDemoMode } from '$lib/demo/runtime';
 	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
 	import { resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { findRow, getAllRows } from '$lib/utils/tree-table';
@@ -79,7 +81,6 @@
 		tableState.current = { ...tableState.current, hiddenColumns };
 	}
 
-	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let scroll = $state([0, 0]);
 	const ajaxHeaders: Record<string, string> = {};
@@ -138,7 +139,7 @@
 				if (query && query !== '') return;
 
 				if (data.rows.length === 0) {
-					table?.clearData();
+					if (!ajaxURL) table?.clearData();
 					return;
 				}
 
@@ -179,12 +180,47 @@
 		if (hostname) ajaxHeaders['X-Current-Hostname'] = hostname;
 	}
 
+	function appendAjaxParam(search: URLSearchParams, key: string, value: unknown) {
+		if (value === undefined || value === null || value === '') return;
+		if (Array.isArray(value)) {
+			value.forEach((entry, index) => {
+				if (typeof entry === 'object' && entry !== null) {
+					Object.entries(entry).forEach(([childKey, childValue]) => {
+						appendAjaxParam(search, `${key}[${index}][${childKey}]`, childValue);
+					});
+					return;
+				}
+				appendAjaxParam(search, `${key}[${index}]`, entry);
+			});
+			return;
+		}
+		search.set(key, String(value));
+	}
+
+	async function requestDemoTable(url: string, params: Record<string, unknown>): Promise<unknown> {
+		const requestURL = new URL(url, window.location.origin);
+		Object.entries(params).forEach(([key, value]) => {
+			appendAjaxParam(requestURL.searchParams, key, value);
+		});
+		const response = await api.request({
+			url: `${requestURL.pathname}${requestURL.search}`,
+			method: 'GET',
+			headers: ajaxHeaders
+		});
+		return response.data;
+	}
+
 	onMount(() => {
 		if (tableComponent) {
 			const initialPageSize = estimateInitialPageSize();
 			currentPageSize = initialPageSize;
 			table = new Tabulator(tableComponent, {
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
+				ajaxRequestFunc:
+					isDemoMode && ajaxURL
+						? async (url, _config, params) =>
+								requestDemoTable(url, params as Record<string, unknown>)
+						: undefined,
 				height: '100%',
 				ajaxResponse: function (url, params, response) {
 					return response.data;
@@ -235,10 +271,7 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
-			tableHolder = tableComponent?.querySelector(
-				'.tabulator-tableholder'
-			) as HTMLDivElement | null;
-
+			if (reload) reload = false;
 			const widths = tableState.current.columnWidths || {};
 			const persistedHidden = tableState.current.hiddenColumns || {};
 			table?.getColumns().forEach((col) => {
@@ -353,7 +386,7 @@
 	watch(
 		() => reload,
 		(newReload) => {
-			if (newReload) {
+			if (newReload && table && tableInitialized) {
 				table?.setData(ajaxURL!);
 				reload = false;
 			}

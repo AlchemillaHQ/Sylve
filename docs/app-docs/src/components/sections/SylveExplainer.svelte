@@ -1,385 +1,354 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { register } from "swiper/element/bundle";
-
-  const features = [
+  const capabilities = [
     {
-      title: "Virtual Machines & Jails",
+      index: "01",
+      label: "Compute",
+      title: "Run VMs and Jails.",
       description:
-        "Manage the full lifecycle of Bhyve VMs and FreeBSD Jails from a single streamlined control panel.",
-      darkImage: "/screenshots/VM-CreateB.png",
-      lightImage: "/screenshots/VM-Create.png",
+        "Provision Bhyve VMs, FreeBSD Jails, and Linux Jails. Snapshot workloads, create templates, and migrate guests between hosts.",
+      points: ["Cloud-Init and templates", "PCI passthrough and CPU pinning", "Snapshots and migration"],
+      kind: "compute",
     },
     {
-      title: "ZFS Storage",
+      index: "02",
+      label: "Storage",
+      title: "Build on ZFS.",
       description:
-        "Manage pools, datasets, snapshots, and disk health with powerful built-in ZFS tooling, including streamlined workflows for replication.",
-      darkImage: "/screenshots/ZFS-DatasetsB.png",
-      lightImage: "/screenshots/ZFS-Datasets.png",
+        "Create pools, filesystems, and zvols; schedule snapshots; replicate datasets; and serve storage over Samba or iSCSI.",
+      points: ["Periodic snapshots", "Replication and failover", "Samba and iSCSI"],
+      kind: "storage",
     },
     {
-      title: "Networking",
+      index: "03",
+      label: "Network",
+      title: "Shape the network.",
       description:
-        "Configure bridges, DHCP, and reusable network objects from a single intuitive interface, from quick setup to advanced management.",
-      darkImage: "/screenshots/NetworkingB.png",
-      lightImage: "/screenshots/Networking.png",
+        "Build bridges and virtual networks, enforce firewall and NAT policy, and run DHCP, mDNS, routing, or WireGuard on the host.",
+      points: ["Bridges and interfaces", "Firewall and NAT", "DHCP, mDNS and WireGuard"],
+      kind: "network",
     },
     {
-      title: "Clustering",
+      index: "04",
+      label: "Multi-node",
+      title: "Coordinate every host.",
       description:
-        "Using the same RAFT consensus model as Kubernetes, Sylve forms resilient clusters with distributed state and ZFS replication.",
-      darkImage: "/screenshots/ClusteringB.png",
-      lightImage: "/screenshots/Clustering.png",
+        "Join FreeBSD hosts into a cluster, migrate guests, schedule replicated copies, fail over workloads, and restore from remote backups.",
+      points: ["Guest migration", "Replication policies", "Backup and restore"],
+      kind: "cluster",
     },
   ];
-
-  const platformPartners = [
-    {
-      name: "Svelte",
-      href: "https://svelte.dev",
-      iconClass: "icon-[ri--svelte-fill]",
-      iconColorClass: "text-[#ff3e00] dark:text-[#ff6a3d]",
-    },
-    {
-      name: "Go",
-      href: "https://go.dev",
-      iconClass: "icon-[lineicons--go]",
-      iconColorClass: "text-[#00add8] dark:text-[#64d8f7]",
-    },
-    {
-      name: "libvirt",
-      href: "https://libvirt.org",
-      lightLogo: "/partners/libvirt.png",
-      darkLogo: "/partners/libvirt.png",
-      imgClass: "max-h-8",
-    },
-    {
-      name: "OpenZFS",
-      href: "https://openzfs.org",
-      lightLogo: "/partners/openzfs-blue.png",
-      darkLogo: "/partners/openzfs-white.png",
-      imgClass: "max-h-7",
-    },
-    {
-      name: "Zelta",
-      href: "https://zelta.space",
-      lightLogo: "/partners/zelta-yellow.svg",
-      darkLogo: "/partners/zelta-white.svg",
-      imgClass: "max-h-8",
-    },
-  ];
-
-  let selectedFeature = $state(0);
-  let featureSwiperEl = $state<HTMLElement | null>(null);
-  let imageSwiperEl = $state<HTMLElement | null>(null);
-  let isSyncing = false;
-
-  function goToFeature(index: number) {
-    selectedFeature = index;
-    (featureSwiperEl as any)?.swiper?.slideTo?.(index);
-    (imageSwiperEl as any)?.swiper?.slideTo?.(index);
-  }
-
-  function prevSlide() {
-    (imageSwiperEl as any)?.swiper?.slidePrev?.();
-  }
-
-  function nextSlide() {
-    (imageSwiperEl as any)?.swiper?.slideNext?.();
-  }
-
-  onMount(() => {
-    register();
-
-    const currentFeatureSwiperEl = featureSwiperEl as any;
-    const currentImageSwiperEl = imageSwiperEl as any;
-
-    const onFeatureSlideChange = () => {
-      if (isSyncing) {
-        return;
-      }
-
-      const idx = currentFeatureSwiperEl?.swiper?.realIndex ?? 0;
-      selectedFeature = idx;
-      const imageIndex = currentImageSwiperEl?.swiper?.activeIndex ?? 0;
-      if (imageIndex !== idx) {
-        isSyncing = true;
-        currentImageSwiperEl?.swiper?.slideTo?.(idx);
-        queueMicrotask(() => {
-          isSyncing = false;
-        });
-      }
-    };
-
-    const onImageSlideChange = () => {
-      if (isSyncing) {
-        return;
-      }
-
-      const idx = currentImageSwiperEl?.swiper?.realIndex ?? 0;
-      selectedFeature = idx;
-      const featureIndex = currentFeatureSwiperEl?.swiper?.activeIndex ?? 0;
-      if (featureIndex !== idx) {
-        isSyncing = true;
-        currentFeatureSwiperEl?.swiper?.slideTo?.(idx);
-        queueMicrotask(() => {
-          isSyncing = false;
-        });
-      }
-    };
-
-    currentFeatureSwiperEl?.addEventListener?.(
-      "swiperslidechange",
-      onFeatureSlideChange,
-    );
-    currentImageSwiperEl?.addEventListener?.(
-      "swiperslidechange",
-      onImageSlideChange,
-    );
-
-    return () => {
-      currentFeatureSwiperEl?.removeEventListener?.(
-        "swiperslidechange",
-        onFeatureSlideChange,
-      );
-      currentImageSwiperEl?.removeEventListener?.(
-        "swiperslidechange",
-        onImageSlideChange,
-      );
-    };
-  });
 </script>
 
-<section
-  class="max-w-6xl mx-auto flex w-full flex-col items-center mt-12 lg:mt-24 -translate-y-4 animate-fade-in opacity-0"
-  style="--animation-delay: 120ms"
->
-  <h2
-    class="text-gradient mb-2 text-center text-3xl font-semibold tracking-tight md:text-5xl"
-  >
-    A Modern Control Plane for FreeBSD
-  </h2>
-  <div
-    class="mb-4 mt-2 flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs text-muted-foreground"
-  >
-    <span class="mr-1 uppercase tracking-[0.18em] text-muted-foreground/80"
-      >Powered by</span
-    >
-    {#each platformPartners as partner}
-      <a
-        href={partner.href}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`Visit ${partner.name}`}
-        class="inline-flex items-center rounded-md border border-border/60 bg-background/55 px-2.5 py-1.5 transition-colors hover:border-primary/30"
-      >
-        {#if partner.iconClass}
-          <span
-            class={`${partner.iconClass} ${partner.iconColorClass ?? "text-foreground"} size-11 shrink-0`}
-          ></span>
-        {:else}
-          <img
-            src={partner.lightLogo}
-            alt={`${partner.name} logo`}
-            class={`w-auto object-contain dark:hidden ${partner.imgClass}`}
-            loading="lazy"
-            decoding="async"
-          />
-          <img
-            src={partner.darkLogo}
-            alt={`${partner.name} logo`}
-            class={`hidden w-auto object-contain dark:block ${partner.imgClass}`}
-            loading="lazy"
-            decoding="async"
-          />
-        {/if}
-      </a>
-    {/each}
+<section class="capabilities-section site-shell" id="capabilities">
+  <div class="capabilities-header">
+    <div>
+      <p class="section-kicker">Sylve platform</p>
+      <h2>Build and operate on FreeBSD.</h2>
+    </div>
+    <p>
+      Run VMs and Jails, manage ZFS storage and host networking, then coordinate
+      workloads across a cluster.
+    </p>
   </div>
 
-  <p
-    class="block max-w-2xl text-center text-base leading-relaxed text-muted-foreground md:text-lg"
-  >
-    Sylve brings virtualization, containers, storage, and networking together in
-    one intuitive interface giving you complete control of your FreeBSD systems.
-  </p>
+  <div class="fact-strip" aria-label="Sylve platform facts">
+    <div><strong>&lt;384 MB</strong><span>baseline memory</span></div>
+    <div><strong>Bhyve + Jails</strong><span>workload runtimes</span></div>
+    <div><strong>ZFS native</strong><span>storage and replication</span></div>
+    <div><strong>BSD-2-Clause</strong><span>open source</span></div>
+  </div>
 
-  <section class="w-full py-12 md:pb-24 lg:pb-28">
-    <div class="container mx-auto w-full px-0">
-      <div class="mx-auto w-full max-w-5xl">
-        <swiper-container
-          bind:this={featureSwiperEl}
-          class="features-swiper mx-auto w-full max-w-lg"
-          slides-per-view="1"
-          space-between="10"
-          speed="420"
-          loop={false}
-          navigation={false}
-          pagination={false}
-          keyboard={true}
-          a11y={true}
-        >
-          {#each features as feature, index}
-            <swiper-slide>
-              <button
-                class={`h-full w-full rounded-xl border px-3.5 py-3.5 text-center transition-colors ${index === selectedFeature ? "border-primary/35 bg-muted/70" : "border-border/65 bg-background/70 hover:border-primary/25"}`}
-                onclick={() => {
-                  goToFeature(index);
-                }}
-                aria-label={`Show ${feature.title}`}
-              >
-                <h3 class="text-lg font-semibold">{feature.title}</h3>
-                <p class="mt-1 text-sm text-muted-foreground">
-                  {feature.description}
-                </p>
-              </button>
-            </swiper-slide>
-          {/each}
-        </swiper-container>
-
-        <div class="mt-4 flex items-center justify-center gap-2">
-          <button
-            class="hero-nav-btn"
-            onclick={prevSlide}
-            aria-label="Previous feature image"
-          >
-            <span class="icon-[lucide--chevron-left] size-4"></span>
-          </button>
-          <div class="flex items-center gap-1.5">
-            {#each features as _, dotIndex}
-              <button
-                class={`hero-dot ${dotIndex === selectedFeature ? "hero-dot-active" : ""}`}
-                onclick={() => goToFeature(dotIndex)}
-                aria-label={`Go to feature ${dotIndex + 1}`}
-              ></button>
+  <div class="capability-grid">
+    {#each capabilities as capability (capability.index)}
+      <article class="capability-card">
+        <div class="capability-card-copy">
+          <div class="capability-meta">
+            <span>{capability.index}</span>
+            <p class="section-kicker">{capability.label}</p>
+          </div>
+          <h3>{capability.title}</h3>
+          <p>{capability.description}</p>
+          <ul>
+            {#each capability.points as point (point)}
+              <li>{point}</li>
             {/each}
-          </div>
-          <button
-            class="hero-nav-btn"
-            onclick={nextSlide}
-            aria-label="Next feature image"
-          >
-            <span class="icon-[lucide--chevron-right] size-4"></span>
-          </button>
+          </ul>
         </div>
-
-        <div class="relative mt-5">
-          <div
-            class="explainer-glow pointer-events-none absolute inset-0 z-10 hidden lg:block"
-            aria-hidden="true"
-          ></div>
-          <div
-            class="relative z-20 mx-auto w-full overflow-hidden rounded-2xl border border-border/70 bg-transparent shadow-xl lg:max-w-4xl"
-          >
-            <swiper-container
-              bind:this={imageSwiperEl}
-              class="explainer-swiper h-full w-full"
-              slides-per-view="1"
-              speed="500"
-              loop={false}
-              navigation={false}
-              pagination={false}
-              keyboard={true}
-              a11y={true}
-            >
-              {#each features as feature}
-                <swiper-slide>
-                  <img
-                    src={feature.lightImage}
-                    width="700"
-                    height="420"
-                    alt={feature.title}
-                    class="block h-auto w-full dark:hidden"
-                  />
-                  <img
-                    src={feature.darkImage}
-                    width="700"
-                    height="420"
-                    alt={feature.title}
-                    class="hidden h-auto w-full dark:block"
-                  />
-                </swiper-slide>
-              {/each}
-            </swiper-container>
-          </div>
+        <div class={`system-figure ${capability.kind}`} aria-hidden="true">
+          <span class="figure-label">Fig. {capability.index} / {capability.label}</span>
+          {#if capability.kind === "compute"}
+            <span class="figure-reading">06 active</span>
+            <svg viewBox="0 0 600 260" role="presentation">
+              <g class="wire faint">
+                <circle cx="300" cy="137" r="103"></circle>
+                <circle cx="300" cy="137" r="72"></circle>
+                <line x1="300" y1="18" x2="300" y2="246"></line>
+                <line x1="80" y1="137" x2="520" y2="137"></line>
+              </g>
+              <g class="wire">
+                <path d="M300 65L410 86L458 177L350 216L186 190L142 91Z"></path>
+                <line x1="300" y1="137" x2="300" y2="65"></line>
+                <line x1="300" y1="137" x2="410" y2="86"></line>
+                <line x1="300" y1="137" x2="458" y2="177"></line>
+                <line x1="300" y1="137" x2="350" y2="216"></line>
+                <line x1="300" y1="137" x2="186" y2="190"></line>
+                <line x1="300" y1="137" x2="142" y2="91"></line>
+              </g>
+              <g class="nodes">
+                <circle cx="300" cy="65" r="7"></circle>
+                <circle cx="410" cy="86" r="7"></circle>
+                <circle cx="458" cy="177" r="7"></circle>
+                <circle cx="350" cy="216" r="7"></circle>
+                <circle cx="186" cy="190" r="7"></circle>
+                <circle cx="142" cy="91" r="7"></circle>
+              </g>
+              <g class="core-mark">
+                <rect x="273" y="110" width="54" height="54" rx="3"></rect>
+                <path d="M286 124H314M286 137H314M286 150H306"></path>
+              </g>
+              <g class="diagram-labels">
+                <text x="315" y="51">VM-01</text>
+                <text x="424" y="77">JAIL-02</text>
+                <text x="472" y="181">VM-03</text>
+                <text x="365" y="231">JAIL-04</text>
+                <text x="120" y="209">VM-05</text>
+                <text x="76" y="82">VM-06</text>
+              </g>
+            </svg>
+          {:else if capability.kind === "storage"}
+            <span class="figure-reading">pool / atlas</span>
+            <svg viewBox="0 0 600 260" role="presentation">
+              <g class="wire faint">
+                <line x1="48" y1="48" x2="552" y2="48"></line>
+                <line x1="48" y1="212" x2="552" y2="212"></line>
+                <circle cx="250" cy="132" r="96"></circle>
+                <circle cx="250" cy="132" r="68"></circle>
+                <circle cx="250" cy="132" r="40"></circle>
+              </g>
+              <g class="storage-arcs">
+                <path d="M250 36A96 96 0 0 1 346 132"></path>
+                <path d="M318 132A68 68 0 0 1 215 191"></path>
+                <path d="M250 172A40 40 0 0 1 222 103"></path>
+              </g>
+              <g class="storage-scale">
+                <line x1="398" y1="72" x2="536" y2="72"></line>
+                <line x1="398" y1="104" x2="506" y2="104"></line>
+                <line x1="398" y1="136" x2="524" y2="136"></line>
+                <line x1="398" y1="168" x2="474" y2="168"></line>
+                <circle cx="398" cy="72" r="3"></circle>
+                <circle cx="398" cy="104" r="3"></circle>
+                <circle cx="398" cy="136" r="3"></circle>
+                <circle cx="398" cy="168" r="3"></circle>
+              </g>
+              <text class="figure-number" x="250" y="127" text-anchor="middle">4.2</text>
+              <text class="figure-unit" x="250" y="149" text-anchor="middle">TB / 8.0 TB</text>
+              <g class="diagram-labels">
+                <text x="410" y="67">DATASETS</text>
+                <text x="410" y="99">SNAPSHOTS</text>
+                <text x="410" y="131">REPLICAS</text>
+                <text x="410" y="163">FREE</text>
+              </g>
+            </svg>
+          {:else if capability.kind === "network"}
+            <span class="figure-reading">10.0.0.0 / 24</span>
+            <svg viewBox="0 0 600 260" role="presentation">
+              <g class="wire faint">
+                <path d="M63 54H537M63 130H537M63 206H537"></path>
+                <path d="M110 35V225M300 35V225M490 35V225"></path>
+              </g>
+              <g class="network-links">
+                <path d="M110 84L300 130L490 67L490 192L300 130L110 190Z"></path>
+                <path d="M110 84L300 52L490 67M110 190L300 213L490 192"></path>
+              </g>
+              <g class="network-points">
+                <circle cx="110" cy="84" r="8"></circle>
+                <circle cx="300" cy="52" r="5"></circle>
+                <circle cx="490" cy="67" r="8"></circle>
+                <circle cx="300" cy="130" r="14"></circle>
+                <circle cx="110" cy="190" r="8"></circle>
+                <circle cx="300" cy="213" r="5"></circle>
+                <circle cx="490" cy="192" r="8"></circle>
+              </g>
+              <circle class="network-pulse" cx="300" cy="130" r="31"></circle>
+              <g class="diagram-labels">
+                <text x="78" y="73">IGB0</text>
+                <text x="505" y="62">VNET2</text>
+                <text x="315" y="124">BRIDGE0</text>
+                <text x="55" y="211">DHCP</text>
+                <text x="505" y="210">DNS</text>
+              </g>
+            </svg>
+          {:else}
+            <span class="figure-reading">quorum / 03</span>
+            <svg viewBox="0 0 600 260" role="presentation">
+              <g class="wire faint">
+                <circle cx="300" cy="130" r="111"></circle>
+                <circle cx="300" cy="130" r="74"></circle>
+                <line x1="72" y1="130" x2="528" y2="130"></line>
+              </g>
+              <g class="cluster-paths">
+                <path d="M300 43L460 181L140 181Z"></path>
+                <path d="M300 43V130L460 181M300 130L140 181"></path>
+              </g>
+              <g class="cluster-points">
+                <circle cx="300" cy="43" r="20"></circle>
+                <circle cx="460" cy="181" r="20"></circle>
+                <circle cx="140" cy="181" r="20"></circle>
+                <circle cx="300" cy="130" r="7"></circle>
+              </g>
+              <g class="cluster-glyphs">
+                <path d="M292 43H308M300 35V51"></path>
+                <path d="M452 181H468M460 173V189"></path>
+                <path d="M132 181H148M140 173V189"></path>
+              </g>
+              <g class="diagram-labels">
+                <text x="318" y="39">VEGA / LEADER</text>
+                <text x="480" y="185">LYRA</text>
+                <text x="77" y="185">ORION</text>
+                <text x="316" y="126">RAFT 24819</text>
+              </g>
+            </svg>
+          {/if}
         </div>
-      </div>
-    </div>
-  </section>
+      </article>
+    {/each}
+  </div>
 </section>
 
 <style>
-  .explainer-glow {
-    left: 50%;
-    top: 52%;
-    width: min(70rem, 95%);
-    height: 92%;
-    transform: translate(-50%, -50%);
-    border-radius: 9999px;
-    background: radial-gradient(
-        62% 58% at 35% 50%,
-        rgb(59 130 246 / 36%),
-        transparent 70%
-      ),
-      radial-gradient(
-        58% 52% at 68% 52%,
-        rgb(249 115 22 / 34%),
-        transparent 74%
-      );
-    filter: blur(44px);
-    opacity: 0.46;
+  .system-figure {
+    --diagram-accent: var(--foreground);
+    position: relative;
+    min-height: 18rem;
+    margin-top: 0;
+    margin-inline: -1.75rem;
+    overflow: hidden;
+    border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+    background-image:
+      linear-gradient(color-mix(in oklab, var(--foreground) 5%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklab, var(--foreground) 5%, transparent) 1px, transparent 1px);
+    background-position: center;
+    background-size: 2.4rem 2.4rem;
+    color: var(--foreground);
   }
 
-  :global(.dark) .explainer-glow {
-    opacity: 0.34;
+  .figure-label,
+  .figure-reading {
+    position: absolute;
+    z-index: 1;
+    top: 0.95rem;
+    color: var(--muted-foreground);
+    font: 0.55rem "IBM Plex Mono", monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
-  .hero-nav-btn {
-    display: inline-flex;
-    height: 2rem;
-    width: 2rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    border: 1px solid rgb(255 255 255 / 18%);
-    background: linear-gradient(180deg, rgb(18 18 18 / 78%), rgb(6 6 6 / 58%));
-    color: rgb(245 245 245 / 95%);
-    backdrop-filter: blur(8px);
-    box-shadow:
-      0 8px 24px rgb(0 0 0 / 28%),
-      inset 0 1px 0 rgb(255 255 255 / 14%);
-    transition:
-      transform 180ms ease,
-      background-color 180ms ease,
-      border-color 180ms ease;
+  .figure-label { left: 1.35rem; }
+  .figure-reading { right: 1.35rem; }
+
+  svg {
+    position: absolute;
+    inset: 2rem 0 0;
+    width: 100%;
+    height: calc(100% - 2rem);
+    overflow: visible;
   }
 
-  .hero-nav-btn:hover {
-    transform: translateY(-1px);
-    border-color: rgb(255 255 255 / 28%);
-    background: linear-gradient(180deg, rgb(22 22 22 / 84%), rgb(9 9 9 / 64%));
+  .wire,
+  .network-links,
+  .cluster-paths,
+  .storage-scale {
+    fill: none;
+    stroke: color-mix(in oklab, var(--foreground) 25%, transparent);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
   }
 
-  .hero-dot {
-    height: 0.45rem;
-    width: 0.45rem;
-    border-radius: 9999px;
-    border: 1px solid rgb(255 255 255 / 24%);
-    background: rgb(255 255 255 / 28%);
-    backdrop-filter: blur(4px);
-    transition: all 220ms ease;
+  .faint {
+    stroke: color-mix(in oklab, var(--foreground) 10%, transparent);
+    stroke-dasharray: 3 7;
   }
 
-  .hero-dot-active {
-    width: 1.5rem;
-    background: linear-gradient(
-      90deg,
-      rgb(255 255 255 / 95%),
-      rgb(219 234 254 / 92%)
-    );
-    border-color: rgb(255 255 255 / 65%);
-    box-shadow:
-      0 0 0 1px rgb(255 255 255 / 16%),
-      0 4px 14px rgb(59 130 246 / 22%);
+  .nodes circle,
+  .network-points circle,
+  .cluster-points circle {
+    fill: var(--background);
+    stroke: color-mix(in oklab, var(--foreground) 50%, transparent);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .nodes circle:nth-child(2),
+  .nodes circle:nth-child(5),
+  .network-points circle:nth-child(4),
+  .cluster-points circle:first-child {
+    fill: var(--diagram-accent);
+    stroke: var(--diagram-accent);
+  }
+
+  .core-mark rect {
+    fill: color-mix(in oklab, var(--diagram-accent) 14%, var(--background));
+    stroke: var(--diagram-accent);
+    stroke-width: 1;
+  }
+
+  .core-mark path,
+  .cluster-glyphs path {
+    fill: none;
+    stroke: var(--foreground);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .diagram-labels,
+  .figure-unit {
+    fill: var(--muted-foreground);
+    font: 9px "IBM Plex Mono", monospace;
+    letter-spacing: 0.08em;
+  }
+
+  .storage-arcs {
+    fill: none;
+    stroke: var(--diagram-accent);
+    stroke-width: 4;
+    stroke-linecap: square;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .storage-scale circle { fill: var(--diagram-accent); stroke: none; }
+  .figure-number { fill: var(--foreground); font: 500 38px Inter, sans-serif; letter-spacing: -0.06em; }
+  .figure-unit { font-size: 8px; }
+
+  .network-links,
+  .cluster-paths {
+    stroke: color-mix(in oklab, var(--diagram-accent) 72%, var(--foreground));
+    stroke-dasharray: 4 6;
+  }
+
+  .network-pulse {
+    fill: none;
+    stroke: var(--diagram-accent);
+    stroke-width: 1;
+    opacity: 0.35;
+    transform-origin: 300px 130px;
+    animation: diagram-pulse 4s ease-out infinite;
+  }
+
+  .cluster-glyphs path { stroke: var(--foreground); }
+  .cluster-glyphs path:first-child { stroke: var(--background); }
+
+  @keyframes diagram-pulse {
+    0%, 30% { opacity: 0.4; transform: scale(0.7); }
+    80%, 100% { opacity: 0; transform: scale(1.35); }
+  }
+
+  @media (max-width: 560px) {
+    .system-figure {
+      min-height: 15.5rem;
+      margin-inline: -1.1rem;
+    }
+
+    .figure-label { left: 1rem; }
+    .figure-reading { right: 1rem; }
   }
 </style>

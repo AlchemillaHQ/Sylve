@@ -217,7 +217,8 @@
 				return;
 			}
 
-			const mtu = activeModal.mtu.trim() === '' ? 1500 : Number.parseInt(activeModal.mtu, 10);
+			const mtuInput = String(activeModal.mtu ?? '').trim();
+			const mtu = mtuInput === '' ? 1500 : Number.parseInt(mtuInput, 10);
 			if (!Number.isFinite(mtu) || !isValidMTU(mtu)) {
 				toast.error('Invalid MTU', {
 					position: 'bottom-center'
@@ -226,7 +227,8 @@
 				return;
 			}
 
-			const vlan = activeModal.vlan.trim() === '' ? 0 : Number.parseInt(activeModal.vlan, 10);
+			const vlanInput = String(activeModal.vlan ?? '').trim();
+			const vlan = vlanInput === '' ? 0 : Number.parseInt(vlanInput, 10);
 			if (!Number.isFinite(vlan) || !isValidVLAN(vlan)) {
 				toast.error('Invalid VLAN', {
 					position: 'bottom-center'

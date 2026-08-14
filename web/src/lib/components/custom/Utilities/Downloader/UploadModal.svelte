@@ -8,6 +8,7 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { APIResponse } from '$lib/types/common';
+	import { isDemoMode } from '$lib/demo/runtime';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { getDownloaderProcessingOptionsError } from '$lib/utils/downloader-processing';
 	import {
@@ -17,7 +18,12 @@
 		parseFilePondUploadID
 	} from '$lib/utils/filepond';
 	import { handleAPIError } from '$lib/utils/http';
-	import type { FilePond as FilePondType, FilePondErrorDescription, FilePondFile } from 'filepond';
+	import type {
+		FilePond as FilePondType,
+		FilePondErrorDescription,
+		FilePondFile,
+		ProcessServerConfigFunction
+	} from 'filepond';
 	import { registerPlugin } from 'filepond';
 	import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
 	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
@@ -70,7 +76,7 @@
 	let pond = $state<FilePondType | undefined>(undefined);
 	let isCompletingAll = $state(false);
 	let uploadHostname = $state(getFilePondRequestHostname());
-	let uploadReady = $derived(Boolean(storage.token?.trim()));
+	let uploadReady = $derived(isDemoMode || Boolean(storage.token?.trim()));
 
 	let completableItems = $derived(
 		stagedItems.filter(
@@ -184,14 +190,47 @@
 		});
 	}
 
+	const processDemoUpload: ProcessServerConfigFunction = (
+		_fieldName,
+		file,
+		_metadata,
+		load,
+		error,
+		progress,
+		abort
+	) => {
+		let cancelled = false;
+		const timeout = window.setTimeout(async () => {
+			if (cancelled) return;
+			try {
+				const { stageDemoDownloaderUpload } = await import('$lib/demo/admin-fixtures');
+				if (cancelled) return;
+				progress(true, file.size, file.size);
+				load(stageDemoDownloaderUpload(uploadHostname, file.name, file.size));
+			} catch {
+				if (!cancelled) error('Failed to upload file');
+			}
+		}, 350);
+
+		return {
+			abort: () => {
+				cancelled = true;
+				window.clearTimeout(timeout);
+				abort();
+			}
+		};
+	};
+
 	let uploadServer = $derived.by(() => ({
-		process: {
-			url: '/api/utilities/downloader-uploads',
-			method: 'POST' as const,
-			headers: getFilePondRequestHeaders(uploadHostname),
-			onload: (response: string) => parseFilePondUploadID(response),
-			onerror: (response: string) => parseFilePondUploadError(response)
-		},
+		process: isDemoMode
+			? processDemoUpload
+			: {
+					url: '/api/utilities/downloader-uploads',
+					method: 'POST' as const,
+					headers: getFilePondRequestHeaders(uploadHostname),
+					onload: (response: string) => parseFilePondUploadID(response),
+					onerror: (response: string) => parseFilePondUploadError(response)
+				},
 		revert: revertUpload
 	}));
 

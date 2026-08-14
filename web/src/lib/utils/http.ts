@@ -11,6 +11,7 @@
 import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { api } from '$lib/api/common';
+import { isDemoMode } from '$lib/demo/runtime';
 import { reload } from '$lib/stores/api.svelte';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { z } from 'zod/v4';
@@ -194,6 +195,10 @@ export async function cachedFetch<T>(
     onlyCache?: boolean,
     hostname?: string
 ): Promise<T> {
+    if (isDemoMode) {
+        return await fetchFunction();
+    }
+
     const scopedKey = getScopedCacheKey(key, hostname);
     const now = Date.now();
     const entry = await kvStorage.getItem<T>(scopedKey);
