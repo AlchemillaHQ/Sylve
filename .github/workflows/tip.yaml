@@ -148,6 +148,10 @@ jobs:
         run: |
           make frontend
 
+      - name: Build Demo Web Assets
+        run: |
+          npm run build:demo --prefix web
+
       - name: Upload Web Assets
         uses: actions/upload-artifact@v4
         with:
@@ -175,6 +179,7 @@ jobs:
         run: |
           set -euo pipefail
           tar -czf sylve-web-assets.tar.gz -C internal/assets web-files
+          tar -czf sylve-web-demo-assets.tar.gz -C web/build .
 
       - name: Upload web assets to tip prerelease
         if: steps.freshness.outputs.upload == 'true'
@@ -182,11 +187,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ASSET_NAME="sylve-web-assets.tar.gz"
-          while gh release delete-asset tip "${ASSET_NAME}" --yes >/dev/null 2>&1; do
-            echo "Deleted existing ${ASSET_NAME}"
+          for ASSET_NAME in sylve-web-assets.tar.gz sylve-web-demo-assets.tar.gz; do
+            while gh release delete-asset tip "${ASSET_NAME}" --yes >/dev/null 2>&1; do
+              echo "Deleted existing ${ASSET_NAME}"
+            done
+            gh release upload tip "${ASSET_NAME}"
           done
-          gh release upload tip "sylve-web-assets.tar.gz"
 
   build-freebsd:
     needs:
