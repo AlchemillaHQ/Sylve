@@ -10,6 +10,7 @@
 		buildResourceTree,
 		collectResourceTreeIds,
 		type ResourceTreeNodeInput,
+		type ResourceTreeItem,
 		type ResourceTreePreferences,
 		type ResourceTreeResource,
 		type ResourceTreeView
@@ -23,10 +24,19 @@
 	import { page } from '$app/state';
 	import { onDestroy } from 'svelte';
 	import { isAPIResponse } from '$lib/utils/http';
+	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface ClusterSidebarSnapshot {
 		resources: NodeResource[];
 		nodes: ClusterNode[];
+	}
+
+	interface MigrationGuest {
+		type: 'vm' | 'jail';
+		id: number;
+		name: string;
+		node: string;
 	}
 
 	interface Props {
@@ -113,6 +123,39 @@
 	let cluster = $derived(clusterSidebarSnapshot.current.resources);
 	let nodes = $derived(clusterSidebarSnapshot.current.nodes);
 	let nodesById = $derived(new Map(nodes.map((node) => [node.nodeUUID, node])));
+	let canMigrate = $derived(
+		nodes.filter((node) => node.nodeUUID !== '' && node.status === 'online').length > 1
+	);
+	let migrationGuest = $state<MigrationGuest | null>(null);
+	let migrateOpen = $state(false);
+
+	function openMigration(item: ResourceTreeItem) {
+		if (
+			(item.resourceType !== 'vm' && item.resourceType !== 'jail') ||
+			item.resourceId === undefined ||
+			!item.nodeHostname
+		) {
+			return;
+		}
+
+		migrationGuest = {
+			type: item.resourceType,
+			id: item.resourceId,
+			name: item.label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim(),
+			node: item.nodeHostname
+		};
+		migrateOpen = true;
+	}
+
+	function handleMigrationSuccess(targetHostname: string) {
+		reload.leftPanel = true;
+		if (!targetHostname || !migrationGuest) return;
+
+		useSafeGoto(`/${targetHostname}/${migrationGuest.type}/${migrationGuest.id}/summary`, {
+			replaceState: false,
+			noScroll: false
+		});
+	}
 
 	let globalNextGuestId = $derived.by(() => {
 		const guestIds = cluster.flatMap((resource) => [
@@ -273,9 +316,28 @@
 		<ul class="h-full min-h-0">
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item (item.id)}
-					<TreeViewCluster {item} {openIds} onToggleId={toggleOpen} />
+					<TreeViewCluster
+						{item}
+						{openIds}
+						onToggleId={toggleOpen}
+						{canMigrate}
+						onMigrate={openMigration}
+					/>
 				{/each}
 			</ScrollArea>
 		</ul>
 	</nav>
 </div>
+
+{#if migrationGuest}
+	{#key `${migrationGuest.type}:${migrationGuest.node}:${migrationGuest.id}`}
+		<MigrateModal
+			bind:open={migrateOpen}
+			guestType={migrationGuest.type}
+			guestId={migrationGuest.id}
+			guestName={migrationGuest.name}
+			node={migrationGuest.node}
+			onSuccess={handleMigrationSuccess}
+		/>
+	{/key}
+{/if}

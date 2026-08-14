@@ -30,9 +30,18 @@
 		openIds: Set<string>;
 		onToggleId: (id: string) => void;
 		nextGuestId?: number;
+		canMigrate?: boolean;
+		onMigrate?: (item: ResourceTreeItem) => void;
 	}
 
-	let { item, openIds, onToggleId, nextGuestId = 100 }: Props = $props();
+	let {
+		item,
+		openIds,
+		onToggleId,
+		nextGuestId = 100,
+		canMigrate = false,
+		onMigrate
+	}: Props = $props();
 	let isOpen = $derived(openIds.has(item.id));
 
 	const handleLabelClick = (e: MouseEvent) => {
@@ -371,7 +380,7 @@
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight}
-							onclick={() => void handleActionClick('stop')}
+							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
@@ -380,13 +389,19 @@
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight}
-							onclick={() => void handleActionClick('start')}
+							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
 							Start
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Separator />
+					{#if canMigrate && onMigrate}
+						<ContextMenu.Item class="gap-2" onSelect={() => onMigrate(item)}>
+							<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
+							Migrate
+						</ContextMenu.Item>
+					{/if}
 					<ContextMenu.Item
 						class="gap-2"
 						disabled={item.state === 'active' || convertTemplateLoading}
@@ -400,7 +415,7 @@
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight}
-							onclick={() => void handleActionClick('reboot')}
+							onSelect={() => void handleActionClick('reboot')}
 						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
 							Reboot
@@ -408,7 +423,7 @@
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight}
-							onclick={() => void handleActionClick('shutdown')}
+							onSelect={() => void handleActionClick('shutdown')}
 						>
 							<span class="icon-[mdi--power] h-4 w-4"></span>
 							Shutdown
@@ -416,7 +431,7 @@
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight}
-							onclick={() => void handleActionClick('stop')}
+							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
@@ -425,13 +440,19 @@
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight}
-							onclick={() => void handleActionClick('start')}
+							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
 							Start
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Separator />
+					{#if canMigrate && onMigrate && item.state !== 'orphan'}
+						<ContextMenu.Item class="gap-2" onSelect={() => onMigrate(item)}>
+							<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
+							Migrate
+						</ContextMenu.Item>
+					{/if}
 					<ContextMenu.Item
 						class="gap-2"
 						disabled={item.state === 'active' || convertTemplateLoading}
@@ -540,6 +561,8 @@
 				{openIds}
 				{onToggleId}
 				nextGuestId={item.nextGuestId ?? nextGuestId}
+				{canMigrate}
+				{onMigrate}
 			/>
 		{/each}
 	</ul>
