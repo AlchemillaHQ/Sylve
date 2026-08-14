@@ -423,8 +423,3 @@ expressive-code .frame {
     display: none;
   }
 }
-
-/* ── View Transitions ─────────────────────────────── */
-@view-transition {
-  navigation: auto;
-}

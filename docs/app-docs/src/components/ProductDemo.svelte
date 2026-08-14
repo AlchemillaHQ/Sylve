@@ -16,42 +16,52 @@
   let demoFrame: HTMLIFrameElement;
   let loaded = $state(false);
   let scale = $state(1);
+  let loaderStartedAt = 0;
+  let revealTimer: number | undefined;
+
+  const currentTheme = (): "light" | "dark" =>
+    document.documentElement.classList.contains("dark") ? "dark" : "light";
+
+  const syncDemoTheme = () => {
+    demoFrame?.contentWindow?.postMessage(
+      { type: "sylve-demo-theme", theme: currentTheme() },
+      new URL(demoUrl, window.location.href).origin,
+    );
+  };
+
+  const revealDemo = () => {
+    if (loaded) return;
+
+    const remaining =
+      loaderStartedAt === 0
+        ? 0
+        : Math.max(
+            0,
+            minimumLoaderDuration - (performance.now() - loaderStartedAt),
+          );
+
+    window.clearTimeout(revealTimer);
+    revealTimer = window.setTimeout(() => {
+      loaded = true;
+    }, remaining);
+  };
+
+  const handleDemoReady = (event: MessageEvent) => {
+    if (
+      event.source === demoFrame?.contentWindow &&
+      event.data?.type === "sylve-demo-ready"
+    ) {
+      syncDemoTheme();
+      revealDemo();
+    }
+  };
 
   onMount(() => {
-    const loaderStartedAt = performance.now();
-    let revealTimer: number | undefined;
+    loaderStartedAt = performance.now();
 
     const observer = new ResizeObserver(([entry]) => {
       scale = Math.min(1, entry.contentRect.width / designWidth);
     });
-
-    const currentTheme = (): "light" | "dark" =>
-      document.documentElement.classList.contains("dark") ? "dark" : "light";
-
-    const syncDemoTheme = () => {
-      demoFrame?.contentWindow?.postMessage(
-        { type: "sylve-demo-theme", theme: currentTheme() },
-        new URL(demoUrl, window.location.href).origin,
-      );
-    };
-
-    const handleDemoReady = (event: MessageEvent) => {
-      if (
-        event.source === demoFrame?.contentWindow &&
-        event.data?.type === "sylve-demo-ready"
-      ) {
-        syncDemoTheme();
-
-        const remaining = Math.max(
-          0,
-          minimumLoaderDuration - (performance.now() - loaderStartedAt),
-        );
-        window.clearTimeout(revealTimer);
-        revealTimer = window.setTimeout(() => {
-          loaded = true;
-        }, remaining);
-      }
-    };
 
     const themeObserver = new MutationObserver(syncDemoTheme);
 
@@ -123,15 +133,8 @@
         height={designHeight}
         class:loaded
         onload={() => {
-          demoFrame?.contentWindow?.postMessage(
-            {
-              type: "sylve-demo-theme",
-              theme: document.documentElement.classList.contains("dark")
-                ? "dark"
-                : "light",
-            },
-            new URL(demoUrl, window.location.href).origin,
-          );
+          syncDemoTheme();
+          revealDemo();
         }}
         allow="fullscreen"
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads allow-pointer-lock"
@@ -301,6 +304,7 @@
     position: absolute;
     inset: 0;
     z-index: 1;
+    --throbber-primary: #4c4847;
     background: #09090b;
   }
 

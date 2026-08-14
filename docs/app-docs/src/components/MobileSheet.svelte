@@ -31,7 +31,7 @@
       </div>
       <nav>
         <a href="/#capabilities" onclick={close}><small>01</small>Product</a>
-        <a href="/docs/" onclick={close}><small>02</small>Documentation</a>
+        <a href="/docs/" data-astro-reload onclick={close}><small>02</small>Documentation</a>
         <a href="/blog" onclick={close}><small>03</small>Blog</a>
         <a href="https://github.com/AlchemillaHQ/Sylve" target="_blank" rel="noopener noreferrer" onclick={close}><small>04</small>GitHub</a>
       </nav>
@@ -41,7 +41,7 @@
           <span class="icon-[lucide--moon] hidden size-4 dark:block"></span>
           Change appearance
         </button>
-        <a href="/getting-started/" onclick={close}>Get started <span>↗</span></a>
+        <a href="/getting-started/" data-astro-reload onclick={close}>Get started <span>↗</span></a>
       </div>
     </aside>
   {/if}

@@ -57,7 +57,7 @@
     <h2 id="faq-title">Know what fits before you install.</h2>
     <p>
       Still deciding if Sylve fits your environment? Read the
-      <a href="/docs/">documentation</a> or talk with us on
+      <a href="/docs/" data-astro-reload>documentation</a> or talk with us on
       <a href="https://discord.gg/bJB826JvXK">Discord</a>.
     </p>
   </div>
