@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { modifyBootOrder } from '$lib/api/jail/jail';
+	import { modifyBootOrder } from '$lib/api/jail/options';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
@@ -12,50 +12,70 @@
 	interface Props {
 		open: boolean;
 		jail: Jail;
-		reload: boolean;
+		node: string;
+		onSaved: () => void | Promise<void>;
 	}
 
-	let { open = $bindable(), jail, reload = $bindable(false) }: Props = $props();
-
+	let { open = $bindable(), jail, node, onSaved }: Props = $props();
+	// This dialog is remounted for each jail edit, so props are the intended initial state.
 	// svelte-ignore state_referenced_locally
 	let startAtBoot = $state(jail.startAtBoot);
+	// svelte-ignore state_referenced_locally
 	let startOrder = $state(jail.startOrder);
+	let saving = $state(false);
+
+	function reset() {
+		startAtBoot = jail.startAtBoot;
+		startOrder = jail.startOrder;
+	}
 
 	async function modify() {
-		if (!jail) return;
-		const response = await modifyBootOrder(jail.ctId, startAtBoot, Number(startOrder));
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify start order', {
+		if (saving) return;
+		const normalizedStartOrder = Number(startOrder);
+		if (!Number.isSafeInteger(normalizedStartOrder) || normalizedStartOrder < 0) {
+			toast.error('Start order must be a non-negative whole number', {
 				position: 'bottom-center'
 			});
 			return;
 		}
 
-		toast.success('Modified start order', {
-			position: 'bottom-center'
-		});
+		saving = true;
+		try {
+			const response = await modifyBootOrder(jail.ctId, startAtBoot, normalizedStartOrder, {
+				hostname: node
+			});
+			if (response.status === 'error') {
+				handleAPIError(response);
+				toast.error('Failed to modify start order', { position: 'bottom-center' });
+				return;
+			}
 
-		reload = true;
-		open = false;
+			await onSaved();
+			toast.success('Start order modified', { position: 'bottom-center' });
+			open = false;
+		} finally {
+			saving = false;
+		}
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-1/3 overflow-hidden p-6 lg:max-w-2xl"
-		showResetButton={true}
-		onReset={() => {
-			startAtBoot = jail.startAtBoot;
-			startOrder = jail.startOrder;
-		}}
+		showCloseButton={!saving}
+		showResetButton={!saving}
+		onReset={reset}
 		onClose={() => {
-			startAtBoot = jail.startAtBoot;
-			startOrder = jail.startOrder;
+			if (saving) return;
+			reset();
 			open = false;
 		}}
+		onEscapeKeydown={(event) => {
+			if (saving) event.preventDefault();
+		}}
+		aria-busy={saving}
 	>
-		<Dialog.Header class="">
+		<Dialog.Header>
 			<Dialog.Title>
 				<SpanWithIcon
 					icon="icon-[basil--power-button-solid]"
@@ -78,12 +98,17 @@
 			label="Start at Boot"
 			bind:checked={startAtBoot}
 			classes="flex items-center gap-2"
-		></CustomCheckbox>
+		/>
 
 		<Dialog.Footer class="flex justify-end">
-			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">Save</Button>
-			</div>
+			<Button onclick={modify} type="submit" size="sm" disabled={saving} aria-busy={saving}>
+				{#if saving}
+					<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					Saving...
+				{:else}
+					Save
+				{/if}
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

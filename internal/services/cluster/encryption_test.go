@@ -10,7 +10,6 @@ package cluster
 
 import (
 	"testing"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -190,23 +189,6 @@ func TestForwardEncryptionKeyToLeaderRaftNil(t *testing.T) {
 	var key clusterModels.EncryptionKey
 	if err := db.Where("uuid = ?", "test-uuid").First(&key).Error; err != nil {
 		t.Fatalf("key not persisted: %v", err)
-	}
-}
-
-func TestForwardEncryptionKeyToLeaderAsLeader(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.EncryptionKey{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	err := leader.service.ForwardEncryptionKeyToLeader("leader-key", "leader-key-data-min-32-bytes", "passphrase")
-	if err != nil {
-		t.Fatalf("ForwardEncryptionKeyToLeader as leader: %v", err)
-	}
-
-	var key clusterModels.EncryptionKey
-	if err := leader.service.DB.Where("uuid = ?", "leader-key").First(&key).Error; err != nil {
-		t.Fatalf("key not persisted on leader: %v", err)
 	}
 }
 

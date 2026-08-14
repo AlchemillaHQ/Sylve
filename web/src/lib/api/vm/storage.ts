@@ -1,87 +1,97 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { apiRequest } from '$lib/utils/http';
+import { VMStorageSchema, type VMStorage, type VMStorageEmulationType } from '$lib/types/vm/vm';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 
-export async function storageDetach(rid: number, storageId: number): Promise<APIResponse> {
-    return await apiRequest(`/vm/storage/detach`, APIResponseSchema, 'POST', {
-        rid,
-        storageId
-    });
-}
+type StorageAttachBase = {
+	name: string;
+	bootOrder?: number;
+	recordSize?: number;
+	volBlockSize?: number;
+};
 
-export async function storageImport(
-    rid: number,
-    name: string,
-    downloadUUID: string,
-    storageType: 'zvol' | 'raw' | 'image',
-    rawPath: string,
-    dataset: string,
-    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
-    pool: string,
-    bootOrder: number
-) {
-    return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
-        rid,
-        name,
-        downloadUUID,
-        attachType: 'import',
-        ...(storageType === 'image'
-            ? {}
-            : {
-                  rawPath: storageType === 'zvol' ? '' : rawPath,
-                  dataset: storageType === 'zvol' ? dataset : '',
-                  pool
-              }),
-        emulation,
-        storageType,
-        bootOrder
-    });
-}
+type BlockStorageAttachBase = StorageAttachBase & {
+	emulation: Exclude<VMStorageEmulationType, 'virtio-9p'>;
+};
 
-export async function storageNew(
-    rid: number,
-    name: string,
-    storageType: 'zvol' | 'raw' | 'image' | 'filesystem',
-    size: number | undefined,
-    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk' | 'virtio-9p',
-    pool: string,
-    bootOrder?: number,
-    dataset: string = '',
-    filesystemTarget: string = '',
-    readOnly: boolean = false
-) {
-    return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
-        rid,
-        name,
-        attachType: 'new',
-        ...(size !== undefined ? { size } : {}),
-        emulation,
-        storageType,
-        ...(storageType === 'filesystem' ? {} : { pool }),
-        ...(bootOrder !== undefined ? { bootOrder } : {}),
-        ...(storageType === 'filesystem'
-            ? { dataset, filesystemTarget, readOnly }
-            : {})
-    });
+export type StorageAttachRequest =
+	| (BlockStorageAttachBase & {
+			attachType: 'new';
+			storageType: 'raw' | 'zvol';
+			pool: string;
+			size: number;
+	  })
+	| (StorageAttachBase & {
+			attachType: 'new';
+			storageType: 'filesystem';
+			emulation: 'virtio-9p';
+			dataset: string;
+			filesystemTarget: string;
+			readOnly: boolean;
+	  })
+	| (BlockStorageAttachBase & {
+			attachType: 'import';
+			storageType: 'raw';
+			pool: string;
+			rawPath: string;
+	  })
+	| (BlockStorageAttachBase & {
+			attachType: 'import';
+			storageType: 'zvol';
+			pool: string;
+			dataset: string;
+	  })
+	| (BlockStorageAttachBase & {
+			attachType: 'import';
+			storageType: 'image';
+			downloadUUID: string;
+	  });
+
+export type StorageUpdateRequest = {
+	name?: string;
+	size?: number;
+	emulation?: VMStorageEmulationType;
+	bootOrder?: number;
+	enable?: boolean;
+	filesystemTarget?: string;
+	readOnly?: boolean;
+};
+
+export async function storageAttach(
+	rid: number,
+	request: StorageAttachRequest,
+	options?: NodeAPIRequestOptions
+): Promise<VMStorage | APIResponse> {
+	return await apiRequest(`/vm/${rid}/storage`, VMStorageSchema, 'POST', request, {
+		...options,
+		preserveErrors: true
+	});
 }
 
 export async function storageUpdate(
-    id: number,
-    name: string,
-    size: number | undefined,
-    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk' | 'virtio-9p',
-    bootOrder?: number,
-    enable?: boolean,
-    filesystemTarget?: string,
-    readOnly?: boolean
+	rid: number,
+	storageId: number,
+	request: StorageUpdateRequest,
+	options?: NodeAPIRequestOptions
+): Promise<VMStorage | APIResponse> {
+	return await apiRequest(`/vm/${rid}/storage/${storageId}`, VMStorageSchema, 'PATCH', request, {
+		...options,
+		preserveErrors: true
+	});
+}
+
+export async function storageDetach(
+	rid: number,
+	storageId: number,
+	options?: NodeAPIRequestOptions
 ): Promise<APIResponse> {
-    return await apiRequest(`/vm/storage/update`, APIResponseSchema, 'PUT', {
-        id,
-        name,
-        ...(size !== undefined ? { size } : {}),
-        emulation,
-        ...(bootOrder !== undefined ? { bootOrder } : {}),
-        ...(enable !== undefined ? { enable } : {}),
-        ...(filesystemTarget !== undefined ? { filesystemTarget } : {}),
-        ...(readOnly !== undefined ? { readOnly } : {})
-    });
+	return await apiRequest(
+		`/vm/${rid}/storage/${storageId}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }

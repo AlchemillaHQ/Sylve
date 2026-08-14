@@ -159,25 +159,23 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 	return list, nil
 }
 
-func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfaces.SimpleList, error) {
+func (s *Service) GetSimpleVMByRID(rid uint) (libvirtServiceInterfaces.SimpleList, error) {
 	if !s.IsVirtualizationEnabled() {
-		return libvirtServiceInterfaces.SimpleList{}, nil
+		return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("vm_not_found: %d", rid)
 	}
 
 	var vm vmModels.VM
-	query := s.DB.
+	err := s.DB.
 		Model(&vmModels.VM{}).
 		Preload("CPUPinning").
 		Preload("Storages").
-		Select("id", "name", "rid", "vnc_port")
-
-	if byRID {
-		query = query.Where("rid = ?", identifier)
-	} else {
-		query = query.Where("id = ?", identifier)
-	}
-
-	if err := query.First(&vm).Error; err != nil {
+		Select("id", "name", "rid", "vnc_port").
+		Where("rid = ?", rid).
+		First(&vm).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("vm_not_found: %d", rid)
+		}
 		return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("failed_to_get_simple_vm: %w", err)
 	}
 

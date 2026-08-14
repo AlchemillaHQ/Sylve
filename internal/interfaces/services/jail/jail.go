@@ -29,12 +29,6 @@ type Hooks struct {
 	Poststop  HookPhase `json:"poststop"`
 }
 
-type JailCreationState struct {
-	CTID        uint
-	DatasetName string
-	JailDir     string
-}
-
 type CreateJailRequest struct {
 	Name        string `json:"name" binding:"required"`
 	CTID        *uint  `json:"ctId" binding:"required"`
@@ -113,7 +107,6 @@ type State struct {
 }
 
 type AddJailNetworkRequest struct {
-	CTID           uint   `json:"ctId" binding:"required"`
 	Name           string `json:"name" binding:"required"`
 	SwitchName     string `json:"switchName" binding:"required"`
 	MacID          *uint  `json:"macId"`
@@ -133,23 +126,37 @@ type AddJailNetworkRequest struct {
 }
 
 type EditJailNetworkRequest struct {
-	NetworkID      uint   `json:"networkId" binding:"required"`
-	Name           string `json:"name" binding:"required"`
-	SwitchName     string `json:"switchName" binding:"required"`
-	MacID          *uint  `json:"macId"`
-	MACRaw         string `json:"macRaw"`
-	IP4            *uint  `json:"ip4"`
-	IP4Raw         string `json:"ip4Raw"`
-	IP4GW          *uint  `json:"ip4gw"`
-	IP4GwRaw       string `json:"ip4gwRaw"`
-	IP6            *uint  `json:"ip6"`
-	IP6Raw         string `json:"ip6Raw"`
-	IP6GW          *uint  `json:"ip6gw"`
-	IP6GwRaw       string `json:"ip6gwRaw"`
-	DHCP           *bool  `json:"dhcp"`
-	SLAAC          *bool  `json:"slaac"`
-	DefaultGateway *bool  `json:"defaultGateway"`
-	VLAN           *int   `json:"vlan"`
+	Name           *string `json:"name"`
+	SwitchName     *string `json:"switchName"`
+	MacID          *uint   `json:"macId"`
+	MACRaw         *string `json:"macRaw"`
+	IP4            *uint   `json:"ip4"`
+	IP4Raw         *string `json:"ip4Raw"`
+	IP4GW          *uint   `json:"ip4gw"`
+	IP4GwRaw       *string `json:"ip4gwRaw"`
+	IP6            *uint   `json:"ip6"`
+	IP6Raw         *string `json:"ip6Raw"`
+	IP6GW          *uint   `json:"ip6gw"`
+	IP6GwRaw       *string `json:"ip6gwRaw"`
+	DHCP           *bool   `json:"dhcp"`
+	SLAAC          *bool   `json:"slaac"`
+	DefaultGateway *bool   `json:"defaultGateway"`
+	VLAN           *int    `json:"vlan"`
+}
+
+type JailNetworkInheritanceResult struct {
+	CTID              uint   `json:"ctId"`
+	InheritIPv4       bool   `json:"inheritIPv4"`
+	InheritIPv6       bool   `json:"inheritIPv6"`
+	RemovedNetworkIDs []uint `json:"removedNetworkIds"`
+}
+
+type JailHardwareResult struct {
+	CTID           uint  `json:"ctId"`
+	ResourceLimits bool  `json:"resourceLimits"`
+	Memory         int64 `json:"memory"`
+	Cores          int   `json:"cores"`
+	CPUSet         []int `json:"cpuSet"`
 }
 
 type DeleteJailResult struct {
@@ -173,6 +180,6 @@ type JailServiceInterface interface {
 	GetJailUsageBootstrap(ctId uint) (db.StatsBootstrap[jailModels.JailStats], error)
 
 	ListBootstraps(ctx context.Context, pool string) ([]BootstrapEntry, error)
-	CreateBootstrap(ctx context.Context, req BootstrapRequest) error
-	DeleteBootstrap(ctx context.Context, pool, name string) error
+	CreateBootstrap(ctx context.Context, req BootstrapRequest) (BootstrapCreateResult, error)
+	DeleteBootstrap(ctx context.Context, pool, name string) (BootstrapDeleteResult, error)
 }

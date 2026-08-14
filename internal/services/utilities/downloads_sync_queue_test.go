@@ -103,6 +103,37 @@ func TestListDownloads_DoesNotEnqueueSyncWhenNoPending(t *testing.T) {
 	}
 }
 
+func TestListDownloadsEnqueuesSyncForProcessingDownloadAtFullTransferProgress(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	enqueueCalls := 0
+	service := &Service{
+		DB: database,
+		enqueueNoPayloadFn: func(context.Context, string) error {
+			enqueueCalls++
+			return nil
+		},
+	}
+	download := utilitiesModels.Downloads{
+		UUID:     "processing-post-download",
+		Path:     "/tmp/processing-post-download.img",
+		Name:     "processing-post-download.img",
+		Type:     utilitiesModels.DownloadTypePath,
+		URL:      "/tmp/processing-post-source.img",
+		Progress: 100,
+		Status:   utilitiesModels.DownloadStatusProcessing,
+	}
+	if err := database.Create(&download).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.ListDownloads(); err != nil {
+		t.Fatal(err)
+	}
+	if enqueueCalls != 1 {
+		t.Fatalf("sync enqueue calls=%d want 1", enqueueCalls)
+	}
+}
+
 func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
 	service := &Service{
@@ -114,6 +145,7 @@ func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T)
 			return errors.New("queue offline")
 		},
 	}
+	staleAt := time.Now().Add(-3 * time.Minute)
 	pending := utilitiesModels.Downloads{
 		UUID:      "stale-path-uuid",
 		Path:      "/tmp/stale-path-destination",
@@ -122,7 +154,8 @@ func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T)
 		URL:       "/tmp/stale-path-source",
 		Progress:  0,
 		Status:    utilitiesModels.DownloadStatusPending,
-		CreatedAt: time.Now().Add(-3 * time.Minute),
+		CreatedAt: staleAt,
+		UpdatedAt: staleAt,
 	}
 	if err := db.Create(&pending).Error; err != nil {
 		t.Fatal(err)
@@ -137,7 +170,7 @@ func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T)
 	if stored.Status != utilitiesModels.DownloadStatusPending {
 		t.Fatalf("status=%q want pending", stored.Status)
 	}
-	if stored.Error != "failed_to_enqueue_start_job" {
+	if stored.Error != ErrDownloadQueueUnavailable.Error() {
 		t.Fatalf("error=%q", stored.Error)
 	}
 }

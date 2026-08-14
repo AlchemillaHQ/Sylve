@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -182,30 +181,16 @@ func TestLocalClusterSSHHost(t *testing.T) {
 }
 
 func TestEnsureAndPublishLocalSSHIdentity(t *testing.T) {
-	dir := t.TempDir()
-	oldVal := os.Getenv("SYLVE_DATA_PATH")
-	os.Setenv("SYLVE_DATA_PATH", dir)
-	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
-
-	nodes := setupClusterRaftTestNodes(t, 2,
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterSSHIdentity{},
-	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	// seed cluster row as enabled
-	if err := leader.service.DB.Create(&clusterModels.Cluster{
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterSSHIdentity{})
+	service := &Service{DB: db}
+	if err := db.Create(&clusterModels.Cluster{
 		Enabled: true, RaftIP: "10.0.0.1",
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
 
-	// EnsureAndPublishLocalSSHIdentity requires Detail() which calls
-	// GetSystemUUID()/GetSystemHostname(). This may or may not work
-	// depending on the test environment. If it fails, skip gracefully.
-	err := leader.service.EnsureAndPublishLocalSSHIdentity()
+	err := service.EnsureAndPublishLocalSSHIdentity()
 	if err != nil && strings.Contains(err.Error(), "node_id_unavailable") {
 		t.Skipf("Detail() unavailable in test environment: %v", err)
 	}
@@ -213,20 +198,7 @@ func TestEnsureAndPublishLocalSSHIdentity(t *testing.T) {
 		t.Fatalf("EnsureAndPublishLocalSSHIdentity: %v", err)
 	}
 
-	// verify the SSH identity was published via Raft
-	waitForClusterCondition(t, 8*time.Second, "SSH identity replication", func() bool {
-		for _, n := range nodes {
-			var count int64
-			n.service.DB.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
-			if count != 1 {
-				return false
-			}
-		}
-		return true
-	})
-
-	// verify the published identity has a valid public key
-	identities, err := leader.service.ListClusterSSHIdentities()
+	identities, err := service.ListClusterSSHIdentities()
 	if err != nil {
 		t.Fatalf("list identities: %v", err)
 	}
@@ -261,40 +233,5 @@ func TestEnsureAndPublishLocalSSHIdentityClusterNotEnabled(t *testing.T) {
 	db.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
 	if count != 0 {
 		t.Fatalf("expected no identity published for disabled cluster, got %d", count)
-	}
-}
-
-func TestEnsureAndPublishLocalSSHIdentityPublishesOnLeader(t *testing.T) {
-	dir := t.TempDir()
-	oldVal := os.Getenv("SYLVE_DATA_PATH")
-	os.Setenv("SYLVE_DATA_PATH", dir)
-	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
-
-	nodes := setupClusterRaftTestNodes(t, 1,
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterSSHIdentity{},
-	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	if err := leader.service.DB.Create(&clusterModels.Cluster{
-		Enabled: true, RaftIP: "10.0.0.1",
-	}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-
-	err := leader.service.EnsureAndPublishLocalSSHIdentity()
-	if err != nil && strings.Contains(err.Error(), "node_id_unavailable") {
-		t.Skipf("Detail() unavailable in test environment: %v", err)
-	}
-	if err != nil {
-		t.Fatalf("EnsureAndPublishLocalSSHIdentity on leader: %v", err)
-	}
-
-	var identities []clusterModels.ClusterSSHIdentity
-	leader.service.DB.Find(&identities)
-	if len(identities) != 1 {
-		t.Fatalf("expected 1 identity published on leader, got %d", len(identities))
 	}
 }

@@ -14,85 +14,86 @@ import (
 	"net/http"
 	"testing"
 
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type mockVMStorageService struct {
-	topologyGuardFn func(rid uint) error
-	recordGuardFn   func(storageID int) error
-	attachFn        func(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error
-	updateFn        func(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error
-	detachFn        func(req libvirtServiceInterfaces.StorageDetachRequest) error
-	attachCalls     int
-	updateCalls     int
-	detachCalls     int
-	lastAttachReq   *libvirtServiceInterfaces.StorageAttachRequest
-	lastUpdateReq   *libvirtServiceInterfaces.StorageUpdateRequest
-	lastDetachReq   *libvirtServiceInterfaces.StorageDetachRequest
+	attachFn      func(libvirtServiceInterfaces.StorageAttachRequest, context.Context) (*vmModels.Storage, error)
+	updateFn      func(libvirtServiceInterfaces.StorageUpdateRequest, context.Context) (*vmModels.Storage, error)
+	detachFn      func(libvirtServiceInterfaces.StorageDetachRequest, context.Context) error
+	attachCalls   int
+	updateCalls   int
+	detachCalls   int
+	lastAttachReq *libvirtServiceInterfaces.StorageAttachRequest
+	lastUpdateReq *libvirtServiceInterfaces.StorageUpdateRequest
+	lastDetachReq *libvirtServiceInterfaces.StorageDetachRequest
 }
 
-func (m *mockVMStorageService) RequireVMStorageTopologyMutable(rid uint) error {
-	if m.topologyGuardFn != nil {
-		return m.topologyGuardFn(rid)
-	}
-	return nil
-}
-
-func (m *mockVMStorageService) RequireVMStorageRecordTopologyMutable(storageID int) error {
-	if m.recordGuardFn != nil {
-		return m.recordGuardFn(storageID)
-	}
-	return nil
-}
-
-func (m *mockVMStorageService) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error {
+func (m *mockVMStorageService) StorageAttach(
+	req libvirtServiceInterfaces.StorageAttachRequest,
+	ctx context.Context,
+) (*vmModels.Storage, error) {
 	m.attachCalls++
 	copied := req
 	m.lastAttachReq = &copied
 	if m.attachFn != nil {
 		return m.attachFn(req, ctx)
 	}
-	return nil
+	return &vmModels.Storage{
+		ID:        44,
+		Name:      req.Name,
+		Type:      vmModels.VMStorageType(req.StorageType),
+		Emulation: vmModels.VMStorageEmulationType(req.Emulation),
+	}, nil
 }
 
-func (m *mockVMStorageService) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error {
+func (m *mockVMStorageService) StorageUpdate(
+	req libvirtServiceInterfaces.StorageUpdateRequest,
+	ctx context.Context,
+) (*vmModels.Storage, error) {
 	m.updateCalls++
 	copied := req
 	m.lastUpdateReq = &copied
 	if m.updateFn != nil {
 		return m.updateFn(req, ctx)
 	}
-	return nil
+	return &vmModels.Storage{ID: req.ID}, nil
 }
 
-func (m *mockVMStorageService) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
+func (m *mockVMStorageService) StorageDetach(
+	req libvirtServiceInterfaces.StorageDetachRequest,
+	ctx context.Context,
+) error {
 	m.detachCalls++
 	copied := req
 	m.lastDetachReq = &copied
 	if m.detachFn != nil {
-		return m.detachFn(req)
+		return m.detachFn(req, ctx)
 	}
 	return nil
 }
 
 type vmStorageHandlerResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Error   string `json:"error"`
+	Status  string           `json:"status"`
+	Message string           `json:"message"`
+	Error   string           `json:"error"`
+	Data    vmModels.Storage `json:"data"`
 }
 
 func newVMStorageRouter(storageSvc vmStorageService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.POST("/vm/storage/attach", StorageAttach(storageSvc))
-	r.PUT("/vm/storage/update", StorageUpdate(storageSvc))
-	r.POST("/vm/storage/detach", StorageDetach(storageSvc))
-	return r
+	router := gin.New()
+	router.POST("/vm/:rid/storage", StorageAttach(storageSvc))
+	router.PATCH("/vm/:rid/storage/:storageId", StorageUpdate(storageSvc))
+	router.DELETE("/vm/:rid/storage/:storageId", StorageDetach(storageSvc))
+	return router
 }
 
-func TestStorageAttachAcceptsSupportedStorageTypes(t *testing.T) {
+func TestStorageAttachAcceptsSupportedStorageTypesAndUsesPathRID(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -101,86 +102,72 @@ func TestStorageAttachAcceptsSupportedStorageTypes(t *testing.T) {
 		wantStorageType  libvirtServiceInterfaces.StorageType
 		wantAttachType   libvirtServiceInterfaces.StorageAttachType
 		wantEmulation    libvirtServiceInterfaces.StorageEmulationType
-		assertFilesystem func(t *testing.T, req *libvirtServiceInterfaces.StorageAttachRequest)
+		assertFilesystem func(*testing.T, *libvirtServiceInterfaces.StorageAttachRequest)
 	}{
 		{
 			name:            "raw new",
-			body:            []byte(`{"rid":101,"name":"disk-raw","attachType":"new","storageType":"raw","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`),
+			body:            []byte(`{"rid":999,"name":"disk-raw","attachType":"new","storageType":"raw","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`),
 			wantStorageType: libvirtServiceInterfaces.StorageTypeRaw,
 			wantAttachType:  libvirtServiceInterfaces.StorageAttachTypeNew,
 			wantEmulation:   libvirtServiceInterfaces.VirtIOStorageEmulation,
 		},
 		{
 			name:            "zvol new",
-			body:            []byte(`{"rid":101,"name":"disk-zvol","attachType":"new","storageType":"zvol","emulation":"nvme","pool":"tank","size":2147483648,"bootOrder":2}`),
+			body:            []byte(`{"name":"disk-zvol","attachType":"new","storageType":"zvol","emulation":"nvme","pool":"tank","size":2147483648,"bootOrder":2}`),
 			wantStorageType: libvirtServiceInterfaces.StorageTypeZVOL,
 			wantAttachType:  libvirtServiceInterfaces.StorageAttachTypeNew,
 			wantEmulation:   libvirtServiceInterfaces.NVMEStorageEmulation,
 		},
 		{
 			name:            "image import",
-			body:            []byte(`{"rid":101,"name":"ubuntu-iso","attachType":"import","storageType":"image","emulation":"ahci-cd","downloadUUID":"0a2d0fb0-d6da-46f1-bd34-74913b80b31f","bootOrder":3}`),
+			body:            []byte(`{"name":"ubuntu-iso","attachType":"import","storageType":"image","emulation":"ahci-cd","downloadUUID":"0a2d0fb0-d6da-46f1-bd34-74913b80b31f","bootOrder":3}`),
 			wantStorageType: libvirtServiceInterfaces.StorageTypeDiskImage,
 			wantAttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
 			wantEmulation:   libvirtServiceInterfaces.AHCICDStorageEmulation,
 		},
 		{
-			name:            "filesystem 9p new",
-			body:            []byte(`{"rid":101,"name":"shared-data","attachType":"new","storageType":"filesystem","emulation":"virtio-9p","dataset":"2532139689919762401","filesystemTarget":"shared_data","readOnly":true,"bootOrder":4}`),
+			name:            "filesystem new",
+			body:            []byte(`{"name":"shared-data","attachType":"new","storageType":"filesystem","emulation":"virtio-9p","dataset":"2532139689919762401","filesystemTarget":"shared_data","readOnly":true}`),
 			wantStorageType: libvirtServiceInterfaces.StorageTypeFilesystem,
 			wantAttachType:  libvirtServiceInterfaces.StorageAttachTypeNew,
 			wantEmulation:   libvirtServiceInterfaces.VirtIO9PStorageEmulation,
 			assertFilesystem: func(t *testing.T, req *libvirtServiceInterfaces.StorageAttachRequest) {
 				t.Helper()
-				if req.Dataset != "2532139689919762401" {
-					t.Fatalf("expected dataset guid to be bound, got %q", req.Dataset)
-				}
-				if req.FilesystemTarget != "shared_data" {
-					t.Fatalf("expected filesystemTarget to be bound, got %q", req.FilesystemTarget)
+				if req.Dataset != "2532139689919762401" || req.FilesystemTarget != "shared_data" {
+					t.Fatalf("unexpected filesystem binding: %+v", req)
 				}
 				if req.ReadOnly == nil || !*req.ReadOnly {
-					t.Fatalf("expected readOnly=true to be bound")
+					t.Fatal("expected readOnly=true to be preserved")
 				}
 			},
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			service := &mockVMStorageService{}
+			router := newVMStorageRouter(service)
 
-			storageSvc := &mockVMStorageService{}
-			r := newVMStorageRouter(storageSvc)
-
-			rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/storage/attach", tt.body)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+			response := testutil.PerformJSONRequest(t, router, http.MethodPost, "/vm/101/storage", tt.body)
+			if response.Code != http.StatusCreated {
+				t.Fatalf("expected status 201, got %d body=%s", response.Code, response.Body.String())
 			}
-
-			resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
-			if resp.Status != "success" || resp.Message != "storage_attached" {
-				t.Fatalf("unexpected response: %+v", resp)
+			decoded := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, response)
+			if decoded.Status != "success" || decoded.Message != "storage_attached" || decoded.Data.ID != 44 {
+				t.Fatalf("unexpected response: %+v", decoded)
 			}
-
-			if storageSvc.attachCalls != 1 {
-				t.Fatalf("expected exactly 1 StorageAttach call, got %d", storageSvc.attachCalls)
-			}
-			if storageSvc.lastAttachReq == nil {
-				t.Fatalf("expected StorageAttach request to be captured")
+			if service.attachCalls != 1 || service.lastAttachReq == nil {
+				t.Fatalf("expected one service call, got %d", service.attachCalls)
 			}
 
-			got := storageSvc.lastAttachReq
-			if got.StorageType != tt.wantStorageType {
-				t.Fatalf("expected storageType=%q, got %q", tt.wantStorageType, got.StorageType)
+			got := service.lastAttachReq
+			if got.RID != 101 {
+				t.Fatalf("expected path RID 101, got %d", got.RID)
 			}
-			if got.AttachType != tt.wantAttachType {
-				t.Fatalf("expected attachType=%q, got %q", tt.wantAttachType, got.AttachType)
+			if got.StorageType != tt.wantStorageType || got.AttachType != tt.wantAttachType || got.Emulation != tt.wantEmulation {
+				t.Fatalf("unexpected request binding: %+v", got)
 			}
-			if got.Emulation != tt.wantEmulation {
-				t.Fatalf("expected emulation=%q, got %q", tt.wantEmulation, got.Emulation)
-			}
-
 			if tt.assertFilesystem != nil {
 				tt.assertFilesystem(t, got)
 			}
@@ -191,163 +178,125 @@ func TestStorageAttachAcceptsSupportedStorageTypes(t *testing.T) {
 func TestStorageAttachRejectsInvalidEnumsBeforeService(t *testing.T) {
 	t.Parallel()
 
+	for _, body := range [][]byte{
+		[]byte(`{"name":"bad-storage","attachType":"new","storageType":"qcow2","emulation":"virtio-blk"}`),
+		[]byte(`{"name":"bad-emu","attachType":"new","storageType":"raw","emulation":"ide"}`),
+		[]byte(`{"name":"bad-attach","attachType":"clone","storageType":"raw","emulation":"virtio-blk"}`),
+	} {
+		service := &mockVMStorageService{}
+		response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodPost, "/vm/101/storage", body)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d body=%s", response.Code, response.Body.String())
+		}
+		if service.attachCalls != 0 {
+			t.Fatalf("invalid request reached service %d times", service.attachCalls)
+		}
+	}
+}
+
+func TestStorageUpdatePreservesExplicitFalseAndUsesPathIdentity(t *testing.T) {
+	t.Parallel()
+
+	service := &mockVMStorageService{}
+	body := []byte(`{"rid":999,"id":999,"name":"shared-data","emulation":"virtio-9p","enable":false,"filesystemTarget":"shared_rw","readOnly":false}`)
+	response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodPatch, "/vm/101/storage/44", body)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", response.Code, response.Body.String())
+	}
+	if service.updateCalls != 1 || service.lastUpdateReq == nil {
+		t.Fatalf("expected one service call, got %d", service.updateCalls)
+	}
+
+	got := service.lastUpdateReq
+	if got.RID != 101 || got.ID != 44 {
+		t.Fatalf("expected path identity RID=101 storage=44, got RID=%d storage=%d", got.RID, got.ID)
+	}
+	if got.Enable == nil || *got.Enable || got.ReadOnly == nil || *got.ReadOnly {
+		t.Fatalf("explicit false values were not preserved: %+v", got)
+	}
+	if got.Emulation == nil || *got.Emulation != libvirtServiceInterfaces.VirtIO9PStorageEmulation {
+		t.Fatalf("unexpected emulation: %+v", got.Emulation)
+	}
+}
+
+func TestStorageUpdateRejectsEmptyOrInvalidPatch(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range [][]byte{
+		[]byte(`{}`),
+		[]byte(`{"emulation":"sata"}`),
+	} {
+		service := &mockVMStorageService{}
+		response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodPatch, "/vm/101/storage/44", body)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d body=%s", response.Code, response.Body.String())
+		}
+		if service.updateCalls != 0 {
+			t.Fatalf("invalid patch reached service %d times", service.updateCalls)
+		}
+	}
+}
+
+func TestStorageDetachUsesNestedPathIdentity(t *testing.T) {
+	t.Parallel()
+
+	service := &mockVMStorageService{}
+	response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodDelete, "/vm/101/storage/44", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", response.Code, response.Body.String())
+	}
+	if service.detachCalls != 1 || service.lastDetachReq == nil {
+		t.Fatalf("expected one service call, got %d", service.detachCalls)
+	}
+	if service.lastDetachReq.RID != 101 || service.lastDetachReq.StorageID != 44 {
+		t.Fatalf("unexpected detach identity: %+v", service.lastDetachReq)
+	}
+}
+
+func TestStorageHandlerMapsServiceErrors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name string
-		body []byte
+		name       string
+		err        error
+		wantStatus int
 	}{
-		{
-			name: "unsupported storage type",
-			body: []byte(`{"rid":101,"name":"bad-storage","attachType":"new","storageType":"qcow2","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`),
-		},
-		{
-			name: "unsupported emulation",
-			body: []byte(`{"rid":101,"name":"bad-emu","attachType":"new","storageType":"raw","emulation":"ide","pool":"tank","size":1073741824,"bootOrder":1}`),
-		},
-		{
-			name: "unsupported attach type",
-			body: []byte(`{"rid":101,"name":"bad-attach","attachType":"clone","storageType":"raw","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`),
-		},
+		{name: "invalid", err: errors.New("invalid_size"), wantStatus: http.StatusBadRequest},
+		{name: "ownership", err: errors.New("replication_lease_not_owned"), wantStatus: http.StatusForbidden},
+		{name: "missing row", err: errors.Join(errors.New("failed_to_find_storage_record"), gorm.ErrRecordNotFound), wantStatus: http.StatusNotFound},
+		{name: "nested missing pool", err: errors.New("failed_to_create_storage_parent: pool_not_found: missing"), wantStatus: http.StatusNotFound},
+		{name: "nested capacity conflict", err: errors.New("failed_to_create_vm_disk: insufficient_space_in_pool: tank"), wantStatus: http.StatusConflict},
+		{name: "topology conflict", err: errors.New("replication_storage_topology_change_requires_policy_disabled"), wantStatus: http.StatusConflict},
+		{name: "unavailable", err: errors.New("failed_to_create_vm_disk: gzfs_not_initialized"), wantStatus: http.StatusServiceUnavailable},
+		{name: "internal", err: errors.New("failed_to_commit_storage_metadata"), wantStatus: http.StatusInternalServerError},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			storageSvc := &mockVMStorageService{}
-			r := newVMStorageRouter(storageSvc)
-
-			rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/storage/attach", tt.body)
-			if rr.Code != http.StatusBadRequest {
-				t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+			service := &mockVMStorageService{
+				attachFn: func(libvirtServiceInterfaces.StorageAttachRequest, context.Context) (*vmModels.Storage, error) {
+					return nil, tt.err
+				},
 			}
-
-			resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
-			if resp.Message != "invalid_request" {
-				t.Fatalf("expected invalid_request message, got %q", resp.Message)
-			}
-			if storageSvc.attachCalls != 0 {
-				t.Fatalf("expected StorageAttach not to be called, got %d calls", storageSvc.attachCalls)
+			body := []byte(`{"name":"disk","attachType":"new","storageType":"raw","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`)
+			response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodPost, "/vm/101/storage", body)
+			if response.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d body=%s", tt.wantStatus, response.Code, response.Body.String())
 			}
 		})
 	}
 }
 
-func TestStorageUpdateAcceptsVirtio9PEmulation(t *testing.T) {
+func TestStorageHandlersRejectInvalidPathIDs(t *testing.T) {
 	t.Parallel()
 
-	storageSvc := &mockVMStorageService{}
-	r := newVMStorageRouter(storageSvc)
-
-	body := []byte(`{"id":44,"name":"shared-data","emulation":"virtio-9p","bootOrder":2,"filesystemTarget":"shared_rw","readOnly":false}`)
-	rr := testutil.PerformJSONRequest(t, r, http.MethodPut, "/vm/storage/update", body)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	service := &mockVMStorageService{}
+	response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodDelete, "/vm/not-a-rid/storage/44", nil)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", response.Code, response.Body.String())
 	}
-
-	resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
-	if resp.Status != "success" || resp.Message != "storage_updated" {
-		t.Fatalf("unexpected response: %+v", resp)
-	}
-
-	if storageSvc.updateCalls != 1 {
-		t.Fatalf("expected exactly 1 StorageUpdate call, got %d", storageSvc.updateCalls)
-	}
-	if storageSvc.lastUpdateReq == nil {
-		t.Fatalf("expected StorageUpdate request to be captured")
-	}
-	if storageSvc.lastUpdateReq.Emulation != libvirtServiceInterfaces.VirtIO9PStorageEmulation {
-		t.Fatalf("expected emulation=virtio-9p, got %q", storageSvc.lastUpdateReq.Emulation)
-	}
-}
-
-func TestStorageUpdateRejectsUnsupportedEmulation(t *testing.T) {
-	t.Parallel()
-
-	storageSvc := &mockVMStorageService{}
-	r := newVMStorageRouter(storageSvc)
-
-	body := []byte(`{"id":44,"name":"disk","emulation":"sata","bootOrder":2}`)
-	rr := testutil.PerformJSONRequest(t, r, http.MethodPut, "/vm/storage/update", body)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
-	}
-
-	resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
-	if resp.Message != "invalid_request" {
-		t.Fatalf("expected invalid_request message, got %q", resp.Message)
-	}
-	if storageSvc.updateCalls != 0 {
-		t.Fatalf("expected StorageUpdate not to be called, got %d calls", storageSvc.updateCalls)
-	}
-}
-
-func TestStorageMutationGuardStopsServiceCalls(t *testing.T) {
-	t.Parallel()
-
-	guardErr := errors.New("replication_storage_topology_change_requires_policy_disabled")
-	tests := []struct {
-		name      string
-		method    string
-		path      string
-		body      []byte
-		configure func(*mockVMStorageService)
-		calls     func(*mockVMStorageService) int
-	}{
-		{
-			name: "attach", method: http.MethodPost, path: "/vm/storage/attach",
-			body:      []byte(`{"rid":101,"name":"disk","attachType":"new","storageType":"raw","emulation":"virtio-blk","pool":"tank","size":1073741824,"bootOrder":1}`),
-			configure: func(s *mockVMStorageService) { s.topologyGuardFn = func(uint) error { return guardErr } },
-			calls:     func(s *mockVMStorageService) int { return s.attachCalls },
-		},
-		{
-			name: "update", method: http.MethodPut, path: "/vm/storage/update",
-			body:      []byte(`{"id":44,"name":"disk","emulation":"virtio-blk","bootOrder":2}`),
-			configure: func(s *mockVMStorageService) { s.recordGuardFn = func(int) error { return guardErr } },
-			calls:     func(s *mockVMStorageService) int { return s.updateCalls },
-		},
-		{
-			name: "detach", method: http.MethodPost, path: "/vm/storage/detach",
-			body:      []byte(`{"rid":101,"storageId":44}`),
-			configure: func(s *mockVMStorageService) { s.topologyGuardFn = func(uint) error { return guardErr } },
-			calls:     func(s *mockVMStorageService) int { return s.detachCalls },
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			svc := &mockVMStorageService{}
-			tt.configure(svc)
-			r := newVMStorageRouter(svc)
-			rr := testutil.PerformJSONRequest(t, r, tt.method, tt.path, tt.body)
-			if rr.Code != http.StatusConflict {
-				t.Fatalf("expected 409, got %d body=%s", rr.Code, rr.Body.String())
-			}
-			resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
-			if resp.Message != "replication_storage_topology_change_requires_policy_disabled" {
-				t.Fatalf("unexpected message: %q", resp.Message)
-			}
-			if got := tt.calls(svc); got != 0 {
-				t.Fatalf("storage mutation reached service %d times", got)
-			}
-		})
-	}
-}
-
-func TestStorageMutationGuardLookupFailureIsServerError(t *testing.T) {
-	t.Parallel()
-	svc := &mockVMStorageService{
-		topologyGuardFn: func(uint) error { return errors.New("replication_topology_check_failed: database unavailable") },
-	}
-	r := newVMStorageRouter(svc)
-	rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/storage/detach", []byte(`{"rid":101,"storageId":44}`))
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
-	}
-	resp := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, rr)
-	if resp.Message != "replication_topology_check_failed" {
-		t.Fatalf("unexpected message: %q", resp.Message)
+	if service.detachCalls != 0 {
+		t.Fatalf("invalid path reached service %d times", service.detachCalls)
 	}
 }

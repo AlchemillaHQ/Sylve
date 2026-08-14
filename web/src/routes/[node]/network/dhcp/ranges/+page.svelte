@@ -8,10 +8,16 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { DHCPConfig, DHCPRange } from '$lib/types/network/dhcp';
+	import {
+		emptyDHCPConfig,
+		isDHCPConfig,
+		type DHCPConfig,
+		type DHCPRange
+	} from '$lib/types/network/dhcp';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { secondsToDnsmasq } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
@@ -19,68 +25,81 @@
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
-		interfaces: Iface[];
-		switches: SwitchList;
-		dhcpConfig: DHCPConfig;
-		dhcpRanges: DHCPRange[];
+		interfaces: Iface[] | APIResponse;
+		switches: SwitchList | APIResponse;
+		dhcpConfig: DHCPConfig | APIResponse;
+		dhcpRanges: DHCPRange[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+	// svelte-ignore state_referenced_locally
+	let lastGoodDHCPConfig = isDHCPConfig(data.dhcpConfig) ? data.dhcpConfig : emptyDHCPConfig();
+	// svelte-ignore state_referenced_locally
+	let lastGoodDHCPRanges = Array.isArray(data.dhcpRanges) ? data.dhcpRanges : ([] as DHCPRange[]);
+
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
 			if (isAPIResponse(res)) {
-				return data.interfaces;
+				handleAPIError(res);
+				return lastGoodInterfaces;
 			}
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
-			if (isAPIResponse(res)) {
-				return data.switches;
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
 			}
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let dhcpConfig = resource(
 		() => 'dhcp-config',
 		async (key) => {
 			const res = await getDHCPConfig();
-			if (isAPIResponse(res)) {
-				return data.dhcpConfig;
+			if (!isDHCPConfig(res)) {
+				handleAPIError(res);
+				return lastGoodDHCPConfig;
 			}
+
+			lastGoodDHCPConfig = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.dhcpConfig }
+		{ initialValue: lastGoodDHCPConfig }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let dhcpRanges = resource(
 		() => 'dhcp-ranges',
 		async (key) => {
 			const res = await getDHCPRanges();
 			if (isAPIResponse(res)) {
-				return data.dhcpRanges;
+				handleAPIError(res);
+				return lastGoodDHCPRanges;
 			}
+			lastGoodDHCPRanges = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.dhcpRanges }
+		{ initialValue: lastGoodDHCPRanges }
 	);
 
 	let reload = $state(false);
@@ -282,7 +301,6 @@
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteDHCPRange(modals.delete.id);
-			reload = true;
 			if (result.status === 'error') {
 				handleAPIError(result);
 				toast.error('Failed to delete DHCP range', {
@@ -290,6 +308,7 @@
 				});
 				return;
 			} else {
+				reload = true;
 				toast.success('DHCP range deleted', {
 					position: 'bottom-center'
 				});

@@ -1,12 +1,23 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package dnssd
 
 import (
-	"github.com/miekg/dns"
-
 	"context"
+	"errors"
 	"net"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 var testAddr = net.UDPAddr{
@@ -24,53 +35,100 @@ var testIface = &net.Interface{
 }
 
 type testConn struct {
-	read chan *Request
+	read   chan *Request
+	in     chan *dns.Msg
+	out    chan *dns.Msg
+	sent   chan *dns.Msg
+	closed chan struct{}
+	iface  *net.Interface
 
-	in  chan *dns.Msg
-	out chan *dns.Msg
+	readOnce  sync.Once
+	closeOnce sync.Once
 }
 
 func newTestConn() *testConn {
-	c := &testConn{
-		read: make(chan *Request),
-		in:   make(chan *dns.Msg),
-		out:  make(chan *dns.Msg),
+	return &testConn{
+		read:   make(chan *Request),
+		in:     make(chan *dns.Msg, 64),
+		out:    make(chan *dns.Msg, 64),
+		sent:   make(chan *dns.Msg, 64),
+		closed: make(chan struct{}),
+		iface:  testIface,
 	}
+}
 
-	return c
+func connectTestConns(left, right *testConn) {
+	left.out = right.in
+	right.out = left.in
 }
 
 func (c *testConn) SendQuery(q *Query) error {
-	go func() {
-		c.out <- q.msg
-	}()
-	return nil
+	return c.send(q.msg)
 }
 
 func (c *testConn) SendResponse(resp *Response) error {
-	go func() {
-		c.out <- resp.msg
-	}()
+	return c.send(resp.msg)
+}
 
-	return nil
+func (c *testConn) send(msg *dns.Msg) error {
+	select {
+	case c.sent <- msg.Copy():
+	case <-c.closed:
+		return net.ErrClosed
+	}
+
+	select {
+	case c.out <- msg.Copy():
+		return nil
+	case <-c.closed:
+		return net.ErrClosed
+	}
 }
 
 func (c *testConn) Read(ctx context.Context) <-chan *Request {
-	go c.start(ctx)
+	c.readOnce.Do(func() {
+		go c.start(ctx)
+	})
 	return c.read
 }
 
-func (c *testConn) Drain(ctx context.Context) {}
+func (c *testConn) Drain(ctx context.Context) {
+	ch := c.Read(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
 
-func (c *testConn) Close() {}
+func (c *testConn) Close() {
+	c.closeOnce.Do(func() {
+		close(c.closed)
+	})
+}
 
 func (c *testConn) start(ctx context.Context) {
 	for {
 		select {
 		case msg := <-c.in:
-			req := &Request{msg: msg, from: &testAddr, iface: testIface}
-			c.read <- req
+			if msg == nil {
+				continue
+			}
+			req := &Request{msg: msg, from: &testAddr, iface: c.iface}
+			select {
+			case c.read <- req:
+			case <-ctx.Done():
+				return
+			case <-c.closed:
+				return
+			}
 		case <-ctx.Done():
+			return
+		case <-c.closed:
 			return
 		}
 	}
@@ -80,69 +138,94 @@ func (c *testConn) start(ctx context.Context) {
 // service instance name and host name.Once the first services
 // is announced, the probing for the second service should give
 func TestProbing(t *testing.T) {
-	testIface, _ = net.InterfaceByName("lo0")
-	if testIface == nil {
-		testIface, _ = net.InterfaceByName("lo")
-	}
-	if testIface == nil {
-		t.Fatal("can not find the local interface")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		iface, err := loopbackInterface()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
 
-	conn := newTestConn()
-	otherConn := newTestConn()
-	conn.in = otherConn.out
-	conn.out = otherConn.in
+		conn := newTestConn()
+		otherConn := newTestConn()
+		conn.iface = iface
+		otherConn.iface = iface
+		connectTestConns(conn, otherConn)
 
-	cfg := Config{
-		Name:   "My Service",
-		Type:   "_hap._tcp",
-		Host:   "My Computer",
-		Port:   12334,
-		Ifaces: []string{testIface.Name},
-	}
-	srv, err := NewService(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv.ifaceIPs = map[string][]net.IP{
-		testIface.Name: []net.IP{net.IP{192, 168, 0, 122}},
-	}
+		cfg := Config{
+			Name:   "My Service",
+			Type:   "_hap._tcp",
+			Host:   "My Computer",
+			Port:   12334,
+			Ifaces: []string{iface.Name},
+		}
+		srv, err := NewService(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv.ifaceIPs = map[string][]net.IP{
+			iface.Name: {net.IP{192, 168, 0, 122}},
+		}
 
-	r := newResponder(otherConn)
-	go func() {
 		rcfg := cfg.Copy()
 		rsrv, err := NewService(rcfg)
 		if err != nil {
 			t.Fatal(err)
 		}
 		rsrv.ifaceIPs = map[string][]net.IP{
-			testIface.Name: []net.IP{net.IP{192, 168, 0, 123}},
+			iface.Name: {net.IP{192, 168, 0, 123}},
 		}
 
-		rctx, rcancel := context.WithCancel(ctx)
-		defer rcancel()
-
+		r := newResponder(otherConn)
 		r.addManaged(rsrv)
-		r.Respond(rctx)
-	}()
+		responderCtx, stopResponder := context.WithCancel(ctx)
+		responderDone := make(chan error, 1)
+		go func() {
+			responderDone <- r.Respond(responderCtx)
+		}()
+		responderStopped := false
+		t.Cleanup(func() {
+			if responderStopped {
+				return
+			}
+			stopResponder()
+			<-responderDone
+		})
 
-	resolved, err := probeService(ctx, conn, srv, 500*time.Millisecond, true)
+		started := time.Now()
+		resolved, err := probeService(ctx, conn, srv, 500*time.Millisecond, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(started); elapsed <= 0 || elapsed >= 10*time.Second {
+			t.Fatalf("logical probe duration = %s, want a bounded positive duration", elapsed)
+		}
+		if got := len(conn.sent); got < 4 {
+			t.Fatalf("probe queries = %d, want at least 4 across conflict and retry", got)
+		}
 
-	if x := err; x != nil {
-		t.Fatal(x)
+		if is, want := resolved.Host, "My-Computer-2"; is != want {
+			t.Fatalf("is=%v want=%v", is, want)
+		}
+		if is, want := resolved.Name, "My Service (2)"; is != want {
+			t.Fatalf("is=%v want=%v", is, want)
+		}
+
+		stopResponder()
+		if err := <-responderDone; !errors.Is(err, context.Canceled) {
+			t.Fatalf("responder error = %v, want context cancellation", err)
+		}
+		responderStopped = true
+	})
+}
+
+func loopbackInterface() (*net.Interface, error) {
+	iface, err := net.InterfaceByName("lo0")
+	if err == nil {
+		return iface, nil
 	}
-
-	if is, want := resolved.Host, "My-Computer-2"; is != want {
-		t.Fatalf("is=%v want=%v", is, want)
-	}
-
-	if is, want := resolved.Name, "My Service (2)"; is != want {
-		t.Fatalf("is=%v want=%v", is, want)
-	}
-
-	cancel()
+	return net.InterfaceByName("lo")
 }
 
 func TestIsLexicographicLater(t *testing.T) {

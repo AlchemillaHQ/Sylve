@@ -46,7 +46,7 @@ func applyBackupJobRebindTestLeaderCommand(
 	return nil
 }
 
-func TestBackupJobRunnerRebindSurvivesLeadershipChangeAndRepairsInvalidLegacyJob(t *testing.T) {
+func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 	models := []any{
 		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
 		&clusterModels.BackupJobRunnerRebind{}, &clusterModels.BackupJobRunnerRebindItem{},
@@ -56,7 +56,6 @@ func TestBackupJobRunnerRebindSurvivesLeadershipChangeAndRepairsInvalidLegacyJob
 		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
 	}
 	nodes := setupClusterRaftTestNodes(t, 3, models...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leaderC := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	remotes := make([]*clusterRaftTestNode, 0, 2)
 	for _, node := range nodes {
@@ -276,7 +275,7 @@ func TestBackupJobRunnerRebindSurvivesLeadershipChangeAndRepairsInvalidLegacyJob
 	})
 }
 
-func TestFailoverBackupJobRunnerRebindCompletesTransitionAndReconcilesOnNewLeader(t *testing.T) {
+func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.T) {
 	models := []any{
 		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{},
 		&clusterModels.BackupJobRunnerRebind{}, &clusterModels.BackupJobRunnerRebindItem{},
@@ -286,7 +285,6 @@ func TestFailoverBackupJobRunnerRebindCompletesTransitionAndReconcilesOnNewLeade
 		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
 	}
 	nodes := setupClusterRaftTestNodes(t, 3, models...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leaderC := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	remotes := make([]*clusterRaftTestNode, 0, 2)
 	for _, node := range nodes {

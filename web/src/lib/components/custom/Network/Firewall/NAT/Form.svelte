@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { createFirewallNATRule, updateFirewallNATRule } from '$lib/api/network/firewall';
+	import {
+		createFirewallNATRule,
+		updateFirewallNATRule,
+		type FirewallNATRuleUpsertRequest
+	} from '$lib/api/network/firewall';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -27,7 +31,7 @@
 		interfaces: Iface[];
 		switches: SwitchList;
 		wgClients?: WireGuardClient[];
-		afterChange: () => void;
+		afterChange: () => void | Promise<void>;
 	}
 
 	let {
@@ -60,9 +64,13 @@
 	function resolveHostTarget(val: string): { raw: string; objId: number | null } {
 		const trimmed = val.trim();
 		if (!trimmed) return { raw: '', objId: null };
-		const obj = objects.find((o) => ['Host', 'FQDN'].includes(o.type) && String(o.id) === trimmed);
+		const obj = objects.find((o) => isSingleAddressHost(o) && String(o.id) === trimmed);
 		if (obj) return { raw: '', objId: obj.id };
 		return { raw: trimmed, objId: null };
+	}
+
+	function isSingleAddressHost(object: NetworkObject): boolean {
+		return object.type === 'Host' && object.entries?.length === 1;
 	}
 
 	function resolvePort(val: string): { raw: string; objId: number | null } {
@@ -101,12 +109,13 @@
 	};
 
 	function defaultForm(): Form {
+		const maxPriority = natRules.reduce((maximum, rule) => Math.max(maximum, rule.priority), 0);
 		return {
 			name: '',
 			description: '',
 			enabled: true,
 			log: false,
-			priority: natRules.length + 1,
+			priority: maxPriority + 1,
 			natType: 'snat',
 			policyRoutingEnabled: false,
 			policyRouteGateway: '',
@@ -124,37 +133,35 @@
 		};
 	}
 
-	let form = $state(defaultForm());
+	function formForRule(rule: FirewallNATRule | null): Form {
+		if (!rule) return defaultForm();
+		return {
+			name: rule.name,
+			description: rule.description ?? '',
+			enabled: rule.enabled ?? true,
+			log: rule.log ?? false,
+			priority: rule.priority,
+			natType: rule.natType ?? 'snat',
+			policyRoutingEnabled: rule.policyRoutingEnabled ?? false,
+			policyRouteGateway: rule.policyRouteGateway ?? '',
+			protocol: rule.protocol,
+			family: rule.family ?? 'any',
+			ingressInterfaces: [...(rule.ingressInterfaces ?? [])],
+			egressInterfaces: [...(rule.egressInterfaces ?? [])],
+			source: addrToForm(rule.sourceRaw, rule.sourceObjId),
+			dest: addrToForm(rule.destRaw, rule.destObjId),
+			translateMode: rule.translateMode ?? 'interface',
+			translateTo: addrToForm(rule.translateToRaw, rule.translateToObjId),
+			dnatTarget: addrToForm(rule.dnatTargetRaw, rule.dnatTargetObjId),
+			dstPort: addrToForm(rule.dstPortsRaw, rule.dstPortObjId),
+			redirectPort: addrToForm(rule.redirectPortsRaw, rule.redirectPortObjId)
+		};
+	}
 
-	$effect(() => {
-		if (open) {
-			if (editingRule) {
-				form = {
-					name: editingRule.name,
-					description: editingRule.description ?? '',
-					enabled: editingRule.enabled ?? true,
-					log: editingRule.log ?? false,
-					priority: editingRule.priority,
-					natType: editingRule.natType ?? 'snat',
-					policyRoutingEnabled: editingRule.policyRoutingEnabled ?? false,
-					policyRouteGateway: editingRule.policyRouteGateway ?? '',
-					protocol: editingRule.protocol,
-					family: editingRule.family ?? 'any',
-					ingressInterfaces: editingRule.ingressInterfaces ?? [],
-					egressInterfaces: editingRule.egressInterfaces ?? [],
-					source: addrToForm(editingRule.sourceRaw, editingRule.sourceObjId),
-					dest: addrToForm(editingRule.destRaw, editingRule.destObjId),
-					translateMode: editingRule.translateMode ?? 'interface',
-					translateTo: addrToForm(editingRule.translateToRaw, editingRule.translateToObjId),
-					dnatTarget: addrToForm(editingRule.dnatTargetRaw, editingRule.dnatTargetObjId),
-					dstPort: addrToForm(editingRule.dstPortsRaw, editingRule.dstPortObjId),
-					redirectPort: addrToForm(editingRule.redirectPortsRaw, editingRule.redirectPortObjId)
-				};
-			} else {
-				form = defaultForm();
-			}
-		}
-	});
+	// This dialog is conditionally mounted, so the form intentionally snapshots its opening rule.
+	// svelte-ignore state_referenced_locally
+	let form = $state(formForRule(editingRule));
+	let saving = $state(false);
 
 	let cbOpen = $state({
 		ingressInterfaces: false,
@@ -227,9 +234,7 @@
 	);
 
 	const hostTargetOptions = $derived(
-		objects
-			.filter((obj) => ['Host', 'FQDN'].includes(obj.type))
-			.map((obj) => ({ label: obj.name, value: String(obj.id) }))
+		objects.filter(isSingleAddressHost).map((obj) => ({ label: obj.name, value: String(obj.id) }))
 	);
 
 	const portObjectOptions = $derived(
@@ -261,34 +266,13 @@
 	});
 
 	function resetForm() {
-		if (editingRule) {
-			form = {
-				name: editingRule.name,
-				description: editingRule.description ?? '',
-				enabled: editingRule.enabled ?? true,
-				log: editingRule.log ?? false,
-				priority: editingRule.priority,
-				natType: editingRule.natType ?? 'snat',
-				policyRoutingEnabled: editingRule.policyRoutingEnabled ?? false,
-				policyRouteGateway: editingRule.policyRouteGateway ?? '',
-				protocol: editingRule.protocol,
-				family: editingRule.family ?? 'any',
-				ingressInterfaces: editingRule.ingressInterfaces ?? [],
-				egressInterfaces: editingRule.egressInterfaces ?? [],
-				source: addrToForm(editingRule.sourceRaw, editingRule.sourceObjId),
-				dest: addrToForm(editingRule.destRaw, editingRule.destObjId),
-				translateMode: editingRule.translateMode ?? 'interface',
-				translateTo: addrToForm(editingRule.translateToRaw, editingRule.translateToObjId),
-				dnatTarget: addrToForm(editingRule.dnatTargetRaw, editingRule.dnatTargetObjId),
-				dstPort: addrToForm(editingRule.dstPortsRaw, editingRule.dstPortObjId),
-				redirectPort: addrToForm(editingRule.redirectPortsRaw, editingRule.redirectPortObjId)
-			};
-		} else {
-			form = defaultForm();
-		}
+		if (saving) return;
+		form = formForRule(editingRule);
 	}
 
 	async function save() {
+		if (saving) return;
+
 		if (!form.name.trim()) {
 			toast.error('Rule name is required', { position: 'bottom-center' });
 			return;
@@ -307,7 +291,7 @@
 		const redirectPort =
 			showDNATFields && supportsPorts ? resolvePort(form.redirectPort) : { raw: '', objId: null };
 
-		const payload = {
+		const payload: FirewallNATRuleUpsertRequest = {
 			name: form.name.trim(),
 			description: form.description.trim(),
 			enabled: form.enabled,
@@ -345,19 +329,34 @@
 			return;
 		}
 
-		const result =
-			edit && id ? await updateFirewallNATRule(id, payload) : await createFirewallNATRule(payload);
+		saving = true;
+		try {
+			const result =
+				edit && id
+					? await updateFirewallNATRule(id, payload)
+					: await createFirewallNATRule(payload);
 
-		if (typeof result === 'number' || ('status' in result && result.status === 'success')) {
-			toast.success(`NAT rule ${edit ? 'updated' : 'created'}`, { position: 'bottom-center' });
-			afterChange();
-			open = false;
-			form = defaultForm();
-		} else {
+			if (typeof result === 'number' || ('status' in result && result.status === 'success')) {
+				await afterChange();
+				toast.success(`NAT rule ${edit ? 'updated' : 'created'}`, {
+					position: 'bottom-center'
+				});
+				form = defaultForm();
+				open = false;
+				return;
+			}
+
 			handleAPIError(result);
 			toast.error(`Failed to ${edit ? 'update' : 'create'} NAT rule`, {
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			console.error('Failed to save firewall NAT rule', error);
+			toast.error(`Failed to ${edit ? 'update' : 'create'} NAT rule`, {
+				position: 'bottom-center'
+			});
+		} finally {
+			saving = false;
 		}
 	}
 </script>
@@ -365,10 +364,16 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-[96%] overflow-hidden p-5 lg:max-w-3xl md:max-w-2xl"
-		showCloseButton={true}
-		showResetButton={true}
+		showCloseButton={!saving}
+		showResetButton={!saving}
 		onReset={resetForm}
-		onClose={() => (open = false)}
+		onClose={() => {
+			if (!saving) open = false;
+		}}
+		onEscapeKeydown={(event) => {
+			if (saving) event.preventDefault();
+		}}
+		aria-busy={saving}
 	>
 		<Dialog.Header>
 			<Dialog.Title>
@@ -632,8 +637,17 @@
 
 		<Dialog.Footer class="pt-2">
 			<div class="flex items-center gap-2">
-				<Button size="sm" variant="outline" onclick={() => (open = false)}>Cancel</Button>
-				<Button size="sm" onclick={save}>{edit ? 'Save' : 'Create'}</Button>
+				<Button size="sm" variant="outline" onclick={() => (open = false)} disabled={saving}
+					>Cancel</Button
+				>
+				<Button size="sm" onclick={save} disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						{edit ? 'Saving...' : 'Creating...'}
+					{:else}
+						{edit ? 'Save' : 'Create'}
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

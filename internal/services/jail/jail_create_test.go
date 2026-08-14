@@ -410,7 +410,7 @@ func TestCreateJailConfigStartsAndStopsFreeBSDRC(t *testing.T) {
 		CTID: 701,
 		Name: "config-lifecycle",
 		Type: jailModels.JailTypeFreeBSD,
-	}, mountPoint, "")
+	}, mountPoint)
 	if err != nil {
 		t.Fatalf("CreateJailConfig: %v", err)
 	}

@@ -7,8 +7,9 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type { User } from '$lib/types/auth';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
+	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -17,6 +18,7 @@
 		user?: User;
 		edit?: boolean;
 		reload?: boolean;
+		hostname: string;
 	}
 
 	let {
@@ -24,7 +26,8 @@
 		users,
 		user,
 		edit = false,
-		reload = $bindable()
+		reload = $bindable(),
+		hostname
 	}: Props = $props();
 
 	function makeDefaults() {
@@ -40,6 +43,10 @@
 
 	let properties = $state(makeDefaults());
 	let loading = $state(false);
+	let componentActive = true;
+	onDestroy(() => {
+		componentActive = false;
+	});
 
 	function reset() {
 		properties = makeDefaults();
@@ -47,7 +54,10 @@
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
-		if (!(edit && user && properties.username === user.username) && !isValidUsername(properties.username))
+		if (
+			!(edit && user && properties.username === user.username) &&
+			!isValidUsername(properties.username)
+		)
 			return 'Invalid username format';
 		if (!edit && users.some((u) => u.username === properties.username))
 			return 'Username already exists';
@@ -65,14 +75,17 @@
 	}
 
 	async function submit() {
-		loading = true;
+		if (loading) return;
 
 		const error = validate();
 		if (error) {
 			toast.error(error, { position: 'bottom-center' });
-			loading = false;
 			return;
 		}
+
+		const requestEdit = edit;
+		const requestUserID = requestEdit ? user?.id : undefined;
+		if (requestEdit && requestUserID === undefined) return;
 
 		const payload = {
 			fullName: properties.fullName,
@@ -81,26 +94,43 @@
 			password: properties.password,
 			admin: properties.admin
 		};
+		const requestHostname = hostname;
 
-		let response;
-		if (edit && user) {
-			response = await editUser(user.id, payload);
-		} else {
-			response = await createUser(payload);
-		}
+		loading = true;
+		try {
+			const response =
+				requestEdit && requestUserID !== undefined
+					? await editUser(requestUserID, payload, { hostname: requestHostname })
+					: await createUser(payload, { hostname: requestHostname });
 
-		reload = true;
-		loading = false;
+			if (
+				!componentActive ||
+				hostname !== requestHostname ||
+				edit !== requestEdit ||
+				(requestEdit && user?.id !== requestUserID)
+			)
+				return;
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
-				position: 'bottom-center'
-			});
-		} else {
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			reload = true;
 			toast.success(edit ? 'User edited' : 'User created', { position: 'bottom-center' });
 			open = false;
 			reset();
+		} catch (error) {
+			if (!componentActive || hostname !== requestHostname) return;
+			console.error('User mutation failed:', error);
+			toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
+				position: 'bottom-center'
+			});
+		} finally {
+			loading = false;
 		}
 	}
 </script>

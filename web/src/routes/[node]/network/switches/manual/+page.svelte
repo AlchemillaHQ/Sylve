@@ -7,47 +7,54 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/network/switch/manual';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
-		interfaces: Iface[];
-		switches: SwitchList;
+		interfaces: Iface[] | APIResponse;
+		switches: SwitchList | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
 			if (isAPIResponse(res)) {
-				return data.interfaces;
+				handleAPIError(res);
+				return lastGoodInterfaces;
 			}
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
-			if (isAPIResponse(res)) {
-				return data.switches;
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
 			}
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	const usable = $derived.by(() => {
@@ -106,6 +113,24 @@
 			modals.deleteSwitch.id = activeRow.id as number;
 		}
 	}
+
+	function deleteErrorMessage(error: APIResponse['error']): string {
+		if (typeof error !== 'string') return 'Error deleting switch';
+		switch (error) {
+			case 'manual_switch_in_use_by_vm':
+				return 'Switch is in use by a VM';
+			case 'manual_switch_in_use_by_jail':
+				return 'Switch is in use by a jail';
+			case 'manual_switch_in_use_by_dhcp_config':
+				return 'Switch is enabled in the DHCP configuration';
+			case 'manual_switch_in_use_by_dhcp_range':
+				return 'Switch is in use by a DHCP range';
+			case 'manual_switch_not_found':
+				return 'Switch no longer exists';
+			default:
+				return 'Error deleting switch';
+		}
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -146,25 +171,21 @@
 
 <AlertDialog
 	open={modals.deleteSwitch.open}
+	keepOpenOnConfirm={true}
 	names={{ parent: 'switch', element: modals.deleteSwitch.name }}
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteManualSwitch(modals.deleteSwitch.id);
-			reload = true;
-			if (isAPIResponse(result) && result.status === 'success') {
-				toast.success(`Switch ${modals.deleteSwitch.name} deleted`, {
-					position: 'bottom-center'
-				});
-			} else {
-				if (result && result.error) {
-					if (result.error === 'switch_in_use_by_vm') {
-						toast.error('Switch is in use by a VM', { position: 'bottom-center' });
-					} else {
-						toast.error('Error deleting switch', { position: 'bottom-center' });
-					}
-				}
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error(deleteErrorMessage(result.error), { position: 'bottom-center' });
+				return;
 			}
 
+			toast.success(`Switch ${modals.deleteSwitch.name} deleted`, {
+				position: 'bottom-center'
+			});
+			reload = true;
 			modals.deleteSwitch.open = false;
 			modals.deleteSwitch.name = '';
 			modals.deleteSwitch.id = 0;

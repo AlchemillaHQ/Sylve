@@ -13,21 +13,215 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
 func boolPtr(v bool) *bool {
 	return &v
+}
+
+func setupLifecycleAuditTest(t *testing.T) (*Service, *gorm.DB, *gorm.DB) {
+	t.Helper()
+
+	service, primaryDB := newLifecycleTestService(t)
+	telemetryDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	service.TelemetryDB = telemetryDB
+
+	config := &internal.SylveConfig{
+		Environment: internal.Development,
+		DataPath:    t.TempDir(),
+	}
+	if err := db.SetupQueue(config, true, zerolog.New(io.Discard)); err != nil {
+		t.Fatalf("setup lifecycle test queue: %v", err)
+	}
+
+	return service, primaryDB, telemetryDB
+}
+
+func createStartedLifecycleAudit(t *testing.T, telemetryDB *gorm.DB) infoModels.AuditRecord {
+	t.Helper()
+	record := infoModels.AuditRecord{
+		User:    "tester",
+		Action:  `{"method":"POST","path":"/api/vm/101/actions/start"}`,
+		Status:  "started",
+		Started: time.Now().UTC(),
+		Version: 2,
+	}
+	if err := telemetryDB.Create(&record).Error; err != nil {
+		t.Fatalf("create lifecycle audit record: %v", err)
+	}
+	return record
+}
+
+func TestRequestActionBindsAuditBeforeQueuePublicationAndIsolatesJobType(t *testing.T) {
+	service, _, telemetryDB := setupLifecycleAuditTest(t)
+	audit := createStartedLifecycleAudit(t, telemetryDB)
+	requestContext := db.ContextWithAuditRecordID(t.Context(), audit.ID)
+
+	task, outcome, err := service.RequestAction(
+		requestContext,
+		taskModels.GuestTypeVM,
+		101,
+		"start",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+	)
+	if err != nil {
+		t.Fatalf("request VM action: %v", err)
+	}
+	if task == nil || task.ID == 0 || outcome != RequestOutcomeQueued {
+		t.Fatalf("unexpected queued task: task=%+v outcome=%q", task, outcome)
+	}
+
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload prepared audit: %v", err)
+	}
+	if audit.Status != "pending" || audit.AsyncJobID == nil || *audit.AsyncJobID != task.ID ||
+		audit.AsyncJobType != "vm_start" || audit.AsyncOperationID == "" {
+		t.Fatalf("audit was not bound before publication: %+v", audit)
+	}
+
+	unrelatedJobID := task.ID
+	unrelated := infoModels.AuditRecord{
+		User:             "backup-user",
+		Action:           `{}`,
+		Status:           "pending",
+		Started:          time.Now().UTC(),
+		Version:          2,
+		AsyncJobID:       &unrelatedJobID,
+		AsyncJobType:     "backup_job_run",
+		AsyncOperationID: fmt.Sprintf("backup:%d", task.ID),
+	}
+	if err := telemetryDB.Create(&unrelated).Error; err != nil {
+		t.Fatalf("create unrelated pending audit: %v", err)
+	}
+
+	if err := service.ExecuteTask(t.Context(), task.ID); err != nil {
+		t.Fatalf("execute lifecycle task: %v", err)
+	}
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload completed lifecycle audit: %v", err)
+	}
+	if audit.Status != "success" {
+		t.Fatalf("lifecycle audit status = %q, want success", audit.Status)
+	}
+	if err := telemetryDB.First(&unrelated, unrelated.ID).Error; err != nil {
+		t.Fatalf("reload unrelated audit: %v", err)
+	}
+	if unrelated.Status != "pending" {
+		t.Fatalf("unrelated audit status = %q, want pending", unrelated.Status)
+	}
+}
+
+func TestForceStopOverrideAuditCompletesWithShutdownTask(t *testing.T) {
+	service, _, telemetryDB := setupLifecycleAuditTest(t)
+	shutdownTask, _, err := service.createTask(
+		t.Context(),
+		taskModels.GuestTypeVM,
+		101,
+		"shutdown",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("seed shutdown task: %v", err)
+	}
+
+	audit := createStartedLifecycleAudit(t, telemetryDB)
+	requestContext := db.ContextWithAuditRecordID(t.Context(), audit.ID)
+	overrideTask, outcome, err := service.RequestAction(
+		requestContext,
+		taskModels.GuestTypeVM,
+		101,
+		"stop",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+	)
+	if err != nil {
+		t.Fatalf("request force stop override: %v", err)
+	}
+	if overrideTask == nil || overrideTask.ID != shutdownTask.ID ||
+		outcome != RequestOutcomeForceStopOverride {
+		t.Fatalf("unexpected override task: task=%+v outcome=%q", overrideTask, outcome)
+	}
+
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload prepared override audit: %v", err)
+	}
+	if audit.Status != "pending" || audit.AsyncJobType != "vm_stop" ||
+		audit.AsyncJobID == nil || *audit.AsyncJobID != shutdownTask.ID {
+		t.Fatalf("override audit was not bound to shutdown task: %+v", audit)
+	}
+
+	if err := service.ExecuteTask(t.Context(), shutdownTask.ID); err != nil {
+		t.Fatalf("execute shutdown task: %v", err)
+	}
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload completed override audit: %v", err)
+	}
+	if audit.Status != "success" {
+		t.Fatalf("override audit status = %q, want success", audit.Status)
+	}
+}
+
+func TestRecoverInterruptedTasksFinalizesBoundAudit(t *testing.T) {
+	service, primaryDB, telemetryDB := setupLifecycleAuditTest(t)
+	task, _, err := service.createTask(
+		t.Context(),
+		taskModels.GuestTypeVM,
+		101,
+		"start",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("seed lifecycle task: %v", err)
+	}
+	if err := primaryDB.Model(&taskModels.GuestLifecycleTask{}).
+		Where("id = ?", task.ID).
+		Update("status", taskModels.LifecycleTaskStatusRunning).Error; err != nil {
+		t.Fatalf("mark task running: %v", err)
+	}
+
+	audit := createStartedLifecycleAudit(t, telemetryDB)
+	if _, err := db.PrepareAsyncAuditRecord(
+		telemetryDB,
+		db.ContextWithAuditRecordID(t.Context(), audit.ID),
+		"vm_start",
+		task.ID,
+		fmt.Sprintf("guest-lifecycle:vm_start:%d", task.ID),
+	); err != nil {
+		t.Fatalf("bind lifecycle audit: %v", err)
+	}
+
+	if err := service.RecoverInterruptedTasks(t.Context()); err != nil {
+		t.Fatalf("recover lifecycle tasks: %v", err)
+	}
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload recovered audit: %v", err)
+	}
+	if audit.Status != "failed" || audit.Error != lifecycleTaskInterruptedByRestartError {
+		t.Fatalf("recovered audit = status %q error %q", audit.Status, audit.Error)
+	}
 }
 
 type retryPendingTestError struct{}
@@ -94,6 +288,54 @@ func TestCreateTaskConflictAndStopOverride(t *testing.T) {
 	}
 	if !refetched.OverrideRequested {
 		t.Fatalf("expected override_requested to be true")
+	}
+}
+
+func TestTemplateTaskConflictsAreActionAware(t *testing.T) {
+	s, _ := newLifecycleTestService(t)
+
+	convertTask, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		77,
+		"convert",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("create convert task: %v", err)
+	}
+
+	createTask, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		77,
+		"create",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("different template action should not conflict: %v", err)
+	}
+	if convertTask.ID == createTask.ID {
+		t.Fatalf("expected distinct tasks, got ID %d", createTask.ID)
+	}
+
+	if _, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		77,
+		"create",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"",
+		false,
+	); !errors.Is(err, ErrTaskInProgress) {
+		t.Fatalf("same template action should conflict, got %v", err)
 	}
 }
 

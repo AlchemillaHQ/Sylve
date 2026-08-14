@@ -19,7 +19,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/hashicorp/raft"
 )
 
@@ -49,140 +48,70 @@ func registerBackupTargetValidationPeer(t *testing.T, sim *clusterPeerSimulator,
 	})
 }
 
-func TestBackupTargetValidationUsesSelectedVoterAndRecordsPerNodeOutcomes(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2,
-		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
-		&clusterModels.BackupJob{},
-	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	runner := remoteClusterRaftTestNode(t, nodes, leader)
-	for _, node := range nodes {
-		node.service.NodeID = node.id
-		if err := node.service.DB.Create(&clusterModels.BackupTarget{
-			ID: 41, Name: "asymmetric", SSHHost: "root@backup", SSHPort: 22,
-			BackupRoot: "tank/backups", Enabled: true,
-		}).Error; err != nil {
-			t.Fatalf("seed target on %s: %v", node.id, err)
+func TestBackupTargetValidationRecordsPerNodeOutcomes(t *testing.T) {
+	target := clusterModels.BackupTarget{
+		ID: 41, Name: "asymmetric", SSHHost: "root@backup", SSHPort: 22,
+		BackupRoot: "tank/backups", Enabled: true,
+	}
+	leader := &Service{
+		DB:          newClusterServiceTestDB(t, &clusterModels.BackupTarget{}),
+		NodeID:      "node-leader",
+		AuthService: clusterAuthStub{},
+	}
+	runner := &Service{
+		DB:     newClusterServiceTestDB(t, &clusterModels.BackupTarget{}),
+		NodeID: "node-runner",
+	}
+	for _, service := range []*Service{leader, runner} {
+		if err := service.DB.Create(&target).Error; err != nil {
+			t.Fatalf("seed target on %s: %v", service.NodeID, err)
 		}
 	}
-	leader.service.AuthService = clusterAuthStub{}
-	leader.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
-		return errors.New("leader cannot reach target")
-	})
-	runner.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
+	runner.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
 
 	sim := newClusterPeerSimulator()
 	defer sim.Close()
-	registerBackupTargetValidationPeer(t, sim, runner.service)
-	registerBackupJobValidationPeer(t, sim, runner.service)
-	leader.service.backupTargetValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != runner.id {
-			t.Fatalf("target validation routed to %q, want %q", nodeID, runner.id)
-		}
-		return sim.Addr(), nil
+	registerBackupTargetValidationPeer(t, sim, runner)
+	request := BackupTargetValidationRequest{
+		ExpectedNodeID: "node-runner", TargetID: target.ID,
+		TargetFingerprint: clusterModels.BackupTargetConnectivityFingerprint(&target),
 	}
-	leader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != runner.id {
-			t.Fatalf("job validation routed to %q, want %q", nodeID, runner.id)
-		}
-		return sim.Addr(), nil
+	remote, err := leader.fetchBackupTargetValidation(t.Context(), "node-runner", sim.Addr(), request)
+	if err != nil {
+		t.Fatalf("validate remote target: %v", err)
 	}
-
-	remoteResult, err := leader.service.ValidateBackupTargetOnNode(
-		context.Background(), 41, runner.id, leader.service.backupTargetValidator,
-	)
-	if err != nil || !remoteResult.ValidationSucceeded || remoteResult.NodeID != runner.id {
-		t.Fatalf("runner validation result=%+v err=%v", remoteResult, err)
+	if err := validateBackupTargetReadinessReceipt(request, &remote); err != nil {
+		t.Fatalf("validate remote receipt: %v", err)
 	}
-	request := sim.FindRequest(backupTargetValidationEndpoint)
-	if request == nil || request.Header.Get("X-Cluster-Token") != "Bearer test-cluster-token" {
-		t.Fatalf("authenticated target validation request not observed: %+v", request)
+	if err := leader.UpdateBackupTargetNodeReadiness(remote, true); err != nil {
+		t.Fatalf("record remote readiness: %v", err)
+	}
+	captured := sim.FindRequest(backupTargetValidationEndpoint)
+	if captured == nil || captured.Header.Get("X-Cluster-Token") != "Bearer test-cluster-token" {
+		t.Fatalf("authenticated request not observed: %+v", captured)
 	}
 
-	localResult, err := leader.service.ValidateBackupTargetOnNode(
-		context.Background(), 41, leader.id, leader.service.backupTargetValidator,
+	local, err := leader.ValidateBackupTargetOnNode(
+		t.Context(), target.ID, "node-leader",
+		func(context.Context, *clusterModels.BackupTarget) error {
+			return errors.New("leader cannot reach target")
+		},
 	)
 	var rejected *BackupTargetValidationRejectedError
-	if !errors.As(err, &rejected) || localResult.ValidationSucceeded ||
-		!strings.Contains(localResult.LastError, "leader cannot reach") {
-		t.Fatalf("leader validation result=%+v err=%v", localResult, err)
+	if !errors.As(err, &rejected) || local.ValidationSucceeded ||
+		!strings.Contains(local.LastError, "leader cannot reach target") {
+		t.Fatalf("local validation result=%+v err=%v", local, err)
 	}
 
-	waitForClusterCondition(t, 5*time.Second, "per-node readiness replication", func() bool {
-		for _, node := range nodes {
-			var count int64
-			if node.service.DB.Model(&clusterModels.BackupTargetNodeReadiness{}).
-				Where("target_id = ?", 41).Count(&count).Error != nil || count != 2 {
-				return false
-			}
-		}
-		return true
-	})
-	statuses, err := leader.service.BackupTargetReadiness(41)
-	if err != nil || len(statuses) != 2 {
-		t.Fatalf("statuses=%+v err=%v", statuses, err)
+	var rows []clusterModels.BackupTargetNodeReadiness
+	if err := leader.DB.Order("node_id").Find(&rows).Error; err != nil {
+		t.Fatalf("load readiness rows: %v", err)
 	}
-	statusByNode := make(map[string]clusterModels.BackupTargetNodeReadinessStatus, len(statuses))
-	for _, status := range statuses {
-		statusByNode[status.NodeID] = status
-	}
-	if !statusByNode[runner.id].Ready || statusByNode[leader.id].Ready {
-		t.Fatalf("unexpected effective readiness: %+v", statuses)
-	}
-
-	enabled := true
-	if err := leader.service.ProposeBackupJobCreateContext(context.Background(), clusterServiceInterfaces.BackupJobReq{
-		Name: "runner-reachable", TargetID: 41, RunnerNodeID: runner.id,
-		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/source",
-		CronExpr: "0 0 * * *", Enabled: &enabled,
-	}, false); err != nil {
-		t.Fatalf("runner-reachable job create: %v", err)
-	}
-	if err := leader.service.ProposeBackupJobCreateContext(context.Background(), clusterServiceInterfaces.BackupJobReq{
-		Name: "leader-unreachable", TargetID: 41, RunnerNodeID: leader.id,
-		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/source-two",
-		CronExpr: "0 1 * * *", Enabled: &enabled,
-	}, false); err == nil || !strings.Contains(err.Error(), "backup_target_validation_rejected") {
-		t.Fatalf("leader-unreachable job error = %v", err)
-	}
-	var jobCount int64
-	if err := leader.service.DB.Model(&clusterModels.BackupJob{}).Count(&jobCount).Error; err != nil || jobCount != 1 {
-		t.Fatalf("job count=%d err=%v", jobCount, err)
-	}
-
-	leader.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
-	runner.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
-		return errors.New("runner cannot reach target")
-	})
-	remoteResult, err = leader.service.ValidateBackupTargetOnNode(
-		context.Background(), 41, runner.id, leader.service.backupTargetValidator,
+	statuses := backupTargetReadinessStatuses(
+		target, rows, []string{"node-leader", "node-runner"}, time.Now().UTC(),
 	)
-	if !errors.As(err, &rejected) || remoteResult.ValidationSucceeded {
-		t.Fatalf("runner-only failure result=%+v err=%v", remoteResult, err)
-	}
-	localResult, err = leader.service.ValidateBackupTargetOnNode(
-		context.Background(), 41, leader.id, leader.service.backupTargetValidator,
-	)
-	if err != nil || !localResult.ValidationSucceeded {
-		t.Fatalf("leader-only success result=%+v err=%v", localResult, err)
-	}
-
-	if err := leader.raft.RemoveServer(raft.ServerID(runner.id), 0, 5*time.Second).Error(); err != nil {
-		t.Fatalf("remove runner voter: %v", err)
-	}
-	waitForClusterCondition(t, 5*time.Second, "runner membership removal", func() bool {
-		configuration := leader.raft.GetConfiguration()
-		return configuration.Error() == nil && len(configuration.Configuration().Servers) == 1
-	})
-	statuses, err = leader.service.BackupTargetReadiness(41)
-	if err != nil {
-		t.Fatalf("readiness after runner removal: %v", err)
-	}
-	for _, status := range statuses {
-		if status.NodeID == runner.id && (status.CurrentVoter || status.Ready) {
-			t.Fatalf("removed runner remained ready: %+v", status)
-		}
+	if len(statuses) != 2 || statuses[0].Ready || !statuses[1].Ready {
+		t.Fatalf("readiness statuses = %+v", statuses)
 	}
 }
 
@@ -216,11 +145,10 @@ func TestBackupTargetValidationReceiptRejectsStaleOrExtendedReadiness(t *testing
 	}
 }
 
-func TestBackupTargetReadinessSurvivesLeadershipChange(t *testing.T) {
+func TestIntegrationRaftBackupTargetReadinessSurvivesLeadershipChange(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3,
 		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var nextLeader *clusterRaftTestNode
 	for _, node := range nodes {

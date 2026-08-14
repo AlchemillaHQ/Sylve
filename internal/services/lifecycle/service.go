@@ -174,6 +174,109 @@ func validateAction(guestType, action string) error {
 	}
 }
 
+func lifecycleAuditJobType(guestType, action string) string {
+	action = normalizeAction(action)
+	switch normalizeGuestType(guestType) {
+	case taskModels.GuestTypeVM:
+		return "vm_" + action
+	case taskModels.GuestTypeJail:
+		return "jail_" + action
+	case taskModels.GuestTypeVMTemplate:
+		return "vm_template_" + action
+	case taskModels.GuestTypeJailTemplate:
+		return "jail_template_" + action
+	default:
+		return ""
+	}
+}
+
+func (s *Service) prepareLifecycleAudit(
+	ctx context.Context,
+	guestType string,
+	action string,
+	taskID uint,
+) (db.AsyncAuditRef, error) {
+	jobType := lifecycleAuditJobType(guestType, action)
+	if jobType == "" || taskID == 0 {
+		return db.AsyncAuditRef{}, fmt.Errorf("lifecycle_audit_identity_invalid")
+	}
+	return db.PrepareAsyncAuditRecord(
+		s.TelemetryDB,
+		ctx,
+		jobType,
+		taskID,
+		fmt.Sprintf("guest-lifecycle:%s:%d", jobType, taskID),
+	)
+}
+
+func (s *Service) finalizePreparedLifecycleAudit(ref db.AsyncAuditRef, err error) {
+	if err == nil {
+		return
+	}
+	if finalizeErr := db.FinalizeAsyncAuditOperation(
+		s.TelemetryDB,
+		ref,
+		"failed",
+		err.Error(),
+		map[string]any{"status": "failed", "error": err.Error()},
+	); finalizeErr != nil {
+		logger.L.Warn().Err(finalizeErr).Msg("guest_lifecycle_audit_failure_finalize_failed")
+	}
+}
+
+func (s *Service) markLifecycleTaskPublishFailed(taskID uint, message string, err error) {
+	if taskID == 0 || err == nil {
+		return
+	}
+	failedAt := time.Now().UTC()
+	updateErr := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID).Updates(map[string]any{
+		"status":      taskModels.LifecycleTaskStatusFailed,
+		"error":       fmt.Sprintf("%s: %v", message, err),
+		"finished_at": failedAt,
+		"message":     message,
+	}).Error
+	if updateErr != nil {
+		logger.L.Warn().Err(updateErr).Uint("task_id", taskID).Msg("guest_lifecycle_task_publish_failure_update_failed")
+	}
+}
+
+func (s *Service) finalizeLifecycleTaskAudit(
+	task taskModels.GuestLifecycleTask,
+	auditStatus string,
+	errMsg string,
+) {
+	if s.TelemetryDB == nil || task.ID == 0 {
+		return
+	}
+
+	response := map[string]any{
+		"guestType": task.GuestType,
+		"guestId":   task.GuestID,
+		"action":    task.Action,
+		"status":    auditStatus,
+		"error":     errMsg,
+	}
+	jobType := lifecycleAuditJobType(task.GuestType, task.Action)
+	if jobType != "" {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, jobType, task.ID, auditStatus, errMsg, response)
+	}
+
+	// A stop request can override an already-running shutdown task. It binds a
+	// second vm_stop audit row to the same task and must complete with it.
+	if task.GuestType == taskModels.GuestTypeVM && task.Action == "shutdown" {
+		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "vm_stop", task.ID, auditStatus, errMsg, response)
+	}
+}
+
+func (s *Service) finalizeTerminalLifecycleTaskAudit(task taskModels.GuestLifecycleTask) {
+	switch task.Status {
+	case taskModels.LifecycleTaskStatusSuccess:
+		s.finalizeLifecycleTaskAudit(task, "success", "")
+	case taskModels.LifecycleTaskStatusFailed:
+		s.finalizeLifecycleTaskAudit(task, "failed", task.Error)
+	}
+}
+
 func (s *Service) RegisterJobs() {
 	db.QueueRegisterJSON[guestLifecycleExecPayload](guestLifecycleExecQueueName, func(ctx context.Context, payload guestLifecycleExecPayload) error {
 		if payload.TaskID == 0 {
@@ -204,6 +307,13 @@ func (s *Service) EnqueueStartupAutostart(ctx context.Context) error {
 // RecoverInterruptedTasks closes normal tasks claimed by a previous process.
 // Migration tasks have durable recovery and must remain running for it.
 func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
+	var interruptedTasks []taskModels.GuestLifecycleTask
+	if err := s.DB.WithContext(ctx).
+		Where("status = ? AND action <> ?", taskModels.LifecycleTaskStatusRunning, "migrate").
+		Find(&interruptedTasks).Error; err != nil {
+		return err
+	}
+
 	result := s.DB.WithContext(ctx).
 		Model(&taskModels.GuestLifecycleTask{}).
 		Where("status = ? AND action <> ?", taskModels.LifecycleTaskStatusRunning, "migrate").
@@ -218,6 +328,12 @@ func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
 	}
 	if result.RowsAffected > 0 {
 		logger.L.Warn().Int64("count", result.RowsAffected).Msg("recovered_interrupted_lifecycle_tasks")
+	}
+	for i := range interruptedTasks {
+		var recovered taskModels.GuestLifecycleTask
+		if err := s.DB.First(&recovered, interruptedTasks[i].ID).Error; err == nil {
+			s.finalizeTerminalLifecycleTaskAudit(recovered)
+		}
 	}
 	return nil
 }
@@ -271,7 +387,7 @@ func (s *Service) createTask(
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
-	active, err := s.GetActiveTaskForGuest(guestType, guestID)
+	active, err := s.getConflictingActiveTask(guestType, guestID, action)
 	if err != nil {
 		return nil, "", err
 	}
@@ -283,19 +399,44 @@ func (s *Service) createTask(
 		}
 
 		if guestType == taskModels.GuestTypeVM && action == "stop" && active.Action == "shutdown" && !active.OverrideRequested {
+			var auditRef db.AsyncAuditRef
+			if enqueue {
+				auditRef, err = s.prepareLifecycleAudit(ctx, guestType, action, active.ID)
+				if err != nil {
+					return nil, "", err
+				}
+			}
+
 			now := time.Now().UTC()
-			if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", active.ID).Updates(map[string]any{
-				"override_requested": true,
-				"updated_at":         now,
-				"message":            RequestOutcomeForceStopOverride,
-			}).Error; err != nil {
-				return nil, "", err
+			result := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+				Where(
+					"id = ? AND action = ? AND status IN ? AND override_requested = ?",
+					active.ID,
+					"shutdown",
+					[]string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning},
+					false,
+				).
+				Updates(map[string]any{
+					"override_requested": true,
+					"updated_at":         now,
+					"message":            RequestOutcomeForceStopOverride,
+				})
+			if result.Error != nil {
+				s.finalizePreparedLifecycleAudit(auditRef, result.Error)
+				return nil, "", result.Error
+			}
+			if result.RowsAffected != 1 {
+				stateErr := fmt.Errorf("%w: shutdown_task_no_longer_active", ErrTaskInProgress)
+				s.finalizePreparedLifecycleAudit(auditRef, stateErr)
+				return active, "", stateErr
 			}
 
 			refetched := taskModels.GuestLifecycleTask{}
 			if err := s.DB.First(&refetched, active.ID).Error; err != nil {
+				s.finalizePreparedLifecycleAudit(auditRef, err)
 				return nil, "", err
 			}
+			s.finalizeTerminalLifecycleTaskAudit(refetched)
 			return &refetched, RequestOutcomeForceStopOverride, nil
 		}
 
@@ -318,22 +459,48 @@ func (s *Service) createTask(
 	}
 
 	if enqueue {
+		auditRef, err := s.prepareLifecycleAudit(ctx, guestType, action, task.ID)
+		if err != nil {
+			s.markLifecycleTaskPublishFailed(task.ID, "audit_prepare_failed", err)
+			return nil, "", err
+		}
+
 		if err := db.EnqueueJSON(ctx, guestLifecycleExecQueueName, guestLifecycleExecPayload{TaskID: task.ID}); err != nil {
-			failedAt := time.Now().UTC()
-			updateErr := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).Updates(map[string]any{
-				"status":      taskModels.LifecycleTaskStatusFailed,
-				"error":       fmt.Sprintf("enqueue_failed: %v", err),
-				"finished_at": failedAt,
-				"message":     "enqueue_failed",
-			}).Error
-			if updateErr != nil {
-				logger.L.Warn().Err(updateErr).Uint("task_id", task.ID).Msg("guest_lifecycle_task_enqueue_failure_update_failed")
-			}
+			s.markLifecycleTaskPublishFailed(task.ID, "enqueue_failed", err)
+			s.finalizePreparedLifecycleAudit(auditRef, err)
 			return nil, "", err
 		}
 	}
 
 	return task, RequestOutcomeQueued, nil
+}
+
+func (s *Service) getConflictingActiveTask(guestType string, guestID uint, action string) (*taskModels.GuestLifecycleTask, error) {
+	guestType = normalizeGuestType(guestType)
+	action = normalizeAction(action)
+
+	query := s.DB.Where("guest_type = ? AND guest_id = ? AND status IN ?", guestType, guestID, []string{
+		taskModels.LifecycleTaskStatusQueued,
+		taskModels.LifecycleTaskStatusRunning,
+	})
+	if guestType == taskModels.GuestTypeVMTemplate || guestType == taskModels.GuestTypeJailTemplate {
+		query = query.Where("action = ?", action)
+	}
+
+	var task taskModels.GuestLifecycleTask
+	tx := query.
+		Order("created_at DESC").
+		Order("id DESC").
+		Limit(1).
+		Find(&task)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return nil, nil
+	}
+
+	return &task, nil
 }
 
 func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
@@ -346,6 +513,7 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	}
 
 	if task.Status == taskModels.LifecycleTaskStatusSuccess || task.Status == taskModels.LifecycleTaskStatusFailed {
+		s.finalizeTerminalLifecycleTaskAudit(task)
 		return nil
 	}
 
@@ -357,6 +525,9 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	if !claimed {
 		// The row became terminal after our initial read. A stale queue delivery
 		// must not resurrect it by writing running over the committed result.
+		if err := s.DB.First(&task, taskID).Error; err == nil {
+			s.finalizeTerminalLifecycleTaskAudit(task)
+		}
 		return nil
 	}
 
@@ -410,20 +581,13 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 		}
 	}
 
-	if s.TelemetryDB != nil {
-		auditStatus := "success"
-		errMsg := ""
-		if runErr != nil {
-			auditStatus = "failed"
-			errMsg = runErr.Error()
+	if !retryPendingResult {
+		var terminalTask taskModels.GuestLifecycleTask
+		if err := s.DB.First(&terminalTask, taskID).Error; err != nil {
+			logger.L.Warn().Err(err).Uint("task_id", taskID).Msg("guest_lifecycle_task_audit_reload_failed")
+		} else {
+			s.finalizeTerminalLifecycleTaskAudit(terminalTask)
 		}
-		db.FinalizeAsyncAuditRecord(s.TelemetryDB, "", taskID, auditStatus, errMsg, map[string]any{
-			"guestType": task.GuestType,
-			"guestId":   task.GuestID,
-			"action":    task.Action,
-			"status":    auditStatus,
-			"error":     errMsg,
-		})
 	}
 
 	return runErr

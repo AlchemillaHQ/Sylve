@@ -22,7 +22,9 @@ export const PCIDeviceSchema = z.object({
 });
 
 export const PPTDeviceSchema = z.object({
-	id: z.number().int(),
+	id: z.number().int().positive(),
+	domain: z.number().int(),
+	oldDriver: z.string(),
 	deviceID: z.string()
 });
 

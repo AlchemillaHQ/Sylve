@@ -73,10 +73,10 @@ func TestUpdateDownloadAPIRejectsTarAndRawCombination(t *testing.T) {
 	service := &utilities.Service{DB: database}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.PUT("/downloads/:id", UpdateDownload(service))
+	router.PATCH("/downloads/:id", UpdateDownload(service))
 
 	request := httptest.NewRequest(
-		http.MethodPut,
+		http.MethodPatch,
 		"/downloads/"+strconv.FormatUint(uint64(download.ID), 10),
 		bytes.NewBufferString(`{"automaticRawConversion":true}`),
 	)
@@ -85,6 +85,25 @@ func TestUpdateDownloadAPIRejectsTarAndRawCombination(t *testing.T) {
 	router.ServeHTTP(response, request)
 
 	assertIncompatiblePostProcessResponse(t, response)
+}
+
+func TestUpdateDownloadAPIRejectsNonPositiveID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.PATCH("/downloads/:id", UpdateDownload(&utilities.Service{}))
+
+	request := httptest.NewRequest(
+		http.MethodPatch,
+		"/downloads/0",
+		bytes.NewBufferString(`{"name":"display.img"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func assertIncompatiblePostProcessResponse(
@@ -101,7 +120,7 @@ func assertIncompatiblePostProcessResponse(
 		t.Fatal(err)
 	}
 	if payload.Message != "incompatible_post_processing_options" ||
-		payload.Error != utilities.ErrDownloaderPostProcessOptions.Error() {
+		payload.Error != "incompatible_post_processing_options" {
 		t.Fatalf("unexpected API response: %+v", payload)
 	}
 }

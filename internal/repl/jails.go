@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package repl
 
 import (
@@ -51,12 +59,17 @@ type jailBootstrapCreateResult struct {
 	Major     int    `json:"major"`
 	Minor     int    `json:"minor"`
 	Type      string `json:"type"`
+	Status    string `json:"status"`
+	Outcome   string `json:"outcome"`
 }
 
 type jailBootstrapDeleteResult struct {
-	Deleted bool   `json:"deleted"`
-	Pool    string `json:"pool"`
-	Name    string `json:"name"`
+	Deleted        bool   `json:"deleted"`
+	Pool           string `json:"pool"`
+	Name           string `json:"name"`
+	Outcome        string `json:"outcome"`
+	DatasetDeleted bool   `json:"datasetDeleted"`
+	RecordDeleted  bool   `json:"recordDeleted"`
 }
 
 type jailBootstrapCreateResponse struct {
@@ -770,6 +783,8 @@ func jailsBootstrapCreate(ctx *Context, request jailServiceInterfaces.BootstrapR
 	result := *response.Requested
 	if jsonMode {
 		println(ctx, mustJSON(result))
+	} else if result.Outcome == "already_completed" {
+		println(ctx, styledSuccessf("Bootstrap %s is already completed.", result.Name))
 	} else {
 		println(ctx, styledSuccessf("Bootstrap %s requested. Use 'jails bootstrap list %s' to track progress.", result.Name, result.Pool))
 	}
@@ -786,7 +801,8 @@ func createBootstrap(
 	if ctx == nil || ctx.Jail == nil {
 		return jailBootstrapCreateResponse{}, fmt.Errorf("jail_service_unavailable")
 	}
-	if err := ctx.Jail.CreateBootstrap(context.Background(), request); err != nil {
+	createResult, err := ctx.Jail.CreateBootstrap(context.Background(), request)
+	if err != nil {
 		return jailBootstrapCreateResponse{}, fmt.Errorf("failed_to_create_bootstrap: %w", err)
 	}
 
@@ -802,12 +818,14 @@ func createBootstrap(
 	}
 
 	return jailBootstrapCreateResponse{Requested: &jailBootstrapCreateResult{
-		Requested: true,
-		Pool:      request.Pool,
-		Name:      jailBootstrapName(request.Major, request.Minor, request.Type),
+		Requested: createResult.Outcome == "queued",
+		Pool:      createResult.Pool,
+		Name:      createResult.Name,
 		Major:     request.Major,
 		Minor:     request.Minor,
 		Type:      request.Type,
+		Status:    createResult.Status,
+		Outcome:   createResult.Outcome,
 	}}, nil
 }
 
@@ -859,6 +877,8 @@ func jailsBootstrapDelete(ctx *Context, pool, name string, jsonMode bool) {
 
 	if jsonMode {
 		println(ctx, mustJSON(result))
+	} else if result.Outcome == "already_absent" {
+		println(ctx, styledSuccessf("Bootstrap %s was already absent.", name))
 	} else {
 		println(ctx, styledSuccessf("Bootstrap %s deleted successfully.", name))
 	}
@@ -871,10 +891,18 @@ func deleteBootstrap(ctx *Context, pool, name string) (jailBootstrapDeleteResult
 	if ctx == nil || ctx.Jail == nil {
 		return jailBootstrapDeleteResult{}, fmt.Errorf("jail_service_unavailable")
 	}
-	if err := ctx.Jail.DeleteBootstrap(context.Background(), pool, name); err != nil {
+	deleteResult, err := ctx.Jail.DeleteBootstrap(context.Background(), pool, name)
+	if err != nil {
 		return jailBootstrapDeleteResult{}, fmt.Errorf("failed_to_delete_bootstrap: %w", err)
 	}
-	return jailBootstrapDeleteResult{Deleted: true, Pool: pool, Name: name}, nil
+	return jailBootstrapDeleteResult{
+		Deleted:        deleteResult.Outcome == "deleted",
+		Pool:           deleteResult.Pool,
+		Name:           deleteResult.Name,
+		Outcome:        deleteResult.Outcome,
+		DatasetDeleted: deleteResult.DatasetDeleted,
+		RecordDeleted:  deleteResult.RecordDeleted,
+	}, nil
 }
 
 func jailsList(ctx *Context, jsonMode bool) {

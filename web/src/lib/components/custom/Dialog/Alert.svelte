@@ -17,6 +17,7 @@
 		confirmLabel?: string;
 		loadingLabel?: string;
 		loading?: boolean;
+		keepOpenOnConfirm?: boolean;
 	}
 
 	let {
@@ -26,7 +27,8 @@
 		customTitle,
 		confirmLabel = 'Continue',
 		loadingLabel = 'Processing...',
-		loading = false
+		loading = false,
+		keepOpenOnConfirm = false
 	}: Props = $props();
 
 	let confirming = $state(false);
@@ -40,8 +42,9 @@
 		};
 	});
 
-	async function handleConfirm() {
+	async function handleConfirm(event: MouseEvent) {
 		if (busy) return;
+		if (keepOpenOnConfirm) event.preventDefault();
 		confirming = true;
 		try {
 			await actions.onConfirm();

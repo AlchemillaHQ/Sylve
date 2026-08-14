@@ -1828,6 +1828,15 @@ func replicationGuestKey(guestType string, guestID uint) string {
 }
 
 func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
+	return s.runReplicationSchedulerTickWithHA(ctx, nil)
+}
+
+type replicationPolicyHAEvaluator func(*clusterModels.ReplicationPolicy) clusterService.ReplicationPolicyHAEvaluation
+
+func (s *Service) runReplicationSchedulerTickWithHA(
+	ctx context.Context,
+	evaluate replicationPolicyHAEvaluator,
+) error {
 	if s.DB == nil || s.Cluster == nil {
 		return nil
 	}
@@ -1876,6 +1885,9 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 		}
 
 		haEval := s.Cluster.EvaluateReplicationPolicyHA(&policy)
+		if evaluate != nil {
+			haEval = evaluate(&policy)
+		}
 		haErr := replicationPolicyHAError(haEval)
 
 		nextAt, err := nextRunTime(policy.CronExpr, now)
@@ -4616,7 +4628,13 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 		s.resetForcedPromotionObservations()
 		return nil
 	}
+	return s.runFailoverControllerLeaderTick(ctx, nil)
+}
 
+func (s *Service) runFailoverControllerLeaderTick(
+	ctx context.Context,
+	evaluate replicationPolicyHAEvaluator,
+) error {
 	nodes, err := s.Cluster.Nodes()
 	if err != nil {
 		return err
@@ -4709,6 +4727,9 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 		}
 
 		haEval := s.Cluster.EvaluateReplicationPolicyHA(&policy)
+		if evaluate != nil {
+			haEval = evaluate(&policy)
+		}
 		if !haEval.Eligible {
 			logger.L.Debug().
 				Uint("policy_id", policy.ID).
@@ -7331,7 +7352,7 @@ func (s *Service) forwardReplicationPolicyControlReadAtAPIContext(
 		hostname = "cluster"
 	}
 
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT(hostname, "")
+	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT(hostname)
 	if err != nil {
 		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

@@ -25,7 +25,6 @@ import (
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param hash query string false "SHA-256 token hash alternative to Bearer authentication"
 // @Param page query int false "Page number" default(1) minimum(1)
 // @Param size query int false "Page size" default(100) minimum(1)
 // @Param sort[0][field] query string false "Sort field" Enums(id,action,share,path,createdAt,created_at)

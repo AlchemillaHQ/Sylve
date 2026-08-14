@@ -1,17 +1,26 @@
 import { listJailSnapshots } from '$lib/api/jail/snapshots';
+import type { APIResponse } from '$lib/types/common';
 import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
 export async function load({ params }) {
-    const cacheDuration = SEVEN_DAYS;
-    const ctId = Number(params.ctid);
+	const cacheDuration = SEVEN_DAYS;
+	const ctId = Number(params.ctid);
+	const node = String(params.node);
+	const cacheKey = `jail-${ctId}-snapshots`;
 
-    const [snapshots] = await Promise.all([
-        cachedFetch(`jail-${ctId}-snapshots`, async () => listJailSnapshots(ctId), cacheDuration)
-    ]);
+	const result = await cachedFetch(
+		cacheKey,
+		async () => listJailSnapshots(ctId, { hostname: node, preserveErrors: true }),
+		cacheDuration,
+		false,
+		node
+	);
 
-    return {
-        ctId,
-        snapshots
-    };
+	return {
+		node,
+		ctId,
+		snapshots: isAPIResponse(result) ? [] : result,
+		snapshotsError: (isAPIResponse(result) ? result : null) as APIResponse | null
+	};
 }

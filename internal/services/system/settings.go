@@ -10,9 +10,11 @@ package system
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -28,48 +30,89 @@ func (s *Service) checkPoolUsage(poolName string) error {
 	var count int64
 
 	if err := s.DB.Model(&vmModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to query vm_storages for pool %s: %w", poolName, err)
+		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
+			fmt.Errorf("failed to query vm_storages: %w", err))
 	}
 	if count > 0 {
-		return fmt.Errorf("removing_pool_not_allowed_in_use_by_vm_storage: %s", poolName)
+		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_vm_storage", poolName, nil)
 	}
 
 	if err := s.DB.Model(&vmModels.VMStorageDataset{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to query vm_storage_datasets for pool %s: %w", poolName, err)
+		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
+			fmt.Errorf("failed to query vm_storage_datasets: %w", err))
 	}
 	if count > 0 {
-		return fmt.Errorf("removing_pool_not_allowed_in_use_by_vm_dataset: %s", poolName)
+		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_vm_dataset", poolName, nil)
 	}
 
 	if err := s.DB.Model(&jailModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to query jail_storages for pool %s: %w", poolName, err)
+		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
+			fmt.Errorf("failed to query jail_storages: %w", err))
 	}
 	if count > 0 {
-		return fmt.Errorf("removing_pool_not_allowed_in_use_by_jail_storage: %s", poolName)
+		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_jail_storage", poolName, nil)
 	}
 
 	if err := s.DB.Model(&zfsModels.PeriodicSnapshot{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to query periodic_snapshots for pool %s: %w", poolName, err)
+		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
+			fmt.Errorf("failed to query periodic_snapshots: %w", err))
 	}
 	if count > 0 {
-		return fmt.Errorf("removing_pool_not_allowed_in_use_by_periodic_snapshot: %s", poolName)
+		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_periodic_snapshot", poolName, nil)
 	}
 
 	return nil
 }
 
+func normalizeUsablePools(pools []string) []string {
+	normalized := make([]string, 0, len(pools))
+	seen := make(map[string]struct{}, len(pools))
+
+	for _, pool := range pools {
+		pool = strings.TrimSpace(pool)
+		if pool == "" {
+			continue
+		}
+		if _, exists := seen[pool]; exists {
+			continue
+		}
+
+		seen[pool] = struct{}{}
+		normalized = append(normalized, pool)
+	}
+
+	return normalized
+}
+
+func cleanupCreatedDatasets(ctx context.Context, datasets []*gzfs.Dataset) error {
+	var cleanupErr error
+	for i := len(datasets) - 1; i >= 0; i-- {
+		if datasets[i] == nil {
+			continue
+		}
+		if err := datasets[i].Destroy(ctx, true, false); err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+	}
+	return cleanupErr
+}
+
 func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	s.serviceSettingsMutex.Lock()
 	defer s.serviceSettingsMutex.Unlock()
+	pools = normalizeUsablePools(pools)
 
 	var basicSettings models.BasicSettings
 	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrBasicSettingsNotFound
+		}
+		return newSettingsError(SettingsErrorInternal, "basic_settings_retrieval_failed", "", err)
 	}
 
 	zpools, err := s.GZFS.Zpool.GetPoolNames(ctx)
 	if err != nil {
-		return err
+		return newSettingsError(SettingsErrorInternal, "zfs_pools_list_failed", "", err)
 	}
 
 	zfsSet := make(map[string]struct{}, len(zpools))
@@ -84,7 +127,7 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 
 	for _, p := range pools {
 		if _, ok := zfsSet[p]; !ok {
-			return fmt.Errorf("zfs_pool_not_found: %s", p)
+			return newSettingsError(SettingsErrorNotFound, "zfs_pool_not_found", p, nil)
 		}
 	}
 
@@ -104,22 +147,15 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		}
 	}
 
-	var newSets []string
+	var newSets []*gzfs.Dataset
 
 	for _, poolName := range pools {
 		created, err := s.ensureSylveDatasetsOnPool(ctx, poolName)
+		newSets = append(newSets, created...)
 		if err != nil {
-			for i := len(newSets) - 1; i >= 0; i-- {
-				if ds, getErr := s.GZFS.ZFS.Get(ctx, newSets[i], false); getErr == nil && ds != nil {
-					_ = ds.Destroy(ctx, true, false)
-				}
-			}
-
-			return err
-		}
-
-		for _, ds := range created {
-			newSets = append(newSets, ds.Name)
+			cleanupErr := cleanupCreatedDatasets(ctx, newSets)
+			return newSettingsError(SettingsErrorInternal, "pool_bootstrap_failed", poolName,
+				errors.Join(err, cleanupErr))
 		}
 	}
 
@@ -130,7 +166,9 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		}
 		return db.InvalidateZFSCaches(tx)
 	}); err != nil {
-		return err
+		cleanupErr := cleanupCreatedDatasets(ctx, newSets)
+		return newSettingsError(SettingsErrorInternal, "usable_pools_update_failed", "",
+			errors.Join(err, cleanupErr))
 	}
 
 	if s.OnUsablePoolsChanged != nil {
@@ -155,7 +193,9 @@ func (s *Service) ToggleDHCPServer(enable bool) error {
 		}
 	} else {
 		_, err := utils.RunCommand("/usr/sbin/service", "dnsmasq", "stop")
-		return err
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "not running") {
+			return err
+		}
 	}
 
 	return nil
@@ -183,59 +223,102 @@ func (s *Service) WithServiceSettingsLock(update func() error) error {
 	return update()
 }
 
-func (s *Service) ServiceToggle(service models.AvailableService) error {
+type ServiceRuntimeStateApplier func(context.Context, models.AvailableService, bool) error
+
+func serviceIsEnabled(services []models.AvailableService, service models.AvailableService) bool {
+	for _, enabledService := range services {
+		if enabledService == service {
+			return true
+		}
+	}
+	return false
+}
+
+func servicesWithState(
+	services []models.AvailableService,
+	service models.AvailableService,
+	enabled bool,
+) []models.AvailableService {
+	updated := make([]models.AvailableService, 0, len(services)+1)
+	for _, enabledService := range services {
+		if enabledService != service {
+			updated = append(updated, enabledService)
+		}
+	}
+	if enabled {
+		updated = append(updated, service)
+	}
+	return updated
+}
+
+func (s *Service) applyServiceRuntimeState(
+	ctx context.Context,
+	service models.AvailableService,
+	enabled bool,
+	externalApply ServiceRuntimeStateApplier,
+) error {
+	switch service {
+	case models.DHCPServer:
+		if s.dhcpServiceStateApply != nil {
+			return s.dhcpServiceStateApply(enabled)
+		}
+		return s.ToggleDHCPServer(enabled)
+	case models.Mdns:
+		if s.MdnsRebuild != nil {
+			return s.MdnsRebuild()
+		}
+	case models.Firewall, models.WireGuard:
+		if externalApply == nil {
+			return fmt.Errorf("network_service_runtime_unavailable")
+		}
+		return externalApply(ctx, service, enabled)
+	}
+
+	return nil
+}
+
+func (s *Service) SetServiceEnabled(
+	ctx context.Context,
+	service models.AvailableService,
+	enabled bool,
+	externalApply ServiceRuntimeStateApplier,
+) (bool, error) {
 	s.serviceSettingsMutex.Lock()
 	defer s.serviceSettingsMutex.Unlock()
+	if !models.IsAvailableService(service) {
+		return false, newSettingsError(SettingsErrorBadRequest, "unsupported_service", string(service), nil)
+	}
 
 	var basicSettings models.BasicSettings
 	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, ErrBasicSettingsNotFound
+		}
+		return false, newSettingsError(SettingsErrorInternal, "basic_settings_retrieval_failed", "", err)
 	}
+	currentlyEnabled := serviceIsEnabled(basicSettings.Services, service)
+	if currentlyEnabled == enabled {
+		return false, nil
+	}
+
 	previousServices := append([]models.AvailableService(nil), basicSettings.Services...)
-
-	serviceSet := make(map[models.AvailableService]bool)
-	for _, srv := range basicSettings.Services {
-		serviceSet[srv] = true
+	basicSettings.Services = servicesWithState(basicSettings.Services, service, enabled)
+	if err := s.DB.Save(&basicSettings).Error; err != nil {
+		return false, newSettingsError(SettingsErrorInternal, "service_state_persist_failed", string(service), err)
 	}
 
-	enabled := !serviceSet[service]
-	serviceSet[service] = enabled
-	if !enabled {
-		delete(serviceSet, service)
-	}
-
-	basicSettings.Services = basicSettings.Services[:0]
-	for srv := range serviceSet {
-		basicSettings.Services = append(basicSettings.Services, srv)
-	}
-
-	switch service {
-	case models.DHCPServer:
-		if err := s.ToggleDHCPServer(enabled); err != nil {
-			return err
-		}
-	case models.Mdns:
-		if err := s.DB.Save(&basicSettings).Error; err != nil {
-			return err
+	if err := s.applyServiceRuntimeState(ctx, service, enabled, externalApply); err != nil {
+		applyErr := err
+		basicSettings.Services = previousServices
+		persistRollbackErr := s.DB.Save(&basicSettings).Error
+		var runtimeRollbackErr error
+		if persistRollbackErr == nil {
+			runtimeRollbackErr = s.applyServiceRuntimeState(ctx, service, currentlyEnabled, externalApply)
 		}
 
-		if s.MdnsRebuild != nil {
-			if err := s.MdnsRebuild(); err != nil {
-				basicSettings.Services = previousServices
-				if rollbackErr := s.DB.Save(&basicSettings).Error; rollbackErr != nil {
-					return fmt.Errorf("failed to rebuild mdns: %w; failed to restore service state: %v", err, rollbackErr)
-				}
-
-				if rollbackErr := s.MdnsRebuild(); rollbackErr != nil {
-					return fmt.Errorf("failed to rebuild mdns: %w; failed to restore mdns runtime state: %v", err, rollbackErr)
-				}
-
-				return fmt.Errorf("failed to rebuild mdns: %w", err)
-			}
-		}
-
-		return nil
+		return false, newSettingsError(SettingsErrorInternal, "service_runtime_update_failed", string(service),
+			errors.Join(applyErr, persistRollbackErr, runtimeRollbackErr))
 	}
 
-	return s.DB.Save(&basicSettings).Error
+	return true, nil
 }

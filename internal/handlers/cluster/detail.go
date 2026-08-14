@@ -23,6 +23,8 @@ import (
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]clusterModels.ClusterNode] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/nodes [get]
 func Nodes(cS *cluster.Service) gin.HandlerFunc {
@@ -54,6 +56,8 @@ func Nodes(cS *cluster.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]clusterServiceInterfaces.NodeResources] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/resources [get]
 func Resources(cS *cluster.Service) gin.HandlerFunc {

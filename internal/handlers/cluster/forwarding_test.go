@@ -22,6 +22,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 )
@@ -38,7 +39,8 @@ func newClusterForwardTestContext(
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("UserID", uint(7))
 	c.Set("Username", "forward-user")
-	c.Set("AuthType", "local")
+	c.Set("AuthType", "sylve")
+	c.Set("AuthScope", "local")
 	for key, value := range headers {
 		c.Request.Header.Set(key, value)
 	}
@@ -141,9 +143,9 @@ func TestClusterForwardTimeoutClassesAndOneHopLimit(t *testing.T) {
 		want   clusterForwardTimeoutClass
 	}{
 		{method: http.MethodGet, path: "/api/cluster/notes", want: clusterForwardShortRead},
-		{method: http.MethodPost, path: "/api/cluster/backups/targets/validate/1", want: clusterForwardValidation},
+		{method: http.MethodPost, path: "/api/cluster/backups/targets/1/validate", want: clusterForwardValidation},
 		{method: http.MethodPost, path: "/api/intra-cluster/backup-target-validation", want: clusterForwardValidation},
-		{method: http.MethodPost, path: "/api/cluster/backups/jobs/run/1", want: clusterForwardDurable},
+		{method: http.MethodPost, path: "/api/cluster/backups/jobs/1/run", want: clusterForwardDurable},
 	}
 	for _, test := range classTests {
 		request := httptest.NewRequest(test.method, test.path, nil)
@@ -173,6 +175,10 @@ func TestClusterForwardTimeoutClassesAndOneHopLimit(t *testing.T) {
 		`{}`,
 		map[string]string{clusterForwardHopHeader: "1"},
 	)
+	c.Set("AuthScope", "cluster")
+	c.Set("Token", "validated-user-proxy")
+	c.Set("ClusterTokenUse", authService.ClusterTokenUseUserProxy)
+	c.Set("ProxyAdmin", true)
 	_, err := performClusterForward(
 		c,
 		&cluster.Service{AuthService: authForwardStub{}},
@@ -515,6 +521,10 @@ func TestReplicationRunForwardRejectsLoopsAndUnavailableOwnerCreatesNoOperation(
 		`{}`,
 		map[string]string{clusterForwardHopHeader: "1"},
 	)
+	loopContext.Set("AuthScope", "cluster")
+	loopContext.Set("Token", "validated-user-proxy")
+	loopContext.Set("ClusterTokenUse", authService.ClusterTokenUseUserProxy)
+	loopContext.Set("ProxyAdmin", true)
 	_, err = forwardReplicationRunToNode(loopContext, service, 901, "offline-owner")
 	if err == nil || !strings.Contains(err.Error(), "forward_loop") || forwardCalls != 1 {
 		t.Fatalf("loop result: calls=%d err=%v", forwardCalls, err)

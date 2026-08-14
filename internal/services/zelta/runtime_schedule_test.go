@@ -35,9 +35,8 @@ func (*disposableReplicationGuestDriver) demote(context.Context, uint) error {
 func (*disposableReplicationGuestDriver) selfFence(context.Context, uint, uint, string, string, string) {
 }
 
-func TestFollowerOwnerForwardsExactReplicationClaimAndRepublishesAfterApplyLag(t *testing.T) {
+func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 	fx := SetupZeltaClusterFixture(t, 3)
-	defer fx.Cleanup()
 
 	owner := fx.Nodes[0]
 	initialLeader := fx.Nodes[1]
@@ -298,9 +297,8 @@ func TestFollowerOwnerForwardsExactReplicationClaimAndRepublishesAfterApplyLag(t
 	}
 }
 
-func TestCapturedReplicationQueueTokenExecutesOnceAndCreatesOneEvent(t *testing.T) {
+func TestIntegrationRaftCapturedQueueTokenExecutesExactlyOnce(t *testing.T) {
 	fx := SetupZeltaClusterFixture(t, 3)
-	defer fx.Cleanup()
 
 	owner := fx.Nodes[0]
 	if owner.raft.State() != raft.Leader {
@@ -539,9 +537,12 @@ func TestBackupClaimSurvivesPublishFailureAndRestartRepublishesSameToken(t *test
 	}
 }
 
-func TestClusteredCompletionOutboxWaitsForRaftAndThenDrains(t *testing.T) {
-	clusterService, localNodeID, cleanup := setupRaftClusterService(t)
-	defer cleanup()
+func TestIntegrationRaftClusteredCompletionOutboxWaitsForRaftAndThenDrains(t *testing.T) {
+	fixture := SetupZeltaClusterFixture(t, 1,
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+	)
+	clusterService, localNodeID := fixture.ClusterSvc, fixture.LocalNodeID
 
 	now := time.Now().UTC()
 	next := now.Add(time.Hour)

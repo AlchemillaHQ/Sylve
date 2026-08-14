@@ -9,9 +9,25 @@ SMART_WAIT_SELF_TEST ?= 0
 SMART_TEST_OUTPUT ?= tmp/smart-integration.log
 SMART_TEST_TIMEOUT ?= 30m
 INTEGRATION_TEST_TIMEOUT ?= 45m
+GO_TEST_FLAGS ?=
 GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 
-.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend test test-integration test-smart-integration clean
+INTEGRATION_PACKAGES := \
+	./internal/services/disk \
+	./internal/services/jail \
+	./internal/services/libvirt \
+	./internal/services/migration \
+	./internal/services/network \
+	./internal/services/cluster \
+	./internal/services/zelta \
+	./internal/services/zfs \
+	./pkg/network/mdns
+
+ACCEPTANCE_PACKAGE := ./internal/console/integration
+
+.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend
+.PHONY: test test-external-preflight test-integration test-acceptance test-acceptance-full
+.PHONY: test-smart-integration clean
 
 all: build
 
@@ -64,11 +80,33 @@ frontend:
 	cp -rf web/build/* internal/assets/web-files/
 
 test:
-	go test -short ./...
+	go test $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest
 
-test-integration:
-	@[ "$$(id -u)" = "0" ] || { echo "make test-integration must run as root (it creates ZFS pools)"; exit 1; }
-	go test -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v ./...
+test-external-preflight:
+	@[ "$$(uname -s)" = "FreeBSD" ] || { echo "external-state tests must run on FreeBSD"; exit 1; }
+	@[ "$$(id -u)" = "0" ] || { echo "external-state tests must run as root"; exit 1; }
+	@command -v zpool >/dev/null || { echo "zpool is required for external-state tests"; exit 1; }
+	@command -v zfs >/dev/null || { echo "zfs is required for external-state tests"; exit 1; }
+
+test-integration: test-external-preflight
+	@./scripts/check-zfs-test-leaks.sh
+	@set +e; \
+	go test $(GO_TEST_FLAGS) -count=1 -p=2 \
+		-timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+		-run '^TestIntegration' $(INTEGRATION_PACKAGES); \
+	test_rc="$$?"; \
+	./scripts/check-zfs-test-leaks.sh; \
+	leak_rc="$$?"; \
+	if [ "$$test_rc" -ne 0 ]; then exit "$$test_rc"; fi; \
+	exit "$$leak_rc"
+
+test-acceptance: test-external-preflight
+	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+		-run '^TestAcceptance' $(ACCEPTANCE_PACKAGE)
+
+test-acceptance-full: test-external-preflight
+	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+		-run '^TestFullAcceptance' $(ACCEPTANCE_PACKAGE)
 
 test-smart-integration:
 	@[ "$$(sysctl -n kern.ostype 2>/dev/null)" = "FreeBSD" ] || { echo "make test-smart-integration must run on FreeBSD"; exit 1; }

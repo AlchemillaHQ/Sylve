@@ -17,8 +17,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
-func TestZFSGetLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSGetLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/get-test"
 	ctx := context.Background()
@@ -43,8 +43,8 @@ func TestZFSGetLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSLocalDatasetExists(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSLocalDatasetExists(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/exists-test"
 	ctx := context.Background()
@@ -69,8 +69,8 @@ func TestZFSLocalDatasetExists(t *testing.T) {
 	}
 }
 
-func TestRestoreStagingDatasetExistsFailsClosedWithDependentClone(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationRestoreStagingDatasetExistsFailsClosedWithDependentClone(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 	staging := pool + "/live.restoring"
@@ -114,8 +114,8 @@ func TestRestoreStagingDatasetExistsFailsClosedWithDependentClone(t *testing.T) 
 	}
 }
 
-func TestRestoreBackupCleanupPreservesArchiveWithDependentClone(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationRestoreBackupCleanupPreservesArchiveWithDependentClone(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 	archive := pool + "/live_restore-backup-owned"
@@ -147,8 +147,8 @@ func TestRestoreBackupCleanupPreservesArchiveWithDependentClone(t *testing.T) {
 	}
 }
 
-func TestZFSDestroyLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSDestroyLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/destroy-test"
 	ctx := context.Background()
@@ -171,8 +171,8 @@ func TestZFSDestroyLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSRenameLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSRenameLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	src := pool + "/rename-src"
 	dst := pool + "/rename-dst"
@@ -195,8 +195,8 @@ func TestZFSRenameLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSMountUnmountLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSMountUnmountLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/mount-test"
 	ctx := context.Background()
@@ -213,8 +213,8 @@ func TestZFSMountUnmountLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSEnsureLocalPoolExists(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSEnsureLocalPoolExists(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	s := &Service{GZFS: client}
 
@@ -226,8 +226,8 @@ func TestZFSEnsureLocalPoolExists(t *testing.T) {
 	}
 }
 
-func TestZFSListLocalDatasets(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSListLocalDatasets(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 

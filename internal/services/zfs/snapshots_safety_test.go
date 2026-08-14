@@ -122,9 +122,9 @@ func inheritSnapshotSafetyProperty(t *testing.T, dataset, property string) {
 	}
 }
 
-func TestUserSnapshotCreationFencesRealZFS(t *testing.T) {
+func TestIntegrationUserSnapshotCreationFencesRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	svc, guestRoot, _ := newSnapshotSafetyService(t, pool, client)
 	guid := datasetGUID(t, client, guestRoot)
@@ -181,9 +181,9 @@ func TestUserSnapshotCreationFencesRealZFS(t *testing.T) {
 	}
 }
 
-func TestPeriodicSnapshotSkipsDoNotAdvanceLastRunRealZFS(t *testing.T) {
+func TestIntegrationPeriodicSnapshotSkipsDoNotAdvanceLastRunRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	svc, guestRoot, controlRoot := newSnapshotSafetyService(t, pool, client)
 	ctx, cancel := context.WithCancel(context.Background())

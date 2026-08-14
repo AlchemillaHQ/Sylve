@@ -11,10 +11,12 @@ package clusterHandlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 )
@@ -245,9 +247,15 @@ func TestBackupJobsHandlerFiltersByGuest(t *testing.T) {
 }
 
 func TestBackupTargetRunningJobIDsUsesDurableRemoteRunnerOperations(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupEvent{})
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.BackupEvent{})
 	cS := &cluster.Service{DB: db}
 	r := newBackupsRouter(cS)
+	if err := db.Create(&[]clusterModels.BackupTarget{
+		{ID: 1, Name: "target-one", SSHHost: "user@one", BackupRoot: "tank/one"},
+		{ID: 2, Name: "target-two", SSHHost: "user@two", BackupRoot: "tank/two"},
+	}).Error; err != nil {
+		t.Fatalf("seed targets: %v", err)
+	}
 
 	jobs := []clusterModels.BackupJob{
 		{ID: 201, Name: "remote-runner-active", TargetID: 1, RunnerNodeID: "runner-a", Mode: "dataset", CronExpr: "0 0 * * *"},
@@ -287,7 +295,12 @@ func TestBackupTargetRunningJobIDsUsesDurableRemoteRunnerOperations(t *testing.T
 }
 
 func TestBackupTargetRunningJobIDsFailsWhenDurableStatusIsUnavailable(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	if err := db.Create(&clusterModels.BackupTarget{
+		ID: 1, Name: "target-one", SSHHost: "user@one", BackupRoot: "tank/one",
+	}).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
 	if err := db.Migrator().DropTable(&clusterModels.BackupJobOperation{}); err != nil {
 		t.Fatalf("drop operation table: %v", err)
 	}
@@ -297,6 +310,16 @@ func TestBackupTargetRunningJobIDsFailsWhenDurableStatusIsUnavailable(t *testing
 	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-jobs", nil)
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status failure to return 500, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestBackupTargetRunningJobIDsReturnsNotFoundForMissingTarget(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	r := newBackupsRouter(&cluster.Service{DB: db})
+
+	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/99/running-jobs", nil)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -312,8 +335,28 @@ func TestCreateBackupJobHandlerValidation(t *testing.T) {
 	}
 }
 
+func TestBackupJobCreateRejectsOversizedBody(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	r := gin.New()
+	r.Use(middleware.LimitRequestBody(64))
+	r.POST("/cluster/backups/jobs", CreateBackupJob(&cluster.Service{DB: db}))
+
+	body := []byte(`{"name":"` + strings.Repeat("x", 128) + `","targetId":1,"mode":"dataset"}`)
+	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/jobs", body)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var response handlerAPIResponse[any]
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "request_body_too_large" || response.Error != "request_body_too_large" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
 func TestDeleteBackupJobHandlerValidation(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 	cS := &cluster.Service{DB: db}
 	r := newBackupsRouter(cS)
 
@@ -325,6 +368,37 @@ func TestDeleteBackupJobHandlerValidation(t *testing.T) {
 	rr = performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/jobs/0", nil)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for zero id, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/jobs/99", nil)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing job, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	target := clusterModels.BackupTarget{
+		ID: 1, Name: "delete-job-target", SSHHost: "user@target", BackupRoot: "tank/target",
+	}
+	job := clusterModels.BackupJob{
+		ID: 7, Name: "running-job", TargetID: target.ID,
+		Mode: clusterModels.BackupJobModeDataset, CronExpr: "0 0 * * *",
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := db.Create(&clusterModels.BackupJobOperation{
+		JobID: job.ID, Token: "backup:runner:delete-test", Operation: clusterModels.BackupJobOperationBackup,
+		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "runner", Revision: 1,
+		AcquiredAt: now, UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed operation: %v", err)
+	}
+	rr = performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/jobs/7", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for running job, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

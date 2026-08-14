@@ -9,12 +9,15 @@
 package system
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -72,14 +75,14 @@ func (s *Service) EnsureFileExplorerMutationAllowed(paths ...string) error {
 	}
 	var operations []clusterModels.ReplicationGuestOperation
 	if err := s.DB.Where("guest_type = ? AND operation = ?", clusterModels.ReplicationGuestTypeJail, clusterModels.ReplicationGuestOperationRestore).Find(&operations).Error; err != nil {
-		return fmt.Errorf("restore_fence_lookup_failed: %w", err)
+		return wrapFileExplorerError(ErrFileExplorerOperationFailed, "restore_fence_lookup", err)
 	}
 	if len(operations) == 0 {
 		return nil
 	}
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
-		return fmt.Errorf("restore_fence_jails_path_failed: %w", err)
+		return wrapFileExplorerError(ErrFileExplorerOperationFailed, "restore_fence_jails_path", err)
 	}
 	for _, operation := range operations {
 		jailRoot := resolveFileExplorerGuardPath(
@@ -91,30 +94,76 @@ func (s *Service) EnsureFileExplorerMutationAllowed(paths ...string) error {
 			}
 			path = resolveFileExplorerGuardPath(path)
 			if fileExplorerPathOverlaps(path, jailRoot) {
-				return fmt.Errorf("restore_in_progress: ctid=%d", operation.GuestID)
+				return fmt.Errorf("%w: ctid=%d", ErrFileExplorerRestoreInProgress, operation.GuestID)
 			}
 		}
 	}
 	return nil
 }
 
-func (s *Service) Traverse(path string) ([]systemServiceInterfaces.FileNode, error) {
+func normalizeFileExplorerPath(path string, defaultRoot bool) (string, error) {
 	if path == "" {
-		path = "/"
+		if defaultRoot {
+			return string(filepath.Separator), nil
+		}
+		return "", wrapFileExplorerError(ErrFileExplorerInvalidPath, "path_required", nil)
+	}
+	if strings.IndexByte(path, 0) >= 0 || !filepath.IsAbs(path) {
+		return "", wrapFileExplorerError(ErrFileExplorerInvalidPath, path, nil)
 	}
 
-	if !filepath.IsAbs(path) {
-		path = "/" + path
+	return filepath.Clean(path), nil
+}
+
+func validateFileExplorerName(name string) error {
+	if name == "" || strings.IndexByte(name, 0) >= 0 || strings.ContainsRune(name, filepath.Separator) || name == "." || name == ".." || filepath.Base(name) != name {
+		return wrapFileExplorerError(ErrFileExplorerInvalidName, name, nil)
+	}
+	return nil
+}
+
+func normalizeFileExplorerDeletePaths(paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, wrapFileExplorerError(ErrFileExplorerInvalidPath, "paths_required", nil)
+	}
+	if len(paths) > MaxFileExplorerBatchItems {
+		return nil, fmt.Errorf("%w: maximum=%d", ErrFileExplorerBatchTooLarge, MaxFileExplorerBatchItems)
 	}
 
-	entries, err := os.ReadDir(path)
+	normalized := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		cleanPath, err := normalizeFileExplorerPath(path, false)
+		if err != nil {
+			return nil, err
+		}
+		if cleanPath == string(filepath.Separator) {
+			return nil, wrapFileExplorerError(ErrFileExplorerRootMutation, cleanPath, nil)
+		}
+		if _, exists := seen[cleanPath]; exists {
+			continue
+		}
+		seen[cleanPath] = struct{}{}
+		normalized = append(normalized, cleanPath)
+	}
+
+	return normalized, nil
+}
+
+func (s *Service) Traverse(path string) ([]systemServiceInterfaces.FileNode, error) {
+	cleanPath, err := normalizeFileExplorerPath(path, true)
 	if err != nil {
 		return nil, err
 	}
 
-	var nodes []systemServiceInterfaces.FileNode
+	entries, err := os.ReadDir(cleanPath)
+	if err != nil {
+		return nil, wrapFileExplorerIOError(cleanPath, err)
+	}
+
+	nodes := make([]systemServiceInterfaces.FileNode, 0, len(entries))
 	for _, e := range entries {
-		full := filepath.Join(path, e.Name())
+		full := filepath.Join(cleanPath, e.Name())
 		info, err := e.Info()
 		if err != nil {
 			continue
@@ -138,93 +187,60 @@ func (s *Service) Traverse(path string) ([]systemServiceInterfaces.FileNode, err
 }
 
 func (s *Service) AddFileOrFolder(path string, name string, isFolder bool) error {
-	if path == "" {
-		path = "/"
+	cleanPath, err := normalizeFileExplorerPath(path, false)
+	if err != nil {
+		return err
+	}
+	if err := validateFileExplorerName(name); err != nil {
+		return err
 	}
 
-	if !filepath.IsAbs(path) {
-		path = "/" + path
-	}
-
-	if strings.Contains(name, "/") || name == "." || name == ".." {
-		return fmt.Errorf("invalid name: %s", name)
-	}
-
-	fullPath := filepath.Join(path, name)
+	fullPath := filepath.Join(cleanPath, name)
 	if err := s.EnsureFileExplorerMutationAllowed(fullPath); err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(fullPath); err == nil {
-		return fmt.Errorf("file or folder already exists: %s", fullPath)
+	if _, err := os.Lstat(fullPath); err == nil {
+		return wrapFileExplorerError(ErrFileExplorerAlreadyExists, fullPath, nil)
 	} else if !os.IsNotExist(err) {
-		return err
+		return wrapFileExplorerIOError(fullPath, err)
 	}
 
 	if isFolder {
-		return os.Mkdir(fullPath, 0755)
+		if err := os.Mkdir(fullPath, 0o755); err != nil {
+			return wrapFileExplorerIOError(fullPath, err)
+		}
+		return nil
 	}
 
-	file, err := os.Create(fullPath)
+	file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
+	if err != nil {
+		return wrapFileExplorerIOError(fullPath, err)
+	}
+	if err := file.Close(); err != nil {
+		return wrapFileExplorerIOError(fullPath, err)
+	}
+	return nil
+}
+
+func (s *Service) DeleteFilesOrFolders(paths []string) error {
+	normalized, err := normalizeFileExplorerDeletePaths(paths)
 	if err != nil {
 		return err
 	}
 
-	defer file.Close()
-
-	return nil
-}
-
-func (s *Service) DeleteFileOrFolder(path string) error {
-	if path == "" {
-		return fmt.Errorf("path cannot be empty")
+	for _, path := range normalized {
+		if _, err := os.Lstat(path); err != nil {
+			return wrapFileExplorerIOError(path, err)
+		}
 	}
-
-	if !filepath.IsAbs(path) {
-		path = "/" + path
-	}
-	if err := s.EnsureFileExplorerMutationAllowed(path); err != nil {
+	if err := s.EnsureFileExplorerMutationAllowed(normalized...); err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("file or folder does not exist: %s", path)
-	}
-
-	return os.RemoveAll(path)
-}
-
-func (s *Service) DeleteFilesOrFolders(paths []string) error {
-	if len(paths) == 0 {
-		return fmt.Errorf("no paths provided")
-	}
-
-	for _, path := range paths {
-		if path == "" {
-			return fmt.Errorf("empty path provided")
-		}
-
-		absPath := path
-		if !filepath.IsAbs(absPath) {
-			absPath = "/" + absPath
-		}
-
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			return fmt.Errorf("file or folder does not exist: %s", absPath)
-		}
-		if err := s.EnsureFileExplorerMutationAllowed(absPath); err != nil {
-			return err
-		}
-	}
-
-	for _, path := range paths {
-		absPath := path
-		if !filepath.IsAbs(absPath) {
-			absPath = "/" + absPath
-		}
-
-		if err := os.RemoveAll(absPath); err != nil {
-			return fmt.Errorf("failed to delete %s: %w", absPath, err)
+	for _, path := range normalized {
+		if err := os.RemoveAll(path); err != nil {
+			return wrapFileExplorerIOError(path, err)
 		}
 	}
 
@@ -232,176 +248,411 @@ func (s *Service) DeleteFilesOrFolders(paths []string) error {
 }
 
 func (s *Service) RenameFileOrFolder(oldPath string, newName string) error {
-	if oldPath == "" || newName == "" {
-		return fmt.Errorf("old path and new name cannot be empty")
+	cleanOldPath, err := normalizeFileExplorerPath(oldPath, false)
+	if err != nil {
+		return err
 	}
-
-	if !filepath.IsAbs(oldPath) {
-		oldPath = filepath.Clean("/" + oldPath)
+	if cleanOldPath == string(filepath.Separator) {
+		return wrapFileExplorerError(ErrFileExplorerRootMutation, cleanOldPath, nil)
 	}
-
-	if strings.Contains(newName, "/") || newName == "." || newName == ".." {
-		return fmt.Errorf("invalid new name: %s", newName)
-	}
-
-	newPath := filepath.Join(filepath.Dir(oldPath), newName)
-	if err := s.EnsureFileExplorerMutationAllowed(oldPath, newPath); err != nil {
+	if err := validateFileExplorerName(newName); err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(newPath); err == nil {
-		return fmt.Errorf("file or folder already exists: %s", newPath)
+	if _, err := os.Lstat(cleanOldPath); err != nil {
+		return wrapFileExplorerIOError(cleanOldPath, err)
+	}
+
+	newPath := filepath.Join(filepath.Dir(cleanOldPath), newName)
+	if newPath == cleanOldPath {
+		return nil
+	}
+	if err := s.EnsureFileExplorerMutationAllowed(cleanOldPath, newPath); err != nil {
+		return err
+	}
+
+	if _, err := os.Lstat(newPath); err == nil {
+		return wrapFileExplorerError(ErrFileExplorerAlreadyExists, newPath, nil)
 	} else if !os.IsNotExist(err) {
-		return err
+		return wrapFileExplorerIOError(newPath, err)
 	}
 
-	return os.Rename(oldPath, newPath)
-}
-
-func (s *Service) DownloadFile(id string) (string, error) {
-	cleanPath := filepath.Clean(id)
-
-	if !filepath.IsAbs(cleanPath) {
-		return "", fmt.Errorf("path must be absolute")
-	}
-
-	info, err := os.Stat(cleanPath)
-	if err != nil {
-		return "", fmt.Errorf("file not found: %w", err)
-	}
-
-	if info.IsDir() {
-		return "", fmt.Errorf("cannot download a directory")
-	}
-
-	return cleanPath, nil
-}
-
-func copyFile(source, destination string, perm fs.FileMode) error {
-	data, err := os.ReadFile(source)
-	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
-	}
-	if err := os.WriteFile(destination, data, perm); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+	if err := os.Rename(cleanOldPath, newPath); err != nil {
+		return wrapFileExplorerIOError(cleanOldPath, err)
 	}
 	return nil
 }
 
-func copyDir(sourceDir, destDir string) error {
-	return filepath.Walk(sourceDir, func(path string, info fs.FileInfo, err error) error {
+func (s *Service) DownloadFile(id string) (*systemServiceInterfaces.FileDownload, error) {
+	cleanPath, err := normalizeFileExplorerPath(id, false)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		return nil, wrapFileExplorerIOError(cleanPath, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, wrapFileExplorerError(ErrFileExplorerUnsupportedType, cleanPath, nil)
+	}
+
+	// Validate the opened handle as well as the pathname. O_NONBLOCK prevents a
+	// path swapped to a FIFO between Stat and OpenFile from blocking the daemon.
+	file, err := os.OpenFile(cleanPath, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, wrapFileExplorerIOError(cleanPath, err)
+	}
+	openedInfo, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, wrapFileExplorerIOError(cleanPath, err)
+	}
+	if !openedInfo.Mode().IsRegular() {
+		_ = file.Close()
+		return nil, wrapFileExplorerError(ErrFileExplorerUnsupportedType, cleanPath, nil)
+	}
+	if _, err := file.Seek(0, io.SeekEnd); err != nil {
+		_ = file.Close()
+		return nil, wrapFileExplorerError(ErrFileExplorerUnsupportedType, cleanPath, err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, wrapFileExplorerError(ErrFileExplorerUnsupportedType, cleanPath, err)
+	}
+
+	return &systemServiceInterfaces.FileDownload{
+		Reader:  file,
+		Name:    filepath.Base(cleanPath),
+		ModTime: openedInfo.ModTime(),
+	}, nil
+}
+
+const fileExplorerCopyBufferSize = 128 * 1024
+
+type preparedFileExplorerTransfer struct {
+	source            string
+	target            string
+	resolvedSource    string
+	resolvedTarget    string
+	sourceIsDirectory bool
+}
+
+func fileExplorerPathIsWithin(path, root string) bool {
+	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func resolveFileExplorerEntryPath(path string) string {
+	return filepath.Join(resolveFileExplorerGuardPath(filepath.Dir(path)), filepath.Base(path))
+}
+
+func validateFileExplorerCopySource(source string) error {
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return wrapFileExplorerIOError(path, walkErr)
+		}
+
+		info, err := entry.Info()
 		if err != nil {
-			return err
+			return wrapFileExplorerIOError(path, err)
+		}
+		mode := info.Mode()
+		if mode.IsRegular() || mode.IsDir() || mode&fs.ModeSymlink != 0 {
+			return nil
 		}
 
-		relPath, err := filepath.Rel(sourceDir, path)
-		if err != nil {
-			return err
-		}
-
-		targetPath := filepath.Join(destDir, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(targetPath, info.Mode())
-		}
-
-		return copyFile(path, targetPath, info.Mode())
+		return wrapFileExplorerError(ErrFileExplorerUnsupportedType, path, nil)
 	})
 }
 
-func (s *Service) CopyOrMoveFileOrFolder(source, destination string, move bool) error {
-	if source == "" || destination == "" {
-		return fmt.Errorf("source and destination cannot be empty")
+func (s *Service) prepareFileExplorerTransfers(
+	items []systemServiceInterfaces.FileTransferItem,
+	move bool,
+) ([]preparedFileExplorerTransfer, error) {
+	if len(items) == 0 {
+		return nil, wrapFileExplorerError(ErrFileExplorerInvalidOperation, "items_required", nil)
 	}
-	if !filepath.IsAbs(source) || !filepath.IsAbs(destination) {
-		return fmt.Errorf("both source and destination must be absolute paths")
+	if len(items) > MaxFileExplorerBatchItems {
+		return nil, fmt.Errorf("%w: maximum=%d", ErrFileExplorerBatchTooLarge, MaxFileExplorerBatchItems)
 	}
-	guardedPaths := []string{destination}
-	if move {
-		guardedPaths = append(guardedPaths, source)
+
+	prepared := make([]preparedFileExplorerTransfer, 0, len(items))
+	seenSources := make(map[string]struct{}, len(items))
+	seenTargets := make(map[string]struct{}, len(items))
+
+	for index, item := range items {
+		source, err := normalizeFileExplorerPath(item.Source, false)
+		if err != nil {
+			return nil, err
+		}
+		destination, err := normalizeFileExplorerPath(item.Destination, false)
+		if err != nil {
+			return nil, err
+		}
+		if source == string(filepath.Separator) {
+			return nil, wrapFileExplorerError(ErrFileExplorerRootMutation, source, nil)
+		}
+
+		sourceInfo, err := os.Lstat(source)
+		if err != nil {
+			return nil, wrapFileExplorerIOError(source, err)
+		}
+
+		target := destination
+		destinationInfo, err := os.Stat(destination)
+		switch {
+		case err == nil && destinationInfo.IsDir():
+			target = filepath.Join(destination, filepath.Base(source))
+		case err == nil:
+		case os.IsNotExist(err):
+		default:
+			return nil, wrapFileExplorerIOError(destination, err)
+		}
+		target = filepath.Clean(target)
+
+		resolvedSource := resolveFileExplorerEntryPath(source)
+		resolvedTarget := resolveFileExplorerEntryPath(target)
+		if resolvedSource == resolvedTarget || (sourceInfo.IsDir() && fileExplorerPathIsWithin(resolvedTarget, resolvedSource)) {
+			return nil, wrapFileExplorerError(
+				ErrFileExplorerInvalidOperation,
+				fmt.Sprintf("item=%d source=%s target=%s", index, source, target),
+				nil,
+			)
+		}
+
+		if _, err := os.Lstat(target); err == nil {
+			return nil, wrapFileExplorerError(ErrFileExplorerAlreadyExists, target, nil)
+		} else if !os.IsNotExist(err) {
+			return nil, wrapFileExplorerIOError(target, err)
+		}
+
+		parent := filepath.Dir(target)
+		parentInfo, err := os.Stat(parent)
+		if err != nil {
+			return nil, wrapFileExplorerIOError(parent, err)
+		}
+		if !parentInfo.IsDir() {
+			return nil, wrapFileExplorerError(ErrFileExplorerNotDirectory, parent, nil)
+		}
+
+		if _, duplicate := seenSources[resolvedSource]; duplicate {
+			return nil, wrapFileExplorerError(ErrFileExplorerBatchConflict, "duplicate_source", nil)
+		}
+		if _, duplicate := seenTargets[resolvedTarget]; duplicate {
+			return nil, wrapFileExplorerError(ErrFileExplorerBatchConflict, "duplicate_target", nil)
+		}
+		seenSources[resolvedSource] = struct{}{}
+		seenTargets[resolvedTarget] = struct{}{}
+
+		prepared = append(prepared, preparedFileExplorerTransfer{
+			source:            source,
+			target:            target,
+			resolvedSource:    resolvedSource,
+			resolvedTarget:    resolvedTarget,
+			sourceIsDirectory: sourceInfo.IsDir(),
+		})
+	}
+
+	for first := 0; first < len(prepared); first++ {
+		for second := first + 1; second < len(prepared); second++ {
+			left := prepared[first]
+			right := prepared[second]
+			if fileExplorerPathOverlaps(left.resolvedSource, right.resolvedSource) ||
+				fileExplorerPathOverlaps(left.resolvedTarget, right.resolvedTarget) ||
+				fileExplorerPathOverlaps(left.resolvedTarget, right.resolvedSource) ||
+				fileExplorerPathOverlaps(right.resolvedTarget, left.resolvedSource) {
+				return nil, wrapFileExplorerError(
+					ErrFileExplorerBatchConflict,
+					fmt.Sprintf("items=%d,%d", first, second),
+					nil,
+				)
+			}
+		}
+	}
+
+	guardedPaths := make([]string, 0, len(prepared)*2)
+	for _, item := range prepared {
+		guardedPaths = append(guardedPaths, item.target)
+		if move {
+			guardedPaths = append(guardedPaths, item.source)
+		}
 	}
 	if err := s.EnsureFileExplorerMutationAllowed(guardedPaths...); err != nil {
+		return nil, err
+	}
+
+	for _, item := range prepared {
+		if err := validateFileExplorerCopySource(item.source); err != nil {
+			return nil, err
+		}
+	}
+
+	return prepared, nil
+}
+
+func copyFileExplorerRegularFile(source, target string, mode fs.FileMode) error {
+	sourceFile, err := os.Open(source)
+	if err != nil {
+		return wrapFileExplorerIOError(source, err)
+	}
+	defer sourceFile.Close()
+
+	targetFile, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return wrapFileExplorerIOError(target, err)
+	}
+	closed := false
+	complete := false
+	defer func() {
+		if !closed {
+			_ = targetFile.Close()
+		}
+		if !complete {
+			_ = os.Remove(target)
+		}
+	}()
+
+	buffer := make([]byte, fileExplorerCopyBufferSize)
+	if _, err := io.CopyBuffer(targetFile, sourceFile, buffer); err != nil {
+		return wrapFileExplorerIOError(target, err)
+	}
+	if err := targetFile.Chmod(mode.Perm()); err != nil {
+		return wrapFileExplorerIOError(target, err)
+	}
+	if err := targetFile.Close(); err != nil {
+		closed = true
+		return wrapFileExplorerIOError(target, err)
+	}
+	closed = true
+	complete = true
+	return nil
+}
+
+func copyFileExplorerEntry(source, target string) (err error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return wrapFileExplorerIOError(source, err)
+	}
+
+	switch mode := info.Mode(); {
+	case mode.IsRegular():
+		return copyFileExplorerRegularFile(source, target, mode)
+	case mode&fs.ModeSymlink != 0:
+		linkTarget, err := os.Readlink(source)
+		if err != nil {
+			return wrapFileExplorerIOError(source, err)
+		}
+		if err := os.Symlink(linkTarget, target); err != nil {
+			return wrapFileExplorerIOError(target, err)
+		}
+		return nil
+	case mode.IsDir():
+		if err := os.Mkdir(target, 0o700); err != nil {
+			return wrapFileExplorerIOError(target, err)
+		}
+		complete := false
+		defer func() {
+			if !complete {
+				_ = os.RemoveAll(target)
+			}
+		}()
+
+		entries, err := os.ReadDir(source)
+		if err != nil {
+			return wrapFileExplorerIOError(source, err)
+		}
+		for _, entry := range entries {
+			if err := copyFileExplorerEntry(
+				filepath.Join(source, entry.Name()),
+				filepath.Join(target, entry.Name()),
+			); err != nil {
+				return err
+			}
+		}
+		if err := os.Chmod(target, mode.Perm()); err != nil {
+			return wrapFileExplorerIOError(target, err)
+		}
+		complete = true
+		return nil
+	default:
+		return wrapFileExplorerError(ErrFileExplorerUnsupportedType, source, nil)
+	}
+}
+
+func removeCopiedFileExplorerEntry(path string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return os.RemoveAll(path)
+	}
+	return os.Remove(path)
+}
+
+func (s *Service) moveFileExplorerEntry(item preparedFileExplorerTransfer) error {
+	if _, err := os.Lstat(item.target); err == nil {
+		return wrapFileExplorerError(ErrFileExplorerAlreadyExists, item.target, nil)
+	} else if !os.IsNotExist(err) {
+		return wrapFileExplorerIOError(item.target, err)
+	}
+
+	rename := os.Rename
+	if s.fileExplorerRename != nil {
+		rename = s.fileExplorerRename
+	}
+	if err := rename(item.source, item.target); err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return wrapFileExplorerIOError(item.target, err)
+	}
+
+	if err := copyFileExplorerEntry(item.source, item.target); err != nil {
 		return err
 	}
 
-	info, err := os.Stat(source)
-	if err != nil {
-		return fmt.Errorf("source does not exist: %w", err)
+	var removeErr error
+	if item.sourceIsDirectory {
+		removeErr = os.RemoveAll(item.source)
+	} else {
+		removeErr = os.Remove(item.source)
 	}
-
-	if destInfo, err := os.Stat(destination); err == nil && destInfo.IsDir() {
-		destination = filepath.Join(destination, filepath.Base(source))
-	}
-
-	if move {
-		if err := os.Rename(source, destination); err != nil {
-			return fmt.Errorf("failed to move: %w", err)
-		}
+	if removeErr == nil {
 		return nil
 	}
 
-	if info.IsDir() {
-		return copyDir(source, destination)
+	sourceErr := wrapFileExplorerIOError(item.source, removeErr)
+	if cleanupErr := removeCopiedFileExplorerEntry(item.target); cleanupErr != nil {
+		return fmt.Errorf("%w: destination cleanup failed: %v", sourceErr, cleanupErr)
 	}
-
-	return copyFile(source, destination, info.Mode())
+	return sourceErr
 }
 
-func (s *Service) CopyOrMoveFilesOrFolders(pairs [][2]string, move bool) error {
-	if len(pairs) == 0 {
-		return fmt.Errorf("no source-destination pairs provided")
+func (s *Service) CopyOrMoveFilesOrFolders(
+	items []systemServiceInterfaces.FileTransferItem,
+	move bool,
+) error {
+	s.fileExplorerMutationMutex.Lock()
+	defer s.fileExplorerMutationMutex.Unlock()
+
+	prepared, err := s.prepareFileExplorerTransfers(items, move)
+	if err != nil {
+		return err
 	}
 
-	for _, pair := range pairs {
-		source := pair[0]
-		dest := pair[1]
-
-		if source == "" || dest == "" {
-			return fmt.Errorf("source and destination cannot be empty")
-		}
-		if !filepath.IsAbs(source) || !filepath.IsAbs(dest) {
-			return fmt.Errorf("both source and destination must be absolute paths")
-		}
-		guardedPaths := []string{dest}
+	for _, item := range prepared {
 		if move {
-			guardedPaths = append(guardedPaths, source)
+			if err := s.moveFileExplorerEntry(item); err != nil {
+				return err
+			}
+			continue
 		}
-		if err := s.EnsureFileExplorerMutationAllowed(guardedPaths...); err != nil {
+		if err := copyFileExplorerEntry(item.source, item.target); err != nil {
 			return err
-		}
-
-		if _, err := os.Stat(source); os.IsNotExist(err) {
-			return fmt.Errorf("source does not exist: %s", source)
-		} else if err != nil {
-			return fmt.Errorf("failed to stat source %s: %w", source, err)
-		}
-	}
-
-	for _, pair := range pairs {
-		source := pair[0]
-		dest := pair[1]
-
-		info, _ := os.Stat(source)
-
-		target := dest
-		if destInfo, err := os.Stat(dest); err == nil && destInfo.IsDir() {
-			target = filepath.Join(dest, filepath.Base(source))
-		}
-
-		if move {
-			if err := os.Rename(source, target); err != nil {
-				return fmt.Errorf("failed to move %s to %s: %w", source, target, err)
-			}
-		} else {
-			if info.IsDir() {
-				if err := copyDir(source, target); err != nil {
-					return fmt.Errorf("failed to copy directory %s to %s: %w", source, target, err)
-				}
-			} else {
-				if err := copyFile(source, target, info.Mode()); err != nil {
-					return fmt.Errorf("failed to copy file %s to %s: %w", source, target, err)
-				}
-			}
 		}
 	}
 

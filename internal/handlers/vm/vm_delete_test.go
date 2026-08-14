@@ -23,23 +23,47 @@ import (
 type vmRemovalHandlerStub struct {
 	result libvirt.VMRemovalResult
 	err    error
+
+	forceWarnings []string
+	forceErr      error
+	purgeWarnings []string
+	purgeErr      error
+
+	normalCalled bool
+	forceCalled  bool
+	purgeCalled  bool
+	rid          uint
+	deleteMacs   bool
+	deleteRaw    bool
+	deleteVolume bool
 }
 
-func (s *vmRemovalHandlerStub) PurgeVMRegistration(uint, bool) ([]string, error) {
-	return nil, errors.New("unexpected purge call")
+func (s *vmRemovalHandlerStub) PurgeVMRegistration(rid uint, deleteMacs bool) ([]string, error) {
+	s.purgeCalled = true
+	s.rid = rid
+	s.deleteMacs = deleteMacs
+	return s.purgeWarnings, s.purgeErr
 }
 
-func (s *vmRemovalHandlerStub) ForceRemoveVM(uint, bool, context.Context) ([]string, error) {
-	return nil, errors.New("unexpected force call")
+func (s *vmRemovalHandlerStub) ForceRemoveVM(rid uint, deleteMacs bool, _ context.Context) ([]string, error) {
+	s.forceCalled = true
+	s.rid = rid
+	s.deleteMacs = deleteMacs
+	return s.forceWarnings, s.forceErr
 }
 
 func (s *vmRemovalHandlerStub) RemoveVMWithWarnings(
-	uint,
-	bool,
-	bool,
-	bool,
-	context.Context,
+	rid uint,
+	cleanUpMacs bool,
+	deleteRawDisks bool,
+	deleteVolumes bool,
+	_ context.Context,
 ) (libvirt.VMRemovalResult, error) {
+	s.normalCalled = true
+	s.rid = rid
+	s.deleteMacs = cleanUpMacs
+	s.deleteRaw = deleteRawDisks
+	s.deleteVolume = deleteVolumes
 	return s.result, s.err
 }
 
@@ -47,7 +71,7 @@ func performNormalVMDeleteRequest(t *testing.T, service vmRemovalService) *httpt
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.DELETE("/vm/:id", RemoveVM(service))
+	router.DELETE("/vm/:rid", RemoveVM(service))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(
@@ -151,5 +175,141 @@ func TestRemoveVMHandlerMapsRevalidatedPolicyConflict(t *testing.T) {
 	}
 	if response.Status != "error" || response.Message != "guest_delete_requires_replication_policy_removed" {
 		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestRemoveVMHandlerDispatchesNormalModeWithExplicitFalseValues(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &vmRemovalHandlerStub{}
+	router := gin.New()
+	router.DELETE("/vm/:rid", RemoveVM(stub))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodDelete,
+		"/vm/120?deletemacs=false&deleterawdisks=false&deletevolumes=true",
+		nil,
+	)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !stub.normalCalled || stub.forceCalled || stub.purgeCalled {
+		t.Fatalf("dispatch = normal:%t force:%t purge:%t", stub.normalCalled, stub.forceCalled, stub.purgeCalled)
+	}
+	if stub.rid != 120 || stub.deleteMacs || stub.deleteRaw || !stub.deleteVolume {
+		t.Fatalf(
+			"normal arguments = rid:%d macs:%t raw:%t volumes:%t",
+			stub.rid,
+			stub.deleteMacs,
+			stub.deleteRaw,
+			stub.deleteVolume,
+		)
+	}
+}
+
+func TestRemoveVMHandlerDispatchesForceModeWithDefaultMACCleanup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &vmRemovalHandlerStub{forceWarnings: []string{"cleanup_warning"}}
+	router := gin.New()
+	router.DELETE("/vm/:rid", RemoveVM(stub))
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/vm/121?force=true", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !stub.forceCalled || stub.normalCalled || stub.purgeCalled {
+		t.Fatalf("dispatch = normal:%t force:%t purge:%t", stub.normalCalled, stub.forceCalled, stub.purgeCalled)
+	}
+	if stub.rid != 121 || !stub.deleteMacs {
+		t.Fatalf("force arguments = rid:%d deleteMacs:%t", stub.rid, stub.deleteMacs)
+	}
+
+	var response struct {
+		Message string                  `json:"message"`
+		Data    libvirt.VMRemovalResult `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "vm_force_removed_with_warnings" || len(response.Data.Warnings) != 1 {
+		t.Fatalf("force response = %+v", response)
+	}
+	if response.Data.RetainedDatasets == nil || len(response.Data.RetainedDatasets) != 0 {
+		t.Fatalf("retained datasets = %#v, want empty array", response.Data.RetainedDatasets)
+	}
+}
+
+func TestPurgeVMRegistrationHandlerUsesSeparateModeAndDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &vmRemovalHandlerStub{purgeWarnings: []string{"runtime_cleanup_warning"}}
+	router := gin.New()
+	router.DELETE("/vm/:rid/registration", PurgeVMRegistration(stub))
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/vm/122/registration", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !stub.purgeCalled || stub.normalCalled || stub.forceCalled {
+		t.Fatalf("dispatch = normal:%t force:%t purge:%t", stub.normalCalled, stub.forceCalled, stub.purgeCalled)
+	}
+	if stub.rid != 122 || !stub.deleteMacs {
+		t.Fatalf("purge arguments = rid:%d deleteMacs:%t", stub.rid, stub.deleteMacs)
+	}
+
+	var response struct {
+		Message string                  `json:"message"`
+		Data    libvirt.VMRemovalResult `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "vm_registration_purged_with_warnings" || len(response.Data.Warnings) != 1 {
+		t.Fatalf("purge response = %+v", response)
+	}
+}
+
+func TestRemoveVMHandlerRejectsMissingOrInvalidModeFlagsBeforeService(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name   string
+		target string
+		code   string
+	}{
+		{name: "missing normal flag", target: "/vm/123?deletemacs=true&deleterawdisks=false", code: "missing_deletevolumes_param"},
+		{name: "invalid force flag", target: "/vm/123?force=maybe", code: "invalid_force_param"},
+		{name: "invalid force MAC flag", target: "/vm/123?force=true&deletemacs=maybe", code: "invalid_deletemacs_param"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stub := &vmRemovalHandlerStub{}
+			router := gin.New()
+			router.DELETE("/vm/:rid", RemoveVM(stub))
+
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, tt.target, nil))
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", recorder.Code, recorder.Body.String())
+			}
+			if stub.normalCalled || stub.forceCalled || stub.purgeCalled {
+				t.Fatalf("service called for invalid request: %+v", stub)
+			}
+			var response struct {
+				Message string `json:"message"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if response.Message != tt.code {
+				t.Fatalf("message = %q, want %q", response.Message, tt.code)
+			}
+		})
 	}
 }

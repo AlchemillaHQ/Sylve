@@ -31,6 +31,9 @@ import (
 var _ serviceInterfaces.AuthServiceInterface = (*Service)(nil)
 
 const (
+	// MaxRequestBodyBytes bounds JSON request bodies handled by the authentication API.
+	MaxRequestBodyBytes int64 = 1 * 1024 * 1024
+
 	maxLoginAttempts   = 5
 	loginBlockDuration = 15 * time.Minute
 )
@@ -38,13 +41,30 @@ const (
 type loginAttempt struct {
 	count        int
 	blockedUntil time.Time
+	lastAttempt  time.Time
+}
+
+// LoginRateLimitError reports how long a blocked login should wait before retrying.
+type LoginRateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *LoginRateLimitError) Error() string {
+	return "too_many_attempts"
 }
 
 type Service struct {
-	DB            *gorm.DB
-	loginMu       sync.Mutex
-	loginAttempts map[string]*loginAttempt
+	DB             *gorm.DB
+	passwordHasher passwordHasher
+	loginMu        sync.Mutex
+	loginAttempts  map[string]*loginAttempt
 }
+
+type passwordHasher interface {
+	Hash(password string) (string, error)
+	Verify(password, encodedHash string) bool
+}
+
 type JWT struct {
 	jwt.RegisteredClaims
 	CustomClaims serviceInterfaces.CustomClaims `json:"custom_claims"`
@@ -62,12 +82,20 @@ const (
 	ClusterInternalAuthType        = "internal-cluster"
 	AuthTypeSylvePasskey           = "sylve-passkey"
 	ClusterKeyHeader               = "X-Cluster-Key"
+	ClusterTokenHeader             = "X-Cluster-Token"
+	clusterTokenTTL                = 5 * time.Minute
+	clusterTokenFutureSkew         = 30 * time.Second
 )
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
+	return newAuthService(db, utils.BcryptPasswordHasher{})
+}
+
+func newAuthService(db *gorm.DB, hasher passwordHasher) *Service {
 	return &Service{
-		DB:            db,
-		loginAttempts: make(map[string]*loginAttempt),
+		DB:             db,
+		passwordHasher: hasher,
+		loginAttempts:  make(map[string]*loginAttempt),
 	}
 }
 
@@ -84,10 +112,22 @@ func (s *Service) GetJWTSecret() (string, error) {
 func (s *Service) GetClusterKey() (string, error) {
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
-		return "", fmt.Errorf("cluster_key_not_found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", fmt.Errorf("cluster_key_not_found")
+		}
+		return "", fmt.Errorf("cluster_key_lookup_failed: %w", err)
 	}
 
-	return c.Key, nil
+	if !c.Enabled {
+		return "", fmt.Errorf("cluster_key_not_configured")
+	}
+
+	key := strings.TrimSpace(c.Key)
+	if key == "" {
+		return "", fmt.Errorf("cluster_key_not_configured")
+	}
+
+	return key, nil
 }
 
 func (s *Service) getTokenExpiry(remember bool) time.Time {
@@ -149,13 +189,20 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 	username = strings.TrimSpace(username)
 
 	// Rate-limit check
+	now := time.Now()
 	s.loginMu.Lock()
 	attempt, exists := s.loginAttempts[username]
-	if exists && time.Now().Before(attempt.blockedUntil) {
+	if exists && !attempt.lastAttempt.IsZero() && now.Sub(attempt.lastAttempt) >= loginBlockDuration &&
+		(attempt.blockedUntil.IsZero() || !now.Before(attempt.blockedUntil)) {
+		delete(s.loginAttempts, username)
+		attempt = nil
+		exists = false
+	}
+	if exists && now.Before(attempt.blockedUntil) {
 		attemptSnapshot := *attempt
 		s.loginMu.Unlock()
 		s.logLoginFailure(username, authType, "rate_limited", attemptSnapshot, nil)
-		return 0, "", fmt.Errorf("too_many_attempts: try again in %s", time.Until(attemptSnapshot.blockedUntil).Round(time.Second))
+		return 0, "", &LoginRateLimitError{RetryAfter: time.Until(attemptSnapshot.blockedUntil)}
 	}
 	s.loginMu.Unlock()
 
@@ -172,10 +219,20 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
-		if !utils.CheckPasswordHash(password, user.Password) {
+		if !s.passwordHasher.Verify(password, user.Password) {
 			attempt := s.recordFailedLogin(username)
 			s.logLoginFailure(username, authType, "password_mismatch", attempt, nil)
 			return 0, "", fmt.Errorf("invalid_credentials")
+		}
+
+		if user.Locked {
+			s.logLoginFailure(username, authType, "account_locked", loginAttempt{}, nil)
+			return 0, "", fmt.Errorf("account_locked")
+		}
+
+		if user.DisablePassword {
+			s.logLoginFailure(username, authType, "password_auth_disabled", loginAttempt{}, nil)
+			return 0, "", fmt.Errorf("password_auth_disabled")
 		}
 
 		if !user.Admin {
@@ -213,6 +270,11 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("user_not_registered_in_sylve")
 		}
 
+		if user.Locked {
+			s.logLoginFailure(username, authType, "account_locked", loginAttempt{}, nil)
+			return 0, "", fmt.Errorf("account_locked")
+		}
+
 		if !user.Admin {
 			attempt := s.recordFailedLogin(username)
 			s.logLoginFailure(username, authType, "admin_required", attempt, nil)
@@ -247,6 +309,7 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 func (s *Service) recordFailedLogin(username string) loginAttempt {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
+	now := time.Now()
 
 	if s.loginAttempts == nil {
 		s.loginAttempts = make(map[string]*loginAttempt)
@@ -254,16 +317,29 @@ func (s *Service) recordFailedLogin(username string) loginAttempt {
 
 	attempt, exists := s.loginAttempts[username]
 	if !exists {
-		attempt = &loginAttempt{count: 1}
+		attempt = &loginAttempt{count: 1, lastAttempt: now}
 		s.loginAttempts[username] = attempt
 		return *attempt
 	}
 	attempt.count++
+	attempt.lastAttempt = now
 	if attempt.count >= maxLoginAttempts {
-		attempt.blockedUntil = time.Now().Add(loginBlockDuration)
+		attempt.blockedUntil = now.Add(loginBlockDuration)
 	}
 
 	return *attempt
+}
+
+func (s *Service) pruneLoginAttempts(now time.Time) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+
+	for username, attempt := range s.loginAttempts {
+		if attempt == nil || (!attempt.lastAttempt.IsZero() && now.Sub(attempt.lastAttempt) >= loginBlockDuration &&
+			(attempt.blockedUntil.IsZero() || !now.Before(attempt.blockedUntil))) {
+			delete(s.loginAttempts, username)
+		}
+	}
 }
 
 func (s *Service) logLoginFailure(username, authType, reason string, attempt loginAttempt, err error) {
@@ -293,37 +369,24 @@ func (s *Service) createClusterJWTWithUse(
 	authType string,
 	admin bool,
 	tokenUse string,
-	forceSecret string,
-	ttl time.Duration,
 ) (string, error) {
-	var clusterKey string
-
-	if forceSecret != "" {
-		clusterKey = forceSecret
-	} else {
-		var err error
-
-		clusterKey, err = s.GetClusterKey()
-		if err != nil {
-			return "", fmt.Errorf("failed_to_get_cluster_key: %w", err)
-		}
+	clusterKey, err := s.GetClusterKey()
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_cluster_key: %w", err)
 	}
-	tokenUse = strings.TrimSpace(strings.ToLower(tokenUse))
-	if tokenUse == "" {
-		tokenUse = ClusterTokenUseUserProxy
-	}
+
 	switch tokenUse {
 	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
 	default:
 		return "", fmt.Errorf("invalid_cluster_token_use")
 	}
-	if ttl <= 0 {
-		ttl = 24 * time.Hour
-	}
+
+	now := time.Now()
 
 	data := JWT{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(clusterTokenTTL)),
 			ID:        uuid.NewString(),
 		},
 		CustomClaims: serviceInterfaces.CustomClaims{
@@ -343,28 +406,48 @@ func (s *Service) createClusterJWTWithUse(
 	return token, nil
 }
 
-func (s *Service) CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error) {
+func (s *Service) CreateUserProxyJWT(userId uint, username string, authType string) (string, error) {
 	admin := false
 	if userId != 0 {
 		var user models.User
-		if err := s.DB.Select("username", "admin").First(&user, userId).Error; err != nil {
+		if err := s.DB.Select("username", "admin", "locked", "disable_password").First(&user, userId).Error; err != nil {
 			return "", fmt.Errorf("failed_to_load_proxy_user: %w", err)
+		}
+		if user.Locked || !user.Admin {
+			return "", fmt.Errorf("proxy_user_not_authorized")
+		}
+		switch authType {
+		case "sylve":
+			if user.DisablePassword {
+				return "", fmt.Errorf("proxy_user_not_authorized")
+			}
+		case "pam":
+			if !config.IsPAMEnabled() {
+				return "", fmt.Errorf("proxy_user_not_authorized")
+			}
+		case AuthTypeSylvePasskey:
+		default:
+			return "", fmt.Errorf("proxy_auth_type_not_supported")
 		}
 		username = user.Username
 		admin = user.Admin
+	} else {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			username = "cluster"
+		}
 	}
+
 	return s.createClusterJWTWithUse(
 		userId,
 		username,
 		authType,
 		admin,
 		ClusterTokenUseUserProxy,
-		forceSecret,
-		24*time.Hour,
 	)
 }
 
-func (s *Service) CreateInternalClusterJWT(username string, forceSecret string) (string, error) {
+func (s *Service) CreateInternalClusterJWT(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		username = "cluster"
@@ -375,8 +458,6 @@ func (s *Service) CreateInternalClusterJWT(username string, forceSecret string) 
 		ClusterInternalAuthType,
 		false,
 		ClusterTokenUseInternalControl,
-		forceSecret,
-		5*time.Minute,
 	)
 }
 
@@ -417,13 +498,13 @@ func (s *Service) CreateScopedJWT(userID uint, username, authType, scope string,
 
 func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.CustomClaims, error) {
 	clusterKey, err := s.GetClusterKey()
-	if err != nil || clusterKey == "" {
+	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("failed_to_get_cluster_key: %w", err)
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &JWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(clusterKey), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithoutClaimsValidation())
 
 	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid: %w", err)
@@ -435,32 +516,40 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
-	if time.Now().After(claims.ExpiresAt.Time) {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
+	if claims.ExpiresAt == nil || claims.IssuedAt == nil {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
-	tokenUse := strings.TrimSpace(strings.ToLower(claims.CustomClaims.TokenUse))
-	if tokenUse == "" {
-		tokenUse = ClusterTokenUseUserProxy
+	now := time.Now()
+	if !now.Before(claims.ExpiresAt.Time) {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
 	}
-	switch tokenUse {
+	if claims.IssuedAt.Time.After(now.Add(clusterTokenFutureSkew)) {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+	if claims.NotBefore != nil && now.Before(claims.NotBefore.Time) {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+	if !claims.ExpiresAt.Time.After(claims.IssuedAt.Time) ||
+		claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time) > clusterTokenTTL {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	switch claims.CustomClaims.TokenUse {
 	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
 	default:
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_cluster_token_use")
 	}
-	claims.CustomClaims.TokenUse = tokenUse
 
 	return claims.CustomClaims, nil
 }
 
 func (s *Service) RevokeJWT(token string) error {
-	var tokenRecord models.Token
-
-	if err := s.DB.Where("token = ?", token).First(&tokenRecord).Error; err != nil {
-		return fmt.Errorf("token_not_found")
+	if strings.TrimSpace(token) == "" {
+		return nil
 	}
 
-	if err := s.DB.Delete(&tokenRecord).Error; err != nil {
+	if err := s.DB.Where("token = ?", token).Delete(&models.Token{}).Error; err != nil {
 		return fmt.Errorf("token_delete_failed")
 	}
 
@@ -490,6 +579,9 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 	if user.Locked {
 		return false
 	}
+	if !user.Admin {
+		return false
+	}
 
 	if user.DisablePassword && tokenRecord.AuthType == "sylve" {
 		return false
@@ -507,7 +599,7 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 
 	token, err := jwt.ParseWithClaims(tokenString, &JWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
@@ -516,6 +608,10 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 	claims, ok := token.Claims.(*JWT)
 
 	if !ok || !token.Valid {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	if claims.ExpiresAt == nil {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 
@@ -530,37 +626,44 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 	return claims.CustomClaims, nil
 }
 
-func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceInterfaces.CustomClaims, error) {
+func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceInterfaces.ScopedValidationResult, error) {
 	if expectedScope == "" {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("scope_required")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("scope_required")
 	}
 
 	secret, err := s.GetJWTSecret()
 	if err != nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_secret_not_found")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_secret_not_found")
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &ScopedJWT{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_invalid")
 	}
 
 	claims, ok := token.Claims.(*ScopedJWT)
 	if !ok || !token.Valid {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_invalid")
 	}
 
 	if claims.Scope != expectedScope {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_scope")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("invalid_scope")
+	}
+
+	if claims.ExpiresAt == nil {
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_invalid")
 	}
 
 	if time.Now().After(claims.ExpiresAt.Time) {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
+		return serviceInterfaces.ScopedValidationResult{}, fmt.Errorf("jwt_expired")
 	}
 
-	return claims.CustomClaims, nil
+	return serviceInterfaces.ScopedValidationResult{
+		CustomClaims: claims.CustomClaims,
+		ExpiresAt:    claims.ExpiresAt.Time,
+	}, nil
 }
 
 func (s *Service) InitSecret(name string, shaRounds int) error {
@@ -670,6 +773,8 @@ func (s *Service) ClearExpiredJWTTokens(ctx context.Context) {
 }
 
 func (s *Service) performTokenCleanup() {
+	s.pruneLoginAttempts(time.Now())
+
 	result := s.DB.Where("expiry < ?", time.Now()).Delete(&models.Token{})
 
 	if result.Error != nil {
@@ -713,8 +818,16 @@ func (s *Service) GetTokenBySHA256(hash string) (string, error) {
 }
 
 func (s *Service) IsValidClusterKey(clusterKey string) bool {
+	if strings.TrimSpace(clusterKey) == "" {
+		return false
+	}
+
 	var count int64
-	s.DB.Model(&clusterModels.Cluster{}).Where("key = ?", clusterKey).Count(&count)
+	if err := s.DB.Model(&clusterModels.Cluster{}).
+		Where("enabled = ? AND key = ?", true, clusterKey).
+		Count(&count).Error; err != nil {
+		return false
+	}
 	return count > 0
 }
 

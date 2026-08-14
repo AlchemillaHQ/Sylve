@@ -75,6 +75,27 @@ func normalizeDownloaderUploadPolicy(policy downloaderUploadPolicy) downloaderUp
 	return policy
 }
 
+// @Summary Stage a Downloader Upload
+// @Description Stream exactly one file from the filepond multipart field into bounded, short-lived downloader staging and return an opaque upload identity without exposing the server path
+// @Tags Utilities
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param filepond formData file true "File to stage"
+// @Success 201 {object} internal.APIResponse[DownloaderUploadReceipt] "Upload staged"
+// @Header 201 {string} Location "/api/utilities/downloader-uploads/{id}"
+// @Failure 400 {object} internal.APIResponse[any] "Invalid filename, file field, or multipart request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Administrator access or staging permission required"
+// @Failure 408 {object} internal.APIResponse[any] "Upload cancelled or timed out"
+// @Failure 409 {object} internal.APIResponse[any] "Upload identity collision"
+// @Failure 413 {object} internal.APIResponse[any] "File or multipart request too large"
+// @Failure 429 {object} internal.APIResponse[any] "Upload capacity exhausted"
+// @Header 429 {string} Retry-After "Retry delay in seconds"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Upload persistence unavailable"
+// @Failure 507 {object} internal.APIResponse[any] "Insufficient storage or quota"
+// @Router /utilities/downloader-uploads [post]
 func UploadDownloaderFile(
 	utilitiesService *utilities.Service,
 	admission *semaphore.Weighted,
@@ -145,6 +166,7 @@ func newDownloaderUploadHandler(
 			return
 		}
 
+		c.Header("Location", "/api/utilities/downloader-uploads/"+receipt.UploadID)
 		c.JSON(http.StatusCreated, internal.APIResponse[DownloaderUploadReceipt]{
 			Status:  "success",
 			Message: "downloader_upload_staged",
@@ -266,13 +288,36 @@ func removePublishedDownloaderUpload(path string, expected os.FileInfo) error {
 	return err
 }
 
+// @Summary Complete a Downloader Upload
+// @Description Idempotently publish a staged upload as a downloader resource and queue its processing with the selected options
+// @Tags Utilities
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Opaque upload ID"
+// @Param request body utilitiesServiceInterfaces.CompleteDownloaderUploadRequest true "Downloader completion options"
+// @Success 200 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloaderUploadCompletion] "Upload completed"
+// @Failure 400 {object} internal.APIResponse[any] "Invalid request, upload ID, or download type"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Administrator access required"
+// @Failure 404 {object} internal.APIResponse[any] "Upload not found or owned by another user"
+// @Failure 409 {object} internal.APIResponse[any] "Upload active, changed, unavailable, or destination already exists"
+// @Header 409 {string} Retry-After "Retry delay when the upload is active"
+// @Failure 410 {object} internal.APIResponse[any] "Upload expired"
+// @Failure 413 {object} internal.APIResponse[any] "Request body too large"
+// @Failure 422 {object} internal.APIResponse[any] "Incompatible post-processing options"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Upload persistence or download queue unavailable"
+// @Header 503 {string} Retry-After "Retry delay in seconds"
+// @Router /utilities/downloader-uploads/{id}/complete [post]
 func CompleteDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request utilitiesServiceInterfaces.CompleteDownloaderUploadRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
+			status, message := utilitiesJSONBindError(err)
 			writeDownloaderUploadFailure(c, uploadCore.NewFailure(
-				http.StatusBadRequest,
-				"invalid_request",
+				status,
+				message,
 				err,
 			))
 			return
@@ -300,6 +345,21 @@ func CompleteDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFu
 	}
 }
 
+// @Summary Abort a Downloader Upload
+// @Description Idempotently remove an unchanged staged upload; missing or foreign identities are indistinguishable, and completed uploads are retained
+// @Tags Utilities
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Opaque upload ID"
+// @Success 200 {object} internal.APIResponse[DownloaderUploadAbortResponse] "Upload aborted or already completed"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Administrator access required"
+// @Failure 409 {object} internal.APIResponse[any] "Upload active, changed, or unavailable"
+// @Header 409 {string} Retry-After "Retry delay when the upload is active"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Upload persistence unavailable"
+// @Header 503 {string} Retry-After "Retry delay in seconds"
+// @Router /utilities/downloader-uploads/{id} [delete]
 func AbortDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		completed, err := utilitiesService.AbortDownloaderUpload(
@@ -312,12 +372,14 @@ func AbortDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFunc 
 			return
 		}
 		status := "aborted"
+		message := "downloader_upload_aborted"
 		if completed {
 			status = string(utilitiesModels.UploadStatusCompleted)
+			message = "downloader_upload_already_completed"
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[DownloaderUploadAbortResponse]{
 			Status:  "success",
-			Message: "downloader_upload_aborted",
+			Message: message,
 			Error:   "",
 			Data: DownloaderUploadAbortResponse{
 				UploadID: c.Param("id"),
@@ -368,7 +430,7 @@ func writeDownloaderUploadFailure(c *gin.Context, failure *uploadCore.Failure) {
 	c.JSON(failure.StatusCode, internal.APIResponse[downloaderUploadErrorData]{
 		Status:  "error",
 		Message: failure.Code,
-		Error:   failure.Error(),
+		Error:   failure.Code,
 		Data: downloaderUploadErrorData{
 			Code:       failure.Code,
 			Retryable:  failure.Retryable,

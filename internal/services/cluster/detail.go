@@ -64,13 +64,16 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 	if err != nil {
 		return nil, err
 	}
+	if len(nodes) == 0 {
+		return []clusterServiceInterfaces.NodeResources{}, nil
+	}
 
 	selfHostname, err := utils.GetSystemHostname()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get system hostname: %w", err)
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster jwt: %w", err)
 	}
@@ -97,9 +100,9 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 
 			base := "https://" + n.API
 			jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
-			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates/simple", base)
+			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates", base)
 			vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
-			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates/simple", base)
+			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
 
 			headers := map[string]string{
 				"Accept":          "application/json",

@@ -26,16 +26,27 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type VMEditDescRequest struct {
-	RID         uint   `json:"rid" binding:"required"`
 	Description string `json:"description"`
 }
 
 type VMEditNameRequest struct {
-	RID  uint   `json:"rid" binding:"required"`
 	Name string `json:"name" binding:"required"`
+}
+
+type VMCreateResponse struct {
+	RID  uint   `json:"rid"`
+	Name string `json:"name"`
+}
+
+type VMActionResponse struct {
+	TaskID  uint   `json:"taskId"`
+	RID     uint   `json:"rid"`
+	Action  string `json:"action"`
+	Outcome string `json:"outcome"`
 }
 
 type vmRemovalService interface {
@@ -48,6 +59,51 @@ type vmRemovalService interface {
 		deleteVolumes bool,
 		ctx context.Context,
 	) (libvirt.VMRemovalResult, error)
+}
+
+type vmDetailService interface {
+	GetVMByRID(rid uint) (vmModels.VM, error)
+}
+
+type vmSimpleDetailService interface {
+	GetSimpleVMByRID(rid uint) (libvirtServiceInterfaces.SimpleList, error)
+}
+
+type vmCreateService interface {
+	CreateVM(req libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error
+}
+
+type vmDescriptionService interface {
+	UpdateDescription(rid uint, description string) error
+}
+
+type vmNameService interface {
+	UpdateName(rid uint, name string) error
+}
+
+type vmActionPreflightService interface {
+	GetVMByRID(rid uint) (vmModels.VM, error)
+	CanPerformVMAction(rid uint, action string) (bool, error)
+}
+
+type vmLifecycleRequestService interface {
+	RequestAction(
+		ctx context.Context,
+		guestType string,
+		guestID uint,
+		action string,
+		source string,
+		requestedBy string,
+	) (*taskModels.GuestLifecycleTask, string, error)
+}
+
+type vmDomainService interface {
+	GetVMIDByRID(rid uint) (uint, error)
+	GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error)
+}
+
+type vmDomainLifecycleService interface {
+	GetActiveTaskForGuest(guestType string, guestID uint) (*taskModels.GuestLifecycleTask, error)
 }
 
 var vmCreateConflictCodes = map[string]struct{}{
@@ -120,7 +176,8 @@ var vmCreateAliasCodes = map[string]string{
 }
 
 func isVMNotFoundError(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "vm_not_found")
+	return err != nil && (errors.Is(err, gorm.ErrRecordNotFound) ||
+		strings.Contains(strings.ToLower(err.Error()), "vm_not_found"))
 }
 
 func isLibvirtDomainAbsent(err error) bool {
@@ -172,6 +229,8 @@ func classifyCreateVMError(err error) (int, string) {
 
 	errText := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
 	case strings.Contains(errText, "guest_identity_inventory_unavailable"):
 		return http.StatusServiceUnavailable, "guest_identity_inventory_unavailable"
 	case strings.Contains(errText, "guest_identity_inventory_scan_failed"):
@@ -209,7 +268,7 @@ func classifyCreateVMError(err error) (int, string) {
 		"libvirt_not_initialized",
 		"system_service_not_initialized",
 		"zfs_client_not_initialized":
-		return http.StatusInternalServerError, "vm_create_dependency_not_ready"
+		return http.StatusServiceUnavailable, "vm_create_dependency_not_ready"
 	}
 
 	if _, ok := vmCreateConflictCodes[code]; ok {
@@ -235,6 +294,116 @@ func classifyCreateVMError(err error) (int, string) {
 	}
 
 	return http.StatusInternalServerError, "failed_to_create_vm"
+}
+
+func classifyUpdateVMDescriptionError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_update_vm_description"
+	}
+
+	errText := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errText, "vm_not_found"):
+		return http.StatusNotFound, "vm_not_found"
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "invalid_description"):
+		return http.StatusBadRequest, "invalid_description"
+	case strings.Contains(errText, "replication_lease_check_failed"):
+		return http.StatusInternalServerError, "replication_lease_check_failed"
+	default:
+		return http.StatusInternalServerError, "failed_to_update_vm_description"
+	}
+}
+
+func classifyRemoveVMError(err error, fallback string) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, fallback
+	}
+
+	errText := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errText, "vm_not_found"):
+		return http.StatusNotFound, "vm_not_found"
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "guest_delete_requires_replication_policy_removed"):
+		return http.StatusConflict, "guest_delete_requires_replication_policy_removed"
+	case strings.Contains(errText, "replication_storage_topology_change_requires_policy_disabled"):
+		return http.StatusConflict, "replication_storage_topology_change_requires_policy_disabled"
+	case strings.Contains(errText, "vm_not_orphaned"):
+		return http.StatusConflict, "vm_not_orphaned"
+	case strings.Contains(errText, "lifecycle_task_in_progress"),
+		strings.Contains(errText, "vm_operation_in_progress"):
+		return http.StatusConflict, "vm_operation_in_progress"
+	case strings.Contains(errText, "vm_orphan_check_unavailable"),
+		strings.Contains(errText, "libvirt_service_not_initialized"):
+		return http.StatusServiceUnavailable, "vm_delete_dependency_not_ready"
+	default:
+		return http.StatusInternalServerError, fallback
+	}
+}
+
+func parseVMRID(c *gin.Context) (uint, bool) {
+	ridValue := strings.TrimSpace(c.Param("rid"))
+	rid, err := strconv.ParseUint(ridValue, 10, 32)
+	if err != nil || rid == 0 {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_vm_rid",
+			Data:    nil,
+			Error:   "Virtual Machine RID must be a positive integer",
+		})
+		return 0, false
+	}
+
+	return uint(rid), true
+}
+
+func parseOptionalBoolQuery(c *gin.Context, name string, defaultValue bool) (bool, bool) {
+	rawValue := strings.TrimSpace(c.Query(name))
+	if rawValue == "" {
+		return defaultValue, true
+	}
+
+	value, err := strconv.ParseBool(rawValue)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_" + name + "_param",
+			Data:    nil,
+			Error:   "invalid '" + name + "' value: " + err.Error(),
+		})
+		return false, false
+	}
+
+	return value, true
+}
+
+func parseRequiredBoolQuery(c *gin.Context, name string) (bool, bool) {
+	rawValue := strings.TrimSpace(c.Query(name))
+	if rawValue == "" {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "missing_" + name + "_param",
+			Data:    nil,
+			Error:   "missing '" + name + "' query parameter",
+		})
+		return false, false
+	}
+
+	value, err := strconv.ParseBool(rawValue)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_" + name + "_param",
+			Data:    nil,
+			Error:   "invalid '" + name + "' value: " + err.Error(),
+		})
+		return false, false
+	}
+
+	return value, true
 }
 
 func classifyUpdateVMNameError(err error) (int, string) {
@@ -271,64 +440,30 @@ func classifyUpdateVMNameError(err error) (int, string) {
 	return http.StatusInternalServerError, "failed_to_update_vm_name"
 }
 
-// @Summary Get a Virtual Machine by RID or ID
-// @Description Retrieve a virtual machine by its RID or ID
+// @Summary Get a Virtual Machine by RID
+// @Description Retrieve a virtual machine by its resource ID (RID)
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param rid path string true "Virtual Machine RID or ID"
-// @Param type query string false "Type of identifier (rid or id)"  Enums(rid, id) default(rid)
+// @Param rid path int true "Virtual Machine RID" minimum(1)
 // @Success 200 {object} internal.APIResponse[vmModels.VM] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/:id [get]
-func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
+// @Router /vm/{rid} [get]
+func GetVMByRID(libvirtService vmDetailService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmID := c.Param("id")
-		if vmID == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_vm_id",
-				Data:    nil,
-				Error:   "Virtual Machine ID is required",
-			})
+		rid, ok := parseVMRID(c)
+		if !ok {
 			return
 		}
 
-		var t string = c.DefaultQuery("type", "rid")
-		if t != "rid" && t != "id" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_type_param",
-				Data:    nil,
-				Error:   "Type parameter must be either 'rid' or 'id'",
-			})
-			return
-		}
-
-		identifier, err := strconv.Atoi(vmID)
+		vm, err := libvirtService.GetVMByRID(rid)
 		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_vm_id_format",
-				Data:    nil,
-				Error:   "Virtual Machine ID must be a valid integer",
-			})
-			return
-		}
-
-		var vm vmModels.VM
-		if t == "rid" {
-			vm, err = libvirtService.GetVMByRID(uint(identifier))
-		} else {
-			vm, err = libvirtService.GetVM(identifier)
-		}
-
-		if err != nil || vm.ID == 0 {
-			if isVMNotFoundError(err) || vm.ID == 0 {
-				c.JSON(404, internal.APIResponse[any]{
+			if isVMNotFoundError(err) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "vm_not_found",
 					Data:    nil,
@@ -337,7 +472,7 @@ func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 				return
 			}
 
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_vm",
 				Data:    nil,
@@ -346,9 +481,9 @@ func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[vmModels.VM]{
+		c.JSON(http.StatusOK, internal.APIResponse[vmModels.VM]{
 			Status:  "success",
-			Message: "vm_retrieved_by_vmid",
+			Message: "vm_retrieved",
 			Data:    vm,
 			Error:   "",
 		})
@@ -362,32 +497,32 @@ func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]vmModels.VM] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm [get]
 func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		vms, err := libvirtService.ListVMs()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_list_vms",
+				Data:    nil,
+				Error:   "failed_to_list_vms: " + err.Error(),
+			})
+			return
+		}
 
 		for i := range vms {
 			if vms[i].PCIDevices == nil {
 				vms[i].PCIDevices = []int{}
 			}
 			if vms[i].CPUPinning == nil {
-				vms[i].CPUPinning = []vmModels.VMCPUPinning{
-					{
-						HostSocket: 0,
-						HostCPU:    []int{},
-					},
-				}
+				vms[i].CPUPinning = []vmModels.VMCPUPinning{}
 			}
 		}
 
-		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{Error: "failed_to_list_vms: " + err.Error()})
-			return
-		}
-
-		c.JSON(200, internal.APIResponse[[]vmModels.VM]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]vmModels.VM]{
 			Status:  "success",
 			Message: "vm_listed",
 			Data:    vms,
@@ -402,31 +537,53 @@ func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param rid path string true "Virtual Machine RID"
+// @Param rid path int true "Virtual Machine RID"
 // @Success 200 {object} internal.APIResponse[libvirtServiceInterfaces.LvDomain] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/domain/:rid [get]
-func GetLvDomain(libvirtService *libvirt.Service, lifecycleService *lifecycle.Service) gin.HandlerFunc {
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /vm/{rid}/domain [get]
+func GetLvDomain(libvirtService vmDomainService, lifecycleService vmDomainLifecycleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Param("rid")
 		if rid == "" {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_rid",
 				Data:    nil,
-				Error:   "Virtual Machine ID is required",
+				Error:   "rid is required",
 			})
 			return
 		}
 
-		ridInt, err := strconv.ParseUint(rid, 10, 0)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+		ridInt, err := strconv.ParseUint(rid, 10, 32)
+		if err != nil || ridInt == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_rid_format",
-				Error:   "Virtual Machine RID must be a valid integer",
+				Error:   "rid must be a positive integer",
+				Data:    nil,
+			})
+			return
+		}
+
+		vmID, err := libvirtService.GetVMIDByRID(uint(ridInt))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_vm_domain_registration",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		if vmID == 0 {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "vm_not_found",
+				Error:   "vm_not_found",
 				Data:    nil,
 			})
 			return
@@ -441,13 +598,12 @@ func GetLvDomain(libvirtService *libvirt.Service, lifecycleService *lifecycle.Se
 					Status: "orphan",
 				}
 
-				activeTask, _ := lifecycleService.GetActiveTaskForGuest("vm", uint(ridInt))
-				if activeTask != nil {
-					orphanDomain.PendingAction = activeTask.Action
-					orphanDomain.OverrideRequested = activeTask.OverrideRequested
+				if err := applyVMDomainLifecycleState(orphanDomain, lifecycleService, uint(ridInt)); err != nil {
+					writeVMDomainLifecycleError(c, err)
+					return
 				}
 
-				c.JSON(200, internal.APIResponse[*libvirtServiceInterfaces.LvDomain]{
+				c.JSON(http.StatusOK, internal.APIResponse[*libvirtServiceInterfaces.LvDomain]{
 					Status:  "success",
 					Message: "vm_domain_orphaned",
 					Data:    orphanDomain,
@@ -456,28 +612,61 @@ func GetLvDomain(libvirtService *libvirt.Service, lifecycleService *lifecycle.Se
 				return
 			}
 
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_get_domain",
-				Error:   "failed_to_get_domain: " + err.Error(),
+				Message: "libvirt_connection_unavailable",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		if domain == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "libvirt_connection_unavailable",
+				Error:   "vm_domain_unavailable",
 				Data:    nil,
 			})
 			return
 		}
 
-		activeTask, _ := lifecycleService.GetActiveTaskForGuest("vm", uint(ridInt))
-		if activeTask != nil {
-			domain.PendingAction = activeTask.Action
-			domain.OverrideRequested = activeTask.OverrideRequested
+		if err := applyVMDomainLifecycleState(domain, lifecycleService, uint(ridInt)); err != nil {
+			writeVMDomainLifecycleError(c, err)
+			return
 		}
 
-		c.JSON(200, internal.APIResponse[*libvirtServiceInterfaces.LvDomain]{
+		c.JSON(http.StatusOK, internal.APIResponse[*libvirtServiceInterfaces.LvDomain]{
 			Status:  "success",
 			Message: "vm_domain_retrieved",
 			Data:    domain,
 			Error:   "",
 		})
 	}
+}
+
+func applyVMDomainLifecycleState(
+	domain *libvirtServiceInterfaces.LvDomain,
+	lifecycleService vmDomainLifecycleService,
+	rid uint,
+) error {
+	activeTask, err := lifecycleService.GetActiveTaskForGuest("vm", rid)
+	if err != nil {
+		return err
+	}
+	if activeTask != nil {
+		domain.PendingAction = activeTask.Action
+		domain.OverrideRequested = activeTask.OverrideRequested
+	}
+	return nil
+}
+
+func writeVMDomainLifecycleError(c *gin.Context, err error) {
+	c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		Status:  "error",
+		Message: "failed_to_get_vm_lifecycle_state",
+		Error:   err.Error(),
+		Data:    nil,
+	})
 }
 
 // @Summary Create a new Virtual Machine
@@ -487,15 +676,20 @@ func GetLvDomain(libvirtService *libvirt.Service, lifecycleService *lifecycle.Se
 // @Produce json
 // @Security BearerAuth
 // @Param request body libvirtServiceInterfaces.CreateVMRequest true "Create Virtual Machine Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 201 {object} internal.APIResponse[VMCreateResponse] "Created"
+// @Header 201 {string} Location "/api/vm/{rid}"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm [post]
-func CreateVM(libvirtService *libvirt.Service) gin.HandlerFunc {
+func CreateVM(libvirtService vmCreateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req libvirtServiceInterfaces.CreateVMRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request_data",
 				Data:    nil,
@@ -519,167 +713,64 @@ func CreateVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		created := VMCreateResponse{
+			RID:  *req.RID,
+			Name: req.Name,
+		}
+		c.Header("Location", "/api/vm/"+strconv.FormatUint(uint64(created.RID), 10))
+		c.JSON(http.StatusCreated, internal.APIResponse[VMCreateResponse]{
 			Status:  "success",
 			Message: "vm_created",
-			Data:    nil,
+			Data:    created,
 			Error:   "",
 		})
 	}
 }
 
 // @Summary Remove a Virtual Machine
-// @Description Remove a virtual machine by its ID
+// @Description Remove a virtual machine by RID. Set force=true for best-effort forced removal; normal removal requires all three cleanup flags.
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path string true "Virtual Machine ID"
-// @Param deletemacs query bool true "Delete or Keep"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param rid path int true "Virtual Machine RID" minimum(1)
+// @Param deletemacs query bool false "Delete unused VM MAC objects (required for normal removal; defaults to true for forced removal)"
+// @Param deleterawdisks query bool false "Delete raw-disk datasets (required for normal removal)"
+// @Param deletevolumes query bool false "Delete volume datasets (required for normal removal)"
+// @Param force query bool false "Use best-effort forced removal" default(false)
+// @Success 200 {object} internal.APIResponse[libvirt.VMRemovalResult] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/{id} [delete]
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /vm/{rid} [delete]
 func RemoveVM(libvirtService vmRemovalService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmID := c.Param("id")
-		if vmID == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_vm_id",
-				Data:    nil,
-				Error:   "Virtual Machine ID is required",
-			})
+		rid, ok := parseVMRID(c)
+		if !ok {
 			return
 		}
 
-		vmInt, err := strconv.Atoi(vmID)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_vm_id_format",
-				Data:    nil,
-				Error:   "Virtual Machine ID must be a valid integer",
-			})
+		forceDelete, ok := parseOptionalBoolQuery(c, "force", false)
+		if !ok {
 			return
-		}
-
-		purgeOnly := false
-		purgeOnlyStr := strings.TrimSpace(c.DefaultQuery("purgeOnly", "false"))
-		if purgeOnlyStr != "" {
-			purgeOnly, err = strconv.ParseBool(purgeOnlyStr)
-			if err != nil {
-				c.JSON(400, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "invalid_purgeonly_param",
-					Error:   "invalid 'purgeOnly' value: " + err.Error(),
-					Data:    nil,
-				})
-				return
-			}
-		}
-
-		if purgeOnly {
-			deleteMacs := true
-			if deleteMacsStr := strings.TrimSpace(c.Query("deletemacs")); deleteMacsStr != "" {
-				parsedDeleteMacs, parseErr := strconv.ParseBool(deleteMacsStr)
-				if parseErr != nil {
-					c.JSON(400, internal.APIResponse[any]{
-						Status:  "error",
-						Message: "invalid_deletemacs_param",
-						Error:   "invalid 'deletemacs' value: " + parseErr.Error(),
-						Data:    nil,
-					})
-					return
-				}
-				deleteMacs = parsedDeleteMacs
-			}
-
-			warnings, removeErr := libvirtService.PurgeVMRegistration(uint(vmInt), deleteMacs)
-			if removeErr != nil {
-				if strings.Contains(removeErr.Error(), "vm_not_orphaned") {
-					c.JSON(409, internal.APIResponse[any]{
-						Status:  "error",
-						Message: "vm_not_orphaned",
-						Data:    nil,
-						Error:   "vm_not_orphaned: this VM still has a live definition on its node; use Delete instead of removing a stale entry",
-					})
-					return
-				}
-				c.JSON(500, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "failed_to_purge_vm_registration",
-					Data:    nil,
-					Error:   "failed_to_purge_vm_registration: " + removeErr.Error(),
-				})
-				return
-			}
-
-			message := "vm_registration_purged"
-			if len(warnings) > 0 {
-				message = "vm_registration_purged_with_warnings"
-			}
-
-			c.JSON(200, internal.APIResponse[map[string]any]{
-				Status:  "success",
-				Message: message,
-				Data: map[string]any{
-					"warnings": warnings,
-				},
-				Error: "",
-			})
-			return
-		}
-
-		forceDelete := false
-		forceDeleteStr := strings.TrimSpace(c.DefaultQuery("force", "false"))
-		if forceDeleteStr != "" {
-			forceDelete, err = strconv.ParseBool(forceDeleteStr)
-			if err != nil {
-				c.JSON(400, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "invalid_force_param",
-					Error:   "invalid 'force' value: " + err.Error(),
-					Data:    nil,
-				})
-				return
-			}
 		}
 
 		if forceDelete {
-			deleteMacs := true
-			deleteMacsStr := strings.TrimSpace(c.Query("deletemacs"))
-			if deleteMacsStr != "" {
-				parsedDeleteMacs, parseErr := strconv.ParseBool(deleteMacsStr)
-				if parseErr != nil {
-					c.JSON(400, internal.APIResponse[any]{
-						Status:  "error",
-						Message: "invalid_deletemacs_param",
-						Error:   "invalid 'deletemacs' value: " + parseErr.Error(),
-						Data:    nil,
-					})
-					return
-				}
-				deleteMacs = parsedDeleteMacs
+			deleteMacs, valid := parseOptionalBoolQuery(c, "deletemacs", true)
+			if !valid {
+				return
 			}
 
-			ctx := c.Request.Context()
-			warnings, removeErr := libvirtService.ForceRemoveVM(uint(vmInt), deleteMacs, ctx)
+			warnings, removeErr := libvirtService.ForceRemoveVM(rid, deleteMacs, c.Request.Context())
 			if removeErr != nil {
-				if isVMNotFoundError(removeErr) {
-					c.JSON(404, internal.APIResponse[any]{
-						Status:  "error",
-						Message: "vm_not_found",
-						Data:    nil,
-						Error:   "vm_not_found",
-					})
-					return
-				}
-
-				c.JSON(500, internal.APIResponse[any]{
+				statusCode, errorCode := classifyRemoveVMError(removeErr, "failed_to_force_remove_vm")
+				c.JSON(statusCode, internal.APIResponse[any]{
 					Status:  "error",
-					Message: "failed_to_force_remove_vm",
+					Message: errorCode,
 					Data:    nil,
 					Error:   "failed_to_force_remove_vm: " + removeErr.Error(),
 				})
@@ -690,118 +781,45 @@ func RemoveVM(libvirtService vmRemovalService) gin.HandlerFunc {
 			if len(warnings) > 0 {
 				message = "vm_force_removed_with_warnings"
 			}
-
-			c.JSON(200, internal.APIResponse[map[string]any]{
+			c.JSON(http.StatusOK, internal.APIResponse[libvirt.VMRemovalResult]{
 				Status:  "success",
 				Message: message,
-				Data: map[string]any{
-					"warnings": warnings,
+				Data: libvirt.VMRemovalResult{
+					Warnings:         warnings,
+					RetainedDatasets: []string{},
 				},
 				Error: "",
 			})
 			return
 		}
 
-		deleteMacsStr := c.Query("deletemacs")
-		if deleteMacsStr == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_deletemacs_param",
-				Error:   "missing 'deletemacs' query parameter",
-				Data:    nil,
-			})
+		deleteMacs, ok := parseRequiredBoolQuery(c, "deletemacs")
+		if !ok {
+			return
+		}
+		deleteRawDisks, ok := parseRequiredBoolQuery(c, "deleterawdisks")
+		if !ok {
+			return
+		}
+		deleteVolumes, ok := parseRequiredBoolQuery(c, "deletevolumes")
+		if !ok {
 			return
 		}
 
-		deleteMacs, err := strconv.ParseBool(deleteMacsStr)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_deletemacs_param",
-				Error:   "invalid 'deletemacs' value: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		deleteRawDisksStr := c.Query("deleterawdisks")
-		if deleteRawDisksStr == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_deleterawdisks_param",
-				Error:   "missing 'deleterawdisks' query parameter",
-				Data:    nil,
-			})
-			return
-		}
-
-		deleteRawDisks, err := strconv.ParseBool(deleteRawDisksStr)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_deleterawdisks_param",
-				Error:   "invalid 'deleterawdisks' value: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		deleteVolumesStr := c.Query("deletevolumes")
-		if deleteVolumesStr == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_deletevolumes_param",
-				Error:   "missing 'deletevolumes' query parameter",
-				Data:    nil,
-			})
-			return
-		}
-
-		deleteVolumes, err := strconv.ParseBool(deleteVolumesStr)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_deletevolumes_param",
-				Error:   "invalid 'deletevolumes' value: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		ctx := c.Request.Context()
-		removalResult, err := libvirtService.RemoveVMWithWarnings(
-			uint(vmInt),
+		removalResult, removeErr := libvirtService.RemoveVMWithWarnings(
+			rid,
 			deleteMacs,
 			deleteRawDisks,
 			deleteVolumes,
-			ctx,
+			c.Request.Context(),
 		)
-
-		if err != nil {
-			if isVMNotFoundError(err) {
-				c.JSON(404, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "vm_not_found",
-					Data:    nil,
-					Error:   "vm_not_found",
-				})
-				return
-			}
-			if strings.Contains(err.Error(), "guest_delete_requires_replication_policy_removed") {
-				c.JSON(http.StatusConflict, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "guest_delete_requires_replication_policy_removed",
-					Data:    nil,
-					Error:   "guest_delete_requires_replication_policy_removed",
-				})
-				return
-			}
-
-			c.JSON(500, internal.APIResponse[any]{
+		if removeErr != nil {
+			statusCode, errorCode := classifyRemoveVMError(removeErr, "failed_to_remove_vm")
+			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_remove_vm",
+				Message: errorCode,
 				Data:    nil,
-				Error:   "failed_to_remove: " + err.Error(),
+				Error:   "failed_to_remove_vm: " + removeErr.Error(),
 			})
 			return
 		}
@@ -810,8 +828,7 @@ func RemoveVM(libvirtService vmRemovalService) gin.HandlerFunc {
 		if len(removalResult.Warnings) > 0 {
 			message = "vm_removed_with_warnings"
 		}
-
-		c.JSON(200, internal.APIResponse[libvirt.VMRemovalResult]{
+		c.JSON(http.StatusOK, internal.APIResponse[libvirt.VMRemovalResult]{
 			Status:  "success",
 			Message: message,
 			Data:    removalResult,
@@ -820,41 +837,150 @@ func RemoveVM(libvirtService vmRemovalService) gin.HandlerFunc {
 	}
 }
 
-// @Summary Perform an action on a Virtual Machine
-// @Description Perform a specified action (start, stop, reboot) on a virtual machine by its RID
+// @Summary Purge an orphaned Virtual Machine registration
+// @Description Remove stale VM registration and runtime metadata by RID while preserving datasets
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param rid path string true "Virtual Machine RID"
-// @Param action path string true "Action to perform (start, stop, reboot)"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param rid path int true "Virtual Machine RID" minimum(1)
+// @Param deletemacs query bool false "Delete unused VM MAC objects" default(true)
+// @Success 200 {object} internal.APIResponse[libvirt.VMRemovalResult] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/{action}/:rid [post]
-func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /vm/{rid}/registration [delete]
+func PurgeVMRegistration(libvirtService vmRemovalService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rid := c.Param("rid")
-		action := c.Param("action")
+		rid, ok := parseVMRID(c)
+		if !ok {
+			return
+		}
+		deleteMacs, ok := parseOptionalBoolQuery(c, "deletemacs", true)
+		if !ok {
+			return
+		}
+
+		warnings, removeErr := libvirtService.PurgeVMRegistration(rid, deleteMacs)
+		if removeErr != nil {
+			statusCode, errorCode := classifyRemoveVMError(removeErr, "failed_to_purge_vm_registration")
+			errorMessage := "failed_to_purge_vm_registration: " + removeErr.Error()
+			if errorCode == "vm_not_orphaned" {
+				errorMessage = "vm_not_orphaned: this VM still has a live definition on its node; use Delete instead of removing a stale entry"
+			}
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: errorCode,
+				Data:    nil,
+				Error:   errorMessage,
+			})
+			return
+		}
+
+		message := "vm_registration_purged"
+		if len(warnings) > 0 {
+			message = "vm_registration_purged_with_warnings"
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[libvirt.VMRemovalResult]{
+			Status:  "success",
+			Message: message,
+			Data: libvirt.VMRemovalResult{
+				Warnings:         warnings,
+				RetainedDatasets: []string{},
+			},
+			Error: "",
+		})
+	}
+}
+
+// @Summary Queue a Virtual Machine lifecycle action
+// @Description Queue a start, stop, shutdown, or reboot action for a virtual machine by its RID
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID" minimum(1)
+// @Param action path string true "Lifecycle action" Enums(start,stop,shutdown,reboot)
+// @Success 202 {object} internal.APIResponse[VMActionResponse] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /vm/{rid}/actions/{action} [post]
+func VMActionHandler(
+	vmService vmActionPreflightService,
+	lifecycleService vmLifecycleRequestService,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := strings.TrimSpace(c.Param("rid"))
+		action := strings.ToLower(strings.TrimSpace(c.Param("action")))
 
 		if rid == "" || action == "" {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "Virtual Machine ID and action are required",
+				Error:   "Virtual Machine RID and action are required",
 			})
 			return
 		}
 
 		ridInt, err := strconv.ParseUint(rid, 10, 0)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+		if err != nil || ridInt == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_rid_format",
 				Data:    nil,
-				Error:   "Virtual Machine ID must be a valid integer",
+				Error:   "Virtual Machine RID must be a positive integer",
+			})
+			return
+		}
+
+		switch action {
+		case "start", "stop", "shutdown", "reboot":
+		default:
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_action",
+				Data:    nil,
+				Error:   "Action must be one of start, stop, shutdown, or reboot",
+			})
+			return
+		}
+
+		ridUint := uint(ridInt)
+		if _, err := vmService.GetVMByRID(ridUint); err != nil {
+			if isVMNotFoundError(err) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status: "error", Message: "vm_not_found", Data: nil, Error: err.Error(),
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status: "error", Message: "failed_to_find_vm", Data: nil, Error: err.Error(),
+			})
+			return
+		}
+
+		allowed, err := vmService.CanPerformVMAction(ridUint, action)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status: "error", Message: "replication_lease_check_failed", Data: nil, Error: err.Error(),
+			})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_lease_not_owned",
+				Data:    nil,
+				Error:   "This node does not own the right to perform this VM action",
 			})
 			return
 		}
@@ -864,17 +990,21 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 		task, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeVM,
-			uint(ridInt),
+			ridUint,
 			action,
 			taskModels.LifecycleTaskSourceUser,
 			username,
 		)
 
 		if err != nil {
-			if errors.Is(err, lifecycle.ErrTaskInProgress) {
+			if errors.Is(err, lifecycle.ErrTaskInProgress) || errors.Is(err, lifecycle.ErrMigrationActive) {
+				message := "lifecycle_task_in_progress"
+				if errors.Is(err, lifecycle.ErrMigrationActive) {
+					message = "migration_in_progress"
+				}
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
-					Message: "lifecycle_task_in_progress",
+					Message: message,
 					Data:    nil,
 					Error:   err.Error(),
 				})
@@ -899,22 +1029,32 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 			})
 			return
 		}
-
-		if task != nil {
-			c.Set("AuditAsyncJobID", task.ID)
-			c.Set("AuditAsyncJobType", "vm_"+action)
+		if task == nil || task.ID == 0 {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_enqueue_lifecycle_task",
+				Data:    nil,
+				Error:   "Lifecycle service returned no task",
+			})
+			return
 		}
+
+		c.Set("AuditAsyncJobID", task.ID)
+		c.Set("AuditAsyncJobType", "vm_"+action)
 
 		message := "vm_action_queued"
 		if outcome == lifecycle.RequestOutcomeForceStopOverride {
 			message = "vm_force_stop_requested"
 		}
 
-		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[VMActionResponse]{
 			Status:  "success",
 			Message: message,
-			Data: map[string]any{
-				"outcome": outcome,
+			Data: VMActionResponse{
+				TaskID:  task.ID,
+				RID:     ridUint,
+				Action:  action,
+				Outcome: outcome,
 			},
 			Error: "",
 		})
@@ -927,15 +1067,25 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID" minimum(1)
 // @Param request body VMEditDescRequest true "Edit Virtual Machine Description Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Router /vm/description [put]
-func UpdateVMDescription(libvirtService *libvirt.Service) gin.HandlerFunc {
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /vm/{rid}/description [patch]
+func UpdateVMDescription(libvirtService vmDescriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		rid, ok := parseVMRID(c)
+		if !ok {
+			return
+		}
+
 		var req VMEditDescRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request_data",
 				Data:    nil,
@@ -944,18 +1094,18 @@ func UpdateVMDescription(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := libvirtService.UpdateDescription(req.RID, req.Description)
-		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+		if err := libvirtService.UpdateDescription(rid, req.Description); err != nil {
+			statusCode, errorCode := classifyUpdateVMDescriptionError(err)
+			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_update_description",
+				Message: errorCode,
 				Data:    nil,
-				Error:   "failed_to_update_description: " + err.Error(),
+				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "vm_description_updated",
 			Data:    nil,
@@ -970,12 +1120,23 @@ func UpdateVMDescription(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID" minimum(1)
 // @Param request body VMEditNameRequest true "Edit Virtual Machine Name Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Router /vm/name [put]
-func UpdateVMName(libvirtService *libvirt.Service, clusterService *cluster.Service) gin.HandlerFunc {
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /vm/{rid}/name [patch]
+func UpdateVMName(libvirtService vmNameService, clusterService *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		rid, ok := parseVMRID(c)
+		if !ok {
+			return
+		}
+
 		var req VMEditNameRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -987,7 +1148,7 @@ func UpdateVMName(libvirtService *libvirt.Service, clusterService *cluster.Servi
 			return
 		}
 
-		if err := libvirtService.UpdateName(req.RID, req.Name); err != nil {
+		if err := libvirtService.UpdateName(rid, req.Name); err != nil {
 			statusCode, errorCode := classifyUpdateVMNameError(err)
 			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
@@ -1001,13 +1162,13 @@ func UpdateVMName(libvirtService *libvirt.Service, clusterService *cluster.Servi
 		if clusterService != nil {
 			syncErr := clusterService.SyncBackupJobFriendlySourceByGuestClusterWide(cluster.BackupJobFriendlySourceUpdate{
 				GuestType:   clusterModels.ReplicationGuestTypeVM,
-				GuestID:     req.RID,
+				GuestID:     rid,
 				FriendlySrc: strings.TrimSpace(req.Name),
 			})
 			if syncErr != nil {
 				logger.L.Warn().
 					Err(syncErr).
-					Uint("vm_rid", req.RID).
+					Uint("vm_rid", rid).
 					Msg("failed_to_sync_backup_friendly_source_after_vm_rename")
 			}
 		}
@@ -1028,6 +1189,7 @@ func UpdateVMName(libvirtService *libvirt.Service, clusterService *cluster.Servi
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]libvirtServiceInterfaces.SimpleList] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm/simple [get]
 func ListVMsSimple(libvirtService *libvirt.Service) gin.HandlerFunc {
@@ -1035,11 +1197,16 @@ func ListVMsSimple(libvirtService *libvirt.Service) gin.HandlerFunc {
 		vms, err := libvirtService.SimpleListVM()
 
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{Error: "failed_to_list_jails_simple: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_list_vms_simple",
+				Data:    nil,
+				Error:   "failed_to_list_vms_simple: " + err.Error(),
+			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]libvirtServiceInterfaces.SimpleList]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]libvirtServiceInterfaces.SimpleList]{
 			Status:  "success",
 			Message: "vm_listed_simple",
 			Data:    vms,
@@ -1048,57 +1215,30 @@ func ListVMsSimple(libvirtService *libvirt.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Get a simple Virtual Machine by RID or ID
-// @Description Retrieve a simple virtual machine object by its RID or ID
+// @Summary Get a simple Virtual Machine by RID
+// @Description Retrieve a simple virtual machine object by its resource ID (RID)
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path string true "Virtual Machine RID or ID"
-// @Param type query string false "Type of identifier (rid or id)" Enums(rid, id) default(rid)
+// @Param rid path int true "Virtual Machine RID" minimum(1)
 // @Success 200 {object} internal.APIResponse[libvirtServiceInterfaces.SimpleList] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/simple/:id [get]
-func GetSimpleVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
+// @Router /vm/simple/{rid} [get]
+func GetSimpleVMByRID(libvirtService vmSimpleDetailService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmID := c.Param("id")
-		if vmID == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_vm_id",
-				Data:    nil,
-				Error:   "Virtual Machine ID is required",
-			})
+		rid, ok := parseVMRID(c)
+		if !ok {
 			return
 		}
 
-		t := c.DefaultQuery("type", "rid")
-		if t != "rid" && t != "id" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_type_param",
-				Data:    nil,
-				Error:   "Type parameter must be either 'rid' or 'id'",
-			})
-			return
-		}
-
-		identifier, err := strconv.Atoi(vmID)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_vm_id_format",
-				Data:    nil,
-				Error:   "Virtual Machine ID must be a valid integer",
-			})
-			return
-		}
-
-		simple, err := libvirtService.GetSimpleVM(identifier, t == "rid")
+		simple, err := libvirtService.GetSimpleVMByRID(rid)
 		if err != nil {
 			if isVMNotFoundError(err) {
-				c.JSON(404, internal.APIResponse[any]{
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "vm_not_found",
 					Data:    nil,
@@ -1107,7 +1247,7 @@ func GetSimpleVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 				return
 			}
 
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_vm",
 				Data:    nil,
@@ -1116,9 +1256,9 @@ func GetSimpleVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[libvirtServiceInterfaces.SimpleList]{
+		c.JSON(http.StatusOK, internal.APIResponse[libvirtServiceInterfaces.SimpleList]{
 			Status:  "success",
-			Message: "vm_retrieved_simple_by_vmid",
+			Message: "vm_retrieved_simple",
 			Data:    simple,
 			Error:   "",
 		})

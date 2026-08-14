@@ -66,7 +66,7 @@ func TestReplicationZFSTokensRequireExactValues(t *testing.T) {
 	}
 }
 
-func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
+func TestIntegrationValidateReplicationTransitionGenerationForActivation(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	tests := []struct {
 		name      string
@@ -81,7 +81,7 @@ func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pool, client, cleanup := zfstest.Pool(t)
+			pool, client, cleanup := zfstest.SharedPool(t)
 			defer cleanup()
 			root := pool + "/sylve/"
 			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
@@ -148,7 +148,7 @@ func TestValidateReplicationTransitionGenerationForActivation(t *testing.T) {
 	}
 }
 
-func TestValidateAlreadyRunningReplicationActivationIgnoresSnapshots(t *testing.T) {
+func TestIntegrationValidateAlreadyRunningReplicationActivationIgnoresSnapshots(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	tests := []struct {
 		name      string
@@ -163,7 +163,7 @@ func TestValidateAlreadyRunningReplicationActivationIgnoresSnapshots(t *testing.
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pool, client, cleanup := zfstest.Pool(t)
+			pool, client, cleanup := zfstest.SharedPool(t)
 			defer cleanup()
 			root := pool + "/sylve/"
 			if tt.guestType == clusterModels.ReplicationGuestTypeVM {
@@ -221,9 +221,9 @@ func TestValidateAlreadyRunningReplicationActivationIgnoresSnapshots(t *testing.
 	}
 }
 
-func TestFenceReplicationGuestDatasets(t *testing.T) {
+func TestIntegrationFenceReplicationGuestDatasets(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -250,9 +250,9 @@ func TestFenceReplicationGuestDatasets(t *testing.T) {
 	}
 }
 
-func TestFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
+func TestIntegrationFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -276,9 +276,9 @@ func TestFenceReplicationGuestDatasetsAlreadyFenced(t *testing.T) {
 	}
 }
 
-func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
+func TestIntegrationFenceReplicationGuestDatasetsJail(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -301,9 +301,9 @@ func TestFenceReplicationGuestDatasetsJail(t *testing.T) {
 	}
 }
 
-func TestFenceReplicationGuestDatasetsNoMatch(t *testing.T) {
+func TestIntegrationFenceReplicationGuestDatasetsNoMatch(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -327,9 +327,9 @@ func TestFenceReplicationGuestDatasetsNilPolicy(t *testing.T) {
 	}
 }
 
-func TestUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
+func TestIntegrationUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -358,9 +358,9 @@ func TestUnfenceReplicationGuestDatasetsIfNeeded(t *testing.T) {
 	}
 }
 
-func TestFindLocalGuestDatasets(t *testing.T) {
+func TestIntegrationFindLocalGuestDatasets(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 

@@ -327,6 +327,19 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 }
 
 func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error {
+	return setupConfiguredAdminWithHasher(db, adminCfg, utils.BcryptPasswordHasher{})
+}
+
+type passwordHasher interface {
+	Hash(password string) (string, error)
+	Verify(password, encodedHash string) bool
+}
+
+func setupConfiguredAdminWithHasher(
+	db *gorm.DB,
+	adminCfg internal.BaseConfigAdmin,
+	hasher passwordHasher,
+) error {
 	const username = "admin"
 
 	var user models.User
@@ -334,7 +347,7 @@ func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error 
 
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			hashed, err := utils.HashPassword(adminCfg.Password)
+			hashed, err := hasher.Hash(adminCfg.Password)
 			if err != nil {
 				logger.L.Error().Err(err).Str("username", username).Msg("admin_password_hash_failed")
 				return fmt.Errorf("hash initial admin password: %w", err)
@@ -382,10 +395,10 @@ func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error 
 		}
 
 		passwordLogLevel = "info"
-		if utils.CheckPasswordHash(adminCfg.Password, user.Password) {
+		if hasher.Verify(adminCfg.Password, user.Password) {
 			passwordOutcome = "force_reset_already_matched"
 		} else {
-			hashed, err := utils.HashPassword(adminCfg.Password)
+			hashed, err := hasher.Hash(adminCfg.Password)
 			if err != nil {
 				logger.L.Error().Err(err).Str("username", username).Msg("admin_password_hash_failed")
 				return fmt.Errorf("hash admin reset password: %w", err)
@@ -395,7 +408,7 @@ func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error 
 		}
 	} else if adminCfg.Password == "" {
 		passwordOutcome = "configured_password_empty"
-	} else if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
+	} else if !hasher.Verify(adminCfg.Password, user.Password) {
 		passwordOutcome = "ignored_force_reset_disabled"
 		passwordLogLevel = "warn"
 	}
@@ -413,7 +426,7 @@ func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error 
 			logger.L.Error().Err(err).Str("username", username).Msg("admin_password_verification_failed")
 			return fmt.Errorf("reload admin password after force reset: %w", err)
 		}
-		if !utils.CheckPasswordHash(adminCfg.Password, persisted.Password) {
+		if !hasher.Verify(adminCfg.Password, persisted.Password) {
 			logger.L.Error().Str("username", username).Msg("admin_password_verification_failed")
 			return fmt.Errorf("persisted admin password did not verify after force reset")
 		}

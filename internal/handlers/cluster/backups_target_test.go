@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/gin-gonic/gin"
@@ -101,7 +102,7 @@ func newBackupTargetRouter(cS *cluster.Service, zS backupTargetZelta) *gin.Engin
 	r.POST("/cluster/backups/targets", CreateBackupTarget(cS, zS))
 	r.PUT("/cluster/backups/targets/:id", UpdateBackupTarget(cS, zS))
 	r.DELETE("/cluster/backups/targets/:id", DeleteBackupTarget(cS, zS))
-	r.POST("/cluster/backups/targets/validate/:id", ValidateBackupTarget(cS, zS))
+	r.POST("/cluster/backups/targets/:id/validate", ValidateBackupTarget(cS, zS))
 	r.GET("/cluster/backups/targets/:id/readiness", BackupTargetReadiness(cS))
 	return r
 }
@@ -423,6 +424,26 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 	})
 }
 
+func TestBackupTargetCreateRejectsOversizedBody(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	r := gin.New()
+	r.Use(middleware.LimitRequestBody(64))
+	r.POST("/cluster/backups/targets", CreateBackupTarget(&cluster.Service{DB: db}, &backupTargetZeltaStub{}))
+
+	body := []byte(`{"name":"target-a","sshHost":"user@host","backupRoot":"tank/backups","sshKey":"` + strings.Repeat("x", 128) + `"}`)
+	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", body)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var response handlerAPIResponse[any]
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "request_body_too_large" || response.Error != "request_body_too_large" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
 func TestBackupTargetsHandlerUpdate(t *testing.T) {
 	seedTarget := func(t *testing.T, db any) clusterModels.BackupTarget {
 		t.Helper()
@@ -617,8 +638,8 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 			"/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
 				"name":"name-conflict","sshHost":"user@old-host","backupRoot":"tank/old"
 			}`))
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("expected mutation failure, got %d body=%s", rr.Code, rr.Body.String())
+		if rr.Code != http.StatusConflict {
+			t.Fatalf("expected conflict, got %d body=%s", rr.Code, rr.Body.String())
 		}
 		var stored clusterModels.BackupTarget
 		if err := db.First(&stored, target.ID).Error; err != nil {
@@ -760,8 +781,8 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 		r := newBackupTargetRouter(cS, zStub)
 
 		rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/targets/1", nil)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
 		}
 
 		var resp handlerAPIResponse[any]
@@ -770,6 +791,34 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 		}
 		if resp.Message != "backup_target_delete_failed" {
 			t.Fatalf("unexpected response: %+v", resp)
+		}
+	})
+
+	t.Run("missing target", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+		cS := &cluster.Service{DB: db}
+		r := newBackupTargetRouter(cS, &backupTargetZeltaStub{})
+
+		rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/targets/1", nil)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d body=%s", rr.Code, rr.Body.String())
+		}
+	})
+
+	t.Run("enabled target conflicts", func(t *testing.T) {
+		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+		cS := &cluster.Service{DB: db}
+		r := newBackupTargetRouter(cS, &backupTargetZeltaStub{})
+		target := clusterModels.BackupTarget{
+			Name: "target-enabled", SSHHost: "user@enabled", BackupRoot: "tank/enabled", Enabled: true,
+		}
+		if err := db.Create(&target).Error; err != nil {
+			t.Fatalf("seed target: %v", err)
+		}
+
+		rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), nil)
+		if rr.Code != http.StatusConflict {
+			t.Fatalf("expected 409, got %d body=%s", rr.Code, rr.Body.String())
 		}
 	})
 
@@ -816,7 +865,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
-		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/validate/abc", nil)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/abc/validate", nil)
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 		}
@@ -828,7 +877,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
-		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/validate/99", nil)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/99/validate", nil)
 		if rr.Code != http.StatusNotFound {
 			t.Fatalf("expected 404, got %d body=%s", rr.Code, rr.Body.String())
 		}
@@ -851,7 +900,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("validate_failed")}
 		r := newBackupTargetRouter(cS, zStub)
 
-		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/validate/"+strconv.FormatUint(uint64(target.ID), 10), nil)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10)+"/validate", nil)
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 		}
@@ -874,7 +923,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
-		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/validate/"+strconv.FormatUint(uint64(target.ID), 10), nil)
+		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10)+"/validate", nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
 		}
@@ -920,6 +969,30 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 		wantStatus  int
 		wantMessage string
 	}{
+		{
+			name:        "target not found",
+			err:         errors.New("backup_target_not_found"),
+			wantStatus:  http.StatusNotFound,
+			wantMessage: "backup_target_not_found",
+		},
+		{
+			name:        "target lookup failed",
+			err:         errors.New("backup_target_lookup_failed: database offline"),
+			wantStatus:  http.StatusInternalServerError,
+			wantMessage: "backup_target_lookup_failed",
+		},
+		{
+			name:        "target disabled",
+			err:         errors.New("backup_target_disabled"),
+			wantStatus:  http.StatusConflict,
+			wantMessage: "backup_target_disabled",
+		},
+		{
+			name:        "target key unavailable",
+			err:         errors.New("backup_target_ssh_key_materialize_failed: disk offline"),
+			wantStatus:  http.StatusServiceUnavailable,
+			wantMessage: "backup_target_key_unavailable",
+		},
 		{
 			name:        "job already running",
 			err:         errors.New("backup_job_already_running"),
@@ -999,6 +1072,44 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 					tt.wantStatus,
 					tt.wantMessage,
 				)
+			}
+		})
+	}
+}
+
+func TestWriteBackupTargetRemoteReadError(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantStatus  int
+		wantMessage string
+	}{
+		{name: "invalid dataset", err: errors.New("remote_dataset_invalid"), wantStatus: http.StatusBadRequest, wantMessage: "read_failed"},
+		{name: "missing target", err: errors.New("backup_target_not_found"), wantStatus: http.StatusNotFound, wantMessage: "backup_target_not_found"},
+		{name: "disabled target", err: errors.New("backup_target_disabled"), wantStatus: http.StatusConflict, wantMessage: "backup_target_disabled"},
+		{name: "lookup failure", err: errors.New("backup_target_lookup_failed: database offline"), wantStatus: http.StatusInternalServerError, wantMessage: "backup_target_lookup_failed"},
+		{name: "key unavailable", err: errors.New("backup_target_ssh_key_materialize_failed"), wantStatus: http.StatusServiceUnavailable, wantMessage: "backup_target_key_unavailable"},
+		{name: "deadline", err: context.DeadlineExceeded, wantStatus: http.StatusGatewayTimeout, wantMessage: "backup_target_request_timed_out"},
+		{name: "remote failure", err: errors.New("ssh connection refused"), wantStatus: http.StatusBadGateway, wantMessage: "read_failed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(response)
+			writeBackupTargetRemoteReadError(ctx, "read_failed", tt.err)
+			if response.Code != tt.wantStatus {
+				t.Fatalf("status=%d body=%s, want %d", response.Code, response.Body.String(), tt.wantStatus)
+			}
+			var payload handlerAPIResponse[any]
+			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if payload.Message != tt.wantMessage {
+				t.Fatalf("message=%q body=%s, want %q", payload.Message, response.Body.String(), tt.wantMessage)
+			}
+			if tt.wantStatus == http.StatusInternalServerError && strings.Contains(response.Body.String(), "database offline") {
+				t.Fatalf("internal lookup detail leaked: %s", response.Body.String())
 			}
 		})
 	}

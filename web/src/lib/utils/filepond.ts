@@ -1,20 +1,38 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { resolveNodeHostname } from '$lib/utils/enabled-services';
 
-export function getFilePondRequestHeaders(): Record<string, string> {
-	if (!browser) return {};
+export function getFilePondRequestHostname(selectedHostname?: string): string {
+	const explicitHostname = selectedHostname?.trim();
+	if (explicitHostname) return explicitHostname;
+	if (!browser) return '';
 
-	const hostname =
+	return (
 		resolveNodeHostname(window.location.pathname) ||
 		storage.localHostname?.trim() ||
-		storage.hostname?.trim();
+		storage.hostname?.trim() ||
+		''
+	);
+}
+
+export function getFilePondRequestHeaders(selectedHostname?: string): Record<string, string> {
+	if (!browser) return {};
+
+	const hostname = getFilePondRequestHostname(selectedHostname);
 	const headers: Record<string, string> = {};
 	const token = storage.token?.trim();
-	const clusterToken = storage.clusterToken?.trim();
 
 	if (token) headers.Authorization = `Bearer ${token}`;
-	if (clusterToken) headers['X-Cluster-Token'] = `Bearer ${clusterToken}`;
 	if (hostname) headers['X-Current-Hostname'] = hostname;
 
 	return headers;

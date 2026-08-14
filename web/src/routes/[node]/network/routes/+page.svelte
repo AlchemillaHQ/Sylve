@@ -2,6 +2,7 @@
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { deleteStaticRoute, getStaticRoutes } from '$lib/api/network/route';
+	import { getSwitches } from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import Form from '$lib/components/custom/Network/Routes/Form.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -12,7 +13,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { StaticRoute } from '$lib/types/network/route';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { getFriendlyName } from '$lib/utils/network/helpers';
@@ -24,82 +25,89 @@
 
 	interface Data {
 		routes: StaticRoute[] | APIResponse;
-		interfaces: Iface[];
-		switches: SwitchList;
+		interfaces: Iface[] | APIResponse;
+		switches: SwitchList | APIResponse;
 		objects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodRoutes = Array.isArray(data.routes) ? data.routes : ([] as StaticRoute[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+
 	const routes = resource(
 		() => 'network-static-routes',
-		async (key) => {
+		async () => {
 			const result = await getStaticRoutes();
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				return [];
+				return lastGoodRoutes;
 			}
 
-			updateCache(key, result);
-			return result;
+			lastGoodRoutes = result;
+			return lastGoodRoutes;
 		},
 		{
-			initialValue: Array.isArray(data.routes) ? data.routes : ([] as StaticRoute[])
+			initialValue: lastGoodRoutes
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	const interfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				return [];
+				return lastGoodInterfaces;
 			}
 
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[])
+			initialValue: lastGoodInterfaces
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	const switches = resource(
 		() => 'network-switches',
 		async (key) => {
-			const result = await fetch('/api/network/switches').then((res) => res.json());
-			if (isAPIResponse(result)) {
+			const result = await getSwitches();
+			if (!isSwitchList(result)) {
 				handleAPIError(result);
-				return { standard: [], manual: [] };
+				return lastGoodSwitches;
 			}
 
+			lastGoodSwitches = result;
 			updateCache(key, result);
-			return result;
+			return lastGoodSwitches;
 		},
 		{
-			initialValue: data.switches ?? { standard: [], manual: [] }
+			initialValue: lastGoodSwitches
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	const objects = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				return [] as NetworkObject[];
+				return lastGoodObjects;
 			}
 
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[])
+			initialValue: lastGoodObjects
 		}
 	);
 
@@ -283,8 +291,8 @@
 		interfaces={interfaces.current}
 		objects={objects.current}
 		switches={switches.current}
-		afterChange={() => {
-			routes.refetch();
+		afterChange={async () => {
+			await routes.refetch();
 		}}
 	/>
 {/if}
@@ -298,8 +306,8 @@
 		interfaces={interfaces.current}
 		objects={objects.current}
 		switches={switches.current}
-		afterChange={() => {
-			routes.refetch();
+		afterChange={async () => {
+			await routes.refetch();
 		}}
 	/>
 {/if}
@@ -309,17 +317,17 @@
 	names={{ parent: 'static route', element: activeRow?.name || 'unknown' }}
 	actions={{
 		onConfirm: async () => {
+			const routeName = String(activeRow?.name ?? '');
 			const result = await deleteStaticRoute(modals.delete.id);
-			routes.refetch();
-			if ('status' in result && result.status === 'success') {
-				toast.success(`Route ${String(activeRow?.name ?? '')} deleted`, {
+			if (result.status === 'success') {
+				await routes.refetch();
+				toast.success(`Route ${routeName} deleted`, {
 					position: 'bottom-center'
 				});
 				modals.delete.open = false;
 				modals.delete.id = 0;
 			} else {
 				handleAPIError(result);
-				toast.error('Failed to delete route', { position: 'bottom-center' });
 			}
 		},
 		onCancel: () => {

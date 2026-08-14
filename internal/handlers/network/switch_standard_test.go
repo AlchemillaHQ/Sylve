@@ -75,8 +75,8 @@ func TestCreateStandardSwitchDoesNotPanicWhenOptionalIPv6FieldsMissing(t *testin
 		"ports": ["em0"]
 	}`))
 
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusInternalServerError, rr.Code, rr.Body.String())
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, rr.Code, rr.Body.String())
 	}
 
 	var resp struct {
@@ -95,8 +95,8 @@ func TestCreateStandardSwitchDoesNotPanicWhenOptionalIPv6FieldsMissing(t *testin
 	if resp.Message != "failed_to_create_switch" {
 		t.Fatalf("expected failed_to_create_switch message, got %q", resp.Message)
 	}
-	if !strings.Contains(resp.Error, "invalid_vlan") {
-		t.Fatalf("expected invalid_vlan error, got %q", resp.Error)
+	if resp.Error != "invalid_standard_switch_vlan" {
+		t.Fatalf("expected invalid_standard_switch_vlan error, got %q", resp.Error)
 	}
 }
 
@@ -121,10 +121,10 @@ func TestCreateStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 	}`, obj.ID)
 
 	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "network4_object_and_manual_mutually_exclusive") {
+	if e := standardSwitchResponseError(t, rr); e != "standard_switch_network4_source_conflict" {
 		t.Fatalf("expected mutual-exclusivity error, got %q", e)
 	}
 }
@@ -140,10 +140,10 @@ func TestCreateStandardSwitchForwardsManualValidation(t *testing.T) {
 	}`
 
 	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "invalid_network4_manual") {
+	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected invalid_network4_manual error, got %q", e)
 	}
 }
@@ -162,10 +162,10 @@ func TestCreateStandardSwitchDHCPClearsIPv4Manual(t *testing.T) {
 
 	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
 	e := standardSwitchResponseError(t, rr)
-	if strings.Contains(e, "invalid_network4_manual") {
+	if strings.Contains(e, "network4_manual") {
 		t.Fatalf("DHCP should have cleared the IPv4 manual address, but it was validated: %q", e)
 	}
-	if !strings.Contains(e, "invalid_network6_manual") {
+	if e != "invalid_standard_switch_network6_manual" {
 		t.Fatalf("expected the IPv6 manual address to remain and fail validation, got %q", e)
 	}
 }
@@ -182,7 +182,7 @@ func TestCreateStandardSwitchDisableIPv6KeepsIPv4Manual(t *testing.T) {
 	}`
 
 	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "invalid_network4_manual") {
+	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected disableIPv6 to leave IPv4 manual intact and fail validation, got %q", e)
 	}
 }
@@ -199,7 +199,7 @@ func TestCreateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	}`
 
 	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "invalid_network4_manual") {
+	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected SLAAC to leave IPv4 manual intact and fail validation, got %q", e)
 	}
 }
@@ -215,9 +215,14 @@ func setupStandardSwitchUpdateRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		&networkModels.NetworkPort{},
 	)
 	svc := &network.Service{DB: db}
+	switchModel := networkModels.StandardSwitch{Name: "existing", BridgeName: "vm-existing", MTU: 1500}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("failed to seed standard switch: %v", err)
+	}
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.PUT("/network/switch/standard", UpdateStandardSwitch(svc))
+	r.PUT("/network/switch/standard/:id", UpdateStandardSwitch(svc))
+	r.DELETE("/network/switch/standard/:id", DeleteStandardSwitch(svc))
 	return r, db
 }
 
@@ -234,7 +239,6 @@ func TestUpdateStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 	}
 
 	body := fmt.Sprintf(`{
-		"id": 1,
 		"mtu": 1500,
 		"private": false,
 		"ports": ["em0"],
@@ -242,11 +246,11 @@ func TestUpdateStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 		"network4Manual": "10.0.0.1/24"
 	}`, obj.ID)
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard", []byte(body))
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(body))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "network4_object_and_manual_mutually_exclusive") {
+	if e := standardSwitchResponseError(t, rr); e != "standard_switch_network4_source_conflict" {
 		t.Fatalf("expected mutual-exclusivity error, got %q", e)
 	}
 }
@@ -255,18 +259,17 @@ func TestUpdateStandardSwitchForwardsManualValidation(t *testing.T) {
 	r, _ := setupStandardSwitchUpdateRouter(t)
 
 	body := `{
-		"id": 1,
 		"mtu": 1500,
 		"private": false,
 		"ports": ["em0"],
 		"network4Manual": "not-a-cidr"
 	}`
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard", []byte(body))
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d body=%s", rr.Code, rr.Body.String())
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(body))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "invalid_network4_manual") {
+	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected invalid_network4_manual error, got %q", e)
 	}
 }
@@ -275,7 +278,6 @@ func TestUpdateStandardSwitchDHCPClearsIPv4Manual(t *testing.T) {
 	r, _ := setupStandardSwitchUpdateRouter(t)
 
 	body := `{
-		"id": 1,
 		"mtu": 1500,
 		"private": false,
 		"ports": ["em0"],
@@ -284,12 +286,12 @@ func TestUpdateStandardSwitchDHCPClearsIPv4Manual(t *testing.T) {
 		"network6Manual": "garbage6"
 	}`
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard", []byte(body))
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(body))
 	e := standardSwitchResponseError(t, rr)
-	if strings.Contains(e, "invalid_network4_manual") {
+	if strings.Contains(e, "network4_manual") {
 		t.Fatalf("DHCP should have cleared the IPv4 manual address on PUT, but it was validated: %q", e)
 	}
-	if !strings.Contains(e, "invalid_network6_manual") {
+	if e != "invalid_standard_switch_network6_manual" {
 		t.Fatalf("expected the IPv6 manual address to remain and fail validation on PUT, got %q", e)
 	}
 }
@@ -298,7 +300,6 @@ func TestUpdateStandardSwitchDisableIPv6KeepsIPv4Manual(t *testing.T) {
 	r, _ := setupStandardSwitchUpdateRouter(t)
 
 	body := `{
-		"id": 1,
 		"mtu": 1500,
 		"private": false,
 		"ports": ["em0"],
@@ -306,8 +307,8 @@ func TestUpdateStandardSwitchDisableIPv6KeepsIPv4Manual(t *testing.T) {
 		"network4Manual": "garbage4"
 	}`
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard", []byte(body))
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "invalid_network4_manual") {
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(body))
+	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected disableIPv6 to leave IPv4 manual intact and fail validation, got %q", e)
 	}
 }
@@ -316,7 +317,6 @@ func TestUpdateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	r, _ := setupStandardSwitchUpdateRouter(t)
 
 	body := `{
-		"id": 1,
 		"mtu": 1500,
 		"private": false,
 		"ports": ["em0"],
@@ -324,8 +324,54 @@ func TestUpdateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 		"network4Manual": "garbage4"
 	}`
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard", []byte(body))
-	if e := standardSwitchResponseError(t, rr); !strings.Contains(e, "invalid_network4_manual") {
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(body))
+	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected SLAAC to leave IPv4 manual intact and fail validation, got %q", e)
+	}
+}
+
+func TestStandardSwitchHandlersRejectInvalidPathIDs(t *testing.T) {
+	for _, id := range []string{"0", "-1", "not-a-number"} {
+		t.Run(id, func(t *testing.T) {
+			r, _ := setupStandardSwitchUpdateRouter(t)
+			for _, method := range []string{http.MethodPut, http.MethodDelete} {
+				rr := performNetworkJSONRequest(
+					t,
+					r,
+					method,
+					"/network/switch/standard/"+id,
+					[]byte(`{"private":false}`),
+				)
+				if rr.Code != http.StatusBadRequest {
+					t.Fatalf("method=%s id=%q expected 400, got %d body=%s", method, id, rr.Code, rr.Body.String())
+				}
+				if code := standardSwitchResponseError(t, rr); code != "invalid_standard_switch_id" {
+					t.Fatalf("method=%s id=%q expected stable invalid-ID code, got %q", method, id, code)
+				}
+			}
+		})
+	}
+}
+
+func TestStandardSwitchHandlersReturnNotFoundForMissingSwitch(t *testing.T) {
+	r, _ := setupStandardSwitchUpdateRouter(t)
+
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		rr := performNetworkJSONRequest(
+			t,
+			r,
+			method,
+			"/network/switch/standard/999999",
+			[]byte(`{"private":false}`),
+		)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("method=%s expected 404, got %d body=%s", method, rr.Code, rr.Body.String())
+		}
+		if code := standardSwitchResponseError(t, rr); code != "standard_switch_not_found" {
+			t.Fatalf("method=%s expected stable not-found code, got %q", method, code)
+		}
+		if strings.Contains(rr.Body.String(), "record not found") {
+			t.Fatalf("method=%s leaked database details: %s", method, rr.Body.String())
+		}
 	}
 }

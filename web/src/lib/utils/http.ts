@@ -11,6 +11,7 @@
 import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { api } from '$lib/api/common';
+import { isDemoMode } from '$lib/demo/runtime';
 import { reload } from '$lib/stores/api.svelte';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { z } from 'zod/v4';
@@ -36,18 +37,10 @@ export type NodeAPIRequestOptions = Pick<
     'hostname' | 'signal' | 'preserveErrors'
 >;
 
-let cacheWritesSuspended = false;
-
 export function isRequestCancellation(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     const code = 'code' in error ? String(error.code || '') : '';
     return error.name === 'AbortError' || error.name === 'CanceledError' || code === 'ERR_CANCELED';
-}
-
-// A full browser reset reloads the module after storage is cleared. Until then,
-// ignore late requests from the outgoing session so they cannot recreate cache entries.
-export function suspendAPICacheWrites(): void {
-    cacheWritesSuspended = true;
 }
 
 function getScopedCacheKey(key: string, hostname?: string): string {
@@ -77,8 +70,11 @@ export async function apiRequest<T extends z.ZodType>(
     body?: unknown,
     options?: APIRequestOptions
 ): Promise<z.infer<T> | APIResponse> {
+    const auditHostname = options?.hostname || null;
+
     function setReloadFlag() {
         if (method !== 'GET' && !options?.skipAuditLog) {
+            reload.auditLogHostname = auditHostname;
             reload.auditLog = true;
         }
     }
@@ -106,11 +102,6 @@ export async function apiRequest<T extends z.ZodType>(
 
         if (apiResponse.data) {
             if (apiResponse.data.status && apiResponse.data.status === 'error') {
-                if (apiResponse.data.error && apiResponse.data.error === 'invalid_cluster_token') {
-                    storage.clusterToken = '';
-                    return apiRequest(endpoint, schema, method, body, options);
-                }
-
                 registerErrorContext(apiResponse.data, errorContext);
                 stageErrorDetail(apiResponse.data, errorContext);
                 setReloadFlag();
@@ -139,20 +130,32 @@ export async function apiRequest<T extends z.ZodType>(
             return apiResponse.data as z.infer<T>;
         }
 
-        if (apiResponse.data.data) {
-            const parsedResult = schema.safeParse(apiResponse.data.data);
-            if (parsedResult.success) {
-                setReloadFlag();
-                return parsedResult.data;
-            } else {
-                console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
-                setReloadFlag();
-                return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
-            }
+        const parsedResult = schema.safeParse(apiResponse.data.data);
+        if (parsedResult.success) {
+            setReloadFlag();
+            return parsedResult.data;
         }
 
+        // Response schemas describe the complete API envelope rather than its
+        // data field. Preserve that existing use case before reporting a data
+        // contract failure.
+        const parsedEnvelope = schema.safeParse(apiResponse.data);
+        if (parsedEnvelope.success) {
+            setReloadFlag();
+            return parsedEnvelope.data;
+        }
+
+        console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
         setReloadFlag();
-        return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
+        const invalidResponse: APIResponse = {
+            status: 'error',
+            message: 'Invalid response data',
+            error: 'The server response data did not match the expected format.',
+            data: apiResponse.data.data
+        };
+        registerErrorContext(invalidResponse, errorContext);
+        stageErrorDetail(invalidResponse, errorContext);
+        return getDefaultValue(schema, invalidResponse, options?.preserveErrors);
     } catch (error) {
         if (isRequestCancellation(error)) throw error;
         setReloadFlag();
@@ -192,11 +195,15 @@ export async function cachedFetch<T>(
     onlyCache?: boolean,
     hostname?: string
 ): Promise<T> {
+    if (isDemoMode) {
+        return await fetchFunction();
+    }
+
     const scopedKey = getScopedCacheKey(key, hostname);
     const now = Date.now();
-    const entry = cacheWritesSuspended ? null : await kvStorage.getItem<T>(scopedKey);
+    const entry = await kvStorage.getItem<T>(scopedKey);
 
-    if (!cacheWritesSuspended && entry && entry.data !== null) {
+    if (entry && entry.data !== null) {
         const isFresh = now - entry.timestamp < duration;
         const data = entry.data;
 
@@ -219,12 +226,11 @@ export async function cachedFetch<T>(
     const data = await fetchFunction();
 
     if (
-        !cacheWritesSuspended &&
-        (!data ||
-            typeof data !== 'object' ||
-            !('status' in data) ||
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (data as any).status !== 'error')
+        !data ||
+        typeof data !== 'object' ||
+        !('status' in data) ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (data as any).status !== 'error'
     ) {
         await kvStorage.setItem(scopedKey, data);
     }
@@ -233,8 +239,6 @@ export async function cachedFetch<T>(
 }
 
 export async function getCache<T>(key: string, hostname?: string): Promise<T | null> {
-    if (cacheWritesSuspended) return null;
-
     const scopedKey = getScopedCacheKey(key, hostname);
     try {
         const entry = await kvStorage.getItem<T>(scopedKey);
@@ -246,11 +250,8 @@ export async function getCache<T>(key: string, hostname?: string): Promise<T | n
 }
 
 export async function updateCache<T>(key: string, obj: T, hostname?: string): Promise<void> {
-    if (cacheWritesSuspended) return;
-
     const scopedKey = getScopedCacheKey(key, hostname);
     try {
-        if (cacheWritesSuspended) return;
         await kvStorage.setItem(scopedKey, obj);
     } catch (error) {
         console.error(`Failed to update cached data for key "${scopedKey}"`, error);
@@ -258,8 +259,6 @@ export async function updateCache<T>(key: string, obj: T, hostname?: string): Pr
 }
 
 export async function removeCache(key: string, hostname?: string): Promise<void> {
-    if (cacheWritesSuspended) return;
-
     const scopedKey = getScopedCacheKey(key, hostname);
     try {
         await kvStorage.removeItem(scopedKey);

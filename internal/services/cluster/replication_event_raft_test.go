@@ -15,13 +15,12 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestReplicationTransitionEventsAndRetentionConvergeWithoutMergingLocalHistory(t *testing.T) {
+func TestIntegrationRaftTransitionEventsConvergeWithoutMergingHistory(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2,
 		&clusterModels.Cluster{},
 		&clusterModels.ReplicationEvent{},
 		&clusterModels.ReplicationGuestOperationReceipt{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	for i, node := range nodes {
 		if err := node.service.DB.Create(&clusterModels.Cluster{
@@ -120,12 +119,11 @@ func TestReplicationTransitionEventsAndRetentionConvergeWithoutMergingLocalHisto
 	})
 }
 
-func TestReplicatedRetentionConvergesOrphanTransitionCleanup(t *testing.T) {
+func TestIntegrationRaftRetentionConvergesOrphanCleanup(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3,
 		&clusterModels.Cluster{},
 		&clusterModels.ReplicationPolicy{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 	livePolicyID := uint(41)
 	orphanPolicyID := uint(42)
 	now := time.Date(2026, time.August, 2, 12, 0, 0, 0, time.UTC)

@@ -5,7 +5,6 @@ import { SimpleVmSchema, SimpleVmTemplateSchema } from '../vm/vm';
 export const ClusterSchema = z.object({
 	id: z.number(),
 	enabled: z.boolean(),
-	key: z.string(),
 	raftBootstrap: z.boolean().nullable(),
 	raftIP: z.string(),
 	raftPort: z.number().min(0).max(65535).optional()

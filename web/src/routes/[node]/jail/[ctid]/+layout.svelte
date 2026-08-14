@@ -3,17 +3,16 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { resolve } from '$app/paths';
-	import { setContext } from 'svelte';
+	import { setContext, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
+	import { deleteJail, getJailState, getSimpleJailByCTID, jailAction } from '$lib/api/jail/jail';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
 	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
-	import { getJailLifecycleBadgeStyle } from '$lib/utils/jail/jail';
-	import { sleep } from '$lib/utils';
-	import { updateCache } from '$lib/utils/http';
+	import { getJailLifecycleBadgeStyle, removeStaleJailCacheByCTID } from '$lib/utils/jail/jail';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -44,27 +43,76 @@
 	let isConsolePage = $derived.by(() => jailChildRoute === 'console');
 	let isSummaryPage = $derived.by(() => jailChildRoute === '' || jailChildRoute === 'summary');
 
-	const jail = resource(
+	type SimpleJailSnapshot = { identity: string; value: SimpleJail | null };
+	type JailStateSnapshot = { identity: string; value: JailState | null };
+	type JailLayoutData = {
+		node?: string;
+		ctId?: number;
+		jail?: SimpleJail | null;
+		state?: JailState | null;
+	};
+
+	const initialLayoutData = untrack(() => page.data as JailLayoutData);
+	const initialLayoutIdentity = `${initialLayoutData.node || ''}\u0000${initialLayoutData.ctId || 0}`;
+	let jailIdentity = $derived(`${node}\u0000${ctId}`);
+
+	const jailResource = resource(
 		[() => node, () => ctId],
-		async ([hostname, currentCtID], _, { signal }): Promise<SimpleJail | null> => {
-			if (!currentCtID) return null;
-			const result = await getSimpleJailById(currentCtID, 'ctid', { hostname, signal });
-			updateCache(`simple-jail-${currentCtID}`, result, hostname);
-			return result;
+		async ([hostname, currentCtID], _, { signal }): Promise<SimpleJailSnapshot> => {
+			const identity = `${hostname}\u0000${currentCtID}`;
+			if (!currentCtID) return { identity, value: null };
+			const result = await getSimpleJailByCTID(currentCtID, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
+			}
+			await updateCache(`simple-jail-${currentCtID}`, result, hostname);
+			return { identity, value: result };
 		},
-		{ initialValue: (page.data as { jail?: SimpleJail | null }).jail ?? null }
+		{
+			initialValue: {
+				identity: initialLayoutIdentity,
+				value: initialLayoutData.jail ?? null
+			}
+		}
 	);
 
-	const jState = resource(
+	const stateResource = resource(
 		[() => node, () => ctId],
-		async ([hostname, currentCtID], _, { signal }): Promise<JailState | null> => {
-			if (!currentCtID) return null;
-			const result = await getJailStateById(currentCtID, { hostname, signal });
-			updateCache(`jail-${currentCtID}-state`, result, hostname);
-			return result;
+		async ([hostname, currentCtID], _, { signal }): Promise<JailStateSnapshot> => {
+			const identity = `${hostname}\u0000${currentCtID}`;
+			if (!currentCtID) return { identity, value: null };
+			const result = await getJailState(currentCtID, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail state');
+			}
+			await updateCache(`jail-${currentCtID}-state`, result, hostname);
+			return { identity, value: result };
 		},
-		{ initialValue: (page.data as { state?: JailState | null }).state ?? null }
+		{
+			initialValue: {
+				identity: initialLayoutIdentity,
+				value: initialLayoutData.state ?? null
+			}
+		}
 	);
+
+	const jail = {
+		get current(): SimpleJail | null {
+			return jailResource.current.identity === jailIdentity
+				? jailResource.current.value
+				: ((page.data as JailLayoutData).jail ?? null);
+		},
+		refetch: () => jailResource.refetch()
+	};
+
+	const jState = {
+		get current(): JailState | null {
+			return stateResource.current.identity === jailIdentity
+				? stateResource.current.value
+				: ((page.data as JailLayoutData).state ?? null);
+		},
+		refetch: () => stateResource.refetch()
+	};
 
 	setContext('jailState', jState);
 
@@ -75,6 +123,7 @@
 	);
 	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
 	let showMigrateModal = $state(false);
+	let actionRequestInFlight = $state(false);
 
 	let sourceNodeUuid = $derived.by(() => {
 		const nds = (page.data as Record<string, unknown>).nodes;
@@ -168,38 +217,46 @@
 
 	async function handleDelete() {
 		if (!jail.current || isDeleteInFlight) return;
+		const target = {
+			ctId: jail.current.ctId,
+			name: jail.current.name,
+			hostname: node
+		};
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being deleted`;
+		modalState.loading.description = `Please wait while Jail <b>${target.name} (${target.ctId})</b> is being deleted`;
 		modalState.loading.iconColor = 'text-red-500';
 
-		await sleep(1000);
-		const result = await deleteJail(
-			jail.current.ctId,
-			modalState.deleteMacs,
-			modalState.deleteRootFS
-		);
-		reload.leftPanel = true;
-		modalState.loading.open = false;
-
-		if (result.status === 'error') {
-			isDeleteInFlight = false;
-			toast.error(
-				result.message === 'guest_delete_requires_replication_policy_removed'
-					? 'Remove the replication policy before deleting this jail'
-					: 'Error deleting jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
+		try {
+			const result = await deleteJail(
+				target.ctId,
+				modalState.deleteMacs,
+				modalState.deleteRootFS,
+				target.hostname
 			);
-		} else if (result.status === 'success') {
+
+			if (result.status === 'error') {
+				await Promise.allSettled([jail.refetch(), jState.refetch()]);
+				toast.error(
+					result.message === 'guest_delete_requires_replication_policy_removed'
+						? 'Remove the replication policy before deleting this jail'
+						: 'Error deleting jail',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
 			const deletionData = parseGuestDeletionData(result.data);
 			const cleanupWarnings = deletionData.warnings;
 			const retainedDatasets = deletionData.retainedDatasets;
-			await useSafeGoto(`/${storage.hostname}/summary`);
+			await removeStaleJailCacheByCTID(target.ctId, target.hostname);
+			await useSafeGoto(resolve('/[node]/summary', { node: target.hostname }));
 			if (cleanupWarnings.length > 0) {
 				toast.warning(
 					`Jail deleted, but cleanup was incomplete${retainedDatasets.length > 0 ? `: ${retainedDatasets.join(', ')}` : ''}`,
@@ -216,67 +273,98 @@
 					position: 'bottom-center'
 				});
 			}
+		} catch (error) {
+			await Promise.allSettled([jail.refetch(), jState.refetch()]);
+			toast.error(error instanceof Error ? error.message : 'Error deleting jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			modalState.loading.open = false;
+			isDeleteInFlight = false;
 		}
 	}
 
 	async function handleStop() {
-		if (!jail.current) return;
-		const result = await jailAction(jail.current.ctId, 'stop');
-		jState.refetch();
-		reload.leftPanel = true;
+		if (!jail.current || actionRequestInFlight) return;
+		const targetCTID = jail.current.ctId;
+		actionRequestInFlight = true;
 
-		if (result.status === 'error') {
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'Jail action already in progress'
-					: 'Error stopping jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+		try {
+			const result = await jailAction(targetCTID, 'stop', node);
+			if (isAPIResponse(result)) {
+				toast.error(
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
+						? 'Jail action already in progress'
+						: 'Error stopping jail',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
 			jailPowerSignal.token += 1;
-			jailPowerSignal.ctId = jail.current.ctId;
+			jailPowerSignal.ctId = targetCTID;
 			jailPowerSignal.action = 'stop';
 
 			toast.success('Jail stop queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Error stopping jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			await Promise.allSettled([jail.refetch(), jState.refetch()]);
+			actionRequestInFlight = false;
 		}
-
-		await refreshJailState();
 	}
 
 	async function handleStart() {
-		if (!jail.current) return;
-		const result = await jailAction(jail.current.ctId, 'start');
-		jState.refetch();
-		reload.leftPanel = true;
+		if (!jail.current || actionRequestInFlight) return;
+		const targetCTID = jail.current.ctId;
+		actionRequestInFlight = true;
 
-		if (result.status === 'error') {
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'Jail action already in progress'
-					: 'Error starting jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+		try {
+			const result = await jailAction(targetCTID, 'start', node);
+			if (isAPIResponse(result)) {
+				toast.error(
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
+						? 'Jail action already in progress'
+						: 'Error starting jail',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
 			jailPowerSignal.token += 1;
-			jailPowerSignal.ctId = jail.current.ctId;
+			jailPowerSignal.ctId = targetCTID;
 			jailPowerSignal.action = 'start';
 
 			toast.success('Jail start queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Error starting jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			await Promise.allSettled([jail.refetch(), jState.refetch()]);
+			actionRequestInFlight = false;
 		}
-
-		await refreshJailState();
 	}
 </script>
 
@@ -306,6 +394,7 @@
 				{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 					<Button
 						onclick={handleStop}
+						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -314,6 +403,7 @@
 				{:else if !shouldHideActionButtons}
 					<Button
 						onclick={handleStart}
+						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -361,6 +451,7 @@
 				{#if availableNodeCount > 0}
 					<Button
 						onclick={() => (showMigrateModal = true)}
+						disabled={actionRequestInFlight || (hasActiveLifecycleTask && !isMigrationActive)}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>

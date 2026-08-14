@@ -3,6 +3,7 @@
 package clusterHandlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -29,7 +30,7 @@ func TestAcceptJoinPreflightRejectsMalformedInventoryPayload(t *testing.T) {
 	router.POST("/cluster/accept-join", AcceptJoin(nil))
 
 	body := []byte(fmt.Sprintf(
-		`{"nodeId":"node-1","nodeIp":"192.0.2.10","clusterKey":"secret","nodeVersion":%q,"preflight":true,"inventory":{"entries":"not-an-array"}}`,
+		`{"nodeId":"node-1","nodeIp":"192.0.2.10","nodeVersion":%q,"preflight":true,"inventory":{"entries":"not-an-array"}}`,
 		cmd.Version,
 	))
 	response := performJSONRequest(t, router, http.MethodPost, "/cluster/accept-join", body)
@@ -51,7 +52,7 @@ func TestAcceptJoinPreflightStillRejectsVersionMismatchBeforeServiceUse(t *testi
 	router := gin.New()
 	router.POST("/cluster/accept-join", AcceptJoin(nil))
 
-	body := []byte(`{"nodeId":"node-1","nodeIp":"192.0.2.10","clusterKey":"secret","nodeVersion":"0.0.0","preflight":true,"inventory":{"entries":[],"conflicts":[],"digest":"bad"}}`)
+	body := []byte(`{"nodeId":"node-1","nodeIp":"192.0.2.10","nodeVersion":"0.0.0","preflight":true,"inventory":{"entries":[],"conflicts":[],"digest":"bad"}}`)
 	response := performJSONRequest(t, router, http.MethodPost, "/cluster/accept-join", body)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409: %s", response.Code, response.Body.String())
@@ -113,7 +114,7 @@ func TestCreateClusterReturnsTypedInventoryConflict(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/cluster", CreateCluster(nil, &cluster.Service{DB: db, NodeID: "node-create"}, nil))
+	router.POST("/cluster", CreateCluster(&cluster.Service{DB: db, NodeID: "node-create"}, nil))
 	response := performJSONRequest(t, router, http.MethodPost, "/cluster", []byte(`{"ip":"127.0.0.1"}`))
 	if response.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409: %s", response.Code, response.Body.String())
@@ -153,6 +154,27 @@ func (s *joinLeaderStubState) recordError(format string, args ...any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.errors = append(s.errors, fmt.Sprintf(format, args...))
+}
+
+func (s *joinLeaderStubState) checkTransport(r *http.Request) {
+	if r.Header.Get(auth.ClusterKeyHeader) != "cluster-secret" ||
+		r.Header.Get("Accept") != "application/json" {
+		s.recordError("missing minimal join headers on %s: %v", r.URL.Path, r.Header)
+	}
+	wantContentType := ""
+	if r.URL.Path == "/api/cluster/accept-join" {
+		wantContentType = "application/json"
+	}
+	if r.Header.Get("Content-Type") != wantContentType {
+		s.recordError("content type on %s = %q, want %q", r.URL.Path, r.Header.Get("Content-Type"), wantContentType)
+	}
+	for _, name := range []string{
+		"Authorization", "Proxy-Authorization", "Cookie", auth.ClusterTokenHeader, "X-Current-Hostname",
+	} {
+		if value := r.Header.Get(name); value != "" {
+			s.recordError("browser header %s leaked to %s", name, r.URL.Path)
+		}
+	}
 }
 
 func (s *joinLeaderStubState) snapshot() ([]string, []AcceptJoinRequest, []string) {
@@ -242,6 +264,7 @@ func TestJoinClusterLeaderConflictPreflightLeavesStandaloneStateUntouched(t *tes
 	stubState := &joinLeaderStubState{}
 	stub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		stubState.recordPath(r.URL.Path)
+		stubState.checkTransport(r)
 		switch r.URL.Path {
 		case "/api/health/basic":
 			writeJoinLeaderStubJSON(w, http.StatusOK, internal.APIResponse[map[string]string]{
@@ -282,7 +305,7 @@ func TestJoinClusterLeaderConflictPreflightLeavesStandaloneStateUntouched(t *tes
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/cluster/join", JoinCluster(&auth.Service{DB: db}, clusterService, nil, nil))
+	router.POST("/cluster/join", JoinCluster(clusterService, nil, nil))
 	requestBody, err := json.Marshal(JoinClusterRequest{
 		NodeID:     localNodeID,
 		NodeIP:     "203.0.113.250",
@@ -292,7 +315,15 @@ func TestJoinClusterLeaderConflictPreflightLeavesStandaloneStateUntouched(t *tes
 	if err != nil {
 		t.Fatalf("marshal join request: %v", err)
 	}
-	response := performJSONRequest(t, router, http.MethodPost, "/cluster/join", requestBody)
+	request := httptest.NewRequest(http.MethodPost, "/cluster/join", bytes.NewReader(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer browser-token")
+	request.Header.Set("Proxy-Authorization", "Basic browser")
+	request.Header.Set("Cookie", "session=browser")
+	request.Header.Set(auth.ClusterTokenHeader, "Bearer browser-cluster-token")
+	request.Header.Set("X-Current-Hostname", "browser-selected-node")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want leader preflight conflict: %s", response.Code, response.Body.String())
 	}
@@ -403,7 +434,7 @@ func TestJoinClusterInventoryChangeAfterPreflightLeavesStandaloneStateUntouched(
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/cluster/join", JoinCluster(&auth.Service{DB: db}, clusterService, nil, nil))
+	router.POST("/cluster/join", JoinCluster(clusterService, nil, nil))
 	requestBody, err := json.Marshal(JoinClusterRequest{
 		NodeID:     localNodeID,
 		NodeIP:     "203.0.113.250",

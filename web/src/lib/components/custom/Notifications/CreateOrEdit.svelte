@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { updateNotificationTransports } from '$lib/api/notifications';
+	import { createNotificationTransport, updateNotificationTransport } from '$lib/api/notifications';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -8,7 +8,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { User } from '$lib/types/auth';
-	import type { NotificationConfig, UpdateNotificationConfigInput } from '$lib/types/notifications';
+	import type { NotificationConfig, NotificationTransportInput } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
@@ -148,9 +148,8 @@
 		return normalized;
 	}
 
-	function buildEntry(f: TransportForm): UpdateNotificationConfigInput['transports'][number] {
+	function buildEntry(f: TransportForm): NotificationTransportInput {
 		return {
-			...(f.id ? { id: f.id } : {}),
 			name: f.name.trim(),
 			type: f.type,
 			enabled: f.enabled,
@@ -185,29 +184,6 @@
 		};
 	}
 
-	function asPayloadTransport(
-		t: NotificationConfig['transports'][number]
-	): UpdateNotificationConfigInput['transports'][number] {
-		return {
-			id: t.id,
-			name: t.name,
-			type: t.type,
-			enabled: t.enabled,
-			ntfy: t.ntfy ? { baseUrl: t.ntfy.baseUrl, topic: t.ntfy.topic } : null,
-			email: t.email
-				? {
-						smtpHost: t.email.smtpHost,
-						smtpPort: t.email.smtpPort,
-						smtpUsername: t.email.smtpUsername,
-						smtpFrom: t.email.smtpFrom,
-						smtpUseTls: t.email.smtpUseTls,
-						recipients: t.email.recipients
-					}
-				: null,
-			discord: t.discord ? { webhookUrl: t.discord.webhookUrl } : null
-		};
-	}
-
 	function resetForm() {
 		if (editingTransport) {
 			form = {
@@ -233,6 +209,14 @@
 	}
 
 	async function save() {
+		if (edit && !form.id) {
+			toast.error('Transport is no longer available', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		if (form.name.trim().length === 0) {
 			toast.error('Transport name is required', {
 				duration: 5000,
@@ -272,12 +256,9 @@
 		loading = true;
 
 		const entry = buildEntry(form);
-
-		const updatedTransports: UpdateNotificationConfigInput['transports'] = edit
-			? transports.map((t) => (t.id === form.id ? entry : asPayloadTransport(t)))
-			: [...transports.map(asPayloadTransport), entry];
-
-		const response = await updateNotificationTransports({ transports: updatedTransports });
+		const response = edit
+			? await updateNotificationTransport(form.id as number, entry)
+			: await createNotificationTransport(entry);
 		loading = false;
 
 		if (isAPIResponse(response) && response.status === 'error') {

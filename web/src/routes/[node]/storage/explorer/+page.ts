@@ -1,12 +1,25 @@
 import { getFiles } from '$lib/api/system/file-explorer';
-import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
-export async function load() {
-	const cacheDuration = SEVEN_DAYS;
-	const [files] = await Promise.all([cachedFetch('fx-files', async () => await getFiles(), 1)]);
+export async function load({ params }) {
+	const result = await cachedFetch(
+		'fx-files',
+		async () => await getFiles(undefined, params.node),
+		1,
+		false,
+		params.node
+	);
+	if (isAPIResponse(result)) {
+		return {
+			node: params.node,
+			files: [],
+			filesError: result
+		};
+	}
 
 	return {
-		files
+		node: params.node,
+		files: result,
+		filesError: null
 	};
 }

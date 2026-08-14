@@ -813,6 +813,19 @@ func (s *Service) lvVMAction(vm vmModels.VM, action, transitionRunID string) err
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
+	return s.lvVMActionLocked(vm, action, transitionRunID)
+}
+
+// lvVMActionLocked performs one lifecycle action while the caller holds
+// actionMutex and a live libvirt connection has already been established.
+// Snapshot rollback uses this helper so no competing lifecycle action can run
+// between stopping the guest, mutating its storage, redefining it, and
+// restoring its prior running state.
+func (s *Service) lvVMActionLocked(vm vmModels.VM, action, transitionRunID string) error {
+	if s.conn() == nil {
+		return fmt.Errorf("libvirt_connection_unavailable")
+	}
+
 	// The first guard can race with a transition that is persisted while this
 	// action waits for the hypervisor mutex. Re-check under the mutex so an
 	// action authorized just before Begin cannot complete after the transition
@@ -1040,6 +1053,13 @@ func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
 
 func (s *Service) CanMutateProtectedVM(rid uint) (bool, error) {
 	return s.canMutateProtectedVM(rid)
+}
+
+// CanPerformVMAction checks whether this node currently owns the right to
+// request the specified VM lifecycle action. LvVMAction repeats this check
+// immediately before, and again while holding, the hypervisor action mutex.
+func (s *Service) CanPerformVMAction(rid uint, action string) (bool, error) {
+	return s.canMutateProtectedVMForAction(rid, action, "")
 }
 
 func (s *Service) canMutateProtectedVMForTransition(rid uint, transitionRunID string) (bool, error) {
@@ -1762,7 +1782,7 @@ func (s *Service) MigrateVirtio9PToNativeFormat() error {
 			continue
 		}
 
-		if err := s.syncVMDisksWithDB(s.DB, vm.RID); err != nil {
+		if err := s.syncVMDisksWithDB(context.Background(), s.DB, vm.RID); err != nil {
 			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to sync VM disks")
 			continue
 		}

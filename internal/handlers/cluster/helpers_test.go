@@ -27,7 +27,7 @@ type authForwardStub struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (authForwardStub) CreateClusterJWT(_ uint, _, _, _ string) (string, error) {
+func (authForwardStub) CreateUserProxyJWT(_ uint, _, _ string) (string, error) {
 	return "test-forward-token", nil
 }
 
@@ -158,7 +158,8 @@ func TestForwardToLeader(t *testing.T) {
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	ctx.Set("UserID", uint(1))
 	ctx.Set("Username", "admin")
-	ctx.Set("AuthType", "local")
+	ctx.Set("AuthType", "sylve")
+	ctx.Set("AuthScope", "local")
 
 	forwardToLeader(ctx, s)
 
@@ -193,5 +194,35 @@ func TestForwardToLeaderBadAPIResolution(t *testing.T) {
 
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestForwardToLeaderRejectsOversizedBody(t *testing.T) {
+	r := setupSingleRaftForTest(t, "node-oversized")
+	defer func() { _ = r.Shutdown().Error() }()
+
+	originalResolver := resolveLeaderAPIForForward
+	resolveLeaderAPIForForward = func(*cluster.Service, string, string) string {
+		return "https://leader.invalid"
+	}
+	t.Cleanup(func() { resolveLeaderAPIForForward = originalResolver })
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/cluster/notes",
+		strings.NewReader(`{"title":"oversized"}`),
+	)
+	ctx.Request.Body = http.MaxBytesReader(w, ctx.Request.Body, 4)
+
+	forwardToLeader(ctx, &cluster.Service{Raft: r})
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"message":"request_body_too_large"`) {
+		t.Fatalf("unexpected oversized-body response: %s", w.Body.String())
 	}
 }

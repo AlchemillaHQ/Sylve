@@ -46,8 +46,9 @@ type Service struct {
 	Conn        *libvirt.Libvirt
 	uri         string
 
-	actionMutex sync.Mutex
-	crudMutex   sync.Mutex
+	actionMutex              sync.Mutex
+	crudMutex                sync.Mutex
+	vmTemplateTargetCreateMu sync.Mutex
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
@@ -66,6 +67,7 @@ type Service struct {
 		poolByStorageID map[uint]string,
 		req libvirtServiceInterfaces.CreateFromTemplateRequest,
 	) error
+	cleanupVMTemplateTargetFn func(ctx context.Context, rid uint)
 
 	GZFS *gzfs.Client
 }
@@ -248,13 +250,32 @@ func (s *Service) reconnect() (*libvirt.Libvirt, error) {
 }
 
 func (s *Service) WriteVMJson(rid uint) error {
+	return s.writeVMJsonWithDB(s.DB, rid)
+}
+
+func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 	if rid == 0 {
 		return fmt.Errorf("invalid_resource_id")
 	}
+	if db == nil {
+		return fmt.Errorf("db_not_initialized")
+	}
 
-	vm, err := s.GetVMByRID(rid)
-	if err != nil {
-		return err
+	var vm vmModels.VM
+	if err := db.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(query *gorm.DB) *gorm.DB {
+			return query.Order("created_at ASC, id ASC")
+		}).
+		Where("rid = ?", rid).
+		First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
 	}
 
 	for i := range vm.Storages {

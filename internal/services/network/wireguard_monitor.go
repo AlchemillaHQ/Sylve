@@ -457,6 +457,9 @@ func equalStringSlice(a []string, b []string) bool {
 }
 
 func (s *Service) refreshWireGuardClientEndpoints() error {
+	s.wireGuardClientMutationMutex.Lock()
+	defer s.wireGuardClientMutationMutex.Unlock()
+
 	var clients []networkModels.WireGuardClient
 	if err := s.DB.Where("enabled = ?", true).Find(&clients).Error; err != nil {
 		return err

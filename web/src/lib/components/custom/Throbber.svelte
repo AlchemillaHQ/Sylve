@@ -1,11 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-
-	let darkMode = $state(false);
-	onMount(() => {
-		darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-	});
-
 	interface Props {
 		showText?: boolean;
 	}
@@ -13,7 +6,7 @@
 	let { showText = $bindable(true) }: Props = $props();
 </script>
 
-<div class="flex h-screen flex-col items-center justify-center gap-3 overflow-hidden">
+<div class="throbber-root flex h-screen flex-col items-center justify-center gap-3 overflow-hidden">
 	<svg
 		version="1.1"
 		id="thrb"
@@ -63,9 +56,7 @@
 			<path
 				id="thrbP1"
 				d="m 0,0 c 0,-7.946 -4.231,-15.291 -11.105,-19.276 l -104.371,-60.512 c -7.887,-4.573 -17.764,1.117 -17.764,10.234 V 58.619 c 0,7.944 4.229,15.287 11.1,19.273 l 104.376,60.52 C -9.877,142.985 0,137.294 0,128.178 Z m -145.311,108.103 c -8.948,-5.189 -19.99,-5.189 -28.939,0 l -103.426,59.971 c -6.451,3.74 -6.451,13.056 10e-4,16.797 l 103.988,60.293 c 8.947,5.188 19.987,5.188 28.935,0 L -41.324,185.2 c 6.451,-3.74 6.451,-13.055 0,-16.797 z M -185.44,-66.169 c 0,-10.557 -11.438,-17.146 -20.57,-11.851 l -100.67,58.374 c -7.428,4.307 -12,12.244 -12,20.83 v 123.232 c 0,10.556 11.437,17.145 20.57,11.85 l 100.68,-58.374 c 7.422,-4.308 11.99,-12.242 11.99,-20.824 z m 210.08,256.781 -13.84,8.02 -10.8,6.26 -57.79,33.51 -63.92,36.9 -26.38,15.23 c -6.96,4.02 -15.54,4.02 -22.5,0 l -26.26,-15.159 -6.43,-3.711 -115.4,-66.91 -11.13,-6.45 -14.22,-8.25 -0.03,-0.02 c -5.14,-4.24 -8.19,-10.579 -8.19,-17.36 v -196.77 c 0,-7.12 3.36,-13.759 8.97,-17.98 l 24.6,-14.26 52.9,-30.68 69.07,-39.87 11.27,-6.509 14.85,-8.571 c 6.96,-4.019 15.54,-4.019 22.5,0 l 14.85,8.571 11.39,6.58 121.85,70.339 5.42,3.14 17.97,10.41 0.04,0.031 c 6.3,4.139 10.14,11.2 10.14,18.799 v 196.77 c 0,7.09 -3.35,13.72 -8.93,17.94"
-				style={darkMode
-					? 'fill:#4c4847;fill-opacity:1;fill-rule:nonzero;stroke:none'
-					: 'fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none'}
+				style="fill:currentColor;fill-opacity:1;fill-rule:nonzero;stroke:none"
 				transform="matrix(1.3333333,0,0,-1.3333333,1573.6655,1428.6981)"
 				clip-path="url(#clipPath2)"
 			/>
@@ -111,6 +102,14 @@
 </div>
 
 <style>
+	.throbber-root {
+		color: var(--throbber-primary, #000000);
+	}
+
+	:global(.dark) .throbber-root {
+		color: var(--throbber-primary, #4c4847);
+	}
+
 	@keyframes blurFadePerfect {
 		0% {
 			opacity: 0;

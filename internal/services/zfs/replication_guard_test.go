@@ -56,9 +56,9 @@ func newReplicationGuardService(t *testing.T, pool string, client *gzfs.Client) 
 	return &Service{DB: db, GZFS: client}
 }
 
-func TestReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *testing.T) {
+func TestIntegrationReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	svc := newReplicationGuardService(t, pool, client)
 	if err := svc.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", 7).Updates(map[string]any{
@@ -83,9 +83,9 @@ func TestReplicationDatasetGuardProtectsActiveMigrationWithPolicyDisabled(t *tes
 	}
 }
 
-func TestReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
+func TestIntegrationReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	zfstest.EnsureDataset(t, client, pool+"/unrelated")
 	svc := newReplicationGuardService(t, pool, client)
@@ -106,9 +106,9 @@ func TestReplicationDatasetCreateGuardUsesExactProspectivePath(t *testing.T) {
 	}
 }
 
-func TestReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.T) {
+func TestIntegrationReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	standby := pool + "/standby"
 	zfstest.EnsureDataset(t, client, standby)
@@ -125,9 +125,9 @@ func TestReplicationDatasetCreateGuardUsesInheritedStandbyProvenance(t *testing.
 	}
 }
 
-func TestReplicationDatasetGuardProtectsLegacyEnabledFilesystemShare(t *testing.T) {
+func TestIntegrationReplicationDatasetGuardProtectsLegacyEnabledFilesystemShare(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	enabledShare := pool + "/shared/enabled"

@@ -11,6 +11,7 @@ package utilities
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -32,6 +33,10 @@ import (
 )
 
 var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
+
+// MaxRequestBodyBytes bounds Utilities JSON decoding and audit capture while
+// multipart downloader uploads retain their dedicated streaming limits.
+const MaxRequestBodyBytes int64 = 1 * 1024 * 1024
 
 type Service struct {
 	DB           *gorm.DB
@@ -55,15 +60,20 @@ type Service struct {
 	inflightMu sync.Mutex
 	inflight   map[uint]struct{}
 
-	signingSecretMu    sync.RWMutex
-	downloadSignSecret string
+	cloudInitTemplateMu sync.Mutex
+
+	signingSecretMu     sync.RWMutex
+	signingSecretInitMu sync.Mutex
+	downloadSignSecret  string
 
 	syncQueueMu        sync.Mutex
 	downloadSyncQueued bool
 	enqueueNoPayloadFn func(ctx context.Context, name string) error
+	downloadSyncRunMu  sync.Mutex
 
 	downloadStartRunMu     sync.Mutex
 	downloadStartRunning   map[uint]struct{}
+	downloadDeleting       map[uint]struct{}
 	downloadStartQueueMu   sync.Mutex
 	downloadStartQueued    map[uint]struct{}
 	enqueueDownloadStartFn func(
@@ -129,6 +139,7 @@ func NewUtilitiesService(
 		JailService:          jailService,
 		enqueueNoPayloadFn:   db.EnqueueNoPayload,
 		downloadStartRunning: make(map[uint]struct{}),
+		downloadDeleting:     make(map[uint]struct{}),
 		downloadStartQueued:  make(map[uint]struct{}),
 		activeUploads:        make(map[string]struct{}),
 	}
@@ -166,34 +177,48 @@ func (s *Service) RegisterJobs() {
 	s.CleanupStaleAuditRecords()
 
 	db.QueueRegisterJSON("utils-download-start", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadStartPayload) error {
-		defer s.clearDownloadStartQueued(payload.ID)
-
 		if err := s.StartDownload(&payload.ID); err != nil {
 			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("StartDownload failed")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				s.clearDownloadStartQueued(payload.ID)
+				return nil
+			}
+			return err
 		}
 
+		s.clearDownloadStartQueued(payload.ID)
 		return nil
 	})
 
 	db.QueueRegisterNoPayload("utils-download-sync", func(ctx context.Context) error {
-		defer s.clearDownloadSyncQueued()
-
 		if err := s.SyncDownloadProgress(); err != nil {
 			logger.L.Error().Err(err).Msg("SyncDownloadProgress failed")
+			return err
 		}
 
+		s.clearDownloadSyncQueued()
 		return nil
 	})
 
 	db.QueueRegisterJSON("utils-download-postproc", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadPostProcPayload) error {
 		if err := s.StartPostProcess(&payload.ID); err != nil {
 			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("PostProcessDownload failed")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				s.inflightMu.Lock()
+				delete(s.inflight, payload.ID)
+				s.inflightMu.Unlock()
+				return nil
+			}
+			return err
 		}
 
 		return nil
 	})
 
 	s.registerWoLJobs()
+	// Reconcile durable pending/processing rows after a daemon restart. The
+	// deduplicated sync job is harmless when there is no work to recover.
+	s.maybeEnqueueDownloadSync()
 }
 
 func (s *Service) enqueueDownloadStart(
@@ -244,6 +269,9 @@ func (s *Service) beginDownloadStart(id uint) bool {
 	if _, exists := s.downloadStartRunning[id]; exists {
 		return false
 	}
+	if _, deleting := s.downloadDeleting[id]; deleting {
+		return false
+	}
 	s.downloadStartRunning[id] = struct{}{}
 	return true
 }
@@ -259,6 +287,48 @@ func (s *Service) isDownloadStartRunning(id uint) bool {
 	_, running := s.downloadStartRunning[id]
 	s.downloadStartRunMu.Unlock()
 	return running
+}
+
+func (s *Service) isDownloadDeleting(id uint) bool {
+	s.downloadStartRunMu.Lock()
+	_, deleting := s.downloadDeleting[id]
+	s.downloadStartRunMu.Unlock()
+	return deleting
+}
+
+func (s *Service) beginDownloadDeletion(id uint) bool {
+	s.downloadStartRunMu.Lock()
+	if s.downloadDeleting == nil {
+		s.downloadDeleting = make(map[uint]struct{})
+	}
+	if _, running := s.downloadStartRunning[id]; running {
+		s.downloadStartRunMu.Unlock()
+		return false
+	}
+	if _, deleting := s.downloadDeleting[id]; deleting {
+		s.downloadStartRunMu.Unlock()
+		return false
+	}
+	s.downloadDeleting[id] = struct{}{}
+
+	// Keep this lock order aligned with enqueuePostProcOnce so post-processing
+	// cannot be queued between the deletion fence and the active-work check.
+	s.inflightMu.Lock()
+	_, postProcessing := s.inflight[id]
+	s.inflightMu.Unlock()
+	if postProcessing {
+		delete(s.downloadDeleting, id)
+		s.downloadStartRunMu.Unlock()
+		return false
+	}
+	s.downloadStartRunMu.Unlock()
+	return true
+}
+
+func (s *Service) endDownloadDeletion(id uint) {
+	s.downloadStartRunMu.Lock()
+	delete(s.downloadDeleting, id)
+	s.downloadStartRunMu.Unlock()
 }
 
 func (s *Service) clearDownloadSyncQueued() {

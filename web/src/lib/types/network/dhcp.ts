@@ -3,7 +3,7 @@ import { ManualSwitchSchema, StandardSwitchSchema } from './switch';
 import { NetworkObjectSchema } from './object';
 
 export const DHCPConfigSchema = z.object({
-	id: z.number(),
+	id: z.number().int().positive(),
 	standardSwitches: z.array(StandardSwitchSchema),
 	manualSwitches: z.array(ManualSwitchSchema),
 	dnsServers: z.array(z.string()),
@@ -70,3 +70,27 @@ export type DHCPRange = z.infer<typeof DHCPRangeSchema>;
 export type DHCPStaticLease = z.infer<typeof DHCPStaticLeaseSchema>;
 export type FileLease = z.infer<typeof FileLeaseSchema>;
 export type Leases = z.infer<typeof LeasesSchema>;
+
+export function emptyLeases(): Leases {
+	return {
+		file: [],
+		db: []
+	};
+}
+
+export function emptyDHCPConfig(): DHCPConfig {
+	return {
+		id: 0,
+		standardSwitches: [],
+		manualSwitches: [],
+		dnsServers: [],
+		domain: '',
+		expandHosts: true,
+		createdAt: '',
+		updatedAt: ''
+	};
+}
+
+export function isDHCPConfig(value: unknown): value is DHCPConfig {
+	return DHCPConfigSchema.safeParse(value).success;
+}

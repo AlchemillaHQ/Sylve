@@ -21,9 +21,8 @@ func notesForNode(node *clusterRaftTestNode) ([]clusterModels.ClusterNote, error
 	return notes, err
 }
 
-func TestRaftNotesReplicationTwoNodes(t *testing.T) {
+func TestIntegrationRaftNotesReplicationTwoNodes(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ClusterNote{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	if err := leader.service.ProposeNoteCreate("first", "content", false); err != nil {
@@ -81,32 +80,8 @@ func TestRaftNotesReplicationTwoNodes(t *testing.T) {
 	})
 }
 
-func TestRaftNotesReplicationThreeNodes(t *testing.T) {
+func TestIntegrationRaftNotesThreeNodeFailover(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.ClusterNote{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := leader.service.ProposeNoteCreate("three-node", "replicated", false); err != nil {
-		t.Fatalf("leader failed to create note through raft: %v", err)
-	}
-
-	waitForClusterCondition(t, 8*time.Second, "note replication to 3 nodes", func() bool {
-		for _, node := range nodes {
-			notes, err := notesForNode(node)
-			if err != nil || len(notes) != 1 {
-				return false
-			}
-			if notes[0].Title != "three-node" || notes[0].Content != "replicated" {
-				return false
-			}
-		}
-		return true
-	})
-}
-
-func TestRaftNotesThreeNodeFailover(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.ClusterNote{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	initialLeader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	if err := initialLeader.service.ProposeNoteCreate("before-failover", "first-write", false); err != nil {

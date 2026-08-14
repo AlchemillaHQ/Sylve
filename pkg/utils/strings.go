@@ -45,6 +45,17 @@ func FNVHash(s string) uint64 {
 	return hasher.Sum64()
 }
 
+// BcryptPasswordHasher provides the production password hashing behavior.
+type BcryptPasswordHasher struct{}
+
+func (BcryptPasswordHasher) Hash(password string) (string, error) {
+	return HashPassword(password)
+}
+
+func (BcryptPasswordHasher) Verify(password, encodedHash string) bool {
+	return CheckPasswordHash(password, encodedHash)
+}
+
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	return string(bytes), err

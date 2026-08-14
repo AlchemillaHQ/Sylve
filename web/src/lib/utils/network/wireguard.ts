@@ -183,8 +183,6 @@ export function generatePeerConfig(
         lines.push('PersistentKeepalive = 25');
     }
 
-    console.log(lines.join('\n'));
-
     return lines.join('\n');
 }
 

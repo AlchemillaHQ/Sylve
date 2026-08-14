@@ -442,7 +442,7 @@
 					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item (item.label)}
+								{#each nodeItems as item (item.href ?? item.icon)}
 									<NodeTreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
 								{/each}
 							</ScrollArea>

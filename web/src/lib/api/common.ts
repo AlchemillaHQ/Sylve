@@ -14,6 +14,7 @@ import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
 import { showErrorToast, stageErrorDetail } from '$lib/stores/error-details.svelte';
+import { isDemoMode } from '$lib/demo/runtime';
 
 export let ENDPOINT: string;
 export let API_ENDPOINT: string;
@@ -86,10 +87,6 @@ function applyRequestDefaults(config: APIRequestConfig): APIRequestConfig {
 
     if (storage.token) {
         nextConfig.headers!.Authorization = `Bearer ${storage.token}`;
-    }
-
-    if (storage.clusterToken) {
-        nextConfig.headers!['X-Cluster-Token'] = `Bearer ${storage.clusterToken}`;
     }
 
     const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
@@ -193,6 +190,12 @@ class FetchAPIClient {
     async request<T = unknown>(config: APIRequestConfig): Promise<APIClientResponse<T>> {
         const nextConfig = applyRequestDefaults(config);
         const method = (nextConfig.method || 'GET').toUpperCase();
+
+        if (isDemoMode) {
+            const { handleDemoRequest } = await import('$lib/demo/fixtures');
+            return await handleDemoRequest<T>({ ...nextConfig, method });
+        }
+
         const url = normalizeURL(nextConfig.url);
         const headers = { ...(nextConfig.headers || {}) };
 

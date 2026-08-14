@@ -11,9 +11,9 @@ package cluster
 import (
 	"strings"
 	"testing"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/hashicorp/raft"
 )
 
 func makeRuntimeSnapshot(totalVoters, onlineVoters int) replicationHARuntimeSnapshot {
@@ -374,96 +374,45 @@ func TestEvaluateReplicationPolicyTransitionHA(t *testing.T) {
 	}
 }
 
-func TestBuildReplicationHARuntimeSnapshot(t *testing.T) {
-	t.Run("nil service returns zero snapshot", func(t *testing.T) {
-		var s *Service
-		snapshot := s.buildReplicationHARuntimeSnapshot()
-		if snapshot.TotalVoters != 0 || snapshot.OnlineVoters != 0 {
-			t.Fatalf("expected zero snapshot, got %+v", snapshot)
-		}
-	})
+func TestReplicationHARuntimeSnapshotForTopology(t *testing.T) {
+	configuration := raft.Configuration{Servers: []raft.Server{
+		{ID: "node-1", Suffrage: raft.Voter},
+		{ID: "node-2", Suffrage: raft.Voter},
+		{ID: "node-3", Suffrage: raft.Voter},
+		{ID: "joining", Suffrage: raft.Nonvoter},
+	}}
+	nodes := []clusterModels.ClusterNode{
+		{NodeUUID: "node-2", Status: "online"},
+		{NodeUUID: "node-3", Status: "offline"},
+	}
 
-	t.Run("nil Raft returns zero snapshot", func(t *testing.T) {
-		db := newClusterServiceTestDB(t)
-		s := &Service{DB: db, Raft: nil}
-		snapshot := s.buildReplicationHARuntimeSnapshot()
-		if snapshot.TotalVoters != 0 {
-			t.Fatalf("expected zero voters with nil Raft, got %d", snapshot.TotalVoters)
-		}
-	})
+	snapshot := replicationHARuntimeSnapshotFor(
+		configuration, nodes, "node-1", "node-2", "node-2:7000", true,
+	)
+	if snapshot.TotalVoters != 3 || snapshot.OnlineVoters != 2 || snapshot.QuorumRequired != 2 {
+		t.Fatalf("unexpected voter counts: %+v", snapshot)
+	}
+	if !snapshot.LeaderHealthy || !snapshot.QuorumAvailable {
+		t.Fatalf("expected healthy quorum: %+v", snapshot)
+	}
 
-	t.Run("in-memory Raft with known voters", func(t *testing.T) {
-		nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.ClusterNode{})
-		defer cleanupClusterRaftTestNodes(t, nodes)
+	snapshot = replicationHARuntimeSnapshotFor(
+		configuration, nodes, "node-1", "node-3", "node-3:7000", true,
+	)
+	if snapshot.LeaderHealthy || snapshot.QuorumAvailable {
+		t.Fatalf("offline remote leader remained healthy: %+v", snapshot)
+	}
 
-		leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-		// seed online cluster nodes matching raft voter IDs
-		for _, n := range nodes {
-			leader.service.DB.Create(&clusterModels.ClusterNode{
-				NodeUUID: n.id, Status: "online",
-			})
-		}
-
-		snapshot := leader.service.buildReplicationHARuntimeSnapshot()
-		if snapshot.TotalVoters != 3 {
-			t.Fatalf("expected 3 voters, got %d", snapshot.TotalVoters)
-		}
-		if snapshot.QuorumRequired != 2 {
-			t.Fatalf("expected quorum=2, got %d", snapshot.QuorumRequired)
-		}
-		if !snapshot.QuorumAvailable {
-			t.Fatalf("expected quorum available with 3 online voters, got online=%d leader_healthy=%v",
-				snapshot.OnlineVoters, snapshot.LeaderHealthy)
-		}
-	})
-
-	t.Run("3 voters 2 online yields quorum", func(t *testing.T) {
-		nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.ClusterNode{})
-		defer cleanupClusterRaftTestNodes(t, nodes)
-
-		leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-		// seed online status for nodes
-		for _, n := range nodes {
-			leader.service.DB.Create(&clusterModels.ClusterNode{
-				NodeUUID: n.id, Status: "online",
-			})
-		}
-
-		snapshot := leader.service.buildReplicationHARuntimeSnapshot()
-		if snapshot.TotalVoters != 3 {
-			t.Fatalf("expected 3 voters, got %d", snapshot.TotalVoters)
-		}
-		if snapshot.OnlineVoters < 2 {
-			t.Fatalf("expected at least 2 online, got %d", snapshot.OnlineVoters)
-		}
-		if !snapshot.QuorumAvailable {
-			t.Fatal("expected quorum available")
-		}
-	})
-
-	t.Run("single node has quorum=1", func(t *testing.T) {
-		nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ClusterNode{})
-		defer cleanupClusterRaftTestNodes(t, nodes)
-
-		leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-		// seed online cluster node
-		leader.service.DB.Create(&clusterModels.ClusterNode{
-			NodeUUID: "node-1", Status: "online",
-		})
-
-		snapshot := leader.service.buildReplicationHARuntimeSnapshot()
-		if snapshot.TotalVoters != 1 {
-			t.Fatalf("expected 1 voter, got %d", snapshot.TotalVoters)
-		}
-		if snapshot.QuorumRequired != 1 {
-			t.Fatalf("expected quorum=1, got %d", snapshot.QuorumRequired)
-		}
-		if !snapshot.QuorumAvailable {
-			t.Fatalf("expected quorum available for single node, online=%d leader_healthy=%v",
-				snapshot.OnlineVoters, snapshot.LeaderHealthy)
-		}
-	})
+	snapshot = replicationHARuntimeSnapshotFor(
+		raft.Configuration{Servers: []raft.Server{{ID: "node-1", Suffrage: raft.Voter}}},
+		nil,
+		"node-1",
+		"node-1",
+		"node-1:7000",
+		true,
+	)
+	if snapshot.TotalVoters != 1 || snapshot.OnlineVoters != 1 ||
+		snapshot.QuorumRequired != 1 || !snapshot.QuorumAvailable {
+		t.Fatalf("unexpected single-voter snapshot: %+v", snapshot)
+	}
 }

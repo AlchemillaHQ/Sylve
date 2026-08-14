@@ -35,7 +35,6 @@ func extractZeltaToTemp(t *testing.T) string {
 }
 
 func TestZeltaBinaryExtractsAndRuns(t *testing.T) {
-	zfstest.SkipIfUnavailable(t)
 	dir := extractZeltaToTemp(t)
 
 	bin := filepath.Join(dir, "bin", "zelta")
@@ -143,14 +142,11 @@ func TestEmbeddedZeltaParsesBracketedIPv6Endpoints(t *testing.T) {
 	}
 }
 
-func TestZeltaBackupWithEphemeralZFS(t *testing.T) {
+func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping full ZFS integration test in short mode")
-	}
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
 	ctx := context.Background()
@@ -213,14 +209,11 @@ func TestZeltaBackupWithEphemeralZFS(t *testing.T) {
 	_ = gzfsClient
 }
 
-func TestRunBackupJobWithEmbeddedZelta(t *testing.T) {
+func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping full ZFS integration test in short mode")
-	}
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")

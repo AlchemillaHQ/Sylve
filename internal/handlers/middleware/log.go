@@ -30,8 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var hostname string
-var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/jail/console"}
+var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/cluster/join-key"}
 
 type claim struct {
 	UserID   *uint
@@ -62,15 +61,29 @@ func shouldRedactAuditPayload(path string) bool {
 
 	return isMetadataOnlyUploadAuditPath(path) ||
 		auditPathMatches(path, "/api/auth/login") ||
-		auditPathMatches(path, "/api/auth/passkeys") ||
+		auditPathMatches(path, "/api/auth/passkeys/login") ||
+		path == "/api/auth/passkeys/register/finish" ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
-		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups")) ||
-		path == "/api/utilities/downloads/signed-url"
+		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups"))
+}
+
+func shouldRedactAuditResponse(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "/api/auth/passkeys/register/begin" {
+		return true
+	}
+	if path == "/api/auth/passkeys/register/finish" {
+		return false
+	}
+	return shouldRedactAuditPayload(path) && path != "/api/utilities/downloader-uploads"
 }
 
 func isImportantAuditGetPath(path string) bool {
-	if utils.Contains(importantGetPaths, path) || strings.Contains(path, "vnc") {
+	if utils.Contains(importantGetPaths, path) ||
+		isVMConsoleWebSocketPath(path) ||
+		isJailConsoleWebSocketPath(path) ||
+		strings.Contains(path, "vnc") {
 		return true
 	}
 
@@ -83,6 +96,10 @@ func isImportantAuditGetPath(path string) bool {
 		return false
 	}
 	return id != "" && !strings.Contains(id, "/")
+}
+
+func isRoutineUnauditedRequest(method, path string) bool {
+	return method == http.MethodPost && strings.TrimSpace(path) == "/api/auth/sse-tokens"
 }
 
 func auditPathMatches(path, prefix string) bool {
@@ -113,11 +130,15 @@ func isSensitiveAuditKey(key string) bool {
 		"totp",
 		"otp",
 		"privatekey",
+		"presharedkey",
+		"psk",
 		"sshkey",
 		"credential",
+		"credentials",
 		"sessiondata",
 		"assertion",
-		"challenge":
+		"challenge",
+		"challenges":
 		return true
 	}
 
@@ -174,6 +195,304 @@ func sanitizeAuditPayload(v interface{}) interface{} {
 	default:
 		return typed
 	}
+}
+
+func sanitizeDownloaderUploadAuditResponse(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"status", "message"} {
+		if field, exists := payload[key]; exists {
+			result[key] = sanitizeAuditPayload(field)
+		}
+	}
+
+	if errorValue, exists := payload["error"]; exists {
+		errorText, errorIsString := errorValue.(string)
+		messageText, messageIsString := payload["message"].(string)
+		if errorIsString && (errorText == "" || (messageIsString && errorText == messageText)) {
+			result["error"] = errorText
+		} else {
+			result["error"] = "[REDACTED]"
+		}
+	}
+
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		safeData := make(map[string]interface{})
+		for _, key := range []string{
+			"uploadId",
+			"name",
+			"bytes",
+			"status",
+			"code",
+			"retryable",
+			"limitBytes",
+		} {
+			if field, exists := data[key]; exists {
+				safeData[key] = sanitizeAuditPayload(field)
+			}
+		}
+		result["data"] = safeData
+	}
+
+	return result
+}
+
+func sanitizeSignedDownloadAuditResponse(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"status", "message"} {
+		if field, exists := payload[key]; exists {
+			result[key] = sanitizeAuditPayload(field)
+		}
+	}
+	if errorValue, exists := payload["error"]; exists {
+		result["error"] = sanitizeAuditPayload(errorValue)
+	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		safeData := make(map[string]interface{})
+		if expiresAt, exists := data["expiresAt"]; exists {
+			safeData["expiresAt"] = sanitizeAuditPayload(expiresAt)
+		}
+		if _, exists := data["url"]; exists {
+			safeData["url"] = "[REDACTED]"
+		}
+		result["data"] = safeData
+	}
+	return result
+}
+
+func isCloudInitTemplateAuditPath(path string) bool {
+	return auditPathMatches(
+		strings.TrimSpace(path),
+		"/api/utilities/cloud-init/templates",
+	)
+}
+
+func sanitizeCloudInitTemplateAuditResponse(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"status", "message", "error"} {
+		if field, exists := payload[key]; exists {
+			result[key] = sanitizeAuditPayload(field)
+		}
+	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		safeData := make(map[string]interface{})
+		for _, key := range []string{"id", "name"} {
+			if field, exists := data[key]; exists {
+				safeData[key] = sanitizeAuditPayload(field)
+			}
+		}
+		for _, key := range []string{"user", "meta", "networkConfig"} {
+			if _, exists := data[key]; exists {
+				safeData[key] = "[REDACTED]"
+			}
+		}
+		result["data"] = safeData
+	}
+	return result
+}
+
+func sanitizeAuditResponseForPath(path string, value interface{}) interface{} {
+	if strings.TrimSpace(path) == "/api/utilities/downloader-uploads" {
+		return sanitizeDownloaderUploadAuditResponse(value)
+	}
+	if strings.TrimSpace(path) == "/api/utilities/downloads/signed-url" {
+		return sanitizeSignedDownloadAuditResponse(value)
+	}
+	if isCloudInitTemplateAuditPath(path) {
+		return sanitizeCloudInitTemplateAuditResponse(value)
+	}
+	sanitized := sanitizeAuditPayload(value)
+	if auditPathMatches(strings.TrimSpace(path), "/api/utilities/downloads") {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return sanitized
+		}
+		if data, ok := payload["data"].(map[string]interface{}); ok {
+			if _, exists := data["url"]; exists {
+				data["url"] = "[REDACTED]"
+			}
+		}
+	}
+	return sanitized
+}
+
+func isVMCloudInitAuditPath(path string) bool {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) != 5 || segments[0] != "api" || segments[1] != "vm" {
+		return false
+	}
+
+	return (segments[2] != "" &&
+		segments[3] == "options" && segments[4] == "cloud-init") ||
+		(segments[2] == "options" && segments[3] == "cloud-init" &&
+			segments[4] != "")
+}
+
+func jailOptionAuditSegment(path string) (string, bool) {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) != 5 || segments[0] != "api" || segments[1] != "jail" {
+		return "", false
+	}
+
+	if segments[2] != "" && segments[3] == "options" && segments[4] != "" {
+		return segments[4], true
+	}
+	return "", false
+}
+
+func redactJailHookScripts(payload map[string]interface{}) {
+	hooksValue, exists := payload["hooks"]
+	if !exists {
+		return
+	}
+	hooks, ok := hooksValue.(map[string]interface{})
+	if !ok {
+		payload["hooks"] = "[REDACTED]"
+		return
+	}
+	for phase, phaseValue := range hooks {
+		phasePayload, ok := phaseValue.(map[string]interface{})
+		if !ok {
+			hooks[phase] = "[REDACTED]"
+			continue
+		}
+		if _, exists := phasePayload["script"]; exists {
+			phasePayload["script"] = "[REDACTED]"
+		}
+	}
+}
+
+func sanitizeJailCreateAuditPayload(path string, sanitized interface{}) interface{} {
+	if strings.TrimSpace(path) != "/api/jail" {
+		return sanitized
+	}
+
+	payload, ok := sanitized.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+	for _, field := range []string{
+		"fstab",
+		"resolvConf",
+		"devfsRuleset",
+		"additionalOptions",
+		"metadataMeta",
+		"metadataEnv",
+	} {
+		if _, exists := payload[field]; exists {
+			payload[field] = "[REDACTED]"
+		}
+	}
+	redactJailHookScripts(payload)
+	return payload
+}
+
+func sanitizeJailOptionAuditPayload(path string, sanitized interface{}) interface{} {
+	option, ok := jailOptionAuditSegment(path)
+	if !ok {
+		return sanitized
+	}
+
+	sensitiveFields := map[string][]string{
+		"fstab":              {"fstab"},
+		"resolv-conf":        {"resolvConf"},
+		"devfs-rules":        {"devFSRules"},
+		"additional-options": {"additionalOptions"},
+		"metadata":           {"metadata", "env"},
+	}
+	if fields, sensitive := sensitiveFields[option]; sensitive {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		for _, field := range fields {
+			if _, exists := payload[field]; exists {
+				payload[field] = "[REDACTED]"
+			}
+		}
+		return payload
+	}
+	if option != "lifecycle-hooks" {
+		return sanitized
+	}
+
+	payload, ok := sanitized.(map[string]interface{})
+	if !ok {
+		return "[REDACTED]"
+	}
+	redactJailHookScripts(payload)
+	return payload
+}
+
+func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
+	sanitized := sanitizeAuditPayload(value)
+	if isCloudInitTemplateAuditPath(path) {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		safePayload := make(map[string]interface{})
+		if name, exists := payload["name"]; exists {
+			safePayload["name"] = name
+		}
+		for _, key := range []string{"user", "meta", "networkConfig"} {
+			if _, exists := payload[key]; exists {
+				safePayload[key] = "[REDACTED]"
+			}
+		}
+		return safePayload
+	}
+	if strings.TrimSpace(path) == "/api/utilities/downloads/signed-url" {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		safePayload := make(map[string]interface{})
+		for _, key := range []string{"name", "parentUUID"} {
+			if field, exists := payload[key]; exists {
+				safePayload[key] = field
+			}
+		}
+		return safePayload
+	}
+	if strings.TrimSpace(path) == "/api/utilities/downloads" {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		if _, exists := payload["url"]; exists {
+			payload["url"] = "[REDACTED]"
+		}
+		sanitized = payload
+	}
+	if isVMCloudInitAuditPath(path) {
+		payload, ok := sanitized.(map[string]interface{})
+		if !ok {
+			return "[REDACTED]"
+		}
+		for _, key := range []string{"data", "metadata", "networkConfig"} {
+			if _, exists := payload[key]; exists {
+				payload[key] = "[REDACTED]"
+			}
+		}
+		sanitized = payload
+	}
+	sanitized = sanitizeJailCreateAuditPayload(path, sanitized)
+	return sanitizeJailOptionAuditPayload(path, sanitized)
 }
 
 func isMultipartAuditRequest(request *http.Request) bool {
@@ -321,6 +640,15 @@ type bodyWriter struct {
 	capture bool
 }
 
+type replayReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (r *replayReadCloser) Close() error {
+	return r.closer.Close()
+}
+
 func (w bodyWriter) Write(b []byte) (int, error) {
 	if w.capture {
 		w.body.Write(b)
@@ -381,18 +709,14 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		panic("request logger middleware requires a non-nil telemetry database")
 	}
 	auditDB := telemetryDB
+	nodeHostname := "unknown"
+	if storedHostname, err := utils.GetSystemHostname(); err == nil {
+		nodeHostname = storedHostname
+	}
 
 	return func(c *gin.Context) {
-		if hostname == "" {
-			stored, err := utils.GetSystemHostname()
-			if err != nil {
-				hostname = "unknown"
-			} else {
-				hostname = stored
-			}
-		}
-
-		if strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") {
+		if strings.Contains(c.Request.URL.Path, "/network/firewall/advanced/preview") ||
+			isRoutineUnauditedRequest(c.Request.Method, c.Request.URL.Path) {
 			c.Next()
 			return
 		}
@@ -405,7 +729,8 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		}
 
 		redactPayload := shouldRedactAuditPayload(c.Request.URL.Path)
-		captureResponse := !redactPayload ||
+		redactResponse := shouldRedactAuditResponse(c.Request.URL.Path)
+		captureResponse := !redactResponse ||
 			c.Request.URL.Path == "/api/auth/login" ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/finish"
 		bw := &bodyWriter{
@@ -420,7 +745,6 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		if err != nil && (c.Request.URL.Path == "/api/auth/login" ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/begin" ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/finish" ||
-			c.Request.URL.Path == "/api/utilities/downloads/signed-url" ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/cluster")) {
 
 			if strings.HasPrefix(c.Request.URL.Path, "/api/cluster") {
@@ -457,25 +781,23 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			if redactPayload {
 				act.Body = "[REDACTED]"
 			} else {
+				originalBody := c.Request.Body
 				buf := new(bytes.Buffer)
-				tee := io.TeeReader(c.Request.Body, buf)
+				tee := io.TeeReader(originalBody, buf)
 
 				var body interface{}
 				if err := json.NewDecoder(tee).Decode(&body); err != nil {
 					logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
 				} else {
-					act.Body = sanitizeAuditPayload(body)
+					act.Body = sanitizeAuditPayloadForPath(c.Request.URL.Path, body)
 				}
 
-				restoredBody := io.NopCloser(buf)
-				if limit, ok := c.Get(requestBodyLimitContextKey); ok {
-					if maxBytes, valid := limit.(int64); valid && maxBytes > 0 {
-						c.Request.Body = http.MaxBytesReader(c.Writer, restoredBody, maxBytes)
-					} else {
-						c.Request.Body = restoredBody
-					}
-				} else {
-					c.Request.Body = restoredBody
+				// Replay everything consumed by the audit decoder, then continue
+				// from the original reader. Keeping the original reader preserves
+				// any MaxBytesReader state and its *http.MaxBytesError.
+				c.Request.Body = &replayReadCloser{
+					Reader: io.MultiReader(bytes.NewReader(buf.Bytes()), originalBody),
+					closer: originalBody,
 				}
 			}
 		}
@@ -489,7 +811,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			UserID:   claims.UserID,
 			User:     claims.Username,
 			AuthType: claims.AuthType,
-			Node:     hostname,
+			Node:     nodeHostname,
 			Started:  time.Now(),
 			Action:   string(actJSON),
 			Status:   "started",
@@ -519,10 +841,10 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 			response = nil
 		}
 
-		if redactPayload {
+		if redactResponse {
 			act.Response = "[REDACTED]"
 		} else {
-			act.Response = sanitizeAuditPayload(response)
+			act.Response = sanitizeAuditResponseForPath(c.Request.URL.Path, response)
 		}
 		actJSON, err = json.Marshal(act)
 		if err != nil {
@@ -533,7 +855,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 
 		cStatus := c.Writer.Status()
 		switch {
-		case cStatus >= 200 && cStatus < 300:
+		case cStatus == http.StatusSwitchingProtocols || (cStatus >= 200 && cStatus < 300):
 			// If the handler flagged an async job, set status to "pending" instead of "success".
 			if jobIDAny, hasAsync := c.Get("AuditAsyncJobID"); hasAsync {
 				if jobID, ok := jobIDAny.(uint); ok {

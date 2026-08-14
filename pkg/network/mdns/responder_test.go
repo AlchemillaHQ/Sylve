@@ -1,35 +1,26 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package dnssd
 
 import (
 	"context"
 	"errors"
 	"net"
-	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/miekg/dns"
 )
 
-type closeTrackingConn struct {
-	*testConn
-	closed    chan struct{}
-	closeOnce sync.Once
-}
-
-func newCloseTrackingConn() *closeTrackingConn {
-	return &closeTrackingConn{
-		testConn: newTestConn(),
-		closed:   make(chan struct{}),
-	}
-}
-
-func (c *closeTrackingConn) Close() {
-	c.closeOnce.Do(func() { close(c.closed) })
-}
-
 func TestRespondClosesConnectionAfterRegistrationFailure(t *testing.T) {
-	conn := newCloseTrackingConn()
+	conn := newTestConn()
 	responder := newResponder(conn)
 	responder.probe = func(context.Context, Service) (Service, error) {
 		return Service{}, errors.New("probe failed")
@@ -49,7 +40,7 @@ func TestRespondClosesConnectionAfterRegistrationFailure(t *testing.T) {
 
 	select {
 	case <-conn.closed:
-	case <-time.After(time.Second):
+	default:
 		t.Fatal("responder connection was not closed")
 	}
 	if responder.isRunning {
@@ -59,32 +50,61 @@ func TestRespondClosesConnectionAfterRegistrationFailure(t *testing.T) {
 
 func TestRespondReadyReportsRegistrationResult(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		conn := newCloseTrackingConn()
-		responder := newResponder(conn)
-		service, err := NewService(Config{Name: "Test", Type: "_test._tcp", Port: 1234})
-		if err != nil {
-			t.Fatalf("failed to create service: %v", err)
-		}
-		responder.addManaged(service)
+		synctest.Test(t, func(t *testing.T) {
+			iface, err := loopbackInterface()
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		ready := make(chan error, 1)
-		done := make(chan error, 1)
-		go func() {
-			done <- responder.RespondReady(ctx, ready)
-		}()
+			conn := newTestConn()
+			conn.iface = iface
+			responder := newResponder(conn)
+			service, err := NewService(Config{
+				Name:   "Test",
+				Type:   "_test._tcp",
+				Port:   1234,
+				Ifaces: []string{iface.Name},
+			})
+			if err != nil {
+				t.Fatalf("failed to create service: %v", err)
+			}
+			service.ifaceIPs = map[string][]net.IP{
+				iface.Name: {net.IPv4(192, 0, 2, 1)},
+			}
+			responder.addManaged(service)
 
-		if err := <-ready; err != nil {
-			t.Fatalf("unexpected readiness error: %v", err)
-		}
-		cancel()
-		if err := <-done; !errors.Is(err, context.Canceled) {
-			t.Fatalf("expected canceled responder, got %v", err)
-		}
+			ctx, cancel := context.WithCancel(t.Context())
+			ready := make(chan error, 1)
+			done := make(chan error, 1)
+			go func() {
+				done <- responder.RespondReady(ctx, ready)
+			}()
+
+			if err := <-ready; err != nil {
+				t.Fatalf("unexpected readiness error: %v", err)
+			}
+			started := time.Now()
+			cancel()
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("expected canceled responder, got %v", err)
+			}
+			if elapsed := time.Since(started); elapsed != 250*time.Millisecond {
+				t.Fatalf("logical goodbye duration = %s, want 250ms", elapsed)
+			}
+			if got := len(conn.sent); got != 2 {
+				t.Fatalf("goodbye packets = %d, want 2", got)
+			}
+			for range 2 {
+				msg := <-conn.sent
+				if len(msg.Answer) != 1 || msg.Answer[0].Header().Ttl != 0 {
+					t.Fatalf("unexpected goodbye response: %v", msg)
+				}
+			}
+		})
 	})
 
 	t.Run("failure", func(t *testing.T) {
-		conn := newCloseTrackingConn()
+		conn := newTestConn()
 		responder := newResponder(conn)
 		responder.probe = func(context.Context, Service) (Service, error) {
 			return Service{}, errors.New("probe failed")
@@ -156,24 +176,8 @@ func TestRegisterServiceWithExplicitIP(t *testing.T) {
 		"lo0": {net.IP{192, 168, 0, 123}},
 	}
 
-	conn := newTestConn()
-	otherConn := newTestConn()
-	conn.in = otherConn.out
-	conn.out = otherConn.in
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Run("resolver", func(t *testing.T) {
-		t.Parallel()
-
-		lookupCtx, lookupCancel := context.WithTimeout(ctx, 5*time.Second)
-
-		defer lookupCancel()
-		defer cancel()
-
-		srv, err := lookupInstance(lookupCtx, "Test._asdf._tcp.local.", otherConn)
-		if err != nil {
-			t.Fatal(err)
-		}
+	synctest.Test(t, func(t *testing.T) {
+		srv := resolveTestService(t, sv)
 
 		if is, want := srv.Name, "Test"; is != want {
 			t.Fatalf("%v != %v", is, want)
@@ -195,14 +199,6 @@ func TestRegisterServiceWithExplicitIP(t *testing.T) {
 		if is, want := ips[0].String(), "192.168.0.123"; is != want {
 			t.Fatalf("%v != %v", is, want)
 		}
-	})
-
-	t.Run("responder", func(t *testing.T) {
-		t.Parallel()
-
-		r := newResponder(conn)
-		r.addManaged(sv) // don't probe
-		r.Respond(ctx)
 	})
 }
 
@@ -240,24 +236,8 @@ func TestRegisterServiceWithSpecifiedAdvertisedIP(t *testing.T) {
 				"lo0": {v4, v6},
 			}
 
-			conn := newTestConn()
-			otherConn := newTestConn()
-			conn.in = otherConn.out
-			conn.out = otherConn.in
-
-			ctx, cancel := context.WithCancel(context.Background())
-			t.Run("resolver", func(t *testing.T) {
-				t.Parallel()
-
-				lookupCtx, lookupCancel := context.WithTimeout(ctx, 5*time.Second)
-
-				defer lookupCancel()
-				defer cancel()
-
-				srv, err := lookupInstance(lookupCtx, "Test._asdf._tcp.local.", otherConn)
-				if err != nil {
-					t.Fatal(err)
-				}
+			synctest.Test(t, func(t *testing.T) {
+				srv := resolveTestService(t, sv)
 
 				if is, want := srv.Name, "Test"; is != want {
 					t.Fatalf("%v != %v", is, want)
@@ -282,14 +262,46 @@ func TestRegisterServiceWithSpecifiedAdvertisedIP(t *testing.T) {
 					}
 				}
 			})
-
-			t.Run("responder", func(t *testing.T) {
-				t.Parallel()
-
-				r := newResponder(conn)
-				r.addManaged(sv) // don't probe
-				r.Respond(ctx)
-			})
 		})
 	}
+}
+
+func resolveTestService(t *testing.T, service Service) Service {
+	t.Helper()
+
+	iface, err := loopbackInterface()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn := newTestConn()
+	otherConn := newTestConn()
+	conn.iface = iface
+	otherConn.iface = iface
+	connectTestConns(conn, otherConn)
+	defer otherConn.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	responder := newResponder(conn)
+	responder.addManaged(service)
+	ready := make(chan error, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- responder.RespondReady(ctx, ready)
+	}()
+	if err := <-ready; err != nil {
+		t.Fatalf("start responder: %v", err)
+	}
+
+	resolved, err := lookupInstance(ctx, service.EscapedServiceInstanceName(), otherConn)
+	if err != nil {
+		t.Fatalf("resolve service: %v", err)
+	}
+
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("stop responder: %v", err)
+	}
+	return resolved
 }

@@ -10,46 +10,42 @@ package libvirtHandlers
 
 import (
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/services/libvirt"
-	"github.com/alchemillahq/sylve/pkg/utils"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary Get QEMU Guest Agent info of a Virtual Machine
-// @Description Retrieve QEMU Guest Agent OS and network info of a virtual machine
+type vmQGAService interface {
+	GetQemuGuestAgentInfo(rid uint) (libvirtServiceInterfaces.QemuGuestAgentInfo, error)
+}
+
+// @Summary Get virtual machine guest-agent information
+// @Description Retrieve operating-system and network information reported by the QEMU Guest Agent of a running virtual machine
 // @Tags VM
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param rid path int true "Virtual Machine RID" minimum(1)
+// @Success 200 {object} internal.APIResponse[libvirtServiceInterfaces.QemuGuestAgentInfo] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /qga/:rid [get]
-func GetQemuGuestAgentInfo(libvirtService *libvirt.Service) gin.HandlerFunc {
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /vm/{rid}/guest-agent [get]
+func GetQemuGuestAgentInfo(service vmQGAService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rid, err := utils.ParamUint(c, "rid")
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Data:    nil,
-				Error:   "invalid_rid_format",
-			})
+		rid, ok := bindVMOptionRID(c)
+		if !ok {
 			return
 		}
 
-		info, err := libvirtService.GetQemuGuestAgentInfo(rid)
+		info, err := service.GetQemuGuestAgentInfo(rid)
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Data:    nil,
-				Error:   err.Error(),
-			})
+			writeVMOptionError(c, err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(200, internal.APIResponse[libvirtServiceInterfaces.QemuGuestAgentInfo]{
 			Status:  "success",
 			Message: "qga_info_retrieved",
 			Data:    info,

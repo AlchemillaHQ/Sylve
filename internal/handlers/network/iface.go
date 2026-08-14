@@ -12,41 +12,40 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/logger"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 
 	"github.com/gin-gonic/gin"
 )
 
-type InterfacesListResponse struct {
-	Status  string             `json:"status"`
-	Message string             `json:"message"`
-	Error   string             `json:"error"`
-	Data    []*iface.Interface `json:"data"`
-}
+var listInterfaces = iface.List
 
 // @Summary List Network Interfaces
 // @Description List all network interfaces on the system
 // @Tags Network
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} InterfacesListResponse "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Success 200 {object} internal.APIResponse[[]iface.Interface] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/interface [get]
-func ListInterfaces(networkService *network.Service) gin.HandlerFunc {
+func ListInterfaces() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		interfaces, err := iface.List()
+		interfaces, err := listInterfaces()
 
 		if err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_list_network_interfaces")
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
+				Message: "failed_to_list_interfaces",
+				Error:   "interface_list_failed",
 				Data:    nil,
 			})
 
 			return
+		}
+		if interfaces == nil {
+			interfaces = make([]*iface.Interface, 0)
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[[]*iface.Interface]{

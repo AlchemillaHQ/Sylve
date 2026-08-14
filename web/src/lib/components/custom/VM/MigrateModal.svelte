@@ -18,6 +18,7 @@
 	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 	import { toast } from 'svelte-sonner';
+	import { isDemoMode } from '$lib/demo/runtime';
 
 	let {
 		open = $bindable(false),
@@ -266,7 +267,7 @@
 		validation = null;
 		validating = true;
 
-		await sleep(1500);
+		await sleep(isDemoMode ? 450 : 1500);
 		if (requestGeneration !== validationRequestGeneration || nodeUuid !== selectedNodeUuid) return;
 
 		const result = await validateMigration(guestType, guestId, nodeUuid, node);
@@ -309,7 +310,7 @@
 
 	function startPolling() {
 		stopPolling();
-		pollingInterval = setInterval(pollMigrationStatus, 3000);
+		pollingInterval = setInterval(pollMigrationStatus, isDemoMode ? 1200 : 3000);
 		pollMigrationStatus();
 	}
 

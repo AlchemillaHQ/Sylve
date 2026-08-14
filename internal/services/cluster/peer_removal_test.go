@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-func TestRemovePeerReportsDependenciesAndSucceedsAfterDrain(t *testing.T) {
+func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(
 		t,
 		3,
@@ -23,7 +23,6 @@ func TestRemovePeerReportsDependenciesAndSucceedsAfterDrain(t *testing.T) {
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var removed *clusterRaftTestNode
@@ -135,7 +134,7 @@ func TestRemovePeerReportsDependenciesAndSucceedsAfterDrain(t *testing.T) {
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
 }
 
-func TestRemovedPeerCannotClaimOrStartRuntimeWork(t *testing.T) {
+func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(
 		t,
 		3,
@@ -145,7 +144,6 @@ func TestRemovedPeerCannotClaimOrStartRuntimeWork(t *testing.T) {
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationGuestOperation{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var removed *clusterRaftTestNode

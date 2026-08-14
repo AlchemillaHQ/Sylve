@@ -43,23 +43,23 @@ import (
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
 	zfsHandlers "github.com/alchemillahq/sylve/internal/handlers/zfs"
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
+	authServicePkg "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskServicePkg "github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
-	"github.com/alchemillahq/sylve/internal/services/jail"
+	jailServicePkg "github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/migration"
-	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	networkServicePkg "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
-	systemService "github.com/alchemillahq/sylve/internal/services/system"
-	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
+	systemServicePkg "github.com/alchemillahq/sylve/internal/services/system"
+	utilitiesServicePkg "github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
 
@@ -67,7 +67,7 @@ import (
 )
 
 // @title           Sylve API
-// @version         0.2.3
+// @version         0.3.0
 // @description     Sylve is a lightweight GUI for managing Bhyve, Jails, ZFS, networking, and more on FreeBSD.
 // @termsOfService  https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
 
@@ -83,26 +83,36 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 
+// @securityDefinitions.apikey ClusterKeyAuth
+// @in header
+// @name X-Cluster-Key
+// @description Exact enabled cluster join key.
+
+// @securityDefinitions.apikey ClusterTokenAuth
+// @in header
+// @name X-Cluster-Token
+// @description Short-lived server-issued cluster token.
+
 // @host      sylve.lan:8181
 // @BasePath  /api
 func RegisterRoutes(r *gin.Engine,
 	environment internal.Environment,
 	proxyToVite bool,
-	authService *authService.Service,
+	authService *authServicePkg.Service,
 	infoService *infoService.Service,
 	zfsService *zfsService.Service,
 	diskService *diskServicePkg.Service,
-	networkService *networkService.Service,
+	networkService *networkServicePkg.Service,
 	notificationService *notificationsService.Service,
-	utilitiesService *utilitiesService.Service,
-	systemService *systemService.Service,
+	utilitiesService *utilitiesServicePkg.Service,
+	systemService *systemServicePkg.Service,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
 	mdnsService *mdns.Service,
 	dynamicDNSService *dynamicdns.Service,
 	certificateService *certificates.Service,
 	iscsiService *iscsi.Service,
-	jailService *jail.Service,
+	jailService *jailServicePkg.Service,
 	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
 	zeltaService *zelta.Service,
@@ -114,12 +124,19 @@ func RegisterRoutes(r *gin.Engine,
 	api := r.Group("/api")
 	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
 	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
+	publicAuth := api.Group("/auth")
+	publicAuth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	publicAuth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		publicAuth.POST("/login", authHandlers.LoginHandler(authService))
+		publicAuth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
+		publicAuth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
+	}
 
 	health := api.Group("/health")
-	health.Use(middleware.EnsureAuthenticated(authService))
 	{
-		health.GET("/basic", BasicHealthCheckHandler(systemService))
-		health.GET("/http", HTTPHealthCheckHandler)
+		health.GET("/basic", middleware.AuthenticateBasicHealth(authService), BasicHealthCheckHandler(systemService))
+		health.GET("/http", middleware.EnsureAuthenticated(authService), HTTPHealthCheckHandler)
 	}
 
 	basic := api.Group("/basic")
@@ -161,10 +178,14 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))
-		info.GET("/terminal", infoHandlers.HandleHostTerminal)
-
 		info.GET("/node", infoHandlers.NodeInfo(infoService))
 	}
+	hostTerminal := api.Group("/info")
+	hostTerminal.Use(middleware.EnsureAuthenticated(authService))
+	hostTerminal.Use(middleware.RequireLocalAdmin(authService))
+	hostTerminal.Use(EnsureCorrectHost(db, authService))
+	hostTerminal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	hostTerminal.GET("/terminal", infoHandlers.HandleHostTerminal)
 
 	zfs := api.Group("/zfs")
 	zfs.Use(middleware.EnsureAuthenticated(authService))
@@ -340,8 +361,8 @@ func RegisterRoutes(r *gin.Engine,
 	disk.Use(middleware.EnsureAuthenticated(authService))
 	disk.Use(EnsureCorrectHost(db, authService))
 	disk.Use(middleware.RequireLocalAdminForWrites(authService))
-	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))
+	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		disk.GET("", diskHandlers.List(diskService))
 		disk.GET("/smart/self-test", diskHandlers.GetSelfTestInfo(diskService))
@@ -360,227 +381,302 @@ func RegisterRoutes(r *gin.Engine,
 	network := api.Group("/network")
 	network.Use(middleware.EnsureAuthenticated(authService))
 	network.Use(EnsureCorrectHost(db, authService))
+	network.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
 	network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		network.GET("/object", networkHandlers.ListNetworkObjects(networkService))
-		network.POST("/object", networkHandlers.CreateNetworkObject(networkService))
-		network.POST("/object/bulk-delete", networkHandlers.BulkDeleteNetworkObjects(networkService))
-		network.DELETE("/object/:id", networkHandlers.DeleteNetworkObject(networkService))
-		network.PUT("/object/:id", networkHandlers.EditNetworkObject(networkService))
+		objects := network.Group("/object")
+		objects.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			objects.GET("", networkHandlers.ListNetworkObjects(networkService))
+			objects.POST("", networkHandlers.CreateNetworkObject(networkService))
+			objects.DELETE("", networkHandlers.BulkDeleteNetworkObjects(networkService))
+			objects.DELETE("/:id", networkHandlers.DeleteNetworkObject(networkService))
+			objects.PUT("/:id", networkHandlers.EditNetworkObject(networkService))
+		}
 
-		network.GET("/firewall/traffic", networkHandlers.ListFirewallTrafficRules(networkService))
-		network.GET("/firewall/traffic/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
-		network.POST("/firewall/traffic", networkHandlers.CreateFirewallTrafficRule(networkService))
-		network.PUT("/firewall/traffic/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
-		network.PUT("/firewall/traffic/:id", networkHandlers.EditFirewallTrafficRule(networkService))
-		network.DELETE("/firewall/traffic/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
+		traffic := network.Group("/firewall/traffic")
+		traffic.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			traffic.GET("", networkHandlers.ListFirewallTrafficRules(networkService))
+			traffic.GET("/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
+			traffic.POST("", networkHandlers.CreateFirewallTrafficRule(networkService))
+			traffic.PUT("/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
+			traffic.PUT("/:id", networkHandlers.EditFirewallTrafficRule(networkService))
+			traffic.DELETE("/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
+		}
 
-		network.GET("/firewall/nat", networkHandlers.ListFirewallNATRules(networkService))
-		network.GET("/firewall/nat/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
-		network.POST("/firewall/nat", networkHandlers.CreateFirewallNATRule(networkService))
-		network.PUT("/firewall/nat/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
-		network.PUT("/firewall/nat/:id", networkHandlers.EditFirewallNATRule(networkService))
-		network.DELETE("/firewall/nat/:id", networkHandlers.DeleteFirewallNATRule(networkService))
-		network.GET("/firewall/logs/live", networkHandlers.ListFirewallLiveHits(networkService))
+		nat := network.Group("/firewall/nat")
+		nat.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			nat.GET("", networkHandlers.ListFirewallNATRules(networkService))
+			nat.GET("/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
+			nat.GET("/:id/route-suggestions", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
+			nat.POST("", networkHandlers.CreateFirewallNATRule(networkService))
+			nat.PUT("/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
+			nat.PUT("/:id", networkHandlers.EditFirewallNATRule(networkService))
+			nat.DELETE("/:id", networkHandlers.DeleteFirewallNATRule(networkService))
+		}
+		network.GET("/firewall/logs/live", middleware.RequireLocalAdmin(authService), networkHandlers.ListFirewallLiveHits(networkService))
 
-		network.GET("/firewall/advanced", networkHandlers.GetFirewallAdvancedSettings(networkService))
-		network.PUT("/firewall/advanced", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
-		network.POST("/firewall/advanced/preview", networkHandlers.PreviewRenderedConfig(networkService))
-		network.GET("/firewall/advanced/rendered", networkHandlers.GetRenderedConfig(networkService))
+		advanced := network.Group("/firewall/advanced")
+		advanced.Use(middleware.RequireLocalAdmin(authService))
+		{
+			advanced.GET("", networkHandlers.GetFirewallAdvancedSettings(networkService))
+			advanced.PUT("", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
+			advanced.POST("/preview", networkHandlers.PreviewRenderedConfig(networkService))
+			advanced.GET("/rendered", networkHandlers.GetRenderedConfig(networkService))
+		}
 
-		network.GET("/route", networkHandlers.ListStaticRoutes(networkService))
-		network.POST("/route", networkHandlers.CreateStaticRoute(networkService))
-		network.PUT("/route/:id", networkHandlers.EditStaticRoute(networkService))
-		network.DELETE("/route/:id", networkHandlers.DeleteStaticRoute(networkService))
-		network.POST("/route/suggest-from-nat/:id", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
+		routes := network.Group("/route")
+		routes.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			routes.GET("", networkHandlers.ListStaticRoutes(networkService))
+			routes.POST("", networkHandlers.CreateStaticRoute(networkService))
+			routes.PUT("/:id", networkHandlers.EditStaticRoute(networkService))
+			routes.DELETE("/:id", networkHandlers.DeleteStaticRoute(networkService))
+		}
 
-		network.GET("/wireguard/server", networkHandlers.GetWireGuardServer(networkService))
-		network.POST("/wireguard/server", networkHandlers.InitWireGuardServer(networkService))
-		network.PUT("/wireguard/server", networkHandlers.EditWireGuardServer(networkService))
-		network.DELETE("/wireguard/server", networkHandlers.DeinitWireGuardServer(networkService))
-		network.PUT("/wireguard/server/toggle", networkHandlers.ToggleWireGuardServer(networkService))
+		wireGuardServer := network.Group("/wireguard/server")
+		wireGuardServer.Use(middleware.RequireLocalAdmin(authService))
+		{
+			wireGuardServer.GET("", networkHandlers.GetWireGuardServer(networkService))
+			wireGuardServer.POST("", networkHandlers.InitWireGuardServer(networkService))
+			wireGuardServer.PUT("", networkHandlers.EditWireGuardServer(networkService))
+			wireGuardServer.PATCH("", networkHandlers.SetWireGuardServerEnabled(networkService))
+			wireGuardServer.DELETE("", networkHandlers.DeinitWireGuardServer(networkService))
 
-		network.POST("/wireguard/server/peer", networkHandlers.AddWireGuardServerPeer(networkService))
-		network.PUT("/wireguard/server/peer/:peerId", networkHandlers.EditWireGuardServerPeer(networkService))
-		network.PUT("/wireguard/server/peer/toggle/:peerId", networkHandlers.ToggleWireGuardServerPeer(networkService))
-		network.DELETE("/wireguard/server/peer/:peerId", networkHandlers.RemoveWireGuardServerPeer(networkService))
-		network.DELETE("/wireguard/server/peer/bulk-delete", networkHandlers.RemoveWireGuardServerPeers(networkService))
+			wireGuardServer.POST("/peer", networkHandlers.AddWireGuardServerPeer(networkService))
+			wireGuardServer.PUT("/peer/:peerId", networkHandlers.EditWireGuardServerPeer(networkService))
+			wireGuardServer.PATCH("/peer/:peerId", networkHandlers.SetWireGuardServerPeerEnabled(networkService))
+			wireGuardServer.DELETE("/peer/:peerId", networkHandlers.RemoveWireGuardServerPeer(networkService))
+		}
 
-		network.GET("/wireguard/clients", networkHandlers.GetWireGuardClients(networkService))
-		network.POST("/wireguard/clients", networkHandlers.CreateWireGuardClient(networkService))
-		network.PUT("/wireguard/clients/:clientId", networkHandlers.EditWireGuardClient(networkService))
-		network.DELETE("/wireguard/clients/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
-		network.PUT("/wireguard/clients/toggle/:clientId", networkHandlers.ToggleWireGuardClient(networkService))
+		wireGuardClients := network.Group("/wireguard/clients")
+		wireGuardClients.Use(middleware.RequireLocalAdmin(authService))
+		{
+			wireGuardClients.GET("", networkHandlers.GetWireGuardClients(networkService))
+			wireGuardClients.POST("", networkHandlers.CreateWireGuardClient(networkService))
+			wireGuardClients.PUT("/:clientId", networkHandlers.EditWireGuardClient(networkService))
+			wireGuardClients.PATCH("/:clientId", networkHandlers.SetWireGuardClientEnabled(networkService))
+			wireGuardClients.DELETE("/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
+		}
 
-		network.GET("/interface", networkHandlers.ListInterfaces(networkService))
+		network.GET("/interface", networkHandlers.ListInterfaces())
 
-		network.POST("/manual-switch", networkHandlers.CreateManualSwitch(networkService))
-		network.DELETE("/manual-switch/:id", networkHandlers.DeleteManualSwitch(networkService))
+		manualSwitches := network.Group("/switch/manual")
+		manualSwitches.Use(middleware.RequireLocalAdmin(authService))
+		{
+			manualSwitches.POST("", networkHandlers.CreateManualSwitch(networkService))
+			manualSwitches.DELETE("/:id", networkHandlers.DeleteManualSwitch(networkService))
+		}
 
 		network.GET("/switch", networkHandlers.ListSwitches(networkService))
-		network.POST("/switch/standard", networkHandlers.CreateStandardSwitch(networkService))
-		network.DELETE("/switch/standard/:id", networkHandlers.DeleteStandardSwitch(networkService))
-		network.PUT("/switch/standard", networkHandlers.UpdateStandardSwitch(networkService))
 
-		network.GET("/dhcp/config", networkHandlers.GetDHCPConfig(networkService))
-		network.PUT("/dhcp/config", networkHandlers.ModifyDHCPConfig(networkService))
+		standardSwitches := network.Group("/switch/standard")
+		standardSwitches.Use(middleware.RequireLocalAdmin(authService))
+		{
+			standardSwitches.POST("", networkHandlers.CreateStandardSwitch(networkService))
+			standardSwitches.PUT("/:id", networkHandlers.UpdateStandardSwitch(networkService))
+			standardSwitches.DELETE("/:id", networkHandlers.DeleteStandardSwitch(networkService))
+		}
 
-		network.GET("/dhcp/range", networkHandlers.GetDHCPRanges(networkService))
-		network.POST("/dhcp/range", networkHandlers.CreateDHCPRange(networkService))
-		network.PUT("/dhcp/range/:id", networkHandlers.ModifyDHCPRange(networkService))
-		network.DELETE("/dhcp/range/:id", networkHandlers.DeleteDHCPRange(networkService))
+		dhcpConfig := network.Group("/dhcp/config")
+		dhcpConfig.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			dhcpConfig.GET("", networkHandlers.GetDHCPConfig(networkService))
+			dhcpConfig.PUT("", networkHandlers.ModifyDHCPConfig(networkService))
+		}
 
-		network.GET("/dhcp/lease", networkHandlers.GetDHCPLeases(networkService))
-		network.POST("/dhcp/lease", networkHandlers.CreateDHCPLease(networkService))
-		network.PUT("/dhcp/lease", networkHandlers.UpdateDHCPLease(networkService))
-		network.DELETE("/dhcp/lease/:id", networkHandlers.DeleteDHCPLease(networkService))
-		network.POST("/dhcp/lease/dynamic", networkHandlers.DeleteDynamicDHCPLease(networkService))
+		dhcpRanges := network.Group("/dhcp/range")
+		dhcpRanges.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			dhcpRanges.GET("", networkHandlers.GetDHCPRanges(networkService))
+			dhcpRanges.POST("", networkHandlers.CreateDHCPRange(networkService))
+			dhcpRanges.PUT("/:id", networkHandlers.ModifyDHCPRange(networkService))
+			dhcpRanges.DELETE("/:id", networkHandlers.DeleteDHCPRange(networkService))
+		}
+
+		dhcpLeases := network.Group("/dhcp/lease")
+		dhcpLeases.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			dhcpLeases.GET("", networkHandlers.GetDHCPLeases(networkService))
+			dhcpLeases.POST("", networkHandlers.CreateDHCPLease(networkService))
+			dhcpLeases.PUT("/:id", networkHandlers.UpdateDHCPLease(networkService))
+			dhcpLeases.DELETE("/dynamic", networkHandlers.DeleteDynamicDHCPLease(networkService))
+			dhcpLeases.DELETE("/:id", networkHandlers.DeleteDHCPLease(networkService))
+		}
 	}
 
 	system := api.Group("/system")
 	system.Use(middleware.EnsureAuthenticated(authService))
+	system.Use(middleware.RequireLocalAdminForWrites(authService))
 	system.Use(EnsureCorrectHost(db, authService))
-	system.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+
+	systemJSON := system.Group("")
+	systemJSON.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
+	systemJSON.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		system.GET("/pci-devices", systemHandlers.ListDevices())
-		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
-		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
-		system.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
-		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
-		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
-		system.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
-		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
-		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService, networkService))
-		system.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
-		system.PUT("/tunables", systemHandlers.SetTunable(systemService))
+		systemJSON.GET("/pci-devices", systemHandlers.ListDevices())
+		systemJSON.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
+		systemJSON.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
+		systemJSON.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
+		systemJSON.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
+		systemJSON.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
+		systemJSON.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
+		systemJSON.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
+		systemJSON.PATCH("/basic-settings/services/:service", systemHandlers.SetServiceState(systemService, networkService))
+		systemJSON.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
+		systemJSON.PUT("/tunables", systemHandlers.SetTunable(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")
 	fileExplorer.Use(middleware.RequireLocalAdmin(authService))
 	{
-		fileExplorer.GET("", systemHandlers.Files(systemService))
-		fileExplorer.POST("", systemHandlers.AddFileOrFolder(systemService))
+		fileExplorerCore := fileExplorer.Group("")
+		fileExplorerCore.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
+		fileExplorerCore.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			fileExplorerCore.GET("", systemHandlers.Files(systemService))
+			fileExplorerCore.POST("", systemHandlers.AddFileOrFolder(systemService))
+			fileExplorerCore.POST("/delete", systemHandlers.DeleteFilesOrFolders(systemService))
+			fileExplorerCore.POST("/rename", systemHandlers.RenameFileOrFolder(systemService))
+			fileExplorerCore.POST("/copy-or-move-batch", systemHandlers.CopyOrMoveFilesOrFolders(systemService))
+		}
 
-		fileExplorer.POST("/delete", systemHandlers.DeleteFilesOrFolders(systemService))
-		fileExplorer.DELETE("", systemHandlers.DeleteFileOrFolder(systemService))
+		fileExplorerTransfer := fileExplorer.Group("")
+		fileExplorerTransfer.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			fileExplorerTransfer.GET("/download", systemHandlers.DownloadFile(systemService))
+			fileExplorerTransfer.POST("/upload", systemHandlers.UploadFile(systemService, uploadAdmission))
+		}
 
-		fileExplorer.POST("/rename", systemHandlers.RenameFileOrFolder(systemService))
-		fileExplorer.GET("/download", systemHandlers.DownloadFile(systemService))
-
-		fileExplorer.POST("/copy-or-move", systemHandlers.CopyOrMoveFileOrFolder(systemService))
-		fileExplorer.POST("/copy-or-move-batch", systemHandlers.CopyOrMoveFilesOrFolders(systemService))
-
-		fileExplorer.POST("/upload", systemHandlers.UploadFile(systemService, uploadAdmission))
-		fileExplorer.DELETE("/upload", systemHandlers.DeleteUpload(systemService))
+		fileExplorerRevert := fileExplorer.Group("")
+		fileExplorerRevert.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
+		fileExplorerRevert.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			fileExplorerRevert.DELETE("/upload", systemHandlers.DeleteUpload(systemService))
+		}
 	}
 
 	vm := api.Group("/vm")
 	vm.Use(middleware.EnsureAuthenticated(authService))
+	vm.Use(middleware.RequireLocalAdminForWrites(authService))
 	vm.Use(EnsureCorrectHost(db, authService))
+	vm.Use(middleware.LimitRequestBody(libvirt.MaxRequestBodyBytes))
 	vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		vm.POST("/migrate/:rid", migrationHandlers.MigrateVM(migrationService, lifecycleService))
-		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
+		vm.POST("/:rid/migrations", migrationHandlers.MigrateVM(migrationService, lifecycleService))
+		vm.POST("/:rid/actions/:action", vmHandlers.VMActionHandler(libvirtService, lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
-		vm.GET("/templates/simple", vmHandlers.ListVMTemplatesSimple(libvirtService))
-		vm.GET("/templates/:id", vmHandlers.GetVMTemplateByID(libvirtService))
-		vm.POST("/templates/convert/:rid", vmHandlers.ConvertVMToTemplate(libvirtService, lifecycleService))
-		vm.POST("/templates/create/:id", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService))
-		vm.DELETE("/templates/:id", vmHandlers.DeleteVMTemplate(libvirtService))
-		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
-		vm.GET("/snapshots/:id", vmHandlers.ListVMSnapshots(libvirtService))
-		vm.POST("/snapshots/:id", vmHandlers.CreateVMSnapshot(libvirtService))
-		vm.POST("/snapshots/rollback/:id/:snapshotId",
-			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+		vm.GET("/templates", vmHandlers.ListVMTemplatesSimple(libvirtService))
+		vm.GET("/templates/:templateId", vmHandlers.GetVMTemplateByID(libvirtService))
+		vm.POST("/:rid/templates", vmHandlers.ConvertVMToTemplate(libvirtService, lifecycleService))
+		vm.POST("/templates/:templateId/vms", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService))
+		vm.DELETE("/templates/:templateId", vmHandlers.DeleteVMTemplate(libvirtService, lifecycleService))
+		vm.GET("/simple/:rid", vmHandlers.GetSimpleVMByRID(libvirtService))
+		vm.GET("/:rid/snapshots", vmHandlers.ListVMSnapshots(libvirtService))
+		vm.POST("/:rid/snapshots", vmHandlers.CreateVMSnapshot(libvirtService))
+		vm.POST("/:rid/snapshots/:snapshotId/rollback",
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.RollbackVMSnapshot(libvirtService),
 		)
-		vm.DELETE("/snapshots/:id/:snapshotId",
-			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+		vm.DELETE("/:rid/snapshots/:snapshotId",
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.DeleteVMSnapshot(libvirtService),
 		)
-		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
+		vm.GET("/:rid", vmHandlers.GetVMByRID(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
-		vm.DELETE("/:id",
-			vmHandlers.RequireVMDeletionDetached(libvirtService, "id"),
-			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "id"),
+		vm.DELETE("/:rid/registration",
+			vmHandlers.RequireVMDeletionDetached(libvirtService, "rid"),
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
+			vmHandlers.PurgeVMRegistration(libvirtService),
+		)
+		vm.DELETE("/:rid",
+			vmHandlers.RequireVMDeletionDetached(libvirtService, "rid"),
+			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.RemoveVM(libvirtService),
 		)
-		vm.GET("/domain/:rid", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
-		vm.GET("/logs/:rid", vmHandlers.GetVMLogs(libvirtService))
-		vm.GET("/stats/:rid", vmHandlers.GetVMStatsBootstrap(libvirtService))
-		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
-		vm.PUT("/description", vmHandlers.UpdateVMDescription(libvirtService))
-		vm.PUT("/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
+		vm.GET("/:rid/domain", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
+		vm.GET("/:rid/logs", vmHandlers.GetVMLogs(libvirtService))
+		vm.GET("/:rid/stats", vmHandlers.GetVMStatsBootstrap(libvirtService))
+		vm.GET("/:rid/stats/:step", vmHandlers.GetVMStats(libvirtService))
+		vm.PATCH("/:rid/description", vmHandlers.UpdateVMDescription(libvirtService))
+		vm.PATCH("/:rid/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
 
-		vm.POST("/storage/detach", vmHandlers.StorageDetach(libvirtService))
-		vm.POST("/storage/attach", vmHandlers.StorageAttach(libvirtService))
-		vm.PUT("/storage/update", vmHandlers.StorageUpdate(libvirtService))
+		vm.POST("/:rid/storage", vmHandlers.StorageAttach(libvirtService))
+		vm.PATCH("/:rid/storage/:storageId", vmHandlers.StorageUpdate(libvirtService))
+		vm.DELETE("/:rid/storage/:storageId", vmHandlers.StorageDetach(libvirtService))
 
-		vm.POST("/network/detach", vmHandlers.NetworkDetach(libvirtService))
-		vm.POST("/network/attach", vmHandlers.NetworkAttach(libvirtService))
-		vm.PUT("/network/update", vmHandlers.NetworkUpdate(libvirtService))
+		vm.POST("/:rid/networks", vmHandlers.NetworkAttach(libvirtService))
+		vm.PATCH("/:rid/networks/:networkId", vmHandlers.NetworkUpdate(libvirtService))
+		vm.DELETE("/:rid/networks/:networkId", vmHandlers.NetworkDetach(libvirtService))
 
-		vm.PUT("/hardware/cpu/:rid", vmHandlers.ModifyCPU(libvirtService))
-		vm.PUT("/hardware/ram/:rid", vmHandlers.ModifyRAM(libvirtService))
-		vm.PUT("/hardware/vnc/:rid", vmHandlers.ModifyVNC(libvirtService))
-		vm.PUT("/hardware/ppt/:rid", vmHandlers.ModifyPassthroughDevices(libvirtService))
+		vm.PUT("/:rid/hardware/cpu", vmHandlers.ModifyCPU(libvirtService))
+		vm.PUT("/:rid/hardware/ram", vmHandlers.ModifyRAM(libvirtService))
+		vm.PUT("/:rid/hardware/vnc", vmHandlers.ModifyVNC(libvirtService))
+		vm.PUT("/:rid/hardware/pci-devices", vmHandlers.ModifyPassthroughDevices(libvirtService))
 
-		vm.PUT("/options/wol/:rid", vmHandlers.ModifyWakeOnLan(libvirtService))
-		vm.PUT("/options/boot-order/:rid", vmHandlers.ModifyBootOrder(libvirtService))
-		vm.PUT("/options/clock/:rid", vmHandlers.ModifyClock(libvirtService))
-		vm.PUT("/options/serial-console/:rid", vmHandlers.ModifySerialConsole(libvirtService))
-		vm.PUT("/options/shutdown-wait-time/:rid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
-		vm.PUT("/options/cloud-init/:rid", vmHandlers.ModifyCloudInitData(libvirtService))
-		vm.PUT("/options/boot-rom/:rid", vmHandlers.ModifyBootROM(libvirtService))
-		vm.PUT("/options/extra-bhyve-options/:rid", vmHandlers.ModifyExtraBhyveOptions(libvirtService))
-		vm.PUT("/options/ignore-umsrs/:rid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
-		vm.PUT("/options/qemu-guest-agent/:rid", vmHandlers.ModifyQemuGuestAgent(libvirtService))
-		vm.PUT("/options/tpm/:rid", vmHandlers.ModifyTPM(libvirtService))
-		vm.GET("/qga/:rid", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
+		vm.PUT("/:rid/options/wol", vmHandlers.ModifyWakeOnLan(libvirtService))
+		vm.PUT("/:rid/options/boot-order", vmHandlers.ModifyBootOrder(libvirtService))
+		vm.PUT("/:rid/options/clock", vmHandlers.ModifyClock(libvirtService))
+		vm.PUT("/:rid/options/serial-console", vmHandlers.ModifySerialConsole(libvirtService))
+		vm.PUT("/:rid/options/shutdown-wait-time", vmHandlers.ModifyShutdownWaitTime(libvirtService))
+		vm.PUT("/:rid/options/cloud-init", vmHandlers.ModifyCloudInitData(libvirtService))
+		vm.PUT("/:rid/options/boot-rom", vmHandlers.ModifyBootROM(libvirtService))
+		vm.PUT("/:rid/options/extra-bhyve-options", vmHandlers.ModifyExtraBhyveOptions(libvirtService))
+		vm.PUT("/:rid/options/ignore-umsrs", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
+		vm.PUT("/:rid/options/qemu-guest-agent", vmHandlers.ModifyQemuGuestAgent(libvirtService))
+		vm.PUT("/:rid/options/tpm", vmHandlers.ModifyTPM(libvirtService))
+		vm.GET("/:rid/guest-agent", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
 
-		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
+		vm.GET("/:rid/console", middleware.RequireLocalAdmin(authService), vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
 	}
 
 	jail := api.Group("/jail")
 	jail.Use(middleware.EnsureAuthenticated(authService))
+	jail.Use(middleware.RequireLocalAdminForWrites(authService))
 	jail.Use(EnsureCorrectHost(db, authService))
+	jail.Use(middleware.LimitRequestBody(jailServicePkg.MaxRequestBodyBytes))
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/bootstraps", jailHandlers.ListBootstraps(jailService))
-		jail.POST("/bootstrap", jailHandlers.CreateBootstrap(jailService))
-		jail.DELETE("/bootstrap", jailHandlers.DeleteBootstrap(jailService))
-		jail.GET("/templates/simple", jailHandlers.ListJailTemplatesSimple(jailService))
-		jail.GET("/templates/:id", jailHandlers.GetJailTemplateByID(jailService))
-		jail.POST("/templates/convert/:ctid", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
-		jail.POST("/templates/create/:id", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService))
-		jail.DELETE("/templates/:id", jailHandlers.DeleteJailTemplate(jailService))
-		jail.GET("/simple/:id", jailHandlers.GetSimpleJailByIdentifier(jailService))
-		jail.GET("/state", jailHandlers.ListJailStates(jailService))
-		jail.GET("/state/:id", jailHandlers.GetJailState(jailService, lifecycleService))
+		jail.POST("/bootstraps", jailHandlers.CreateBootstrap(jailService))
+		jail.DELETE("/bootstraps/:name", jailHandlers.DeleteBootstrap(jailService))
+		jail.GET("/templates", jailHandlers.ListJailTemplatesSimple(jailService))
+		jail.GET("/templates/:templateId", jailHandlers.GetJailTemplateByID(jailService))
+		jail.POST("/:ctid/templates", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
+		jail.POST("/templates/:templateId/jails", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService))
+		jail.DELETE("/templates/:templateId", jailHandlers.DeleteJailTemplate(jailService, lifecycleService))
+		jail.GET("/simple/:ctid", jailHandlers.GetSimpleJailByCTID(jailService))
 		jail.GET("", jailHandlers.ListJails(jailService))
-		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
-		jail.GET("/snapshots/:id", jailHandlers.ListJailSnapshots(jailService))
-		jail.POST("/snapshots/:id", jailHandlers.CreateJailSnapshot(jailService))
-		jail.POST("/snapshots/rollback/:id/:snapshotId",
-			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "id"),
+		jail.GET("/:ctid/snapshots", jailHandlers.ListJailSnapshots(jailService))
+		jail.POST("/:ctid/snapshots", jailHandlers.CreateJailSnapshot(jailService))
+		jail.POST("/:ctid/snapshots/:snapshotId/rollback",
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
 			jailHandlers.RollbackJailSnapshot(jailService),
 		)
-		jail.DELETE("/snapshots/:id/:snapshotId",
-			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "id"),
+		jail.DELETE("/:ctid/snapshots/:snapshotId",
+			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
 			jailHandlers.DeleteJailSnapshot(jailService),
 		)
-		jail.POST("/migrate/:ctId", migrationHandlers.MigrateJail(migrationService, lifecycleService))
-		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
-		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
-		jail.PUT("/name", jailHandlers.UpdateJailName(jailService, clusterService))
-		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
-		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
-		jail.PUT("/cpu", jailHandlers.UpdateJailCPU(jailService))
-		jail.GET("/stats/:ctId", jailHandlers.GetJailStatsBootstrap(jailService))
-		jail.GET("/stats/:ctId/:step", jailHandlers.GetJailStats(jailService))
-		jail.PUT("/resource-limits/:ctId", jailHandlers.UpdateResourceLimits(jailService))
+		jail.GET("/:ctid", jailHandlers.GetJailByCTID(jailService))
+		jail.POST("/:ctid/migrations", migrationHandlers.MigrateJail(migrationService, lifecycleService))
+		jail.POST("/:ctid/actions/:action", jailHandlers.JailAction(jailService, lifecycleService))
+		jail.PATCH("/:ctid/description", jailHandlers.UpdateJailDescription(jailService))
+		jail.PATCH("/:ctid/name", jailHandlers.UpdateJailName(jailService, clusterService))
+		jail.GET("/:ctid/state", jailHandlers.GetJailState(jailService, lifecycleService))
+		jail.GET("/:ctid/logs", jailHandlers.GetJailLogs(jailService))
+		jail.GET("/:ctid/stats", jailHandlers.GetJailStatsBootstrap(jailService))
+		jail.GET("/:ctid/stats/:step", jailHandlers.GetJailStats(jailService))
+		jail.GET("/:ctid/console",
+			middleware.RequireLocalAdmin(authService),
+			jailHandlers.HandleJailTerminalWebsocket(jailService),
+		)
+		jail.PUT("/:ctid/hardware/ram", jailHandlers.UpdateJailMemory(jailService))
+		jail.PUT("/:ctid/hardware/cpu", jailHandlers.UpdateJailCPU(jailService))
+		jail.PUT("/:ctid/hardware/resource-limits", jailHandlers.UpdateResourceLimits(jailService))
 
 		jail.POST("", jailHandlers.CreateJail(jailService))
 		jail.DELETE("/:ctid",
@@ -589,71 +685,82 @@ func RegisterRoutes(r *gin.Engine,
 			jailHandlers.DeleteJail(jailService),
 		)
 
-		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket(jailService))
-		jail.PUT("/network/inheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
-		jail.PUT("/network/disinheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
+		jail.PUT("/:ctid/network/inheritance", jailHandlers.SetNetworkInheritance(jailService))
+		jail.POST("/:ctid/networks", jailHandlers.AddNetwork(jailService))
+		jail.PATCH("/:ctid/networks/:networkId", jailHandlers.EditNetwork(jailService))
+		jail.DELETE("/:ctid/networks/:networkId", jailHandlers.DeleteNetwork(jailService))
 
-		jail.POST("/network", jailHandlers.AddNetwork(jailService))
-		jail.PUT("/network", jailHandlers.EditNetwork(jailService))
-		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
-
-		jail.PUT("/options/wol/:rid", jailHandlers.ModifyWakeOnLan(jailService))
-		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
-		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
-		jail.PUT("/options/resolv-conf/:rid", jailHandlers.ModifyResolvConf(jailService))
-		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
-		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
-		jail.PUT("/options/allowed-options/:rid", jailHandlers.ModifyAllowedOptions(jailService))
-		jail.PUT("/options/metadata/:rid", jailHandlers.ModifyMetadata(jailService))
-		jail.PUT("/options/lifecycle-hooks/:rid", jailHandlers.ModifyLifecycleHooks(jailService))
+		jail.PUT("/:ctid/options/wol", jailHandlers.ModifyWakeOnLan(jailService))
+		jail.PUT("/:ctid/options/boot-order", jailHandlers.ModifyBootOrder(jailService))
+		jail.PUT("/:ctid/options/fstab", jailHandlers.ModifyFstab(jailService))
+		jail.PUT("/:ctid/options/resolv-conf", jailHandlers.ModifyResolvConf(jailService))
+		jail.PUT("/:ctid/options/devfs-rules", jailHandlers.ModifyDevFSRules(jailService))
+		jail.PUT("/:ctid/options/additional-options", jailHandlers.ModifyAdditionalOptions(jailService))
+		jail.PUT("/:ctid/options/allowed-options", jailHandlers.ModifyAllowedOptions(jailService))
+		jail.PUT("/:ctid/options/metadata", jailHandlers.ModifyMetadata(jailService))
+		jail.PUT("/:ctid/options/lifecycle-hooks", jailHandlers.ModifyLifecycleHooks(jailService))
 	}
 
 	utilities := api.Group("/utilities")
 	utilities.Use(middleware.EnsureAuthenticated(authService))
+	utilities.Use(middleware.RequireLocalAdminForWrites(authService))
 	utilities.Use(EnsureCorrectHost(db, authService))
-	utilities.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	requireUtilitiesAdmin := middleware.RequireLocalAdmin(authService)
+	utilities.POST(
+		"/downloader-uploads",
+		middleware.RequestLoggerMiddleware(telemetryDB, authService),
+		utilitiesHandlers.UploadDownloaderFile(utilitiesService, uploadAdmission),
+	)
+
+	utilitiesJSON := utilities.Group("")
+	utilitiesJSON.Use(middleware.LimitRequestBody(utilitiesServicePkg.MaxRequestBodyBytes))
+	utilitiesJSON.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		utilities.POST("/downloader-uploads", requireUtilitiesAdmin, utilitiesHandlers.UploadDownloaderFile(utilitiesService, uploadAdmission))
-		utilities.POST("/downloader-uploads/:id/complete", requireUtilitiesAdmin, utilitiesHandlers.CompleteDownloaderUpload(utilitiesService))
-		utilities.DELETE("/downloader-uploads/:id", requireUtilitiesAdmin, utilitiesHandlers.AbortDownloaderUpload(utilitiesService))
+		utilitiesJSON.POST("/downloader-uploads/:id/complete", utilitiesHandlers.CompleteDownloaderUpload(utilitiesService))
+		utilitiesJSON.DELETE("/downloader-uploads/:id", utilitiesHandlers.AbortDownloaderUpload(utilitiesService))
 
-		utilities.POST("/downloads", requireUtilitiesAdmin, utilitiesHandlers.DownloadFile(utilitiesService))
-		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
-		utilities.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
-		utilities.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
-		utilities.PUT("/downloads/:id", requireUtilitiesAdmin, utilitiesHandlers.UpdateDownload(utilitiesService))
-		utilities.DELETE("/downloads/:id", requireUtilitiesAdmin, utilitiesHandlers.DeleteDownload(utilitiesService))
-		utilities.POST("/downloads/bulk-delete", requireUtilitiesAdmin, utilitiesHandlers.BulkDeleteDownload(utilitiesService))
-		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
+		utilitiesJSON.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
+		utilitiesJSON.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
+		utilitiesJSON.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
+		utilitiesJSON.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
+		utilitiesJSON.PATCH("/downloads/:id", utilitiesHandlers.UpdateDownload(utilitiesService))
+		utilitiesJSON.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
+		utilitiesJSON.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
+		utilitiesJSON.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
 
-		utilities.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))
-		utilities.POST("/cloud-init/templates", utilitiesHandlers.AddCloudInitTemplate(utilitiesService))
-		utilities.PUT("/cloud-init/templates/:id", utilitiesHandlers.EditCloudInitTemplate(utilitiesService))
-		utilities.DELETE("/cloud-init/templates/:id", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
+		utilitiesJSON.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))
+		utilitiesJSON.POST("/cloud-init/templates", utilitiesHandlers.AddCloudInitTemplate(utilitiesService))
+		utilitiesJSON.PUT("/cloud-init/templates/:templateId", utilitiesHandlers.EditCloudInitTemplate(utilitiesService))
+		utilitiesJSON.DELETE("/cloud-init/templates/:templateId", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
 	}
 
-	api.GET("/utilities/downloads/:uuid", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+	api.GET("/utilities/downloads/:uuid", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 
-	auth := api.Group("/auth")
-	auth.Use(middleware.EnsureAuthenticated(authService))
-	auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	authSession := api.Group("/auth")
+	authSession.Use(middleware.EnsureAuthenticated(authService))
+	authSession.Use(middleware.RequireLocalSession())
+	authSession.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	authSession.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		auth.POST("/login", authHandlers.LoginHandler(authService))
-		auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
-		auth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
-		auth.GET("/logout", authHandlers.LogoutHandler(authService))
-		auth.GET("/sse-token", eventsHandlers.CreateSSEToken(authService))
+		authSession.POST("/logout", authHandlers.LogoutHandler(authService))
+		authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
 	}
+
+	authManagement := api.Group("/auth")
+	authManagement.Use(middleware.EnsureAuthenticated(authService))
+	authManagement.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	authManagement.Use(middleware.RequireLocalAdmin(authService))
+	authManagement.Use(EnsureCorrectHost(db, authService))
+	authManagement.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 
 	events := api.Group("/events")
-	events.Use(middleware.EnsureAuthenticated(authService))
+	events.Use(middleware.AuthenticateSSE(authService))
 	{
-		events.GET("/stream", eventsHandlers.StreamSSE(authService))
+		events.GET("/stream", eventsHandlers.StreamSSE())
 	}
 
 	notifications := api.Group("/notifications")
 	notifications.Use(middleware.EnsureAuthenticated(authService))
+	notifications.Use(middleware.RequireLocalAdminForWrites(authService))
 	notifications.Use(EnsureCorrectHost(db, authService))
 	notifications.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -661,23 +768,31 @@ func RegisterRoutes(r *gin.Engine,
 		notifications.GET("/count", notificationsHandlers.Count(notificationService))
 		notifications.POST("/dismiss-all", notificationsHandlers.DismissAll(notificationService))
 		notifications.POST("/:id/dismiss", notificationsHandlers.Dismiss(notificationService))
-		notifications.GET("/transports", notificationsHandlers.GetConfig(notificationService))
-		notifications.PUT("/transports", notificationsHandlers.UpdateConfig(notificationService))
-		notifications.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
-		notifications.POST("/transports/:id/test", notificationsHandlers.TestTransport(notificationService))
-		notifications.GET("/rules", notificationsHandlers.GetRules(notificationService))
-		notifications.POST("/rules/test", notificationsHandlers.TestRule(notificationService))
-		notifications.POST("/rules", notificationsHandlers.CreateRule(notificationService))
-		notifications.PUT("/rules", notificationsHandlers.UpdateRules(notificationService))
-		notifications.PUT("/rules/:id", notificationsHandlers.UpdateRule(notificationService))
-		notifications.DELETE("/rules/:id", notificationsHandlers.DeleteRule(notificationService))
-		notifications.POST("/rules/bulk-delete", notificationsHandlers.BulkDeleteRules(notificationService))
-		notifications.POST("/rules/bulk-update", notificationsHandlers.BulkUpdateRules(notificationService))
 	}
 
-	users := auth.Group("/users")
-	users.Use(EnsureCorrectHost(db, authService))
-	users.Use(middleware.RequireLocalAdmin(authService))
+	notificationSettings := api.Group("/notifications")
+	notificationSettings.Use(middleware.EnsureAuthenticated(authService))
+	notificationSettings.Use(middleware.RequireLocalAdmin(authService))
+	notificationSettings.Use(EnsureCorrectHost(db, authService))
+	notificationSettings.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	notificationSettings.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		notificationSettings.GET("/transports", notificationsHandlers.GetTransports(notificationService))
+		notificationSettings.POST("/transports", notificationsHandlers.CreateTransport(notificationService))
+		notificationSettings.PUT("/transports/:id", notificationsHandlers.UpdateTransport(notificationService))
+		notificationSettings.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
+		notificationSettings.POST("/transports/:id/test", notificationsHandlers.TestTransport(notificationService))
+		notificationSettings.GET("/rules", notificationsHandlers.GetRules(notificationService))
+		notificationSettings.POST("/rules/test", notificationsHandlers.TestRule(notificationService))
+		notificationSettings.POST("/rules", notificationsHandlers.CreateRule(notificationService))
+		notificationSettings.PUT("/rules", notificationsHandlers.UpdateRules(notificationService))
+		notificationSettings.PUT("/rules/:id", notificationsHandlers.UpdateRule(notificationService))
+		notificationSettings.DELETE("/rules/:id", notificationsHandlers.DeleteRule(notificationService))
+		notificationSettings.POST("/rules/bulk-delete", notificationsHandlers.BulkDeleteRules(notificationService))
+		notificationSettings.POST("/rules/bulk-update", notificationsHandlers.BulkUpdateRules(notificationService))
+	}
+
+	users := authManagement.Group("/users")
 	{
 		users.GET("", authHandlers.ListUsersHandler(authService))
 		users.GET("/uid/next", authHandlers.GetNextUIDHandler(authService))
@@ -686,29 +801,24 @@ func RegisterRoutes(r *gin.Engine,
 		users.POST("", authHandlers.CreateUserHandler(authService))
 		users.POST("/import", authHandlers.ImportUserHandler(authService))
 		users.POST("/pam", authHandlers.CreatePamUserHandler(authService))
-		users.DELETE("/:id", authHandlers.DeleteUserHandler(authService))
-		users.PUT("", authHandlers.EditUserHandler(authService))
+		users.GET("/:userId/passkeys", authHandlers.ListUserPasskeysHandler(authService))
+		users.DELETE("/:userId/passkeys/:credentialId", authHandlers.DeleteUserPasskeyHandler(authService))
+		users.DELETE("/:userId", authHandlers.DeleteUserHandler(authService))
+		users.PUT("/:userId", authHandlers.EditUserHandler(authService))
 	}
 
-	groups := auth.Group("/groups")
-	groups.Use(EnsureCorrectHost(db, authService))
-	groups.Use(middleware.RequireLocalAdmin(authService))
+	groups := authManagement.Group("/groups")
 	{
 		groups.GET("", authHandlers.ListGroupsHandler(authService))
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
-		groups.DELETE("/:id", authHandlers.DeleteGroupHandler(authService))
-		groups.POST("/users", authHandlers.AddUsersToGroupHandler(authService))
-		groups.PUT("/users", authHandlers.UpdateGroupMembersHandler(authService))
+		groups.DELETE("/:groupId", authHandlers.DeleteGroupHandler(authService))
+		groups.PUT("/:groupId/members", authHandlers.UpdateGroupMembersHandler(authService))
 	}
 
-	passkeys := auth.Group("/passkeys")
-	passkeys.Use(EnsureCorrectHost(db, authService))
-	passkeys.Use(middleware.RequireLocalAdmin(authService))
+	passkeys := authManagement.Group("/passkeys")
 	{
 		passkeys.POST("/register/begin", authHandlers.BeginPasskeyRegistrationHandler(authService))
 		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))
-		passkeys.GET("/users/:id", authHandlers.ListUserPasskeysHandler(authService))
-		passkeys.DELETE("/users/:id/:credentialId", authHandlers.DeleteUserPasskeyHandler(authService))
 	}
 
 	intraCluster := api.Group("/intra-cluster")
@@ -746,22 +856,43 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
+		intraCluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
 	}
+
+	clusterAdmission := api.Group("/cluster")
+	clusterAdmission.Use(middleware.AuthenticateClusterKey(authService))
+	clusterAdmission.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	clusterAdmission.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	clusterAdmission.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
+
+	clusterLocal := api.Group("/cluster")
+	clusterLocal.Use(middleware.EnsureAuthenticated(authService))
+	clusterLocal.Use(middleware.RequireLocalSession())
+	clusterLocal.Use(middleware.RequireLocalAdmin(authService))
+	clusterLocal.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
+	clusterLocal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
+		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
+		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
+		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
+	}
+
+	clusterAdmin := api.Group("/cluster")
+	clusterAdmin.Use(middleware.EnsureAuthenticated(authService))
+	clusterAdmin.Use(middleware.RequireLocalAdmin(authService))
+	clusterAdmin.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	clusterAdmin.POST("/resync-state", clusterHandlers.ResyncClusterState(clusterService, zeltaService))
 
 	cluster := api.Group("/cluster")
 	cluster.Use(middleware.EnsureAuthenticated(authService))
+	cluster.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	cluster.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		cluster.GET("/nodes", clusterHandlers.Nodes(clusterService))
 		cluster.GET("/resources", clusterHandlers.Resources(clusterService))
 
 		cluster.GET("", clusterHandlers.GetCluster(clusterService))
-		cluster.POST("", clusterHandlers.CreateCluster(authService, clusterService, fsm))
-		cluster.POST("/join", clusterHandlers.JoinCluster(authService, clusterService, zeltaService, fsm))
-		cluster.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
-		cluster.POST("/resync-state", clusterHandlers.ResyncClusterState(clusterService, zeltaService))
-		cluster.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
-		cluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
 	}
 
 	clusterNotes := cluster.Group("/notes")
@@ -783,7 +914,7 @@ func RegisterRoutes(r *gin.Engine,
 			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
 			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
 			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService, zeltaService))
-			targets.POST("/validate/:id", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
+			targets.POST("/:id/validate", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
 			targets.GET("/:id/readiness", clusterHandlers.BackupTargetReadiness(clusterService))
 			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(zeltaService))
 			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
@@ -799,7 +930,7 @@ func RegisterRoutes(r *gin.Engine,
 			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
 			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
 			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
-			jobs.POST("/run/:id", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
+			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
 			jobs.GET("/:id/snapshots", clusterHandlers.BackupJobSnapshots(clusterService, zeltaService))
 			jobs.POST("/:id/restore", clusterHandlers.RestoreBackupJob(clusterService, zeltaService))
 		}
@@ -827,12 +958,14 @@ func RegisterRoutes(r *gin.Engine,
 
 	vnc := api.Group("/vnc")
 	vnc.Use(middleware.EnsureAuthenticated(authService))
+	vnc.Use(middleware.RequireLocalAdmin(authService))
 	vnc.Use(EnsureCorrectHost(db, authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	vnc.GET("/:port", vncHandler.VNCProxyHandler(libvirtService))
 
 	tasks := api.Group("/tasks")
 	tasks.Use(middleware.EnsureAuthenticated(authService))
+	tasks.Use(middleware.RequireLocalAdminForWrites(authService))
 	tasks.Use(EnsureCorrectHost(db, authService))
 	tasks.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -845,7 +978,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		migrationTasks := tasks.Group("/migration")
 		{
-			migrationTasks.POST("/cancel/:taskId", migrationHandlers.CancelMigration(migrationService))
+			migrationTasks.POST("/:taskId/cancel", migrationHandlers.CancelMigration(migrationService))
 			migrationTasks.GET("/validate", migrationHandlers.ValidateMigration(migrationService))
 		}
 	}

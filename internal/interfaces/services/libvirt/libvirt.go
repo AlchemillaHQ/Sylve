@@ -24,9 +24,9 @@ type LibvirtServiceInterface interface {
 	ModifyVNC(rid uint, req ModifyVNCRequest) error
 	ModifyPassthrough(rid uint, pciDevices []int) error
 
-	NetworkDetach(rid uint, networkId uint) error
-	NetworkAttach(req NetworkAttachRequest) error
-	NetworkUpdate(req NetworkUpdateRequest) error
+	NetworkDetach(req NetworkDetachRequest, ctx context.Context) error
+	NetworkAttach(req NetworkAttachRequest, ctx context.Context) (*vmModels.Network, error)
+	NetworkUpdate(req NetworkUpdateRequest, ctx context.Context) (*vmModels.Network, error)
 	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 	FindVmByMac(mac string) (vmModels.VM, error)
 
@@ -51,13 +51,11 @@ type LibvirtServiceInterface interface {
 	CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error
 	SyncVMDisks(rid uint) error
 	RemoveStorageXML(rid uint, storage vmModels.Storage) error
-	StorageDetach(req StorageDetachRequest) error
+	StorageDetach(req StorageDetachRequest, ctx context.Context) error
 	GetNextBootOrderIndex(vmId int) (int, error)
 	ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error)
-	StorageImport(req StorageAttachRequest, vm vmModels.VM, ctx context.Context) error
-	StorageNew(req StorageAttachRequest, vm vmModels.VM, ctx context.Context) error
-	StorageAttach(req StorageAttachRequest, ctx context.Context) error
-	StorageUpdate(req StorageUpdateRequest, ctx context.Context) error
+	StorageAttach(req StorageAttachRequest, ctx context.Context) (*vmModels.Storage, error)
+	StorageUpdate(req StorageUpdateRequest, ctx context.Context) (*vmModels.Storage, error)
 	CreateStorageParent(rid uint, poolName string, ctx context.Context) error
 
 	FindISOByUUID(uuid string, includeImg bool) (string, error)

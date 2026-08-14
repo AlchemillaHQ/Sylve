@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 //go:build freebsd
 
 package integration
@@ -38,7 +46,7 @@ type jailDeleteResult struct {
 	CTID    uint `json:"ctId"`
 }
 
-func TestJailWithoutNetworkFromBootstrapIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithoutNetworkFromBootstrap(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -137,7 +145,7 @@ func TestJailWithoutNetworkFromBootstrapIntegration(t *testing.T) {
 	assertConsoleJailDeleted(t, suite, ctid, dataset, configPath)
 }
 
-func TestJailWithInheritedNetworkIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithInheritedNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -207,7 +215,7 @@ func TestJailWithInheritedNetworkIntegration(t *testing.T) {
 	assertConsoleJailDeleted(t, suite, ctid, dataset, configPath)
 }
 
-func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithStaticVNETNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -295,7 +303,7 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"vnet;",
-		"vnet.interface = \"" + epairB + "\";",
+		"vnet.interface += \"" + epairB + "\";",
 		"exec.start = \"/bin/sh /etc/rc\";",
 		"exec.stop = \"/bin/sh /etc/rc.shutdown\";",
 		"meta = \"console-integration=static-vnet\";",
@@ -314,8 +322,13 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 		"ifconfig_" + epairB + "_ipv6=\"inet6 " + addresses.jailIPv6CIDR + "\"",
 		"ipv6_defaultrouter=\"" + addresses.bridgeIPv6 + "\"",
 	} {
-		if !strings.Contains(string(rcConf), expected) {
-			t.Fatalf("static VNET rc.conf missing %q:\n%s", expected, rcConf)
+		if got := strings.Count(string(rcConf), expected); got != 1 {
+			t.Fatalf("static VNET rc.conf contains %q %d times, want once:\n%s", expected, got, rcConf)
+		}
+	}
+	for _, marker := range []string{"# >>> Sylve-Managed Network >>>", "# <<< Sylve-Managed Network <<<"} {
+		if got := strings.Count(string(rcConf), marker); got != 1 {
+			t.Fatalf("static VNET rc.conf contains marker %q %d times, want once:\n%s", marker, got, rcConf)
 		}
 	}
 
@@ -328,6 +341,13 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	assertJailAction(t, output, ctid, "start")
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
 	waitForConsoleJailRunning(t, suite, ctid, true)
+	rcConfAfterStart, err := os.ReadFile(filepath.Join(mountPoint, "etc", "rc.conf"))
+	if err != nil {
+		t.Fatalf("read static VNET rc.conf after start: %v", err)
+	}
+	if string(rcConfAfterStart) != string(rcConf) {
+		t.Fatalf("static VNET rc.conf changed during start:\nbefore:\n%s\nafter:\n%s", rcConf, rcConfAfterStart)
+	}
 
 	hostEpair := consoleInterface(t, epairA)
 	if !hasInterfaceGroup(hostEpair.Groups, "sylve") {
@@ -385,7 +405,7 @@ func TestJailWithStaticVNETNetworkIntegration(t *testing.T) {
 	assertConsoleInterfaceMissing(t, standard.BridgeName)
 }
 
-func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
+func TestFullAcceptanceJailObjectReferenceWorkflow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -522,7 +542,7 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"vnet;",
-		"vnet.interface = \"" + epairB + "\";",
+		"vnet.interface += \"" + epairB + "\";",
 		"meta = \"console-integration=object-references\";",
 	} {
 		if !strings.Contains(string(config), expected) {
@@ -570,12 +590,12 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 
 	deleteOutput := runSylveFailure(t, suite.binaryPath, suite.configPath,
 		"objects", "delete", "--id", strconv.FormatUint(uint64(addressObject.ID), 10))
-	if !strings.Contains(strings.ToLower(deleteOutput), "in use") {
+	if !strings.Contains(deleteOutput, "network_object_in_use") {
 		t.Fatalf("CLI delete referenced address output = %q", deleteOutput)
 	}
 	deleteError := runREPLCommandFailure(t, suite.socketPath,
 		"objects delete "+strconv.FormatUint(uint64(gatewayObject.ID), 10))
-	if !strings.Contains(strings.ToLower(deleteError), "in use") {
+	if !strings.Contains(deleteError, "network_object_in_use") {
 		t.Fatalf("REPL delete referenced gateway error = %q", deleteError)
 	}
 
@@ -659,7 +679,7 @@ func TestJailObjectReferenceWorkflowIntegration(t *testing.T) {
 	}
 }
 
-func TestJailFromDownloadedBaseWithTogglesIntegration(t *testing.T) {
+func TestAcceptanceJailFromDownloadedBaseWithToggles(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -854,7 +874,7 @@ func TestJailFromDownloadedBaseWithTogglesIntegration(t *testing.T) {
 	}
 }
 
-func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
+func TestFullAcceptanceJailWithDHCPSLAACNetworkConfiguration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -935,7 +955,7 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read DHCP/SLAAC jail config: %v", err)
 	}
-	for _, expected := range []string{"vnet;", "vnet.interface = \"" + epairB + "\";", "meta = \"console-integration=dhcp-slaac\";"} {
+	for _, expected := range []string{"vnet;", "vnet.interface += \"" + epairB + "\";", "meta = \"console-integration=dhcp-slaac\";"} {
 		if !strings.Contains(string(config), expected) {
 			t.Fatalf("DHCP/SLAAC jail config missing %q:\n%s", expected, config)
 		}
@@ -950,8 +970,13 @@ func TestJailWithDHCPSLAACNetworkConfigurationIntegration(t *testing.T) {
 		"ifconfig_" + epairB + "_ipv6=\"inet6 accept_rtadv\"",
 		"rtsold_enable=\"YES\"",
 	} {
-		if !strings.Contains(string(rcConf), expected) {
-			t.Fatalf("DHCP/SLAAC rc.conf missing %q:\n%s", expected, rcConf)
+		if got := strings.Count(string(rcConf), expected); got != 1 {
+			t.Fatalf("DHCP/SLAAC rc.conf contains %q %d times, want once:\n%s", expected, got, rcConf)
+		}
+	}
+	for _, marker := range []string{"# >>> Sylve-Managed Network >>>", "# <<< Sylve-Managed Network <<<"} {
+		if got := strings.Count(string(rcConf), marker); got != 1 {
+			t.Fatalf("DHCP/SLAAC rc.conf contains marker %q %d times, want once:\n%s", marker, got, rcConf)
 		}
 	}
 

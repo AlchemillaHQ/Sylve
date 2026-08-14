@@ -38,16 +38,181 @@ type replicationPolicyRunService interface {
 	EnqueueReplicationPolicyRun(context.Context, uint) error
 }
 
+const replicationEventMaxLimit = 500
+
+type ReplicationFailoverRequest struct {
+	TargetNodeID     string `json:"targetNodeId"`
+	Mode             string `json:"mode"`
+	ConfirmDataLoss  *bool  `json:"confirmDataLoss"`
+	MovePinnedSource *bool  `json:"movePinnedSource"`
+}
+
+func replicationErrorContains(text string, markers ...string) bool {
+	for _, marker := range markers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func replicationPolicyErrorDetails(operation string, err error) (int, string, string) {
+	if err == nil {
+		return http.StatusInternalServerError, operation, operation
+	}
+
+	errorText := strings.ToLower(err.Error())
+	if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(errorText, "replication_policy_not_found") {
+		return http.StatusNotFound, "replication_policy_not_found", "replication_policy_not_found"
+	}
+
+	haReasons := cluster.ParseReplicationHAIneligibleReasons(err)
+	if len(haReasons) > 0 {
+		if cluster.ReplicationHAReasonSetIncludes(haReasons, cluster.ReplicationHAReasonQuorumLost) {
+			return http.StatusServiceUnavailable, operation, err.Error()
+		}
+		return http.StatusConflict, operation, err.Error()
+	}
+
+	if replicationErrorContains(errorText,
+		"invalid_",
+		"_required",
+		"_too_long",
+		"duplicate_",
+		"not_supported",
+	) {
+		return http.StatusBadRequest, operation, err.Error()
+	}
+
+	if replicationErrorContains(errorText,
+		"conflict",
+		"mismatch",
+		"transition",
+		"already_",
+		"not_runnable",
+		"stale",
+		"ambiguous",
+		"immutable",
+		"_deleting",
+		"guest_operation",
+		"runner_rebind",
+		"same_as_owner",
+		"target_node_offline",
+		"requires_online_owner",
+		"no_healthy_target",
+		"not_configured_for_policy",
+		"no_complete_verified_generation",
+		"local_ownership_invalid",
+		"_disabled",
+		"owner_missing",
+		"epoch_exhausted",
+	) {
+		message := operation
+		if strings.Contains(errorText, "transition_already_running") {
+			message = "replication_policy_transition_already_running"
+		} else if strings.Contains(errorText, "already_running") {
+			message = "replication_policy_already_running"
+		}
+		return http.StatusConflict, message, err.Error()
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, raft.ErrNotLeader) ||
+		errors.Is(err, raft.ErrLeadershipLost) ||
+		errors.Is(err, raft.ErrRaftShutdown) ||
+		errors.Is(err, raft.ErrEnqueueTimeout) ||
+		replicationErrorContains(errorText,
+			"unavailable",
+			"failed_to_verify_guest",
+			"raft_",
+			"leader_",
+			"not_leader",
+			"not the leader",
+			"leadership",
+			"quorum",
+			"timeout",
+			"deadline",
+			"context canceled",
+		) {
+		return http.StatusServiceUnavailable, operation, "replication_service_unavailable"
+	}
+	if strings.Contains(errorText, "_not_found") {
+		return http.StatusNotFound, operation, err.Error()
+	}
+
+	return http.StatusInternalServerError, operation, operation
+}
+
+func writeReplicationPolicyError(c *gin.Context, operation string, err error) {
+	status, message, detail := replicationPolicyErrorDetails(operation, err)
+	if status == http.StatusInternalServerError {
+		logger.L.Error().Err(err).Str("operation", operation).Msg("replication_policy_request_failed")
+	}
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   detail,
+		Data:    nil,
+	})
+}
+
+func writeReplicationInternalError(c *gin.Context, operation string, err error) {
+	logger.L.Error().Err(err).Str("operation", operation).Msg("replication_request_failed")
+	c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		Status:  "error",
+		Message: operation,
+		Error:   operation,
+		Data:    nil,
+	})
+}
+
+func parseReplicationEventListQuery(c *gin.Context) (int, uint, string, error) {
+	limit := 200
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > replicationEventMaxLimit {
+			return 0, 0, "", fmt.Errorf("limit must be between 1 and %d", replicationEventMaxLimit)
+		}
+		limit = parsed
+	}
+
+	policyID := uint(0)
+	if raw := strings.TrimSpace(c.Query("policyId")); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || parsed == 0 {
+			return 0, 0, "", fmt.Errorf("policyId must be a positive integer")
+		}
+		policyID = uint(parsed)
+	}
+
+	return limit, policyID, strings.TrimSpace(c.Query("nodeId")), nil
+}
+
+func writeReplicationEventQueryError(c *gin.Context, err error) {
+	c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+		Status:  "error",
+		Message: "invalid_replication_event_query",
+		Error:   err.Error(),
+		Data:    nil,
+	})
+}
+
+// @Summary List Replication Policies
+// @Description List cluster replication policies and their current HA state
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]clusterModels.ReplicationPolicy] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /cluster/replication/policies [get]
 func ReplicationPolicies(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		policies, err := cS.ListReplicationPolicies()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "list_replication_policies_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationInternalError(c, "list_replication_policies_failed", err)
 			return
 		}
 
@@ -59,6 +224,25 @@ func ReplicationPolicies(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Create a Replication Policy
+// @Description Create a replication policy for a VM or jail
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body clusterServiceInterfaces.ReplicationPolicyReq true "Replication Policy Request"
+// @Success 201 {object} internal.APIResponse[any] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Guest or Cluster Node Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Leader Forwarding Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Leader Forwarding Timeout"
+// @Router /cluster/replication/policies [post]
 func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -68,22 +252,12 @@ func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 
 		var req clusterServiceInterfaces.ReplicationPolicyReq
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request")
 			return
 		}
 
 		if err := cS.ProposeReplicationPolicyCreate(req, cS.Raft == nil); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "create_replication_policy_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationPolicyError(c, "create_replication_policy_failed", err)
 			return
 		}
 
@@ -95,6 +269,26 @@ func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Update a Replication Policy
+// @Description Update one replication policy while preserving its ownership and transition state
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Replication Policy ID"
+// @Param request body clusterServiceInterfaces.ReplicationPolicyReq true "Replication Policy Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Policy, Guest, or Cluster Node Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Leader Forwarding Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Leader Forwarding Timeout"
+// @Router /cluster/replication/policies/{id} [put]
 func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -125,28 +319,12 @@ func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 
 		var req clusterServiceInterfaces.ReplicationPolicyReq
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request")
 			return
 		}
 
 		if err := cS.ProposeReplicationPolicyUpdate(uint(id64), req, cS.Raft == nil); err != nil {
-			status := http.StatusBadRequest
-			message := "update_replication_policy_failed"
-			if strings.Contains(strings.ToLower(err.Error()), "transition_in_progress") {
-				status = http.StatusConflict
-				message = "policy_transition_in_progress"
-			}
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: message,
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationPolicyError(c, "update_replication_policy_failed", err)
 			return
 		}
 
@@ -158,6 +336,24 @@ func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 	}
 }
 
+// @Summary Delete a Replication Policy
+// @Description Delete a replication policy after fencing it and confirming cluster-wide cleanup
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Replication Policy ID"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Replication Policy Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Leader Forwarding Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Leader Forwarding Timeout"
+// @Router /cluster/replication/policies/{id} [delete]
 func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteCleanupService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -191,9 +387,7 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteClea
 
 		policy, policyErr := cS.GetReplicationPolicyByID(uint(id64))
 		if policyErr != nil {
-			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
-				Status: "error", Message: "replication_policy_not_found", Error: policyErr.Error(), Data: nil,
-			})
+			writeReplicationPolicyError(c, "delete_replication_policy_failed", policyErr)
 			return
 		}
 		switch strings.ToLower(strings.TrimSpace(policy.TransitionState)) {
@@ -213,9 +407,7 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteClea
 				clusterModels.ReplicationProtectionStateDeleting,
 				cS.Raft == nil,
 			); err != nil {
-				c.JSON(http.StatusConflict, internal.APIResponse[any]{
-					Status: "error", Message: "mark_replication_policy_deleting_failed", Error: err.Error(), Data: nil,
-				})
+				writeReplicationPolicyError(c, "mark_replication_policy_deleting_failed", err)
 				return
 			}
 		}
@@ -258,45 +450,24 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteClea
 		// a stale cleanup acknowledgement from authorizing deletion after an
 		// ownership epoch or lifecycle change.
 		policy, policyErr = cS.GetReplicationPolicyByID(uint(id64))
-		if policyErr != nil || policy.ID != uint(id64) || policy.OwnerEpoch != deletingOwnerEpoch ||
+		if policyErr != nil {
+			writeReplicationPolicyError(c, "replication_policy_delete_revalidation_failed", policyErr)
+			return
+		}
+		if policy.ID != uint(id64) || policy.OwnerEpoch != deletingOwnerEpoch ||
 			policy.ProtectionState != clusterModels.ReplicationProtectionStateDeleting ||
 			replicationPolicyDeleteTransitionInProgress(policy.TransitionState) {
-			revalidationErr := "replication_policy_delete_revalidation_failed"
-			if policyErr != nil {
-				revalidationErr = policyErr.Error()
-			}
 			c.JSON(http.StatusConflict, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "replication_policy_delete_revalidation_failed",
-				Error:   revalidationErr,
+				Error:   "replication_policy_delete_revalidation_failed",
 				Data:    nil,
 			})
 			return
 		}
 
 		if err := cS.ProposeReplicationPolicyDelete(uint(id64), cS.Raft == nil); err != nil {
-			status := http.StatusInternalServerError
-			lowerErr := strings.ToLower(err.Error())
-			switch {
-			case errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(lowerErr, "record not found"):
-				status = http.StatusNotFound
-			case strings.Contains(lowerErr, "transition"),
-				strings.Contains(lowerErr, "not_deleting"),
-				strings.Contains(lowerErr, "cas_conflict"):
-				status = http.StatusConflict
-			case strings.Contains(lowerErr, "not_leader"),
-				strings.Contains(lowerErr, "not the leader"),
-				strings.Contains(lowerErr, "leadership"),
-				strings.Contains(lowerErr, "quorum"),
-				strings.Contains(lowerErr, "timeout"):
-				status = http.StatusServiceUnavailable
-			}
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "delete_replication_policy_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationPolicyError(c, "delete_replication_policy_failed", err)
 			return
 		}
 
@@ -320,6 +491,24 @@ func replicationPolicyDeleteTransitionInProgress(state string) bool {
 	}
 }
 
+// @Summary Run a Replication Policy Now
+// @Description Queue an immediate run for a replication policy on its active node
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Replication Policy ID"
+// @Success 202 {object} internal.APIResponse[any] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Replication Policy Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Remote Node Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Remote Node Timeout"
+// @Router /cluster/replication/policies/{id}/run [post]
 func RunReplicationPolicyNow(cS *cluster.Service, zS replicationPolicyRunService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -335,12 +524,7 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS replicationPolicyRunService
 
 		policy, err := cS.GetReplicationPolicyByID(uint(id64))
 		if err != nil {
-			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "replication_policy_not_found",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationPolicyError(c, "replication_policy_lookup_failed", err)
 			return
 		}
 
@@ -365,21 +549,25 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS replicationPolicyRunService
 			return
 		}
 
-		if err := zS.EnqueueReplicationPolicyRun(c.Request.Context(), policy.ID); err != nil {
-			status, msg := replicationPolicyEnqueueErrorResponse(err)
-			c.JSON(status, internal.APIResponse[any]{
+		if zS == nil {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 				Status:  "error",
-				Message: msg,
-				Error:   err.Error(),
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
 				Data:    nil,
 			})
+			return
+		}
+
+		if err := zS.EnqueueReplicationPolicyRun(c.Request.Context(), policy.ID); err != nil {
+			writeReplicationPolicyError(c, "replication_policy_enqueue_failed", err)
 			return
 		}
 
 		c.Set("AuditAsyncJobID", policy.ID)
 		c.Set("AuditAsyncJobType", "replication_policy_run")
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "replication_policy_run_started",
 			Data:    nil,
@@ -388,42 +576,30 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS replicationPolicyRunService
 }
 
 func replicationPolicyEnqueueErrorResponse(err error) (int, string) {
-	text := strings.ToLower(err.Error())
-	if strings.Contains(text, "already_running") {
-		return http.StatusConflict, "replication_policy_already_running"
-	}
-	for _, marker := range []string{
-		"replication_run_claim_unavailable",
-		"leader_not_available",
-		"cluster_service_unavailable",
-		"raft_not_initialized",
-		"cluster_enabled_raft_unavailable",
-		"not_leader",
-		"not the leader",
-		"leadership",
-		"quorum",
-		"timeout",
-		"deadline",
-		"context canceled",
-	} {
-		if strings.Contains(text, marker) {
-			return http.StatusServiceUnavailable, "replication_policy_enqueue_failed"
-		}
-	}
-	for _, marker := range []string{
-		"conflict",
-		"mismatch",
-		"stale",
-		"transition_in_progress",
-		"replication_policy_local_ownership_invalid",
-	} {
-		if strings.Contains(text, marker) {
-			return http.StatusConflict, "replication_policy_enqueue_failed"
-		}
-	}
-	return http.StatusBadRequest, "replication_policy_enqueue_failed"
+	status, message, _ := replicationPolicyErrorDetails("replication_policy_enqueue_failed", err)
+	return status, message
 }
 
+// @Summary Fail Over a Replication Policy
+// @Description Queue a safe or forced failover for a replication policy
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Replication Policy ID"
+// @Param request body clusterHandlers.ReplicationFailoverRequest false "Failover Options"
+// @Success 202 {object} internal.APIResponse[any] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Replication Policy or Cluster Node Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Leader Forwarding Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Leader Forwarding Timeout"
+// @Router /cluster/replication/policies/{id}/failover [post]
 func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -442,7 +618,7 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 			return
 		}
 		if zS == nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "replication_service_unavailable",
 				Error:   "replication_service_unavailable",
@@ -451,19 +627,9 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 			return
 		}
 
-		var req struct {
-			TargetNodeID     string `json:"targetNodeId"`
-			Mode             string `json:"mode"`
-			ConfirmDataLoss  *bool  `json:"confirmDataLoss"`
-			MovePinnedSource *bool  `json:"movePinnedSource"`
-		}
+		var req ReplicationFailoverRequest
 		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request")
 			return
 		}
 
@@ -494,22 +660,7 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 			confirmDataLoss,
 			movePinnedSource,
 		); err != nil {
-			statusCode := http.StatusBadRequest
-			message := "failover_replication_policy_failed"
-			lowerErr := strings.ToLower(err.Error())
-			if strings.Contains(lowerErr, "transition_already_running") {
-				statusCode = http.StatusConflict
-				message = "replication_policy_transition_already_running"
-			} else if strings.Contains(lowerErr, "not_leader") {
-				statusCode = http.StatusConflict
-				message = "not_leader"
-			}
-			c.JSON(statusCode, internal.APIResponse[any]{
-				Status:  "error",
-				Message: message,
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationPolicyError(c, "failover_replication_policy_failed", err)
 			return
 		}
 
@@ -546,13 +697,39 @@ func forwardReplicationRunToNode(
 	)
 }
 
+// @Summary List Replication Events
+// @Description List replication events from the local or selected cluster node
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Maximum events to return (1-500)" default(200)
+// @Param policyId query int false "Replication Policy ID"
+// @Param nodeId query string false "Cluster node ID"
+// @Success 200 {object} internal.APIResponse[[]clusterModels.ReplicationEvent] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Cluster Node Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Remote Node Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Forwarding Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Remote Node Timeout"
+// @Router /cluster/replication/events [get]
 func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
+		limit, policyID, requestedNodeID, err := parseReplicationEventListQuery(c)
+		if err != nil {
+			writeReplicationEventQueryError(c, err)
+			return
+		}
+
 		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
 			response, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/replication/events")
 			if err != nil {
-				writeClusterForwardError(c, "replication_events_remote_forward_failed", err)
+				writeBackupNodeForwardError(
+					c, "replication_events_remote_forward_failed", "replication_events_node_not_found", err,
+				)
 				return
 			}
 
@@ -560,28 +737,9 @@ func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		limit := 200
-		if q := c.Query("limit"); q != "" {
-			if parsed, err := strconv.Atoi(q); err == nil {
-				limit = parsed
-			}
-		}
-
-		policyID := uint(0)
-		if q := c.Query("policyId"); q != "" {
-			if parsed, err := strconv.ParseUint(q, 10, 64); err == nil {
-				policyID = uint(parsed)
-			}
-		}
-
 		events, err := cS.ListReplicationEvents(limit, policyID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "list_replication_events_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationInternalError(c, "list_replication_events_failed", err)
 			return
 		}
 
@@ -593,6 +751,25 @@ func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get a Replication Event
+// @Description Get one local or transition replication event from the local or selected cluster node
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Replication Event ID"
+// @Param scope query string false "Event scope" Enums(local,transition)
+// @Param nodeId query string false "Cluster node ID"
+// @Success 200 {object} internal.APIResponse[clusterModels.ReplicationEvent] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Replication Event or Cluster Node Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Remote Node Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Forwarding Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Remote Node Timeout"
+// @Router /cluster/replication/events/{id} [get]
 func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -606,12 +783,21 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
+		scope := strings.TrimSpace(c.Query("scope"))
+		if scope != "" && scope != clusterModels.ReplicationEventScopeLocal &&
+			scope != clusterModels.ReplicationEventScopeTransition {
+			writeReplicationEventQueryError(c, fmt.Errorf("scope must be local or transition"))
+			return
+		}
+
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
 		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/replication/events/%d", id64)
 			response, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
-				writeClusterForwardError(c, "replication_event_remote_forward_failed", err)
+				writeBackupNodeForwardError(
+					c, "replication_event_remote_forward_failed", "replication_event_node_not_found", err,
+				)
 				return
 			}
 
@@ -619,7 +805,6 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		scope := strings.TrimSpace(c.Query("scope"))
 		var event *clusterModels.ReplicationEvent
 		if scope == "" {
 			event, err = cS.GetReplicationEventByID(uint(id64))
@@ -627,7 +812,7 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 			event, err = cS.GetReplicationEventByScopedID(uint(id64), scope)
 		}
 		if err != nil {
-			if err == gorm.ErrRecordNotFound {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "replication_event_not_found",
@@ -637,12 +822,7 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 				return
 			}
 
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "get_replication_event_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationInternalError(c, "get_replication_event_failed", err)
 			return
 		}
 
@@ -654,6 +834,24 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get Replication Event Progress
+// @Description Get live progress for a replication event from the local or selected cluster node
+// @Tags Cluster Replication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Replication Event ID"
+// @Param nodeId query string false "Cluster node ID"
+// @Success 200 {object} internal.APIResponse[zelta.ReplicationEventProgress] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Replication Event or Cluster Node Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Remote Node Failure"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Failure 504 {object} internal.APIResponse[any] "Remote Node Timeout"
+// @Router /cluster/replication/events/{id}/progress [get]
 func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -672,7 +870,9 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 			path := fmt.Sprintf("/api/cluster/replication/events/%d/progress", id64)
 			response, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
-				writeClusterForwardError(c, "replication_event_progress_remote_forward_failed", err)
+				writeBackupNodeForwardError(
+					c, "replication_event_progress_remote_forward_failed", "replication_event_node_not_found", err,
+				)
 				return
 			}
 
@@ -692,7 +892,7 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 
 		progress, err := zS.GetReplicationEventProgress(c.Request.Context(), uint(id64))
 		if err != nil {
-			if err == gorm.ErrRecordNotFound {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "replication_event_not_found",
@@ -701,12 +901,7 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 				})
 				return
 			}
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "get_replication_event_progress_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeReplicationInternalError(c, "get_replication_event_progress_failed", err)
 			return
 		}
 

@@ -38,52 +38,25 @@ func TestGetClusterDetailsRaftNotInit(t *testing.T) {
 	}
 }
 
-func TestGetClusterDetailsWithInMemoryRaft(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2,
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
+func TestClusterRaftNodeDetails(t *testing.T) {
+	configuration := raft.Configuration{Servers: []raft.Server{
+		{ID: "node-1", Address: "127.0.0.1:7001", Suffrage: raft.Voter},
+		{ID: "node-2", Address: "127.0.0.1:7002", Suffrage: raft.Nonvoter},
+	}}
+	nodes := clusterRaftNodeDetails(
+		configuration,
+		"127.0.0.1:7001",
+		"node-1",
+		map[string][]uint{"node-1": {10, 20}},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	if err := leader.service.DB.Create(&clusterModels.Cluster{
-		Enabled: true, Key: "test-key", RaftIP: "127.0.0.1",
-		RaftPort: ClusterRaftPort, RaftBootstrap: boolPtr(true),
-	}).Error; err != nil {
-		t.Fatalf("seed cluster row: %v", err)
+	if len(nodes) != 2 {
+		t.Fatalf("node count = %d, want 2", len(nodes))
 	}
-
-	details, err := leader.service.GetClusterDetails()
-	if err != nil {
-		t.Fatalf("GetClusterDetails failed: %v", err)
+	if !nodes[0].IsLeader || nodes[0].Suffrage != "voter" || len(nodes[0].GuestIDs) != 2 {
+		t.Fatalf("leader details = %+v", nodes[0])
 	}
-	if details.Cluster == nil {
-		t.Fatal("expected cluster row")
-	}
-	if !details.Cluster.Enabled {
-		t.Fatal("expected cluster to be enabled")
-	}
-
-	if details.LeaderID == "" {
-		t.Fatal("expected non-empty leader ID")
-	}
-
-	if len(details.Nodes) != 2 {
-		t.Fatalf("expected 2 nodes in config, got %d", len(details.Nodes))
-	}
-
-	foundLeader := false
-	for _, node := range details.Nodes {
-		if node.IsLeader {
-			foundLeader = true
-			if node.ID != details.LeaderID {
-				t.Fatalf("leader node ID mismatch: node=%q detail=%q", node.ID, details.LeaderID)
-			}
-		}
-	}
-	if !foundLeader {
-		t.Fatal("no leader node found in config")
+	if nodes[1].IsLeader || nodes[1].Suffrage != "nonvoter" {
+		t.Fatalf("follower details = %+v", nodes[1])
 	}
 }
 
@@ -231,42 +204,37 @@ func TestListBackupTargetsForSync(t *testing.T) {
 	}
 }
 
-func TestResyncClusterStateErrors(t *testing.T) {
-	t.Run("raft not initialized", func(t *testing.T) {
-		s := &Service{Raft: nil}
-		err := s.ResyncClusterState()
-		if err == nil {
-			t.Fatal("expected error when Raft is nil")
-		}
-	})
-
-	t.Run("not leader", func(t *testing.T) {
-		nodes := setupClusterRaftTestNodes(t, 2,
-			&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
-			&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
-			&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
-			&clusterModels.ReplicationLease{}, &clusterModels.ClusterSSHIdentity{},
-			&clusterModels.EncryptionKey{}, &clusterModels.ReplicationEvent{},
-		)
-		defer cleanupClusterRaftTestNodes(t, nodes)
-
-		leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-		var follower *clusterRaftTestNode
-		for _, n := range nodes {
-			if n.id != leader.id {
-				follower = n
-				break
-			}
-		}
-
-		err := follower.service.ResyncClusterState()
-		if err == nil {
-			t.Fatal("expected error when calling ResyncClusterState on follower")
-		}
-	})
+func TestResyncClusterStateRequiresRaft(t *testing.T) {
+	s := &Service{Raft: nil}
+	if err := s.ResyncClusterState(); err == nil {
+		t.Fatal("expected error when Raft is nil")
+	}
 }
 
-func TestSnapshotPreClusterState(t *testing.T) {
+func TestIntegrationRaftResyncClusterStateRejectsFollower(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2,
+		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
+		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
+		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{}, &clusterModels.ClusterSSHIdentity{},
+		&clusterModels.EncryptionKey{}, &clusterModels.ReplicationEvent{},
+	)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	var follower *clusterRaftTestNode
+	for _, node := range nodes {
+		if node.id != leader.id {
+			follower = node
+			break
+		}
+	}
+
+	if err := follower.service.ResyncClusterState(); err == nil {
+		t.Fatal("expected error when calling ResyncClusterState on follower")
+	}
+}
+
+func TestIntegrationRaftSnapshotPreClusterState(t *testing.T) {
 	allModels := []any{
 		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
 		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{},
@@ -282,7 +250,6 @@ func TestSnapshotPreClusterState(t *testing.T) {
 	}
 
 	nodes := setupClusterRaftTestNodes(t, 1, allModels...)
-	defer func() { cleanupClusterRaftTestNodes(t, nodes) }()
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	if err := leader.service.DB.Create(&clusterModels.ReplicationEvent{
@@ -519,9 +486,8 @@ func TestSnapshotPreClusterState(t *testing.T) {
 	})
 }
 
-func TestWaitUntilLeaderWithInMemoryRaft(t *testing.T) {
+func TestIntegrationRaftWaitUntilLeader(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 
@@ -536,7 +502,6 @@ func TestWaitUntilLeaderWithInMemoryRaft(t *testing.T) {
 		t.Fatal("expected non-empty leader address")
 	}
 
-	// find a follower to test against
 	var follower *clusterRaftTestNode
 	for _, n := range nodes {
 		if n.id != leader.id {
@@ -545,8 +510,7 @@ func TestWaitUntilLeaderWithInMemoryRaft(t *testing.T) {
 		}
 	}
 
-	// test on a follower - it should detect the leader but timeout trying to become leader itself
-	becameLeader, addr, err = follower.service.waitUntilLeader(2 * time.Second)
+	becameLeader, addr, err = follower.service.waitUntilLeader(3 * raftLeaderPollInterval)
 	if err == nil {
 		t.Fatal("expected timeout error when follower waits to become leader")
 	}

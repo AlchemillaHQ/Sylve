@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 //go:build freebsd
 
 package integration
@@ -20,7 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestNotesCLIAndREPLIntegration(t *testing.T) {
+func TestAcceptanceNotesCLIAndREPL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -28,6 +36,7 @@ func TestNotesCLIAndREPLIntegration(t *testing.T) {
 		t.Skip("run console integration tests with make test-integration as root")
 	}
 	t.Setenv("SYLVE_DATA_PATH", "")
+	suite := requireConsoleIntegrationSuite(t)
 
 	dataPath := t.TempDir()
 	database := openConsoleDatabase(t, filepath.Join(dataPath, "sylve.db"), &infoModels.Note{})
@@ -45,7 +54,7 @@ func TestNotesCLIAndREPLIntegration(t *testing.T) {
 	})
 
 	configPath := writeConsoleConfig(t, dataPath)
-	binaryPath := buildSylveBinary(t)
+	binaryPath := suite.binaryPath
 
 	cliOutput := runSylve(t, binaryPath, configPath,
 		"notes", "add", "--title", "CLI note", "--content", "created through the CLI")
@@ -125,35 +134,6 @@ func writeConsoleConfig(t *testing.T, dataPath string) string {
 		t.Fatalf("write console config: %v", err)
 	}
 	return configPath
-}
-
-func buildSylveBinary(t *testing.T) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "sylve")
-	command := exec.Command("go", "build", "-buildvcs=false", "-o", path, "./cmd/sylve")
-	command.Dir = repositoryRoot(t)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("build sylve CLI: %v\n%s", err, output)
-	}
-	return path
-}
-
-func repositoryRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("get working directory: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not find repository root")
-		}
-		dir = parent
-	}
 }
 
 func runSylve(t *testing.T, binaryPath, configPath string, args ...string) string {

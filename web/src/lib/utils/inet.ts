@@ -35,6 +35,9 @@ export function isValidIPv4Range(start: string, end: string, network: string, ma
     if (!startAddr.isInSubnet(networkAddr) || !endAddr.isInSubnet(networkAddr)) {
         return false;
     }
+    if (startAddr.bigInt() >= endAddr.bigInt()) {
+        return false;
+    }
 
     return true;
 }
@@ -50,24 +53,17 @@ export function isValidIPv6Range(
         const startAddr = new IPv6(start);
         const endAddr = new IPv6(end);
 
-        if (startAddr.getValue() > endAddr.getValue()) {
-            console.log('Error: Start address is greater than end address');
+        if (startAddr.getValue() >= endAddr.getValue()) {
             return false;
         }
 
         const isStartInSubnet = cidrRange.contains(startAddr);
         const isEndInSubnet = cidrRange.contains(endAddr);
 
-        if (!isStartInSubnet || !isEndInSubnet) {
-            console.log(
-                `Error: Range not in subnet. StartIn: ${isStartInSubnet}, EndIn: ${isEndInSubnet}`
-            );
-            return false;
-        }
+        if (!isStartInSubnet || !isEndInSubnet) return false;
 
         return true;
-    } catch (err) {
-        console.error('IP Validation Error:', err);
+    } catch {
         return false;
     }
 }

@@ -14,28 +14,30 @@
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM | null;
 		vms: VM[];
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, vms, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, vms, reload = $bindable(false) }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	let options = {
 		port: vm?.vncPort || 5900,
 		bind: vm?.vncBind || '127.0.0.1',
 		resolution: vm?.vncResolution || '640x480',
-		password: vm?.vncPassword || 'sigma-chad-password-never',
+		password: vm?.vncPassword ?? '',
 		wait: vm?.vncWait ?? false,
 		resolutionOpen: false,
 		vncEnabled: vm?.vncEnabled ?? false
 	};
 
 	let properties = $state(options);
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
+		if (!vm || saving) return;
 
 		let error = '';
 		const isVNCEnabled = properties.vncEnabled;
@@ -44,11 +46,11 @@
 			error = 'Bind IP must be a valid IPv4 or IPv6 address';
 		}
 
-		if (isVNCEnabled) {
-			if (!properties.password || properties.password.length < 8) {
-				error = 'Password too short';
-			}
+		if (properties.password.includes(',')) {
+			error = 'VNC password cannot contain commas';
+		}
 
+		if (isVNCEnabled) {
 			if (properties.port < 5900 || properties.port > 65535) {
 				error = 'Port must be between 5900 and 65535';
 			}
@@ -73,28 +75,35 @@
 			return;
 		}
 
-		const response = await modifyVNC(
-			vm.rid,
-			isVNCEnabled,
-			Number(properties.port),
-			properties.bind,
-			properties.resolution,
-			properties.password,
-			properties.wait ?? false
-		);
+		saving = true;
+		try {
+			const response = await modifyVNC(
+				vm.rid,
+				isVNCEnabled,
+				Number(properties.port),
+				properties.bind,
+				properties.resolution,
+				properties.password,
+				properties.wait ?? false,
+				{ hostname: node }
+			);
 
-		reload = true;
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify VNC', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify VNC', {
-				position: 'bottom-center'
-			});
-		} else {
-			toast.success('VNC modified', {
-				position: 'bottom-center'
-			});
+			reload = true;
+			toast.success(
+				response.message === 'no_changes_detected' ? 'No VNC changes needed' : 'VNC modified',
+				{ position: 'bottom-center' }
+			);
 			open = false;
+		} finally {
+			saving = false;
 		}
 	}
 </script>
@@ -124,7 +133,7 @@
 					bind:value={properties.bind}
 					placeholder="127.0.0.1"
 					classes="flex-1 space-y-1.5"
-					disabled={!properties.vncEnabled}
+					disabled={!properties.vncEnabled || saving}
 				/>
 
 				<CustomValueInput
@@ -133,7 +142,7 @@
 					bind:value={properties.port}
 					placeholder="5900"
 					classes="flex-1 space-y-1.5"
-					disabled={!properties.vncEnabled}
+					disabled={!properties.vncEnabled || saving}
 				/>
 
 				<CustomComboBox
@@ -145,7 +154,7 @@
 					placeholder="Select resolution"
 					triggerWidth="w-full"
 					width="w-full"
-					disabled={!properties.vncEnabled}
+					disabled={!properties.vncEnabled || saving}
 				></CustomComboBox>
 			</div>
 
@@ -156,7 +165,7 @@
 				placeholder="Enter or generate password"
 				classes="flex-1 space-y-1.5"
 				revealOnFocus={true}
-				disabled={!properties.vncEnabled}
+				disabled={!properties.vncEnabled || saving}
 				topRightButton={{
 					icon: 'icon-[fad--random-2dice]',
 					tooltip: 'Generate Password',
@@ -169,19 +178,27 @@
 					label="Enable VNC"
 					bind:checked={properties.vncEnabled}
 					classes="flex items-center gap-2"
+					disabled={saving}
 				/>
 				<CustomCheckbox
 					label="Wait for VNC"
 					bind:checked={properties.wait}
 					classes="flex items-center gap-2"
-					disabled={!properties.vncEnabled}
+					disabled={!properties.vncEnabled || saving}
 				/>
 			</div>
 		</div>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

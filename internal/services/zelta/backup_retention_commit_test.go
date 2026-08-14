@@ -97,10 +97,10 @@ func TestAddBackupManifestRetentionProofsMapsExactSourceAndTargetPaths(t *testin
 	}
 }
 
-func TestLocalRetentionProofPreservesSameNameNonrecursiveDescendant(t *testing.T) {
+func TestIntegrationLocalRetentionProofPreservesSameNameNonrecursiveDescendant(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	root := poolName + "/source"
 	child := root + "/rogue"
@@ -160,11 +160,11 @@ func TestLocalRetentionProofPreservesSameNameNonrecursiveDescendant(t *testing.T
 	}
 }
 
-func TestTargetRetentionProofPreservesSameNameNonrecursiveDescendant(t *testing.T) {
+func TestIntegrationTargetRetentionProofPreservesSameNameNonrecursiveDescendant(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 	requireLocalhostBackupSSH(t)
 
-	poolName, _, cleanup := zfstest.Pool(t)
+	poolName, _, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	root := poolName + "/target"
 	child := root + "/rogue"

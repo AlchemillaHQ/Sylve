@@ -9,6 +9,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -66,6 +67,84 @@ func TestParseListPayloadToValuesRejectsUnsupportedLine(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported_list_line") {
 		t.Fatalf("expected unsupported_list_line error, got: %v", err)
+	}
+}
+
+func TestValidateNetworkObjectListURLRejectsUnsafeSources(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		url  string
+		code string
+	}{
+		{"embedded credentials", "https://user:secret@example.com/list.txt", "network_object_list_credentials_not_allowed"},
+		{"unsupported scheme", "ftp://example.com/list.txt", "invalid_network_object_list_url_scheme"},
+		{"relative URL", "/list.txt", "invalid_network_object_list_url"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateNetworkObjectListURL(tt.url)
+			if !errors.Is(err, ErrInvalidNetworkObject) {
+				t.Fatalf("expected invalid object error, got %v", err)
+			}
+			if code := NetworkObjectErrorCode(err); code != tt.code {
+				t.Fatalf("expected code %q, got %q", tt.code, code)
+			}
+		})
+	}
+}
+
+func TestFetchListPayloadRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer server.Close()
+
+	_, err := fetchListPayload(context.Background(), server.URL, 4)
+	if !errors.Is(err, ErrNetworkObjectUpstream) {
+		t.Fatalf("expected upstream error, got %v", err)
+	}
+	if code := NetworkObjectErrorCode(err); code != "network_object_source_too_large" {
+		t.Fatalf("expected oversized-source code, got %q", code)
+	}
+}
+
+func TestFetchListPayloadLimitsRedirects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/"))
+		if err != nil {
+			http.Error(w, "bad step", http.StatusBadRequest)
+			return
+		}
+		if step < 4 {
+			http.Redirect(w, r, fmt.Sprintf("/%d", step+1), http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte("192.0.2.1\n"))
+	}))
+	defer server.Close()
+
+	_, err := fetchListPayload(context.Background(), server.URL+"/0", 1024)
+	if !errors.Is(err, ErrNetworkObjectUpstream) {
+		t.Fatalf("expected redirect-limit upstream error, got %v", err)
+	}
+	if code := NetworkObjectErrorCode(err); code != "network_object_source_redirect_limit" {
+		t.Fatalf("expected redirect-limit code, got %q", code)
+	}
+}
+
+func TestFetchListPayloadHonorsRefreshContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := fetchListPayload(ctx, server.URL, 1024)
+	if !errors.Is(err, ErrNetworkObjectUpstream) {
+		t.Fatalf("expected timeout upstream error, got %v", err)
+	}
+	if code := NetworkObjectErrorCode(err); code != "network_object_refresh_timeout" {
+		t.Fatalf("expected refresh-timeout code, got %q", code)
 	}
 }
 
@@ -997,6 +1076,35 @@ func TestGetFirewallLiveHitsCursorPagination(t *testing.T) {
 	}
 }
 
+func TestGetFirewallLiveHitsCapsRequestedLimit(t *testing.T) {
+	svc, _ := newNetworkServiceForTest(t)
+	runtime := svc.getFirewallTelemetryRuntime()
+
+	now := time.Now().UTC()
+	hits := make([]networkServiceInterfaces.FirewallLiveHitEvent, 0, firewallLiveMaxLimit+2)
+	for i := int64(1); i <= int64(firewallLiveMaxLimit+2); i++ {
+		hits = append(hits, networkServiceInterfaces.FirewallLiveHitEvent{
+			Cursor: i, Timestamp: now, RuleType: "traffic", RuleID: 1,
+		})
+	}
+
+	runtime.mu.Lock()
+	runtime.liveCursor = int64(len(hits))
+	runtime.liveHits = hits
+	runtime.mu.Unlock()
+
+	resp, err := svc.GetFirewallLiveHits(1, firewallLiveMaxLimit+500, nil)
+	if err != nil {
+		t.Fatalf("expected live hits query to succeed, got: %v", err)
+	}
+	if len(resp.Items) != firewallLiveMaxLimit {
+		t.Fatalf("expected capped result length %d, got %d", firewallLiveMaxLimit, len(resp.Items))
+	}
+	if resp.NextCursor != int64(firewallLiveMaxLimit+1) {
+		t.Fatalf("unexpected next cursor after capped page: %d", resp.NextCursor)
+	}
+}
+
 func TestGetFirewallLiveHitsInitialCursorBootstrapsWithoutHistory(t *testing.T) {
 	svc, _ := newNetworkServiceForTest(t)
 	runtime := svc.getFirewallTelemetryRuntime()
@@ -1136,7 +1244,7 @@ func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 }
 
 func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
-		tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
+	tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
 	rendered := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if strings.Contains(rendered, `sylve/object-tables`) {
@@ -1257,24 +1365,24 @@ func TestBuildFirewallObjectTablesDeterministicAndFiltered(t *testing.T) {
 }
 
 func TestRenderFirewallObjectTablesSortedOutput(t *testing.T) {
-		rendered := renderFirewallObjectTables(map[uint]firewallObjectTable{
-			10: {
-				ObjectID:    10,
-				ObjectName:  "Portal IPv4/IPv6",
-				InetName:    "sylve_obj_10_inet",
-				InetValues:  []string{"10.0.0.2", "10.0.0.1"},
-				Inet6Name:   "sylve_obj_10_inet6",
-				Inet6Values: []string{"2001:db8::2"},
-			},
-			2: {
-				ObjectID:    2,
-				ObjectName:  "LAN Allow",
-				InetName:    "sylve_obj_2_inet",
-				InetValues:  []string{"192.168.1.1"},
-				Inet6Name:   "",
-				Inet6Values: nil,
-			},
-			},)
+	rendered := renderFirewallObjectTables(map[uint]firewallObjectTable{
+		10: {
+			ObjectID:    10,
+			ObjectName:  "Portal IPv4/IPv6",
+			InetName:    "sylve_obj_10_inet",
+			InetValues:  []string{"10.0.0.2", "10.0.0.1"},
+			Inet6Name:   "sylve_obj_10_inet6",
+			Inet6Values: []string{"2001:db8::2"},
+		},
+		2: {
+			ObjectID:    2,
+			ObjectName:  "LAN Allow",
+			InetName:    "sylve_obj_2_inet",
+			InetValues:  []string{"192.168.1.1"},
+			Inet6Name:   "",
+			Inet6Values: nil,
+		},
+	})
 
 	firstObjectIdx := strings.Index(rendered, "table <sylve_obj_2_inet>")
 	secondObjectIdx := strings.Index(rendered, "table <sylve_obj_10_inet>")
@@ -1328,7 +1436,7 @@ func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
 	tmpDir := t.TempDir()
 	entriesDir := filepath.Join(tmpDir, "entries")
 
-		initial := map[uint]firewallObjectTable{
+	initial := map[uint]firewallObjectTable{
 		1: {
 			ObjectID:   1,
 			InetName:   "sylve_obj_1_inet",
@@ -1344,7 +1452,7 @@ func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-		updated := map[uint]firewallObjectTable{
+	updated := map[uint]firewallObjectTable{
 		2: {
 			ObjectID:   2,
 			InetName:   "sylve_obj_2_inet",
@@ -1360,11 +1468,11 @@ func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-		if _, err := os.Stat(filepath.Join(entriesDir, "sylve_obj_1_inet")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(entriesDir, "sylve_obj_1_inet")); !os.IsNotExist(err) {
 		t.Fatalf("expected sylve_obj_1_inet to be removed, got err: %v", err)
 	}
 
-		data, err := os.ReadFile(filepath.Join(entriesDir, "sylve_obj_2_inet"))
+	data, err := os.ReadFile(filepath.Join(entriesDir, "sylve_obj_2_inet"))
 	if err != nil {
 		t.Fatalf("failed to read sylve_obj_2_inet: %v", err)
 	}
@@ -1382,7 +1490,7 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 	tmpDir := t.TempDir()
 	entriesDir := filepath.Join(tmpDir, "entries")
 
-		if err := os.MkdirAll(entriesDir, 0755); err != nil {
+	if err := os.MkdirAll(entriesDir, 0755); err != nil {
 		t.Fatalf("failed to create entries dir: %v", err)
 	}
 	stalePath := filepath.Join(entriesDir, "stale_file")
@@ -1390,7 +1498,7 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 		t.Fatalf("failed to write stale file: %v", err)
 	}
 
-		if err := writeFirewallObjectTableEntries(map[uint]firewallObjectTable{}, entriesDir); err != nil {
+	if err := writeFirewallObjectTableEntries(map[uint]firewallObjectTable{}, entriesDir); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -2647,8 +2755,8 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 	}
 
 	err := svc.ReorderFirewallTrafficRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: ruleA.ID, Priority: 1010},
-		{ID: ruleB.ID, Priority: 1000},
+		{ID: ruleA.ID, Priority: 2},
+		{ID: ruleB.ID, Priority: 1},
 	})
 	if err != nil {
 		t.Fatalf("expected reorder to succeed, got: %v", err)
@@ -2663,7 +2771,7 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 		t.Fatalf("failed to reload rule B: %v", err)
 	}
 
-	if refreshedA.Priority != 1010 || refreshedB.Priority != 1000 {
+	if refreshedA.Priority != 2 || refreshedB.Priority != 1 {
 		t.Fatalf("unexpected reordered priorities: A=%d B=%d", refreshedA.Priority, refreshedB.Priority)
 	}
 }
@@ -2671,8 +2779,8 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 func TestReorderFirewallNATRulesRejectsDuplicateIDs(t *testing.T) {
 	svc := &Service{}
 	err := svc.ReorderFirewallNATRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: 1, Priority: 1000},
-		{ID: 1, Priority: 1010},
+		{ID: 1, Priority: 1},
+		{ID: 1, Priority: 2},
 	})
 	if err == nil {
 		t.Fatal("expected duplicate id validation error")
@@ -3292,7 +3400,7 @@ func TestSampleFirewallCountersSkipsWhenFirewallServiceDisabled(t *testing.T) {
 	}
 }
 
-func TestPFConfigValidation(t *testing.T) {
+func TestIntegrationPFConfigValidation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping pfctl integration test in short mode")
 	}
@@ -3435,15 +3543,15 @@ func TestPFConfigValidation(t *testing.T) {
 		}
 		trafficRules := []networkModels.FirewallTrafficRule{
 			{
-				ID:          70,
-				Name:        "Pass LAN out",
-				Enabled:     true,
-				Priority:    100,
-				Action:      "pass",
-				Quick:       true,
-				Family:      "inet",
-				Protocol:    "any",
-				Direction:   "out",
+				ID:               70,
+				Name:             "Pass LAN out",
+				Enabled:          true,
+				Priority:         100,
+				Action:           "pass",
+				Quick:            true,
+				Family:           "inet",
+				Protocol:         "any",
+				Direction:        "out",
 				EgressInterfaces: []string{"igb0"},
 				SourceObj: &networkModels.Object{
 					ID:   30,
@@ -3586,9 +3694,9 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-		defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir)
 
-		tablesRendered := renderFirewallObjectTables(tables)
+	tablesRendered := renderFirewallObjectTables(tables)
 
 	natPath := filepath.Join(tmpDir, "nat-rules.conf")
 	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")

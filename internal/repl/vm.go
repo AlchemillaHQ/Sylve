@@ -182,7 +182,7 @@ func handleVms(ctx *Context, args []string) {
 				println(ctx, styledErrorf("Invalid MAC object ID '%s'", subArgs[3]))
 				return
 			}
-			request.MacId = &macID
+			request.MacID = &macID
 		}
 		vmsNetworkAttach(ctx, request, jsonMode)
 
@@ -431,7 +431,7 @@ func attachVMNetwork(ctx *Context, request libvirtServiceInterfaces.NetworkAttac
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmNetworkAttachResult{}, fmt.Errorf("vm_service_unavailable")
 	}
-	if err := ctx.VirtualMachine.NetworkAttach(request); err != nil {
+	if _, err := ctx.VirtualMachine.NetworkAttach(request, context.Background()); err != nil {
 		return vmNetworkAttachResult{}, fmt.Errorf("failed_to_attach_vm_network: %w", err)
 	}
 
@@ -440,7 +440,7 @@ func attachVMNetwork(ctx *Context, request libvirtServiceInterfaces.NetworkAttac
 		RID:        request.RID,
 		SwitchName: request.SwitchName,
 		Emulation:  request.Emulation,
-		MacID:      request.MacId,
+		MacID:      request.MacID,
 	}, nil
 }
 
@@ -454,7 +454,10 @@ func detachVMNetwork(ctx *Context, rid, networkID uint) (vmNetworkDetachResult, 
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmNetworkDetachResult{}, fmt.Errorf("vm_service_unavailable")
 	}
-	if err := ctx.VirtualMachine.NetworkDetach(rid, networkID); err != nil {
+	if err := ctx.VirtualMachine.NetworkDetach(libvirtServiceInterfaces.NetworkDetachRequest{
+		RID:       rid,
+		NetworkID: networkID,
+	}, context.Background()); err != nil {
 		return vmNetworkDetachResult{}, fmt.Errorf("failed_to_detach_vm_network: %w", err)
 	}
 	return vmNetworkDetachResult{Deleted: true, RID: rid, NetworkID: networkID}, nil
@@ -846,6 +849,7 @@ func processVMNetworkAttachSocketRequest(ctx *Context, payload json.RawMessage) 
 	if err := decodeOperationPayload(payload, &request); err != nil {
 		return socketResponse{Error: "invalid_vm_network_attach_request: " + err.Error()}
 	}
+	request.Request.RID = request.RID
 	result, err := attachVMNetwork(ctx, request.Request)
 	if err != nil {
 		return socketResponse{Error: err.Error()}

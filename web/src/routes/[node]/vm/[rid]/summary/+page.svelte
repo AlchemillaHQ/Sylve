@@ -6,6 +6,7 @@
 	import {
 		actionVm,
 		deleteVM,
+		forceDeleteVM,
 		getStats,
 		getStatsBootstrap,
 		getVmById,
@@ -27,7 +28,7 @@
 		type VMDomain,
 		type VMStatsBootstrap
 	} from '$lib/types/vm/vm';
-	import { getObjectSchemaDefaults, sleep } from '$lib/utils';
+	import { getObjectSchemaDefaults } from '$lib/utils';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { floatToNDecimals } from '$lib/utils/numbers';
@@ -128,7 +129,7 @@
 	const vm = resource(
 		[() => data.node, () => data.rid],
 		async ([hostname, rid], _, { signal }) => {
-			const result = await getVmById(Number(rid), 'rid', { hostname, signal });
+			const result = await getVmById(Number(rid), { hostname, signal });
 			updateCache(`vm-${rid}`, result, hostname);
 			return result;
 		},
@@ -137,14 +138,22 @@
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
+	type VMLogsSnapshot = { identity: string; logs: string };
+
 	const logs = resource(
 		[() => data.node, () => data.rid],
-		async ([hostname, rid], _, { signal }) => {
+		async ([hostname, rid], _, { signal }): Promise<VMLogsSnapshot | null> => {
+			const identity = `${hostname}:vm:${rid}`;
 			const result = await getVMLogs(Number(rid), { hostname, signal });
-			updateCache(`vm-${rid}-logs`, result, hostname);
-			return result;
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Failed to load VM logs');
+			}
+			ensureCurrentStatsRequest(identity, signal);
+			await updateCache(`vm-${rid}-logs`, result, hostname);
+			ensureCurrentStatsRequest(identity, signal);
+			return { identity, logs: result.logs };
 		},
-		{ initialValue: { logs: '' } }
+		{ initialValue: null }
 	);
 
 	let lastAutomaticStatsResolution = 0;
@@ -310,15 +319,16 @@
 	let showLogs = $state(false);
 	let logsContainerElement = $state<HTMLDivElement | null>(null);
 	let followLogs = $state(true);
-	let vmLogs = $derived.by(() => {
-		const currentLogs = logs.current?.logs;
-		return typeof currentLogs === 'string' ? currentLogs : '';
-	});
+	let activeLogs = $derived(logs.current?.identity === statsIdentity ? logs.current : null);
+	let vmLogs = $derived(activeLogs?.logs ?? '');
 	const LOG_AUTO_SCROLL_THRESHOLD = 24;
 
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
 	let isDescInitialized = false;
+	type PendingDescriptionSave = { rid: number; hostname: string; description: string };
+	let pendingDescriptionSave: PendingDescriptionSave | null = null;
+	let descriptionSaveRunning = false;
 	let vmName = $state(vm.current.name || '');
 	let syncedVMName = $state(vm.current.name || '');
 	let isRenameInFlight = $state(false);
@@ -360,6 +370,58 @@
 
 	let isDeleteInFlight = $state(false);
 
+	async function flushDescriptionSaves() {
+		if (descriptionSaveRunning) return;
+		descriptionSaveRunning = true;
+		let lastSuccessfulSave: PendingDescriptionSave | null = null;
+
+		try {
+			while (pendingDescriptionSave || lastSuccessfulSave) {
+				if (!pendingDescriptionSave && lastSuccessfulSave) {
+					const saved = lastSuccessfulSave;
+					lastSuccessfulSave = null;
+					if (data.rid === saved.rid && data.node === saved.hostname) {
+						await vm.refetch();
+					}
+					continue;
+				}
+
+				const pending = pendingDescriptionSave;
+				pendingDescriptionSave = null;
+				if (!pending) continue;
+
+				const result = await updateDescription(pending.rid, pending.description, pending.hostname);
+				if (result.status === 'success') {
+					lastSuccessfulSave = pending;
+					continue;
+				}
+
+				if (data.rid === pending.rid && data.node === pending.hostname) {
+					toast.error(
+						result.message === 'replication_lease_not_owned'
+							? 'This VM is owned by another node right now'
+							: result.message === 'invalid_description'
+								? 'VM description must be 1024 characters or fewer'
+								: 'Error updating VM description',
+						{ duration: 5000, position: 'bottom-center' }
+					);
+				}
+			}
+		} finally {
+			descriptionSaveRunning = false;
+			if (pendingDescriptionSave) void flushDescriptionSaves();
+		}
+	}
+
+	function queueDescriptionSave(description: string) {
+		pendingDescriptionSave = {
+			rid: data.rid,
+			hostname: data.node,
+			description
+		};
+		void flushDescriptionSaves();
+	}
+
 	watch(
 		() => debouncedDesc.current,
 		(curr, prev) => {
@@ -370,7 +432,7 @@
 
 			if (curr !== undefined && prev !== undefined) {
 				if (curr !== prev) {
-					updateDescription(data.rid, curr);
+					queueDescriptionSave(curr);
 				}
 			}
 		}
@@ -443,59 +505,67 @@
 
 	async function handleDelete() {
 		if (isDeleteInFlight) return;
+		const target = {
+			rid: vm.current.rid,
+			name: vm.current.name,
+			hostname: data.node
+		};
+		const wasForceDelete = modalState.forceDelete;
+		const wasPurgeOnly = modalState.purgeOnly;
+
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
-		modalState.loading.title = modalState.purgeOnly
+		modalState.loading.title = wasPurgeOnly
 			? 'Removing Stale VM Entry'
-			: modalState.forceDelete
+			: wasForceDelete
 				? 'Force Deleting Virtual Machine'
 				: 'Deleting Virtual Machine';
-		modalState.loading.description = modalState.purgeOnly
-			? `Removing stale registration for VM <b>${vm.current.name} (${vm.current.rid})</b>; datasets are preserved`
-			: modalState.forceDelete
-				? `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being force deleted with best-effort cleanup`
-				: `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
+		modalState.loading.description = wasPurgeOnly
+			? `Removing stale registration for VM <b>${target.name} (${target.rid})</b>; datasets are preserved`
+			: wasForceDelete
+				? `Please wait while VM <b>${target.name} (${target.rid})</b> is being force deleted with best-effort cleanup`
+				: `Please wait while VM <b>${target.name} (${target.rid})</b> is being deleted`;
 
-		await sleep(1000);
-		const result = modalState.purgeOnly
-			? await purgeVMRegistration(vm.current.rid, modalState.deleteMACs)
-			: await deleteVM(
-					vm.current.rid,
-					modalState.deleteMACs,
-					modalState.deleteRAWDisks,
-					modalState.deleteVolumes,
-					modalState.forceDelete
+		try {
+			const result = wasPurgeOnly
+				? await purgeVMRegistration(target.rid, modalState.deleteMACs, target.hostname)
+				: wasForceDelete
+					? await forceDeleteVM(target.rid, modalState.deleteMACs, target.hostname)
+					: await deleteVM(
+							target.rid,
+							modalState.deleteMACs,
+							modalState.deleteRAWDisks,
+							modalState.deleteVolumes,
+							target.hostname
+						);
+
+			if (result.status === 'error') {
+				await Promise.all([vm.refetch(), domain.refetch(), refetchCurrentStats()]);
+				toast.error(
+					result.message === 'guest_delete_requires_replication_policy_removed'
+						? 'Remove the replication policy before deleting this VM'
+						: wasPurgeOnly
+							? 'Error removing VM entry'
+							: wasForceDelete
+								? 'Error force deleting VM'
+								: 'Error deleting VM',
+					{ duration: 5000, position: 'bottom-center' }
 				);
-		modalState.loading.open = false;
-		reload.leftPanel = true;
-		const wasForceDelete = modalState.forceDelete;
-		const wasPurgeOnly = modalState.purgeOnly;
-		modalState.forceDelete = false;
-		modalState.purgeOnly = false;
+				return;
+			}
 
-		if (result.status === 'error') {
-			isDeleteInFlight = false;
-			await Promise.all([vm.refetch(), domain.refetch(), refetchCurrentStats()]);
-			toast.error(
-				result.message === 'guest_delete_requires_replication_policy_removed'
-					? 'Remove the replication policy before deleting this VM'
-					: wasPurgeOnly
-						? 'Error removing VM entry'
-						: wasForceDelete
-							? 'Error force deleting VM'
-							: 'Error deleting VM',
-				{ duration: 5000, position: 'bottom-center' }
-			);
-		} else if (result.status === 'success') {
+			reload.leftPanel = true;
 			const deletionData = parseGuestDeletionData(result.data);
 			const cleanupWarnings = deletionData.warnings;
 			const retainedDatasets = deletionData.retainedDatasets;
+			await removeStaleCacheByRID(target.rid, target.hostname);
 			await useSafeGoto(
 				resolve('/[node]/summary', {
-					node: data.node
+					node: target.hostname
 				})
 			);
+
 			if (wasPurgeOnly && result.message === 'vm_registration_purged_with_warnings') {
 				toast.warning('VM entry removed with warnings; datasets preserved', {
 					duration: 5000,
@@ -527,8 +597,11 @@
 					position: 'bottom-center'
 				});
 			}
-
-			removeStaleCacheByRID(vm.current.rid);
+		} finally {
+			modalState.loading.open = false;
+			modalState.forceDelete = false;
+			modalState.purgeOnly = false;
+			isDeleteInFlight = false;
 		}
 	}
 
@@ -545,18 +618,21 @@
 		}
 
 		isRenameInFlight = true;
-		const result = await updateName(vm.current.rid, nextName);
-		if (result.status === 'success') {
-			isEditingName = false;
-			reload.leftPanel = true;
-			await vm.refetch();
-			vmName = vm.current.name || nextName;
-			syncedVMName = vmName;
-			toast.success('VM name updated', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} else {
+		try {
+			const result = await updateName(vm.current.rid, nextName, data.node);
+			if (result.status === 'success') {
+				isEditingName = false;
+				reload.leftPanel = true;
+				await vm.refetch();
+				vmName = vm.current.name || nextName;
+				syncedVMName = vmName;
+				toast.success('VM name updated', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			let errorMessage = 'Error updating VM name';
 			if (result.message === 'invalid_vm_name') {
 				errorMessage = 'Invalid VM name. Use letters, numbers, - or _.';
@@ -570,20 +646,20 @@
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} finally {
+			isRenameInFlight = false;
 		}
-
-		isRenameInFlight = false;
 	}
 
 	async function handleStart() {
-		const result = await actionVm(vm.current.rid, 'start');
+		const result = await actionVm(vm.current.rid, 'start', data.node);
 		domain.refetch();
-		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
 				toast.error(
-					result.message === 'lifecycle_task_in_progress'
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
 						? 'VM action already in progress'
 						: 'Error starting VM',
 					{
@@ -593,6 +669,7 @@
 				);
 			}
 		} else {
+			reload.leftPanel = true;
 			if (result.outcome === 'queued') {
 				toast.success('VM start queued', {
 					duration: 5000,
@@ -606,14 +683,14 @@
 	}
 
 	async function handleStop() {
-		const result = await actionVm(vm.current.rid, 'stop');
+		const result = await actionVm(vm.current.rid, 'stop', data.node);
 		domain.refetch();
-		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
 				toast.error(
-					result.message === 'lifecycle_task_in_progress'
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
 						? 'VM action already in progress'
 						: 'Error stopping VM',
 					{
@@ -629,24 +706,29 @@
 					});
 				}
 			}
-		} else if (result.outcome === 'queued') {
-			toast.success('VM stop queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+		} else {
+			reload.leftPanel = true;
+			if (result.outcome === 'force_stop_requested') {
+				toast.warning('Force stop requested', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (result.outcome === 'queued') {
+				toast.success('VM stop queued', { duration: 5000, position: 'bottom-center' });
+			}
 		}
 
 		await refreshLifecycleState();
 	}
 
 	async function handleForceStop() {
-		const result = await actionVm(vm.current.rid, 'stop');
+		const result = await actionVm(vm.current.rid, 'stop', data.node);
 		domain.refetch();
-		reload.leftPanel = true;
 
 		if (isAPIResponse(result) && result.status === 'error') {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error requesting force stop',
 				{
@@ -655,6 +737,7 @@
 				}
 			);
 		} else {
+			reload.leftPanel = true;
 			toast.warning('Force stop requested', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -665,14 +748,14 @@
 	}
 
 	async function handleShutdown() {
-		const result = await actionVm(vm.current.rid, 'shutdown');
+		const result = await actionVm(vm.current.rid, 'shutdown', data.node);
 		domain.refetch();
-		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
 				toast.error(
-					result.message === 'lifecycle_task_in_progress'
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
 						? 'VM action already in progress'
 						: 'Error shutting down VM',
 					{
@@ -686,25 +769,28 @@
 					position: 'bottom-center'
 				});
 			}
-		} else if (result.outcome === 'queued') {
-			toast.success('VM shutdown queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+		} else {
+			reload.leftPanel = true;
+			if (result.outcome === 'queued') {
+				toast.success('VM shutdown queued', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			}
 		}
 
 		await refreshLifecycleState();
 	}
 
 	async function handleReboot() {
-		const result = await actionVm(vm.current.rid, 'reboot');
+		const result = await actionVm(vm.current.rid, 'reboot', data.node);
 		domain.refetch();
-		reload.leftPanel = true;
 
 		if (isAPIResponse(result)) {
 			if (result.status === 'error') {
 				toast.error(
-					result.message === 'lifecycle_task_in_progress'
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
 						? 'VM action already in progress'
 						: 'Error rebooting VM',
 					{
@@ -718,11 +804,14 @@
 					position: 'bottom-center'
 				});
 			}
-		} else if (result.outcome === 'queued') {
-			toast.success('VM reboot queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+		} else {
+			reload.leftPanel = true;
+			if (result.outcome === 'queued') {
+				toast.success('VM reboot queued', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			}
 		}
 
 		gaRefreshSignal += 1;
@@ -881,26 +970,24 @@
 		</div>
 
 		<div class="ml-auto flex h-full items-center gap-2">
-			{#if vmLogs.length > 0}
-				<div>
-					<Button
-						size="sm"
-						onclick={() => {
-							followLogs = true;
-							showLogs = true;
-							logs.refetch();
-						}}
-						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
-					>
-						<SpanWithIcon
-							icon="icon-[mdi--file-document-outline]"
-							size="h-4 w-4"
-							gap="gap-1"
-							title="View Logs"
-						/>
-					</Button>
-				</div>
-			{/if}
+			<div>
+				<Button
+					size="sm"
+					onclick={() => {
+						followLogs = true;
+						showLogs = true;
+						logs.refetch();
+					}}
+					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+				>
+					<SpanWithIcon
+						icon="icon-[mdi--file-document-outline]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="View Logs"
+					/>
+				</Button>
+			</div>
 
 			{#if availableNodeCount > 0}
 				{@render button('migrate')}
@@ -1214,15 +1301,40 @@
 
 		<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
 			<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
-				<div
-					class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
-					bind:this={logsContainerElement}
-					onscroll={handleLogsScroll}
-				>
-					<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
-						{vmLogs}
-					</pre>
-				</div>
+				{#if logs.loading && !activeLogs}
+					<div class="flex min-h-32 items-center justify-center gap-2 text-sm text-zinc-300">
+						<span class="icon-[mdi--loading] h-5 w-5 animate-spin"></span>
+						Loading console output…
+					</div>
+				{:else if logs.error && !activeLogs}
+					<div
+						class="flex min-h-32 flex-col items-center justify-center gap-3 text-sm text-zinc-300"
+					>
+						<span>Console output is currently unavailable.</span>
+						<Button size="sm" variant="outline" onclick={() => logs.refetch()}>Retry</Button>
+					</div>
+				{:else}
+					{#if logs.error}
+						<div class="mb-3 text-xs text-amber-400">
+							Showing the last retrieved output while the latest request is unavailable.
+						</div>
+					{/if}
+					{#if vmLogs.length > 0}
+						<div
+							class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
+							bind:this={logsContainerElement}
+							onscroll={handleLogsScroll}
+						>
+							<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
+								{vmLogs}
+							</pre>
+						</div>
+					{:else}
+						<div class="flex min-h-32 items-center justify-center text-sm text-zinc-300">
+							No console output has been recorded yet.
+						</div>
+					{/if}
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	</Dialog.Content>

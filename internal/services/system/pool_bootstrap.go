@@ -32,7 +32,7 @@ func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string
 
 		found, err := s.GZFS.ZFS.Get(ctx, fullDatasetName, false)
 		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
-			return nil, fmt.Errorf("error_checking_dataset_%s: %w", fullDatasetName, err)
+			return created, fmt.Errorf("error_checking_dataset_%s: %w", fullDatasetName, err)
 		}
 
 		if found != nil {
@@ -40,7 +40,7 @@ func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string
 				if err := s.GZFS.ZFS.EditFilesystem(ctx, fullDatasetName, map[string]string{
 					"mountpoint": mountpoint,
 				}); err != nil {
-					return nil, fmt.Errorf("error_fixing_mountpoint_%s: %w", fullDatasetName, err)
+					return created, fmt.Errorf("error_fixing_mountpoint_%s: %w", fullDatasetName, err)
 				}
 			}
 			continue
@@ -50,7 +50,7 @@ func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string
 			"mountpoint": mountpoint,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("error_creating_dataset_%s: %w", fullDatasetName, err)
+			return created, fmt.Errorf("error_creating_dataset_%s: %w", fullDatasetName, err)
 		}
 
 		created = append(created, newDataset)

@@ -9,12 +9,20 @@
 package libvirtHandlers
 
 import (
+	"net/http"
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/gin-gonic/gin"
 )
+
+type VMLogsResponse struct {
+	Logs string `json:"logs"`
+}
+
+type vmLogsService interface {
+	GetVMLogs(rid uint) (string, error)
+}
 
 // @Summary Get VM Logs
 // @Description Retrieve console log for a specific VM by RID
@@ -23,31 +31,32 @@ import (
 // @Produce json
 // @Param rid path int true "VM RID"
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[string] "Success"
+// @Success 200 {object} internal.APIResponse[VMLogsResponse] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "VM Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/logs/:rid [get]
-func GetVMLogs(libvirtService *libvirt.Service) gin.HandlerFunc {
+// @Router /vm/{rid}/logs [get]
+func GetVMLogs(libvirtService vmLogsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Param("rid")
 		if rid == "" {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_rid",
 				Data:    nil,
-				Error:   "Bad Request",
+				Error:   "rid is required",
 			})
 			return
 		}
 
-		ridInt, err := strconv.Atoi(rid)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+		ridInt, err := strconv.ParseUint(rid, 10, 32)
+		if err != nil || ridInt == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_rid_format: " + err.Error(),
+				Message: "invalid_rid_format",
 				Data:    nil,
-				Error:   "Bad Request",
+				Error:   "rid must be a positive integer",
 			})
 			return
 		}
@@ -55,7 +64,7 @@ func GetVMLogs(libvirtService *libvirt.Service) gin.HandlerFunc {
 		logs, err := libvirtService.GetVMLogs(uint(ridInt))
 		if err != nil {
 			if isVMNotFoundError(err) {
-				c.JSON(404, internal.APIResponse[any]{
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "vm_not_found",
 					Data:    nil,
@@ -64,23 +73,19 @@ func GetVMLogs(libvirtService *libvirt.Service) gin.HandlerFunc {
 				return
 			}
 
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_get_vm_logs: " + err.Error(),
+				Message: "failed_to_get_vm_logs",
 				Data:    nil,
-				Error:   "Internal Server Error",
+				Error:   err.Error(),
 			})
 			return
 		}
 
-		type LogsResponse struct {
-			Logs string `json:"logs"`
-		}
-
-		c.JSON(200, internal.APIResponse[LogsResponse]{
+		c.JSON(http.StatusOK, internal.APIResponse[VMLogsResponse]{
 			Status:  "success",
 			Message: "vm_logs_retrieved",
-			Data:    LogsResponse{Logs: logs},
+			Data:    VMLogsResponse{Logs: logs},
 			Error:   "",
 		})
 	}

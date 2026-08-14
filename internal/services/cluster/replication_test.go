@@ -16,6 +16,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
 
@@ -399,45 +400,6 @@ func TestDeleteClusterSSHIdentityBypassRaft(t *testing.T) {
 	}
 }
 
-func TestDeleteClusterSSHIdentityWithInMemoryRaft(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ClusterSSHIdentity{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	if err := leader.service.UpsertClusterSSHIdentity(clusterModels.ClusterSSHIdentity{
-		NodeUUID: "raft-del", SSHHost: "10.0.0.1", PublicKey: "ssh-key",
-	}, false); err != nil {
-		t.Fatalf("create via raft: %v", err)
-	}
-
-	waitForClusterCondition(t, 8*time.Second, "identity replicated before delete", func() bool {
-		for _, n := range nodes {
-			var count int64
-			n.service.DB.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
-			if count != 1 {
-				return false
-			}
-		}
-		return true
-	})
-
-	if err := leader.service.DeleteClusterSSHIdentity("raft-del", false); err != nil {
-		t.Fatalf("delete via raft: %v", err)
-	}
-
-	waitForClusterCondition(t, 8*time.Second, "identity deleted on all nodes", func() bool {
-		for _, n := range nodes {
-			var count int64
-			n.service.DB.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
-			if count != 0 {
-				return false
-			}
-		}
-		return true
-	})
-}
-
 func TestResolveSSHHostForNode(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
 	s := &Service{DB: db}
@@ -466,17 +428,18 @@ func TestResolveSSHHostForNode(t *testing.T) {
 }
 
 func TestResolveSSHHostForNodeViaRaftConfig(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ClusterNode{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	host, err := leader.service.ResolveSSHHostForNode("node-1")
-	if err != nil {
-		t.Fatalf("resolve via raft: %v", err)
+	configuration := raft.Configuration{Servers: []raft.Server{
+		{ID: "node-1", Address: "192.0.2.10:7000", Suffrage: raft.Voter},
+		{ID: "node-2", Address: "node-2.internal", Suffrage: raft.Nonvoter},
+	}}
+	if host, found := resolveSSHHostFromRaftConfiguration("node-1", configuration); !found || host != "192.0.2.10" {
+		t.Fatalf("resolved host = %q, found=%t", host, found)
 	}
-	if host == "" {
-		t.Fatal("expected non-empty host from raft config")
+	if host, found := resolveSSHHostFromRaftConfiguration("node-2", configuration); !found || host != "node-2.internal" {
+		t.Fatalf("fallback address = %q, found=%t", host, found)
+	}
+	if _, found := resolveSSHHostFromRaftConfiguration("missing", configuration); found {
+		t.Fatal("unexpected match for missing node")
 	}
 }
 

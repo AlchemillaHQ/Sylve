@@ -20,6 +20,7 @@ import (
 
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/digitalocean/go-libvirt"
+	"gorm.io/gorm"
 )
 
 const qgaCommandTimeoutSeconds int32 = 2
@@ -78,6 +79,12 @@ func qgaCallRaw(conn net.Conn, enc *json.Encoder, dec *json.Decoder, cmd string,
 }
 
 func (s *Service) RunQemuGuestAgentCommand(rid uint, cmd string) (json.RawMessage, error) {
+	if rid == 0 {
+		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("db_not_initialized")
+	}
 	command := strings.TrimSpace(cmd)
 	if command == "" {
 		return nil, fmt.Errorf("qga_command_required")
@@ -93,7 +100,7 @@ func (s *Service) RunQemuGuestAgentCommand(rid uint, cmd string) (json.RawMessag
 	}
 
 	if err := s.requireConnection(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("libvirt_connection_unavailable: %w", err)
 	}
 
 	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
@@ -141,6 +148,33 @@ func (s *Service) runLegacyQemuGuestAgentCommand(rid uint, command string) (json
 
 func (s *Service) GetQemuGuestAgentInfo(rid uint) (libvirtServiceInterfaces.QemuGuestAgentInfo, error) {
 	var info libvirtServiceInterfaces.QemuGuestAgentInfo
+	if rid == 0 {
+		return info, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return info, fmt.Errorf("db_not_initialized")
+	}
+
+	vm, err := s.GetVMByRID(rid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return info, fmt.Errorf("vm_not_found: %w", err)
+		}
+		return info, fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
+	}
+	if !vm.QemuGuestAgent {
+		return info, fmt.Errorf("qemu_guest_agent_disabled")
+	}
+	if err := s.requireConnection(); err != nil {
+		return info, fmt.Errorf("libvirt_connection_unavailable: %w", err)
+	}
+	state, err := s.GetDomainState(int(rid))
+	if err != nil {
+		return info, fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+	if state != libvirt.DomainRunning {
+		return info, fmt.Errorf("qga_requires_running_vm")
+	}
 
 	osInfo, err := s.RunQemuGuestAgentCommand(rid, "guest-get-osinfo")
 	if err != nil {

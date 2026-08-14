@@ -13,10 +13,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
-	"github.com/hashicorp/raft"
 )
 
 func TestValidateBackupJobSafetyLocalReturnsBoundReceipt(t *testing.T) {
@@ -122,287 +119,49 @@ func seedRemoteValidationVM(t *testing.T, service *Service, rid uint, pool, name
 	}
 }
 
-func seedRemoteValidationJail(t *testing.T, service *Service, ctid uint, pool, name string) {
-	t.Helper()
-	jail := jailModels.Jail{CTID: ctid, Name: name, Type: jailModels.JailTypeFreeBSD}
-	if err := service.DB.Create(&jail).Error; err != nil {
-		t.Fatalf("seed jail: %v", err)
+func TestFetchBackupJobSafetyValidationAuthenticatesAndBindsReceipt(t *testing.T) {
+	request := BackupJobSafetyValidationRequest{
+		ExpectedNodeID:          "node-runner",
+		MinimumRaftAppliedIndex: 7,
+		Mode:                    clusterModels.BackupJobModeDataset,
+		SourceDataset:           "tank/data",
 	}
-	if err := service.DB.Create(&jailModels.Storage{
-		JailID: jail.ID, Pool: pool, GUID: fmt.Sprintf("jail-%d-guid", ctid),
-		Name: "Base Filesystem", IsBase: true,
-	}).Error; err != nil {
-		t.Fatalf("seed jail storage: %v", err)
+	result := BackupJobSafetyValidationResult{
+		NodeID: "node-runner", RaftAppliedIndex: 7, Valid: true,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
+		Classification: BackupJobSourceClassificationDataset,
+		FriendlySource: "tank/data",
 	}
-}
-
-func TestRemoteRunnerValidationCreatesGuestAndDatasetJobsAcrossThreeNodes(t *testing.T) {
-	models := []any{
-		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
-		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
-		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
-		&jailModels.Jail{}, &jailModels.Storage{},
-	}
-	nodes := setupClusterRaftTestNodes(t, 3, models...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	runner := remoteClusterRaftTestNode(t, nodes, leader)
-	leader.service.NodeID = leader.id
-	runner.service.NodeID = runner.id
-	leader.service.AuthService = clusterAuthStub{}
-
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.BackupTarget{
-			ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
-		}).Error; err != nil {
-			t.Fatalf("seed target on %s: %v", node.id, err)
-		}
-	}
-	seedRemoteValidationVM(t, runner.service, 401, "fast", "remote-vm")
-	seedRemoteValidationJail(t, runner.service, 501, "jpool", "remote-jail")
 
 	sim := newClusterPeerSimulator()
 	defer sim.Close()
-	registerBackupJobValidationPeer(t, sim, runner.service)
-	leader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != runner.id {
-			return "", fmt.Errorf("unexpected runner %s", nodeID)
-		}
-		return sim.Addr(), nil
-	}
-
-	enabled := true
-	requests := []clusterServiceInterfaces.BackupJobReq{
-		{
-			Name: "remote-vm-job", TargetID: 1, RunnerNodeID: runner.id,
-			Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/401",
-			Recursive: true, CronExpr: "0 0 * * *", Enabled: &enabled,
-		},
-		{
-			Name: "remote-jail-job", TargetID: 1, RunnerNodeID: runner.id,
-			Mode: clusterModels.BackupJobModeJail, JailRootDataset: "jpool/sylve/jails/501",
-			CronExpr: "0 1 * * *", Enabled: &enabled,
-		},
-		{
-			Name: "remote-dataset-job", TargetID: 1, RunnerNodeID: runner.id,
-			Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/ordinary",
-			CronExpr: "0 2 * * *", Enabled: &enabled,
-		},
-	}
-	for _, request := range requests {
-		if err := leader.service.ProposeBackupJobCreateContext(context.Background(), request, false); err != nil {
-			t.Fatalf("create %s: %v", request.Name, err)
-		}
-	}
-
-	waitForClusterCondition(t, 5*time.Second, "backup job replication", func() bool {
-		for _, node := range nodes {
-			var count int64
-			if node.service.DB.Model(&clusterModels.BackupJob{}).
-				Where("runner_node_id = ?", runner.id).Count(&count).Error != nil || count != 3 {
-				return false
-			}
-		}
-		return true
+	sim.serveMux.HandleFunc("/api/intra-cluster/backup-job-safety-validation", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(internal.APIResponse[BackupJobSafetyValidationResult]{
+			Status: "success", Data: result,
+		})
 	})
-	var job clusterModels.BackupJob
-	if err := leader.service.DB.Where("name = ?", "remote-vm-job").First(&job).Error; err != nil {
-		t.Fatalf("load job: %v", err)
-	}
-	if job.FriendlySrc != "remote-vm" || job.RunnerNodeID != runner.id {
-		t.Fatalf("stored job = %+v", job)
-	}
-	if err := leader.service.ProposeBackupJobUpdateContext(
-		context.Background(),
-		job.ID,
-		clusterServiceInterfaces.BackupJobReq{
-			Name: "remote-vm-job-updated", TargetID: 1, RunnerNodeID: runner.id,
-			Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/401",
-			Recursive: true, CronExpr: "0 3 * * *", Enabled: &enabled,
-		},
-		false,
-		BackupJobPlacementAuthorization{},
-	); err != nil {
-		t.Fatalf("update remote VM job: %v", err)
-	}
-	waitForClusterCondition(t, 5*time.Second, "backup job update replication", func() bool {
-		for _, node := range nodes {
-			var updated clusterModels.BackupJob
-			if node.service.DB.First(&updated, job.ID).Error != nil || updated.Name != "remote-vm-job-updated" {
-				return false
-			}
-		}
-		return true
-	})
+	service := &Service{NodeID: "node-leader", AuthService: clusterAuthStub{}}
 
-	request := sim.FindRequest("/api/intra-cluster/backup-job-safety-validation")
-	if request == nil || request.Header.Get("X-Cluster-Token") != "Bearer test-cluster-token" {
-		t.Fatalf("authenticated validation request not observed: %+v", request)
+	got, err := service.fetchBackupJobSafetyValidation(t.Context(), "node-runner", sim.Addr(), request)
+	if err != nil {
+		t.Fatalf("fetch validation: %v", err)
 	}
-}
-
-func TestBackupJobRunnerChangeRequiresStrictLivePlacement(t *testing.T) {
-	models := []any{
-		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
-		&clusterModels.BackupJob{}, &clusterModels.BackupJobRunnerRebind{},
-		&clusterModels.BackupJobRunnerRebindItem{}, &clusterModels.Cluster{},
-		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
-		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
-		&jailModels.Jail{},
+	if err := validateBackupJobSafetyReceipt(request, got); err != nil {
+		t.Fatalf("validate receipt: %v", err)
 	}
-	nodes := setupClusterRaftTestNodes(t, 2, models...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	runner := remoteClusterRaftTestNode(t, nodes, leader)
-	leader.service.NodeID = leader.id
-	runner.service.NodeID = runner.id
-	leader.service.AuthService = clusterAuthStub{}
-	if err := leader.service.DB.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
-		t.Fatalf("seed clustered state: %v", err)
+	captured := sim.FindRequest("/api/intra-cluster/backup-job-safety-validation")
+	if captured == nil || captured.Header.Get("X-Cluster-Token") != "Bearer test-cluster-token" {
+		t.Fatalf("authenticated request not observed: %+v", captured)
 	}
 
-	target := clusterModels.BackupTarget{
-		ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
+	result.NodeID = "spoofed-node"
+	got, err = service.fetchBackupJobSafetyValidation(t.Context(), "node-runner", sim.Addr(), request)
+	if err != nil {
+		t.Fatalf("fetch spoofed receipt: %v", err)
 	}
-	job := clusterModels.BackupJob{
-		ID: 81, Name: "stale-runner", TargetID: target.ID, RunnerNodeID: leader.id,
-		Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/811",
-		Recursive: true, CronExpr: "0 0 * * *", Enabled: true, ScheduleRevision: 1,
-	}
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&target).Error; err != nil {
-			t.Fatalf("seed target on %s: %v", node.id, err)
-		}
-		if err := node.service.DB.Create(&job).Error; err != nil {
-			t.Fatalf("seed job on %s: %v", node.id, err)
-		}
-	}
-	seedRemoteValidationVM(t, runner.service, 811, "fast", "current-vm")
-
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	registerBackupJobValidationPeer(t, sim, runner.service)
-	registerGuestIdentityInventoryPeer(t, sim, runner.id, []GuestIdentityInventoryEntry{{
-		NodeID: runner.id, GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 811, RecordID: 1, Name: "current-vm",
-	}})
-	leader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != runner.id {
-			return "", fmt.Errorf("unexpected validation runner %s", nodeID)
-		}
-		return sim.Addr(), nil
-	}
-	leader.service.guestIdentityInventoryAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != runner.id {
-			return "", fmt.Errorf("unexpected inventory node %s", nodeID)
-		}
-		return sim.Addr(), nil
-	}
-
-	enabled := true
-	update := clusterServiceInterfaces.BackupJobReq{
-		Name: job.Name, TargetID: target.ID, RunnerNodeID: runner.id,
-		Mode: clusterModels.BackupJobModeVM, SourceDataset: job.SourceDataset,
-		Recursive: true, CronExpr: job.CronExpr, Enabled: &enabled,
-	}
-	if err := leader.service.ProposeBackupJobUpdateContext(
-		t.Context(), job.ID, update, false, BackupJobPlacementAuthorization{},
-	); err != nil {
-		t.Fatalf("repair stale runner: %v", err)
-	}
-	waitForClusterCondition(t, 5*time.Second, "strict runner repair replication", func() bool {
-		for _, node := range nodes {
-			var current clusterModels.BackupJob
-			if node.service.DB.First(&current, job.ID).Error != nil ||
-				current.RunnerNodeID != runner.id {
-				return false
-			}
-		}
-		return true
-	})
-
-	seedRemoteValidationVM(t, leader.service, 811, "fast", "duplicate-vm")
-	update.RunnerNodeID = leader.id
-	err := leader.service.ProposeBackupJobUpdateContext(
-		t.Context(), job.ID, update, false, BackupJobPlacementAuthorization{},
-	)
-	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_conflict") {
-		t.Fatalf("duplicate placement error = %v", err)
-	}
-	var unchanged clusterModels.BackupJob
-	if err := leader.service.DB.First(&unchanged, job.ID).Error; err != nil {
-		t.Fatalf("reload duplicate-rejected job: %v", err)
-	}
-	if unchanged.RunnerNodeID != runner.id {
-		t.Fatalf("duplicate placement changed runner: %+v", unchanged)
-	}
-
-	leader.service.guestIdentityInventoryAPIForNode = func(string, raft.ServerAddress) (string, error) {
-		return "127.0.0.1:1", nil
-	}
-	err = leader.service.ProposeBackupJobUpdateContext(
-		t.Context(), job.ID, update, false, BackupJobPlacementAuthorization{},
-	)
-	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_unavailable") {
-		t.Fatalf("unavailable placement error = %v", err)
-	}
-	if err := leader.service.DB.First(&unchanged, job.ID).Error; err != nil {
-		t.Fatalf("reload unavailable-rejected job: %v", err)
-	}
-	if unchanged.RunnerNodeID != runner.id {
-		t.Fatalf("unavailable placement changed runner: %+v", unchanged)
-	}
-}
-
-func TestRemoteRunnerValidationRejectsManagedDatasetAndStaleHealthRunner(t *testing.T) {
-	models := []any{
-		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.ClusterNode{},
-		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
-		&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
-		&jailModels.Jail{}, &jailModels.Storage{},
-	}
-	nodes := setupClusterRaftTestNodes(t, 2, models...)
-	defer cleanupClusterRaftTestNodes(t, nodes)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	runner := remoteClusterRaftTestNode(t, nodes, leader)
-	leader.service.NodeID = leader.id
-	runner.service.NodeID = runner.id
-	leader.service.AuthService = clusterAuthStub{}
-	if err := leader.service.DB.Create(&clusterModels.BackupTarget{
-		ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
-	}).Error; err != nil {
-		t.Fatalf("seed target: %v", err)
-	}
-	seedRemoteValidationVM(t, runner.service, 402, "fast", "managed-vm")
-
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	registerBackupJobValidationPeer(t, sim, runner.service)
-	leader.service.backupJobValidationAPIForNode = func(string, raft.ServerAddress) (string, error) {
-		return sim.Addr(), nil
-	}
-	enabled := true
-	err := leader.service.ProposeBackupJobCreateContext(context.Background(), clusterServiceInterfaces.BackupJobReq{
-		Name: "unsafe-dataset", TargetID: 1, RunnerNodeID: runner.id,
-		Mode:          clusterModels.BackupJobModeDataset,
-		SourceDataset: "fast/sylve/virtual-machines/402/disk0", Enabled: &enabled,
-	}, false)
-	if err == nil || !strings.Contains(err.Error(), "dataset_backup_source_contains_managed_guest") {
-		t.Fatalf("managed dataset error = %v", err)
-	}
-
-	if err := leader.service.DB.Create(&clusterModels.ClusterNode{
-		NodeUUID: "removed-node", API: "192.0.2.10:8184", Status: "online",
-	}).Error; err != nil {
-		t.Fatalf("seed stale health row: %v", err)
-	}
-	err = leader.service.ProposeBackupJobCreateContext(context.Background(), clusterServiceInterfaces.BackupJobReq{
-		Name: "stale-runner", TargetID: 1, RunnerNodeID: "removed-node",
-		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data", Enabled: &enabled,
-	}, false)
-	if err == nil || !strings.Contains(err.Error(), "backup_runner_not_raft_member") {
-		t.Fatalf("stale runner error = %v", err)
+	if err := validateBackupJobSafetyReceipt(request, got); err == nil ||
+		!strings.Contains(err.Error(), "backup_runner_identity_mismatch") {
+		t.Fatalf("spoofed receipt error = %v", err)
 	}
 }
 

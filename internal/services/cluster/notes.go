@@ -13,7 +13,38 @@ import (
 	"fmt"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"gorm.io/gorm"
 )
+
+func requireAffectedNoteRows(result *gorm.DB, expected int64) error {
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != expected {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func requireExactNoteIDs(db *gorm.DB, ids []int) error {
+	var count int64
+	if err := db.Model(&clusterModels.ClusterNote{}).Where("id IN ?", ids).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != int64(len(ids)) {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func deleteNotesExact(db *gorm.DB, ids []int) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		return requireAffectedNoteRows(
+			tx.Delete(&clusterModels.ClusterNote{}, ids),
+			int64(len(ids)),
+		)
+	})
+}
 
 func (s *Service) ListNotes() ([]clusterModels.ClusterNote, error) {
 	var notes []clusterModels.ClusterNote
@@ -59,11 +90,14 @@ func (s *Service) ProposeNoteCreate(title, content string, bypassRaft bool) erro
 
 func (s *Service) ProposeNoteUpdate(id int, title, content string, bypassRaft bool) error {
 	if bypassRaft {
-		return s.DB.Model(&clusterModels.ClusterNote{}).Where("id = ?", id).
-			Updates(clusterModels.ClusterNote{
-				Title:   title,
-				Content: content,
-			}).Error
+		return requireAffectedNoteRows(
+			s.DB.Model(&clusterModels.ClusterNote{}).Where("id = ?", id).
+				Updates(clusterModels.ClusterNote{
+					Title:   title,
+					Content: content,
+				}),
+			1,
+		)
 	}
 
 	if s.Raft == nil {
@@ -96,7 +130,7 @@ func (s *Service) ProposeNoteUpdate(id int, title, content string, bypassRaft bo
 
 func (s *Service) ProposeNoteDelete(id int, bypassRaft bool) error {
 	if bypassRaft {
-		return s.DB.Delete(&clusterModels.ClusterNote{}, id).Error
+		return requireAffectedNoteRows(s.DB.Delete(&clusterModels.ClusterNote{}, id), 1)
 	}
 
 	if s.Raft == nil {
@@ -123,11 +157,14 @@ func (s *Service) ProposeNoteDelete(id int, bypassRaft bool) error {
 
 func (s *Service) ProposeNoteBulkDelete(ids []int, bypassRaft bool) error {
 	if bypassRaft {
-		return s.DB.Delete(&clusterModels.ClusterNote{}, ids).Error
+		return deleteNotesExact(s.DB, ids)
 	}
 
 	if s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
+	}
+	if err := requireExactNoteIDs(s.DB, ids); err != nil {
+		return err
 	}
 
 	payloadStruct := struct {

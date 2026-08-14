@@ -3,10 +3,17 @@ import { listUsers } from '$lib/api/auth/local';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
-export async function load() {
+export async function load({ params }) {
+	const node = params.node;
 	const [response, usersResponse] = await Promise.all([
 		cachedFetch('notification-config', async () => await getNotificationTransports(), SEVEN_DAYS),
-		cachedFetch('users', async () => await listUsers(), SEVEN_DAYS)
+		cachedFetch(
+			'users',
+			async () => await listUsers(undefined, { hostname: node }),
+			SEVEN_DAYS,
+			false,
+			node
+		)
 	]);
 
 	const config = isAPIResponse(response)
@@ -18,6 +25,7 @@ export async function load() {
 
 	return {
 		config,
-		users
+		users,
+		loadErrors: isAPIResponse(usersResponse) ? [usersResponse] : []
 	};
 }

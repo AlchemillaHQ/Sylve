@@ -9,6 +9,7 @@
 package system
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -191,9 +192,20 @@ func (s *Service) findTunable(name string) (sysctl.Tunable, bool, error) {
 	return sysctl.Tunable{}, false, nil
 }
 
-// applyTunable applies a value at runtime via sysctl(8), which handles type
+func readTunableRuntime(name string) (string, error) {
+	value, err := utils.RunCommand("/sbin/sysctl", "-n", name)
+	if err != nil {
+		return "", err
+	}
+
+	value = strings.TrimSuffix(value, "\n")
+	value = strings.TrimSuffix(value, "\r")
+	return value, nil
+}
+
+// applyTunableRuntime applies a value via sysctl(8), which handles type
 // conversion and rejects read-only oids.
-func applyTunable(name, value string) error {
+func applyTunableRuntime(name, value string) error {
 	if _, err := utils.RunCommand("/sbin/sysctl", fmt.Sprintf("%s=%s", name, value)); err != nil {
 		return err
 	}
@@ -201,34 +213,66 @@ func applyTunable(name, value string) error {
 	return nil
 }
 
+func (s *Service) currentTunableRuntimeValue(name string) (string, error) {
+	if s.tunRead != nil {
+		return s.tunRead(name)
+	}
+	return readTunableRuntime(name)
+}
+
+func (s *Service) setTunableRuntimeValue(name, value string) error {
+	if s.tunApply != nil {
+		return s.tunApply(name, value)
+	}
+	return applyTunableRuntime(name, value)
+}
+
 // SetTunable validates that the oid is writable, applies it at runtime and
 // persists it so it can be re-applied on the next boot.
 func (s *Service) SetTunable(name, value string) error {
+	s.tunMutationMutex.Lock()
+	defer s.tunMutationMutex.Unlock()
+
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return fmt.Errorf("tunable_name_required")
+		return ErrTunableNameRequired
 	}
 
 	t, found, err := s.findTunable(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %s: %v", ErrTunableLookupFailed, name, err)
 	}
 	if !found {
-		return fmt.Errorf("tunable_not_found: %s", name)
+		return fmt.Errorf("%w: %s", ErrTunableNotFound, name)
 	}
 	if !t.Writable {
-		return fmt.Errorf("tunable_not_writable: %s", name)
+		return fmt.Errorf("%w: %s", ErrTunableNotWritable, name)
 	}
 
-	if err := applyTunable(name, value); err != nil {
-		return err
+	previousValue, err := s.currentTunableRuntimeValue(name)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrTunableRuntimeReadFailed, name, err)
+	}
+
+	runtimeChanged := previousValue != value
+	if runtimeChanged {
+		if err := s.setTunableRuntimeValue(name, value); err != nil {
+			return fmt.Errorf("%w: %s: %v", ErrInvalidTunableValue, name, err)
+		}
 	}
 
 	tunable := models.SystemTunable{Name: name, Value: value}
 	if err := s.DB.Where(models.SystemTunable{Name: name}).
 		Assign(map[string]any{"value": value}).
 		FirstOrCreate(&tunable).Error; err != nil {
-		return err
+		var rollbackErr error
+		if runtimeChanged {
+			rollbackErr = s.setTunableRuntimeValue(name, previousValue)
+			if rollbackErr != nil {
+				s.invalidateTunablesCache()
+			}
+		}
+		return fmt.Errorf("%w: %s: %v", ErrTunablePersistenceFailed, name, errors.Join(err, rollbackErr))
 	}
 
 	s.invalidateTunablesCache()
@@ -239,13 +283,16 @@ func (s *Service) SetTunable(name, value string) error {
 // ReapplyStoredTunables re-applies every persisted tunable at startup. Failures
 // are logged and skipped so one bad entry never blocks boot.
 func (s *Service) ReapplyStoredTunables() error {
+	s.tunMutationMutex.Lock()
+	defer s.tunMutationMutex.Unlock()
+
 	var rows []models.SystemTunable
 	if err := s.DB.Find(&rows).Error; err != nil {
 		return err
 	}
 
 	for _, r := range rows {
-		if err := applyTunable(r.Name, r.Value); err != nil {
+		if err := s.setTunableRuntimeValue(r.Name, r.Value); err != nil {
 			logger.L.Error().Msgf("Error re-applying stored tunable %s=%s: %v", r.Name, r.Value, err)
 		}
 	}

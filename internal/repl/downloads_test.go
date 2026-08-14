@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package repl
 
 import (
@@ -36,7 +44,7 @@ func TestBuildConsoleDownloadRequest(t *testing.T) {
 }
 
 func TestNormalizeDownloadRequestAcceptsOtherAliases(t *testing.T) {
-	for _, value := range []string{"other", "uncategorized", "uncategoried"} {
+	for _, value := range []string{"other", "uncategorized"} {
 		t.Run(value, func(t *testing.T) {
 			request, err := normalizeDownloadRequest(utilitiesServiceInterfaces.DownloadFileRequest{
 				URL:          "https://example.test/file",
@@ -49,6 +57,16 @@ func TestNormalizeDownloadRequestAcceptsOtherAliases(t *testing.T) {
 				t.Fatalf("download type = %q, want %q", request.DownloadType, utilitiesModels.DownloadUTypeOther)
 			}
 		})
+	}
+}
+
+func TestNormalizeDownloadRequestRejectsMisspelledLegacyCategory(t *testing.T) {
+	_, err := normalizeDownloadRequest(utilitiesServiceInterfaces.DownloadFileRequest{
+		URL:          "https://example.test/file",
+		DownloadType: utilitiesModels.DownloadUType("uncategoried"),
+	})
+	if err == nil {
+		t.Fatal("expected misspelled legacy category to be rejected")
 	}
 }
 

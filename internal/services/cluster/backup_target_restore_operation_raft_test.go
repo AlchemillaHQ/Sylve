@@ -16,14 +16,13 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestBackupTargetRestoreReservationSurvivesThreeVoterLeadershipChange(t *testing.T) {
+func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(
 		t,
 		3,
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupJob{},
 	)
-	defer cleanupClusterRaftTestNodes(t, nodes)
 
 	target := clusterModels.BackupTarget{
 		ID: 91, Name: "target", SSHHost: "root@backup", SSHPort: 22,

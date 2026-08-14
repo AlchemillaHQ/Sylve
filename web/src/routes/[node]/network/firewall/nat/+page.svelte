@@ -24,7 +24,7 @@
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { StaticRoute, StaticRouteSuggestion } from '$lib/types/network/route';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { convertDbTime } from '$lib/utils/time';
 	import { formatBytesBinary } from '$lib/utils/bytes';
@@ -39,7 +39,7 @@
 	interface Data {
 		natRules: FirewallNATRule[] | APIResponse;
 		objects: NetworkObject[] | APIResponse;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList | APIResponse;
 		wgClients: WireGuardClient[] | APIResponse;
 	}
@@ -47,16 +47,22 @@
 	let { data }: { data: Data } = $props();
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodNATRules = Array.isArray(data.natRules) ? data.natRules : ([] as FirewallNATRule[]);
+
 	const natRulesResource = resource(
 		() => 'firewall-nat-rules',
 		async (key) => {
 			const result = await getFirewallNATRules();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodNATRules;
+			}
+
+			lastGoodNATRules = result;
 			updateCache(key, result);
 			return result;
 		},
-		{
-			initialValue: Array.isArray(data.natRules) ? data.natRules : []
-		}
+		{ initialValue: lastGoodNATRules }
 	);
 
 	const natRules = $derived(
@@ -65,6 +71,8 @@
 
 	let counterFetchIntent: 'auto' | 'manual' = 'auto';
 	let countersUpdating = $state(false);
+	let reordering = $state(false);
+	let suggestingRoute = $state(false);
 	let lastGoodCounters: FirewallNATRuleCounter[] = [];
 
 	const countersResource = resource(
@@ -100,53 +108,67 @@
 		}
 		return out;
 	});
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+
 	const objectsResource = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodObjects;
+			}
+
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.objects as NetworkObject[] }
+		{ initialValue: lastGoodObjects }
 	);
 	const objects = $derived(
 		Array.isArray(objectsResource.current) ? (objectsResource.current as NetworkObject[]) : []
 	);
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+
 	const interfacesResource = resource(
-		() => 'network-ifaces',
+		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 	const interfaces = $derived(
 		Array.isArray(interfacesResource.current) ? (interfacesResource.current as Iface[]) : []
 	);
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	const switchesResource = resource(
 		() => 'network-switches',
 		async (key) => {
 			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.switches as SwitchList }
+		{ initialValue: lastGoodSwitches }
 	);
-	const switches = $derived(
-		switchesResource.current &&
-			typeof switchesResource.current === 'object' &&
-			!Array.isArray(switchesResource.current) &&
-			'status' in switchesResource.current
-			? { standard: [], manual: [] }
-			: ((switchesResource.current as SwitchList) ?? { standard: [], manual: [] })
-	);
+	const switches = $derived(switchesResource.current);
 
 	const wgClients = $derived(
 		Array.isArray(data.wgClients) ? (data.wgClients as WireGuardClient[]) : []
@@ -164,12 +186,6 @@
 			prefill: null as Partial<StaticRoute> | null,
 			suggestions: [] as Partial<StaticRoute>[]
 		}
-	});
-
-	$effect(() => {
-		if (modals.routeSuggestion.open) return;
-		modals.routeSuggestion.prefill = null;
-		modals.routeSuggestion.suggestions = [];
 	});
 
 	function resolveInterfaceName(name: string): string {
@@ -291,6 +307,8 @@
 	}
 
 	async function handleRowMoved(rows: Row[]) {
+		if (reordering) return;
+
 		const visibleRows = rows.filter((row) => row.visible !== false);
 		const payload: FirewallReorderRequest[] = visibleRows.map((row, index) => ({
 			id: Number(row.id),
@@ -302,13 +320,16 @@
 			return;
 		}
 
-		const result = await reorderFirewallNATRules(payload);
-		if (result.status === 'success') {
+		reordering = true;
+		try {
+			const result = await reorderFirewallNATRules(payload);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to reorder NAT rules', { position: 'bottom-center' });
+			}
 			await natRulesResource.refetch();
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to reorder NAT rules', { position: 'bottom-center' });
-			await natRulesResource.refetch();
+		} finally {
+			reordering = false;
 		}
 	}
 
@@ -329,37 +350,52 @@
 	}
 
 	async function openRouteSuggestionHelper() {
+		if (suggestingRoute) return;
 		if (!activeRow || activeRow.length !== 1) return;
 		const selected = activeRow[0];
 		const natID = Number(selected?.id ?? 0);
 		if (!natID) return;
 
-		const response = await suggestStaticRoutesFromNATRule(natID);
-		if (!Array.isArray(response) || response.length === 0) {
+		modals.routeSuggestion.prefill = null;
+		modals.routeSuggestion.suggestions = [];
+		suggestingRoute = true;
+		try {
+			const response = await suggestStaticRoutesFromNATRule(natID);
 			if (!Array.isArray(response)) {
 				handleAPIError(response);
+				return;
 			}
-			toast.error('No route suggestion available for this NAT rule', { position: 'bottom-center' });
-			return;
-		}
+			if (response.length === 0) {
+				toast.error('No route suggestion available for this NAT rule', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		modals.routeSuggestion.suggestions = response.map((item) => {
-			const suggestion = item as StaticRouteSuggestion;
-			return {
-				name: suggestion.name,
-				description: suggestion.description,
-				enabled: suggestion.enabled,
-				fib: suggestion.fib,
-				destinationType: suggestion.destinationType,
-				destination: suggestion.destination,
-				family: suggestion.family,
-				nextHopMode: suggestion.nextHopMode,
-				gateway: suggestion.gateway,
-				interface: suggestion.interface
-			} as Partial<StaticRoute>;
-		});
-		modals.routeSuggestion.prefill = modals.routeSuggestion.suggestions[0] ?? null;
-		modals.routeSuggestion.open = true;
+			modals.routeSuggestion.suggestions = response.map((item) => {
+				const suggestion = item as StaticRouteSuggestion;
+				return {
+					name: suggestion.name,
+					description: suggestion.description,
+					enabled: suggestion.enabled,
+					fib: suggestion.fib,
+					destinationType: suggestion.destinationType,
+					destination: suggestion.destination,
+					family: suggestion.family,
+					nextHopMode: suggestion.nextHopMode,
+					gateway: suggestion.gateway,
+					gatewayZone: suggestion.gatewayZone,
+					interface: suggestion.interface
+				} as Partial<StaticRoute>;
+			});
+			modals.routeSuggestion.prefill = modals.routeSuggestion.suggestions[0] ?? null;
+			modals.routeSuggestion.open = true;
+		} catch (error) {
+			console.error('Failed to load static route suggestions', error);
+			toast.error('Failed to load route suggestions', { position: 'bottom-center' });
+		} finally {
+			suggestingRoute = false;
+		}
 	}
 
 	let columns: Column[] = $derived([
@@ -523,24 +559,37 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
+				disabled={reordering}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
 		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
-			<Button onclick={() => (modals.delete.open = true)} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={() => (modals.delete.open = true)}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={reordering}
+			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 		{#if type === 'suggest-route'}
 			{#if ['snat', 'binat'].includes(String(activeRow[0]?.natType ?? '').toLowerCase()) && Boolean(activeRow[0]?.policyRouting)}
-				<Button onclick={openRouteSuggestionHelper} size="sm" variant="outline" class="h-6.5">
+				<Button
+					onclick={openRouteSuggestionHelper}
+					size="sm"
+					variant="outline"
+					class="h-6.5"
+					disabled={reordering || suggestingRoute}
+				>
 					<SpanWithIcon
-						icon="icon-[mdi--routes-clock]"
+						icon={suggestingRoute ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--routes-clock]'}
 						size="h-4 w-4"
 						gap="gap-2"
-						title="Route Helper"
+						title={suggestingRoute ? 'Finding Route...' : 'Route Helper'}
 					/>
 				</Button>
 			{/if}
@@ -551,22 +600,35 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
-		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6">
+		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6" disabled={reordering}>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{@render button('edit-rule')}
 		{@render button('delete-rule')}
 		{@render button('suggest-route')}
 
-		<Button
-			onclick={() => refreshCounters('manual')}
-			size="sm"
-			variant="outline"
-			class="ml-auto h-6"
-			title="Refresh Counters"
-		>
-			<span class="icon-[mdi--refresh] h-4 w-4"></span>
-		</Button>
+		<div class="ml-auto flex items-center gap-2">
+			{#if reordering}
+				<span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					Saving order...
+				</span>
+			{/if}
+			<Button
+				onclick={() => refreshCounters('manual')}
+				size="sm"
+				variant="outline"
+				class="h-6"
+				title="Refresh Counters"
+				disabled={countersUpdating}
+			>
+				<span
+					class={countersUpdating
+						? 'icon-[mdi--loading] h-4 w-4 animate-spin'
+						: 'icon-[mdi--refresh] h-4 w-4'}
+				></span>
+			</Button>
+		</div>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
@@ -598,7 +660,9 @@
 		{switches}
 		{wgClients}
 		edit={false}
-		afterChange={() => natRulesResource.refetch()}
+		afterChange={async () => {
+			await natRulesResource.refetch();
+		}}
 	/>
 {/if}
 
@@ -612,7 +676,9 @@
 		{wgClients}
 		edit={true}
 		id={modals.edit.id}
-		afterChange={() => natRulesResource.refetch()}
+		afterChange={async () => {
+			await natRulesResource.refetch();
+		}}
 	/>
 {/if}
 

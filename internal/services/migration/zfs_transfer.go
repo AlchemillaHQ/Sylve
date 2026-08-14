@@ -942,7 +942,7 @@ func (s *Service) phaseStartTarget(ctx context.Context, mp *migrationPayload, ta
 		return fmt.Errorf("target_node_not_found: %w", err)
 	}
 
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration", "")
+	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
 	if err != nil {
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

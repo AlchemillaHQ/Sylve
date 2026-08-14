@@ -110,30 +110,27 @@ export type NotificationRuleTemplateTarget = z.infer<typeof NotificationRuleTemp
 export type NotificationRuleTemplate = z.infer<typeof NotificationRuleTemplateSchema>;
 export type NotificationRulesConfig = z.infer<typeof NotificationRulesConfigSchema>;
 
-export type UpdateNotificationConfigInput = {
-	transports: Array<{
-		id?: number;
-		name: string;
-		type: 'ntfy' | 'smtp' | 'discord';
-		enabled: boolean;
-		ntfy: {
-			baseUrl: string;
-			topic: string;
-			authToken?: string;
-		} | null;
-		email: {
-			smtpHost: string;
-			smtpPort: number;
-			smtpUsername: string;
-			smtpFrom: string;
-			smtpUseTls: boolean;
-			recipients: string[];
-			smtpPassword?: string;
-		} | null;
-		discord: {
-			webhookUrl?: string;
-		} | null;
-	}>;
+export type NotificationTransportInput = {
+	name: string;
+	type: 'ntfy' | 'smtp' | 'discord';
+	enabled: boolean;
+	ntfy: {
+		baseUrl: string;
+		topic: string;
+		authToken?: string;
+	} | null;
+	email: {
+		smtpHost: string;
+		smtpPort: number;
+		smtpUsername: string;
+		smtpFrom: string;
+		smtpUseTls: boolean;
+		recipients: string[];
+		smtpPassword?: string;
+	} | null;
+	discord: {
+		webhookUrl?: string;
+	} | null;
 };
 
 export type UpdateNotificationRulesInput = {

@@ -146,40 +146,49 @@ func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails,
 	}
 	conf := fut.Configuration()
 
-	suffrageStr := func(sf raft.ServerSuffrage) string {
-		switch sf {
-		case raft.Voter:
-			return "voter"
-		case raft.Nonvoter:
-			return "nonvoter"
-		case raft.Staging:
-			return "staging"
-		default:
-			return "unknown"
-		}
-	}
-
+	guestIDsByNode := make(map[string][]uint, len(conf.Servers))
 	for _, srv := range conf.Servers {
 		id := string(srv.ID)
-		addr := string(srv.Address)
-
 		var node clusterModels.ClusterNode
 		err := s.DB.Select("guest_ids").Where("node_uuid = ?", id).First(&node).Error
-
 		if err != nil && err != gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("failed to query guest ids for node %s: %w", id, err)
 		}
-
-		out.Nodes = append(out.Nodes, clusterServiceInterfaces.RaftNode{
-			ID:       id,
-			Address:  addr,
-			Suffrage: suffrageStr(srv.Suffrage),
-			IsLeader: id == string(leaderID) || addr == string(leaderAddr),
-			GuestIDs: node.GuestIDs,
-		})
+		guestIDsByNode[id] = node.GuestIDs
 	}
+	out.Nodes = clusterRaftNodeDetails(conf, leaderAddr, leaderID, guestIDsByNode)
 
 	return out, nil
+}
+
+func clusterRaftNodeDetails(
+	configuration raft.Configuration,
+	leaderAddress raft.ServerAddress,
+	leaderID raft.ServerID,
+	guestIDsByNode map[string][]uint,
+) []clusterServiceInterfaces.RaftNode {
+	nodes := make([]clusterServiceInterfaces.RaftNode, 0, len(configuration.Servers))
+	for _, server := range configuration.Servers {
+		id := string(server.ID)
+		address := string(server.Address)
+		suffrage := "unknown"
+		switch server.Suffrage {
+		case raft.Voter:
+			suffrage = "voter"
+		case raft.Nonvoter:
+			suffrage = "nonvoter"
+		case raft.Staging:
+			suffrage = "staging"
+		}
+		nodes = append(nodes, clusterServiceInterfaces.RaftNode{
+			ID:       id,
+			Address:  address,
+			Suffrage: suffrage,
+			IsLeader: id == string(leaderID) || address == string(leaderAddress),
+			GuestIDs: guestIDsByNode[id],
+		})
+	}
+	return nodes
 }
 
 func (s *Service) waitUntilLeader(timeout time.Duration) (bool, raft.ServerAddress, error) {

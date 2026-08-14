@@ -198,8 +198,7 @@ func validDownloaderUploadType(value utilitiesModels.DownloadUType) bool {
 	switch value {
 	case utilitiesModels.DownloadUTypeBase,
 		utilitiesModels.DownloadUTypeCloudInit,
-		utilitiesModels.DownloadUTypeOther,
-		utilitiesModels.DownloadUType("uncategorized"):
+		utilitiesModels.DownloadUTypeOther:
 		return true
 	default:
 		return false

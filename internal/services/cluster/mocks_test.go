@@ -29,11 +29,11 @@ type clusterAuthStub struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (clusterAuthStub) CreateInternalClusterJWT(_, _ string) (string, error) {
+func (clusterAuthStub) CreateInternalClusterJWT(_ string) (string, error) {
 	return "test-cluster-token", nil
 }
 
-func (clusterAuthStub) CreateClusterJWT(_ uint, _, _, _ string) (string, error) {
+func (clusterAuthStub) CreateUserProxyJWT(_ uint, _, _ string) (string, error) {
 	return "test-cluster-token", nil
 }
 

@@ -22,7 +22,7 @@ const (
 	DefaultConfigSystem = "/usr/local/etc/sylve/config.json"
 )
 
-const Version = "0.2.3"
+const Version = "0.3.0"
 
 var Commit = "unknown"
 

@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { storage } from '$lib';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getVMsResult } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import CPU from '$lib/components/custom/VM/Hardware/CPU.svelte';
 	import PCIDevices from '$lib/components/custom/VM/Hardware/PCIDevices.svelte';
@@ -10,95 +9,111 @@
 	import Serial from '$lib/components/custom/VM/Options/Serial.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import { type VMCPUPinning, type CPUPin, type VM, type VMDomain } from '$lib/types/vm/vm';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { updateCache } from '$lib/utils/http';
-	import { generateNanoId } from '$lib/utils/string';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { escapeHTML, generateNanoId } from '$lib/utils/string';
 	import type { CellComponent, RowComponent } from 'tabulator-tables';
 	import { resource, watch } from 'runed';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
-	import { getContext } from 'svelte';
+	import { getContext, onMount, untrack } from 'svelte';
 
 	interface Data {
 		vms: VM[];
-		vm: VM | undefined;
+		vm: VM;
+		node: string;
+		rid: number;
 		ram: RAMInfo;
 		pciDevices: PCIDevice[];
 		pptDevices: PPTDevice[];
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
-	// svelte-ignore state_referenced_locally
+	const lastVMsByNode: Record<string, VM[]> = Object.create(null);
+	lastVMsByNode[initialData.node] = initialData.vms;
 	const vms = resource(
-		() => 'vm-list',
-		async (key) => {
-			const result = await getVMs();
-			updateCache(key, result);
+		() => data.node,
+		async (node) => {
+			const result = await getVMsResult({ hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastVMsByNode[node] ?? [data.vm];
+			}
+			lastVMsByNode[node] = result;
+			await updateCache('vm-list', result, node);
 			return result;
 		},
 		{
-			initialValue: data.vms
+			initialValue: initialData.vms
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastPCIDevicesByNode: Record<string, PCIDevice[]> = Object.create(null);
+	lastPCIDevicesByNode[initialData.node] = initialData.pciDevices;
 	const pciDevices = resource(
-		() => 'pciDevices',
-		async (key) => {
-			const result = (await getPCIDevices()) as PCIDevice[];
-			updateCache(key, result);
+		() => data.node,
+		async (node): Promise<PCIDevice[]> => {
+			const result = await getPCIDevices(node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastPCIDevicesByNode[node] ?? [];
+			}
+			lastPCIDevicesByNode[node] = result;
+			await updateCache('pciDevices', result, node);
 			return result;
 		},
 		{
-			initialValue: data.pciDevices
+			initialValue: initialData.pciDevices
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastPPTDevicesByNode: Record<string, PPTDevice[]> = Object.create(null);
+	lastPPTDevicesByNode[initialData.node] = initialData.pptDevices;
 	const pptDevices = resource(
-		() => 'pptDevices',
-		async (key) => {
-			const result = (await getPPTDevices()) as PPTDevice[];
-			updateCache(key, result);
+		() => data.node,
+		async (node): Promise<PPTDevice[]> => {
+			const result = await getPPTDevices(node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastPPTDevicesByNode[node] ?? [];
+			}
+			lastPPTDevicesByNode[node] = result;
+			await updateCache('pptDevices', result, node);
 			return result;
 		},
 		{
-			initialValue: data.pptDevices
+			initialValue: initialData.pptDevices
 		}
 	);
 
 	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
+		vms.current.find((candidate) => candidate.rid === data.rid) ?? data.vm
 	);
 
 	let reload = $state(false);
 
 	watch(
 		() => reload,
-		() => {
-			if (reload) {
-				vms.refetch();
-				pciDevices.refetch();
-				pptDevices.refetch();
+		(shouldReload) => {
+			if (shouldReload) {
 				reload = false;
+				vms.refetch();
 			}
 		}
 	);
 
-	watch(
-		() => storage.visible,
-		() => {
-			vms.refetch();
-			pciDevices.refetch();
-			pptDevices.refetch();
-		}
-	);
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
 
 	let isLifecycleActive = $derived(!!domain.current?.pendingAction);
 	let isDomainShutoff = $derived(
@@ -135,7 +150,7 @@
 			port: data.vm?.vncPort,
 			bind: data.vm?.vncBind || '127.0.0.1',
 			password: data.vm?.vncPassword,
-			wait: data.vm?.vncWait || false,
+			wait: data.vm?.vncWait ?? false,
 			open: false
 		},
 		pciDevices: {
@@ -150,23 +165,26 @@
 
 	watch(
 		() => vm,
-		() => {
-			if (vm) {
-				console.log(vm);
-
-				properties.cpu.sockets = vm.cpuSockets;
-				properties.cpu.cores = vm.cpuCores;
-				properties.cpu.threads = vm.cpuThreads;
-				properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
-				properties.cpu.pinning = vm.cpuPinning ?? [];
-				properties.ram.value = vm.ram;
-				properties.vnc.enabled = vm.vncEnabled;
-				properties.vnc.port = vm.vncPort;
-				properties.vnc.bind = vm.vncBind;
-				properties.vnc.password = vm.vncPassword;
-				properties.vnc.resolution = vm.vncResolution;
-				properties.vnc.wait = vm.vncWait || false;
-				properties.pciDevices.value = vm.pciDevices;
+		(currentVM) => {
+			if (currentVM) {
+				properties.cpu.sockets = currentVM.cpuSockets;
+				properties.cpu.cores = currentVM.cpuCores;
+				properties.cpu.threads = currentVM.cpuThreads;
+				properties.cpu.vCPUs = currentVM.cpuSockets * currentVM.cpuCores * currentVM.cpuThreads;
+				properties.cpu.pinning = currentVM.cpuPinning ?? [];
+				properties.cpu.pinnedCPUs =
+					currentVM.cpuPinning?.map((pin) => ({
+						socket: pin.hostSocket,
+						cores: [...pin.hostCpu]
+					})) ?? [];
+				properties.ram.value = currentVM.ram;
+				properties.vnc.enabled = currentVM.vncEnabled;
+				properties.vnc.port = currentVM.vncPort;
+				properties.vnc.bind = currentVM.vncBind;
+				properties.vnc.password = currentVM.vncPassword;
+				properties.vnc.resolution = currentVM.vncResolution;
+				properties.vnc.wait = currentVM.vncWait ?? false;
+				properties.pciDevices.value = currentVM.pciDevices;
 			}
 		}
 	);
@@ -188,8 +206,8 @@
 
 			const pinning = properties.cpu.pinning ?? [];
 			if (pinning.length > 0) {
-				const lines = pinning.map(
-					(p) => `Socket ${p.hostSocket}: [${(p.hostCpu ?? []).join(', ')}]`
+				const lines = pinning.map((p) =>
+					escapeHTML(`Socket ${p.hostSocket}: [${(p.hostCpu ?? []).join(', ')}]`)
 				);
 				label += `<br /><span class="text-muted-foreground text-xs">Pinned: ${lines.join(', ')}</span>`;
 			}
@@ -200,6 +218,12 @@
 			return formatBytesBinary(properties.ram.value);
 		} else if (property === 'vnc') {
 			const enabled = properties.vnc.enabled;
+			const resolution = escapeHTML(String(properties.vnc.resolution ?? ''));
+			const port = escapeHTML(String(properties.vnc.port ?? ''));
+			const bind = escapeHTML(String(properties.vnc.bind || '127.0.0.1'));
+			const password = properties.vnc.password
+				? escapeHTML(String(properties.vnc.password))
+				: 'No Password';
 
 			const icon = enabled
 				? `icon-[mdi--check-circle] text-green-500`
@@ -225,16 +249,16 @@
                     ${wait ? `<span class="text-muted-foreground">|</span>${wait}` : ''}
                 </div>
 
-                <span>
-                    ${properties.vnc.resolution} / ${properties.vnc.port}
-                </span>
+				<span>
+					${resolution} / ${port}
+				</span>
 
-                <span>
-                    Bind: ${properties.vnc.bind || '127.0.0.1'}
-                </span>
+				<span>
+					Bind: ${bind}
+				</span>
 
-                <span>
-                    ${properties.vnc.password || 'No Password'}
+				<span>
+					${password}
                 </span>
             </span>
         `;
@@ -269,8 +293,13 @@
 				const functionC = Number(functionStr);
 
 				for (const pci of pciDevices.current) {
-					if (pci.bus === bus && pci.device === deviceC && pci['function'] === functionC) {
-						labels.push(`${pci.names.vendor} ${pci.names.device}`);
+					if (
+						pci.domain === dev.domain &&
+						pci.bus === bus &&
+						pci.device === deviceC &&
+						pci['function'] === functionC
+					) {
+						labels.push(escapeHTML(`${pci.names.vendor} ${pci.names.device}`));
 					}
 				}
 			}
@@ -296,6 +325,16 @@
 		}
 
 		return '';
+	}
+
+	function vncCopyURI(): string {
+		if (!properties.vnc.enabled) return '';
+		const rawHost = String(properties.vnc.bind || data.node);
+		const host = rawHost.includes(':') && !rawHost.startsWith('[') ? `[${rawHost}]` : rawHost;
+		const credentials = properties.vnc.password
+			? `:${encodeURIComponent(String(properties.vnc.password))}@`
+			: '';
+		return `vnc://${credentials}${host}:${properties.vnc.port}`;
 	}
 
 	let table = $derived.by(() => {
@@ -338,9 +377,7 @@
 					id: generateNanoId(`${properties.vnc.port}-vnc-port`),
 					property: 'VNC',
 					value: getValue('vnc'),
-					toCopy: properties.vnc.enabled
-						? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${properties.vnc.bind || window.location.hostname}:${properties.vnc.port}`
-						: ''
+					toCopy: vncCopyURI()
 				},
 				{
 					id: generateNanoId('serial'),
@@ -421,12 +458,13 @@
 </div>
 
 {#if properties.ram.open}
-	<RAM bind:open={properties.ram.open} ram={data.ram} {vm} bind:reload />
+	<RAM bind:open={properties.ram.open} node={data.node} ram={data.ram} {vm} bind:reload />
 {/if}
 
 {#if properties.cpu.open}
 	<CPU
 		bind:open={properties.cpu.open}
+		node={data.node}
 		{vm}
 		vms={vms.current}
 		bind:pinnedCPUs={properties.cpu.pinnedCPUs}
@@ -435,12 +473,13 @@
 {/if}
 
 {#if properties.vnc.open}
-	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} bind:reload />
+	<VNC bind:open={properties.vnc.open} node={data.node} {vm} vms={vms.current} bind:reload />
 {/if}
 
 {#if properties.pciDevices.open}
 	<PCIDevices
 		bind:open={properties.pciDevices.open}
+		node={data.node}
 		{vm}
 		pciDevices={pciDevices.current}
 		pptDevices={pptDevices.current}
@@ -449,9 +488,9 @@
 {/if}
 
 {#if properties.serial.open && vm}
-	<Serial bind:open={properties.serial.open} {vm} bind:reload />
+	<Serial bind:open={properties.serial.open} node={data.node} {vm} bind:reload />
 {/if}
 
 {#if properties.tpmEmulation.open && vm}
-	<TPM bind:open={properties.tpmEmulation.open} {vm} bind:reload />
+	<TPM bind:open={properties.tpmEmulation.open} node={data.node} {vm} bind:reload />
 {/if}

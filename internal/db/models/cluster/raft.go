@@ -364,24 +364,44 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if err := json.Unmarshal(raw, &note); err != nil {
 				return err
 			}
-			return db.Model(&ClusterNote{}).
+			result := db.Model(&ClusterNote{}).
 				Where("id = ?", note.ID).
-				Updates(note).Error
+				Updates(note)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
+			}
+			return nil
 		case "delete":
 			var payload struct{ ID int }
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
 			}
-			return db.Delete(&ClusterNote{}, payload.ID).Error
+			result := db.Delete(&ClusterNote{}, payload.ID)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
+			}
+			return nil
 		case "bulk_delete":
 			var payload struct{ IDs []int }
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				return err
 			}
-			if len(payload.IDs) > 0 {
-				return db.Delete(&ClusterNote{}, payload.IDs).Error
-			}
-			return nil
+			return db.Transaction(func(tx *gorm.DB) error {
+				result := tx.Delete(&ClusterNote{}, payload.IDs)
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected != int64(len(payload.IDs)) {
+					return gorm.ErrRecordNotFound
+				}
+				return nil
+			})
 		default:
 			return nil
 		}

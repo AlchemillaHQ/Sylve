@@ -17,23 +17,74 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
+          copyback: true
           prepare: |
+            setup_started="$(date +%s)"
             pkg update
             pkg install -y go git
+            setup_finished="$(date +%s)"
+            printf '%s\n' "$((setup_finished - setup_started))" > /tmp/sylve-unit-setup-seconds
           run: |
-            SYLVE_SKIP_ZFS_TESTS=1 make test
+            setup_seconds="$(cat /tmp/sylve-unit-setup-seconds)"
+            reporter_started="$(date +%s)"
+            go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
+            reporter_finished="$(date +%s)"
+            setup_seconds="$((setup_seconds + reporter_finished - reporter_started))"
+            set +e
+            /tmp/sylve-testreport \
+              -lane unit \
+              -out test-results \
+              -setup-duration "${setup_seconds}s" \
+              -cache-restored=false \
+              -- make -s GO_TEST_FLAGS=-json test
+            test_rc="$?"
+            printf '%s\n' "$test_rc" > test-results/unit.rc
+            exit 0
+
+      - name: Publish unit test summary
+        if: always()
+        run: |
+          if [ -f test-results/unit-summary.md ]; then
+            cat test-results/unit-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: |
+            test-results/unit.json
+            test-results/unit.log
+            test-results/unit-summary.md
+            test-results/unit.rc
+          if-no-files-found: warn
+
+      - name: Check unit test result
+        id: unit_result
+        if: always()
+        run: |
+          if [ ! -f test-results/unit.rc ]; then
+            echo "Unit test result was not produced"
+            exit 1
+          fi
+          exit "$(cat test-results/unit.rc)"
 
       - name: Integration tests
+        id: integration_tests
+        if: always() && steps.unit_result.outcome == 'success'
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
           copyback: true
           prepare: |
+            setup_started="$(date +%s)"
             pkg update
             pkg install -y go git libvirt bhyve-firmware
             kldload zfs || true
             kldload pf || true
             kldload vmm || true
+            kldstat -q -m nlsysevent || kldload nlsysevent
             service libvirtd onestart || true
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
@@ -44,31 +95,53 @@ jobs:
             chmod 600 /root/.ssh/authorized_keys
             ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
             for i in $(seq 1 60); do
-              ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null && break
+              ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null && break
               sleep 0.5
             done
-            ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
+            ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
+            setup_finished="$(date +%s)"
+            printf '%s\n' "$((setup_finished - setup_started))" > /tmp/sylve-integration-setup-seconds
           run: |
+            setup_seconds="$(cat /tmp/sylve-integration-setup-seconds)"
+            reporter_started="$(date +%s)"
+            go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
+            reporter_finished="$(date +%s)"
+            setup_seconds="$((setup_seconds + reporter_finished - reporter_started))"
             set +e
-            set -o pipefail
-            make test-integration 2>&1 | tee test-integration.log
+            /tmp/sylve-testreport \
+              -lane integration \
+              -out test-results \
+              -setup-duration "${setup_seconds}s" \
+              -cache-restored=false \
+              -- make -s GO_TEST_FLAGS=-json test-integration
             test_rc="$?"
-            printf '%s\n' "$test_rc" > test-integration.rc
+            printf '%s\n' "$test_rc" > test-results/integration.rc
             exit 0
 
-      - name: Upload integration test log
-        if: always()
+      - name: Publish integration test summary
+        if: always() && steps.integration_tests.outcome != 'skipped'
+        run: |
+          if [ -f test-results/integration-summary.md ]; then
+            cat test-results/integration-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload integration test report
+        if: always() && steps.integration_tests.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
-          name: integration-test-log
-          path: test-integration.log
+          name: integration-test-report
+          path: |
+            test-results/integration.json
+            test-results/integration.log
+            test-results/integration-summary.md
+            test-results/integration.rc
           if-no-files-found: warn
 
       - name: Check integration test result
-        if: always()
+        if: always() && steps.integration_tests.outcome != 'skipped'
         run: |
-          if [ ! -f test-integration.rc ]; then
+          if [ ! -f test-results/integration.rc ]; then
             echo "Integration test result was not produced"
             exit 1
           fi
-          exit "$(cat test-integration.rc)"
+          exit "$(cat test-results/integration.rc)"

@@ -55,6 +55,7 @@ var (
 	ErrTargetAlreadyHasGuest = fmt.Errorf("target_already_has_guest")
 	ErrSSHUnreachable        = fmt.Errorf("ssh_unreachable")
 	ErrCancelNotAllowed      = fmt.Errorf("cancel_not_allowed_in_current_phase")
+	ErrNotMigrationTask      = fmt.Errorf("not_a_migration_task")
 )
 
 type migrationPayload struct {
@@ -463,7 +464,7 @@ func (s *Service) remoteTargetGuestRecord(
 		return nil, fmt.Errorf("target_identity_inventory_endpoint_unavailable")
 	}
 
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration", "")
+	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
 	if err != nil {
 		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
@@ -623,7 +624,7 @@ func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterMod
 		return vmTargetResult{}, false, fmt.Errorf("cluster_auth_unavailable")
 	}
 
-	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration", "")
+	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
 	if tokenErr != nil {
 		return vmTargetResult{}, false, fmt.Errorf("create_cluster_token_failed: %w", tokenErr)
 	}
@@ -712,9 +713,9 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 	if err := s.DB.Raw(`
 		SELECT jn.switch_id, jn.switch_type
 		FROM jail_networks jn
-		WHERE jn.jid = ?
-	`, sourceJail.ID).Scan(&jailNetworks).Error; err != nil {
-		logger.L.Debug().Err(err).Uint("ct_id", ctID).Msg("failed_to_query_jail_networks_during_validation")
+			WHERE jn.jid = ?
+		`, sourceJail.ID).Scan(&jailNetworks).Error; err != nil {
+		return []string{fmt.Sprintf("jail_network_lookup_failed: %v", err)}
 	}
 
 	for _, pool := range jailStorages {
@@ -757,7 +758,7 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 			continue
 		}
 		if !bridgeExists {
-			reasons = append(reasons, fmt.Sprintf("warning_target_missing_bridge: %s", bridge))
+			reasons = append(reasons, fmt.Sprintf("target_missing_bridge: %s", bridge))
 		}
 	}
 
@@ -1289,7 +1290,7 @@ func (s *Service) CancelMigration(ctx context.Context, taskID uint) error {
 	}
 
 	if task.Action != "migrate" {
-		return fmt.Errorf("not_a_migration_task")
+		return ErrNotMigrationTask
 	}
 	if task.Status == taskModels.LifecycleTaskStatusSuccess || task.Status == taskModels.LifecycleTaskStatusFailed {
 		return ErrCancelNotAllowed

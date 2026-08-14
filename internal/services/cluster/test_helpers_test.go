@@ -73,7 +73,7 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 		t.Fatalf("failed to create raft node %s: %v", id, err)
 	}
 
-	return &clusterRaftTestNode{
+	node := &clusterRaftTestNode{
 		id:        id,
 		addr:      addr,
 		transport: transport,
@@ -89,6 +89,10 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 			},
 		},
 	}
+	t.Cleanup(func() {
+		cleanupClusterRaftTestNodes(t, []*clusterRaftTestNode{node})
+	})
+	return node
 }
 
 func connectClusterRaftTestNodes(nodes []*clusterRaftTestNode) {
@@ -204,6 +208,9 @@ func waitForClusterRaftVoterCount(t *testing.T, nodes []*clusterRaftTestNode, ex
 
 func setupClusterRaftTestNodes(t *testing.T, nodeCount int, migrateModels ...any) []*clusterRaftTestNode {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("requires real in-memory Raft; covered by the native integration lane")
+	}
 
 	if nodeCount < 1 {
 		t.Fatal("nodeCount must be at least 1")

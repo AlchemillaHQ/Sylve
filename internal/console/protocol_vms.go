@@ -63,6 +63,7 @@ type VMNetworksPayload struct {
 }
 
 type VMNetworkAttachPayload struct {
+	RID     uint                                          `json:"rid"`
 	Request libvirtServiceInterfaces.NetworkAttachRequest `json:"request"`
 	JSON    bool                                          `json:"json"`
 }

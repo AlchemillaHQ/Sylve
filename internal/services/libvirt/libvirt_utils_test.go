@@ -23,7 +23,7 @@ import (
 	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
 )
 
-func TestFindISOByUUID_HTTPType_ResolvesRawImageWithoutExtensionUsingProbe(t *testing.T) {
+func TestFindISOByUUID_HTTPType_UsesCanonicalPathAfterDisplayRename(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
 	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
@@ -55,7 +55,7 @@ func TestFindISOByUUID_HTTPType_ResolvesRawImageWithoutExtensionUsingProbe(t *te
 	download := utilitiesModels.Downloads{
 		UUID:     uuid,
 		Path:     httpPath,
-		Name:     fileName,
+		Name:     "Renamed installer image",
 		Type:     utilitiesModels.DownloadTypeHTTP,
 		URL:      "https://example.invalid/" + fileName,
 		Progress: 100,

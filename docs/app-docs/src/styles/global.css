@@ -5,6 +5,15 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tailwindcss";
 
+[data-theme="light"] .logo-dark,
+.logo-dark {
+  display: none;
+}
+
+.logo-light {
+  display: block;
+}
+
 [data-theme="dark"] .logo-dark {
   display: block;
 }
@@ -14,18 +23,63 @@
 }
 
 :root {
-  --sl-content-width: 45rem;
-  --sl-text-5xl: 3.5rem;
-  --sl-sidebar-width: 18rem;
+  --sl-content-width: 48rem;
+  --sl-sidebar-width: 17.5rem;
+  --sl-nav-height: 5.25rem;
+  --sl-nav-pad-x: 1.5rem;
+  --sl-nav-pad-y: 0.65rem;
+  --sl-text-5xl: 3.65rem;
+  --sl-font: Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --sl-font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+  --sl-color-white: oklch(0.94 0.004 85);
+  --sl-color-gray-1: oklch(0.86 0.005 82);
+  --sl-color-gray-2: oklch(0.7 0.007 80);
+  --sl-color-gray-3: oklch(0.56 0.007 80);
+  --sl-color-gray-4: oklch(0.38 0.006 80);
+  --sl-color-gray-5: oklch(0.25 0.005 80);
+  --sl-color-gray-6: oklch(0.16 0.004 80);
+  --sl-color-black: oklch(0.125 0.004 80);
+  --sl-color-accent-low: oklch(0.22 0.005 80);
+  --sl-color-accent: oklch(0.7 0.007 80);
+  --sl-color-accent-high: oklch(0.94 0.004 85);
+  --sl-color-text: oklch(0.72 0.006 82);
+  --sl-color-text-accent: var(--sl-color-white);
+  --sl-color-text-invert: var(--sl-color-black);
+  --sl-color-bg: var(--sl-color-black);
+  --sl-color-bg-nav: oklch(0.14 0.004 80);
+  --sl-color-bg-sidebar: oklch(0.14 0.004 80);
+  --sl-color-bg-inline-code: oklch(0.2 0.004 80);
+  --sl-color-bg-accent: var(--sl-color-white);
+  --sl-color-hairline-light: oklch(0.24 0.005 80);
+  --sl-color-hairline: oklch(0.2 0.004 80);
+  --sl-color-hairline-shade: oklch(0.19 0.004 80);
 }
 
-:root {
-  --sl-color-accent: #3447ff;
-  --sl-color-accent-high: #b3c7ff;
-}
 :root[data-theme="light"] {
-  --sl-color-accent: #364bff;
-  --sl-color-accent-high: #182775;
+  --sl-color-white: oklch(0.17 0.006 80);
+  --sl-color-gray-1: oklch(0.23 0.006 80);
+  --sl-color-gray-2: oklch(0.42 0.008 78);
+  --sl-color-gray-3: oklch(0.53 0.008 78);
+  --sl-color-gray-4: oklch(0.66 0.007 80);
+  --sl-color-gray-5: oklch(0.79 0.006 80);
+  --sl-color-gray-6: oklch(0.92 0.006 82);
+  --sl-color-gray-7: oklch(0.97 0.004 88);
+  --sl-color-black: oklch(0.985 0.004 90);
+  --sl-color-accent-low: oklch(0.92 0.006 82);
+  --sl-color-accent: oklch(0.28 0.006 80);
+  --sl-color-accent-high: oklch(0.17 0.006 80);
+  --sl-color-text: oklch(0.4 0.008 78);
+  --sl-color-text-accent: var(--sl-color-white);
+  --sl-color-text-invert: var(--sl-color-black);
+  --sl-color-bg: var(--sl-color-black);
+  --sl-color-bg-nav: oklch(0.98 0.004 90);
+  --sl-color-bg-sidebar: oklch(0.97 0.004 88);
+  --sl-color-bg-inline-code: oklch(0.94 0.006 85);
+  --sl-color-bg-accent: var(--sl-color-white);
+  --sl-color-hairline-light: oklch(0.88 0.006 82);
+  --sl-color-hairline: oklch(0.9 0.006 82);
+  --sl-color-hairline-shade: oklch(0.86 0.006 80);
 }
 
 @theme {
@@ -58,7 +112,314 @@
   --color-gray-950: oklch(0.15 0 0);
 }
 
-/* ── View Transitions ─────────────────────────────── */
-@view-transition {
-  navigation: auto;
+html {
+  background: var(--sl-color-bg);
+}
+
+body {
+  background: var(--sl-color-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(62rem 34rem at 18% -6%, rgb(255 255 255 / 4%), transparent 72%),
+    linear-gradient(180deg, rgb(255 255 255 / 1%), transparent 30rem),
+    var(--sl-color-bg);
+  background-attachment: fixed;
+}
+
+.docs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: fit-content;
+  color: var(--sl-color-white);
+  text-decoration: none;
+}
+
+.docs-brand img {
+  width: 1.9rem;
+  height: 2.15rem;
+  object-fit: contain;
+}
+
+.docs-brand-name {
+  font-size: 0.82rem;
+  font-weight: 680;
+  letter-spacing: 0.4em;
+}
+
+.docs-brand-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--sl-color-gray-3);
+  font: 600 0.62rem var(--sl-font-mono);
+  letter-spacing: 0.12em;
+}
+
+.docs-brand-section::before {
+  width: 1px;
+  height: 1.1rem;
+  background: color-mix(in oklab, var(--sl-color-white) 15%, transparent);
+  content: "";
+}
+
+.page > header.header {
+  padding: 0;
+  border-bottom-color: color-mix(in oklab, var(--sl-color-white) 9%, transparent);
+  background: color-mix(in oklab, var(--sl-color-bg) 72%, transparent);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 2%) inset;
+  backdrop-filter: blur(20px) saturate(115%);
+}
+
+.page > header.header > .header {
+  width: 100%;
+  margin-inline: 0;
+  padding-inline: var(--sl-nav-pad-x);
+}
+
+site-search {
+  display: block;
+  width: 100%;
+  max-width: 28rem;
+}
+
+site-search > button {
+  width: 100%;
+  min-height: 2.65rem;
+  padding-inline: 0.8rem;
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 11%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--sl-color-white) 3.5%, transparent);
+  color: var(--sl-color-gray-2);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 3%) inset;
+}
+
+site-search > button:hover {
+  border-color: color-mix(in oklab, var(--sl-color-white) 20%, transparent);
+  background: color-mix(in oklab, var(--sl-color-white) 6%, transparent);
+  color: var(--sl-color-white);
+}
+
+site-search kbd {
+  border-color: color-mix(in oklab, var(--sl-color-white) 10%, transparent);
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--sl-color-white) 4%, transparent);
+  box-shadow: none;
+  font-family: var(--sl-font-mono);
+  font-size: 0.58rem;
+}
+
+.social-icons::after {
+  display: none;
+}
+
+.social-icons a,
+starlight-theme-select label {
+  display: grid;
+  place-items: center;
+  width: 2.55rem !important;
+  height: 2.55rem;
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 11%, transparent);
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--sl-color-white) 2.5%, transparent);
+  color: var(--sl-color-white);
+}
+
+.social-icons a:hover,
+starlight-theme-select label:hover {
+  border-color: color-mix(in oklab, var(--sl-color-white) 20%, transparent);
+  background: color-mix(in oklab, var(--sl-color-white) 7%, transparent);
+}
+
+starlight-theme-select label {
+  position: relative;
+  cursor: pointer;
+}
+
+starlight-theme-select select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+starlight-theme-select .caret {
+  display: none;
+}
+
+starlight-theme-select .label-icon {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sidebar-pane {
+  background: color-mix(in oklab, var(--sl-color-bg) 96%, var(--sl-color-white)) !important;
+  border-inline-end-color: color-mix(in oklab, var(--sl-color-white) 9%, transparent) !important;
+}
+
+.sidebar-content {
+  padding-top: 1.5rem;
+  scrollbar-color: color-mix(in oklab, var(--sl-color-white) 18%, transparent) transparent;
+}
+
+.sidebar-content .top-level > li > details > summary .large {
+  color: var(--sl-color-gray-2);
+  font: 600 0.64rem var(--sl-font-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.sidebar-content summary {
+  border-radius: 7px;
+}
+
+.sidebar-content summary:hover {
+  background: color-mix(in oklab, var(--sl-color-white) 3.5%, transparent);
+}
+
+.sidebar-content a {
+  border-radius: 7px;
+  color: var(--sl-color-gray-2);
+}
+
+.sidebar-content a:hover {
+  background: color-mix(in oklab, var(--sl-color-white) 3.5%, transparent);
+  color: var(--sl-color-white);
+}
+
+.sidebar-content [aria-current="page"],
+.sidebar-content [aria-current="page"]:hover,
+.sidebar-content [aria-current="page"]:focus {
+  background: var(--sl-color-white);
+  color: var(--sl-color-black);
+  box-shadow: none;
+}
+
+.right-sidebar {
+  border-inline-start-color: color-mix(in oklab, var(--sl-color-white) 9%, transparent) !important;
+  background: color-mix(in oklab, var(--sl-color-bg) 98%, var(--sl-color-white));
+}
+
+.right-sidebar-panel h2 {
+  color: var(--sl-color-gray-2) !important;
+  font: 600 0.64rem var(--sl-font-mono) !important;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.right-sidebar-panel a {
+  line-height: 1.5;
+}
+
+.content-panel:first-child {
+  padding-top: 2.75rem;
+}
+
+main h1 {
+  color: var(--sl-color-white);
+  font-size: clamp(2.9rem, 4.5vw, 4rem);
+  font-weight: 480;
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.sl-markdown-content :is(h2, h3, h4):not(:where(.not-content *)) {
+  color: var(--sl-color-white);
+  font-weight: 520;
+  letter-spacing: -0.035em;
+}
+
+.sl-markdown-content strong:not(:where(.not-content *)) {
+  color: var(--sl-color-white);
+  font-weight: 650;
+}
+
+.sl-markdown-content ul:not(:where(.not-content *)) {
+  padding-inline-start: 1.5rem;
+  list-style: disc;
+}
+
+.sl-markdown-content ol:not(:where(.not-content *)) {
+  padding-inline-start: 1.5rem;
+  list-style: decimal;
+}
+
+.sl-markdown-content ul ul:not(:where(.not-content *)) {
+  list-style: circle;
+}
+
+.sl-markdown-content ul ul ul:not(:where(.not-content *)) {
+  list-style: square;
+}
+
+.sl-markdown-content code:not(pre code):not(:where(.not-content *)) {
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 9%, transparent);
+  border-radius: 5px;
+}
+
+.sl-markdown-content pre:not(:where(.not-content *)),
+expressive-code .frame {
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 11%, transparent);
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.pagination-links a {
+  border-color: color-mix(in oklab, var(--sl-color-white) 11%, transparent) !important;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--sl-color-white) 2%, transparent);
+  box-shadow: none;
+}
+
+.pagination-links a:hover {
+  background: color-mix(in oklab, var(--sl-color-white) 5%, transparent);
+}
+
+@media (min-width: 50rem) {
+  .page > header.header > .header {
+    grid-template-columns:
+      calc(var(--sl-sidebar-width) - var(--sl-nav-pad-x))
+      minmax(18rem, 1fr)
+      calc(var(--sl-sidebar-width) - var(--sl-nav-pad-x));
+  }
+
+  .page > header.header > .header > :nth-child(2) {
+    justify-content: center;
+  }
+
+  .page > header.header .right-group {
+    justify-self: end;
+    gap: 0.6rem;
+  }
+}
+
+@media (max-width: 49.99rem) {
+  .page > header.header > .header {
+    width: 100%;
+  }
+
+  .docs-brand {
+    gap: 0.7rem;
+  }
+
+  .docs-brand img {
+    width: 1.65rem;
+    height: 1.9rem;
+  }
+
+  .docs-brand-name {
+    font-size: 0.75rem;
+  }
+
+  .docs-brand-section {
+    display: none;
+  }
 }

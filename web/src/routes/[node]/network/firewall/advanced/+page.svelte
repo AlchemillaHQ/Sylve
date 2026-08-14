@@ -3,15 +3,15 @@
 		getFirewallAdvancedSettings,
 		getRenderedConfigOnDisk,
 		previewRenderedConfig,
-		updateFirewallAdvancedSettings
+		updateFirewallAdvancedSettings,
+		type FirewallAdvancedRequest
 	} from '$lib/api/network/firewall';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { FirewallAdvancedSettings, RenderedConfig } from '$lib/types/network/firewall';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { cn } from '$lib/utils';
-	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
@@ -21,52 +21,44 @@
 
 	let { data }: { data: Data } = $props();
 
-	const advancedResource = resource(
-		() => 'firewall-advanced-settings',
-		async (key) => {
-			const result = await getFirewallAdvancedSettings();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue:
-				typeof data.advancedSettings === 'object' &&
-				data.advancedSettings !== null &&
-				'id' in data.advancedSettings
-					? (data.advancedSettings as FirewallAdvancedSettings)
-					: ({
-							id: 0,
-							preRules: '',
-							preNatDecl: '',
-							postNatDecl: '',
-							preTrafficAnchor: '',
-							postTrafficAnchor: '',
-							postRules: '',
-							createdAt: new Date().toISOString(),
-							updatedAt: new Date().toISOString()
-						} as FirewallAdvancedSettings)
+	function emptyForm(): FirewallAdvancedRequest {
+		return {
+			preRules: '',
+			preNatDecl: '',
+			postNatDecl: '',
+			preTrafficAnchor: '',
+			postTrafficAnchor: '',
+			postRules: ''
+		};
+	}
+
+	function formFromSettings(settings: FirewallAdvancedSettings): FirewallAdvancedRequest {
+		return {
+			preRules: settings.preRules ?? '',
+			preNatDecl: settings.preNatDecl ?? '',
+			postNatDecl: settings.postNatDecl ?? '',
+			preTrafficAnchor: settings.preTrafficAnchor ?? '',
+			postTrafficAnchor: settings.postTrafficAnchor ?? '',
+			postRules: settings.postRules ?? ''
+		};
+	}
+
+	function initialPageState(result: FirewallAdvancedSettings | APIResponse): {
+		form: FirewallAdvancedRequest;
+		error: APIResponse | null;
+	} {
+		if (isAPIResponse(result)) {
+			return { form: emptyForm(), error: result };
 		}
-	);
+		return { form: formFromSettings(result), error: null };
+	}
 
-	let form = $state({
-		preRules: (advancedResource.current as FirewallAdvancedSettings).preRules ?? '',
-		preNatDecl: (advancedResource.current as FirewallAdvancedSettings).preNatDecl ?? '',
-		postNatDecl: (advancedResource.current as FirewallAdvancedSettings).postNatDecl ?? '',
-		preTrafficAnchor: (advancedResource.current as FirewallAdvancedSettings).preTrafficAnchor ?? '',
-		postTrafficAnchor:
-			(advancedResource.current as FirewallAdvancedSettings).postTrafficAnchor ?? '',
-		postRules: (advancedResource.current as FirewallAdvancedSettings).postRules ?? ''
-	});
-
-	$effect(() => {
-		const s = advancedResource.current as FirewallAdvancedSettings;
-		form.preRules = s.preRules ?? '';
-		form.preNatDecl = s.preNatDecl ?? '';
-		form.postNatDecl = s.postNatDecl ?? '';
-		form.preTrafficAnchor = s.preTrafficAnchor ?? '';
-		form.postTrafficAnchor = s.postTrafficAnchor ?? '';
-		form.postRules = s.postRules ?? '';
-	});
+	// Route data intentionally initializes this editable draft once. Retries update it explicitly.
+	// svelte-ignore state_referenced_locally
+	const initialState = initialPageState(data.advancedSettings);
+	let form = $state<FirewallAdvancedRequest>(initialState.form);
+	let loadError = $state<APIResponse | null>(initialState.error);
+	let loadingSettings = $state(false);
 
 	type Section =
 		| 'preRules'
@@ -137,35 +129,130 @@
 
 	let activeSection: Section = $state('preRules');
 	let previewTab: 'preview' | 'disk' = $state('preview');
-	let renderedPreview: RenderedConfig | null = $state(null);
-	let renderedDisk: RenderedConfig | null = $state(null);
+	let renderedPreview = $state.raw<RenderedConfig | null>(null);
+	let renderedDisk = $state.raw<RenderedConfig | null>(null);
+	let previewError = $state<string | null>(null);
+	let diskError = $state<string | null>(null);
+	let previewing = $state(false);
+	let loadingDisk = $state(false);
+	let saving = $state(false);
+	let previewRequestVersion = 0;
+	let diskRequestVersion = 0;
 
-	async function loadPreview() {
-		const result = await previewRenderedConfig({
+	function requestFromForm(): FirewallAdvancedRequest {
+		return {
 			preRules: form.preRules ?? '',
 			preNatDecl: form.preNatDecl ?? '',
 			postNatDecl: form.postNatDecl ?? '',
 			preTrafficAnchor: form.preTrafficAnchor ?? '',
 			postTrafficAnchor: form.postTrafficAnchor ?? '',
 			postRules: form.postRules ?? ''
-		});
-		if ('pfConf' in result) {
+		};
+	}
+
+	function normalizedRequest(request: FirewallAdvancedRequest): FirewallAdvancedRequest {
+		return {
+			preRules: request.preRules.trim(),
+			preNatDecl: request.preNatDecl.trim(),
+			postNatDecl: request.postNatDecl.trim(),
+			preTrafficAnchor: request.preTrafficAnchor.trim(),
+			postTrafficAnchor: request.postTrafficAnchor.trim(),
+			postRules: request.postRules.trim()
+		};
+	}
+
+	function responseDetail(result: APIResponse): string {
+		if (
+			typeof result.data === 'object' &&
+			result.data !== null &&
+			'detail' in result.data &&
+			typeof result.data.detail === 'string'
+		) {
+			return result.data.detail;
+		}
+		if (typeof result.error === 'string' && result.error) return result.error;
+		return result.message || 'The request could not be completed.';
+	}
+
+	function markPreviewStale() {
+		previewRequestVersion += 1;
+		previewing = false;
+		renderedPreview = null;
+		previewError = null;
+	}
+
+	function markDiskStale() {
+		diskRequestVersion += 1;
+		loadingDisk = false;
+		renderedDisk = null;
+		diskError = null;
+	}
+
+	async function reloadSettings() {
+		if (loadingSettings) return;
+		loadingSettings = true;
+		try {
+			const result = await getFirewallAdvancedSettings();
+			if (isAPIResponse(result)) {
+				loadError = result;
+				handleAPIError(result);
+				return;
+			}
+
+			form = formFromSettings(result);
+			loadError = null;
+			markPreviewStale();
+			markDiskStale();
+		} finally {
+			loadingSettings = false;
+		}
+	}
+
+	async function loadPreview() {
+		if (previewing || loadError) return;
+		const requestVersion = ++previewRequestVersion;
+		previewing = true;
+		previewError = null;
+		try {
+			const result = await previewRenderedConfig(requestFromForm());
+			if (requestVersion !== previewRequestVersion) return;
+			if (isAPIResponse(result)) {
+				renderedPreview = null;
+				previewError = responseDetail(result);
+				handleAPIError(result);
+				return;
+			}
 			renderedPreview = result;
-		} else {
-			renderedPreview = null;
+		} finally {
+			if (requestVersion === previewRequestVersion) previewing = false;
 		}
 	}
 
 	async function loadDisk() {
-		const result = await getRenderedConfigOnDisk();
-		if ('pfConf' in result) {
+		if (loadingDisk || loadError) return;
+		const requestVersion = ++diskRequestVersion;
+		loadingDisk = true;
+		diskError = null;
+		try {
+			const result = await getRenderedConfigOnDisk();
+			if (requestVersion !== diskRequestVersion) return;
+			if (isAPIResponse(result)) {
+				renderedDisk = null;
+				diskError = responseDetail(result);
+				handleAPIError(result);
+				return;
+			}
 			renderedDisk = result;
-		} else {
-			renderedDisk = null;
+		} finally {
+			if (requestVersion === diskRequestVersion) loadingDisk = false;
 		}
 	}
 
 	function previewContent(): string {
+		if (previewTab === 'preview' && previewing) return 'Generating preview...';
+		if (previewTab === 'disk' && loadingDisk) return 'Loading on-disk configuration...';
+		if (previewTab === 'preview' && previewError) return previewError;
+		if (previewTab === 'disk' && diskError) return diskError;
 		if (activeSection === 'generated') {
 			const cfg = previewTab === 'preview' ? renderedPreview : renderedDisk;
 			return cfg?.pfConf ?? 'No generated config available.';
@@ -177,34 +264,43 @@
 		return '';
 	}
 
-	$effect(() => {
+	function selectSection(section: Section) {
+		activeSection = section;
 		if (activeSection === 'generated' || activeSection === 'objectTables') {
 			if (previewTab === 'preview' && !renderedPreview) {
-				loadPreview();
+				void loadPreview();
 			}
 			if (previewTab === 'disk' && !renderedDisk) {
-				loadDisk();
+				void loadDisk();
 			}
 		}
-	});
+	}
+
+	function selectPreviewTab(tab: 'preview' | 'disk') {
+		previewTab = tab;
+		if (tab === 'preview') {
+			void loadPreview();
+		} else {
+			void loadDisk();
+		}
+	}
 
 	async function saveAdvancedSettings() {
-		const result = await updateFirewallAdvancedSettings({
-			preRules: form.preRules ?? '',
-			preNatDecl: form.preNatDecl ?? '',
-			postNatDecl: form.postNatDecl ?? '',
-			preTrafficAnchor: form.preTrafficAnchor ?? '',
-			postTrafficAnchor: form.postTrafficAnchor ?? '',
-			postRules: form.postRules ?? ''
-		});
-
-		if (result.status === 'success') {
-			toast.success('Advanced firewall settings updated', { position: 'bottom-center' });
-			await advancedResource.refetch();
-			renderedDisk = null;
-		} else {
+		if (saving || loadError) return;
+		saving = true;
+		const request = requestFromForm();
+		try {
+			const result = await updateFirewallAdvancedSettings(request);
+			if (result.status === 'success') {
+				form = normalizedRequest(request);
+				markPreviewStale();
+				markDiskStale();
+				toast.success('Advanced firewall settings updated', { position: 'bottom-center' });
+				return;
+			}
 			handleAPIError(result);
-			toast.error('Failed to update advanced settings', { position: 'bottom-center' });
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -235,6 +331,38 @@
 		</div>
 	</div>
 
+	{#if loadError}
+		<div
+			class="border-destructive/30 bg-destructive/5 text-destructive flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
+			role="alert"
+		>
+			<div class="flex min-w-0 items-start gap-2">
+				<span class="icon-[mdi--alert-circle-outline] mt-0.5 h-4 w-4 shrink-0"></span>
+				<div>
+					<p class="text-sm font-medium">Advanced firewall settings could not be loaded.</p>
+					<p class="text-muted-foreground text-xs">
+						Editing and saving are disabled so an empty form cannot overwrite the current rules.
+					</p>
+				</div>
+			</div>
+			<Button
+				size="sm"
+				variant="outline"
+				onclick={reloadSettings}
+				disabled={loadingSettings}
+				aria-busy={loadingSettings}
+			>
+				{#if loadingSettings}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					Retrying...
+				{:else}
+					<span class="icon-[mdi--refresh] h-4 w-4"></span>
+					Retry
+				{/if}
+			</Button>
+		</div>
+	{/if}
+
 	<div class="flex flex-1 gap-4 overflow-hidden">
 		<!-- Sidebar -->
 		<nav
@@ -252,11 +380,10 @@
 			</div>
 			{#each sections as section (section.id)}
 				<button
-					onclick={() => {
-						activeSection = section.id;
-					}}
+					onclick={() => selectSection(section.id)}
+					disabled={loadError !== null}
 					class={cn(
-						'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+						'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
 						activeSection === section.id
 							? 'bg-muted dark:bg-muted font-medium'
 							: 'hover:bg-muted dark:hover:bg-muted'
@@ -274,11 +401,10 @@
 			</div>
 			{#each previewSections as section (section.id)}
 				<button
-					onclick={() => {
-						activeSection = section.id;
-					}}
+					onclick={() => selectSection(section.id)}
+					disabled={loadError !== null}
 					class={cn(
-						'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+						'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
 						activeSection === section.id
 							? 'bg-muted dark:bg-muted font-medium'
 							: 'hover:bg-muted dark:hover:bg-muted'
@@ -307,6 +433,8 @@
 						classes="flex-1 flex flex-col min-h-0"
 						type="textarea"
 						textAreaClasses="flex-1 min-h-0 font-mono text-xs resize-y"
+						disabled={saving || loadError !== null}
+						onChange={markPreviewStale}
 					/>
 				</div>
 			{:else}
@@ -319,29 +447,41 @@
 						</div>
 						<div class="bg-muted flex items-center gap-1 rounded-md p-0.5">
 							<button
-								onclick={() => {
-									previewTab = 'preview';
-									loadPreview();
-								}}
+								onclick={() => selectPreviewTab('preview')}
+								disabled={previewing || loadError !== null}
+								aria-busy={previewing}
 								class={cn(
-									'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+									'rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
 									previewTab === 'preview'
 										? 'bg-card text-foreground shadow-sm'
 										: 'text-muted-foreground hover:text-foreground'
-								)}>Preview</button
+								)}
 							>
+								{#if previewing}
+									<span class="icon-[mdi--loading] mr-1 inline-block h-3 w-3 animate-spin"></span>
+									Generating...
+								{:else}
+									Preview
+								{/if}
+							</button>
 							<button
-								onclick={() => {
-									previewTab = 'disk';
-									loadDisk();
-								}}
+								onclick={() => selectPreviewTab('disk')}
+								disabled={loadingDisk || loadError !== null}
+								aria-busy={loadingDisk}
 								class={cn(
-									'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+									'rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
 									previewTab === 'disk'
 										? 'bg-card text-foreground shadow-sm'
 										: 'text-muted-foreground hover:text-foreground'
-								)}>On Disk</button
+								)}
 							>
+								{#if loadingDisk}
+									<span class="icon-[mdi--loading] mr-1 inline-block h-3 w-3 animate-spin"></span>
+									Loading...
+								{:else}
+									On Disk
+								{/if}
+							</button>
 						</div>
 					</div>
 					<p class="text-muted-foreground mb-2 mt-1 px-3 text-xs">{sec.description}</p>
@@ -357,9 +497,20 @@
 			<span class="icon-[mdi--information-outline] h-3.5 w-3.5"></span>
 			Changes take effect immediately upon saving.
 		</p>
-		<Button size="sm" onclick={saveAdvancedSettings} class="gap-1.5">
-			<span class="icon-[mdi--content-save-outline] h-4 w-4"></span>
-			Save Settings
+		<Button
+			size="sm"
+			onclick={saveAdvancedSettings}
+			class="gap-1.5"
+			disabled={saving || loadingSettings || loadError !== null}
+			aria-busy={saving}
+		>
+			{#if saving}
+				<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+				Saving...
+			{:else}
+				<span class="icon-[mdi--content-save-outline] h-4 w-4"></span>
+				Save Settings
+			{/if}
 		</Button>
 	</div>
 </div>

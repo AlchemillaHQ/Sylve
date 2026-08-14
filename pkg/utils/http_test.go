@@ -308,17 +308,9 @@ func TestGetTokenFromHeader(t *testing.T) {
 			shouldFail: true,
 		},
 		{
-			name: "Valid WebSocket header",
+			name: "WebSocket subprotocol is not authentication",
 			headers: http.Header{
 				"Sec-Websocket-Protocol": []string{"Bearer, mytoken123"},
-			},
-			expected:   "mytoken123",
-			shouldFail: false,
-		},
-		{
-			name: "Invalid WebSocket header",
-			headers: http.Header{
-				"Sec-WebSocket-Protocol": []string{"Token, mytoken123"},
 			},
 			shouldFail: true,
 		},

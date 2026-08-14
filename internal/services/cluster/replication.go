@@ -1269,22 +1269,31 @@ func (s *Service) ResolveSSHHostForNode(nodeID string) (string, error) {
 	if s.Raft != nil {
 		fut := s.Raft.GetConfiguration()
 		if fut.Error() == nil {
-			for _, server := range fut.Configuration().Servers {
-				if string(server.ID) != nodeID {
-					continue
-				}
-				host, _, splitErr := net.SplitHostPort(string(server.Address))
-				if splitErr == nil && strings.TrimSpace(host) != "" {
-					return strings.TrimSpace(host), nil
-				}
-				if strings.TrimSpace(string(server.Address)) != "" {
-					return strings.TrimSpace(string(server.Address)), nil
-				}
+			if host, found := resolveSSHHostFromRaftConfiguration(nodeID, fut.Configuration()); found {
+				return host, nil
 			}
 		}
 	}
 
 	return "", fmt.Errorf("node_host_not_found")
+}
+
+func resolveSSHHostFromRaftConfiguration(nodeID string, configuration raft.Configuration) (string, bool) {
+	nodeID = strings.TrimSpace(nodeID)
+	for _, server := range configuration.Servers {
+		if strings.TrimSpace(string(server.ID)) != nodeID {
+			continue
+		}
+		address := strings.TrimSpace(string(server.Address))
+		host, _, err := net.SplitHostPort(address)
+		if err == nil && strings.TrimSpace(host) != "" {
+			return strings.TrimSpace(host), true
+		}
+		if address != "" {
+			return address, true
+		}
+	}
+	return "", false
 }
 
 func (s *Service) CanLocalNodeStartProtectedGuest(guestType string, guestID uint) (bool, error) {

@@ -7,33 +7,44 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
-	let ignoreUMSR: boolean = $state(vm.ignoreUMSR);
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
+	let ignoreUMSR: boolean = $state(untrack(() => vm.ignoreUMSR));
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
-		const response = await modifyIgnoreUMSR(vm.rid, ignoreUMSR);
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify unimplemented MSRs access setting', {
-				position: 'bottom-center'
-			});
-			return;
+		if (saving) return;
+		saving = true;
+		try {
+			const response = await modifyIgnoreUMSR(vm.rid, ignoreUMSR, { hostname: node });
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify unimplemented MSRs access setting', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No unimplemented-MSR changes needed'
+					: 'Modified unimplemented MSRs access setting',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified unimplemented MSRs access setting', {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
@@ -69,11 +80,19 @@
 			label="Ignore Unimplemented MSR Accesses"
 			bind:checked={ignoreUMSR}
 			classes="flex items-center gap-2"
+			disabled={saving}
 		></CustomCheckbox>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

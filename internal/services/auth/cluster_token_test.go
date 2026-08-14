@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -18,7 +19,7 @@ import (
 
 func TestUserProxyClusterJWTIncludesAdminClaim(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &models.User{}, &clusterModels.Cluster{})
-	if err := db.Create(&clusterModels.Cluster{Key: "cluster-secret"}).Error; err != nil {
+	if err := db.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
 		t.Fatalf("create cluster: %v", err)
 	}
 	user := models.User{Username: "admin", Admin: true}
@@ -27,7 +28,7 @@ func TestUserProxyClusterJWTIncludesAdminClaim(t *testing.T) {
 	}
 	service := &Service{DB: db}
 
-	token, err := service.CreateClusterJWT(user.ID, "  submitted-name  ", "sylve", "")
+	token, err := service.CreateUserProxyJWT(user.ID, "  submitted-name  ", "sylve")
 	if err != nil {
 		t.Fatalf("create cluster token: %v", err)
 	}
@@ -37,5 +38,18 @@ func TestUserProxyClusterJWTIncludesAdminClaim(t *testing.T) {
 	}
 	if !claims.Admin || claims.TokenUse != ClusterTokenUseUserProxy || claims.UserID != user.ID || claims.Username != user.Username {
 		t.Fatalf("unexpected claims: %#v", claims)
+	}
+}
+
+func TestClusterJWTCannotUseEmptyConfiguredKey(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{Enabled: true, Key: "   "}).Error; err != nil {
+		t.Fatalf("create cluster: %v", err)
+	}
+	service := &Service{DB: db}
+
+	if _, err := service.CreateUserProxyJWT(0, "admin", "sylve"); err == nil ||
+		!strings.Contains(err.Error(), "cluster_key_not_configured") {
+		t.Fatalf("expected cluster_key_not_configured, got: %v", err)
 	}
 }

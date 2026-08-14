@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 //go:build freebsd
 
 package integration
@@ -29,7 +37,7 @@ type switchListResult struct {
 	Manual   []networkModels.ManualSwitch   `json:"manual"`
 }
 
-func TestSwitchesCLIAndREPLIntegration(t *testing.T) {
+func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -98,8 +106,9 @@ func TestSwitchesCLIAndREPLIntegration(t *testing.T) {
 		t.Fatalf("route %s was not created for standard switch", route4)
 	}
 
+	manualBridge := createTemporaryManualBridge(t)
 	output = runREPLCommand(t, suite.socketPath,
-		"switches create manual "+manualName+" "+standard.BridgeName+" --json")
+		"switches create manual "+manualName+" "+manualBridge+" --json")
 	var createdManual switchMutationResult
 	if err := json.Unmarshal([]byte(output), &createdManual); err != nil {
 		t.Fatalf("decode REPL manual switch create: %v\noutput: %s", err, output)
@@ -112,7 +121,7 @@ func TestSwitchesCLIAndREPLIntegration(t *testing.T) {
 	if err := suite.database.First(&manual, createdManual.ID).Error; err != nil {
 		t.Fatalf("load created manual switch: %v", err)
 	}
-	if manual.Name != manualName || manual.Bridge != standard.BridgeName {
+	if manual.Name != manualName || manual.Bridge != manualBridge {
 		t.Fatalf("created manual switch = %#v", manual)
 	}
 
@@ -198,7 +207,7 @@ func cleanupStandardSwitch(t *testing.T, suite *consoleIntegrationSuite, name st
 		}
 		return
 	}
-	if err := suite.network.DeleteStandardSwitch(int(standard.ID)); err != nil {
+	if err := suite.network.DeleteStandardSwitch(standard.ID); err != nil {
 		t.Errorf("delete standard switch %s during cleanup: %v", name, err)
 	}
 }
@@ -253,6 +262,31 @@ func cleanupSwitchRoute(t *testing.T, route, gateway string) {
 	if err != nil {
 		t.Errorf("delete owned route %s via %s during cleanup: %v\n%s", route, gateway, err, output)
 	}
+}
+
+func createTemporaryManualBridge(t *testing.T) string {
+	t.Helper()
+	output, err := exec.Command("/sbin/ifconfig", "bridge", "create").CombinedOutput()
+	if err != nil {
+		t.Fatalf("create temporary manual bridge: %v\n%s", err, output)
+	}
+	bridge := strings.TrimSpace(string(output))
+	if bridge == "" {
+		t.Fatal("create temporary manual bridge returned an empty interface name")
+	}
+
+	t.Cleanup(func() {
+		output, err := exec.Command("/sbin/ifconfig", bridge, "destroy").CombinedOutput()
+		if err == nil {
+			return
+		}
+		if _, lookupErr := iface.Get(bridge); lookupErr != nil && isMissingInterfaceError(lookupErr) {
+			return
+		}
+		t.Errorf("destroy temporary manual bridge %s: %v\n%s", bridge, err, output)
+	})
+
+	return bridge
 }
 
 func hasInterfaceGroup(groups []string, want string) bool {

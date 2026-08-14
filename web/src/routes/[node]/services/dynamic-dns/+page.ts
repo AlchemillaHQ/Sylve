@@ -13,7 +13,7 @@ export async function load() {
 
 	return {
 		entries: Array.isArray(entryResult) ? entryResult : [],
-		interfaces: Array.isArray(interfaceResult) ? interfaceResult : [],
+		interfaces: interfaceResult,
 		switches: switchResult ?? {}
 	};
 }

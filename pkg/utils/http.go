@@ -65,92 +65,12 @@ func GetTokenFromHeader(r http.Header) (string, error) {
 		return RemoveSpaces(token[7:]), nil
 	}
 
-	wsProtocol := r.Get("Sec-WebSocket-Protocol")
-	if wsProtocol != "" {
-		parts := strings.Split(wsProtocol, ",")
-		if len(parts) == 2 && strings.TrimSpace(parts[0]) == "Bearer" {
-			return RemoveSpaces(strings.TrimSpace(parts[1])), nil
-		}
-		return "", errors.New("invalid websocket protocol header format")
-	}
-
 	return "", errors.New("no token provided")
-}
-
-func GetClusterTokenFromHeader(r http.Header) (string, error) {
-	if v := r.Get("ClusterToken"); v != "" {
-		if len(v) < 8 || !strings.HasPrefix(v, "Bearer ") {
-			return "", fmt.Errorf("invalid ClusterToken header format")
-		}
-		return RemoveSpaces(v[7:]), nil
-	}
-
-	if v := r.Get("X-Cluster-Authorization"); v != "" {
-		if len(v) < 8 || !strings.HasPrefix(v, "Bearer ") {
-			return "", fmt.Errorf("invalid X-Cluster-Authorization header format")
-		}
-		return RemoveSpaces(v[7:]), nil
-	}
-
-	if v := r.Get("X-Cluster-Token"); v != "" {
-		if len(v) < 8 || !strings.HasPrefix(v, "Bearer ") {
-			return "", fmt.Errorf("invalid X-Cluster-Token header format")
-		}
-		return RemoveSpaces(v[7:]), nil
-	}
-
-	if v := r.Get("Sec-WebSocket-Protocol"); v != "" {
-		text := RemoveSpaces(v)
-		data, err := hex.DecodeString(text)
-		if err != nil {
-			return "", fmt.Errorf("failed to decode hex: %w", err)
-		}
-
-		var obj struct {
-			Hostname string `json:"hostname"`
-			Token    string `json:"token"`
-		}
-
-		if err := json.Unmarshal(data, &obj); err != nil {
-			return "", fmt.Errorf("failed to unmarshal json: %w", err)
-		}
-
-		if obj.Token == "" {
-			return "", errors.New("no_token_provided")
-		}
-
-		return obj.Token, nil
-	}
-
-	return "", errors.New("no cluster token provided")
 }
 
 func GetCurrentHostnameFromHeader(r http.Header, rC *http.Request) (string, error) {
 	if v := r.Get("X-Current-Hostname"); v != "" {
 		return RemoveSpaces(v), nil
-	}
-
-	if v := r.Get("Sec-WebSocket-Protocol"); v != "" {
-		text := RemoveSpaces(v)
-		data, err := hex.DecodeString(text)
-		if err != nil {
-			return "", fmt.Errorf("failed to decode hex: %w", err)
-		}
-
-		var obj struct {
-			Hostname string `json:"hostname"`
-			Token    string `json:"token"`
-		}
-
-		if err := json.Unmarshal(data, &obj); err != nil {
-			return "", fmt.Errorf("failed to unmarshal json: %w", err)
-		}
-
-		if obj.Hostname == "" {
-			return "", errors.New("no_current_hostname_provided")
-		}
-
-		return obj.Hostname, nil
 	}
 
 	if v := rC.URL.Query().Get("auth"); v != "" {
@@ -162,7 +82,6 @@ func GetCurrentHostnameFromHeader(r http.Header, rC *http.Request) (string, erro
 
 		var obj struct {
 			Hostname string `json:"hostname"`
-			Token    string `json:"token"`
 		}
 
 		if err := json.Unmarshal(data, &obj); err != nil {
@@ -186,16 +105,6 @@ func GetIdFromParam(c *gin.Context) (int, error) {
 		return 0, err
 	}
 	return id, nil
-}
-
-func FlatHeaders(c *gin.Context) map[string]string {
-	var flatHeaders = make(map[string]string)
-	for key, value := range c.Request.Header {
-		if len(value) > 0 {
-			flatHeaders[key] = value[0]
-		}
-	}
-	return flatHeaders
 }
 
 func intraClusterClient() *http.Client {

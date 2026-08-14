@@ -30,7 +30,7 @@ import (
 var ErrSwitchNotFound = errors.New("switch_not_found")
 
 type jailConfigBuilder interface {
-	CreateJailConfig(data jailModels.Jail, mountPoint string, mac string) (string, error)
+	CreateJailConfig(data jailModels.Jail, mountPoint string) (string, error)
 }
 
 type jailDevfsCleaner interface {
@@ -1103,18 +1103,7 @@ func (s *Service) writeRestoredJailConfigFiles(jail *jailModels.Jail, mountPoint
 		return fmt.Errorf("failed_to_write_restored_jail_fstab: %w", err)
 	}
 
-	mac := ""
-	if len(jail.Networks) > 0 {
-		if jail.Networks[0].MacID == nil || *jail.Networks[0].MacID == 0 {
-			return fmt.Errorf("restored_jail_primary_network_missing_mac")
-		}
-		mac, err = s.getFirstObjectEntryValue(*jail.Networks[0].MacID)
-		if err != nil {
-			return fmt.Errorf("failed_to_resolve_restored_jail_primary_mac: %w", err)
-		}
-	}
-
-	cfg, err := builder.CreateJailConfig(*jail, mountPoint, mac)
+	cfg, err := builder.CreateJailConfig(*jail, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_build_restored_jail_config: %w", err)
 	}
@@ -1125,20 +1114,6 @@ func (s *Service) writeRestoredJailConfigFiles(jail *jailModels.Jail, mountPoint
 	}
 
 	return nil
-}
-
-func (s *Service) getFirstObjectEntryValue(objectID uint) (string, error) {
-	var entry networkModels.ObjectEntry
-	if err := s.DB.Where("object_id = ?", objectID).Order("id ASC").First(&entry).Error; err != nil {
-		return "", err
-	}
-
-	value := strings.TrimSpace(entry.Value)
-	if value == "" {
-		return "", fmt.Errorf("network_object_entry_value_empty")
-	}
-
-	return value, nil
 }
 
 func (s *Service) restoreJailSwitchExists(tx *gorm.DB, switchID uint, switchType string) (bool, error) {

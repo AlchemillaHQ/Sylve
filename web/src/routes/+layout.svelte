@@ -5,21 +5,15 @@
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { preloadData, onNavigate } from '$app/navigation';
-	import {
-		isClusterTokenValid,
-		isTokenValid,
-		login,
-		loginWithPasskey,
-		isInitialized
-	} from '$lib/api/auth';
+	import { isTokenValid, login, loginWithPasskey, isInitialized } from '$lib/api/auth';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import '$lib/utils/i18n';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { mode, ModeWatcher } from 'mode-watcher';
-	import { onMount } from 'svelte';
+	import { mode, ModeWatcher, setMode } from 'mode-watcher';
+	import { onMount, type Component } from 'svelte';
 	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialization/Initialize.svelte';
 	import { sleep } from '$lib/utils';
@@ -45,10 +39,14 @@
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { isAPIResponse } from '$lib/utils/http.js';
 	import ErrorDetailModal from '$lib/components/custom/Dialog/ErrorDetailModal.svelte';
+	import { initializeDemoRuntime, isDemoMode } from '$lib/demo/runtime';
 
 	let { children } = $props();
-	let initialized = $state<boolean | null>(null);
-	let rebooted = $state<boolean>(false);
+	initializeDemoRuntime();
+	let DemoHostRuntimeComponent = $state<Component<{ hostname?: string }> | null>(null);
+
+	let initialized = $state<boolean | null>(isDemoMode ? true : null);
+	let rebooted = $state<boolean>(isDemoMode);
 
 	let loading = $state({
 		throbber: false,
@@ -57,16 +55,47 @@
 		initialization: false
 	});
 
+	function handleDemoMessage(event: MessageEvent) {
+		if (
+			!isDemoMode ||
+			event.source !== window.parent ||
+			event.data?.type !== 'sylve-demo-theme' ||
+			(event.data.theme !== 'light' && event.data.theme !== 'dark')
+		) {
+			return;
+		}
+
+		setMode(event.data.theme);
+	}
+
 	onMount(async () => {
 		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
 
-		const [validToken, validClusterToken] = await Promise.all([
-			isTokenValid(),
-			isClusterTokenValid()
-		]);
+		if (isDemoMode) {
+			void import('$lib/components/custom/Terminal/DemoHostRuntime.svelte').then(
+				(module) => (DemoHostRuntimeComponent = module.default)
+			);
+			window.addEventListener('message', handleDemoMessage);
+			initialized = true;
+			rebooted = true;
 
-		if (validToken && validClusterToken) {
+			if (page.url.pathname === '/') {
+				await preloadData('/datacenter/summary');
+				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
+			}
+
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					window.parent.postMessage({ type: 'sylve-demo-ready' }, '*');
+				});
+			});
+			return;
+		}
+
+		const validToken = await isTokenValid();
+
+		if (validToken) {
 			void startSSEEvents();
 
 			loading.initialization = true;
@@ -124,7 +153,8 @@
 	});
 
 	onDestroy(() => {
-		stopSSEEvents();
+		if (isDemoMode) window.removeEventListener('message', handleDemoMessage);
+		if (!isDemoMode) stopSSEEvents();
 	});
 
 	async function handleLogin(
@@ -298,6 +328,7 @@
 	watch(
 		() => storage.token,
 		(token) => {
+			if (isDemoMode) return;
 			if (token) {
 				void startSSEEvents();
 			} else {
@@ -331,6 +362,9 @@
 <Toaster />
 <ErrorDetailModal />
 <ModeWatcher />
+{#if isDemoMode && DemoHostRuntimeComponent}
+	<DemoHostRuntimeComponent hostname={storage.hostname || 'leto'} />
+{/if}
 
 <Tooltip.Provider>
 	{#if loading.throbber}

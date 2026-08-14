@@ -26,6 +26,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	handlerMiddleware "github.com/alchemillahq/sylve/internal/handlers/middleware"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	uploadCore "github.com/alchemillahq/sylve/internal/upload"
@@ -56,7 +57,11 @@ func newFileExplorerUploadRouterWithPolicy(
 		c.Next()
 	})
 	router.POST("/upload", newFileExplorerUploadHandler(service, policy, semaphore.NewWeighted(1)))
-	router.DELETE("/upload", DeleteUpload(service))
+	router.DELETE(
+		"/upload",
+		handlerMiddleware.LimitRequestBody(systemService.MaxRequestBodyBytes),
+		DeleteUpload(service),
+	)
 	return router
 }
 
@@ -106,7 +111,7 @@ func TestUploadFileUsesServerIssuedIdentityForRevert(t *testing.T) {
 		uploadResponse,
 		newMultipartUploadRequest(t, destination, "installer.iso", []byte("image-data")),
 	)
-	if uploadResponse.Code != http.StatusOK {
+	if uploadResponse.Code != http.StatusCreated {
 		t.Fatalf("upload status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
 	}
 
@@ -170,6 +175,118 @@ func TestDeleteUploadRejectsCallerProvidedPath(t *testing.T) {
 	}
 }
 
+func TestDeleteUploadRejectsOversizedRequest(t *testing.T) {
+	service := newFileExplorerSystemService(t)
+	router := newFileExplorerUploadRouter(service)
+	body := `{"data":{"uploadId":"` +
+		strings.Repeat("x", int(systemService.MaxRequestBodyBytes)) +
+		`"}}`
+	request := httptest.NewRequest(http.MethodDelete, "/upload", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Test-User-ID", "7")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf(
+			"status=%d want=%d body=%s",
+			response.Code,
+			http.StatusRequestEntityTooLarge,
+			response.Body.String(),
+		)
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"message":"file_explorer_request_too_large"`)) {
+		t.Fatalf("body=%s", response.Body.String())
+	}
+}
+
+func TestDeleteUploadReturnsConflictForReplacedFile(t *testing.T) {
+	service := newFileExplorerSystemService(t)
+	router := newFileExplorerUploadRouter(service)
+	path := filepath.Join(t.TempDir(), "uploaded.iso")
+	if err := os.WriteFile(path, []byte("uploaded"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	if err != nil {
+		t.Fatalf("register upload: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodDelete,
+		"/upload",
+		strings.NewReader(fmt.Sprintf(`{"data":{"uploadId":%q}}`, uploadID)),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Test-User-ID", "7")
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status=%d want=%d body=%s", response.Code, http.StatusConflict, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"message":"upload_conflict"`)) {
+		t.Fatalf("body=%s", response.Body.String())
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "replacement" {
+		t.Fatalf("replacement content=%q err=%v", content, err)
+	}
+}
+
+func TestDeleteUploadErrorStatusAndCode(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{
+			name:   "unknown identity",
+			err:    systemService.ErrFileExplorerUploadNotFound,
+			status: http.StatusNotFound,
+			code:   "upload_not_found",
+		},
+		{
+			name:   "changed entry",
+			err:    systemService.ErrFileExplorerUploadConflict,
+			status: http.StatusConflict,
+			code:   "upload_conflict",
+		},
+		{
+			name:   "restore",
+			err:    systemService.ErrFileExplorerRestoreInProgress,
+			status: http.StatusConflict,
+			code:   "restore_in_progress",
+		},
+		{
+			name:   "permission",
+			err:    systemService.ErrFileExplorerPermissionDenied,
+			status: http.StatusForbidden,
+			code:   "file_explorer_permission_denied",
+		},
+		{
+			name:   "internal",
+			err:    errors.New("database unavailable"),
+			status: http.StatusInternalServerError,
+			code:   "upload_delete_failed",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, code := deleteUploadErrorStatusAndCode(test.err)
+			if status != test.status || code != test.code {
+				t.Fatalf("mapping=(%d, %q) want=(%d, %q)", status, code, test.status, test.code)
+			}
+		})
+	}
+}
+
 func TestUploadFileValidatesDestinationBeforeMultipartParsing(t *testing.T) {
 	service := newFileExplorerSystemService(t)
 	router := newFileExplorerUploadRouter(service)
@@ -182,10 +299,27 @@ func TestUploadFileValidatesDestinationBeforeMultipartParsing(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		destination string
+		status      int
+		code        string
 	}{
-		{name: "relative", destination: "relative/path"},
-		{name: "missing", destination: filepath.Join(t.TempDir(), "missing")},
-		{name: "not directory", destination: notDirectory},
+		{
+			name:        "relative",
+			destination: "relative/path",
+			status:      http.StatusBadRequest,
+			code:        "invalid_destination",
+		},
+		{
+			name:        "missing",
+			destination: filepath.Join(t.TempDir(), "missing"),
+			status:      http.StatusNotFound,
+			code:        "destination_not_found",
+		},
+		{
+			name:        "not directory",
+			destination: notDirectory,
+			status:      http.StatusBadRequest,
+			code:        "invalid_destination",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -196,10 +330,10 @@ func TestUploadFileValidatesDestinationBeforeMultipartParsing(t *testing.T) {
 			)
 			request.Header.Set("X-Test-User-ID", "7")
 			router.ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("status=%d want=%d body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+			if response.Code != test.status {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, test.status, response.Body.String())
 			}
-			if !bytes.Contains(response.Body.Bytes(), []byte(`"message":"invalid_destination"`)) {
+			if !bytes.Contains(response.Body.Bytes(), []byte(`"message":"`+test.code+`"`)) {
 				t.Fatalf("body=%s", response.Body.String())
 			}
 		})
@@ -218,7 +352,7 @@ func TestUploadFileDoesNotDecodeDestinationTwice(t *testing.T) {
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, newMultipartUploadRequest(t, destination, "disk.img", []byte("disk")))
 
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	if _, err := os.Stat(filepath.Join(destination, "disk.img")); err != nil {
@@ -236,7 +370,7 @@ func TestUploadFileAcceptsReencodedAbsoluteDestination(t *testing.T) {
 
 	router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	if _, err := os.Stat(filepath.Join(destination, "disk.img")); err != nil {
@@ -260,7 +394,7 @@ func TestUploadFilePreservesSymlinkedDirectoryNavigation(t *testing.T) {
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, newMultipartUploadRequest(t, alias, "rootfs.txz", []byte("archive")))
 
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	payload := decodeUploadResponse(t, response)
@@ -662,6 +796,71 @@ func TestFileExplorerUploadFilesystemFailuresAreStructured(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestFileExplorerUploadDestinationFailuresAreClassified(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		statusCode int
+		code       string
+	}{
+		{
+			name:       "missing",
+			err:        &os.PathError{Op: "stat", Path: "/missing", Err: os.ErrNotExist},
+			statusCode: http.StatusNotFound,
+			code:       "destination_not_found",
+		},
+		{
+			name:       "not directory",
+			err:        &os.PathError{Op: "stat", Path: "/file/child", Err: syscall.ENOTDIR},
+			statusCode: http.StatusBadRequest,
+			code:       "invalid_destination",
+		},
+		{
+			name:       "unexpected io",
+			err:        &os.PathError{Op: "stat", Path: "/storage", Err: syscall.EIO},
+			statusCode: http.StatusInternalServerError,
+			code:       "destination_stat_failed",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			failure := fileExplorerUploadDestinationFailure(test.err, "destination_stat_failed")
+			if failure.StatusCode != test.statusCode || failure.Code != test.code {
+				t.Fatalf(
+					"failure=(%d, %q), want=(%d, %q)",
+					failure.StatusCode,
+					failure.Code,
+					test.statusCode,
+					test.code,
+				)
+			}
+		})
+	}
+}
+
+func TestFileExplorerUploadMutationFailuresDistinguishRestoreConflict(t *testing.T) {
+	restoreFailure := fileExplorerUploadMutationFailure(fmt.Errorf(
+		"%w: ctid=7",
+		systemService.ErrFileExplorerRestoreInProgress,
+	))
+	if restoreFailure.StatusCode != http.StatusConflict || restoreFailure.Code != "restore_in_progress" {
+		t.Fatalf(
+			"restore failure=(%d, %q)",
+			restoreFailure.StatusCode,
+			restoreFailure.Code,
+		)
+	}
+
+	internalFailure := fileExplorerUploadMutationFailure(errors.New("restore lookup failed"))
+	if internalFailure.StatusCode != http.StatusInternalServerError ||
+		internalFailure.Code != "mutation_guard_failed" {
+		t.Fatalf(
+			"internal failure=(%d, %q)",
+			internalFailure.StatusCode,
+			internalFailure.Code,
+		)
 	}
 }
 

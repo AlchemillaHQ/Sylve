@@ -16,6 +16,10 @@
 	import { swatches } from '$lib/utils/terminal';
 	import { page } from '$app/state';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import type { DemoHostTerminalStatus } from '$lib/demo/host-terminal';
+
+	type DemoHostTerminalRuntime = (typeof import('$lib/demo/host-terminal'))['demoHostTerminal'];
 
 	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
 
@@ -25,8 +29,17 @@
 	let wrapper = $state<HTMLElement | null>(null);
 	let connectionToken = 0;
 	let destroyed = false;
+	let demoHostTerminal: DemoHostTerminalRuntime | null = null;
+	let detachDemoTerminal: (() => void) | null = null;
+	let unsubscribeDemoStatus: (() => void) | null = null;
+	let demoStatus = $state<DemoHostTerminalStatus>('idle');
+	let demoStatusText = $state('');
+	let demoProgress = $state(0);
 
-	let cState = new PersistedState(`host-console-state`, false);
+	let cState = new PersistedState(
+		isDemoMode ? `demo-host-console-state` : `host-console-state`,
+		false
+	);
 	let theme = new PersistedState(`host-console-theme`, {
 		background: '#282c34',
 		foreground: '#FFFFFF',
@@ -51,6 +64,7 @@
 	};
 
 	function sendSize(cols: number, rows: number) {
+		if (isDemoMode) return;
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
 	}
@@ -63,6 +77,7 @@
 			return;
 		}
 		sendSize(terminal.cols, terminal.rows);
+		if (isDemoMode) demoHostTerminal?.resize(terminal.cols, terminal.rows);
 	}
 
 	function setFontSize(size: number) {
@@ -104,6 +119,12 @@
 		cState.current = true;
 		connectionToken += 1;
 
+		if (isDemoMode) {
+			detachDemoTerminal?.();
+			detachDemoTerminal = null;
+			return;
+		}
+
 		const socket = ws;
 		ws = null;
 
@@ -130,7 +151,8 @@
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
 				fitAndSend();
-				connect();
+				if (isDemoMode) connectDemoHost();
+				else void connect();
 			});
 		});
 	}
@@ -143,7 +165,7 @@
 	);
 
 	const connect = async () => {
-		if (destroyed || !terminal) return;
+		if (isDemoMode || destroyed || !terminal) return;
 
 		const hash = await sha256(storage.token || '', 1);
 		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
@@ -151,8 +173,7 @@
 		const wsAuth = toHex(
 			JSON.stringify({
 				hash,
-				hostname: selectedHostname,
-				token: storage.clusterToken || ''
+				hostname: selectedHostname
 			})
 		);
 
@@ -192,6 +213,16 @@
 		};
 	};
 
+	function connectDemoHost() {
+		const runtime = demoHostTerminal;
+		if (!isDemoMode || destroyed || !terminal || !runtime) return;
+
+		connectionToken += 1;
+		detachDemoTerminal?.();
+		runtime.setHostname(page.params.node || storage.hostname || 'leto');
+		detachDemoTerminal = runtime.attach(terminal);
+	}
+
 	async function onLoad(t: Terminal) {
 		terminal = t;
 		fitAddon = new (await XtermAddon.FitAddon()).FitAddon();
@@ -220,12 +251,19 @@
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
 				fitAndSend();
-				if (!cState.current) connect();
+				if (!cState.current) {
+					if (isDemoMode) connectDemoHost();
+					else void connect();
+				}
 			});
 		});
 	}
 
 	function onData(data: string) {
+		if (isDemoMode) {
+			if (detachDemoTerminal) demoHostTerminal?.send(data);
+			return;
+		}
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 		ws.send(new TextEncoder().encode('\x00' + data));
 	}
@@ -238,9 +276,24 @@
 	}
 
 	onMount(() => {
+		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
+		if (isDemoMode) {
+			void import('$lib/demo/host-terminal').then(({ demoHostTerminal: runtime }) => {
+				if (cancelled || destroyed) return;
+				demoHostTerminal = runtime;
+				unsubscribeDemoStatus = runtime.subscribe(({ status, text, progress }) => {
+					demoStatus = status;
+					demoStatusText = text;
+					demoProgress = progress;
+				});
+				runtime.setHostname(page.params.node || storage.hostname || 'leto');
+				if (terminal && !cState.current) connectDemoHost();
+			});
+		}
 
 		return () => {
+			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
@@ -254,6 +307,12 @@
 				ws = null;
 			}
 
+			detachDemoTerminal?.();
+			detachDemoTerminal = null;
+			unsubscribeDemoStatus?.();
+			unsubscribeDemoStatus = null;
+			demoHostTerminal = null;
+
 			terminal?.clear();
 			terminal?.dispose();
 			terminal = undefined;
@@ -263,7 +322,7 @@
 
 <div class="flex h-full w-full flex-col">
 	<div class="bg-background flex h-10 w-full items-center gap-2 border p-4">
-		{#if ws?.readyState === WebSocket.OPEN}
+		{#if isDemoMode ? !cState.current : ws?.readyState === WebSocket.OPEN}
 			<Button
 				size="sm"
 				class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-yellow-600 dark:text-white"
@@ -287,6 +346,22 @@
 			</Button>
 		{/if}
 
+		{#if isDemoMode}
+			<div class="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
+				<span
+					class="h-2 w-2 shrink-0 rounded-full"
+					class:bg-emerald-500={demoStatus === 'running'}
+					class:bg-amber-500={demoStatus === 'loading'}
+					class:bg-red-500={demoStatus === 'error'}
+					class:bg-muted-foreground={demoStatus === 'idle'}
+				></span>
+				<span class="truncate">{demoStatus === 'idle' ? 'FreeBSD demo host' : demoStatusText}</span>
+				{#if demoStatus === 'loading' && demoProgress > 0}
+					<span class="tabular-nums">{demoProgress}%</span>
+				{/if}
+			</div>
+		{/if}
+
 		<div class="ml-auto">
 			<Button
 				variant="outline"
@@ -294,6 +369,7 @@
 				class="ml-auto h-6"
 				onclick={() => {
 					terminal?.clear();
+					if (isDemoMode) demoHostTerminal?.refresh();
 					terminal?.focus();
 				}}
 			>
@@ -320,7 +396,7 @@
 			<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
 			<div class="max-w-md">
 				The host console has been disconnected.<br />
-				Click the "Reconnect" button to start a new session.
+				Click the "Reconnect" button to attach to the session again.
 			</div>
 		</div>
 	{/if}

@@ -478,13 +478,10 @@ func TestOOBRestorePreflightUsesSharedLiveGuestIDNamespace(t *testing.T) {
 	}
 }
 
-func TestOOBRestoreExistingCanonicalDestinationIsNeverReplacedRealZFS(t *testing.T) {
+func TestIntegrationOOBRestoreExistingCanonicalDestinationIsNeverReplacedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS OOB restore identity integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	restorePath := pool + "/restore-candidate"

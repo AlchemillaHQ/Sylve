@@ -334,9 +334,18 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 	if err := future.Error(); err != nil {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_raft_configuration_failed: %w", err)
 	}
+	return backupJobRunnerVoterFromConfiguration(future.Configuration(), localNodeID, nodeID)
+}
+
+func backupJobRunnerVoterFromConfiguration(
+	configuration raft.Configuration,
+	localNodeID, nodeID string,
+) (raft.Server, bool, error) {
+	localNodeID = strings.TrimSpace(localNodeID)
+	nodeID = strings.TrimSpace(nodeID)
 	matches := make([]raft.Server, 0, 1)
 	localPresent := false
-	for _, server := range future.Configuration().Servers {
+	for _, server := range configuration.Servers {
 		serverID := strings.TrimSpace(string(server.ID))
 		if serverID == localNodeID {
 			localPresent = true
@@ -408,7 +417,7 @@ func (s *Service) fetchBackupJobSafetyValidation(
 		return result, fmt.Errorf("backup_runner_auth_service_unavailable")
 	}
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
 	if err != nil {
 		return result, fmt.Errorf("backup_runner_cluster_token_failed: %w", err)
 	}
@@ -628,7 +637,10 @@ func (s *Service) validateBackupJobOnRunner(
 	}
 	var target clusterModels.BackupTarget
 	if err := s.DB.WithContext(ctx).First(&target, job.TargetID).Error; err != nil {
-		return empty, nil, fmt.Errorf("backup_target_not_found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return empty, nil, fmt.Errorf("backup_target_not_found")
+		}
+		return empty, nil, fmt.Errorf("backup_target_lookup_failed: %w", err)
 	}
 	if !target.Enabled {
 		return empty, nil, fmt.Errorf("backup_target_disabled")

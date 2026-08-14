@@ -1,25 +1,26 @@
 <script lang="ts">
 	import {
-		getDHCPConfig,
 		getDHCPRanges,
 		getLeases,
 		deleteDHCPLease,
 		deleteDynamicDHCPLease
 	} from '$lib/api/network/dhcp';
-	import { getInterfaces } from '$lib/api/network/iface';
-	import { getSwitches } from '$lib/api/network/switch';
 	import CreateOrEdit from '$lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
-	import type { DHCPConfig, DHCPRange, Leases } from '$lib/types/network/dhcp';
-	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import {
+		emptyLeases,
+		type DHCPStaticLease,
+		type DHCPRange,
+		type FileLease,
+		type Leases
+	} from '$lib/types/network/dhcp';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { generateNanoId } from '$lib/utils/string';
+	import { escapeHTML, generateNanoId } from '$lib/utils/string';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import { secondsToHoursAgo } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
@@ -29,80 +30,67 @@
 	import { type APIResponse } from '$lib/types/common';
 
 	interface Data {
-		interfaces: Iface[];
-		switches: SwitchList;
-		dhcpConfig: DHCPConfig;
-		dhcpRanges: DHCPRange[];
-		dhcpLeases: Leases;
-		networkObjects: NetworkObject[];
+		dhcpRanges: DHCPRange[] | APIResponse;
+		dhcpLeases: Leases | APIResponse;
+		networkObjects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
-	let networkInterfaces = resource(
-		() => 'network-interfaces',
-		async (key) => {
-			const res = await getInterfaces();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.interfaces }
-	);
-
+	let lastGoodNetworkObjects = Array.isArray(data.networkObjects)
+		? data.networkObjects
+		: ([] as NetworkObject[]);
 	// svelte-ignore state_referenced_locally
-	let networkSwitches = resource(
-		() => 'network-switches',
-		async (key) => {
-			const res = await getSwitches();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.switches }
-	);
-
+	let lastGoodDHCPRanges = Array.isArray(data.dhcpRanges) ? data.dhcpRanges : ([] as DHCPRange[]);
 	// svelte-ignore state_referenced_locally
-	let dhcpConfig = resource(
-		() => 'dhcp-config',
-		async (key) => {
-			const res = await getDHCPConfig();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.dhcpConfig }
-	);
+	let lastGoodDHCPLeases = isAPIResponse(data.dhcpLeases) ? emptyLeases() : data.dhcpLeases;
 
-	// svelte-ignore state_referenced_locally
 	let dhcpRanges = resource(
 		() => 'dhcp-ranges',
 		async (key) => {
 			const res = await getDHCPRanges();
+			if (isAPIResponse(res)) {
+				handleAPIError(res);
+				return lastGoodDHCPRanges;
+			}
+
+			lastGoodDHCPRanges = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.dhcpRanges }
+		{ initialValue: lastGoodDHCPRanges }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let dhcpLeases = resource(
 		() => 'dhcp-leases',
 		async (key) => {
 			const res = await getLeases();
+			if (isAPIResponse(res)) {
+				handleAPIError(res);
+				return lastGoodDHCPLeases;
+			}
+
+			lastGoodDHCPLeases = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.dhcpLeases }
+		{ initialValue: lastGoodDHCPLeases }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkObjects = resource(
 		() => 'network-objects',
 		async (key) => {
 			const res = await getNetworkObjects();
+			if (isAPIResponse(res)) {
+				handleAPIError(res);
+				return lastGoodNetworkObjects;
+			}
+
+			lastGoodNetworkObjects = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.networkObjects }
+		{ initialValue: lastGoodNetworkObjects }
 	);
 
 	let reload = $state(false);
@@ -111,9 +99,6 @@
 		() => reload,
 		(current) => {
 			if (current) {
-				networkInterfaces.refetch();
-				networkSwitches.refetch();
-				dhcpConfig.refetch();
 				dhcpRanges.refetch();
 				dhcpLeases.refetch();
 				networkObjects.refetch();
@@ -135,9 +120,51 @@
 			type: '' as 'static' | 'dynamic' | '',
 			id: '0',
 			ip: '',
-			identifier: ''
+			identifier: '',
+			display: ''
 		}
 	});
+
+	function resetDeleteModal() {
+		modals.delete.open = false;
+		modals.delete.type = '';
+		modals.delete.id = '0';
+		modals.delete.ip = '';
+		modals.delete.identifier = '';
+		modals.delete.display = '';
+	}
+
+	function normalizeLeaseValue(value: string | null | undefined): string {
+		return value?.trim().toLowerCase() ?? '';
+	}
+
+	function staticLeaseMatchesFile(staticLease: DHCPStaticLease, fileLease: FileLease): boolean {
+		const fileIP = normalizeLeaseValue(fileLease.ip);
+		const hasMatchingIP =
+			staticLease.ipObject?.entries?.some((entry) => normalizeLeaseValue(entry.value) === fileIP) ??
+			false;
+		if (!hasMatchingIP) return false;
+
+		if (fileLease.mac) {
+			const fileMAC = normalizeLeaseValue(fileLease.mac);
+			return (
+				staticLease.macObject?.entries?.some(
+					(entry) => normalizeLeaseValue(entry.value) === fileMAC
+				) ?? false
+			);
+		}
+
+		if (fileLease.duid) {
+			const fileDUID = normalizeLeaseValue(fileLease.duid);
+			return (
+				staticLease.duidObject?.entries?.some(
+					(entry) => normalizeLeaseValue(entry.value) === fileDUID
+				) ?? false
+			);
+		}
+
+		return false;
+	}
 
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -240,28 +267,10 @@
 		}
 
 		for (const entry of dhcpLeases.current.file) {
-			const found = dhcpLeases.current.db.find((e) => {
-				const ips = e.ipObject?.entries ? e.ipObject?.entries.map((i) => i.value) : [];
-				const isIpMatch = ips.includes(entry.ip);
-				if (!isIpMatch) return false;
-
-				const dbHostname = e.hostname?.toLowerCase();
-				const dbMac = e.macObject?.entries?.[0]?.value?.toLowerCase();
-				const fileHostname = entry.hostname?.toLowerCase();
-				const fileMac = entry.mac?.toLowerCase();
-				const isHostnameMatch = dbHostname && fileHostname && dbHostname === fileHostname;
-				const isMacMatch = dbMac && fileMac && dbMac === fileMac;
-
-				return isHostnameMatch || isMacMatch;
-			});
+			const found = dhcpLeases.current.db.find((lease) => staticLeaseMatchesFile(lease, entry));
 
 			if (found) {
-				const row = rows.find(
-					(r) =>
-						r.ip === entry.ip &&
-						(r.hostname?.toLowerCase() === entry.hostname?.toLowerCase() ||
-							r.mac?.toLowerCase() === entry.mac?.toLowerCase())
-				);
+				const row = rows.find((candidate) => candidate.dbId === found.id.toString());
 
 				if (row) {
 					row.expiry = 'never';
@@ -276,7 +285,7 @@
 					switch: '-',
 					duid: entry.duid,
 					mac: entry.mac ? entry.mac.toLowerCase() : '-',
-					identifier: entry.mac ? entry.mac.toLowerCase() : entry.duid,
+					identifier: entry.mac ? entry.mac.toLowerCase() : entry.duid?.toLowerCase() || '-',
 					expiry: entry.expiry === 0 ? 'never' : entry.expiry,
 					type: 'dynamic'
 				});
@@ -296,6 +305,7 @@
 						modals.delete.open = !modals.delete.open;
 						modals.delete.type = 'static';
 						modals.delete.id = activeRow?.dbId || '0';
+						modals.delete.display = activeRow?.hostname || activeRow?.ip || '';
 					}}
 					size="sm"
 					variant="outline"
@@ -325,6 +335,7 @@
 					modals.delete.type = 'dynamic';
 					modals.delete.identifier = activeRow?.identifier || '';
 					modals.delete.ip = activeRow?.ip || '';
+					modals.delete.display = activeRow?.hostname || activeRow?.ip || '';
 				}}
 				size="sm"
 				variant="outline"
@@ -357,7 +368,7 @@
 	/>
 </div>
 
-{#if modals.create.open && !isAPIResponse(networkObjects.current)}
+{#if modals.create.open}
 	<CreateOrEdit
 		dhcpRanges={dhcpRanges.current}
 		dhcpLeases={dhcpLeases.current}
@@ -368,7 +379,7 @@
 	/>
 {/if}
 
-{#if modals.edit.open && !isAPIResponse(networkObjects.current)}
+{#if modals.edit.open}
 	<CreateOrEdit
 		dhcpRanges={dhcpRanges.current}
 		dhcpLeases={dhcpLeases.current}
@@ -381,7 +392,8 @@
 
 <AlertDialog
 	open={modals.delete.open}
-	customTitle={`This action cannot be undone. This will permanently delete ${modals.delete.type} DHCP lease for <b>${activeRow?.hostname || activeRow?.ip || ''}</b>`}
+	keepOpenOnConfirm={true}
+	customTitle={`This action cannot be undone. This will permanently delete ${modals.delete.type} DHCP lease for <b>${escapeHTML(modals.delete.display)}</b>`}
 	actions={{
 		onConfirm: async () => {
 			let result = null as null | APIResponse;
@@ -397,28 +409,18 @@
 				return;
 			}
 
-			reload = true;
-			if (result.status === 'error') {
+			if (result.status !== 'success') {
 				handleAPIError(result);
 				toast.error('Failed to delete DHCP lease', { position: 'bottom-center' });
 				return;
-			} else {
-				toast.success('DHCP lease deleted', { position: 'bottom-center' });
 			}
 
-			modals.delete.open = false;
-			modals.delete.id = '0';
-			modals.delete.identifier = '';
-			modals.delete.ip = '';
+			toast.success('DHCP lease deleted', { position: 'bottom-center' });
+			reload = true;
+			resetDeleteModal();
 			activeRows = null;
-			activeRow = null;
 		},
-		onCancel: () => {
-			modals.delete.open = false;
-			modals.delete.id = '0';
-			modals.delete.identifier = '';
-			modals.delete.ip = '';
-		}
+		onCancel: resetDeleteModal
 	}}
 	loadingLabel="Deleting Lease..."
 ></AlertDialog>

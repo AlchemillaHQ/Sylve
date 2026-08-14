@@ -37,7 +37,7 @@ func TestGetJailTemplateByID(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/jail/templates/:id", GetJailTemplateByID(svc))
+	r.GET("/jail/templates/:templateId", GetJailTemplateByID(svc))
 
 	t.Run("success", func(t *testing.T) {
 		rr := testutil.PerformRequest(t, r, http.MethodGet, "/jail/templates/1", nil, nil)

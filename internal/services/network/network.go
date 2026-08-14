@@ -62,25 +62,33 @@ type wgClientMetricsCache struct {
 }
 
 type Service struct {
-	DB                         *gorm.DB
-	TelemetryDB                *gorm.DB
-	syncMutex                  sync.Mutex
-	epairMutex                 sync.Mutex
-	firewallMutex              sync.Mutex
-	firewallCounterSampleMutex sync.Mutex
-	firewallCounterStateMutex  sync.Mutex
-	firewallMonOnce            sync.Once
-	firewallTelOnce            sync.Once
-	wgMonitorMutex             sync.Mutex
-	wgMonitorCancel            context.CancelFunc
-	wgClient                   *wgctrl.Client
-	wgClientMutex              sync.Mutex
-	wgMetricsMutex             sync.Mutex
-	wgEndpointCache            map[string][]string
-	wgServerCache              *wgServerMetricsCache
-	wgClientMetricsCache       map[uint]*wgClientMetricsCache
-	listSnapshotMigrationOnce  sync.Once
-	wireGuardUDPPortInUse      func(port int) bool
+	DB                           *gorm.DB
+	TelemetryDB                  *gorm.DB
+	syncMutex                    sync.Mutex
+	epairMutex                   sync.Mutex
+	firewallMutex                sync.Mutex
+	firewallTrafficMutationMutex sync.Mutex
+	firewallNATMutationMutex     sync.Mutex
+	firewallAdvancedMutex        sync.Mutex
+	staticRouteMutationMutex     sync.Mutex
+	dhcpRuntimeMutex             sync.Mutex
+	wireGuardServerMutationMutex sync.Mutex
+	wireGuardClientMutationMutex sync.Mutex
+	firewallCounterSampleMutex   sync.Mutex
+	firewallCounterStateMutex    sync.Mutex
+	firewallMonOnce              sync.Once
+	firewallTelOnce              sync.Once
+	wgMonitorMutex               sync.Mutex
+	wgMonitorCancel              context.CancelFunc
+	wgClient                     *wgctrl.Client
+	wgClientMutex                sync.Mutex
+	wgMetricsMutex               sync.Mutex
+	wgEndpointCache              map[string][]string
+	wgServerCache                *wgServerMetricsCache
+	wgClientMetricsCache         map[uint]*wgClientMetricsCache
+	listSnapshotMigrationOnce    sync.Once
+	wireGuardUDPPortInUse        func(port int) bool
+	dhcpRuntime                  dhcpRuntimeOperations
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)

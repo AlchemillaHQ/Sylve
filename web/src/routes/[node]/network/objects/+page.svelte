@@ -9,6 +9,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -17,21 +18,29 @@
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
-		objects: NetworkObject[];
+		objects: NetworkObject[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+
 	let objects = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastGoodObjects;
+			}
+
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: data.objects
+			initialValue: lastGoodObjects
 		}
 	);
 
@@ -153,7 +162,7 @@
 
 	const tableData: { rows: Row[]; columns: Column[] } = $derived({
 		columns,
-		rows: (objects.current as NetworkObject[]).map((object) => {
+		rows: objects.current.map((object) => {
 			return {
 				id: object.id,
 				name: object.name,
@@ -215,7 +224,7 @@
 		{#if type === 'bulk-delete'}
 			<Button
 				onclick={() => {
-					const currentObjects = objects.current as NetworkObject[];
+					const currentObjects = objects.current;
 					const inUse = activeRows!
 						.map((row) => currentObjects.find((o) => o.id === Number(row.id)))
 						.filter((o) => o?.isUsed);
@@ -271,7 +280,7 @@
 {#if modals.create.open}
 	<CreateOrEdit
 		bind:open={modals.create.open}
-		networkObjects={objects.current as NetworkObject[]}
+		networkObjects={objects.current}
 		edit={false}
 		afterChange={() => {
 			objects.refetch();
@@ -282,7 +291,7 @@
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
-		networkObjects={objects.current as NetworkObject[]}
+		networkObjects={objects.current}
 		edit={true}
 		id={Number(modals.edit.id)}
 		afterChange={() => {
@@ -298,14 +307,14 @@
 		onConfirm: async () => {
 			let active = $state.snapshot(activeRow);
 			const result = await deleteNetworkObject(modals.delete.id);
-			objects.refetch();
 			if (isAPIResponse(result) && result.status === 'success') {
+				await objects.refetch();
 				toast.success(`Object ${active?.name} deleted`, {
 					position: 'bottom-center'
 				});
 			} else {
 				handleAPIError(result);
-				if (result.error?.includes('used') || result.error?.includes('in use')) {
+				if (result.error === 'network_object_in_use') {
 					toast.error(`Object ${active?.name} is in use`, {
 						position: 'bottom-center'
 					});
@@ -337,8 +346,8 @@
 					)
 				: [];
 			const result = await bulkDeleteNetworkObjects(ids);
-			objects.refetch();
 			if (isAPIResponse(result) && result.status === 'success') {
+				await objects.refetch();
 				toast.success(`${ids.length} objects deleted`, { position: 'bottom-center' });
 				activeRows = null;
 				modals.bulkDelete.open = false;

@@ -29,14 +29,11 @@ import (
 // If pruning wins before send starts, restore preflight fails before creating
 // or replacing the local destination. These guarantees mean a remote lineage
 // lease is not required solely for OOB restore safety.
-func TestOOBRestoreRemoteLineageOverlapIsFailSafeRealZFS(t *testing.T) {
+func TestIntegrationOOBRestoreRemoteLineageOverlapIsFailSafeRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping OOB restore overlap integration test in short mode")
-	}
 	requireLocalhostBackupSSH(t)
 
-	poolName, gzfsClient, cleanup := zfstest.Pool(t)
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	backupRoot := poolName + "/target"

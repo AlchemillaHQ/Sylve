@@ -26,6 +26,16 @@ func RequireLocalAdmin(service *authService.Service) gin.HandlerFunc {
 	}
 }
 
+func RequireLocalSession() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetString("AuthScope") != "local" || c.GetUint("UserID") == 0 {
+			abortAuthentication(c, http.StatusForbidden, "local_session_required")
+			return
+		}
+		c.Next()
+	}
+}
+
 func RequireLocalAdminForWrites(service *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead || c.Request.Method == http.MethodOptions {
@@ -58,7 +68,7 @@ func localAdminAllowed(c *gin.Context, service *authService.Service) bool {
 	}
 
 	scope := strings.TrimSpace(c.GetString("AuthScope"))
-	if scope == "cluster" || scope == "wss-cluster" {
+	if scope == "cluster" {
 		if strings.TrimSpace(c.GetString("ClusterTokenUse")) != authService.ClusterTokenUseUserProxy || !c.GetBool("ProxyAdmin") {
 			abortAdminRequired(c)
 			return false

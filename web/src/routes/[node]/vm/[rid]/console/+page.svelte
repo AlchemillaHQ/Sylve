@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { vmPowerSignal } from '$lib/stores/api.svelte';
@@ -11,9 +10,9 @@
 		ITerminalInitOnlyOptions,
 		Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import { onMount, getContext } from 'svelte';
-	import { getVmById } from '$lib/api/vm/vm';
-	import { updateCache } from '$lib/utils/http';
+	import { onMount, getContext, untrack, type Component } from 'svelte';
+	import { getVmByIdResult } from '$lib/api/vm/vm';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import {
 		resource,
 		useInterval,
@@ -30,42 +29,79 @@
 	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import type { DemoVMProfile } from '$lib/demo/vm-profiles';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
 
 	interface Data {
+		node: string;
 		vm: VM;
-		rid: string;
+		rid: number;
 		hash: string;
 	}
 
 	let { data }: { data: Data } = $props();
+	type ResolveDemoVMProfile = (vm: Pick<VM, 'name' | 'storages'>) => DemoVMProfile | null;
+	let resolveDemoVMProfile = $state<ResolveDemoVMProfile | null>(null);
+	let DemoVMConsoleComponent = $state<Component<{
+		profile: DemoVMProfile;
+		vmName: string;
+		runtimeKey: string;
+		view?: 'vga' | 'serial';
+		powerToken?: number;
+		powerAction?: string;
+	}> | null>(null);
+	const initialData = untrack(() => data);
+	let consoleIdentity = $derived(`${data.node}\u0000${data.rid}`);
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
-	// svelte-ignore state_referenced_locally
-	const vm = resource(
-		() => `vm-${data.rid}`,
-		async (key) => {
-			const result = await getVmById(Number(data.rid), 'rid');
-			updateCache(key, result);
-			return result;
+	type VMConsoleSnapshot = { identity: string; vm: VM };
+	const vmResource = resource(
+		[() => data.node, () => data.rid],
+		async ([hostname, rid], _, { signal }): Promise<VMConsoleSnapshot> => {
+			const result = await getVmByIdResult(rid, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load VM');
+			}
+			await updateCache(`vm-${rid}`, result, hostname);
+			return { identity: `${hostname}\u0000${rid}`, vm: result };
 		},
 		{
 			lazy: true,
-			initialValue: data.vm
+			initialValue: {
+				identity: `${initialData.node}\u0000${initialData.rid}`,
+				vm: initialData.vm
+			}
 		}
 	);
 
-	function getWSSAuth() {
-		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
+	const vm = {
+		get current(): VM {
+			return vmResource.current.identity === consoleIdentity ? vmResource.current.vm : data.vm;
+		},
+		refetch: () => vmResource.refetch()
+	};
+	let demoProfile = $derived(
+		isDemoMode && resolveDemoVMProfile ? resolveDemoVMProfile(vm.current) : null
+	);
 
+	function getWSSAuth() {
 		return {
 			hash: data.hash,
-			hostname: selectedHostname,
-			token: storage.clusterToken || ''
+			hostname: data.node
 		};
+	}
+
+	function consoleStorageKey(suffix: string): string {
+		const scopedKey = `node-${data.node}-vm-${data.rid}-console-${suffix}`;
+		if (typeof localStorage !== 'undefined' && localStorage.getItem(scopedKey) === null) {
+			const legacyValue = localStorage.getItem(`vm-${data.rid}-console-${suffix}`);
+			if (legacyValue !== null) localStorage.setItem(scopedKey, legacyValue);
+		}
+		return scopedKey;
 	}
 
 	function resolveInitialConsole(): ConsoleType {
@@ -74,7 +110,7 @@
 		const onlySerial = !vm.current.vncEnabled && vm.current.serial;
 
 		if (both) {
-			const preferred = localStorage.getItem(`vm-${vm.current.rid}-console-preferred`);
+			const preferred = localStorage.getItem(consoleStorageKey('preferred'));
 			if (
 				(preferred === 'vnc' && vm.current.vncEnabled) ||
 				(preferred === 'serial' && vm.current.serial)
@@ -90,25 +126,31 @@
 
 	let consoleType: ConsoleType = $state(resolveInitialConsole());
 
-	// svelte-ignore state_referenced_locally
-	let cState = new PersistedState(`vm-${data.rid}-console-state`, false);
+	let cState = $state(new PersistedState(consoleStorageKey('state'), false));
 
-	// svelte-ignore state_referenced_locally
-	let theme = new PersistedState(`vm-${data.rid}-console-theme`, {
-		background: '#282c34',
-		foreground: '#FFFFFF',
-		fontSize: 14
-	});
+	let theme = $state(
+		new PersistedState(consoleStorageKey('theme'), {
+			background: '#282c34',
+			foreground: '#FFFFFF',
+			fontSize: 14
+		})
+	);
 
-	let fontSizeBindable: number = $state(theme.current.fontSize || 14);
-	let bgThemeBindable: string = $state(theme.current.background || '#282c34');
-	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
+	const initialTheme = untrack(() => ({
+		background: theme.current.background || '#282c34',
+		foreground: theme.current.foreground || '#FFFFFF',
+		fontSize: theme.current.fontSize || 14
+	}));
+	let fontSizeBindable: number = $state(initialTheme.fontSize);
+	let bgThemeBindable: string = $state(initialTheme.background);
+	let fgThemeBindable: string = $state(initialTheme.foreground);
 	let openSettings = $state(false);
 
 	let terminal = $state<Terminal>();
 	let fitAddon: FitAddonInstance | null = null;
 	let ws = $state<WebSocket | null>(null);
 	let serialConnectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
+	let serialConnectionError = $state(false);
 	let wrapper = $state<HTMLElement | null>(null);
 	let connectionToken = 0;
 	let destroyed = $state(false);
@@ -118,10 +160,10 @@
 		cursorStyle: 'bar',
 		scrollback: 10000,
 		fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-		fontSize: theme.current.fontSize || 14,
+		fontSize: initialTheme.fontSize,
 		theme: {
-			background: theme.current.background,
-			foreground: theme.current.foreground
+			background: initialTheme.background,
+			foreground: initialTheme.foreground
 		}
 	};
 
@@ -193,16 +235,26 @@
 		const wssAuth = getWSSAuth();
 		return `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`;
 	});
+	let noVNCSource = $derived.by(() => {
+		const params = new URLSearchParams({
+			path: vncPath,
+			password: vm.current.vncPassword,
+			resize: 'scale',
+			show_dot: 'true',
+			theme: mode.current ?? 'system'
+		});
+		return `/vnc/vnc.html?${params.toString()}`;
+	});
 
-    let vncLoading = $state(false);
-    let vncSettling = $state(false);
+	let vncLoading = $state(false);
+	let vncSettling = $state(false);
 
-    function startVncLoading() {
-        if (!vm.current.vncEnabled) return;
-        vncLoading = true;
-        vncSettling = true;
+	function startVncLoading() {
+		if (!vm.current.vncEnabled) return;
+		vncLoading = true;
+		vncSettling = true;
 
-        /* 
+		/*
             The below code is fucking ugly, I know..but I don't know how else we could get rid of the ugly fucking animation that shows when no VNC is just being mounted by Svelte, I have wasted way too much time on this already but feel free to take a crack at it, if you're reading this it's not a backend issue, do not touch the websocket <-> VNC bridge/proxy, if you do I will point at you and laugh.
 
             Hours wasted counter -> 56
@@ -210,23 +262,37 @@
             ^ Don't forget to increment when you're done.
         */
 
-        // Don't mount the iframe until layout is stable
-        setTimeout(() => {
-            vncLoading = false;
+		// Don't mount the iframe until layout is stable
+		setTimeout(() => {
+			vncLoading = false;
 
-            // We keep the overlay up for a bit longer, even though iframe is mounted now,
-            // to hide noVNC's own connect animation/flicker
-            setTimeout(() => {
-                vncSettling = false;
-            }, 800);
-        }, 600);
-    }
+			// We keep the overlay up for a bit longer, even though iframe is mounted now,
+			// to hide noVNC's own connect animation/flicker
+			setTimeout(() => {
+				vncSettling = false;
+			}, 800);
+		}, 600);
+	}
 
+	let normalizedDomainStatus = $derived(
+		String(domain.current?.status || '')
+			.trim()
+			.toLowerCase()
+	);
+	function consoleStatusAvailable(status: string | null | undefined): boolean {
+		return ['running', 'blocked', 'paused', 'shutdown', 'pmsuspended'].includes(
+			String(status || '')
+				.trim()
+				.toLowerCase()
+		);
+	}
+	let isConsoleDomainAvailable = $derived(consoleStatusAvailable(normalizedDomainStatus));
 	let showConsoleToolbar = $derived(
-		!!domain.current &&
-			domain.current.status !== 'Shutoff' &&
-			((vm.current.vncEnabled && vm.current.serial) ||
-				(consoleType === 'serial' && vm.current.serial))
+		isConsoleDomainAvailable &&
+			(isDemoMode
+				? vm.current.vncEnabled && vm.current.serial
+				: (vm.current.vncEnabled && vm.current.serial) ||
+					(consoleType === 'serial' && vm.current.serial))
 	);
 
 	function sendSize(cols: number, rows: number) {
@@ -238,9 +304,10 @@
 		return serialConnectionState === 'connected' || serialConnectionState === 'connecting';
 	}
 
-	function cleanupSerial(forceKill = false) {
+	function cleanupSerial() {
 		connectionToken += 1;
 		serialConnectionState = 'disconnected';
+		serialConnectionError = false;
 
 		const socket = ws;
 		ws = null;
@@ -253,11 +320,6 @@
 		}
 
 		if (socket && socket.readyState === WebSocket.OPEN) {
-			if (forceKill) {
-				const payload = JSON.stringify({ kill: '' });
-				const data = new TextEncoder().encode('\x02' + payload);
-				socket.send(data);
-			}
 			socket.close();
 		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
@@ -266,13 +328,42 @@
 
 	function disconnectSerial() {
 		cState.current = true;
-		cleanupSerial(true);
+		cleanupSerial();
 	}
 
 	function disconnectSerialForStateChange() {
 		cState.current = false;
-		cleanupSerial(false);
+		cleanupSerial();
 	}
+
+	watch(
+		() => consoleIdentity,
+		(identity, previousIdentity) => {
+			if (!previousIdentity || identity === previousIdentity) return;
+
+			cleanupSerial();
+			terminal?.reset();
+			cState = new PersistedState(consoleStorageKey('state'), false);
+			theme = new PersistedState(consoleStorageKey('theme'), {
+				background: '#282c34',
+				foreground: '#FFFFFF',
+				fontSize: 14
+			});
+			fontSizeBindable = theme.current.fontSize || 14;
+			bgThemeBindable = theme.current.background || '#282c34';
+			fgThemeBindable = theme.current.foreground || '#FFFFFF';
+			if (terminal) {
+				terminal.options.fontSize = fontSizeBindable;
+				terminal.options.theme = {
+					background: bgThemeBindable,
+					foreground: fgThemeBindable
+				};
+			}
+			consoleType = resolveInitialConsole();
+			if (consoleType === 'vnc' && vm.current.vncEnabled) startVncLoading();
+		},
+		{ lazy: true }
+	);
 
 	function reconnectSerial() {
 		if (isSerialSocketActive()) return;
@@ -314,13 +405,14 @@
 	function serialConnect() {
 		if (destroyed || !terminal) return;
 		if (!vm.current.serial) return;
-		if (!domain.current || domain.current.status === 'Shutoff') return;
+		if (!isConsoleDomainAvailable) return;
 		if (isSerialSocketActive()) return;
 
 		cState.current = false;
+		serialConnectionError = false;
 
 		const wssAuth = getWSSAuth();
-		const url = `/api/vm/console?rid=${vm.current.rid}&auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
+		const url = `/api/vm/${encodeURIComponent(String(vm.current.rid))}/console?auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;
@@ -334,8 +426,7 @@
 				return;
 
 			serialConnectionState = 'connected';
-
-			console.log(`Serial console connected for VM ${data.rid}`);
+			serialConnectionError = false;
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => fitAndSend());
 			});
@@ -366,6 +457,7 @@
 				ws = null;
 			}
 			serialConnectionState = 'disconnected';
+			serialConnectionError = true;
 		};
 	}
 
@@ -405,7 +497,7 @@
 				if (
 					consoleType === 'serial' &&
 					vm.current.serial &&
-					domain.current?.status !== 'Shutoff' &&
+					isConsoleDomainAvailable &&
 					!cState.current &&
 					!isSerialSocketActive()
 				) {
@@ -423,13 +515,24 @@
 	}
 
 	onMount(() => {
+		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
 
-		if (consoleType === 'vnc' && vm.current.vncEnabled) {
+		if (isDemoMode) {
+			void Promise.all([
+				import('$lib/components/custom/VM/DemoVMConsole.svelte'),
+				import('$lib/demo/vm-profiles')
+			]).then(([consoleModule, profileModule]) => {
+				if (cancelled) return;
+				DemoVMConsoleComponent = consoleModule.default;
+				resolveDemoVMProfile = profileModule.resolveDemoVMProfile;
+			});
+		} else if (consoleType === 'vnc' && vm.current.vncEnabled) {
 			startVncLoading();
 		}
 
 		return () => {
+			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
@@ -455,33 +558,34 @@
 		() => consoleType,
 		(type) => {
 			if (type === 'vnc' && vm.current.vncEnabled) {
-				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'vnc');
+				localStorage.setItem(consoleStorageKey('preferred'), 'vnc');
 				startVncLoading();
-				cleanupSerial(false);
+				cleanupSerial();
 			} else if (type === 'serial' && vm.current.serial) {
-				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
+				localStorage.setItem(consoleStorageKey('preferred'), 'serial');
 			}
 		},
 		{ lazy: true }
 	);
 
 	watch(
-		() =>
-			String(domain.current?.status || '')
-				.trim()
-				.toLowerCase(),
+		() => normalizedDomainStatus,
 		(status, previousStatus) => {
 			if (status === 'shutoff') {
 				disconnectSerialForStateChange();
 				return;
 			}
 
-			if (status === 'running') {
+			if (consoleStatusAvailable(status)) {
 				if (consoleType === 'serial' && vm.current.serial && !cState.current) {
 					reconnectSerial();
 				}
 
-				if (consoleType === 'vnc' && vm.current.vncEnabled && previousStatus !== 'running') {
+				if (
+					consoleType === 'vnc' &&
+					vm.current.vncEnabled &&
+					!consoleStatusAvailable(previousStatus)
+				) {
 					startVncLoading();
 				}
 			}
@@ -493,7 +597,7 @@
 		() => vmPowerSignal.token,
 		() => {
 			void (async () => {
-				if (vmPowerSignal.rid !== Number(data.rid)) return;
+				if (vmPowerSignal.rid !== data.rid) return;
 
 				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
 					disconnectSerialForStateChange();
@@ -517,21 +621,21 @@
 		{ lazy: true }
 	);
 
-    let vncIframe = $state<HTMLIFrameElement | null>(null);
-        
-    function nudgeVncResize() {
-        // give layout a couple frames to settle, then poke the iframe
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                try {
-                    vncIframe?.contentWindow?.dispatchEvent(new Event('resize'));
-                    console.log("resize")
-                } catch {
-                    // cross-origin or not ready yet, ignore
-                }
-            });
-        });
-    }
+	let vncIframe = $state<HTMLIFrameElement | null>(null);
+
+	function nudgeVncResize() {
+		// give layout a couple frames to settle, then poke the iframe
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				try {
+					vncIframe?.contentWindow?.dispatchEvent(new Event('resize'));
+					console.log('resize');
+				} catch {
+					// cross-origin or not ready yet, ignore
+				}
+			});
+		});
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -555,7 +659,7 @@
 				</Button>
 			{/if}
 
-			{#if consoleType === 'serial' && vm.current.serial}
+			{#if !isDemoMode && consoleType === 'serial' && vm.current.serial}
 				{#if serialConnectionState === 'connected'}
 					<Button
 						size="sm"
@@ -609,25 +713,49 @@
 		</div>
 	{/if}
 
-	{#if domain.current?.status !== 'Shutoff'}
-		{#if consoleType === 'vnc' && vm.current.vncEnabled}
-            <div class="relative flex min-h-0 w-full flex-1 flex-col">
-                {#if !vncLoading}
-                    <iframe
-                        class="w-full flex-1"
-                        src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true&theme=${mode.current}`}
-                        title="VM Console"
-                    ></iframe>
-                {/if}
+	{#if !domain.current}
+		<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
+			<span class="icon-[mdi--server-network-off] text-primary dark:text-secondary h-14 w-14"
+			></span>
+			<div class="max-w-md">The VM runtime state is currently unavailable.</div>
+		</div>
+	{:else if isConsoleDomainAvailable}
+		{#if isDemoMode && demoProfile && DemoVMConsoleComponent}
+			{#key `${data.node}:${data.rid}:${demoProfile.id}:${vm.current.name}`}
+				<DemoVMConsoleComponent
+					profile={demoProfile}
+					vmName={vm.current.name}
+					runtimeKey={String(data.rid)}
+					view={consoleType === 'serial' ? 'serial' : 'vga'}
+					powerToken={vmPowerSignal.rid === data.rid ? vmPowerSignal.token : 0}
+					powerAction={vmPowerSignal.action}
+				/>
+			{/key}
+		{:else if isDemoMode}
+			<div class="bg-background flex min-h-0 w-full flex-1 items-center justify-center">
+				<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+			</div>
+		{:else if consoleType === 'vnc' && vm.current.vncEnabled}
+			<div class="relative flex min-h-0 w-full flex-1 flex-col">
+				{#if !vncLoading}
+					<iframe class="w-full flex-1" src={noVNCSource} title="VM Console"></iframe>
+				{/if}
 
-                {#if vncLoading || vncSettling}
-                    <div class="bg-background absolute inset-0 z-10 flex items-center justify-center">
-                        <span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
-                    </div>
-                {/if}
-            </div>
+				{#if vncLoading || vncSettling}
+					<div class="bg-background absolute inset-0 z-10 flex items-center justify-center">
+						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+					</div>
+				{/if}
+			</div>
 		{:else if consoleType === 'serial' && vm.current.serial}
 			<div class="flex min-h-0 w-full flex-1 flex-col">
+				{#if serialConnectionError && !cState.current}
+					<div
+						class="border-b border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-200"
+					>
+						The serial console connection was interrupted. Use Reconnect to try again.
+					</div>
+				{/if}
 				{#if cState.current}
 					<div
 						class="dark:text-secondary text-primary/70 flex min-h-0 w-full flex-1 flex-col items-center justify-center space-y-3 text-center"
@@ -670,8 +798,12 @@
 		<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
 			<span class="icon-[mdi--server-off] text-primary dark:text-secondary h-14 w-14"></span>
 			<div class="max-w-md">
-				The VM is currently powered off.<br />
-				Start the VM to access its console.
+				{#if normalizedDomainStatus === 'shutoff'}
+					The VM is currently powered off.<br />
+					Start the VM to access its console.
+				{:else}
+					The console is unavailable while the VM is {domain.current.status.toLowerCase()}.
+				{/if}
 			</div>
 		</div>
 	{/if}

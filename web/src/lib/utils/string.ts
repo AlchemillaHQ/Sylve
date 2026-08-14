@@ -98,8 +98,8 @@ export function generateNanoId(seed?: string): string {
 }
 
 export function isValidSwitchName(name: string): boolean {
-    const regex = /^[a-zA-Z0-9-_]+$/;
-    return regex.test(name);
+    const normalized = name.trim();
+    return normalized.length > 0 && normalized.length <= 128 && /^[A-Za-z0-9_-]+$/.test(normalized);
 }
 
 export function isValidIPv4(ip: string, cidr = false): boolean {
@@ -372,8 +372,12 @@ export function parseBoolean(value: string | boolean): boolean {
 }
 
 export function isValidDHCPDomain(domain: string): boolean {
-    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
-    return domainRegex.test(domain);
+    const normalized = domain.trim();
+    if (normalized === '') return true;
+    if (normalized.length > 253) return false;
+
+    const labelRegex = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+    return normalized.split('.').every((label) => labelRegex.test(label));
 }
 
 function ipToNumber(ip: string): number {
@@ -534,7 +538,7 @@ export function dnsmasqToSeconds(value: string): number {
 
     const val = value.trim().toLowerCase();
 
-    if (val === 'infinite') return Infinity;
+    if (val === 'infinite') return 0;
 
     const match = val.match(/^(\d+)([smhd]?)$/);
     if (!match) throw new Error(`Invalid dnsmasq time format: ${value}`);

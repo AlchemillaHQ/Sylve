@@ -9,6 +9,8 @@
 package libvirt
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -78,5 +80,61 @@ func TestForceRemoveVMDBRecords_RemovesRegistrationOnly(t *testing.T) {
 	}
 	if networkCount != 0 {
 		t.Fatalf("expected networks removed, found %d", networkCount)
+	}
+}
+
+func TestPurgeVMRegistrationReturnsNotFoundBeforeOrphanCheck(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{})
+	service := &Service{DB: db, uri: "://"}
+
+	_, err := service.PurgeVMRegistration(701, true)
+	if err == nil || !strings.Contains(err.Error(), "vm_not_found") {
+		t.Fatalf("purge error = %v, want vm_not_found", err)
+	}
+}
+
+func TestForceAndPurgeRefuseCleanupWhenOrphanStateCannotBeVerified(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*Service, uint) error
+	}{
+		{
+			name: "force delete",
+			run: func(service *Service, rid uint) error {
+				_, err := service.ForceRemoveVM(rid, true, context.Background())
+				return err
+			},
+		},
+		{
+			name: "registration purge",
+			run: func(service *Service, rid uint) error {
+				_, err := service.PurgeVMRegistration(rid, true)
+				return err
+			},
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(t, &vmModels.VM{})
+			rid := uint(702 + index)
+			if err := db.Create(&vmModels.VM{RID: rid, Name: tt.name}).Error; err != nil {
+				t.Fatalf("seed VM: %v", err)
+			}
+			service := &Service{DB: db, uri: "://"}
+
+			err := tt.run(service, rid)
+			if err == nil || !strings.Contains(err.Error(), "vm_orphan_check_unavailable") {
+				t.Fatalf("operation error = %v, want vm_orphan_check_unavailable", err)
+			}
+
+			var count int64
+			if err := db.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&count).Error; err != nil {
+				t.Fatalf("count VM rows: %v", err)
+			}
+			if count != 1 {
+				t.Fatalf("VM registration count = %d, want 1", count)
+			}
+		})
 	}
 }

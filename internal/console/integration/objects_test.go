@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 //go:build freebsd
 
 package integration
@@ -19,7 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestObjectsCLIAndREPLIntegration(t *testing.T) {
+func TestAcceptanceObjectsCLIAndREPL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping console integration test in short mode")
 	}
@@ -27,6 +35,7 @@ func TestObjectsCLIAndREPLIntegration(t *testing.T) {
 		t.Skip("run console integration tests with make test-integration as root")
 	}
 	t.Setenv("SYLVE_DATA_PATH", "")
+	suite := requireConsoleIntegrationSuite(t)
 
 	dataPath := t.TempDir()
 	database := openConsoleDatabase(t, filepath.Join(dataPath, "sylve.db"),
@@ -62,7 +71,7 @@ func TestObjectsCLIAndREPLIntegration(t *testing.T) {
 	})
 
 	configPath := writeConsoleConfig(t, dataPath)
-	binaryPath := buildSylveBinary(t)
+	binaryPath := suite.binaryPath
 
 	cliOutput := runSylve(t, binaryPath, configPath,
 		"objects", "create", "--name", "cli-host", "--type", "host", "--value", "192.0.2.10")

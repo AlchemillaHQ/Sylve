@@ -3,29 +3,49 @@ import { listUsers } from '$lib/api/auth/local';
 import { getSambaConfig } from '$lib/api/samba/config';
 import { getSambaShares } from '$lib/api/samba/share';
 import { getDatasets } from '$lib/api/zfs/datasets';
+import type { APIResponse } from '$lib/types/common';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
-export async function load() {
-    const cacheDuration = SEVEN_DAYS;
-    const [datasets, shares, groups, users, sambaConfig] = await Promise.all([
-        cachedFetch(
-            'zfs-filesystems',
-            async () => await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
-            cacheDuration
-        ),
-        cachedFetch('samba-shares', async () => await getSambaShares(), cacheDuration),
-        cachedFetch('groups', async () => await listGroups(), cacheDuration),
-        cachedFetch('users', async () => await listUsers(), cacheDuration),
-        cachedFetch('samba-config', async () => await getSambaConfig(), cacheDuration)
-    ]);
+export async function load({ params }) {
+	const node = params.node;
+	const cacheDuration = SEVEN_DAYS;
+	const [datasets, shares, groupsResult, usersResult, sambaConfig] = await Promise.all([
+		cachedFetch(
+			'zfs-filesystems',
+			async () => await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
+			cacheDuration
+		),
+		cachedFetch('samba-shares', async () => await getSambaShares(), cacheDuration),
+		cachedFetch(
+			'groups',
+			async () => await listGroups({ hostname: node }),
+			cacheDuration,
+			false,
+			node
+		),
+		cachedFetch(
+			'users',
+			async () => await listUsers(undefined, { hostname: node }),
+			cacheDuration,
+			false,
+			node
+		),
+		cachedFetch('samba-config', async () => await getSambaConfig(), cacheDuration)
+	]);
 
-    return {
-        datasets,
-        shares,
-        groups,
-        users,
-        sambaConfig
-    };
+	const loadErrors: APIResponse[] = [];
+	if (isAPIResponse(groupsResult)) loadErrors.push(groupsResult);
+	if (isAPIResponse(usersResult)) loadErrors.push(usersResult);
+
+	return {
+		node,
+		datasets,
+		shares,
+		groups: isAPIResponse(groupsResult) ? [] : groupsResult,
+		users: isAPIResponse(usersResult) ? [] : usersResult,
+		sambaConfig,
+		loadErrors
+	};
 }

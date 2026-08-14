@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import { getSimpleJailById } from '$lib/api/jail/jail';
+	import { getSimpleJailByCTID } from '$lib/api/jail/jail';
 	import { jailPowerSignal } from '$lib/stores/api.svelte';
 	import type { SimpleJail } from '$lib/types/jail/jail';
-	import { updateCache } from '$lib/utils/http';
-	import { sha256, toHex } from '$lib/utils/string';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { toHex } from '$lib/utils/string';
 	import {
 		resource,
 		useResizeObserver,
@@ -14,7 +13,7 @@
 		useInterval,
 		watch
 	} from 'runed';
-	import { onMount } from 'svelte';
+	import { onMount, untrack, type Component } from 'svelte';
 	import { Xterm, XtermAddon } from '@battlefieldduck/xterm-svelte';
 	import type {
 		ITerminalOptions,
@@ -29,36 +28,59 @@
 	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
 
 	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
 
 	interface Data {
+		node: string;
 		jail: SimpleJail;
 		ctId: number;
+		hash: string;
 	}
 
 	let { data }: { data: Data } = $props();
+	let DemoJailConsoleComponent = $state<Component<{
+		node: string;
+		jailName: string;
+	}> | null>(null);
+	const initialData = untrack(() => data);
+	let consoleIdentity = $derived(`${data.node}\u0000${data.ctId}`);
 
 	let terminal = $state<Terminal>();
 	let fitAddon: FitAddonInstance | null = null;
 	let ws = $state<WebSocket | null>(null);
 	let wrapper = $state<HTMLElement | null>(null);
 	let connectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
+	let connectionError = $state('');
 	let connectionToken = 0;
 
-	// svelte-ignore state_referenced_locally
-	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
+	function consoleStorageKey(suffix: string): string {
+		const scopedKey = `node-${data.node}-jail-${data.ctId}-console-${suffix}`;
+		if (typeof localStorage !== 'undefined' && localStorage.getItem(scopedKey) === null) {
+			const legacyValue = localStorage.getItem(`jail-${data.ctId}-console-${suffix}`);
+			if (legacyValue !== null) localStorage.setItem(scopedKey, legacyValue);
+		}
+		return scopedKey;
+	}
 
-	// svelte-ignore state_referenced_locally
-	let theme = new PersistedState(`jail-${data.ctId}-console-theme`, {
-		background: '#282c34',
-		foreground: '#FFFFFF',
-		fontSize: 14
-	});
+	let cState = $state(new PersistedState(consoleStorageKey('state'), false));
+	let theme = $state(
+		new PersistedState(consoleStorageKey('theme'), {
+			background: '#282c34',
+			foreground: '#FFFFFF',
+			fontSize: 14
+		})
+	);
 
-	let fontSizeBindable: number = $state(theme.current.fontSize || 14);
-	let bgThemeBindable: string = $state(theme.current.background || '#282c34');
-	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
+	const initialTheme = untrack(() => ({
+		background: theme.current.background || '#282c34',
+		foreground: theme.current.foreground || '#FFFFFF',
+		fontSize: theme.current.fontSize || 14
+	}));
+	let fontSizeBindable: number = $state(initialTheme.fontSize);
+	let bgThemeBindable: string = $state(initialTheme.background);
+	let fgThemeBindable: string = $state(initialTheme.foreground);
 	let openSettings = $state(false);
 
 	const options: ITerminalOptions & ITerminalInitOnlyOptions = {
@@ -66,10 +88,10 @@
 		cursorStyle: 'bar',
 		scrollback: 10000,
 		fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-		fontSize: theme.current.fontSize || 14,
+		fontSize: initialTheme.fontSize,
 		theme: {
-			background: theme.current.background,
-			foreground: theme.current.foreground
+			background: initialTheme.background,
+			foreground: initialTheme.foreground
 		}
 	};
 
@@ -119,18 +141,38 @@
 		};
 	}, 300);
 
-	// svelte-ignore state_referenced_locally
-	const jail = resource(
-		() => `simple-jail-${data.jail.ctId}`,
-		async () => {
-			const jail = await getSimpleJailById(data.jail.ctId, 'ctid');
-			updateCache(`simple-jail-${data.jail.ctId}`, jail);
-			return jail;
+	type JailConsoleSnapshot = { identity: string; jail: SimpleJail };
+	const jailResource = resource(
+		[() => data.node, () => data.ctId],
+		async ([hostname, ctId], _, { signal }): Promise<JailConsoleSnapshot> => {
+			const result = await getSimpleJailByCTID(ctId, {
+				hostname,
+				signal,
+				preserveErrors: true
+			});
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
+			}
+			await updateCache(`simple-jail-${ctId}`, result, hostname);
+			return { identity: `${hostname}\u0000${ctId}`, jail: result };
 		},
 		{
-			initialValue: data.jail
+			lazy: true,
+			initialValue: {
+				identity: `${initialData.node}\u0000${initialData.ctId}`,
+				jail: initialData.jail
+			}
 		}
 	);
+
+	const jail = {
+		get current(): SimpleJail {
+			return jailResource.current.identity === consoleIdentity
+				? jailResource.current.jail
+				: data.jail;
+		},
+		refetch: () => jailResource.refetch()
+	};
 
 	function sendSize(cols: number, rows: number) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -143,10 +185,11 @@
 
 	function disconnect() {
 		cState.current = true;
-		disconnectSocket(true);
+		connectionError = '';
+		disconnectSocket();
 	}
 
-	function disconnectSocket(forceKill: boolean) {
+	function disconnectSocket() {
 		connectionToken += 1;
 		connectionState = 'disconnected';
 
@@ -161,11 +204,6 @@
 		}
 
 		if (socket && socket.readyState === WebSocket.OPEN) {
-			if (forceKill) {
-				const payload = JSON.stringify({ kill: '' });
-				const data = new TextEncoder().encode('\x02' + payload);
-				socket.send(data);
-			}
 			socket.close();
 		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
@@ -174,7 +212,8 @@
 
 	function disconnectForStateChange() {
 		cState.current = false;
-		disconnectSocket(false);
+		connectionError = '';
+		disconnectSocket();
 	}
 
 	function reconnect() {
@@ -205,47 +244,39 @@
 
 	let destroyed = $state(false);
 
-	const connect = async () => {
+	const connect = () => {
 		if (destroyed || !terminal) return;
-		if (!jail.current || !jail.current.ctId) return;
-		if (jail.current.state === 'INACTIVE') return;
+		if (!jail.current.ctId) return;
+		if (jail.current.state !== 'ACTIVE') return;
 		if (isSocketActive()) return;
 
 		cState.current = false;
 		connectionState = 'connecting';
+		connectionError = '';
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;
-
-		const hash = await sha256(storage.token || '', 1);
-		if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal) return;
-
-		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
-		if (!selectedHostname) {
-			connectionState = 'disconnected';
-			return;
-		}
 		const wsAuth = toHex(
 			JSON.stringify({
-				hash,
-				hostname: selectedHostname,
-				token: storage.clusterToken || ''
+				hash: data.hash,
+				hostname: data.node
 			})
 		);
 
 		const socket = new WebSocket(
-			`/api/jail/console?ctid=${data.ctId}&auth=${encodeURIComponent(wsAuth)}`
+			`/api/jail/${encodeURIComponent(String(data.ctId))}/console?auth=${encodeURIComponent(wsAuth)}`
 		);
 		socket.binaryType = 'arraybuffer';
 		ws = socket;
+		let opened = false;
 
 		socket.onopen = () => {
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
+			opened = true;
 			connectionState = 'connected';
-
-			console.log(`Jail console connected for jail ${data.ctId}`);
+			connectionError = '';
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => fitAndSend());
 			});
@@ -263,7 +294,9 @@
 				}
 			} else {
 				try {
-					activeTerminal?.write(e.data as string);
+					const message = String(e.data || 'Jail console unavailable');
+					connectionError = message;
+					activeTerminal?.write(message);
 				} catch {
 					return;
 				}
@@ -276,6 +309,11 @@
 				ws = null;
 			}
 			connectionState = 'disconnected';
+			if (!destroyed && !cState.current && !connectionError) {
+				connectionError = opened
+					? 'The jail console session ended.'
+					: 'Unable to connect to the jail console.';
+			}
 		};
 	};
 
@@ -312,7 +350,7 @@
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
 				fitAndSend();
-				if (jail.current?.state !== 'INACTIVE' && !cState.current && !isSocketActive()) {
+				if (jail.current.state === 'ACTIVE' && !cState.current && !isSocketActive()) {
 					void connect();
 				}
 			});
@@ -334,6 +372,36 @@
 	});
 
 	watch(
+		() => consoleIdentity,
+		(identity, previousIdentity) => {
+			if (!previousIdentity || identity === previousIdentity) return;
+
+			disconnectSocket();
+			connectionError = '';
+			terminal?.reset();
+			cState = new PersistedState(consoleStorageKey('state'), false);
+			theme = new PersistedState(consoleStorageKey('theme'), {
+				background: '#282c34',
+				foreground: '#FFFFFF',
+				fontSize: 14
+			});
+			fontSizeBindable = theme.current.fontSize || 14;
+			bgThemeBindable = theme.current.background || '#282c34';
+			fgThemeBindable = theme.current.foreground || '#FFFFFF';
+			if (terminal) {
+				terminal.options.fontSize = fontSizeBindable;
+				terminal.options.theme = {
+					background: bgThemeBindable,
+					foreground: fgThemeBindable
+				};
+			}
+			void jail.refetch();
+			if (terminal && jail.current.state === 'ACTIVE' && !cState.current) reconnect();
+		},
+		{ lazy: true }
+	);
+
+	watch(
 		() => storage.idle,
 		(idle) => {
 			if (!idle) {
@@ -343,9 +411,9 @@
 	);
 
 	watch(
-		() => jail.current?.state,
+		() => jail.current.state,
 		(state) => {
-			if (state === 'INACTIVE') {
+			if (state !== 'ACTIVE') {
 				disconnectForStateChange();
 				return;
 			}
@@ -381,9 +449,16 @@
 	);
 
 	onMount(() => {
+		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
+		if (isDemoMode) {
+			void import('$lib/components/custom/Jail/DemoJailConsole.svelte').then((module) => {
+				if (!cancelled) DemoJailConsoleComponent = module.default;
+			});
+		}
 
 		return () => {
+			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
@@ -406,7 +481,15 @@
 	});
 </script>
 
-{#if jail.current && jail.current.state === 'INACTIVE'}
+{#if isDemoMode && jail.current.state === 'ACTIVE'}
+	{#if DemoJailConsoleComponent}
+		<DemoJailConsoleComponent node={data.node} jailName={jail.current.name} />
+	{:else}
+		<div class="bg-background flex h-full w-full items-center justify-center">
+			<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+		</div>
+	{/if}
+{:else if jail.current.state === 'INACTIVE'}
 	<div
 		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
@@ -415,6 +498,13 @@
 			The Jail is currently powered off.<br />
 			Start the Jail to access its console.
 		</div>
+	</div>
+{:else if jail.current.state !== 'ACTIVE'}
+	<div
+		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
+	>
+		<span class="icon-[mdi--server-network-off] h-14 w-14"></span>
+		<div class="max-w-md">The jail runtime state is currently unavailable.</div>
 	</div>
 {:else}
 	<div class="flex h-full w-full flex-col">
@@ -469,6 +559,15 @@
 				</Button>
 			</div>
 		</div>
+
+		{#if connectionError && connectionState === 'disconnected' && !cState.current}
+			<div
+				class="flex shrink-0 items-center justify-center gap-2 border-x border-b px-3 py-2 text-sm text-red-500"
+			>
+				<span class="icon-[mdi--alert-circle-outline] h-4 w-4"></span>
+				<span>{connectionError}</span>
+			</div>
+		{/if}
 
 		{#if cState.current}
 			<div

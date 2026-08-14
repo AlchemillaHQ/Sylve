@@ -4,6 +4,7 @@ import {
 	type RAMInfo,
 	type RAMInfoHistorical
 } from '$lib/types/info/ram';
+import type { APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
 import type { NodeAPIRequestOptions } from '$lib/utils/http';
 
@@ -29,6 +30,15 @@ export async function getRAMInfo(
 		);
 	}
 	return await apiRequest('/info/ram', RAMInfoSchema, 'GET', undefined, options);
+}
+
+export async function getRAMInfoResult(
+	options?: NodeAPIRequestOptions
+): Promise<RAMInfo | APIResponse> {
+	return await apiRequest('/info/ram', RAMInfoSchema, 'GET', undefined, {
+		...options,
+		preserveErrors: true
+	});
 }
 
 export async function getSwapInfo(queryType: 'current'): Promise<RAMInfo>;

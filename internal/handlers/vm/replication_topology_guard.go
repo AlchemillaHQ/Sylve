@@ -18,7 +18,7 @@ func RequireVMReplicationTopologyMutable(libvirtService *libvirt.Service, parame
 			return
 		}
 		if err := libvirtService.RequireVMStorageTopologyMutable(rid); err != nil {
-			writeVMStorageTopologyGuardError(c, err)
+			writeVMStorageError(c, "vm_storage_topology_change_forbidden", err)
 			c.Abort()
 			return
 		}

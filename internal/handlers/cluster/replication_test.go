@@ -19,6 +19,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/gin-gonic/gin"
@@ -229,6 +230,16 @@ func TestReplicationPolicyEnqueueErrorsExposeRetryableAvailability(t *testing.T)
 			name:       "durable operation exists",
 			err:        errors.New("replication_policy_already_running"),
 			wantStatus: http.StatusConflict, wantMessage: "replication_policy_already_running",
+		},
+		{
+			name:       "policy is not runnable",
+			err:        errors.New("replication_policy_not_runnable"),
+			wantStatus: http.StatusConflict, wantMessage: "replication_policy_enqueue_failed",
+		},
+		{
+			name:       "unexpected storage failure",
+			err:        errors.New("database exploded"),
+			wantStatus: http.StatusInternalServerError, wantMessage: "replication_policy_enqueue_failed",
 		},
 	}
 	for _, test := range tests {
@@ -792,6 +803,35 @@ func TestReplicationEventsHandlerGet(t *testing.T) {
 	}
 }
 
+func TestReplicationEventFiltersRejectInvalidValues(t *testing.T) {
+	r := newReplicationRouter(nil)
+	tests := []string{
+		"/cluster/replication/events?limit=invalid&nodeId=remote-node",
+		"/cluster/replication/events?limit=0&nodeId=remote-node",
+		"/cluster/replication/events?limit=501&nodeId=remote-node",
+		"/cluster/replication/events?policyId=invalid&nodeId=remote-node",
+		"/cluster/replication/events?policyId=0&nodeId=remote-node",
+		"/cluster/replication/events/1?scope=invalid&nodeId=remote-node",
+	}
+
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			rr := performJSONRequest(t, r, http.MethodGet, path, nil)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+			}
+
+			var response handlerAPIResponse[any]
+			if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if response.Message != "invalid_replication_event_query" {
+				t.Fatalf("unexpected response: %+v", response)
+			}
+		})
+	}
+}
+
 func TestReplicationEventByIDHandler(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ReplicationEvent{})
 	cS := &cluster.Service{DB: db}
@@ -877,7 +917,7 @@ func TestGetClusterHandler(t *testing.T) {
 func TestJoinClusterRejectsInvalidCidr(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.POST("/cluster/join", JoinCluster(nil, nil, nil, nil))
+	r.POST("/cluster/join", JoinCluster(nil, nil, nil))
 
 	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/join",
 		[]byte(`{"nodeId":"n1","nodeIp":"not-a-cidr","nodePort":8181,"clusterKey":"secret","advertiseName":"n1"}`))
@@ -955,6 +995,59 @@ func TestUpdateReplicationPolicyHandlerValidation(t *testing.T) {
 	rr := performJSONRequest(t, r, http.MethodPut, "/cluster/replication/policies/1", []byte(`{}`))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty payload, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = performJSONRequest(t, r, http.MethodPut, "/cluster/replication/policies/1",
+		[]byte(`{"name":"ab","guestType":"vm","guestId":1,"targets":[{"nodeId":"node-2"}]}`))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing policy, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestReplicationPolicyJSONBodiesRespectRequestLimit(t *testing.T) {
+	cS := &cluster.Service{}
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		handler gin.HandlerFunc
+	}{
+		{
+			name: "create", method: http.MethodPost, path: "/cluster/replication/policies",
+			handler: CreateReplicationPolicy(cS),
+		},
+		{
+			name: "update", method: http.MethodPut, path: "/cluster/replication/policies/:id",
+			handler: UpdateReplicationPolicy(cS, nil),
+		},
+		{
+			name: "failover", method: http.MethodPost, path: "/cluster/replication/policies/:id/failover",
+			handler: FailoverReplicationPolicy(cS, &zelta.Service{}),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			r := gin.New()
+			r.Use(middleware.LimitRequestBody(64))
+			r.Handle(test.method, test.path, test.handler)
+
+			requestPath := strings.Replace(test.path, ":id", "1", 1)
+			body := []byte(`{"name":"` + strings.Repeat("x", 128) + `"}`)
+			rr := performJSONRequest(t, r, test.method, requestPath, body)
+			if rr.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("expected 413, got %d: %s", rr.Code, rr.Body.String())
+			}
+
+			var response handlerAPIResponse[any]
+			if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if response.Message != "request_body_too_large" || response.Error != "request_body_too_large" {
+				t.Fatalf("unexpected response: %+v", response)
+			}
+		})
 	}
 }
 

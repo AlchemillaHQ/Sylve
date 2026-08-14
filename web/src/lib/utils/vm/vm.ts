@@ -12,6 +12,7 @@ import { isValidIPv4, isValidIPv6, isValidVMName } from '../string';
 import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 import { type ClusterNode } from '$lib/types/cluster/cluster';
 import { kvStorage } from '$lib/types/db';
+import { removeCache } from '$lib/utils/http';
 
 export function isValidCreateData(
     modal: CreateData,
@@ -21,6 +22,11 @@ export function isValidCreateData(
         duration: 3000,
         position: 'bottom-center'
     };
+
+    if (!modal.node || modal.node.trim() === '') {
+        toast.error('Select a node', toastConfig);
+        return false;
+    }
 
     if (!isValidVMName(modal.name)) {
         toast.error('Invalid name', toastConfig);
@@ -488,15 +494,26 @@ export function getVMLifecycleBadgeStyle(action: string): VMLifecycleBadgeStyle 
     };
 }
 
-export function removeStaleCacheByRID(rid: number) {
-    try {
-        kvStorage.removeItem(`vm-${rid}`);
-        kvStorage.removeItem(`vm-domain-${rid}`);
-        kvStorage.removeItem(`vm-stats-${rid}`);
-        kvStorage.removeItem(`vm-qga-${rid}`);
-        kvStorage.removeItem(`vmDomain-${rid}`);
-        kvStorage.removeItem(`vm-${rid}-snapshots`);
-    } catch (e) {
-        console.warn(`Error removing stale cache keys by RID ${rid}`, e)
-    }
+export async function removeStaleCacheByRID(rid: number, hostname: string): Promise<void> {
+    const keys = [
+        `vm-${rid}`,
+        `simple-vm-${rid}`,
+        `vm-domain-${rid}`,
+        `vm-stats-${rid}`,
+        `vm-qga-${rid}`,
+        `vmDomain-${rid}`,
+        `vm-${rid}-snapshots`,
+        `vm-${rid}-logs`,
+        `guest-stats-v2:vm:${rid}:bootstrap`,
+        'vm-list',
+        'vms',
+        `simple-vm-list-${hostname}`,
+        `vm-list-${hostname}`,
+        'simple-vms'
+    ];
+
+    await Promise.all(keys.map((key) => removeCache(key, hostname)));
+
+    // Clear pre-hostname-scoping entries left by older browser sessions as well.
+    await Promise.allSettled(keys.map((key) => kvStorage.removeItem(key)));
 }

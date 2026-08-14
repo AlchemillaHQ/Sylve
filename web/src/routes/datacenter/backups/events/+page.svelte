@@ -14,9 +14,7 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
-	import { sha256 } from '$lib/utils/string';
 	import { resource, useInterval, watch } from 'runed';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
@@ -26,7 +24,6 @@
 
 	let filterJobId = $state('');
 	let reload = $state(false);
-	let hash = $state('');
 
 	let jobs = resource(
 		() => 'backup-jobs-for-filter',
@@ -91,8 +88,21 @@
 		reload = true;
 	}
 
-	let jails = $state<Jail[]>([]);
-	let jailsLoading = $state(false);
+	let selectedNodeHostname = $derived(
+		nodes.current.find((node) => node.nodeUUID === selectedNodeId)?.hostname.trim() || ''
+	);
+	let jailsResource = resource(
+		() => selectedNodeHostname,
+		async (hostname, _, { signal }): Promise<Jail[]> => {
+			if (!hostname) return [];
+			const result = await getJails(hostname, signal);
+			await updateCache('jail-list', result, hostname);
+			return result;
+		},
+		{ initialValue: [] as Jail[] }
+	);
+	let jails = $derived(jailsResource.current);
+	let jailsLoading = $derived(jailsResource.loading);
 	let progressEventId = $state(0);
 	let progressNodeId = $state('');
 	let progressModal = $state({
@@ -121,26 +131,6 @@
 			toast.error('Failed to copy error', { duration: 2000, position: 'bottom-center' });
 		}
 	}
-
-	async function loadJails() {
-		if (jails.length > 0 || jailsLoading) return;
-		jailsLoading = true;
-		try {
-			const res = await getJails();
-			updateCache('jail-list', res);
-			jails = res;
-			if (hash) {
-				reload = true;
-			}
-		} finally {
-			jailsLoading = false;
-		}
-	}
-
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-		loadJails();
-	});
 
 	function parseEndpoint(raw: string): { host: string; dataset: string; snapshot: string } {
 		const value = (raw || '').trim();
@@ -636,12 +626,12 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash && jailsLoading === false}
+		{#if jailsLoading === false}
 			{#key `${jails.length}-${filterJobId}-${selectedNodeId}`}
 				<TreeTable
 					data={tableData}
 					name="backup-events-tt"
-					ajaxURL="/api/cluster/backups/events/remote?hash={hash}"
+					ajaxURL="/api/cluster/backups/events/remote"
 					bind:query
 					bind:parentActiveRow={activeRows}
 					bind:reload

@@ -3,7 +3,7 @@
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
-		getJailById,
+		getJailByCTID,
 		getJailLogs,
 		getStats,
 		getStatsBootstrap,
@@ -22,7 +22,7 @@
 	import { dateToAgo } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
-	import { getContext, onMount } from 'svelte';
+	import { getContext, onMount, untrack } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -88,18 +88,39 @@
 
 	const barExtras = getContext<SummaryBarExtras>('jailSummaryBarExtras');
 
-	// svelte-ignore state_referenced_locally
-	const jail = resource(
+	type JailSnapshot = { identity: string; value: Jail };
+	const initialJailData = untrack(() => data);
+	let jailIdentity = $derived(`${data.node}\u0000${ctId}`);
+	const jailResource = resource(
 		[() => data.node, () => ctId],
-		async ([hostname, currentCtID], _, { signal }) => {
-			const result = await getJailById(currentCtID, 'ctid', { hostname, signal });
-			updateCache(`jail-${currentCtID}`, result, hostname);
-			return result;
+		async ([hostname, currentCtID], _, { signal }): Promise<JailSnapshot> => {
+			const result = await getJailByCTID(currentCtID, {
+				hostname,
+				signal,
+				preserveErrors: true
+			});
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
+			}
+			await updateCache(`jail-${currentCtID}`, result, hostname);
+			return { identity: `${hostname}\u0000${currentCtID}`, value: result };
 		},
 		{
-			initialValue: data.jail
+			initialValue: {
+				identity: `${initialJailData.node}\u0000${initialJailData.ctId}`,
+				value: initialJailData.jail
+			}
 		}
 	);
+
+	const jail = {
+		get current(): Jail {
+			return jailResource.current.identity === jailIdentity
+				? jailResource.current.value
+				: data.jail;
+		},
+		refetch: () => jailResource.refetch()
+	};
 
 	const jState = getContext<{ current: JailState | null; refetch(): void }>('jailState');
 
@@ -107,6 +128,9 @@
 		[() => data.node, () => ctId],
 		async ([hostname, currentCtID], _, { signal }) => {
 			const result = await getJailLogs(currentCtID, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail logs');
+			}
 			updateCache(`jail-${currentCtID}-logs`, result, hostname);
 			return result;
 		},
@@ -304,6 +328,9 @@
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let isDescInitialized = false;
+	type PendingDescriptionSave = { ctId: number; hostname: string; description: string };
+	let pendingDescriptionSave: PendingDescriptionSave | null = null;
+	let descriptionSaveRunning = false;
 	let jailName = $state(jail.current.name || '');
 	let syncedJailName = $state(jail.current.name || '');
 	let isRenameInFlight = $state(false);
@@ -332,6 +359,69 @@
 		followLogs = isNearLogsBottom(logsContainerElement);
 	}
 
+	async function flushDescriptionSaves() {
+		if (descriptionSaveRunning) return;
+		descriptionSaveRunning = true;
+		let lastSuccessfulSave: PendingDescriptionSave | null = null;
+
+		try {
+			while (pendingDescriptionSave || lastSuccessfulSave) {
+				if (!pendingDescriptionSave && lastSuccessfulSave) {
+					const saved = lastSuccessfulSave;
+					lastSuccessfulSave = null;
+					if (data.ctId === saved.ctId && data.node === saved.hostname) {
+						await jail.refetch();
+					}
+					continue;
+				}
+
+				const pending = pendingDescriptionSave;
+				pendingDescriptionSave = null;
+				if (!pending) continue;
+
+				let result: Awaited<ReturnType<typeof updateDescription>>;
+				try {
+					result = await updateDescription(pending.ctId, pending.description, pending.hostname);
+				} catch {
+					if (data.ctId === pending.ctId && data.node === pending.hostname) {
+						toast.error('Error updating jail description', {
+							duration: 5000,
+							position: 'bottom-center'
+						});
+					}
+					continue;
+				}
+				if (result.status === 'success') {
+					lastSuccessfulSave = pending;
+					continue;
+				}
+
+				if (data.ctId === pending.ctId && data.node === pending.hostname) {
+					toast.error(
+						result.message === 'replication_lease_not_owned'
+							? 'This jail is owned by another node right now'
+							: result.message === 'invalid_description'
+								? 'Jail description must be 1024 characters or fewer'
+								: 'Error updating jail description',
+						{ duration: 5000, position: 'bottom-center' }
+					);
+				}
+			}
+		} finally {
+			descriptionSaveRunning = false;
+			if (pendingDescriptionSave) void flushDescriptionSaves();
+		}
+	}
+
+	function queueDescriptionSave(description: string) {
+		pendingDescriptionSave = {
+			ctId: data.ctId,
+			hostname: data.node,
+			description
+		};
+		void flushDescriptionSaves();
+	}
+
 	watch(
 		() => debouncedDesc.current,
 		(curr, prev) => {
@@ -342,7 +432,7 @@
 
 			if (curr !== undefined && prev !== undefined) {
 				if (curr !== prev) {
-					updateDescription(jail.current.id, curr);
+					queueDescriptionSave(curr);
 				}
 			}
 		}
@@ -389,18 +479,21 @@
 		}
 
 		isRenameInFlight = true;
-		const result = await updateName(jail.current.id, nextName);
-		if (result.status === 'success') {
-			isEditingName = false;
-			reload.leftPanel = true;
-			await jail.refetch();
-			jailName = jail.current.name || nextName;
-			syncedJailName = jailName;
-			toast.success('Jail name updated', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} else {
+		try {
+			const result = await updateName(jail.current.ctId, nextName, data.node);
+			if (result.status === 'success') {
+				isEditingName = false;
+				reload.leftPanel = true;
+				await jail.refetch();
+				jailName = jail.current.name || nextName;
+				syncedJailName = jailName;
+				toast.success('Jail name updated', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			let errorMessage = 'Error updating jail name';
 			if (result.message === 'invalid_vm_name') {
 				errorMessage = 'Invalid jail name. Use letters, numbers, - or _.';
@@ -414,9 +507,14 @@
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} catch {
+			toast.error('Error updating jail name', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			isRenameInFlight = false;
 		}
-
-		isRenameInFlight = false;
 	}
 
 	// Register with the layout's toolbar bar on mount; clean up on unmount
@@ -659,6 +757,11 @@
 
 		<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
 			<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
+				{#if logs.loading && !logs.current.logs}
+					<div class="text-muted-foreground pb-2 text-xs">Loading jail logs…</div>
+				{:else if logs.error}
+					<div class="pb-2 text-xs text-red-400">Unable to refresh jail logs. Retrying…</div>
+				{/if}
 				<div
 					class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
 					bind:this={logsContainerElement}

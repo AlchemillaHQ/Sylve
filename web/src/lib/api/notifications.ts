@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	NotificationConfigSchema,
@@ -8,11 +18,11 @@ import {
 	type BulkUpdateRulesInput,
 	type NotificationConfig,
 	type NotificationRulesConfig,
+	type NotificationTransportInput,
 	type NotificationsCount,
 	type NotificationsDismissAll,
 	type NotificationsList,
 	type CreateNotificationRuleInput,
-	type UpdateNotificationConfigInput,
 	type UpdateNotificationRuleInput,
 	type UpdateNotificationRulesInput
 } from '$lib/types/notifications';
@@ -48,10 +58,22 @@ export async function getNotificationTransports(): Promise<NotificationConfig> {
 	return await apiRequest('/notifications/transports', NotificationConfigSchema, 'GET');
 }
 
-export async function updateNotificationTransports(
-	payload: UpdateNotificationConfigInput
+export async function createNotificationTransport(
+	payload: NotificationTransportInput
 ): Promise<NotificationConfig> {
-	return await apiRequest('/notifications/transports', NotificationConfigSchema, 'PUT', payload);
+	return await apiRequest('/notifications/transports', NotificationConfigSchema, 'POST', payload);
+}
+
+export async function updateNotificationTransport(
+	id: number,
+	payload: NotificationTransportInput
+): Promise<NotificationConfig> {
+	return await apiRequest(
+		`/notifications/transports/${id}`,
+		NotificationConfigSchema,
+		'PUT',
+		payload
+	);
 }
 
 export async function deleteNotificationTransport(id: number): Promise<APIResponse> {
@@ -82,7 +104,12 @@ export async function updateNotificationRule(
 	id: number,
 	payload: UpdateNotificationRuleInput
 ): Promise<NotificationRulesConfig> {
-	return await apiRequest(`/notifications/rules/${id}`, NotificationRulesConfigSchema, 'PUT', payload);
+	return await apiRequest(
+		`/notifications/rules/${id}`,
+		NotificationRulesConfigSchema,
+		'PUT',
+		payload
+	);
 }
 
 export async function deleteNotificationRule(id: number): Promise<NotificationRulesConfig> {
@@ -90,11 +117,23 @@ export async function deleteNotificationRule(id: number): Promise<NotificationRu
 }
 
 export async function bulkDeleteNotificationRules(ids: number[]): Promise<NotificationRulesConfig> {
-	return await apiRequest('/notifications/rules/bulk-delete', NotificationRulesConfigSchema, 'POST', { ids });
+	return await apiRequest(
+		'/notifications/rules/bulk-delete',
+		NotificationRulesConfigSchema,
+		'POST',
+		{ ids }
+	);
 }
 
-export async function bulkUpdateNotificationRules(payload: BulkUpdateRulesInput): Promise<NotificationRulesConfig> {
-	return await apiRequest('/notifications/rules/bulk-update', NotificationRulesConfigSchema, 'POST', payload);
+export async function bulkUpdateNotificationRules(
+	payload: BulkUpdateRulesInput
+): Promise<NotificationRulesConfig> {
+	return await apiRequest(
+		'/notifications/rules/bulk-update',
+		NotificationRulesConfigSchema,
+		'POST',
+		payload
+	);
 }
 
 export async function testNotificationRule(payload: {

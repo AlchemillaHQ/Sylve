@@ -120,3 +120,67 @@ func TestRequestLoggerMiddlewareWritesAuditToTelemetryDB(t *testing.T) {
 		t.Fatalf("expected 1 telemetry db audit row, got %d", telemetryCount)
 	}
 }
+
+func TestRequestLoggerMiddlewareSkipsRoutineSSETokenIssuance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	router := gin.New()
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+	router.POST("/api/auth/sse-tokens", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+	})
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/auth/sse-tokens", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	var count int64
+	if err := auditDB.Model(&infoModels.AuditRecord{}).Count(&count).Error; err != nil {
+		t.Fatalf("count audit records: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("audit record count=%d want=0", count)
+	}
+}
+
+func TestRequestLoggerMiddlewareClassifiesWebSocketUpgradeAsSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("UserID", uint(7))
+		c.Set("Username", "admin")
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+	router.GET("/api/vnc/:port", func(c *gin.Context) {
+		c.Status(http.StatusSwitchingProtocols)
+	})
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/vnc/5900?auth=private-console-capability&overtake=true",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusSwitchingProtocols {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	var record infoModels.AuditRecord
+	if err := auditDB.First(&record).Error; err != nil {
+		t.Fatalf("load audit record: %v", err)
+	}
+	if record.Status != "success" {
+		t.Fatalf("audit status=%q want=success", record.Status)
+	}
+	if strings.Contains(record.Action, "private-console-capability") ||
+		!strings.Contains(record.Action, "%5BREDACTED%5D") ||
+		!strings.Contains(record.Action, "overtake=true") {
+		t.Fatalf("VNC audit query was not safely retained: %s", record.Action)
+	}
+}

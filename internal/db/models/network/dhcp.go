@@ -34,7 +34,7 @@ type DHCPRange struct {
 	ManualSwitchID *uint         `json:"manualSwitchId" gorm:"index"`
 	ManualSwitch   *ManualSwitch `json:"manualSwitch" gorm:"foreignKey:ManualSwitchID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 
-	Expiry uint `json:"expiry" gorm:"default:43200"`
+	Expiry uint `json:"expiry"`
 
 	RAOnly bool `json:"raOnly" gorm:"default:false"`
 	SLAAC  bool `json:"slaac" gorm:"default:false"`

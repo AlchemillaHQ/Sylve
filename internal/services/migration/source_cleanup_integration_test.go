@@ -23,13 +23,10 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
-func TestVerifyMigrationSourceCleanupUsesRealZFSAndMetadata(t *testing.T) {
+func TestIntegrationVerifyMigrationSourceCleanupUsesRealZFSAndMetadata(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration source cleanup integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
 	svc := &Service{DB: db, GZFS: client}
@@ -79,13 +76,10 @@ func TestVerifyMigrationSourceCleanupUsesRealZFSAndMetadata(t *testing.T) {
 	}
 }
 
-func TestPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
+func TestIntegrationPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration cleanup idempotence test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
 	svc := &Service{DB: db, GZFS: client}
@@ -117,13 +111,10 @@ func TestPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
 	}
 }
 
-func TestVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) {
+func TestIntegrationVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration source cleanup integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
 	svc := &Service{DB: db, GZFS: client}
@@ -162,29 +153,16 @@ func TestVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) 
 	}
 }
 
-func TestVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
+func TestIntegrationVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS exported-pool cleanup verification test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
-	defer cleanup()
+	pool, client := zfstest.DedicatedPool(t)
 	root := pool + "/sylve/virtual-machines/913"
 	zfstest.EnsureDataset(t, client, root+"/disk-0")
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
 	svc := &Service{DB: db, GZFS: client}
 
-	exported := false
-	defer func() {
-		if exported {
-			_, _ = exec.Command("zpool", "import", "-d", "/tmp", pool).CombinedOutput()
-		}
-	}()
-	if output, err := exec.Command("zpool", "export", pool).CombinedOutput(); err != nil {
-		t.Fatalf("export test pool: %v\n%s", err, string(output))
-	}
-	exported = true
+	zfstest.ExportDedicatedPool(t, pool)
 
 	err := svc.verifyMigrationSourceCleanup(
 		t.Context(), taskModels.GuestTypeVM, 913, []string{root},
@@ -193,10 +171,7 @@ func TestVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
 		t.Fatalf("exported pool did not block cleanup completion: %v", err)
 	}
 
-	if output, err := exec.Command("zpool", "import", "-d", "/tmp", pool).CombinedOutput(); err != nil {
-		t.Fatalf("re-import test pool: %v\n%s", err, string(output))
-	}
-	exported = false
+	zfstest.ImportDedicatedPool(t, pool)
 	if err := svc.verifyMigrationSourceCleanup(
 		t.Context(), taskModels.GuestTypeVM, 913, []string{root},
 	); err == nil || !strings.Contains(err.Error(), "migration_source_datasets_still_present") {
@@ -204,13 +179,10 @@ func TestVerifyMigrationSourceCleanupRejectsExportedBackingPool(t *testing.T) {
 	}
 }
 
-func TestReconcileCompletedMigrationAfterGuardRemovalUsesRealZFSProof(t *testing.T) {
+func TestIntegrationReconcileCompletedMigrationAfterGuardRemovalUsesRealZFSProof(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS completed-migration reconciliation test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	db := testutil.NewSQLiteTestDB(t,
 		&vmModels.VM{}, &jailModels.Jail{},
@@ -285,13 +257,10 @@ func TestReconcileCompletedMigrationAfterGuardRemovalUsesRealZFSProof(t *testing
 	}
 }
 
-func TestExecuteMigrationReconcilesFinalizeTaskAfterGuardRemoval(t *testing.T) {
+func TestIntegrationExecuteMigrationReconcilesFinalizeTaskAfterGuardRemoval(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS operation-absent finalize recovery test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	db := testutil.NewSQLiteTestDB(t,
 		&vmModels.VM{}, &jailModels.Jail{},
@@ -372,13 +341,10 @@ func TestExecuteMigrationReconcilesFinalizeTaskAfterGuardRemoval(t *testing.T) {
 	}
 }
 
-func TestSealedMigrationFailureRemainsRecoverable(t *testing.T) {
+func TestIntegrationSealedMigrationFailureRemainsRecoverable(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS sealed-migration recovery test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	localNodeID, err := utils.GetSystemUUID()
 	if err != nil || strings.TrimSpace(localNodeID) == "" {
@@ -440,13 +406,10 @@ func TestSealedMigrationFailureRemainsRecoverable(t *testing.T) {
 	}
 }
 
-func TestResolveGuestDatasetsDoesNotMatchAdjacentGuestIDs(t *testing.T) {
+func TestIntegrationResolveGuestDatasetsDoesNotMatchAdjacentGuestIDs(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS migration dataset resolution integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	db := testutil.NewSQLiteTestDB(
 		t,

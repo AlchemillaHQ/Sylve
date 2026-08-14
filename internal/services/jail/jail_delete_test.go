@@ -430,13 +430,10 @@ func TestDeleteJailMACCleanupFailureIsOnlyAWarning(t *testing.T) {
 	}
 }
 
-func TestDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS jail deletion integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	const ctID uint = 691
@@ -481,16 +478,13 @@ func TestDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 	}
 }
 
-func TestDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
 	if runtime.GOOS != "freebsd" {
 		t.Skip("FreeBSD file flags are required for this regression test")
 	}
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS jail CTID reuse integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -589,13 +583,10 @@ func TestDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
 	}
 }
 
-func TestDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS jail cleanup-failure integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	const ctID uint = 692
@@ -645,13 +636,10 @@ func TestDeleteJailStorageCleanupFailureReleasesIdentityRealZFS(t *testing.T) {
 	}
 }
 
-func TestDeleteJailDependentCloneSurvivesCleanupRealZFS(t *testing.T) {
+func TestIntegrationDeleteJailDependentCloneSurvivesCleanupRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping real ZFS dependent-clone jail deletion integration test in short mode")
-	}
 
-	pool, client, cleanup := zfstest.Pool(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 
 	const ctID uint = 693

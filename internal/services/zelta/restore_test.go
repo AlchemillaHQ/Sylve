@@ -127,14 +127,11 @@ func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 	}
 }
 
-func TestListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
+func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping ZFS restore integration in short mode")
-	}
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
@@ -260,14 +257,11 @@ func TestListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	}
 }
 
-func TestRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
+func TestIntegrationRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping ZFS restore integration in short mode")
-	}
 
-	poolName, gzfsClient, zfsCleanup := zfstest.Pool(t)
-	defer zfsCleanup()
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
 	_ = gzfsClient
 
 	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
@@ -428,13 +422,10 @@ func TestParseAndCompareRestoreDatasetManifest(t *testing.T) {
 	}
 }
 
-func TestVerifyNonrecursiveRestoreManifestRequiresExactRootRealZFS(t *testing.T) {
+func TestIntegrationVerifyNonrecursiveRestoreManifestRequiresExactRootRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping nonrecursive staging integrity test in short mode")
-	}
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	staging := poolName + "/nonrecursive-staging"
 	zfstest.EnsureDataset(t, client, staging)
@@ -479,13 +470,10 @@ func TestVerifyNonrecursiveRestoreManifestRequiresExactRootRealZFS(t *testing.T)
 	}
 }
 
-func TestRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEphemeralZFS(t *testing.T) {
+func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping ZFS restore integration in short mode")
-	}
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
@@ -542,13 +530,10 @@ func TestRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEphemeralZFS(t
 	}
 }
 
-func TestRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t *testing.T) {
+func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping ZFS restore integration in short mode")
-	}
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
@@ -643,13 +628,10 @@ func TestRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t *testing.T)
 	}
 }
 
-func TestRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *testing.T) {
+func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if testing.Short() {
-		t.Skip("skipping ZFS restore integration in short mode")
-	}
 
-	poolName, client, cleanup := zfstest.Pool(t)
+	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
