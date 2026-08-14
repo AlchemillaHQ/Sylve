@@ -24,7 +24,7 @@
 	import { page } from '$app/state';
 	import { onDestroy } from 'svelte';
 	import { isAPIResponse } from '$lib/utils/http';
-	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
+	import MigrateModal from '$lib/components/custom/VM/MigrateModal.svelte';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface ClusterSidebarSnapshot {

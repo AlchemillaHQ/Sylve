@@ -19,7 +19,7 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { parseGuestDeletionData, type GFSStep } from '$lib/types/common';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
-	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
+	import MigrateModal from '$lib/components/custom/VM/MigrateModal.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Props {
