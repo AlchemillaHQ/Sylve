@@ -1970,11 +1970,9 @@ msgstr "Setup Complete"
 msgid "A <0>full system reboot</0> is required for Sylve to finish initialization. Continue when ready."
 msgstr "A <0>full system reboot</0> is required for Sylve to finish initialization. Continue when ready."
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Rebooting..."
-msgstr "<0/> Rebooting..."
+#~ msgid "<0/> Rebooting..."
+#~ msgstr "<0/> Rebooting..."
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Reboot"
 msgstr "<0/> Reboot"
@@ -2765,6 +2763,7 @@ msgstr "Force Delete"
 msgid "Running"
 msgstr "Running"
 
+#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Reboot"
@@ -17069,3 +17068,27 @@ msgstr "Copy portal address {0}:{1}"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Snapshot job is unavailable"
 msgstr "Snapshot job is unavailable"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Sylve is restarting..."
+msgstr "Sylve is restarting..."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Sylve is back online"
+msgstr "Sylve is back online"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "A <0>quick restart</0> is required for Sylve to finish initialization. Continue when ready."
+msgstr "A <0>quick restart</0> is required for Sylve to finish initialization. Continue when ready."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Restarting..."
+msgstr "Restarting..."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Rebooting..."
+msgstr "Rebooting..."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Restart"
+msgstr "Restart"

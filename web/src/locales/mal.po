@@ -1970,11 +1970,9 @@ msgstr "സജ്ജീകരണം പൂർത്തിയായി"
 msgid "A <0>full system reboot</0> is required for Sylve to finish initialization. Continue when ready."
 msgstr "സിൽവ് സജ്ജീകരണം പൂർത്തിയാക്കാൻ ഒരു <0>പൂർണ്ണമായ സിസ്റ്റം റീബൂട്ട്</0> ആവശ്യമാണ്. തയ്യാറാകുമ്പോൾ തുടരുക."
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Rebooting..."
-msgstr "<0/> റീബൂട്ട് ചെയ്യുന്നു..."
+#~ msgid "<0/> Rebooting..."
+#~ msgstr "<0/> റീബൂട്ട് ചെയ്യുന്നു..."
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Reboot"
 msgstr "<0/> റീബൂട്ട്"
@@ -2765,6 +2763,7 @@ msgstr "നിർബന്ധിതമായി ഇല്ലാതാക്ക�
 msgid "Running"
 msgstr "പ്രവർത്തിക്കുന്നു"
 
+#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Reboot"
@@ -17068,4 +17067,28 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Snapshot job is unavailable"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Sylve is restarting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Sylve is back online"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "A <0>quick restart</0> is required for Sylve to finish initialization. Continue when ready."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Restarting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Rebooting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Restart"
 msgstr ""
