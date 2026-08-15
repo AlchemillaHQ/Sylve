@@ -5,7 +5,13 @@
 <script lang="ts">
 	import { Chart } from '@alchemilla/svelte-echarts';
 	import { LineChart } from 'echarts/charts';
-	import { AxisPointerComponent, DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+	import {
+		AxisPointerComponent,
+		DataZoomComponent,
+		GridComponent,
+		LegendComponent,
+		TooltipComponent
+	} from 'echarts/components';
 	import { init, use } from 'echarts/core';
 	import { CanvasRenderer } from 'echarts/renderers';
 	import { mode } from 'mode-watcher';
@@ -91,14 +97,15 @@
 					const lines = [`<strong>${new Date(timestamp).toLocaleString()}</strong>`];
 					for (const entry of entries) {
 						if (!Array.isArray(entry.data)) continue;
-						lines.push(`${entry.marker ?? ''}${entry.seriesName}: ${formatValue(Number(entry.data[1]))}`);
+						lines.push(
+							`${entry.marker ?? ''}${entry.seriesName}: ${formatValue(Number(entry.data[1]))}`
+						);
 					}
 					return lines.join('<br/>');
 				}
 			},
 			xAxis: {
 				type: 'time',
-				boundaryGap: false,
 				axisLine: { lineStyle: { color: theme.grid } },
 				axisTick: { show: false },
 				axisLabel: {
@@ -141,7 +148,10 @@
 					backgroundColor: theme.grid,
 					fillerColor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(24,24,27,0.12)',
 					dataBackground: { lineStyle: { color: theme.muted }, areaStyle: { color: theme.grid } },
-					selectedDataBackground: { lineStyle: { color: theme.read }, areaStyle: { color: theme.grid } },
+					selectedDataBackground: {
+						lineStyle: { color: theme.read },
+						areaStyle: { color: theme.grid }
+					},
 					handleSize: '70%',
 					showDetail: false
 				}
@@ -176,7 +186,10 @@
 	{#if points.length > 0}
 		<Chart {init} {options} class="h-full w-full" />
 	{:else}
-		<div class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-center" role="status">
+		<div
+			class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-center"
+			role="status"
+		>
 			<div class="bg-muted grid size-11 place-items-center rounded-full">
 				<span class="icon-[mdi--chart-timeline-variant-shimmer] size-5"></span>
 			</div>

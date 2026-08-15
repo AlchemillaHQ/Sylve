@@ -52,8 +52,7 @@
 			}
 			const result = await getJailByCTID(ctId, {
 				hostname,
-				signal,
-				preserveErrors: true
+				signal
 			});
 			if (isAPIResponse(result)) {
 				handleAPIError(result);

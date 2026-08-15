@@ -1,10 +1,10 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { SambaShareSchema, type SambaShare } from '$lib/types/samba/shares';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export async function getSambaShares(): Promise<SambaShare[]> {
-	return await apiRequest('/samba/shares', z.array(SambaShareSchema), 'GET');
+	return await apiRequestData('/samba/shares', z.array(SambaShareSchema), 'GET');
 }
 
 export async function createSambaShare(
@@ -26,7 +26,7 @@ export async function createSambaShare(
 	auditEnabled: boolean = false,
 	auditedOperations: string[] = []
 ): Promise<APIResponse> {
-	return await apiRequest('/samba/shares', APIResponseSchema, 'POST', {
+	return await apiRequestResult('/samba/shares', APIResponseSchema, 'POST', {
 		name,
 		dataset,
 		enabled,
@@ -61,7 +61,7 @@ export async function updateSambaShare(
 	auditEnabled: boolean = false,
 	auditedOperations: string[] = []
 ): Promise<APIResponse> {
-	return await apiRequest(`/samba/shares/${id}`, APIResponseSchema, 'PUT', {
+	return await apiRequestResult(`/samba/shares/${id}`, APIResponseSchema, 'PUT', {
 		name,
 		dataset,
 		enabled,
@@ -77,9 +77,11 @@ export async function updateSambaShare(
 }
 
 export async function setSambaShareEnabled(id: number, enabled: boolean): Promise<APIResponse> {
-	return await apiRequest(`/samba/shares/${id}/enabled`, APIResponseSchema, 'PUT', { enabled });
+	return await apiRequestResult(`/samba/shares/${id}/enabled`, APIResponseSchema, 'PUT', {
+		enabled
+	});
 }
 
 export async function deleteSambaShare(id: number): Promise<APIResponse> {
-	return await apiRequest(`/samba/shares/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/samba/shares/${id}`, APIResponseSchema, 'DELETE');
 }

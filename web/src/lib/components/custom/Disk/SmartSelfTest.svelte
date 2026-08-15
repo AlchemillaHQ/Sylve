@@ -368,7 +368,8 @@ under sponsorship from the FreeBSD Foundation.
 
 	function resultMode(result: SmartSelfTestResult): string {
 		if (result.mode) return formatLabel(result.mode);
-		if ((result.protocol || details?.status.protocol).toLowerCase() === 'nvme') return 'N/A';
+		const protocol = result.protocol || details?.status.protocol || '';
+		if (protocol.toLowerCase() === 'nvme') return 'N/A';
 		return 'Not reported';
 	}
 
@@ -1041,10 +1042,7 @@ under sponsorship from the FreeBSD Foundation.
 					{/if}
 				</Tabs.Content>
 
-				<Tabs.Content
-					value="schedule"
-					class="m-0 flex min-h-0 flex-1 flex-col overflow-y-auto p-4"
-				>
+				<Tabs.Content value="schedule" class="m-0 flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
 					<div class="flex min-h-full flex-1 flex-col gap-4">
 						<div class="flex items-center justify-between gap-3 px-1">
 							<div class="flex items-center gap-2">
@@ -1106,7 +1104,8 @@ under sponsorship from the FreeBSD Foundation.
 								<div class="space-y-4 rounded-md border p-4">
 									<div class="flex items-center justify-between gap-2">
 										<div class="flex items-center gap-2">
-											<span class="icon-[material-symbols--edit-calendar-outline] text-primary h-4 w-4"
+											<span
+												class="icon-[material-symbols--edit-calendar-outline] text-primary h-4 w-4"
 											></span>
 											<p class="font-medium">
 												{scheduleForm.id ? 'Edit Schedule' : 'New Schedule'}

@@ -34,6 +34,7 @@
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval, watch, IsDocumentVisible } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	interface Data {
 		targets: ISCSITarget[];
@@ -94,6 +95,11 @@
 	let activeTarget: ISCSITarget | null = $derived(
 		activeRow?.id ? (targets.current.find((t) => t.id === Number(activeRow?.id)) ?? null) : null
 	);
+	let editTarget: ISCSITarget | null = $derived.by(() => {
+		const target = activeTarget;
+		if (!target) return null;
+		return targets.current.find((candidate) => candidate.id === target.id) ?? target;
+	});
 
 	const blankForm = () => ({
 		targetName: '',
@@ -123,10 +129,12 @@
 	let zvolComboOpen = $state(false);
 	let visible = new IsDocumentVisible();
 
-	let usedZvols = $derived(new Set(editTarget?.luns.map((l) => l.zvol) ?? []));
+	let usedZvols = $derived(new SvelteSet(editTarget?.luns.map((lun) => lun.zvol) ?? []));
 
 	let availableVolumes = $derived(
-		volumes.current.filter((v) => !v.name.includes('/sylve/virtual-machines/') && !usedZvols.has(v.name))
+		volumes.current.filter(
+			(v) => !v.name.includes('/sylve/virtual-machines/') && !usedZvols.has(v.name)
+		)
 	);
 
 	function openCreate() {
@@ -353,7 +361,9 @@
 
 		const rows: Row[] = targets.map((tgt) => ({
 			id: tgt.id,
-			connectionStatus: sessions[tgt.targetName] ? `Connected (${sessions[tgt.targetName]})` : 'Idle',
+			connectionStatus: sessions[tgt.targetName]
+				? `Connected (${sessions[tgt.targetName]})`
+				: 'Idle',
 			targetName: tgt.targetName,
 			alias: tgt.alias || '-',
 			authMethod: tgt.authMethod,
@@ -367,11 +377,6 @@
 
 	let tableData = $derived(generateTableData(targets.current, sessions.current));
 
-	// Updated active target after refetch
-	let editTarget: ISCSITarget | null = $derived(
-		activeTarget ? (targets.current.find((t) => t.id === activeTarget!.id) ?? activeTarget) : null
-	);
-
 	useInterval(5000, {
 		callback: () => {
 			if (visible.current && !storage.idle) {
@@ -381,7 +386,7 @@
 	});
 </script>
 
-{#snippet targetForm(title: string, onSubmit: () => void, submitLabel: string, onClose: () => void)}
+{#snippet targetForm(title: string, onSubmit: () => void, submitLabel: string)}
 	<Dialog.Header>
 		<Dialog.Title>
 			<SpanWithIcon icon="icon-[mdi--server]" size="h-5 w-5" gap="gap-2" {title} />
@@ -601,16 +606,19 @@
 						{#each editTarget.portals as portal (portal.id)}
 							<div class="flex items-center justify-between rounded-md border p-3">
 								<div class="flex flex-col gap-0.5">
-									<span
-									class="text-sm font-medium font-mono cursor-pointer"
-									onclick={async () => {
-										await navigator.clipboard.writeText(`${portal.address}:${portal.port}`);
-										toast.success('Copied portal address to clipboard', {
-											duration: 2000,
-											position: 'bottom-center'
-										});
-									}}
-								>{portal.address}:{portal.port}</span>
+									<button
+										type="button"
+										class="cursor-pointer rounded-sm text-left font-mono text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+										title="Copy portal address"
+										aria-label={`Copy portal address ${portal.address}:${portal.port}`}
+										onclick={async () => {
+											await navigator.clipboard.writeText(`${portal.address}:${portal.port}`);
+											toast.success('Copied portal address to clipboard', {
+												duration: 2000,
+												position: 'bottom-center'
+											});
+										}}>{portal.address}:{portal.port}</button
+									>
 								</div>
 								<Button
 									size="sm"
@@ -710,7 +718,12 @@
 						data={generateComboboxOptions(availableVolumes.map((v) => v.name))}
 					/>
 				</div>
-				<Button type="submit" size="sm" class="mb-0.5 h-9" disabled={loading || availableVolumes.length === 0}>Add</Button>
+				<Button
+					type="submit"
+					size="sm"
+					class="mb-0.5 h-9"
+					disabled={loading || availableVolumes.length === 0}>Add</Button
+				>
 			</form>
 		</Tabs.Content>
 	</Tabs.Root>
@@ -755,12 +768,7 @@
 		showCloseButton={true}
 		onClose={() => (properties.create.open = false)}
 	>
-		{@render targetForm(
-			'New iSCSI Target',
-			submitCreate,
-			'Create',
-			() => (properties.create.open = false)
-		)}
+		{@render targetForm('New iSCSI Target', submitCreate, 'Create')}
 	</Dialog.Content>
 </Dialog.Root>
 

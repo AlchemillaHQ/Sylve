@@ -3,13 +3,19 @@
 set -eu
 
 ARCH="${ARCH:-}"
-FREEBSD_VERSION="${FREEBSD_VERSION:-15.0-RELEASE}"
+FREEBSD_VERSION="${FREEBSD_VERSION:-15}"
 FREEBSD_SYSROOT="${FREEBSD_SYSROOT:-}"
 
 if [ -z "${ARCH}" ]; then
 	echo "ARCH is required (supported: amd64, arm64)" >&2
 	exit 1
 fi
+
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+FREEBSD_VERSION="$(
+	ARCH="${ARCH}" FREEBSD_VERSION="${FREEBSD_VERSION}" \
+		"${SCRIPT_DIR}/resolve-freebsd-release.sh"
+)"
 
 if [ -z "${FREEBSD_SYSROOT}" ]; then
 	FREEBSD_SYSROOT=".cache/freebsd/${ARCH}-${FREEBSD_VERSION}"

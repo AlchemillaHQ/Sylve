@@ -28,7 +28,7 @@
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings';
 	import type { BasicSettings } from '$lib/types/system/settings';
-	import { type CPUPin, type CreateData } from '$lib/types/vm/vm';
+	import { type CPUPin, type CreateData, type VMBootRom } from '$lib/types/vm/vm';
 	import {
 		handleAPIError,
 		isAPIResponse,
@@ -49,10 +49,16 @@
 		minimize: boolean;
 	}
 
+	type CreateBootRom = Exclude<VMBootRom, 'uboot'>;
+	type CreateVMFormData = Omit<CreateData, 'advanced'> & {
+		advanced: Omit<CreateData['advanced'], 'bootRom'> & { bootRom: CreateBootRom };
+	};
+
 	let { open = $bindable(), minimize = $bindable() }: Props = $props();
 
 	const defaultDemoProfile = demoVMProfiles[0];
-	let options = {
+	// @wc-ignore
+	let options: CreateVMFormData = {
 		name: '',
 		id: 0,
 		description: isDemoMode ? defaultDemoProfile.description : '',
@@ -90,7 +96,7 @@
 			bootOrder: 0,
 			tpmEmulation: false,
 			timeOffset: 'utc' as 'utc' | 'localtime',
-			bootRom: (isDemoMode ? 'none' : 'uefi') as 'uefi' | 'none',
+			bootRom: isDemoMode ? 'none' : 'uefi',
 			cloudInit: {
 				enabled: false,
 				data: '',
@@ -104,7 +110,7 @@
 		}
 	};
 
-	let modal: CreateData = $state(options);
+	let modal: CreateVMFormData = $state(options);
 	let demoProfileId = $state(defaultDemoProfile.id);
 	const emptyBasicSettings: BasicSettings = { pools: [], services: [], initialized: false };
 	let lastGoodNetworkSwitches = emptySwitchList();
@@ -341,7 +347,7 @@
 	);
 
 	async function create() {
-		const data = $state.snapshot(modal);
+		const data: CreateData = $state.snapshot(modal);
 		if (!isValidCreateData(data, downloadsByUtype.current || [])) return;
 
 		loading = true;

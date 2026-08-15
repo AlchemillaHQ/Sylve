@@ -25,17 +25,17 @@
 	onMount(() => {
 		demoHostTerminal.registerScreenContainer(screenContainer);
 
-		let timeout = 0;
+		let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
 		let idleCallback = 0;
 		let scheduled = false;
 		const start = () => void demoHostTerminal.start();
 		const scheduleStart = () => {
 			if (scheduled || document.visibilityState !== 'visible' || !canWarmHost()) return;
 			scheduled = true;
-			if ('requestIdleCallback' in window) {
+			if (typeof window.requestIdleCallback === 'function') {
 				idleCallback = window.requestIdleCallback(start, { timeout: 5000 });
 			} else {
-				timeout = window.setTimeout(start, 1500);
+				timeout = globalThis.setTimeout(start, 1500);
 			}
 		};
 
@@ -45,7 +45,7 @@
 		return () => {
 			document.removeEventListener('visibilitychange', scheduleStart);
 			if (idleCallback) window.cancelIdleCallback(idleCallback);
-			if (timeout) window.clearTimeout(timeout);
+			if (timeout !== undefined) globalThis.clearTimeout(timeout);
 			void demoHostTerminal.destroy(screenContainer);
 		};
 	});

@@ -208,10 +208,9 @@
 		try {
 			const response = selectedNetwork
 				? await updateNetwork(jail.ctId, selectedNetwork.id, payload, {
-						hostname,
-						preserveErrors: true
+						hostname
 					})
-				: await addNetwork(jail.ctId, payload, { hostname, preserveErrors: true });
+				: await addNetwork(jail.ctId, payload, { hostname });
 			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error(selectedNetwork ? 'Failed to update network' : 'Failed to add network', {

@@ -1,8 +1,8 @@
 BINARY_NAME := sylve
 BIN_DIR := bin
 ARCH ?= amd64
-FREEBSD_VERSION ?= 15.0-RELEASE
-FREEBSD_SYSROOT ?= .cache/freebsd/$(ARCH)-$(FREEBSD_VERSION)
+FREEBSD_VERSION ?= 15
+FREEBSD_SYSROOT ?=
 SMART_DEVICE ?=
 SMART_RUN_SELF_TEST ?= 0
 SMART_WAIT_SELF_TEST ?= 0
@@ -46,16 +46,21 @@ backend-debug:
 backend-cross:
 	mkdir -p $(BIN_DIR)
 	@set -eu; \
+	RESOLVED_FREEBSD_VERSION="$$(ARCH="$(ARCH)" FREEBSD_VERSION="$(FREEBSD_VERSION)" ./scripts/resolve-freebsd-release.sh)"; \
 	SYSROOT="$(FREEBSD_SYSROOT)"; \
+	if [ -z "$$SYSROOT" ]; then \
+		SYSROOT=".cache/freebsd/$(ARCH)-$$RESOLVED_FREEBSD_VERSION"; \
+	fi; \
 	case "$$SYSROOT" in \
 		/*) ;; \
 		*) SYSROOT="$$(pwd)/$$SYSROOT" ;; \
 	esac; \
-	ARCH=$(ARCH) FREEBSD_VERSION=$(FREEBSD_VERSION) FREEBSD_SYSROOT="$$SYSROOT" \
+	ARCH="$(ARCH)" FREEBSD_VERSION="$$RESOLVED_FREEBSD_VERSION" FREEBSD_SYSROOT="$$SYSROOT" \
 		./scripts/setup-freebsd-sysroot.sh; \
+	TARGET_VERSION="$${RESOLVED_FREEBSD_VERSION%-RELEASE}"; \
 	case "$(ARCH)" in \
-		amd64) GOARCH=amd64; TARGET=x86_64-unknown-freebsd15.0 ;; \
-		arm64) GOARCH=arm64; TARGET=aarch64-unknown-freebsd15.0 ;; \
+		amd64) GOARCH=amd64; TARGET="x86_64-unknown-freebsd$$TARGET_VERSION" ;; \
+		arm64) GOARCH=arm64; TARGET="aarch64-unknown-freebsd$$TARGET_VERSION" ;; \
 		*) echo "Unsupported ARCH: $(ARCH)" >&2; exit 1 ;; \
 	esac; \
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$$GOARCH \
@@ -75,6 +80,7 @@ cross-build-arm64:
 
 frontend:
 	npm ci --prefix web
+	npm run check --prefix web
 	npm run build --prefix web
 	mkdir -p internal/assets/web-files
 	cp -rf web/build/* internal/assets/web-files/

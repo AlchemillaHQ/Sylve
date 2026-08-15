@@ -9,7 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { DynamicDNSEntry, DynamicDNSEntryInput } from '$lib/types/services/dynamic-dns';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
@@ -30,7 +30,7 @@
 		id,
 		entries,
 		interfaces,
-		switches = {},
+		switches = emptySwitchList(),
 		afterChange
 	}: Props = $props();
 

@@ -2,43 +2,108 @@ name: Test
 on:
   push:
     branches:
-      - "**"
+      - master
     paths-ignore:
       - "docs/**"
     tags-ignore:
       - tip
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOCACHE: ${{ github.workspace }}/.cache/freebsd-go/build
+  GOMODCACHE: ${{ github.workspace }}/.cache/freebsd-go/mod
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Unit tests
-        uses: vmactions/freebsd-vm@v1
+      - name: Cache FreeBSD Go files
+        id: freebsd_go_cache
+        uses: actions/cache@v6
         with:
+          path: |
+            .cache/freebsd-go/build
+            .cache/freebsd-go/mod
+          key: freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}
+
+      - name: FreeBSD test suites
+        env:
+          GO_CACHE_RESTORED: ${{ steps.freebsd_go_cache.outputs.cache-hit == 'true' }}
+        uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1.5.3
+        with:
+          release: "15"
           usesh: true
           copyback: true
+          cache-after-prepare: true
+          envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED
           prepare: |
-            setup_started="$(date +%s)"
             pkg update
-            pkg install -y go git
-            setup_finished="$(date +%s)"
-            printf '%s\n' "$((setup_finished - setup_started))" > /tmp/sylve-unit-setup-seconds
+            pkg install -y go git libvirt bhyve-firmware
+            sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+            sysrc sshd_enable=YES
+            mkdir -p /root/.ssh && chmod 700 /root/.ssh
+            [ -f /root/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
+            touch /root/.ssh/authorized_keys
+            local_key="$(cat /root/.ssh/id_ed25519.pub)"
+            grep -qxF "$local_key" /root/.ssh/authorized_keys || printf '%s\n' "$local_key" >> /root/.ssh/authorized_keys
+            chmod 600 /root/.ssh/authorized_keys
           run: |
-            setup_seconds="$(cat /tmp/sylve-unit-setup-seconds)"
-            reporter_started="$(date +%s)"
+            unit_setup_started="$(date +%s)"
+            mkdir -p "$GOCACHE" "$GOMODCACHE"
             go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
-            reporter_finished="$(date +%s)"
-            setup_seconds="$((setup_seconds + reporter_finished - reporter_started))"
+            unit_setup_finished="$(date +%s)"
+            unit_setup_seconds="$((unit_setup_finished - unit_setup_started))"
             set +e
             /tmp/sylve-testreport \
               -lane unit \
               -out test-results \
-              -setup-duration "${setup_seconds}s" \
-              -cache-restored=false \
+              -setup-duration "${unit_setup_seconds}s" \
+              -cache-restored="$GO_CACHE_RESTORED" \
               -- make -s GO_TEST_FLAGS=-json test
-            test_rc="$?"
-            printf '%s\n' "$test_rc" > test-results/unit.rc
+            unit_rc="$?"
+            printf '%s\n' "$unit_rc" > test-results/unit.rc
+
+            if [ "$unit_rc" -ne 0 ]; then
+              exit 0
+            fi
+
+            set -e
+            integration_setup_started="$(date +%s)"
+            kldload zfs || true
+            kldload pf || true
+            kldload vmm || true
+            kldstat -q -m nlsysevent || kldload nlsysevent
+            service libvirtd onestart || true
+            service sshd onestart 2>/dev/null || service sshd onerestart || true
+            ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
+            for i in $(seq 1 60); do
+              ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null && break
+              sleep 0.5
+            done
+            ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
+            integration_setup_finished="$(date +%s)"
+            integration_setup_seconds="$((integration_setup_finished - integration_setup_started))"
+            set +e
+            /tmp/sylve-testreport \
+              -lane integration \
+              -out test-results \
+              -setup-duration "${integration_setup_seconds}s" \
+              -cache-restored="$GO_CACHE_RESTORED" \
+              -- make -s GO_TEST_FLAGS=-json test-integration
+            integration_rc="$?"
+            printf '%s\n' "$integration_rc" > test-results/integration.rc
             exit 0
 
       - name: Publish unit test summary
@@ -50,7 +115,7 @@ jobs:
 
       - name: Upload unit test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-report
           path: |
@@ -59,6 +124,7 @@ jobs:
             test-results/unit-summary.md
             test-results/unit.rc
           if-no-files-found: warn
+          retention-days: 7
 
       - name: Check unit test result
         id: unit_result
@@ -70,64 +136,16 @@ jobs:
           fi
           exit "$(cat test-results/unit.rc)"
 
-      - name: Integration tests
-        id: integration_tests
-        if: always() && steps.unit_result.outcome == 'success'
-        uses: vmactions/freebsd-vm@v1
-        with:
-          usesh: true
-          copyback: true
-          prepare: |
-            setup_started="$(date +%s)"
-            pkg update
-            pkg install -y go git libvirt bhyve-firmware
-            kldload zfs || true
-            kldload pf || true
-            kldload vmm || true
-            kldstat -q -m nlsysevent || kldload nlsysevent
-            service libvirtd onestart || true
-            sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-            sysrc sshd_enable=YES
-            service sshd onestart 2>/dev/null || service sshd onerestart || true
-            mkdir -p /root/.ssh && chmod 700 /root/.ssh
-            [ -f /root/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
-            cat /root/.ssh/id_ed25519.pub >> /root/.ssh/authorized_keys
-            chmod 600 /root/.ssh/authorized_keys
-            ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
-            for i in $(seq 1 60); do
-              ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null && break
-              sleep 0.5
-            done
-            ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@localhost true || { echo "ssh root@localhost not ready"; exit 1; }
-            setup_finished="$(date +%s)"
-            printf '%s\n' "$((setup_finished - setup_started))" > /tmp/sylve-integration-setup-seconds
-          run: |
-            setup_seconds="$(cat /tmp/sylve-integration-setup-seconds)"
-            reporter_started="$(date +%s)"
-            go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
-            reporter_finished="$(date +%s)"
-            setup_seconds="$((setup_seconds + reporter_finished - reporter_started))"
-            set +e
-            /tmp/sylve-testreport \
-              -lane integration \
-              -out test-results \
-              -setup-duration "${setup_seconds}s" \
-              -cache-restored=false \
-              -- make -s GO_TEST_FLAGS=-json test-integration
-            test_rc="$?"
-            printf '%s\n' "$test_rc" > test-results/integration.rc
-            exit 0
-
       - name: Publish integration test summary
-        if: always() && steps.integration_tests.outcome != 'skipped'
+        if: always() && steps.unit_result.outcome == 'success'
         run: |
           if [ -f test-results/integration-summary.md ]; then
             cat test-results/integration-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload integration test report
-        if: always() && steps.integration_tests.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        if: always() && steps.unit_result.outcome == 'success'
+        uses: actions/upload-artifact@v7
         with:
           name: integration-test-report
           path: |
@@ -136,9 +154,10 @@ jobs:
             test-results/integration-summary.md
             test-results/integration.rc
           if-no-files-found: warn
+          retention-days: 7
 
       - name: Check integration test result
-        if: always() && steps.integration_tests.outcome != 'skipped'
+        if: always() && steps.unit_result.outcome == 'success'
         run: |
           if [ ! -f test-results/integration.rc ]; then
             echo "Integration test result was not produced"

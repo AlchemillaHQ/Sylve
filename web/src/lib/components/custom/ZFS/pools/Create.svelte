@@ -69,7 +69,9 @@
 
 	let properties = $state(options);
 	let accordionOpen = $state<string[]>([]);
-	let sectionOrder = $state<string[]>(['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions']);
+	// @wc-ignore
+	const defaultSectionOrder = ['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions'];
+	let sectionOrder = $state<string[]>([...defaultSectionOrder]);
 
 	watch(
 		() => open,
@@ -94,7 +96,7 @@
 						.length,
 					Partitions: usable.partitions.length
 				};
-				sectionOrder = ['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions'].sort(
+				sectionOrder = [...defaultSectionOrder].sort(
 					(a, b) => (initialCounts[b] ?? 0) - (initialCounts[a] ?? 0)
 				);
 			}
@@ -110,8 +112,7 @@
 							(p) =>
 								!properties.vdev.containers
 									.flatMap((v) => v.partitions)
-									.some((vp) => vp.name === p.name) &&
-								!properties.props.spares.includes(p.name)
+									.some((vp) => vp.name === p.name) && !properties.props.spares.includes(p.name)
 						).length
 					: usable.disks.filter(
 							(d) =>
@@ -967,7 +968,11 @@
 							{#if properties.vdev.containers.some((v) => v.raidType && v.raidType !== 'stripe')}
 								<div class="flex items-center gap-1">
 									<span class="text-xs text-muted-foreground">Spares</span>
-									<span class="text-xs font-semibold text-green-500 {properties.props.spares.length ? '' : 'hidden'}">
+									<span
+										class="text-xs font-semibold text-green-500 {properties.props.spares.length
+											? ''
+											: 'hidden'}"
+									>
 										({properties.props.spares.length})
 									</span>
 								</div>
@@ -975,43 +980,41 @@
 						</div>
 
 						{#if properties.vdev.containers.some((v) => v.raidType && v.raidType !== 'stripe')}
-						<div id="spares-container" class="mt-2">
-							<div
-								class="bg-primary/10 dark:bg-background relative h-20 w-full overflow-auto rounded-lg border border-dashed border-muted-foreground/30 p-2"
-								use:dropzone={{
-									on_dropzone: (data: string) => handleDropToSpares(data),
-									dragover_class: 'droppable'
-								}}
-							>
-								{#if properties.props.spares.length === 0}
-									<div
-										class="text-muted-foreground/60 flex h-full w-full items-center justify-center"
-									>
-										Drop disks here to use as spares
-									</div>
-								{:else}
-									<div
-										class="flex h-full items-center justify-center gap-3"
-									>
-										{#each properties.props.spares as spare (spare)}
-											<div class="relative text-center">
-												<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
-												<div class="max-w-16 truncate text-xs">
-													{spare.split('/').pop()}
+							<div id="spares-container" class="mt-2">
+								<div
+									class="bg-primary/10 dark:bg-background relative h-20 w-full overflow-auto rounded-lg border border-dashed border-muted-foreground/30 p-2"
+									use:dropzone={{
+										on_dropzone: (data: string) => handleDropToSpares(data),
+										dragover_class: 'droppable'
+									}}
+								>
+									{#if properties.props.spares.length === 0}
+										<div
+											class="text-muted-foreground/60 flex h-full w-full items-center justify-center"
+										>
+											Drop disks here to use as spares
+										</div>
+									{:else}
+										<div class="flex h-full items-center justify-center gap-3">
+											{#each properties.props.spares as spare (spare)}
+												<div class="relative text-center">
+													<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
+													<div class="max-w-16 truncate text-xs">
+														{spare.split('/').pop()}
+													</div>
+													<button
+														class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+														onclick={() => removeFromSpares(spare)}
+														aria-label="Remove {spare} from spares"
+													>
+														<span class="icon-[mdi--close] h-3 w-3 block"></span>
+													</button>
 												</div>
-												<button
-													class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
-													onclick={() => removeFromSpares(spare)}
-													aria-label="Remove {spare} from spares"
-												>
-													<span class="icon-[mdi--close] h-3 w-3 block"></span>
-												</button>
-											</div>
-										{/each}
-									</div>
-								{/if}
+											{/each}
+										</div>
+									{/if}
+								</div>
 							</div>
-						</div>
 						{/if}
 
 						<Accordion.Root

@@ -8,31 +8,31 @@ import {
 	type MdnsRecordWithManaged,
 	type MdnsRecord
 } from '$lib/types/network/mdns';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult } from '$lib/utils/http';
 
 export async function getMdnsSettings(): Promise<MdnsSettings> {
-	return await apiRequest('/mdns/config', MdnsSettingsSchema, 'GET');
+	return await apiRequestData('/mdns/config', MdnsSettingsSchema, 'GET');
 }
 
 export async function setMdnsSettings(config: MdnsSettingsRequest): Promise<APIResponse> {
-	return await apiRequest('/mdns/config', APIResponseSchema, 'PUT', config);
+	return await apiRequestResult('/mdns/config', APIResponseSchema, 'PUT', config);
 }
 
 export async function getMdnsRecords(): Promise<MdnsRecordWithManaged[]> {
-	return await apiRequest('/mdns/records', z.array(MdnsRecordWithManagedSchema), 'GET');
+	return await apiRequestData('/mdns/records', z.array(MdnsRecordWithManagedSchema), 'GET');
 }
 
 export async function createMdnsRecord(record: Partial<MdnsRecord>): Promise<APIResponse> {
-	return await apiRequest('/mdns/records', APIResponseSchema, 'POST', record);
+	return await apiRequestResult('/mdns/records', APIResponseSchema, 'POST', record);
 }
 
 export async function updateMdnsRecord(
 	id: number,
 	record: Partial<MdnsRecord>
 ): Promise<APIResponse> {
-	return await apiRequest(`/mdns/records/${id}`, APIResponseSchema, 'PUT', record);
+	return await apiRequestResult(`/mdns/records/${id}`, APIResponseSchema, 'PUT', record);
 }
 
 export async function deleteMdnsRecord(id: number): Promise<APIResponse> {
-	return await apiRequest(`/mdns/records/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/mdns/records/${id}`, APIResponseSchema, 'DELETE');
 }

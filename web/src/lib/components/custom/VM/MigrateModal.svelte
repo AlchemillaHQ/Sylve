@@ -1,10 +1,10 @@
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
-	import { getNodes } from '$lib/api/cluster/cluster';
+	import { getNodesResult } from '$lib/api/cluster/cluster';
 	import { migrateVM, migrateJail, validateMigration, cancelMigration } from '$lib/api/migration';
 	import { formatMigrationReason, formatMigrationReasons } from '$lib/utils/migration-messages';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
@@ -160,7 +160,7 @@
 	async function resumeExistingMigration() {
 		if (pollingInterval) return;
 
-		const freshNodes = await getNodes();
+		const freshNodes = await getNodesResult();
 		const onlineNodes: ClusterNode[] = !isAPIResponse(freshNodes) ? freshNodes : [];
 		clusterNodes = onlineNodes;
 		const currentSourceNodeUuid = resolveSourceNodeUuid(onlineNodes);
@@ -253,7 +253,7 @@
 	}
 
 	onMount(async () => {
-		const result = await getNodes();
+		const result = await getNodesResult();
 		if (!isAPIResponse(result)) {
 			clusterNodes = result;
 		}

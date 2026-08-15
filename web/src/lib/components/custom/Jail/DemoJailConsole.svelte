@@ -12,7 +12,9 @@
 	let terminal = $state<Terminal>();
 	let wrapper = $state<HTMLElement | null>(null);
 	let status = $state<DemoHostTerminalStatus>('idle');
-	let statusText = $state('FreeBSD jail console');
+	const initialStatusText = $derived('FreeBSD jail console');
+	// svelte-ignore state_referenced_locally
+	let statusText = $state(initialStatusText);
 	let progress = $state(0);
 	let detachTerminal: (() => void) | null = null;
 	let unsubscribe: (() => void) | null = null;

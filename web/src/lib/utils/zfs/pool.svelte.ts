@@ -1,4 +1,5 @@
 import type { APIResponse } from '$lib/types/common';
+import { getAPIErrorMessages } from '$lib/utils/http';
 
 function prettifyError(raw: string): string {
 	const idx = raw.indexOf('stderr: ');
@@ -12,43 +13,37 @@ function prettifyError(raw: string): string {
 }
 
 export function parsePoolActionError(error: APIResponse): string {
+	const errorText = getAPIErrorMessages(error).join(', ');
+
 	if (error.message && error.message === 'pool_create_failed') {
-		if (error.error) {
-			if (error.error.includes('mirror contains devices of different sizes')) {
+		if (errorText) {
+			if (errorText.includes('mirror contains devices of different sizes')) {
 				return 'Pool contains a mirror with devices of different sizes';
-			} else if (error.error.includes('raidz contains devices of different sizes')) {
+			} else if (errorText.includes('raidz contains devices of different sizes')) {
 				return 'Pool contains a RAIDZ vdev with devices of different sizes';
 			}
 		}
-		if (error.error) {
-			return prettifyError(error.error);
+		if (errorText) {
+			return prettifyError(errorText);
 		}
 		return 'Pool creation failed';
 	}
 
 	if (error.message && error.message === 'pool_delete_failed') {
-		if (error.error) {
-			if (error.error.includes('pool or dataset is busy')) {
+		if (errorText) {
+			if (errorText.includes('pool or dataset is busy')) {
 				return 'Pool is busy';
 			}
 
-			if (
-				!Array.isArray(error.error) &&
-				error.error.startsWith('pool ') &&
-				error.error.endsWith('is in use and cannot be deleted')
-			) {
+			if (errorText.startsWith('pool ') && errorText.endsWith('is in use and cannot be deleted')) {
 				return 'Pool is in use by a VM or Jail';
 			}
 		}
 	}
 
 	if (error.message && error.message === 'pool_edit_failed') {
-		if (error.error) {
-			if (
-				!Array.isArray(error.error) &&
-				error.error.startsWith('cannot replace') &&
-				error.error.includes('with smaller device')
-			) {
+		if (errorText) {
+			if (errorText.startsWith('cannot replace') && errorText.includes('with smaller device')) {
 				return 'Cannot replace with smaller device';
 			}
 		}
@@ -56,8 +51,8 @@ export function parsePoolActionError(error: APIResponse): string {
 		return 'Pool edit failed';
 	}
 
-	if (error.error) {
-		return prettifyError(error.error);
+	if (errorText) {
+		return prettifyError(errorText);
 	}
 
 	return prettifyError(error.message ?? 'An unknown error occurred');

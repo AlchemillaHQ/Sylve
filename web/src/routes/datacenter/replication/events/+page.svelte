@@ -36,7 +36,7 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	let nodes = $state(data.nodes);
+	let nodes = $derived(data.nodes);
 
 	let query = $state('');
 	let reload = $state(false);
@@ -272,7 +272,8 @@
 			label: 'Target diverged and requires reseeding'
 		},
 		replication_source_snapshot_clone_dependency: {
-			label: 'Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry'
+			label:
+				'Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry'
 		},
 		replication_target_dataset_lookup_failed: { label: 'Could not inspect target dataset' }
 	};

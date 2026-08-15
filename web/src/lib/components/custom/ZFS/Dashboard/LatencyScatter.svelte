@@ -29,10 +29,20 @@
 		const grid = dark ? 'rgba(255,255,255,0.075)' : 'rgba(24,24,27,0.075)';
 		const read = points
 			.filter((point) => point.readIOPS > 0 && point.readLatencyNanos > 0)
-			.map((point) => [point.readIOPS, point.readLatencyNanos / 1_000_000, point.time, point.readBytesPerSecond]);
+			.map((point) => [
+				point.readIOPS,
+				point.readLatencyNanos / 1_000_000,
+				point.time,
+				point.readBytesPerSecond
+			]);
 		const write = points
 			.filter((point) => point.writeIOPS > 0 && point.writeLatencyNanos > 0)
-			.map((point) => [point.writeIOPS, point.writeLatencyNanos / 1_000_000, point.time, point.writeBytesPerSecond]);
+			.map((point) => [
+				point.writeIOPS,
+				point.writeLatencyNanos / 1_000_000,
+				point.time,
+				point.writeBytesPerSecond
+			]);
 
 		return {
 			animationDuration: 600,
@@ -52,6 +62,7 @@
 				borderColor: dark ? '#525252' : '#d6d3d1',
 				textStyle: { color: dark ? '#f4f4f5' : '#27272a' },
 				formatter: (params) => {
+					if (Array.isArray(params)) return '';
 					if (!Array.isArray(params.data)) return '';
 					return [
 						`<strong>${params.seriesName}</strong> · ${new Date(Number(params.data[2])).toLocaleString()}`,
@@ -69,7 +80,11 @@
 				nameTextStyle: { color: foreground, fontSize: 10 },
 				axisLine: { lineStyle: { color: grid } },
 				axisTick: { show: false },
-				axisLabel: { color: foreground, fontSize: 10, formatter: (value: number) => compactNumber(value) },
+				axisLabel: {
+					color: foreground,
+					fontSize: 10,
+					formatter: (value: number) => compactNumber(value)
+				},
 				splitLine: { lineStyle: { color: grid, type: 'dashed' } }
 			},
 			yAxis: {
@@ -108,12 +123,16 @@
 	{#if points.some((point) => point.readIOPS > 0 || point.writeIOPS > 0)}
 		<Chart {init} {options} class="h-full w-full" />
 	{:else}
-		<div class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-center">
+		<div
+			class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-center"
+		>
 			<div class="bg-muted grid size-11 place-items-center rounded-full">
 				<span class="icon-[mdi--chart-scatter-plot] size-5"></span>
 			</div>
 			<p class="text-sm font-medium">No active I/O in this range</p>
-			<p class="max-w-64 text-xs">Latency points appear when the selected scope is serving operations.</p>
+			<p class="max-w-64 text-xs">
+				Latency points appear when the selected scope is serving operations.
+			</p>
 		</div>
 	{/if}
 </div>

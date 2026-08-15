@@ -154,13 +154,8 @@
 
 	let comboBoxes = $state({
 		allowed: {
-			open: false,
-			options: allowed
+			open: false
 		}
-	});
-
-	$effect(() => {
-		comboBoxes.allowed.options = filteredAllowed;
 	});
 
 	let checkBoxes = $state({
@@ -243,7 +238,7 @@
 			label="Allowed Options"
 			placeholder="Select Allowed Options"
 			bind:value={allowedOptions}
-			data={comboBoxes.allowed.options}
+			data={filteredAllowed}
 			multiple={true}
 			classes="w-full"
 			width="w-3/4"
@@ -317,7 +312,7 @@
 	<div class="mt-2 space-y-3">
 		<Label>Custom Jail Lifecycle Hooks (exec.* scripts)</Label>
 
-		{#each ExecPhaseDefs as phase}
+		{#each ExecPhaseDefs as phase (phase.key)}
 			<div class="space-y-2 rounded-xl border p-3 md:p-4">
 				<div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
 					<div>

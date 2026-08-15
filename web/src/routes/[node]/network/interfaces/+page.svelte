@@ -13,10 +13,10 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CellComponent } from 'tabulator-tables';
 	import type { Jail } from '$lib/types/jail/jail';
-	import { getJails } from '$lib/api/jail/jail';
+	import { getJailsResult } from '$lib/api/jail/jail';
 	import { isMACNearOrEqual } from '$lib/utils/mac';
 	import type { VM } from '$lib/types/vm/vm';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getVMsResult } from '$lib/api/vm/vm';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { getWireGuardClients } from '$lib/api/network/wireguard';
@@ -88,7 +88,7 @@
 	let jails = resource(
 		() => 'jail-list',
 		async (key) => {
-			const res = await getJails();
+			const res = await getJailsResult();
 			if (isAPIResponse(res)) {
 				return data.jails;
 			}
@@ -102,7 +102,7 @@
 	let vms = resource(
 		() => 'vm-list',
 		async (key) => {
-			const res = await getVMs();
+			const res = await getVMsResult();
 			if (isAPIResponse(res)) {
 				return data.vms;
 			}
@@ -268,12 +268,11 @@
 
 	let viewModal = $state({
 		title: '',
-		key: 'Attribute',
-		value: 'Value',
 		open: false,
 		KV: {},
 		type: 'kv'
 	});
+	let viewModalLabels = $derived({ key: 'Attribute', value: 'Value' });
 
 	function viewInterface(iface: string) {
 		const ifaceData = networkInterfaces.current.find((i: Iface) => i.name === iface);
@@ -308,8 +307,8 @@
 		titles={{
 			icon: 'carbon--network-interface',
 			main: viewModal.title,
-			key: viewModal.key,
-			value: viewModal.value
+			key: viewModalLabels.key,
+			value: viewModalLabels.value
 		}}
 		bind:open={viewModal.open}
 		KV={viewModal.KV}

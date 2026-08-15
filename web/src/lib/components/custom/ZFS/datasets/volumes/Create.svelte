@@ -9,7 +9,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
-	import type { GroupedByPool } from '$lib/types/zfs/dataset';
 	import {
 		normalizeSizeInputExact,
 		parseSizeInputToBytes,
@@ -24,11 +23,10 @@
 
 	interface Props {
 		open: boolean;
-		grouped: GroupedByPool[];
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), grouped, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), reload = $bindable() }: Props = $props();
 
 	const pools = resource(
 		() => 'zfs-pools',
@@ -155,7 +153,7 @@
 
 		reload = true;
 
-		if (response.error) {
+		if (response.status !== 'success') {
 			handleAPIError(response);
 			toast.error('Failed to create volume', {
 				position: 'bottom-center'

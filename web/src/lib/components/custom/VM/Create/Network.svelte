@@ -28,15 +28,16 @@
 			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && obj.isUsed === false
 		);
 	});
+	// @wc-ignore
+	const emulationOptions = [
+		{ label: 'VirtIO', value: 'virtio' },
+		{ label: 'E1000', value: 'e1000' }
+	];
 
 	let comboBoxes = $state({
 		emulation: {
 			open: false,
-			value: 'virtio',
-			options: [
-				{ label: 'VirtIO', value: 'virtio' },
-				{ label: 'E1000', value: 'e1000' }
-			]
+			value: 'virtio'
 		},
 		mac: {
 			open: false
@@ -88,7 +89,7 @@
 				bind:open={comboBoxes.emulation.open}
 				label="Emulation Type"
 				bind:value={emulation}
-				data={comboBoxes.emulation.options}
+				data={emulationOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Emulation type"
 				width="w-3/4"

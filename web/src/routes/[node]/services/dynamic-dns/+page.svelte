@@ -113,8 +113,9 @@
 	};
 
 	const selectedEntry = $derived.by(() => {
-		if (!activeRow || activeRow.length !== 1) return null;
-		return entries.find((entry) => entry.id === Number(activeRow[0]?.id)) ?? null;
+		const rows = activeRow;
+		if (!rows || rows.length !== 1) return null;
+		return entries.find((entry) => entry.id === Number(rows[0]?.id)) ?? null;
 	});
 
 	function escapeHTML(value: unknown): string {

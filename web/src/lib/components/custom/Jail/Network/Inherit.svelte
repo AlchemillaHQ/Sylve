@@ -41,8 +41,7 @@
 		saving = true;
 		try {
 			const result = await setNetworkInheritance(jail.ctId, selected.ipv4, selected.ipv6, {
-				hostname,
-				preserveErrors: true
+				hostname
 			});
 			if (isAPIResponse(result)) {
 				handleAPIError(result);

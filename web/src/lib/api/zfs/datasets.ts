@@ -8,12 +8,12 @@ import {
 	type PeriodicSnapshot
 } from '$lib/types/zfs/dataset';
 
-import { apiRequest } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult } from '$lib/utils/http';
 
 export async function getDatasets(
 	type: GZFSDatasetType = GZFSDatasetTypeSchema.enum.ALL
 ): Promise<Dataset[]> {
-	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
+	return await apiRequestData(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
 }
 
 export async function getDatasetsResult(
@@ -21,11 +21,16 @@ export async function getDatasetsResult(
 	hostname: string,
 	signal?: AbortSignal
 ): Promise<Dataset[] | APIResponse> {
-	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET', undefined, {
-		hostname,
-		signal,
-		preserveErrors: true
-	});
+	return await apiRequestResult(
+		`/zfs/datasets?type=${type}`,
+		DatasetSchema.array(),
+		'GET',
+		undefined,
+		{
+			hostname,
+			signal
+		}
+	);
 }
 
 export async function deleteSnapshot(
@@ -33,7 +38,7 @@ export async function deleteSnapshot(
 	recursive: boolean = false
 ): Promise<APIResponse> {
 	const param = recursive ? '?recursive=true' : '';
-	return await apiRequest(
+	return await apiRequestResult(
 		`/zfs/datasets/snapshot/${snapshot.guid}${param}`,
 		APIResponseSchema,
 		'DELETE'
@@ -45,7 +50,7 @@ export async function createSnapshot(
 	name: string,
 	recursive: boolean
 ): Promise<APIResponse> {
-	return await apiRequest('/zfs/datasets/snapshot', APIResponseSchema, 'POST', {
+	return await apiRequestResult('/zfs/datasets/snapshot', APIResponseSchema, 'POST', {
 		name: name,
 		recursive: recursive,
 		guid: dataset.guid
@@ -53,7 +58,11 @@ export async function createSnapshot(
 }
 
 export async function getPeriodicSnapshots(): Promise<PeriodicSnapshot[]> {
-	return await apiRequest('/zfs/datasets/snapshot/periodic', PeriodicSnapshotSchema.array(), 'GET');
+	return await apiRequestData(
+		'/zfs/datasets/snapshot/periodic',
+		PeriodicSnapshotSchema.array(),
+		'GET'
+	);
 }
 
 export async function createPeriodicSnapshot(
@@ -70,7 +79,7 @@ export async function createPeriodicSnapshot(
 	keepMonthly: number | null = null,
 	keepYearly: number | null = null
 ): Promise<APIResponse> {
-	return await apiRequest('/zfs/datasets/snapshot/periodic', APIResponseSchema, 'POST', {
+	return await apiRequestResult('/zfs/datasets/snapshot/periodic', APIResponseSchema, 'POST', {
 		guid: dataset.guid,
 		prefix: prefix,
 		recursive: recursive,
@@ -96,19 +105,28 @@ export async function modifyPeriodicSnapshot(
 	keepMonthly: number | null = null,
 	keepYearly: number | null = null
 ): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/snapshot/periodic/${id}`, APIResponseSchema, 'PATCH', {
-		keepLast: Number(keepLast) || null,
-		maxAgeDays: Number(maxAgeDays) || null,
-		keepHourly: Number(keepHourly) || null,
-		keepDaily: Number(keepDaily) || null,
-		keepWeekly: Number(keepWeekly) || null,
-		keepMonthly: Number(keepMonthly) || null,
-		keepYearly: Number(keepYearly) || null
-	});
+	return await apiRequestResult(
+		`/zfs/datasets/snapshot/periodic/${id}`,
+		APIResponseSchema,
+		'PATCH',
+		{
+			keepLast: Number(keepLast) || null,
+			maxAgeDays: Number(maxAgeDays) || null,
+			keepHourly: Number(keepHourly) || null,
+			keepDaily: Number(keepDaily) || null,
+			keepWeekly: Number(keepWeekly) || null,
+			keepMonthly: Number(keepMonthly) || null,
+			keepYearly: Number(keepYearly) || null
+		}
+	);
 }
 
 export async function deletePeriodicSnapshot(id: number): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/snapshot/periodic/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(
+		`/zfs/datasets/snapshot/periodic/${id}`,
+		APIResponseSchema,
+		'DELETE'
+	);
 }
 
 export async function createFileSystem(
@@ -116,7 +134,7 @@ export async function createFileSystem(
 	parent: string,
 	properties: Record<string, string | undefined>
 ): Promise<APIResponse> {
-	return await apiRequest('/zfs/datasets/filesystem', APIResponseSchema, 'POST', {
+	return await apiRequestResult('/zfs/datasets/filesystem', APIResponseSchema, 'POST', {
 		name: name,
 		parent: parent,
 		properties: properties
@@ -127,19 +145,28 @@ export async function editFileSystem(
 	guid: string,
 	properties: Record<string, string | undefined>
 ): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/filesystem/${guid}`, APIResponseSchema, 'PATCH', {
+	return await apiRequestResult(`/zfs/datasets/filesystem/${guid}`, APIResponseSchema, 'PATCH', {
 		properties: properties
 	});
 }
 
 export async function deleteFileSystem(dataset: Dataset): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/filesystem/${dataset.guid}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(
+		`/zfs/datasets/filesystem/${dataset.guid}`,
+		APIResponseSchema,
+		'DELETE'
+	);
 }
 
 export async function rollbackSnapshot(guid: string): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/snapshot/${guid}/rollback`, APIResponseSchema, 'POST', {
-		destroyMoreRecent: true
-	});
+	return await apiRequestResult(
+		`/zfs/datasets/snapshot/${guid}/rollback`,
+		APIResponseSchema,
+		'POST',
+		{
+			destroyMoreRecent: true
+		}
+	);
 }
 
 export async function createVolume(
@@ -147,7 +174,7 @@ export async function createVolume(
 	parent: string,
 	props: Record<string, string>
 ): Promise<APIResponse> {
-	return await apiRequest('/zfs/datasets/volume', APIResponseSchema, 'POST', {
+	return await apiRequestResult('/zfs/datasets/volume', APIResponseSchema, 'POST', {
 		name: name,
 		parent: parent,
 		properties: props
@@ -158,13 +185,17 @@ export async function editVolume(
 	guid: string,
 	properties: Record<string, string>
 ): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/volume/${guid}`, APIResponseSchema, 'PATCH', {
+	return await apiRequestResult(`/zfs/datasets/volume/${guid}`, APIResponseSchema, 'PATCH', {
 		properties: properties
 	});
 }
 
 export async function deleteVolume(dataset: Dataset): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/volume/${dataset.guid}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(
+		`/zfs/datasets/volume/${dataset.guid}`,
+		APIResponseSchema,
+		'DELETE'
+	);
 }
 
 export async function bulkDelete(datasets: Dataset[]): Promise<APIResponse> {
@@ -173,11 +204,11 @@ export async function bulkDelete(datasets: Dataset[]): Promise<APIResponse> {
 		query.append('name', dataset.name);
 		query.append('guid', dataset.guid);
 	}
-	return await apiRequest(`/zfs/datasets?${query.toString()}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/zfs/datasets?${query.toString()}`, APIResponseSchema, 'DELETE');
 }
 
 export async function flashVolume(guid: string, uuid: string): Promise<APIResponse> {
-	return await apiRequest(`/zfs/datasets/volume/${guid}/flash`, APIResponseSchema, 'POST', {
+	return await apiRequestResult(`/zfs/datasets/volume/${guid}/flash`, APIResponseSchema, 'POST', {
 		uuid: uuid
 	});
 }

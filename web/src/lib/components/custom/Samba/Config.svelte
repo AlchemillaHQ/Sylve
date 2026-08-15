@@ -62,7 +62,7 @@
 
 		reload = true;
 
-		if (response.error) {
+		if (response.status !== 'success') {
 			if (enablingAppleExtensions) {
 				await loadEnabledServicesForHostname(page.params.node);
 			}

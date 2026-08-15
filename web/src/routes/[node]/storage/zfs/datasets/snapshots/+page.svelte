@@ -165,19 +165,28 @@
 	let query = $state('');
 	let nameFilterOpen = $state(false);
 
-	const nameFilterDefaults = [
-		{ value: 'bk_j', label: 'Backups' },
-		{ value: 'svms_', label: 'VM Snapshots' },
-		{ value: 'sjs_', label: 'Jail Snapshots' },
-		{ value: '_template', label: 'Templates' },
-		{ value: 'ha_', label: 'HA Snapshots' }
-	];
+	const nameFilterDefaultValues = ['bk_j', 'svms_', 'sjs_', '_template', 'ha_'];
 
-	const persistedNameFilter = new PersistedState<string[]>(
-		'snapshots-name-filter',
-		nameFilterDefaults.map((d) => d.value)
-	);
-	const legacyNameFilterDefaults = nameFilterDefaults.slice(0, -1).map((d) => d.value);
+	function createNameFilterData() {
+		const defaults = [
+			{ value: 'bk_j', label: 'Backups' },
+			{ value: 'svms_', label: 'VM Snapshots' },
+			{ value: 'sjs_', label: 'Jail Snapshots' },
+			{ value: '_template', label: 'Templates' },
+			{ value: 'ha_', label: 'HA Snapshots' }
+		];
+		const defaultValues = new Set(nameFilterDefaultValues);
+		const customEntries = persistedNameFilter.current
+			.filter((value) => !defaultValues.has(value))
+			.map((value) => ({ value, label: value }));
+
+		return [...defaults, ...customEntries];
+	}
+
+	const persistedNameFilter = new PersistedState<string[]>('snapshots-name-filter', [
+		...nameFilterDefaultValues
+	]);
+	const legacyNameFilterDefaults = nameFilterDefaultValues.slice(0, -1);
 
 	if (
 		legacyNameFilterDefaults.every((value) => persistedNameFilter.current.includes(value)) &&
@@ -186,17 +195,12 @@
 		persistedNameFilter.current = [...persistedNameFilter.current, 'ha_'];
 	}
 
-	const defaultValues = new Set(nameFilterDefaults.map((d) => d.value));
-	const customEntries = persistedNameFilter.current
-		.filter((v) => !defaultValues.has(v))
-		.map((v) => ({ value: v, label: v }));
-
-	let nameFilterData = $state([...nameFilterDefaults, ...customEntries]);
+	let nameFilterData = $state(createNameFilterData());
 
 	let nameFilter = $state<string[]>(
 		persistedNameFilter.current.length > 0
 			? persistedNameFilter.current
-			: nameFilterDefaults.map((d) => d.value)
+			: [...nameFilterDefaultValues]
 	);
 
 	watch(
@@ -335,7 +339,7 @@
 				multiple={true}
 				showSelected={false}
 				showSelectedCountLabel=" Filtered"
-				initialValues={nameFilterDefaults.map((d) => d.value)}
+				initialValues={[...nameFilterDefaultValues]}
 				triggerWidth="w-36"
 				buttonClass="h-6.5"
 				width="w-52"

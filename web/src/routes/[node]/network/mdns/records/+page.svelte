@@ -107,7 +107,7 @@
 
 			if (modalState.isEditMode && editingId !== null) {
 				const response = await updateMdnsRecord(editingId, payload);
-				if (response.error) {
+				if (response.status !== 'success') {
 					handleAPIError(response);
 					toast.error('Failed to update record', { position: 'bottom-center' });
 					return;
@@ -115,7 +115,7 @@
 				toast.success('Record updated', { position: 'bottom-center' });
 			} else {
 				const response = await createMdnsRecord(payload);
-				if (response.error) {
+				if (response.status !== 'success') {
 					handleAPIError(response);
 					toast.error('Failed to create record', { position: 'bottom-center' });
 					return;
@@ -177,7 +177,7 @@
 	let selectedRecord = $derived.by(() => {
 		if (!activeRow || activeRow.length !== 1) return null;
 		const row = activeRow[0];
-		return (row as any)._record as MdnsRecordWithManaged | null;
+		return (row._record as MdnsRecordWithManaged | undefined) ?? null;
 	});
 
 	let canEdit = $derived(selectedRecord !== null && !selectedRecord.managed);

@@ -9,7 +9,7 @@ import {
 	type ReplicationSourceMode
 } from '$lib/types/cluster/replication';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export type ReplicationPolicyTargetInput = {
@@ -43,33 +43,47 @@ export type ReplicationPolicyFailoverInput = {
 };
 
 export async function listReplicationPolicies(): Promise<ReplicationPolicy[]> {
-	return await apiRequest('/cluster/replication/policies', z.array(ReplicationPolicySchema), 'GET');
+	return await apiRequestData(
+		'/cluster/replication/policies',
+		z.array(ReplicationPolicySchema),
+		'GET'
+	);
 }
 
 export async function createReplicationPolicy(input: ReplicationPolicyInput): Promise<APIResponse> {
-	return await apiRequest('/cluster/replication/policies', APIResponseSchema, 'POST', input);
+	return await apiRequestResult('/cluster/replication/policies', APIResponseSchema, 'POST', input);
 }
 
 export async function updateReplicationPolicy(
 	id: number,
 	input: ReplicationPolicyInput
 ): Promise<APIResponse> {
-	return await apiRequest(`/cluster/replication/policies/${id}`, APIResponseSchema, 'PUT', input);
+	return await apiRequestResult(
+		`/cluster/replication/policies/${id}`,
+		APIResponseSchema,
+		'PUT',
+		input
+	);
 }
 
 export async function deleteReplicationPolicy(id: number): Promise<APIResponse> {
-	return await apiRequest(`/cluster/replication/policies/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/cluster/replication/policies/${id}`, APIResponseSchema, 'DELETE');
 }
 
 export async function runReplicationPolicy(id: number): Promise<APIResponse> {
-	return await apiRequest(`/cluster/replication/policies/${id}/run`, APIResponseSchema, 'POST', {});
+	return await apiRequestResult(
+		`/cluster/replication/policies/${id}/run`,
+		APIResponseSchema,
+		'POST',
+		{}
+	);
 }
 
 export async function failoverReplicationPolicy(
 	id: number,
 	input: ReplicationPolicyFailoverInput
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/cluster/replication/policies/${id}/failover`,
 		APIResponseSchema,
 		'POST',
@@ -90,7 +104,7 @@ export async function listReplicationEvents(
 	if (nodeId && nodeId.trim() !== '') {
 		params.set('nodeId', nodeId.trim());
 	}
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/replication/events?${params.toString()}`,
 		z.array(ReplicationEventSchema),
 		'GET'
@@ -102,7 +116,7 @@ export async function getReplicationEvent(
 	scope: 'local' | 'transition' = 'local'
 ): Promise<z.infer<typeof ReplicationEventSchema>> {
 	const params = new URLSearchParams({ scope });
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/replication/events/${id}?${params.toString()}`,
 		ReplicationEventSchema,
 		'GET'
@@ -121,5 +135,5 @@ export async function getReplicationEventProgress(
 	if (params.toString()) {
 		url += `?${params.toString()}`;
 	}
-	return await apiRequest(url, ReplicationEventProgressSchema, 'GET');
+	return await apiRequestData(url, ReplicationEventProgressSchema, 'GET');
 }

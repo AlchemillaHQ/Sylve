@@ -21,7 +21,7 @@
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { watch } from 'runed';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 
 	use([
 		LineChart,
@@ -70,13 +70,14 @@
 	}: Props = $props();
 
 	const mountAnimationDuration = 1400;
+	const mountAnimationEnabled = untrack(() => animateOnMount);
 	let chart: EChartsType | undefined = $state(undefined);
 	let optionRafId: number | null = null;
 	let restoreRafId: number | null = null;
 	let mountAnimatedChart: EChartsType | undefined;
 	let mountAnimationRevealTimer: ReturnType<typeof setTimeout> | null = null;
 	let mountAnimationSyncTimer: ReturnType<typeof setTimeout> | null = null;
-	let mountAnimationReady = !animateOnMount;
+	let mountAnimationReady = !mountAnimationEnabled;
 
 	const titleColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 	const legendTextColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
@@ -207,9 +208,9 @@
 
 	function getOptions(includeSeries = true): EChartsOption {
 		return {
-			animation: animateOnMount ? true : undefined,
-			animationDuration: animateOnMount ? mountAnimationDuration : undefined,
-			animationEasing: animateOnMount ? 'cubicInOut' : undefined,
+			animation: mountAnimationEnabled ? true : undefined,
+			animationDuration: mountAnimationEnabled ? mountAnimationDuration : undefined,
+			animationEasing: mountAnimationEnabled ? 'cubicInOut' : undefined,
 			title: {
 				show: false,
 				textStyle: {
@@ -379,7 +380,7 @@
 		};
 	}
 
-	const mountOptions = animateOnMount ? getOptions(false) : undefined;
+	const mountOptions = mountAnimationEnabled ? getOptions(false) : undefined;
 	let mouseIn = $state(false);
 
 	function handleRestore() {
@@ -422,7 +423,7 @@
 	watch(
 		() => chart,
 		(currentChart) => {
-			if (!animateOnMount || !currentChart || currentChart === mountAnimatedChart) return;
+			if (!mountAnimationEnabled || !currentChart || currentChart === mountAnimatedChart) return;
 			startMountAnimation(currentChart);
 		}
 	);
@@ -440,7 +441,7 @@
 		],
 		() => {
 			if (!chart || chart.isDisposed?.()) return;
-			if (animateOnMount && !mountAnimationReady) return;
+			if (mountAnimationEnabled && !mountAnimationReady) return;
 
 			if (optionRafId !== null) {
 				cancelAnimationFrame(optionRafId);
@@ -452,7 +453,7 @@
 				optionRafId = null;
 			});
 		},
-		{ lazy: animateOnMount }
+		{ lazy: mountAnimationEnabled }
 	);
 
 	onDestroy(() => {

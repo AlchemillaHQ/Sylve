@@ -9,7 +9,7 @@
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { APIResponse } from '$lib/types/common';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
+	import { getAPIErrorMessages, handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { getDashedDate } from '$lib/utils/time.svelte';
 	import { deepEqual } from 'fast-equals';
@@ -38,69 +38,70 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	let options = {
-		name: `manual-${getDashedDate()}`,
-		pool: {
-			open: false,
-			value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
-			data: generateSimpleSelectOptions(basicSettings.pools)
-		},
-		datasets: {
-			open: false,
-			value: prefill?.dataset || '',
-			data: [] as { label: string; value: string }[]
-		},
-		interval: {
-			type: 'none' as 'none' | 'minutes' | 'cronExpr',
-			open: false,
-			value: 'none',
-			data: [
-				{ value: 'none', label: 'None' },
-				{ value: 'minutes', label: 'Simple' },
-				{ value: 'cronExpr', label: 'Cron Expression' }
-			],
-			values: {
-				cron: '',
-				interval: {
-					open: false,
-					data: [
-						{ value: '60', label: 'Every Minute' },
-						{ value: '3600', label: 'Every Hour' },
-						{ value: '86400', label: 'Every Day' },
-						{ value: '604800', label: 'Every Week' },
-						{ value: '2419200', label: 'Every Month' },
-						{ value: '29030400', label: 'Every Year' }
-					],
-					value: ''
-				}
-			}
-		},
-		retention: {
-			open: false,
-			value: 'none',
-			data: [
-				{ value: 'none', label: 'None' },
-				{ value: 'simple', label: 'Simple' },
-				{ value: 'gfs', label: 'GFS' }
-			],
-			simple: {
-				keepLast: '0',
-				maxAgeDays: '0'
+	function createInitialProperties() {
+		return {
+			name: `manual-${getDashedDate()}`,
+			pool: {
+				open: false,
+				value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
+				data: generateSimpleSelectOptions(basicSettings.pools)
 			},
-			gfs: {
-				keepLast: '0',
-				keepHourly: '0',
-				keepDaily: '0',
-				keepWeekly: '0',
-				keepMonthly: '0',
-				keepYearly: '0'
-			}
-		},
-		recursive: false
-	};
+			datasets: {
+				open: false,
+				value: prefill?.dataset || '',
+				data: [] as { label: string; value: string }[]
+			},
+			interval: {
+				type: 'none' as 'none' | 'minutes' | 'cronExpr',
+				open: false,
+				value: 'none',
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'minutes', label: 'Simple' },
+					{ value: 'cronExpr', label: 'Cron Expression' }
+				],
+				values: {
+					cron: '',
+					interval: {
+						open: false,
+						data: [
+							{ value: '60', label: 'Every Minute' },
+							{ value: '3600', label: 'Every Hour' },
+							{ value: '86400', label: 'Every Day' },
+							{ value: '604800', label: 'Every Week' },
+							{ value: '2419200', label: 'Every Month' },
+							{ value: '29030400', label: 'Every Year' }
+						],
+						value: ''
+					}
+				}
+			},
+			retention: {
+				open: false,
+				value: 'none',
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'simple', label: 'Simple' },
+					{ value: 'gfs', label: 'GFS' }
+				],
+				simple: {
+					keepLast: '0',
+					maxAgeDays: '0'
+				},
+				gfs: {
+					keepLast: '0',
+					keepHourly: '0',
+					keepDaily: '0',
+					keepWeekly: '0',
+					keepMonthly: '0',
+					keepYearly: '0'
+				}
+			},
+			recursive: false
+		};
+	}
 
-	let properties = $state(options);
+	let properties = $state(createInitialProperties());
 
 	watch([() => properties.pool.value, () => datasets.current], ([poolValue]) => {
 		if (poolValue) {
@@ -116,6 +117,26 @@
 			}
 		}
 	});
+
+	function showSnapshotCreateError(
+		response: APIResponse,
+		datasetName: string,
+		snapshotName: string
+	) {
+		if (
+			getAPIErrorMessages(response).some((message) => message.includes('dataset already exists'))
+		) {
+			toast.error(`Snapshot ${datasetName}@${snapshotName} already exists`, {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		handleAPIError(response);
+		toast.error('Failed to create snapshot', {
+			position: 'bottom-center'
+		});
+	}
 
 	async function create() {
 		if (properties.name.trim() === '') {
@@ -140,32 +161,28 @@
 		}
 
 		const dataset = datasets.current.find((dataset) => dataset.name === properties.datasets.value);
-		const pool = basicSettings.pools.find((poolName) => poolName === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
-			let retentionType = properties.retention.value;
+			const retentionType = properties.retention.value;
 			let response: APIResponse | null = null;
 			let minutes: number = 0;
 			let cron: string = '';
 
 			if (intervalType === 'none' || intervalType === '') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
-				retentionType = 'none';
 
-				let message = '';
-				if (prefill?.dataset && prefill?.pool) {
-					message = `Snapshot ${prefill.dataset}@${properties.name} created`;
-				} else {
-					message = `Snapshot ${pool}@${properties.name} created`;
+				if (response.status !== 'success') {
+					showSnapshotCreateError(response, dataset.name, properties.name);
+					return;
 				}
 
-				toast.success(message, {
+				toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
 					position: 'bottom-center'
 				});
 
 				reload = true;
-				properties = options;
+				properties = createInitialProperties();
 				open = false;
 				return;
 			} else if (intervalType === 'minutes') {
@@ -217,29 +234,24 @@
 				);
 			}
 
-			reload = true;
-			if (response?.error) {
-				handleAPIError(response);
-				toast.error('Failed to create snapshot', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
-				let message = '';
-
-				if (prefill?.dataset && prefill?.pool) {
-					message = `Snapshot ${prefill.pool}/${prefill.dataset}@${properties.name} created`;
+			if (!response || response.status !== 'success') {
+				if (response) {
+					showSnapshotCreateError(response, dataset.name, properties.name);
 				} else {
-					message = `Snapshot ${pool}@${properties.name} created`;
+					toast.error('Failed to create snapshot', {
+						position: 'bottom-center'
+					});
 				}
-
-				toast.success(message, {
-					position: 'bottom-center'
-				});
-
-				properties = options;
-				open = false;
+				return;
 			}
+
+			reload = true;
+			toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
+				position: 'bottom-center'
+			});
+
+			properties = createInitialProperties();
+			open = false;
 		}
 	}
 </script>
@@ -250,16 +262,21 @@
 		showCloseButton={true}
 		showResetButton={true}
 		onReset={() => {
-			properties = options;
+			properties = createInitialProperties();
 		}}
 		onClose={() => {
-			properties = options;
+			properties = createInitialProperties();
 			open = false;
 		}}
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title>
-				<SpanWithIcon icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]" size="h-5 w-5" gap="gap-2" title="Create Snapshot" />
+				<SpanWithIcon
+					icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create Snapshot"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

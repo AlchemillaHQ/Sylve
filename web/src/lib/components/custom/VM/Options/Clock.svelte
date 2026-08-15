@@ -20,18 +20,18 @@
 
 	let comboBox = $state({
 		open: false,
-		value: untrack(() => (vm.timeOffset === 'utc' ? 'utc' : 'localtime')),
-		options: [
-			{
-				label: 'UTC',
-				value: 'utc'
-			},
-			{
-				label: 'Local Time',
-				value: 'localtime'
-			}
-		]
+		value: untrack(() => (vm.timeOffset === 'utc' ? 'utc' : 'localtime'))
 	});
+	let clockOffsetOptions = $derived([
+		{
+			label: 'UTC',
+			value: 'utc'
+		},
+		{
+			label: 'Local Time',
+			value: 'localtime'
+		}
+	]);
 	let saving = $state(false);
 
 	async function modify() {
@@ -84,7 +84,7 @@
 			bind:open={comboBox.open}
 			label="Offset"
 			bind:value={comboBox.value}
-			data={comboBox.options}
+			data={clockOffsetOptions}
 			classes="flex-1 space-y-1"
 			placeholder="Select type"
 			width="w-3/4"

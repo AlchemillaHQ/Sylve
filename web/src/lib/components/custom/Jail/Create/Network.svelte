@@ -169,10 +169,7 @@
 		}
 	);
 
-	function resolveField(
-		val: string,
-		usable: NetworkObject[]
-	): { id: number; raw: string } {
+	function resolveField(val: string, usable: NetworkObject[]): { id: number; raw: string } {
 		if (!val) return { id: 0, raw: '' };
 		const obj = usable.find((o) => String(o.id) === val);
 		if (obj) return { id: obj.id, raw: '' };
@@ -264,6 +261,12 @@
 	);
 
 	let selectedDnsPreset = $state('');
+	// @wc-ignore
+	const networkObjectTypes = {
+		network: 'Network(s)',
+		host: 'Host(s)',
+		mac: 'MAC(s)'
+	} as const;
 
 	watch(
 		() => jailType,
@@ -280,7 +283,7 @@
 	let objectCreator = $state({
 		open: false,
 		name: '',
-		type: 'Network(s)' as 'Network(s)' | 'Host(s)' | 'MAC(s)' | 'DUID(s)',
+		type: networkObjectTypes.network as 'Network(s)' | 'Host(s)' | 'MAC(s)' | 'DUID(s)',
 		ocType: 'ipv4-net' as 'ipv4-net' | 'ipv6-net' | 'ipv4-gw' | 'ipv6-gw' | 'mac',
 		value: ''
 	});
@@ -352,7 +355,7 @@
 							: ctId
 								? `Jail ${ctId} IPv4`
 								: `IPv4 Network ${getDashedDate()}`;
-						objectCreator.type = 'Network(s)';
+						objectCreator.type = networkObjectTypes.network;
 						objectCreator.ocType = 'ipv4-net';
 						objectCreator.open = true;
 
@@ -380,7 +383,7 @@
 							: ctId
 								? `Jail ${ctId} IPv4 GW`
 								: `IPv4 Gateway ${getDashedDate()}`;
-						objectCreator.type = 'Host(s)';
+						objectCreator.type = networkObjectTypes.host;
 						objectCreator.ocType = 'ipv4-gw';
 						objectCreator.open = true;
 
@@ -408,7 +411,7 @@
 							: ctId
 								? `Jail ${ctId} IPv6`
 								: `IPv6 Network ${getDashedDate()}`;
-						objectCreator.type = 'Network(s)';
+						objectCreator.type = networkObjectTypes.network;
 						objectCreator.ocType = 'ipv6-net';
 						objectCreator.open = true;
 
@@ -436,7 +439,7 @@
 							: ctId
 								? `Jail ${ctId} IPv6 GW`
 								: `IPv6 Gateway ${getDashedDate()}`;
-						objectCreator.type = 'Host(s)';
+						objectCreator.type = networkObjectTypes.host;
 						objectCreator.ocType = 'ipv6-gw';
 						objectCreator.open = true;
 
@@ -463,7 +466,7 @@
 							: ctId
 								? `Jail ${ctId} MAC`
 								: `MAC ${getDashedDate()}`;
-						objectCreator.type = 'MAC(s)';
+						objectCreator.type = networkObjectTypes.mac;
 						objectCreator.ocType = 'mac';
 						objectCreator.open = true;
 

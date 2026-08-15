@@ -226,11 +226,13 @@ msgstr "节点 — <0/>"
 msgid "Discord"
 msgstr "Discord"
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Help"
 msgstr "帮助"
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Sponsor"
 msgstr "赞助"
 
@@ -494,7 +496,6 @@ msgstr "错误请求"
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
@@ -515,6 +516,7 @@ msgstr "开始时间"
 msgid "End Time"
 msgstr "结束时间"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -544,6 +546,7 @@ msgid "Action"
 msgstr "操作"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -576,7 +579,6 @@ msgstr "状态"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -2198,8 +2200,6 @@ msgstr "属性"
 msgid "Details - {0}"
 msgstr "详情 - {0}"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2211,9 +2211,6 @@ msgstr "详情 - {0}"
 msgid "Host(s)"
 msgstr "主机"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2225,7 +2222,6 @@ msgstr "主机"
 msgid "Network(s)"
 msgstr "网络"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2484,11 +2480,8 @@ msgstr "编辑 {0}"
 msgid "Enter ZFS Pools"
 msgstr "输入 ZFS 存储池"
 
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3363,12 +3356,10 @@ msgid "Review"
 msgstr "检查"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -3749,6 +3740,7 @@ msgstr "正在请求"
 msgid "Select Type"
 msgstr "选择类型"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "端点"
@@ -4793,8 +4785,6 @@ msgstr "CPU 插槽"
 msgid "CPU Threads"
 msgstr "CPU 线程"
 
-#: src/lib/components/custom/VM/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -5434,8 +5424,6 @@ msgstr "从 VDEV {1} 中移除 {0}"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partitions"
 msgstr "分区"
@@ -5730,6 +5718,8 @@ msgstr "快照已创建"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -6922,12 +6912,10 @@ msgid "Select bridge"
 msgstr "选择网桥"
 
 #. 0: dataset.name; 1: properties.name
-#. 0: prefill.dataset; 1: properties.name
-#. 0: pool; 1: properties.name
-#. 0: pool; 1: properties.name
+#. 0: dataset.name; 1: properties.name
+#. 0: dataset.name; 1: properties.name
 #. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -6935,7 +6923,11 @@ msgid "Snapshot {0}@{1} created"
 msgstr "快照 {0}@{1} 已创建"
 
 #. 0: dataset.name; 1: properties.name
+#. 0: datasetName; 1: snapshotName
+#. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} already exists"
 msgstr "快照 {0}@{1} 已存在"
 
@@ -7688,7 +7680,8 @@ msgstr "快捷操作"
 msgid "No create actions are available."
 msgstr "没有可用的创建操作。"
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Documentation"
 msgstr "文档"
 
@@ -8355,11 +8348,6 @@ msgstr "ISO/镜像"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select ISO/Image"
 msgstr "选择 ISO/镜像"
-
-#. 0: prefill.pool; 1: prefill.dataset; 2: properties.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-msgid "Snapshot {0}/{1}@{2} created"
-msgstr "快照 {0}/{1}@{2} 已创建"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 msgid "Flash File To Volume"
@@ -9043,7 +9031,6 @@ msgstr "刷新计数器"
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 msgid "Log"
@@ -11487,8 +11474,8 @@ msgstr ""
 msgid "Critical{0}"
 msgstr ""
 
-#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['warningCelsius'] ?? 55 \\: editConfigDefaults['warningPercent'] ?? 80; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
-#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['criticalCelsius'] ?? 65 \\: editConfigDefaults['criticalPercent'] ?? 90; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['warningCelsius'] ?? 55) \\: (editConfigDefaults['warningPercent'] ?? 80); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['criticalCelsius'] ?? 65) \\: (editConfigDefaults['criticalPercent'] ?? 90); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Default: {0}{1}"
@@ -11910,8 +11897,6 @@ msgstr ""
 msgid "Webhook URL"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -13446,6 +13431,30 @@ msgid "Close audit record details"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Record ID"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Duration"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Actor"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Timeline"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "to"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Query"
 msgstr ""
@@ -13459,11 +13468,32 @@ msgid "Request payload"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No request payload was recorded."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Recorded Error"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response Payload"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No response or error was recorded."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Raw Audit Record"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Audit record"
 msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
@@ -17024,24 +17054,15 @@ msgstr ""
 msgid "Capture pointer (Esc to release)"
 msgstr ""
 
-#. 0: activeLifecycleCount
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "<0/> {0} active"
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Show log panel"
+#. 0: portal.address; 1: portal.port
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address {0}:{1}"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Hide log panel"
-msgstr ""
-
-#. 0: record.resolvedAction
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "View details for {0}"
-msgstr ""
-
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No additional request/response details were recorded."
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Snapshot job is unavailable"
 msgstr ""

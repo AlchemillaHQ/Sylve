@@ -14,7 +14,7 @@ export async function load({ params }) {
 	const [jailResult, switches, networkObjects] = await Promise.all([
 		cachedFetch(
 			`jail-${ctId}`,
-			async () => getJailByCTID(ctId, { hostname: node, preserveErrors: true }),
+			async () => getJailByCTID(ctId, { hostname: node }),
 			cacheDuration,
 			false,
 			node

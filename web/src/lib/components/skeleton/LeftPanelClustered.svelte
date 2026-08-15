@@ -1,9 +1,6 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import {
-		getClusterResourcesResult,
-		getNodesResult
-	} from '$lib/api/cluster/cluster';
+	import { getClusterResourcesResult, getNodesResult } from '$lib/api/cluster/cluster';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { hasSavedOpenIds, loadOpenIds, saveOpenIds } from '$lib/left-panel';
 	import {
@@ -172,70 +169,70 @@
 
 	let treeNodes = $derived.by((): ResourceTreeNodeInput[] => {
 		return cluster.map((n) => {
-				const nodeLabel = n.hostname || n.nodeUUID;
-				const resources: ResourceTreeResource[] = [
-					...(n.jails ?? []).map((j) => ({
-						id: `jail-${j.ctId}`,
-						sortId: j.ctId,
-						sortName: j.name,
-						resourceId: j.ctId,
-						resourceType: 'jail' as const,
-						nodeHostname: n.hostname,
-						label: `${j.name} (${j.ctId})`,
-						icon: 'hugeicons--prison',
-						href: `/${nodeLabel}/jail/${j.ctId}/summary`,
-						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
-					})),
-					...(n.vms ?? []).map((vm) => ({
-						id: `vm-${vm.rid}`,
-						sortId: vm.rid,
-						sortName: vm.name,
-						resourceId: vm.rid,
-						resourceType: 'vm' as const,
-						nodeHostname: n.hostname,
-						label: `${vm.name} (${vm.rid})`,
-						icon: 'material-symbols--monitor-outline',
-						href: `/${nodeLabel}/vm/${vm.rid}/summary`,
-						state: (vm.state === DomainState.DomainRunning
-							? 'active'
-							: vm.state === DomainState.DomainNostate
-								? 'orphan'
-								: 'inactive') as 'active' | 'inactive' | 'orphan'
-					})),
-					...(n.jailTemplates ?? []).map((template) => ({
-						id: `jail-template-${n.nodeUUID}-${template.id}`,
-						sortId: template.id,
-						sortName: template.name,
-						resourceId: template.id,
-						resourceType: 'jail-template' as const,
-						nodeHostname: n.hostname,
-						label: template.name,
-						icon: 'mdi--file-tree-outline'
-					})),
-					...(n.vmTemplates ?? []).map((template) => ({
-						id: `vm-template-${n.nodeUUID}-${template.id}`,
-						sortId: template.id,
-						sortName: template.name,
-						resourceId: template.id,
-						resourceType: 'vm-template' as const,
-						nodeHostname: n.hostname,
-						label: template.name,
-						icon: 'mdi--monitor-shimmer'
-					}))
-				];
+			const nodeLabel = n.hostname || n.nodeUUID;
+			const resources: ResourceTreeResource[] = [
+				...(n.jails ?? []).map((j) => ({
+					id: `jail-${j.ctId}`,
+					sortId: j.ctId,
+					sortName: j.name,
+					resourceId: j.ctId,
+					resourceType: 'jail' as const,
+					nodeHostname: n.hostname,
+					label: `${j.name} (${j.ctId})`,
+					icon: 'hugeicons--prison',
+					href: `/${nodeLabel}/jail/${j.ctId}/summary`,
+					state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+				})),
+				...(n.vms ?? []).map((vm) => ({
+					id: `vm-${vm.rid}`,
+					sortId: vm.rid,
+					sortName: vm.name,
+					resourceId: vm.rid,
+					resourceType: 'vm' as const,
+					nodeHostname: n.hostname,
+					label: `${vm.name} (${vm.rid})`,
+					icon: 'material-symbols--monitor-outline',
+					href: `/${nodeLabel}/vm/${vm.rid}/summary`,
+					state: (vm.state === DomainState.DomainRunning
+						? 'active'
+						: vm.state === DomainState.DomainNostate
+							? 'orphan'
+							: 'inactive') as 'active' | 'inactive' | 'orphan'
+				})),
+				...(n.jailTemplates ?? []).map((template) => ({
+					id: `jail-template-${n.nodeUUID}-${template.id}`,
+					sortId: template.id,
+					sortName: template.name,
+					resourceId: template.id,
+					resourceType: 'jail-template' as const,
+					nodeHostname: n.hostname,
+					label: template.name,
+					icon: 'mdi--file-tree-outline'
+				})),
+				...(n.vmTemplates ?? []).map((template) => ({
+					id: `vm-template-${n.nodeUUID}-${template.id}`,
+					sortId: template.id,
+					sortName: template.name,
+					resourceId: template.id,
+					resourceType: 'vm-template' as const,
+					nodeHostname: n.hostname,
+					label: template.name,
+					icon: 'mdi--monitor-shimmer'
+				}))
+			];
 
-				const found = nodesById.get(n.nodeUUID);
-				const isOffline = found?.status === 'offline';
+			const found = nodesById.get(n.nodeUUID);
+			const isOffline = found?.status === 'offline';
 
-				return {
-					id: n.nodeUUID,
-					label: nodeLabel,
-					icon: isOffline ? 'mdi--server-off' : 'fluent--storage-20-filled',
-					href: isOffline ? `/inactive-node` : `/${nodeLabel}/summary`,
-					resources: isOffline ? [] : resources,
-					nextGuestId: globalNextGuestId
-				};
-			});
+			return {
+				id: n.nodeUUID,
+				label: nodeLabel,
+				icon: isOffline ? 'mdi--server-off' : 'fluent--storage-20-filled',
+				href: isOffline ? `/inactive-node` : `/${nodeLabel}/summary`,
+				resources: isOffline ? [] : resources,
+				nextGuestId: globalNextGuestId
+			};
+		});
 	});
 
 	// @wc-ignore

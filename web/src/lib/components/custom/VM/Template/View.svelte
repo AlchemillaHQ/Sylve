@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getVMTemplateById } from '$lib/api/vm/vm';
+	import { getVMTemplateByIdResult } from '$lib/api/vm/vm';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -7,7 +7,7 @@
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import type { VMTemplate } from '$lib/types/vm/vm';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { isAPIResponse } from '$lib/utils/http';
+	import { getAPIErrorText, isAPIResponse } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -43,10 +43,10 @@
 	async function loadTemplate() {
 		loading = true;
 		try {
-			const result = await getVMTemplateById(templateId, hostname);
-			if (isAPIResponse(result) && result.status === 'error') {
+			const result = await getVMTemplateByIdResult(templateId, hostname);
+			if (isAPIResponse(result)) {
 				template = null;
-				toast.error(result.error?.[0] || 'Failed to load template details', {
+				toast.error(getAPIErrorText(result, 'Failed to load template details'), {
 					position: 'bottom-center'
 				});
 				return;

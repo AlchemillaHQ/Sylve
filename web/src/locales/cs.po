@@ -226,11 +226,13 @@ msgstr "Uzel — <0/>"
 msgid "Discord"
 msgstr ""
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Help"
 msgstr "Nápověda"
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Sponsor"
 msgstr ""
 
@@ -494,7 +496,6 @@ msgstr "Chybný požadavek"
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
@@ -515,6 +516,7 @@ msgstr "Doba startu"
 msgid "End Time"
 msgstr "Doba konce"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -544,6 +546,7 @@ msgid "Action"
 msgstr "Akce"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -576,7 +579,6 @@ msgstr "Stav"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -2198,8 +2200,6 @@ msgstr "Atribut"
 msgid "Details - {0}"
 msgstr "Podrobnosti – {0}"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2211,9 +2211,6 @@ msgstr "Podrobnosti – {0}"
 msgid "Host(s)"
 msgstr "Hostitel(é)"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2225,7 +2222,6 @@ msgstr "Hostitel(é)"
 msgid "Network(s)"
 msgstr "Síť/sítě"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2484,11 +2480,8 @@ msgstr "Upravit {0}"
 msgid "Enter ZFS Pools"
 msgstr "Zadejte ZFS fondy"
 
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3363,12 +3356,10 @@ msgid "Review"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -3749,6 +3740,7 @@ msgstr ""
 msgid "Select Type"
 msgstr "Vybrat typ"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "Koncový bod"
@@ -4793,8 +4785,6 @@ msgstr "Patic procesorů"
 msgid "CPU Threads"
 msgstr "Vláken procesoru"
 
-#: src/lib/components/custom/VM/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -5438,8 +5428,6 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partitions"
 msgstr "Oddíly"
@@ -5734,6 +5722,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -6926,12 +6916,10 @@ msgid "Select bridge"
 msgstr "Vyberte most"
 
 #. 0: dataset.name; 1: properties.name
-#. 0: prefill.dataset; 1: properties.name
-#. 0: pool; 1: properties.name
-#. 0: pool; 1: properties.name
+#. 0: dataset.name; 1: properties.name
+#. 0: dataset.name; 1: properties.name
 #. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -6939,7 +6927,11 @@ msgid "Snapshot {0}@{1} created"
 msgstr "Zachycený stav {0}@{1} pořízen"
 
 #. 0: dataset.name; 1: properties.name
+#. 0: datasetName; 1: snapshotName
+#. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} already exists"
 msgstr "Zachycený stav {0}@{1} už existuje"
 
@@ -7694,7 +7686,8 @@ msgstr ""
 msgid "No create actions are available."
 msgstr ""
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Documentation"
 msgstr ""
 
@@ -8360,11 +8353,6 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select ISO/Image"
-msgstr ""
-
-#. 0: prefill.pool; 1: prefill.dataset; 2: properties.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-msgid "Snapshot {0}/{1}@{2} created"
 msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
@@ -9049,7 +9037,6 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 msgid "Log"
@@ -11493,8 +11480,8 @@ msgstr ""
 msgid "Critical{0}"
 msgstr ""
 
-#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['warningCelsius'] ?? 55 \\: editConfigDefaults['warningPercent'] ?? 80; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
-#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['criticalCelsius'] ?? 65 \\: editConfigDefaults['criticalPercent'] ?? 90; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['warningCelsius'] ?? 55) \\: (editConfigDefaults['warningPercent'] ?? 80); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['criticalCelsius'] ?? 65) \\: (editConfigDefaults['criticalPercent'] ?? 90); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Default: {0}{1}"
@@ -11916,8 +11903,6 @@ msgstr ""
 msgid "Webhook URL"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -13452,6 +13437,30 @@ msgid "Close audit record details"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Record ID"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Duration"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Actor"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Timeline"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "to"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Query"
 msgstr ""
@@ -13465,11 +13474,32 @@ msgid "Request payload"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No request payload was recorded."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Recorded Error"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response Payload"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No response or error was recorded."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Raw Audit Record"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Audit record"
 msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
@@ -17030,24 +17060,15 @@ msgstr ""
 msgid "Capture pointer (Esc to release)"
 msgstr ""
 
-#. 0: activeLifecycleCount
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "<0/> {0} active"
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Show log panel"
+#. 0: portal.address; 1: portal.port
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address {0}:{1}"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Hide log panel"
-msgstr ""
-
-#. 0: record.resolvedAction
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "View details for {0}"
-msgstr ""
-
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No additional request/response details were recorded."
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Snapshot job is unavailable"
 msgstr ""
