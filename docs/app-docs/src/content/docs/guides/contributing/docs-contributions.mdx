@@ -1,69 +1,140 @@
 ---
 title: Documentation
-description: Contribute to the Sylve documentation site.
+description: Write, preview, and submit improvements to the Sylve documentation.
 ---
 
-If you want to improve docs, guides, wording, examples, or structure, this page is for you.
+Documentation is part of the product. Clear corrections, better examples, updated screenshots, and entirely new guides are all valuable contributions.
 
-## Docs Project Setup
+You do not need a complete development environment to help. If you are uncomfortable with Git, Node.js, or npm, write your proposed changes in a document or plain-text email and send them to [hello@sylve.io](mailto:hello@sylve.io). Include the page you want to change and enough context for us to understand where the new text belongs.
 
-The docs site is an Astro + Starlight project located at:
+## How The Docs Are Organized
 
-```bash
-<root>/docs/app-docs
+The documentation site is an Astro project built with Starlight. Its project directory is:
+
+```text
+docs/app-docs/
 ```
 
-From the repository root, switch into the docs project first:
+Most documentation pages are MDX files under:
 
-```bash
-cd docs/app-docs
+```text
+docs/app-docs/src/content/docs/
 ```
 
-Install dependencies:
+The folder structure becomes the documentation URL. For example:
 
-```bash
-npm install
+```text
+src/content/docs/guides/contributing/docs-contributions.mdx
 ```
 
-Start local development server:
+is published at `/guides/contributing/docs-contributions/`.
+
+Every page begins with a small frontmatter block containing its title and description:
+
+```md
+---
+title: Documentation
+description: Write, preview, and submit improvements to the Sylve documentation.
+---
+```
+
+Keep screenshots close to the guide that uses them, usually in an adjacent `assets/` directory. Shared layouts, diagrams, and interactive elements live in `src/components/`. Reuse an existing component when it already expresses the same idea and visual language.
+
+## Choose A Focused Change
+
+Start with one clear outcome. Good documentation contributions include:
+
+- Correcting inaccurate or outdated behavior
+- Making an unclear paragraph easier to understand
+- Adding a missing prerequisite, warning, or troubleshooting detail
+- Updating commands, configuration examples, or screenshots
+- Adding a guide for a complete and repeatable workflow
+
+Read the surrounding pages before writing. Match their terminology and avoid duplicating information that already has a natural home elsewhere. Commands and configuration should reflect current Sylve behavior, not assumptions or planned features.
+
+## Preview Your Work Locally
+
+You need a current Node.js installation with npm. Clone the repository, then enter the docs project:
+
+```bash
+git clone https://github.com/AlchemillaHQ/Sylve
+cd Sylve/docs/app-docs
+```
+
+Install the locked dependencies:
+
+```bash
+npm ci
+```
+
+Start the local development server:
 
 ```bash
 npm run dev
 ```
 
-Build the site:
+The development server watches your files and refreshes the page as you edit. Review the page at both wide and narrow viewport sizes. Check headings, tables, code blocks, links, images, light mode, and dark mode when your change affects presentation.
+
+Before submitting the change, create a production build:
 
 ```bash
 npm run build
 ```
 
-Preview the production build locally:
+This catches invalid MDX, broken imports, and other build-time problems. You can inspect the generated site with:
 
 ```bash
 npm run preview
 ```
 
-## Where To Edit
+## Writing Style
 
-Docs content lives under:
+Write for someone performing the task for the first time. Use direct language, short sections, and concrete commands. Explain why a choice matters when that context helps the reader make a decision.
 
-```bash
-src/content/docs/
+Keep examples realistic and internally consistent. Do not invent configuration properties, commands, ports, or supported behavior. When documenting code or configuration, confirm it against the current implementation.
+
+Prefer links with descriptive text instead of raw URLs. Use notes and warnings sparingly, and only when the information should interrupt the normal reading flow. Screenshots should clarify an interface or decision, not replace instructions that can be searched and copied.
+
+## Commit Messages
+
+Documentation commits follow the same scoped structure as the rest of the repository:
+
+```text
+docs: summary
+docs: area: summary
 ```
 
-You can contribute by:
+Use `docs: app-docs:` for changes to this documentation site, followed by a concise imperative summary:
 
-- Fixing typos, grammar, and clarity.
-- Adding missing setup or troubleshooting details.
-- Improving step-by-step guides.
-- Updating screenshots and examples when behavior changes.
+```text
+docs: app-docs: clarify the source installation workflow
+docs: app-docs: update the virtual machine screenshots
+docs: app-docs: document replication prerequisites
+```
 
-## Pull Request Checklist
+Keep the subject lowercase, omit a trailing period, and keep each commit focused on one coherent change. Add a commit body after a blank line when the reason for the change is not obvious from the diff.
 
-Before opening your PR:
+## Open A Pull Request
 
-- Ensure your pages render correctly in `npm run dev`.
-- Run `npm run build` to make sure the site compiles.
-- Add a clear PR description of what changed and why.
+Push your branch to your fork and open a pull request against the Sylve repository. In your own words, describe:
 
-Small and focused documentation pull requests are always welcome.
+- What was unclear, missing, or incorrect
+- What you changed
+- How you verified the result
+
+Keep the pull request small enough to review as one idea. If it changes screenshots or visual components, include before and after images when useful. Maintainers may suggest wording or structural changes so the contribution remains consistent with the rest of the documentation.
+
+Application test and build workflows ignore changes confined to `docs/**`, so a documentation-only pull request does not run the FreeBSD application test matrix. Running `npm run build` locally is therefore an important part of preparing the contribution.
+
+If the change also includes application code, follow the [code contribution guide](/guides/contributing/code-contributions/) and run the checks relevant to that code.
+
+## Before You Submit
+
+- Read the finished page from top to bottom in the local preview
+- Confirm commands and technical claims against the current product or code
+- Check internal and external links
+- Confirm images are legible and have useful alternative text
+- Run `npm run build`
+- Keep the commit and pull request focused
+
+If the tooling is a barrier, email the change to [hello@sylve.io](mailto:hello@sylve.io). A useful correction should not be lost because someone does not have a Git or Node.js workflow.

@@ -1,0 +1,161 @@
+<div class="comparison not-content">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Comparison</th>
+          <th scope="col" class="sylve"><span>Sylve</span><small>FreeBSD-native</small></th>
+          <th scope="col"><span>Proxmox VE</span><small>Virtualization platform</small></th>
+          <th scope="col"><span>TrueNAS SCALE</span><small>Storage platform</small></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Foundation</th>
+          <td class="sylve"><strong>FreeBSD 15+</strong><span>Installed at the application layer</span></td>
+          <td><strong>Debian Linux</strong><span>Delivered as a complete platform</span></td>
+          <td><strong>Linux</strong><span>Delivered as a storage appliance OS</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Primary focus</th>
+          <td class="sylve"><strong>FreeBSD infrastructure</strong><span>Compute, ZFS, networking, and host operations together</span></td>
+          <td><strong>Virtualization clusters</strong><span>VMs, containers, distributed compute, and storage</span></td>
+          <td><strong>Storage services</strong><span>ZFS data management with apps and VMs alongside it</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Workloads</th>
+          <td class="sylve"><strong>Bhyve + Jails</strong><span>FreeBSD and Linux guests</span></td>
+          <td><strong>KVM + LXC</strong><span>Linux containers and virtual machines</span></td>
+          <td><strong>KVM + Apps</strong><span>Workloads run close to storage</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Clustering</th>
+          <td class="sylve"><strong>Built-in Raft coordination</strong><span>No separate clustering stack</span></td>
+          <td><strong>Corosync-based cluster</strong><span>Mature multi-node virtualization tooling</span></td>
+          <td><strong>Storage-oriented HA</strong><span>Advanced HA capabilities vary by deployment</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Host ownership</th>
+          <td class="sylve"><strong>Leaves FreeBSD intact</strong><span>Manages the host without replacing it</span></td>
+          <td><strong>Owns the platform</strong><span>Designed to be the virtualization host OS</span></td>
+          <td><strong>Owns the appliance</strong><span>Designed to be the storage host OS</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Best fit</th>
+          <td class="sylve"><strong>Unified infrastructure</strong><span>One self-contained system for compute, storage, networking, and operations</span></td>
+          <td><strong>General virtualization</strong><span>Large, established Linux-based VM environments</span></td>
+          <td><strong>Storage-first systems</strong><span>NAS and data services are the center of the deployment</span></td>
+        </tr>
+        <tr>
+          <th scope="row">License model</th>
+          <td class="sylve"><strong>BSD-2-Clause</strong><span>Permissive open source</span></td>
+          <td><strong>AGPLv3</strong><span>Open source with optional subscriptions</span></td>
+          <td><strong>Open-source components</strong><span>Additional Enterprise features are licensed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">These products overlap, but begin from different priorities. Sylve is the FreeBSD-native option; Proxmox VE is virtualization-first; TrueNAS SCALE is storage-first.</p>
+</div>
+
+<style>
+  .comparison {
+    --line: color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+    --line-strong: color-mix(in oklab, var(--sl-color-white) 25%, transparent);
+    --accent-soft: color-mix(in oklab, var(--sl-color-accent) 9%, transparent);
+    margin: 1.5rem 0 2rem;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line-strong);
+    border-radius: 0.35rem;
+  }
+
+  table {
+    width: 100%;
+    min-width: 40rem;
+    border-collapse: collapse;
+    background: var(--sl-color-bg);
+    font-size: 0.78rem;
+    table-layout: fixed;
+  }
+
+  th,
+  td {
+    padding: 0.9rem 1rem;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  tr > :last-child { border-right: 0; }
+  tbody tr:last-child > * { border-bottom: 0; }
+
+  thead th {
+    padding-block: 1rem;
+    background: color-mix(in oklab, var(--sl-color-white) 3%, transparent);
+    color: var(--sl-color-white);
+    font-weight: 650;
+  }
+
+  thead th:first-child,
+  tbody th {
+    width: 7.5rem;
+  }
+
+  thead span,
+  thead small,
+  td strong,
+  td span {
+    display: block;
+  }
+
+  thead small {
+    margin-top: 0.22rem;
+    color: var(--sl-color-gray-3);
+    font: 0.6rem var(--sl-font-mono);
+    font-weight: 400;
+  }
+
+  tbody th {
+    color: var(--sl-color-gray-2);
+    font: 600 0.63rem var(--sl-font-mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  td strong {
+    color: var(--sl-color-white);
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  td span {
+    margin-top: 0.3rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.7rem;
+    line-height: 1.45;
+  }
+
+  .sylve {
+    background: var(--accent-soft);
+  }
+
+  thead .sylve {
+    box-shadow: inset 0 2px 0 var(--sl-color-accent);
+  }
+
+  .note {
+    margin: 0.75rem 0 0;
+    color: var(--sl-color-gray-3);
+    font-size: 0.7rem;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 40rem) {
+    .table-wrap { margin-inline: -0.5rem; }
+  }
+</style>

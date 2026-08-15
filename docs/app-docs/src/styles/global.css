@@ -123,6 +123,21 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.sl-markdown-content :where(p, li) > a:not([class]) {
+  color: var(--sl-color-white);
+  font-weight: 550;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in oklab, currentColor 48%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color 140ms ease;
+}
+
+.sl-markdown-content :where(p, li) > a:not([class]):hover {
+  text-decoration-color: currentColor;
+}
+
+
 :root[data-theme="dark"] body {
   background:
     radial-gradient(62rem 34rem at 18% -6%, rgb(255 255 255 / 4%), transparent 72%),
@@ -398,6 +413,28 @@ expressive-code .frame {
   .page > header.header .right-group {
     justify-self: end;
     gap: 0.6rem;
+  }
+}
+
+@media (min-width: 72rem) {
+  [data-has-sidebar][data-has-toc] {
+    --sl-content-width: 60rem;
+  }
+
+  [data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-margin-inline: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  [data-has-sidebar][data-has-toc] .right-sidebar-container {
+    flex: 0 0 var(--sl-sidebar-width);
+    width: var(--sl-sidebar-width);
+  }
+
+  [data-has-sidebar][data-has-toc] .right-sidebar {
+    width: var(--sl-sidebar-width);
   }
 }
 
