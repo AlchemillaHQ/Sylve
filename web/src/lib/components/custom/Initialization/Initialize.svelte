@@ -12,7 +12,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { resource } from 'runed';
 	import type { AvailableService } from '$lib/types/system/settings';
-	import { INITIALIZATION_SERVICES } from '$lib/system-services';
+	import { INITIALIZATION_SERVICE_GROUPS, INITIALIZATION_SERVICES } from '$lib/system-services';
 	import { getBasicHealth } from '$lib/api/system/system';
 	import { isAPIResponse } from '$lib/utils/http';
 	import type { InitializeResponse } from '$lib/types/basic';
@@ -173,15 +173,23 @@
 
 				<Label class="text-sm font-medium text-gray-600 dark:text-gray-300">Services</Label>
 
-				<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-					{#each INITIALIZATION_SERVICES as service (service.id)}
-						<CustomCheckbox
-							id={`initialization-service-${service.id}`}
-							label={service.label}
-							bind:checked={properties.services[service.id]}
-							classes="flex items-center gap-2"
-							disabled={initializing || verifying || initializationAccepted}
-						></CustomCheckbox>
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					{#each INITIALIZATION_SERVICE_GROUPS as group (group.label)}
+						<fieldset class="min-w-0 rounded-md border px-3 pb-3">
+							<legend class="px-1 text-sm font-medium text-muted-foreground">{group.label}</legend>
+
+							<div class="flex flex-col gap-2 pt-1">
+								{#each group.services as service (service.id)}
+									<CustomCheckbox
+										id={`initialization-service-${service.id}`}
+										label={service.label}
+										bind:checked={properties.services[service.id]}
+										classes="flex items-center gap-2"
+										disabled={initializing || verifying || initializationAccepted}
+									></CustomCheckbox>
+								{/each}
+							</div>
+						</fieldset>
 					{/each}
 				</div>
 			</div>
