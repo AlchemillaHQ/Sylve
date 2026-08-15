@@ -80,6 +80,7 @@ cross-build-arm64:
 
 frontend:
 	npm ci --prefix web
+	npm run check --prefix web
 	npm run build --prefix web
 	mkdir -p internal/assets/web-files
 	cp -rf web/build/* internal/assets/web-files/

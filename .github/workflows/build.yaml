@@ -2,11 +2,14 @@ name: Build
 on:
   push:
     branches:
-      - "**"
+      - master
     paths-ignore:
       - "docs/**"
     tags-ignore:
       - tip
+  pull_request:
+    paths-ignore:
+      - "docs/**"
 
 permissions:
   contents: read
@@ -27,9 +30,12 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Build Web Assets
+      - name: Check and Build Web Assets
         run: |
           make frontend
+      - name: Build Demo Web Assets
+        run: |
+          npm run build:demo --prefix web
       - name: Upload Web Assets
         uses: actions/upload-artifact@v7
         with:

@@ -149,7 +149,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Build Web Assets
+      - name: Check and Build Web Assets
         run: |
           make frontend
 
