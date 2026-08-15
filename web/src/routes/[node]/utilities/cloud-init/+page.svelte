@@ -122,12 +122,7 @@
 </div>
 
 {#if modal.new}
-	<Form
-		bind:open={modal.new}
-		template={null}
-		node={data.node}
-		onSaved={refreshTemplates}
-	/>
+	<Form bind:open={modal.new} template={null} node={data.node} onSaved={refreshTemplates} />
 {/if}
 
 {#if modal.edit}

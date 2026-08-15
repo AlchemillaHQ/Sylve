@@ -79,7 +79,8 @@
 		<div class="flex items-start justify-between gap-4 border-b px-5 py-4">
 			<div class="min-w-0">
 				<div class="flex items-center gap-2.5">
-					<span class="icon-[mdi--clipboard-text-clock-outline] text-primary h-5 w-5 shrink-0"></span>
+					<span class="icon-[mdi--clipboard-text-clock-outline] text-primary h-5 w-5 shrink-0"
+					></span>
 					<Dialog.Title class="truncate text-base font-semibold">Audit Record Details</Dialog.Title>
 				</div>
 				<Dialog.Description class="mt-1.5 truncate pl-7">
@@ -109,7 +110,9 @@
 							Status
 						</div>
 						<span
-							class="mt-1 inline-flex rounded-md px-2 py-0.5 text-xs font-semibold {statusClass(record.status)}"
+							class="mt-1 inline-flex rounded-md px-2 py-0.5 text-xs font-semibold {statusClass(
+								record.status
+							)}"
 						>
 							{statusLabel(record.status)}
 						</span>
@@ -162,9 +165,7 @@
 						</div>
 						<div class="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
 							<div class="rounded-lg border px-3 py-2.5">
-								<div
-									class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase"
-								>
+								<div class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
 									Endpoint
 								</div>
 								<div class="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs">

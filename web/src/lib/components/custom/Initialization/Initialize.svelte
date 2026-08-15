@@ -23,17 +23,20 @@
 
 	let { initialized = $bindable() }: Props = $props();
 
-	const pools = resource(() => 'initialization-pools', async () => {
-		const response = await getPoolsResponse(true);
-		if (response.status !== 'success' || !Array.isArray(response.data)) {
-			const error = Array.isArray(response.error)
-				? response.error.join(', ')
-				: response.error || response.message || 'Unable to load ZFS pools';
-			throw new Error(error);
-		}
+	const pools = resource(
+		() => 'initialization-pools',
+		async () => {
+			const response = await getPoolsResponse(true);
+			if (response.status !== 'success' || !Array.isArray(response.data)) {
+				const error = Array.isArray(response.error)
+					? response.error.join(', ')
+					: response.error || response.message || 'Unable to load ZFS pools';
+				throw new Error(error);
+			}
 
-		return response.data;
-	});
+			return response.data;
+		}
+	);
 
 	let properties = $state({
 		pools: {
@@ -122,63 +125,63 @@
 	}
 </script>
 
-	<Dialog.Root open={true}>
-		<Dialog.Content
-			overlayClass="bg-background"
-			class="bg-card text-card-foreground max-h-[90dvh] overflow-y-auto"
-			onInteractOutside={(e) => e.preventDefault()}
-			onEscapeKeydown={(e) => e.preventDefault()}
-			showCloseButton={false}
-		>
-			<Dialog.Header>
-				<div class="flex w-full items-center justify-between">
-					<Dialog.Title class="flex-1 text-center">
-						<div class="flex items-center justify-center space-x-2">
-							{#if mode.current === 'dark'}
-								<img src="/logo/white.svg" alt="Sylve Logo" class="h-8 w-auto max-w-25" />
-							{:else}
-								<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto max-w-25" />
-							{/if}
-							<p class="font-normal tracking-[.45em]">SYLVE</p>
-						</div>
-					</Dialog.Title>
-				</div>
-			</Dialog.Header>
-
-			<div class="flex flex-col gap-4">
-				<ComboBox
-					bind:open={properties.pools.combobox.open}
-					label="ZFS Storage Pools"
-					bind:value={properties.pools.combobox.values}
-					data={generateComboboxOptions((pools.current ?? []).map((p) => p.name))}
-					classes="flex-1 space-y-3"
-					placeholder="Select Pools"
-					width="w-full"
-					multiple={true}
-					disabled={pools.loading || initializing || verifying || initializationAccepted}
-				></ComboBox>
-
-				{#if pools.loading}
-					<p class="text-sm text-muted-foreground" role="status">Loading existing ZFS pools...</p>
-				{:else if pools.error}
-					<div class="flex items-center justify-between gap-3 text-sm text-destructive" role="alert">
-						<span>Existing ZFS pools could not be loaded. You can continue without one.</span>
-						<Button variant="outline" size="sm" onclick={() => void pools.refetch()}>Retry</Button>
+<Dialog.Root open={true}>
+	<Dialog.Content
+		overlayClass="bg-background"
+		class="bg-card text-card-foreground max-h-[90dvh] overflow-y-auto"
+		onInteractOutside={(e) => e.preventDefault()}
+		onEscapeKeydown={(e) => e.preventDefault()}
+		showCloseButton={false}
+	>
+		<Dialog.Header>
+			<div class="flex w-full items-center justify-between">
+				<Dialog.Title class="flex-1 text-center">
+					<div class="flex items-center justify-center space-x-2">
+						{#if mode.current === 'dark'}
+							<img src="/logo/white.svg" alt="Sylve Logo" class="h-8 w-auto max-w-25" />
+						{:else}
+							<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto max-w-25" />
+						{/if}
+						<p class="font-normal tracking-[.45em]">SYLVE</p>
 					</div>
-				{:else if pools.current?.length === 0}
-					<p class="text-sm text-muted-foreground">
-						No existing pools were found. You can continue and create one later in Sylve.
-					</p>
-				{/if}
+				</Dialog.Title>
+			</div>
+		</Dialog.Header>
 
+		<div class="flex flex-col gap-4">
+			<ComboBox
+				bind:open={properties.pools.combobox.open}
+				label="ZFS Storage Pools"
+				bind:value={properties.pools.combobox.values}
+				data={generateComboboxOptions((pools.current ?? []).map((p) => p.name))}
+				classes="flex-1 space-y-3"
+				placeholder="Select Pools"
+				width="w-full"
+				multiple={true}
+				disabled={pools.loading || initializing || verifying || initializationAccepted}
+			></ComboBox>
+
+			{#if pools.loading}
+				<p class="text-sm text-muted-foreground" role="status">Loading existing ZFS pools...</p>
+			{:else if pools.error}
+				<div class="flex items-center justify-between gap-3 text-sm text-destructive" role="alert">
+					<span>Existing ZFS pools could not be loaded. You can continue without one.</span>
+					<Button variant="outline" size="sm" onclick={() => void pools.refetch()}>Retry</Button>
+				</div>
+			{:else if pools.current?.length === 0}
+				<p class="text-sm text-muted-foreground">
+					No existing pools were found. You can continue and create one later in Sylve.
+				</p>
+			{/if}
+
+			<div class="space-y-2">
 				<Label class="text-sm font-medium text-gray-600 dark:text-gray-300">Services</Label>
-
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<div class="grid grid-cols-1 gap-1 sm:grid-cols-2">
 					{#each INITIALIZATION_SERVICE_GROUPS as group (group.label)}
 						<fieldset class="min-w-0 rounded-md border px-3 pb-3">
 							<legend class="px-1 text-sm font-medium text-muted-foreground">{group.label}</legend>
 
-							<div class="flex flex-col gap-2 pt-1">
+							<div class="flex flex-col gap-3 pt-1">
 								{#each group.services as service (service.id)}
 									<CustomCheckbox
 										id={`initialization-service-${service.id}`}
@@ -193,44 +196,40 @@
 					{/each}
 				</div>
 			</div>
+		</div>
 
-			{#if shownErrors.length > 0}
-				<Alert.Root variant="destructive" role="alert">
-					<Alert.Title>
-						<div class="flex items-center gap-1">
-							<span class="icon-[mdi--alert-circle-outline] h-4 w-4 shrink-0 text-red-600"></span>
-							<span>Initialization needs attention</span>
-						</div>
-					</Alert.Title>
-					<Alert.Description>
-						<ul class="list-inside list-disc text-sm">
-							{#each shownErrors as error, index (`${index}-${error}`)}
-								<li>{error}</li>
-							{/each}
-						</ul>
-					</Alert.Description>
-				</Alert.Root>
-			{/if}
+		{#if shownErrors.length > 0}
+			<Alert.Root variant="destructive" role="alert">
+				<Alert.Title>
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--alert-circle-outline] h-4 w-4 shrink-0 text-red-600"></span>
+						<span>Initialization needs attention</span>
+					</div>
+				</Alert.Title>
+				<Alert.Description>
+					<ul class="list-inside list-disc text-sm">
+						{#each shownErrors as error, index (`${index}-${error}`)}
+							<li>{error}</li>
+						{/each}
+					</ul>
+				</Alert.Description>
+			</Alert.Root>
+		{/if}
 
-			<Dialog.Footer class="flex justify-end">
-				<div class="flex w-full items-center justify-end gap-2">
-					<Button
-						onclick={startInit}
-						type="button"
-						size="sm"
-						disabled={initializing || verifying}
-					>
-						{#if initializing}
-							Initializing...
-						{:else if verifying}
-							Checking status...
-						{:else if initializationAccepted}
-							Check status
-						{:else}
-							Initialize
-						{/if}
-					</Button>
-				</div>
-			</Dialog.Footer>
-		</Dialog.Content>
-	</Dialog.Root>
+		<Dialog.Footer class="flex justify-end">
+			<div class="flex w-full items-center justify-end gap-2">
+				<Button onclick={startInit} type="button" size="sm" disabled={initializing || verifying}>
+					{#if initializing}
+						Initializing...
+					{:else if verifying}
+						Checking status...
+					{:else if initializationAccepted}
+						Check status
+					{:else}
+						Initialize
+					{/if}
+				</Button>
+			</div>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

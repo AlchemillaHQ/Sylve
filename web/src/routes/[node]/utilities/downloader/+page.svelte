@@ -479,7 +479,13 @@
 {#snippet button(type: string)}
 	{#if type === 'download' && onlyChildSelected && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
-			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5" disabled={signedURLLoading}>
+			<Button
+				onclick={handleDownload}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={signedURLLoading}
+			>
 				{#if signedURLLoading}
 					<span class="icon-[mdi--loading] h-4 w-4 animate-spin" aria-hidden="true"></span>
 					<span class="sr-only">Creating download link</span>
@@ -492,7 +498,13 @@
 
 	{#if type === 'download' && (httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
-			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5" disabled={signedURLLoading}>
+			<Button
+				onclick={handleDownload}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={signedURLLoading}
+			>
 				{#if signedURLLoading}
 					<span class="icon-[mdi--loading] h-4 w-4 animate-spin" aria-hidden="true"></span>
 					<span class="sr-only">Creating download link</span>
@@ -505,12 +517,23 @@
 
 	{#if type === 'copy' && (((httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
 		{#if activeRows && activeRows.length == 1}
-			<Button onclick={handleCopyURL} size="sm" variant="outline" class="h-6.5" disabled={signedURLLoading}>
+			<Button
+				onclick={handleCopyURL}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={signedURLLoading}
+			>
 				{#if signedURLLoading}
 					<span class="icon-[mdi--loading] h-4 w-4 animate-spin" aria-hidden="true"></span>
 					<span class="sr-only">Creating download link</span>
 				{:else}
-					<SpanWithIcon icon="icon-[mdi--content-copy]" size="h-4 w-4" gap="gap-2" title="Copy URL" />
+					<SpanWithIcon
+						icon="icon-[mdi--content-copy]"
+						size="h-4 w-4"
+						gap="gap-2"
+						title="Copy URL"
+					/>
 				{/if}
 			</Button>
 		{/if}

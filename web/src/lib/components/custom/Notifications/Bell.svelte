@@ -137,10 +137,13 @@
 
 		dismissAllOpen = false;
 		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
-		toast.success(`${response.dismissed} notification${response.dismissed === 1 ? '' : 's'} dismissed`, {
-			duration: 3000,
-			position: 'bottom-center'
-		});
+		toast.success(
+			`${response.dismissed} notification${response.dismissed === 1 ? '' : 's'} dismissed`,
+			{
+				duration: 3000,
+				position: 'bottom-center'
+			}
+		);
 	}
 
 	function preventDismissEscape(event: KeyboardEvent) {
@@ -267,7 +270,7 @@
 			minWidth: 170,
 			cssClass: 'text-xs',
 			formatter: (cell: CellComponent) => convertDbTime(String(cell.getValue()))
-		},
+		}
 	];
 
 	let tableRows = $derived(
@@ -380,10 +383,7 @@
 
 <style>
 	:global(
-		html:not(.dark)
-			.s-modal-table-container
-			.tabulator-placeholder
-			.tabulator-placeholder-contents
+		html:not(.dark) .s-modal-table-container .tabulator-placeholder .tabulator-placeholder-contents
 	) {
 		color: var(--muted-foreground);
 	}

@@ -45,7 +45,8 @@
 		if (state === 'SCANNING' || state === 'PAUSED') {
 			return `${name}${state === 'PAUSED' ? ' paused' : ' active'}${scan.progressPercent === null ? '' : ` · ${scan.progressPercent.toFixed(0)}%`}`;
 		}
-		if (state === 'CANCELED' || state === 'CANCELLED' || state === 'INTERRUPTED') return `${name} incomplete`;
+		if (state === 'CANCELED' || state === 'CANCELLED' || state === 'INTERRUPTED')
+			return `${name} incomplete`;
 		if (scan.errors > 0) return `${name} found ${scan.errors} error${scan.errors === 1 ? '' : 's'}`;
 		const completed = parseScanTime(scan.endTime || scan.startTime);
 		return completed
@@ -68,7 +69,9 @@
 			<div class="flex min-w-0 items-start justify-between gap-4">
 				<div class="flex min-w-0 items-center gap-2">
 					<span class="truncate text-sm font-semibold">{pool.name}</span>
-					<Badge variant="outline" class={['shrink-0 text-[10px]', stateClass(pool.state)]}>{pool.state}</Badge>
+					<Badge variant="outline" class={['shrink-0 text-[10px]', stateClass(pool.state)]}
+						>{pool.state}</Badge
+					>
 				</div>
 				<div class="flex shrink-0 items-center gap-2 text-xs">
 					<span class="text-muted-foreground">Used</span>
@@ -85,7 +88,14 @@
 				aria-valuenow={Math.min(100, usedPercent(pool))}
 			>
 				<div
-					class={['h-full rounded-full', usedPercent(pool) >= 90 ? 'bg-red-500' : usedPercent(pool) >= 80 ? 'bg-amber-500' : 'bg-blue-500']}
+					class={[
+						'h-full rounded-full',
+						usedPercent(pool) >= 90
+							? 'bg-red-500'
+							: usedPercent(pool) >= 80
+								? 'bg-amber-500'
+								: 'bg-blue-500'
+					]}
 					style:width={`${Math.min(100, usedPercent(pool))}%`}
 				></div>
 			</div>
@@ -93,7 +103,11 @@
 			<div class="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
 				<span>{formatBytesBinary(pool.free)} free</span>
 				<span class={errorCount(pool) > 0 ? 'font-medium text-red-600 dark:text-red-400' : ''}>
-					{errorCount(pool) > 0 ? `${errorCount(pool)} errors` : pool.statusAvailable ? 'No known errors' : 'Status unavailable'}
+					{errorCount(pool) > 0
+						? `${errorCount(pool)} errors`
+						: pool.statusAvailable
+							? 'No known errors'
+							: 'Status unavailable'}
 				</span>
 				<span>{scanLabel(pool)}</span>
 			</div>

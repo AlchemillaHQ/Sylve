@@ -11,9 +11,9 @@
 		classes?: { parent?: string; label?: string; trigger?: string };
 		onChange: (value: string) => void;
 		title?: string;
-	disabled?: boolean;
-	size?: 'sm' | 'default';
-	single?: boolean;
+		disabled?: boolean;
+		size?: 'sm' | 'default';
+		single?: boolean;
 	}
 
 	let {

@@ -39,7 +39,9 @@ function encodeBase64URL(input: ArrayBuffer | null): string | null {
 	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-function mapDescriptorIds<T extends { id: string }>(descriptors: T[]): (Omit<T, 'id'> & { id: ArrayBuffer })[] {
+function mapDescriptorIds<T extends { id: string }>(
+	descriptors: T[]
+): (Omit<T, 'id'> & { id: ArrayBuffer })[] {
 	return descriptors.map((descriptor) => ({
 		...descriptor,
 		id: decodeBase64URL(descriptor.id)

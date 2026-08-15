@@ -307,12 +307,12 @@
 					}}
 				/>
 
-			<SimpleSelect
-				label="Encryption"
-				placeholder="Select Encryption"
-				options={encryptionOptions}
-				bind:value={properties.encryption}
-				onChange={(value) => (properties.encryption = value)}
+				<SimpleSelect
+					label="Encryption"
+					placeholder="Select Encryption"
+					options={encryptionOptions}
+					bind:value={properties.encryption}
+					onChange={(value) => (properties.encryption = value)}
 					classes={{
 						parent: 'flex-1 min-w-0 space-y-1',
 						label: 'flex h-7 items-center whitespace-nowrap text-sm',

@@ -259,10 +259,7 @@
 	});
 
 	let runningJobStatusUnavailable = $derived(
-		!loadingDatasets &&
-			!checkingRunningJobStatus &&
-			!!targetId &&
-			!runningJobStatusAvailable
+		!loadingDatasets && !checkingRunningJobStatus && !!targetId && !runningJobStatusAvailable
 	);
 
 	let generationAliasByTag = $derived(buildGenerationAliasMap(snapshots));
@@ -823,18 +820,18 @@
 			/>
 
 			{#if selectedSnapshotInfo?.encrypted || selectedRestoreTargetDatasetGroup?.encrypted}
-			<div class="space-y-1">
-				<CustomValueInput
-					label="Encryption Passphrase (Optional)"
-					placeholder="Required only when the key is not already registered"
-					type="password"
-					bind:value={encryptionKey}
-					classes="space-y-1"
-				/>
-				<p class="text-xs text-muted-foreground">
-					A supplied passphrase is saved in the cluster key store for automated recovery.
-				</p>
-			</div>
+				<div class="space-y-1">
+					<CustomValueInput
+						label="Encryption Passphrase (Optional)"
+						placeholder="Required only when the key is not already registered"
+						type="password"
+						bind:value={encryptionKey}
+						classes="space-y-1"
+					/>
+					<p class="text-xs text-muted-foreground">
+						A supplied passphrase is saved in the cluster key store for automated recovery.
+					</p>
+				</div>
 			{/if}
 
 			{#if restoreTargetSupportsNetworkRestore}
@@ -900,13 +897,13 @@
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 					{#if selectedRestoreTargetDatasetKind === 'vm' || selectedRestoreTargetDatasetKind === 'jail'}
 						<li>
-							Guest restores are create-only. The RID/CTID and canonical destination dataset
-							must not already exist.
+							Guest restores are create-only. The RID/CTID and canonical destination dataset must
+							not already exist.
 						</li>
 						{#if selectedRestoreTargetDatasetKind === 'vm'}
 							<li>
-								The selected VM root uses the destination pool. Any additional VM storage pools
-								keep their original pool names and must exist on the restore node.
+								The selected VM root uses the destination pool. Any additional VM storage pools keep
+								their original pool names and must exist on the restore node.
 							</li>
 						{/if}
 					{:else}

@@ -6,20 +6,20 @@ import { cachedFetch } from '$lib/utils/http';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 
 export async function load() {
-    const cacheDuration = SEVEN_DAYS;
-    const [targets, volumes, sessions] = await Promise.all([
-        cachedFetch('iscsi-targets', async () => await getTargets(), cacheDuration),
-        cachedFetch(
-            'zfs-volumes',
-            async () => await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME),
-            cacheDuration
-        ),
-        cachedFetch('iscsi-target-sessions', async () => await getTargetSessions(), cacheDuration)
-    ]);
+	const cacheDuration = SEVEN_DAYS;
+	const [targets, volumes, sessions] = await Promise.all([
+		cachedFetch('iscsi-targets', async () => await getTargets(), cacheDuration),
+		cachedFetch(
+			'zfs-volumes',
+			async () => await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME),
+			cacheDuration
+		),
+		cachedFetch('iscsi-target-sessions', async () => await getTargetSessions(), cacheDuration)
+	]);
 
-    return {
-        targets,
-        volumes,
-        sessions
-    };
+	return {
+		targets,
+		volumes,
+		sessions
+	};
 }

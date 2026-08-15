@@ -12,11 +12,17 @@ export async function getDynamicDNSEntries(
 	signal?: AbortSignal,
 	preserveErrors = false
 ): Promise<DynamicDNSEntry[] | APIResponse> {
-	return await apiRequest('/dynamic-dns/entries', z.array(DynamicDNSEntrySchema), 'GET', undefined, {
-		hostname,
-		signal,
-		preserveErrors
-	});
+	return await apiRequest(
+		'/dynamic-dns/entries',
+		z.array(DynamicDNSEntrySchema),
+		'GET',
+		undefined,
+		{
+			hostname,
+			signal,
+			preserveErrors
+		}
+	);
 }
 
 export async function createDynamicDNSEntry(

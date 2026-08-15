@@ -15,72 +15,72 @@ import { createReactiveStorage } from './utils/storage';
 import type { AvailableService } from './types/system/settings';
 
 type SharedStorage = {
-    token: string | null;
-    oldToken: string | null;
-    language: Locales | null;
-    localHostname: string | null;
-    hostname: string | null;
-    nodeId: string | null;
-    fileExplorerCurrentPath: string | null;
-    visible: boolean | null;
-    idle: boolean | null;
-    enabledServices: AvailableService[] | null;
-    enabledServicesByHostname: Record<string, AvailableService[]> | null;
-    openAbout: boolean;
-    openCommands: boolean;
-    showReplication: boolean;
-    windowResized: boolean;
-    windowSize: number;
+	token: string | null;
+	oldToken: string | null;
+	language: Locales | null;
+	localHostname: string | null;
+	hostname: string | null;
+	nodeId: string | null;
+	fileExplorerCurrentPath: string | null;
+	visible: boolean | null;
+	idle: boolean | null;
+	enabledServices: AvailableService[] | null;
+	enabledServicesByHostname: Record<string, AvailableService[]> | null;
+	openAbout: boolean;
+	openCommands: boolean;
+	showReplication: boolean;
+	windowResized: boolean;
+	windowSize: number;
 };
 
 export const storage = createReactiveStorage<SharedStorage>(
-    [
-        ['token', { storage: 'local' }],
-        ['oldToken', { storage: 'local' }],
-        ['language', { storage: 'local' }],
-        ['localHostname', { storage: 'local' }],
-        ['hostname', { storage: 'local' }],
-        ['nodeId', { storage: 'local' }],
-        ['fileExplorerCurrentPath', { storage: 'local' }],
-        ['visible', { storage: 'local' }],
-        ['idle', { storage: 'local' }],
-        ['enabledServices', { storage: 'local' }],
-        ['enabledServicesByHostname', { storage: 'local', init: {} }],
-        ['openAbout', { storage: 'local', init: false }],
-        ['openCommands', { storage: 'local', init: false }],
-        ['showReplication', { storage: 'local', init: false }],
-        ['windowResized', { storage: 'local', init: false }],
-        ['windowSize', { storage: 'local', init: 0 }]
-    ],
-    {
-        prefix: 'sylve:',
-        storage: 'local'
-    }
+	[
+		['token', { storage: 'local' }],
+		['oldToken', { storage: 'local' }],
+		['language', { storage: 'local' }],
+		['localHostname', { storage: 'local' }],
+		['hostname', { storage: 'local' }],
+		['nodeId', { storage: 'local' }],
+		['fileExplorerCurrentPath', { storage: 'local' }],
+		['visible', { storage: 'local' }],
+		['idle', { storage: 'local' }],
+		['enabledServices', { storage: 'local' }],
+		['enabledServicesByHostname', { storage: 'local', init: {} }],
+		['openAbout', { storage: 'local', init: false }],
+		['openCommands', { storage: 'local', init: false }],
+		['showReplication', { storage: 'local', init: false }],
+		['windowResized', { storage: 'local', init: false }],
+		['windowSize', { storage: 'local', init: 0 }]
+	],
+	{
+		prefix: 'sylve:',
+		storage: 'local'
+	}
 );
 
 export const languageArr: { value: Locales; label: string }[] = [
-    { value: 'en', label: 'English' },
-    { value: 'mal', label: 'മലയാളം' },
-    { value: 'hi', label: 'हिन्दी' },
-    { value: 'zh-CN', label: '简体中文' },
-    { value: 'de', label: 'Deutsch' },
-    { value: 'cs', label: 'Čeština' }
+	{ value: 'en', label: 'English' },
+	{ value: 'mal', label: 'മലയാളം' },
+	{ value: 'hi', label: 'हिन्दी' },
+	{ value: 'zh-CN', label: '简体中文' },
+	{ value: 'de', label: 'Deutsch' },
+	{ value: 'cs', label: 'Čeština' }
 ];
 
 class SylveDB extends Dexie {
-    kv!: Table<KVEntry, string>;
-    constructor() {
-        super('sylve-db');
-        this.version(1).stores({ kv: '&key, timestamp' });
-    }
+	kv!: Table<KVEntry, string>;
+	constructor() {
+		super('sylve-db');
+		this.version(1).stores({ kv: '&key, timestamp' });
+	}
 }
 
 let _db: SylveDB | null = null;
 
 export function getDB(): SylveDB {
-    if (!_db) {
-        _db = new SylveDB();
-    }
+	if (!_db) {
+		_db = new SylveDB();
+	}
 
-    return _db;
+	return _db;
 }

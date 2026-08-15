@@ -12,7 +12,8 @@ export function getZFSChartTheme(dark: boolean) {
 	}
 
 	const styles = getComputedStyle(document.documentElement);
-	const token = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+	const token = (name: string, fallback: string) =>
+		styles.getPropertyValue(name).trim() || fallback;
 	return {
 		foreground: token('--foreground', dark ? '#e4e4e7' : '#3f3f46'),
 		muted: token('--muted-foreground', dark ? '#a1a1aa' : '#71717a'),

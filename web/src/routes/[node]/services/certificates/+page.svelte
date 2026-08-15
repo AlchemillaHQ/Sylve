@@ -52,9 +52,7 @@
 		{ initialValue: data.certificates }
 	);
 	const certificates = $derived(
-		Array.isArray(certificateResource.current)
-			? (certificateResource.current as Certificate[])
-			: []
+		Array.isArray(certificateResource.current) ? (certificateResource.current as Certificate[]) : []
 	);
 
 	// svelte-ignore state_referenced_locally
@@ -155,18 +153,14 @@
 		| 'expiring'
 		| 'invalid'
 		| 'unavailable';
-	const initialIssuanceStates: Partial<
-		Record<Certificate['issuanceStatus'], StatusDisplay>
-	> = {
+	const initialIssuanceStates: Partial<Record<Certificate['issuanceStatus'], StatusDisplay>> = {
 		submitting: ['mdi:key-plus', 'Preparing Request', 'text-blue-400'],
 		queued: ['mdi:timer-sand', 'Issuance Queued', 'text-blue-400'],
 		processing: ['mdi:progress-key', 'Issuing', 'text-blue-400'],
 		blocked: ['mdi:account-clock-outline', 'Waiting for Active Order', 'text-amber-500'],
 		failed: ['mdi:alert-circle', 'Issuance Failed', 'text-red-500']
 	};
-	const renewalIssuanceStates: Partial<
-		Record<Certificate['issuanceStatus'], StatusDisplay>
-	> = {
+	const renewalIssuanceStates: Partial<Record<Certificate['issuanceStatus'], StatusDisplay>> = {
 		submitting: ['mdi:autorenew', 'Renewal Preparing', 'text-blue-400'],
 		queued: ['mdi:autorenew', 'Renewal Queued', 'text-blue-400'],
 		processing: ['mdi:autorenew', 'Renewing', 'text-blue-400'],
@@ -175,7 +169,10 @@
 	};
 
 	function escapeHTML(value: unknown): string {
-		return String(value ?? '').replace(/[&<>'"]/g, (character) => htmlEscapes[character] ?? character);
+		return String(value ?? '').replace(
+			/[&<>'"]/g,
+			(character) => htmlEscapes[character] ?? character
+		);
 	}
 
 	function certificateValidity(certificate: Certificate): ValidityStatus {
@@ -213,10 +210,10 @@
 		} else {
 			values.push(
 				row.active
-				? renderWithIcon('mdi:check-decagram', 'Active', 'text-green-500')
-				: row.pending
-					? renderWithIcon('mdi:restart-alert', 'Pending Restart', 'text-amber-500')
-					: renderWithIcon('mdi:certificate-outline', 'Available', 'text-muted-foreground')
+					? renderWithIcon('mdi:check-decagram', 'Active', 'text-green-500')
+					: row.pending
+						? renderWithIcon('mdi:restart-alert', 'Pending Restart', 'text-amber-500')
+						: renderWithIcon('mdi:certificate-outline', 'Available', 'text-muted-foreground')
 			);
 			if (row.issuanceOperation === 'renewal') {
 				const renewalState = renewalIssuanceStates[row.issuanceStatus];
@@ -288,7 +285,14 @@
 
 	async function activateSelected() {
 		const certificate = selectedCertificate;
-		if (!certificate || !certificate.ready || certificate.active || certificate.pending || activating) return;
+		if (
+			!certificate ||
+			!certificate.ready ||
+			certificate.active ||
+			certificate.pending ||
+			activating
+		)
+			return;
 		const requestHostname = data.hostname;
 		const generation = pageGeneration;
 		activating = true;
@@ -600,13 +604,7 @@
 			</Button>
 		{/if}
 		{#if selectedCertificate.type === 'sylve-managed' && !selectedCertificate.ready && selectedCertificate.issuanceStatus === 'failed'}
-			<Button
-				size="sm"
-				variant="outline"
-				class="h-6.5"
-				onclick={retrySelected}
-				disabled={retrying}
-			>
+			<Button size="sm" variant="outline" class="h-6.5" onclick={retrySelected} disabled={retrying}>
 				<SpanWithIcon
 					icon="icon-[mdi--reload-alert]"
 					size="h-4 w-4"
@@ -616,13 +614,7 @@
 			</Button>
 		{/if}
 		{#if (selectedCertificate.type === 'lets-encrypt' || selectedCertificate.type === 'sylve-managed') && selectedCertificate.renewable}
-			<Button
-				size="sm"
-				variant="outline"
-				class="h-6.5"
-				onclick={renewSelected}
-				disabled={renewing}
-			>
+			<Button size="sm" variant="outline" class="h-6.5" onclick={renewSelected} disabled={renewing}>
 				<SpanWithIcon
 					icon="icon-[mdi--autorenew]"
 					size="h-4 w-4"
@@ -645,12 +637,7 @@
 			</Button>
 		{/if}
 		{#if selectedCertificate.type !== 'system-default' && !selectedCertificate.active && !selectedCertificate.pending}
-			<Button
-				size="sm"
-				variant="outline"
-				class="h-6.5"
-				onclick={() => (modals.delete.open = true)}
-			>
+			<Button size="sm" variant="outline" class="h-6.5" onclick={() => (modals.delete.open = true)}>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}

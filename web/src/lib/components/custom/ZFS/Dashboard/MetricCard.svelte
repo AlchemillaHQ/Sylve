@@ -60,7 +60,10 @@
 <Card.Root class="relative h-full min-h-40 gap-0 overflow-hidden py-0 shadow-sm">
 	<div class={['absolute inset-x-0 top-0 h-0.5', palette.line]}></div>
 	<div
-		class={['pointer-events-none absolute inset-0 bg-linear-to-br to-transparent opacity-70', palette.glow]}
+		class={[
+			'pointer-events-none absolute inset-0 bg-linear-to-br to-transparent opacity-70',
+			palette.glow
+		]}
 	></div>
 	<Card.Content class="relative flex h-full flex-col p-5">
 		<div class="flex items-center justify-between gap-3">

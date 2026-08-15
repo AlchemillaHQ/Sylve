@@ -17,7 +17,9 @@
 	}
 
 	let { pools, selectedGUID, onSelect }: Props = $props();
-	let sortedPools = $derived([...pools].sort((left, right) => right.fragmentation - left.fragmentation));
+	let sortedPools = $derived(
+		[...pools].sort((left, right) => right.fragmentation - left.fragmentation)
+	);
 	let chartHeight = $derived(Math.max(240, sortedPools.length * 48 + 54));
 
 	let options: EChartsOption = $derived.by(() => {
@@ -55,14 +57,23 @@
 				data: sortedPools.map((pool) => pool.name),
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: foreground, fontSize: 11, fontWeight: 500, width: 96, overflow: 'truncate' }
+				axisLabel: {
+					color: foreground,
+					fontSize: 11,
+					fontWeight: 500,
+					width: 96,
+					overflow: 'truncate'
+				}
 			},
 			series: [
 				{
 					type: 'bar',
 					barWidth: 12,
 					showBackground: true,
-					backgroundStyle: { color: dark ? 'rgba(255,255,255,0.055)' : 'rgba(24,24,27,0.055)', borderRadius: 6 },
+					backgroundStyle: {
+						color: dark ? 'rgba(255,255,255,0.055)' : 'rgba(24,24,27,0.055)',
+						borderRadius: 6
+					},
 					data: sortedPools.map((pool) => ({
 						value: pool.fragmentation,
 						itemStyle: {
@@ -85,7 +96,9 @@
 						fontSize: 10,
 						formatter: (params) => {
 							const pool = sortedPools[Number(params.dataIndex)];
-							return pool ? `${pool.fragmentation.toFixed(0)}% · ${pool.dedupRatio.toFixed(2)}×` : '';
+							return pool
+								? `${pool.fragmentation.toFixed(0)}% · ${pool.dedupRatio.toFixed(2)}×`
+								: '';
 						}
 					},
 					emphasis: { disabled: true }

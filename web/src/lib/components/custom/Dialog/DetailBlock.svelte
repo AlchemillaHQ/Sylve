@@ -9,12 +9,7 @@
 		class?: string;
 	}
 
-	let {
-		label,
-		value,
-		copyLabel = 'Details',
-		class: className = ''
-	}: Props = $props();
+	let { label, value, copyLabel = 'Details', class: className = '' }: Props = $props();
 
 	let text = $derived(formatDetailValue(value));
 
@@ -47,6 +42,5 @@
 		</button>
 	</div>
 	<pre
-		class="bg-muted/15 max-h-72 overflow-auto p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all focus-visible:outline-none">{text}</pre
-	>
+		class="bg-muted/15 max-h-72 overflow-auto p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all focus-visible:outline-none">{text}</pre>
 </section>

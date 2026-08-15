@@ -167,7 +167,7 @@
 @import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 .filepond--list-scroller {
-	@apply bg-transparent! text-foreground;
+	@apply text-foreground bg-transparent!;
 }
 
 .filepond--drop-label {
@@ -188,7 +188,6 @@
 }
 
 @layer components {
-
 	.tabulator-popup-container {
 		background: var(--popover);
 		border-color: var(--border);

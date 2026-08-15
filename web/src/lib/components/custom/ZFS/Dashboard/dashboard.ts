@@ -184,7 +184,10 @@ export function aggregatePoolHistory(series: ZFSDashboardPoolSeries[]): PoolStat
 				id: Math.max(...points.map((point) => point.id)),
 				time,
 				health: points.reduce((health, point) => worseHealth(health, point.health), 'ONLINE'),
-				worstHealth: points.reduce((health, point) => worseHealth(health, point.worstHealth), 'ONLINE'),
+				worstHealth: points.reduce(
+					(health, point) => worseHealth(health, point.worstHealth),
+					'ONLINE'
+				),
 				allocated,
 				free: points.reduce((total, point) => total + point.free, 0),
 				size,
@@ -194,7 +197,8 @@ export function aggregatePoolHistory(series: ZFSDashboardPoolSeries[]): PoolStat
 						: 0,
 				dedupRatio:
 					allocated > 0
-						? points.reduce((total, point) => total + point.dedupRatio * point.allocated, 0) / allocated
+						? points.reduce((total, point) => total + point.dedupRatio * point.allocated, 0) /
+							allocated
 						: 1,
 				readIOPS,
 				writeIOPS,
@@ -207,13 +211,21 @@ export function aggregatePoolHistory(series: ZFSDashboardPoolSeries[]): PoolStat
 						: 0,
 				writeLatencyNanos:
 					writeLatencyWeight > 0
-						? points.reduce((total, point) => total + point.writeLatencyNanos * point.writeIOPS, 0) /
-							writeLatencyWeight
+						? points.reduce(
+								(total, point) => total + point.writeLatencyNanos * point.writeIOPS,
+								0
+							) / writeLatencyWeight
 						: 0,
 				maxReadIOPS: points.reduce((total, point) => total + point.maxReadIOPS, 0),
 				maxWriteIOPS: points.reduce((total, point) => total + point.maxWriteIOPS, 0),
-				maxReadBytesPerSecond: points.reduce((total, point) => total + point.maxReadBytesPerSecond, 0),
-				maxWriteBytesPerSecond: points.reduce((total, point) => total + point.maxWriteBytesPerSecond, 0),
+				maxReadBytesPerSecond: points.reduce(
+					(total, point) => total + point.maxReadBytesPerSecond,
+					0
+				),
+				maxWriteBytesPerSecond: points.reduce(
+					(total, point) => total + point.maxWriteBytesPerSecond,
+					0
+				),
 				maxReadLatencyNanos: Math.max(...points.map((point) => point.maxReadLatencyNanos)),
 				maxWriteLatencyNanos: Math.max(...points.map((point) => point.maxWriteLatencyNanos)),
 				sampleCount: points.reduce((total, point) => total + point.sampleCount, 0),
@@ -299,7 +311,10 @@ export function summarizeVerification(pools: ZFSDashboardPoolSnapshot[]): Verifi
 		const pool = scanErrors[0];
 		const errors = pool.scan?.errors ?? 0;
 		return {
-			value: pools.length > 1 ? `${scanErrors.length} pool${scanErrors.length === 1 ? '' : 's'} need attention` : 'Errors found',
+			value:
+				pools.length > 1
+					? `${scanErrors.length} pool${scanErrors.length === 1 ? '' : 's'} need attention`
+					: 'Errors found',
 			detail: `${pool.name} ${scanName(pool.scan?.function ?? '')} reported ${errors} error${errors === 1 ? '' : 's'}`,
 			footer: relativeAge(completedDate(pool)),
 			tone: 'danger',
@@ -314,7 +329,10 @@ export function summarizeVerification(pools: ZFSDashboardPoolSnapshot[]): Verifi
 	if (incomplete.length > 0) {
 		const pool = incomplete[0];
 		return {
-			value: pools.length > 1 ? `${incomplete.length} verification incomplete` : 'Verification incomplete',
+			value:
+				pools.length > 1
+					? `${incomplete.length} verification incomplete`
+					: 'Verification incomplete',
 			detail: `${pool.name} ${scanName(pool.scan?.function ?? '')} was not completed`,
 			footer: relativeAge(completedDate(pool)),
 			tone: 'warning',
@@ -336,8 +354,14 @@ export function summarizeVerification(pools: ZFSDashboardPoolSnapshot[]): Verifi
 	const unverified = pools.filter((pool) => pool.scan === null);
 	if (unverified.length > 0) {
 		return {
-			value: pools.length > 1 ? `${unverified.length} pool${unverified.length === 1 ? '' : 's'} unverified` : 'Never scrubbed',
-			detail: pools.length > 1 ? `No scrub recorded for ${unverified[0].name}` : 'No completed scrub is recorded',
+			value:
+				pools.length > 1
+					? `${unverified.length} pool${unverified.length === 1 ? '' : 's'} unverified`
+					: 'Never scrubbed',
+			detail:
+				pools.length > 1
+					? `No scrub recorded for ${unverified[0].name}`
+					: 'No completed scrub is recorded',
 			footer: 'Run a scrub to verify stored data',
 			tone: 'warning',
 			progress: null

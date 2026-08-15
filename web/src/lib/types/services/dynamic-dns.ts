@@ -4,13 +4,19 @@ export const DynamicDNSEntrySchema = z.object({
 	id: z.number(),
 	enabled: z.boolean(),
 	provider: z.string(),
-	providerSettings: z.record(z.string(), z.string()).nullish().transform((value) => value ?? {}),
+	providerSettings: z
+		.record(z.string(), z.string())
+		.nullish()
+		.transform((value) => value ?? {}),
 	credentialConfigured: z.boolean(),
 	hostname: z.string(),
 	recordType: z.enum(['A', 'AAAA', 'BOTH']),
 	intervalMinutes: z.number(),
 	sourceType: z.enum(['interface', 'manual', 'stun']),
-	sourceSettings: z.record(z.string(), z.string()).nullish().transform((value) => value ?? {}),
+	sourceSettings: z
+		.record(z.string(), z.string())
+		.nullish()
+		.transform((value) => value ?? {}),
 	lastStatus: z.string().default(''),
 	lastError: z.string().default(''),
 	ipv4Status: z.string().default(''),

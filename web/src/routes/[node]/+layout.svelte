@@ -185,8 +185,16 @@
 						label: 'mDNS',
 						icon: 'mdi--broadcast',
 						children: [
-							{ label: 'Records', icon: 'mdi--format-list-bulleted', href: `/${node}/network/mdns/records` },
-							{ label: 'Settings', icon: 'mdi--cog-outline', href: `/${node}/network/mdns/settings` }
+							{
+								label: 'Records',
+								icon: 'mdi--format-list-bulleted',
+								href: `/${node}/network/mdns/records`
+							},
+							{
+								label: 'Settings',
+								icon: 'mdi--cog-outline',
+								href: `/${node}/network/mdns/settings`
+							}
 						]
 					},
 					hasWireGuard && {

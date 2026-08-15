@@ -31,10 +31,19 @@ export const FirewallTrafficRuleSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	description: nullableString,
-	visible: z.boolean().nullish().transform((value) => value ?? true),
+	visible: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? true),
 	enabled: z.boolean().optional().default(true),
-	log: z.boolean().nullish().transform((value) => value ?? false),
-	quick: z.boolean().nullish().transform((value) => value ?? false),
+	log: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
+	quick: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	priority: z.number().int(),
 	action: z.enum(['pass', 'block']),
 	direction: z.enum(['in', 'out']),
@@ -58,12 +67,21 @@ export const FirewallNATRuleSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	description: nullableString,
-	visible: z.boolean().nullish().transform((value) => value ?? true),
+	visible: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? true),
 	enabled: z.boolean().optional().default(true),
-	log: z.boolean().nullish().transform((value) => value ?? false),
+	log: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	priority: z.number().int(),
 	natType: natTypeSchema,
-	policyRoutingEnabled: z.boolean().nullish().transform((value) => value ?? false),
+	policyRoutingEnabled: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	policyRouteGateway: nullableString,
 	ingressInterfaces: nullableStringArray,
 	egressInterfaces: nullableStringArray,
@@ -117,7 +135,10 @@ export const FirewallLiveHitEventSchema = z.object({
 	timestamp: z.string(),
 	ruleType: z.enum(['traffic', 'nat']),
 	ruleId: z.number().int().nonnegative(),
-	ruleName: z.string().nullish().transform((value) => value ?? ''),
+	ruleName: z
+		.string()
+		.nullish()
+		.transform((value) => value ?? ''),
 	action: nullableString,
 	direction: nullableString,
 	interface: nullableString,

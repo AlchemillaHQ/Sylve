@@ -50,7 +50,10 @@
 					aria-valuenow={Math.max(0, Math.min(progress, 100))}
 				>
 					<div
-						class={['h-full rounded-full', tone === 'danger' ? 'bg-red-500' : tone === 'warning' ? 'bg-amber-500' : 'bg-blue-500']}
+						class={[
+							'h-full rounded-full',
+							tone === 'danger' ? 'bg-red-500' : tone === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+						]}
 						style:width={`${Math.max(0, Math.min(progress, 100))}%`}
 					></div>
 				</div>

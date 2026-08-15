@@ -46,9 +46,7 @@ let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 let installed = false;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === 'object' && value !== null
-		? (value as Record<string, unknown>)
-		: null;
+	return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
 }
 
 export function formatDetailValue(value: unknown): string {
@@ -88,9 +86,7 @@ function extractErrors(detail: unknown): string[] {
 		);
 	}
 
-	return [
-		typeof record.error === 'string' ? record.error : formatDetailValue(record.error)
-	];
+	return [typeof record.error === 'string' ? record.error : formatDetailValue(record.error)];
 }
 
 function detailMessage(detail: unknown): string {

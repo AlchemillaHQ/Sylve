@@ -73,19 +73,13 @@ export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
 				'Volatile Memory Backup': data.criticalWarningState.volatileMemoryBackup
 			},
 			'Data Units Read': formatNVMeDataUnits(data.dataUnitsReadExact, data.dataUnitsRead),
-			'Data Units Written': formatNVMeDataUnits(
-				data.dataUnitsWrittenExact,
-				data.dataUnitsWritten
-			),
+			'Data Units Written': formatNVMeDataUnits(data.dataUnitsWrittenExact, data.dataUnitsWritten),
 			'Error Info Log Entries': formatNVMeCounter(
 				data.errorInfoLogEntriesExact,
 				data.errorInfoLogEntries
 			),
 			'Host Read Commands': formatNVMeCounter(data.hostReadCommandsExact, data.hostReadCommands),
-			'Host Write Commands': formatNVMeCounter(
-				data.hostWriteCommandsExact,
-				data.hostWriteCommands
-			),
+			'Host Write Commands': formatNVMeCounter(data.hostWriteCommandsExact, data.hostWriteCommands),
 			'Media Errors': formatNVMeCounter(data.mediaErrorsExact, data.mediaErrors),
 			'Percentage Used': data.percentageUsed,
 			'Power Cycles': formatNVMeCounter(data.power_cycle_count_exact, data.power_cycle_count),

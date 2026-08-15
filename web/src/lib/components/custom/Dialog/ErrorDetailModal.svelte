@@ -64,7 +64,9 @@
 							Status
 						</div>
 						<span
-							class="mt-1 inline-flex rounded-md px-2 py-0.5 text-xs font-semibold capitalize {statusClass(errorDetailState.data.status)}"
+							class="mt-1 inline-flex rounded-md px-2 py-0.5 text-xs font-semibold capitalize {statusClass(
+								errorDetailState.data.status
+							)}"
 						>
 							{errorDetailState.data.status}
 						</span>

@@ -84,8 +84,8 @@
 		<div class="space-y-6">
 			<p class="text-muted-foreground text-sm max-w-xs mx-auto">
 				{#if jailed}
-					A <span class="font-medium text-foreground">quick restart</span> is required for Sylve to
-					finish initialization. Continue when ready.
+					A <span class="font-medium text-foreground">quick restart</span> is required for Sylve to finish
+					initialization. Continue when ready.
 				{:else}
 					A <span class="font-medium text-foreground">full system reboot</span> is required for Sylve
 					to finish initialization. Continue when ready.

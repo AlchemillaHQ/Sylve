@@ -46,8 +46,14 @@ export const CertificateSchema = z.object({
 
 export const CertificateDomainCheckSchema = z.object({
 	domain: z.string(),
-	resolved: z.array(z.string()).nullable().transform((value) => value ?? []),
-	publicAddresses: z.array(z.string()).nullable().transform((value) => value ?? []),
+	resolved: z
+		.array(z.string())
+		.nullable()
+		.transform((value) => value ?? []),
+	publicAddresses: z
+		.array(z.string())
+		.nullable()
+		.transform((value) => value ?? []),
 	matches: z.boolean(),
 	warning: z.string()
 });

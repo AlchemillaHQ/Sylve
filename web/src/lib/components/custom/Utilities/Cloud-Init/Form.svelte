@@ -2,10 +2,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import type {
-		CloudInitTemplate,
-		CloudInitTemplateInput
-	} from '$lib/types/utilities/cloud-init';
+	import type { CloudInitTemplate, CloudInitTemplateInput } from '$lib/types/utilities/cloud-init';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { cloudInitPlaceholders, generateTemplate } from '$lib/utils/utilities/cloud-init';
 	import SimpleSelect from '../../SimpleSelect.svelte';
@@ -71,9 +68,10 @@
 
 		loading = true;
 		try {
-			const result = isEdit && template
-				? await updateTemplate(template.id, payload, { hostname: node })
-				: await createTemplate(payload, { hostname: node });
+			const result =
+				isEdit && template
+					? await updateTemplate(template.id, payload, { hostname: node })
+					: await createTemplate(payload, { hostname: node });
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return;
@@ -105,7 +103,12 @@
 	>
 		<Dialog.Header>
 			<Dialog.Title>
-				<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title={isEdit ? `Edit Template - ${template?.name}` : 'Create Template'} />
+				<SpanWithIcon
+					icon="icon-[mdi--cloud-upload-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={isEdit ? `Edit Template - ${template?.name}` : 'Create Template'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -175,10 +178,20 @@
 		>
 			<div class="flex items-center justify-between">
 				<Dialog.Title>
-					<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title="Select a Template" />
+					<SpanWithIcon
+						icon="icon-[mdi--cloud-upload-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Select a Template"
+					/>
 				</Dialog.Title>
-				<Dialog.Close onclick={() => { templateSelector.open = false; }}>
-					<span class="icon-[lucide--x] h-5 w-5 opacity-50 transition-opacity hover:opacity-100"></span>
+				<Dialog.Close
+					onclick={() => {
+						templateSelector.open = false;
+					}}
+				>
+					<span class="icon-[lucide--x] h-5 w-5 opacity-50 transition-opacity hover:opacity-100"
+					></span>
 					<span class="sr-only">Close</span>
 				</Dialog.Close>
 			</div>
