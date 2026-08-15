@@ -61,6 +61,7 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 				"hostname":     h,
 				"initialized":  b.Initialized,
 				"restarted":    b.Restarted,
+				"jailed":       systemService.IsJailed(),
 				"sylveVersion": cmd.Version,
 			},
 		})

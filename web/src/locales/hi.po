@@ -1971,11 +1971,6 @@ msgstr "सेटअप पूरा हुआ"
 msgid "A <0>full system reboot</0> is required for Sylve to finish initialization. Continue when ready."
 msgstr "सिल्वे का इनिशियलाइज़ेशन पूरा करने के लिए <0>सिस्टम को पूर्ण रूप से रीबूट</0> करना आवश्यक है। तैयार होने पर जारी रखें।"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Rebooting..."
-msgstr "<0/> रीबूट हो रहा है..."
-
-#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Reboot"
 msgstr "<0/> रीबूट करें"
@@ -2768,6 +2763,7 @@ msgstr "जबरन हटाएँ"
 msgid "Running"
 msgstr "चल रहा है"
 
+#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Reboot"
@@ -17126,4 +17122,28 @@ msgstr ""
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Comfortable"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Sylve is restarting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Sylve is back online"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "A <0>quick restart</0> is required for Sylve to finish initialization. Continue when ready."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Restarting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Rebooting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Restart"
 msgstr ""

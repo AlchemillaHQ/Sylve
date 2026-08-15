@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -61,7 +62,11 @@ import (
 func main() {
 	rootCmd := cmd.NewRootCommand(daemonAction)
 
-	if err := rootCmd.Run(context.Background(), os.Args); err != nil {
+	err := rootCmd.Run(context.Background(), os.Args)
+	if errors.Is(err, errSelfRestartRequested) {
+		err = reexecCurrentProcess()
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
@@ -176,7 +181,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	notificationService.SetDiskService(dS)
 	notificationFacade.SetEmitter(notificationService)
 
-	sysS.(*system.Service).SetDiskService(dS)
+	systemSvc := sysS.(*system.Service)
+	systemSvc.SetDiskService(dS)
+	selfRestartRequests := make(chan struct{}, 1)
+	systemSvc.SetRestartRequester(func() {
+		requestSelfRestart(selfRestartRequests)
+	})
 
 	clusterSvc := cS.(*cluster.Service)
 	if err := clusterSvc.MigrateLegacyPorts(); err != nil {
@@ -518,10 +528,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
+	selfRestartRequested := false
 	select {
 	case <-qCtx.Done():
 	case <-replQuitChan:
-		qStop()
+	case <-selfRestartRequests:
+		selfRestartRequested = true
 	}
 
 	logger.L.Info().Msg("Shutting down servers gracefully")
@@ -559,5 +571,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	wg.Wait()
 	logger.L.Info().Msg("Servers exited properly")
+	if selfRestartRequested {
+		return errSelfRestartRequested
+	}
 	return nil
 }

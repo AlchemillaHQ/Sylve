@@ -7,6 +7,7 @@ export const BasicHealthSchema = z.object({
 	hostname: z.string().optional(),
 	initialized: z.boolean(),
 	restarted: z.boolean(),
+	jailed: z.boolean().optional(),
 	sylveVersion: z.string().optional()
 });
 

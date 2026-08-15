@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { toast } from 'svelte-sonner';
 	import { mode } from 'mode-watcher';
@@ -6,6 +7,12 @@
 	import { handleAPIError } from '$lib/utils/http';
 
 	let rebootInitiated = $state(false);
+	let jailed = $state(false);
+
+	onMount(async () => {
+		const health = await probeBasicHealth();
+		jailed = health?.jailed === true;
+	});
 
 	async function waitForRebootCycle({ intervalMs = 2000, timeoutMs = 60 * 60 * 1000 } = {}) {
 		const start = Date.now();
@@ -35,9 +42,13 @@
 				return;
 			}
 
-			toast.info('System is restarting...', { position: 'bottom-center' });
+			toast.info(jailed ? 'Sylve is restarting...' : 'System is restarting...', {
+				position: 'bottom-center'
+			});
 			await waitForRebootCycle();
-			toast.success('System is back online', { position: 'bottom-center' });
+			toast.success(jailed ? 'Sylve is back online' : 'System is back online', {
+				position: 'bottom-center'
+			});
 			setTimeout(() => {
 				window.location.href = '/datacenter/summary';
 			}, 1000);
@@ -72,17 +83,22 @@
 		<!-- Content -->
 		<div class="space-y-6">
 			<p class="text-muted-foreground text-sm max-w-xs mx-auto">
-				A <span class="font-medium text-foreground">full system reboot</span> is required for Sylve to
-				finish initialization. Continue when ready.
+				{#if jailed}
+					A <span class="font-medium text-foreground">quick restart</span> is required for Sylve to
+					finish initialization. Continue when ready.
+				{:else}
+					A <span class="font-medium text-foreground">full system reboot</span> is required for Sylve
+					to finish initialization. Continue when ready.
+				{/if}
 			</p>
 
 			<Button onclick={handleReboot} class="px-8 py-2.5" disabled={rebootInitiated}>
 				{#if rebootInitiated}
 					<span class="icon icon-[mdi--loading] w-4 h-4 mr-2 inline-block animate-spin"></span>
-					Rebooting...
+					{jailed ? 'Restarting...' : 'Rebooting...'}
 				{:else}
 					<span class="icon icon-[mdi--restart] w-4 h-4 mr-2 inline-block"></span>
-					Reboot
+					{jailed ? 'Restart' : 'Reboot'}
 				{/if}
 			</Button>
 		</div>

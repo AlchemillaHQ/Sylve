@@ -8,10 +8,37 @@
 
 package system
 
-import "github.com/alchemillahq/sylve/pkg/utils"
+import (
+	"errors"
+
+	"github.com/alchemillahq/sylve/pkg/utils"
+)
+
+var errRestartRequesterUnavailable = errors.New("self_restart_unavailable")
+
+func (s *Service) IsJailed() bool {
+	return s.jailed
+}
+
+func (s *Service) SetRestartRequester(requester func()) {
+	s.restartRequester = requester
+}
 
 func (s *Service) RebootSystem() error {
-	_, err := utils.RunCommand(
+	if s.IsJailed() {
+		if s.restartRequester == nil {
+			return errRestartRequesterUnavailable
+		}
+		s.restartRequester()
+		return nil
+	}
+
+	runCommand := s.runCommand
+	if runCommand == nil {
+		runCommand = utils.RunCommand
+	}
+
+	_, err := runCommand(
 		"/sbin/shutdown",
 		"-r",
 		"now",
