@@ -83,10 +83,15 @@
 		return null;
 	}
 
+	let quickAction = $derived.by((): 'start' | 'shutdown' | 'stop' => {
+		if (item.state !== 'active') return 'start';
+		return item.resourceType === 'vm' ? 'shutdown' : 'stop';
+	});
+
 	const handleQuickAction = async (e: MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		await handleActionClick(item.state === 'active' ? 'stop' : 'start');
+		await handleActionClick(quickAction);
 	};
 
 	const sidebarActive =
@@ -425,10 +430,15 @@
 						<button
 							type="button"
 							class="hover:bg-background hidden size-5 items-center justify-center rounded group-hover:flex"
-							title={item.state === 'active' ? 'Stop' : 'Start'}
+							title={quickAction === 'shutdown'
+								? 'Shutdown'
+								: quickAction === 'stop'
+									? 'Stop'
+									: 'Start'}
 							onclick={(e) => void handleQuickAction(e)}
 						>
-							<span class={`icon-[mdi--${item.state === 'active' ? 'stop' : 'play'}] h-3.5 w-3.5`}
+							<span
+								class={`icon-[mdi--${quickAction === 'shutdown' ? 'power' : quickAction === 'stop' ? 'stop' : 'play'}] h-3.5 w-3.5`}
 							></span>
 						</button>
 					{/if}
