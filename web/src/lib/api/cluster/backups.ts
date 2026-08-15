@@ -18,7 +18,13 @@ import {
 	type SnapshotInfo
 } from '$lib/types/cluster/backups';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { apiRequest, isAPIResponse } from '$lib/utils/http';
+import {
+	apiRequest,
+	apiRequestData,
+	apiRequestResult,
+	getAPIErrorText,
+	isAPIResponse
+} from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export type BackupTargetInput = {
@@ -64,32 +70,26 @@ export type BackupJobSnapshotsResult = {
 };
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {
-	return await apiRequest('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
+	return await apiRequestData('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
 }
 
 export async function listBackupTargetsResult(): Promise<BackupTarget[] | APIResponse> {
-	return await apiRequest(
-		'/cluster/backups/targets',
-		z.array(BackupTargetSchema),
-		'GET',
-		undefined,
-		{ preserveErrors: true }
-	);
+	return await apiRequestResult('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
 }
 
 export async function createBackupTarget(input: BackupTargetInput): Promise<APIResponse> {
-	return await apiRequest('/cluster/backups/targets', APIResponseSchema, 'POST', input);
+	return await apiRequestResult('/cluster/backups/targets', APIResponseSchema, 'POST', input);
 }
 
 export async function updateBackupTarget(
 	id: number,
 	input: BackupTargetInput
 ): Promise<APIResponse> {
-	return await apiRequest(`/cluster/backups/targets/${id}`, APIResponseSchema, 'PUT', input);
+	return await apiRequestResult(`/cluster/backups/targets/${id}`, APIResponseSchema, 'PUT', input);
 }
 
 export async function deleteBackupTarget(id: number): Promise<APIResponse> {
-	return await apiRequest(`/cluster/backups/targets/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/cluster/backups/targets/${id}`, APIResponseSchema, 'DELETE');
 }
 
 export async function validateBackupTarget(id: number, nodeId: string): Promise<APIResponse> {
@@ -98,7 +98,7 @@ export async function validateBackupTarget(id: number, nodeId: string): Promise<
 		params.set('nodeId', nodeId.trim());
 	}
 	const query = params.toString();
-	return await apiRequest(
+	return await apiRequestResult(
 		`/cluster/backups/targets/${id}/validate${query ? `?${query}` : ''}`,
 		APIResponseSchema,
 		'POST',
@@ -119,7 +119,7 @@ export async function listBackupJobs(
 		params.set('guestId', String(guest.id));
 	}
 	const query = params.toString();
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/jobs${query ? `?${query}` : ''}`,
 		z.array(BackupJobSchema),
 		'GET'
@@ -139,44 +139,35 @@ export async function listBackupJobsResult(
 		params.set('guestId', String(guest.id));
 	}
 	const query = params.toString();
-	return await apiRequest(
+	return await apiRequestResult(
 		`/cluster/backups/jobs${query ? `?${query}` : ''}`,
 		z.array(BackupJobSchema),
-		'GET',
-		undefined,
-		{ preserveErrors: true }
+		'GET'
 	);
 }
 
 export async function getTargetRunningJobIds(targetId: number): Promise<number[]> {
-	const result = await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/running-jobs`,
 		z.array(z.number()),
-		'GET',
-		undefined,
-		{ preserveErrors: true }
+		'GET'
 	);
-	if (isAPIResponse(result)) {
-		const detail = Array.isArray(result.error) ? result.error.join(' ') : result.error;
-		throw new Error(detail || result.message || 'Active backup operation status is unavailable');
-	}
-	return result;
 }
 
 export async function createBackupJob(input: BackupJobInput): Promise<APIResponse> {
-	return await apiRequest('/cluster/backups/jobs', APIResponseSchema, 'POST', input);
+	return await apiRequestResult('/cluster/backups/jobs', APIResponseSchema, 'POST', input);
 }
 
 export async function updateBackupJob(id: number, input: BackupJobInput): Promise<APIResponse> {
-	return await apiRequest(`/cluster/backups/jobs/${id}`, APIResponseSchema, 'PUT', input);
+	return await apiRequestResult(`/cluster/backups/jobs/${id}`, APIResponseSchema, 'PUT', input);
 }
 
 export async function deleteBackupJob(id: number): Promise<APIResponse> {
-	return await apiRequest(`/cluster/backups/jobs/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/cluster/backups/jobs/${id}`, APIResponseSchema, 'DELETE');
 }
 
 export async function runBackupJob(id: number): Promise<APIResponse> {
-	return await apiRequest(`/cluster/backups/jobs/${id}/run`, APIResponseSchema, 'POST', {});
+	return await apiRequestResult(`/cluster/backups/jobs/${id}/run`, APIResponseSchema, 'POST', {});
 }
 
 export async function getBackupEvents(
@@ -192,7 +183,7 @@ export async function getBackupEvents(
 	if (nodeId && nodeId.trim() !== '') {
 		params.set('nodeId', nodeId.trim());
 	}
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/events?${params.toString()}`,
 		z.array(BackupEventSchema),
 		'GET'
@@ -205,7 +196,7 @@ export async function getBackupEvent(id: number, nodeId?: string): Promise<Backu
 		params.set('nodeId', nodeId.trim());
 	}
 	const query = params.toString();
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/events/${id}${query ? `?${query}` : ''}`,
 		BackupEventSchema,
 		'GET'
@@ -221,7 +212,7 @@ export async function getBackupEventProgress(
 		params.set('nodeId', nodeId.trim());
 	}
 	const query = params.toString();
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/events/${id}/progress${query ? `?${query}` : ''}`,
 		BackupEventProgressSchema,
 		'GET'
@@ -242,8 +233,7 @@ export async function listBackupJobSnapshots(jobId: number): Promise<BackupJobSn
 	}
 
 	if (response.status === 'error') {
-		const error = Array.isArray(response.error) ? response.error.join(' ') : response.error;
-		return { snapshots: [], error: error || response.message || 'Failed to load snapshots' };
+		return { snapshots: [], error: getAPIErrorText(response, 'Failed to load snapshots') };
 	}
 
 	const snapshots = z.array(SnapshotInfoSchema).safeParse(response.data);
@@ -259,17 +249,22 @@ export async function restoreBackupJob(
 	snapshot: string,
 	encryptionKey = ''
 ): Promise<APIResponse> {
-	return await apiRequest(`/cluster/backups/jobs/${jobId}/restore`, APIResponseSchema, 'POST', {
-		snapshot,
-		encryptionKey,
-		encryptionKeyFormat: 'passphrase'
-	});
+	return await apiRequestResult(
+		`/cluster/backups/jobs/${jobId}/restore`,
+		APIResponseSchema,
+		'POST',
+		{
+			snapshot,
+			encryptionKey,
+			encryptionKeyFormat: 'passphrase'
+		}
+	);
 }
 
 export async function listBackupTargetDatasets(
 	targetId: number
 ): Promise<BackupTargetDatasetInfo[]> {
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/datasets`,
 		z.array(BackupTargetDatasetInfoSchema),
 		'GET'
@@ -282,7 +277,7 @@ export async function listBackupTargetDatasetSnapshots(
 ): Promise<SnapshotInfo[]> {
 	const params = new URLSearchParams();
 	params.set('dataset', dataset);
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/datasets/snapshots?${params.toString()}`,
 		z.array(SnapshotInfoSchema),
 		'GET'
@@ -295,7 +290,7 @@ export async function getBackupTargetJailMetadata(
 ): Promise<BackupJailMetadataInfo | null> {
 	const params = new URLSearchParams();
 	params.set('dataset', dataset);
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/datasets/jail-metadata?${params.toString()}`,
 		BackupJailMetadataInfoSchema.nullable(),
 		'GET'
@@ -308,7 +303,7 @@ export async function getBackupTargetVMMetadata(
 ): Promise<BackupVMMetadataInfo | null> {
 	const params = new URLSearchParams();
 	params.set('dataset', dataset);
-	return await apiRequest(
+	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/datasets/vm-metadata?${params.toString()}`,
 		BackupVMMetadataInfoSchema.nullable(),
 		'GET'
@@ -319,7 +314,7 @@ export async function restoreBackupFromTarget(
 	targetId: number,
 	input: RestoreFromTargetInput
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/cluster/backups/targets/${targetId}/restore`,
 		APIResponseSchema,
 		'POST',
