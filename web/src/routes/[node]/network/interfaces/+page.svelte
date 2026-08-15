@@ -13,7 +13,7 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CellComponent } from 'tabulator-tables';
 	import type { Jail } from '$lib/types/jail/jail';
-	import { getJails } from '$lib/api/jail/jail';
+	import { getJailsResult } from '$lib/api/jail/jail';
 	import { isMACNearOrEqual } from '$lib/utils/mac';
 	import type { VM } from '$lib/types/vm/vm';
 	import { getVMsResult } from '$lib/api/vm/vm';
@@ -88,7 +88,7 @@
 	let jails = resource(
 		() => 'jail-list',
 		async (key) => {
-			const res = await getJails();
+			const res = await getJailsResult();
 			if (isAPIResponse(res)) {
 				return data.jails;
 			}

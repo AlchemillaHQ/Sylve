@@ -2,8 +2,7 @@ import {
 	APIResponseSchema,
 	GuestDeletionResponseSchema,
 	type APIResponse,
-	type GFSStep,
-	type GuestDeletionResponse
+	type GFSStep
 } from '$lib/types/common';
 import {
 	JailActionResponseSchema,
@@ -35,11 +34,11 @@ import {
 	SimpleJailTemplateSchema,
 	type SimpleJailTemplate
 } from '$lib/types/jail/jail';
-import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export async function newJail(data: CreateData, hostname?: string): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		'/jail',
 		APIResponseSchema,
 		'POST',
@@ -92,49 +91,66 @@ export async function getSimpleJails(
 	hostname?: string,
 	signal?: AbortSignal
 ): Promise<SimpleJail[]> {
-	return await apiRequest('/jail/simple', z.array(SimpleJailSchema), 'GET', undefined, {
+	return await apiRequestData('/jail/simple', z.array(SimpleJailSchema), 'GET', undefined, {
 		hostname,
 		signal
 	});
 }
 
 export async function getSimpleJailTemplates(hostname?: string): Promise<SimpleJailTemplate[]> {
-	return await apiRequest('/jail/templates', z.array(SimpleJailTemplateSchema), 'GET', undefined, {
-		hostname
-	});
+	return await apiRequestData(
+		'/jail/templates',
+		z.array(SimpleJailTemplateSchema),
+		'GET',
+		undefined,
+		{ hostname }
+	);
 }
 
 export async function getJailTemplateById(
 	templateId: number,
 	hostname?: string
 ): Promise<JailTemplate | APIResponse> {
-	return await apiRequest(`/jail/templates/${templateId}`, JailTemplateSchema, 'GET', undefined, {
-		hostname
-	});
+	return await apiRequestResult(
+		`/jail/templates/${templateId}`,
+		JailTemplateSchema,
+		'GET',
+		undefined,
+		{ hostname }
+	);
 }
 
 export async function getJails(hostname?: string, signal?: AbortSignal): Promise<Jail[]> {
-	return await apiRequest('/jail', z.array(JailSchema), 'GET', undefined, { hostname, signal });
+	return await apiRequestData('/jail', z.array(JailSchema), 'GET', undefined, {
+		hostname,
+		signal
+	});
+}
+
+export async function getJailsResult(
+	options?: NodeAPIDataRequestOptions
+): Promise<Jail[] | APIResponse> {
+	return await apiRequestResult('/jail', z.array(JailSchema), 'GET', undefined, options);
 }
 
 export async function getJailByCTID(
 	ctId: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<Jail | APIResponse> {
-	return await apiRequest(`/jail/${ctId}`, JailSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/jail/${ctId}`, JailSchema, 'GET', undefined, options);
 }
 
 export async function getSimpleJailByCTID(
 	ctId: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<SimpleJail | APIResponse> {
-	return await apiRequest(`/jail/simple/${ctId}`, SimpleJailSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(
+		`/jail/simple/${ctId}`,
+		SimpleJailSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function deleteJail(
@@ -142,24 +158,21 @@ export async function deleteJail(
 	deleteMacs: boolean,
 	deleteRootFs: boolean,
 	hostname?: string
-): Promise<GuestDeletionResponse> {
-	return (await apiRequest(
+): Promise<APIResponse> {
+	return await apiRequestResult(
 		`/jail/${ctId}?deletemacs=${deleteMacs}&deleterootfs=${deleteRootFs}`,
 		GuestDeletionResponseSchema,
 		'DELETE',
 		undefined,
 		{ hostname }
-	)) as GuestDeletionResponse;
+	);
 }
 
 export async function getJailState(
 	ctId: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailState | APIResponse> {
-	return await apiRequest(`/jail/${ctId}/state`, JailStateSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/jail/${ctId}/state`, JailStateSchema, 'GET', undefined, options);
 }
 
 export async function jailAction(
@@ -167,7 +180,7 @@ export async function jailAction(
 	action: JailLifecycleAction,
 	hostname?: string
 ): Promise<JailActionResponse | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/${ctId}/actions/${action}`,
 		JailActionResponseSchema,
 		'POST',
@@ -187,7 +200,7 @@ export async function convertJailToTemplate(
 	data: ConvertJailToTemplateRequest,
 	hostname?: string
 ): Promise<JailTemplateCaptureTaskResponse | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/${ctId}/templates`,
 		JailTemplateCaptureTaskResponseSchema,
 		'POST',
@@ -211,7 +224,7 @@ export async function createJailFromTemplate(
 	data: CreateJailFromTemplateRequest,
 	hostname?: string
 ): Promise<JailTemplateInstantiationTaskResponse | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/templates/${templateId}/jails`,
 		JailTemplateInstantiationTaskResponseSchema,
 		'POST',
@@ -224,9 +237,13 @@ export async function deleteJailTemplate(
 	templateId: number,
 	hostname?: string
 ): Promise<APIResponse> {
-	return await apiRequest(`/jail/templates/${templateId}`, APIResponseSchema, 'DELETE', undefined, {
-		hostname
-	});
+	return await apiRequestResult(
+		`/jail/templates/${templateId}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		{ hostname }
+	);
 }
 
 export async function updateDescription(
@@ -234,7 +251,7 @@ export async function updateDescription(
 	description: string,
 	hostname?: string
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/${ctId}/description`,
 		APIResponseSchema,
 		'PATCH',
@@ -248,44 +265,47 @@ export async function updateName(
 	name: string,
 	hostname?: string
 ): Promise<APIResponse> {
-	return await apiRequest(`/jail/${ctId}/name`, APIResponseSchema, 'PATCH', { name }, { hostname });
+	return await apiRequestResult(
+		`/jail/${ctId}/name`,
+		APIResponseSchema,
+		'PATCH',
+		{ name },
+		{ hostname }
+	);
 }
 
 export async function getJailLogs(
 	ctId: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailLogs | APIResponse> {
-	return await apiRequest(`/jail/${ctId}/logs`, JailLogsSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/jail/${ctId}/logs`, JailLogsSchema, 'GET', undefined, options);
 }
 
 export async function getStats(
 	ctId: number,
 	step: GFSStep,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailStat[] | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/${ctId}/stats/${step}`,
 		z.array(JailStatSchema),
 		'GET',
 		undefined,
-		{
-			...options,
-			preserveErrors: true
-		}
+		options
 	);
 }
 
 export async function getStatsBootstrap(
 	ctId: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailStatsBootstrap | APIResponse> {
-	return await apiRequest(`/jail/${ctId}/stats`, JailStatsBootstrapSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(
+		`/jail/${ctId}/stats`,
+		JailStatsBootstrapSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export interface JailNetworkWriteRequest {
@@ -310,37 +330,37 @@ export interface JailNetworkWriteRequest {
 export async function addNetwork(
 	ctId: number,
 	data: JailNetworkWriteRequest,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailNetwork | APIResponse> {
-	return await apiRequest(`/jail/${ctId}/networks`, NetworkSchema, 'POST', data, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/jail/${ctId}/networks`, NetworkSchema, 'POST', data, options);
 }
 
 export async function updateNetwork(
 	ctId: number,
 	networkId: number,
 	data: Partial<JailNetworkWriteRequest>,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailNetwork | APIResponse> {
-	return await apiRequest(`/jail/${ctId}/networks/${networkId}`, NetworkSchema, 'PATCH', data, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(
+		`/jail/${ctId}/networks/${networkId}`,
+		NetworkSchema,
+		'PATCH',
+		data,
+		options
+	);
 }
 
 export async function deleteNetwork(
 	ctId: number,
 	networkId: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/${ctId}/networks/${networkId}`,
 		APIResponseSchema,
 		'DELETE',
 		undefined,
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
@@ -348,13 +368,13 @@ export async function setNetworkInheritance(
 	ctId: number,
 	ipv4: boolean,
 	ipv6: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<JailNetworkInheritanceResult | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/jail/${ctId}/network/inheritance`,
 		JailNetworkInheritanceResultSchema,
 		'PUT',
 		{ ipv4, ipv6 },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }

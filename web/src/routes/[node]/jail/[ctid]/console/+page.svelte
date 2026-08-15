@@ -147,8 +147,7 @@
 		async ([hostname, ctId], _, { signal }): Promise<JailConsoleSnapshot> => {
 			const result = await getSimpleJailByCTID(ctId, {
 				hostname,
-				signal,
-				preserveErrors: true
+				signal
 			});
 			if (isAPIResponse(result)) {
 				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
