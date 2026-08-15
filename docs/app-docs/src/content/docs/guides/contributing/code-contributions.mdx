@@ -3,17 +3,15 @@ title: Code
 description: Set up a local development environment for backend and frontend changes.
 ---
 
-Sylve is built with Go (backend) and SvelteKit in SPA mode (frontend).
+Sylve is built with Go (backend) and SvelteKit in SPA mode (frontend), we're API first so if you're planning to work on the go side you don't have to touch the `web/` directory at all. For the best development experience, we recommend a FreeBSD `-STABLE` machine with pkgbase.
 
-For the best development experience, we recommend a FreeBSD `-CURRENT` machine.
-
-## Install Go And npm On FreeBSD
+## Install Go and Node.js On FreeBSD
 
 Install required tooling with `pkg`:
 
 ```bash
 pkg update
-pkg install -y git go node24 npm-node24
+pkg install -y git-lite go node npm
 ```
 
 Verify your installation:
@@ -46,6 +44,18 @@ Install `air`:
 go install github.com/air-verse/air@latest
 ```
 
+## Use A Single Development Entry Point
+
+In `config.json`, set (along with other properties):
+
+```json
+{
+  "proxyToVite": true
+}
+```
+
+With `proxyToVite` enabled, the Go backend proxies frontend requests to Vite, so you do not need to work with two separate ports directly.
+
 ## Run Backend And Frontend Together
 
 Use `tmux`, `zellij`, or `screen` and split into two panes:
@@ -62,43 +72,99 @@ air .
 npm run dev
 ```
 
-## Formatting And Checks
+## Code Style
 
-Before opening a pull request, run these checks.
+Prefer simple, direct code over clever abstractions. A solution should be easy to read, trace, and change without requiring the reader to decode tricks or reconstruct hidden control flow.
 
-From the repository root, format Go code:
+Code should explain itself through precise names, small focused functions, straightforward data flow, and clear boundaries. We strongly dislike comments that merely restate what the code is doing; if a block needs that kind of explanation, simplify or rename it instead.
+
+Use a comment only when the code cannot communicate the reason on its own; for example, to record an external constraint, a specific edge case, or the rationale behind a non-obvious compatibility decision. Comments should explain **why**, not narrate **what**.
+
+## Commit Messages
+
+Use a short, lowercase scope followed by a concise description:
+
+```text
+area: summary
+area: subsystem: summary
+```
+
+Choose the part of the repository affected by the change as the first scope, then add a narrower scope when it makes the commit easier to scan. Write the summary in the imperative mood and omit a trailing period.
+
+```text
+system: route jailed restarts through graceful shutdown
+web: vm: make request outcomes explicit
+docs: app-docs: improve the getting-started page
+ci/cd: add pull-request validation
+```
+
+Keep each commit focused on one coherent change. If more context is useful, leave a blank line after the subject and explain the motivation and important trade-offs in the commit body.
+
+## Formatting, Testing, And Builds
+
+Run the checks relevant to your change before opening a pull request. The commands below mirror the repository's automated pull-request workflows.
+
+### Go formatting and unit tests
+
+From the repository root, format Go code and run the short unit-test suite:
 
 ```bash
 go fmt ./...
+make test
 ```
 
-From the `web/` directory, run frontend checks:
+`make test` runs `go test -short` across the repository, including the ZFS test utilities. Run it on FreeBSD so packages that depend on FreeBSD interfaces are compiled and exercised in the supported environment.
+
+### Integration tests
+
+Backend changes that interact with Jails, ZFS, networking, libvirt, migration, clustering, or replication should also run the integration suite:
 
 ```bash
-npm run check
-npm run lint
-npm run format
+doas make test-integration
 ```
 
-Available frontend scripts:
+Integration tests must run as `root` on FreeBSD with ZFS available. The target checks for leaked ZFS test resources before and after the suite and runs integration packages without the Go test cache.
 
-```json
-{
-  "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-  "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-  "format": "prettier --write .",
-  "lint": "prettier --check . && eslint ."
-}
+The repository also provides more specialized suites:
+
+| Command | Use it when |
+| --- | --- |
+| `doas make test-acceptance` | A change affects end-to-end console workflows. |
+| `doas make test-acceptance-full` | You need the longer full acceptance run. |
+| `doas make test-smart-integration SMART_DEVICE=/dev/…` | A disk or SMART change must be tested against explicitly selected hardware. This target can interact with the named device, so review its options first. |
+
+These specialized targets are not part of the standard pull-request workflow, but maintainers may request them for relevant changes.
+
+### Frontend checks
+
+From the repository root, run:
+
+```bash
+npm run format --prefix web
+npm run lint --prefix web
+make frontend
+npm run build:demo --prefix web
 ```
 
-## Use A Single Development Entry Point
+`npm run format` writes Prettier changes. `npm run lint` verifies formatting and ESLint rules. `make frontend` performs a clean dependency install, runs `svelte-check` with warnings treated as failures, builds the production frontend, and copies the generated assets into the Go embed directory. The final command verifies the separate demo build used by the project website.
 
-In `config.json`, set:
+### Full local build
 
-```json
-{
-  "proxyToVite": true
-}
+On a FreeBSD development host, build the complete application with:
+
+```bash
+make build
 ```
 
-With `proxyToVite` enabled, the Go backend proxies frontend requests to Vite, so you do not need to work with two separate ports directly.
+This builds the frontend assets first and then produces the FreeBSD `sylve` binary in `bin/`.
+
+### What runs on a pull request
+
+For pull requests that change application code, GitHub runs both the **Test** and **Build** workflows before merge:
+
+| Workflow | Automated checks |
+| --- | --- |
+| **Test** | Runs the short Go unit suite on FreeBSD 15. If it succeeds, prepares ZFS, PF, VMM, libvirt, and local SSH before running the integration suite. Test summaries and raw reports are uploaded as workflow artifacts. |
+| **Build** | Uses Node.js 24 to check and build the production frontend and demo frontend, then cross-builds FreeBSD 15 binaries for `amd64` and `arm64` and verifies each binary's OS and architecture. |
+
+Both workflows cancel superseded runs when a pull request is updated. Their test and build checks are expected to pass before a pull request is merged. Because the workflows ignore changes confined to `docs/**`, documentation-only pull requests do not run the application test/build matrix.
