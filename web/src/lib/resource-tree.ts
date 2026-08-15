@@ -198,7 +198,7 @@ function buildServerNodeChildren(
 		]);
 	}
 
-	const children = sortedResources(
+	const children: ResourceTreeItem[] = sortedResources(
 		preferences.groupTemplates ? guests : node.resources,
 		preferences.sortKey
 	);
@@ -257,10 +257,14 @@ function buildFolderView(
 	);
 
 	const vmResources = resources.filter(
-		(resource) => resource.resourceType === 'vm' || (!preferences.groupTemplates && resource.resourceType === 'vm-template')
+		(resource) =>
+			resource.resourceType === 'vm' ||
+			(!preferences.groupTemplates && resource.resourceType === 'vm-template')
 	);
 	const jailResources = resources.filter(
-		(resource) => resource.resourceType === 'jail' || (!preferences.groupTemplates && resource.resourceType === 'jail-template')
+		(resource) =>
+			resource.resourceType === 'jail' ||
+			(!preferences.groupTemplates && resource.resourceType === 'jail-template')
 	);
 	const templates = resources.filter(isTemplate);
 

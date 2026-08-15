@@ -49,6 +49,17 @@ function formatGuestUTCDate(date: Date): string {
 	return `${date.getUTCFullYear()}${part(date.getUTCMonth() + 1)}${part(date.getUTCDate())}${part(date.getUTCHours())}${part(date.getUTCMinutes())}.${part(date.getUTCSeconds())}`;
 }
 
+async function sendKeyboardTextWithDelay(
+	emulator: V86Instance,
+	text: string,
+	delayMilliseconds: number
+): Promise<void> {
+	for (const character of text) {
+		emulator.keyboard_send_text(character);
+		await new Promise<void>((resolve) => setTimeout(resolve, delayMilliseconds));
+	}
+}
+
 class DemoHostTerminalRuntime {
 	private emulator: V86Instance | null = null;
 	private screenContainer: HTMLElement | null = null;
@@ -234,7 +245,8 @@ class DemoHostTerminalRuntime {
 		const emulator = this.emulator;
 		if (!this.serialReady || !emulator?.is_running()) return;
 
-		await emulator.keyboard_send_text(
+		await sendKeyboardTextWithDelay(
+			emulator,
 			`stty -f /dev/ttyu0 columns ${this.requestedColumns} rows ${this.requestedRows} >& /dev/null; clear\n`,
 			2
 		);
@@ -270,7 +282,8 @@ class DemoHostTerminalRuntime {
 
 		const hostname = this.requestedHostname;
 		const guestUTCDate = formatGuestUTCDate(new Date());
-		await emulator.keyboard_send_text(
+		await sendKeyboardTextWithDelay(
+			emulator,
 			`ifconfig ed0 inet ${demoHostNetwork.vmIp} netmask ${demoHostNetwork.netmask} >& /dev/null; route add default ${demoHostNetwork.routerIp} >& /dev/null; printf 'nameserver ${demoHostNetwork.routerIp}\\n' > /etc/resolv.conf; date -u ${guestUTCDate} >& /dev/null; hostname ${hostname}; sed -i '' 's#^ttyu0.*#ttyu0 "/usr/libexec/getty al.115200" xterm on secure#' /etc/ttys; kill -HUP 1; clear\n`,
 			8
 		);

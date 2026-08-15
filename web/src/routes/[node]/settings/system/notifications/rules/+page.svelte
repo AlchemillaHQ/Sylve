@@ -56,6 +56,18 @@ under sponsorship from the FreeBSD Foundation.
 		isTemplateRow: boolean;
 	}
 
+	type BulkUpdateChannelKey = Exclude<keyof BulkUpdateRulesInput, 'ids'>;
+	const bulkUpdateChannels: Array<{
+		key: BulkUpdateChannelKey;
+		label: string;
+		icon: string;
+	}> = [
+		{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
+		{ key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+		{ key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
+		{ key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
+	];
+
 	let { data }: { data: Data } = $props();
 
 	// svelte-ignore state_referenced_locally
@@ -1200,7 +1212,7 @@ under sponsorship from the FreeBSD Foundation.
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
-					{#each [{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' }, { key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' }, { key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' }, { key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }] as channel (channel.key)}
+					{#each bulkUpdateChannels as channel (channel.key)}
 						{@const value = modals.bulkUpdate[channel.key]}
 						<div class="rounded-md border p-3 space-y-2.5">
 							<div class="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
