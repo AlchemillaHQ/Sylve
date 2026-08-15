@@ -137,6 +137,7 @@ body {
   text-decoration-color: currentColor;
 }
 
+
 :root[data-theme="dark"] body {
   background:
     radial-gradient(62rem 34rem at 18% -6%, rgb(255 255 255 / 4%), transparent 72%),
