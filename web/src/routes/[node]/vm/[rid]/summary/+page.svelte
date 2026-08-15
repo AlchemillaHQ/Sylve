@@ -49,7 +49,7 @@
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { resolve } from '$app/paths';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import MigrateModal from '$lib/components/custom/Vm/MigrateModal.svelte';
+	import MigrateModal from '$lib/components/custom/VM/MigrateModal.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Data {
