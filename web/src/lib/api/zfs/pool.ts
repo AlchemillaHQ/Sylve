@@ -13,7 +13,12 @@ import {
 	type Zpool,
 	type ZpoolStatusPool
 } from '$lib/types/zfs/pool';
-import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
+import {
+	apiRequest,
+	apiRequestData,
+	apiRequestResult,
+	type NodeAPIDataRequestOptions
+} from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 const PoolsResponseSchema = APIResponseSchema.extend({
@@ -23,23 +28,20 @@ const PoolsResponseSchema = APIResponseSchema.extend({
 export type PoolsResponse = z.infer<typeof PoolsResponseSchema>;
 
 export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
-	return await apiRequest(`/zfs/pools/${guid}/status`, ZPoolStatusPoolSchema, 'GET');
+	return await apiRequestData(`/zfs/pools/${guid}/status`, ZPoolStatusPoolSchema, 'GET');
 }
 
 export async function getPools(all?: boolean, hostname?: string): Promise<Zpool[]> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
-	return await apiRequest(url, ZpoolSchema.array(), 'GET', undefined, { hostname });
+	return await apiRequestData(url, ZpoolSchema.array(), 'GET', undefined, { hostname });
 }
 
 export async function getPoolsResult(
 	all?: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<Zpool[] | APIResponse> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
-	return await apiRequest(url, ZpoolSchema.array(), 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(url, ZpoolSchema.array(), 'GET', undefined, options);
 }
 
 export async function getPoolsResponse(all?: boolean, hostname?: string): Promise<PoolsResponse> {
@@ -61,22 +63,27 @@ export async function getPoolsResponse(all?: boolean, hostname?: string): Promis
 	};
 }
 
-export async function getPoolsDiskUsage(): Promise<number> {
-	try {
-		const response = await apiRequest('/zfs/pools/disks-usage', PoolsDiskUsageSchema, 'GET');
-		return response.usage || 0;
-	} catch {
-		return 0;
-	}
+export async function getPoolsDiskUsage(options?: NodeAPIDataRequestOptions): Promise<number> {
+	const response = await apiRequestData(
+		'/zfs/pools/disks-usage',
+		PoolsDiskUsageSchema,
+		'GET',
+		undefined,
+		options
+	);
+	return response.usage;
 }
 
-export async function getPoolsDiskUsageFull(): Promise<PoolsDiskUsage> {
-	try {
-		const response = await apiRequest('/zfs/pools/disks-usage', PoolsDiskUsageSchema, 'GET');
-		return response;
-	} catch {
-		return { total: 0, usage: 0 };
-	}
+export async function getPoolsDiskUsageFull(
+	options?: NodeAPIDataRequestOptions
+): Promise<PoolsDiskUsage> {
+	return await apiRequestData(
+		'/zfs/pools/disks-usage',
+		PoolsDiskUsageSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function createPool(data: CreateZpool) {
@@ -104,14 +111,14 @@ export async function getZFSDashboardHistory(
 	rangeSeconds: number,
 	poolGuid = '',
 	maxPoints = 900,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<ZFSDashboardHistory> {
 	const query = new URLSearchParams({
 		rangeSeconds: rangeSeconds.toString(),
 		maxPoints: maxPoints.toString()
 	});
 	if (poolGuid) query.set('poolGuid', poolGuid);
-	return await apiRequest(
+	return await apiRequestData(
 		`/zfs/dashboard/history?${query.toString()}`,
 		ZFSDashboardHistorySchema,
 		'GET',
@@ -121,9 +128,9 @@ export async function getZFSDashboardHistory(
 }
 
 export async function getZFSDashboardSnapshot(
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<ZFSDashboardSnapshot> {
-	return await apiRequest(
+	return await apiRequestData(
 		'/zfs/dashboard/snapshot',
 		ZFSDashboardSnapshotSchema,
 		'GET',
@@ -136,14 +143,14 @@ export async function getZFSDashboardHistoryDelta(
 	poolAfter: number,
 	arcAfter: number,
 	poolGuid = '',
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<ZFSDashboardHistory> {
 	const query = new URLSearchParams({
 		poolAfter: poolAfter.toString(),
 		arcAfter: arcAfter.toString()
 	});
 	if (poolGuid) query.set('poolGuid', poolGuid);
-	return await apiRequest(
+	return await apiRequestData(
 		`/zfs/dashboard/history/delta?${query.toString()}`,
 		ZFSDashboardHistorySchema,
 		'GET',

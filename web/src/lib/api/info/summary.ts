@@ -3,11 +3,11 @@ import {
 	type NodeSummaryHistory,
 	type SummaryHistoryCursors
 } from '$lib/types/info/summary';
-import { apiRequest, isAPIResponse, type NodeAPIRequestOptions } from '$lib/utils/http';
+import { apiRequestData, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 
 export async function getNodeSummaryHistory(
 	cursors?: SummaryHistoryCursors,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<NodeSummaryHistory> {
 	let endpoint = '/info/summary/history';
 	if (cursors) {
@@ -19,12 +19,5 @@ export async function getNodeSummaryHistory(
 		endpoint = `/info/summary/history/delta?${query.toString()}`;
 	}
 
-	const response = await apiRequest(endpoint, NodeSummaryHistorySchema, 'GET', undefined, options);
-	if (isAPIResponse(response)) {
-		const message = Array.isArray(response.error)
-			? response.error.join(', ')
-			: response.error || response.message || 'Unable to load node summary history.';
-		throw new Error(message);
-	}
-	return response;
+	return await apiRequestData(endpoint, NodeSummaryHistorySchema, 'GET', undefined, options);
 }

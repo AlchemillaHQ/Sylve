@@ -5,23 +5,23 @@ import {
 	type RAMInfoHistorical
 } from '$lib/types/info/ram';
 import type { APIResponse } from '$lib/types/common';
-import { apiRequest } from '$lib/utils/http';
-import type { NodeAPIRequestOptions } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 
+export async function getRAMInfo(): Promise<RAMInfo>;
 export async function getRAMInfo(
 	queryType: 'current',
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<RAMInfo>;
 export async function getRAMInfo(
 	queryType: 'historical',
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<RAMInfoHistorical>;
 export async function getRAMInfo(
 	queryType?: 'current' | 'historical',
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<RAMInfo | RAMInfoHistorical> {
 	if (queryType === 'historical') {
-		return await apiRequest(
+		return await apiRequestData(
 			'/info/ram/historical',
 			RAMInfoHistoricalSchema,
 			'GET',
@@ -29,16 +29,13 @@ export async function getRAMInfo(
 			options
 		);
 	}
-	return await apiRequest('/info/ram', RAMInfoSchema, 'GET', undefined, options);
+	return await apiRequestData('/info/ram', RAMInfoSchema, 'GET', undefined, options);
 }
 
 export async function getRAMInfoResult(
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<RAMInfo | APIResponse> {
-	return await apiRequest('/info/ram', RAMInfoSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult('/info/ram', RAMInfoSchema, 'GET', undefined, options);
 }
 
 export async function getSwapInfo(queryType: 'current'): Promise<RAMInfo>;
@@ -47,7 +44,7 @@ export async function getSwapInfo(
 	queryType?: 'current' | 'historical'
 ): Promise<RAMInfo | RAMInfoHistorical> {
 	if (queryType === 'historical') {
-		return await apiRequest('/info/swap/historical', RAMInfoHistoricalSchema, 'GET');
+		return await apiRequestData('/info/swap/historical', RAMInfoHistoricalSchema, 'GET');
 	}
-	return await apiRequest('/info/swap', RAMInfoSchema, 'GET');
+	return await apiRequestData('/info/swap', RAMInfoSchema, 'GET');
 }

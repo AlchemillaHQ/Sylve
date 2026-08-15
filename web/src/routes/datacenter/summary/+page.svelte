@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getDetails, getNodes } from '$lib/api/cluster/cluster';
+	import { getDetailsData, getNodes } from '$lib/api/cluster/cluster';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import { getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
@@ -53,7 +53,7 @@
 	let clusterDetails = resource(
 		() => 'cluster-details',
 		async (key, prevKey, { signal }) => {
-			const result = await getDetails();
+			const result = await getDetailsData({ signal });
 			updateCache('cluster-details', result);
 			return result;
 		},
@@ -66,7 +66,7 @@
 	let nodes = resource(
 		() => 'cluster-nodes',
 		async (key, prevKey, { signal }) => {
-			const result = await getNodes();
+			const result = await getNodes(signal);
 			if (hasCompleteClusterNodeSnapshot(clusterDetails.current, result)) {
 				await updateCache('cluster-nodes', result);
 			} else {
@@ -83,7 +83,7 @@
 	let cpuInfo = resource(
 		() => 'cpu-info',
 		async (key, prevKey, { signal }) => {
-			const result = await getCPUInfo('current');
+			const result = await getCPUInfo('current', { signal });
 			updateCache('cpu-info', result);
 			return result;
 		},
@@ -96,7 +96,7 @@
 	let ramInfo = resource(
 		() => 'ram-info',
 		async (key, prevKey, { signal }) => {
-			const result = await getRAMInfo('current');
+			const result = await getRAMInfo('current', { signal });
 			updateCache('ram-info', result);
 			return result;
 		},
@@ -109,7 +109,7 @@
 	let diskInfo = resource(
 		() => 'total-disk-usage',
 		async (key, prevKey, { signal }) => {
-			const result = await getPoolsDiskUsageFull();
+			const result = await getPoolsDiskUsageFull({ signal });
 			updateCache('total-disk-usage', result);
 			return result;
 		},
@@ -353,7 +353,7 @@
 				{#if lazyArc}
 					{#await lazyArc}
 						<div class={resourceGridClass} aria-live="polite">
-							{#each ['CPU', 'RAM', 'Disk'] as metric}
+							{#each ['CPU', 'RAM', 'Disk'] as metric (metric)}
 								<div class={resourceSlotClass}>
 									<div
 										class={`${resourceChartBoxClass} flex flex-col items-center justify-center gap-2`}
