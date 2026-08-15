@@ -14,11 +14,12 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-func TestShouldStartAdvancedStartupWorkersMissingLookup(t *testing.T) {
-	_, _, err := shouldStartAdvancedStartupWorkers(nil)
+func TestShouldStartOperationalRuntimeMissingLookup(t *testing.T) {
+	_, _, err := shouldStartOperationalRuntime(nil)
 	if err == nil {
 		t.Fatalf("expected error when lookup is nil")
 	}
@@ -28,8 +29,8 @@ func TestShouldStartAdvancedStartupWorkersMissingLookup(t *testing.T) {
 	}
 }
 
-func TestShouldStartAdvancedStartupWorkersNoBasicSettingsYet(t *testing.T) {
-	enabled, settings, err := shouldStartAdvancedStartupWorkers(func() (models.BasicSettings, error) {
+func TestShouldStartOperationalRuntimeNoBasicSettingsYet(t *testing.T) {
+	enabled, settings, err := shouldStartOperationalRuntime(func() (models.BasicSettings, error) {
 		return models.BasicSettings{}, gorm.ErrRecordNotFound
 	})
 	if err != nil {
@@ -43,7 +44,7 @@ func TestShouldStartAdvancedStartupWorkersNoBasicSettingsYet(t *testing.T) {
 	}
 }
 
-func TestShouldStartAdvancedStartupWorkersRequiresBothFlags(t *testing.T) {
+func TestShouldStartOperationalRuntimeUsesInitializedSnapshot(t *testing.T) {
 	cases := []struct {
 		name     string
 		settings models.BasicSettings
@@ -63,7 +64,7 @@ func TestShouldStartAdvancedStartupWorkersRequiresBothFlags(t *testing.T) {
 				Initialized: true,
 				Restarted:   false,
 			},
-			enabled: false,
+			enabled: true,
 		},
 		{
 			name: "initialized false restarted true",
@@ -85,7 +86,7 @@ func TestShouldStartAdvancedStartupWorkersRequiresBothFlags(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			enabled, settings, err := shouldStartAdvancedStartupWorkers(func() (models.BasicSettings, error) {
+			enabled, settings, err := shouldStartOperationalRuntime(func() (models.BasicSettings, error) {
 				return tc.settings, nil
 			})
 			if err != nil {
@@ -101,10 +102,10 @@ func TestShouldStartAdvancedStartupWorkersRequiresBothFlags(t *testing.T) {
 	}
 }
 
-func TestShouldStartAdvancedStartupWorkersLookupFailure(t *testing.T) {
+func TestShouldStartOperationalRuntimeLookupFailure(t *testing.T) {
 	lookupErr := errors.New("db_timeout")
 
-	enabled, _, err := shouldStartAdvancedStartupWorkers(func() (models.BasicSettings, error) {
+	enabled, _, err := shouldStartOperationalRuntime(func() (models.BasicSettings, error) {
 		return models.BasicSettings{}, lookupErr
 	})
 	if err == nil {
@@ -118,5 +119,55 @@ func TestShouldStartAdvancedStartupWorkersLookupFailure(t *testing.T) {
 	}
 	if !errors.Is(err, lookupErr) {
 		t.Fatalf("expected wrapped error %v, got %v", lookupErr, err)
+	}
+}
+
+func TestMarkOperationalStartupComplete(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := database.AutoMigrate(&models.BasicSettings{}); err != nil {
+		t.Fatalf("migrate basic settings: %v", err)
+	}
+	if err := database.Create(&models.BasicSettings{
+		ID:          1,
+		Initialized: true,
+		Restarted:   false,
+	}).Error; err != nil {
+		t.Fatalf("create basic settings: %v", err)
+	}
+
+	if err := markOperationalStartupComplete(database); err != nil {
+		t.Fatalf("mark startup complete: %v", err)
+	}
+
+	var settings models.BasicSettings
+	if err := database.First(&settings, 1).Error; err != nil {
+		t.Fatalf("reload basic settings: %v", err)
+	}
+	if !settings.Restarted {
+		t.Fatalf("expected restarted to be true")
+	}
+
+	if err := markOperationalStartupComplete(database); err != nil {
+		t.Fatalf("expected repeated marker to be harmless, got %v", err)
+	}
+}
+
+func TestMarkOperationalStartupCompleteRejectsUninitializedSettings(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := database.AutoMigrate(&models.BasicSettings{}); err != nil {
+		t.Fatalf("migrate basic settings: %v", err)
+	}
+	if err := database.Create(&models.BasicSettings{ID: 1}).Error; err != nil {
+		t.Fatalf("create basic settings: %v", err)
+	}
+
+	if err := markOperationalStartupComplete(database); err == nil {
+		t.Fatalf("expected uninitialized settings to be rejected")
 	}
 }

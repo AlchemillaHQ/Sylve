@@ -19,7 +19,7 @@ import (
 
 type basicSettingsLookup func() (models.BasicSettings, error)
 
-func shouldStartAdvancedStartupWorkers(lookup basicSettingsLookup) (bool, models.BasicSettings, error) {
+func shouldStartOperationalRuntime(lookup basicSettingsLookup) (bool, models.BasicSettings, error) {
 	if lookup == nil {
 		return false, models.BasicSettings{}, fmt.Errorf("basic_settings_lookup_required")
 	}
@@ -33,5 +33,23 @@ func shouldStartAdvancedStartupWorkers(lookup basicSettingsLookup) (bool, models
 		return false, models.BasicSettings{}, fmt.Errorf("failed_to_fetch_basic_settings: %w", err)
 	}
 
-	return settings.Initialized && settings.Restarted, settings, nil
+	return settings.Initialized, settings, nil
+}
+
+func markOperationalStartupComplete(database *gorm.DB) error {
+	if database == nil {
+		return fmt.Errorf("database_required")
+	}
+
+	result := database.Model(&models.BasicSettings{}).
+		Where("id = ? AND initialized = ?", 1, true).
+		Update("restarted", true)
+	if result.Error != nil {
+		return fmt.Errorf("failed_to_mark_sylve_restarted: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("initialized_basic_settings_not_found")
+	}
+
+	return nil
 }

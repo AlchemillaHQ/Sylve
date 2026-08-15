@@ -10,6 +10,7 @@ package startup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -129,7 +130,14 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	var basicSettings models.BasicSettings
 	result := s.DB.First(&basicSettings)
 	if result.Error != nil {
-		logger.L.Warn().Msgf("System not initialized yet, skipping startup checks")
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			logger.L.Info().Msg("System not initialized yet; skipping operational startup")
+			return nil
+		}
+		return fmt.Errorf("load basic settings: %w", result.Error)
+	}
+	if !basicSettings.Initialized {
+		logger.L.Info().Msg("System initialization is incomplete; skipping operational startup")
 		return nil
 	}
 

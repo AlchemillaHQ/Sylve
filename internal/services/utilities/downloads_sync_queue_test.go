@@ -24,7 +24,8 @@ func TestListDownloads_EnqueueSyncOnceWhileQueued(t *testing.T) {
 
 	enqueueCalls := 0
 	service := &Service{
-		DB: db,
+		DB:            db,
+		torrentClient: &fakeTorrentRuntime{},
 		enqueueNoPayloadFn: func(ctx context.Context, name string) error {
 			if name != "utils-download-sync" {
 				t.Fatalf("unexpected queue job name: %s", name)
@@ -107,7 +108,8 @@ func TestListDownloadsEnqueuesSyncForProcessingDownloadAtFullTransferProgress(t 
 	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
 	enqueueCalls := 0
 	service := &Service{
-		DB: database,
+		DB:            database,
+		torrentClient: &fakeTorrentRuntime{},
 		enqueueNoPayloadFn: func(context.Context, string) error {
 			enqueueCalls++
 			return nil

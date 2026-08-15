@@ -43,6 +43,7 @@ var (
 	ErrDownloadInUse            = errors.New("download_in_use")
 	ErrDownloadCleanup          = errors.New("download_cleanup_failed")
 	ErrDownloadQueueUnavailable = errors.New("download_queue_unavailable")
+	ErrUtilitiesNotReady        = errors.New("utilities_not_ready")
 )
 
 func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
@@ -186,6 +187,9 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 
 	switch {
 	case utils.IsMagnetURI(source):
+		if _, err := s.activeTorrentClient(); err != nil {
+			return 0, err
+		}
 		if automaticExtraction || automaticRawConversion {
 			return 0, fmt.Errorf("%w: torrent post-processing is not supported", ErrDownloadUnprocessable)
 		}
@@ -348,6 +352,10 @@ func (s *Service) StartDownload(id *uint) error {
 
 	switch download.Type {
 	case utilitiesModels.DownloadTypeTorrent:
+		client, err := s.activeTorrentClient()
+		if err != nil {
+			return err
+		}
 		if !utils.IsMagnetURI(download.URL) {
 			return s.failDownload(download, fmt.Errorf("invalid_torrent_source"))
 		}
@@ -356,7 +364,7 @@ func (s *Service) StartDownload(id *uint) error {
 			StopAfterDownload: false,
 		}
 
-		t, err := s.BTTClient.AddURI(download.URL, &torrentOpts)
+		t, err := client.AddURI(download.URL, &torrentOpts)
 		if err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("Failed to add torrent")
 			download.Status = utilitiesModels.DownloadStatusFailed
@@ -853,7 +861,11 @@ func (s *Service) SyncDownloadProgress() error {
 		}
 		switch d.Type {
 		case utilitiesModels.DownloadTypeTorrent:
-			s.syncTorrent(&d)
+			client, err := s.activeTorrentClient()
+			if err != nil {
+				return err
+			}
+			s.syncTorrent(client, &d)
 		case utilitiesModels.DownloadTypeHTTP:
 			s.syncHTTP(&d)
 		case utilitiesModels.DownloadTypePath:
@@ -865,12 +877,12 @@ func (s *Service) SyncDownloadProgress() error {
 	return nil
 }
 
-func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
+func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.Downloads) {
 	if download.Status == utilitiesModels.DownloadStatusDone {
 		return
 	}
 
-	t := s.BTTClient.GetTorrent(download.UUID)
+	t := client.GetTorrent(download.UUID)
 	if t == nil {
 		if download.Status == utilitiesModels.DownloadStatusPending ||
 			download.Status == utilitiesModels.DownloadStatusProcessing {
@@ -895,7 +907,7 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 					"error":      download.Error,
 				})
 			}
-			s.BTTClient.RemoveTorrent(download.UUID, true)
+			client.RemoveTorrent(download.UUID, true)
 			return
 		}
 		download.Progress = 0
@@ -912,7 +924,7 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 			logger.L.Error().Err(err).Msgf("Failed to persist completed torrent %s", download.UUID)
 			return
 		}
-		if err := s.BTTClient.RemoveTorrent(download.UUID, true); err != nil {
+		if err := client.RemoveTorrent(download.UUID, true); err != nil {
 			logger.L.Error().Err(err).Msgf("Failed to remove completed torrent %s", download.UUID)
 		}
 		if s.TelemetryDB != nil {
@@ -1502,8 +1514,15 @@ func (s *Service) stopDownloadActivity(download utilitiesModels.Downloads) error
 		}
 	}
 
-	if download.Type == utilitiesModels.DownloadTypeTorrent && s.BTTClient != nil {
-		if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
+	if download.Type == utilitiesModels.DownloadTypeTorrent {
+		client, err := s.activeTorrentClient()
+		if errors.Is(err, ErrUtilitiesNotReady) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := client.RemoveTorrent(download.UUID, false); err != nil {
 			return fmt.Errorf("stop torrent before deletion: %w", err)
 		}
 	}

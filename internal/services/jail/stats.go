@@ -40,8 +40,15 @@ type psUsage struct {
 }
 
 func (s *Service) StartStatsMonitoring(ctx context.Context) {
-	s.ctx = ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	s.monitorOnce.Do(func() {
+		go s.networkUpdateWorker(ctx)
+		go s.jailUsagePersistWorker(ctx)
+		go s.jailUsageRetentionWorker(ctx)
+		go s.RecoverInterruptedBootstraps(ctx)
 		go s.liveStateMonitor(ctx)
 		go s.persistScheduler(ctx)
 		go s.retentionScheduler(ctx)
@@ -113,10 +120,10 @@ func (s *Service) enqueueRetention() {
 	}
 }
 
-func (s *Service) jailUsagePersistWorker() {
+func (s *Service) jailUsagePersistWorker(ctx context.Context) {
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case _, ok := <-s.usagePersistQueue:
 			if !ok {
@@ -129,10 +136,10 @@ func (s *Service) jailUsagePersistWorker() {
 	}
 }
 
-func (s *Service) jailUsageRetentionWorker() {
+func (s *Service) jailUsageRetentionWorker(ctx context.Context) {
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case _, ok := <-s.usageRetentionQueue:
 			if !ok {

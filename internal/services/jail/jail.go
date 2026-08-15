@@ -45,7 +45,6 @@ type Service struct {
 	System         systemServiceInterfaces.SystemServiceInterface
 	GZFS           *gzfs.Client
 
-	ctx               context.Context
 	crudMutex         sync.Mutex
 	createMutex       sync.Mutex
 	actionMutex       sync.Mutex
@@ -88,18 +87,12 @@ func NewJailService(
 		NetworkService:      networkService,
 		System:              systemService,
 		GZFS:                gzfs,
-		ctx:                 context.Background(),
 		networkUpdateChan:   make(chan int64, 100),
 		liveStateByCTID:     make(map[uint]jailServiceInterfaces.State),
 		ctidHashByCTID:      make(map[uint]string),
 		usagePersistQueue:   make(chan struct{}, 1),
 		usageRetentionQueue: make(chan struct{}, 1),
 	}
-
-	go s.networkUpdateWorker()
-	go s.jailUsagePersistWorker()
-	go s.jailUsageRetentionWorker()
-	go s.RecoverInterruptedBootstraps(context.Background())
 
 	networkService.RegisterOnJailObjectUpdateCallback(func(jailIDs []uint) {
 		for _, id := range jailIDs {

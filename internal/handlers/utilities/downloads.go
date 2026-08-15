@@ -101,6 +101,8 @@ func downloadMutationError(err error, fallback string) (int, string) {
 		return http.StatusUnprocessableEntity, "download_request_unprocessable"
 	case errors.Is(err, utilities.ErrDownloadQueueUnavailable):
 		return http.StatusServiceUnavailable, "download_queue_unavailable"
+	case errors.Is(err, utilities.ErrUtilitiesNotReady):
+		return http.StatusServiceUnavailable, "utilities_not_ready"
 	default:
 		return http.StatusInternalServerError, fallback
 	}
