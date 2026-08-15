@@ -243,7 +243,10 @@
 
 	function selectedDatasetLabel(): string {
 		if (!form.dataset.value) return 'Not set';
-		return datasetOptions.find((dataset) => dataset.value === form.dataset.value)?.label ?? form.dataset.value;
+		return (
+			datasetOptions.find((dataset) => dataset.value === form.dataset.value)?.label ??
+			form.dataset.value
+		);
 	}
 
 	function tabError(tab: ShareTab): string {
@@ -270,7 +273,7 @@
 
 		const name = form.name.trim();
 		if (!name) return showValidationError('name', 'Name is required');
-		if (/[\r\n\[\]]/.test(name)) {
+		if (/[\r\n[\]]/.test(name)) {
 			return showValidationError('name', 'Name cannot contain brackets or line breaks');
 		}
 		if (shares.some((existing) => existing.name === name && existing.id !== share?.id)) {
@@ -292,21 +295,33 @@
 			form.readGroups.value.length +
 			form.writeGroups.value.length;
 		if (form.accessMode === 'authenticated' && totalPrincipals === 0) {
-			return showValidationError('access', 'Select at least one user or group for authenticated access');
+			return showValidationError(
+				'access',
+				'Select at least one user or group for authenticated access'
+			);
 		}
 
 		if (!/^[0-7]{4}$/.test(form.createMask.trim())) {
-			return showValidationError('createMask', 'Create mask must contain exactly four octal digits');
+			return showValidationError(
+				'createMask',
+				'Create mask must contain exactly four octal digits'
+			);
 		}
 		if (!/^[0-7]{4}$/.test(form.directoryMask.trim())) {
-			return showValidationError('directoryMask', 'Directory mask must contain exactly four octal digits');
+			return showValidationError(
+				'directoryMask',
+				'Directory mask must contain exactly four octal digits'
+			);
 		}
 
 		if (
 			form.timeMachine &&
 			(!Number.isInteger(form.timeMachineMaxSize) || form.timeMachineMaxSize < 0)
 		) {
-			return showValidationError('timeMachineMaxSize', 'Time Machine size must be a whole number of 0 or more');
+			return showValidationError(
+				'timeMachineMaxSize',
+				'Time Machine size must be a whole number of 0 or more'
+			);
 		}
 		if (form.auditEnabled && form.auditedOperations.value.length === 0) {
 			return showValidationError('audit', 'Select at least one operation to audit');
@@ -509,7 +524,9 @@
 							/>
 						</div>
 
-						<div class="flex items-center space-x-3 rounded-lg border border-border bg-muted/40 p-4">
+						<div
+							class="flex items-center space-x-3 rounded-lg border border-border bg-muted/40 p-4"
+						>
 							<Checkbox
 								id="share-enabled"
 								bind:checked={form.enabled}
@@ -524,7 +541,8 @@
 						</div>
 
 						<p class="text-muted-foreground text-xs">
-							Only mounted, non-system datasets that are not already used by another Samba share are shown.
+							Only mounted, non-system datasets that are not already used by another Samba share are
+							shown.
 						</p>
 					</section>
 				</div>
@@ -543,7 +561,9 @@
 
 					<section class="space-y-3" aria-labelledby="access-mode-heading">
 						<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-							<label class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('authenticated')}`}>
+							<label
+								class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('authenticated')}`}
+							>
 								<input
 									class="sr-only"
 									type="radio"
@@ -556,10 +576,14 @@
 									<span class="icon-[mdi--account-group-outline] h-4 w-4"></span>
 									Authenticated
 								</span>
-								<span class="text-muted-foreground mt-1 block text-xs">Specific users and groups</span>
+								<span class="text-muted-foreground mt-1 block text-xs"
+									>Specific users and groups</span
+								>
 							</label>
 
-							<label class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('guest-read')}`}>
+							<label
+								class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('guest-read')}`}
+							>
 								<input
 									class="sr-only"
 									type="radio"
@@ -572,10 +596,14 @@
 									<span class="icon-[mdi--account-eye-outline] h-4 w-4"></span>
 									Guest read-only
 								</span>
-								<span class="text-muted-foreground mt-1 block text-xs">Anyone can browse and read files</span>
+								<span class="text-muted-foreground mt-1 block text-xs"
+									>Anyone can browse and read files</span
+								>
 							</label>
 
-							<label class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('guest-write')}`}>
+							<label
+								class={`focus-within:ring-ring/50 focus-within:border-ring cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-[3px] ${accessCardClass('guest-write')}`}
+							>
 								<input
 									class="sr-only"
 									type="radio"
@@ -588,7 +616,9 @@
 									<span class="icon-[mdi--account-edit-outline] h-4 w-4"></span>
 									Guest read/write
 								</span>
-								<span class="text-muted-foreground mt-1 block text-xs">Anyone can read and modify files</span>
+								<span class="text-muted-foreground mt-1 block text-xs"
+									>Anyone can read and modify files</span
+								>
 							</label>
 						</div>
 					</section>
@@ -672,7 +702,8 @@
 									: 'Guests can read and write this share without credentials.'}
 							</p>
 							<p class="text-muted-foreground mt-1 text-xs">
-								Your named user and group selections are preserved if you switch back to authenticated access.
+								Your named user and group selections are preserved if you switch back to
+								authenticated access.
 							</p>
 						</div>
 					{/if}
@@ -760,7 +791,6 @@
 
 					<Accordion.Root
 						type="single"
-						collapsible
 						bind:value={advancedPermissions}
 						class="rounded-md border bg-muted/10 px-4"
 					>
@@ -770,12 +800,15 @@
 							>
 								<span class="flex min-w-0 flex-1 items-center justify-between gap-3">
 									<span>Advanced permissions</span>
-									<span class="normal-case tracking-normal">Default: 0664 files, 2775 directories</span>
+									<span class="normal-case tracking-normal"
+										>Default: 0664 files, 2775 directories</span
+									>
 								</span>
 							</Accordion.Trigger>
 							<Accordion.Content class="pb-4">
 								<p class="text-muted-foreground mb-4 text-xs">
-									Use four octal digits to control permissions for newly created files and directories.
+									Use four octal digits to control permissions for newly created files and
+									directories.
 								</p>
 								<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 									<CustomValueInput
@@ -802,7 +835,10 @@
 						</Accordion.Item>
 					</Accordion.Root>
 
-					<section class="rounded-md border bg-muted/40 p-4" aria-labelledby="share-summary-heading">
+					<section
+						class="rounded-md border bg-muted/40 p-4"
+						aria-labelledby="share-summary-heading"
+					>
 						<p id="share-summary-heading" class="text-sm font-semibold">Share summary</p>
 						<dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
 							<div>

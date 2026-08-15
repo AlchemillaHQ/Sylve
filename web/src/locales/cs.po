@@ -11495,8 +11495,8 @@ msgstr ""
 msgid "Critical{0}"
 msgstr ""
 
-#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['warningCelsius'] ?? 55 \\: editConfigDefaults['warningPercent'] ?? 80; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
-#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? editConfigDefaults['criticalCelsius'] ?? 65 \\: editConfigDefaults['criticalPercent'] ?? 90; 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['warningCelsius'] ?? 55) \\: (editConfigDefaults['warningPercent'] ?? 80); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
+#. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['criticalCelsius'] ?? 65) \\: (editConfigDefaults['criticalPercent'] ?? 90); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Default: {0}{1}"

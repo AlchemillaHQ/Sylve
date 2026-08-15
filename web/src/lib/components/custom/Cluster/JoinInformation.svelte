@@ -20,9 +20,23 @@
 	let loading = $state(false);
 	let requestGeneration = 0;
 
+	async function loadClusterKey(generation: number) {
+		const result = await getJoinKey();
+
+		if (generation !== requestGeneration || !open) return;
+
+		loading = false;
+		if (isAPIResponse(result)) {
+			toast.error('Unable to load cluster key', { position: 'bottom-center' });
+			return;
+		}
+
+		clusterKey = result.key;
+	}
+
 	watch(
 		() => open,
-		async (isOpen) => {
+		(isOpen) => {
 			const generation = ++requestGeneration;
 			clusterKey = '';
 			if (!isOpen) {
@@ -31,16 +45,7 @@
 			}
 
 			loading = true;
-			const result = await getJoinKey();
-			if (generation !== requestGeneration || !open) return;
-
-			loading = false;
-			if (isAPIResponse(result)) {
-				toast.error('Unable to load cluster key', { position: 'bottom-center' });
-				return;
-			}
-
-			clusterKey = result.key;
+			void loadClusterKey(generation);
 		}
 	);
 

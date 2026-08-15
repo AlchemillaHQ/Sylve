@@ -9,15 +9,15 @@ under sponsorship from the FreeBSD Foundation.
 -->
 
 <script lang="ts">
-import {
-	bulkDeleteNotificationRules,
-	bulkUpdateNotificationRules,
-	createNotificationRule,
-	deleteNotificationRule,
-	getNotificationRules,
-	testNotificationRule,
-	updateNotificationRule
-} from '$lib/api/notifications';
+	import {
+		bulkDeleteNotificationRules,
+		bulkUpdateNotificationRules,
+		createNotificationRule,
+		deleteNotificationRule,
+		getNotificationRules,
+		testNotificationRule,
+		updateNotificationRule
+	} from '$lib/api/notifications';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -25,9 +25,9 @@ import {
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-import * as Accordion from '$lib/components/ui/accordion/index.js';
-import * as Dialog from '$lib/components/ui/dialog/index.js';
-import * as Table from '$lib/components/ui/table/index.js';
+	import * as Accordion from '$lib/components/ui/accordion/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Table from '$lib/components/ui/table/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { BulkUpdateRulesInput, NotificationRulesConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -282,7 +282,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 	});
 
 	let bulkUpdateGroups = $derived.by(() => {
-		const map = new Map<string, { label: string; count: number }>();
+		const map = new SvelteMap<string, { label: string; count: number }>();
 		for (const r of modals.bulkUpdate.rules) {
 			const existing = map.get(r.templateKey);
 			if (existing) {
@@ -294,7 +294,13 @@ import * as Table from '$lib/components/ui/table/index.js';
 		return Array.from(map.values());
 	});
 
-	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true, discordEnabled: true, config: '' });
+	let editOriginal = $state({
+		uiEnabled: true,
+		ntfyEnabled: true,
+		emailEnabled: true,
+		discordEnabled: true,
+		config: ''
+	});
 
 	function configNumber(key: string, fallback: number): number {
 		try {
@@ -323,9 +329,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 
 	let editConfigDefaults = $derived.by(() => {
 		if (!editTemplateHasConfig) return {};
-		const template = (currentConfig.templates || []).find(
-			(t) => t.key === modals.edit.templateKey
-		);
+		const template = (currentConfig.templates || []).find((t) => t.key === modals.edit.templateKey);
 		try {
 			return JSON.parse(template?.defaultConfig || '{}');
 		} catch {
@@ -601,7 +605,9 @@ import * as Table from '$lib/components/ui/table/index.js';
 			return;
 		}
 
-		toast.success(`${modals.bulkDelete.ids.length} notification rules deleted`, { position: 'bottom-center' });
+		toast.success(`${modals.bulkDelete.ids.length} notification rules deleted`, {
+			position: 'bottom-center'
+		});
 		modals.bulkDelete.open = false;
 		activeRows = null;
 		await rulesResource.refetch();
@@ -615,8 +621,10 @@ import * as Table from '$lib/components/ui/table/index.js';
 		const payload: BulkUpdateRulesInput = { ids: modals.bulkUpdate.ids };
 		if (modals.bulkUpdate.uiEnabled !== null) payload.uiEnabled = modals.bulkUpdate.uiEnabled;
 		if (modals.bulkUpdate.ntfyEnabled !== null) payload.ntfyEnabled = modals.bulkUpdate.ntfyEnabled;
-		if (modals.bulkUpdate.emailEnabled !== null) payload.emailEnabled = modals.bulkUpdate.emailEnabled;
-		if (modals.bulkUpdate.discordEnabled !== null) payload.discordEnabled = modals.bulkUpdate.discordEnabled;
+		if (modals.bulkUpdate.emailEnabled !== null)
+			payload.emailEnabled = modals.bulkUpdate.emailEnabled;
+		if (modals.bulkUpdate.discordEnabled !== null)
+			payload.discordEnabled = modals.bulkUpdate.discordEnabled;
 
 		if (Object.keys(payload).length <= 1) {
 			toast.error('Select at least one channel', { position: 'bottom-center' });
@@ -634,7 +642,9 @@ import * as Table from '$lib/components/ui/table/index.js';
 			return;
 		}
 
-		toast.success(`${modals.bulkUpdate.ids.length} notification rules updated`, { position: 'bottom-center' });
+		toast.success(`${modals.bulkUpdate.ids.length} notification rules updated`, {
+			position: 'bottom-center'
+		});
 		modals.bulkUpdate.open = false;
 		await rulesResource.refetch();
 		activeRows = null;
@@ -651,9 +661,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 	}
 
 	let testTargetOptions = $derived.by(() => {
-		const template = (currentConfig.templates || []).find(
-			(t) => t.key === modals.test.templateKey
-		);
+		const template = (currentConfig.templates || []).find((t) => t.key === modals.test.templateKey);
 		return (template?.targets || []).map((t) => ({ key: t.key, label: t.label }));
 	});
 
@@ -693,7 +701,10 @@ import * as Table from '$lib/components/ui/table/index.js';
 
 	$effect(() => {
 		if (!modals.test.open) return;
-		if (testTargetOptions.length > 0 && !testTargetOptions.some((t) => t.key === modals.test.targetKey)) {
+		if (
+			testTargetOptions.length > 0 &&
+			!testTargetOptions.some((t) => t.key === modals.test.targetKey)
+		) {
 			modals.test.targetKey = testTargetOptions[0].key;
 		}
 		if (
@@ -756,10 +767,20 @@ import * as Table from '$lib/components/ui/table/index.js';
 		{/if}
 		{#if activeRows && activeRows.filter((r) => !(r as RuleRow).isTemplateRow && (r as RuleRow).ruleId).length > 1}
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkUpdateModal}>
-				<SpanWithIcon icon="icon-[material-symbols--toggle-on]" size="h-4 w-4" gap="gap-2" title="Bulk Update" />
+				<SpanWithIcon
+					icon="icon-[material-symbols--toggle-on]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Bulk Update"
+				/>
 			</Button>
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkDeleteModal}>
-				<SpanWithIcon icon="icon-[material-symbols--delete-sweep]" size="h-4 w-4" gap="gap-2" title="Bulk Delete" />
+				<SpanWithIcon
+					icon="icon-[material-symbols--delete-sweep]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Bulk Delete"
+				/>
 			</Button>
 		{/if}
 		<Button
@@ -910,7 +931,9 @@ import * as Table from '$lib/components/ui/table/index.js';
 					<Table.Body>
 						<Table.Row>
 							<Table.Cell>{modals.edit.templateLabel}</Table.Cell>
-							<Table.Cell class="truncate max-w-0" title={modals.edit.targetLabel}>{modals.edit.targetLabel}</Table.Cell>
+							<Table.Cell class="truncate max-w-0" title={modals.edit.targetLabel}
+								>{modals.edit.targetLabel}</Table.Cell
+							>
 							<Table.Cell>
 								{#if modals.edit.active}
 									<span class="text-green-500">Active</span>
@@ -945,8 +968,8 @@ import * as Table from '$lib/components/ui/table/index.js';
 										? 'warningCelsius'
 										: 'warningPercent',
 									modals.edit.templateKey === 'system.disk.smart.temperature'
-										? editConfigDefaults['warningCelsius'] ?? 55
-										: editConfigDefaults['warningPercent'] ?? 80
+										? (editConfigDefaults['warningCelsius'] ?? 55)
+										: (editConfigDefaults['warningPercent'] ?? 80)
 								)}
 								oninput={(e) =>
 									setConfigNumber(
@@ -958,8 +981,11 @@ import * as Table from '$lib/components/ui/table/index.js';
 							/>
 							<span class="text-muted-foreground text-[10px]"
 								>Default: {modals.edit.templateKey === 'system.disk.smart.temperature'
-									? editConfigDefaults['warningCelsius'] ?? 55
-									: editConfigDefaults['warningPercent'] ?? 80}{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}</span
+									? (editConfigDefaults['warningCelsius'] ?? 55)
+									: (editConfigDefaults['warningPercent'] ?? 80)}{modals.edit.templateKey ===
+								'system.disk.smart.temperature'
+									? ' °C'
+									: ' %'}</span
 							>
 						</div>
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
@@ -976,8 +1002,8 @@ import * as Table from '$lib/components/ui/table/index.js';
 										? 'criticalCelsius'
 										: 'criticalPercent',
 									modals.edit.templateKey === 'system.disk.smart.temperature'
-										? editConfigDefaults['criticalCelsius'] ?? 65
-										: editConfigDefaults['criticalPercent'] ?? 90
+										? (editConfigDefaults['criticalCelsius'] ?? 65)
+										: (editConfigDefaults['criticalPercent'] ?? 90)
 								)}
 								oninput={(e) =>
 									setConfigNumber(
@@ -989,8 +1015,11 @@ import * as Table from '$lib/components/ui/table/index.js';
 							/>
 							<span class="text-muted-foreground text-[10px]"
 								>Default: {modals.edit.templateKey === 'system.disk.smart.temperature'
-									? editConfigDefaults['criticalCelsius'] ?? 65
-									: editConfigDefaults['criticalPercent'] ?? 90}{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}</span
+									? (editConfigDefaults['criticalCelsius'] ?? 65)
+									: (editConfigDefaults['criticalPercent'] ?? 90)}{modals.edit.templateKey ===
+								'system.disk.smart.temperature'
+									? ' °C'
+									: ' %'}</span
 							>
 						</div>
 					</div>
@@ -1145,7 +1174,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 
 			<div class="space-y-4">
 				<div class="rounded-md border bg-muted/10">
-					<Accordion.Root type="single" collapsible>
+					<Accordion.Root type="single">
 						<Accordion.Item value="selected-rules" class="border-b-0">
 							<Accordion.Trigger
 								class="px-4 py-2.5 text-xs uppercase tracking-widest text-muted-foreground hover:no-underline"
@@ -1155,9 +1184,13 @@ import * as Table from '$lib/components/ui/table/index.js';
 							<Accordion.Content class="px-4 pb-3">
 								<div class="space-y-1">
 									{#each bulkUpdateGroups as group (group.label)}
-										<div class="flex items-center justify-between rounded bg-background px-3 py-1.5 text-xs">
+										<div
+											class="flex items-center justify-between rounded bg-background px-3 py-1.5 text-xs"
+										>
 											<span class="text-muted-foreground">{group.label}</span>
-											<span class="font-medium">{group.count} rule{group.count !== 1 ? 's' : ''}</span>
+											<span class="font-medium"
+												>{group.count} rule{group.count !== 1 ? 's' : ''}</span
+											>
 										</div>
 									{/each}
 								</div>
@@ -1167,12 +1200,7 @@ import * as Table from '$lib/components/ui/table/index.js';
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
-					{#each [
-						{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
-						{ key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
-						{ key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
-						{ key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
-					] as channel (channel.key)}
+					{#each [{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' }, { key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' }, { key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' }, { key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }] as channel (channel.key)}
 						{@const value = modals.bulkUpdate[channel.key]}
 						<div class="rounded-md border p-3 space-y-2.5">
 							<div class="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
@@ -1181,19 +1209,28 @@ import * as Table from '$lib/components/ui/table/index.js';
 							</div>
 							<div class="flex gap-2">
 								<button
-									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value === true ? 'border-green-600 bg-green-600 text-white shadow-xs' : 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value ===
+									true
+										? 'border-green-600 bg-green-600 text-white shadow-xs'
+										: 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
 									onclick={() => (modals.bulkUpdate[channel.key] = true)}
 								>
 									Enable
 								</button>
 								<button
-									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value === false ? 'border-red-600 bg-red-600 text-white shadow-xs' : 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value ===
+									false
+										? 'border-red-600 bg-red-600 text-white shadow-xs'
+										: 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
 									onclick={() => (modals.bulkUpdate[channel.key] = false)}
 								>
 									Disable
 								</button>
 								<button
-									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value === null ? 'bg-muted text-foreground shadow-xs' : 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value ===
+									null
+										? 'bg-muted text-foreground shadow-xs'
+										: 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
 									onclick={() => (modals.bulkUpdate[channel.key] = null)}
 								>
 									No Change
