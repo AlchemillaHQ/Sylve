@@ -8,7 +8,7 @@
 		actionVm,
 		deleteVM,
 		forceDeleteVM,
-		getSimpleVMById,
+		getSimpleVMByIdResult,
 		getVMDomain,
 		purgeVMRegistration
 	} from '$lib/api/vm/vm';
@@ -52,7 +52,7 @@
 		[() => node, () => rid],
 		async ([hostname, currentRid], _, { signal }): Promise<SimpleVMSnapshot | null> => {
 			if (!currentRid || !hostname) return null;
-			const result = await getSimpleVMById(currentRid, { hostname, signal });
+			const result = await getSimpleVMByIdResult(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
 				throw new Error(result.message || result.error?.toString() || 'Unable to load VM');
 			}
@@ -460,8 +460,6 @@
 
 		await refreshVmDomain();
 	}
-
-	let permaOpen = $state(true);
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">

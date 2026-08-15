@@ -301,9 +301,20 @@ export async function removeCache(key: string, hostname?: string): Promise<void>
 }
 
 export function isAPIResponse(obj: unknown): obj is APIResponse {
-	return (
-		typeof obj === 'object' && obj !== null && 'status' in obj && typeof obj.status === 'string'
-	);
+	if (typeof obj !== 'object' || obj === null) return false;
+
+	const response = obj as Record<string, unknown>;
+	const hasData = 'data' in response;
+	const hasMessage = typeof response.message === 'string';
+	const hasError =
+		typeof response.error === 'string' ||
+		(Array.isArray(response.error) &&
+			response.error.every((message) => typeof message === 'string'));
+
+	if (response.status === 'success') return hasData;
+	if (response.status === 'error') return hasData || hasMessage || hasError;
+
+	return false;
 }
 
 export function isAPIErrorResponse(obj: unknown): obj is APIResponse {

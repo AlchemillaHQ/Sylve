@@ -1,4 +1,4 @@
-import { getSimpleVMById, getVMDomain } from '$lib/api/vm/vm';
+import { getSimpleVMByIdResult, getVMDomain } from '$lib/api/vm/vm';
 import { SEVEN_DAYS } from '$lib/utils.js';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 import { error } from '@sveltejs/kit';
@@ -17,7 +17,7 @@ export async function load({ params }) {
 		cachedFetch(
 			`simple-vm-${rid}`,
 			async () => {
-				const result = await getSimpleVMById(rid, { hostname: node });
+				const result = await getSimpleVMByIdResult(rid, { hostname: node });
 				return isAPIResponse(result) ? null : result;
 			},
 			SEVEN_DAYS,

@@ -2,8 +2,7 @@ import {
 	APIResponseSchema,
 	GuestDeletionResponseSchema,
 	type APIResponse,
-	type GFSStep,
-	type GuestDeletionResponse
+	type GFSStep
 } from '$lib/types/common';
 import {
 	QGAInfoSchema,
@@ -33,7 +32,7 @@ import {
 	type VMLifecycleAction,
 	VMActionResponseSchema
 } from '$lib/types/vm/vm';
-import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 function toExtraBhyveOptions(raw: string): string[] {
@@ -43,40 +42,36 @@ function toExtraBhyveOptions(raw: string): string[] {
 		.filter((line) => line.length > 0);
 }
 
-export async function getVmById(rid: number, options?: NodeAPIRequestOptions): Promise<VM> {
-	return await apiRequest(`/vm/${rid}`, VMSchema, 'GET', undefined, options);
+export async function getVmById(rid: number, options?: NodeAPIDataRequestOptions): Promise<VM> {
+	return await apiRequestData(`/vm/${rid}`, VMSchema, 'GET', undefined, options);
 }
 
 export async function getVmByIdResult(
 	rid: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<VM | APIResponse> {
-	return await apiRequest(`/vm/${rid}`, VMSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/vm/${rid}`, VMSchema, 'GET', undefined, options);
 }
 
 export async function getVMs(hostname?: string): Promise<VM[]> {
-	return await apiRequest('/vm', z.array(VMSchema), 'GET', undefined, { hostname });
+	return await apiRequestData('/vm', z.array(VMSchema), 'GET', undefined, { hostname });
 }
 
-export async function getVMsResult(options?: NodeAPIRequestOptions): Promise<VM[] | APIResponse> {
-	return await apiRequest('/vm', z.array(VMSchema), 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+export async function getVMsResult(
+	options?: NodeAPIDataRequestOptions
+): Promise<VM[] | APIResponse> {
+	return await apiRequestResult('/vm', z.array(VMSchema), 'GET', undefined, options);
 }
 
 export async function getSimpleVMs(hostname?: string, signal?: AbortSignal): Promise<SimpleVm[]> {
-	return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, {
+	return await apiRequestData('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, {
 		hostname,
 		signal
 	});
 }
 
 export async function getSimpleVMTemplates(hostname?: string): Promise<SimpleVmTemplate[]> {
-	return await apiRequest('/vm/templates', z.array(SimpleVmTemplateSchema), 'GET', undefined, {
+	return await apiRequestData('/vm/templates', z.array(SimpleVmTemplateSchema), 'GET', undefined, {
 		hostname
 	});
 }
@@ -85,22 +80,38 @@ export async function getVMTemplateById(
 	templateId: number,
 	hostname?: string
 ): Promise<VMTemplate> {
-	return await apiRequest(`/vm/templates/${templateId}`, VMTemplateSchema, 'GET', undefined, {
+	return await apiRequestData(`/vm/templates/${templateId}`, VMTemplateSchema, 'GET', undefined, {
+		hostname
+	});
+}
+
+export async function getVMTemplateByIdResult(
+	templateId: number,
+	hostname?: string
+): Promise<VMTemplate | APIResponse> {
+	return await apiRequestResult(`/vm/templates/${templateId}`, VMTemplateSchema, 'GET', undefined, {
 		hostname
 	});
 }
 
 export async function getSimpleVMById(
 	rid: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<SimpleVm> {
-	return await apiRequest(`/vm/simple/${rid}`, SimpleVmSchema, 'GET', undefined, options);
+	return await apiRequestData(`/vm/simple/${rid}`, SimpleVmSchema, 'GET', undefined, options);
+}
+
+export async function getSimpleVMByIdResult(
+	rid: number,
+	options?: NodeAPIDataRequestOptions
+): Promise<SimpleVm | APIResponse> {
+	return await apiRequestResult(`/vm/simple/${rid}`, SimpleVmSchema, 'GET', undefined, options);
 }
 
 export async function newVM(data: CreateData, hostname: string): Promise<APIResponse> {
 	const iso = data.storage.iso.toLowerCase() === 'none' ? '' : data.storage.iso;
 
-	return await apiRequest(
+	return await apiRequestResult(
 		'/vm',
 		APIResponseSchema,
 		'POST',
@@ -152,52 +163,49 @@ export async function deleteVM(
 	deleteRawDisks: boolean,
 	deleteVolumes: boolean,
 	hostname?: string
-): Promise<GuestDeletionResponse> {
-	return (await apiRequest(
+): Promise<APIResponse> {
+	return await apiRequestResult(
 		`/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}`,
 		GuestDeletionResponseSchema,
 		'DELETE',
 		undefined,
 		{ hostname }
-	)) as GuestDeletionResponse;
+	);
 }
 
 export async function forceDeleteVM(
 	rid: number,
 	deleteMacs: boolean = true,
 	hostname?: string
-): Promise<GuestDeletionResponse> {
-	return (await apiRequest(
+): Promise<APIResponse> {
+	return await apiRequestResult(
 		`/vm/${rid}?force=true&deletemacs=${deleteMacs}`,
 		GuestDeletionResponseSchema,
 		'DELETE',
 		undefined,
 		{ hostname }
-	)) as GuestDeletionResponse;
+	);
 }
 
 export async function purgeVMRegistration(
 	rid: number,
 	deleteMacs: boolean = true,
 	hostname?: string
-): Promise<GuestDeletionResponse> {
-	return (await apiRequest(
+): Promise<APIResponse> {
+	return await apiRequestResult(
 		`/vm/${rid}/registration?deletemacs=${deleteMacs}`,
 		GuestDeletionResponseSchema,
 		'DELETE',
 		undefined,
 		{ hostname }
-	)) as GuestDeletionResponse;
+	);
 }
 
 export async function getVMDomain(
 	rid: number | string,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<VMDomain | APIResponse> {
-	return await apiRequest(`/vm/${rid}/domain`, VMDomainSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/vm/${rid}/domain`, VMDomainSchema, 'GET', undefined, options);
 }
 
 export async function actionVm(
@@ -205,7 +213,7 @@ export async function actionVm(
 	action: VMLifecycleAction,
 	hostname?: string
 ): Promise<VMActionResponse | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/actions/${action}`,
 		VMActionResponseSchema,
 		'POST',
@@ -225,7 +233,7 @@ export async function captureVMTemplate(
 	data: CaptureVMTemplateRequest,
 	hostname?: string
 ): Promise<VMTemplateCaptureTaskResponse | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/templates`,
 		VMTemplateCaptureTaskResponseSchema,
 		'POST',
@@ -258,7 +266,7 @@ export async function createVMFromTemplate(
 	data: CreateVMFromTemplateRequest,
 	hostname?: string
 ): Promise<VMTemplateInstantiationTaskResponse | APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/templates/${templateId}/vms`,
 		VMTemplateInstantiationTaskResponseSchema,
 		'POST',
@@ -271,40 +279,49 @@ export async function deleteVMTemplate(
 	templateId: number,
 	hostname?: string
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/templates/${templateId}`, APIResponseSchema, 'DELETE', undefined, {
-		hostname
-	});
+	return await apiRequestResult(
+		`/vm/templates/${templateId}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		{
+			hostname
+		}
+	);
 }
 
 export async function getStats(
 	rid: number,
 	step: GFSStep,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<VMStat[] | APIResponse> {
-	return await apiRequest(`/vm/${rid}/stats/${step}`, z.array(VMStatSchema), 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(
+		`/vm/${rid}/stats/${step}`,
+		z.array(VMStatSchema),
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function getStatsBootstrap(
 	rid: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<VMStatsBootstrap | APIResponse> {
-	return await apiRequest(`/vm/${rid}/stats`, VMStatsBootstrapSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(
+		`/vm/${rid}/stats`,
+		VMStatsBootstrapSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function getVMLogs(
 	rid: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<VMLogs | APIResponse> {
-	return await apiRequest(`/vm/${rid}/logs`, VMLogsSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/vm/${rid}/logs`, VMLogsSchema, 'GET', undefined, options);
 }
 
 export async function updateDescription(
@@ -312,7 +329,7 @@ export async function updateDescription(
 	description: string,
 	hostname?: string
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/description`,
 		APIResponseSchema,
 		'PATCH',
@@ -328,68 +345,68 @@ export async function updateName(
 	name: string,
 	hostname?: string
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/${rid}/name`, APIResponseSchema, 'PATCH', { name }, { hostname });
+	return await apiRequestResult(
+		`/vm/${rid}/name`,
+		APIResponseSchema,
+		'PATCH',
+		{ name },
+		{ hostname }
+	);
 }
 
 export async function modifyWoL(
 	rid: number,
 	enabled: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/wol`,
 		APIResponseSchema,
 		'PUT',
 		{ enabled },
-		{
-			...options,
-			preserveErrors: true
-		}
+		options
 	);
 }
 
 export async function modifyIgnoreUMSR(
 	rid: number,
 	ignore: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/ignore-umsrs`,
 		APIResponseSchema,
 		'PUT',
 		{ ignoreUMSRs: ignore },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
 export async function modifyQemuGuestAgent(
 	rid: number,
 	enabled: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/qemu-guest-agent`,
 		APIResponseSchema,
 		'PUT',
 		{ enabled },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
 export async function modifyTPM(
 	rid: number,
 	enabled: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/tpm`,
 		APIResponseSchema,
 		'PUT',
 		{ enabled },
-		{
-			...options,
-			preserveErrors: true
-		}
+		options
 	);
 }
 
@@ -397,79 +414,70 @@ export async function modifyBootOrder(
 	rid: number,
 	startAtBoot: boolean,
 	bootOrder: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/boot-order`,
 		APIResponseSchema,
 		'PUT',
 		{ startAtBoot, bootOrder },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
 export async function modifyClockOffset(
 	rid: number,
 	timeOffset: 'localtime' | 'utc',
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/clock`,
 		APIResponseSchema,
 		'PUT',
 		{ timeOffset },
-		{
-			...options,
-			preserveErrors: true
-		}
+		options
 	);
 }
 
 export async function modifyBootRom(
 	rid: number,
 	bootRom: 'uefi' | 'uboot' | 'none',
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/boot-rom`,
 		APIResponseSchema,
 		'PUT',
 		{ bootRom },
-		{
-			...options,
-			preserveErrors: true
-		}
+		options
 	);
 }
 
 export async function modifySerialConsole(
 	rid: number,
 	enabled: boolean,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/serial-console`,
 		APIResponseSchema,
 		'PUT',
 		{ enabled },
-		{
-			...options,
-			preserveErrors: true
-		}
+		options
 	);
 }
 
 export async function modifyShutdownWaitTime(
 	rid: number,
 	waitTime: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/shutdown-wait-time`,
 		APIResponseSchema,
 		'PUT',
 		{ waitTime },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
@@ -478,37 +486,34 @@ export async function modifyCloudInitData(
 	data: string,
 	metadata: string,
 	networkConfig: string,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/cloud-init`,
 		APIResponseSchema,
 		'PUT',
 		{ data, metadata, networkConfig },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
 export async function modifyExtraBhyveOptions(
 	rid: number,
 	extraBhyveOptions: string[],
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(
+	return await apiRequestResult(
 		`/vm/${rid}/options/extra-bhyve-options`,
 		APIResponseSchema,
 		'PUT',
 		{ extraBhyveOptions },
-		{ ...options, preserveErrors: true }
+		options
 	);
 }
 
 export async function getQGAInfo(
 	rid: number,
-	options?: NodeAPIRequestOptions
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse | QGAInfo> {
-	return await apiRequest(`/vm/${rid}/guest-agent`, QGAInfoSchema, 'GET', undefined, {
-		...options,
-		preserveErrors: true
-	});
+	return await apiRequestResult(`/vm/${rid}/guest-agent`, QGAInfoSchema, 'GET', undefined, options);
 }

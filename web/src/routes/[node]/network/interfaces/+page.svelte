@@ -16,7 +16,7 @@
 	import { getJails } from '$lib/api/jail/jail';
 	import { isMACNearOrEqual } from '$lib/utils/mac';
 	import type { VM } from '$lib/types/vm/vm';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getVMsResult } from '$lib/api/vm/vm';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { getWireGuardClients } from '$lib/api/network/wireguard';
@@ -102,7 +102,7 @@
 	let vms = resource(
 		() => 'vm-list',
 		async (key) => {
-			const res = await getVMs();
+			const res = await getVMsResult();
 			if (isAPIResponse(res)) {
 				return data.vms;
 			}
