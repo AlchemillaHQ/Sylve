@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { getJWTClaims, logOut } from '$lib/api/auth';
 	import ReplicationActivity from '$lib/components/custom/DataCenter/Replication/Activity.svelte';
+	import NotificationBell from '$lib/components/custom/Notifications/Bell.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -61,7 +62,7 @@
 </script>
 
 <header
-	class="bg-background sticky top-0 z-40 flex h-14 items-center gap-3 border-x border-b px-2 md:h-[4vh]"
+	class="bg-background sticky top-0 z-40 flex h-14 items-center gap-3 border-b px-2 md:h-[4vh]"
 >
 	<div class="flex items-center lg:hidden">
 		<Sheet.Root bind:open={mobileMenuOpen}>
@@ -220,6 +221,33 @@
 				{devFSDisabled}
 			/>
 		{/if}
+
+		<div class="flex items-center gap-1">
+			<NotificationBell />
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => window.open('https://sylve.io/docs', '_blank')}
+				title="Documentation"
+			>
+				<div class="flex items-center">
+					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
+					<span>Help</span>
+				</div>
+			</Button>
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => {
+					storage.openAbout = true;
+				}}
+				title="Sponsor"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--heart] h-5 w-5"></span>
+				</div>
+			</Button>
+		</div>
 
 		<div class="flex items-center">
 			<DropdownMenu.Root>

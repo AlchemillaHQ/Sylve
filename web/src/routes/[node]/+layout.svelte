@@ -3,9 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import NotificationBell from '$lib/components/custom/Notifications/Bell.svelte';
 	import NodeTreeView from '$lib/components/custom/NodeTreeView.svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import {
@@ -428,34 +426,8 @@
 </script>
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center justify-between border-b p-2">
+	<div class="flex h-10 w-full items-center border-b p-2">
 		<span>Node — <b>{node}</b></span>
-		<div class="flex items-center gap-1">
-			<NotificationBell />
-			<Button
-				size="sm"
-				class="h-6"
-				onclick={() => window.open('https://sylve.io/docs', '_blank')}
-				title="Documentation"
-			>
-				<div class="flex items-center">
-					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
-					<span>Help</span>
-				</div>
-			</Button>
-			<Button
-				size="sm"
-				class="h-6"
-				onclick={() => {
-					storage.openAbout = true;
-				}}
-				title="Sponsor"
-			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--heart] h-5 w-5"></span>
-				</div>
-			</Button>
-		</div>
 	</div>
 
 	<Resizable.PaneGroup

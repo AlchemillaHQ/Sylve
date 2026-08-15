@@ -24,12 +24,14 @@
 	interface Props {
 		clustered?: boolean;
 		onLifecycleActiveChange?: (active: boolean) => void;
+		collapsed?: boolean;
+		onToggle?: () => void;
 	}
 
 	type AuditDetailSection = 'request' | 'response';
 	type ResolvedAuditRecord = AuditRecord & { resolvedAction: string };
 
-	let { clustered = false, onLifecycleActiveChange }: Props = $props();
+	let { clustered = false, onLifecycleActiveChange, collapsed = false, onToggle }: Props = $props();
 
 	let selectedHostname = $state(storage.hostname || '');
 	const effectiveHostname = $derived(selectedHostname || storage.hostname || '');
@@ -2057,122 +2059,188 @@
 				return status;
 		}
 	}
+
+	function statusColorClass(status: string): string {
+		switch (status) {
+			case 'success':
+				return 'text-green-600 dark:text-green-500';
+			case 'failed':
+			case 'client_error':
+			case 'server_error':
+				return 'text-destructive';
+			case 'pending':
+			case 'started':
+				return 'text-yellow-600 dark:text-yellow-500';
+			default:
+				return '';
+		}
+	}
 </script>
 
-<Tabs.Root value="cluster" class="flex h-full w-full flex-col">
-	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
-		<div class="relative flex h-full flex-col" transition:fade|global={{ duration: 400 }}>
-			{#if activeLifecycleCount > 0}
-				<div class="bg-muted/35 border-b px-3 py-1.5 text-xs">
-					<div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
-						<span class="inline-flex items-center gap-1 font-medium">
-							<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
-							{activeLifecycleCount}
-							active lifecycle task{activeLifecycleCount === 1 ? '' : 's'}
-						</span>
+<div class="flex h-full w-full flex-col">
+	<div class="flex h-8 shrink-0 items-center justify-between border-x border-t px-3">
+		<div class="flex items-center gap-2">
+			<span class="text-xs font-semibold text-muted-foreground">Log</span>
+			{#if collapsed && activeLifecycleCount > 0}
+				<span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+					<span class="icon-[mdi--loading] h-3 w-3 animate-spin"></span>
+					{activeLifecycleCount} active
+				</span>
+			{/if}
+		</div>
+		<button
+			type="button"
+			class="hover:bg-muted/40 focus-visible:ring-ring rounded p-0.5 focus-visible:ring-2 focus-visible:outline-none"
+			aria-label={collapsed ? 'Show log panel' : 'Hide log panel'}
+			onclick={onToggle}
+		>
+			<span
+				class="icon-[{collapsed
+					? 'material-symbols--keyboard-arrow-right'
+					: 'material-symbols--keyboard-arrow-down'}] h-5 w-5"
+			></span>
+		</button>
+	</div>
 
-						{#if !isAPIResponse(activeLifecycleTasks.current) && Array.isArray(activeLifecycleTasks.current)}
-							{#each activeLifecycleTasks.current as task (task.id)}
-								<span class="bg-background rounded border px-2 py-0.5">
-									{lifecycleTaskLabel(task)} ({lifecycleStatusLabel(task.status)})
+	{#if !collapsed}
+		<Tabs.Root value="cluster" class="flex h-full min-h-0 w-full flex-col">
+			<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
+				<div class="relative flex h-full flex-col" transition:fade|global={{ duration: 400 }}>
+					{#if activeLifecycleCount > 0}
+						<div class="bg-muted/35 border-b px-3 py-1.5 text-xs">
+							<div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+								<span class="inline-flex items-center gap-1 font-medium">
+									<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
+									{activeLifecycleCount}
+									active lifecycle task{activeLifecycleCount === 1 ? '' : 's'}
 								</span>
-							{/each}
-						{/if}
+
+								{#if !isAPIResponse(activeLifecycleTasks.current) && Array.isArray(activeLifecycleTasks.current)}
+									{#each activeLifecycleTasks.current as task (task.id)}
+										<span class="bg-background rounded border px-2 py-0.5">
+											{lifecycleTaskLabel(task)} ({lifecycleStatusLabel(task.status)})
+										</span>
+									{/each}
+								{/if}
+							</div>
+						</div>
+					{/if}
+
+					<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
+						<Table.Root class="w-full table-auto border-collapse text-xs">
+							<Table.Header class="bg-background sticky top-0 z-10">
+								<Table.Row class="dark:hover:bg-background ">
+									<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
+										>Start Time</Table.Head
+									>
+									<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
+										>End Time</Table.Head
+									>
+									<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white">
+										{#if clustered && hostnameOptions.length > 0}
+											<div class="w-44 max-w-full">
+												<SimpleSelect
+													placeholder="Node"
+													options={hostnameOptions}
+													value={effectiveHostname}
+													onChange={(value: string) => {
+														selectedHostname = value;
+													}}
+													classes={{
+														parent: 'min-w-0 space-y-0',
+														trigger:
+															'inline-flex h-6 w-full items-center overflow-hidden rounded-sm border-0 bg-transparent px-1.5 text-left text-xs font-medium text-muted-foreground shadow-none ring-0 hover:bg-muted/40 focus:bg-muted/50'
+													}}
+												/>
+											</div>
+										{:else}
+											Node
+										{/if}
+									</Table.Head>
+									<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
+										>User</Table.Head
+									>
+									<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
+										>Action</Table.Head
+									>
+									<Table.Head class="h-7 px-3 py-1 font-semibold text-black dark:text-white"
+										>Status</Table.Head
+									>
+								</Table.Row>
+							</Table.Header>
+
+							<Table.Body class="pb-32">
+								{#each records as record, i (i)}
+									<Table.Row
+										class="hover:bg-muted/40 cursor-pointer"
+										tabindex={0}
+										role="button"
+										aria-label={`View details for ${record.resolvedAction}`}
+										onclick={() => openAuditDetails(record, 'response')}
+										onkeydown={(event) => {
+											if (event.key === 'Enter' || event.key === ' ') {
+												event.preventDefault();
+												openAuditDetails(record, 'response');
+											}
+										}}
+									>
+										<Table.Cell class="text-wrap px-3 py-1"
+											>{convertDbTime(record.started)}</Table.Cell
+										>
+										<Table.Cell class="text-wrap px-3 py-1"
+											>{convertDbTime(record.ended)}</Table.Cell
+										>
+										<Table.Cell class="text-wrap px-3 py-1">{record.node}</Table.Cell>
+										<Table.Cell class="text-wrap px-3 py-1"
+											>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
+										>
+										<Table.Cell class="p-0">
+											<button
+												type="button"
+												class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-7 w-full items-center px-3 py-1 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+												aria-label={`View request details for ${record.resolvedAction}`}
+												onclick={(event) => {
+													event.stopPropagation();
+													openAuditDetails(record, 'request');
+												}}
+											>
+												{record.resolvedAction}
+											</button>
+										</Table.Cell>
+										<Table.Cell class="p-0">
+											<button
+												type="button"
+												class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-7 w-full items-center px-3 py-1 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+												aria-label={`View response details for ${record.resolvedAction}`}
+												onclick={(event) => {
+													event.stopPropagation();
+													openAuditDetails(record, 'response');
+												}}
+											>
+												<div class="flex items-center gap-1 {statusColorClass(record.status)}">
+													{#if record.status === 'pending'}
+														<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
+													{:else if record.status === 'failed'}
+														<span class="icon-[mdi--alert-circle] h-3.5 w-3.5"></span>
+													{:else if record.status === 'success'}
+														<span class="icon-[mdi--check-circle] h-3.5 w-3.5"></span>
+													{/if}
+													<span>
+														{formatStatus(record.status)}
+													</span>
+												</div>
+											</button>
+										</Table.Cell>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
 					</div>
 				</div>
-			{/if}
-
-			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
-				<Table.Root class="w-full table-auto border-collapse">
-					<Table.Header class="bg-background sticky top-0 z-10">
-						<Table.Row class="dark:hover:bg-background ">
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-								>Start Time</Table.Head
-							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-								>End Time</Table.Head
-							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white">
-								{#if clustered && hostnameOptions.length > 0}
-									<div class="w-44 max-w-full">
-										<SimpleSelect
-											placeholder="Node"
-											options={hostnameOptions}
-											value={effectiveHostname}
-											onChange={(value: string) => {
-												selectedHostname = value;
-											}}
-											classes={{
-												parent: 'min-w-0 space-y-0',
-												trigger:
-													'inline-flex h-6 w-full items-center overflow-hidden rounded-sm border-0 bg-transparent px-1.5 text-left text-xs font-medium text-muted-foreground shadow-none ring-0 hover:bg-muted/40 focus:bg-muted/50'
-											}}
-										/>
-									</div>
-								{:else}
-									Node
-								{/if}
-							</Table.Head>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-								>User</Table.Head
-							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-								>Action</Table.Head
-							>
-							<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-								>Status</Table.Head
-							>
-						</Table.Row>
-					</Table.Header>
-
-					<Table.Body class="pb-32">
-						{#each records as record, i (i)}
-							<Table.Row>
-								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2"
-									>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
-								>
-								<Table.Cell class="p-0">
-									<button
-										type="button"
-										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
-										aria-label={`View request details for ${record.resolvedAction}`}
-										onclick={() => openAuditDetails(record, 'request')}
-									>
-										{record.resolvedAction}
-									</button>
-								</Table.Cell>
-								<Table.Cell class="p-0">
-									<button
-										type="button"
-										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
-										aria-label={`View response details for ${record.resolvedAction}`}
-										onclick={() => openAuditDetails(record, 'response')}
-									>
-										<div class="flex items-center gap-1">
-											{#if record.status === 'pending'}
-												<span
-													class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin text-muted-foreground"
-												></span>
-											{:else if record.status === 'failed'}
-												<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 text-destructive"></span>
-											{/if}
-											<span class={record.status === 'failed' ? 'text-destructive' : ''}>
-												{formatStatus(record.status)}
-											</span>
-										</div>
-									</button>
-								</Table.Cell>
-							</Table.Row>
-						{/each}
-					</Table.Body>
-				</Table.Root>
-			</div>
-		</div>
-	</Tabs.Content>
-</Tabs.Root>
+			</Tabs.Content>
+		</Tabs.Root>
+	{/if}
+</div>
 
 <AuditDetailModal
 	bind:open={auditDetailModal.open}
