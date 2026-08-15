@@ -1,25 +1,155 @@
 ---
 title: Translations
-description: Contribute localization updates for Sylve.
+description: Extract, translate, validate, and submit Sylve interface text.
 ---
 
-Sylve uses regular `.po` files for translations.
+Sylve uses [Wuchale](https://wuchale.dev/) to extract interface text from the Svelte application and store translations in standard GNU gettext `.po` catalogs. English is the source language, and each supported locale has its own catalog.
 
-We use a library called [Wuchale](https://wuchale.dev/), but translators usually do not need to work with it directly.
+You can contribute by translating existing messages, improving translations, or maintaining catalogs after interface text changes. Translators who only edit an existing `.po` file do not need to understand the application code.
 
-## Where Translation Files Live
+## Supported Catalogs
 
-Translation files are in:
+Translation sources live in `web/src/locales/`:
 
-```bash
-web/src/locales/
+| File | Language | Role |
+| --- | --- | --- |
+| `en.po` | English | Source catalog |
+| `de.po` | German | Translation catalog |
+| `mal.po` | Malayalam | Translation catalog |
+| `hi.po` | Hindi | Translation catalog |
+| `zh-CN.po` | Simplified Chinese | Translation catalog |
+| `cs.po` | Czech | Translation catalog |
+
+The `.po` files are the source of truth and must be committed. Files inside `src/locales/.wuchale/` are generated and ignored by Git.
+
+## Translate Existing Messages
+
+Open the `.po` file for your language in a translation editor or text editor. Each message normally contains a source reference, the English source text in `msgid`, and the translated text in `msgstr`:
+
+```po
+#: src/routes/example/+page.svelte
+msgid "Create virtual machine"
+msgstr "Virtuelle Maschine erstellen"
 ```
 
-## Translation Workflow
+Translate `msgstr` and leave `msgid` unchanged. Preserve placeholders, markup, keyboard shortcuts, and product terminology exactly where the message requires them. A placeholder that appears in the source must also appear in the translation.
 
-- Open the relevant `.po` file in `web/src/locales/`.
-- Update translations and review them carefully for accuracy and consistency.
-- Run any project checks your workflow requires.
-- Open a pull request with your updated `.po` files.
+Read nearby messages and, when useful, open the referenced Svelte file to understand where the text appears. Prefer natural language over word-for-word translation, but keep labels concise enough for the interface.
 
-If possible, include a short note in your pull request about the language and sections you updated.
+Do not translate:
+
+- Product names such as Sylve, FreeBSD, ZFS, and bhyve
+- Command names, configuration keys, paths, protocol names, or literal values
+- Text inside source references or `msgid`
+- PO headers unless you are intentionally correcting locale metadata
+
+## Set Up The Translation Tools
+
+You need Node.js and npm when extracting messages or validating catalogs. From the repository root, install the frontend dependencies:
+
+```bash
+cd web
+npm ci
+```
+
+Wuchale is already a project dependency, so run it through `npx`. The project configuration is stored in `web/wuchale.config.js`.
+
+## Extract New Source Strings
+
+Run extraction after user-facing text is added, changed, or removed from the frontend:
+
+```bash
+npx wuchale
+```
+
+Wuchale scans the files configured for Sylve's Svelte and JavaScript adapters, then updates the `.po` catalogs with messages found in the source. Review the resulting diff before translating. Source references may change even when the English message does not.
+
+After extraction, remove messages that are no longer used:
+
+```bash
+npx wuchale --clean
+```
+
+The `--clean` option deletes unused messages from the catalogs instead of retaining them as obsolete entries. Run it only from the `web/` directory and inspect the catalog diff afterward so an unexpected extraction change is not mistaken for intentionally removed text.
+
+The normal catalog maintenance sequence is therefore:
+
+```bash
+npx wuchale
+npx wuchale --clean
+```
+
+This follows Wuchale's documented CLI behavior for [extracting and cleaning catalogs](https://wuchale.dev/guides/cli/).
+
+## Check Translation Status
+
+To see message totals and the number of untranslated or obsolete entries for every locale, run:
+
+```bash
+npx wuchale status
+```
+
+Untranslated messages are allowed while a language is still being completed. They should not be filled with guesses merely to reduce the count.
+
+Validate catalog structure and placeholders with:
+
+```bash
+npx wuchale check
+```
+
+For a read-only check that also detects source messages which have not been extracted and messages which have newly become obsolete, run:
+
+```bash
+npx wuchale check --full
+```
+
+The full check does not update the files. Use the extraction and cleanup commands when the catalogs need to be brought up to date.
+
+## Review The Result In Sylve
+
+Start the frontend development server:
+
+```bash
+npm run dev
+```
+
+Select the translated language in Sylve and inspect the areas you changed. Check dialogs, tables, buttons, validation messages, and narrow layouts for clipped or overflowing text. Exercise plural messages and placeholders with more than one value when possible.
+
+Before submitting, run the frontend checks and production build:
+
+```bash
+npm run lint
+npm run check
+npm run build
+```
+
+## Commit Messages
+
+Use the repository's scoped commit format. Translation-only commits use `locales:` followed by a concise imperative summary:
+
+```text
+locales: update German translations
+locales: translate replication messages into Czech
+locales: remove obsolete catalog entries
+```
+
+Keep unrelated languages or source-code changes in separate commits when that makes the contribution easier to review.
+
+## Open A Pull Request
+
+Commit the changed `.po` files and any intentional source changes. Do not add generated files from `.wuchale/`. In the pull request description, state:
+
+- The language or catalogs changed
+- Whether you translated messages, extracted source changes, or cleaned obsolete entries
+- Which parts of the interface you reviewed
+- Which validation commands you ran
+
+Pull requests that change application files run Sylve's test and build workflows before merge. Review the automated results and address any catalog, frontend, or build failures.
+
+If Git, Node.js, or npm is a barrier, email your translations to [hello@sylve.io](mailto:hello@sylve.io). Include the language, the English source text, your translation, and where the message appears if you know it.
+
+## Adding A New Language
+
+Open a feature request asking for the language to be added. Include the language name and preferred locale code. A maintainer will add the integration and generate a starter `.po` file in the repository so translation can begin from a known-good catalog.
+
+For more detail on how Wuchale stores and compiles translations, see its official documentation for [catalogs](https://wuchale.dev/concepts/catalogs/) and [generated file structure](https://wuchale.dev/guides/files/).

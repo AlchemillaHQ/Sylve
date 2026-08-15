@@ -150,6 +150,8 @@ npm run build:demo --prefix web
 
 `npm run format` writes Prettier changes. `npm run lint` verifies formatting and ESLint rules. `make frontend` performs a clean dependency install, runs `svelte-check` with warnings treated as failures, builds the production frontend, and copies the generated assets into the Go embed directory. The final command verifies the separate demo build used by the project website.
 
+If a frontend change adds, changes, or removes user-facing text, follow the [translation contribution guide](/guides/contributing/translations/) to extract, clean, and validate the locale catalogs before submitting it.
+
 ### Full local build
 
 On a FreeBSD development host, build the complete application with:
