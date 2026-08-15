@@ -1,0 +1,105 @@
+<figure class="delivery-map not-content" aria-labelledby="delivery-title">
+  <figcaption>
+    <strong id="delivery-title">Sylve capabilities</strong>
+    <span>One interface, from a single host to a cluster.</span>
+  </figcaption>
+
+  <div class="delivery-frame">
+    <div class="interface-node">
+      <span>OPERATOR INTERFACE</span>
+      <strong>Sylve</strong>
+      <small>WEB UI · REST API</small>
+    </div>
+
+    <div class="signal-bus" aria-hidden="true"><span>Management API</span></div>
+
+    <div class="capabilities">
+      <article>
+        <header><span>Compute</span></header>
+        <h4>Run workloads</h4>
+        <ul><li>Bhyve virtual machines</li><li>FreeBSD + Linux Jails</li><li>Console, templates, snapshots</li></ul>
+      </article>
+      <article>
+        <header><span>Storage</span></header>
+        <h4>Shape data</h4>
+        <ul><li>ZFS pools, datasets, zvols</li><li>Replication + restore</li><li>Samba + iSCSI publishing</li></ul>
+      </article>
+      <article>
+        <header><span>Network</span></header>
+        <h4>Connect systems</h4>
+        <ul><li>Interfaces, bridges, routes</li><li>Firewall + address translation</li><li>DHCP, mDNS, WireGuard</li></ul>
+      </article>
+      <article>
+        <header><span>Continuity</span></header>
+        <h4>Keep service moving</h4>
+        <ul><li>Built-in host clustering</li><li>Migration + failover policies</li><li>Remote backup workflows</li></ul>
+      </article>
+      <article>
+        <header><span>Operations</span></header>
+        <h4>Operate the host</h4>
+        <ul><li>Health + activity telemetry</li><li>Terminal + file explorer</li><li>Services, users, tunables</li></ul>
+      </article>
+    </div>
+
+    <div class="foundation"><span>UNIFIED MANAGEMENT PLANE</span><strong>FREEBSD 15+</strong><span>ZFS · BHYVE · JAIL · PF</span></div>
+  </div>
+</figure>
+
+<style>
+  .delivery-map {
+    --line: color-mix(in oklab, var(--sl-color-white) 15%, transparent);
+    --line-strong: color-mix(in oklab, var(--sl-color-white) 31%, transparent);
+    --panel: color-mix(in oklab, var(--sl-color-white) 3%, transparent);
+    --muted: var(--sl-color-gray-3);
+    --signal: oklch(0.7 0.15 254);
+    container: delivery / inline-size;
+    margin: 1.75rem 0 2.5rem;
+    color: var(--sl-color-white);
+  }
+  :global(:root[data-theme="light"]) .delivery-map { --signal: oklch(0.5 0.17 254); }
+  figcaption { display:flex; align-items:baseline; justify-content:space-between; gap:1.5rem; padding-bottom:.75rem; color:var(--muted); font-size:.78rem; }
+  figcaption strong { color:var(--sl-color-white); font-size:.9rem; font-weight:650; }
+  .delivery-frame { position:relative; overflow:hidden; padding:2rem; border:1px solid var(--line-strong); border-radius:.25rem; background:color-mix(in oklab,var(--sl-color-bg) 97%,var(--sl-color-white)); }
+  .interface-node { position:relative; z-index:1; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; width:min(100%,38rem); margin:auto; padding:1rem 1.2rem; border:1px solid var(--line-strong); background:var(--sl-color-bg); }
+  .interface-node span,.interface-node small { color:var(--muted); font:600 .56rem var(--sl-font-mono); letter-spacing:.08em; }
+  .interface-node strong { font:500 1.45rem var(--sl-font); letter-spacing:-.04em; }
+  .interface-node small { text-align:right; }
+  .signal-bus { position:relative; height:4rem; color:var(--muted); font:500 .5rem var(--sl-font-mono); letter-spacing:.08em; }
+  .signal-bus::before { position:absolute; inset:0 auto 1rem 50%; width:1px; background:var(--line-strong); content:""; }
+  .signal-bus::after { position:absolute; right:0; bottom:1rem; left:0; height:1px; background:var(--line-strong); content:""; }
+  .signal-bus span { position:absolute; right:.5rem; bottom:1.3rem; }
+  .capabilities { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); border:1px solid var(--line-strong); background:var(--sl-color-bg); }
+  article { grid-column:span 2; min-width:0; padding:1rem; border-left:1px solid var(--line-strong); background:var(--panel); }
+  article:first-child,article:nth-child(4) { border-left:0; }
+  article:nth-child(n+4) { grid-column:span 3; border-top:1px solid var(--line-strong); }
+  article header { color:var(--muted); font:600 .62rem var(--sl-font-mono); letter-spacing:.08em; text-transform:uppercase; }
+  h4 { margin:1.2rem 0 .8rem; color:var(--sl-color-white); font:500 1.12rem var(--sl-font); letter-spacing:-.03em; }
+  ul { margin:0; padding:0; list-style:none; color:var(--sl-color-gray-2); font:.61rem/1.75 var(--sl-font-mono); }
+  li { white-space:nowrap; }
+  li::before { color:var(--signal); content:"— "; }
+  .foundation { display:grid; grid-template-columns:1fr auto 1fr; gap:1rem; align-items:center; margin-top:1rem; padding:.75rem 1rem; border:1px solid var(--line-strong); background:color-mix(in oklab,var(--sl-color-white) 4%,transparent); color:var(--muted); font:.53rem var(--sl-font-mono); letter-spacing:.08em; }
+  .foundation strong { color:var(--sl-color-white); font-size:.68rem; letter-spacing:.14em; }
+  .foundation span:last-child { text-align:right; }
+  @container delivery (max-width:46rem) {
+    .delivery-frame { padding:1.5rem; }
+    .capabilities { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    article,article:nth-child(n+4) { grid-column:span 1; border-top:1px solid var(--line-strong); }
+    article:nth-child(odd) { border-left:0; }
+    article:first-child,article:nth-child(2) { border-top:0; }
+    article:nth-child(4) { border-left:1px solid var(--line-strong); }
+    article:last-child { grid-column:1 / -1; }
+  }
+  @container delivery (max-width:34rem) {
+    figcaption { grid-template-columns:1fr auto; }
+    figcaption strong { display:none; }
+    .delivery-frame { padding:1rem; }
+    .interface-node { grid-template-columns:1fr auto; }
+    .interface-node small { display:none; }
+    .capabilities { grid-template-columns:1fr; }
+    article,article:last-child { grid-column:auto; border-top:1px solid var(--line-strong); border-left:0; }
+    article:first-child { border-top:0; }
+    li { white-space:normal; }
+    .foundation { grid-template-columns:1fr auto; }
+    .foundation span:last-child { display:none; }
+  }
+</style>
