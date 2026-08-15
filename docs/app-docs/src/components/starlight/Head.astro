@@ -5,12 +5,60 @@ import { ClientRouter } from "astro:transitions";
 const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 ---
 
+<style is:inline>
+  html[data-starlight-loading] body {
+    visibility: hidden;
+  }
+</style>
 <script is:inline>
   (() => {
+    const root = document.documentElement;
+    root.dataset.starlightLoading = "";
+    let revealFallback;
+
+    const reveal = () => {
+      window.clearTimeout(revealFallback);
+      requestAnimationFrame(() => {
+        root.removeAttribute("data-starlight-loading");
+      });
+    };
+
+    const revealWhenStyled = () => {
+      const pendingStylesheets = Array.from(
+        document.querySelectorAll('link[rel="stylesheet"]'),
+      ).filter(
+        (link) =>
+          (!link.media || window.matchMedia(link.media).matches) && !link.sheet,
+      );
+
+      if (pendingStylesheets.length === 0) {
+        reveal();
+        return;
+      }
+
+      Promise.all(
+        pendingStylesheets.map(
+          (link) =>
+            new Promise((resolve) => {
+              link.addEventListener("load", resolve, { once: true });
+              link.addEventListener("error", resolve, { once: true });
+            }),
+        ),
+      ).then(reveal);
+    };
+
+    revealFallback = window.setTimeout(reveal, 5000);
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealWhenStyled, { once: true });
+    } else {
+      revealWhenStyled();
+    }
+
     const stored = localStorage.getItem("starlight-theme") || localStorage.getItem("sylve_theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const theme = stored === "light" ? "light" : stored === "dark" ? "dark" : prefersDark ? "dark" : "light";
-    document.documentElement.style.setProperty("background-color", theme === "dark" ? "#0f0f0f" : "#fff");
+    root.style.setProperty("background-color", theme === "dark" ? "#0f0f0f" : "#fff");
   })();
 </script>
 <ClientRouter />
@@ -27,4 +75,3 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 <meta property="og:image:alt" content="Sylve" />
 <meta name="twitter:image" content={ogImage} />
 <meta name="twitter:card" content="summary_large_image" />
-
