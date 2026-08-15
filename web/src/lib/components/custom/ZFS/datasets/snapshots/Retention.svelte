@@ -7,6 +7,7 @@
 	import { cronToHuman } from '$lib/utils/time';
 	import { modifyPeriodicSnapshot } from '$lib/api/zfs/datasets';
 	import { handleAPIError } from '$lib/utils/http';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -18,56 +19,66 @@
 
 	let { open = $bindable(), snapshot = null, dataset = '', reload = $bindable() }: Props = $props();
 
-	let properties = $state({
-		interval: {
-			open: false,
-			value: snapshot?.cronExpr ? 'cronExpr' : 'minutes',
-			data: [
-				{ value: 'minutes', label: 'Simple' },
-				{ value: 'cronExpr', label: 'Cron Expression' }
-			],
-			values: {
-				cron: snapshot?.cronExpr || '',
-				interval: {
-					open: false,
-					data: [
-						{ value: '60', label: 'Every Minute' },
-						{ value: '3600', label: 'Every Hour' },
-						{ value: '86400', label: 'Every Day' },
-						{ value: '604800', label: 'Every Week' },
-						{ value: '2419200', label: 'Every Month' },
-						{ value: '29030400', label: 'Every Year' }
-					],
-					value: snapshot?.interval.toString() || '86400'
+	function createProperties(source: PeriodicSnapshot | null) {
+		return {
+			interval: {
+				open: false,
+				value: source?.cronExpr ? 'cronExpr' : 'minutes',
+				data: [
+					{ value: 'minutes', label: 'Simple' },
+					{ value: 'cronExpr', label: 'Cron Expression' }
+				],
+				values: {
+					cron: source?.cronExpr || '',
+					interval: {
+						open: false,
+						data: [
+							{ value: '60', label: 'Every Minute' },
+							{ value: '3600', label: 'Every Hour' },
+							{ value: '86400', label: 'Every Day' },
+							{ value: '604800', label: 'Every Week' },
+							{ value: '2419200', label: 'Every Month' },
+							{ value: '29030400', label: 'Every Year' }
+						],
+						value: source?.interval.toString() || '86400'
+					}
+				}
+			},
+			retention: {
+				open: false,
+				value: source?.keepLast || source?.maxAgeDays ? 'simple' : 'gfs',
+				data: [
+					{ value: 'simple', label: 'Simple' },
+					{ value: 'gfs', label: 'GFS' }
+				],
+				values: {
+					simple: {
+						keepLast: source?.keepLast || 0,
+						maxAgeDays: source?.maxAgeDays || 0
+					},
+					gfs: {
+						keepHourly: source?.keepHourly || 0,
+						keepDaily: source?.keepDaily || 0,
+						keepWeekly: source?.keepWeekly || 0,
+						keepMonthly: source?.keepMonthly || 0,
+						keepYearly: source?.keepYearly || 0
+					}
 				}
 			}
-		},
-		retention: {
-			open: false,
-			value: snapshot?.keepLast || snapshot?.maxAgeDays ? 'simple' : 'gfs',
-			data: [
-				{ value: 'simple', label: 'Simple' },
-				{ value: 'gfs', label: 'GFS' }
-			],
-			values: {
-				simple: {
-					keepLast: snapshot?.keepLast || 0,
-					maxAgeDays: snapshot?.maxAgeDays || 0
-				},
-				gfs: {
-					keepHourly: snapshot?.keepHourly || 0,
-					keepDaily: snapshot?.keepDaily || 0,
-					keepWeekly: snapshot?.keepWeekly || 0,
-					keepMonthly: snapshot?.keepMonthly || 0,
-					keepYearly: snapshot?.keepYearly || 0
-				}
-			}
-		}
-	});
+		};
+	}
+
+	const snapshotAtOpen = untrack(() => snapshot);
+	let properties = $state(createProperties(snapshotAtOpen));
 
 	async function save() {
+		if (!snapshotAtOpen) {
+			toast.error('Snapshot job is unavailable', { position: 'bottom-center' });
+			return;
+		}
+
 		const response = await modifyPeriodicSnapshot(
-			snapshot?.id as number,
+			snapshotAtOpen.id,
 			properties.retention.values.simple.keepLast || null,
 			properties.retention.values.simple.maxAgeDays || null,
 			properties.retention.values.gfs.keepHourly || null,
@@ -111,7 +122,7 @@
 					</div>
 				</Dialog.Title>
 				<Dialog.Description>
-					{dataset}@{snapshot?.prefix}
+					{dataset}@{snapshotAtOpen?.prefix}
 				</Dialog.Description>
 			</Dialog.Header>
 		</div>

@@ -268,12 +268,11 @@
 
 	let viewModal = $state({
 		title: '',
-		key: 'Attribute',
-		value: 'Value',
 		open: false,
 		KV: {},
 		type: 'kv'
 	});
+	let viewModalLabels = $derived({ key: 'Attribute', value: 'Value' });
 
 	function viewInterface(iface: string) {
 		const ifaceData = networkInterfaces.current.find((i: Iface) => i.name === iface);
@@ -308,8 +307,8 @@
 		titles={{
 			icon: 'carbon--network-interface',
 			main: viewModal.title,
-			key: viewModal.key,
-			value: viewModal.value
+			key: viewModalLabels.key,
+			value: viewModalLabels.value
 		}}
 		bind:open={viewModal.open}
 		KV={viewModal.KV}

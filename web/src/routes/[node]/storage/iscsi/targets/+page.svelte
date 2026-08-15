@@ -606,15 +606,18 @@
 						{#each editTarget.portals as portal (portal.id)}
 							<div class="flex items-center justify-between rounded-md border p-3">
 								<div class="flex flex-col gap-0.5">
-									<span
-										class="text-sm font-medium font-mono cursor-pointer"
+									<button
+										type="button"
+										class="cursor-pointer rounded-sm text-left font-mono text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+										title="Copy portal address"
+										aria-label={`Copy portal address ${portal.address}:${portal.port}`}
 										onclick={async () => {
 											await navigator.clipboard.writeText(`${portal.address}:${portal.port}`);
 											toast.success('Copied portal address to clipboard', {
 												duration: 2000,
 												position: 'bottom-center'
 											});
-										}}>{portal.address}:{portal.port}</span
+										}}>{portal.address}:{portal.port}</button
 									>
 								</div>
 								<Button

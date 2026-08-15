@@ -16,7 +16,7 @@
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
 	import { watch } from 'runed';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 
 	use([
@@ -61,13 +61,14 @@
 	}: Props = $props();
 
 	const mountAnimationDuration = 1400;
+	const mountAnimationEnabled = untrack(() => animateOnMount);
 	let chart: EChartsType | undefined = $state(undefined);
 	let optionRafId: number | null = null;
 	let restoreRafId: number | null = null;
 	let mountAnimatedChart: EChartsType | undefined;
 	let mountAnimationRevealTimer: ReturnType<typeof setTimeout> | null = null;
 	let mountAnimationSyncTimer: ReturnType<typeof setTimeout> | null = null;
-	let mountAnimationReady = !animateOnMount;
+	let mountAnimationReady = !mountAnimationEnabled;
 
 	const colors = $derived({
 		title: cssVar('--text-blue-600'),
@@ -119,9 +120,9 @@
 	// svelte-ignore state_referenced_locally
 	// @wc-ignore
 	let options: EChartsOption = $state.raw({
-		animation: animateOnMount ? true : undefined,
-		animationDuration: animateOnMount ? mountAnimationDuration : undefined,
-		animationEasing: animateOnMount ? 'cubicInOut' : undefined,
+		animation: mountAnimationEnabled ? true : undefined,
+		animationDuration: mountAnimationEnabled ? mountAnimationDuration : undefined,
+		animationEasing: mountAnimationEnabled ? 'cubicInOut' : undefined,
 		title: {
 			show: false,
 			textStyle: {
@@ -241,7 +242,7 @@
 				}
 			}
 		],
-		series: animateOnMount ? [] : buildSeries(points),
+		series: mountAnimationEnabled ? [] : buildSeries(points),
 		toolbox: {
 			feature: {
 				saveAsImage: {
@@ -349,11 +350,11 @@
 	watch([() => chart, () => points, () => mouseIn], ([currentChart, currentPoints, isMouseIn]) => {
 		if (!currentChart || !currentPoints) return;
 		if (currentChart !== mountAnimatedChart) {
-			if (animateOnMount) startMountAnimation(currentChart);
+			if (mountAnimationEnabled) startMountAnimation(currentChart);
 			else mountAnimatedChart = currentChart;
 			return;
 		}
-		if ((animateOnMount && !mountAnimationReady) || isMouseIn) return;
+		if ((mountAnimationEnabled && !mountAnimationReady) || isMouseIn) return;
 
 		setSeriesPoints(currentChart, currentPoints);
 	});
@@ -448,7 +449,7 @@
 				optionRafId = null;
 			});
 		},
-		{ lazy: animateOnMount }
+		{ lazy: mountAnimationEnabled }
 	);
 
 	onDestroy(() => {

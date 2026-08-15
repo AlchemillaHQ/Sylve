@@ -57,6 +57,7 @@
 	let { open = $bindable(), minimize = $bindable() }: Props = $props();
 
 	const defaultDemoProfile = demoVMProfiles[0];
+	// @wc-ignore
 	let options: CreateVMFormData = {
 		name: '',
 		id: 0,

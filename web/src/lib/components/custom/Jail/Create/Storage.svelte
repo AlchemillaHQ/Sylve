@@ -77,18 +77,18 @@
 	let disableBaseSelection = $derived(pool ? false : true);
 	let enableFstabInput = $state(false);
 	let fstabOpts = $state({
-		value: 'manual',
-		options: [
-			{
-				label: 'Simple Linux',
-				value: 'simple-linux'
-			},
-			{
-				label: 'Manual',
-				value: 'manual'
-			}
-		]
+		value: 'manual'
 	});
+	let fstabOptions = $derived([
+		{
+			label: 'Simple Linux',
+			value: 'simple-linux'
+		},
+		{
+			label: 'Manual',
+			value: 'manual'
+		}
+	]);
 
 	watch([() => base, () => enableFstabInput], ([baseVal, fstabEnabled]) => {
 		if (fstabEnabled && !baseVal) {
@@ -181,7 +181,7 @@
 				onValueChange={(val) => ((fstabOpts.value = val), setFSTab())}
 			>
 				<Select.Trigger class="h-8 w-full">
-					{fstabOpts.options.find((opt) => opt.value === fstabOpts.value)?.label ||
+					{fstabOptions.find((opt) => opt.value === fstabOpts.value)?.label ||
 						'Select FStab Option'}
 				</Select.Trigger>
 				<Select.Content>

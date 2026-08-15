@@ -62,7 +62,7 @@
 		}
 	});
 
-	let columns: Column[] = $state([
+	let columns: Column[] = $derived([
 		{
 			field: 'id',
 			title: 'ID',

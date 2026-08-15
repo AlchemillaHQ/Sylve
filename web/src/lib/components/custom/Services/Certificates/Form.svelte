@@ -25,7 +25,7 @@
 	} from '$lib/types/services/certificates';
 	import type { DynamicDNSEntry } from '$lib/types/services/dynamic-dns';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -82,9 +82,7 @@
 			'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 py-1 text-left'
 	};
 	const managedEntries = $derived(
-		dynamicDNSEntries.filter(
-			(entry) => entry.provider === 'sylve' && entry.credentialConfigured
-		)
+		dynamicDNSEntries.filter((entry) => entry.provider === 'sylve' && entry.credentialConfigured)
 	);
 	const managedEntryOptions = $derived(
 		managedEntries.map((entry) => ({
@@ -119,9 +117,7 @@
 			name: certificate.name,
 			type: certificate.type as EditableCertificateType,
 			domain: certificate.domain,
-			dynamicDnsEntryId: certificate.dynamicDnsEntryId
-				? String(certificate.dynamicDnsEntryId)
-				: '',
+			dynamicDnsEntryId: certificate.dynamicDnsEntryId ? String(certificate.dynamicDnsEntryId) : '',
 			staging: certificate.staging,
 			validateDomain: certificate.type === 'imported',
 			certificate: '',
@@ -130,9 +126,7 @@
 	}
 
 	// svelte-ignore state_referenced_locally
-	let form = $state<Form>(
-		editingCertificate ? certificateForm(editingCertificate) : defaultForm()
-	);
+	let form = $state<Form>(editingCertificate ? certificateForm(editingCertificate) : defaultForm());
 	let domainOpen = $state(false);
 	let saving = $state(false);
 	let checkingDomain = $state(false);
@@ -317,9 +311,7 @@
 			name,
 			type: form.type,
 			domain,
-			...(form.type === 'sylve-managed'
-				? { dynamicDnsEntryId: managedEntry!.id }
-				: {}),
+			...(form.type === 'sylve-managed' ? { dynamicDnsEntryId: managedEntry!.id } : {}),
 			staging: form.type === 'lets-encrypt' && form.staging,
 			validateDomain: form.type === 'imported' && form.validateDomain,
 			...(form.type === 'imported' && certificatePEM ? { certificate: certificatePEM } : {}),
@@ -365,7 +357,7 @@
 		open = false;
 	}
 
-	let currentHostname = hostname;
+	let currentHostname = untrack(() => hostname);
 	$effect(() => {
 		if (hostname !== currentHostname) {
 			currentHostname = hostname;
@@ -425,11 +417,7 @@
 							/>
 						</div>
 					{:else}
-						<div
-							class={form.type === 'lets-encrypt'
-								? 'space-y-1.5'
-								: 'space-y-1.5 sm:col-span-2'}
-						>
+						<div class={form.type === 'lets-encrypt' ? 'space-y-1.5' : 'space-y-1.5 sm:col-span-2'}>
 							<ComboBox
 								bind:open={domainOpen}
 								label="Domain"
@@ -450,9 +438,7 @@
 											icon: checkingDomain
 												? 'icon-[mdi--loading] animate-spin'
 												: 'icon-[mdi--radar]',
-											tooltip: checkingDomain
-												? 'Checking DNS mapping...'
-												: 'Check DNS mapping',
+											tooltip: checkingDomain ? 'Checking DNS mapping...' : 'Check DNS mapping',
 											function: checkDomain
 										}
 									: undefined}
@@ -511,8 +497,8 @@
 					</p>
 				{:else if form.type === 'self-signed'}
 					<p class="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-						Sylve will generate a random P-256 certificate for this domain. This does not affect
-						the internal cluster certificate.
+						Sylve will generate a random P-256 certificate for this domain. This does not affect the
+						internal cluster certificate.
 					</p>
 				{/if}
 			</div>

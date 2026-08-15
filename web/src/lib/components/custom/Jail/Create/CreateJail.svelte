@@ -50,6 +50,7 @@
 		{ value: 'advanced', label: 'Advanced' }
 	];
 
+	// @wc-ignore
 	let options = {
 		name: '',
 		hostname: '',

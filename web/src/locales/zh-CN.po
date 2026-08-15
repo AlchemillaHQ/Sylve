@@ -2200,8 +2200,6 @@ msgstr "属性"
 msgid "Details - {0}"
 msgstr "详情 - {0}"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2213,9 +2211,6 @@ msgstr "详情 - {0}"
 msgid "Host(s)"
 msgstr "主机"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2227,7 +2222,6 @@ msgstr "主机"
 msgid "Network(s)"
 msgstr "网络"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2486,11 +2480,8 @@ msgstr "编辑 {0}"
 msgid "Enter ZFS Pools"
 msgstr "输入 ZFS 存储池"
 
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3365,12 +3356,10 @@ msgid "Review"
 msgstr "检查"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -4796,8 +4785,6 @@ msgstr "CPU 插槽"
 msgid "CPU Threads"
 msgstr "CPU 线程"
 
-#: src/lib/components/custom/VM/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -5434,8 +5421,6 @@ msgstr "存储池已创建"
 msgid "Remove {0} from VDEV {1}"
 msgstr "从 VDEV {1} 中移除 {0}"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -11916,8 +11901,6 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Virtual"
 msgstr ""
 
@@ -17069,4 +17052,17 @@ msgstr ""
 
 #: src/lib/components/custom/VM/DemoVMConsole.svelte
 msgid "Capture pointer (Esc to release)"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address"
+msgstr ""
+
+#. 0: portal.address; 1: portal.port
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address {0}:{1}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Snapshot job is unavailable"
 msgstr ""

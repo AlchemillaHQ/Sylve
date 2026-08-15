@@ -121,7 +121,7 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let query: string = $state('');
 
-	let columns: Column[] = $state([
+	let columns: Column[] = $derived([
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'enabled',

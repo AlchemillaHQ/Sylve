@@ -38,69 +38,70 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	let options = {
-		name: `manual-${getDashedDate()}`,
-		pool: {
-			open: false,
-			value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
-			data: generateSimpleSelectOptions(basicSettings.pools)
-		},
-		datasets: {
-			open: false,
-			value: prefill?.dataset || '',
-			data: [] as { label: string; value: string }[]
-		},
-		interval: {
-			type: 'none' as 'none' | 'minutes' | 'cronExpr',
-			open: false,
-			value: 'none',
-			data: [
-				{ value: 'none', label: 'None' },
-				{ value: 'minutes', label: 'Simple' },
-				{ value: 'cronExpr', label: 'Cron Expression' }
-			],
-			values: {
-				cron: '',
-				interval: {
-					open: false,
-					data: [
-						{ value: '60', label: 'Every Minute' },
-						{ value: '3600', label: 'Every Hour' },
-						{ value: '86400', label: 'Every Day' },
-						{ value: '604800', label: 'Every Week' },
-						{ value: '2419200', label: 'Every Month' },
-						{ value: '29030400', label: 'Every Year' }
-					],
-					value: ''
-				}
-			}
-		},
-		retention: {
-			open: false,
-			value: 'none',
-			data: [
-				{ value: 'none', label: 'None' },
-				{ value: 'simple', label: 'Simple' },
-				{ value: 'gfs', label: 'GFS' }
-			],
-			simple: {
-				keepLast: '0',
-				maxAgeDays: '0'
+	function createInitialProperties() {
+		return {
+			name: `manual-${getDashedDate()}`,
+			pool: {
+				open: false,
+				value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
+				data: generateSimpleSelectOptions(basicSettings.pools)
 			},
-			gfs: {
-				keepLast: '0',
-				keepHourly: '0',
-				keepDaily: '0',
-				keepWeekly: '0',
-				keepMonthly: '0',
-				keepYearly: '0'
-			}
-		},
-		recursive: false
-	};
+			datasets: {
+				open: false,
+				value: prefill?.dataset || '',
+				data: [] as { label: string; value: string }[]
+			},
+			interval: {
+				type: 'none' as 'none' | 'minutes' | 'cronExpr',
+				open: false,
+				value: 'none',
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'minutes', label: 'Simple' },
+					{ value: 'cronExpr', label: 'Cron Expression' }
+				],
+				values: {
+					cron: '',
+					interval: {
+						open: false,
+						data: [
+							{ value: '60', label: 'Every Minute' },
+							{ value: '3600', label: 'Every Hour' },
+							{ value: '86400', label: 'Every Day' },
+							{ value: '604800', label: 'Every Week' },
+							{ value: '2419200', label: 'Every Month' },
+							{ value: '29030400', label: 'Every Year' }
+						],
+						value: ''
+					}
+				}
+			},
+			retention: {
+				open: false,
+				value: 'none',
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'simple', label: 'Simple' },
+					{ value: 'gfs', label: 'GFS' }
+				],
+				simple: {
+					keepLast: '0',
+					maxAgeDays: '0'
+				},
+				gfs: {
+					keepLast: '0',
+					keepHourly: '0',
+					keepDaily: '0',
+					keepWeekly: '0',
+					keepMonthly: '0',
+					keepYearly: '0'
+				}
+			},
+			recursive: false
+		};
+	}
 
-	let properties = $state(options);
+	let properties = $state(createInitialProperties());
 
 	watch([() => properties.pool.value, () => datasets.current], ([poolValue]) => {
 		if (poolValue) {
@@ -181,7 +182,7 @@
 				});
 
 				reload = true;
-				properties = options;
+				properties = createInitialProperties();
 				open = false;
 				return;
 			} else if (intervalType === 'minutes') {
@@ -249,7 +250,7 @@
 				position: 'bottom-center'
 			});
 
-			properties = options;
+			properties = createInitialProperties();
 			open = false;
 		}
 	}
@@ -261,10 +262,10 @@
 		showCloseButton={true}
 		showResetButton={true}
 		onReset={() => {
-			properties = options;
+			properties = createInitialProperties();
 		}}
 		onClose={() => {
-			properties = options;
+			properties = createInitialProperties();
 			open = false;
 		}}
 	>

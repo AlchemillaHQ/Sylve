@@ -52,7 +52,7 @@
 		delete: { open: false, id: 0 }
 	});
 
-	let columns: Column[] = $state([
+	let columns: Column[] = $derived([
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'enabled',

@@ -2200,8 +2200,6 @@ msgstr "Atribut"
 msgid "Details - {0}"
 msgstr "Podrobnosti – {0}"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2213,9 +2211,6 @@ msgstr "Podrobnosti – {0}"
 msgid "Host(s)"
 msgstr "Hostitel(é)"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2227,7 +2222,6 @@ msgstr "Hostitel(é)"
 msgid "Network(s)"
 msgstr "Síť/sítě"
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2486,11 +2480,8 @@ msgstr "Upravit {0}"
 msgid "Enter ZFS Pools"
 msgstr "Zadejte ZFS fondy"
 
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3365,12 +3356,10 @@ msgid "Review"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -4796,8 +4785,6 @@ msgstr "Patic procesorů"
 msgid "CPU Threads"
 msgstr "Vláken procesoru"
 
-#: src/lib/components/custom/VM/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
@@ -5438,8 +5425,6 @@ msgstr "Fond vytvořen"
 msgid "Remove {0} from VDEV {1}"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -11922,8 +11907,6 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Virtual"
 msgstr ""
 
@@ -17075,4 +17058,17 @@ msgstr ""
 
 #: src/lib/components/custom/VM/DemoVMConsole.svelte
 msgid "Capture pointer (Esc to release)"
+msgstr ""
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address"
+msgstr ""
+
+#. 0: portal.address; 1: portal.port
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Copy portal address {0}:{1}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Snapshot job is unavailable"
 msgstr ""

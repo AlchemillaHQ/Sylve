@@ -11,12 +11,8 @@ under sponsorship from the FreeBSD Foundation.
 <script lang="ts">
 	import { deepEqual } from 'fast-equals';
 	import { watch } from 'runed';
-	import { onMount } from 'svelte';
-	import {
-		TabulatorFull as Tabulator,
-		type ColumnDefinition,
-		type Sorter
-	} from 'tabulator-tables';
+	import { onMount, untrack } from 'svelte';
+	import { TabulatorFull as Tabulator, type ColumnDefinition, type Sorter } from 'tabulator-tables';
 
 	interface Props {
 		rows: Record<string, unknown>[];
@@ -38,7 +34,7 @@ under sponsorship from the FreeBSD Foundation.
 	let tableComponent: HTMLDivElement | null = null;
 	let table: Tabulator | null = null;
 	let tableReady = false;
-	let pendingRows = rows;
+	let pendingRows = untrack(() => rows);
 
 	async function replaceRows(nextRows: Record<string, unknown>[]) {
 		const currentTable = table;

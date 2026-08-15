@@ -85,7 +85,7 @@ under sponsorship from the FreeBSD Foundation.
 
 	let currentConfig = $derived(rulesResource.current as NotificationRulesConfig);
 
-	let columns: Column[] = $state([
+	let columns: Column[] = $derived([
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'templateLabel',
@@ -967,10 +967,11 @@ under sponsorship from the FreeBSD Foundation.
 					</p>
 					<div class="flex min-w-0 items-start gap-3">
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
-							<label class="text-muted-foreground text-xs">
+							<label for="notification-warning-threshold" class="text-muted-foreground text-xs">
 								Warning{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}
 							</label>
 							<input
+								id="notification-warning-threshold"
 								type="number"
 								min="0"
 								max={modals.edit.templateKey === 'system.disk.smart.temperature' ? '125' : '100'}
@@ -1001,10 +1002,11 @@ under sponsorship from the FreeBSD Foundation.
 							>
 						</div>
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
-							<label class="text-muted-foreground text-xs">
+							<label for="notification-critical-threshold" class="text-muted-foreground text-xs">
 								Critical{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}
 							</label>
 							<input
+								id="notification-critical-threshold"
 								type="number"
 								min="0"
 								max={modals.edit.templateKey === 'system.disk.smart.temperature' ? '125' : '100'}
