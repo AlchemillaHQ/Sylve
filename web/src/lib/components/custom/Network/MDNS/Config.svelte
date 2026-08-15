@@ -50,7 +50,7 @@
 
 		reload = true;
 
-		if (response.error) {
+		if (response.status !== 'success') {
 			handleAPIError(response);
 			toast.error('Failed to update mDNS settings', { position: 'bottom-center' });
 			return;

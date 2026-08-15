@@ -9,7 +9,7 @@
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { APIResponse } from '$lib/types/common';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
+	import { getAPIErrorMessages, handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { getDashedDate } from '$lib/utils/time.svelte';
 	import { deepEqual } from 'fast-equals';
@@ -117,6 +117,26 @@
 		}
 	});
 
+	function showSnapshotCreateError(
+		response: APIResponse,
+		datasetName: string,
+		snapshotName: string
+	) {
+		if (
+			getAPIErrorMessages(response).some((message) => message.includes('dataset already exists'))
+		) {
+			toast.error(`Snapshot ${datasetName}@${snapshotName} already exists`, {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		handleAPIError(response);
+		toast.error('Failed to create snapshot', {
+			position: 'bottom-center'
+		});
+	}
+
 	async function create() {
 		if (properties.name.trim() === '') {
 			toast.error('Name/prefix required for snapshot(s)', {
@@ -140,27 +160,23 @@
 		}
 
 		const dataset = datasets.current.find((dataset) => dataset.name === properties.datasets.value);
-		const pool = basicSettings.pools.find((poolName) => poolName === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
-			let retentionType = properties.retention.value;
+			const retentionType = properties.retention.value;
 			let response: APIResponse | null = null;
 			let minutes: number = 0;
 			let cron: string = '';
 
 			if (intervalType === 'none' || intervalType === '') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
-				retentionType = 'none';
 
-				let message = '';
-				if (prefill?.dataset && prefill?.pool) {
-					message = `Snapshot ${prefill.dataset}@${properties.name} created`;
-				} else {
-					message = `Snapshot ${pool}@${properties.name} created`;
+				if (response.status !== 'success') {
+					showSnapshotCreateError(response, dataset.name, properties.name);
+					return;
 				}
 
-				toast.success(message, {
+				toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
 					position: 'bottom-center'
 				});
 
@@ -217,29 +233,24 @@
 				);
 			}
 
-			reload = true;
-			if (response?.error) {
-				handleAPIError(response);
-				toast.error('Failed to create snapshot', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
-				let message = '';
-
-				if (prefill?.dataset && prefill?.pool) {
-					message = `Snapshot ${prefill.pool}/${prefill.dataset}@${properties.name} created`;
+			if (!response || response.status !== 'success') {
+				if (response) {
+					showSnapshotCreateError(response, dataset.name, properties.name);
 				} else {
-					message = `Snapshot ${pool}@${properties.name} created`;
+					toast.error('Failed to create snapshot', {
+						position: 'bottom-center'
+					});
 				}
-
-				toast.success(message, {
-					position: 'bottom-center'
-				});
-
-				properties = options;
-				open = false;
+				return;
 			}
+
+			reload = true;
+			toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
+				position: 'bottom-center'
+			});
+
+			properties = options;
+			open = false;
 		}
 	}
 </script>
@@ -259,7 +270,12 @@
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title>
-				<SpanWithIcon icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]" size="h-5 w-5" gap="gap-2" title="Create Snapshot" />
+				<SpanWithIcon
+					icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create Snapshot"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 

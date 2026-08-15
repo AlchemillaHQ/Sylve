@@ -79,7 +79,7 @@
 
 		reload = true;
 
-		if (response.error) {
+		if (response.status !== 'success') {
 			handleAPIError(response);
 			toast.error('Error modifying retention policy', {
 				position: 'bottom-center'

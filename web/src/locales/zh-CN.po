@@ -5733,6 +5733,8 @@ msgstr "快照已创建"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -6925,12 +6927,10 @@ msgid "Select bridge"
 msgstr "选择网桥"
 
 #. 0: dataset.name; 1: properties.name
-#. 0: prefill.dataset; 1: properties.name
-#. 0: pool; 1: properties.name
-#. 0: pool; 1: properties.name
+#. 0: dataset.name; 1: properties.name
+#. 0: dataset.name; 1: properties.name
 #. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -6938,7 +6938,11 @@ msgid "Snapshot {0}@{1} created"
 msgstr "快照 {0}@{1} 已创建"
 
 #. 0: dataset.name; 1: properties.name
+#. 0: datasetName; 1: snapshotName
+#. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} already exists"
 msgstr "快照 {0}@{1} 已存在"
 
@@ -8359,11 +8363,6 @@ msgstr "ISO/镜像"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select ISO/Image"
 msgstr "选择 ISO/镜像"
-
-#. 0: prefill.pool; 1: prefill.dataset; 2: properties.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-msgid "Snapshot {0}/{1}@{2} created"
-msgstr "快照 {0}/{1}@{2} 已创建"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 msgid "Flash File To Volume"

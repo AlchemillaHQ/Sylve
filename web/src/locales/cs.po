@@ -5737,6 +5737,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -6929,12 +6931,10 @@ msgid "Select bridge"
 msgstr "Vyberte most"
 
 #. 0: dataset.name; 1: properties.name
-#. 0: prefill.dataset; 1: properties.name
-#. 0: pool; 1: properties.name
-#. 0: pool; 1: properties.name
+#. 0: dataset.name; 1: properties.name
+#. 0: dataset.name; 1: properties.name
 #. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -6942,7 +6942,11 @@ msgid "Snapshot {0}@{1} created"
 msgstr "Zachycený stav {0}@{1} pořízen"
 
 #. 0: dataset.name; 1: properties.name
+#. 0: datasetName; 1: snapshotName
+#. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} already exists"
 msgstr "Zachycený stav {0}@{1} už existuje"
 
@@ -8364,11 +8368,6 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select ISO/Image"
-msgstr ""
-
-#. 0: prefill.pool; 1: prefill.dataset; 2: properties.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-msgid "Snapshot {0}/{1}@{2} created"
 msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte

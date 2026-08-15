@@ -26,7 +26,7 @@ under sponsorship from the FreeBSD Foundation.
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { deepSearchKey } from '$lib/utils/arr';
 	import { zpoolUseableDisks, zpoolUseablePartitions } from '$lib/utils/disk';
-	import { updateCache } from '$lib/utils/http';
+	import { getAPIErrorText, updateCache } from '$lib/utils/http';
 	import {
 		generateTableData,
 		getPoolByDevice,
@@ -373,7 +373,7 @@ under sponsorship from the FreeBSD Foundation.
 			if (!poolObj) return;
 			const response = await detachDevice(poolObj.guid, device);
 			if (response.status === 'error') {
-				toast.error(response.error || 'Detach failed', { position: 'bottom-center' });
+				toast.error(getAPIErrorText(response, 'Detach failed'), { position: 'bottom-center' });
 			} else {
 				modals.detach.open = false;
 				toast.success(`Detached ${device}`, { position: 'bottom-center' });

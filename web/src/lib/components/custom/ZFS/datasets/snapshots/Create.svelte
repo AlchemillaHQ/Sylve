@@ -5,7 +5,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Dataset } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
+	import { getAPIErrorMessages, handleAPIError } from '$lib/utils/http';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 
 	import { toast } from 'svelte-sonner';
@@ -36,29 +36,32 @@
 
 		try {
 			const response = await createSnapshot(dataset, properties.name, properties.recursive);
-			reload = true;
 
-			if (response.status === 'success') {
-				toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
-					position: 'bottom-center'
-				});
-			} else {
-				if (response.error) {
-					if (response.error.endsWith('dataset already exists')) {
-						toast.error(`Snapshot ${dataset.name}@${properties.name} already exists`, {
-							position: 'bottom-center'
-						});
-					} else {
-						handleAPIError(response);
-						toast.error(`Failed to create snapshot`, {
-							position: 'bottom-center'
-						});
-					}
+			if (response.status !== 'success') {
+				if (
+					getAPIErrorMessages(response).some((message) =>
+						message.includes('dataset already exists')
+					)
+				) {
+					toast.error(`Snapshot ${dataset.name}@${properties.name} already exists`, {
+						position: 'bottom-center'
+					});
+				} else {
+					handleAPIError(response);
+					toast.error(`Failed to create snapshot`, {
+						position: 'bottom-center'
+					});
 				}
+				return;
 			}
+
+			reload = true;
+			toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
+				position: 'bottom-center'
+			});
 			open = false;
 			properties = options;
-		} catch (error) {
+		} catch {
 			toast.error(`Failed to create snapshot`, {
 				position: 'bottom-center'
 			});
@@ -90,7 +93,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -102,7 +105,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							open = false;
 							properties = options;

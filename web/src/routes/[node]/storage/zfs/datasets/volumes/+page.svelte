@@ -426,7 +426,7 @@
 
 <!-- Create Volume -->
 {#if modals.volume.create.open}
-	<CreateVolume bind:open={modals.volume.create.open} {grouped} bind:reload />
+	<CreateVolume bind:open={modals.volume.create.open} bind:reload />
 {/if}
 
 <!-- Edit Volume -->

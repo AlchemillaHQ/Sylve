@@ -69,7 +69,7 @@
 				if (snapshot) {
 					const response = await deletePeriodicSnapshot(snapshot.id);
 					reload = true;
-					if (response.error) {
+					if (response.status !== 'success') {
 						handleAPIError(response);
 						toast.error('Failed to delete periodic snapshot', {
 							position: 'bottom-center'

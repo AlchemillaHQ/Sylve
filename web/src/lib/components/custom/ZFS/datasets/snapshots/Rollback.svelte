@@ -5,6 +5,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Dataset } from '$lib/types/zfs/dataset';
+	import { getAPIErrorMessages, handleAPIError } from '$lib/utils/http';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 
 	import { toast } from 'svelte-sonner';
@@ -33,13 +34,31 @@
 		}
 
 		try {
-			await createSnapshot(dataset, properties.name, properties.recursive);
+			const response = await createSnapshot(dataset, properties.name, properties.recursive);
+			if (response.status !== 'success') {
+				if (
+					getAPIErrorMessages(response).some((message) =>
+						message.includes('dataset already exists')
+					)
+				) {
+					toast.error(`Snapshot ${dataset.name}@${properties.name} already exists`, {
+						position: 'bottom-center'
+					});
+				} else {
+					handleAPIError(response);
+					toast.error(`Failed to create snapshot`, {
+						position: 'bottom-center'
+					});
+				}
+				return;
+			}
+
 			toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
 				position: 'bottom-center'
 			});
 			open = false;
 			properties = options;
-		} catch (error) {
+		} catch {
 			toast.error(`Failed to create snapshot`, {
 				position: 'bottom-center'
 			});
@@ -75,7 +94,7 @@
 					size="sm"
 					variant="ghost"
 					class="h-8"
-					title={'Reset'}
+					title="Reset"
 					onclick={() => {
 						properties = options;
 					}}
@@ -88,7 +107,7 @@
 					size="sm"
 					variant="ghost"
 					class="h-8"
-					title={'Close'}
+					title="Close"
 					onclick={() => {
 						open = false;
 						properties = options;
