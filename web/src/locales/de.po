@@ -226,13 +226,11 @@ msgstr "Knoten — <0/>"
 msgid "Discord"
 msgstr "Discord"
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "Help"
 msgstr "Hilfe"
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "Sponsor"
 msgstr "Sponsor"
 
@@ -496,6 +494,7 @@ msgstr "Ungültige Anfrage"
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
@@ -516,7 +515,6 @@ msgstr "Startzeit"
 msgid "End Time"
 msgstr "Endzeit"
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -546,7 +544,6 @@ msgid "Action"
 msgstr "Aktion"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -579,6 +576,7 @@ msgstr "Status"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -3740,7 +3738,6 @@ msgstr "Wird angefordert"
 msgid "Select Type"
 msgstr "Typ auswählen"
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "Endpunkt"
@@ -7683,8 +7680,7 @@ msgstr "Schnellaktionen"
 msgid "No create actions are available."
 msgstr "Es sind keine Erstellungsaktionen verfügbar."
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "Documentation"
 msgstr "Dokumentation"
 
@@ -9034,6 +9030,7 @@ msgstr "Zähler aktualisieren"
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 msgid "Log"
@@ -13433,29 +13430,23 @@ msgstr ""
 msgid "Close audit record details"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Record ID"
-msgstr ""
+#~ msgid "Record ID"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Duration"
-msgstr ""
+#~ msgid "Duration"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Actor"
-msgstr ""
+#~ msgid "Actor"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Timeline"
-msgstr ""
+#~ msgid "Timeline"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "to"
-msgstr ""
+#~ msgid "to"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Request"
-msgstr ""
+#~ msgid "Request"
+#~ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
@@ -13470,34 +13461,28 @@ msgstr ""
 msgid "Request payload"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No request payload was recorded."
-msgstr ""
+#~ msgid "No request payload was recorded."
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Recorded Error"
-msgstr ""
+#~ msgid "Recorded Error"
+#~ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response Payload"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No response or error was recorded."
-msgstr ""
+#~ msgid "No response or error was recorded."
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Raw Audit Record"
-msgstr ""
+#~ msgid "Raw Audit Record"
+#~ msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "Audit record"
-msgstr ""
+#~ msgid "Audit record"
+#~ msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 msgid "Unable to load ZFS pools"
@@ -17068,4 +17053,26 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Snapshot job is unavailable"
+msgstr ""
+
+#. 0: activeLifecycleCount
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "<0/> {0} active"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Show log panel"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Hide log panel"
+msgstr ""
+
+#. 0: record.resolvedAction
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "View details for {0}"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No additional request/response details were recorded."
 msgstr ""
