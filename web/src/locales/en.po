@@ -583,6 +583,7 @@ msgstr "Status"
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -2121,6 +2122,7 @@ msgid "Error starting jail"
 msgstr "Error starting jail"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2128,6 +2130,7 @@ msgid "Stop"
 msgstr "Stop"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2770,6 +2773,7 @@ msgstr "Running"
 msgid "Reboot"
 msgstr "Reboot"
 
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutdown"
@@ -15230,6 +15234,7 @@ msgid "Group by resource type"
 msgstr "Group by resource type"
 
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Tree settings"
 msgstr "Tree settings"
 
@@ -17069,3 +17074,56 @@ msgstr "Copy portal address {0}:{1}"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Snapshot job is unavailable"
 msgstr "Snapshot job is unavailable"
+
+#. 0: searchQuery
+#. 0: searchQuery
+#: src/lib/components/skeleton/LeftPanel.svelte
+#: src/lib/components/skeleton/LeftPanelClustered.svelte
+msgid "No matches for “{0}”"
+msgstr "No matches for “{0}”"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Offline"
+msgstr "Offline"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Expand all"
+msgstr "Expand all"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Collapse all"
+msgstr "Collapse all"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Filter resources..."
+msgstr "Filter resources..."
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Filter resources"
+msgstr "Filter resources"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Clear filter"
+msgstr "Clear filter"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Row density"
+msgstr "Row density"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Compact fits more rows per screen."
+msgstr "Compact fits more rows per screen."
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Compact"
+msgstr "Compact"
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Comfortable"
+msgstr "Comfortable"
