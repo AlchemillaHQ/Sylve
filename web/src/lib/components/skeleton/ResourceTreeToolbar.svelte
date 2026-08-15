@@ -3,10 +3,12 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import {
 		DEFAULT_RESOURCE_TREE_PREFERENCES,
+		type ResourceTreeDensity,
 		type ResourceTreePreferences,
 		type ResourceTreeSortKey,
 		type ResourceTreeView
@@ -15,18 +17,22 @@
 	interface Props {
 		preferences: ResourceTreePreferences;
 		onChange: (preferences: ResourceTreePreferences) => void;
+		searchQuery: string;
+		onSearchChange: (value: string) => void;
+		onExpandAll: () => void;
+		onCollapseAll: () => void;
 	}
 
-	let { preferences, onChange }: Props = $props();
+	let { preferences, onChange, searchQuery, onSearchChange, onExpandAll, onCollapseAll }: Props =
+		$props();
 
 	let settingsOpen = $state(false);
 	let draftSortKey = $state<ResourceTreeSortKey>(DEFAULT_RESOURCE_TREE_PREFERENCES.sortKey);
 	let draftGroupTemplates = $state(DEFAULT_RESOURCE_TREE_PREFERENCES.groupTemplates);
 	let draftGroupGuestTypes = $state(DEFAULT_RESOURCE_TREE_PREFERENCES.groupGuestTypes);
+	let draftDensity = $state<ResourceTreeDensity>(DEFAULT_RESOURCE_TREE_PREFERENCES.density);
 
-	let selectedViewLabel = $derived(
-		preferences.view === 'folder' ? 'Folder View' : 'Server View'
-	);
+	let selectedViewLabel = $derived(preferences.view === 'folder' ? 'Folder View' : 'Server View');
 
 	function changeView(value: string | undefined) {
 		if (value !== 'server' && value !== 'folder') return;
@@ -37,6 +43,7 @@
 		draftSortKey = preferences.sortKey;
 		draftGroupTemplates = preferences.groupTemplates;
 		draftGroupGuestTypes = preferences.groupGuestTypes;
+		draftDensity = preferences.density;
 		settingsOpen = true;
 	}
 
@@ -44,6 +51,7 @@
 		draftSortKey = DEFAULT_RESOURCE_TREE_PREFERENCES.sortKey;
 		draftGroupTemplates = DEFAULT_RESOURCE_TREE_PREFERENCES.groupTemplates;
 		draftGroupGuestTypes = DEFAULT_RESOURCE_TREE_PREFERENCES.groupGuestTypes;
+		draftDensity = DEFAULT_RESOURCE_TREE_PREFERENCES.density;
 	}
 
 	function saveSettings() {
@@ -51,7 +59,8 @@
 			...preferences,
 			sortKey: draftSortKey,
 			groupTemplates: draftGroupTemplates,
-			groupGuestTypes: draftGroupGuestTypes
+			groupGuestTypes: draftGroupGuestTypes,
+			density: draftDensity
 		});
 		settingsOpen = false;
 	}
@@ -90,7 +99,9 @@
 						<span class="icon-[lucide--folders] size-4 text-muted-foreground"></span>
 						<div class="flex flex-col">
 							<span>Folder View</span>
-							<span class="text-muted-foreground text-[11px] font-normal">Group by resource type</span>
+							<span class="text-muted-foreground text-[11px] font-normal"
+								>Group by resource type</span
+							>
 						</div>
 					</div>
 				</Select.Item>
@@ -101,11 +112,57 @@
 			variant="outline"
 			size="icon"
 			class="size-8 shrink-0 bg-background shadow-xs"
+			onclick={onExpandAll}
+			aria-label="Expand all"
+			title="Expand all"
+		>
+			<span class="icon-[lucide--unfold-vertical] size-4"></span>
+		</Button>
+
+		<Button
+			variant="outline"
+			size="icon"
+			class="size-8 shrink-0 bg-background shadow-xs"
+			onclick={onCollapseAll}
+			aria-label="Collapse all"
+			title="Collapse all"
+		>
+			<span class="icon-[lucide--fold-vertical] size-4"></span>
+		</Button>
+
+		<Button
+			variant="outline"
+			size="icon"
+			class="size-8 shrink-0 bg-background shadow-xs"
 			onclick={openSettings}
 			aria-label="Tree settings"
+			title="Tree settings"
 		>
 			<span class="icon-[mdi--cog-outline] size-4"></span>
 		</Button>
+	</div>
+
+	<div class="relative mt-1.5">
+		<span
+			class="icon-[lucide--search] text-muted-foreground pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2"
+		></span>
+		<Input
+			value={searchQuery}
+			oninput={(e) => onSearchChange(e.currentTarget.value)}
+			placeholder="Filter resources..."
+			class="h-7 bg-background pl-7 pr-7 text-xs shadow-xs"
+			aria-label="Filter resources"
+		/>
+		{#if searchQuery}
+			<button
+				type="button"
+				class="text-muted-foreground hover:text-foreground absolute right-1.5 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center"
+				onclick={() => onSearchChange('')}
+				aria-label="Clear filter"
+			>
+				<span class="icon-[lucide--x] size-3.5"></span>
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -144,22 +201,43 @@
 				</Select.Root>
 			</div>
 
+			<div class="grid items-center gap-2 sm:grid-cols-[1fr_180px] sm:gap-4">
+				<div class="space-y-0.5">
+					<Label for="resource-tree-density">Row density</Label>
+					<p class="text-muted-foreground text-xs">Compact fits more rows per screen.</p>
+				</div>
+				<Select.Root type="single" bind:value={draftDensity}>
+					<Select.Trigger id="resource-tree-density" size="sm" class="h-8 w-full">
+						{draftDensity === 'compact' ? 'Compact' : 'Comfortable'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="comfortable" label="Comfortable">Comfortable</Select.Item>
+						<Select.Item value="compact" label="Compact">Compact</Select.Item>
+					</Select.Content>
+				</Select.Root>
+			</div>
+
 			<div class="space-y-2">
-				<div class="hover:bg-muted/40 flex items-start gap-3 rounded-lg border p-3 transition-colors">
+				<div
+					class="hover:bg-muted/40 flex items-start gap-3 rounded-lg border p-3 transition-colors"
+				>
 					<Checkbox
 						id="resource-tree-group-templates"
 						class="mt-0.5"
 						bind:checked={draftGroupTemplates}
 					/>
 					<div class="min-w-0 space-y-1">
-						<Label for="resource-tree-group-templates" class="cursor-pointer">Group templates</Label>
+						<Label for="resource-tree-group-templates" class="cursor-pointer">Group templates</Label
+						>
 						<p class="text-muted-foreground text-xs leading-relaxed">
 							Keep VM and jail templates in a dedicated Templates branch.
 						</p>
 					</div>
 				</div>
 
-				<div class="hover:bg-muted/40 flex items-start gap-3 rounded-lg border p-3 transition-colors">
+				<div
+					class="hover:bg-muted/40 flex items-start gap-3 rounded-lg border p-3 transition-colors"
+				>
 					<Checkbox
 						id="resource-tree-group-guests"
 						class="mt-0.5"

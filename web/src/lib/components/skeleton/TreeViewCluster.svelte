@@ -22,7 +22,11 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
-	import type { ResourceTreeItem } from '$lib/resource-tree';
+	import {
+		isResourceTreeGroup,
+		type ResourceTreeDensity,
+		type ResourceTreeItem
+	} from '$lib/resource-tree';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
 	interface Props {
@@ -32,6 +36,7 @@
 		nextGuestId?: number;
 		canMigrate?: boolean;
 		onMigrate?: (item: ResourceTreeItem) => void;
+		density?: ResourceTreeDensity;
 	}
 
 	let {
@@ -40,9 +45,16 @@
 		onToggleId,
 		nextGuestId = 100,
 		canMigrate = false,
-		onMigrate
+		onMigrate,
+		density = 'comfortable'
 	}: Props = $props();
 	let isOpen = $derived(openIds.has(item.id));
+	let isGroup = $derived(isResourceTreeGroup(item));
+	let isOfflineNode = $derived(item.icon === 'mdi--server-off');
+	let isCompact = $derived(density === 'compact');
+	let rowPaddingClass = $derived(isCompact ? 'py-0' : 'py-0.5');
+	let rowSpacingClass = $derived(isCompact ? 'my-0' : 'my-0.5');
+	let iconSizePx = $derived(isCompact ? 16 : 18);
 
 	const handleLabelClick = (e: MouseEvent) => {
 		e.preventDefault();
@@ -59,7 +71,26 @@
 		}
 	};
 
-	const sidebarActive = 'rounded-md bg-muted dark:bg-muted font-inter font-medium';
+	const handleGroupClick = (e: MouseEvent) => {
+		e.preventDefault();
+		onToggleId(item.id);
+	};
+
+	function statusDotClass(state?: 'active' | 'inactive' | 'orphan'): string | null {
+		if (state === 'active') return 'bg-green-500';
+		if (state === 'orphan') return 'bg-amber-500';
+		if (state === 'inactive') return 'bg-muted-foreground/50';
+		return null;
+	}
+
+	const handleQuickAction = async (e: MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		await handleActionClick(item.state === 'active' ? 'stop' : 'start');
+	};
+
+	const sidebarActive =
+		'rounded-md bg-primary/10 dark:bg-primary/15 border-l-2 border-primary font-inter font-medium';
 
 	function isItemActive(menuItem: ResourceTreeItem, currentUrl: string): boolean {
 		if (menuItem.href) {
@@ -84,6 +115,11 @@
 			item.resourceType === 'jail' ||
 			item.resourceType === 'jail-template' ||
 			item.resourceType === 'vm-template'
+	);
+	let showQuickAction = $derived(
+		(item.resourceType === 'vm' || item.resourceType === 'jail') &&
+			item.resourceId !== undefined &&
+			(item.state === 'active' || item.state === 'inactive')
 	);
 	let lastActiveUrl = $derived.by(() => {
 		const segments = activeUrl.split('/');
@@ -325,34 +361,55 @@
 </script>
 
 <li class="w-full">
-	{#if hasContextMenu}
+	{#if isGroup}
+		<div
+			role="button"
+			tabindex="0"
+			class={`${rowSpacingClass} text-muted-foreground hover:bg-muted/40 dark:hover:bg-muted/40 flex w-full cursor-pointer items-center justify-between rounded-md px-1.5 ${rowPaddingClass}`}
+			onclick={handleGroupClick}
+			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleGroupClick(e as any) : null)}
+		>
+			<div class="flex min-w-0 items-center gap-1.5">
+				<span class={`icon-[${item.icon}] size-3.5 shrink-0`}></span>
+				<span class="truncate text-[11px] font-semibold tracking-wide uppercase">{item.label}</span>
+				<span class="text-muted-foreground/70 text-[10px] font-normal">{item.children?.length}</span
+				>
+			</div>
+			<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3 w-3 shrink-0`}
+			></span>
+		</div>
+	{:else if hasContextMenu}
 		<ContextMenu.Root>
 			<ContextMenu.Trigger
 				role="button"
 				tabindex={0}
-				class={`my-0.5 flex w-full cursor-pointer items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
+				class={`group ${rowSpacingClass} flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
 				onclick={handleLabelClick}
 				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e as any) : null)}
 			>
-				<div class="flex items-center space-x-1 text-sm">
+				<div class="flex min-w-0 items-center space-x-1 text-sm">
 					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
 						<div class="flex items-center space-x-1 text-sm">
 							<div class="relative">
-								<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
-								{#if item.state && item.state === 'active'}
+								<span
+									class={`icon-[${item.icon}]`}
+									style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+								></span>
+								{#if statusDotClass(item.state)}
 									<div
-										class="absolute -right-1 bottom-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
-									>
-										<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
-									</div>
+										class={`absolute -right-1 bottom-0.5 h-2 w-2 rounded-full ring-2 ring-background ${statusDotClass(item.state)}`}
+									></div>
 								{/if}
 							</div>
 						</div>
 					{:else}
-						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
+						<span
+							class={`icon-[${item.icon}]`}
+							style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+						></span>
 					{/if}
 					<p
-						class="font-inter cursor-pointer whitespace-nowrap"
+						class="font-inter cursor-pointer truncate whitespace-nowrap"
 						title={item.meta ? `${item.label} · ${item.meta}` : item.label}
 					>
 						{item.label}
@@ -363,16 +420,29 @@
 					</p>
 				</div>
 
-				{#if item.children && item.children.length > 0}
-					<span
-						role="button"
-						tabindex="0"
-						class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
-						onclick={handleIconClick}
-						onkeydown={(e) =>
-							e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null}
-					></span>
-				{/if}
+				<div class="flex shrink-0 items-center gap-0.5">
+					{#if showQuickAction}
+						<button
+							type="button"
+							class="hover:bg-background hidden size-5 items-center justify-center rounded group-hover:flex"
+							title={item.state === 'active' ? 'Stop' : 'Start'}
+							onclick={(e) => void handleQuickAction(e)}
+						>
+							<span class={`icon-[mdi--${item.state === 'active' ? 'stop' : 'play'}] h-3.5 w-3.5`}
+							></span>
+						</button>
+					{/if}
+					{#if item.children && item.children.length > 0}
+						<span
+							role="button"
+							tabindex="0"
+							class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
+							onclick={handleIconClick}
+							onkeydown={(e) =>
+								e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null}
+						></span>
+					{/if}
+				</div>
 			</ContextMenu.Trigger>
 			<ContextMenu.Content>
 				{#if item.resourceType === 'jail'}
@@ -508,29 +578,33 @@
 		<div
 			role="button"
 			tabindex="0"
-			class={`my-0.5 flex w-full cursor-pointer items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
+			class={`${rowSpacingClass} flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}${isOfflineNode ? ' opacity-60' : ''}`}
 			onclick={handleLabelClick}
 			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e as any) : null)}
 		>
-			<div class="flex items-center space-x-1 text-sm">
+			<div class="flex min-w-0 items-center space-x-1 text-sm">
 				{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
 					<div class="flex items-center space-x-1 text-sm">
 						<div class="relative">
-							<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
-							{#if item.state && item.state === 'active'}
+							<span
+								class={`icon-[${item.icon}]`}
+								style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+							></span>
+							{#if statusDotClass(item.state)}
 								<div
-									class="absolute -right-1 bottom-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
-								>
-									<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
-								</div>
+									class={`absolute -right-1 bottom-0.5 h-2 w-2 rounded-full ring-2 ring-background ${statusDotClass(item.state)}`}
+								></div>
 							{/if}
 						</div>
 					</div>
 				{:else}
-					<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
+					<span
+						class={`icon-[${item.icon}]`}
+						style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+					></span>
 				{/if}
 				<p
-					class="font-inter cursor-pointer whitespace-nowrap"
+					class="font-inter cursor-pointer truncate whitespace-nowrap"
 					title={item.meta ? `${item.label} · ${item.meta}` : item.label}
 				>
 					{item.label}
@@ -538,13 +612,19 @@
 						<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span>
 					{/if}
 				</p>
+				{#if isOfflineNode}
+					<span
+						class="bg-muted text-muted-foreground shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
+						>Offline</span
+					>
+				{/if}
 			</div>
 
 			{#if item.children && item.children.length > 0}
 				<span
 					role="button"
 					tabindex="0"
-					class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
+					class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer shrink-0`}
 					onclick={handleIconClick}
 					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null)}
 				></span>
@@ -563,6 +643,7 @@
 				nextGuestId={item.nextGuestId ?? nextGuestId}
 				{canMigrate}
 				{onMigrate}
+				{density}
 			/>
 		{/each}
 	</ul>
