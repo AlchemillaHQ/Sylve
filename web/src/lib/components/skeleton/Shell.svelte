@@ -50,9 +50,21 @@
 		'sylve-resource-tree-preferences-v1',
 		DEFAULT_RESOURCE_TREE_PREFERENCES
 	);
-	let treePreferences = $derived(
-		normalizeResourceTreePreferences(resourceTreePreferences.current)
-	);
+	let treePreferences = $derived(normalizeResourceTreePreferences(resourceTreePreferences.current));
+
+	let treeSearchQuery = $state('');
+	let leftPanelRef = $state<{ expandAll: () => void; collapseAll: () => void } | undefined>();
+	let leftPanelClusteredRef = $state<
+		{ expandAll: () => void; collapseAll: () => void } | undefined
+	>();
+
+	function expandTree() {
+		(clustered ? leftPanelClusteredRef : leftPanelRef)?.expandAll();
+	}
+
+	function collapseTree() {
+		(clustered ? leftPanelClusteredRef : leftPanelRef)?.collapseAll();
+	}
 
 	let leftPaneDefaultSize = $state(12);
 	let topPaneDefaultSize = $state(90);
@@ -90,12 +102,24 @@
 								<ResourceTreeToolbar
 									preferences={treePreferences}
 									onChange={updateTreePreferences}
+									searchQuery={treeSearchQuery}
+									onSearchChange={(value) => (treeSearchQuery = value)}
+									onExpandAll={expandTree}
+									onCollapseAll={collapseTree}
 								/>
 								<div class="min-h-0 flex-1" transition:fade|global={{ duration: 400 }}>
 									{#if clustered}
-										<LeftPanelClustered preferences={treePreferences} />
+										<LeftPanelClustered
+											bind:this={leftPanelClusteredRef}
+											preferences={treePreferences}
+											searchQuery={treeSearchQuery}
+										/>
 									{:else}
-										<LeftPanel preferences={treePreferences} />
+										<LeftPanel
+											bind:this={leftPanelRef}
+											preferences={treePreferences}
+											searchQuery={treeSearchQuery}
+										/>
 									{/if}
 								</div>
 							</div>
