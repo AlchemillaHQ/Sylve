@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -38,12 +39,24 @@ var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
 // multipart downloader uploads retain their dedicated streaming limits.
 const MaxRequestBodyBytes int64 = 1 * 1024 * 1024
 
+type torrentRuntime interface {
+	AddURI(uri string, options *torrent.AddTorrentOptions) (*torrent.Torrent, error)
+	GetTorrent(id string) *torrent.Torrent
+	RemoveTorrent(id string, keepData bool) error
+	Close() error
+}
+
+type torrentRuntimeFactory func(torrent.Config) (torrentRuntime, error)
+
 type Service struct {
 	DB           *gorm.DB
 	TelemetryDB  *gorm.DB
-	BTTClient    *torrent.Session
 	GrabClient   *grab.Client
 	GrabInsecure *grab.Client
+
+	torrentMu        sync.RWMutex
+	torrentClient    torrentRuntime
+	newTorrentClient torrentRuntimeFactory
 
 	VMService   libvirtServiceInterfaces.LibvirtServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
@@ -95,29 +108,6 @@ func NewUtilitiesService(
 	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
 	jailService jailServiceInterfaces.JailServiceInterface,
 ) utilitiesServiceInterfaces.UtilitiesServiceInterface {
-	torrent.DisableLogging()
-	cfg := torrent.DefaultConfig
-	cfg.Database = config.GetDownloadsPath("torrent.db")
-	cfg.DataDir = config.GetDownloadsPath("torrents")
-
-	cfg.RPCEnabled = config.ParsedConfig.BTT.RPC.Enabled
-
-	if config.ParsedConfig.BTT.RPC.Enabled {
-		cfg.RPCHost = config.ParsedConfig.BTT.RPC.Address
-		cfg.RPCPort = config.ParsedConfig.BTT.RPC.Port
-	}
-
-	cfg.DHTEnabled = config.ParsedConfig.BTT.DHT.Enabled
-
-	if config.ParsedConfig.BTT.DHT.Enabled {
-		cfg.DHTPort = uint16(config.ParsedConfig.BTT.DHT.Port)
-	}
-
-	session, err := torrent.NewSession(cfg)
-	if err != nil {
-		logger.L.Fatal().Msgf("Failed to create torrent downloader %v", err)
-	}
-
 	secureClient := &grab.Client{
 		UserAgent:  "grab",
 		HTTPClient: &http.Client{Transport: newDownloadTransport(false)},
@@ -128,11 +118,13 @@ func NewUtilitiesService(
 	}
 
 	return &Service{
-		DB:                   dbConn,
-		TelemetryDB:          telemetryDB,
-		BTTClient:            session,
-		GrabClient:           secureClient,
-		GrabInsecure:         insecureClient,
+		DB:           dbConn,
+		TelemetryDB:  telemetryDB,
+		GrabClient:   secureClient,
+		GrabInsecure: insecureClient,
+		newTorrentClient: func(cfg torrent.Config) (torrentRuntime, error) {
+			return torrent.NewSession(cfg)
+		},
 		httpResponses:        make(map[string]*grab.Response),
 		inflight:             make(map[uint]struct{}),
 		VMService:            vmService,
@@ -143,6 +135,98 @@ func NewUtilitiesService(
 		downloadStartQueued:  make(map[uint]struct{}),
 		activeUploads:        make(map[string]struct{}),
 	}
+}
+
+func torrentRuntimeConfig() torrent.Config {
+	cfg := torrent.DefaultConfig
+	cfg.Database = config.GetDownloadsPath("torrent.db")
+	cfg.DataDir = config.GetDownloadsPath("torrents")
+
+	if config.ParsedConfig == nil {
+		return cfg
+	}
+
+	cfg.RPCEnabled = config.ParsedConfig.BTT.RPC.Enabled
+	if cfg.RPCEnabled {
+		cfg.RPCHost = config.ParsedConfig.BTT.RPC.Address
+		cfg.RPCPort = config.ParsedConfig.BTT.RPC.Port
+	}
+
+	cfg.DHTEnabled = config.ParsedConfig.BTT.DHT.Enabled
+	if cfg.DHTEnabled {
+		cfg.DHTPort = uint16(config.ParsedConfig.BTT.DHT.Port)
+	}
+
+	return cfg
+}
+
+// StartOperational starts runtime-backed utility work after initialization has
+// completed and the daemon is starting in operational mode.
+func (s *Service) StartOperational() error {
+	if s == nil {
+		return ErrUtilitiesNotReady
+	}
+
+	s.torrentMu.Lock()
+	if s.torrentClient != nil {
+		s.torrentMu.Unlock()
+		return nil
+	}
+
+	factory := s.newTorrentClient
+	if factory == nil {
+		factory = func(cfg torrent.Config) (torrentRuntime, error) {
+			return torrent.NewSession(cfg)
+		}
+	}
+
+	torrent.DisableLogging()
+	client, err := factory(torrentRuntimeConfig())
+	if err != nil {
+		s.torrentMu.Unlock()
+		return fmt.Errorf("start torrent runtime: %w", err)
+	}
+	if client == nil {
+		s.torrentMu.Unlock()
+		return fmt.Errorf("start torrent runtime: nil client")
+	}
+	s.torrentClient = client
+	s.torrentMu.Unlock()
+
+	s.CleanupStaleAuditRecords()
+	s.maybeEnqueueDownloadSync()
+	return nil
+}
+
+// Close stops the torrent runtime. It is safe to call more than once.
+func (s *Service) Close() error {
+	if s == nil {
+		return nil
+	}
+
+	s.torrentMu.Lock()
+	client := s.torrentClient
+	s.torrentClient = nil
+	s.torrentMu.Unlock()
+
+	if client == nil {
+		return nil
+	}
+	return client.Close()
+}
+
+func (s *Service) activeTorrentClient() (torrentRuntime, error) {
+	if s == nil {
+		return nil, ErrUtilitiesNotReady
+	}
+
+	s.torrentMu.RLock()
+	client := s.torrentClient
+	s.torrentMu.RUnlock()
+	if client == nil {
+		return nil, ErrUtilitiesNotReady
+	}
+	return client, nil
 }
 
 func newDownloadTransport(insecure bool) *http.Transport {
@@ -174,8 +258,6 @@ func defaultOutName(src string, ext string) string {
 }
 
 func (s *Service) RegisterJobs() {
-	s.CleanupStaleAuditRecords()
-
 	db.QueueRegisterJSON("utils-download-start", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadStartPayload) error {
 		if err := s.StartDownload(&payload.ID); err != nil {
 			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("StartDownload failed")
@@ -216,9 +298,6 @@ func (s *Service) RegisterJobs() {
 	})
 
 	s.registerWoLJobs()
-	// Reconcile durable pending/processing rows after a daemon restart. The
-	// deduplicated sync job is harmless when there is no work to recover.
-	s.maybeEnqueueDownloadSync()
 }
 
 func (s *Service) enqueueDownloadStart(
@@ -338,6 +417,10 @@ func (s *Service) clearDownloadSyncQueued() {
 }
 
 func (s *Service) maybeEnqueueDownloadSync() {
+	if _, err := s.activeTorrentClient(); err != nil {
+		return
+	}
+
 	s.syncQueueMu.Lock()
 	if s.downloadSyncQueued {
 		s.syncQueueMu.Unlock()

@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -131,15 +132,19 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	telemetryDB := db.SetupTelemetryDatabase(cfg, d, false)
 	_ = db.SetupCache(cfg)
 
-	go func() {
-		for {
-			time.Sleep(5 * time.Minute)
-			db.RunCacheGC()
-		}
-	}()
-
 	if err := db.SetupQueue(cfg, false, logger.L); err != nil {
 		logger.L.Fatal().Err(err).Msg("failed to setup queue")
+	}
+
+	operationalAtBoot, basicSettings, settingsErr := shouldStartOperationalRuntime(func() (dbModels.BasicSettings, error) {
+		var settings dbModels.BasicSettings
+		if err := d.First(&settings).Error; err != nil {
+			return dbModels.BasicSettings{}, err
+		}
+		return settings, nil
+	})
+	if settingsErr != nil {
+		logger.L.Fatal().Err(settingsErr).Msg("Failed to determine startup mode")
 	}
 
 	qCtx, qStop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -156,6 +161,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	dS := serviceRegistry.DiskService
 	nS := serviceRegistry.NetworkService
 	uS := serviceRegistry.UtilitiesService
+	utilitiesSvc := uS.(*utilities.Service)
 	sysS := serviceRegistry.SystemService
 	lvS := serviceRegistry.LibvirtService
 	smbS := serviceRegistry.SambaService
@@ -168,9 +174,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	zeltaS := serviceRegistry.ZeltaService
 	notificationService := notificationsService.NewService(d)
 	notificationService.SetDiskService(dS)
-	if err := notificationService.MigrateLegacyDiskSmartRecords(context.Background()); err != nil {
-		logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_disk_smart_notifications")
-	}
 	notificationFacade.SetEmitter(notificationService)
 
 	sysS.(*system.Service).SetDiskService(dS)
@@ -213,36 +216,67 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
 	}
-	if err := lifecycleSvc.RecoverInterruptedTasks(initContext); err != nil {
-		logger.L.Error().Err(err).Msg("failed_to_recover_interrupted_lifecycle_tasks")
-	}
 
-	logger.L.Info().Msg("Basic initializations complete")
+	var clusterTLSConfig *tls.Config
+	var queueDone <-chan struct{}
+	dS.(*disk.Service).SetSelfTestSchedulerReady(operationalAtBoot)
 
-	if err := nS.(*networkService.Service).SyncFirewallRuntimeState(); err != nil {
-		logger.L.Error().Err(err).Msg("failed_to_sync_firewall_runtime_state_during_startup")
-	}
-
-	go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
-	go ddnsS.StartWorker(qCtx)
-	go certS.StartManagedWorker(qCtx)
-	go uS.StartUploadCleanupWorker(qCtx)
-
-	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
-		var settings dbModels.BasicSettings
-		if err := d.First(&settings).Error; err != nil {
-			return dbModels.BasicSettings{}, err
+	if operationalAtBoot {
+		if err := notificationService.MigrateLegacyDiskSmartRecords(qCtx); err != nil {
+			logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_disk_smart_notifications")
 		}
-		return settings, nil
-	})
-	if settingsErr != nil {
-		logger.L.Fatal().Err(settingsErr).Msg("Failed to evaluate startup readiness")
-	}
-	dS.(*disk.Service).SetSelfTestSchedulerReady(startAdvancedStartupWorkers)
 
-	db.StartPruneWorker(qCtx, d)
+		if err := cS.InitRaft(fsm); err != nil {
+			logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
+		}
 
-	if startAdvancedStartupWorkers {
+		clusterTLSConfig, err = aS.GetClusterTLSConfig()
+		if err != nil {
+			logger.L.Fatal().Err(err).Msg("Failed to get cluster TLS config")
+		}
+
+		if err := utilitiesSvc.StartOperational(); err != nil {
+			logger.L.Fatal().Err(err).Msg("Failed to start utilities runtime")
+		}
+		defer func() {
+			if err := utilitiesSvc.Close(); err != nil {
+				logger.L.Warn().Err(err).Msg("Failed to close utilities runtime")
+			}
+		}()
+
+		if err := markOperationalStartupComplete(d); err != nil {
+			logger.L.Fatal().Err(err).Msg("Failed to mark operational startup complete")
+		}
+
+		logger.L.Info().Msg("Operational startup prerequisites complete")
+
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-qCtx.Done():
+					return
+				case <-ticker.C:
+					db.RunCacheGC()
+				}
+			}
+		}()
+
+		if err := lifecycleSvc.RecoverInterruptedTasks(initContext); err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_recover_interrupted_lifecycle_tasks")
+		}
+
+		if err := nS.(*networkService.Service).SyncFirewallRuntimeState(); err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_sync_firewall_runtime_state_during_startup")
+		}
+
+		go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
+		go ddnsS.StartWorker(qCtx)
+		go certS.StartManagedWorker(qCtx)
+		go uS.StartUploadCleanupWorker(qCtx)
+		db.StartPruneWorker(qCtx, d)
+
 		logger.L.Info().Msg("Starting background watchers and queues")
 		go sysS.StartNetlinkWatcher(qCtx)
 		sysS.StartDiskSmartMonitor(qCtx)
@@ -252,70 +286,71 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			go libvirtSvc.StartLifecycleWatcher(qCtx)
 		}
 
-	} else {
-		logger.L.Info().
-			Bool("initialized", basicSettings.Initialized).
-			Bool("restarted", basicSettings.Restarted).
-			Msg("System initialization not finalized; skipping advanced watchers and autostart queue")
-	}
+		operationReconcileCtx, operationReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := zeltaS.ReconcileBackupJobOperationsAfterRestart(operationReconcileCtx); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_job_operations_after_restart")
+		}
+		if err := zeltaS.ReconcileReplicationRunsAfterRestart(operationReconcileCtx); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_runs_after_restart")
+		}
+		if err := zeltaS.DrainScheduledRunResultOutbox(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_drain_scheduled_run_result_outbox_after_restart")
+		}
+		operationReconcileCancel()
+		targetRestoreReconcileCtx, targetRestoreReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := zeltaS.ReconcileBackupTargetRestoreOperationsAfterRestart(targetRestoreReconcileCtx); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_restore_operations_after_restart")
+		}
+		targetRestoreReconcileCancel()
+		targetProvisionReconcileCtx, targetProvisionReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := zeltaS.ReconcileBackupTargetProvisionOperations(targetProvisionReconcileCtx); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_provision_operations_after_restart")
+		}
+		targetProvisionReconcileCancel()
+		go zeltaS.StartBackupTargetProvisionReconciler(qCtx)
+		if err := zeltaS.ReconcileRestoreObservabilityAfterRestart(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability_after_restart")
+		}
+		if err := zeltaS.PrepareReplicationStartup(context.Background()); err != nil {
+			logger.L.Error().Err(err).Msg("replication_startup_fence_or_authority_failed")
+		}
 
-	err = cS.InitRaft(fsm)
-	if err != nil {
-		logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
-	}
-	operationReconcileCtx, operationReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if err := zeltaS.ReconcileBackupJobOperationsAfterRestart(operationReconcileCtx); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_job_operations_after_restart")
-	}
-	if err := zeltaS.ReconcileReplicationRunsAfterRestart(operationReconcileCtx); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_runs_after_restart")
-	}
-	if err := zeltaS.DrainScheduledRunResultOutbox(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_drain_scheduled_run_result_outbox_after_restart")
-	}
-	operationReconcileCancel()
-	targetRestoreReconcileCtx, targetRestoreReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if err := zeltaS.ReconcileBackupTargetRestoreOperationsAfterRestart(targetRestoreReconcileCtx); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_restore_operations_after_restart")
-	}
-	targetRestoreReconcileCancel()
-	targetProvisionReconcileCtx, targetProvisionReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if err := zeltaS.ReconcileBackupTargetProvisionOperations(targetProvisionReconcileCtx); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_provision_operations_after_restart")
-	}
-	targetProvisionReconcileCancel()
-	go zeltaS.StartBackupTargetProvisionReconciler(qCtx)
-	if err := zeltaS.ReconcileRestoreObservabilityAfterRestart(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability_after_restart")
-	}
-	if err := zeltaS.PrepareReplicationStartup(context.Background()); err != nil {
-		logger.L.Error().Err(err).Msg("replication_startup_fence_or_authority_failed")
-	}
-	if startAdvancedStartupWorkers {
 		enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
 			logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
 		}
 		enqueueCancel()
-	}
-	go db.StartQueue(qCtx)
-	if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_events_after_restart")
-	}
-	if err := zeltaS.ReconcileBackupRunAudits(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_run_audits_after_restart")
-	}
+		queueRunnerDone := make(chan struct{})
+		queueDone = queueRunnerDone
+		go func() {
+			defer close(queueRunnerDone)
+			db.StartQueue(qCtx)
+		}()
+		if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_events_after_restart")
+		}
+		if err := zeltaS.ReconcileBackupRunAudits(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_run_audits_after_restart")
+		}
 
-	if err := zelta.EnsureZeltaInstalled(); err != nil {
-		logger.L.Error().Err(err).Msg("Failed to install Zelta; skipping Zelta schedulers")
+		if err := zelta.EnsureZeltaInstalled(); err != nil {
+			logger.L.Error().Err(err).Msg("Failed to install Zelta; skipping Zelta schedulers")
+		} else {
+			go zeltaS.StartBackupScheduler(qCtx)
+			go zeltaS.StartReplicationScheduler(qCtx)
+		}
+
+		go migrationSvc.StartRecoveryTicker(qCtx)
+		go clusterSvc.StartBackupJobRunnerRebindReconciler(qCtx)
+		go aS.ClearExpiredJWTTokens(qCtx)
 	} else {
-		go zeltaS.StartBackupScheduler(qCtx)
-		go zeltaS.StartReplicationScheduler(qCtx)
+		logger.L.Info().
+			Bool("initialized", basicSettings.Initialized).
+			Bool("restarted", basicSettings.Restarted).
+			Msg("Starting in bootstrap mode; operational services are disabled")
 	}
 
-	go migrationSvc.StartRecoveryTicker(qCtx)
-	go clusterSvc.StartBackupJobRunnerRebindReconciler(qCtx)
-	go aS.ClearExpiredJWTTokens(qCtx)
+	logger.L.Info().Msg("Startup initialization complete")
 
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = io.Discard
@@ -354,8 +389,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		telemetryDB,
 	)
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	replQuitChan := make(chan os.Signal, 1)
 
 	replCtx := &repl.Context{
 		Auth:           aS.(*auth.Service),
@@ -367,7 +401,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		Utilities:      uS,
 		Status:         repl.NewStatusProvider(zS.(*zfs.Service), libvirtSvc, jailSvc, lifecycleSvc),
 		HistoryPath:    historyPath,
-		QuitChan:       sigChan,
+		QuitChan:       replQuitChan,
 	}
 
 	replSocketServer, replSocketErr := repl.StartSocketServer(replCtx, socketPath)
@@ -386,11 +420,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go repl.Start(replCtx)
 	}
 
-	clusterTLSConfig, err := aS.GetClusterTLSConfig()
-
-	if err != nil {
-		logger.L.Fatal().Err(err).Msg("Failed to get cluster TLS config")
-	}
 	publicTLSConfig := certS.TLSConfig()
 
 	httpsServer := &http.Server{
@@ -428,7 +457,9 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
 			}
 		}()
-		go certS.StartRenewalWorker(qCtx)
+		if operationalAtBoot {
+			go certS.StartRenewalWorker(qCtx)
+		}
 	}
 
 	if cfg.HTTPPort != 0 {
@@ -447,45 +478,51 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	var clusterHTTPSMu sync.Mutex
 	var activeClusterHTTPS *http.Server
 
-	startClusterListeners := func(clusterIP string) error {
-		if err := clusterSvc.StartEmbeddedSSHServer(qCtx, clusterIP); err != nil {
-			return fmt.Errorf("cluster_ssh_start_failed: %w", err)
-		}
-
-		clusterHTTPSMu.Lock()
-		defer clusterHTTPSMu.Unlock()
-		if activeClusterHTTPS != nil {
-			return nil // already running
-		}
-
-		srv := &http.Server{
-			Addr:      fmt.Sprintf("%s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort),
-			Handler:   r,
-			TLSConfig: clusterTLSConfig,
-		}
-		activeClusterHTTPS = srv
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort)
-			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				logger.L.Fatal().Err(err).Msg("Failed to start intra-cluster HTTPS server")
+	if operationalAtBoot {
+		startClusterListeners := func(clusterIP string) error {
+			if err := clusterSvc.StartEmbeddedSSHServer(qCtx, clusterIP); err != nil {
+				return fmt.Errorf("cluster_ssh_start_failed: %w", err)
 			}
-		}()
-		return nil
-	}
 
-	clusterSvc.SetClusterStartHook(startClusterListeners)
+			clusterHTTPSMu.Lock()
+			defer clusterHTTPSMu.Unlock()
+			if activeClusterHTTPS != nil {
+				return nil // already running
+			}
 
-	// If this node is already part of a cluster, start the cluster listeners immediately.
-	var clusterRecord clusterModels.Cluster
-	if err := d.First(&clusterRecord).Error; err == nil && clusterRecord.Enabled && clusterRecord.RaftIP != "" {
-		if err := startClusterListeners(clusterRecord.RaftIP); err != nil {
-			logger.L.Error().Err(err).Msg("failed_to_start_cluster_listeners_at_startup")
+			srv := &http.Server{
+				Addr:      fmt.Sprintf("%s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort),
+				Handler:   r,
+				TLSConfig: clusterTLSConfig,
+			}
+			activeClusterHTTPS = srv
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort)
+				if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+					logger.L.Fatal().Err(err).Msg("Failed to start intra-cluster HTTPS server")
+				}
+			}()
+			return nil
+		}
+
+		clusterSvc.SetClusterStartHook(startClusterListeners)
+
+		// If this node is already part of a cluster, start the cluster listeners immediately.
+		var clusterRecord clusterModels.Cluster
+		if err := d.First(&clusterRecord).Error; err == nil && clusterRecord.Enabled && clusterRecord.RaftIP != "" {
+			if err := startClusterListeners(clusterRecord.RaftIP); err != nil {
+				logger.L.Error().Err(err).Msg("failed_to_start_cluster_listeners_at_startup")
+			}
 		}
 	}
 
-	<-sigChan
+	select {
+	case <-qCtx.Done():
+	case <-replQuitChan:
+		qStop()
+	}
 
 	logger.L.Info().Msg("Shutting down servers gracefully")
 	qStop()
@@ -507,11 +544,18 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	}
 	clusterHTTPSMu.Unlock()
 
-	shutdownFenceCtx, shutdownFenceCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if err := zeltaS.FenceReplicationShutdown(shutdownFenceCtx); err != nil {
-		logger.L.Error().Err(err).Msg("replication_shutdown_fence_failed")
+	if operationalAtBoot {
+		shutdownFenceCtx, shutdownFenceCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := zeltaS.FenceReplicationShutdown(shutdownFenceCtx); err != nil {
+			logger.L.Error().Err(err).Msg("replication_shutdown_fence_failed")
+		}
+		shutdownFenceCancel()
 	}
-	shutdownFenceCancel()
+	if queueDone != nil {
+		logger.L.Info().Msg("Waiting for in-flight queue jobs to finish")
+		<-queueDone
+		logger.L.Info().Msg("Queue stopped properly")
+	}
 
 	wg.Wait()
 	logger.L.Info().Msg("Servers exited properly")

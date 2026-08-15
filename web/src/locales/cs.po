@@ -226,11 +226,13 @@ msgstr "Uzel — <0/>"
 msgid "Discord"
 msgstr ""
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Help"
 msgstr "Nápověda"
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Sponsor"
 msgstr ""
 
@@ -494,7 +496,6 @@ msgstr "Chybný požadavek"
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
@@ -515,6 +516,7 @@ msgstr "Doba startu"
 msgid "End Time"
 msgstr "Doba konce"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -544,6 +546,7 @@ msgid "Action"
 msgstr "Akce"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -576,7 +579,7 @@ msgstr "Stav"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -2119,6 +2122,7 @@ msgid "Error starting jail"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2126,6 +2130,7 @@ msgid "Stop"
 msgstr "Zastavit"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2768,6 +2773,7 @@ msgstr "Spuštěné"
 msgid "Reboot"
 msgstr "Restartovat"
 
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutdown"
@@ -3738,6 +3744,7 @@ msgstr ""
 msgid "Select Type"
 msgstr "Vybrat typ"
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "Koncový bod"
@@ -7683,7 +7690,8 @@ msgstr ""
 msgid "No create actions are available."
 msgstr ""
 
-#: src/lib/components/custom/Header.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Documentation"
 msgstr ""
 
@@ -9033,7 +9041,6 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 msgid "Log"
@@ -13433,23 +13440,29 @@ msgstr ""
 msgid "Close audit record details"
 msgstr ""
 
-#~ msgid "Record ID"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Record ID"
+msgstr ""
 
-#~ msgid "Duration"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Duration"
+msgstr ""
 
-#~ msgid "Actor"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Actor"
+msgstr ""
 
-#~ msgid "Timeline"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Timeline"
+msgstr ""
 
-#~ msgid "to"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "to"
+msgstr ""
 
-#~ msgid "Request"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Request"
+msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
@@ -13464,28 +13477,34 @@ msgstr ""
 msgid "Request payload"
 msgstr ""
 
-#~ msgid "No request payload was recorded."
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No request payload was recorded."
+msgstr ""
 
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response"
 msgstr ""
 
-#~ msgid "Recorded Error"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Recorded Error"
+msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 msgid "Response Payload"
 msgstr ""
 
-#~ msgid "No response or error was recorded."
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "No response or error was recorded."
+msgstr ""
 
-#~ msgid "Raw Audit Record"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Raw Audit Record"
+msgstr ""
 
-#~ msgid "Audit record"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+msgid "Audit record"
+msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 msgid "Unable to load ZFS pools"
@@ -15217,6 +15236,7 @@ msgstr ""
 msgid "Group by resource type"
 msgstr ""
 
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 msgid "Tree settings"
 msgstr ""
@@ -17058,24 +17078,55 @@ msgstr ""
 msgid "Snapshot job is unavailable"
 msgstr ""
 
-#. 0: activeLifecycleCount
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "<0/> {0} active"
+#. 0: searchQuery
+#. 0: searchQuery
+#: src/lib/components/skeleton/LeftPanel.svelte
+#: src/lib/components/skeleton/LeftPanelClustered.svelte
+msgid "No matches for “{0}”"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Show log panel"
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Offline"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Hide log panel"
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Expand all"
 msgstr ""
 
-#. 0: record.resolvedAction
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "View details for {0}"
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Collapse all"
 msgstr ""
 
-#: src/lib/components/custom/Dialog/AuditDetailModal.svelte
-msgid "No additional request/response details were recorded."
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Filter resources..."
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Filter resources"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Clear filter"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Row density"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Compact fits more rows per screen."
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Compact"
+msgstr ""
+
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+msgid "Comfortable"
 msgstr ""

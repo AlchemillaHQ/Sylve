@@ -12,19 +12,22 @@ export type ResourceTreeView = 'server' | 'folder';
 export type ResourceTreeSortKey = 'id' | 'name';
 export type ResourceTreeState = 'active' | 'inactive' | 'orphan';
 export type ResourceTreeResourceType = 'vm' | 'jail' | 'jail-template' | 'vm-template';
+export type ResourceTreeDensity = 'comfortable' | 'compact';
 
 export interface ResourceTreePreferences {
 	view: ResourceTreeView;
 	sortKey: ResourceTreeSortKey;
 	groupTemplates: boolean;
 	groupGuestTypes: boolean;
+	density: ResourceTreeDensity;
 }
 
 export const DEFAULT_RESOURCE_TREE_PREFERENCES: ResourceTreePreferences = {
 	view: 'server',
 	sortKey: 'id',
 	groupTemplates: true,
-	groupGuestTypes: false
+	groupGuestTypes: false,
+	density: 'comfortable'
 };
 
 export interface ResourceTreeItem {
@@ -92,8 +95,43 @@ export function normalizeResourceTreePreferences(value: unknown): ResourceTreePr
 		groupGuestTypes:
 			typeof candidate.groupGuestTypes === 'boolean'
 				? candidate.groupGuestTypes
-				: DEFAULT_RESOURCE_TREE_PREFERENCES.groupGuestTypes
+				: DEFAULT_RESOURCE_TREE_PREFERENCES.groupGuestTypes,
+		density: candidate.density === 'compact' ? 'compact' : 'comfortable'
 	};
+}
+
+export function isResourceTreeGroup(item: ResourceTreeItem): boolean {
+	return !item.resourceType && !item.href && !!item.children;
+}
+
+export function filterResourceTree(items: ResourceTreeItem[], query: string): ResourceTreeItem[] {
+	const q = query.trim().toLowerCase();
+	if (!q) return items;
+
+	function walk(item: ResourceTreeItem): ResourceTreeItem | null {
+		const selfMatch =
+			item.label.toLowerCase().includes(q) || (item.meta?.toLowerCase().includes(q) ?? false);
+
+		if (selfMatch) {
+			return item;
+		}
+
+		if (!item.children) {
+			return null;
+		}
+
+		const filteredChildren = item.children
+			.map(walk)
+			.filter((child): child is ResourceTreeItem => child !== null);
+
+		if (filteredChildren.length === 0) {
+			return null;
+		}
+
+		return { ...item, children: filteredChildren };
+	}
+
+	return items.map(walk).filter((item): item is ResourceTreeItem => item !== null);
 }
 
 export function collectResourceTreeIds(nodes: ResourceTreeItem[]): string[] {

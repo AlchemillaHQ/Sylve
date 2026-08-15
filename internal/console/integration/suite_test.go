@@ -411,6 +411,9 @@ func (s *consoleIntegrationSuite) configure() error {
 	s.utilities = utilities
 	utilities.RegisterJobs()
 	lifecycle.RegisterJobs()
+	if err := utilities.StartOperational(); err != nil {
+		return fmt.Errorf("start suite utilities runtime: %w", err)
+	}
 
 	queueCtx, queueCancel := context.WithCancel(context.Background())
 	s.queueCancel = queueCancel
@@ -468,6 +471,11 @@ func (s *consoleIntegrationSuite) Close() error {
 			errs = append(errs, errors.New("timed out stopping suite queue"))
 		}
 	}
+	if s.utilities != nil {
+		if err := s.utilities.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close suite utilities runtime: %w", err))
+		}
+	}
 	if err := s.destroyOwnedPool(); err != nil {
 		errs = append(errs, err)
 		return errors.Join(errs...)
@@ -491,6 +499,11 @@ func (s *consoleIntegrationSuite) cleanupFailedSetup() error {
 	}
 	if s.queueCancel != nil {
 		s.queueCancel()
+	}
+	if s.utilities != nil {
+		if err := s.utilities.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	if err := s.destroyPoolAfterFailedSetup(); err != nil {
 		errs = append(errs, err)

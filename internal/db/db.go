@@ -286,13 +286,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		}
 	}
 
-	restartResult := db.Model(&models.BasicSettings{}).
-		Where("id = ? AND initialized = ?", 1, true).
-		Update("restarted", true)
-	if restartResult.Error != nil {
-		logger.L.Error().Err(restartResult.Error).Msg("Failed to mark Sylve as restarted")
-	}
-
 	return db
 }
 

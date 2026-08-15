@@ -15,6 +15,7 @@
 	import {
 		buildResourceTree,
 		collectResourceTreeIds,
+		filterResourceTree,
 		type ResourceTreePreferences,
 		type ResourceTreeResource,
 		type ResourceTreeView
@@ -25,9 +26,10 @@
 
 	interface Props {
 		preferences: ResourceTreePreferences;
+		searchQuery?: string;
 	}
 
-	let { preferences }: Props = $props();
+	let { preferences, searchQuery = '' }: Props = $props();
 
 	let openIdsByView = $state<Record<ResourceTreeView, Set<string>>>({
 		server: loadOpenIds('single', 'server'),
@@ -51,6 +53,20 @@
 		openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
 		saveOpenIds(nextOpenIds, 'single', view);
 	};
+
+	export function expandAll() {
+		const view = preferences.view;
+		const nextOpenIds = new Set(collectResourceTreeIds(tree));
+		openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
+		saveOpenIds(nextOpenIds, 'single', view);
+	}
+
+	export function collapseAll() {
+		const view = preferences.view;
+		const nextOpenIds = new Set<string>();
+		openIdsByView = { ...openIdsByView, [view]: nextOpenIds };
+		saveOpenIds(nextOpenIds, 'single', view);
+	}
 
 	let node = $derived.by(() => {
 		const routeHost = page.url.pathname.split('/').filter(Boolean)[0] || '';
@@ -226,6 +242,16 @@
 		})
 	);
 
+	let displayTree = $derived(searchQuery.trim() ? filterResourceTree(tree, searchQuery) : tree);
+	let searching = $derived(searchQuery.trim().length > 0);
+	let effectiveOpenIds = $derived(
+		searching ? new Set(collectResourceTreeIds(displayTree)) : openIds
+	);
+	function effectiveToggleOpen(id: string) {
+		if (searching) return;
+		toggleOpen(id);
+	}
+
 	let resourcesReady = $derived(
 		!simpleVMs.loading &&
 			!simpleJails.loading &&
@@ -315,9 +341,24 @@
 	<nav aria-label="sylve-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
 		<ul class="h-full min-h-0">
 			<ScrollArea orientation="both" class="h-full w-full">
-				{#each tree as item (item.id)}
-					<TreeViewCluster {item} {openIds} onToggleId={toggleOpen} {nextGuestId} />
-				{/each}
+				{#if searching && displayTree.length === 0}
+					<div
+						class="text-muted-foreground flex flex-col items-center gap-1.5 px-2 py-8 text-center text-xs"
+					>
+						<span class="icon-[lucide--search-x] size-5"></span>
+						<span>No matches for &ldquo;{searchQuery}&rdquo;</span>
+					</div>
+				{:else}
+					{#each displayTree as item (item.id)}
+						<TreeViewCluster
+							{item}
+							openIds={effectiveOpenIds}
+							onToggleId={effectiveToggleOpen}
+							{nextGuestId}
+							density={preferences.density}
+						/>
+					{/each}
+				{/if}
 			</ScrollArea>
 		</ul>
 	</nav>

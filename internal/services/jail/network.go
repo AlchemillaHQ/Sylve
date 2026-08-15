@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -1302,14 +1303,14 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 	return nil
 }
 
-func (s *Service) networkUpdateWorker() {
+func (s *Service) networkUpdateWorker(ctx context.Context) {
 	pending := make(map[int64]bool)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case jailID, ok := <-s.networkUpdateChan:
 			if !ok {
