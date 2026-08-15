@@ -262,6 +262,10 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 
 func (s *Service) EnableLinux() error {
 	loadKLD := func(module string) error {
+		// already loaded? -n matches by filename and works inside a jail
+		if _, err := utils.RunCommand("/sbin/kldstat", "-q", "-n", module); err == nil {
+			return nil
+		}
 		if _, err := utils.RunCommand("/sbin/kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
