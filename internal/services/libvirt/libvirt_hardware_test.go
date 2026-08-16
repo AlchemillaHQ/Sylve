@@ -119,7 +119,9 @@ func TestVMPCIDevicesPhysicalColumnContract(t *testing.T) {
 	}
 
 	want := []int{4, 9}
-	if err := db.Model(&vm).Update(vmPCIDevicesColumn, want).Error; err != nil {
+	if err := db.Model(&vm).
+		Select("PCIDevices").
+		Updates(vmModels.VM{PCIDevices: want}).Error; err != nil {
 		t.Fatalf("update VM PCI devices through physical column: %v", err)
 	}
 
@@ -129,6 +131,21 @@ func TestVMPCIDevicesPhysicalColumnContract(t *testing.T) {
 	}
 	if !slices.Equal(stored.PCIDevices, want) {
 		t.Fatalf("stored PCI devices = %v, want %v", stored.PCIDevices, want)
+	}
+
+	empty := []int{}
+	if err := db.Model(&vm).
+		Select("PCIDevices").
+		Updates(vmModels.VM{PCIDevices: empty}).Error; err != nil {
+		t.Fatalf("clear VM PCI devices through physical column: %v", err)
+	}
+
+	var cleared vmModels.VM
+	if err := db.Select("rid", vmPCIDevicesColumn).Where("rid = ?", vm.RID).First(&cleared).Error; err != nil {
+		t.Fatalf("select cleared VM PCI devices through physical column: %v", err)
+	}
+	if cleared.PCIDevices == nil || len(cleared.PCIDevices) != 0 {
+		t.Fatalf("cleared PCI devices = %#v, want explicit empty list", cleared.PCIDevices)
 	}
 }
 

@@ -800,7 +800,10 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 	}
 
 	return s.applyVMHardwareMutation(rid, oldXML, newXML, func(tx *gorm.DB) error {
-		if err := tx.Model(&vm).Update(vmPCIDevicesColumn, normalizedDevices).Error; err != nil {
+		// A struct update is required for GORM to apply the field's JSON serializer.
+		if err := tx.Model(&vm).
+			Select("PCIDevices").
+			Updates(vmModels.VM{PCIDevices: normalizedDevices}).Error; err != nil {
 			return fmt.Errorf("failed_to_update_vm_pci_devices_in_db: %w", err)
 		}
 		return nil
