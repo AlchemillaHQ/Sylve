@@ -64,24 +64,19 @@ func (o *hostObserver) Close() error {
 }
 
 type hostTerminalSession struct {
-	ID        string
+	Username  string
 	Cmd       *exec.Cmd
 	Pty       *os.File
-	Observers map[*hostObserver]struct{}
-
-	Mu        sync.Mutex
+	Observer  *hostObserver
 	closeOnce sync.Once
-	closed    bool
-}
-
-type hostSessionManager struct {
-	sessions map[string]*hostTerminalSession
-	mu       sync.RWMutex
 }
 
 var (
-	hostTerminalSessionManager = &hostSessionManager{
-		sessions: make(map[string]*hostTerminalSession),
+	hostTerminalCommand = func(username string) *exec.Cmd {
+		if username == "root" {
+			return exec.Command("login", "-f", "root")
+		}
+		return exec.Command("login")
 	}
 	hostTerminalWSUpgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
@@ -97,20 +92,8 @@ type hostWindowSize struct {
 	Y    uint16 `json:"y"`
 }
 
-func (sm *hostSessionManager) GetOrCreateSession(sessionID string, username string) (*hostTerminalSession, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	if session, exists := sm.sessions[sessionID]; exists && !session.IsClosed() {
-		return session, nil
-	}
-
-	var cmd *exec.Cmd
-	if username == "root" {
-		cmd = exec.Command("login", "-f", "root")
-	} else {
-		cmd = exec.Command("login")
-	}
+func newHostTerminalSession(username string, observer *hostObserver) (*hostTerminalSession, error) {
+	cmd := hostTerminalCommand(username)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	ptymx, err := pty.Start(cmd)
@@ -125,52 +108,18 @@ func (sm *hostSessionManager) GetOrCreateSession(sessionID string, username stri
 		return nil, err
 	}
 
-	session := &hostTerminalSession{
-		ID:        sessionID,
-		Cmd:       cmd,
-		Pty:       ptymx,
-		Observers: make(map[*hostObserver]struct{}),
-	}
-
-	sm.sessions[sessionID] = session
-	go session.PumpOutput(sm)
-
-	return session, nil
+	return &hostTerminalSession{
+		Username: username,
+		Cmd:      cmd,
+		Pty:      ptymx,
+		Observer: observer,
+	}, nil
 }
 
-func (sm *hostSessionManager) removeSession(sessionID string, session *hostTerminalSession) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	current, exists := sm.sessions[sessionID]
-	if !exists {
-		return
-	}
-	if current == session {
-		delete(sm.sessions, sessionID)
-	}
-}
-
-func (ts *hostTerminalSession) IsClosed() bool {
-	ts.Mu.Lock()
-	defer ts.Mu.Unlock()
-	return ts.closed
-}
-
-func (ts *hostTerminalSession) Close(sm *hostSessionManager) {
+func (ts *hostTerminalSession) Close() {
 	ts.closeOnce.Do(func() {
-		ts.Mu.Lock()
-		ts.closed = true
-
-		observers := make([]*hostObserver, 0, len(ts.Observers))
-		for obs := range ts.Observers {
-			observers = append(observers, obs)
-		}
-		ts.Observers = make(map[*hostObserver]struct{})
-		ts.Mu.Unlock()
-
-		for _, obs := range observers {
-			_ = obs.Close()
+		if ts.Observer != nil {
+			_ = ts.Observer.Close()
 		}
 
 		if ts.Pty != nil {
@@ -182,66 +131,18 @@ func (ts *hostTerminalSession) Close(sm *hostSessionManager) {
 		if ts.Cmd != nil {
 			_ = ts.Cmd.Wait()
 		}
-
-		sm.removeSession(ts.ID, ts)
 	})
 }
 
-func (ts *hostTerminalSession) AddObserver(obs *hostObserver) error {
-	ts.Mu.Lock()
-	defer ts.Mu.Unlock()
-
-	if ts.closed {
-		return errors.New("session is closed")
-	}
-
-	ts.Observers[obs] = struct{}{}
-	return nil
-}
-
-func (ts *hostTerminalSession) RemoveObserver(obs *hostObserver, sm *hostSessionManager) {
-	ts.Mu.Lock()
-	delete(ts.Observers, obs)
-	remaining := len(ts.Observers)
-	closed := ts.closed
-	ts.Mu.Unlock()
-
-	_ = obs.Close()
-
-	if !closed && remaining == 0 {
-		ts.Close(sm)
-	}
-}
-
-func (ts *hostTerminalSession) BroadcastBinary(payload []byte) {
-	ts.Mu.Lock()
-	if ts.closed {
-		ts.Mu.Unlock()
-		return
-	}
-
-	observers := make([]*hostObserver, 0, len(ts.Observers))
-	for obs := range ts.Observers {
-		observers = append(observers, obs)
-	}
-	ts.Mu.Unlock()
-
-	for _, obs := range observers {
-		if err := obs.WriteMessage(websocket.BinaryMessage, payload); err != nil {
-			logger.L.Warn().Err(err).Str("session", ts.ID).Msg("failed to write PTY output to websocket")
-		}
-	}
-}
-
-func (ts *hostTerminalSession) PumpOutput(sm *hostSessionManager) {
-	defer ts.Close(sm)
+func (ts *hostTerminalSession) PumpOutput() {
+	defer ts.Close()
 
 	buf := make([]byte, 4096)
 	for {
 		n, err := ts.Pty.Read(buf)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				logger.L.Error().Err(err).Str("session", ts.ID).Msg("error reading from PTY")
+				logger.L.Error().Err(err).Str("username", ts.Username).Msg("error reading from host terminal PTY")
 			}
 			return
 		}
@@ -252,17 +153,10 @@ func (ts *hostTerminalSession) PumpOutput(sm *hostSessionManager) {
 
 		data := make([]byte, n)
 		copy(data, buf[:n])
-		ts.BroadcastBinary(data)
-	}
-}
-
-func (sm *hostSessionManager) KillSession(sessionID string) {
-	sm.mu.RLock()
-	session, exists := sm.sessions[sessionID]
-	sm.mu.RUnlock()
-
-	if exists {
-		session.Close(sm)
+		if err := ts.Observer.WriteMessage(websocket.BinaryMessage, data); err != nil {
+			logger.L.Warn().Err(err).Str("username", ts.Username).Msg("failed to write host terminal output to websocket")
+			return
+		}
 	}
 }
 
@@ -292,31 +186,21 @@ func HandleHostTerminal(c *gin.Context) {
 		usernameStr = "root"
 	}
 
-	var sessionID string
-	if usernameStr == "root" {
-		sessionID = "host-terminal"
-	} else {
-		sessionID = "host-terminal-" + usernameStr
+	observer := &hostObserver{Conn: conn}
+	if usernameStr != "root" {
 		banner := "\r\n\x1b[33mNote: Direct root login is disabled on this terminal.\x1b[0m\r\n" +
 			"\x1b[33mLog in as a regular user, then use 'su -' to switch to root.\x1b[0m\r\n\r\n"
-		_ = conn.WriteMessage(websocket.BinaryMessage, []byte(banner))
+		_ = observer.WriteMessage(websocket.BinaryMessage, []byte(banner))
 	}
 
-	session, err := hostTerminalSessionManager.GetOrCreateSession(sessionID, usernameStr)
+	session, err := newHostTerminalSession(usernameStr, observer)
 	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("Error starting session: "+err.Error()))
-		_ = conn.Close()
+		_ = observer.WriteMessage(websocket.TextMessage, []byte("Error starting session: "+err.Error()))
+		_ = observer.Close()
 		return
 	}
-
-	observer := &hostObserver{Conn: conn}
-	if err := session.AddObserver(observer); err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("Session unavailable"))
-		_ = conn.Close()
-		return
-	}
-
-	defer session.RemoveObserver(observer, hostTerminalSessionManager)
+	defer session.Close()
+	go session.PumpOutput()
 
 	done := make(chan struct{})
 	defer close(done)
@@ -344,13 +228,13 @@ func HandleHostTerminal(c *gin.Context) {
 		}
 
 		if messageType != websocket.BinaryMessage {
-			logger.L.Warn().Int("message_type", messageType).Str("session", sessionID).Msg("rejected non-binary websocket frame")
+			logger.L.Warn().Int("message_type", messageType).Str("username", usernameStr).Msg("rejected non-binary host terminal websocket frame")
 			return
 		}
 
 		data, err := io.ReadAll(reader)
 		if err != nil {
-			logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to read websocket frame")
+			logger.L.Warn().Err(err).Str("username", usernameStr).Msg("failed to read host terminal websocket frame")
 			return
 		}
 
@@ -364,7 +248,7 @@ func HandleHostTerminal(c *gin.Context) {
 				continue
 			}
 			if _, err := session.Pty.Write(data[1:]); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to write terminal input to PTY")
+				logger.L.Warn().Err(err).Str("username", usernameStr).Msg("failed to write terminal input to PTY")
 				return
 			}
 
@@ -375,25 +259,25 @@ func HandleHostTerminal(c *gin.Context) {
 
 			var ws hostWindowSize
 			if err := json.Unmarshal(data[1:], &ws); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("invalid resize payload")
+				logger.L.Warn().Err(err).Str("username", usernameStr).Msg("invalid host terminal resize payload")
 				continue
 			}
 
 			if ws.Rows == 0 || ws.Cols == 0 {
-				logger.L.Warn().Str("session", sessionID).Msg("ignored zero-sized resize payload")
+				logger.L.Warn().Str("username", usernameStr).Msg("ignored zero-sized host terminal resize payload")
 				continue
 			}
 
 			if err := pty.Setsize(session.Pty, &pty.Winsize{Rows: ws.Rows, Cols: ws.Cols, X: ws.X, Y: ws.Y}); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to resize PTY")
+				logger.L.Warn().Err(err).Str("username", usernameStr).Msg("failed to resize host terminal PTY")
 			}
 
 		case hostControlKill:
-			hostTerminalSessionManager.KillSession(sessionID)
+			session.Close()
 			return
 
 		default:
-			logger.L.Warn().Uint8("control", data[0]).Str("session", sessionID).Msg("rejected unknown websocket control byte")
+			logger.L.Warn().Uint8("control", data[0]).Str("username", usernameStr).Msg("rejected unknown host terminal websocket control byte")
 			return
 		}
 	}

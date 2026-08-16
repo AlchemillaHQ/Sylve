@@ -39,6 +39,7 @@ const (
 	vmConsoleMaxBaud          = 4_000_000
 	vmControlInput       byte = 0
 	vmControlResize      byte = 1
+	vmControlTakeover    byte = 2
 )
 
 type vmConsoleService interface {
@@ -105,8 +106,12 @@ func vmDomainSupportsConsole(status string) bool {
 }
 
 type VMObserver struct {
-	Conn *websocket.Conn
-	Mu   sync.Mutex
+	Conn                 *websocket.Conn
+	Username             string
+	JoinSequence         uint64
+	Mu                   sync.Mutex
+	writeMessageOverride func(messageType int, payload []byte) error
+	closeOverride        func() error
 }
 
 func (o *VMObserver) WriteMessage(messageType int, payload []byte) error {
@@ -116,6 +121,13 @@ func (o *VMObserver) WriteMessage(messageType int, payload []byte) error {
 }
 
 func (o *VMObserver) writeMessageLocked(messageType int, payload []byte) error {
+	if o.writeMessageOverride != nil {
+		return o.writeMessageOverride(messageType, payload)
+	}
+	if o.Conn == nil {
+		return errors.New("observer websocket is unavailable")
+	}
+
 	_ = o.Conn.SetWriteDeadline(time.Now().Add(vmWSWriteTimeout))
 	return o.Conn.WriteMessage(messageType, payload)
 }
@@ -129,26 +141,46 @@ func (o *VMObserver) WriteControl(messageType int, payload []byte, deadline time
 }
 
 func (o *VMObserver) Close() error {
-	if o == nil || o.Conn == nil {
+	if o == nil {
 		return nil
 	}
 
 	o.Mu.Lock()
 	defer o.Mu.Unlock()
+	if o.closeOverride != nil {
+		return o.closeOverride()
+	}
+	if o.Conn == nil {
+		return nil
+	}
 	return o.Conn.Close()
 }
 
 type VMSession struct {
-	ID           string
-	BaudRate     string
-	Cmd          *exec.Cmd
-	Pty          *os.File
-	Observers    map[*VMObserver]struct{}
-	Mu           sync.Mutex
-	closeOnce    sync.Once
-	closed       bool
-	History      []byte
-	HistoryLimit int
+	ID               string
+	BaudRate         string
+	Cmd              *exec.Cmd
+	Pty              *os.File
+	Observers        map[*VMObserver]struct{}
+	Controller       *VMObserver
+	NextJoinSequence uint64
+	Mu               sync.Mutex
+	closeOnce        sync.Once
+	closed           bool
+	History          []byte
+	HistoryLimit     int
+}
+
+type vmConsoleControlState struct {
+	Type               string `json:"type"`
+	HasControl         bool   `json:"hasControl"`
+	ControllerUsername string `json:"controllerUsername"`
+	ObserverCount      int    `json:"observerCount"`
+}
+
+type vmConsoleControlMessage struct {
+	Observer *VMObserver
+	Payload  []byte
 }
 
 type VMSessionManager struct {
@@ -233,6 +265,7 @@ func (ts *VMSession) Close(sm *VMSessionManager) {
 	ts.closeOnce.Do(func() {
 		ts.Mu.Lock()
 		ts.closed = true
+		ts.Controller = nil
 
 		observers := make([]*VMObserver, 0, len(ts.Observers))
 		for obs := range ts.Observers {
@@ -259,43 +292,199 @@ func (ts *VMSession) Close(sm *VMSessionManager) {
 	})
 }
 
-func (ts *VMSession) AddObserverAndReplay(obs *VMObserver) error {
-	// Hold the observer writer while registering it so live output cannot
-	// overtake or duplicate the history snapshot.
-	obs.Mu.Lock()
-	defer obs.Mu.Unlock()
+func (ts *VMSession) controlStateLocked(obs *VMObserver) vmConsoleControlState {
+	controllerUsername := ""
+	if ts.Controller != nil {
+		controllerUsername = ts.Controller.Username
+	}
 
+	return vmConsoleControlState{
+		Type:               "control-state",
+		HasControl:         ts.Controller == obs,
+		ControllerUsername: controllerUsername,
+		ObserverCount:      len(ts.Observers),
+	}
+}
+
+func (ts *VMSession) controlMessages(skip *VMObserver) []vmConsoleControlMessage {
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
+
+	if ts.closed {
+		return nil
+	}
+
+	messages := make([]vmConsoleControlMessage, 0, len(ts.Observers))
+	for obs := range ts.Observers {
+		if obs == skip {
+			continue
+		}
+
+		payload, err := json.Marshal(ts.controlStateLocked(obs))
+		if err != nil {
+			logger.L.Error().Err(err).Str("session", ts.ID).Msg("failed to encode VM console control state")
+			continue
+		}
+		messages = append(messages, vmConsoleControlMessage{Observer: obs, Payload: payload})
+	}
+
+	return messages
+}
+
+func (ts *VMSession) BroadcastControlState(sm *VMSessionManager, skip *VMObserver) {
+	messages := ts.controlMessages(skip)
+	failed := make([]*VMObserver, 0)
+
+	for _, message := range messages {
+		if err := message.Observer.WriteMessage(websocket.TextMessage, message.Payload); err != nil {
+			logger.L.Warn().Err(err).Str("session", ts.ID).Msg("failed to write VM console control state to websocket")
+			failed = append(failed, message.Observer)
+		}
+	}
+
+	for _, obs := range failed {
+		ts.RemoveObserver(obs, sm)
+	}
+}
+
+func (ts *VMSession) SendControlState(obs *VMObserver) error {
 	ts.Mu.Lock()
 	if ts.closed {
 		ts.Mu.Unlock()
 		return errors.New("session is closed")
 	}
-
-	history := append([]byte(nil), ts.History...)
-	ts.Observers[obs] = struct{}{}
+	if _, exists := ts.Observers[obs]; !exists {
+		ts.Mu.Unlock()
+		return errors.New("observer is not attached")
+	}
+	state := ts.controlStateLocked(obs)
 	ts.Mu.Unlock()
 
-	if len(history) == 0 {
-		return nil
+	payload, err := json.Marshal(state)
+	if err != nil {
+		return err
 	}
-	return obs.writeMessageLocked(websocket.BinaryMessage, history)
+	return obs.WriteMessage(websocket.TextMessage, payload)
+}
+
+func (ts *VMSession) AddObserverAndReplay(obs *VMObserver, sm *VMSessionManager) error {
+	// Hold the observer writer while registering it so live output cannot
+	// overtake the initial control state or history snapshot.
+	obs.Mu.Lock()
+
+	ts.Mu.Lock()
+	if ts.closed {
+		ts.Mu.Unlock()
+		obs.Mu.Unlock()
+		return errors.New("session is closed")
+	}
+
+	ts.NextJoinSequence++
+	obs.JoinSequence = ts.NextJoinSequence
+	ts.Observers[obs] = struct{}{}
+	if ts.Controller == nil {
+		ts.Controller = obs
+	}
+
+	history := append([]byte(nil), ts.History...)
+	controlPayload, err := json.Marshal(ts.controlStateLocked(obs))
+	ts.Mu.Unlock()
+	if err != nil {
+		obs.Mu.Unlock()
+		return err
+	}
+
+	if err := obs.writeMessageLocked(websocket.TextMessage, controlPayload); err != nil {
+		obs.Mu.Unlock()
+		return err
+	}
+	if len(history) > 0 {
+		if err := obs.writeMessageLocked(websocket.BinaryMessage, history); err != nil {
+			obs.Mu.Unlock()
+			return err
+		}
+	}
+	obs.Mu.Unlock()
+
+	ts.BroadcastControlState(sm, obs)
+	return nil
 }
 
 func (ts *VMSession) RemoveObserver(obs *VMObserver, sm *VMSessionManager) {
 	ts.Mu.Lock()
+	if _, exists := ts.Observers[obs]; !exists {
+		ts.Mu.Unlock()
+		_ = obs.Close()
+		return
+	}
+
 	delete(ts.Observers, obs)
+	if ts.Controller == obs {
+		ts.Controller = nil
+		for candidate := range ts.Observers {
+			if ts.Controller == nil || candidate.JoinSequence < ts.Controller.JoinSequence {
+				ts.Controller = candidate
+			}
+		}
+	}
+
 	closeSession := !ts.closed && len(ts.Observers) == 0
 	if closeSession {
 		// Prevent a new observer from joining between the last disconnect and
 		// session cleanup.
 		ts.closed = true
+		ts.Controller = nil
 	}
 	ts.Mu.Unlock()
 
 	_ = obs.Close()
 	if closeSession {
 		ts.Close(sm)
+		return
 	}
+
+	ts.BroadcastControlState(sm, nil)
+}
+
+func (ts *VMSession) TakeControl(obs *VMObserver, sm *VMSessionManager) bool {
+	ts.Mu.Lock()
+	if ts.closed {
+		ts.Mu.Unlock()
+		return false
+	}
+	if _, exists := ts.Observers[obs]; !exists {
+		ts.Mu.Unlock()
+		return false
+	}
+
+	previous := ts.Controller
+	ts.Controller = obs
+	ts.Mu.Unlock()
+
+	if previous != obs {
+		previousUsername := ""
+		if previous != nil {
+			previousUsername = previous.Username
+		}
+		logger.L.Info().
+			Str("session", ts.ID).
+			Str("previous_controller", previousUsername).
+			Str("controller", obs.Username).
+			Msg("VM serial console control transferred")
+	}
+
+	ts.BroadcastControlState(sm, nil)
+	return true
+}
+
+func (ts *VMSession) RunControllerAction(obs *VMObserver, action func(*os.File) error) (bool, error) {
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
+
+	if ts.closed || ts.Controller != obs {
+		return false, nil
+	}
+	return true, action(ts.Pty)
 }
 
 func (ts *VMSession) BroadcastBinary(payload []byte, sm *VMSessionManager) {
@@ -460,8 +649,13 @@ func HandleLibvirtTerminalWebsocket(libvirtService vmConsoleService) gin.Handler
 			return
 		}
 
-		observer := &VMObserver{Conn: conn}
-		if err := session.AddObserverAndReplay(observer); err != nil {
+		username := strings.TrimSpace(c.GetString("Username"))
+		if username == "" {
+			username = "unknown"
+		}
+
+		observer := &VMObserver{Conn: conn, Username: username}
+		if err := session.AddObserverAndReplay(observer, GlobalVMSessionManager); err != nil {
 			logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to join VM serial console session")
 			session.RemoveObserver(observer, GlobalVMSessionManager)
 			return
@@ -514,9 +708,19 @@ func HandleLibvirtTerminalWebsocket(libvirtService vmConsoleService) gin.Handler
 				if len(data) == 1 {
 					continue
 				}
-				if _, err := session.Pty.Write(data[1:]); err != nil {
+
+				allowed, err := session.RunControllerAction(observer, func(ptymx *os.File) error {
+					_, err := ptymx.Write(data[1:])
+					return err
+				})
+				if err != nil {
 					logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to write serial input to PTY")
 					return
+				}
+				if !allowed {
+					if err := session.SendControlState(observer); err != nil {
+						return
+					}
 				}
 
 			case vmControlResize:
@@ -535,13 +739,30 @@ func HandleLibvirtTerminalWebsocket(libvirtService vmConsoleService) gin.Handler
 					continue
 				}
 
-				if err := pty.Setsize(session.Pty, &pty.Winsize{
-					Rows: ws.Rows,
-					Cols: ws.Cols,
-					X:    ws.X,
-					Y:    ws.Y,
-				}); err != nil {
+				allowed, err := session.RunControllerAction(observer, func(ptymx *os.File) error {
+					return pty.Setsize(ptymx, &pty.Winsize{
+						Rows: ws.Rows,
+						Cols: ws.Cols,
+						X:    ws.X,
+						Y:    ws.Y,
+					})
+				})
+				if err != nil {
 					logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to resize PTY")
+				}
+				if !allowed {
+					if err := session.SendControlState(observer); err != nil {
+						return
+					}
+				}
+
+			case vmControlTakeover:
+				if len(data) != 1 {
+					logger.L.Warn().Str("session", sessionID).Msg("ignored VM console takeover payload with unexpected data")
+					continue
+				}
+				if !session.TakeControl(observer, GlobalVMSessionManager) {
+					return
 				}
 
 			default:

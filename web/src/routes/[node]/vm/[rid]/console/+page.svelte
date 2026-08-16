@@ -23,6 +23,7 @@
 	} from 'runed';
 	import { mode } from 'mode-watcher';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
@@ -34,6 +35,12 @@
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
+	type VMConsoleControlState = {
+		type: 'control-state';
+		hasControl: boolean;
+		controllerUsername: string;
+		observerCount: number;
+	};
 
 	interface Data {
 		node: string;
@@ -151,6 +158,11 @@
 	let ws = $state<WebSocket | null>(null);
 	let serialConnectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
 	let serialConnectionError = $state(false);
+	let hasSerialControl = $state(false);
+	let serialControllerUsername = $state('');
+	let serialObserverCount = $state(0);
+	let takeoverOpen = $state(false);
+	let takeoverPending = $state(false);
 	let wrapper = $state<HTMLElement | null>(null);
 	let connectionToken = 0;
 	let destroyed = $state(false);
@@ -158,6 +170,7 @@
 	const options: ITerminalOptions & ITerminalInitOnlyOptions = {
 		cursorBlink: true,
 		cursorStyle: 'bar',
+		disableStdin: true,
 		scrollback: 10000,
 		fontFamily: 'Monaco, Menlo, "Courier New", monospace',
 		fontSize: initialTheme.fontSize,
@@ -166,6 +179,14 @@
 			foreground: initialTheme.foreground
 		}
 	};
+
+	let serialControlLabel = $derived(
+		hasSerialControl
+			? 'You have control'
+			: serialControllerUsername
+				? `Controlled by ${serialControllerUsername}`
+				: 'View only'
+	);
 
 	useInterval(() => 1000, {
 		callback: () => {
@@ -295,9 +316,65 @@
 					(consoleType === 'serial' && vm.current.serial))
 	);
 
+	function isVMConsoleControlState(value: unknown): value is VMConsoleControlState {
+		if (!value || typeof value !== 'object') return false;
+
+		const state = value as Partial<VMConsoleControlState>;
+		return (
+			state.type === 'control-state' &&
+			typeof state.hasControl === 'boolean' &&
+			typeof state.controllerUsername === 'string' &&
+			typeof state.observerCount === 'number' &&
+			Number.isInteger(state.observerCount) &&
+			state.observerCount >= 0
+		);
+	}
+
+	function resetSerialControlState() {
+		hasSerialControl = false;
+		serialControllerUsername = '';
+		serialObserverCount = 0;
+		takeoverOpen = false;
+		takeoverPending = false;
+		if (terminal) terminal.options.disableStdin = true;
+	}
+
+	function applySerialControlState(state: VMConsoleControlState) {
+		const gainedControl = !hasSerialControl && state.hasControl;
+
+		hasSerialControl = state.hasControl;
+		serialControllerUsername = state.controllerUsername;
+		serialObserverCount = state.observerCount;
+		takeoverPending = false;
+		if (state.hasControl) takeoverOpen = false;
+
+		if (terminal) terminal.options.disableStdin = !state.hasControl;
+		if (!gainedControl) return;
+
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				fitAndSend();
+				terminal?.focus();
+			});
+		});
+	}
+
 	function sendSize(cols: number, rows: number) {
+		if (!hasSerialControl) return;
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ cols, rows })));
+	}
+
+	function requestSerialControl() {
+		if (hasSerialControl || takeoverPending) return;
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+		takeoverPending = true;
+		try {
+			ws.send(new Uint8Array([2]));
+		} catch {
+			takeoverPending = false;
+		}
 	}
 
 	function isSerialSocketActive() {
@@ -308,6 +385,7 @@
 		connectionToken += 1;
 		serialConnectionState = 'disconnected';
 		serialConnectionError = false;
+		resetSerialControlState();
 
 		const socket = ws;
 		ws = null;
@@ -410,6 +488,7 @@
 
 		cState.current = false;
 		serialConnectionError = false;
+		resetSerialControlState();
 
 		const wssAuth = getWSSAuth();
 		const url = `/api/vm/${encodeURIComponent(String(vm.current.rid))}/console?auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
@@ -442,9 +521,19 @@
 				} catch {
 					return;
 				}
-			} else {
+			} else if (typeof e.data === 'string') {
 				try {
-					activeTerminal?.write(e.data as string);
+					const message: unknown = JSON.parse(e.data);
+					if (isVMConsoleControlState(message)) {
+						applySerialControlState(message);
+						return;
+					}
+				} catch {
+					// Preserve existing plain-text server messages in the terminal.
+				}
+
+				try {
+					activeTerminal?.write(e.data);
 				} catch {
 					return;
 				}
@@ -458,10 +547,12 @@
 			}
 			serialConnectionState = 'disconnected';
 			serialConnectionError = true;
+			resetSerialControlState();
 		};
 	}
 
 	function onData(data: string) {
+		if (!hasSerialControl) return;
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 		ws.send(new TextEncoder().encode('\x00' + data));
 	}
@@ -537,6 +628,7 @@
 			destroyed = true;
 			connectionToken += 1;
 			serialConnectionState = 'disconnected';
+			resetSerialControlState();
 
 			if (ws) {
 				ws.onopen = null;
@@ -685,29 +777,74 @@
 					</Button>
 				{/if}
 
-				<div class="ml-auto">
-					<Button
-						variant="outline"
-						size="sm"
-						class="ml-auto h-6"
-						onclick={() => {
-							terminal?.clear();
-							terminal?.focus();
-						}}
-					>
-						<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
-					</Button>
+				<div class="ml-auto flex min-w-0 items-center gap-2">
+					{#if serialConnectionState === 'connected' && serialObserverCount > 0}
+						<div
+							class="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs"
+							role="status"
+							aria-live="polite"
+							aria-atomic="true"
+							title={`${serialControlLabel} · ${serialObserverCount} connected`}
+						>
+							<span
+								class={`${hasSerialControl ? 'icon-[mdi--keyboard-outline] text-emerald-500' : 'icon-[mdi--eye-outline] text-amber-500'} h-4 w-4 shrink-0`}
+								aria-hidden="true"
+							></span>
+							<span class="max-w-40 truncate">{serialControlLabel}</span>
+							<span class="hidden shrink-0 xl:inline">· {serialObserverCount} connected</span>
+						</div>
 
-					<Button
-						variant="outline"
-						size="sm"
-						class="ml-auto h-6"
-						onclick={() => {
-							openSettings = true;
-						}}
-					>
-						<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
-					</Button>
+						{#if !hasSerialControl}
+							<Button
+								variant="outline"
+								size="sm"
+								class="h-6 shrink-0"
+								disabled={takeoverPending}
+								onclick={() => {
+									takeoverOpen = true;
+								}}
+								aria-label={takeoverPending
+									? 'Taking serial console control'
+									: 'Take serial console control'}
+							>
+								<span
+									class={`${takeoverPending ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--cursor-default-click-outline]'} h-4 w-4`}
+								></span>
+								<span class="hidden lg:inline">
+									{takeoverPending ? 'Taking control...' : 'Take Control'}
+								</span>
+							</Button>
+						{/if}
+					{/if}
+
+					<div class="flex shrink-0 items-center gap-1">
+						<Button
+							variant="outline"
+							size="sm"
+							class="h-6"
+							aria-label="Clear terminal"
+							title="Clear terminal"
+							onclick={() => {
+								terminal?.clear();
+								terminal?.focus();
+							}}
+						>
+							<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
+						</Button>
+
+						<Button
+							variant="outline"
+							size="sm"
+							class="h-6"
+							aria-label="Console settings"
+							title="Console settings"
+							onclick={() => {
+								openSettings = true;
+							}}
+						>
+							<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
+						</Button>
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -861,6 +998,33 @@
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog.Root bind:open={takeoverOpen}>
+	<AlertDialog.Content class="p-6" onInteractOutside={(event) => event.preventDefault()}>
+		<AlertDialog.Header>
+			<AlertDialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--console-network-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Take serial console control?"
+				/>
+			</AlertDialog.Title>
+			<AlertDialog.Description>
+				Taking control immediately makes this browser the active serial input controller
+				{#if serialControllerUsername}
+					and puts <span class="font-medium">{serialControllerUsername}</span> in view-only mode{/if}.
+				All connected admins will continue seeing the same serial output.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={takeoverPending}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={requestSerialControl} disabled={takeoverPending}>
+				Take Control
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 <style>
 	:global(.terminal-wrapper .xterm) {

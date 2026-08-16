@@ -1680,6 +1680,7 @@ msgstr "Are you sure?"
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -17182,3 +17183,60 @@ msgstr "Shut down VM {0}? This sends a graceful shutdown request. Services and a
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
 msgstr "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "You have control"
+msgstr "You have control"
+
+#. 0: serialControllerUsername
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Controlled by {0}"
+msgstr "Controlled by {0}"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "View only"
+msgstr "View only"
+
+#. 0: serialObserverCount
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "· {0} connected"
+msgstr "· {0} connected"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Taking serial console control"
+msgstr "Taking serial console control"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Take serial console control"
+msgstr "Take serial console control"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Taking control..."
+msgstr "Taking control..."
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Take Control"
+msgstr "Take Control"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Take serial console control?"
+msgstr "Take serial console control?"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "and puts <0/> in view-only mode"
+msgstr "and puts <0/> in view-only mode"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Taking control immediately makes this browser the active serial input controller <0/>. All connected admins will continue seeing the same serial output."
+msgstr "Taking control immediately makes this browser the active serial input controller <0/>. All connected admins will continue seeing the same serial output."
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Clear terminal"
+msgstr "Clear terminal"
+
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+msgid "Console settings"
+msgstr "Console settings"
