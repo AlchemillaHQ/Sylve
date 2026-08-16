@@ -26,6 +26,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 	"github.com/klauspost/cpuid/v2"
+	"gorm.io/gorm"
 )
 
 var flashImageToDiskCtx = utils.FlashImageToDiskCtx
@@ -115,9 +116,16 @@ func domainReasonToString(state libvirt.DomainState, reason int32) libvirtServic
 	}
 }
 
+// FindISOByUUID resolves the on-disk path for a download UUID.
 func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
+	return s.findISOByUUIDWithDB(s.DB, uuid, includeImg)
+}
+
+// findISOByUUIDWithDB is FindISOByUUID with an explicit db handle, for
+// callers running inside a DB transaction.
+func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool) (string, error) {
 	var download utilitiesModels.Downloads
-	if err := s.DB.
+	if err := db.
 		Preload("Files").
 		Where("uuid = ?", uuid).
 		First(&download).Error; err != nil {
