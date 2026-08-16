@@ -1,3 +1,5 @@
+import { x25519 } from '@noble/curves/ed25519.js';
+
 export const clientAddressesPlaceHolder = `10.210.0.2/32\nfdc7:8a97:6114::2/128`;
 
 export interface WireGuardKeypair {
@@ -12,20 +14,6 @@ export function isValidWireGuardKey(key: string): boolean {
 	} catch {
 		return false;
 	}
-}
-
-function base64UrlToBytes(input: string): Uint8Array {
-	const base64 =
-		input.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (input.length % 4)) % 4);
-
-	const binary = atob(base64);
-	const bytes = new Uint8Array(binary.length);
-
-	for (let i = 0; i < binary.length; i++) {
-		bytes[i] = binary.charCodeAt(i);
-	}
-
-	return bytes;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -43,23 +31,10 @@ function randomBytes(length: number): Uint8Array {
 }
 
 export async function generateKeypair(): Promise<WireGuardKeypair> {
-	const keyPair = (await crypto.subtle.generateKey({ name: 'X25519' }, true, [
-		'deriveBits'
-	])) as CryptoKeyPair;
-
-	const privateJwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
-	const publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
-
-	if (!privateJwk.d || !publicJwk.x) {
-		throw new Error('Failed to export X25519 keypair');
-	}
-
-	const privateKey = base64UrlToBytes(privateJwk.d);
-	const publicKey = base64UrlToBytes(publicJwk.x);
-
-	if (privateKey.length !== 32 || publicKey.length !== 32) {
-		throw new Error('Unexpected X25519 key length');
-	}
+	const privateKey = randomBytes(32);
+	privateKey[0] &= 248;
+	privateKey[31] = (privateKey[31] & 127) | 64;
+	const publicKey = x25519.getPublicKey(privateKey);
 
 	return {
 		privateKey: bytesToBase64(privateKey),

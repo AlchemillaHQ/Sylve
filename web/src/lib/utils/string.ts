@@ -9,6 +9,7 @@
  */
 
 import { getIcon, loadIcon } from '@iconify/svelte';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 import { decode as magnetDecode, encode as magnetEncode } from 'magnet-uri';
 import { customRandom, nanoid } from 'nanoid';
 import isEmail from 'validator/lib/isEmail';
@@ -230,8 +231,7 @@ export async function sha256(str: string, rounds: number = 1): Promise<string> {
 	let data = encoder.encode(str);
 
 	for (let i = 0; i < rounds; i++) {
-		const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-		data = new Uint8Array(hashBuffer);
+		data = nobleSha256(data);
 	}
 
 	const hashArray = Array.from(data);
