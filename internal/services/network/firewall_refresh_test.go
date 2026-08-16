@@ -3251,45 +3251,131 @@ func TestEnsurePFKernelModuleLoadedReturnsErrorOnLoadFailure(t *testing.T) {
 	}
 }
 
-func TestEnsurePFLogInterfaceReadySkipsCreateWhenPresent(t *testing.T) {
+func disablePFLogRetryDelayForTest(t *testing.T) {
+	original := firewallPFLogRetryWait
+	firewallPFLogRetryWait = func(context.Context, time.Duration) error { return nil }
+	t.Cleanup(func() {
+		firewallPFLogRetryWait = original
+	})
+}
+
+func TestEnsurePFLogInterfaceReadyBringsPresentInterfaceUp(t *testing.T) {
 	original := firewallRunCommand
 	t.Cleanup(func() {
 		firewallRunCommand = original
 	})
 
+	up := false
 	calls := []string{}
 	firewallRunCommand = func(command string, args ...string) (string, error) {
 		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
-			return "pflog0: flags=...", nil
+			if up {
+				return "pflog0: flags=41<UP,RUNNING>", nil
+			}
+			return "pflog0: flags=0<>", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "up" {
+			up = true
+			return "", nil
 		}
 		t.Fatalf("unexpected command call: %s %v", command, args)
 		return "", nil
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(); err != nil {
+	if err := svc.ensurePFLogInterfaceReady(context.Background()); err != nil {
 		t.Fatalf("expected pflog readiness check to succeed, got: %v", err)
 	}
 
-	if len(calls) != 1 {
-		t.Fatalf("expected one ifconfig check call, got %d calls: %v", len(calls), calls)
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/ifconfig pflog0",
+		"/sbin/ifconfig pflog0 up",
+		"/sbin/ifconfig pflog0",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected pflog readiness calls: got %v want %v", calls, expected)
 	}
 }
 
-func TestEnsurePFLogInterfaceReadyCreatesWhenMissing(t *testing.T) {
+func TestEnsurePFLogInterfaceReadyWaitsForAutomaticInterface(t *testing.T) {
+	disablePFLogRetryDelayForTest(t)
 	original := firewallRunCommand
 	t.Cleanup(func() {
 		firewallRunCommand = original
 	})
 
+	checks := 0
+	up := false
+	created := false
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
+			checks++
+			if checks < 3 {
+				return "", errors.New("interface does not exist")
+			}
+			if up {
+				return "pflog0: flags=41<UP,RUNNING>", nil
+			}
+			return "pflog0: flags=0<>", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "create" {
+			created = true
+			return "", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "up" {
+			up = true
+			return "", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	svc := &Service{}
+	if err := svc.ensurePFLogInterfaceReady(context.Background()); err != nil {
+		t.Fatalf("expected delayed automatic pflog interface to succeed, got: %v", err)
+	}
+	if created {
+		t.Fatal("automatic pflog interface appeared during wait but create was still called")
+	}
+}
+
+func TestEnsurePFLogInterfaceReadyLoadsModuleAndCreatesWhenMissing(t *testing.T) {
+	disablePFLogRetryDelayForTest(t)
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	moduleLoaded := false
 	exists := false
+	up := false
 	calls := []string{}
 	firewallRunCommand = func(command string, args ...string) (string, error) {
 		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			if moduleLoaded {
+				return "pflog loaded", nil
+			}
+			return "", errors.New("module not found")
+		}
+		if command == "/sbin/kldload" && len(args) == 2 && args[0] == "-n" && args[1] == "pflog" {
+			moduleLoaded = true
+			return "", nil
+		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
 			if exists {
-				return "pflog0: flags=...", nil
+				if up {
+					return "pflog0: flags=41<UP,RUNNING>", nil
+				}
+				return "pflog0: flags=0<>", nil
 			}
 			return "", errors.New("No Such Device")
 		}
@@ -3297,17 +3383,87 @@ func TestEnsurePFLogInterfaceReadyCreatesWhenMissing(t *testing.T) {
 			exists = true
 			return "pflog0", nil
 		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "up" {
+			up = true
+			return "", nil
+		}
 		t.Fatalf("unexpected command call: %s %v", command, args)
 		return "", nil
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(); err != nil {
+	if err := svc.ensurePFLogInterfaceReady(context.Background()); err != nil {
 		t.Fatalf("expected pflog create path to succeed, got: %v", err)
 	}
 
-	if len(calls) < 3 {
-		t.Fatalf("expected ifconfig check + create + verify calls, got %d calls: %v", len(calls), calls)
+	for _, expected := range []string{
+		"/sbin/kldload -n pflog",
+		"/sbin/ifconfig pflog0 create",
+		"/sbin/ifconfig pflog0 up",
+	} {
+		if !slices.Contains(calls, expected) {
+			t.Fatalf("expected call %q, got: %v", expected, calls)
+		}
+	}
+}
+
+func TestEnsurePFLogInterfaceReadyRejectsUnverifiedModuleLoad(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	statCalls := 0
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			statCalls++
+			return "", errors.New("module not found")
+		}
+		if command == "/sbin/kldload" && len(args) == 2 && args[0] == "-n" && args[1] == "pflog" {
+			return "", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	err := (&Service{}).ensurePFLogInterfaceReady(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "failed_to_verify_pflog_kernel_module") {
+		t.Fatalf("expected module verification failure, got: %v", err)
+	}
+	if statCalls != 2 {
+		t.Fatalf("expected pre-load and post-load module checks, got %d", statCalls)
+	}
+}
+
+func TestPflogAlreadyExistsErrorDoesNotAcceptMissingInterface(t *testing.T) {
+	if isPflogAlreadyExistsError(errors.New("interface does not exist")) {
+		t.Fatal("missing-interface error was incorrectly treated as already existing")
+	}
+	if !isPflogAlreadyExistsError(errors.New("SIOCIFCREATE2: File exists")) {
+		t.Fatal("FreeBSD file-exists error was not recognized")
+	}
+}
+
+func TestVerifyPFLogCapturePrerequisitesDetectsDownInterface(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/ifconfig" {
+			return "pflog0: flags=0<>", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	err := verifyPFLogCapturePrerequisites()
+	if err == nil || !strings.Contains(err.Error(), "pflog_interface_down") {
+		t.Fatalf("expected down-interface health failure, got: %v", err)
 	}
 }
 

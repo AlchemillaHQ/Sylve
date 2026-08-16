@@ -9,10 +9,85 @@
 package startup
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/alchemillahq/sylve/internal/db/models"
 )
+
+func TestLoadKernelModuleVerifiesSuccessfulLoad(t *testing.T) {
+	original := startupRunCommand
+	t.Cleanup(func() {
+		startupRunCommand = original
+	})
+
+	loaded := false
+	calls := []string{}
+	startupRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		switch command {
+		case "/sbin/kldstat":
+			if loaded {
+				return "pflog loaded", nil
+			}
+			return "", errors.New("module not found")
+		case "/sbin/kldload":
+			loaded = true
+			return "", nil
+		default:
+			t.Fatalf("unexpected command call: %s %v", command, args)
+			return "", nil
+		}
+	}
+
+	if err := loadKernelModule("pflog"); err != nil {
+		t.Fatalf("expected verified module load to succeed, got: %v", err)
+	}
+
+	joined := strings.Join(calls, "|")
+	want := "/sbin/kldstat -m pflog|/sbin/kldload -n pflog|/sbin/kldstat -m pflog"
+	if joined != want {
+		t.Fatalf("unexpected module load calls: got %q want %q", joined, want)
+	}
+}
+
+func TestCheckKernelModulesTreatsPflogAsOptional(t *testing.T) {
+	original := startupRunCommand
+	t.Cleanup(func() {
+		startupRunCommand = original
+	})
+
+	calls := []string{}
+	startupRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if len(args) == 2 && args[1] == "pflog" {
+			return "", errors.New("pflog unavailable")
+		}
+		if command == "/sbin/kldstat" {
+			return "module loaded", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	err := (&Service{}).CheckKernelModules(models.BasicSettings{
+		Services: []models.AvailableService{models.Firewall},
+	})
+	if err != nil {
+		t.Fatalf("pflog failure must not fail startup: %v", err)
+	}
+
+	joined := strings.Join(calls, "|")
+	if !strings.Contains(joined, "/sbin/kldload -n pflog") {
+		t.Fatalf("expected explicit pflog load attempt, got: %v", calls)
+	}
+	if strings.Contains(joined, "if_pflog") {
+		t.Fatalf("startup attempted the wrong if_pflog module: %v", calls)
+	}
+}
 
 func TestWriteJailLogRotationConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "newsyslog.conf.d", "sylve.conf")

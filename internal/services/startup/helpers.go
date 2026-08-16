@@ -33,6 +33,7 @@ var (
 	startupSetSysctlInt32       = sysctl.SetInt32
 	startupSetSysctlInt64       = sysctl.SetInt64
 	startupGetSystemMemoryBytes = utils.GetSystemMemoryBytes
+	startupRunCommand           = utils.RunCommand
 )
 
 const (
@@ -139,25 +140,19 @@ func (s *Service) InitFirewall() error {
 }
 
 func loadKernelModule(module string) error {
-	if _, err := utils.RunCommand("kldstat", "-m", module); err == nil {
+	if _, err := startupRunCommand("/sbin/kldstat", "-m", module); err == nil {
 		return nil
 	}
 
-	if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+	if _, err := startupRunCommand("/sbin/kldload", "-n", module); err != nil {
 		return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 	}
 
-	return nil
-}
-
-func ensureAnyKernelModuleLoaded(modules []string) error {
-	for _, module := range modules {
-		if err := loadKernelModule(module); err == nil {
-			return nil
-		}
+	if _, err := startupRunCommand("/sbin/kldstat", "-m", module); err != nil {
+		return fmt.Errorf("failed to verify kernel module %s after loading: %w", module, err)
 	}
 
-	return fmt.Errorf("failed to load any of kernel modules [%s]", strings.Join(modules, ", "))
+	return nil
 }
 
 func (s *Service) FreeBSDCheck() error {
@@ -411,9 +406,8 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	}
 
 	if slices.Contains(basicSettings.Services, models.Firewall) {
-		if err := ensureAnyKernelModuleLoaded([]string{"if_pflog", "pflog"}); err != nil {
-			// Different FreeBSD builds can expose pflog support under either module name.
-			return err
+		if err := loadKernelModule("pflog"); err != nil {
+			logger.L.Warn().Err(err).Msg("pflog kernel module unavailable; packet-log capture will retry in the background")
 		}
 	}
 

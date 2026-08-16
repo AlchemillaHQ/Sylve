@@ -39,6 +39,10 @@ const (
 	firewallLiveLogRestartDelay   = 5 * time.Second
 	firewallLiveDefaultLimit      = 200
 	firewallLiveMaxLimit          = 2000
+	pflogInterfaceName            = "pflog0"
+	pflogKernelModuleName         = "pflog"
+	pflogInterfaceVerifyAttempts  = 10
+	pflogInterfaceVerifyDelay     = 100 * time.Millisecond
 )
 
 var (
@@ -47,6 +51,17 @@ var (
 	firewallLogIfacePattern    = regexp.MustCompile(`\bon\s+([^:\s]+):`)
 	firewallLogActionPattern   = regexp.MustCompile(`\):\s*([a-z]+)(?:\s+([a-z]+))?\s+on\s+`)
 	firewallLogLengthPattern   = regexp.MustCompile(`\blength\s+([0-9]+)\b`)
+	firewallPFLogRetryWait     = func(ctx context.Context, delay time.Duration) error {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		}
+	}
 )
 
 type firewallCounterKey struct {
@@ -862,24 +877,110 @@ func isPflogAlreadyExistsError(err error) bool {
 	}
 	lowered := strings.ToLower(err.Error())
 	return strings.Contains(lowered, "file exists") ||
-		strings.Contains(lowered, "already exists") ||
-		strings.Contains(lowered, "exists")
+		strings.Contains(lowered, "already exists")
 }
 
-func (s *Service) ensurePFLogInterfaceReady() error {
-	if _, err := firewallRunCommand("/sbin/ifconfig", "pflog0"); err == nil {
+func ensurePFLogKernelModuleLoaded() error {
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err == nil {
 		return nil
 	}
 
-	if _, err := firewallRunCommand("/sbin/ifconfig", "pflog0", "create"); err != nil && !isPflogAlreadyExistsError(err) {
-		if _, checkErr := firewallRunCommand("/sbin/ifconfig", "pflog0"); checkErr == nil {
-			return nil
-		}
-		return fmt.Errorf("failed_to_prepare_pflog_interface: %w", err)
+	if _, err := firewallRunCommand("/sbin/kldload", "-n", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("failed_to_load_pflog_kernel_module: %w", err)
 	}
 
-	if _, err := firewallRunCommand("/sbin/ifconfig", "pflog0"); err != nil {
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("failed_to_verify_pflog_kernel_module: %w", err)
+	}
+
+	return nil
+}
+
+func waitForPFLogInterface(ctx context.Context) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < pflogInterfaceVerifyAttempts; attempt++ {
+		output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+		if err == nil {
+			return output, nil
+		}
+		lastErr = err
+
+		if attempt == pflogInterfaceVerifyAttempts-1 {
+			break
+		}
+		if err := firewallPFLogRetryWait(ctx, pflogInterfaceVerifyDelay); err != nil {
+			return "", err
+		}
+	}
+	return "", lastErr
+}
+
+func isPFLogInterfaceUp(output string) bool {
+	firstLine := output
+	if newline := strings.IndexByte(firstLine, '\n'); newline >= 0 {
+		firstLine = firstLine[:newline]
+	}
+	start := strings.IndexByte(firstLine, '<')
+	end := strings.IndexByte(firstLine, '>')
+	if start < 0 || end <= start {
+		return false
+	}
+
+	for _, flag := range strings.Split(firstLine[start+1:end], ",") {
+		if strings.TrimSpace(flag) == "UP" {
+			return true
+		}
+	}
+	return false
+}
+
+func verifyPFLogCapturePrerequisites() error {
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("pflog_kernel_module_missing: %w", err)
+	}
+
+	output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+	if err != nil {
+		return fmt.Errorf("pflog_interface_missing: %w", err)
+	}
+	if !isPFLogInterfaceUp(output) {
+		return fmt.Errorf("pflog_interface_down")
+	}
+
+	return nil
+}
+
+func (s *Service) ensurePFLogInterfaceReady(ctx context.Context) error {
+	if err := ensurePFLogKernelModuleLoaded(); err != nil {
+		return err
+	}
+
+	_, interfaceErr := waitForPFLogInterface(ctx)
+	if interfaceErr != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("failed_to_wait_for_pflog_interface: %w", ctx.Err())
+		}
+
+		_, createErr := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName, "create")
+		if createErr != nil && !isPflogAlreadyExistsError(createErr) {
+			if _, verifyErr := waitForPFLogInterface(ctx); verifyErr != nil {
+				return fmt.Errorf("failed_to_prepare_pflog_interface: create: %v; verify: %w", createErr, verifyErr)
+			}
+		} else if _, verifyErr := waitForPFLogInterface(ctx); verifyErr != nil {
+			return fmt.Errorf("failed_to_verify_pflog_interface: %w", verifyErr)
+		}
+	}
+
+	if _, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName, "up"); err != nil {
+		return fmt.Errorf("failed_to_bring_up_pflog_interface: %w", err)
+	}
+
+	output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+	if err != nil {
 		return fmt.Errorf("failed_to_verify_pflog_interface: %w", err)
+	}
+	if !isPFLogInterfaceUp(output) {
+		return fmt.Errorf("failed_to_verify_pflog_interface_up")
 	}
 
 	return nil
@@ -903,7 +1004,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 			continue
 		}
 
-		if err := s.ensurePFLogInterfaceReady(); err != nil {
+		if err := s.ensurePFLogInterfaceReady(ctx); err != nil {
 			if s.setFirewallLiveSourceUnavailable(err.Error()) {
 				logger.L.Warn().Err(err).Msg("failed to prepare pflog interface for capture")
 			}
@@ -915,7 +1016,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 			continue
 		}
 
-		ih, err := pcap.NewInactiveHandle("pflog0")
+		ih, err := pcap.NewInactiveHandle(pflogInterfaceName)
 		if err != nil {
 			if s.setFirewallLiveSourceUnavailable(err.Error()) {
 				logger.L.Warn().Err(err).Msg("failed to create pflog capture handle")
@@ -953,14 +1054,21 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 		packetSource.Lazy = true
 		packetSource.NoCopy = true
 		packetCh := packetSource.Packets()
+		healthTicker := time.NewTicker(firewallLiveLogRestartDelay)
 
 		errText := "pflog_capture_closed"
 	captureLoop:
 		for {
 			select {
 			case <-ctx.Done():
+				healthTicker.Stop()
 				handle.Close()
 				return
+			case <-healthTicker.C:
+				if err := verifyPFLogCapturePrerequisites(); err != nil {
+					errText = err.Error()
+					break captureLoop
+				}
 			case packet, ok := <-packetCh:
 				if !ok {
 					break captureLoop
@@ -968,6 +1076,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 				s.ingestFirewallLivePacket(packet)
 			}
 		}
+		healthTicker.Stop()
 		handle.Close()
 		if ctx.Err() != nil {
 			return
