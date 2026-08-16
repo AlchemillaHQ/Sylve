@@ -59,6 +59,7 @@ func (s *Service) SysctlSync() error {
 		"kern.geom.label.disk_ident.enable": 0,
 		"kern.geom.label.gptid.enable":      0,
 		"net.inet6.ip6.dad_count":           0,
+		"security.jail.enforce_statfs":      1,
 	}
 
 	for k, v := range intVals {

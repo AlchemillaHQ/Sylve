@@ -119,3 +119,37 @@ func TestSysctlSyncKeepsNetFIBsWhenAlreadyHighEnough(t *testing.T) {
 		t.Fatal("expected net.fibs not to be changed when current value is already >= 8")
 	}
 }
+
+func TestSysctlSyncSetsJailEnforceStatfs(t *testing.T) {
+	previousGet := startupGetSysctlInt64
+	previousSet := startupSetSysctlInt32
+	t.Cleanup(func() {
+		startupGetSysctlInt64 = previousGet
+		startupSetSysctlInt32 = previousSet
+	})
+
+	setValues := map[string]int32{}
+
+	startupGetSysctlInt64 = func(name string) (int64, error) {
+		if name == "net.fibs" {
+			return 8, nil
+		}
+		return 0, nil
+	}
+
+	startupSetSysctlInt32 = func(name string, value int32) error {
+		setValues[name] = value
+		return nil
+	}
+
+	svc := &Service{}
+	if err := svc.SysctlSync(); err != nil {
+		t.Fatalf("expected sysctl sync to succeed, got: %v", err)
+	}
+
+	if value, ok := setValues["security.jail.enforce_statfs"]; !ok {
+		t.Fatal("expected security.jail.enforce_statfs to be set")
+	} else if value != 1 {
+		t.Fatalf("expected security.jail.enforce_statfs to be set to 1, got %d", value)
+	}
+}

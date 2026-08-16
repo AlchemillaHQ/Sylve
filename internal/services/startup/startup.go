@@ -127,6 +127,8 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return err
 	}
 
+	s.SysctlSync()
+
 	var basicSettings models.BasicSettings
 	result := s.DB.First(&basicSettings)
 	if result.Error != nil {
@@ -144,8 +146,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	if err := s.PreFlightChecklist(basicSettings); err != nil {
 		return fmt.Errorf("Pre-flight check failed: %w", err)
 	}
-
-	s.SysctlSync()
 
 	if err := s.ZFSTune(); err != nil {
 		logger.L.Error().Err(err).Msg("ZFS ARC auto-tune failed")
