@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -32,7 +31,8 @@ func TestBrowse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	localhost = strings.TrimSuffix(strings.Replace(localhost, " ", "-", -1), ".local") // replace spaces with dashes and remove .local suffix
+	localhost, _ = parseHostname(localhost)
+	localhost = validHostname(localhost)
 	tests := []struct {
 		name        string
 		serviceName string
