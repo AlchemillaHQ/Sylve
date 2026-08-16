@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -98,6 +99,36 @@ func TestNormalizePassthroughDeviceIDs(t *testing.T) {
 	}
 	if _, err := normalizePassthroughDeviceIDs([]int{2, 2}); err == nil {
 		t.Fatal("expected duplicate mapping ID to fail")
+	}
+}
+
+func TestVMPCIDevicesPhysicalColumnContract(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{})
+	if !db.Migrator().HasColumn(&vmModels.VM{}, vmPCIDevicesColumn) {
+		t.Fatalf("expected VM column %q", vmPCIDevicesColumn)
+	}
+	if db.Migrator().HasColumn(&vmModels.VM{}, "pci_devices") {
+		t.Fatal("unexpected naturalized pci_devices column")
+	}
+
+	vm := vmModels.VM{RID: 103, Name: "pci-column-contract"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+
+	want := []int{4, 9}
+	if err := db.Model(&vm).Update(vmPCIDevicesColumn, want).Error; err != nil {
+		t.Fatalf("update VM PCI devices through physical column: %v", err)
+	}
+
+	var stored vmModels.VM
+	if err := db.Select("rid", vmPCIDevicesColumn).Where("rid = ?", vm.RID).First(&stored).Error; err != nil {
+		t.Fatalf("select VM PCI devices through physical column: %v", err)
+	}
+	if !slices.Equal(stored.PCIDevices, want) {
+		t.Fatalf("stored PCI devices = %v, want %v", stored.PCIDevices, want)
 	}
 }
 

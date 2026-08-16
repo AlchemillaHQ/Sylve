@@ -25,6 +25,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const vmPCIDevicesColumn = "pc_idevices"
+
 func updateMemory(xml string, ram int) (string, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromString(xml); err != nil {
@@ -798,7 +800,7 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 	}
 
 	return s.applyVMHardwareMutation(rid, oldXML, newXML, func(tx *gorm.DB) error {
-		if err := tx.Model(&vm).Update("pci_devices", normalizedDevices).Error; err != nil {
+		if err := tx.Model(&vm).Update(vmPCIDevicesColumn, normalizedDevices).Error; err != nil {
 			return fmt.Errorf("failed_to_update_vm_pci_devices_in_db: %w", err)
 		}
 		return nil

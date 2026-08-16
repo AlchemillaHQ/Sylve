@@ -1165,7 +1165,7 @@ func (s *Service) normalizeRestoredPCIDevices(rid uint, pciDevices []int) ([]int
 	}
 
 	var otherVMs []vmModels.VM
-	if err := s.DB.Select("rid", "pci_devices").Where("rid <> ?", rid).Find(&otherVMs).Error; err != nil {
+	if err := s.DB.Select("rid", vmPCIDevicesColumn).Where("rid <> ?", rid).Find(&otherVMs).Error; err != nil {
 		return nil, nil, fmt.Errorf("failed_to_list_vm_pci_assignments_for_snapshot_restore: %w", err)
 	}
 
