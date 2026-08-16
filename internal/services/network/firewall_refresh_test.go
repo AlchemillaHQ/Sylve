@@ -3259,7 +3259,7 @@ func disablePFLogRetryDelayForTest(t *testing.T) {
 	})
 }
 
-func TestEnsurePFLogInterfaceReadyBringsPresentInterfaceUp(t *testing.T) {
+func TestEnsurePFLogCaptureReadyUsesLegacyIfnetAndBringsPresentInterfaceUp(t *testing.T) {
 	original := firewallRunCommand
 	t.Cleanup(func() {
 		firewallRunCommand = original
@@ -3271,6 +3271,9 @@ func TestEnsurePFLogInterfaceReadyBringsPresentInterfaceUp(t *testing.T) {
 		calls = append(calls, command+" "+strings.Join(args, " "))
 		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
 			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: unknown oid 'net.pflog.if_count'")
 		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
 			if up {
@@ -3287,12 +3290,17 @@ func TestEnsurePFLogInterfaceReadyBringsPresentInterfaceUp(t *testing.T) {
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(context.Background()); err != nil {
+	backend, err := svc.ensurePFLogCaptureReady(context.Background())
+	if err != nil {
 		t.Fatalf("expected pflog readiness check to succeed, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendIfnet {
+		t.Fatalf("expected legacy ifnet backend, got %d", backend)
 	}
 
 	expected := []string{
 		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
 		"/sbin/ifconfig pflog0",
 		"/sbin/ifconfig pflog0 up",
 		"/sbin/ifconfig pflog0",
@@ -3302,7 +3310,7 @@ func TestEnsurePFLogInterfaceReadyBringsPresentInterfaceUp(t *testing.T) {
 	}
 }
 
-func TestEnsurePFLogInterfaceReadyWaitsForAutomaticInterface(t *testing.T) {
+func TestEnsurePFLogCaptureReadyWaitsForAutomaticLegacyInterface(t *testing.T) {
 	disablePFLogRetryDelayForTest(t)
 	original := firewallRunCommand
 	t.Cleanup(func() {
@@ -3315,6 +3323,9 @@ func TestEnsurePFLogInterfaceReadyWaitsForAutomaticInterface(t *testing.T) {
 	firewallRunCommand = func(command string, args ...string) (string, error) {
 		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
 			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: unknown oid 'net.pflog.if_count'")
 		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
 			checks++
@@ -3339,15 +3350,19 @@ func TestEnsurePFLogInterfaceReadyWaitsForAutomaticInterface(t *testing.T) {
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(context.Background()); err != nil {
+	backend, err := svc.ensurePFLogCaptureReady(context.Background())
+	if err != nil {
 		t.Fatalf("expected delayed automatic pflog interface to succeed, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendIfnet {
+		t.Fatalf("expected legacy ifnet backend, got %d", backend)
 	}
 	if created {
 		t.Fatal("automatic pflog interface appeared during wait but create was still called")
 	}
 }
 
-func TestEnsurePFLogInterfaceReadyLoadsModuleAndCreatesWhenMissing(t *testing.T) {
+func TestEnsurePFLogCaptureReadyLoadsModuleAndCreatesMissingLegacyInterface(t *testing.T) {
 	disablePFLogRetryDelayForTest(t)
 	original := firewallRunCommand
 	t.Cleanup(func() {
@@ -3369,6 +3384,9 @@ func TestEnsurePFLogInterfaceReadyLoadsModuleAndCreatesWhenMissing(t *testing.T)
 		if command == "/sbin/kldload" && len(args) == 2 && args[0] == "-n" && args[1] == "pflog" {
 			moduleLoaded = true
 			return "", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: unknown oid 'net.pflog.if_count'")
 		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
 			if exists {
@@ -3392,8 +3410,12 @@ func TestEnsurePFLogInterfaceReadyLoadsModuleAndCreatesWhenMissing(t *testing.T)
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(context.Background()); err != nil {
+	backend, err := svc.ensurePFLogCaptureReady(context.Background())
+	if err != nil {
 		t.Fatalf("expected pflog create path to succeed, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendIfnet {
+		t.Fatalf("expected legacy ifnet backend, got %d", backend)
 	}
 
 	for _, expected := range []string{
@@ -3407,7 +3429,7 @@ func TestEnsurePFLogInterfaceReadyLoadsModuleAndCreatesWhenMissing(t *testing.T)
 	}
 }
 
-func TestEnsurePFLogInterfaceReadyRejectsUnverifiedModuleLoad(t *testing.T) {
+func TestEnsurePFLogCaptureReadyRejectsUnverifiedModuleLoad(t *testing.T) {
 	original := firewallRunCommand
 	t.Cleanup(func() {
 		firewallRunCommand = original
@@ -3426,12 +3448,146 @@ func TestEnsurePFLogInterfaceReadyRejectsUnverifiedModuleLoad(t *testing.T) {
 		return "", nil
 	}
 
-	err := (&Service{}).ensurePFLogInterfaceReady(context.Background())
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "failed_to_verify_pflog_kernel_module") {
 		t.Fatalf("expected module verification failure, got: %v", err)
 	}
+	if backend != pfLogCaptureBackendUnknown {
+		t.Fatalf("expected unknown backend after module failure, got %d", backend)
+	}
 	if statCalls != 2 {
 		t.Fatalf("expected pre-load and post-load module checks, got %d", statCalls)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyUsesBPFTapWithoutIfconfig(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "8\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err != nil {
+		t.Fatalf("expected BPF tap readiness check to succeed, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendBPFTap {
+		t.Fatalf("expected BPF tap backend, got %d", backend)
+	}
+
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected BPF tap readiness calls: got %v want %v", calls, expected)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyRestoresDisabledBPFTap(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	tapCount := 0
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return fmt.Sprintf("%d\n", tapCount), nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 1 && args[0] == pflogTapCountOID+"=1" {
+			tapCount = 1
+			return "net.pflog.if_count: 0 -> 1\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err != nil {
+		t.Fatalf("expected disabled BPF tap to be restored, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendBPFTap {
+		t.Fatalf("expected BPF tap backend, got %d", backend)
+	}
+
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+		"/sbin/sysctl net.pflog.if_count=1",
+		"/sbin/sysctl -n net.pflog.if_count",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected BPF tap restore calls: got %v want %v", calls, expected)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyDoesNotTreatSysctlFailureAsLegacy(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: permission denied")
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "failed_to_detect_pflog_capture_backend") {
+		t.Fatalf("expected backend detection failure, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendUnknown {
+		t.Fatalf("expected unknown backend after detection failure, got %d", backend)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyRejectsMalformedBPFTapCount(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "eight\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "invalid_pflog_bpf_tap_count") {
+		t.Fatalf("expected malformed tap count failure, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendUnknown {
+		t.Fatalf("expected unknown backend after malformed tap count, got %d", backend)
 	}
 }
 
@@ -3441,6 +3597,15 @@ func TestPflogAlreadyExistsErrorDoesNotAcceptMissingInterface(t *testing.T) {
 	}
 	if !isPflogAlreadyExistsError(errors.New("SIOCIFCREATE2: File exists")) {
 		t.Fatal("FreeBSD file-exists error was not recognized")
+	}
+}
+
+func TestUnknownPFLogTapCountOIDErrorDetection(t *testing.T) {
+	if !isUnknownPFLogTapCountOIDError(errors.New("sysctl: unknown oid 'net.pflog.if_count'")) {
+		t.Fatal("FreeBSD unknown-OID error was not recognized")
+	}
+	if isUnknownPFLogTapCountOIDError(errors.New("sysctl: permission denied")) {
+		t.Fatal("non-OID sysctl error was incorrectly treated as a legacy kernel")
 	}
 }
 
@@ -3461,9 +3626,64 @@ func TestVerifyPFLogCapturePrerequisitesDetectsDownInterface(t *testing.T) {
 		return "", nil
 	}
 
-	err := verifyPFLogCapturePrerequisites()
+	err := verifyPFLogCapturePrerequisites(pfLogCaptureBackendIfnet)
 	if err == nil || !strings.Contains(err.Error(), "pflog_interface_down") {
 		t.Fatalf("expected down-interface health failure, got: %v", err)
+	}
+}
+
+func TestVerifyPFLogCapturePrerequisitesUsesBPFTapCount(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "8\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	if err := verifyPFLogCapturePrerequisites(pfLogCaptureBackendBPFTap); err != nil {
+		t.Fatalf("expected BPF tap health check to succeed, got: %v", err)
+	}
+
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected BPF tap health calls: got %v want %v", calls, expected)
+	}
+}
+
+func TestVerifyPFLogCapturePrerequisitesDetectsMissingBPFTap(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "0\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	err := verifyPFLogCapturePrerequisites(pfLogCaptureBackendBPFTap)
+	if err == nil || !strings.Contains(err.Error(), "pflog_bpf_tap_missing") {
+		t.Fatalf("expected missing BPF tap health failure, got: %v", err)
 	}
 }
 

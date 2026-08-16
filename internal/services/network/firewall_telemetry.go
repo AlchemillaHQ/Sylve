@@ -41,6 +41,7 @@ const (
 	firewallLiveMaxLimit          = 2000
 	pflogInterfaceName            = "pflog0"
 	pflogKernelModuleName         = "pflog"
+	pflogTapCountOID              = "net.pflog.if_count"
 	pflogInterfaceVerifyAttempts  = 10
 	pflogInterfaceVerifyDelay     = 100 * time.Millisecond
 )
@@ -68,6 +69,14 @@ type firewallCounterKey struct {
 	RuleType string
 	RuleID   uint
 }
+
+type pfLogCaptureBackend uint8
+
+const (
+	pfLogCaptureBackendUnknown pfLogCaptureBackend = iota
+	pfLogCaptureBackendIfnet
+	pfLogCaptureBackendBPFTap
+)
 
 type firewallTelemetryRuntime struct {
 	mu sync.RWMutex
@@ -934,27 +943,75 @@ func isPFLogInterfaceUp(output string) bool {
 	return false
 }
 
-func verifyPFLogCapturePrerequisites() error {
-	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err != nil {
-		return fmt.Errorf("pflog_kernel_module_missing: %w", err)
+func readPFLogTapCount() (int, error) {
+	output, err := firewallRunCommand("/sbin/sysctl", "-n", pflogTapCountOID)
+	if err != nil {
+		return 0, err
 	}
 
-	output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
-	if err != nil {
-		return fmt.Errorf("pflog_interface_missing: %w", err)
+	trimmed := strings.TrimSpace(output)
+	count, err := strconv.Atoi(trimmed)
+	if err != nil || count < 0 {
+		return 0, fmt.Errorf("invalid_pflog_bpf_tap_count: %q", trimmed)
 	}
-	if !isPFLogInterfaceUp(output) {
-		return fmt.Errorf("pflog_interface_down")
+
+	return count, nil
+}
+
+func isUnknownPFLogTapCountOIDError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unknown oid")
+}
+
+func ensurePFLogBPFTapReady(currentCount int) error {
+	if currentCount > 0 {
+		return nil
+	}
+
+	if _, err := firewallRunCommand("/sbin/sysctl", pflogTapCountOID+"=1"); err != nil {
+		return fmt.Errorf("failed_to_enable_pflog_bpf_tap: %w", err)
+	}
+
+	verifiedCount, err := readPFLogTapCount()
+	if err != nil {
+		return fmt.Errorf("failed_to_verify_pflog_bpf_tap: %w", err)
+	}
+	if verifiedCount < 1 {
+		return fmt.Errorf("failed_to_verify_pflog_bpf_tap: tap count is %d", verifiedCount)
 	}
 
 	return nil
 }
 
-func (s *Service) ensurePFLogInterfaceReady(ctx context.Context) error {
-	if err := ensurePFLogKernelModuleLoaded(); err != nil {
-		return err
+func verifyPFLogCapturePrerequisites(backend pfLogCaptureBackend) error {
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("pflog_kernel_module_missing: %w", err)
 	}
 
+	switch backend {
+	case pfLogCaptureBackendBPFTap:
+		count, err := readPFLogTapCount()
+		if err != nil {
+			return fmt.Errorf("pflog_bpf_tap_unavailable: %w", err)
+		}
+		if count < 1 {
+			return fmt.Errorf("pflog_bpf_tap_missing")
+		}
+	case pfLogCaptureBackendIfnet:
+		output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+		if err != nil {
+			return fmt.Errorf("pflog_interface_missing: %w", err)
+		}
+		if !isPFLogInterfaceUp(output) {
+			return fmt.Errorf("pflog_interface_down")
+		}
+	default:
+		return fmt.Errorf("pflog_capture_backend_unknown")
+	}
+
+	return nil
+}
+
+func ensurePFLogIfnetReady(ctx context.Context) error {
 	_, interfaceErr := waitForPFLogInterface(ctx)
 	if interfaceErr != nil {
 		if ctx.Err() != nil {
@@ -986,6 +1043,28 @@ func (s *Service) ensurePFLogInterfaceReady(ctx context.Context) error {
 	return nil
 }
 
+func (s *Service) ensurePFLogCaptureReady(ctx context.Context) (pfLogCaptureBackend, error) {
+	if err := ensurePFLogKernelModuleLoaded(); err != nil {
+		return pfLogCaptureBackendUnknown, err
+	}
+
+	tapCount, err := readPFLogTapCount()
+	if err == nil {
+		if err := ensurePFLogBPFTapReady(tapCount); err != nil {
+			return pfLogCaptureBackendUnknown, err
+		}
+		return pfLogCaptureBackendBPFTap, nil
+	}
+	if !isUnknownPFLogTapCountOIDError(err) {
+		return pfLogCaptureBackendUnknown, fmt.Errorf("failed_to_detect_pflog_capture_backend: %w", err)
+	}
+
+	if err := ensurePFLogIfnetReady(ctx); err != nil {
+		return pfLogCaptureBackendUnknown, err
+	}
+	return pfLogCaptureBackendIfnet, nil
+}
+
 func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 	for {
 		select {
@@ -1004,9 +1083,10 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 			continue
 		}
 
-		if err := s.ensurePFLogInterfaceReady(ctx); err != nil {
+		backend, err := s.ensurePFLogCaptureReady(ctx)
+		if err != nil {
 			if s.setFirewallLiveSourceUnavailable(err.Error()) {
-				logger.L.Warn().Err(err).Msg("failed to prepare pflog interface for capture")
+				logger.L.Warn().Err(err).Msg("failed to prepare pflog capture source")
 			}
 			select {
 			case <-ctx.Done():
@@ -1065,7 +1145,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 				handle.Close()
 				return
 			case <-healthTicker.C:
-				if err := verifyPFLogCapturePrerequisites(); err != nil {
+				if err := verifyPFLogCapturePrerequisites(backend); err != nil {
 					errText = err.Error()
 					break captureLoop
 				}
