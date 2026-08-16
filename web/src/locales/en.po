@@ -1643,6 +1643,7 @@ msgstr "Log out"
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -1652,6 +1653,7 @@ msgid "Continue"
 msgstr "Continue"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Processing..."
 msgstr "Processing..."
 
@@ -2118,6 +2120,7 @@ msgstr "Error starting jail"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2125,6 +2128,7 @@ msgid "Stop"
 msgstr "Stop"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -17147,3 +17151,34 @@ msgstr "Rebooting..."
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "Restart"
 msgstr "Restart"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Shut Down"
+msgstr "Shut Down"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Starting..."
+msgstr "Starting..."
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Shutting down..."
+msgstr "Shutting down..."
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Stopping..."
+msgstr "Stopping..."
+
+#. 0: resourceLabel; 1: resourceName
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
+msgstr "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
+
+#. 0: resourceName
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
+msgstr "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
+
+#. 0: resourceName
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
+msgstr "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."

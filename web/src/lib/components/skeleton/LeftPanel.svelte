@@ -8,6 +8,7 @@
 	import { hasSavedOpenIds, loadOpenIds, saveOpenIds } from '$lib/left-panel';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { DomainState, type SimpleVm, type SimpleVmTemplate } from '$lib/types/vm/vm';
 	import { sameElements } from '$lib/utils/arr';
 	import { getEnabledServicesForHostname } from '$lib/utils/enabled-services';
@@ -27,9 +28,10 @@
 	interface Props {
 		preferences: ResourceTreePreferences;
 		searchQuery?: string;
+		activeLifecycleGuests?: ActiveLifecycleGuest[];
 	}
 
-	let { preferences, searchQuery = '' }: Props = $props();
+	let { preferences, searchQuery = '', activeLifecycleGuests = [] }: Props = $props();
 
 	let openIdsByView = $state<Record<ResourceTreeView, Set<string>>>({
 		server: loadOpenIds('single', 'server'),
@@ -356,6 +358,7 @@
 							onToggleId={effectiveToggleOpen}
 							{nextGuestId}
 							density={preferences.density}
+							{activeLifecycleGuests}
 						/>
 					{/each}
 				{/if}

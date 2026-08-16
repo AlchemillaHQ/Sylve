@@ -20,6 +20,12 @@ export const LifecycleTaskSchema = z.object({
 
 export type LifecycleTask = z.infer<typeof LifecycleTaskSchema>;
 
+export interface ActiveLifecycleGuest {
+	hostname: string;
+	guestType: LifecycleTask['guestType'];
+	guestId: number;
+}
+
 const activeLifecycleTaskStatuses = new Set<LifecycleTask['status']>(['queued', 'running']);
 
 export function isLifecycleTaskActive(

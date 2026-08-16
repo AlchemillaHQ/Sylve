@@ -13,7 +13,7 @@
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
+	import type { ActiveLifecycleGuest, LifecycleTask } from '$lib/types/task/lifecycle';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
@@ -23,7 +23,7 @@
 
 	interface Props {
 		clustered?: boolean;
-		onLifecycleActiveChange?: (active: boolean) => void;
+		onLifecycleActiveChange?: (active: boolean, activeGuests: ActiveLifecycleGuest[]) => void;
 	}
 
 	type AuditDetailSection = 'request' | 'response';
@@ -1906,21 +1906,21 @@
 		});
 	});
 
-	let activeLifecycleCount = $derived.by(() => {
-		if (!activeLifecycleTasks.current) return 0;
-		if (Array.isArray(activeLifecycleTasks.current)) {
-			return activeLifecycleTasks.current.length;
-		}
+	let activeLifecycleGuests = $derived.by((): ActiveLifecycleGuest[] => {
+		if (!Array.isArray(activeLifecycleTasks.current)) return [];
 
-		return 0;
+		return activeLifecycleTasks.current.map((task) => ({
+			hostname: effectiveHostname,
+			guestType: task.guestType,
+			guestId: task.guestId
+		}));
 	});
-
-	let lifecycleActive = $derived(activeLifecycleCount > 0);
+	let activeLifecycleCount = $derived(activeLifecycleGuests.length);
 
 	watch(
-		() => lifecycleActive,
-		(active) => {
-			onLifecycleActiveChange?.(active);
+		() => activeLifecycleGuests,
+		(activeGuests) => {
+			onLifecycleActiveChange?.(activeGuests.length > 0, activeGuests);
 		}
 	);
 

@@ -27,7 +27,12 @@
 		type ResourceTreeDensity,
 		type ResourceTreeItem
 	} from '$lib/resource-tree';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
+	import { escapeHTML } from '$lib/utils/string';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
+
+	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop';
+	type QuickAction = Exclude<GuestAction, 'reboot'>;
 
 	interface Props {
 		item: ResourceTreeItem;
@@ -37,6 +42,7 @@
 		canMigrate?: boolean;
 		onMigrate?: (item: ResourceTreeItem) => void;
 		density?: ResourceTreeDensity;
+		activeLifecycleGuests?: ActiveLifecycleGuest[];
 	}
 
 	let {
@@ -46,7 +52,8 @@
 		nextGuestId = 100,
 		canMigrate = false,
 		onMigrate,
-		density = 'comfortable'
+		density = 'comfortable',
+		activeLifecycleGuests = []
 	}: Props = $props();
 	let isOpen = $derived(openIds.has(item.id));
 	let isGroup = $derived(isResourceTreeGroup(item));
@@ -55,6 +62,17 @@
 	let rowPaddingClass = $derived(isCompact ? 'py-0' : 'py-0.5');
 	let rowSpacingClass = $derived(isCompact ? 'my-0' : 'my-0.5');
 	let iconSizePx = $derived(isCompact ? 16 : 18);
+	let lifecycleActive = $derived(
+		item.resourceId !== undefined &&
+			item.nodeHostname !== undefined &&
+			(item.resourceType === 'vm' || item.resourceType === 'jail') &&
+			activeLifecycleGuests.some(
+				(guest) =>
+					guest.hostname === item.nodeHostname &&
+					guest.guestType === item.resourceType &&
+					guest.guestId === item.resourceId
+			)
+	);
 
 	const handleLabelClick = (e: MouseEvent) => {
 		e.preventDefault();
@@ -79,23 +97,24 @@
 	function statusDotClass(state?: 'active' | 'inactive' | 'orphan'): string | null {
 		if (state === 'active') return 'bg-green-500';
 		if (state === 'orphan') return 'bg-amber-500';
-		if (state === 'inactive') return 'bg-muted-foreground/50';
+		if (state === 'inactive') return 'bg-neutral-500';
 		return null;
 	}
 
-	let quickAction = $derived.by((): 'start' | 'shutdown' | 'stop' => {
+	let quickAction = $derived.by((): QuickAction => {
 		if (item.state !== 'active') return 'start';
 		return item.resourceType === 'vm' ? 'shutdown' : 'stop';
 	});
 
-	const handleQuickAction = async (e: MouseEvent) => {
+	const handleQuickAction = (e: MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		await handleActionClick(quickAction);
+		if (actionInFlight || lifecycleActive) return;
+		pendingQuickAction = quickAction;
+		quickActionConfirmOpen = true;
 	};
 
-	const sidebarActive =
-		'rounded-md bg-primary/10 dark:bg-primary/15 border-l-2 border-primary font-inter font-medium';
+	const sidebarActive = 'rounded-md bg-muted font-inter font-medium';
 
 	function isItemActive(menuItem: ResourceTreeItem, currentUrl: string): boolean {
 		if (menuItem.href) {
@@ -121,8 +140,11 @@
 			item.resourceType === 'jail-template' ||
 			item.resourceType === 'vm-template'
 	);
+	let actionInFlight = $state(false);
 	let showQuickAction = $derived(
-		(item.resourceType === 'vm' || item.resourceType === 'jail') &&
+		!actionInFlight &&
+			!lifecycleActive &&
+			(item.resourceType === 'vm' || item.resourceType === 'jail') &&
 			item.resourceId !== undefined &&
 			(item.state === 'active' || item.state === 'inactive')
 	);
@@ -139,7 +161,8 @@
 	let convertTemplateName = $state('');
 	let deleteVMOpen = $state(false);
 	let deleteVMLoading = $state(false);
-	let actionInFlight = $state(false);
+	let quickActionConfirmOpen = $state(false);
+	let pendingQuickAction = $state<QuickAction | null>(null);
 
 	function baseGuestName(label: string): string {
 		return label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim();
@@ -160,8 +183,9 @@
 		convertTemplateOpen = true;
 	};
 
-	const handleActionClick = async (action: 'start' | 'reboot' | 'shutdown' | 'stop') => {
+	const handleActionClick = async (action: GuestAction) => {
 		if (
+			lifecycleActive ||
 			actionInFlight ||
 			item.resourceId === undefined ||
 			!item.nodeHostname ||
@@ -208,6 +232,52 @@
 			actionInFlight = false;
 		}
 	};
+
+	function quickActionLabel(action: QuickAction | null): string {
+		if (action === 'start') return 'Start';
+		if (action === 'shutdown') return 'Shut Down';
+		if (action === 'stop') return 'Stop';
+		return 'Continue';
+	}
+
+	function quickActionLoadingLabel(action: QuickAction | null): string {
+		if (action === 'start') return 'Starting...';
+		if (action === 'shutdown') return 'Shutting down...';
+		if (action === 'stop') return 'Stopping...';
+		return 'Processing...';
+	}
+
+	function quickActionMessage(action: QuickAction | null): string {
+		if (!action) return '';
+
+		const resourceLabel = item.resourceType === 'vm' ? 'VM' : 'jail';
+		const resourceName = `<span class="font-semibold">${escapeHTML(item.label)}</span>`;
+
+		if (action === 'start') {
+			return `Start ${resourceLabel} ${resourceName}? Its configured services will start and the guest may immediately become reachable on the network.`;
+		}
+
+		if (action === 'shutdown') {
+			return `Shut down VM ${resourceName}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off.`;
+		}
+
+		return `Stop jail ${resourceName}? Running services and active sessions inside the jail will be interrupted.`;
+	}
+
+	async function confirmQuickAction() {
+		const action = pendingQuickAction;
+		if (!action || lifecycleActive) {
+			quickActionConfirmOpen = false;
+			return;
+		}
+
+		await handleActionClick(action);
+		quickActionConfirmOpen = false;
+	}
+
+	function cancelQuickAction() {
+		quickActionConfirmOpen = false;
+	}
 
 	const handleConvertToTemplate = async () => {
 		if (
@@ -430,6 +500,7 @@
 						<button
 							type="button"
 							class="hover:bg-background hidden size-5 items-center justify-center rounded group-hover:flex"
+							disabled={actionInFlight || lifecycleActive}
 							title={quickAction === 'shutdown'
 								? 'Shutdown'
 								: quickAction === 'stop'
@@ -459,7 +530,7 @@
 					{#if item.state === 'active'}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight}
+							disabled={actionInFlight || lifecycleActive}
 							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
@@ -468,7 +539,7 @@
 					{:else}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight}
+							disabled={actionInFlight || lifecycleActive}
 							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
@@ -494,7 +565,7 @@
 					{#if item.state === 'active'}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight}
+							disabled={actionInFlight || lifecycleActive}
 							onSelect={() => void handleActionClick('reboot')}
 						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
@@ -502,7 +573,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight}
+							disabled={actionInFlight || lifecycleActive}
 							onSelect={() => void handleActionClick('shutdown')}
 						>
 							<span class="icon-[mdi--power] h-4 w-4"></span>
@@ -510,7 +581,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight}
+							disabled={actionInFlight || lifecycleActive}
 							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
@@ -519,7 +590,7 @@
 					{:else}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight}
+							disabled={actionInFlight || lifecycleActive}
 							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
@@ -654,12 +725,26 @@
 				{canMigrate}
 				{onMigrate}
 				{density}
+				{activeLifecycleGuests}
 			/>
 		{/each}
 	</ul>
 {/if}
 
 {#if (item.resourceType === 'jail' || item.resourceType === 'vm') && item.resourceId}
+	<AlertDialog
+		bind:open={quickActionConfirmOpen}
+		customTitle={quickActionMessage(pendingQuickAction)}
+		actions={{
+			onConfirm: confirmQuickAction,
+			onCancel: cancelQuickAction
+		}}
+		confirmLabel={quickActionLabel(pendingQuickAction)}
+		loadingLabel={quickActionLoadingLabel(pendingQuickAction)}
+		loading={actionInFlight}
+		keepOpenOnConfirm={true}
+	/>
+
 	<Dialog.Root bind:open={convertTemplateOpen}>
 		<Dialog.Content class="max-w-md">
 			<Dialog.Header>

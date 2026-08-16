@@ -16,6 +16,7 @@
 	import { PersistedState, resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { isAPIResponse } from '$lib/utils/http';
 
 	interface Props {
@@ -57,6 +58,8 @@
 	let leftPanelClusteredRef = $state<
 		{ expandAll: () => void; collapseAll: () => void } | undefined
 	>();
+	let lifecycleActive = $state(false);
+	let activeLifecycleGuests = $state.raw<ActiveLifecycleGuest[]>([]);
 
 	function expandTree() {
 		(clustered ? leftPanelClusteredRef : leftPanelRef)?.expandAll();
@@ -72,7 +75,11 @@
 
 	const lifecyclePaneBoost = 6;
 
-	function handleLifecycleActiveChange(active: boolean) {
+	function handleLifecycleActiveChange(active: boolean, activeGuests: ActiveLifecycleGuest[]) {
+		activeLifecycleGuests = activeGuests;
+		if (lifecycleActive === active) return;
+
+		lifecycleActive = active;
 		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
 		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
 	}
@@ -97,7 +104,7 @@
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
 					>
-						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
+						<Resizable.Pane defaultSize={leftPaneDefaultSize} minSize={12} class="border-l">
 							<div class="flex h-full min-h-0 flex-col">
 								<ResourceTreeToolbar
 									preferences={treePreferences}
@@ -113,12 +120,14 @@
 											bind:this={leftPanelClusteredRef}
 											preferences={treePreferences}
 											searchQuery={treeSearchQuery}
+											{activeLifecycleGuests}
 										/>
 									{:else}
 										<LeftPanel
 											bind:this={leftPanelRef}
 											preferences={treePreferences}
 											searchQuery={treeSearchQuery}
+											{activeLifecycleGuests}
 										/>
 									{/if}
 								</div>

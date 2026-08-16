@@ -15,6 +15,7 @@
 	} from '$lib/resource-tree';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
 	import { DomainState } from '$lib/types/vm/vm';
 	import { storage } from '$lib';
@@ -40,9 +41,10 @@
 	interface Props {
 		preferences: ResourceTreePreferences;
 		searchQuery?: string;
+		activeLifecycleGuests?: ActiveLifecycleGuest[];
 	}
 
-	let { preferences, searchQuery = '' }: Props = $props();
+	let { preferences, searchQuery = '', activeLifecycleGuests = [] }: Props = $props();
 
 	const emptyClusterSidebarSnapshot: ClusterSidebarSnapshot = {
 		resources: [],
@@ -354,6 +356,7 @@
 							{canMigrate}
 							onMigrate={openMigration}
 							density={preferences.density}
+							{activeLifecycleGuests}
 						/>
 					{/each}
 				{/if}

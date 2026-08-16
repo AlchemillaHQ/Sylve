@@ -71,18 +71,16 @@
 		<Select.Root type="single" value={preferences.view} onValueChange={changeView}>
 			<Select.Trigger
 				size="sm"
-				class="h-8 min-w-0 flex-1 bg-background px-2.5 shadow-xs"
+				class="h-7! min-w-0 flex-1 justify-center gap-1 bg-background px-1 shadow-xs"
 				aria-label="Resource tree view"
 				title={selectedViewLabel}
 			>
-				<span class="flex min-w-0 items-center gap-2">
-					<span
-						class={preferences.view === 'folder'
-							? 'icon-[lucide--folders] size-4 shrink-0 text-muted-foreground'
-							: 'icon-[lucide--network] size-4 shrink-0 text-muted-foreground'}
-					></span>
-					<span class="truncate">{selectedViewLabel}</span>
-				</span>
+				<span
+					class={preferences.view === 'folder'
+						? 'icon-[lucide--folders] size-4 shrink-0 text-muted-foreground'
+						: 'icon-[lucide--network] size-4 shrink-0 text-muted-foreground'}
+					aria-hidden="true"
+				></span>
 			</Select.Trigger>
 			<Select.Content align="start" class="min-w-48">
 				<Select.Item value="server" label="Server View">
@@ -111,7 +109,7 @@
 		<Button
 			variant="outline"
 			size="icon"
-			class="size-8 shrink-0 bg-background shadow-xs"
+			class="h-7! min-w-0 flex-1 bg-background shadow-xs"
 			onclick={onExpandAll}
 			aria-label="Expand all"
 			title="Expand all"
@@ -122,7 +120,7 @@
 		<Button
 			variant="outline"
 			size="icon"
-			class="size-8 shrink-0 bg-background shadow-xs"
+			class="h-7! min-w-0 flex-1 bg-background shadow-xs"
 			onclick={onCollapseAll}
 			aria-label="Collapse all"
 			title="Collapse all"
@@ -133,7 +131,7 @@
 		<Button
 			variant="outline"
 			size="icon"
-			class="size-8 shrink-0 bg-background shadow-xs"
+			class="h-7! min-w-0 flex-1 bg-background shadow-xs"
 			onclick={openSettings}
 			aria-label="Tree settings"
 			title="Tree settings"
