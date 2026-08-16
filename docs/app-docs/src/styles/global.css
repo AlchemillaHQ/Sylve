@@ -387,6 +387,135 @@ expressive-code .frame {
   box-shadow: none;
 }
 
+.sl-markdown-content img[data-doc-image-viewer] {
+  cursor: zoom-in;
+  border-radius: 4px;
+  border-color: color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.sl-markdown-content img[data-doc-image-viewer]:hover {
+  border-color: color-mix(in oklab, var(--sl-color-white) 28%, transparent);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 24%);
+}
+
+.sl-markdown-content img[data-doc-image-viewer]:focus-visible {
+  outline: 2px solid var(--sl-color-white);
+  outline-offset: 4px;
+}
+
+.sl-markdown-content img[alt="Initialization Page"],
+.sl-markdown-content img[alt="Initialization validation error for a missing Samba package"] {
+  display: block;
+  margin-inline: auto;
+}
+
+.sl-markdown-content img[alt="Initialization Page"] {
+  width: min(100%, 40rem);
+}
+
+.sl-markdown-content img[alt="Initialization validation error for a missing Samba package"] {
+  width: min(100%, 32rem);
+}
+
+.docs-image-viewer {
+  position: fixed;
+  inset: 0;
+  width: min(96vw, 78rem);
+  max-width: none;
+  max-height: 92vh;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 18%, transparent);
+  border-radius: 12px;
+  background: var(--sl-color-bg);
+  color: var(--sl-color-white);
+  box-shadow: 0 2rem 6rem rgb(0 0 0 / 55%);
+}
+
+.docs-image-viewer::backdrop {
+  background: rgb(0 0 0 / 76%);
+  backdrop-filter: blur(5px);
+}
+
+.docs-image-viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.5rem;
+  padding: 0.65rem 0.8rem 0.65rem 1rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--sl-color-white) 11%, transparent);
+  background: color-mix(in oklab, var(--sl-color-white) 3%, var(--sl-color-bg));
+}
+
+.docs-image-viewer-label {
+  margin: 0;
+  overflow: hidden;
+  color: var(--sl-color-gray-1);
+  font: 600 0.68rem var(--sl-font-mono);
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.docs-image-viewer-actions {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+
+.docs-image-viewer-actions button {
+  min-width: 2.15rem;
+  height: 2.15rem;
+  padding-inline: 0.55rem;
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sl-color-white);
+  cursor: pointer;
+  font: 600 0.68rem var(--sl-font-mono);
+}
+
+.docs-image-viewer-actions button:hover {
+  background: color-mix(in oklab, var(--sl-color-white) 9%, transparent);
+}
+
+.docs-image-viewer-stage {
+  display: grid;
+  max-height: calc(92vh - 3.5rem);
+  min-height: 18rem;
+  place-items: center;
+  overflow: auto;
+  padding: 1.25rem;
+  background: rgb(0 0 0 / 18%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.docs-image-viewer-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.docs-image-viewer-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(92vh - 6rem);
+  border-radius: 6px;
+  transform-origin: center;
+  transition: transform 140ms ease;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.docs-image-viewer-stage.is-dragging img {
+  transition: none;
+}
+
 .pagination-links a {
   border-color: color-mix(in oklab, var(--sl-color-white) 11%, transparent) !important;
   border-radius: 9px;
@@ -458,5 +587,31 @@ expressive-code .frame {
 
   .docs-brand-section {
     display: none;
+  }
+
+  .docs-image-viewer {
+    width: 100vw;
+    max-height: 100vh;
+    height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .docs-image-viewer-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .docs-image-viewer-actions {
+    width: 100%;
+  }
+
+  .docs-image-viewer-actions button {
+    flex: 1;
+  }
+
+  .docs-image-viewer-stage {
+    max-height: none;
+    height: calc(100vh - 6.75rem);
   }
 }
