@@ -576,7 +576,7 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 				)
 			}
 		} else if storage.Type == vmModels.VMStorageTypeDiskImage {
-			diskValue, err = s.FindISOByUUID(storage.DownloadUUID, true)
+			diskValue, err = s.findISOByUUIDWithDB(db, storage.DownloadUUID, true)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_iso_path_by_uuid: %w", err)
 			}
