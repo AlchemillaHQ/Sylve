@@ -1,18 +1,39 @@
 ---
 title: Summary
-description: A summary of the Node you're active in.
+description: Monitor the selected node's live capacity, host details, history, and recent activity.
 ---
 
-This page provides a summary of the Node you're active in, including its status, resource usage, and recent activity.
+The **Summary** page is the operational overview for the active node. It combines the current state of the host with a short history, so you can see both what is happening now and what changed recently.
 
-![Node Summary](./summary-assets/host-summary.png)
+![Node Summary walkthrough](./summary-assets/node-summary-tour.webp)
 
-That is the summary of our CPX23 instnace. Now scrolling a bit further down you will see a few graphs, let's take a look at the CPU graph:
+## Current Capacity
 
-![CPU Graph](./summary-assets/cpu-graph.png)
+The top panel shows four live meters:
 
-The bar right below the graph can be used to adjust the time range of the graph, and the graph itself can be hovered over to see more detailed information about CPU usage at specific points in time.
+- **CPU Usage** shows the portion of the node's available CPU currently in use.
+- **RAM Usage** shows used memory against the host's usable memory.
+- **Disk Usage** shows the percentage of managed storage currently occupied.
+- **Swap Usage** shows current swap consumption and available swap capacity.
 
-![CPU Graph - Detail](./summary-assets/cpu-graph-detail.png)
+Treat these as a quick health check before placing a VM, Jail, or other workload on the node. The values update as Sylve receives new host metrics.
 
-All other graphs behave the same way.
+## Host Details
+
+Below the meters, Sylve records the identifying details that are useful when diagnosing or comparing nodes:
+
+- CPU count and model
+- FreeBSD version and kernel
+- Uptime and load average
+- Boot mode
+- Installed Sylve version
+
+## Resource History
+
+The page then charts **CPU**, **RAM**, and **network** usage over time. The network chart separates received and sent traffic so spikes are easier to attribute.
+
+Hover a chart to inspect a point in time. Use the compact range selector beneath it to focus on a smaller interval without losing the broader timeline. The icons in each chart header let you reset the selected range or save the chart as an image when you need to investigate further.
+
+## Recent Activity
+
+The activity table at the bottom shows recent actions performed against the node, including their start and end times, user, action, and result. Use it to correlate a resource spike or configuration change with the operation that produced it.
