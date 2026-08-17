@@ -704,6 +704,43 @@ func DeleteFirewallNATRule(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Bulk Delete Firewall NAT Rules
+// @Description Delete and apply a validated collection of user-managed firewall NAT rules as one operation
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Param request body networkServiceInterfaces.BulkDeleteFirewallNATRulesRequest true "Bulk Delete Firewall NAT Rules Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/nat [delete]
+func BulkDeleteFirewallNATRules(svc *network.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req networkServiceInterfaces.BulkDeleteFirewallNATRulesRequest
+		if !bindFirewallNATJSON(c, &req) {
+			return
+		}
+
+		if err := svc.DeleteFirewallNATRules(req.IDs); err != nil {
+			writeFirewallNATRuleError(c, "failed_to_delete_firewall_nat_rules", "firewall_nat_rules_delete_failed", err)
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "firewall_nat_rules_deleted",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Reorder Firewall NAT Rules
 // @Description Replace the evaluation order of all user-visible firewall NAT rules and apply it
 // @Tags Network

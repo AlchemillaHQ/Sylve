@@ -135,6 +135,22 @@ function numberArray(body: Record<string, unknown>, key: string): number[] {
 		.filter((value) => Number.isFinite(value) && value > 0);
 }
 
+function strictPositiveIntegerArray(
+	body: Record<string, unknown>,
+	key: string,
+	maxItems: number
+): number[] | null {
+	const value = body[key];
+	if (!Array.isArray(value) || value.length < 1 || value.length > maxItems) return null;
+	if (value.some((item) => typeof item !== 'number' || !Number.isSafeInteger(item) || item <= 0)) {
+		return null;
+	}
+
+	const ids = value as number[];
+	if (new Set(ids).size !== ids.length) return null;
+	return [...ids];
+}
+
 function nextID(items: Array<{ id: number }>): number {
 	return Math.max(0, ...items.map((item) => item.id)) + 1;
 }
@@ -1699,21 +1715,8 @@ export function handleDemoNetworkRequest<T = unknown>(
 		return success(id, 'firewall_traffic_rule_created', 201) as DemoNetworkResponse<T>;
 	}
 	if (path === '/network/firewall/traffic' && method === 'DELETE') {
-		const rawIDs = body.ids;
-		if (!Array.isArray(rawIDs)) {
-			return failure(
-				'invalid_request',
-				'invalid_firewall_traffic_request',
-				400
-			) as DemoNetworkResponse<T>;
-		}
-		const ids = rawIDs.map(Number);
-		if (
-			ids.length < 1 ||
-			ids.length > 1024 ||
-			ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
-			new Set(ids).size !== ids.length
-		) {
+		const ids = strictPositiveIntegerArray(body, 'ids', 1024);
+		if (!ids) {
 			return failure(
 				'invalid_request',
 				'invalid_firewall_traffic_request',
@@ -1792,6 +1795,34 @@ export function handleDemoNetworkRequest<T = unknown>(
 		const id = nextID(state.natRules);
 		state.natRules.push(buildNATRule(id, body));
 		return success(id, 'firewall_nat_rule_created', 201) as DemoNetworkResponse<T>;
+	}
+	if (path === '/network/firewall/nat' && method === 'DELETE') {
+		const ids = strictPositiveIntegerArray(body, 'ids', 1024);
+		if (!ids) {
+			return failure(
+				'invalid_request',
+				'invalid_firewall_nat_request',
+				400
+			) as DemoNetworkResponse<T>;
+		}
+		const selected = ids.map((id) => state.natRules.find((rule) => rule.id === id));
+		if (selected.some((rule) => !rule)) {
+			return failure(
+				'failed_to_delete_firewall_nat_rules',
+				'firewall_nat_rule_not_found',
+				404
+			) as DemoNetworkResponse<T>;
+		}
+		if (selected.some((rule) => rule?.visible === false)) {
+			return failure(
+				'failed_to_delete_firewall_nat_rules',
+				'hidden_firewall_rule_managed_by_wireguard',
+				409
+			) as DemoNetworkResponse<T>;
+		}
+		const selectedIDs = new Set(ids);
+		state.natRules = state.natRules.filter((rule) => !selectedIDs.has(rule.id));
+		return mutationSuccess('firewall_nat_rules_deleted') as DemoNetworkResponse<T>;
 	}
 	if (path === '/network/firewall/nat/counters' && method === 'GET') {
 		return success(

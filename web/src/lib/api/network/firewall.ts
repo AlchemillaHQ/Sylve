@@ -226,6 +226,10 @@ export async function deleteFirewallNATRule(id: number): Promise<APIResponse> {
 	return await apiRequest(`/network/firewall/nat/${id}`, APIResponseSchema, 'DELETE');
 }
 
+export async function bulkDeleteFirewallNATRules(ids: number[]): Promise<APIResponse> {
+	return await apiRequest('/network/firewall/nat', APIResponseSchema, 'DELETE', { ids });
+}
+
 export async function reorderFirewallNATRules(
 	payload: FirewallReorderRequest[]
 ): Promise<APIResponse> {

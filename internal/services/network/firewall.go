@@ -617,7 +617,7 @@ func restoreFirewallNATRules(tx *gorm.DB, snapshot []networkModels.FirewallNATRu
 				"dnat_target_obj_id", "dst_ports_raw", "dst_port_obj_id", "redirect_ports_raw",
 				"redirect_port_obj_id", "created_at", "updated_at",
 			).
-			Updates(&desired).Error; err != nil {
+			UpdateColumns(&desired).Error; err != nil {
 			return err
 		}
 	}
@@ -1762,22 +1762,53 @@ func (s *Service) EditFirewallNATRule(id uint, req *networkServiceInterfaces.Ups
 }
 
 func (s *Service) DeleteFirewallNATRule(id uint) error {
-	if id == 0 {
-		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_id"))
+	return s.deleteFirewallNATRules([]uint{id}, s.ApplyFirewallIfEnabled)
+}
+
+func (s *Service) DeleteFirewallNATRules(ids []uint) error {
+	return s.deleteFirewallNATRules(ids, s.ApplyFirewallIfEnabled)
+}
+
+func normalizeFirewallNATRuleIDs(ids []uint) ([]uint, error) {
+	if len(ids) == 0 || len(ids) > MaxFirewallNATRuleDeleteItems {
+		return nil, invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_delete_size"))
+	}
+
+	normalized := append([]uint(nil), ids...)
+	seen := make(map[uint]struct{}, len(normalized))
+	for _, id := range normalized {
+		if id == 0 {
+			return nil, invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_id"))
+		}
+		if _, exists := seen[id]; exists {
+			return nil, invalidFirewallNATRule(fmt.Errorf("duplicate_firewall_nat_rule_id"))
+		}
+		seen[id] = struct{}{}
+	}
+
+	return normalized, nil
+}
+
+func (s *Service) deleteFirewallNATRules(ids []uint, apply func() error) error {
+	ids, err := normalizeFirewallNATRuleIDs(ids)
+	if err != nil {
+		return err
 	}
 
 	s.firewallNATMutationMutex.Lock()
 	defer s.firewallNATMutationMutex.Unlock()
 
-	var rule networkModels.FirewallNATRule
-	if err := s.DB.First(&rule, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return firewallNATRuleNotFound(err)
-		}
+	var rules []networkModels.FirewallNATRule
+	if err := s.DB.Select("id", "visible").Where("id IN ?", ids).Find(&rules).Error; err != nil {
 		return err
 	}
-	if !rule.Visible {
-		return ErrHiddenFirewallRuleMutation
+	if len(rules) != len(ids) {
+		return firewallNATRuleNotFound(fmt.Errorf("some_firewall_nat_rules_not_found"))
+	}
+	for _, rule := range rules {
+		if !rule.Visible {
+			return ErrHiddenFirewallRuleMutation
+		}
 	}
 
 	natSnapshot, err := snapshotFirewallNATRules(s.DB)
@@ -1785,12 +1816,21 @@ func (s *Service) DeleteFirewallNATRule(id uint) error {
 		return err
 	}
 
-	if err := s.DB.Delete(&rule).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("id IN ?", ids).Delete(&networkModels.FirewallNATRule{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != int64(len(ids)) {
+			return fmt.Errorf("firewall NAT rule delete count mismatch: got %d want %d", result.RowsAffected, len(ids))
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		return s.restoreFirewallNATRulesAfterApplyFailure(natSnapshot, err, s.ApplyFirewallIfEnabled)
+	if err := apply(); err != nil {
+		return s.restoreFirewallNATRulesAfterApplyFailure(natSnapshot, err, apply)
 	}
 
 	return nil

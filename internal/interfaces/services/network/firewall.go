@@ -65,6 +65,10 @@ type UpsertFirewallNATRuleRequest struct {
 	RedirectPortObjID    *uint    `json:"redirectPortObjId" binding:"omitempty,gt=0"`
 }
 
+type BulkDeleteFirewallNATRulesRequest struct {
+	IDs []uint `json:"ids" binding:"required,min=1,max=1024,unique,dive,gt=0"`
+}
+
 type FirewallAdvancedRequest struct {
 	PreRules          string `json:"preRules" binding:"max=262144"`
 	PreNatDecl        string `json:"preNatDecl" binding:"max=262144"`

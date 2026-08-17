@@ -335,6 +335,7 @@
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Delete',
 			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Bulk Delete',
 			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete',
+			'/api/network/firewall/nat': 'Firewall NAT Rule - Bulk Delete',
 			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Delete',
 			'/api/network/wireguard/server': 'WireGuard Server - Deinitialize',
 			'/api/network/wireguard/clients/:id': 'WireGuard Client - Delete',

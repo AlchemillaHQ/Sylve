@@ -413,6 +413,7 @@ func RegisterRoutes(r *gin.Engine,
 			nat.GET("/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
 			nat.GET("/:id/route-suggestions", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
 			nat.POST("", networkHandlers.CreateFirewallNATRule(networkService))
+			nat.DELETE("", networkHandlers.BulkDeleteFirewallNATRules(networkService))
 			nat.PUT("/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
 			nat.PUT("/:id", networkHandlers.EditFirewallNATRule(networkService))
 			nat.DELETE("/:id", networkHandlers.DeleteFirewallNATRule(networkService))

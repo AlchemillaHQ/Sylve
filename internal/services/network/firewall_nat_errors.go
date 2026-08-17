@@ -18,6 +18,7 @@ const (
 	MaxFirewallNATRuleSelectorBytes      = 2048
 	MaxFirewallNATRulePolicyGatewayBytes = 64
 	MaxFirewallNATRulePriority           = 1_000_000
+	MaxFirewallNATRuleDeleteItems        = 1024
 	MaxFirewallNATRuleReorderItems       = 1024
 )
 

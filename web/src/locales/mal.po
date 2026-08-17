@@ -967,6 +967,7 @@ msgid "Edit"
 msgstr "തിരുത്തുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -17257,4 +17258,21 @@ msgstr ""
 #. 0: modals.bulkDelete.ids.length
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 msgid "This will permanently delete <b>{0}</b> traffic rules."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall NAT Rule - Bulk Delete"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Select no more than 1024 NAT rules"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Failed to delete NAT rules"
+msgstr ""
+
+#. 0: modals.bulkDelete.ids.length
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "This will permanently delete <b>{0}</b> NAT rules."
 msgstr ""
