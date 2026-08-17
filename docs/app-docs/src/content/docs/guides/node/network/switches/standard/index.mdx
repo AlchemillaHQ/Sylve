@@ -9,6 +9,8 @@ import switchTable from "./table.webp";
 
 A Standard Switch is a FreeBSD bridge that Sylve creates and manages. Use one when you want Sylve; not `rc.conf` or another configuration system; to own the bridge, its selected physical ports, host addresses, VLAN handling, and lifecycle.
 
+If an upstream router or gateway is connected through a physical NIC on the node, add that NIC to the switch as a **Port**. Put the node's address configuration on the Standard Switch itself: either select or type static addresses and gateways, or enable **DHCP** and let the bridge obtain IPv4 configuration from the upstream network. The physical port remains unaddressed as a bridge member.
+
 ## Address objects first
 
 For a dual-stack LAN, create four one-entry objects before opening the switch modal:
