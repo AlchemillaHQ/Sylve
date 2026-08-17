@@ -569,7 +569,7 @@ func restoreFirewallTrafficRules(tx *gorm.DB, snapshot []networkModels.FirewallT
 				"src_ports_raw", "src_port_obj_id", "dst_ports_raw", "dst_port_obj_id",
 				"created_at", "updated_at",
 			).
-			Updates(&desired).Error; err != nil {
+			UpdateColumns(&desired).Error; err != nil {
 			return err
 		}
 	}
@@ -962,7 +962,7 @@ func (s *Service) validateFirewallTrafficRuleRequest(req *networkServiceInterfac
 	if family != "any" && family != "inet" && family != "inet6" {
 		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_family"))
 	}
-	if protocol != "any" && protocol != "tcp" && protocol != "udp" && protocol != "icmp" {
+	if protocol != "any" && protocol != "tcp" && protocol != "udp" && protocol != "tcp_udp" && protocol != "icmp" {
 		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_protocol"))
 	}
 	if err := validateFirewallTrafficInterfaceList(req.IngressInterfaces, "ingress"); err != nil {
@@ -1009,7 +1009,7 @@ func (s *Service) validateFirewallTrafficRuleRequest(req *networkServiceInterfac
 		return invalidFirewallTrafficRule(err)
 	}
 
-	if protocol != "tcp" && protocol != "udp" {
+	if protocol != "tcp" && protocol != "udp" && protocol != "tcp_udp" {
 		if hasPortSelector(req.SrcPortsRaw, req.SrcPortObjID) || hasPortSelector(req.DstPortsRaw, req.DstPortObjID) {
 			return invalidFirewallTrafficRule(fmt.Errorf("ports_require_tcp_or_udp_protocol"))
 		}
@@ -1422,22 +1422,53 @@ func (s *Service) EditFirewallTrafficRule(id uint, req *networkServiceInterfaces
 }
 
 func (s *Service) DeleteFirewallTrafficRule(id uint) error {
-	if id == 0 {
-		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_id"))
+	return s.deleteFirewallTrafficRules([]uint{id}, s.ApplyFirewallIfEnabled)
+}
+
+func (s *Service) DeleteFirewallTrafficRules(ids []uint) error {
+	return s.deleteFirewallTrafficRules(ids, s.ApplyFirewallIfEnabled)
+}
+
+func normalizeFirewallTrafficRuleIDs(ids []uint) ([]uint, error) {
+	if len(ids) == 0 || len(ids) > MaxFirewallTrafficRuleDeleteItems {
+		return nil, invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_delete_size"))
+	}
+
+	normalized := append([]uint(nil), ids...)
+	seen := make(map[uint]struct{}, len(normalized))
+	for _, id := range normalized {
+		if id == 0 {
+			return nil, invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_id"))
+		}
+		if _, exists := seen[id]; exists {
+			return nil, invalidFirewallTrafficRule(fmt.Errorf("duplicate_firewall_traffic_rule_id"))
+		}
+		seen[id] = struct{}{}
+	}
+
+	return normalized, nil
+}
+
+func (s *Service) deleteFirewallTrafficRules(ids []uint, apply func() error) error {
+	ids, err := normalizeFirewallTrafficRuleIDs(ids)
+	if err != nil {
+		return err
 	}
 
 	s.firewallTrafficMutationMutex.Lock()
 	defer s.firewallTrafficMutationMutex.Unlock()
 
-	var rule networkModels.FirewallTrafficRule
-	if err := s.DB.First(&rule, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return firewallTrafficRuleNotFound(err)
-		}
+	var rules []networkModels.FirewallTrafficRule
+	if err := s.DB.Select("id", "visible").Where("id IN ?", ids).Find(&rules).Error; err != nil {
 		return err
 	}
-	if !rule.Visible {
-		return ErrHiddenFirewallRuleMutation
+	if len(rules) != len(ids) {
+		return firewallTrafficRuleNotFound(fmt.Errorf("some_firewall_traffic_rules_not_found"))
+	}
+	for _, rule := range rules {
+		if !rule.Visible {
+			return ErrHiddenFirewallRuleMutation
+		}
 	}
 
 	trafficSnapshot, err := snapshotFirewallTrafficRules(s.DB)
@@ -1445,12 +1476,21 @@ func (s *Service) DeleteFirewallTrafficRule(id uint) error {
 		return err
 	}
 
-	if err := s.DB.Delete(&rule).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("id IN ?", ids).Delete(&networkModels.FirewallTrafficRule{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != int64(len(ids)) {
+			return fmt.Errorf("firewall traffic rule delete count mismatch: got %d want %d", result.RowsAffected, len(ids))
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		return s.restoreFirewallTrafficRulesAfterApplyFailure(trafficSnapshot, err, s.ApplyFirewallIfEnabled)
+	if err := apply(); err != nil {
+		return s.restoreFirewallTrafficRulesAfterApplyFailure(trafficSnapshot, err, apply)
 	}
 
 	return nil
@@ -3084,6 +3124,13 @@ func pfProtoClause(protocol string) string {
 	return " proto " + protocol
 }
 
+func pfTrafficProtoClause(protocol string) string {
+	if normalizeProtocol(protocol) == "tcp_udp" {
+		return " proto { tcp, udp }"
+	}
+	return pfProtoClause(protocol)
+}
+
 func (s *Service) renderTrafficRules(rules []networkModels.FirewallTrafficRule, objectTables map[uint]firewallObjectTable) (string, error) {
 	var b strings.Builder
 	b.WriteString("# managed by Sylve: traffic rules\n")
@@ -3160,7 +3207,7 @@ func (s *Service) renderTrafficRules(rules []networkModels.FirewallTrafficRule, 
 					line.WriteString(" ")
 					line.WriteString(family)
 				}
-				line.WriteString(pfProtoClause(rule.Protocol))
+				line.WriteString(pfTrafficProtoClause(rule.Protocol))
 				line.WriteString(" from ")
 				line.WriteString(srcSelector)
 				if sourcePort != "" {

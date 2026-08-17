@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		bulkDeleteFirewallTrafficRules,
 		deleteFirewallTrafficRule,
 		getFirewallTrafficRuleCounters,
 		getFirewallTrafficRules,
@@ -79,6 +80,8 @@
 	let counterFetchIntent: 'auto' | 'manual' = 'auto';
 	let countersUpdating = $state(false);
 	let reordering = $state(false);
+	let deleting = $state(false);
+	let mutationBusy = $derived(reordering || deleting);
 	let lastGoodCounters: FirewallTrafficRuleCounter[] = [];
 
 	const countersResource = resource(
@@ -189,7 +192,8 @@
 	let modals = $state({
 		create: { open: false },
 		edit: { open: false, id: 0 },
-		delete: { open: false }
+		delete: { open: false, id: 0, name: '' },
+		bulkDelete: { open: false, ids: [] as number[] }
 	});
 
 	function resolveInterfaceName(name: string): string {
@@ -267,10 +271,12 @@
 		const colors: Record<string, string> = {
 			tcp: 'text-cyan-400 border-cyan-400/50',
 			udp: 'text-amber-400 border-amber-400/50',
+			tcp_udp: 'text-teal-400 border-teal-400/50',
 			icmp: 'text-pink-400 border-pink-400/50'
 		};
 		const color = colors[protocol] || 'text-muted-foreground border-muted-foreground/50';
-		return `<span class="inline-flex items-center text-xs font-mono px-1 rounded border ${color} leading-tight">${protocol.toUpperCase()}</span>`;
+		const label = protocol === 'tcp_udp' ? 'TCP/UDP' : protocol.toUpperCase();
+		return `<span class="inline-flex items-center text-xs font-mono px-1 rounded border ${color} leading-tight">${label}</span>`;
 	}
 
 	function formatEndpointParts(addr: string, isObj: boolean): string {
@@ -313,7 +319,7 @@
 	}
 
 	async function handleRowMoved(rows: Row[]) {
-		if (reordering) return;
+		if (mutationBusy) return;
 
 		const visibleRows = rows.filter((row) => row.visible !== false);
 		const payload: FirewallReorderRequest[] = visibleRows.map((row, index) => ({
@@ -338,19 +344,72 @@
 		}
 	}
 
-	async function confirmDelete() {
-		if (!activeRow || activeRow.length !== 1) return;
-		const id = Number(activeRow[0]?.id);
-		const result = await deleteFirewallTrafficRule(id);
+	function openSingleDelete() {
+		if (!activeRow || activeRow.length !== 1 || activeRow[0]?.visible === false) return;
+		modals.delete = {
+			open: true,
+			id: Number(activeRow[0].id),
+			name: String(activeRow[0].name ?? '')
+		};
+	}
 
-		if (result.status === 'success') {
+	function openBulkDelete() {
+		if (!activeRow || activeRow.length < 2 || activeRow.some((row) => row.visible === false)) {
+			return;
+		}
+
+		const ids = [...new Set(activeRow.map((row) => Number(row.id)))].filter(
+			(id) => Number.isSafeInteger(id) && id > 0
+		);
+		if (ids.length !== activeRow.length || ids.length < 2) return;
+		if (ids.length > 1024) {
+			toast.error('Select no more than 1024 traffic rules', { position: 'bottom-center' });
+			return;
+		}
+
+		modals.bulkDelete = { open: true, ids };
+	}
+
+	async function confirmDelete() {
+		if (deleting || modals.delete.id <= 0) return;
+
+		deleting = true;
+		try {
+			const result = await deleteFirewallTrafficRule(modals.delete.id);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to delete traffic rule', { position: 'bottom-center' });
+				return;
+			}
+
 			toast.success('Traffic rule deleted', { position: 'bottom-center' });
 			await trafficRulesResource.refetch();
 			activeRow = null;
-			modals.delete.open = false;
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to delete traffic rule', { position: 'bottom-center' });
+			modals.delete = { open: false, id: 0, name: '' };
+		} finally {
+			deleting = false;
+		}
+	}
+
+	async function confirmBulkDelete() {
+		if (deleting || modals.bulkDelete.ids.length < 2) return;
+
+		const ids = [...modals.bulkDelete.ids];
+		deleting = true;
+		try {
+			const result = await bulkDeleteFirewallTrafficRules(ids);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to delete traffic rules', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(`${ids.length} traffic rules deleted`, { position: 'bottom-center' });
+			await trafficRulesResource.refetch();
+			activeRow = null;
+			modals.bulkDelete = { open: false, ids: [] };
+		} finally {
+			deleting = false;
 		}
 	}
 
@@ -508,7 +567,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
-				disabled={reordering}
+				disabled={mutationBusy}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
@@ -516,26 +575,47 @@
 
 		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
 			<Button
-				onclick={() => (modals.delete.open = true)}
+				onclick={openSingleDelete}
 				size="sm"
 				variant="outline"
 				class="h-6.5"
-				disabled={reordering}
+				disabled={mutationBusy}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
+	{:else if type === 'bulk-delete' && activeRow !== null && activeRow.length > 1 && activeRow.every((row) => row.visible !== false)}
+		<Button
+			onclick={openBulkDelete}
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+			disabled={mutationBusy}
+		>
+			<SpanWithIcon
+				icon="icon-[material-symbols--delete-sweep]"
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Bulk Delete"
+			/>
+		</Button>
 	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
-		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6" disabled={reordering}>
+		<Button
+			onclick={() => (modals.create.open = true)}
+			size="sm"
+			class="h-6"
+			disabled={mutationBusy}
+		>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{@render button('edit-rule')}
 		{@render button('delete-rule')}
+		{@render button('bulk-delete')}
 
 		<div class="ml-auto flex items-center gap-2">
 			{#if reordering}
@@ -550,7 +630,7 @@
 				variant="outline"
 				class="h-6"
 				title="Refresh Counters"
-				disabled={countersUpdating}
+				disabled={countersUpdating || deleting}
 			>
 				<span
 					class={countersUpdating
@@ -616,14 +696,29 @@
 	open={modals.delete.open}
 	names={{
 		parent: 'traffic rule',
-		element: activeRow && activeRow.length === 1 ? String(activeRow[0]?.name ?? '') : ''
+		element: modals.delete.name
 	}}
+	loading={deleting}
+	keepOpenOnConfirm={true}
 	actions={{
 		onConfirm: async () => {
 			await confirmDelete();
 		},
 		onCancel: () => {
-			modals.delete.open = false;
+			modals.delete = { open: false, id: 0, name: '' };
+		}
+	}}
+/>
+
+<AlertDialog
+	open={modals.bulkDelete.open}
+	customTitle={`This will permanently delete <b>${modals.bulkDelete.ids.length}</b> traffic rules.`}
+	loading={deleting}
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: confirmBulkDelete,
+		onCancel: () => {
+			modals.bulkDelete = { open: false, ids: [] };
 		}
 	}}
 />

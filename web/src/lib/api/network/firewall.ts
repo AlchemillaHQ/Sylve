@@ -32,7 +32,7 @@ export interface FirewallTrafficRuleUpsertRequest {
 	priority?: number;
 	action: 'pass' | 'block';
 	direction: 'in' | 'out';
-	protocol: 'any' | 'tcp' | 'udp' | 'icmp';
+	protocol: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp';
 	ingressInterfaces: string[];
 	egressInterfaces: string[];
 	family: 'any' | 'inet' | 'inet6';
@@ -150,6 +150,10 @@ export async function updateFirewallTrafficRule(
 
 export async function deleteFirewallTrafficRule(id: number): Promise<APIResponse> {
 	return await apiRequest(`/network/firewall/traffic/${id}`, APIResponseSchema, 'DELETE');
+}
+
+export async function bulkDeleteFirewallTrafficRules(ids: number[]): Promise<APIResponse> {
+	return await apiRequest('/network/firewall/traffic', APIResponseSchema, 'DELETE', { ids });
 }
 
 export async function reorderFirewallTrafficRules(

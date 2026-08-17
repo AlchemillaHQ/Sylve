@@ -967,6 +967,7 @@ msgid "Edit"
 msgstr "Edit"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -17240,3 +17241,20 @@ msgstr "Clear terminal"
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Console settings"
 msgstr "Console settings"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule - Bulk Delete"
+msgstr "Firewall Traffic Rule - Bulk Delete"
+
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Select no more than 1024 traffic rules"
+msgstr "Select no more than 1024 traffic rules"
+
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Failed to delete traffic rules"
+msgstr "Failed to delete traffic rules"
+
+#. 0: modals.bulkDelete.ids.length
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "This will permanently delete <b>{0}</b> traffic rules."
+msgstr "This will permanently delete <b>{0}</b> traffic rules."

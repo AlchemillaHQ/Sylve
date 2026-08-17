@@ -14351,6 +14351,85 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete and apply a validated collection of user-managed firewall traffic rules as one operation",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Bulk Delete Firewall Traffic Rules",
+                "parameters": [
+                    {
+                        "description": "Bulk Delete Firewall Traffic Rules Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.BulkDeleteFirewallTrafficRulesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
             }
         },
         "/network/firewall/traffic/counters": {
@@ -31944,7 +32023,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "protocol": {
-                    "description": "any|tcp|udp|icmp",
+                    "description": "any|tcp|udp|tcp_udp|icmp",
                     "type": "string"
                 },
                 "quick": {
@@ -35451,6 +35530,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.BulkDeleteFirewallTrafficRulesRequest": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateDHCPRangeRequest": {
             "type": "object",
             "required": [
@@ -36077,6 +36173,7 @@ const docTemplate = `{
                         "any",
                         "tcp",
                         "udp",
+                        "tcp_udp",
                         "icmp"
                     ]
                 },
@@ -41545,7 +41642,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.2.3",
+	Version:          "0.3.0",
 	Host:             "sylve.lan:8181",
 	BasePath:         "/api",
 	Schemes:          []string{},

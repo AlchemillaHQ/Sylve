@@ -113,6 +113,22 @@ func TestCreateFirewallNATRuleReturnsCreatedID(t *testing.T) {
 	}
 }
 
+func TestCreateFirewallNATRuleRejectsTCPUDP(t *testing.T) {
+	router, _ := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
+	var payload map[string]any
+	if err := json.Unmarshal(validFirewallNATRuleBody("combined-protocol"), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["protocol"] = "tcp_udp"
+	body, _ := json.Marshal(payload)
+
+	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/nat", body)
+	response := decodeFirewallNATHandlerResponse(t, rr)
+	if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_nat_request" {
+		t.Fatalf("status=%d response=%+v", rr.Code, response)
+	}
+}
+
 func TestFirewallNATHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("invalid id", func(t *testing.T) {
 		for _, id := range []string{"0", "-1", "not-a-number"} {

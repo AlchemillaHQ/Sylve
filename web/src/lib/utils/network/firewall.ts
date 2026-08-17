@@ -1,7 +1,7 @@
 import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
 
 type RuleFamily = 'any' | 'inet' | 'inet6' | string;
-type RuleProtocol = 'any' | 'tcp' | 'udp' | 'icmp' | string;
+type RuleProtocol = 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | string;
 type RuleDirection = 'in' | 'out' | string;
 type NATType = 'snat' | 'dnat' | 'binat' | string;
 type TranslateMode = 'interface' | 'address' | string;
@@ -72,8 +72,11 @@ function parseFamily(family: RuleFamily): {
 	return { value: null, error: `Unsupported address family: ${String(family ?? '')}` };
 }
 
-function parseProtocol(protocol: RuleProtocol): {
-	value: 'any' | 'tcp' | 'udp' | 'icmp' | null;
+function parseProtocol(
+	protocol: RuleProtocol,
+	allowTCPUDP = false
+): {
+	value: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | null;
 	error?: string;
 } {
 	const normalized = String(protocol ?? '')
@@ -83,6 +86,7 @@ function parseProtocol(protocol: RuleProtocol): {
 		normalized === 'any' ||
 		normalized === 'tcp' ||
 		normalized === 'udp' ||
+		(allowTCPUDP && normalized === 'tcp_udp') ||
 		normalized === 'icmp'
 	) {
 		return { value: normalized };
@@ -281,7 +285,7 @@ export function validateFirewallTrafficRulePayload(
 
 	const familyResult = parseFamily(payload.family);
 	if (!familyResult.value) return { valid: false, error: familyResult.error };
-	const protocolResult = parseProtocol(payload.protocol);
+	const protocolResult = parseProtocol(payload.protocol, true);
 	if (!protocolResult.value) return { valid: false, error: protocolResult.error };
 	const directionResult = parseDirection(payload.direction);
 	if (!directionResult.value) return { valid: false, error: directionResult.error };
@@ -334,7 +338,7 @@ export function validateFirewallTrafficRulePayload(
 	);
 	if (destError) return { valid: false, error: destError };
 
-	if (protocol !== 'tcp' && protocol !== 'udp') {
+	if (protocol !== 'tcp' && protocol !== 'udp' && protocol !== 'tcp_udp') {
 		if (
 			hasPortSelector(payload.srcPortsRaw, payload.srcPortObjId) ||
 			hasPortSelector(payload.dstPortsRaw, payload.dstPortObjId)

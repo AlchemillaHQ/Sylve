@@ -400,6 +400,7 @@ func RegisterRoutes(r *gin.Engine,
 			traffic.GET("", networkHandlers.ListFirewallTrafficRules(networkService))
 			traffic.GET("/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
 			traffic.POST("", networkHandlers.CreateFirewallTrafficRule(networkService))
+			traffic.DELETE("", networkHandlers.BulkDeleteFirewallTrafficRules(networkService))
 			traffic.PUT("/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
 			traffic.PUT("/:id", networkHandlers.EditFirewallTrafficRule(networkService))
 			traffic.DELETE("/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))

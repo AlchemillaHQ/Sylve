@@ -967,6 +967,7 @@ msgid "Edit"
 msgstr "编辑"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -5167,7 +5168,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -17236,4 +17237,21 @@ msgstr ""
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Console settings"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall Traffic Rule - Bulk Delete"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Select no more than 1024 traffic rules"
+msgstr ""
+
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Failed to delete traffic rules"
+msgstr ""
+
+#. 0: modals.bulkDelete.ids.length
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "This will permanently delete <b>{0}</b> traffic rules."
 msgstr ""

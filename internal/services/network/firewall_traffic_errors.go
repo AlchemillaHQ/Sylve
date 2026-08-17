@@ -20,6 +20,7 @@ const (
 	MaxFirewallTrafficRuleSelectorBytes    = 2048
 	MaxFirewallTrafficRulePriority         = 1_000_000
 	MaxFirewallTrafficRuleReorderItems     = 1024
+	MaxFirewallTrafficRuleDeleteItems      = 1024
 )
 
 var (

@@ -19,7 +19,7 @@ type UpsertFirewallTrafficRuleRequest struct {
 	Priority          *int     `json:"priority" binding:"omitempty,gt=0,lte=1000000"`
 	Action            string   `json:"action" binding:"required,oneof=pass block"`
 	Direction         string   `json:"direction" binding:"required,oneof=in out"`
-	Protocol          string   `json:"protocol" binding:"required,oneof=any tcp udp icmp"`
+	Protocol          string   `json:"protocol" binding:"required,oneof=any tcp udp tcp_udp icmp"`
 	IngressInterfaces []string `json:"ingressInterfaces" binding:"max=64,unique,dive,required,max=64"`
 	EgressInterfaces  []string `json:"egressInterfaces" binding:"max=64,unique,dive,required,max=64"`
 	Family            string   `json:"family" binding:"required,oneof=any inet inet6"`
@@ -31,6 +31,10 @@ type UpsertFirewallTrafficRuleRequest struct {
 	SrcPortObjID      *uint    `json:"srcPortObjId" binding:"omitempty,gt=0"`
 	DstPortsRaw       string   `json:"dstPortsRaw" binding:"max=2048"`
 	DstPortObjID      *uint    `json:"dstPortObjId" binding:"omitempty,gt=0"`
+}
+
+type BulkDeleteFirewallTrafficRulesRequest struct {
+	IDs []uint `json:"ids" binding:"required,min=1,max=1024,unique,dive,gt=0"`
 }
 
 type UpsertFirewallNATRuleRequest struct {

@@ -333,6 +333,7 @@
 			'/api/disk/partitions/:partition': 'Disk - Delete Partition',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Delete',
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Delete',
+			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Bulk Delete',
 			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete',
 			'/api/network/wireguard/server/peer/:id': 'WireGuard Peer - Delete',
 			'/api/network/wireguard/server': 'WireGuard Server - Deinitialize',

@@ -336,6 +336,43 @@ func DeleteFirewallTrafficRule(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Bulk Delete Firewall Traffic Rules
+// @Description Delete and apply a validated collection of user-managed firewall traffic rules as one operation
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Param request body networkServiceInterfaces.BulkDeleteFirewallTrafficRulesRequest true "Bulk Delete Firewall Traffic Rules Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/firewall/traffic [delete]
+func BulkDeleteFirewallTrafficRules(svc *network.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req networkServiceInterfaces.BulkDeleteFirewallTrafficRulesRequest
+		if !bindFirewallTrafficJSON(c, &req) {
+			return
+		}
+
+		if err := svc.DeleteFirewallTrafficRules(req.IDs); err != nil {
+			writeFirewallTrafficRuleError(c, "failed_to_delete_firewall_traffic_rules", "firewall_traffic_rules_delete_failed", err)
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "firewall_traffic_rules_deleted",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Reorder Firewall Traffic Rules
 // @Description Replace the evaluation order of all user-visible firewall traffic rules and apply it
 // @Tags Network

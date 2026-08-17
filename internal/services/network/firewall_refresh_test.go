@@ -637,6 +637,34 @@ func TestRenderTrafficRulesUsesIngressAndEgressInterfaces(t *testing.T) {
 	}
 }
 
+func TestRenderTrafficRulesUsesPFProtocolListForTCPUDP(t *testing.T) {
+	svc := &Service{}
+	rules := []networkModels.FirewallTrafficRule{
+		{
+			ID:               88,
+			Name:             "DNS over TCP and UDP",
+			Enabled:          true,
+			Action:           "pass",
+			Direction:        "out",
+			Protocol:         "tcp_udp",
+			Family:           "inet",
+			EgressInterfaces: []string{"em0"},
+			SourceRaw:        "192.0.2.0/24",
+			DestRaw:          "any",
+			DstPortsRaw:      "53",
+		},
+	}
+
+	rendered, err := svc.renderTrafficRules(rules, map[uint]firewallObjectTable{})
+	if err != nil {
+		t.Fatalf("unexpected render error: %v", err)
+	}
+	expected := `pass out on em0 inet proto { tcp, udp } from 192.0.2.0/24 to any port 53 label "sylve_trf_88"`
+	if !strings.Contains(rendered, expected) {
+		t.Fatalf("expected combined protocol PF syntax, got:\n%s", rendered)
+	}
+}
+
 func TestParseTrafficRuleCountersFromPFAggregatesByLabel(t *testing.T) {
 	output := strings.Join([]string{
 		`@101 block in quick inet from 10.0.0.2 to any label "sylve_trf_11"`,
@@ -3785,6 +3813,26 @@ func TestIntegrationPFConfigValidation(t *testing.T) {
 	}
 
 	svc := &Service{}
+
+	t.Run("traffic_tcp_udp_with_ports", func(t *testing.T) {
+		rules := []networkModels.FirewallTrafficRule{
+			{
+				ID:               120,
+				Name:             "DNS both transports",
+				Enabled:          true,
+				Priority:         1,
+				Action:           "pass",
+				Direction:        "out",
+				Protocol:         "tcp_udp",
+				Family:           "inet",
+				EgressInterfaces: []string{"em0"},
+				SourceRaw:        "192.0.2.0/24",
+				DestRaw:          "any",
+				DstPortsRaw:      "53",
+			},
+		}
+		validateGeneratedConfig(t, svc, nil, rules, "", "")
+	})
 
 	t.Run("snat_with_object_table_source", func(t *testing.T) {
 		rules := []networkModels.FirewallNATRule{

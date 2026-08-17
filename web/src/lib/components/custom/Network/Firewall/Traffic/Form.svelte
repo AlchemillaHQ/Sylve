@@ -165,6 +165,7 @@
 		{ value: 'any', label: 'Any' },
 		{ value: 'tcp', label: 'TCP' },
 		{ value: 'udp', label: 'UDP' },
+		{ value: 'tcp_udp', label: 'TCP/UDP' },
 		{ value: 'icmp', label: 'ICMP' }
 	];
 	const familyOptions = [
@@ -217,7 +218,9 @@
 			.map((obj) => ({ label: obj.name, value: String(obj.id) }))
 	);
 
-	const showPorts = $derived(form.protocol === 'tcp' || form.protocol === 'udp');
+	const showPorts = $derived(
+		form.protocol === 'tcp' || form.protocol === 'udp' || form.protocol === 'tcp_udp'
+	);
 	const isInbound = $derived(form.direction === 'in');
 	const isOutbound = $derived(form.direction === 'out');
 
@@ -248,7 +251,7 @@
 			priority: Number(form.priority),
 			action: form.action as 'pass' | 'block',
 			direction: form.direction as 'in' | 'out',
-			protocol: form.protocol as 'any' | 'tcp' | 'udp' | 'icmp',
+			protocol: form.protocol as 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp',
 			family: form.family as 'any' | 'inet' | 'inet6',
 			ingressInterfaces: isInbound ? form.ingressInterfaces : [],
 			egressInterfaces: isOutbound ? form.egressInterfaces : [],

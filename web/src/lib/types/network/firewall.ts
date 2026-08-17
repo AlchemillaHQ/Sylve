@@ -47,7 +47,7 @@ export const FirewallTrafficRuleSchema = z.object({
 	priority: z.number().int(),
 	action: z.enum(['pass', 'block']),
 	direction: z.enum(['in', 'out']),
-	protocol: z.enum(['any', 'tcp', 'udp', 'icmp']),
+	protocol: z.enum(['any', 'tcp', 'udp', 'tcp_udp', 'icmp']),
 	ingressInterfaces: nullableStringArray,
 	egressInterfaces: nullableStringArray,
 	family: z.enum(['any', 'inet', 'inet6']).optional().default('any'),

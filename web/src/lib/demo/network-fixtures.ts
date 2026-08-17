@@ -710,7 +710,7 @@ function createState(hostname: string): DemoNetworkState {
 				priority: 20,
 				action: 'pass',
 				direction: 'out',
-				protocol: 'udp',
+				protocol: 'tcp_udp',
 				ingressInterfaces: ['vm-production'],
 				egressInterfaces: ['igb0'],
 				family: 'inet',
@@ -1250,7 +1250,11 @@ function buildTrafficRule(
 		priority: Math.trunc(numberValue(body, 'priority', existing?.priority ?? id * 10)),
 		action: pick('action', ['pass', 'block'], existing?.action ?? 'pass'),
 		direction: pick('direction', ['in', 'out'], existing?.direction ?? 'in'),
-		protocol: pick('protocol', ['any', 'tcp', 'udp', 'icmp'], existing?.protocol ?? 'any'),
+		protocol: pick(
+			'protocol',
+			['any', 'tcp', 'udp', 'tcp_udp', 'icmp'],
+			existing?.protocol ?? 'any'
+		),
 		ingressInterfaces: stringArray(body, 'ingressInterfaces'),
 		egressInterfaces: stringArray(body, 'egressInterfaces'),
 		family: pick('family', ['any', 'inet', 'inet6'], existing?.family ?? 'any'),
@@ -1330,10 +1334,27 @@ function renderedConfig(state: DemoNetworkState, advanced = state.advanced): Ren
 		.join('\n\n');
 	const trafficRules = state.trafficRules
 		.filter((rule) => rule.enabled)
-		.map(
-			(rule) =>
-				`${rule.action} ${rule.direction} ${rule.quick ? 'quick ' : ''}on ${rule.ingressInterfaces[0] || 'all'} proto ${rule.protocol}`
-		)
+		.map((rule) => {
+			const parts: string[] = [rule.action, rule.direction];
+			if (rule.log) parts.push('log');
+			if (rule.quick) parts.push('quick');
+			const iface = rule.direction === 'in' ? rule.ingressInterfaces[0] : rule.egressInterfaces[0];
+			if (iface) parts.push('on', iface);
+			if (rule.family !== 'any') parts.push(rule.family);
+			if (rule.protocol === 'tcp_udp') {
+				parts.push('proto', '{ tcp, udp }');
+			} else if (rule.protocol !== 'any') {
+				parts.push('proto', rule.protocol);
+			}
+			parts.push(
+				'from',
+				rule.sourceRaw || (rule.sourceObjId ? `<sylve_obj_${rule.sourceObjId}>` : 'any')
+			);
+			if (rule.srcPortsRaw) parts.push('port', rule.srcPortsRaw);
+			parts.push('to', rule.destRaw || (rule.destObjId ? `<sylve_obj_${rule.destObjId}>` : 'any'));
+			if (rule.dstPortsRaw) parts.push('port', rule.dstPortsRaw);
+			return parts.join(' ');
+		})
 		.join('\n');
 	return {
 		pfConf: [advanced.preRules, 'anchor "sylve/nat"', 'anchor "sylve/traffic"', advanced.postRules]
@@ -1676,6 +1697,47 @@ export function handleDemoNetworkRequest<T = unknown>(
 		const id = nextID(state.trafficRules);
 		state.trafficRules.push(buildTrafficRule(id, body));
 		return success(id, 'firewall_traffic_rule_created', 201) as DemoNetworkResponse<T>;
+	}
+	if (path === '/network/firewall/traffic' && method === 'DELETE') {
+		const rawIDs = body.ids;
+		if (!Array.isArray(rawIDs)) {
+			return failure(
+				'invalid_request',
+				'invalid_firewall_traffic_request',
+				400
+			) as DemoNetworkResponse<T>;
+		}
+		const ids = rawIDs.map(Number);
+		if (
+			ids.length < 1 ||
+			ids.length > 1024 ||
+			ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
+			new Set(ids).size !== ids.length
+		) {
+			return failure(
+				'invalid_request',
+				'invalid_firewall_traffic_request',
+				400
+			) as DemoNetworkResponse<T>;
+		}
+		const selected = ids.map((id) => state.trafficRules.find((rule) => rule.id === id));
+		if (selected.some((rule) => !rule)) {
+			return failure(
+				'failed_to_delete_firewall_traffic_rules',
+				'firewall_traffic_rule_not_found',
+				404
+			) as DemoNetworkResponse<T>;
+		}
+		if (selected.some((rule) => rule?.visible === false)) {
+			return failure(
+				'failed_to_delete_firewall_traffic_rules',
+				'hidden_firewall_rule_managed_by_wireguard',
+				409
+			) as DemoNetworkResponse<T>;
+		}
+		const selectedIDs = new Set(ids);
+		state.trafficRules = state.trafficRules.filter((rule) => !selectedIDs.has(rule.id));
+		return mutationSuccess('firewall_traffic_rules_deleted') as DemoNetworkResponse<T>;
 	}
 	if (path === '/network/firewall/traffic/counters' && method === 'GET') {
 		return success(

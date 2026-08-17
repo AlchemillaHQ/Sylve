@@ -74,6 +74,14 @@ func TestValidateFirewallNATRuleRequestRejectsAmbiguousSelectorsAndUnsafeInterfa
 	}
 }
 
+func TestValidateFirewallNATRuleRequestRejectsTCPUDP(t *testing.T) {
+	req := validFirewallNATRuleRequest("combined-protocol")
+	req.Protocol = "tcp_udp"
+	if err := (&Service{}).validateFirewallNATRuleRequest(&req); !errors.Is(err, ErrInvalidFirewallNATRule) {
+		t.Fatalf("expected tcp_udp to remain invalid for NAT rules, got %v", err)
+	}
+}
+
 func TestValidateFirewallNATRuleRequestRequiresSingleAddressHostTargets(t *testing.T) {
 	svc, db := newNetworkServiceForTest(t, &networkModels.Object{}, &networkModels.ObjectEntry{})
 	objects := []networkModels.Object{

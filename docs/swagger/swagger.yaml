@@ -3286,7 +3286,7 @@ definitions:
       priority:
         type: integer
       protocol:
-        description: any|tcp|udp|icmp
+        description: any|tcp|udp|tcp_udp|icmp
         type: string
       quick:
         type: boolean
@@ -5637,6 +5637,18 @@ definitions:
           type: string
         type: array
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.BulkDeleteFirewallTrafficRulesRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        maxItems: 1024
+        minItems: 1
+        type: array
+        uniqueItems: true
+    required:
+    - ids
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateDHCPRangeRequest:
     properties:
       endIp:
@@ -6062,6 +6074,7 @@ definitions:
         - any
         - tcp
         - udp
+        - tcp_udp
         - icmp
         type: string
       quick:
@@ -9704,7 +9717,7 @@ info:
     url: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   termsOfService: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   title: Sylve API
-  version: 0.2.3
+  version: 0.3.0
 paths:
   /auth/groups:
     get:
@@ -18973,6 +18986,58 @@ paths:
       tags:
       - Network
   /network/firewall/traffic:
+    delete:
+      consumes:
+      - application/json
+      description: Delete and apply a validated collection of user-managed firewall
+        traffic rules as one operation
+      parameters:
+      - description: Bulk Delete Firewall Traffic Rules Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.BulkDeleteFirewallTrafficRulesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Bulk Delete Firewall Traffic Rules
+      tags:
+      - Network
     get:
       description: List all user-visible firewall traffic rules in evaluation order
       produces:
