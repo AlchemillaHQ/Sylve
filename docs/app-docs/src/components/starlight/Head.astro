@@ -188,6 +188,24 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
     document.addEventListener("astro:page-load", bindImages);
   })();
 </script>
+<script is:inline>
+  (() => {
+    const initializeWalkthroughVideos = () => {
+      document.querySelectorAll('video.docs-walkthrough-video').forEach((video) => {
+        video.load();
+        const playback = video.play();
+        if (playback) playback.catch(() => {});
+      });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeWalkthroughVideos, { once: true });
+    } else {
+      initializeWalkthroughVideos();
+    }
+    document.addEventListener('astro:page-load', initializeWalkthroughVideos);
+  })();
+</script>
 <ClientRouter />
 <DefaultHead />
 

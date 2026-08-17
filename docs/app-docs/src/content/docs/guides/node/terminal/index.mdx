@@ -1,12 +1,43 @@
 ---
 title: Terminal
-description: Ghostty based web terminal for your node
+description: Open an authenticated shell on the selected node without leaving Sylve.
 ---
 
-:::caution
-The terminal requires a secure context (HTTPS) to function. Sylve automatically configures HTTPS for your nodes, so no additional setup is needed. However, if you access Sylve over HTTP, the terminal will not work. Ensure you are using HTTPS when accessing Sylve.
-:::
+import nodeTerminalControls from './node-terminal-controls.mp4';
 
-Sylve includes a web-based terminal for each node, powered by [Ghostty](https://github.com/coder/ghostty-web). This allows you to access the command line of your node directly from the Sylve interface, without needing to use SSH or other remote access tools.
+The **Terminal** page opens an interactive shell on the selected node. It is useful for the small pieces of host administration that are best handled directly: inspecting a command result, checking a service, or applying an operational change while keeping the node context in view.
 
-![Host Terminal](./terminal.png)
+Commands run on the host, with the permissions of the account you sign in to Sylve with. Treat it like any other privileged shell: changes take effect immediately.
+
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Host terminal controls walkthrough">
+  <source src={nodeTerminalControls} type="video/mp4" />
+</video>
+
+The walkthrough clears the visible terminal buffer, runs `fastfetch` in the fresh shell, then opens the display settings. Neither toolbar action changes the host configuration.
+
+## Working with a session
+
+The terminal fits itself to the available panel size and keeps the host PTY in sync when you resize the browser or the surrounding panels. It keeps up to 10,000 lines of scrollback, so recent output remains available while you work.
+
+Use the controls in the toolbar to manage the current session:
+
+| Control | What it does |
+| --- | --- |
+| **Disconnect** | Ends the current shell session and removes its running process from the host. The terminal is replaced with a reconnect prompt. |
+| **Reconnect** | Starts a fresh shell session after you have disconnected. |
+| **Clear** | Clears the visible terminal buffer. It does not run `clear` on the host or alter the shell history. |
+| **Settings** | Opens the local display settings for font size, background colour, and foreground colour. |
+
+The settings are saved in your browser, so they remain in effect the next time you open the host terminal on that device.
+
+## Reading and editing comfortably
+
+Use <kbd>Ctrl</kbd>+<kbd>+</kbd> and <kbd>Ctrl</kbd>+<kbd>-</kbd> to change the terminal font size quickly. On macOS, use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>. The same preference is available from **Settings**, where the size is limited to a readable range of 8 to 24 px.
+
+The terminal uses a standard `xterm-256color` environment, so usual FreeBSD command-line applications and colour output behave as they would in a normal terminal.
+
+## Access and session behaviour
+
+Sylve authenticates the terminal connection using your active Sylve session. When the Sylve account is root, the host opens its root login shell. Other accounts receive a normal FreeBSD login prompt and cannot sign in directly as root; sign in as a regular host user, then use `su -` when you are authorised to become root.
+
+Closing the browser tab or navigating away detaches the terminal. When the final viewer disconnects, Sylve closes the host PTY and its associated login process. Reopen **Terminal** whenever you need a new session.

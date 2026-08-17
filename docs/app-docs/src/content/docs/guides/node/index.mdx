@@ -3,9 +3,14 @@ title: Summary
 description: Monitor the selected node's live capacity, host details, history, and recent activity.
 ---
 
+import nodeSummaryTour from './summary-assets/node-summary-tour.mp4';
+import nodeSummaryChartControls from './summary-assets/node-summary-chart-controls.mp4';
+
 The **Summary** page is the operational overview for the active node. It combines the current state of the host with a short history, so you can see both what is happening now and what changed recently.
 
-![Node Summary walkthrough](./summary-assets/node-summary-tour.webp)
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Node Summary walkthrough">
+  <source src={nodeSummaryTour} type="video/mp4" />
+</video>
 
 ## Current Capacity
 
@@ -32,7 +37,13 @@ Below the meters, Sylve records the identifying details that are useful when dia
 
 The page then charts **CPU**, **RAM**, and **network** usage over time. The network chart separates received and sent traffic so spikes are easier to attribute.
 
-Hover a chart to inspect a point in time. Use the compact range selector beneath it to focus on a smaller interval without losing the broader timeline. The icons in each chart header let you reset the selected range or save the chart as an image when you need to investigate further.
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Chart range selection and inspection">
+  <source src={nodeSummaryChartControls} type="video/mp4" />
+</video>
+
+Hover a chart to inspect a point in time. The compact strip beneath each chart is its range selector: drag either end to narrow the time window, or drag the selected band to move that window across the available history. The main chart updates immediately to match the selected range.
+
+Use the curved-arrow icon in a chart header to restore the full range. Use the download icon beside it to save the current chart as an image when you need to investigate further or include the data in an incident record.
 
 ## Recent Activity
 

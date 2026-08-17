@@ -1,18 +1,42 @@
 ---
 title: Notes
-description: Notes about the Node you're active in
+description: Create, review, update, and remove operational notes for the active node.
 ---
 
-Admins can add notes for a node for reference later. This can be useful for keeping track of important information about the node, such as its purpose, configuration, or any issues that have been encountered.
+**Notes** is a lightweight record attached to the active node. Use it for information that should remain close to the host: maintenance context, recovery instructions, ownership, unusual configuration choices, or a handoff for another operator.
 
-## Adding a new Note
+Each note has a **name** for scanning the table and a free-form **content** field for the detail.
 
-All tables in Sylve behave the same way, so we'll just look at the Node Notes table as an example. To add a note, click the "New" button and fill out the form with the note's content and a name. Once you've entered in the information, click "Save" to add the note to the table.
+## Create a Note
 
-![Notes - Form](./notes-assets/notes-form.png)
+Select **New**, enter a concise, searchable name and the note content, then select **Save**. The note appears in the table immediately, with its creation and last-updated timestamps.
 
-## Viewing Note in the Table
+![Creating a node note](./notes-assets/create-note.webp)
 
-You can click on a row and near the "New" button it will show context options for that specific notes, in some tables you can even click on many rows together and perform bulk actions!
+Choose names that describe the subject rather than the action, such as `Planned maintenance`, `Network handoff`, or `Recovery contacts`. That makes the list useful when there are many notes.
 
-![Notes - Tabulated](./notes-assets/tabulated.png)
+## Read and Select Notes
+
+Select a single row to reveal **View**, **Edit**, and **Delete**. **View** is useful for reading a longer note without putting it into edit mode.
+
+![A selected node note with available actions](./notes-assets/note-actions.webp)
+
+Use the table columns to scan note names and timestamps. Select **Toggle Search** when you need to narrow the list, and use the pager when the table contains more than one page.
+
+## Edit a Note
+
+Select one note, choose **Edit**, update its name or content, then select **Save**. The **Updated** column changes when the edit is stored. Use **Reset** in the edit dialog to discard unsaved changes and restore the saved values.
+
+![Editing a node note](./notes-assets/edit-note.webp)
+
+## Delete One Note
+
+Select one row and choose **Delete**. Read the confirmation message carefully, then continue only when the note is no longer needed. Deletion is permanent.
+
+## Bulk Delete Notes
+
+To remove several notes together, select multiple rows with `Ctrl` on Windows and Linux, or `Command` on macOS. The action bar changes to **Bulk Delete**. Select it, confirm the displayed count, then choose **Continue** to permanently remove the selected notes.
+
+![Bulk delete confirmation for selected notes](./notes-assets/bulk-delete-notes.webp)
+
+Bulk deletion only affects the selected rows. If the selection is not what you expect, choose **Cancel**, clear the selection, and select the intended notes before trying again.

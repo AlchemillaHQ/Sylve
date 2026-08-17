@@ -395,6 +395,16 @@ expressive-code .frame {
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
+.sl-markdown-content .docs-walkthrough-video {
+  display: block;
+  width: 100%;
+  margin-block: 1.5rem;
+  border: 1px solid color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+  border-radius: 4px;
+  background: #000;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+}
+
 .sl-markdown-content img[data-doc-image-viewer]:hover {
   border-color: color-mix(in oklab, var(--sl-color-white) 28%, transparent);
   box-shadow: 0 18px 44px rgb(0 0 0 / 24%);
