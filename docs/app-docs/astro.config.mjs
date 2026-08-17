@@ -82,6 +82,7 @@ export default defineConfig({
                                                 'guides/node/network/switches/standard',
                                             ],
                                         },
+                                        'guides/node/network/routes',
                                         {
                                             label: 'DHCP & DNS',
                                             collapsed: true,
