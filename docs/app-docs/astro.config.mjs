@@ -92,6 +92,13 @@ export default defineConfig({
                                                 'guides/node/network/dhcp-dns/config',
                                             ],
                                         },
+                                        {
+                                            label: 'Firewall',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/network/firewall/logs',
+                                            ],
+                                        },
                                     ],
                                 },
                                 {
