@@ -1,37 +1,53 @@
 ---
-title:  Ranges
-description: Ranges are used to define the IP address range for DHCP capable switches in Sylve
+title: Ranges
+description: Create IPv4 DHCP and IPv6 DHCPv6 or Router Advertisement ranges on enabled switches.
 ---
 
-## Creating a Range
+import config from './config.webp';
+import ipv4 from './ipv4.webp';
+import ipv6 from './ipv6.webp';
+import table from './table.webp';
 
-You can create both an IPv4 and an IPv6 range, we will be creating both for our LAN switch, now dnsmasq is the underlying DHCP server that Sylve uses for its DHCP capable switches. 
+A range is the dynamic address pool served by Sylve's DHCP & DNS service for one enabled switch. Create one range per address family; the IP type cannot be changed after creation.
 
-For IPv4 We're going to use the range `192.168.80.50 - 192.168.80.250` as this falls in our subnet of `192.168.80.0/24`. For IPv6 we're going to use the range `fd18:8080::100 - fd18:8080::1000` as this falls in our subnet of `fd18:8080::/64`.
+## Enable the switch first
 
-:::caution
-It is important to note that the DHCP range you specify should fall within the subnet of the switch, otherwise you will have issues with DHCP not working properly and clients not getting IP addresses, **especially IPv6**.
+Before a switch appears in the range form, enable it from **Network → DHCP & DNS → Config**. Choose **Update**, select the switch, and save. This enables Sylve's DHCP & DNS service on that bridge; it does not make the switch's DHCP checkbox a client setting.
 
-We validate this on both the frontend and backend, but it is still important to keep in mind when configuring your switches and ranges.
-:::
+<img src={config.src} alt="Update DHCP Configuration dialog with LAN selected as a DHCP and DNS switch" />
 
-![DHCP - Create Range](./add.png)
+## LAN pools
 
-Now for IPv6 you have 2 checkboxes below the form inputs:
+The existing `LAN` switch has `192.168.12.1/24` and `fd12::1/64` configured, so the following pools are valid and avoid the bridge address:
 
-- **RA Only**: This means that the switch will only send Router Advertisements to clients and will not provide any DHCPv6 functionality, this is useful if you want to use SLAAC for IPv6 configuration instead of DHCPv6.
+| Type | Start | End | Expiry |
+| --- | --- | --- | --- |
+| IPv4 | `192.168.12.50` | `192.168.12.200` | `86400` seconds (one day) |
+| IPv6 | `fd12::100` | `fd12::ffff` | `86400` seconds (one day) |
 
-- **SLAAC**: This means that the switch will provide both Router Advertisements and DHCPv6 functionality to clients, this is useful if you want to use both SLAAC and DHCPv6 for IPv6 configuration.
+Create the IPv4 pool by selecting **IPv4**, `LAN`, the start and end addresses, and the lease expiry.
 
-We'll check both the boxes as we want to provide both SLAAC and DHCPv6 functionality to our clients, but you can choose to only check one of them if you only want to use one of the methods for IPv6 configuration.
+<img src={ipv4.src} alt="Create DHCP Range dialog for the LAN IPv4 pool from 192.168.12.50 to 192.168.12.200" />
 
-For creating the IPv4 range the procedure is almost identical, but you won't have the RA Only and SLAAC checkboxes as they are only relevant for IPv6.
+For the IPv6 pool, choose **IPv6** and use addresses from the `fd12::/64` prefix.
+
+<img src={ipv6.src} alt="Create DHCP Range dialog for the LAN IPv6 pool from fd12::100 to fd12::ffff" />
+
+<img src={table.src} alt="DHCP range table showing the LAN IPv4 and IPv6 ranges" />
+
+## Field behavior
+
+| Field | Meaning |
+| --- | --- |
+| **IP Type** | IPv4 or IPv6. The selection is permanent for that range. |
+| **Start IP / End IP** | Inclusive lease bounds. They must be ordered, match the selected family, and lie inside the selected switch's subnet. |
+| **Switch** | Exactly one enabled Standard or Manual Switch. A switch accepts only one range per family. |
+| **Expiry** | Lease duration in seconds; `0` is an infinite lease where supported. |
+| **RA Only** | IPv6 only. Send Router Advertisements without a DHCPv6 address pool; leave both addresses empty for this mode. |
+| **SLAAC** | IPv6 only. Advertise the prefix for stateless client autoconfiguration. It may be combined with DHCPv6 for clients that need DHCPv6 options. |
+
+IPv4 ranges cannot use **RA Only** or **SLAAC**. Avoid including bridge addresses, gateways, static leases, or infrastructure addresses in a pool.
 
 :::note
-FreeBSD VMs/Jails will not support DHCPv6 out of the box, you will need to install and configure a DHCPv6 client inside them to get IPv6 configuration from the switch, but they will support SLAAC without any additional packages/ports.
+FreeBSD guests generally support SLAAC without extra software. DHCPv6 address assignment requires a DHCPv6 client in the guest.
 :::
-
-## Viewing the Ranges
-
-Now that we have created 2 ranges they should look something like this in the table:
-
