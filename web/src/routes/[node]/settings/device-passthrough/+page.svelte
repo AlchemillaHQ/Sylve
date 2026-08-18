@@ -11,9 +11,8 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { Row } from '$lib/types/components/tree-table';
 	import type { APIResponse } from '$lib/types/common';
-	import { type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
+	import { type DeviceRow, type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/system/pci';
 	import { resource, watch } from 'runed';
@@ -76,7 +75,7 @@
 	let tableData = $derived(generateTableData(pciDevices.current, pptDevices.current));
 	let tableName: string = 'device-passthrough-tt';
 	let query: string = $state('');
-	let activeRow: Row[] | null = $state(null);
+	let activeRow: DeviceRow[] | null = $state(null);
 
 	let modalState = $state({
 		isOpen: false,

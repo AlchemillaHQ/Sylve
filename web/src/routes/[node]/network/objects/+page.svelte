@@ -10,8 +10,8 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { APIResponse } from '$lib/types/common';
-	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { NetworkObject } from '$lib/types/network/object';
+	import type { Column } from '$lib/types/components/tree-table';
+	import type { NetworkObject, NetworkObjectRow } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -160,7 +160,7 @@
 		}
 	]);
 
-	const tableData: { rows: Row[]; columns: Column[] } = $derived({
+	const tableData: { rows: NetworkObjectRow[]; columns: Column[] } = $derived({
 		columns,
 		rows: objects.current.map((object) => {
 			return {
@@ -178,8 +178,10 @@
 		})
 	});
 
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows: NetworkObjectRow[] | null = $state(null);
+	let activeRow: NetworkObjectRow | null = $derived(
+		activeRows ? (activeRows[0] as NetworkObjectRow) : ({} as NetworkObjectRow)
+	);
 
 	let query: string = $state('');
 </script>

@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import type { Row } from '../components/tree-table';
 
 export const FlagsSchema = z.object({
 	raw: z.number(),
@@ -107,3 +108,12 @@ export const IfaceSchema = z.object({
 
 export type Iface = z.infer<typeof IfaceSchema>;
 export type BridgeMember = z.infer<typeof BridgeMemberSchema>;
+
+export type IfaceRow = Omit<Iface, 'ipv4' | 'ipv6'> &
+	Row & {
+		ipv4: string;
+		ipv6: string;
+		isBridge: boolean;
+		isEpair: boolean;
+		isTap: boolean;
+	};

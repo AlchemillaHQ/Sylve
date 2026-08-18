@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import type { Row } from '../components/tree-table';
 
 const nullableString = z
 	.string()
@@ -46,6 +47,12 @@ export const StaticRouteSuggestionSchema = z.object({
 	interface: nullableString,
 	sourceHint: nullableString
 });
+
+export type StaticRouteRow = StaticRoute &
+	Row & {
+		interfaceFriendlyName: string;
+		nextHop: string;
+	};
 
 export type StaticRoute = z.infer<typeof StaticRouteSchema>;
 export type StaticRouteSuggestion = z.infer<typeof StaticRouteSuggestionSchema>;

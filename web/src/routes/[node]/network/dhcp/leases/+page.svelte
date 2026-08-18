@@ -13,7 +13,8 @@
 		type DHCPStaticLease,
 		type DHCPRange,
 		type FileLease,
-		type Leases
+		type Leases,
+		type DHCPLeaseRow
 	} from '$lib/types/network/dhcp';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -118,7 +119,7 @@
 		delete: {
 			open: false,
 			type: '' as 'static' | 'dynamic' | '',
-			id: '0',
+			id: 0,
 			ip: '',
 			identifier: '',
 			display: ''
@@ -128,7 +129,7 @@
 	function resetDeleteModal() {
 		modals.delete.open = false;
 		modals.delete.type = '';
-		modals.delete.id = '0';
+		modals.delete.id = 0;
 		modals.delete.ip = '';
 		modals.delete.identifier = '';
 		modals.delete.display = '';
@@ -167,8 +168,10 @@
 	}
 
 	let query = $state('');
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows: DHCPLeaseRow[] | null = $state(null);
+	let activeRow: DHCPLeaseRow | null = $derived(
+		activeRows ? (activeRows[0] as DHCPLeaseRow) : ({} as DHCPLeaseRow)
+	);
 
 	let tableData = $derived.by(() => {
 		const columns: Column[] = [
@@ -304,7 +307,7 @@
 					onclick={() => {
 						modals.delete.open = !modals.delete.open;
 						modals.delete.type = 'static';
-						modals.delete.id = activeRow?.dbId || '0';
+						modals.delete.id = activeRow?.dbId || 0;
 						modals.delete.display = activeRow?.hostname || activeRow?.ip || '';
 					}}
 					size="sm"
@@ -317,7 +320,7 @@
 				<Button
 					onclick={() => {
 						modals.edit.open = !modals.edit.open;
-						modals.edit.id = activeRow?.dbId || '0';
+						modals.edit.id = activeRow?.dbId || 0;
 					}}
 					size="sm"
 					variant="outline"
@@ -399,7 +402,7 @@
 			let result = null as null | APIResponse;
 
 			if (modals.delete.type === 'static') {
-				result = await deleteDHCPLease(parseInt(modals.delete.id));
+				result = await deleteDHCPLease(modals.delete.id);
 			} else if (modals.delete.type === 'dynamic') {
 				result = await deleteDynamicDHCPLease(modals.delete.identifier, modals.delete.ip);
 			}

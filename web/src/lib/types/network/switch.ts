@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
-import { NetworkObjectSchema } from './object';
+import { NetworkObjectSchema, type NetworkObject } from './object';
+import type { Row } from '../components/tree-table';
 
 const nullableString = z
 	.string()
@@ -55,6 +56,37 @@ export const SwitchListSchema = z.object({
 export type StandardSwitch = z.infer<typeof StandardSwitchSchema>;
 export type ManualSwitch = z.infer<typeof ManualSwitchSchema>;
 export type SwitchList = z.infer<typeof SwitchListSchema>;
+
+export interface SwitchRow extends Row {
+	id: number;
+	name: string;
+	mtu: number;
+	vlan: number | '-';
+	ports: Array<{ name: string }>;
+	portsOnly: string[];
+	networkObj?: NetworkObject;
+	networkManual?: string;
+	network6Obj?: NetworkObject;
+	network6Manual?: string;
+	gatewayAddressObj?: NetworkObject;
+	gatewayManual?: string;
+	gateway6AddressObj?: NetworkObject;
+	gateway6Manual?: string;
+	disableIPv6: boolean;
+	private: boolean;
+	dhcp: boolean;
+	slaac: boolean;
+	defaultRoute: boolean;
+	disableBridgeOffloads: boolean;
+	children?: SwitchRow[];
+}
+
+export interface ManualSwitchRow extends Row {
+	id: number;
+	name: string;
+	bridge: string;
+	children?: ManualSwitchRow[];
+}
 
 export function emptySwitchList(): SwitchList {
 	return { standard: [], manual: [] };

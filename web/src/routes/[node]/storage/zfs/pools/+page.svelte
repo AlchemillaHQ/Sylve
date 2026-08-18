@@ -107,7 +107,7 @@ under sponsorship from the FreeBSD Foundation.
 	);
 
 	let activePool: Zpool | null = $derived.by(() => {
-		if (activeRow && isPool(pools.current, activeRow.name)) {
+		if (activeRow && typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)) {
 			return pools.current.find((p) => p.pool_guid === activeRow.guid) || null;
 		} else {
 			return null;
@@ -117,10 +117,12 @@ under sponsorship from the FreeBSD Foundation.
 	let replacing = $derived.by(() => {
 		if (tableData.rows.length > 0) {
 			const names = deepSearchKey(tableData.rows, 'name');
-			if (names.some((name) => name.includes('[OLD]') || name.includes('[NEW]'))) {
-				return true;
-			} else {
-				return false;
+			if (names.every((name) => typeof name === 'string')) {
+				if (names.some((name) => name.includes('[OLD]') || name.includes('[NEW]'))) {
+					return true;
+				} else {
+					return false;
+				}
 			}
 		}
 
@@ -172,7 +174,7 @@ under sponsorship from the FreeBSD Foundation.
 
 {#snippet button(type: string)}
 	{#if activeRow && Object.keys(activeRow).length > 0}
-		{#if isPool(pools.current, activeRow.name)}
+		{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
 			{#if type === 'pool-status'}
 				<Button
 					onclick={() => {
@@ -187,10 +189,10 @@ under sponsorship from the FreeBSD Foundation.
 			{/if}
 
 			{#if type === 'pool-scrub'}
-				{#if isPool(pools.current, activeRow.name)}
+				{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
 					<Button
 						onclick={async () => {
-							const response = await scrubPool(activeRow?.guid);
+							const response = await scrubPool(activeRow?.guid as string);
 							if (response.status === 'error') {
 								toast.error(parsePoolActionError(response), {
 									position: 'bottom-center'
@@ -246,10 +248,10 @@ under sponsorship from the FreeBSD Foundation.
 		{/if}
 
 		{#if type === 'pool-replace'}
-			{#if isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
+			{#if typeof activeRow.name === 'string' && isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
 				<Button
 					onclick={() => {
-						let pool = getPoolByDevice(pools.current, activeRow.name);
+						let pool = getPoolByDevice(pools.current, activeRow.name as string);
 						modals.replace.open = true;
 						modals.replace.data = {
 							pool: pool ? pools.current.find((p) => p.name === pool) || null : null,
@@ -274,7 +276,7 @@ under sponsorship from the FreeBSD Foundation.
 		{/if}
 
 		{#if type === 'pool-detach'}
-			{#if isReplaceableDevice(pools.current, activeRow.name)}
+			{#if typeof activeRow.name === 'string' && isReplaceableDevice(pools.current, activeRow.name)}
 				<Button
 					onclick={() => {
 						modals.detach.open = true;

@@ -219,7 +219,7 @@
 	let httpDownloadSelected: boolean = $derived.by(() => {
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
-			return row.type === 'http';
+			return typeof row.type === 'string' && row.type === 'http';
 		}
 		return false;
 	});
@@ -227,7 +227,7 @@
 	let pathDownloadSelected: boolean = $derived.by(() => {
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
-			return row.type === 'path';
+			return typeof row.type === 'string' && row.type === 'path';
 		}
 		return false;
 	});
@@ -308,7 +308,9 @@
 
 		if (activeRows.length === 1) {
 			modalState.isDelete = true;
-			modalState.title = activeRows[0].name;
+			if (typeof activeRows[0].name === 'string') {
+				modalState.title = activeRows[0].name;
+			}
 			return;
 		}
 
@@ -322,11 +324,18 @@
 
 		signedURLLoading = true;
 		try {
-			const result = await getSignedURL(
-				row.name as string,
-				(row.parentUUID as string) || row.uuid,
-				data.node
-			);
+			let uuid = '';
+
+			if (row.parentUUID) {
+				uuid = row.parentUUID as string;
+			} else if (row.uuid) {
+				uuid = row.uuid as string;
+			} else {
+				toast.error('Invalid download selection', { position: 'bottom-center' });
+				return;
+			}
+
+			const result = await getSignedURL(row.name as string, uuid, data.node);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return;
@@ -352,11 +361,18 @@
 
 		signedURLLoading = true;
 		try {
-			const result = await getSignedURL(
-				row.name as string,
-				(row.parentUUID as string) || row.uuid,
-				data.node
-			);
+			let uuid = '';
+			if (row.parentUUID) {
+				uuid = row.parentUUID as string;
+			} else if (row.uuid) {
+				uuid = row.uuid as string;
+			} else {
+				toast.error('Invalid download selection', { position: 'bottom-center' });
+				return;
+			}
+
+			const result = await getSignedURL(row.name as string, uuid, data.node);
+
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return;

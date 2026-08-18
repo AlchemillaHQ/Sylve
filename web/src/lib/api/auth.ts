@@ -218,6 +218,13 @@ export async function getLoginConfig(): Promise<{ pamEnabled: boolean }> {
 	return { pamEnabled: true };
 }
 
+type LoginOptionsJSON = Parameters<typeof buildLoginOptions>[0];
+
+function isLoginOptionsJSON(value: unknown): value is LoginOptionsJSON {
+	const record = asJSONRecord(value);
+	return record !== null && typeof record.challenge === 'string';
+}
+
 export async function loginWithPasskey(remember: boolean): Promise<boolean> {
 	try {
 		if (!isPasskeySupported()) {
@@ -235,7 +242,7 @@ export async function loginWithPasskey(remember: boolean): Promise<boolean> {
 		const beginData = readRecordField(beginResponseData, 'data');
 		const requestId = readStringField(beginData, 'requestId');
 		const publicKeyData = beginData?.publicKey;
-		if (beginResponse.status !== 200 || !requestId || !publicKeyData) {
+		if (beginResponse.status !== 200 || !requestId || !isLoginOptionsJSON(publicKeyData)) {
 			const data = (beginResponseData || {}) as APIResponse;
 			handleAPIError(data, {
 				method: 'POST',

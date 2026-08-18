@@ -57,11 +57,13 @@
 		return storages.find((s) => s.id === storageId) || null;
 	});
 
-	let selectedName = $derived.by(() => {
+	let selectedName = $derived.by((): string | null => {
 		if (storageId === null) return null;
-		const storage = tableData?.rows.find((s) => s.id === storageId) || null;
-		return storage ? storage.name : null;
+
+		const storage = tableData?.rows.find((s) => s.id === storageId);
+		return typeof storage?.name === 'string' ? storage.name : null;
 	});
+
 	let selectedStorageDisplaySize = $derived.by(() => {
 		if (storageId === null) {
 			return selectedStorage?.size || 0;
@@ -100,19 +102,29 @@
 		};
 	}
 
-	function createEditOptions() {
+	interface EditProperties {
+		name: string;
+		size: string;
+		emulation: StorageEmulation;
+		filesystemTarget: string;
+		filesystemReadOnly: boolean;
+		enable: boolean;
+		bootOrder: number | null;
+		loading: boolean;
+	}
+
+	function createEditOptions(): EditProperties {
 		return {
-			name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
+			name: selectedStorage?.name ?? selectedName ?? '',
 			size: selectedStorage ? (normalizeSizeInputExact(selectedStorageDisplaySize) ?? '') : '',
-			emulation: selectedStorage
-				? selectedStorage.type === 'filesystem'
-					? ('virtio-9p' as StorageEmulation)
-					: selectedStorage.emulation
-				: ('ahci-hd' as StorageEmulation),
-			filesystemTarget: selectedStorage?.filesystemTarget || '',
+			emulation:
+				selectedStorage?.type === 'filesystem'
+					? 'virtio-9p'
+					: (selectedStorage?.emulation ?? 'ahci-hd'),
+			filesystemTarget: selectedStorage?.filesystemTarget ?? '',
 			filesystemReadOnly: selectedStorage?.readOnly ?? false,
-			enable: selectedStorage ? (selectedStorage.enable ?? true) : true,
-			bootOrder: selectedStorage ? selectedStorage.bootOrder : 0,
+			enable: selectedStorage?.enable ?? true,
+			bootOrder: selectedStorage?.bootOrder ?? 0,
 			loading: false
 		};
 	}

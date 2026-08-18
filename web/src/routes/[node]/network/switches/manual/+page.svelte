@@ -8,9 +8,13 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { APIResponse } from '$lib/types/common';
-	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
-	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
+	import {
+		emptySwitchList,
+		isSwitchList,
+		type ManualSwitchRow,
+		type SwitchList
+	} from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/network/switch/manual';
 	import { resource, watch } from 'runed';
@@ -79,8 +83,10 @@
 	});
 
 	let tableData = $derived(generateTableData(networkSwitches.current));
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows: ManualSwitchRow[] | null = $state(null);
+	let activeRow: ManualSwitchRow | null = $derived(
+		activeRows ? (activeRows[0] as ManualSwitchRow) : ({} as ManualSwitchRow)
+	);
 	let query: string = $state('');
 
 	let reload = $state(false);

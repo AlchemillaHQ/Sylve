@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import type { Row } from '../components/tree-table';
 
 export const NetworkObjectType = z.enum([
 	'Host',
@@ -53,5 +54,17 @@ export const NetworkObjectSchema = z.object({
 		)
 		.nullable()
 });
+
+export type NetworkObjectRow = Pick<
+	NetworkObject,
+	'id' | 'name' | 'type' | 'entries' | 'updatedAt'
+> &
+	Row & {
+		refreshStatus: {
+			type: NetworkObject['type'];
+			at: string | null;
+			err: string;
+		};
+	};
 
 export type NetworkObject = z.infer<typeof NetworkObjectSchema>;

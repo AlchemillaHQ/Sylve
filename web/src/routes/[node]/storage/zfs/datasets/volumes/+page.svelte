@@ -157,7 +157,7 @@
 		const volumes = datasets.current.filter(
 			(volume) => volume.type === GZFSDatasetTypeSchema.enum.VOLUME
 		);
-		const volume = volumes.find((volume) => volume.name.endsWith(activeRow?.name));
+		const volume = volumes.find((volume) => volume.name.endsWith(activeRow?.name as string));
 		return volume ?? null;
 	});
 

@@ -33,7 +33,11 @@
 
 	let isRaid: boolean = $derived.by(() => {
 		const names = deepSearchKey(pool, 'name');
-		return names.some((name) => name.startsWith('raidz') || name.startsWith('mirror'));
+		if (names.every((name) => typeof name === 'string')) {
+			return names.some((name) => name.startsWith('raidz') || name.startsWith('mirror'));
+		}
+
+		return false;
 	});
 
 	// svelte-ignore state_referenced_locally

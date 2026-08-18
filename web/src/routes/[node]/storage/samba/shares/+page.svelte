@@ -349,7 +349,7 @@
 
 <AlertDialog
 	open={properties.delete.open}
-	names={{ parent: 'Samba share', element: activeRow ? activeRow.name : '' }}
+	names={{ parent: 'Samba share', element: activeRow ? (activeRow.name as string) : '' }}
 	actions={{
 		onConfirm: async () => {
 			if (activeRow) {

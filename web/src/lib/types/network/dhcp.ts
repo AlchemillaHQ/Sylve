@@ -1,6 +1,7 @@
 import { z } from 'zod/v4';
 import { ManualSwitchSchema, StandardSwitchSchema } from './switch';
 import { NetworkObjectSchema } from './object';
+import type { Row } from '../components/tree-table';
 
 export const DHCPConfigSchema = z.object({
 	id: z.number().int().positive(),
@@ -94,3 +95,28 @@ export function emptyDHCPConfig(): DHCPConfig {
 export function isDHCPConfig(value: unknown): value is DHCPConfig {
 	return DHCPConfigSchema.safeParse(value).success;
 }
+
+interface DHCPLeaseRowBase extends Omit<Row, 'id'> {
+	id: string;
+	identifier: string;
+	hostname: string;
+	ip: string;
+	range: string;
+	switch: string;
+	mac: string;
+	duid: string;
+}
+
+export interface DHCPStaticLeaseRow extends DHCPLeaseRowBase {
+	type: 'static';
+	dbId: number;
+	expiry: 'never';
+}
+
+export interface DHCPDynamicLeaseRow extends DHCPLeaseRowBase {
+	type: 'dynamic';
+	dbId?: never;
+	expiry: number | 'never';
+}
+
+export type DHCPLeaseRow = DHCPStaticLeaseRow | DHCPDynamicLeaseRow;

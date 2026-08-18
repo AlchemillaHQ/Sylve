@@ -6,8 +6,8 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { APIResponse } from '$lib/types/common';
-	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { type Iface } from '$lib/types/network/iface';
+	import type { Column } from '$lib/types/components/tree-table';
+	import { type Iface, type IfaceRow } from '$lib/types/network/iface';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, getCleanIfaceData } from '$lib/utils/network/iface';
 	import { renderWithIcon } from '$lib/utils/table';
@@ -263,7 +263,7 @@
 	];
 
 	let tableData = $derived(generateTableData(columns, networkInterfaces.current));
-	let activeRow: Row[] | null = $state(null);
+	let activeRow: IfaceRow[] | null = $state(null);
 	let query: string = $state('');
 
 	let viewModal = $state({

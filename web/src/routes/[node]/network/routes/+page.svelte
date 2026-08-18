@@ -12,7 +12,7 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { StaticRoute } from '$lib/types/network/route';
+	import type { StaticRoute, StaticRouteRow } from '$lib/types/network/route';
 	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -117,8 +117,10 @@
 		delete: { open: false, id: 0 }
 	});
 
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows: StaticRouteRow[] | null = $state(null);
+	let activeRow: StaticRouteRow | null = $derived(
+		activeRows ? (activeRows[0] as StaticRouteRow) : ({} as StaticRouteRow)
+	);
 	let query: string = $state('');
 
 	let columns: Column[] = $derived([

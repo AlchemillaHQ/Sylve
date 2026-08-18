@@ -12,10 +12,14 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { APIResponse } from '$lib/types/common';
-	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
+	import {
+		emptySwitchList,
+		isSwitchList,
+		type SwitchList,
+		type SwitchRow
+	} from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
 	import { generateIPOptions, generateNetworkOptions } from '$lib/utils/network/object';
@@ -162,7 +166,7 @@
 		},
 		ports: {
 			open: false,
-			value: []
+			value: [] as string[]
 		}
 	});
 
@@ -357,8 +361,10 @@
 	}
 
 	let tableData = $derived(generateTableData(switches.current));
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows: SwitchRow[] | null = $state(null);
+	let activeRow: SwitchRow | null = $derived(
+		activeRows ? (activeRows[0] as SwitchRow) : ({} as SwitchRow)
+	);
 
 	function handleDelete() {
 		if (activeRow && Object.keys(activeRow).length > 0) {
