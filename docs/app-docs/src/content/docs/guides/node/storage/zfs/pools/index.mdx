@@ -1,70 +1,147 @@
 ---
 title: Pools
-description: Manage all your ZFS pools in one place, view their details, and perform various actions.
+description: Create, inspect, maintain, and remove ZFS pools on a Sylve node.
 ---
 
-In the ZFS Pools section, you can manage all your ZFS pools in one place. You can view the details of each pool, including its name, status, size, and health. You can also perform various actions on your pools, such as creating new pools, editing existing pools to change their configuration, and deleting pools that are no longer needed. This section provides a centralized location for managing your ZFS storage pools efficiently.
+import rawStripeCreate from './pools-create-raw-stripe.png';
+import rawStripePool from './pools-raw-stripe-created.png';
+import adoptExistingPool from './pools-adopt-existing.png';
+import complexVdevLayout from './pools-complex-vdev-layout.mp4';
+import complexOptions from './pools-complex-options.png';
+import complexPoolTree from './pools-complex-tree.png';
+import poolStatus from './pools-status.mp4';
 
-We'll go through the context menu, one action at a time.
+The **Pools** page lists the ZFS pools that Sylve manages. Select a pool or an expandable device row to reveal the actions that apply to it. Sylve can create pools from an unused raw disk or from unused partitions. It also creates its managed dataset layout after a pool is created.
 
-## Create Pool
+## Add an existing pool to Sylve
 
-There's a lot of moving parts here, so let's break it down.
+Sylve manages a pool only when you selected it during node initialization, created it from this page, or explicitly added it afterward. An existing ZFS pool is not automatically adopted merely because it is imported on the node.
 
-![Create Pool Form - Devices](./creating-pool-1.png)
+To add an existing pool, go to **Settings → System → Services**, edit **ZFS Pools**, then select the imported pool that Sylve should manage and save the change. This is a deliberate authorization step: only add pools that you intend Sylve to use for its managed datasets, workloads, and storage features.
 
-- **Name**: This is the name of your pool. It should be unique and descriptive to help you identify it later. Naming [restrictions](https://docs.oracle.com/cd/E26505_01/html/E37384/gbcpt.html) apply here.
-
-- **Virtual Devices**: This is where you specify how many VDEVs you want in your pool, in our case we're going to go with just 1 VDEV. A VDEV is a collection of physical devices that provide storage for the pool.
-
-- **Redundancy**: Depending on the number of disks you have in your vdevs this option dynamically changes, in our case since we have 3 disks in our vdev, we can choose between Strip which lets you use all the storage but has no redundancy, Mirror which provides redundancy by mirroring data across multiple disks we get to use 1 disk's worth of storage, and RAIDZ1 which provides redundancy by using parity data we get to use 2 disks worth of storage, other options are unlocked when you have more disks in your vdevs.
-
-In the VDEV section you can drag and drop devices from the `Disks` section.
-
-:::note
-Sometimes the modal erroneuously shows disks that are in use or disks that are invalid, such as cd0, this is a known issue and will be fixed in a future release.
+:::note[Why explicit selection is required]
+Nodes can have imported pools that belong to another application, an existing workload, or an administrator's separate storage plan. Sylve does not select those pools by default, so it cannot create managed datasets or otherwise affect them accidentally. Select a pool only after you have confirmed that it is intended for Sylve management.
 :::
 
-Now moving onto the second tab (Advanced) we can see many more options:
+<img src={adoptExistingPool.src} alt="System Services configuration showing the editable ZFS Pools selection for an existing imported pool" />
 
-![Create Pool Form - Advanced](./creating-pool-2.png)
-
-All of these are just ZFS props that you can set on the pool, for more information on what they do and how to use them check out the [ZFS properties documentation](https://openzfs.github.io/openzfs-docs/man/master/7/zpoolprops.7.html)
-
-:::note
-Not all properties are supported in the UI, if you need to set a property that isn't supported you can always use the CLI to set it after creating the pool.
-
-Over the API all properties are supported, so if you need to create a pool with a property that isn't supported in the UI you can use the API to do so as well.
-:::
-
-## Pool Status
-
-The pool status is incredibly detailed, it shows you the health of your pool, recent activity such as resilvering or scrubbing, and any errors that may have occurred. You can also see the status of each VDEV and the devices within them.
-
-![Pool Status](./pool-status.png)
-
-## Pool Scrubbing
-
-Scrubbing is the process of checking the integrity of your data and repairing any errors that are found. You can start a scrub on your pool from the context menu, and you can also see the status of any ongoing scrubs in the pool status section.
+## Before you create a pool
 
 :::caution
-Scrubbing can be a resource-intensive process, especially on large pools, so it's best to schedule scrubs during periods of low activity to minimize the impact on performance.
-
-When you start a scrub no a pool, to not cause any issues sylve temporarily stops you from performing any other actions on the pool until the scrub is finished, this is to prevent any potential conflicts or issues that may arise from performing other actions while a scrub is in progress.
+Creating, replacing, detaching, or deleting a pool changes real storage. Confirm the device names and their current usage in **Storage → Disks** before continuing.
 :::
 
-## Pool Editing & Deletion
+Sylve offers only disks and partitions that are eligible for use:
 
-Some pool properties can be edited as shown here:
+| Source | Eligible when | Not shown when |
+| --- | --- | --- |
+| **Raw disk** | The disk is unused and does not have a GPT partition table. | It is already in use, already partitioned, or assigned to a pool. |
+| **Partition** | The parent disk is partitioned, the disk has no EFI partition, and the partition is not already used by a pool. | The parent disk contains an EFI partition or the partition is already assigned. |
 
-![Edit Pool](./edit-pool.png)
+A VDEV is a group of devices that ZFS treats as one storage unit. A pool must have at least one **Data** VDEV. The layout of the Data VDEVs determines the pool's capacity and failure tolerance. Adding a cache, log, special, or dedup VDEV does not make an unprotected Data VDEV redundant.
 
-Please refer to the [ZFS properties documentation](https://openzfs.github.io/openzfs-docs/man/master/7/zpoolprops.7.html) for more information on what each property does and how to use it.
+## Create a simple raw-disk pool
 
-## Deleting Pools
+This first example uses the one free raw disk on the demo node to create a stripe pool. A one-device stripe is useful for a disposable test pool, but it has no redundancy. If the disk fails, the pool is lost.
+
+1. Go to **Storage → ZFS → Pools** and select **New**.
+2. Enter an alphanumeric pool name between 1 and 24 characters, such as `labstripe`.
+3. Leave the initial VDEV as **Data** and **Stripe**.
+4. Drag the available raw disk into the VDEV, or use the arrow on the disk card to add it to the last VDEV.
+5. Confirm the usable capacity, then select **Create**.
+
+<img src={rawStripeCreate.src} alt="Create ZFS Pool dialog with one unused raw disk in a Data Stripe VDEV and a pool name entered" />
+
+After creation, the pool appears in the table with its capacity, allocation, health, and redundancy. Expand the pool row to inspect its Data VDEV and device.
+
+<img src={rawStripePool.src} alt="ZFS Pools table showing a newly created healthy stripe pool expanded to reveal its raw-disk Data VDEV" />
+
+## VDEV types and redundancy
+
+The **Devices** tab lets you add VDEVs and select their type. The available redundancy choices depend on the type and the number of devices in that VDEV.
+
+| VDEV type | Purpose | Redundancy choices in Sylve | Important consideration |
+| --- | --- | --- | --- |
+| **Data** | Stores ordinary pool data. At least one is required. | Stripe, Mirror, RAIDZ, RAIDZ2, RAIDZ3. | This is the pool's primary capacity and protection layout. All Data VDEVs should use the same RAID type unless you deliberately enable **Force Create**. |
+| **Log (ZIL)** | Serves synchronous write intent log workloads. | Stripe or Mirror. | A separate log VDEV is workload-specific. Use a mirror for fault tolerance. |
+| **Cache (L2ARC)** | Provides a secondary read cache. | Stripe only. | It does not add redundancy or increase usable pool capacity. |
+| **Special** | Holds special allocation classes, including metadata when configured by ZFS. | Stripe, Mirror, RAIDZ, RAIDZ2, RAIDZ3. | Loss of a special VDEV can make the pool unusable. Use a redundant layout in production. |
+| **Dedup** | Holds deduplication table data when ZFS deduplication is used. | Stripe, Mirror, RAIDZ, RAIDZ2, RAIDZ3. | This is an advanced and memory-sensitive feature. Use redundant, suitable devices before enabling deduplication. |
+| **Spare** | Stands by for replacement of a failed device. | Added separately, not as a VDEV. | A spare must be at least as large as the largest device in the pool. |
+
+Sylve enables a layout only when it has enough devices: Stripe needs 1, Mirror needs 2, RAIDZ needs 3, RAIDZ2 needs 4, and RAIDZ3 needs 5. Capacity is limited by the smallest device in a mirror or RAIDZ group, so use equal-sized devices within each VDEV.
+
+## Complex partition layout for the demo
+
+After documenting the raw-disk example, you can reuse that demo disk for a topology walkthrough. First delete the disposable `labstripe` pool, then create eight equal partitions on the disk using the process in [Disks](/guides/node/storage/disks/). Do not use a partitioning scheme like this on a production system.
 
 :::danger
-Deleting a pool is a destructive action that will permanently remove all data stored in the pool. Make sure to back up any important data before proceeding with deletion.
+Eight partitions on one disk are not eight independent disks. Mirrors, spares, and other VDEVs made from those partitions all fail together if the physical disk fails. The following layout is solely for demonstrating the Sylve UI and resulting pool tree.
 :::
 
-To delete a pool, simply click the delete button in the context menu and confirm the deletion. 
+Arrange the eight partitions in the Create dialog as follows:
+
+| Partitions | VDEV type | Layout | What it demonstrates |
+| --- | --- | --- | --- |
+| `p1`, `p2` | Data | Mirror | A protected-looking primary Data VDEV. |
+| `p3`, `p4` | Log (ZIL) | Mirror | A mirrored separate log VDEV. |
+| `p5` | Cache (L2ARC) | Stripe | A cache VDEV, which only supports Stripe in the UI. |
+| `p6`, `p7` | Special | Mirror | A redundant special VDEV layout. |
+| `p8` | Spare | N/A | A hot spare assigned from the Spares drop zone. |
+
+Name the pool something clearly disposable, such as `vdevlab`. In the **Devices** tab, choose **+ Add VDEV** for each VDEV, change the type before adding partitions, then drag each partition to its intended VDEV. The Spares area appears once the layout contains a non-stripe VDEV.
+
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Create ZFS Pool walkthrough for the partition-based Data Mirror, Log Mirror, Cache, Special Mirror, and Spare layout">
+  <source src={complexVdevLayout} type="video/mp4" />
+</video>
+
+This layout intentionally does not include a Dedup VDEV. A useful Dedup VDEV needs its own redundant devices and is not safe to simulate with the remaining partitions on the same physical disk. Treat the **Dedup** VDEV type as a specialist production feature, not a way to improve ordinary pool performance.
+
+## Pool options
+
+The **Options** tab applies creation-time properties and an optional mount point.
+
+| Option | Meaning | Practical guidance |
+| --- | --- | --- |
+| **Comments** | A descriptive ZFS pool comment. | Record the pool's purpose or workload. |
+| **Mount Point** | Where the pool root is mounted. Leaving it blank uses the ZFS default `/<pool>`. | Use an absolute path such as `/mnt/tank` only when your layout requires it. |
+| **Force Create** | Allows a creation request that mixes Data VDEV RAID types. | Leave it off unless you intentionally understand the capacity and fault-domain consequences. |
+| **AShift** | The pool's sector-size exponent. Sylve offers 9 through 16 and defaults to 12. | Select the right value before creation. It is not a routine post-creation tuning option. |
+| **Auto Expand** | Lets ZFS expand eligible devices when their capacity grows. | Enable only when that behavior matches your storage plan. |
+| **Auto Trim** | Controls automatic discard or trim behavior. | Enable it only for storage that supports trim appropriately. |
+| **Delegation** | Controls ZFS delegated administration. | Keep the default unless you have a defined delegation model. |
+| **Fail Mode** | Controls how ZFS responds when it cannot complete I/O: `wait`, `continue`, or `panic`. | `wait` is the default. Change it only with a clear recovery policy. |
+
+<img src={complexOptions.src} alt="Create ZFS Pool Options tab showing a comment, mount point, advanced ZFS properties, and Force Create control" />
+
+## Inspecting the pool tree and status
+
+The pool table shows each pool's name, size, used space, health, and primary redundancy. Expand a row to see the Data VDEVs and their devices. Separate **L2 Cache**, **Logs**, **Spares**, **Special**, and **Dedup** branches appear after the Data VDEVs when the pool contains them.
+
+Select a pool and choose **Status** for the detailed ZFS status. It includes the pool state, status and action text supplied by ZFS, scan state, error summary, and the device tree. Use it to investigate degraded devices, checksum errors, a scrub, or a resilver.
+
+<img src={complexPoolTree.src} alt="Expanded ZFS pool table showing a Data mirror and separate L2 Cache, Logs, Spares, and Special branches" />
+
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="ZFS pool status walkthrough showing pool health, scan information, error summary, and device tree">
+  <source src={poolStatus} type="video/mp4" />
+</video>
+
+## Scrubbing, replacement, and detaching
+
+Select a pool and choose **Scrub** to begin an integrity scan. The Scrub button is disabled while a scrub is already in progress. Editing is also disabled while a scrub or a replacement is in progress, helping prevent conflicting pool changes.
+
+Select an eligible device row to reveal **Replace Device** or **Detach Device**. Replacement starts a ZFS replacement operation. Detaching removes the selected device from the pool when ZFS permits it. Neither operation is a substitute for verifying the pool's redundancy and current health first.
+
+:::caution
+A scrub can create substantial I/O on a busy pool. Schedule it for an appropriate maintenance window and monitor the resulting scan state in **Status** or the [ZFS Dashboard](/guides/node/storage/zfs/dashboard/).
+:::
+
+## Editing and deleting a pool
+
+Select a pool and choose **Edit** to change its comment, Auto Expand, Auto Trim, Delegation, Fail Mode, and eligible spares. Spare management is available for pools with a mirror or RAIDZ layout. Sylve validates that any selected spare is large enough for the pool.
+
+To remove a disposable pool, select it and choose **Delete**. Sylve refuses deletion when a dataset in the pool is still used by a Sylve-managed workload. Delete or move those dependencies first.
+
+:::danger
+Deleting a pool destroys the pool and its datasets. It is not a secure erase of every physical block, but its data is no longer available as a ZFS pool. Back up or migrate anything you need before confirming deletion.
+:::
