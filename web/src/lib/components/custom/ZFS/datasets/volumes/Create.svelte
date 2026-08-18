@@ -15,8 +15,7 @@
 		toZfsBytesString
 	} from '$lib/utils/bytes';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { generatePassword } from '$lib/utils/string';
-	import { isValidDatasetName } from '$lib/utils/zfs';
+	import { generateZFSEncryptionKey, isValidDatasetName } from '$lib/utils/zfs';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -303,7 +302,7 @@
 
 							<Button
 								onclick={() => {
-									properties.encryptionKey = generatePassword();
+									properties.encryptionKey = generateZFSEncryptionKey();
 								}}
 							>
 								<span
@@ -311,11 +310,11 @@
 									tabindex="0"
 									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
-										properties.encryptionKey = generatePassword();
+										properties.encryptionKey = generateZFSEncryptionKey();
 									}}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
-											properties.encryptionKey = generatePassword();
+											properties.encryptionKey = generateZFSEncryptionKey();
 										}
 									}}
 								></span>

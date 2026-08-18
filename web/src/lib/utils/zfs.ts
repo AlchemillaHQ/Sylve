@@ -15,6 +15,11 @@ import type {
 	BackupTargetDatasetInfo,
 	SnapshotInfo
 } from '$lib/types/cluster/backups';
+import { Mnemonic } from './vendor/mnemonic';
+
+export function generateZFSEncryptionKey(): string {
+	return new Mnemonic().toWords().join('-');
+}
 
 export function isValidPoolName(name: string): boolean {
 	const reserved = ['log', 'mirror', 'raidz', 'raidz1', 'raidz2', 'raidz3', 'spare'];
