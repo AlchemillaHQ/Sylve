@@ -1,8 +1,7 @@
 # Sylve
 
 [![Discord](https://img.shields.io/discord/1075365732143071232?label=Discord&logo=discord&color=5865F2)](https://chat.sylve.io)
-[![Build](https://github.com/AlchemillaHQ/Sylve/actions/workflows/build.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/build.yaml)
-[![Test](https://github.com/AlchemillaHQ/Sylve/actions/workflows/test.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/test.yaml)
+[![CI](https://github.com/AlchemillaHQ/Sylve/actions/workflows/ci.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/ci.yaml)
 [![Documentation](https://img.shields.io/badge/docs-sylve.io-blue)](https://sylve.io/docs)
 
 > [!NOTE]
