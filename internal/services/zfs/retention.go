@@ -21,7 +21,7 @@ import (
 const (
 	zfsRawHistoryWindow = time.Hour
 	zfsHistoryRetention = 70 * 24 * time.Hour
-	zfsDeleteBatchSize   = 500
+	zfsDeleteBatchSize  = 500
 )
 
 type zpoolRollupKey struct {
@@ -144,30 +144,30 @@ func buildZpoolRollup(rows []infoModels.ZPoolHistorical, interval time.Duration)
 		averageWriteLatency = uint64(writeLatencySum / float64(writeLatencyOperations))
 	}
 	return infoModels.ZPoolHistorical{
-		GUID:                       latest.GUID,
-		Name:                       latest.Name,
-		Health:                     latest.Health,
-		WorstHealth:                worstHealth,
-		Allocated:                  latest.Allocated,
-		Size:                       latest.Size,
-		Free:                       latest.Free,
-		Fragmentation:              latest.Fragmentation,
-		DedupRatio:                 latest.DedupRatio,
-		ReadIOPS:                   uint64(readIOPSSum / divisor),
-		WriteIOPS:                  uint64(writeIOPSSum / divisor),
-		ReadBytesPerSecond:         uint64(readBandwidthSum / divisor),
-		WriteBytesPerSecond:        uint64(writeBandwidthSum / divisor),
-		ReadLatencyNanos:           averageReadLatency,
-		WriteLatencyNanos:          averageWriteLatency,
-		MaxReadIOPS:                maxReadIOPS,
-		MaxWriteIOPS:               maxWriteIOPS,
-		MaxReadBytesPerSecond:      maxReadBandwidth,
-		MaxWriteBytesPerSecond:     maxWriteBandwidth,
-		MaxReadLatencyNanos:        maxReadLatency,
-		MaxWriteLatencyNanos:       maxWriteLatency,
-		SampleCount:                 uint32(sampleCount),
-		IntervalSeconds:             uint32(interval / time.Second),
-		CreatedAt:                   latest.CreatedAt,
+		GUID:                   latest.GUID,
+		Name:                   latest.Name,
+		Health:                 latest.Health,
+		WorstHealth:            worstHealth,
+		Allocated:              latest.Allocated,
+		Size:                   latest.Size,
+		Free:                   latest.Free,
+		Fragmentation:          latest.Fragmentation,
+		DedupRatio:             latest.DedupRatio,
+		ReadIOPS:               uint64(readIOPSSum / divisor),
+		WriteIOPS:              uint64(writeIOPSSum / divisor),
+		ReadBytesPerSecond:     uint64(readBandwidthSum / divisor),
+		WriteBytesPerSecond:    uint64(writeBandwidthSum / divisor),
+		ReadLatencyNanos:       averageReadLatency,
+		WriteLatencyNanos:      averageWriteLatency,
+		MaxReadIOPS:            maxReadIOPS,
+		MaxWriteIOPS:           maxWriteIOPS,
+		MaxReadBytesPerSecond:  maxReadBandwidth,
+		MaxWriteBytesPerSecond: maxWriteBandwidth,
+		MaxReadLatencyNanos:    maxReadLatency,
+		MaxWriteLatencyNanos:   maxWriteLatency,
+		SampleCount:            uint32(sampleCount),
+		IntervalSeconds:        uint32(interval / time.Second),
+		CreatedAt:              latest.CreatedAt,
 	}
 }
 

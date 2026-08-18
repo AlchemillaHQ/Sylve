@@ -273,10 +273,10 @@ type Jail struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 
-	StartLogs string     `json:"startLogs" gorm:"default:''"`
-	StopLogs  string     `json:"stopLogs" gorm:"default:''"`
-	StartedAt           *time.Time `json:"startedAt" gorm:"default:null"`
-	StoppedAt           *time.Time `json:"stoppedAt" gorm:"default:null"`
+	StartLogs            string     `json:"startLogs" gorm:"default:''"`
+	StopLogs             string     `json:"stopLogs" gorm:"default:''"`
+	StartedAt            *time.Time `json:"startedAt" gorm:"default:null"`
+	StoppedAt            *time.Time `json:"stoppedAt" gorm:"default:null"`
 	IntentionallyStopped bool       `json:"intentionallyStopped" gorm:"default:false"`
 }
 

@@ -26,7 +26,7 @@ INTEGRATION_PACKAGES := \
 
 ACCEPTANCE_PACKAGE := ./internal/console/integration
 
-.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend
+.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality
 .PHONY: test test-external-preflight test-integration test-acceptance test-acceptance-full
 .PHONY: test-smart-integration clean
 
@@ -85,6 +85,15 @@ frontend:
 	npm run build --prefix web
 	mkdir -p internal/assets/web-files
 	cp -rf web/build/* internal/assets/web-files/
+
+quality:
+	@unformatted="$$(git ls-files -z '*.go' | xargs -0 gofmt -l)"; \
+	if [ -n "$$unformatted" ]; then \
+		printf 'Unformatted Go files:\n%s\n' "$$unformatted"; \
+		exit 1; \
+	fi
+	npm ci --prefix web
+	npm run lint --prefix web
 
 test:
 	go test $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest

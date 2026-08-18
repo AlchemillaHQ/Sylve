@@ -19,15 +19,15 @@ import (
 )
 
 type Config struct {
-	Name      string
-	Type      string
-	Domain    string
-	Host      string
-	Text      map[string]string
-	IPs       []net.IP
-	Port      int
-	Ifaces    []string
-	BlockedIPNets []string
+	Name            string
+	Type            string
+	Domain          string
+	Host            string
+	Text            map[string]string
+	IPs             []net.IP
+	Port            int
+	Ifaces          []string
+	BlockedIPNets   []string
 	AdvertiseIPType IPType
 }
 
