@@ -17,8 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db/models"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
@@ -37,6 +40,24 @@ func (s storageTestSystemService) GetUsablePools(context.Context) ([]*gzfs.ZPool
 		return nil, s.err
 	}
 	return s.pools, nil
+}
+
+type storageDBBackedSystemService struct {
+	systemServiceInterfaces.SystemServiceInterface
+	db *gorm.DB
+}
+
+func (s storageDBBackedSystemService) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
+	var settings models.BasicSettings
+	if err := s.db.WithContext(ctx).First(&settings).Error; err != nil {
+		return nil, err
+	}
+
+	pools := make([]*gzfs.ZPool, 0, len(settings.Pools))
+	for _, pool := range settings.Pools {
+		pools = append(pools, &gzfs.ZPool{Name: pool, Free: 1 << 40})
+	}
+	return pools, nil
 }
 
 type storageTestDataset struct {
@@ -291,6 +312,202 @@ func TestFindZVOLDatasetByGUIDSearchesAllUsablePools(t *testing.T) {
 	}
 }
 
+func TestStorageAttachApplyRawImportDoesNotDeadlockWithDBBackedPoolLookup(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&models.BasicSettings{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+	)
+	if err := db.Create(&models.BasicSettings{Pools: []string{"tank"}}).Error; err != nil {
+		t.Fatalf("failed to seed basic settings: %v", err)
+	}
+	vm := vmModels.VM{RID: 520, Name: "vm-520"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("failed to seed VM: %v", err)
+	}
+
+	rawPath := filepath.Join(t.TempDir(), "legacy.img")
+	if err := os.WriteFile(rawPath, []byte("raw-disk"), 0o600); err != nil {
+		t.Fatalf("failed to seed raw file: %v", err)
+	}
+	mountpoint := t.TempDir()
+	datasetName := "tank/sylve/virtual-machines/520/raw-1"
+	service := &Service{
+		DB:     db,
+		System: storageDBBackedSystemService{db: db},
+		GZFS: gzfs.NewClient(gzfs.Options{Runner: &storageTestZFSRunner{datasets: map[string]storageTestDataset{
+			datasetName: {
+				name:       datasetName,
+				pool:       "tank",
+				guid:       "raw-deadlock-guid",
+				kind:       gzfs.DatasetTypeFilesystem,
+				mountpoint: mountpoint,
+			},
+		}}}),
+	}
+	bootOrder, pool := 1, "tank"
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	created, err := service.storageAttachApply(libvirtServiceInterfaces.StorageAttachRequest{
+		AttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
+		StorageType: libvirtServiceInterfaces.StorageTypeRaw,
+		Emulation:   libvirtServiceInterfaces.AHCIHDStorageEmulation,
+		Name:        "imported-raw",
+		RID:         vm.RID,
+		RawPath:     rawPath,
+		Pool:        &pool,
+		BootOrder:   &bootOrder,
+	}, vm, ctx, storageRuntimeHooks{
+		createVMDisk: func(_ uint, storage vmModels.Storage, hookCtx context.Context, db *gorm.DB) (vmModels.Storage, bool, error) {
+			pools, err := service.System.GetUsablePools(hookCtx)
+			if err != nil {
+				return storage, false, err
+			}
+			if len(pools) != 1 || pools[0].Name != "tank" {
+				return storage, false, fmt.Errorf("unexpected_usable_pools")
+			}
+
+			dataset := vmModels.VMStorageDataset{Pool: "tank", Name: datasetName, GUID: "raw-deadlock-guid"}
+			if err := db.Create(&dataset).Error; err != nil {
+				return storage, false, err
+			}
+			storage.DatasetID = &dataset.ID
+			storage.Dataset = dataset
+			if err := db.Save(&storage).Error; err != nil {
+				return storage, false, err
+			}
+			return storage, false, nil
+		},
+		copyFile: func(src, dst string) error {
+			contents, err := os.ReadFile(src)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(dst, contents, 0o600)
+		},
+		syncVMDisks: func(context.Context, *gorm.DB, uint) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("raw import failed with a single DB connection: %v", err)
+	}
+	if created.ID == 0 {
+		t.Fatal("expected created storage metadata")
+	}
+	if _, err := os.Stat(filepath.Join(mountpoint, "1.img")); err != nil {
+		t.Fatalf("expected imported raw image: %v", err)
+	}
+}
+
+func TestStorageAttachApplyRawCopyDoesNotBlockUnrelatedDBQueries(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+	vm := vmModels.VM{RID: 521, Name: "vm-521"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("failed to seed VM: %v", err)
+	}
+
+	rawPath := filepath.Join(t.TempDir(), "legacy.img")
+	if err := os.WriteFile(rawPath, []byte("raw-disk"), 0o600); err != nil {
+		t.Fatalf("failed to seed raw file: %v", err)
+	}
+	mountpoint := t.TempDir()
+	datasetName := "tank/sylve/virtual-machines/521/raw-1"
+	service := newStorageTestService(db, []string{"tank"}, map[string]storageTestDataset{
+		datasetName: {
+			name:       datasetName,
+			pool:       "tank",
+			guid:       "raw-availability-guid",
+			kind:       gzfs.DatasetTypeFilesystem,
+			mountpoint: mountpoint,
+		},
+	})
+
+	copyStarted := make(chan struct{})
+	releaseCopy := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(releaseCopy)
+		}
+	}()
+	attachDone := make(chan error, 1)
+	bootOrder, pool := 1, "tank"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go func() {
+		_, err := service.storageAttachApply(libvirtServiceInterfaces.StorageAttachRequest{
+			AttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
+			StorageType: libvirtServiceInterfaces.StorageTypeRaw,
+			Emulation:   libvirtServiceInterfaces.AHCIHDStorageEmulation,
+			Name:        "imported-raw",
+			RID:         vm.RID,
+			RawPath:     rawPath,
+			Pool:        &pool,
+			BootOrder:   &bootOrder,
+		}, vm, ctx, storageRuntimeHooks{
+			createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, db *gorm.DB) (vmModels.Storage, bool, error) {
+				dataset := vmModels.VMStorageDataset{Pool: "tank", Name: datasetName, GUID: "raw-availability-guid"}
+				if err := db.Create(&dataset).Error; err != nil {
+					return storage, false, err
+				}
+				storage.DatasetID = &dataset.ID
+				storage.Dataset = dataset
+				if err := db.Save(&storage).Error; err != nil {
+					return storage, false, err
+				}
+				return storage, false, nil
+			},
+			copyFile: func(src, dst string) error {
+				close(copyStarted)
+				select {
+				case <-releaseCopy:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				contents, err := os.ReadFile(src)
+				if err != nil {
+					return err
+				}
+				return os.WriteFile(dst, contents, 0o600)
+			},
+			syncVMDisks: func(context.Context, *gorm.DB, uint) error { return nil },
+		})
+		attachDone <- err
+	}()
+
+	select {
+	case <-copyStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("raw copy did not start")
+	}
+
+	queryCtx, queryCancel := context.WithTimeout(context.Background(), time.Second)
+	var storageCount int64
+	queryErr := db.WithContext(queryCtx).Model(&vmModels.Storage{}).Count(&storageCount).Error
+	queryCancel()
+	close(releaseCopy)
+	released = true
+
+	var attachErr error
+	select {
+	case attachErr = <-attachDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("raw import did not finish after copy was released")
+	}
+	if queryErr != nil {
+		t.Fatalf("unrelated DB query was blocked by raw copy: %v", queryErr)
+	}
+	if storageCount != 1 {
+		t.Fatalf("expected in-progress storage metadata to be queryable, found %d rows", storageCount)
+	}
+	if attachErr != nil {
+		t.Fatalf("raw import failed: %v", attachErr)
+	}
+}
+
 func TestStorageImportRawRollsBackWhenDiskCreationFails(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
 	vm := vmModels.VM{RID: 502, Name: "vm-502"}
@@ -314,12 +531,10 @@ func TestStorageImportRawRollsBackWhenDiskCreationFails(t *testing.T) {
 		Pool:        &pool,
 		BootOrder:   &bootOrder,
 	}
-	err := db.Transaction(func(tx *gorm.DB) error {
-		return service.storageImportTx(req, vm, context.Background(), tx, storageRuntimeHooks{
-			createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
-				return storage, false, fmt.Errorf("boom_create_disk")
-			},
-		})
+	err := service.storageImportTx(req, vm, context.Background(), db, storageRuntimeHooks{
+		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
+			return storage, false, fmt.Errorf("boom_create_disk")
+		},
 	})
 	if err == nil || !strings.Contains(err.Error(), "failed_to_create_vm_disk") {
 		t.Fatalf("expected disk creation failure, got %v", err)
@@ -361,22 +576,27 @@ func TestStorageImportRawRollsBackWhenCopyFails(t *testing.T) {
 		Pool:        &pool,
 		BootOrder:   &bootOrder,
 	}
-	err := db.Transaction(func(tx *gorm.DB) error {
-		return service.storageImportTx(req, vm, context.Background(), tx, storageRuntimeHooks{
-			createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, tx *gorm.DB) (vmModels.Storage, bool, error) {
-				dataset := vmModels.VMStorageDataset{Pool: "tank", Name: datasetName, GUID: "raw-import-guid"}
-				if err := tx.Create(&dataset).Error; err != nil {
-					return storage, false, err
-				}
-				storage.DatasetID = &dataset.ID
-				storage.Dataset = dataset
-				if err := tx.Save(&storage).Error; err != nil {
-					return storage, false, err
-				}
-				return storage, false, nil
-			},
-			copyFile: func(_, _ string) error { return fmt.Errorf("boom_copy") },
-		})
+	var tempImportPath string
+	err := service.storageImportTx(req, vm, context.Background(), db, storageRuntimeHooks{
+		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, db *gorm.DB) (vmModels.Storage, bool, error) {
+			dataset := vmModels.VMStorageDataset{Pool: "tank", Name: datasetName, GUID: "raw-import-guid"}
+			if err := db.Create(&dataset).Error; err != nil {
+				return storage, false, err
+			}
+			storage.DatasetID = &dataset.ID
+			storage.Dataset = dataset
+			if err := db.Save(&storage).Error; err != nil {
+				return storage, false, err
+			}
+			return storage, false, nil
+		},
+		copyFile: func(_, dst string) error {
+			tempImportPath = dst
+			if err := os.WriteFile(dst, []byte("partial"), 0o600); err != nil {
+				return err
+			}
+			return fmt.Errorf("boom_copy")
+		},
 	})
 	if err == nil || !strings.Contains(err.Error(), "failed_to_copy_raw_file_to_dataset") {
 		t.Fatalf("expected copy failure, got %v", err)
@@ -386,6 +606,9 @@ func TestStorageImportRawRollsBackWhenCopyFails(t *testing.T) {
 	}
 	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 0 {
 		t.Fatalf("expected dataset metadata rollback, found %d rows", got)
+	}
+	if _, err := os.Stat(tempImportPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temporary import file cleanup, stat error=%v", err)
 	}
 }
 
@@ -416,12 +639,10 @@ func TestStorageImportZVOLFindsSourceAcrossPoolsAndRollsBackCreateFailure(t *tes
 		Pool:        &pool,
 		BootOrder:   &bootOrder,
 	}
-	err := db.Transaction(func(tx *gorm.DB) error {
-		return service.storageImportTx(req, vm, context.Background(), tx, storageRuntimeHooks{
-			createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
-				return storage, false, fmt.Errorf("boom_create_disk")
-			},
-		})
+	err := service.storageImportTx(req, vm, context.Background(), db, storageRuntimeHooks{
+		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
+			return storage, false, fmt.Errorf("boom_create_disk")
+		},
 	})
 	if err == nil || !strings.Contains(err.Error(), "failed_to_create_vm_disk") {
 		t.Fatalf("expected create failure after cross-pool lookup, got %v", err)
@@ -466,22 +687,20 @@ func TestStorageImportZVOLRejectsDatasetAlreadyReferencedByAnotherVM(t *testing.
 	})
 	bootOrder, pool := 1, "target"
 	createCalled := false
-	err := db.Transaction(func(tx *gorm.DB) error {
-		return service.storageImportTx(libvirtServiceInterfaces.StorageAttachRequest{
-			AttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
-			StorageType: libvirtServiceInterfaces.StorageTypeZVOL,
-			Emulation:   libvirtServiceInterfaces.NVMEStorageEmulation,
-			Name:        "duplicate",
-			RID:         targetVM.RID,
-			Dataset:     datasetRecord.GUID,
-			Pool:        &pool,
-			BootOrder:   &bootOrder,
-		}, targetVM, context.Background(), tx, storageRuntimeHooks{
-			createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
-				createCalled = true
-				return storage, false, nil
-			},
-		})
+	err := service.storageImportTx(libvirtServiceInterfaces.StorageAttachRequest{
+		AttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
+		StorageType: libvirtServiceInterfaces.StorageTypeZVOL,
+		Emulation:   libvirtServiceInterfaces.NVMEStorageEmulation,
+		Name:        "duplicate",
+		RID:         targetVM.RID,
+		Dataset:     datasetRecord.GUID,
+		Pool:        &pool,
+		BootOrder:   &bootOrder,
+	}, targetVM, context.Background(), db, storageRuntimeHooks{
+		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
+			createCalled = true
+			return storage, false, nil
+		},
 	})
 	if err == nil || !strings.Contains(err.Error(), "zvol_dataset_already_attached") {
 		t.Fatalf("expected in-use rejection, got %v", err)
@@ -520,17 +739,15 @@ func TestStorageNewFilesystemRejectsDuplicateTargetEvenWhenExistingShareDisabled
 			mountpoint: "/mnt/shared-data",
 		},
 	})
-	err := db.Transaction(func(tx *gorm.DB) error {
-		return service.storageNewTx(libvirtServiceInterfaces.StorageAttachRequest{
-			AttachType:       libvirtServiceInterfaces.StorageAttachTypeNew,
-			StorageType:      libvirtServiceInterfaces.StorageTypeFilesystem,
-			Emulation:        libvirtServiceInterfaces.VirtIO9PStorageEmulation,
-			Name:             "duplicate-share",
-			RID:              vm.RID,
-			Dataset:          "share-guid",
-			FilesystemTarget: "shared_data",
-		}, vm, context.Background(), tx, storageRuntimeHooks{})
-	})
+	err := service.storageNewTx(libvirtServiceInterfaces.StorageAttachRequest{
+		AttachType:       libvirtServiceInterfaces.StorageAttachTypeNew,
+		StorageType:      libvirtServiceInterfaces.StorageTypeFilesystem,
+		Emulation:        libvirtServiceInterfaces.VirtIO9PStorageEmulation,
+		Name:             "duplicate-share",
+		RID:              vm.RID,
+		Dataset:          "share-guid",
+		FilesystemTarget: "shared_data",
+	}, vm, context.Background(), db, storageRuntimeHooks{})
 	if err == nil || !strings.Contains(err.Error(), "filesystem_target_already_in_use") {
 		t.Fatalf("expected duplicate target rejection, got %v", err)
 	}
@@ -625,6 +842,9 @@ func TestStorageAttachApplyDestroysNewManagedDatasetWhenSyncFails(t *testing.T) 
 	if got := mustCountRows[vmModels.Storage](t, db); got != 0 {
 		t.Fatalf("expected metadata rollback, found %d rows", got)
 	}
+	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 0 {
+		t.Fatalf("expected dataset metadata rollback, found %d rows", got)
+	}
 }
 
 func TestStorageAttachApplyRestoresSamePoolZVOLNameWhenSyncFails(t *testing.T) {
@@ -668,6 +888,110 @@ func TestStorageAttachApplyRestoresSamePoolZVOLNameWhenSyncFails(t *testing.T) {
 	}
 	if len(runner.datasets) != 1 {
 		t.Fatalf("expected only original source dataset, datasets=%+v", runner.datasets)
+	}
+	if got := mustCountRows[vmModels.Storage](t, db); got != 0 {
+		t.Fatalf("expected storage metadata cleanup, found %d rows", got)
+	}
+	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 0 {
+		t.Fatalf("expected dataset metadata cleanup, found %d rows", got)
+	}
+}
+
+func TestStorageAttachApplyCleansUpFilesystemMetadataWhenSyncFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+	vm := vmModels.VM{RID: 522, Name: "vm-522"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("failed to seed VM: %v", err)
+	}
+	service := newStorageTestService(db, []string{"tank"}, map[string]storageTestDataset{
+		"tank/shares/projects": {
+			name:       "tank/shares/projects",
+			pool:       "tank",
+			guid:       "filesystem-cleanup-guid",
+			kind:       gzfs.DatasetTypeFilesystem,
+			mountpoint: "/mnt/projects",
+		},
+	})
+
+	_, err := service.storageAttachApply(libvirtServiceInterfaces.StorageAttachRequest{
+		AttachType:       libvirtServiceInterfaces.StorageAttachTypeNew,
+		StorageType:      libvirtServiceInterfaces.StorageTypeFilesystem,
+		Emulation:        libvirtServiceInterfaces.VirtIO9PStorageEmulation,
+		Name:             "projects",
+		RID:              vm.RID,
+		Dataset:          "filesystem-cleanup-guid",
+		FilesystemTarget: "projects",
+	}, vm, context.Background(), storageRuntimeHooks{
+		syncVMDisks: func(context.Context, *gorm.DB, uint) error {
+			return fmt.Errorf("boom_sync")
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed_to_sync_vm_disks") {
+		t.Fatalf("expected sync failure, got %v", err)
+	}
+	if got := mustCountRows[vmModels.Storage](t, db); got != 0 {
+		t.Fatalf("expected filesystem storage metadata cleanup, found %d rows", got)
+	}
+	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 0 {
+		t.Fatalf("expected filesystem dataset metadata cleanup, found %d rows", got)
+	}
+}
+
+func TestStorageAttachApplyCleansUpDiskImageMetadataWhenSyncFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+		&utilitiesModels.Downloads{},
+		&utilitiesModels.DownloadedFile{},
+	)
+	vm := vmModels.VM{RID: 523, Name: "vm-523"}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("failed to seed VM: %v", err)
+	}
+	imagePath := filepath.Join(t.TempDir(), "installer.iso")
+	if err := os.WriteFile(imagePath, []byte("iso"), 0o600); err != nil {
+		t.Fatalf("failed to seed disk image: %v", err)
+	}
+	const downloadUUID = "disk-image-cleanup"
+	if err := db.Create(&utilitiesModels.Downloads{
+		UUID:     downloadUUID,
+		Path:     imagePath,
+		Name:     filepath.Base(imagePath),
+		Type:     utilitiesModels.DownloadTypePath,
+		URL:      "file://disk-image-cleanup",
+		Progress: 100,
+		Size:     3,
+		UType:    utilitiesModels.DownloadUTypeOther,
+		Status:   utilitiesModels.DownloadStatusDone,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed download metadata: %v", err)
+	}
+
+	service := &Service{DB: db}
+	bootOrder := 1
+	_, err := service.storageAttachApply(libvirtServiceInterfaces.StorageAttachRequest{
+		AttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
+		StorageType: libvirtServiceInterfaces.StorageTypeDiskImage,
+		Emulation:   libvirtServiceInterfaces.AHCIHDStorageEmulation,
+		Name:        "installer",
+		RID:         vm.RID,
+		UUID:        downloadUUID,
+		BootOrder:   &bootOrder,
+	}, vm, context.Background(), storageRuntimeHooks{
+		syncVMDisks: func(context.Context, *gorm.DB, uint) error {
+			return fmt.Errorf("boom_sync")
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed_to_sync_vm_disks") {
+		t.Fatalf("expected sync failure, got %v", err)
+	}
+	if got := mustCountRows[vmModels.Storage](t, db); got != 0 {
+		t.Fatalf("expected disk-image storage metadata cleanup, found %d rows", got)
+	}
+	if got := mustCountRows[utilitiesModels.Downloads](t, db); got != 1 {
+		t.Fatalf("expected source download metadata to remain, found %d rows", got)
 	}
 }
 

@@ -115,7 +115,7 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	var basicSettings models.BasicSettings
 	var pools []*gzfs.ZPool
 
-	if err := s.DB.First(&basicSettings).Error; err != nil {
+	if err := s.DB.WithContext(ctx).First(&basicSettings).Error; err != nil {
 		return pools, err
 	}
 

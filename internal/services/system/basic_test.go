@@ -151,3 +151,18 @@ func TestGetBasicSettingsReturnsNotFoundSentinel(t *testing.T) {
 		t.Fatalf("error = %v, want ErrBasicSettingsNotFound", err)
 	}
 }
+
+func TestGetUsablePoolsHonorsCanceledContextDuringSettingsLookup(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := database.Create(&models.BasicSettings{Pools: []string{"tank"}}).Error; err != nil {
+		t.Fatalf("failed to seed basic settings: %v", err)
+	}
+	service := &Service{DB: database}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := service.GetUsablePools(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
