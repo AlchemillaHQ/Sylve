@@ -1605,7 +1605,6 @@ msgstr "内存使用情况"
 msgid "Save As Image"
 msgstr "保存为图片"
 
-#: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Usage"
 msgstr "使用情况"
@@ -4212,10 +4211,6 @@ msgstr "FStab 附加项"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "FStab Entries"
 msgstr "FStab 条目"
-
-#: src/lib/components/custom/Jail/Create/Storage.svelte
-msgid "Select FStab Option"
-msgstr "选择 FStab 选项"
 
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Failed to save allowed options"
@@ -17272,4 +17267,17 @@ msgstr ""
 #. 0: modals.bulkDelete.ids.length
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 msgid "This will permanently delete <b>{0}</b> NAT rules."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "The Simple Linux preset is unavailable until this pool's managed jails mountpoint can be resolved."
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Invalid download selection"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Leave blank to use the ZFS default /<pool>. Set an absolute path such as /mnt/tank to customize it."
 msgstr ""

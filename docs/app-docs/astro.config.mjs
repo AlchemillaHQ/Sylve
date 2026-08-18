@@ -97,6 +97,9 @@ export default defineConfig({
                                             collapsed: true,
                                             items: [
                                                 'guides/node/network/firewall/logs',
+                                                'guides/node/network/firewall/traffic',
+                                                'guides/node/network/firewall/nat',
+                                                'guides/node/network/firewall/advanced',
                                             ],
                                         },
                                     ],
