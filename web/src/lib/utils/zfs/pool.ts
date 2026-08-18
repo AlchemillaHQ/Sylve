@@ -289,15 +289,7 @@ export function generateTableData(
 
 			for (const log in pool.logs) {
 				const current = pool.logs[log];
-				logsRow.children!.push({
-					id: generateNumberFromString(current.guid + pool.guid),
-					name: current.name,
-					size: current.size,
-					used: '-',
-					health: current.state,
-					redundancy: '-',
-					children: []
-				});
+				logsRow.children!.push(buildVdevRow(current, pool.guid));
 			}
 
 			poolRow.children!.push(logsRow);
@@ -349,15 +341,7 @@ export function generateTableData(
 
 			for (const v in pool.special) {
 				const current = pool.special[v];
-				specialRow.children!.push({
-					id: generateNumberFromString(current.guid + pool.guid),
-					name: current.name,
-					size: current.size,
-					used: '-',
-					health: current.state,
-					redundancy: '-',
-					children: []
-				});
+				specialRow.children!.push(buildVdevRow(current, pool.guid));
 			}
 
 			poolRow.children!.push(specialRow);
@@ -379,15 +363,7 @@ export function generateTableData(
 
 			for (const v in pool.dedup) {
 				const current = pool.dedup[v];
-				dedupRow.children!.push({
-					id: generateNumberFromString(current.guid + pool.guid),
-					name: current.name,
-					size: current.size,
-					used: '-',
-					health: current.state,
-					redundancy: '-',
-					children: []
-				});
+				dedupRow.children!.push(buildVdevRow(current, pool.guid));
 			}
 
 			poolRow.children!.push(dedupRow);
