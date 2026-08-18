@@ -332,6 +332,13 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 
 	var loaded clusterModels.BackupJob
 	db.Preload("Target").First(&loaded, 14)
+	resolvedSources, err := svc.resolveVMBackupSourceDatasets(ctx, vm.RID, vmSource)
+	if err != nil {
+		t.Fatalf("resolve fixture VM backup sources: %v", err)
+	}
+	if len(resolvedSources) != 1 || resolvedSources[0] != vmSource {
+		t.Fatalf("fixture VM backup escaped owned pool: got sources %v, want [%s]", resolvedSources, vmSource)
+	}
 	if err := svc.runBackupJob(ctx, &loaded); err != nil {
 		t.Fatalf("first VM backup failed after integration prerequisites passed: %v", err)
 	}

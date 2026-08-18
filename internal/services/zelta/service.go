@@ -1740,9 +1740,25 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 
 	sources := make([]string, 0)
 	seen := make(map[string]struct{})
+	allowedPools := make(map[string]struct{})
+	restrictToAllowedPools := false
+	sourcePoolAllowed := func(dataset string) bool {
+		if !restrictToAllowedPools {
+			return true
+		}
+		pool := dataset
+		if slash := strings.Index(pool, "/"); slash > 0 {
+			pool = pool[:slash]
+		}
+		_, allowed := allowedPools[pool]
+		return allowed
+	}
 	addSource := func(dataset string) {
 		dataset = normalizeDatasetPath(dataset)
 		if dataset == "" {
+			return
+		}
+		if !sourcePoolAllowed(dataset) {
 			return
 		}
 		if datasetWithinAnyRoot(dataset, backupRoots) {
@@ -1762,6 +1778,7 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 			Err(vmErr).
 			Msg("failed_to_lookup_vm_for_backup_source_resolution")
 	} else if vm != nil {
+		restrictToAllowedPools = true
 		for _, storage := range vm.Storages {
 			pool := strings.TrimSpace(storage.Pool)
 			if pool == "" {
@@ -1777,6 +1794,7 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 				continue
 			}
 
+			allowedPools[pool] = struct{}{}
 			addSource(fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, vmRID))
 		}
 	}
@@ -1785,14 +1803,14 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 	if err != nil {
 		if len(sources) > 0 {
 			sort.Strings(sources)
-			if preferred != "" && !datasetWithinAnyRoot(preferred, backupRoots) {
+			if preferred != "" && sourcePoolAllowed(preferred) && !datasetWithinAnyRoot(preferred, backupRoots) {
 				if _, ok := seen[preferred]; !ok {
 					sources = append([]string{preferred}, sources...)
 				}
 			}
 			return sources, nil
 		}
-		if preferred == "" || datasetWithinAnyRoot(preferred, backupRoots) {
+		if preferred == "" || !sourcePoolAllowed(preferred) || datasetWithinAnyRoot(preferred, backupRoots) {
 			return nil, err
 		}
 		return []string{preferred}, nil
@@ -1810,12 +1828,16 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 		if vmDatasetRoot(dataset) != dataset {
 			continue
 		}
-
 		addSource(dataset)
 	}
 
 	if preferred != "" {
-		if datasetWithinAnyRoot(preferred, backupRoots) {
+		if !sourcePoolAllowed(preferred) {
+			logger.L.Warn().
+				Uint("rid", vmRID).
+				Str("dataset", preferred).
+				Msg("ignoring_vm_backup_source_outside_registered_storage_pools")
+		} else if datasetWithinAnyRoot(preferred, backupRoots) {
 			logger.L.Warn().
 				Uint("rid", vmRID).
 				Str("dataset", preferred).
@@ -1837,7 +1859,7 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 	}
 
 	sort.Strings(sources)
-	if len(sources) == 0 && preferred != "" && !datasetWithinAnyRoot(preferred, backupRoots) {
+	if len(sources) == 0 && preferred != "" && sourcePoolAllowed(preferred) && !datasetWithinAnyRoot(preferred, backupRoots) {
 		sources = append(sources, preferred)
 	}
 	if len(sources) == 0 {
