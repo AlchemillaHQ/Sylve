@@ -418,6 +418,7 @@ func (s *consoleIntegrationSuite) configure() error {
 	queueCtx, queueCancel := context.WithCancel(context.Background())
 	s.queueCancel = queueCancel
 	s.queueDone = make(chan struct{})
+	jail.StartStatsMonitoring(queueCtx)
 	go func() {
 		database.StartQueue(queueCtx)
 		close(s.queueDone)
