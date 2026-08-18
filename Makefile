@@ -94,6 +94,7 @@ quality:
 	fi
 	npm ci --prefix web
 	npm run lint --prefix web
+	npm run check --prefix web
 
 quality-fix:
 	git ls-files -z '*.go' | xargs -0 gofmt -w
