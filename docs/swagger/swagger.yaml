@@ -3662,6 +3662,8 @@ definitions:
     properties:
       action:
         type: string
+      client:
+        type: string
       createdAt:
         type: string
       folder:
@@ -3670,12 +3672,18 @@ definitions:
         type: integer
       ip:
         type: string
+      occurrences:
+        type: integer
       path:
         type: string
       result:
         type: string
+      retentionDays:
+        type: integer
       share:
         type: string
+      shareId:
+        type: integer
       target:
         type: string
       user:
@@ -3683,6 +3691,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_db_models_samba.SambaSettings:
     properties:
+      advertiseMdns:
+        type: boolean
       appleExtensions:
         type: boolean
       bindInterfacesOnly:
@@ -5601,6 +5611,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_mdns.MdnsRecordWithManaged:
     properties:
+      active:
+        type: boolean
       createdAt:
         type: string
       id:
@@ -6390,6 +6402,8 @@ definitions:
     properties:
       createForce:
         type: boolean
+      mountpoint:
+        type: string
       name:
         maxLength: 24
         minLength: 1
@@ -9100,6 +9114,8 @@ definitions:
     properties:
       auditEnabled:
         type: boolean
+      auditRetentionDays:
+        type: integer
       auditedOperations:
         items:
           type: string
@@ -9125,6 +9141,8 @@ definitions:
     type: object
   internal_handlers_samba.SambaConfigRequest:
     properties:
+      advertiseMdns:
+        type: boolean
       appleExtensions:
         type: boolean
       bindInterfacesOnly:
@@ -9206,6 +9224,8 @@ definitions:
     properties:
       auditEnabled:
         type: boolean
+      auditRetentionDays:
+        type: integer
       auditedOperations:
         items:
           type: string
@@ -9244,6 +9264,8 @@ definitions:
     properties:
       auditEnabled:
         type: boolean
+      auditRetentionDays:
+        type: integer
       auditedOperations:
         items:
           type: string
@@ -21496,7 +21518,12 @@ paths:
         - id
         - action
         - share
+        - user
+        - client
+        - ip
         - path
+        - target
+        - occurrences
         - createdAt
         - created_at
         in: query

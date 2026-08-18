@@ -123,6 +123,98 @@ func TestWriteJailLogRotationConfigRejectsUnsafePath(t *testing.T) {
 	}
 }
 
+func TestSyncSambaAuditSyslogConfigCreatesScopedDropIn(t *testing.T) {
+	root := t.TempDir()
+	dropIn := filepath.Join(root, "etc", "syslog.d", "sylve-samba-audit.conf")
+	auditLog := filepath.Join(root, "var", "log", "samba4", "audit.log")
+
+	changed, err := syncSambaAuditSyslogConfig(dropIn, auditLog)
+	if err != nil {
+		t.Fatalf("sync Samba audit syslog config: %v", err)
+	}
+	if !changed {
+		t.Fatal("first sync did not report a change")
+	}
+
+	content, err := os.ReadFile(dropIn)
+	if err != nil {
+		t.Fatalf("read generated drop-in: %v", err)
+	}
+	want := "# Sylve-managed Samba full_audit log\n!smbd_audit\nlocal5.notice\t" + auditLog + "\n!*\n"
+	if string(content) != want {
+		t.Fatalf("drop-in = %q, want %q", content, want)
+	}
+	info, err := os.Stat(auditLog)
+	if err != nil {
+		t.Fatalf("stat audit log: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("audit log mode = %o, want 600", info.Mode().Perm())
+	}
+
+	changed, err = syncSambaAuditSyslogConfig(dropIn, auditLog)
+	if err != nil {
+		t.Fatalf("idempotent sync: %v", err)
+	}
+	if changed {
+		t.Fatal("idempotent sync reported a change")
+	}
+}
+
+func TestSyncSambaAuditRotationConfigCreatesOwnedDropIn(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "newsyslog.conf.d", "sylve-samba-audit.conf")
+	auditLog := filepath.Join(root, "var", "log", "samba4", "audit.log")
+	if err := syncSambaAuditRotationConfig(configPath, auditLog); err != nil {
+		t.Fatalf("sync Samba audit rotation config: %v", err)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read Samba rotation drop-in: %v", err)
+	}
+	want := "# Managed by Sylve; changes will be overwritten.\n" + auditLog + "\t0600\t7\t100M\t*\tJCE\n"
+	if string(content) != want {
+		t.Fatalf("rotation drop-in = %q, want %q", content, want)
+	}
+}
+
+func TestCheckSambaSyslogConfigReloadsOnlyWhenSylveDropInChanges(t *testing.T) {
+	root := t.TempDir()
+	previousDropIn := sambaSyslogDropInPath
+	previousAuditLog := sambaAuditLogPath
+	previousRotationConfig := sambaAuditRotationConfigPath
+	previousRunCommand := startupRunCommand
+	sambaSyslogDropInPath = filepath.Join(root, "etc", "syslog.d", "sylve-samba-audit.conf")
+	sambaAuditLogPath = filepath.Join(root, "var", "log", "samba4", "audit.log")
+	sambaAuditRotationConfigPath = filepath.Join(root, "newsyslog.conf.d", "sylve-samba-audit.conf")
+	reloadCalls := 0
+	startupRunCommand = func(command string, args ...string) (string, error) {
+		reloadCalls++
+		if command != "/usr/sbin/service" || strings.Join(args, " ") != "syslogd reload" {
+			t.Fatalf("unexpected command: %s %v", command, args)
+		}
+		return "", nil
+	}
+	t.Cleanup(func() {
+		sambaSyslogDropInPath = previousDropIn
+		sambaAuditLogPath = previousAuditLog
+		sambaAuditRotationConfigPath = previousRotationConfig
+		startupRunCommand = previousRunCommand
+	})
+
+	settings := models.BasicSettings{Services: []models.AvailableService{models.SambaServer}}
+	service := &Service{}
+	if err := service.CheckSambaSyslogConfig(settings); err != nil {
+		t.Fatalf("first Samba syslog sync: %v", err)
+	}
+	if err := service.CheckSambaSyslogConfig(settings); err != nil {
+		t.Fatalf("idempotent Samba syslog sync: %v", err)
+	}
+	if reloadCalls != 1 {
+		t.Fatalf("syslog reload calls = %d, want 1", reloadCalls)
+	}
+}
+
 func TestSysctlSyncRaisesNetFIBsWhenBelowMinimum(t *testing.T) {
 	previousGet := startupGetSysctlInt64
 	previousSet := startupSetSysctlInt32

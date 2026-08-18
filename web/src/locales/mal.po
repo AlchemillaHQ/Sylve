@@ -94,6 +94,8 @@ msgstr "ഒബ്ജക്റ്റുകൾ"
 #: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Samba/Config.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -529,6 +531,7 @@ msgstr "നോഡ്"
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
 #: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "User"
 msgstr "ഉപയോക്താവ്"
 
@@ -1190,6 +1193,7 @@ msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, \"Courier New\", monospace"
 
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Disconnect"
@@ -1266,6 +1270,7 @@ msgstr "സ്റ്റേജിംഗ്"
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
@@ -2185,6 +2190,7 @@ msgid "Metric"
 msgstr "മെട്രിക്"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
@@ -3658,7 +3664,9 @@ msgstr "ഫെയ്‌ൽബാക്ക്"
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
@@ -3682,7 +3690,9 @@ msgstr "അതെ"
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
@@ -6092,10 +6102,6 @@ msgid "Create Directory"
 msgstr "ഡയറക്ടറി സൃഷ്ടിക്കുക"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
-msgid "Delete (File/Directory)"
-msgstr "നീക്കം ചെയ്യുക (ഫയൽ/ഡയറക്ടറി)"
-
-#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create File"
 msgstr "ഫയൽ സൃഷ്ടിക്കുക"
 
@@ -7760,6 +7766,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Count"
 msgstr ""
 
@@ -8477,6 +8484,7 @@ msgstr ""
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Samba/Config.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
@@ -17283,4 +17291,64 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Leave blank to use the ZFS default /<pool>. Set an absolute path such as /mnt/tank to customize it."
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Global setting"
+msgstr ""
+
+#: src/routes/[node]/network/mdns/records/+page.svelte
+msgid "Use global setting"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Advertise Samba Services (mDNS)"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Config.svelte
+msgid "Advertise Samba (mDNS)"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Connect"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Delete File/Directory"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Open File"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Close File"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Read File"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Write File"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Client IP"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Retention must be a whole number of 0 or more"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Retention Days"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Use 0 to keep audit records forever. Whole numbers only."
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Client"
 msgstr ""

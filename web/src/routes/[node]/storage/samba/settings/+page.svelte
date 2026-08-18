@@ -148,6 +148,11 @@
 				id: generateNanoId(`${sambaConfig.current.appleExtensions}`),
 				property: 'Apple Extensions',
 				value: sambaConfig.current.appleExtensions ? 'Yes' : 'No'
+			},
+			{
+				id: generateNanoId(`${sambaConfig.current.advertiseMdns}`),
+				property: 'Advertise Samba Services (mDNS)',
+				value: sambaConfig.current.advertiseMdns ? 'Yes' : 'No'
 			}
 		]
 	});

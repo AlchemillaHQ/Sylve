@@ -55,6 +55,7 @@ type CreateSambaShareRequest struct {
 	TimeMachine        *bool                   `json:"timeMachine"`
 	TimeMachineMaxSize *uint64                 `json:"timeMachineMaxSize"`
 	AuditEnabled       *bool                   `json:"auditEnabled"`
+	AuditRetentionDays *uint32                 `json:"auditRetentionDays"`
 	AuditedOperations  []string                `json:"auditedOperations"`
 }
 
@@ -69,6 +70,7 @@ type UpdateSambaShareRequest struct {
 	TimeMachine        *bool                   `json:"timeMachine"`
 	TimeMachineMaxSize *uint64                 `json:"timeMachineMaxSize"`
 	AuditEnabled       *bool                   `json:"auditEnabled"`
+	AuditRetentionDays *uint32                 `json:"auditRetentionDays"`
 	AuditedOperations  []string                `json:"auditedOperations"`
 }
 
@@ -109,6 +111,7 @@ type SambaShareResponse struct {
 	TimeMachine        bool                     `json:"timeMachine"`
 	TimeMachineMaxSize uint64                   `json:"timeMachineMaxSize"`
 	AuditEnabled       bool                     `json:"auditEnabled"`
+	AuditRetentionDays uint32                   `json:"auditRetentionDays"`
 	AuditedOperations  []string                 `json:"auditedOperations"`
 	CreatedAt          string                   `json:"createdAt"`
 	UpdatedAt          string                   `json:"updatedAt"`
@@ -181,6 +184,7 @@ func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 		TimeMachine:        share.TimeMachine,
 		TimeMachineMaxSize: share.TimeMachineMaxSize,
 		AuditEnabled:       share.AuditEnabled,
+		AuditRetentionDays: sambaModels.AuditRetentionDaysValue(share.AuditRetentionDays),
 		AuditedOperations:  share.AuditedOperations,
 		CreatedAt:          share.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:          share.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -291,6 +295,10 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 		if request.AuditEnabled != nil {
 			auditEnabled = *request.AuditEnabled
 		}
+		auditRetentionDays := sambaModels.DefaultAuditRetentionDays
+		if request.AuditRetentionDays != nil {
+			auditRetentionDays = *request.AuditRetentionDays
+		}
 
 		enabled := true
 		if request.Enabled != nil {
@@ -317,6 +325,7 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			timeMachine,
 			timeMachineMaxSize,
 			auditEnabled,
+			auditRetentionDays,
 			request.AuditedOperations,
 			enabled,
 		); err != nil {
@@ -390,6 +399,10 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 		if request.AuditEnabled != nil {
 			auditEnabled = *request.AuditEnabled
 		}
+		auditRetentionDays := sambaModels.DefaultAuditRetentionDays
+		if request.AuditRetentionDays != nil {
+			auditRetentionDays = *request.AuditRetentionDays
+		}
 
 		if request.AuditedOperations == nil {
 			request.AuditedOperations = []string{}
@@ -412,6 +425,7 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			timeMachine,
 			timeMachineMaxSize,
 			auditEnabled,
+			auditRetentionDays,
 			request.AuditedOperations,
 			&request.Enabled,
 		); err != nil {

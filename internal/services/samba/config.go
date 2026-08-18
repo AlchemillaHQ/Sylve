@@ -132,7 +132,8 @@ func (s *Service) SetGlobalConfig(
 	serverString string,
 	interfaces string,
 	bindInterfacesOnly bool,
-	appleExtensions bool) error {
+	appleExtensions bool,
+	advertiseMdns bool) error {
 	if unixCharset == "" || workgroup == "" || serverString == "" {
 		return invalidGlobalConfig("unixCharset, workgroup, and serverString cannot be empty")
 	}
@@ -182,7 +183,7 @@ func (s *Service) SetGlobalConfig(
 				return fmt.Errorf("failed to retrieve Samba settings: %w", err)
 			}
 
-			enableMdns := !settings.AppleExtensions && appleExtensions
+			enableMdns := advertiseMdns
 
 			settings.UnixCharset = unixCharset
 			settings.Workgroup = workgroup
@@ -190,6 +191,7 @@ func (s *Service) SetGlobalConfig(
 			settings.Interfaces = interfaces
 			settings.BindInterfacesOnly = bindInterfacesOnly
 			settings.AppleExtensions = appleExtensions
+			settings.AdvertiseMdns = advertiseMdns
 
 			if err := tx.Save(&settings).Error; err != nil {
 				return fmt.Errorf("failed to update Samba settings: %w", err)
@@ -200,7 +202,7 @@ func (s *Service) SetGlobalConfig(
 					return fmt.Errorf("mdns service dependency is unavailable")
 				}
 				if err := s.EnsureMdnsEnabled(tx); err != nil {
-					return fmt.Errorf("failed to enable mdns for Apple extensions: %w", err)
+					return fmt.Errorf("failed to enable mdns for Samba advertisements: %w", err)
 				}
 			}
 
@@ -725,11 +727,12 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 		// Per-share audit config
 		if share.AuditEnabled && len(share.AuditedOperations) > 0 {
 			config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
-			config.WriteString("\tfull_audit:log = /var/log/samba4/audit.log\n")
 			opsStr := strings.Join(share.AuditedOperations, " ")
 			config.WriteString(fmt.Sprintf("\tfull_audit:success = %s\n", opsStr))
 			config.WriteString(fmt.Sprintf("\tfull_audit:failure = %s\n", opsStr))
-			config.WriteString("\tfull_audit:syslog = false\n")
+			config.WriteString("\tfull_audit:syslog = true\n")
+			config.WriteString("\tfull_audit:facility = LOCAL5\n")
+			config.WriteString("\tfull_audit:priority = NOTICE\n")
 			config.WriteString("\tfull_audit:log_secdesc = true\n")
 		}
 

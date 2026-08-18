@@ -26,6 +26,7 @@ type SambaConfigRequest struct {
 	Interfaces         string `json:"interfaces"`
 	BindInterfacesOnly bool   `json:"bindInterfacesOnly"`
 	AppleExtensions    bool   `json:"appleExtensions"`
+	AdvertiseMdns      bool   `json:"advertiseMdns"`
 }
 
 func sambaConfigServiceErrorStatus(err error) int {
@@ -99,7 +100,8 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			req.ServerString,
 			req.Interfaces,
 			req.BindInterfacesOnly,
-			req.AppleExtensions)
+			req.AppleExtensions,
+			req.AdvertiseMdns)
 
 		if err != nil {
 			c.JSON(sambaConfigServiceErrorStatus(err), internal.APIResponse[any]{

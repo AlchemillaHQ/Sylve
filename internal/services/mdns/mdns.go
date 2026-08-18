@@ -12,10 +12,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
@@ -30,10 +32,12 @@ import (
 var _ mdnsInterfaces.MdnsServiceInterface = (*Service)(nil)
 
 var (
-	ErrInvalidRecord  = errors.New("invalid mDNS record")
-	ErrRecordNotFound = errors.New("mDNS record not found")
-	ErrRecordConflict = errors.New("mDNS record conflicts with an existing record")
-	recordTypePattern = regexp.MustCompile(`^_[a-z0-9-]+\._(tcp|udp)$`)
+	ErrInvalidRecord    = errors.New("invalid mDNS record")
+	ErrInvalidSettings  = errors.New("invalid mDNS settings")
+	ErrRecordNotFound   = errors.New("mDNS record not found")
+	ErrRecordConflict   = errors.New("mDNS record conflicts with an existing record")
+	recordTypePattern   = regexp.MustCompile(`^_[a-z0-9-]+\._(tcp|udp)$`)
+	mdnsInterfaceByName = net.InterfaceByName
 )
 
 type Service struct {
@@ -164,9 +168,12 @@ func (s *Service) gatherManagedRecords(db *gorm.DB) ([]mdnsInterfaces.MdnsRecord
 	if err := db.First(&sambaSettings).Error; err != nil {
 		sambaSettings.AppleExtensions = false
 	}
+	if !sambaSettings.AdvertiseMdns {
+		return records, nil
+	}
 
 	var shares []sambaModels.SambaShare
-	if err := db.Where("enabled = ?", true).Find(&shares).Error; err != nil {
+	if err := db.Where("enabled = ?", true).Order("name ASC").Find(&shares).Error; err != nil {
 		return nil, err
 	}
 
@@ -185,7 +192,7 @@ func (s *Service) gatherManagedRecords(db *gorm.DB) ([]mdnsInterfaces.MdnsRecord
 		})
 	}
 
-	if sambaSettings.AppleExtensions {
+	if hasShares && sambaSettings.AppleExtensions {
 		records = append(records, mdnsInterfaces.MdnsRecordWithManaged{
 			MdnsRecord: mdnsModels.MdnsRecord{
 				Name: host,
@@ -268,7 +275,7 @@ func buildMdnsServices(
 	seen := map[string]bool{}
 	var services []dnssd.Service
 	for _, r := range records {
-		key := fmt.Sprintf("%s|%s", r.Name, r.Type)
+		key := recordIdentity(r.Name, r.Type)
 		if seen[key] {
 			logger.L.Warn().Str("name", r.Name).Str("type", r.Type).Msg("duplicate mdns record, skipping")
 			continue
@@ -456,6 +463,9 @@ func (s *Service) applyMutationLocked(
 }
 
 func (s *Service) SetSettings(interfaces, hostname string) error {
+	if err := validateSettingsInput(interfaces, hostname); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -484,6 +494,9 @@ func (s *Service) SetSettings(interfaces, hostname string) error {
 }
 
 func (s *Service) GetRecords() ([]mdnsInterfaces.MdnsRecordWithManaged, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	managed, err := s.gatherManagedRecords(s.DB)
 	if err != nil {
 		return nil, err
@@ -492,12 +505,33 @@ func (s *Service) GetRecords() ([]mdnsInterfaces.MdnsRecordWithManaged, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(managed, user...), nil
+	records := append(managed, user...)
+	active := make(map[string]struct{})
+	if s.activeState != nil && s.activeState.enabled {
+		for _, record := range s.activeState.records {
+			active[recordIdentity(record.Name, record.Type)] = struct{}{}
+		}
+	}
+	reported := make(map[string]struct{})
+	for i := range records {
+		identity := recordIdentity(records[i].Name, records[i].Type)
+		_, isActive := active[identity]
+		_, alreadyReported := reported[identity]
+		records[i].Active = isActive && !alreadyReported
+		if records[i].Active {
+			reported[identity] = struct{}{}
+		}
+	}
+	return records, nil
+}
+
+func recordIdentity(name, recordType string) string {
+	return strings.ToLower(name) + "\x00" + strings.ToLower(recordType)
 }
 
 func (s *Service) ensureRecordIdentityAvailable(db *gorm.DB, excludeID uint, name, recordType string) error {
 	query := db.Model(&mdnsModels.MdnsRecord{}).
-		Where("name = ? AND type = ?", name, recordType)
+		Where("LOWER(name) = LOWER(?) AND LOWER(type) = LOWER(?)", name, recordType)
 	if excludeID != 0 {
 		query = query.Where("id <> ?", excludeID)
 	}
@@ -515,7 +549,7 @@ func (s *Service) ensureRecordIdentityAvailable(db *gorm.DB, excludeID uint, nam
 		return fmt.Errorf("failed to check managed mdns record identities: %w", err)
 	}
 	for _, record := range managed {
-		if record.Name == name && record.Type == recordType {
+		if recordIdentity(record.Name, record.Type) == recordIdentity(name, recordType) {
 			return fmt.Errorf(
 				"%w: name %q and type %q are managed by %s",
 				ErrRecordConflict,
@@ -530,7 +564,7 @@ func (s *Service) ensureRecordIdentityAvailable(db *gorm.DB, excludeID uint, nam
 }
 
 func (s *Service) CreateRecord(name, recordType string, port int, txt map[string]string, interfaces string) (mdnsModels.MdnsRecord, error) {
-	if err := validateRecordInput(name, recordType, port); err != nil {
+	if err := validateRecordInput(name, recordType, port, txt, interfaces); err != nil {
 		return mdnsModels.MdnsRecord{}, err
 	}
 
@@ -578,7 +612,7 @@ func (s *Service) CreateRecord(name, recordType string, port int, txt map[string
 }
 
 func (s *Service) UpdateRecord(id uint, name, recordType string, port int, txt map[string]string, interfaces string) error {
-	if err := validateRecordInput(name, recordType, port); err != nil {
+	if err := validateRecordInput(name, recordType, port, txt, interfaces); err != nil {
 		return err
 	}
 
@@ -685,15 +719,70 @@ func (s *Service) DeleteRecord(id uint) error {
 	})
 }
 
-func validateRecordInput(name, recordType string, port int) error {
-	if name == "" {
+func validateRecordInput(name, recordType string, port int, txt map[string]string, interfaces string) error {
+	if strings.TrimSpace(name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidRecord)
+	}
+	if !utf8.ValidString(name) || len([]byte(name)) > 63 || strings.ContainsAny(name, "\x00\r\n") {
+		return fmt.Errorf("%w: name must be valid UTF-8, at most 63 bytes, and contain no control line breaks", ErrInvalidRecord)
 	}
 	if !recordTypePattern.MatchString(recordType) {
 		return fmt.Errorf("%w: invalid record type %q: must match _name._tcp or _name._udp", ErrInvalidRecord, recordType)
 	}
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("%w: port must be between 1 and 65535", ErrInvalidRecord)
+	}
+	for key, value := range txt {
+		if key == "" || strings.ContainsAny(key, "=\x00\r\n") {
+			return fmt.Errorf("%w: TXT keys must be non-empty and cannot contain '=' or control line breaks", ErrInvalidRecord)
+		}
+		if len([]byte(key+"="+value)) > 255 {
+			return fmt.Errorf("%w: TXT entry %q exceeds 255 bytes", ErrInvalidRecord, key)
+		}
+	}
+	if err := validateInterfaces(interfaces); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidRecord, err)
+	}
+	return nil
+}
+
+func validateSettingsInput(interfaces, hostname string) error {
+	if err := validateInterfaces(interfaces); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSettings, err)
+	}
+	if hostname == "" {
+		return nil
+	}
+	if len(hostname) > 253 || strings.ContainsAny(hostname, "\x00\r\n") {
+		return fmt.Errorf("%w: invalid target hostname", ErrInvalidSettings)
+	}
+	for _, label := range strings.Split(strings.TrimSuffix(hostname, "."), ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return fmt.Errorf("%w: invalid target hostname", ErrInvalidSettings)
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+				return fmt.Errorf("%w: invalid target hostname", ErrInvalidSettings)
+			}
+		}
+	}
+	return nil
+}
+
+func validateInterfaces(interfaces string) error {
+	seen := make(map[string]struct{})
+	for _, name := range strings.Split(interfaces, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		if _, err := mdnsInterfaceByName(name); err != nil {
+			return fmt.Errorf("network interface %q does not exist", name)
+		}
 	}
 	return nil
 }

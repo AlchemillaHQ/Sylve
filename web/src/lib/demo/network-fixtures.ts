@@ -968,7 +968,8 @@ function createState(hostname: string): DemoNetworkState {
 				createdAt,
 				updatedAt,
 				managed: false,
-				source: 'user'
+				source: 'user',
+				active: true
 			},
 			{
 				id: 2,
@@ -980,7 +981,8 @@ function createState(hostname: string): DemoNetworkState {
 				createdAt,
 				updatedAt,
 				managed: true,
-				source: 'samba'
+				source: 'samba',
+				active: true
 			}
 		],
 		dynamicDNSEntries: [
@@ -2127,7 +2129,8 @@ export function handleDemoNetworkRequest<T = unknown>(
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 			managed: false,
-			source: 'user'
+			source: 'user',
+			active: true
 		});
 		return mutationSuccess('mdns_record_created', 201) as DemoNetworkResponse<T>;
 	}

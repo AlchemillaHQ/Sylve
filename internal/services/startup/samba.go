@@ -69,17 +69,6 @@ func (s *Service) InitSamba(ctx context.Context) error {
 		return err
 	}
 
-	if exists, err := utils.FileExists("/var/log/samba4/audit.log"); err != nil {
-		return err
-	} else if !exists {
-		if err := os.MkdirAll("/var/log/samba4", 0755); err != nil {
-			return err
-		}
-		if _, err := os.Create("/var/log/samba4/audit.log"); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

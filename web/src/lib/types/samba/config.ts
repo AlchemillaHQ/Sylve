@@ -7,7 +7,8 @@ export const SambaConfigSchema = z.object({
 	serverString: z.string().default('Sylve SMB Server'),
 	interfaces: z.string().default('lo0'),
 	bindInterfacesOnly: z.boolean().default(true),
-	appleExtensions: z.boolean().default(false)
+	appleExtensions: z.boolean().default(false),
+	advertiseMdns: z.boolean().default(true)
 });
 
 export type SambaConfig = z.infer<typeof SambaConfigSchema>;

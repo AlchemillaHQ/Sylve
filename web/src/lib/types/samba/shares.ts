@@ -38,6 +38,7 @@ export const SambaShareSchema = z.object({
 	timeMachine: z.boolean().default(false),
 	timeMachineMaxSize: z.number().default(0),
 	auditEnabled: z.boolean().default(false),
+	auditRetentionDays: z.number().int().min(0).default(70),
 	auditedOperations: z.array(z.string()).default([]),
 	createdAt: z.string(),
 	updatedAt: z.string()

@@ -86,7 +86,7 @@ func TestUpdateShareCanDisableShareWithMissingDataset(t *testing.T) {
 	enabled := false
 	if err := svc.UpdateShare(
 		context.Background(), uint(share.ID), share.Name, share.Dataset,
-		nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, nil, &enabled,
+		nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, &enabled,
 	); err != nil {
 		t.Fatalf("UpdateShare failed: %v", err)
 	}
@@ -128,6 +128,7 @@ func TestCreateShareReturnsDatasetConflictBeforeDBDuplicate(t *testing.T) {
 		false,
 		0,
 		false,
+		70,
 		nil,
 		true,
 	)

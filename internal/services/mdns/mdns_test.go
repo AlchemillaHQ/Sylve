@@ -13,7 +13,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -110,6 +112,11 @@ type mdnsMutationFixture struct {
 
 func newMDNSMutationFixture(t *testing.T, responders ...*fakeResponder) *mdnsMutationFixture {
 	t.Helper()
+	previousInterfaceByName := mdnsInterfaceByName
+	mdnsInterfaceByName = func(name string) (*net.Interface, error) {
+		return &net.Interface{Name: name, Index: 1}, nil
+	}
+	t.Cleanup(func() { mdnsInterfaceByName = previousInterfaceByName })
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -337,22 +344,58 @@ func TestGetSettingsDoesNotCreateMissingSettings(t *testing.T) {
 }
 
 func TestValidateRecordInputClassifiesInvalidRecords(t *testing.T) {
+	previousInterfaceByName := mdnsInterfaceByName
+	mdnsInterfaceByName = func(name string) (*net.Interface, error) {
+		if name == "em0" {
+			return &net.Interface{Name: name, Index: 1}, nil
+		}
+		return nil, errors.New("not found")
+	}
+	t.Cleanup(func() { mdnsInterfaceByName = previousInterfaceByName })
+
 	tests := []struct {
 		name       string
 		recordName string
 		recordType string
 		port       int
+		txt        map[string]string
+		interfaces string
 	}{
 		{name: "missing name", recordType: "_test._tcp", port: 1234},
 		{name: "invalid type", recordName: "test", recordType: "test", port: 1234},
 		{name: "invalid port", recordName: "test", recordType: "_test._tcp", port: 0},
+		{name: "invalid TXT key", recordName: "test", recordType: "_test._tcp", port: 1234, txt: map[string]string{"bad=key": "value"}},
+		{name: "oversized TXT entry", recordName: "test", recordType: "_test._tcp", port: 1234, txt: map[string]string{"key": strings.Repeat("x", 252)}},
+		{name: "missing interface", recordName: "test", recordType: "_test._tcp", port: 1234, interfaces: "missing0"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateRecordInput(test.recordName, test.recordType, test.port)
+			err := validateRecordInput(test.recordName, test.recordType, test.port, test.txt, test.interfaces)
 			if err == nil || !errors.Is(err, ErrInvalidRecord) {
 				t.Fatalf("expected ErrInvalidRecord, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateSettingsInputClassifiesInvalidSettings(t *testing.T) {
+	previousInterfaceByName := mdnsInterfaceByName
+	mdnsInterfaceByName = func(string) (*net.Interface, error) { return nil, errors.New("not found") }
+	t.Cleanup(func() { mdnsInterfaceByName = previousInterfaceByName })
+
+	for _, test := range []struct {
+		name       string
+		interfaces string
+		hostname   string
+	}{
+		{name: "missing interface", interfaces: "missing0"},
+		{name: "invalid hostname", hostname: "bad_host"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateSettingsInput(test.interfaces, test.hostname)
+			if err == nil || !errors.Is(err, ErrInvalidSettings) {
+				t.Fatalf("expected ErrInvalidSettings, got %v", err)
 			}
 		})
 	}
@@ -392,6 +435,10 @@ func TestCreateRecordRejectsDuplicateIdentity(t *testing.T) {
 	if err == nil || !errors.Is(err, ErrRecordConflict) {
 		t.Fatalf("expected duplicate create to return ErrRecordConflict, got %v", err)
 	}
+	_, err = service.CreateRecord("Printer", "_ipp._tcp", 8631, map[string]string{}, "")
+	if err == nil || !errors.Is(err, ErrRecordConflict) {
+		t.Fatalf("expected case-insensitive duplicate create to return ErrRecordConflict, got %v", err)
+	}
 
 	created, err := service.CreateRecord("printer", "_printer._tcp", 9100, map[string]string{}, "")
 	if err != nil {
@@ -404,6 +451,20 @@ func TestCreateRecordRejectsDuplicateIdentity(t *testing.T) {
 	directDuplicate := mdnsModels.MdnsRecord{Name: existing.Name, Type: existing.Type, Port: 9999}
 	if err := db.Create(&directDuplicate).Error; err == nil {
 		t.Fatal("expected the database identity index to reject a duplicate")
+	}
+}
+
+func TestBuildMdnsServicesDeduplicatesIdentityCaseInsensitively(t *testing.T) {
+	records := []mdnsInterfaces.MdnsRecordWithManaged{
+		{MdnsRecord: mdnsModels.MdnsRecord{Name: "Printer", Type: "_ipp._tcp", Port: 631}},
+		{MdnsRecord: mdnsModels.MdnsRecord{Name: "printer", Type: "_ipp._tcp", Port: 8631}},
+	}
+	services, err := buildMdnsServices(records, mdnsModels.MdnsSettings{})
+	if err != nil {
+		t.Fatalf("build mDNS services: %v", err)
+	}
+	if len(services) != 1 {
+		t.Fatalf("case-insensitive duplicate produced %d services", len(services))
 	}
 }
 
@@ -577,9 +638,76 @@ func TestGatherManagedRecordsSkipsDisabledSambaShares(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gathering managed records failed: %v", err)
 	}
-	if len(records) != 1 || records[0].Type != "_device-info._tcp" {
+	if len(records) != 0 {
 		t.Fatalf("disabled share produced service records: %+v", records)
 	}
+}
+
+func TestGatherManagedRecordsHonorsAutomaticAdvertisingToggle(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&models.BasicSettings{},
+		&sambaModels.SambaSettings{},
+		&sambaModels.SambaShare{},
+	)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.SambaServer}}).Error; err != nil {
+		t.Fatalf("failed to create basic settings: %v", err)
+	}
+	settings := sambaModels.SambaSettings{}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("failed to create samba settings: %v", err)
+	}
+	if err := db.Model(&settings).Update("advertise_mdns", false).Error; err != nil {
+		t.Fatalf("failed to disable automatic advertising: %v", err)
+	}
+	if err := db.Create(&sambaModels.SambaShare{Name: "documents", Dataset: "tank/documents", Enabled: true}).Error; err != nil {
+		t.Fatalf("failed to create samba share: %v", err)
+	}
+
+	records, err := (&Service{DB: db}).gatherManagedRecords(db)
+	if err != nil {
+		t.Fatalf("gathering managed records failed: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("automatic advertising toggle produced managed records: %+v", records)
+	}
+}
+
+func TestGatherManagedRecordsOrdersMultipleTimeMachineShares(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&models.BasicSettings{},
+		&sambaModels.SambaSettings{},
+		&sambaModels.SambaShare{},
+	)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.SambaServer}}).Error; err != nil {
+		t.Fatalf("failed to create basic settings: %v", err)
+	}
+	if err := db.Create(&sambaModels.SambaSettings{AppleExtensions: true}).Error; err != nil {
+		t.Fatalf("failed to create samba settings: %v", err)
+	}
+	for _, share := range []sambaModels.SambaShare{
+		{Name: "zeta", Dataset: "tank/zeta", Enabled: true, TimeMachine: true},
+		{Name: "alpha", Dataset: "tank/alpha", Enabled: true, TimeMachine: true},
+	} {
+		if err := db.Create(&share).Error; err != nil {
+			t.Fatalf("failed to create share %q: %v", share.Name, err)
+		}
+	}
+
+	records, err := (&Service{DB: db}).gatherManagedRecords(db)
+	if err != nil {
+		t.Fatalf("gathering managed records failed: %v", err)
+	}
+	for _, record := range records {
+		if record.Type == "_adisk._tcp" {
+			if record.Txt["dk0"] != "adVN=alpha,adVF=0x82" || record.Txt["dk1"] != "adVN=zeta,adVF=0x82" {
+				t.Fatalf("unexpected deterministic adisk records: %#v", record.Txt)
+			}
+			return
+		}
+	}
+	t.Fatal("missing _adisk._tcp record")
 }
 
 func TestGetRecordsSkipsManagedRecordsWhenSambaIsDisabled(t *testing.T) {
@@ -616,6 +744,42 @@ func TestGetRecordsSkipsManagedRecordsWhenSambaIsDisabled(t *testing.T) {
 	}
 	if records[0].Managed || records[0].Name != "custom" {
 		t.Fatalf("unexpected record while Samba is disabled: %+v", records[0])
+	}
+}
+
+func TestGetRecordsReportsPublishedState(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&models.BasicSettings{},
+		&mdnsModels.MdnsRecord{},
+	)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Mdns}}).Error; err != nil {
+		t.Fatalf("failed to create basic settings: %v", err)
+	}
+	for _, record := range []mdnsModels.MdnsRecord{
+		{Name: "active-service", Type: "_active._tcp", Port: 1234},
+		{Name: "pending-service", Type: "_pending._tcp", Port: 5678},
+	} {
+		if err := db.Create(&record).Error; err != nil {
+			t.Fatalf("failed to create user record: %v", err)
+		}
+	}
+
+	service := &Service{
+		DB: db,
+		activeState: &mdnsActivationState{
+			enabled: true,
+			records: []mdnsInterfaces.MdnsRecordWithManaged{{
+				MdnsRecord: mdnsModels.MdnsRecord{Name: "active-service", Type: "_active._tcp", Port: 1234},
+			}},
+		},
+	}
+	records, err := service.GetRecords()
+	if err != nil {
+		t.Fatalf("getting mDNS records failed: %v", err)
+	}
+	if len(records) != 2 || !records[0].Active || records[1].Active {
+		t.Fatalf("unexpected active flags: %+v", records)
 	}
 }
 

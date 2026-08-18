@@ -27,7 +27,8 @@ export type MdnsRecord = z.infer<typeof MdnsRecordSchema>;
 
 export const MdnsRecordWithManagedSchema = MdnsRecordSchema.extend({
 	managed: z.boolean(),
-	source: z.string()
+	source: z.string(),
+	active: z.boolean().default(false)
 });
 
 export type MdnsRecordWithManaged = z.infer<typeof MdnsRecordWithManagedSchema>;

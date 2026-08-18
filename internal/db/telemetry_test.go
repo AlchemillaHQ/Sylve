@@ -28,7 +28,7 @@ func TestMigrateSambaAuditLogsToTelemetryCopiesRowsAndDropsLegacyTable(t *testin
 	mainDB := openSQLiteFileDB(t, mainPath)
 	telemetryDB := openSQLiteFileDB(t, telemetryPath)
 
-	if err := mainDB.AutoMigrate(&models.Migrations{}, &sambaModels.SambaAuditLog{}); err != nil {
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{}); err != nil {
 		t.Fatalf("failed to migrate legacy db tables: %v", err)
 	}
 	if err := telemetryDB.AutoMigrate(&sambaModels.SambaAuditLog{}); err != nil {
@@ -36,6 +36,13 @@ func TestMigrateSambaAuditLogsToTelemetryCopiesRowsAndDropsLegacyTable(t *testin
 	}
 
 	now := time.Now().UTC().Truncate(time.Second)
+	shares := []sambaModels.SambaShare{
+		{Name: "alpha", Dataset: "alpha-guid", AuditRetentionDays: sambaModels.AuditRetentionDaysPointer(14)},
+		{Name: "beta", Dataset: "beta-guid", AuditRetentionDays: sambaModels.AuditRetentionDaysPointer(0)},
+	}
+	if err := mainDB.Create(&shares).Error; err != nil {
+		t.Fatalf("failed to seed Samba shares: %v", err)
+	}
 	legacyRows := []sambaModels.SambaAuditLog{
 		{
 			ID:        11,
@@ -83,6 +90,12 @@ func TestMigrateSambaAuditLogsToTelemetryCopiesRowsAndDropsLegacyTable(t *testin
 	}
 	if got[0].ID != 11 || got[1].ID != 12 {
 		t.Fatalf("expected legacy IDs to be preserved, got ids: %d, %d", got[0].ID, got[1].ID)
+	}
+	if got[0].ShareID != uint(shares[0].ID) || sambaModels.AuditRetentionDaysValue(got[0].RetentionDays) != 14 {
+		t.Fatalf("alpha audit retention metadata was not migrated: %+v", got[0])
+	}
+	if got[1].ShareID != uint(shares[1].ID) || sambaModels.AuditRetentionDaysValue(got[1].RetentionDays) != 0 {
+		t.Fatalf("beta unlimited audit retention was not migrated: %+v", got[1])
 	}
 
 	if mainDB.Migrator().HasTable(&sambaModels.SambaAuditLog{}) {

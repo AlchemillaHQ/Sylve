@@ -38,6 +38,7 @@
 		| 'createMask'
 		| 'directoryMask'
 		| 'timeMachineMaxSize'
+		| 'auditRetentionDays'
 		| 'audit';
 	type FormErrors = Partial<Record<FormErrorField, string>>;
 
@@ -55,6 +56,7 @@
 		timeMachine: boolean;
 		timeMachineMaxSize: number;
 		auditEnabled: boolean;
+		auditRetentionDays: number;
 		auditedOperations: { open: boolean; value: string[] };
 	}
 
@@ -86,7 +88,7 @@
 	const TAB_FIELDS: Record<ShareTab, FormErrorField[]> = {
 		details: ['name', 'dataset'],
 		access: ['access'],
-		options: ['createMask', 'directoryMask', 'timeMachineMaxSize', 'audit']
+		options: ['createMask', 'directoryMask', 'timeMachineMaxSize', 'auditRetentionDays', 'audit']
 	};
 
 	const FIELD_TABS: Record<FormErrorField, ShareTab> = {
@@ -96,6 +98,7 @@
 		createMask: 'options',
 		directoryMask: 'options',
 		timeMachineMaxSize: 'options',
+		auditRetentionDays: 'options',
 		audit: 'options'
 	};
 
@@ -148,6 +151,7 @@
 			timeMachine: share?.timeMachine ?? false,
 			timeMachineMaxSize: share?.timeMachineMaxSize ?? 0,
 			auditEnabled: share?.auditEnabled ?? false,
+			auditRetentionDays: share?.auditRetentionDays ?? 70,
 			auditedOperations: {
 				open: false,
 				value: share?.auditedOperations ?? []
@@ -326,6 +330,15 @@
 		if (form.auditEnabled && form.auditedOperations.value.length === 0) {
 			return showValidationError('audit', 'Select at least one operation to audit');
 		}
+		if (
+			form.auditEnabled &&
+			(!Number.isInteger(form.auditRetentionDays) || form.auditRetentionDays < 0)
+		) {
+			return showValidationError(
+				'auditRetentionDays',
+				'Retention must be a whole number of 0 or more'
+			);
+		}
 
 		return true;
 	}
@@ -381,6 +394,7 @@
 				form.timeMachine,
 				form.timeMachine ? form.timeMachineMaxSize : 0,
 				form.auditEnabled,
+				form.auditRetentionDays,
 				form.auditEnabled ? form.auditedOperations.value : []
 			);
 		} else {
@@ -395,6 +409,7 @@
 				form.timeMachine,
 				form.timeMachine ? form.timeMachineMaxSize : 0,
 				form.auditEnabled,
+				form.auditRetentionDays,
 				form.auditEnabled ? form.auditedOperations.value : []
 			);
 		}
@@ -783,6 +798,16 @@
 										classes="space-y-1.5"
 										buttonClass={errors.audit ? 'h-9 border-destructive' : 'h-9'}
 										width="w-full"
+									/>
+									<CustomValueInput
+										label="Retention Days"
+										placeholder="70"
+										bind:value={form.auditRetentionDays}
+										onChange={() => clearError('auditRetentionDays')}
+										classes="space-y-1.5"
+										inputClasses={errors.auditRetentionDays ? 'border-destructive' : ''}
+										hint="Use 0 to keep audit records forever. Whole numbers only."
+										type="number"
 									/>
 								{/if}
 							</div>

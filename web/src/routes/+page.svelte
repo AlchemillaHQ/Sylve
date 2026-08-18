@@ -199,6 +199,14 @@
 <span class="icon-[mdi--file-plus]"></span>
 <span class="icon-[mdi--rename]"></span>
 <span class="icon-[mdi--file]"></span>
+<span class="icon-[mdi--lan-connect]"></span>
+<span class="icon-[mdi--lan-disconnect]"></span>
+<span class="icon-[mdi--folder-plus-outline]"></span>
+<span class="icon-[mdi--file-lock-open-outline]"></span>
+<span class="icon-[mdi--file-lock-outline]"></span>
+<span class="icon-[mdi--file-eye-outline]"></span>
+<span class="icon-[mdi--file-edit-outline]"></span>
+<span class="icon-[mdi--file-question-outline]"></span>
 <span class="icon-[fluent--status-12-filled]"></span>
 <span class="icon-[solar--cpu-bold]"></span>
 <span class="icon-[ph--memory]"></span>

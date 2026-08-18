@@ -27,7 +27,7 @@ import (
 // @Security BearerAuth
 // @Param page query int false "Page number" default(1) minimum(1)
 // @Param size query int false "Page size" default(100) minimum(1)
-// @Param sort[0][field] query string false "Sort field" Enums(id,action,share,path,createdAt,created_at)
+// @Param sort[0][field] query string false "Sort field" Enums(id,action,share,user,client,ip,path,target,occurrences,createdAt,created_at)
 // @Param sort[0][dir] query string false "Sort direction" Enums(asc,desc)
 // @Success 200 {object} internal.APIResponse[sambaServiceInterfaces.AuditLogsResponse] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"

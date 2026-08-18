@@ -18087,7 +18087,12 @@ const docTemplate = `{
                             "id",
                             "action",
                             "share",
+                            "user",
+                            "client",
+                            "ip",
                             "path",
+                            "target",
+                            "occurrences",
                             "createdAt",
                             "created_at"
                         ],
@@ -32661,6 +32666,9 @@ const docTemplate = `{
                 "action": {
                     "type": "string"
                 },
+                "client": {
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -32673,14 +32681,23 @@ const docTemplate = `{
                 "ip": {
                     "type": "string"
                 },
+                "occurrences": {
+                    "type": "integer"
+                },
                 "path": {
                     "type": "string"
                 },
                 "result": {
                     "type": "string"
                 },
+                "retentionDays": {
+                    "type": "integer"
+                },
                 "share": {
                     "type": "string"
+                },
+                "shareId": {
+                    "type": "integer"
                 },
                 "target": {
                     "type": "string"
@@ -32693,6 +32710,9 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_db_models_samba.SambaSettings": {
             "type": "object",
             "properties": {
+                "advertiseMdns": {
+                    "type": "boolean"
+                },
                 "appleExtensions": {
                     "type": "boolean"
                 },
@@ -35554,6 +35574,9 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_mdns.MdnsRecordWithManaged": {
             "type": "object",
             "properties": {
+                "active": {
+                    "type": "boolean"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -36713,6 +36736,9 @@ const docTemplate = `{
             "properties": {
                 "createForce": {
                     "type": "boolean"
+                },
+                "mountpoint": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string",
@@ -40783,6 +40809,9 @@ const docTemplate = `{
                 "auditEnabled": {
                     "type": "boolean"
                 },
+                "auditRetentionDays": {
+                    "type": "integer"
+                },
                 "auditedOperations": {
                     "type": "array",
                     "items": {
@@ -40821,6 +40850,9 @@ const docTemplate = `{
         "internal_handlers_samba.SambaConfigRequest": {
             "type": "object",
             "properties": {
+                "advertiseMdns": {
+                    "type": "boolean"
+                },
                 "appleExtensions": {
                     "type": "boolean"
                 },
@@ -40947,6 +40979,9 @@ const docTemplate = `{
                 "auditEnabled": {
                     "type": "boolean"
                 },
+                "auditRetentionDays": {
+                    "type": "integer"
+                },
                 "auditedOperations": {
                     "type": "array",
                     "items": {
@@ -41004,6 +41039,9 @@ const docTemplate = `{
             "properties": {
                 "auditEnabled": {
                     "type": "boolean"
+                },
+                "auditRetentionDays": {
+                    "type": "integer"
                 },
                 "auditedOperations": {
                     "type": "array",

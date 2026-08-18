@@ -350,7 +350,8 @@ func migrateSambaAuditLogsToTelemetry(mainDB, telemetryDB *gorm.DB, mainDBPath s
 
 func copySambaAuditLogs(mainDB, telemetryDB *gorm.DB, mainDBPath string) error {
 	if mainDBPath != "" {
-		if err := copySambaAuditLogsUsingSQL(telemetryDB, mainDBPath); err == nil {
+		withShares := mainDB.Migrator().HasTable(&sambaModels.SambaShare{})
+		if err := copySambaAuditLogsUsingSQL(telemetryDB, mainDBPath, withShares); err == nil {
 			return nil
 		} else {
 			logger.L.Warn().Err(err).Msg("SQL-level telemetry copy failed, falling back to batched copy")
@@ -360,7 +361,7 @@ func copySambaAuditLogs(mainDB, telemetryDB *gorm.DB, mainDBPath string) error {
 	return copySambaAuditLogsInBatches(mainDB, telemetryDB)
 }
 
-func copySambaAuditLogsUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
+func copySambaAuditLogsUsingSQL(telemetryDB *gorm.DB, mainDBPath string, withShares bool) error {
 	if err := telemetryDB.Exec("ATTACH DATABASE ? AS legacy_main", mainDBPath).Error; err != nil {
 		return fmt.Errorf("failed attaching legacy main database to telemetry db: %w", err)
 	}
@@ -377,12 +378,28 @@ func copySambaAuditLogsUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
 
 	copySQL := `
 		INSERT OR IGNORE INTO samba_audit_logs (
-			"id", "share", "user", "ip", "action", "result", "path", "target", "folder", "created_at"
+			"id", "share_id", "share", "user", "client", "ip", "action", "result", "path", "target", "folder",
+			"occurrences", "retention_days", "created_at"
 		)
 		SELECT
-			"id", "share", "user", "ip", "action", "result", "path", "target", "folder", "created_at"
+			"id", 0, "share", "user", '', "ip", "action", "result", "path", "target", "folder",
+			1, 70, "created_at"
 		FROM legacy_main.samba_audit_logs
 	`
+	if withShares {
+		copySQL = `
+			INSERT OR IGNORE INTO samba_audit_logs (
+				"id", "share_id", "share", "user", "client", "ip", "action", "result", "path", "target", "folder",
+				"occurrences", "retention_days", "created_at"
+			)
+			SELECT
+				logs."id", COALESCE(shares."id", 0), logs."share", logs."user", '', logs."ip", logs."action",
+				logs."result", logs."path", logs."target", logs."folder", 1,
+				COALESCE(shares."audit_retention_days", 70), logs."created_at"
+			FROM legacy_main.samba_audit_logs AS logs
+			LEFT JOIN legacy_main.samba_shares AS shares ON shares."name" = logs."share"
+		`
+	}
 
 	if err := telemetryDB.Exec(copySQL).Error; err != nil {
 		return fmt.Errorf("failed to bulk-copy samba audit logs to telemetry db: %w", err)
@@ -399,12 +416,33 @@ func copySambaAuditLogsUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
 func copySambaAuditLogsInBatches(mainDB, telemetryDB *gorm.DB) error {
 	const batchSize = 2000
 
+	shares := make(map[string]sambaModels.SambaShare)
+	if mainDB.Migrator().HasTable(&sambaModels.SambaShare{}) {
+		var rows []sambaModels.SambaShare
+		if err := mainDB.Select("id", "name", "audit_retention_days").Find(&rows).Error; err != nil {
+			return fmt.Errorf("failed loading Samba shares for audit migration: %w", err)
+		}
+		for _, share := range rows {
+			shares[share.Name] = share
+		}
+	}
+
 	var batch []sambaModels.SambaAuditLog
 	err := mainDB.Model(&sambaModels.SambaAuditLog{}).
 		Order("id ASC").
 		FindInBatches(&batch, batchSize, func(tx *gorm.DB, _ int) error {
 			if len(batch) == 0 {
 				return nil
+			}
+			for i := range batch {
+				batch[i].Occurrences = 1
+				batch[i].RetentionDays = sambaModels.AuditRetentionDaysPointer(sambaModels.DefaultAuditRetentionDays)
+				if share, ok := shares[batch[i].Share]; ok {
+					batch[i].ShareID = uint(share.ID)
+					batch[i].RetentionDays = sambaModels.AuditRetentionDaysPointer(
+						sambaModels.AuditRetentionDaysValue(share.AuditRetentionDays),
+					)
+				}
 			}
 
 			if err := telemetryDB.

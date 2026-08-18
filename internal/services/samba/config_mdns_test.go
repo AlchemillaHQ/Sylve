@@ -88,6 +88,7 @@ func setAppleExtensions(t *testing.T, service *Service, enabled bool) error {
 		"lo0",
 		true,
 		enabled,
+		true,
 	)
 }
 
@@ -100,6 +101,7 @@ func TestSetGlobalConfigClassifiesInvalidInput(t *testing.T) {
 		"lo0",
 		false,
 		false,
+		true,
 	)
 	if !errors.Is(err, ErrInvalidGlobalConfig) {
 		t.Fatalf("expected ErrInvalidGlobalConfig, got %v", err)
@@ -163,7 +165,7 @@ func TestSetGlobalConfigEnablesMdnsForAppleTransition(t *testing.T) {
 	}
 }
 
-func TestSetGlobalConfigPreservesManualMdnsDisable(t *testing.T) {
+func TestSetGlobalConfigEnablesMdnsWheneverAutomaticAdvertisingIsOn(t *testing.T) {
 	stubGlobalConfigDependencies(t)
 	service, _ := newAppleMdnsTestService(t, true, []models.AvailableService{models.SambaServer})
 
@@ -171,8 +173,42 @@ func TestSetGlobalConfigPreservesManualMdnsDisable(t *testing.T) {
 		t.Fatalf("failed to save unchanged Apple extensions: %v", err)
 	}
 
-	if count := mdnsServiceCount(t, service); count != 0 {
-		t.Fatalf("expected a manual mDNS disable to be preserved, got %d entries", count)
+	if count := mdnsServiceCount(t, service); count != 1 {
+		t.Fatalf("expected automatic advertising to enable mDNS, got %d entries", count)
+	}
+}
+
+func TestSetGlobalConfigDisablesOnlyManagedAdvertising(t *testing.T) {
+	stubGlobalConfigDependencies(t)
+	service, _ := newAppleMdnsTestService(
+		t,
+		true,
+		[]models.AvailableService{models.SambaServer, models.Mdns},
+	)
+
+	err := service.SetGlobalConfig(
+		context.Background(),
+		"UTF-8",
+		"WORKGROUP",
+		"Sylve SMB Server",
+		"lo0",
+		true,
+		true,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("failed to disable automatic advertising: %v", err)
+	}
+
+	var settings sambaModels.SambaSettings
+	if err := service.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed to load samba settings: %v", err)
+	}
+	if settings.AdvertiseMdns {
+		t.Fatal("automatic advertising remained enabled")
+	}
+	if count := mdnsServiceCount(t, service); count != 1 {
+		t.Fatalf("disabling managed advertisements changed the global mDNS service: %d entries", count)
 	}
 }
 

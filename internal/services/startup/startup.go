@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -30,6 +31,7 @@ import (
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -230,6 +232,8 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 			if err := ensureServiceStarted("samba_server"); err != nil {
 				logger.L.Error().Err(err).Msg("unable to start samba server")
+			} else if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {
+				logger.L.Warn().Err(err).Str("output", strings.TrimSpace(output)).Msg("unable to reload samba server configuration")
 			}
 		}
 

@@ -31,20 +31,40 @@ type SambaShare struct {
 	TimeMachine        bool           `json:"timeMachine" gorm:"default:false"`
 	TimeMachineMaxSize uint64         `json:"timeMachineMaxSize" gorm:"default:0"`
 	AuditEnabled       bool           `json:"auditEnabled" gorm:"default:false"`
+	AuditRetentionDays *uint32        `json:"auditRetentionDays" gorm:"not null;default:70"`
 	AuditedOperations  []string       `json:"auditedOperations" gorm:"serializer:json;default:'[]'"`
 	CreatedAt          time.Time      `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt          time.Time      `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
 type SambaAuditLog struct {
-	ID        int       `json:"id" gorm:"primaryKey"`
-	Share     string    `json:"share"`
-	User      string    `json:"user"`
-	IP        string    `json:"ip"`
-	Action    string    `json:"action"`
-	Result    string    `json:"result"`
-	Path      string    `json:"path"`
-	Target    string    `json:"target"`
-	Folder    string    `json:"folder"`
-	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	ID            int       `json:"id" gorm:"primaryKey"`
+	ShareID       uint      `json:"shareId" gorm:"index:idx_samba_audit_share_created,priority:1"`
+	Share         string    `json:"share"`
+	User          string    `json:"user" gorm:"index:idx_samba_audit_user_created,priority:1"`
+	Client        string    `json:"client"`
+	IP            string    `json:"ip"`
+	Action        string    `json:"action" gorm:"index:idx_samba_audit_action_created,priority:1"`
+	Result        string    `json:"result"`
+	Path          string    `json:"path"`
+	Target        string    `json:"target"`
+	Folder        string    `json:"folder"`
+	ObjectType    string    `json:"-" gorm:"-"`
+	Disposition   string    `json:"-" gorm:"-"`
+	Occurrences   uint32    `json:"occurrences" gorm:"not null;default:1"`
+	RetentionDays *uint32   `json:"retentionDays" gorm:"not null;default:70;index:idx_samba_audit_retention_created,priority:1"`
+	CreatedAt     time.Time `json:"createdAt" gorm:"autoCreateTime;index:idx_samba_audit_created;index:idx_samba_audit_share_created,priority:2;index:idx_samba_audit_user_created,priority:2;index:idx_samba_audit_action_created,priority:2;index:idx_samba_audit_retention_created,priority:2"`
+}
+
+const DefaultAuditRetentionDays uint32 = 70
+
+func AuditRetentionDaysPointer(days uint32) *uint32 {
+	return &days
+}
+
+func AuditRetentionDaysValue(days *uint32) uint32 {
+	if days == nil {
+		return DefaultAuditRetentionDays
+	}
+	return *days
 }

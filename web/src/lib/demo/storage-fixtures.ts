@@ -120,6 +120,7 @@ type DemoSambaAuditRow = {
 	action: string;
 	path: string;
 	target: string;
+	occurrences?: number;
 	createdAt: string;
 };
 
@@ -1064,7 +1065,8 @@ function seedStorageState(hostname: string): DemoStorageState {
 			serverString: `Sylve storage on ${hostname}`,
 			interfaces: 'vm-production,bridge-lab',
 			bindInterfacesOnly: true,
-			appleExtensions: true
+			appleExtensions: true,
+			advertiseMdns: true
 		},
 		sambaShares: [
 			{
@@ -1082,6 +1084,7 @@ function seedStorageState(hostname: string): DemoStorageState {
 				timeMachine: false,
 				timeMachineMaxSize: 0,
 				auditEnabled: true,
+				auditRetentionDays: 70,
 				auditedOperations: ['create_file', 'mkdirat', 'renameat', 'unlinkat'],
 				createdAt,
 				updatedAt
@@ -1101,6 +1104,7 @@ function seedStorageState(hostname: string): DemoStorageState {
 				timeMachine: true,
 				timeMachineMaxSize: 500 * GIB,
 				auditEnabled: true,
+				auditRetentionDays: 70,
 				auditedOperations: ['create_file', 'renameat', 'unlinkat'],
 				createdAt,
 				updatedAt
@@ -1633,6 +1637,7 @@ function buildSambaShare(
 		timeMachine: booleanValue(body, 'timeMachine', existing?.timeMachine ?? false),
 		timeMachineMaxSize: numberValue(body, 'timeMachineMaxSize', existing?.timeMachineMaxSize ?? 0),
 		auditEnabled: booleanValue(body, 'auditEnabled', existing?.auditEnabled ?? false),
+		auditRetentionDays: numberValue(body, 'auditRetentionDays', existing?.auditRetentionDays ?? 70),
 		auditedOperations: stringArray(body, 'auditedOperations'),
 		createdAt: existing?.createdAt ?? new Date().toISOString(),
 		updatedAt: new Date().toISOString()
@@ -2699,7 +2704,8 @@ export function handleDemoStorageRequest<T = unknown>(
 				'bindInterfacesOnly',
 				state.sambaConfig.bindInterfacesOnly
 			),
-			appleExtensions: booleanValue(body, 'appleExtensions', state.sambaConfig.appleExtensions)
+			appleExtensions: booleanValue(body, 'appleExtensions', state.sambaConfig.appleExtensions),
+			advertiseMdns: booleanValue(body, 'advertiseMdns', state.sambaConfig.advertiseMdns)
 		};
 		return mutationSuccess('samba_config_updated') as DemoStorageResponse<T>;
 	}

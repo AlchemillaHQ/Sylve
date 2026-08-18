@@ -9,10 +9,12 @@
 package mdnsHandlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
 	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
+	mdnsServicePkg "github.com/alchemillahq/sylve/internal/services/mdns"
 
 	"github.com/gin-gonic/gin"
 
@@ -80,7 +82,11 @@ func SetSettings(mdnsService mdnsInterfaces.MdnsServiceInterface) gin.HandlerFun
 		}
 
 		if err := mdnsService.SetSettings(req.Interfaces, req.Hostname); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			status := http.StatusInternalServerError
+			if errors.Is(err, mdnsServicePkg.ErrInvalidSettings) {
+				status = http.StatusBadRequest
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_set_mdns_settings",
 				Error:   err.Error(),

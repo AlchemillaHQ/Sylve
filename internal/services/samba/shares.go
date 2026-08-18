@@ -405,6 +405,7 @@ func (s *Service) CreateShare(
 	timeMachine bool,
 	timeMachineMaxSize uint64,
 	auditEnabled bool,
+	auditRetentionDays uint32,
 	auditedOperations []string,
 	enabled bool,
 ) error {
@@ -500,6 +501,7 @@ func (s *Service) CreateShare(
 		TimeMachine:        timeMachine,
 		TimeMachineMaxSize: timeMachineMaxSize,
 		AuditEnabled:       auditEnabled,
+		AuditRetentionDays: sambaModels.AuditRetentionDaysPointer(auditRetentionDays),
 		AuditedOperations:  auditedOperations,
 		Enabled:            true,
 	}
@@ -568,6 +570,7 @@ func (s *Service) UpdateShare(
 	timeMachine bool,
 	timeMachineMaxSize uint64,
 	auditEnabled bool,
+	auditRetentionDays uint32,
 	auditedOperations []string,
 	enabled *bool,
 ) error {
@@ -759,6 +762,7 @@ func (s *Service) UpdateShare(
 	share.TimeMachine = timeMachine
 	share.TimeMachineMaxSize = timeMachineMaxSize
 	share.AuditEnabled = auditEnabled
+	share.AuditRetentionDays = sambaModels.AuditRetentionDaysPointer(auditRetentionDays)
 	share.AuditedOperations = auditedOperations
 	share.Enabled = desiredEnabled
 
@@ -799,7 +803,19 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return sambaWriteConfig(s, ctx, true)
+	if err := sambaWriteConfig(s, ctx, true); err != nil {
+		return err
+	}
+
+	if s.auditDB().Migrator().HasTable(&sambaModels.SambaAuditLog{}) {
+		if err := s.auditDB().Model(&sambaModels.SambaAuditLog{}).
+			Where("share_id = ?", share.ID).
+			Update("retention_days", auditRetentionDays).Error; err != nil {
+			logger.L.Warn().Err(err).Uint("share_id", uint(share.ID)).Msg("failed to update retention on existing Samba audit records")
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) DeleteShare(ctx context.Context, id uint) error {

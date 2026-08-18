@@ -350,6 +350,41 @@ func TestShareConfigAppleExtensionsDoNotConvertAppleDoubleFiles(t *testing.T) {
 	}
 }
 
+func TestShareConfigUsesSyslogForFullAudit(t *testing.T) {
+	svc, runner := newSambaServiceWithMockRunner(t)
+	share := sambaModels.SambaShare{
+		Name:              "audited",
+		Dataset:           "guid-audited",
+		GuestOk:           true,
+		CreateMask:        "0664",
+		DirectoryMask:     "2775",
+		AuditEnabled:      true,
+		AuditedOperations: []string{"write"},
+	}
+	if err := svc.DB.Create(&share).Error; err != nil {
+		t.Fatalf("create audited share: %v", err)
+	}
+	addDatasetLookupMocks(t, runner, []mockDataset{{Name: "tank/audited", GUID: "guid-audited", Mountpoint: "/mnt/audited"}})
+	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/audited", "", "", nil)
+
+	cfg, err := svc.ShareConfig(context.Background())
+	if err != nil {
+		t.Fatalf("ShareConfig failed: %v", err)
+	}
+	for _, line := range []string{
+		"full_audit:syslog = true",
+		"full_audit:facility = LOCAL5",
+		"full_audit:priority = NOTICE",
+	} {
+		if !strings.Contains(cfg, line) {
+			t.Fatalf("missing %q in:\n%s", line, cfg)
+		}
+	}
+	if strings.Contains(cfg, "full_audit:log =") {
+		t.Fatalf("unsupported full_audit:log emitted in:\n%s", cfg)
+	}
+}
+
 func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 	svc, _ := newSambaServiceWithMockRunner(t)
 
@@ -368,6 +403,7 @@ func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		false,
 		0,
 		false,
+		70,
 		nil,
 		true,
 	)
@@ -409,6 +445,7 @@ func TestUpdateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		false,
 		0,
 		false,
+		70,
 		nil,
 		nil,
 	)
@@ -444,6 +481,7 @@ func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 		false,
 		0,
 		false,
+		70,
 		nil,
 		true,
 	)
@@ -500,6 +538,7 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 		false,
 		0,
 		false,
+		70,
 		nil,
 		true,
 	)

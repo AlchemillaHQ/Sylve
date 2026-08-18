@@ -9,15 +9,13 @@
 package samba
 
 import (
-	"context"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
-	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
-	"github.com/alchemillahq/sylve/internal/logger"
 
 	"gorm.io/gorm"
 )
@@ -35,8 +33,9 @@ type Service struct {
 
 	auditFileOffset int64
 	auditFileMu     sync.Mutex
+	auditFile       *os.File
+	lastAuditLogID  int
 	recentMkdirs    map[string]time.Time
-	auditInsertCh   chan []sambaModels.SambaAuditLog
 }
 
 func NewSambaService(
@@ -46,12 +45,11 @@ func NewSambaService(
 	gzfs *gzfs.Client,
 ) sambaServiceInterfaces.SambaServiceInterface {
 	return &Service{
-		DB:            db,
-		TelemetryDB:   telemetryDB,
-		ZFS:           zfs,
-		GZFS:          gzfs,
-		recentMkdirs:  make(map[string]time.Time),
-		auditInsertCh: make(chan []sambaModels.SambaAuditLog, 64),
+		DB:           db,
+		TelemetryDB:  telemetryDB,
+		ZFS:          zfs,
+		GZFS:         gzfs,
+		recentMkdirs: make(map[string]time.Time),
 	}
 }
 
@@ -61,18 +59,4 @@ func (s *Service) auditDB() *gorm.DB {
 	}
 
 	return s.DB
-}
-
-func (s *Service) auditBatchWriter(ctx context.Context) {
-	auditDB := s.auditDB()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case batch := <-s.auditInsertCh:
-			if err := auditDB.CreateInBatches(&batch, len(batch)).Error; err != nil {
-				logger.L.Error().Err(err).Msg("failed to insert audit log batch")
-			}
-		}
-	}
 }

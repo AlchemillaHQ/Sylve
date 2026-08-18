@@ -5,15 +5,18 @@
 		updateMdnsRecord,
 		deleteMdnsRecord
 	} from '$lib/api/network/mdns';
+	import { getInterfaces } from '$lib/api/network/iface';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { MdnsRecordWithManaged } from '$lib/types/network/mdns';
+	import type { Iface } from '$lib/types/network/iface';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
@@ -23,12 +26,21 @@
 		() => 'mdns-records',
 		async () => await getMdnsRecords()
 	);
+	const networkInterfaces = resource(
+		() => 'network-interfaces',
+		async () => {
+			const result = await getInterfaces();
+			return Array.isArray(result) ? result : ([] as Iface[]);
+		}
+	);
 
 	let modalState = $state({
 		name: '',
 		type: '',
 		port: 0,
 		txt: '',
+		interfaces: [] as string[],
+		interfacesOpen: false,
 		isOpen: false,
 		isEditMode: false,
 		isDeleteOpen: false
@@ -42,6 +54,7 @@
 		modalState.type = '_http._tcp';
 		modalState.port = 80;
 		modalState.txt = '';
+		modalState.interfaces = [];
 		modalState.isOpen = true;
 		modalState.isEditMode = false;
 		editingId = null;
@@ -57,6 +70,12 @@
 					.map(([k, v]) => `${k}=${v}`)
 					.join(',')
 			: '';
+		modalState.interfaces = rec.interfaces
+			? rec.interfaces
+					.split(',')
+					.map((value) => value.trim())
+					.filter(Boolean)
+			: [];
 		modalState.isOpen = true;
 		modalState.isEditMode = true;
 		editingId = rec.id ?? null;
@@ -67,6 +86,8 @@
 		modalState.type = '';
 		modalState.port = 0;
 		modalState.txt = '';
+		modalState.interfaces = [];
+		modalState.interfacesOpen = false;
 		modalState.isOpen = false;
 		modalState.isEditMode = false;
 		modalState.isDeleteOpen = false;
@@ -102,7 +123,7 @@
 				type: modalState.type,
 				port: modalState.port,
 				txt: txtMap,
-				interfaces: ''
+				interfaces: modalState.interfaces.join(',')
 			};
 
 			if (modalState.isEditMode && editingId !== null) {
@@ -147,7 +168,9 @@
 		{ field: 'type', title: 'Type' },
 		{ field: 'port', title: 'Port' },
 		{ field: 'txt_display', title: 'TXT' },
-		{ field: 'source_display', title: 'Source' }
+		{ field: 'interfaces_display', title: 'Interfaces' },
+		{ field: 'source_display', title: 'Source' },
+		{ field: 'active_display', title: 'Active' }
 	]);
 
 	let tableData = $derived.by(() => {
@@ -163,7 +186,9 @@
 				type: r.type,
 				port: r.port,
 				txt_display: txtStr,
+				interfaces_display: r.interfaces || 'Global setting',
 				source_display: r.managed ? 'Managed by Samba' : 'User',
+				active_display: r.active ? 'Yes' : 'No',
 				_managed: r.managed,
 				_record: r
 			};
@@ -257,6 +282,19 @@
 				bind:value={modalState.name}
 				classes="flex-1 space-y-1"
 				type="text"
+			/>
+			<ComboBox
+				bind:open={modalState.interfacesOpen}
+				label="Interfaces"
+				bind:value={modalState.interfaces}
+				data={(networkInterfaces.current ?? []).map((iface) => ({
+					label: iface.description || iface.name,
+					value: iface.name
+				}))}
+				classes="flex-1 space-y-1"
+				placeholder="Use global setting"
+				width="w-full"
+				multiple={true}
 			/>
 			<CustomValueInput
 				label="Type"
