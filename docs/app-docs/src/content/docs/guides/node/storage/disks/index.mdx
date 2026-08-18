@@ -15,7 +15,7 @@ Each parent row represents a disk. Expanded child rows represent its partitions.
 
 Wearout is the percentage of an SSD or NVMe device's rated endurance that the device reports as consumed. A lower value is better. For NVMe, Sylve uses the drive's `Percentage Used` S.M.A.R.T. value. For ATA SSDs, it uses a supported remaining-life attribute and converts it to consumed endurance. SCSI devices can report their wearout directly. Hard disks show `N/A`, and `Unknown` means the drive did not provide a supported, valid value.
 
-![All Disks on the node](./ui.png)
+![Disks table showing parent disks, expanded partitions, capacity, GPT status, model, serial number, and wearout](./ui.png)
 
 ## S.M.A.R.T. values
 
@@ -27,7 +27,7 @@ Select a physical disk and choose **S.M.A.R.T. Values** to inspect the health in
 
 Use these values together with the disk's health status and vendor documentation. A single counter is not a complete diagnosis.
 
-![S.M.A.R.T. Data for an NVMe Disk](./nvme-smart.png)
+![NVMe S.M.A.R.T. values dialog showing health, endurance, temperature, read and write counters, and error information](./nvme-smart.png)
 
 ## S.M.A.R.T. tests
 
@@ -39,11 +39,11 @@ The **Run Test** tab lets you select a test and start it. A **Short** test is a 
 
 The selected test keeps the disk online, but it consumes device resources and can temporarily reduce I/O performance. The duration shown by Sylve is the drive's estimate, not a deadline. Actual time and progress depend on the device, its firmware, and current activity.
 
-![S.M.A.R.T. Test Modal - Run Test Page](./smart-test-run.png)
+![S.M.A.R.T. test dialog with a Short test selected and its estimated duration and disk availability shown](./smart-test-run.png)
 
 While a test is running, the dialog shows its execution state, type, estimated duration, and progress when the drive reports it. A test continues on the device after the dialog is closed. If the device supports aborting tests, Sylve also offers **Abort Test**.
 
-![S.M.A.R.T. Test Modal - Run Test Page - In Progress](./smart-test-run-progress.png)
+![S.M.A.R.T. test dialog showing an in-progress test with execution state, estimated duration, and progress](./smart-test-run-progress.png)
 
 ### Historical results
 
@@ -57,7 +57,7 @@ The **History** tab records the self-test results returned by the device. The ta
 - **First Error**: the reported namespace or first failing logical block address, if available. A completed test with no reported error is shown as `No errors`.
 - **Details**: additional status, remaining progress when stopped, and protocol-specific diagnostic details.
 
-![S.M.A.R.T. Test Modal - Historical Results](./smart-test-historical.png)
+![S.M.A.R.T. test history table with date, test type, result, drive hours, first error, and details](./smart-test-historical.png)
 
 ### Scheduling tests
 
@@ -67,7 +67,7 @@ Schedules require a stable disk identity, such as a unique serial number or LUN 
 
 The example below has an enabled Short test scheduled for every Sunday at 02:00 on the node.
 
-![S.M.A.R.T. Test Modal - Scheduling Tests](./smart-test-schedule.png)
+![S.M.A.R.T. test schedule showing an enabled Short test set to run every Sunday at 02:00](./smart-test-schedule.png)
 
 ## Clearing a partition table
 
@@ -79,7 +79,7 @@ Select the parent disk row, then choose **Clear Partition Table** and confirm th
 To use a whole disk in a ZFS pool, clear existing partition tables first. If you intend to use partitions as ZFS vdevs instead, initialize the disk and create those partitions instead.
 :::
 
-![Clear Partition Table](./wipe-disk.png)
+![Disk actions toolbar with the Clear Partition Table option available for a selected disk](./wipe-disk.png)
 
 ## Initializing GPT
 
@@ -89,7 +89,7 @@ An unused disk without a partition table offers **Initialize GPT**. This creates
 For a whole-disk ZFS pool, leave the disk uninitialized and add the raw disk to the pool. Initialize GPT only when you need a partitioned layout.
 :::
 
-![Initialize GPT](./gpt-opt.png)
+![Disk actions toolbar with the Initialize GPT option available for an unused disk](./gpt-opt.png)
 
 ## Creating partitions
 
@@ -97,13 +97,13 @@ After a disk has a GPT partition table, select its parent row and choose **Creat
 
 This example creates three 32 GiB partitions. The sizes and number of partitions are up to you, provided they fit in the remaining space on the disk.
 
-![Partitioning](./partitioning.png)
+![Create Partition dialog with controls for defining a new partition on a GPT disk](./partitioning.png)
 
 Review the partition list before selecting **Save Partitions**. Saving creates the partitions on the disk, and the new entries then appear as child rows in the table.
 
-![Adding Partitions](./add-parts.png)
+![Partitioning dialog showing three proposed 32 GiB partitions before they are saved](./add-parts.png)
 
-![Post Partitioning](./post-part.png)
+![Disks table showing the newly created partitions as child rows beneath their parent disk](./post-part.png)
 
 :::note
 The **Type** shown for a partition is how the operating system identifies it. It does not by itself format the partition with ZFS or another filesystem. A newly created partition is raw until you assign it to a storage workflow or format it elsewhere.

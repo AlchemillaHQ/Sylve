@@ -114,6 +114,7 @@ export default defineConfig({
                                             label: 'ZFS',
                                             collapsed: true,
                                             items: [
+                                                'guides/node/storage/zfs/dashboard',
                                                 'guides/node/storage/zfs/pools',
                                                 'guides/node/storage/zfs/datasets/filesystems',
                                                 'guides/node/storage/zfs/datasets/volumes',
