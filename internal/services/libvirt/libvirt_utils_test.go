@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -315,11 +316,11 @@ func TestFlashCloudInitMediaToDisk_ConvertsNonRawMedia(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
 	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
-	svc := &Service{DB: db}
 
 	const rid uint = 901
 	const diskID uint = 11
 	const mediaUUID = "cloud-media-qcow2"
+	const poolName = "tank"
 
 	mediaPath := filepath.Join(t.TempDir(), "cloud-image.img")
 	if err := os.WriteFile(mediaPath, []byte("qcow2"), 0o644); err != nil {
@@ -341,11 +342,11 @@ func TestFlashCloudInitMediaToDisk_ConvertsNonRawMedia(t *testing.T) {
 		t.Fatalf("failed to seed download row: %v", err)
 	}
 
-	poolRoot := filepath.Join(t.TempDir(), "pool-qcow2")
-	poolName := strings.TrimPrefix(poolRoot, "/")
-	diskPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", poolName, rid, diskID, diskID)
+	datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", poolName, rid, diskID)
+	mountpoint := filepath.Join(t.TempDir(), fmt.Sprintf("raw-%d", diskID))
+	diskPath := filepath.Join(mountpoint, fmt.Sprintf("%d.img", diskID))
 
-	if err := os.MkdirAll(filepath.Dir(diskPath), 0o755); err != nil {
+	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
 		t.Fatalf("failed to create disk parent dir: %v", err)
 	}
 	if err := os.WriteFile(diskPath, []byte{}, 0o644); err != nil {
@@ -362,7 +363,7 @@ func TestFlashCloudInitMediaToDisk_ConvertsNonRawMedia(t *testing.T) {
 				Type:    vmModels.VMStorageTypeRaw,
 				Enable:  true,
 				Size:    64 * 1024 * 1024,
-				Dataset: vmModels.VMStorageDataset{Pool: poolName},
+				Dataset: vmModels.VMStorageDataset{Pool: poolName, Name: datasetName},
 			},
 			{
 				ID:           diskID + 1,
@@ -372,6 +373,14 @@ func TestFlashCloudInitMediaToDisk_ConvertsNonRawMedia(t *testing.T) {
 			},
 		},
 	}
+	svc := newStorageTestService(db, []string{poolName}, map[string]storageTestDataset{
+		datasetName: {
+			name:       datasetName,
+			pool:       poolName,
+			kind:       gzfs.DatasetTypeFilesystem,
+			mountpoint: mountpoint,
+		},
+	})
 
 	origInspect := inspectDiskImageFormat
 	origFlash := flashImageToDiskCtx
@@ -425,11 +434,11 @@ func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
 	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
-	svc := &Service{DB: db}
 
 	const rid uint = 902
 	const diskID uint = 12
 	const mediaUUID = "cloud-media-raw"
+	const poolName = "tank"
 
 	mediaPath := filepath.Join(t.TempDir(), "cloud-image.raw")
 	if err := os.WriteFile(mediaPath, []byte("raw"), 0o644); err != nil {
@@ -451,11 +460,11 @@ func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
 		t.Fatalf("failed to seed download row: %v", err)
 	}
 
-	poolRoot := filepath.Join(t.TempDir(), "pool-raw")
-	poolName := strings.TrimPrefix(poolRoot, "/")
-	diskPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", poolName, rid, diskID, diskID)
+	datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", poolName, rid, diskID)
+	mountpoint := filepath.Join(t.TempDir(), fmt.Sprintf("raw-%d", diskID))
+	diskPath := filepath.Join(mountpoint, fmt.Sprintf("%d.img", diskID))
 
-	if err := os.MkdirAll(filepath.Dir(diskPath), 0o755); err != nil {
+	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
 		t.Fatalf("failed to create disk parent dir: %v", err)
 	}
 	if err := os.WriteFile(diskPath, []byte{}, 0o644); err != nil {
@@ -472,7 +481,7 @@ func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
 				Type:    vmModels.VMStorageTypeRaw,
 				Enable:  true,
 				Size:    64 * 1024 * 1024,
-				Dataset: vmModels.VMStorageDataset{Pool: poolName},
+				Dataset: vmModels.VMStorageDataset{Pool: poolName, Name: datasetName},
 			},
 			{
 				ID:           diskID + 1,
@@ -482,6 +491,14 @@ func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
 			},
 		},
 	}
+	svc := newStorageTestService(db, []string{poolName}, map[string]storageTestDataset{
+		datasetName: {
+			name:       datasetName,
+			pool:       poolName,
+			kind:       gzfs.DatasetTypeFilesystem,
+			mountpoint: mountpoint,
+		},
+	})
 
 	origInspect := inspectDiskImageFormat
 	origFlash := flashImageToDiskCtx

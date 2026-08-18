@@ -113,7 +113,8 @@ func vmHardwareErrorStatus(err error) int {
 	case vmHardwareErrorHasCode(codes,
 		"domain_not_shutoff", "domain_state_not_shutoff", "core_conflict",
 		"vnc_port_already_in_use_by_another_vm",
-		"vnc_port_already_in_use_by_another_service", "no_free_passthrough_indices"):
+		"vnc_port_already_in_use_by_another_service", "no_free_passthrough_indices",
+		"filesystem_dataset_mountpoint_not_usable"):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError

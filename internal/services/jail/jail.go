@@ -343,12 +343,13 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 			return fmt.Errorf("base_is_not_a_directory")
 		}
 	} else if data.BootstrapName != "" {
-		bootstrapDataset := fmt.Sprintf("%s/sylve/bootstraps/%s", data.Pool, data.BootstrapName)
-		bootstrapMount := fmt.Sprintf("/%s/sylve/bootstraps/%s", data.Pool, data.BootstrapName)
-
 		var bRecord jailModels.JailBootstrap
 		if err := s.DB.Where("pool = ? AND name = ?", data.Pool, data.BootstrapName).First(&bRecord).Error; err != nil {
 			return fmt.Errorf("bootstrap_not_found")
+		}
+		identity, err := canonicalBootstrapIdentity(data.Pool, data.BootstrapName)
+		if err != nil || !bootstrapRecordMatchesIdentity(bRecord, identity) {
+			return fmt.Errorf("bootstrap_record_mismatch")
 		}
 		if bRecord.Status != "completed" {
 			return fmt.Errorf("bootstrap_not_completed")
@@ -357,13 +358,8 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 			return err
 		}
 
-		ds, _ := s.GZFS.ZFS.Get(ctx, bootstrapDataset, false)
-		if ds == nil {
-			return fmt.Errorf("bootstrap_dataset_does_not_exist")
-		}
-
-		if _, err := os.Stat(bootstrapMount); os.IsNotExist(err) {
-			return fmt.Errorf("bootstrap_mount_does_not_exist")
+		if _, err := s.resolveBootstrapMountpoint(ctx, identity); err != nil {
+			return err
 		}
 	} else {
 		return fmt.Errorf("download_uuid_or_bootstrap_name_required")
@@ -1446,7 +1442,6 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}()
 
 	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, ctid)
-	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", data.Pool, ctid)
 
 	var dataset *gzfs.Dataset
 	dataset, err = s.GZFS.ZFS.CreateFilesystem(ctx, datasetName, map[string]string{})
@@ -1457,6 +1452,11 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 
 		err = fmt.Errorf("failed_to_create_jail_dataset: %w", err)
 		return
+	}
+	var mountPoint string
+	mountPoint, err = validateFilesystemDatasetMountpoint(dataset, datasetName, "")
+	if err != nil {
+		return fmt.Errorf("jail_dataset_mountpoint_not_usable: %w", err)
 	}
 
 	var jail jailModels.Jail
@@ -1746,7 +1746,16 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	txCommitted = true
 
 	if data.BootstrapName != "" {
-		bootstrapMount := fmt.Sprintf("/%s/sylve/bootstraps/%s", data.Pool, data.BootstrapName)
+		identity, identityErr := canonicalBootstrapIdentity(data.Pool, data.BootstrapName)
+		if identityErr != nil {
+			err = identityErr
+			return
+		}
+		var bootstrapMount string
+		bootstrapMount, err = s.resolveBootstrapMountpoint(ctx, identity)
+		if err != nil {
+			return
+		}
 		if err = utils.CopyDirContents(bootstrapMount, mountPoint); err != nil {
 			err = fmt.Errorf("failed_to_copy_bootstrap: %w", err)
 			return
@@ -2311,28 +2320,24 @@ func (s *Service) WriteJailJSON(ctId uint) error {
 		return err
 	}
 
-	var mountPoints []string
-	for _, storage := range jail.Storages {
-		if storage.IsBase {
-			mountPoints = append(mountPoints, fmt.Sprintf("/%s/sylve/jails/%d", storage.Pool, ctId))
-		}
+	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
+	if err != nil {
+		return err
 	}
 
-	for _, mountPoint := range mountPoints {
-		sylveDir := filepath.Join(mountPoint, ".sylve")
-		if err := os.MkdirAll(sylveDir, 0755); err != nil {
-			return fmt.Errorf("failed_to_create_.sylve_directory: %w", err)
-		}
+	sylveDir := filepath.Join(mountPoint, ".sylve")
+	if err := os.MkdirAll(sylveDir, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_.sylve_directory: %w", err)
+	}
 
-		jailJsonPath := filepath.Join(sylveDir, "jail.json")
-		jailJsonData, err := json.MarshalIndent(jail, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
-		}
+	jailJsonPath := filepath.Join(sylveDir, "jail.json")
+	jailJsonData, err := json.MarshalIndent(jail, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
+	}
 
-		if err := utils.AtomicWriteFile(jailJsonPath, jailJsonData, 0644); err != nil {
-			return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
-		}
+	if err := utils.AtomicWriteFile(jailJsonPath, jailJsonData, 0644); err != nil {
+		return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
 	}
 
 	return nil

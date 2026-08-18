@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -182,18 +183,15 @@ func (s *Service) ensureShebang(content string) string {
 }
 
 func (s *Service) GetJailBaseMountPoint(ctid uint) (string, error) {
-	cfg, err := s.GetJailConfig(ctid)
+	jail, err := s.GetJailByCTID(ctid)
 	if err != nil {
 		return "", err
 	}
-
-	re := regexp.MustCompile(`path\s*=\s*["']([^"']+)["']`)
-	matches := re.FindStringSubmatch(cfg)
-	if len(matches) < 2 {
-		return "", fmt.Errorf("jail_path_not_found_in_config")
+	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
+	if err != nil {
+		return "", err
 	}
-
-	return matches[1], nil
+	return mountPoint, nil
 }
 
 func (s *Service) AddSylveNetworkToHook(content string, networkContent string) string {

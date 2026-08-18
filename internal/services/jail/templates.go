@@ -835,7 +835,6 @@ func (s *Service) createJailFromTemplateTarget(
 	}
 
 	datasetName := fmt.Sprintf("%s/sylve/jails/%d", target.Pool, target.CTID)
-	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", target.Pool, target.CTID)
 
 	if existing, getErr := s.GZFS.ZFS.Get(ctx, datasetName, false); getErr != nil {
 		if !strings.Contains(strings.ToLower(getErr.Error()), "does not exist") {
@@ -897,6 +896,10 @@ func (s *Service) createJailFromTemplateTarget(
 			}
 		}
 	}()
+	mountPoint, err := validateFilesystemDatasetMountpoint(createdDS, datasetName, "")
+	if err != nil {
+		return fmt.Errorf("jail_dataset_mountpoint_not_usable: %w", err)
+	}
 	snapshotNeedsCleanup := true
 	defer func() {
 		if !snapshotNeedsCleanup {

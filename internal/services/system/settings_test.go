@@ -329,6 +329,10 @@ type settingsPoolRunner struct {
 	destroyed []string
 }
 
+func newSettingsPoolRunner() *settingsPoolRunner {
+	return &settingsPoolRunner{created: map[string]bool{}}
+}
+
 func (r *settingsPoolRunner) writeJSON(stdout io.Writer, value any) error {
 	if stdout == nil {
 		return nil
@@ -347,7 +351,12 @@ func (r *settingsPoolRunner) Run(
 	if name == "zpool" && len(args) > 0 && args[0] == "list" {
 		return r.writeJSON(stdout, map[string]any{
 			"output_version": map[string]any{"command": "zpool list"},
-			"pools":          map[string]any{"tank": map[string]any{"name": "tank"}},
+			"pools": map[string]any{"tank": map[string]any{
+				"name": "tank",
+				"properties": map[string]any{
+					"altroot": map[string]any{"value": "-"},
+				},
+			}},
 		})
 	}
 	if name != "zfs" || len(args) == 0 {
@@ -359,14 +368,14 @@ func (r *settingsPoolRunner) Run(
 		// gzfs appends -j after the dataset name for JSON output.
 		datasetName := args[len(args)-2]
 		datasets := map[string]any{}
-		if r.created[datasetName] {
+		if datasetName == "tank" || r.created[datasetName] {
 			datasets[datasetName] = map[string]any{
 				"name": datasetName,
 				"type": string(gzfs.DatasetTypeFilesystem),
 				"pool": "tank",
 				"properties": map[string]any{
 					"guid":       map[string]any{"value": datasetName + "-guid"},
-					"mountpoint": map[string]any{"value": "/" + datasetName},
+					"mountpoint": map[string]any{"value": "/mnt/" + datasetName},
 				},
 			}
 		}
@@ -404,7 +413,7 @@ func TestAddUsablePoolsCleansCreatedDatasetsWhenPersistenceFails(t *testing.T) {
 		t.Fatalf("failed to install update callback: %v", err)
 	}
 
-	runner := &settingsPoolRunner{created: map[string]bool{}}
+	runner := newSettingsPoolRunner()
 	service := &Service{
 		DB: db,
 		GZFS: gzfs.NewClient(gzfs.Options{

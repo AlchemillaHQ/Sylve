@@ -8,12 +8,14 @@
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getDownloadsResult } from '$lib/api/utilities/downloader';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
+	import { getDatasetsResult } from '$lib/api/zfs/datasets';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CreateData } from '$lib/types/jail/jail';
 	import type { Download } from '$lib/types/utilities/downloader';
+	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import {
 		handleAPIError,
 		isAPIResponse,
@@ -113,6 +115,7 @@
 	let modal: CreateData = $state(structuredClone(options));
 	let lastGoodNetworkSwitches = emptySwitchList();
 	const lastGoodDownloadsByNode: Record<string, Download[]> = Object.create(null);
+	const lastGoodFilesystemsByNode: Record<string, Dataset[]> = Object.create(null);
 
 	let downloads = resource(
 		() => modal.node || '__default__',
@@ -212,6 +215,31 @@
 		}
 	);
 
+	let filesystems = resource(
+		() => modal.node || '__default__',
+		async (node, _previousNode, { signal }) => {
+			const hostname = node === '__default__' ? '' : node;
+			try {
+				const result = await getDatasetsResult(
+					GZFSDatasetTypeSchema.enum.FILESYSTEM,
+					hostname,
+					signal
+				);
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGoodFilesystemsByNode[node] ?? [];
+				}
+				lastGoodFilesystemsByNode[node] = result;
+				await updateCache('zfs-filesystems', result, hostname || undefined);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGoodFilesystemsByNode[node] ?? [];
+				throw error;
+			}
+		},
+		{ initialValue: [] as Dataset[] }
+	);
+
 	let bootstrapRefetch = $state(false);
 
 	let bootstraps = resource(
@@ -255,6 +283,7 @@
 			jails.refetch();
 			nodes.refetch();
 			pools.refetch();
+			filesystems.refetch();
 			bootstraps.refetch();
 		}
 	});
@@ -265,6 +294,7 @@
 			if (!node || node.trim() === '') return;
 			modal.storage.pool = '';
 			modal.storage.base = '';
+			modal.storage.fstab = '';
 			modal.network.switch = 'None';
 			modal.network.mac = 0;
 		}
@@ -418,6 +448,7 @@
 										hostname={modal.node || undefined}
 										downloads={downloads.current}
 										pools={pools.current}
+										datasets={filesystems.current}
 										bootstraps={bootstraps.current}
 										bind:bootstrapRefetch
 										ctId={modal.id}

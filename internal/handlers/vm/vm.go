@@ -107,6 +107,7 @@ type vmDomainLifecycleService interface {
 }
 
 var vmCreateConflictCodes = map[string]struct{}{
+	"filesystem_dataset_mountpoint_not_usable":   {},
 	"mac_object_already_in_use":                  {},
 	"rid_or_name_already_in_use":                 {},
 	"vm_create_stale_artifacts_detected":         {},
@@ -309,6 +310,8 @@ func classifyUpdateVMDescriptionError(err error) (int, string) {
 		return http.StatusForbidden, "replication_lease_not_owned"
 	case strings.Contains(errText, "invalid_description"):
 		return http.StatusBadRequest, "invalid_description"
+	case strings.Contains(errText, "filesystem_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "filesystem_dataset_mountpoint_not_usable"
 	case strings.Contains(errText, "replication_lease_check_failed"):
 		return http.StatusInternalServerError, "replication_lease_check_failed"
 	default:
@@ -418,6 +421,8 @@ func classifyUpdateVMNameError(err error) (int, string) {
 		return http.StatusNotFound, "vm_not_found"
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "filesystem_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "filesystem_dataset_mountpoint_not_usable"
 	}
 
 	code := extractVMCreateErrorCode(errText)

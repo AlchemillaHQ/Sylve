@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
@@ -138,16 +139,34 @@ func (s *Service) findZVOLDatasetByGUID(ctx context.Context, datasetGUID string)
 	return nil, fmt.Errorf("zvol_dataset_not_found: %s", trimmedGUID)
 }
 
-func ensureUsableFilesystemMountpoint(dataset *gzfs.Dataset) (string, error) {
+func (s *Service) resolveFilesystemDatasetMountpoint(ctx context.Context, datasetName string) (string, error) {
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return "", fmt.Errorf("gzfs_not_initialized")
+	}
+
+	datasetName = strings.TrimSpace(datasetName)
+	if datasetName == "" {
+		return "", fmt.Errorf("filesystem_dataset_name_missing")
+	}
+
+	dataset, err := s.GZFS.ZFS.Get(ctx, datasetName, false)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_filesystem_dataset_%s: %w", datasetName, err)
+	}
 	if dataset == nil {
-		return "", fmt.Errorf("filesystem_dataset_not_found")
+		return "", fmt.Errorf("filesystem_dataset_not_found: %s", datasetName)
 	}
-
-	mountpoint := strings.TrimSpace(dataset.Mountpoint)
-	if mountpoint == "" || mountpoint == "-" || mountpoint == "none" || mountpoint == "legacy" {
-		return "", fmt.Errorf("filesystem_dataset_mountpoint_not_usable")
+	if dataset.Name != datasetName {
+		return "", fmt.Errorf(
+			"filesystem_dataset_identity_mismatch: expected=%s actual=%s",
+			datasetName,
+			dataset.Name,
+		)
 	}
-
+	mountpoint, err := zfsutil.FilesystemMountpoint(dataset)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", err, datasetName)
+	}
 	return mountpoint, nil
 }
 
@@ -184,21 +203,7 @@ func (s *Service) resolveFilesystemSourcePathWithDB(
 		return "", fmt.Errorf("filesystem_storage_dataset_name_missing")
 	}
 
-	datasets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, datasetName)
-	if err != nil {
-		return "", fmt.Errorf("failed_to_get_filesystem_dataset_%s: %w", datasetName, err)
-	}
-
-	if len(datasets) == 0 {
-		return "", fmt.Errorf("filesystem_dataset_not_found: %s", datasetName)
-	}
-
-	mountpoint, err := ensureUsableFilesystemMountpoint(datasets[0])
-	if err != nil {
-		return "", fmt.Errorf("%w: %s", err, datasetName)
-	}
-
-	return mountpoint, nil
+	return s.resolveFilesystemDatasetMountpoint(ctx, datasetName)
 }
 
 func (s *Service) resolveRawStorageImagePath(
@@ -224,16 +229,17 @@ func (s *Service) resolveRawStorageImagePath(
 	} else {
 		datasetName := strings.TrimSpace(storage.Dataset.Name)
 		if datasetName == "" {
-			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", storage.Pool, rid, storage.ID)
+			pool := strings.TrimSpace(storage.Pool)
+			if pool == "" {
+				pool = strings.TrimSpace(storage.Dataset.Pool)
+			}
+			if pool == "" {
+				return "", fmt.Errorf("raw_storage_pool_missing")
+			}
+			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", pool, rid, storage.ID)
 		}
-		datasets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, datasetName)
-		if err != nil {
-			return "", fmt.Errorf("failed_to_get_raw_dataset: %w", err)
-		}
-		if len(datasets) == 0 || datasets[0] == nil {
-			return "", fmt.Errorf("filesystem_dataset_not_found: %s", datasetName)
-		}
-		mountpoint, err = ensureUsableFilesystemMountpoint(datasets[0])
+		var err error
+		mountpoint, err = s.resolveFilesystemDatasetMountpoint(ctx, datasetName)
 		if err != nil {
 			return "", fmt.Errorf("failed_to_resolve_raw_dataset_mountpoint: %w", err)
 		}
@@ -376,7 +382,7 @@ func (s *Service) createVMDiskWithDB(
 			!strings.Contains(strings.ToLower(err.Error()), "already mounted") {
 			return cleanupCreatedDataset(fmt.Errorf("failed_to_mount_raw_child_dataset: %w", err))
 		}
-		mountpoint, err := ensureUsableFilesystemMountpoint(dataset)
+		mountpoint, err := zfsutil.FilesystemMountpoint(dataset)
 		if err != nil {
 			return cleanupCreatedDataset(err)
 		}
@@ -670,12 +676,15 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
 		}
 	} else if storage.Type == vmModels.VMStorageTypeRaw {
-		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d/%d.img",
-			storage.Pool,
+		filePath, err = s.resolveRawStorageImagePath(
+			context.Background(),
+			s.DB,
 			rid,
-			storage.ID,
-			storage.ID,
+			storage,
 		)
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_raw_storage_path: %w", err)
+		}
 	} else if storage.Type == vmModels.VMStorageTypeZVol {
 		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
 			storage.Pool,
@@ -1348,7 +1357,7 @@ func (s *Service) storageNewTxWithState(
 		if err != nil {
 			return fmt.Errorf("failed_to_find_filesystem_dataset: %w", err)
 		}
-		if _, err := ensureUsableFilesystemMountpoint(dataset); err != nil {
+		if _, err := zfsutil.FilesystemMountpoint(dataset); err != nil {
 			return fmt.Errorf("failed_to_validate_filesystem_mountpoint: %w", err)
 		}
 

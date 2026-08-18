@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -116,26 +117,15 @@ func (s *Service) mutateJailOption(
 	return mutation(jail)
 }
 
-func jailOptionJSONPaths(jail *jailModels.Jail) []string {
+func (s *Service) jailOptionJSONPath(jail *jailModels.Jail) (string, error) {
 	if jail == nil {
-		return nil
+		return "", fmt.Errorf("jail_not_found")
 	}
-	paths := make([]string, 0, len(jail.Storages))
-	for _, storage := range jail.Storages {
-		if !storage.IsBase {
-			continue
-		}
-		paths = append(paths, filepath.Join(
-			"/",
-			storage.Pool,
-			"sylve",
-			"jails",
-			fmt.Sprintf("%d", jail.CTID),
-			".sylve",
-			"jail.json",
-		))
+	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
+	if err != nil {
+		return "", err
 	}
-	return paths
+	return filepath.Join(mountPoint, ".sylve", "jail.json"), nil
 }
 
 type jailOptionPersistence struct {
@@ -152,7 +142,11 @@ func (s *Service) persistJailOptionMutation(
 	persistence jailOptionPersistence,
 ) error {
 	paths := append([]string{}, persistence.paths...)
-	paths = append(paths, jailOptionJSONPaths(jail)...)
+	jsonPath, err := s.jailOptionJSONPath(jail)
+	if err != nil {
+		return err
+	}
+	paths = append(paths, jsonPath)
 	snapshots, err := captureJailFiles(paths)
 	if err != nil {
 		return err
@@ -945,9 +939,6 @@ func (s *Service) ModifyResolvConf(ctID uint, resolvConf string) error {
 		}
 		mountPoint, err := s.GetJailBaseMountPoint(ctID)
 		if err != nil {
-			if strings.Contains(err.Error(), "jail_path_not_found_in_config") {
-				return fmt.Errorf("jail_path_not_found_in_config: %w", err)
-			}
 			return fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
 		}
 		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
@@ -1179,9 +1170,6 @@ func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Ho
 		hostScriptsDir := filepath.Join(jailDir, "scripts")
 		mountPoint, err := s.GetJailBaseMountPoint(ctID)
 		if err != nil {
-			if strings.Contains(err.Error(), "jail_path_not_found_in_config") {
-				return fmt.Errorf("jail_path_not_found_in_config: %w", err)
-			}
 			return fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
 		}
 		inJailScriptsDir := filepath.Join(mountPoint, "usr", "local", "sylve", "scripts")

@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -413,26 +414,17 @@ func (s *Service) ensureJailHardwareMutationAllowedLocked(ctID uint) (*jailModel
 	return loadJailForHardware(s.DB, ctID)
 }
 
-func captureJailHardwareFiles(
-	ctID uint,
+func (s *Service) captureJailHardwareFiles(
 	jail *jailModels.Jail,
 	configPath string,
 	postStartPath string,
 ) ([]jailFileSnapshot, error) {
 	paths := []string{configPath, postStartPath}
-	for _, storage := range jail.Storages {
-		if storage.IsBase {
-			paths = append(paths, filepath.Join(
-				"/",
-				storage.Pool,
-				"sylve",
-				"jails",
-				fmt.Sprintf("%d", ctID),
-				".sylve",
-				"jail.json",
-			))
-		}
+	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
+	if err != nil {
+		return nil, err
 	}
+	paths = append(paths, filepath.Join(mountPoint, ".sylve", "jail.json"))
 
 	return captureJailFiles(paths)
 }
@@ -642,7 +634,7 @@ func (s *Service) updateJailHardware(
 		return jailServiceInterfaces.JailHardwareResult{}, fmt.Errorf("failed_to_get_jails_path: %w", err)
 	}
 	configPath := filepath.Join(jailsPath, fmt.Sprintf("%d", ctID), fmt.Sprintf("%d.conf", ctID))
-	snapshots, err := captureJailHardwareFiles(ctID, jail, configPath, postStartPath)
+	snapshots, err := s.captureJailHardwareFiles(jail, configPath, postStartPath)
 	if err != nil {
 		return jailServiceInterfaces.JailHardwareResult{}, err
 	}

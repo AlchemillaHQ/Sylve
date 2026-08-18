@@ -240,6 +240,7 @@ export const CreateZpoolSchema = z.object({
 		.regex(/^[a-zA-Z0-9]+$/, 'Name must be alphanumeric'),
 	vdevs: z.array(CreateVdevSchema),
 	properties: z.record(z.string(), z.string()).optional(),
+	mountpoint: z.string().optional(),
 	createForce: z.boolean().default(false),
 	spares: z.array(z.string()).optional()
 });

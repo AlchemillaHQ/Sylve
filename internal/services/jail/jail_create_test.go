@@ -111,21 +111,29 @@ type jailCreateTestZFSDataset struct {
 type jailCreateTestZFSRunner struct {
 	mu           sync.Mutex
 	datasets     map[string]jailCreateTestZFSDataset
+	mountRoot    string
 	createCalls  int
 	destroyCalls int
 }
 
-func newJailCreateTestZFSRunner(existingDatasets []string) *jailCreateTestZFSRunner {
+func newJailCreateTestZFSRunner(t *testing.T, existingDatasets []string) *jailCreateTestZFSRunner {
+	t.Helper()
+	mountRoot := t.TempDir()
 	datasets := make(map[string]jailCreateTestZFSDataset, len(existingDatasets))
 	for i, datasetName := range existingDatasets {
+		mountpoint := filepath.Join(mountRoot, filepath.FromSlash(strings.TrimPrefix(datasetName, "/")))
+		if err := os.MkdirAll(mountpoint, 0o755); err != nil {
+			t.Fatalf("create fake dataset mountpoint: %v", err)
+		}
 		datasets[datasetName] = jailCreateTestZFSDataset{
 			guid:       strconv.Itoa(i + 1),
-			mountpoint: "/" + strings.TrimPrefix(datasetName, "/"),
+			mountpoint: mountpoint,
 		}
 	}
 
 	return &jailCreateTestZFSRunner{
-		datasets: datasets,
+		datasets:  datasets,
+		mountRoot: mountRoot,
 	}
 }
 
@@ -177,6 +185,7 @@ func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error
 		datasets[datasetName] = map[string]any{
 			"name": datasetName,
 			"pool": jailCreateDatasetPoolName(datasetName),
+			"type": string(gzfs.DatasetTypeFilesystem),
 			"properties": map[string]any{
 				"guid": map[string]any{
 					"value":  dataset.guid,
@@ -184,10 +193,6 @@ func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error
 				},
 				"mountpoint": map[string]any{
 					"value":  dataset.mountpoint,
-					"source": map[string]any{"type": "default", "data": ""},
-				},
-				"type": map[string]any{
-					"value":  "filesystem",
 					"source": map[string]any{"type": "default", "data": ""},
 				},
 				"used": map[string]any{
@@ -233,9 +238,13 @@ func (r *jailCreateTestZFSRunner) runCreate(args []string) error {
 
 	r.createCalls++
 	if _, exists := r.datasets[datasetName]; !exists {
+		mountpoint := filepath.Join(r.mountRoot, filepath.FromSlash(strings.TrimPrefix(datasetName, "/")))
+		if err := os.MkdirAll(mountpoint, 0o755); err != nil {
+			return err
+		}
 		r.datasets[datasetName] = jailCreateTestZFSDataset{
 			guid:       strconv.Itoa(len(r.datasets) + 1),
-			mountpoint: "/" + strings.TrimPrefix(datasetName, "/"),
+			mountpoint: mountpoint,
 		}
 	}
 
@@ -448,7 +457,7 @@ func TestValidateCreate_FailsWhenCTIDAlreadyExists(t *testing.T) {
 		&utilitiesModels.Downloads{},
 	)
 
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -482,7 +491,7 @@ func TestValidateCreate_FailsWhenStaleCTIDDatasetExists(t *testing.T) {
 
 	const ctid uint = 701
 	staleDataset := fmt.Sprintf("tank/sylve/jails/%d", ctid)
-	runner := newJailCreateTestZFSRunner([]string{staleDataset})
+	runner := newJailCreateTestZFSRunner(t, []string{staleDataset})
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -505,7 +514,7 @@ func TestValidateCreate_RequiresCoresAndMemoryWhenResourceLimitsEnabled(t *testi
 		&utilitiesModels.Downloads{},
 	)
 
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -530,7 +539,7 @@ func TestCreateJailStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 		&jailModels.Jail{},
 		&utilitiesModels.Downloads{},
 	)
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 	checker := &jailCreateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
@@ -567,7 +576,7 @@ func TestCreateJail_FailsWhenBaseIsNotDirectoryBeforeProvisioningSideEffects(t *
 		&utilitiesModels.Downloads{},
 	)
 
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	baseFile := filepath.Join(t.TempDir(), "base-file")
@@ -608,10 +617,7 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 	)
 
 	tmp := t.TempDir()
-	poolDir := filepath.Join(tmp, "pool")
-	if err := os.MkdirAll(poolDir, 0755); err != nil {
-		t.Fatalf("failed to create pool directory: %v", err)
-	}
+	const pool = "testpool-linux-resolv"
 
 	baseDir := filepath.Join(tmp, "base")
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
@@ -623,17 +629,19 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 
 	seedBaseDownload(t, db, "base-linux-resolv", baseDir)
 
-	runner := newJailCreateTestZFSRunner(nil)
-	svc := newJailCreateTestService(db, runner, poolDir)
+	runner := newJailCreateTestZFSRunner(t, nil)
+	svc := newJailCreateTestService(db, runner, pool)
 
 	const ctid uint = 770
 	const resolvConf = "nameserver 1.1.1.1\nnameserver 1.0.0.1\n"
 	const hostname = "linux-jail.example.test"
 
-	req := jailCreateRequest(ctid, poolDir, "base-linux-resolv")
+	req := jailCreateRequest(ctid, pool, "base-linux-resolv")
 	req.Type = jailModels.JailTypeLinux
 	req.ResolvConf = resolvConf
 	req.Hostname = hostname
+	const fstab = "devfs\t/custom/dev\tdevfs\trw\t0\t0\n"
+	req.Fstab = fstab
 
 	if err := svc.CreateJail(context.Background(), req); err != nil {
 		t.Fatalf("expected linux jail create to succeed, got %v", err)
@@ -650,7 +658,12 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 		t.Fatalf("expected hostname %q, got %q", hostname, created.Hostname)
 	}
 
-	resolvPath := filepath.Join(poolDir, "sylve", "jails", fmt.Sprintf("%d", ctid), "etc", "resolv.conf")
+	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctid)
+	rootMountpoint := runner.datasets[rootDataset].mountpoint
+	if created.Fstab != fstab {
+		t.Fatalf("fstab = %q, want %q", created.Fstab, fstab)
+	}
+	resolvPath := filepath.Join(rootMountpoint, "etc", "resolv.conf")
 	gotResolv, err := os.ReadFile(resolvPath)
 	if err != nil {
 		t.Fatalf("failed to read %s: %v", resolvPath, err)
@@ -674,10 +687,7 @@ func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 		&utilitiesModels.Downloads{},
 	)
 	tmp := t.TempDir()
-	poolDir := filepath.Join(tmp, "pool")
-	if err := os.MkdirAll(poolDir, 0755); err != nil {
-		t.Fatalf("create pool directory: %v", err)
-	}
+	const pool = "testpool-concurrent"
 	baseDir := filepath.Join(tmp, "base")
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		t.Fatalf("create base directory: %v", err)
@@ -687,8 +697,8 @@ func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 	}
 	seedBaseDownload(t, db, "base-concurrent-create", baseDir)
 
-	runner := newJailCreateTestZFSRunner(nil)
-	svc := newJailCreateTestService(db, runner, poolDir)
+	runner := newJailCreateTestZFSRunner(t, nil)
+	svc := newJailCreateTestService(db, runner, pool)
 	checker := newBlockingJailCreateGuestIdentityChecker()
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 	var releaseOnce sync.Once
@@ -698,7 +708,7 @@ func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 	defer releaseFirst()
 
 	const ctid uint = 771
-	req := jailCreateRequest(ctid, poolDir, "base-concurrent-create")
+	req := jailCreateRequest(ctid, pool, "base-concurrent-create")
 	req.Type = jailModels.JailTypeLinux
 	results := make(chan error, 2)
 
@@ -756,7 +766,7 @@ func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 		t.Fatalf("ZFS destroy calls = %d, want 0", destroyCalls)
 	}
 	assertModelCount(t, db, &jailModels.Jail{}, 1, "ct_id = ?", ctid)
-	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", poolDir, ctid)
+	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctid)
 	if !runner.hasDataset(rootDataset) {
 		t.Fatalf("successful jail dataset %q was removed", rootDataset)
 	}
@@ -773,7 +783,7 @@ func TestValidateCreate_RejectsBootstrapNewerThanHost(t *testing.T) {
 		&networkModels.ManualSwitch{},
 		&utilitiesModels.Downloads{},
 	)
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 	svc.bootstrapHostReleaseFn = func() (string, error) { return "15.0-RELEASE", nil }
 
@@ -815,7 +825,7 @@ func TestValidateCreate_AcceptsRawIPv4(t *testing.T) {
 		&utilitiesModels.Downloads{},
 	)
 
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -852,7 +862,7 @@ func TestValidateCreate_RejectsInvalidRawIPv4CIDR(t *testing.T) {
 	)
 	seedSwitch(t, db, "test-switch")
 
-	runner := newJailCreateTestZFSRunner(nil)
+	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -898,7 +908,7 @@ func TestCleanupFailedJailCreate_RemovesArtifactsAndOnlyAutoCreatedMACs(t *testi
 
 	const ctid uint = 740
 	rootDataset := fmt.Sprintf("tank/sylve/jails/%d", ctid)
-	runner := newJailCreateTestZFSRunner([]string{rootDataset})
+	runner := newJailCreateTestZFSRunner(t, []string{rootDataset})
 	svc := newJailCreateTestService(db, runner, "tank")
 
 	autoMAC := networkModels.Object{Name: "auto-mac-740", Type: "Mac"}
@@ -1034,15 +1044,12 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 	)
 
 	tmp := t.TempDir()
-	poolAsFile := filepath.Join(tmp, "pool-as-file")
-	if err := os.WriteFile(poolAsFile, []byte("not-a-directory"), 0644); err != nil {
-		t.Fatalf("failed to create pool blocker file: %v", err)
-	}
+	const pool = "testpool-post-commit-failure"
 
 	const ctid uint = 760
-	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", poolAsFile, ctid)
-	runner := newJailCreateTestZFSRunner(nil)
-	svc := newJailCreateTestService(db, runner, poolAsFile)
+	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctid)
+	runner := newJailCreateTestZFSRunner(t, nil)
+	svc := newJailCreateTestService(db, runner, pool)
 
 	baseDir := filepath.Join(tmp, "base")
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
@@ -1053,10 +1060,10 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 	}
 	seedBaseDownload(t, db, "base-post-commit-failure", baseDir)
 
-	req := jailCreateRequest(ctid, poolAsFile, "base-post-commit-failure")
+	req := jailCreateRequest(ctid, pool, "base-post-commit-failure")
 	err := svc.CreateJail(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "failed_to_copy_base") {
-		t.Fatalf("expected failed_to_copy_base error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "failed_to_sync_created_jail_network") {
+		t.Fatalf("expected post-commit network sync error, got %v", err)
 	}
 
 	assertModelCount(t, db, &jailModels.Jail{}, 0, "ct_id = ?", ctid)

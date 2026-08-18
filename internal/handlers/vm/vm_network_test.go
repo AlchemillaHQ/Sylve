@@ -224,6 +224,7 @@ func TestNetworkHandlerMapsServiceErrors(t *testing.T) {
 		{name: "not found", err: errors.New("failed_to_find_network_record: network_not_found: record not found"), wantStatus: http.StatusNotFound},
 		{name: "gorm not found", err: gorm.ErrRecordNotFound, wantStatus: http.StatusNotFound},
 		{name: "conflict", err: errors.New("failed_to_sync_vm_networks: domain_state_not_shutoff: 101"), wantStatus: http.StatusConflict},
+		{name: "mountpoint conflict", err: errors.New("failed_to_write_vm_json_after_network_sync: filesystem_dataset_mountpoint_not_usable"), wantStatus: http.StatusConflict},
 		{name: "unavailable", err: errors.New("failed_to_check_vm_shutoff: libvirt_connection_unavailable"), wantStatus: http.StatusServiceUnavailable},
 		{name: "internal", err: errors.New("database_write_failed"), wantStatus: http.StatusInternalServerError},
 	}

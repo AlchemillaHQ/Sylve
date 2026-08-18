@@ -100,7 +100,8 @@ func jailTemplatePreflightStatusCode(err error) int {
 		"jail_has_active_lifecycle_task",
 		"insufficient_pool_space",
 		"target_dataset_already_exists",
-		"jail_template_in_use":
+		"jail_template_in_use",
+		"jail_dataset_mountpoint_not_usable":
 		return http.StatusConflict
 	case "guest_identity_inventory_scan_failed", "replication_lease_check_failed":
 		return http.StatusInternalServerError

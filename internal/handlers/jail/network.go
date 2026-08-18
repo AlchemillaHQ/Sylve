@@ -67,7 +67,8 @@ func jailNetworkErrorStatus(err error) int {
 		return http.StatusNotFound
 	case "restore_in_progress", "jail_network_change_requires_inactive",
 		"cannot_add_network_when_inheriting_network", "cannot_edit_network_when_inheriting_network",
-		"jail_network_name_exists", "jail_default_gateway_exists", "network_object_already_used":
+		"jail_network_name_exists", "jail_default_gateway_exists", "network_object_already_used",
+		"jail_dataset_mountpoint_not_usable":
 		return http.StatusConflict
 	case "network_service_unavailable":
 		return http.StatusServiceUnavailable

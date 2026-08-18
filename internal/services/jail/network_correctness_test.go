@@ -56,6 +56,7 @@ func newJailNetworkSyncFixture(t *testing.T, jailType jailModels.JailType, ctID 
 
 	network := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
 	service := &Service{DB: db, NetworkService: network, ctidHashByCTID: make(map[uint]string)}
+	attachJailRootTestFixture(t, service, db, jail.ID, ctID, mountPoint)
 	cfg, err := service.CreateJailConfig(jail, mountPoint)
 	if err != nil {
 		t.Fatalf("create structural jail config: %v", err)

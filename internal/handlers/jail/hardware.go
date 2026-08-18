@@ -71,7 +71,8 @@ func jailHardwareErrorStatus(err error) int {
 		return http.StatusNotFound
 	case "restore_in_progress", "resource_limits_disabled", "jail_hardware_state_invalid",
 		"jail_config_not_found", "hook_script_not_found", "jail_hardware_hook_conflict",
-		"jail_hardware_config_conflict", "jail_runtime_state_changed":
+		"jail_hardware_config_conflict", "jail_runtime_state_changed",
+		"jail_dataset_mountpoint_not_usable":
 		return http.StatusConflict
 	case "jail_service_not_initialized", "host_cpu_unavailable", "failed_to_get_host_memory",
 		"failed_to_get_jail_state":

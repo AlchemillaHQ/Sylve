@@ -166,6 +166,8 @@ func parseTargetArg(args []string, flagsWithValues map[string]int) string {
 func fakeDatasetJSON(name string, ds fakeDatasetInfo) map[string]any {
 	return map[string]any{
 		"name": name,
+		"pool": strings.SplitN(name, "/", 2)[0],
+		"type": string(gzfs.DatasetTypeFilesystem),
 		"properties": map[string]any{
 			"guid": map[string]any{
 				"value":  "1",

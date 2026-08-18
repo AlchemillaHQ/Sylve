@@ -39,6 +39,7 @@ type CreateZPoolRequest struct {
 	Name        string            `json:"name" binding:"required,alphanum,min=1,max=24"`
 	Vdevs       []Vdev            `json:"vdevs"`
 	Properties  map[string]string `json:"properties"`
+	Mountpoint  string            `json:"mountpoint,omitempty"`
 	CreateForce bool              `json:"createForce"`
 	Spares      []string          `json:"spares"`
 }

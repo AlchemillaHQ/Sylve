@@ -128,6 +128,7 @@ func TestJailHardwareErrorStatus(t *testing.T) {
 		{err: errors.New("jail_not_found"), want: http.StatusNotFound},
 		{err: errors.New("restore_in_progress"), want: http.StatusConflict},
 		{err: errors.New("jail_hardware_hook_conflict"), want: http.StatusConflict},
+		{err: errors.New("jail_dataset_mountpoint_not_usable"), want: http.StatusConflict},
 		{err: errors.New("jail_service_not_initialized"), want: http.StatusServiceUnavailable},
 		{err: errors.New("host_cpu_unavailable"), want: http.StatusServiceUnavailable},
 		{err: errors.New("failed_to_write_post_start_hook"), want: http.StatusInternalServerError},

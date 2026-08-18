@@ -92,7 +92,7 @@ func vmNetworkErrorStatus(err error) int {
 		return http.StatusNotFound
 	case vmNetworkErrorHasCode(codes,
 		"domain_state_not_shutoff", "vm_is_active", "mac_object_already_in_use",
-		"mac_address_already_in_use"):
+		"mac_address_already_in_use", "filesystem_dataset_mountpoint_not_usable"):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError

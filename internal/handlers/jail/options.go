@@ -144,8 +144,9 @@ func classifyJailOptionError(err error) (int, string) {
 	case jailOptionHasErrorCode(codes, "jail_not_found"):
 		return http.StatusNotFound, "jail_not_found"
 	case jailOptionHasErrorCode(codes,
-		"restore_in_progress", "jail_config_not_found", "jail_path_not_found_in_config",
-		"jail_option_config_conflict", "jail_lifecycle_hook_conflict"):
+		"restore_in_progress", "jail_config_not_found",
+		"jail_option_config_conflict", "jail_lifecycle_hook_conflict",
+		"jail_dataset_mountpoint_not_usable"):
 		return http.StatusConflict, firstJailOptionErrorCode(err)
 	case jailOptionHasErrorCode(codes, "devfs_management_disabled", "devfs_service_unavailable"):
 		return http.StatusServiceUnavailable, firstJailOptionErrorCode(err)

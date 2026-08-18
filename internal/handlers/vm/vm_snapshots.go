@@ -40,6 +40,9 @@ func vmSnapshotErrorCode(err error) string {
 	}
 
 	code := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(code, "filesystem_dataset_mountpoint_not_usable") {
+		return "filesystem_dataset_mountpoint_not_usable"
+	}
 	if idx := strings.IndexByte(code, ':'); idx >= 0 {
 		code = code[:idx]
 	}
@@ -50,7 +53,6 @@ func vmSnapshotErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
 	}
-
 	switch vmSnapshotErrorCode(err) {
 	case "invalid_request", "invalid_rid", "invalid_vm_rid", "snapshot_name_required",
 		"snapshot_name_too_long", "snapshot_description_too_long":
@@ -72,7 +74,8 @@ func vmSnapshotErrorStatus(err error) int {
 		"restored_vm_storage_id_conflict",
 		"restored_vm_storage_dataset_in_use",
 		"invalid_restored_storage_id",
-		"invalid_restored_vm_storage_dataset_name":
+		"invalid_restored_vm_storage_dataset_name",
+		"filesystem_dataset_mountpoint_not_usable":
 		return http.StatusConflict
 	case "libvirt_connection_unavailable", "libvirt_not_initialized", "gzfs_not_initialized":
 		return http.StatusServiceUnavailable

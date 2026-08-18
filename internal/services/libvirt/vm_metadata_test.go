@@ -3,13 +3,70 @@
 package libvirt
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 )
+
+func TestResolveVMJSONOutputDirectoryUsesVMRootMountpoint(t *testing.T) {
+	const mountpoint = "/custom/vm-root/107"
+	datasetName := "tank/sylve/virtual-machines/107"
+	service := newStorageTestService(nil, []string{"tank"}, map[string]storageTestDataset{
+		datasetName: {
+			name:       datasetName,
+			pool:       "tank",
+			kind:       gzfs.DatasetTypeFilesystem,
+			mountpoint: mountpoint,
+		},
+	})
+	vm := vmModels.VM{
+		RID: 107,
+		Storages: []vmModels.Storage{
+			{Type: vmModels.VMStorageTypeRaw, Pool: "tank"},
+		},
+	}
+
+	path, err := service.resolveVMJSONOutputDirectory(context.Background(), vm, "tank")
+	if err != nil {
+		t.Fatalf("resolve VM metadata directory: %v", err)
+	}
+	if want := filepath.Join(mountpoint, ".sylve"); path != want {
+		t.Fatalf("metadata path = %q, want %q", path, want)
+	}
+}
+
+func TestResolveVMJSONOutputDirectoryUsesGroupingDatasetForFilesystemOnlyPool(t *testing.T) {
+	const mountpoint = "/custom/vm-group"
+	datasetName := "tank/sylve/virtual-machines"
+	service := newStorageTestService(nil, []string{"tank"}, map[string]storageTestDataset{
+		datasetName: {
+			name:       datasetName,
+			pool:       "tank",
+			kind:       gzfs.DatasetTypeFilesystem,
+			mountpoint: mountpoint,
+		},
+	})
+	vm := vmModels.VM{
+		RID: 108,
+		Storages: []vmModels.Storage{
+			{Type: vmModels.VMStorageTypeFilesystem, Pool: "tank"},
+		},
+	}
+
+	path, err := service.resolveVMJSONOutputDirectory(context.Background(), vm, "tank")
+	if err != nil {
+		t.Fatalf("resolve filesystem-only VM metadata directory: %v", err)
+	}
+	if want := filepath.Join(mountpoint, "108", ".sylve"); path != want {
+		t.Fatalf("metadata path = %q, want %q", path, want)
+	}
+}
 
 func TestVMJSONOutputPoolsIgnoreLegacyISOPool(t *testing.T) {
 	pools := vmJSONOutputPools([]vmModels.Storage{

@@ -142,7 +142,8 @@ func classifyVMOptionError(err error) (int, string) {
 	case vmOptionHasErrorCode(codes, "vm_not_found"):
 		return http.StatusNotFound, "vm_not_found"
 	case vmOptionHasErrorCode(codes,
-		"domain_state_not_shutoff", "qemu_guest_agent_disabled", "qga_requires_running_vm"):
+		"domain_state_not_shutoff", "qemu_guest_agent_disabled", "qga_requires_running_vm",
+		"filesystem_dataset_mountpoint_not_usable"):
 		return http.StatusConflict, firstVMOptionErrorCode(err)
 	case vmOptionHasErrorCode(codes,
 		"libvirt_not_initialized", "libvirt_connection_unavailable",

@@ -104,7 +104,13 @@ func newJailHardwareTestService(
 	}
 	configPath := filepath.Join(jailDir, fmt.Sprintf("%d.conf", ctID))
 	postStartPath := filepath.Join(scriptsDir, "post-start.sh")
-	configContent := fmt.Sprintf("%s%s {\n}\n", JAIL_CONF_PREAMBLE, fmt.Sprintf("jail-%d", ctID))
+	mountPoint := t.TempDir()
+	configContent := fmt.Sprintf(
+		"%s%s {\n\tpath = %q;\n}\n",
+		JAIL_CONF_PREAMBLE,
+		fmt.Sprintf("jail-%d", ctID),
+		mountPoint,
+	)
 	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("write jail config: %v", err)
 	}
@@ -117,6 +123,7 @@ func newJailHardwareTestService(
 		ctidHashByCTID: make(map[uint]string),
 		hardwareOps:    ops,
 	}
+	attachJailRootTestFixture(t, service, db, jail.ID, ctID, mountPoint)
 	return service, configPath, postStartPath
 }
 

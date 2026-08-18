@@ -5,6 +5,7 @@ import type {
 } from '$lib/types/jail/jail';
 import type { APIResponse } from '$lib/types/common';
 import { kvStorage } from '$lib/types/db';
+import type { Dataset } from '$lib/types/zfs/dataset';
 import { toast } from 'svelte-sonner';
 import { removeCache } from '$lib/utils/http';
 import { isValidIPv4, isValidIPv6, isValidMACAddress, isValidVMName } from '../string';
@@ -154,6 +155,10 @@ function toJailCreateErrorText(error: APIResponse['error']): string {
 }
 
 const jailCreateErrorMessageByCode: Record<string, string> = {
+	bootstrap_mountpoint_not_usable:
+		'The selected bootstrap dataset does not have a usable filesystem mountpoint.',
+	bootstrap_record_mismatch:
+		'The selected bootstrap record no longer matches its managed ZFS dataset.',
 	base_is_not_a_directory:
 		'Selected base image path is not a directory. Re-extract the base/rootfs and retry.',
 	base_path_does_not_exist: 'Selected base image could not be found on disk.',
@@ -171,6 +176,8 @@ const jailCreateErrorMessageByCode: Record<string, string> = {
 	invalid_ipv4_gateway: 'Invalid IPv4 gateway selection.',
 	invalid_ipv6_gateway: 'Invalid IPv6 gateway selection.',
 	invalid_jail_allowed_options: 'One or more allowed options are invalid.',
+	jail_dataset_mountpoint_not_usable:
+		'The jail dataset does not have a usable filesystem mountpoint.',
 	jail_base_fs_with_ctid_already_exists:
 		'A jail root dataset already exists for this CTID. Clean up leftovers before retrying.',
 	jail_create_database_failure: 'Failed to persist jail metadata in the database.',
@@ -232,18 +239,34 @@ export function getJailCreateErrorMessage(
 	);
 }
 
-export function generateSimpleLinuxFSTab(ctId: number, pool: string): string {
-	const base = `/${pool}/sylve/jails/${ctId}`;
-
+export function generateSimpleLinuxFSTab(jailRoot: string): string {
 	const entries = [
-		{ fs: 'devfs', mp: `${base}/dev`, type: 'devfs', opts: 'rw' },
-		{ fs: 'tmpfs', mp: `${base}/dev/shm`, type: 'tmpfs', opts: 'rw,size=1g,mode=1777' },
-		{ fs: 'fdescfs', mp: `${base}/dev/fd`, type: 'fdescfs', opts: 'rw,linrdlnk' },
-		{ fs: 'linprocfs', mp: `${base}/proc`, type: 'linprocfs', opts: 'rw' },
-		{ fs: 'linsysfs', mp: `${base}/sys`, type: 'linsysfs', opts: 'rw' }
+		{ fs: 'devfs', mp: `${jailRoot}/dev`, type: 'devfs', opts: 'rw' },
+		{ fs: 'tmpfs', mp: `${jailRoot}/dev/shm`, type: 'tmpfs', opts: 'rw,size=1g,mode=1777' },
+		{ fs: 'fdescfs', mp: `${jailRoot}/dev/fd`, type: 'fdescfs', opts: 'rw,linrdlnk' },
+		{ fs: 'linprocfs', mp: `${jailRoot}/proc`, type: 'linprocfs', opts: 'rw' },
+		{ fs: 'linsysfs', mp: `${jailRoot}/sys`, type: 'linsysfs', opts: 'rw' }
 	];
 
 	return entries.map((e) => `${e.fs}\t${e.mp}\t${e.type}\t${e.opts}\t0\t0`).join('\n') + '\n';
+}
+
+export function resolveJailRootPreview(
+	datasets: Dataset[],
+	pool: string,
+	ctId: number
+): string | null {
+	if (!pool || !Number.isInteger(ctId) || ctId < 1) return null;
+
+	const groupingDataset = datasets.find(
+		(dataset) => dataset.type === 'FILESYSTEM' && dataset.name === `${pool}/sylve/jails`
+	);
+	if (!groupingDataset) return null;
+
+	const base = groupingDataset.mountpoint.replace(/\/+$/, '');
+	if (!base.startsWith('/')) return null;
+
+	return `${base}/${ctId}`;
 }
 
 export function dnsConfigPresets(resolver: keyof typeof DNS_PRESETS): string {

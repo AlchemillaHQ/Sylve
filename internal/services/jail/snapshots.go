@@ -386,7 +386,7 @@ func (s *Service) DeleteJailSnapshot(ctx context.Context, ctID uint, snapshotID 
 		return fmt.Errorf("snapshot_not_found: %w", err)
 	}
 
-	rootDataset, _, err := resolveJailRootDataset(current)
+	rootDataset, _, err := jailRootDatasetIdentity(current)
 	if err != nil {
 		return err
 	}
@@ -489,7 +489,7 @@ func (s *Service) resolveJailSnapshotRoot(
 	ctx context.Context,
 	jail *jailModels.Jail,
 ) (string, string, *gzfs.Dataset, error) {
-	rootDataset, _, err := resolveJailRootDataset(jail)
+	rootDataset, storage, err := jailRootDatasetIdentity(jail)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -517,32 +517,9 @@ func (s *Service) resolveJailSnapshotRoot(
 		}
 	}
 
-	mountPoint, usable := usableJailSnapshotMountpoint(dataset.Mountpoint)
-	if !usable {
-		refreshed, refreshErr := s.GZFS.ZFS.Get(ctx, rootDataset, false)
-		if refreshErr != nil {
-			return "", "", nil, fmt.Errorf("failed_to_refresh_jail_snapshot_root: %w", refreshErr)
-		}
-		if refreshed != nil {
-			dataset = refreshed
-			mountPoint, usable = usableJailSnapshotMountpoint(refreshed.Mountpoint)
-		}
-	}
-	if !usable {
-		return "", "", nil, fmt.Errorf("jail_snapshot_mountpoint_unusable: %s", rootDataset)
-	}
-
-	configuredMountPoint, err := s.GetJailBaseMountPoint(jail.CTID)
+	mountPoint, err := validateFilesystemDatasetMountpoint(dataset, rootDataset, storage.GUID)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
-	}
-	configuredMountPoint, configuredUsable := usableJailSnapshotMountpoint(configuredMountPoint)
-	if !configuredUsable || configuredMountPoint != mountPoint {
-		return "", "", nil, fmt.Errorf(
-			"jail_snapshot_mountpoint_mismatch: dataset=%s configured=%s",
-			mountPoint,
-			configuredMountPoint,
-		)
+		return "", "", nil, fmt.Errorf("jail_snapshot_mountpoint_unusable: %w", err)
 	}
 
 	return rootDataset, mountPoint, dataset, nil
@@ -1069,28 +1046,6 @@ func (s *Service) normalizeRestoredJailSnapshotNetworks(
 	}
 
 	return out, warnings, nil
-}
-
-func resolveJailRootDataset(jail *jailModels.Jail) (string, string, error) {
-	if jail == nil {
-		return "", "", fmt.Errorf("jail_not_found")
-	}
-
-	baseStorageIdx := slices.IndexFunc(jail.Storages, func(storage jailModels.Storage) bool {
-		return storage.IsBase
-	})
-	if baseStorageIdx < 0 {
-		return "", "", fmt.Errorf("jail_base_storage_not_found")
-	}
-
-	basePool := strings.TrimSpace(jail.Storages[baseStorageIdx].Pool)
-	if basePool == "" {
-		return "", "", fmt.Errorf("jail_base_pool_not_found")
-	}
-
-	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", basePool, jail.CTID)
-	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", basePool, jail.CTID)
-	return rootDataset, mountPoint, nil
 }
 
 func sanitizeSnapshotToken(raw string) string {

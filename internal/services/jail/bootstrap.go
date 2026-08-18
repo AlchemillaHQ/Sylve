@@ -29,13 +29,12 @@ import (
 const bootstrapCleanupTimeout = 2 * time.Minute
 
 type bootstrapIdentity struct {
-	Pool       string
-	Name       string
-	Dataset    string
-	MountPoint string
-	Major      int
-	Minor      int
-	Type       string
+	Pool    string
+	Name    string
+	Dataset string
+	Major   int
+	Minor   int
+	Type    string
 }
 
 func bootstrapName(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor int) string {
@@ -75,13 +74,12 @@ func canonicalBootstrapIdentity(pool, name string) (bootstrapIdentity, error) {
 			}
 
 			return bootstrapIdentity{
-				Pool:       pool,
-				Name:       canonicalName,
-				Dataset:    dataset,
-				MountPoint: "/" + dataset,
-				Major:      version.Major,
-				Minor:      version.Minor,
-				Type:       bootstrapType.Type,
+				Pool:    pool,
+				Name:    canonicalName,
+				Dataset: dataset,
+				Major:   version.Major,
+				Minor:   version.Minor,
+				Type:    bootstrapType.Type,
 			}, nil
 		}
 	}
@@ -93,7 +91,6 @@ func bootstrapRecordMatchesIdentity(record jailModels.JailBootstrap, identity bo
 	return record.Pool == identity.Pool &&
 		record.Name == identity.Name &&
 		record.Dataset == identity.Dataset &&
-		record.MountPoint == identity.MountPoint &&
 		record.Major == identity.Major &&
 		record.Minor == identity.Minor &&
 		record.BootstrapType == identity.Type
@@ -248,14 +245,13 @@ func (s *Service) ListBootstraps(ctx context.Context, pool string) ([]jailServic
 			}
 
 			entry := jailServiceInterfaces.BootstrapEntry{
-				Pool:       pool,
-				Name:       name,
-				Label:      bootstrapLabel(bt, ver.Major, ver.Minor),
-				Dataset:    identity.Dataset,
-				MountPoint: identity.MountPoint,
-				Major:      ver.Major,
-				Minor:      ver.Minor,
-				Type:       bt.Type,
+				Pool:    pool,
+				Name:    name,
+				Label:   bootstrapLabel(bt, ver.Major, ver.Minor),
+				Dataset: identity.Dataset,
+				Major:   ver.Major,
+				Minor:   ver.Minor,
+				Type:    bt.Type,
 			}
 
 			ds, err := s.getBootstrapDataset(ctx, identity)
@@ -264,7 +260,22 @@ func (s *Service) ListBootstraps(ctx context.Context, pool string) ([]jailServic
 			}
 			entry.Exists = ds != nil
 
-			if record, ok := recordsByName[name]; ok {
+			record, hasRecord := recordsByName[name]
+			if ds != nil {
+				mountPoint, resolveErr := validateFilesystemDatasetMountpoint(ds, identity.Dataset, "")
+				if resolveErr != nil {
+					entry.Status = "failed"
+					entry.Error = "bootstrap_mountpoint_not_usable"
+					entry.MountPoint = record.MountPoint
+					entries = append(entries, entry)
+					continue
+				}
+				entry.MountPoint = mountPoint
+			} else if hasRecord {
+				entry.MountPoint = record.MountPoint
+			}
+
+			if hasRecord {
 				if !bootstrapRecordMatchesIdentity(record, identity) {
 					entry.Status = "failed"
 					entry.Error = "bootstrap_record_mismatch"
@@ -412,7 +423,7 @@ func (s *Service) CreateBootstrap(
 		if err := s.DB.Model(&record).Updates(map[string]interface{}{
 			"pool":           identity.Pool,
 			"dataset":        identity.Dataset,
-			"mount_point":    identity.MountPoint,
+			"mount_point":    "",
 			"name":           identity.Name,
 			"major":          identity.Major,
 			"minor":          identity.Minor,
@@ -428,7 +439,7 @@ func (s *Service) CreateBootstrap(
 		record = jailModels.JailBootstrap{
 			Pool:          identity.Pool,
 			Dataset:       identity.Dataset,
-			MountPoint:    identity.MountPoint,
+			MountPoint:    "",
 			Name:          identity.Name,
 			Major:         identity.Major,
 			Minor:         identity.Minor,
@@ -446,9 +457,7 @@ func (s *Service) CreateBootstrap(
 		lockKey,
 		req,
 		*typeSpec,
-		identity.Dataset,
-		identity.MountPoint,
-		identity.Name,
+		identity,
 	)
 	result.Status = "pending"
 	result.Outcome = "queued"
@@ -470,9 +479,10 @@ func (s *Service) runBootstrap(
 	lockKey string,
 	req jailServiceInterfaces.BootstrapRequest,
 	typeSpec jailServiceInterfaces.BootstrapTypeSpec,
-	dataset, mountPoint, name string,
+	identity bootstrapIdentity,
 ) {
 	defer s.bootstrapActiveMu.Delete(lockKey)
+	dataset, name := identity.Dataset, identity.Name
 
 	bCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
@@ -491,12 +501,7 @@ func (s *Service) runBootstrap(
 		if datasetCreated {
 			cleanupCtx, cleanupCancel := bootstrapCleanupContext()
 			defer cleanupCancel()
-			identity, identityErr := canonicalBootstrapIdentity(req.Pool, name)
-			if identityErr != nil || identity.Dataset != dataset {
-				cleanupErr := fmt.Errorf("invalid_bootstrap_cleanup_target")
-				logger.L.Warn().Err(cleanupErr).Msgf("bootstrap %s: refused partial dataset cleanup", name)
-				errMessage += ": cleanup_failed: " + cleanupErr.Error()
-			} else if ds, dErr := s.getBootstrapDataset(cleanupCtx, identity); dErr != nil {
+			if ds, dErr := s.getBootstrapDataset(cleanupCtx, identity); dErr != nil {
 				logger.L.Warn().Err(dErr).Msgf("bootstrap %s: failed to inspect partial dataset %s", name, dataset)
 				errMessage += ": cleanup_failed: " + dErr.Error()
 			} else if ds != nil {
@@ -541,12 +546,23 @@ func (s *Service) runBootstrap(
 			}
 		}
 	}
-	_, err = s.GZFS.ZFS.CreateFilesystem(bCtx, dataset, nil)
+	createdDataset, err := s.GZFS.ZFS.CreateFilesystem(bCtx, dataset, nil)
 	if err != nil {
 		failStep("creating_dataset", fmt.Errorf("failed_to_create_dataset: %w", err))
 		return
 	}
 	datasetCreated = true
+	mountPoint, err := validateFilesystemDatasetMountpoint(createdDataset, identity.Dataset, "")
+	if err != nil {
+		failStep("creating_dataset", fmt.Errorf("bootstrap_mountpoint_not_usable: %w", err))
+		return
+	}
+	if err := s.DB.Model(&jailModels.JailBootstrap{}).
+		Where("id = ?", recordID).
+		Update("mount_point", mountPoint).Error; err != nil {
+		failStep("creating_dataset", fmt.Errorf("failed_to_store_bootstrap_mountpoint: %w", err))
+		return
+	}
 
 	s.updateBootstrapRecord(recordID, "running", "copying_keys", "")
 	hostKeyDir := fmt.Sprintf("/usr/share/keys/pkgbase-%d", req.Major)
@@ -693,6 +709,9 @@ func (s *Service) DeleteBootstrap(
 	}
 
 	if record.ID != 0 {
+		if !bootstrapRecordMatchesIdentity(record, identity) {
+			return result, fmt.Errorf("bootstrap_record_mismatch")
+		}
 		if record.Status == "running" || record.Status == "pending" {
 			return result, fmt.Errorf("bootstrap_already_in_progress")
 		}

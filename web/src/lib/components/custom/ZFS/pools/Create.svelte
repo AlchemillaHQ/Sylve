@@ -625,6 +625,8 @@
 			}
 		}
 
+		const mountpoint = properties.mount.trim();
+
 		const response = await createPool({
 			name: properties.name,
 			vdevs: properties.vdev.containers.map((vdev) => ({
@@ -644,6 +646,7 @@
 				delegation: properties.props.delegation,
 				failmode: properties.props.failmode
 			},
+			...(mountpoint ? { mountpoint } : {}),
 			spares: properties.props.spares.map((spare) => spare),
 			createForce: properties.force
 		});
@@ -1077,7 +1080,8 @@
 							<CustomValueInput
 								type="text"
 								label="Mount Point"
-								placeholder="/tank"
+								placeholder={properties.name ? `/${properties.name}` : '/<pool>'}
+								hint="Leave blank to use the ZFS default /&lt;pool&gt;. Set an absolute path such as /mnt/tank to customize it."
 								bind:value={properties.mount}
 								classes="flex-1 space-y-1"
 							></CustomValueInput>

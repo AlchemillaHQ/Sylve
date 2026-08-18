@@ -45,7 +45,7 @@ func newBootstrapTestService(t *testing.T, existingDatasets []string, pools ...s
 		usablePools = append(usablePools, &gzfs.ZPool{Name: p})
 	}
 
-	runner := newJailCreateTestZFSRunner(existingDatasets)
+	runner := newJailCreateTestZFSRunner(t, existingDatasets)
 
 	svc := &Service{
 		DB:     db,
@@ -225,7 +225,7 @@ func TestListBootstraps_DBStatusOverridesWhenRecordExists(t *testing.T) {
 	}
 }
 
-func TestListBootstraps_CorrectsDatasetAndMountPointPaths(t *testing.T) {
+func TestListBootstraps_DoesNotSynthesizeAbsentMountPointPaths(t *testing.T) {
 	svc, _ := newBootstrapTestService(t, nil, "tank")
 
 	entries, err := svc.ListBootstraps(context.Background(), "tank")
@@ -235,12 +235,11 @@ func TestListBootstraps_CorrectsDatasetAndMountPointPaths(t *testing.T) {
 
 	for _, e := range entries {
 		wantDataset := "tank/sylve/bootstraps/" + e.Name
-		wantMount := "/tank/sylve/bootstraps/" + e.Name
 		if e.Dataset != wantDataset {
 			t.Errorf("entry %s: expected Dataset %q, got %q", e.Name, wantDataset, e.Dataset)
 		}
-		if e.MountPoint != wantMount {
-			t.Errorf("entry %s: expected MountPoint %q, got %q", e.Name, wantMount, e.MountPoint)
+		if e.MountPoint != "" {
+			t.Errorf("entry %s: expected no mountpoint for absent dataset, got %q", e.Name, e.MountPoint)
 		}
 	}
 }
@@ -595,7 +594,7 @@ func TestRecoverInterruptedBootstraps_DestroysPartialDataset(t *testing.T) {
 
 	record := jailModels.JailBootstrap{
 		Pool: "tank", Dataset: dataset,
-		MountPoint: "/tank/sylve/bootstraps/15-0-Base",
+		MountPoint: runner.datasets[dataset].mountpoint,
 		Name:       "15-0-Base", Major: 15, Minor: 0, BootstrapType: "base",
 		Status: "running",
 	}
@@ -607,6 +606,27 @@ func TestRecoverInterruptedBootstraps_DestroysPartialDataset(t *testing.T) {
 
 	if runner.hasDataset(dataset) {
 		t.Errorf("expected partial dataset %s to be destroyed after recovery, but it still exists", dataset)
+	}
+}
+
+func TestRecoverInterruptedBootstraps_DestroysPartialDatasetBeforeMountpointWasRecorded(t *testing.T) {
+	dataset := "tank/sylve/bootstraps/15-0-Base"
+	svc, runner := newBootstrapTestService(t, []string{dataset}, "tank")
+
+	record := jailModels.JailBootstrap{
+		Pool: "tank", Dataset: dataset,
+		MountPoint: "",
+		Name:       "15-0-Base", Major: 15, Minor: 0, BootstrapType: "base",
+		Status: "running",
+	}
+	if err := svc.DB.Create(&record).Error; err != nil {
+		t.Fatalf("failed to seed record: %v", err)
+	}
+
+	svc.RecoverInterruptedBootstraps(context.Background())
+
+	if runner.hasDataset(dataset) {
+		t.Errorf("expected unrecorded partial dataset %s to be destroyed after recovery", dataset)
 	}
 }
 

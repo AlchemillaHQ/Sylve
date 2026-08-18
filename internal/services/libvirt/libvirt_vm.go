@@ -120,11 +120,15 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			var disk string
 
 			if storage.Type == vmModels.VMStorageTypeRaw {
-				if storage.Dataset.Name != "" {
-					rawID := storageIDFromDataset(storage.Dataset.Name, "raw")
-					disk = fmt.Sprintf("/%s/%d.img", storage.Dataset.Name, rawID)
-				} else {
-					disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.RID, storage.ID, storage.ID)
+				var err error
+				disk, err = s.resolveRawStorageImagePath(
+					context.Background(),
+					s.DB,
+					vm.RID,
+					storage,
+				)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_resolve_raw_storage_path: %w", err)
 				}
 			} else if storage.Type == vmModels.VMStorageTypeZVol {
 				if storage.Dataset.Name != "" {
@@ -145,7 +149,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 					continue
 				}
 			} else if storage.Type == vmModels.VMStorageTypeFilesystem {
-				sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)
+				sourcePath, err := s.resolveFilesystemSourcePath(
+					context.Background(),
+					storage,
+				)
 				if err != nil {
 					return "", fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
 				}

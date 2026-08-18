@@ -130,6 +130,7 @@ func TestClassifyUpdateVMDescriptionError(t *testing.T) {
 		{name: "not found", err: fmt.Errorf("vm_not_found: 100"), wantStatus: http.StatusNotFound, wantCode: "vm_not_found"},
 		{name: "invalid description", err: fmt.Errorf("invalid_description"), wantStatus: http.StatusBadRequest, wantCode: "invalid_description"},
 		{name: "ownership denied", err: fmt.Errorf("replication_lease_not_owned"), wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned"},
+		{name: "mountpoint conflict", err: fmt.Errorf("failed_to_write_vm_json: filesystem_dataset_mountpoint_not_usable"), wantStatus: http.StatusConflict, wantCode: "filesystem_dataset_mountpoint_not_usable"},
 		{name: "ownership check failed", err: fmt.Errorf("replication_lease_check_failed: database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: "replication_lease_check_failed"},
 		{name: "unknown", err: fmt.Errorf("write failed"), wantStatus: http.StatusInternalServerError, wantCode: "failed_to_update_vm_description"},
 	}
@@ -158,6 +159,7 @@ func TestClassifyUpdateVMNameError(t *testing.T) {
 		{name: "invalid name", err: fmt.Errorf("invalid_vm_name"), wantStatus: http.StatusBadRequest, wantCode: "invalid_vm_name"},
 		{name: "duplicate name", err: fmt.Errorf("vm_name_already_in_use"), wantStatus: http.StatusConflict, wantCode: "vm_name_already_in_use"},
 		{name: "ownership denied", err: fmt.Errorf("replication_lease_not_owned"), wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned"},
+		{name: "mountpoint conflict", err: fmt.Errorf("failed_to_write_vm_json: filesystem_dataset_mountpoint_not_usable"), wantStatus: http.StatusConflict, wantCode: "filesystem_dataset_mountpoint_not_usable"},
 		{name: "ownership check failed", err: fmt.Errorf("replication_lease_check_failed: database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: "replication_lease_check_failed"},
 	}
 

@@ -338,8 +338,11 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 		return err
 	}
 
-	for _, pool := range vmJSONOutputPools(vm.Storages) {
-		sylveDir := fmt.Sprintf("/%s/sylve/virtual-machines/%d/.sylve", pool, rid)
+	outputDirectories, err := s.resolveVMJSONOutputDirectories(context.Background(), vm)
+	if err != nil {
+		return err
+	}
+	for _, sylveDir := range outputDirectories {
 		vmJsonPath := filepath.Join(sylveDir, "vm.json")
 
 		if err := os.MkdirAll(sylveDir, 0755); err != nil {
@@ -364,6 +367,65 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 	return nil
 }
 
+func (s *Service) resolveVMJSONOutputDirectories(
+	ctx context.Context,
+	vm vmModels.VM,
+) ([]string, error) {
+	pools := vmJSONOutputPools(vm.Storages)
+	directories := make([]string, 0, len(pools))
+	for _, pool := range pools {
+		directory, err := s.resolveVMJSONOutputDirectory(ctx, vm, pool)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_resolve_vm_json_output_directory_%s: %w", pool, err)
+		}
+		directories = append(directories, directory)
+	}
+	return directories, nil
+}
+
+func (s *Service) resolveVMJSONOutputDirectory(
+	ctx context.Context,
+	vm vmModels.VM,
+	pool string,
+) (string, error) {
+	datasetName := fmt.Sprintf("%s/sylve/virtual-machines", pool)
+	appendRID := true
+	for _, storage := range vm.Storages {
+		if vmStoragePoolName(storage) != pool {
+			continue
+		}
+		if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
+			datasetName = fmt.Sprintf("%s/%d", datasetName, vm.RID)
+			appendRID = false
+			break
+		}
+	}
+
+	mountpoint, err := s.resolveFilesystemDatasetMountpoint(ctx, datasetName)
+	if err != nil {
+		return "", err
+	}
+	if appendRID {
+		mountpoint = filepath.Join(mountpoint, fmt.Sprintf("%d", vm.RID))
+	}
+
+	return filepath.Join(mountpoint, ".sylve"), nil
+}
+
+func vmStoragePoolName(storage vmModels.Storage) string {
+	pool := strings.TrimSpace(storage.Pool)
+	if pool == "" {
+		pool = strings.TrimSpace(storage.Dataset.Pool)
+	}
+	if pool == "" {
+		datasetName := strings.TrimSpace(storage.Dataset.Name)
+		if slash := strings.Index(datasetName, "/"); slash > 0 {
+			pool = strings.TrimSpace(datasetName[:slash])
+		}
+	}
+	return pool
+}
+
 func vmJSONOutputPools(storages []vmModels.Storage) []string {
 	seen := make(map[string]struct{})
 	pools := make([]string, 0, len(storages))
@@ -371,16 +433,7 @@ func vmJSONOutputPools(storages []vmModels.Storage) []string {
 		if storage.Type == vmModels.VMStorageTypeDiskImage {
 			continue
 		}
-		pool := strings.TrimSpace(storage.Pool)
-		if pool == "" {
-			pool = strings.TrimSpace(storage.Dataset.Pool)
-		}
-		if pool == "" {
-			datasetName := strings.TrimSpace(storage.Dataset.Name)
-			if slash := strings.Index(datasetName, "/"); slash > 0 {
-				pool = strings.TrimSpace(datasetName[:slash])
-			}
-		}
+		pool := vmStoragePoolName(storage)
 		if pool == "" {
 			continue
 		}

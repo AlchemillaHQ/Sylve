@@ -10,51 +10,11 @@ package system
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/zfsutil"
 )
 
-var requiredSylveDatasets = []string{
-	"sylve",
-	"sylve/virtual-machines",
-	"sylve/jails",
-	"sylve/bootstraps",
-}
-
 func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string) ([]*gzfs.Dataset, error) {
-	var created []*gzfs.Dataset
-
-	for _, dataset := range requiredSylveDatasets {
-		fullDatasetName := fmt.Sprintf("%s/%s", poolName, dataset)
-		mountpoint := fmt.Sprintf("/%s/%s", poolName, dataset)
-
-		found, err := s.GZFS.ZFS.Get(ctx, fullDatasetName, false)
-		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
-			return created, fmt.Errorf("error_checking_dataset_%s: %w", fullDatasetName, err)
-		}
-
-		if found != nil {
-			if found.Mountpoint != mountpoint {
-				if err := s.GZFS.ZFS.EditFilesystem(ctx, fullDatasetName, map[string]string{
-					"mountpoint": mountpoint,
-				}); err != nil {
-					return created, fmt.Errorf("error_fixing_mountpoint_%s: %w", fullDatasetName, err)
-				}
-			}
-			continue
-		}
-
-		newDataset, err := s.GZFS.ZFS.CreateFilesystem(ctx, fullDatasetName, map[string]string{
-			"mountpoint": mountpoint,
-		})
-		if err != nil {
-			return created, fmt.Errorf("error_creating_dataset_%s: %w", fullDatasetName, err)
-		}
-
-		created = append(created, newDataset)
-	}
-
-	return created, nil
+	return zfsutil.EnsureSylveNamespace(ctx, s.GZFS, poolName)
 }

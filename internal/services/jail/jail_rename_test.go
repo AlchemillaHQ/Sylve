@@ -47,6 +47,9 @@ func TestUpdateNameRenamesJailAndTemplateSourceName(t *testing.T) {
 	if err := db.Create(&jail).Error; err != nil {
 		t.Fatalf("failed seeding jail: %v", err)
 	}
+	mountPoint := t.TempDir()
+	attachJailRootTestFixture(t, svc, db, jail.ID, jail.CTID, mountPoint)
+	writeJailRootConfigTestFixture(t, svc, jail.CTID, jail.Name, mountPoint)
 
 	tpl := jailModels.JailTemplate{
 		Name:           "template-jail",

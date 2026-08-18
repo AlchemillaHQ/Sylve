@@ -3,12 +3,13 @@
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
+	import type { Dataset } from '$lib/types/zfs/dataset';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { fstabPlaceholder } from '$lib/utils/placeholders';
 	import { toast } from 'svelte-sonner';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import { generateSimpleLinuxFSTab } from '$lib/utils/jail/jail';
+	import { generateSimpleLinuxFSTab, resolveJailRootPreview } from '$lib/utils/jail/jail';
 	import { watch } from 'runed';
 	import Bootstrap from './Bootstrap.svelte';
 
@@ -16,6 +17,7 @@
 		hostname?: string;
 		ctId: number;
 		pools: Zpool[];
+		datasets: Dataset[];
 		pool: string;
 		downloads: Download[];
 		bootstraps: BootstrapEntry[];
@@ -28,6 +30,7 @@
 		hostname,
 		ctId,
 		pools,
+		datasets,
 		downloads,
 		bootstraps,
 		bootstrapRefetch = $bindable(),
@@ -76,19 +79,9 @@
 
 	let disableBaseSelection = $derived(pool ? false : true);
 	let enableFstabInput = $state(false);
-	let fstabOpts = $state({
-		value: 'manual'
-	});
-	let fstabOptions = $derived([
-		{
-			label: 'Simple Linux',
-			value: 'simple-linux'
-		},
-		{
-			label: 'Manual',
-			value: 'manual'
-		}
-	]);
+	let jailRoot = $derived(resolveJailRootPreview(datasets, pool, ctId));
+	let simpleLinuxAvailable = $derived(jailRoot !== null);
+	let fstabMode = $state<'manual' | 'simple-linux'>('manual');
 
 	watch([() => base, () => enableFstabInput], ([baseVal, fstabEnabled]) => {
 		if (fstabEnabled && !baseVal) {
@@ -96,31 +89,40 @@
 				position: 'bottom-center'
 			});
 			enableFstabInput = false;
-		}
-	});
-
-	function setFSTab() {
-		if (fstabOpts.value === 'simple-linux') {
-			fstab = generateSimpleLinuxFSTab(ctId, pool);
-		} else {
+			fstabMode = 'manual';
+			fstab = '';
+		} else if (!fstabEnabled) {
+			fstabMode = 'manual';
 			fstab = '';
 		}
-	}
-
-	watch([() => ctId, () => fstabOpts.value], ([ctIdVal, fstabOptVal]) => {
-		if (ctIdVal && fstabOptVal === 'simple-linux') {
-			setFSTab();
-		}
 	});
 
-	watch(
-		() => fstabOpts.value,
-		(val) => {
-			if (val === 'manual') {
-				fstab = '';
-			}
+	function setFstabMode(value: string) {
+		if (value === 'simple-linux') {
+			if (!jailRoot) return;
+			fstabMode = value;
+			fstab = generateSimpleLinuxFSTab(jailRoot);
+			return;
 		}
-	);
+
+		fstabMode = 'manual';
+		fstab = '';
+	}
+
+	function markFstabManual() {
+		fstabMode = 'manual';
+	}
+
+	watch([() => jailRoot, () => fstabMode], ([root, mode]) => {
+		if (mode !== 'simple-linux') return;
+		if (!root) {
+			fstabMode = 'manual';
+			fstab = '';
+			return;
+		}
+
+		fstab = generateSimpleLinuxFSTab(root);
+	});
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -173,22 +175,26 @@
 				textAreaClasses="min-h-40 text-xs/6"
 				bind:value={fstab}
 				classes="flex-1 space-y-1 text-xs/6 mb-2"
+				onChange={markFstabManual}
 			/>
 
-			<Select.Root
-				type="single"
-				bind:value={fstabOpts.value}
-				onValueChange={(val) => ((fstabOpts.value = val), setFSTab())}
-			>
+			<Select.Root type="single" value={fstabMode} onValueChange={setFstabMode}>
 				<Select.Trigger class="h-8 w-full">
-					{fstabOptions.find((opt) => opt.value === fstabOpts.value)?.label ||
-						'Select FStab Option'}
+					{fstabMode === 'simple-linux' ? 'Simple Linux' : 'Manual'}
 				</Select.Trigger>
 				<Select.Content>
-					<Select.Item value="simple-linux">Simple Linux</Select.Item>
+					<Select.Item value="simple-linux" disabled={!simpleLinuxAvailable}>
+						Simple Linux
+					</Select.Item>
 					<Select.Item value="manual">Manual</Select.Item>
 				</Select.Content>
 			</Select.Root>
+			{#if pool && !simpleLinuxAvailable}
+				<p class="text-muted-foreground mt-2 text-xs">
+					The Simple Linux preset is unavailable until this pool's managed jails mountpoint can be
+					resolved.
+				</p>
+			{/if}
 		</div>
 	{/if}
 </div>

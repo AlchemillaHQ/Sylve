@@ -755,13 +755,15 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 	var storagePath string
 
 	if diskStorage.Type == vmModels.VMStorageTypeRaw {
-		storagePath = fmt.Sprintf(
-			"/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
-			diskStorage.Dataset.Pool,
+		storagePath, err = s.resolveRawStorageImagePath(
+			context.Background(),
+			s.DB,
 			vm.RID,
-			diskStorage.ID,
-			diskStorage.ID,
+			*diskStorage,
 		)
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_raw_cloud_init_disk: %w", err)
+		}
 
 		if _, err := os.Stat(storagePath); err != nil {
 			return fmt.Errorf("disk_image_not_found: %w", err)

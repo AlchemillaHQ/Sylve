@@ -182,6 +182,12 @@ func classifyCreateJailError(err error) (int, string) {
 		return http.StatusConflict, "guest_identity_inventory_conflict"
 	case strings.Contains(errText, "guest_id_already_in_use"):
 		return http.StatusConflict, "guest_id_already_in_use"
+	case strings.Contains(errText, "bootstrap_mountpoint_not_usable"):
+		return http.StatusConflict, "bootstrap_mountpoint_not_usable"
+	case strings.Contains(errText, "bootstrap_record_mismatch"):
+		return http.StatusConflict, "bootstrap_record_mismatch"
+	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
 	}
 	if strings.Contains(errText, "jail_with_ctid_") && strings.Contains(errText, "already_exists") {
 		return http.StatusConflict, "jail_with_ctid_already_exists"
@@ -305,6 +311,8 @@ func classifyUpdateJailDescriptionError(err error) (int, string) {
 		return http.StatusBadRequest, extractCreateJailErrorCode(errText)
 	case strings.Contains(errText, "replication_lease_check_failed"):
 		return http.StatusInternalServerError, "replication_lease_check_failed"
+	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
 	case strings.Contains(errText, "failed_to_sync_jail_metadata"):
 		return http.StatusInternalServerError, "failed_to_sync_jail_metadata"
 	default:
@@ -324,6 +332,8 @@ func classifyUpdateJailNameError(err error) (int, string) {
 		return http.StatusNotFound, "jail_not_found"
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
 	}
 
 	code := extractCreateJailErrorCode(errText)

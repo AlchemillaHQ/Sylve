@@ -142,18 +142,14 @@ func (s *Service) captureJailNetworkFiles(ctID uint, jail *jailModels.Jail) ([]j
 		filepath.Join(jailDir, "scripts", "start.sh"),
 		filepath.Join(jailDir, "scripts", "post-start.sh"),
 	}
+	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
+	if err != nil {
+		return nil, err
+	}
 	if jail.Type == jailModels.JailTypeFreeBSD {
-		mountPoint, mountErr := s.GetJailBaseMountPoint(ctID)
-		if mountErr != nil {
-			return nil, mountErr
-		}
 		paths = append(paths, filepath.Join(mountPoint, "etc", "rc.conf"))
 	}
-	for _, storage := range jail.Storages {
-		if storage.IsBase {
-			paths = append(paths, filepath.Join("/", storage.Pool, "sylve", "jails", fmt.Sprintf("%d", ctID), ".sylve", "jail.json"))
-		}
-	}
+	paths = append(paths, filepath.Join(mountPoint, ".sylve", "jail.json"))
 
 	return captureJailFiles(paths)
 }

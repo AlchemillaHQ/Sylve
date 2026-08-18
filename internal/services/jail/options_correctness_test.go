@@ -107,7 +107,9 @@ func newJailOptionsTestService(
 		t.Fatalf("write jail config: %v", err)
 	}
 
-	return &Service{DB: db, ctidHashByCTID: make(map[uint]string)}, record, configPath, mountPoint
+	service := &Service{DB: db, ctidHashByCTID: make(map[uint]string)}
+	attachJailRootTestFixture(t, service, db, record.ID, ctID, mountPoint)
+	return service, record, configPath, mountPoint
 }
 
 func loadJailOptionRecord(t *testing.T, db *gorm.DB, ctID uint) jailModels.Jail {
@@ -117,6 +119,28 @@ func loadJailOptionRecord(t *testing.T, db *gorm.DB, ctID uint) jailModels.Jail 
 		t.Fatalf("reload jail: %v", err)
 	}
 	return record
+}
+
+func TestManualFstabEditPersistsContent(t *testing.T) {
+	service, _, configPath, _ := newJailOptionsTestService(t, 806, func(jail *jailModels.Jail) {
+		jail.Fstab = "generated"
+	})
+
+	const manual = "tmpfs\t/custom/tmp\ttmpfs\trw\t0\t0\n"
+	if err := service.ModifyFstab(806, manual); err != nil {
+		t.Fatalf("ModifyFstab failed: %v", err)
+	}
+	refreshed := loadJailOptionRecord(t, service.DB, 806)
+	if refreshed.Fstab != manual {
+		t.Fatalf("manual fstab = %q", refreshed.Fstab)
+	}
+	fstabData, err := os.ReadFile(filepath.Join(filepath.Dir(configPath), "fstab"))
+	if err != nil {
+		t.Fatalf("read manual fstab: %v", err)
+	}
+	if string(fstabData) != manual {
+		t.Fatalf("fstab content = %q, want %q", fstabData, manual)
+	}
 }
 
 func forceJailOptionUpdateFailure(t *testing.T, db *gorm.DB) {

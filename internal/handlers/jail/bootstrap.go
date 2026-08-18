@@ -58,7 +58,8 @@ func bootstrapErrorStatus(err error) int {
 		"bootstrap_cleanup_required",
 		"bootstrap_dataset_unmanaged",
 		"bootstrap_invalid_status",
-		"bootstrap_record_mismatch":
+		"bootstrap_record_mismatch",
+		"bootstrap_mountpoint_not_usable":
 		return http.StatusConflict
 	case "pkgbase_signing_keys_not_found", "pkg_not_found":
 		return http.StatusServiceUnavailable

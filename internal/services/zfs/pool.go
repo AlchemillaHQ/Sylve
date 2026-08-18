@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/disk"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -60,6 +61,11 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 
 	if !utils.IsValidZFSPoolName(req.Name) {
 		return classifyError(ErrInvalidRequest, "invalid_pool_name")
+	}
+
+	mountpoint, err := normalizePoolMountpoint(req.Mountpoint, req.Properties)
+	if err != nil {
+		return err
 	}
 
 	names, err := s.GZFS.Zpool.GetPoolNames(ctx)
@@ -153,13 +159,18 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		args = append(args, req.Spares...)
 	}
 
-	err = s.GZFS.Zpool.Create(ctx, req.Name, req.CreateForce, req.Properties, args...)
+	err = s.GZFS.Zpool.CreateWithOptions(ctx, req.Name, gzfs.ZPoolCreateOptions{
+		Force:      req.CreateForce,
+		Mountpoint: mountpoint,
+		Properties: req.Properties,
+	}, args...)
 	if err != nil {
 		return fmt.Errorf("zpool_create_failed: %v", err)
 	}
 
-	if err := s.ensureSylveDatasetsOnPool(ctx, req.Name); err != nil {
-		return err
+	_, err = zfsutil.EnsureSylveNamespace(ctx, s.GZFS, req.Name)
+	if err != nil {
+		return fmt.Errorf("failed_to_prepare_sylve_datasets: %w", err)
 	}
 
 	var basicSettings models.BasicSettings
@@ -183,6 +194,29 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	return nil
 }
 
+func normalizePoolMountpoint(raw string, properties map[string]string) (string, error) {
+	mountpoint := strings.TrimSpace(raw)
+	for property, value := range properties {
+		if strings.EqualFold(strings.TrimSpace(property), "altroot") {
+			value = strings.TrimSpace(value)
+			if value != "" && value != "-" {
+				return "", classifyError(ErrInvalidRequest, "pool_altroot_not_supported")
+			}
+		}
+	}
+
+	if mountpoint == "" {
+		return "", nil
+	}
+
+	mountpoint, err := zfsutil.NormalizeMountpoint(raw)
+	if err != nil {
+		return "", classifyError(ErrInvalidRequest, "invalid_pool_mountpoint")
+	}
+
+	return mountpoint, nil
+}
+
 func buildVdevArgs(vdevs []zfsServiceInterfaces.Vdev) []string {
 	var args []string
 	for _, vdev := range vdevs {
@@ -192,32 +226,6 @@ func buildVdevArgs(vdevs []zfsServiceInterfaces.Vdev) []string {
 		args = append(args, vdev.VdevDevices...)
 	}
 	return args
-}
-
-func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string) error {
-	requiredDatasets := []string{
-		"sylve",
-		"sylve/virtual-machines",
-		"sylve/jails",
-	}
-
-	for _, dataset := range requiredDatasets {
-		fullDatasetName := fmt.Sprintf("%s/%s", poolName, dataset)
-		found, err := s.GZFS.ZFS.Get(ctx, fullDatasetName, false)
-		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
-			return fmt.Errorf("failed_to_check_dataset_%s: %w", fullDatasetName, err)
-		}
-
-		if found != nil {
-			continue
-		}
-
-		if _, err := s.GZFS.ZFS.CreateFilesystem(ctx, fullDatasetName, nil); err != nil {
-			return fmt.Errorf("failed_to_create_dataset_%s: %w", fullDatasetName, err)
-		}
-	}
-
-	return nil
 }
 
 func (s *Service) EditPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error {

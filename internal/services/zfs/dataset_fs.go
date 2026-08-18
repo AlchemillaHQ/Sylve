@@ -76,6 +76,9 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeFilesystem {
 		return datasetLookupError(err, "filesystem with guid %s not found", guid)
 	}
+	if _, editsMountpoint := props["mountpoint"]; editsMountpoint && isSylveManagedDataset(dataset.Name) {
+		return classifyError(ErrConflict, "managed_dataset_mountpoint_edit_not_supported")
+	}
 
 	if mp, ok := props["mountpoint"]; ok && mp == "" {
 		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
@@ -90,6 +93,11 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 		s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 	}
 	return err
+}
+
+func isSylveManagedDataset(name string) bool {
+	parts := strings.Split(strings.Trim(name, "/"), "/")
+	return len(parts) >= 2 && parts[0] != "" && parts[1] == "sylve"
 }
 
 func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {

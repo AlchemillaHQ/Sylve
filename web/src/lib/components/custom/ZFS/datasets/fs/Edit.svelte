@@ -47,6 +47,10 @@
 	let properties = $state(options);
 	let compressionOpen = $state(false);
 	let recordsizeOpen = $state(false);
+	let managedDataset = $derived.by(() => {
+		const parts = dataset.name.replace(/^\/+|\/+$/g, '').split('/');
+		return parts.length >= 2 && parts[0] !== '' && parts[1] === 'sylve';
+	});
 
 	const recordsizeData = $derived.by(() => {
 		const base = zfsProperties.recordsize;
@@ -71,7 +75,7 @@
 			quota = toZfsBytesString(parsed);
 		}
 
-		const response = await editFileSystem(dataset.guid as string, {
+		const editedProperties: Record<string, string> = {
 			atime: properties.atime,
 			checksum: properties.checksum,
 			compression: properties.compression,
@@ -80,9 +84,11 @@
 			quota: quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
-			recordsize: properties.recordsize,
-			mountpoint: properties.mountpoint || ''
-		});
+			recordsize: properties.recordsize
+		};
+		if (!managedDataset) editedProperties.mountpoint = properties.mountpoint || '';
+
+		const response = await editFileSystem(dataset.guid as string, editedProperties);
 
 		reload = true;
 
@@ -275,6 +281,7 @@
 						placeholder="/custom/mountpoint"
 						autocomplete="off"
 						bind:value={properties.mountpoint}
+						disabled={managedDataset}
 					/>
 				</div>
 			</div>
