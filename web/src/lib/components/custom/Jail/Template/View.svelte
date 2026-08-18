@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getJailTemplateById } from '$lib/api/jail/jail';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';

@@ -148,6 +148,7 @@
 				.sort()
 				.join('|'),
 		async () => {
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
 			const workloadsByNode = new Map<string, { guestType: string; guestId: number }[]>();
 			for (const policy of policies.current) {
 				const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();

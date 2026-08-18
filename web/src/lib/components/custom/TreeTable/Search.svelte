@@ -35,7 +35,7 @@
 	>
 		<button
 			aria-label="Toggle Search"
-			class="flex h-6 w-6 min-w-[1.5rem] shrink-0 items-center justify-center"
+			class="flex h-6 w-6 min-w-6 shrink-0 items-center justify-center"
 			onclick={toggleSearch}
 		>
 			<span class="icon-[mdi--magnify] h-5 w-5"></span>
@@ -46,7 +46,7 @@
 				id="search-input"
 				bind:value={query}
 				type="text"
-				placeholder={'Search...'}
+				placeholder="Search..."
 				class="bg-primary ml-1 w-full text-sm leading-4 focus:outline-none"
 				in:slide={{ duration: 250, easing: cubicOut, axis: 'x' }}
 				out:fade={{ duration: 150 }}

@@ -74,14 +74,14 @@
 			)
 	);
 
-	const handleLabelClick = (e: MouseEvent) => {
+	const handleLabelClick = (e: Event) => {
 		e.preventDefault();
 		if (item.href) {
 			useSafeGoto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
 
-	const handleIconClick = (e: MouseEvent) => {
+	const handleIconClick = (e: Event) => {
 		e.preventDefault();
 		e.stopPropagation();
 		if (item.children && item.children.length > 0) {
@@ -89,7 +89,7 @@
 		}
 	};
 
-	const handleGroupClick = (e: MouseEvent) => {
+	const handleGroupClick = (e: Event) => {
 		e.preventDefault();
 		onToggleId(item.id);
 	};
@@ -442,7 +442,7 @@
 			tabindex="0"
 			class={`${rowSpacingClass} text-muted-foreground hover:bg-muted/40 dark:hover:bg-muted/40 flex w-full cursor-pointer items-center justify-between rounded-md px-1.5 ${rowPaddingClass}`}
 			onclick={handleGroupClick}
-			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleGroupClick(e as any) : null)}
+			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleGroupClick(e) : null)}
 		>
 			<div class="flex min-w-0 items-center gap-1.5">
 				<span class={`icon-[${item.icon}] size-3.5 shrink-0`}></span>
@@ -460,7 +460,7 @@
 				tabindex={0}
 				class={`group ${rowSpacingClass} flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
 				onclick={handleLabelClick}
-				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e as any) : null)}
+				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 			>
 				<div class="flex min-w-0 items-center space-x-1 text-sm">
 					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
@@ -519,8 +519,7 @@
 							tabindex="0"
 							class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
 							onclick={handleIconClick}
-							onkeydown={(e) =>
-								e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null}
+							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
 						></span>
 					{/if}
 				</div>
@@ -661,7 +660,7 @@
 			tabindex="0"
 			class={`${rowSpacingClass} flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}${isOfflineNode ? ' opacity-60' : ''}`}
 			onclick={handleLabelClick}
-			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e as any) : null)}
+			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 		>
 			<div class="flex min-w-0 items-center space-x-1 text-sm">
 				{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
@@ -707,7 +706,7 @@
 					tabindex="0"
 					class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer shrink-0`}
 					onclick={handleIconClick}
-					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null)}
+					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
 				></span>
 			{/if}
 		</div>

@@ -265,7 +265,7 @@
 	title: string,
 	onSubmit: () => void,
 	submitLabel: string,
-	onClose: () => void
+	_onClose: () => void
 )}
 	<Dialog.Header>
 		<Dialog.Title>

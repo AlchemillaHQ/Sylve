@@ -117,7 +117,7 @@
 		}
 	});
 
-	watch([() => properties.parent.value], ([parentValue]) => {
+	watch([() => properties.parent.value], ([_parentValue]) => {
 		if (!parentEncrypted && properties.encryption === 'inherit') {
 			properties.encryption = 'off';
 			properties.encryptionKey = '';

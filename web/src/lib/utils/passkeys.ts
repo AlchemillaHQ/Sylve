@@ -25,13 +25,17 @@ function decodeBase64URL(input: string): ArrayBuffer {
 	return bytes.buffer;
 }
 
+function encodeBase64URL(input: ArrayBuffer): string;
+function encodeBase64URL(input: ArrayBuffer | null): string | null;
+
 function encodeBase64URL(input: ArrayBuffer | null): string | null {
-	if (!input) {
+	if (input === null) {
 		return null;
 	}
 
 	const bytes = new Uint8Array(input);
 	let binary = '';
+
 	for (let i = 0; i < bytes.byteLength; i++) {
 		binary += String.fromCharCode(bytes[i]);
 	}
@@ -57,7 +61,24 @@ export function isPasskeySupported(): boolean {
 	);
 }
 
-export function buildRegistrationOptions(publicKey: any): PublicKeyCredentialCreationOptions {
+type PublicKeyCredentialCreationOptionsJSON = Omit<
+	PublicKeyCredentialCreationOptions,
+	'challenge' | 'user' | 'excludeCredentials'
+> & {
+	challenge: string;
+	user: Omit<PublicKeyCredentialUserEntity, 'id'> & {
+		id: string;
+	};
+	excludeCredentials?: Array<
+		Omit<PublicKeyCredentialDescriptor, 'id'> & {
+			id: string;
+		}
+	>;
+};
+
+export function buildRegistrationOptions(
+	publicKey: PublicKeyCredentialCreationOptionsJSON
+): PublicKeyCredentialCreationOptions {
 	return {
 		...publicKey,
 		challenge: decodeBase64URL(publicKey.challenge),
@@ -71,7 +92,21 @@ export function buildRegistrationOptions(publicKey: any): PublicKeyCredentialCre
 	};
 }
 
-export function buildLoginOptions(publicKey: any): PublicKeyCredentialRequestOptions {
+type CredentialDescriptorJSON = Omit<PublicKeyCredentialDescriptor, 'id'> & {
+	id: string;
+};
+
+type PublicKeyCredentialRequestOptionsJSON = Omit<
+	PublicKeyCredentialRequestOptions,
+	'challenge' | 'allowCredentials'
+> & {
+	challenge: string;
+	allowCredentials?: CredentialDescriptorJSON[];
+};
+
+export function buildLoginOptions(
+	publicKey: PublicKeyCredentialRequestOptionsJSON
+): PublicKeyCredentialRequestOptions {
 	return {
 		...publicKey,
 		challenge: decodeBase64URL(publicKey.challenge),
@@ -81,12 +116,47 @@ export function buildLoginOptions(publicKey: any): PublicKeyCredentialRequestOpt
 	};
 }
 
-export function serializeCredential(credential: PublicKeyCredential): any {
-	const base = {
+type SerializedCredentialBase = {
+	id: string;
+	type: string;
+	rawId: string;
+	authenticatorAttachment: string;
+	clientExtensionResults: AuthenticationExtensionsClientOutputs;
+	response: object;
+};
+
+type SerializedAssertionCredential = Omit<SerializedCredentialBase, 'response'> & {
+	response: {
+		authenticatorData: string;
+		clientDataJSON: string;
+		signature: string;
+		userHandle: string;
+	};
+};
+
+type SerializedAttestationCredential = Omit<SerializedCredentialBase, 'response'> & {
+	response: {
+		attestationObject: string;
+		clientDataJSON: string;
+		transports: AuthenticatorTransport[];
+	};
+};
+
+type SerializedCredential =
+	| SerializedCredentialBase
+	| SerializedAssertionCredential
+	| SerializedAttestationCredential;
+
+export function serializeCredential(credential: PublicKeyCredential): SerializedCredential {
+	const credentialWithAttachment = credential as PublicKeyCredential & {
+		authenticatorAttachment?: string | null;
+	};
+
+	const base: SerializedCredentialBase = {
 		id: credential.id,
 		type: credential.type,
 		rawId: encodeBase64URL(credential.rawId),
-		authenticatorAttachment: (credential as any).authenticatorAttachment ?? '',
+		authenticatorAttachment: credentialWithAttachment.authenticatorAttachment ?? '',
 		clientExtensionResults: credential.getClientExtensionResults(),
 		response: {}
 	};
@@ -104,9 +174,13 @@ export function serializeCredential(credential: PublicKeyCredential): any {
 	}
 
 	if (credential.response instanceof AuthenticatorAttestationResponse) {
+		const responseWithTransports = credential.response as AuthenticatorAttestationResponse & {
+			getTransports?: () => AuthenticatorTransport[];
+		};
+
 		const transports =
-			typeof (credential.response as any).getTransports === 'function'
-				? (credential.response as any).getTransports()
+			typeof responseWithTransports.getTransports === 'function'
+				? responseWithTransports.getTransports()
 				: [];
 
 		return {

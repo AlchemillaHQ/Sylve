@@ -69,7 +69,7 @@ export function convertDbTime(time: string): string {
 		const zonedDate = formatInTimeZone(date, userTimeZone, 'yyyy-MM-dd hh:mm a');
 
 		return zonedDate;
-	} catch (e) {
+	} catch (_e) {
 		return time;
 	}
 }
@@ -101,7 +101,7 @@ export function cronToHuman(cron: string): string {
 	try {
 		if (!cron || cron.trim() === '') return '-';
 		return cronstrue.toString(cron, { throwExceptionOnParseError: true });
-	} catch (e) {
+	} catch (_e) {
 		return '';
 	}
 }

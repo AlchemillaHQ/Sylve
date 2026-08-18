@@ -22,7 +22,7 @@ export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; col
 		{
 			field: 'data.user',
 			title: 'User Data',
-			formatter(cell, formatterParams, onRendered) {
+			formatter(cell) {
 				const data = cell.getValue();
 				return data ? data.substring(0, 30) + (data.length > 30 ? '...' : '') : '';
 			}
@@ -30,7 +30,7 @@ export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; col
 		{
 			field: 'data.metadata',
 			title: 'Metadata',
-			formatter(cell, formatterParams, onRendered) {
+			formatter(cell) {
 				const data = cell.getValue();
 				return data ? data.substring(0, 30) + (data.length > 30 ? '...' : '') : '';
 			}
@@ -38,7 +38,7 @@ export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; col
 		{
 			field: 'data.networkConfig',
 			title: 'Network Config',
-			formatter(cell, formatterParams, onRendered) {
+			formatter(cell) {
 				const data = cell.getValue();
 				return data ? data.substring(0, 30) + (data.length > 30 ? '...' : '') : '-';
 			}

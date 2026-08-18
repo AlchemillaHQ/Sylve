@@ -109,18 +109,24 @@ export function addTabulatorFilters() {
 	});
 }
 
-export function matchAny(data: any, filterParams: any): boolean {
+export function matchAny(data: unknown, filterParams: { query?: unknown }): boolean {
 	const query = filterParams.query?.toString().toLowerCase();
 	if (!query) return false;
 
-	function recursiveMatch(obj: any): boolean {
-		for (let key in obj) {
-			const value = obj[key];
+	const searchQuery: string = query;
+
+	function recursiveMatch(obj: unknown): boolean {
+		if (obj === null || (typeof obj !== 'object' && typeof obj !== 'function')) {
+			return false;
+		}
+
+		for (const key in obj) {
+			const value = (obj as Record<string, unknown>)[key];
 
 			if (value == null) continue;
 
 			if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-				if (value.toString().toLowerCase().includes(query)) {
+				if (value.toString().toLowerCase().includes(searchQuery)) {
 					return true;
 				}
 			}
@@ -135,6 +141,7 @@ export function matchAny(data: any, filterParams: any): boolean {
 				if (recursiveMatch(value)) return true;
 			}
 		}
+
 		return false;
 	}
 
@@ -143,7 +150,7 @@ export function matchAny(data: any, filterParams: any): boolean {
 
 function cleanChildren<T extends { children?: T[] | null }>(row: T): T {
 	if (!Array.isArray(row.children)) {
-		const { children, ...rest } = row;
+		const { children: _, ...rest } = row;
 		return rest as T;
 	}
 
@@ -178,7 +185,11 @@ export const restoreTreeState = (expandMap: Map<number, boolean>, rows: RowCompo
 
 		const expanded = expandMap.get(id);
 		if (expanded !== undefined) {
-			expanded ? row.treeExpand() : row.treeCollapse();
+			if (expanded) {
+				row.treeExpand();
+			} else {
+				row.treeCollapse();
+			}
 		}
 
 		const children = row.getTreeChildren();

@@ -242,13 +242,10 @@
 	});
 
 	let containerClass = 'p-5';
-	let label = 'Usage';
-	let icon = '';
-	let description = '';
 </script>
 
 <Card.Root class={containerClass}>
-	<Card.Content class="h-[360px] w-full overflow-hidden rounded-sm p-0">
+	<Card.Content class="h-90 w-full overflow-hidden rounded-sm p-0">
 		<Chart {init} {options} class="h-full w-full" />
 	</Card.Content>
 </Card.Root>

@@ -26,7 +26,7 @@ INTEGRATION_PACKAGES := \
 
 ACCEPTANCE_PACKAGE := ./internal/console/integration
 
-.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality
+.PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality quality-fix
 .PHONY: test test-external-preflight test-integration test-acceptance test-acceptance-full
 .PHONY: test-smart-integration clean
 
@@ -94,6 +94,10 @@ quality:
 	fi
 	npm ci --prefix web
 	npm run lint --prefix web
+
+quality-fix:
+	git ls-files -z '*.go' | xargs -0 gofmt -w
+	npm run lint:fix --prefix web
 
 test:
 	go test $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest

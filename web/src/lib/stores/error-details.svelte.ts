@@ -136,10 +136,8 @@ function createDetailedErrorToast(
 	options: Parameters<typeof toast.error>[1],
 	detail: ErrorDetail
 ) {
-	let toastId: string | number;
 	const duration = Math.max(options?.duration ?? 0, 8000);
-
-	toastId = baseErrorToast(message, {
+	const toastId = baseErrorToast(message, {
 		...options,
 		duration,
 		action: {

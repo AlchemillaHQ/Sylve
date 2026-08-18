@@ -30,9 +30,9 @@ export function capitalizeFirstLetter(str: string, firstOnly: boolean = false): 
 }
 
 export function parseJwt(token: string) {
-	let base64Url = token.split('.')[1];
-	let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-	let jsonPayload = decodeURIComponent(
+	const base64Url = token.split('.')[1];
+	const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+	const jsonPayload = decodeURIComponent(
 		window
 			.atob(base64)
 			.split('')
@@ -174,7 +174,7 @@ export function isDownloadURL(url: string): boolean {
 
 		// Also accept signed/token-based download URLs (CDN presigned URLs, file sharing
 		// services, etc.) where the path ends in a long opaque token with no file extension.
-		if (lastSegment.length > 20 && /^[a-zA-Z0-9_\-]+$/.test(lastSegment)) {
+		if (lastSegment.length > 20 && /^[a-zA-Z0-9_-]+$/.test(lastSegment)) {
 			return true;
 		}
 
@@ -288,7 +288,7 @@ export function isValidFileName(name: string): boolean {
 	if (!name || name.trim().length === 0) return false;
 	if (name.length > 255) return false;
 
-	const invalidChars = /[\\\/:*?"<>|]/;
+	const invalidChars = /[\\/:*?"<>|]/;
 	return !invalidChars.test(name);
 }
 
@@ -304,7 +304,7 @@ export function generateUnicastMAC() {
 		.join(':');
 }
 
-export function isBoolean(value: any): boolean {
+export function isBoolean(value: unknown): boolean {
 	return (
 		typeof value === 'boolean' ||
 		(typeof value === 'string' && (value === 'true' || value === 'false'))

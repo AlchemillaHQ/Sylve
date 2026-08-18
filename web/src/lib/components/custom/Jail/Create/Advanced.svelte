@@ -211,10 +211,6 @@
 	onMount(() => {
 		templateSelect();
 	});
-
-	function logClean(x: boolean) {
-		console.log('Clean Environment:', x);
-	}
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -276,7 +272,7 @@
 	{#if checkBoxes.additionalOptions}
 		<CustomValueInput
 			label="Custom Options"
-			placeholder={'### This will be pasted as is into jail config ###'}
+			placeholder="### This will be pasted as is into jail config ###"
 			bind:value={additionalOptions}
 			classes="flex-1 space-y-1.5"
 			textAreaClasses="h-12"
@@ -288,7 +284,7 @@
 	{#if checkBoxes.metadata.meta}
 		<CustomValueInput
 			label="Metadata (Meta)"
-			placeholder={'### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2'}
+			placeholder="### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2"
 			bind:value={metadata.meta}
 			classes="flex-1 space-y-1.5"
 			textAreaClasses="h-12"
@@ -300,7 +296,7 @@
 	{#if checkBoxes.metadata.env}
 		<CustomValueInput
 			label="Metadata (Environment Variables)"
-			placeholder={'### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2'}
+			placeholder="### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2"
 			bind:value={metadata.env}
 			classes="flex-1 space-y-1.5"
 			textAreaClasses="h-12"
@@ -333,7 +329,7 @@
 				{#if execScripts[phase.key].enabled}
 					<CustomValueInput
 						label=""
-						placeholder={`echo "hello-world"`}
+						placeholder="echo 'hello-world'"
 						bind:value={execScripts[phase.key].script}
 						classes="flex-1 space-y-1.5"
 						textAreaClasses="h-24 text-xs font-mono"

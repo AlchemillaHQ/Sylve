@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { storage } from '$lib';
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import Header from '$lib/components/custom/Header.svelte';
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';

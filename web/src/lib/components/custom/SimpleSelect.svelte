@@ -32,7 +32,7 @@
 		disabled = false,
 		size = 'default',
 		title,
-		single
+		single: _single
 	}: Props = $props();
 
 	let sLabel = $derived(

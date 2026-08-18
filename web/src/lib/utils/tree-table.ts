@@ -9,13 +9,13 @@
  */
 
 import type { Row } from '$lib/types/components/tree-table';
-import type { RowComponent, Tabulator } from 'tabulator-tables';
+import type { RowComponent } from 'tabulator-tables';
 
 export function cleanChildren(row: Row): Row {
-	let newRow = { ...row };
+	const newRow = { ...row };
 
 	if (Array.isArray(newRow.children)) {
-		let cleanedChildren = newRow.children.map(cleanChildren).filter(Boolean);
+		const cleanedChildren = newRow.children.map(cleanChildren).filter(Boolean);
 
 		if (cleanedChildren.length > 0) {
 			newRow.children = cleanedChildren;
@@ -69,7 +69,7 @@ export function getAllRows(rows: RowComponent[]): RowComponent[] {
 		}
 
 		return allRows;
-	} catch (e) {
+	} catch (_e) {
 		return [];
 	}
 }

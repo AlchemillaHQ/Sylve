@@ -97,7 +97,7 @@ export function createReactiveStorage<ValueMap extends Record<string, JSONValue>
 		if (json) {
 			try {
 				item.value = JSON.parse(json) as JSONValue;
-			} catch (e) {
+			} catch (_e) {
 				item.value = init;
 			}
 		} else if (init !== null && init !== undefined) {

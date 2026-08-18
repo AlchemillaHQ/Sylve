@@ -14,7 +14,6 @@
 	import { generateTableData } from '$lib/utils/zfs/dataset/fs';
 	import { toast } from 'svelte-sonner';
 	import { resource, IsDocumentVisible, watch } from 'runed';
-	import { untrack } from 'svelte';
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import { getBasicSettings } from '$lib/api/system/settings';
 	import CreateDetailed from '$lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte';

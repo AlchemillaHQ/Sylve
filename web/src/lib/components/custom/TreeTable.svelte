@@ -87,7 +87,7 @@
 		tableState.current = { ...tableState.current, hiddenColumns };
 	}
 
-	let tableHolder: HTMLDivElement | null = null;
+	let _tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let restoringState = false;
 	let restoringSelection = false;
@@ -284,7 +284,7 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
-			tableHolder = tableComponent?.querySelector(
+			_tableHolder = tableComponent?.querySelector(
 				'.tabulator-tableholder'
 			) as HTMLDivElement | null;
 

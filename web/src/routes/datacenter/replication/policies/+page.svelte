@@ -550,7 +550,6 @@
 		)
 	);
 
-	let isFirstPolicyStep = $derived.by(() => policyStepIndex === 0);
 	let isLastPolicyStep = $derived.by(() => policyStepIndex === policySteps.length - 1);
 	let maxTargetRows = $derived.by(() => {
 		const workloadNodeID = String(policyModal.workloadNodeId || '').trim();
@@ -1312,11 +1311,6 @@
 	function goToNextPolicyStep() {
 		const next = Math.min(policyStepIndex + 1, policySteps.length - 1);
 		policyStep = policySteps[next].value;
-	}
-
-	function goToPreviousPolicyStep() {
-		const prev = Math.max(policyStepIndex - 1, 0);
-		policyStep = policySteps[prev].value;
 	}
 
 	function removeTargetRow(index: number) {

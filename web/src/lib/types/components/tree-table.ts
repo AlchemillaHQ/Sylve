@@ -2,7 +2,7 @@ import type { CellComponent, EmptyCallback, FormatterParams, RowComponent } from
 
 export interface Row {
 	id: number | string;
-	[key: string]: any;
+	[key: string]: unknown;
 	children?: Row[];
 }
 

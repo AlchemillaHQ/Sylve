@@ -91,6 +91,7 @@
 		}))
 	);
 	const domainSuggestions = $derived.by(() => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const domains = new Set<string>();
 		for (const entry of dynamicDNSEntries) {
 			const domain = entry.hostname.trim().toLowerCase().replace(/\.$/, '');
@@ -387,7 +388,7 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<ScrollArea orientation="vertical" class="h-[28rem] max-h-[62vh] pr-2">
+		<ScrollArea orientation="vertical" class="h-112 max-h-[62vh] pr-2">
 			<div class="space-y-5">
 				<section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<CustomValueInput

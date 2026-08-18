@@ -42,7 +42,17 @@ export const VdevSchema = z.object({
 	replacingDevices: z.array(ReplacingVdevDeviceSchema).optional()
 });
 
-export const ZpoolDeviceSchema: z.ZodType<any> = z.lazy(() =>
+export type ZpoolDevice = {
+	name: string;
+	state: string;
+	read: number;
+	write: number;
+	cksum: number;
+	note: string;
+	children: ZpoolDevice[];
+};
+
+export const ZpoolDeviceSchema: z.ZodType<ZpoolDevice> = z.lazy(() =>
 	z.object({
 		name: z.string(),
 		state: z.string(),
@@ -110,7 +120,7 @@ export type ZpoolStatusVDEV = {
 	read_errors?: string | number | null;
 	write_errors?: string | number | null;
 	checksum_errors?: string | number | null;
-	properties?: Record<string, any> | null;
+	properties?: Record<string, unknown> | null;
 	vdevs?: Record<string, ZpoolStatusVDEV> | null;
 };
 
@@ -414,7 +424,7 @@ export type ZFSDashboardPoolSnapshot = z.infer<typeof ZFSDashboardPoolSnapshotSc
 export type ZFSDashboardSnapshot = z.infer<typeof ZFSDashboardSnapshotSchema>;
 export type PoolsDiskUsage = z.infer<typeof PoolsDiskUsageSchema>;
 
-export type ScanStatsRaw = Record<string, any>;
+export type ScanStatsRaw = Record<string, unknown>;
 export type ScanSentenceResult = {
 	title: string;
 	text: string | null;

@@ -36,7 +36,7 @@ export function generateSwitchOptions(
 
 	const filteredStandardSwitches = ignoreIds
 		? standardSwitches.filter((sw) => {
-				const id = parseInt(sw.value.split('-')[0]);
+				const _id = parseInt(sw.value.split('-')[0]);
 				// ignoreIds are like <id>-stan-<name> so check against that
 				// return !ignoreIds.includes(id);
 				return !ignoreIds.includes(sw.value);
@@ -45,7 +45,7 @@ export function generateSwitchOptions(
 
 	const filteredManagedSwitches = ignoreIds
 		? managedSwitches.filter((sw) => {
-				const id = parseInt(sw.value.split('-')[0]);
+				const _id = parseInt(sw.value.split('-')[0]);
 				// return !ignoreIds.includes(id);
 				return !ignoreIds.includes(sw.value);
 			})

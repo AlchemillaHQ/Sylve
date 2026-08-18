@@ -2,7 +2,6 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -10,7 +9,6 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Disk, Partition } from '$lib/types/disk/disk';
 	import type { VdevType, Zpool, ZpoolRaidType } from '$lib/types/zfs/pool';
@@ -123,28 +121,6 @@
 						).length
 		}))
 	);
-
-	let spares: string[] = $derived.by(() => {
-		const uD: string[] = usable.disks
-			.filter((disk) => {
-				return !properties.vdev.containers.some((vdev) => {
-					return vdev.disks.some((d) => d.uuid === disk.uuid);
-				});
-			})
-			.map((disk) => disk.device);
-
-		const uP: string[] = usable.partitions
-			.filter((partition) => {
-				return !properties.vdev.containers.some((vdev) => {
-					return vdev.partitions.some((p) => p.name === partition.name);
-				});
-			})
-			.map((partition) => partition.name);
-
-		return [...uD, ...uP].filter((device) => {
-			return device !== 'da0' && device !== 'cd0';
-		});
-	});
 
 	function setUsableSpace() {
 		let totalUsable = 0;
@@ -834,7 +810,7 @@
 		onReset={() => {
 			properties = options;
 		}}
-		class="fixed top-1/2 left-1/2 flex h-[75vh] max-h-[800px] w-[75%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-3 overflow-auto pt-5 pr-6 pb-5 pl-5 transition-all duration-300 ease-in-out lg:max-w-4xl"
+		class="fixed top-1/2 left-1/2 flex h-[75vh] max-h-200 w-[75%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-3 overflow-auto pt-5 pr-6 pb-5 pl-5 transition-all duration-300 ease-in-out lg:max-w-4xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="text-left">
@@ -890,7 +866,7 @@
 													setUsableSpace();
 												}}
 											>
-												<Select.Trigger class="!bg-primary/5 dark:!bg-background h-6 w-32 text-xs">
+												<Select.Trigger class="bg-primary/5! dark:bg-background! h-6 w-32 text-xs">
 													{vdevTypeArr.find((vt) => vt.value === vdev.type)?.label ?? 'Data'}
 												</Select.Trigger>
 												<Select.Content>
@@ -909,7 +885,7 @@
 													onValueChange={() => setUsableSpace()}
 												>
 													<Select.Trigger
-														class="!bg-primary/5 dark:!bg-background h-6 w-24 text-xs"
+														class="bg-primary/5! dark:bg-background! h-6 w-24 text-xs"
 													>
 														{vdev.raidType
 															? raidTypeArr.find((rt) => rt.value === vdev.raidType)?.label

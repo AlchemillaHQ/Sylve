@@ -712,22 +712,6 @@
 		},
 		{ lazy: true }
 	);
-
-	let vncIframe = $state<HTMLIFrameElement | null>(null);
-
-	function nudgeVncResize() {
-		// give layout a couple frames to settle, then poke the iframe
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				try {
-					vncIframe?.contentWindow?.dispatchEvent(new Event('resize'));
-					console.log('resize');
-				} catch {
-					// cross-origin or not ready yet, ignore
-				}
-			});
-		});
-	}
 </script>
 
 <div class="flex h-full w-full flex-col">

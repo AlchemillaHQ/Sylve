@@ -606,8 +606,8 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 	const errors = num(stats.errors);
 	const skipped = num(stats.skipped);
 	const processed = num(stats.processed);
-	const bytesPerScan = num(stats.bytes_per_scan);
-	const issuedBytesPerScan = num(stats.issued_bytes_per_scan);
+	const _bytesPerScan = num(stats.bytes_per_scan);
+	const _issuedBytesPerScan = num(stats.issued_bytes_per_scan);
 
 	const now = Date.now() / 1000;
 	const elapsed =

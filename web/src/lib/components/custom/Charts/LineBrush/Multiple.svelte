@@ -381,7 +381,7 @@
 	}
 
 	const mountOptions = mountAnimationEnabled ? getOptions(false) : undefined;
-	let mouseIn = $state(false);
+	let _mouseIn = $state(false);
 
 	function handleRestore() {
 		if (restoreRafId !== null) cancelAnimationFrame(restoreRafId);
@@ -469,8 +469,8 @@
 		<div
 			role="region"
 			class="relative h-full w-full overflow-visible"
-			onmouseenter={() => (mouseIn = true)}
-			onmouseleave={() => (mouseIn = false)}
+			onmouseenter={() => (_mouseIn = true)}
+			onmouseleave={() => (_mouseIn = false)}
 		>
 			<div
 				class="pointer-events-none absolute top-1 left-2 z-10 flex items-center gap-1 whitespace-nowrap"
