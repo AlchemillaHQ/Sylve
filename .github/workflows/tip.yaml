@@ -3,7 +3,7 @@ name: Tip
 on:
   workflow_run:
     workflows:
-      - Test
+      - CI
     branches:
       - master
     types:
