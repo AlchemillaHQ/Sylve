@@ -1,88 +1,104 @@
 ---
 title: Snapshots
-description: Manage your ZFS snapshots, view their details, and perform various actions.
+description: Create, schedule, retain, and remove ZFS snapshots in Sylve.
 ---
 
-:::note
-VMs and Jails already provide a snapshot feature, so if you just want to snapshot a VM or Jail, you can do so from the VM or Jail details page. The snapshots created from the VM or Jail details page will also be visible in the ZFS Snapshots section.
+import snapshotsOverview from './snapshots-overview.png';
+import snapshotsCreate from './snapshots-create.png';
+import snapshotsPeriodicJobs from './snapshots-periodic-jobs.png';
+import snapshotsPeriodicJobsRetention from './snapshots-periodic-jobs-retention.png';
+import snapshotsDelete from './snapshots-delete.png';
+
+A ZFS snapshot is a point-in-time, read-only view of a filesystem or volume. It initially consumes little space, then grows as referenced blocks change or are removed. Use snapshots before risky changes, and use periodic jobs to keep a rolling recovery history.
+
+Snapshots created by Sylve's VM and Jail workflows are also visible here. For guest-specific recovery, use the snapshot controls on that guest's details page.
+
+:::note[Why new snapshots may take a moment to appear]
+The table is server-rendered from Sylve's snapshot index. After creating or deleting a snapshot, or creating a backend snapshot job, allow a few seconds for the recognition job to update that index. The new state then appears in the table. The reload button is lightweight and safe to use freely because it requests the indexed data, rather than running a costly full-pool `zfs list -t snapshot` scan.
+
+This design lets a node hold thousands, or even hundreds of thousands, of snapshots without imposing a matching frontend or backend penalty on every page view. The small recognition delay is the tradeoff for keeping the interface responsive at that scale.
 :::
 
-In the ZFS Snapshots section, you can manage all your ZFS snapshots in one place. Let's go over the various actions you can perform on your snapshots.
+## Browse and filter snapshots
+
+The Snapshots page is a paginated table with **Name**, **Used**, and **Referenced** columns. Use search to find snapshots by name, select one or more rows for deletion, and use the reload button to request fresh table data.
+
+The **Filter** control hides common system-generated snapshot names by default. Remove an entry if you need to see that category.
+
+| Filter label | Hidden name fragment |
+| --- | --- |
+| Backups | `bk_j` |
+| VM Snapshots | `svms_` |
+| Jail Snapshots | `sjs_` |
+| Templates | `_template` |
+| HA Snapshots | `ha_` |
+
+:::caution[Do not manually delete filtered snapshots]
+Filtered snapshots are usually owned by another Sylve subsystem, including VM snapshots, Jail snapshots, HA, templates, or backups. Deleting one here can leave its owning subsystem without the recovery point or state it expects. Remove the filter only to inspect them, and use that subsystem's own controls to delete or manage its snapshots.
+:::
+
+<img src={snapshotsOverview.src} alt="Sylve Snapshots page with snapshot rows, the Filter control, the View Periodics button, and the reload button" />
+
+## Create a snapshot or periodic job
+
+Select **New**. Choose the pool, choose a filesystem or volume in that pool, give the snapshot a name or prefix, and configure the schedule. You can also open this same dialog from a selected filesystem or volume, where its dataset is already filled in.
+
+For a one-time snapshot, set **Interval** to **None**. For a recurring job, choose **Simple** or **Cron Expression** and optionally apply a retention policy.
+
+<img src={snapshotsCreate.src} alt="Create Snapshot dialog in Sylve with a selected dataset, a periodic schedule, a retention policy, and Recursive enabled" />
+
+| Option | What it controls | Available values or behavior |
+| --- | --- | --- |
+| Name \| Prefix | Snapshot name for a one-time action, or the prefix used by a periodic job. | Required. One-time names must be unique on the dataset. Periodic snapshots receive a timestamp, such as `daily-2026-08-19-14-30`. |
+| Pool | Narrows the Dataset list. | Required. Select one of the pools configured for Sylve. |
+| Dataset | Filesystem or volume to snapshot. | Required. Only datasets in the selected pool are offered. |
+| Interval | Whether this is a one-time action or a periodic job. | **None**, **Simple**, or **Cron Expression**. None creates a snapshot immediately. |
+| Simple interval | Fixed periodic cadence. | Every Minute, Every Hour, Every Day, Every Week, Every Month, or Every Year. |
+| Cron Expression | Custom recurring schedule. | A standard five-field cron expression, for example `0 0 * * *` for midnight every day. A periodic job must use exactly one schedule type: Simple or Cron Expression. |
+| Retention | Automatic pruning policy for a periodic job. | **None**, **Simple**, or **GFS**. It appears after choosing a periodic interval. |
+| Keep Last | Number of newest snapshots to retain. | Available with Simple and GFS retention. Enter `0` to leave it unused. |
+| Max Age (Days) | Age-based pruning limit. | Simple retention only. Snapshots older than this many days may be removed. Enter `0` to leave it unused. |
+| Keep Hourly | Number of hourly recovery points to retain. | GFS retention only. |
+| Keep Daily | Number of daily recovery points to retain. | GFS retention only. |
+| Keep Weekly | Number of weekly recovery points to retain. | GFS retention only. |
+| Keep Monthly | Number of monthly recovery points to retain. | GFS retention only. |
+| Keep Yearly | Number of yearly recovery points to retain. | GFS retention only. |
+| Recursive | Includes child datasets in the snapshot operation. | Off by default. Enable only when the dataset tree needs one consistent recovery point. |
+
+:::note
+Sylve reserves the `ha_`, `bk_`, and `sylve-migrate-` name spaces for its own workflows. Choose a different name or periodic prefix. Snapshot creation is also blocked while an applicable restore or protected replication operation is active.
+:::
+
+## Retention choices
+
+Choose a retention policy deliberately. A value of `0` means that specific limit does not keep snapshots. Simple and GFS retention cannot be combined in the same job.
+
+| Retention type | How Sylve retains snapshots |
+| --- | --- |
+| None | The scheduler creates snapshots but does not prune them. Monitor capacity and delete old snapshots manually. |
+| Simple | Keeps the newest **Keep Last** snapshots and/or removes snapshots beyond **Max Age (Days)**. |
+| GFS | Keeps the newest snapshot for each requested hourly, daily, weekly, monthly, and yearly bucket. **Keep Last** can also preserve additional newest snapshots. |
+
+## View periodic jobs
+
+Select the clock button, then choose a pool, to open **View Snapshot Jobs**. The dialog lists each job's ID, dataset, prefix, interval or cron schedule, and last run time. Use the retention button on a row to change its retention values, or mark rows for deletion and select **Save Snapshot Jobs**.
+
+<img src={snapshotsPeriodicJobs.src} alt="View Snapshot Jobs dialog in Sylve showing periodic snapshot jobs for a pool, including dataset, prefix, interval, last run, retention, and delete actions" />
+
+The retention button opens the **Retention Policies** dialog for that job. It shows the job's schedule and lets you choose **Simple** or **GFS** retention, then set the corresponding values described above.
+
+<img src={snapshotsPeriodicJobsRetention.src} alt="Retention Policies dialog opened from a periodic snapshot job while the View Snapshot Jobs dialog remains visible" />
 
 :::caution
-The snapshots table is pretty special. To optimize performance, heavy caching is done on the backend of all known (snapshot) datasets, and a full pool rescan for snapshots is only triggered when a ZFS event is detected. This means that if you create a snapshot elsewhere (for example via the CLI) or even through the UI, it may take a few seconds and in rare cases up to a few minutes — before it appears in this table.
-
-The reason for this design is that some systems may contain hundreds of thousands or even millions of snapshots. Performing a full zfs list -t snapshot scan on every page load would be extremely expensive and could significantly impact system performance. By caching snapshot metadata and only refreshing it when relevant ZFS events occur, the interface remains fast and responsive even on very large installations.
-
-There is a convenient refresh button given on the top right corner of the table which can be used to refresh the snapshot list in the frontend table.
+The job editor currently saves retention changes. If you need a different schedule or recursive scope, create a replacement periodic job with the intended settings, then remove the old job after confirming it is no longer needed.
 :::
 
-## Create Snapshot
+## Delete snapshots
 
-In this example we're going to make 3 kinds of snapshots:
+Select one or more rows, then choose **Delete Snapshot**. The confirmation states how many snapshots will be removed. This is permanent and can free space only after no remaining snapshots reference the changed blocks. Delete only snapshots you created or explicitly own. Do not delete snapshots normally hidden by the category filter. Use the VM, Jail, HA, template, or backup workflow that owns them instead.
 
-1. A simple one time snapshot of a dataset
-2. A snapshot with a simple interval and retention policy
-3. A snapshot with a more complex interval and GFS based retention policy
+:::caution[Snapshots with dependent clones]
+Deleting a snapshot that has dependent ZFS clones fails. Sylve does not create or use ZFS clones anywhere, so a dependent clone indicates storage created outside Sylve. Handle that clone and its snapshot relationship carefully from the CLI before retrying the deletion.
+:::
 
-### Simple Snapshot
-
-This is the most straight forward way to create a snapshot, it's a one time snapshot of a dataset. To create a simple snapshot, click on the "New" button in the context menu and fill out the form:
-
-![Simple Snapshot Form](./simple-snap.png)
-
-Let's go over the options:
-
-- **Name**: The name of the snapshot. This is required and must be unique within the dataset.
-
-- **Pool**: The pool that the dataset belongs to, without selecting this the dataset field won't have any datasets.
-
-- **Dataset**: The dataset that you want to snapshot.
-
-- **Interval**: This is the interval at which the snapshot will be taken. For a simple snapshot, you can leave this empty or set it to "None".
-
-- **Recursive**: If you want to snapshot all child datasets as well, you can enable this option.
-
-### Snapshot with Simple Interval and Retention Policy
-
-![Snapshot with Simple Interval and Retention Policy](./complex-1.png)
-
-As you can see above we have gotten new options when an interval type is given namely:
-
-- **Interval**: You can choose from an array of simple options like `Every Minute`, `Every Hour`, `Every Day` etc.
-
-- **Retention**: You can choose between "Simple" retention or GFS. Grandfather-Father-Son (GFS) retention is a long-term backup strategy that organizes backups into hierarchical cycles (typically weekly, monthly, yearly) to balance data retention compliance with storage costs. In this snapshot policy we're going to stick with "Simple"
-
-- **Keep Last**: This is the number of last snapshots you want to keep for this policy, pruning the rest.
-
-- **Max Age (Days)**: This is the maximum age of a snapshot in days, after which it will be pruned.
-
-### Snapshot with Complex Interval and Retention Policy
-
-![Snapshot with Complex Interval and Retention Policy](./complex-2.png)
-
-In this example we're going to set up a more complex snapshot policy with a custom interval and GFS retention.
-
-- **Interval**: You can choose "Cron Expression" from the interval options, which will allow you to specify a custom cron expression for when the snapshot should be taken. In this example, we're going to use `0 0 * * *` which means the snapshot will be taken every day at midnight.
-
-- **Retention**: For the retention policy, we're going to choose "GFS". This will allow us to specify how many snapshots we want to keep for each cycle (hourly, daily, weekly, monthly, yearly).
-
-- **Keep Last**: This is the number of last snapshots that will be kept on top of the GFS retention policy. For example, if you set this to 2, then the last 2 snapshots will always be kept, regardless of the GFS retention policy.
-
-- **Keep Hourly/Daily/Weekly/Monthly/Yearly**: These options allow you to specify how many snapshots you want to keep for each cycle in the GFS retention policy. For example, if you set "Keep Daily" to 7, then the last 7 daily snapshots will be kept.
-
-## Viewing Periodics
-
-You can view periodic snapshot(s) of each pool by clicking on the clock button on the left of the refresh button in the table. This will open up a modal that will show you all the periodic snapshot policies for that pool.
-
-![Snapshot Periodics](./periodics.png)
-
-There's a clock button in the modal that opens in each row that you can use to change the rentention/intervals of that particular periodic snapshot policy.
-
-All periodic snapshots will be named in this way:
-
-```
-zroot/samba@samba-minutely-2026-03-09-15-00 
-```
-
-In the case above `samba-minutely` is the prefix I gave and `-2026-03-09-15-00` is the name appended by Sylve's scheduler.
+<img src={snapshotsDelete.src} alt="Sylve confirmation dialog warning that selected ZFS snapshots will be permanently deleted" />

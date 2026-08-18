@@ -116,9 +116,15 @@ export default defineConfig({
                                             items: [
                                                 'guides/node/storage/zfs/dashboard',
                                                 'guides/node/storage/zfs/pools',
-                                                'guides/node/storage/zfs/datasets/filesystems',
-                                                'guides/node/storage/zfs/datasets/volumes',
-                                                'guides/node/storage/zfs/datasets/snapshots',
+                                                {
+                                                    label: 'Datasets',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/storage/zfs/datasets/filesystems',
+                                                        'guides/node/storage/zfs/datasets/volumes',
+                                                        'guides/node/storage/zfs/datasets/snapshots',
+                                                    ],
+                                                },
                                             ],
                                         },
                                         {

@@ -104,7 +104,7 @@ The **Options** tab applies creation-time properties and an optional mount point
 | Option | Meaning | Practical guidance |
 | --- | --- | --- |
 | **Comments** | A descriptive ZFS pool comment. | Record the pool's purpose or workload. |
-| **Mount Point** | Where the pool root is mounted. Leaving it blank uses the ZFS default `/<pool>`. | Use an absolute path such as `/mnt/tank` only when your layout requires it. |
+| **Mount Point** | Where the pool root is mounted. Leaving it blank uses the ZFS default `/<pool>`. | Use an absolute path such as `/mnt/tank` only when your layout requires it. Custom mount points are **heavily** discouraged. |
 | **Force Create** | Allows a creation request that mixes Data VDEV RAID types. | Leave it off unless you intentionally understand the capacity and fault-domain consequences. |
 | **AShift** | The pool's sector-size exponent. Sylve offers 9 through 16 and defaults to 12. | Select the right value before creation. It is not a routine post-creation tuning option. |
 | **Auto Expand** | Lets ZFS expand eligible devices when their capacity grows. | Enable only when that behavior matches your storage plan. |
