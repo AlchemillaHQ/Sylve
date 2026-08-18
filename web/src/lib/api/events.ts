@@ -9,7 +9,9 @@
  */
 
 import { storage } from '$lib';
+import { logOut } from '$lib/api/auth';
 import { connection, reload } from '$lib/stores/api.svelte';
+import { toast } from 'svelte-sonner';
 
 type JSONRecord = Record<string, unknown>;
 
@@ -34,10 +36,11 @@ type SSETokenResponse = {
 	expiresIn: number;
 };
 
-type SSETokenFetchResult = {
-	token: string | null;
-	retry: boolean;
-};
+type SSETokenFetchResult =
+	| { status: 'success'; token: string; sessionToken: string }
+	| { status: 'retryable'; sessionToken: string }
+	| { status: 'unauthorized'; sessionToken: string }
+	| { status: 'stopped' };
 
 function isSSETokenResponse(value: unknown): value is SSETokenResponse {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -47,9 +50,11 @@ function isSSETokenResponse(value: unknown): value is SSETokenResponse {
 
 let eventSource: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let connectionLostTimer: ReturnType<typeof setTimeout> | null = null;
 let leftPanelPulseTimer: ReturnType<typeof setTimeout> | null = null;
 let connecting = false;
 const LEFT_PANEL_PULSE_COALESCE_MS = 250;
+const CONNECTION_LOST_GRACE_MS = 3000;
 const SSE_RECONNECT_INITIAL_MS = 1500;
 const SSE_RECONNECT_MAX_MS = 30000;
 let reconnectDelayMs = SSE_RECONNECT_INITIAL_MS;
@@ -88,15 +93,14 @@ function pulseNotificationsReload() {
 }
 
 async function fetchSSEToken(): Promise<SSETokenFetchResult> {
-	if (!storage.token) {
-		return { token: null, retry: false };
-	}
+	const sessionToken = storage.token;
+	if (!sessionToken) return { status: 'stopped' };
 
 	try {
 		const response = await fetch('/api/auth/sse-tokens', {
 			method: 'POST',
 			headers: {
-				Authorization: `Bearer ${storage.token}`
+				Authorization: `Bearer ${sessionToken}`
 			}
 		});
 
@@ -105,18 +109,18 @@ async function fetchSSEToken(): Promise<SSETokenFetchResult> {
 		if (response.status < 400 && isSSETokenResponse(responseData?.data)) {
 			const data = responseData.data;
 			if (data.token) {
-				return { token: data.token, retry: false };
+				return { status: 'success', token: data.token, sessionToken };
 			}
 		}
 
 		if (response.status === 401 || response.status === 403) {
-			return { token: null, retry: false };
+			return { status: 'unauthorized', sessionToken };
 		}
 	} catch (_e: unknown) {
-		return { token: null, retry: true };
+		return { status: 'retryable', sessionToken };
 	}
 
-	return { token: null, retry: true };
+	return { status: 'retryable', sessionToken };
 }
 
 function cleanupConnection() {
@@ -124,6 +128,21 @@ function cleanupConnection() {
 		eventSource.close();
 		eventSource = null;
 	}
+}
+
+function clearConnectionLostTimer() {
+	if (!connectionLostTimer) return;
+	clearTimeout(connectionLostTimer);
+	connectionLostTimer = null;
+}
+
+function scheduleConnectionLost() {
+	if (connection.sseConnected === false || connectionLostTimer) return;
+
+	connectionLostTimer = setTimeout(() => {
+		connectionLostTimer = null;
+		connection.sseConnected = false;
+	}, CONNECTION_LOST_GRACE_MS);
 }
 
 function scheduleReconnect() {
@@ -151,36 +170,54 @@ export async function startSSEEvents() {
 	connecting = true;
 
 	const sseTokenResult = await fetchSSEToken();
-	if (!sseTokenResult.token) {
+	if (sseTokenResult.status !== 'stopped' && storage.token !== sseTokenResult.sessionToken) {
 		connecting = false;
-		connection.sseConnected = false;
-		if (sseTokenResult.retry) {
+		if (storage.token) void startSSEEvents();
+		return;
+	}
+
+	if (sseTokenResult.status !== 'success') {
+		connecting = false;
+
+		if (sseTokenResult.status === 'unauthorized') {
+			clearConnectionLostTimer();
+			toast.error('Session expired, please login again', {
+				position: 'bottom-center'
+			});
+			void logOut();
+		} else if (sseTokenResult.status === 'retryable') {
+			scheduleConnectionLost();
 			scheduleReconnect();
 		}
 		return;
 	}
 
 	const url = `/api/events/stream?sse_token=${encodeURIComponent(sseTokenResult.token)}`;
-	eventSource = new EventSource(url);
+	const source = new EventSource(url);
+	eventSource = source;
 
-	eventSource.addEventListener('left-panel-refresh', scheduleLeftPanelReload);
+	source.addEventListener('left-panel-refresh', scheduleLeftPanelReload);
 
-	eventSource.addEventListener('reconnect', () => {
-		connection.sseConnected = false;
+	source.addEventListener('reconnect', () => {
+		if (eventSource !== source) return;
 		cleanupConnection();
-		scheduleReconnect();
+		reconnectDelayMs = SSE_RECONNECT_INITIAL_MS;
+		void startSSEEvents();
 	});
 
-	eventSource.addEventListener('cluster-details-refresh', pulseClusterDetailsReload);
-	eventSource.addEventListener('notifications-refresh', pulseNotificationsReload);
+	source.addEventListener('cluster-details-refresh', pulseClusterDetailsReload);
+	source.addEventListener('notifications-refresh', pulseNotificationsReload);
 
-	eventSource.onerror = () => {
-		connection.sseConnected = false;
+	source.onerror = () => {
+		if (eventSource !== source) return;
 		cleanupConnection();
+		scheduleConnectionLost();
 		scheduleReconnect();
 	};
 
-	eventSource.onopen = () => {
+	source.onopen = () => {
+		if (eventSource !== source) return;
+		clearConnectionLostTimer();
 		connection.sseConnected = true;
 		connecting = false;
 		reconnectDelayMs = SSE_RECONNECT_INITIAL_MS;
@@ -200,6 +237,7 @@ export function stopSSEEvents() {
 		leftPanelPulseTimer = null;
 	}
 
+	clearConnectionLostTimer();
 	cleanupConnection();
 	connecting = false;
 	reconnectDelayMs = SSE_RECONNECT_INITIAL_MS;
