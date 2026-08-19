@@ -21,7 +21,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { resource, watch } from 'runed';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -53,19 +53,6 @@
 		{ initialValue: data.status }
 	);
 
-	let reload = $state(false);
-
-	watch(
-		() => reload,
-		(value) => {
-			if (value) {
-				initiators.refetch();
-				status.refetch();
-				reload = false;
-			}
-		}
-	);
-
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
@@ -93,6 +80,21 @@
 
 	let loading = $state(false);
 	let query = $state('');
+	let visible = new IsDocumentVisible();
+
+	async function refreshInitiators() {
+		await Promise.allSettled([initiators.refetch(), status.refetch()]);
+	}
+
+	function notifyMutation(response: { message?: string }, successMessage: string) {
+		if (response.message === 'iscsi_configuration_saved_apply_pending') {
+			toast.warning('Saved, but the iSCSI runtime could not apply the change', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+		toast.success(successMessage, { position: 'bottom-center' });
+	}
 
 	function openCreate() {
 		form = blankForm();
@@ -162,14 +164,14 @@
 			form.tgtChapSecret
 		);
 		loading = false;
+		await refreshInitiators();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to create initiator', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Initiator created', { position: 'bottom-center' });
+		notifyMutation(response, 'Initiator created');
 		properties.create.open = false;
-		reload = true;
 	}
 
 	async function submitEdit() {
@@ -190,14 +192,14 @@
 			form.tgtChapSecret
 		);
 		loading = false;
+		await refreshInitiators();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to update initiator', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Initiator updated', { position: 'bottom-center' });
+		notifyMutation(response, 'Initiator updated');
 		properties.edit.open = false;
-		reload = true;
 	}
 
 	async function submitConnect() {
@@ -205,13 +207,13 @@
 		isConnecting = true;
 		const response = await connectInitiator(Number(activeRow.id));
 		isConnecting = false;
+		await refreshInitiators();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to connect initiator', { position: 'bottom-center' });
 			return;
 		}
 		toast.success('Initiator connected', { position: 'bottom-center' });
-		reload = true;
 	}
 
 	function generateTableData(
@@ -259,6 +261,14 @@
 	}
 
 	let tableData = $derived(generateTableData(initiators.current, status.current));
+
+	useInterval(3000, {
+		callback: () => {
+			if (visible.current) {
+				status.refetch();
+			}
+		}
+	});
 </script>
 
 {#snippet initiatorForm(
@@ -462,15 +472,15 @@
 		onConfirm: async () => {
 			if (activeRow) {
 				const response = await deleteInitiator(Number(activeRow.id));
+				await refreshInitiators();
 				if (response.status === 'error') {
 					handleAPIError(response);
 					toast.error('Failed to delete initiator', { position: 'bottom-center' });
 					return;
 				}
-				toast.success('Initiator deleted', { position: 'bottom-center' });
+				notifyMutation(response, 'Initiator deleted');
 				properties.delete.open = false;
 				activeRows = null;
-				reload = true;
 			}
 		},
 		onCancel: () => {

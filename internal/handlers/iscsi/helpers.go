@@ -31,6 +31,25 @@ func iscsiErrorStatus(err error) int {
 	}
 }
 
+func writeISCSIMutationError(c *gin.Context, err error) {
+	if errors.Is(err, iscsi.ErrApplyFailed) {
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "iscsi_configuration_saved_apply_pending",
+			Error:   "",
+			Data:    nil,
+		})
+		return
+	}
+
+	c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{
+		Status:  "error",
+		Message: err.Error(),
+		Error:   err.Error(),
+		Data:    nil,
+	})
+}
+
 func bindISCSIJSON(c *gin.Context, destination any) bool {
 	if err := c.ShouldBindJSON(destination); err != nil {
 		var maxBytesError *http.MaxBytesError

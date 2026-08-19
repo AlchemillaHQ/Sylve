@@ -32,7 +32,7 @@
 	import { generateCHAPSecret } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
-	import { resource, useInterval, watch, IsDocumentVisible } from 'runed';
+	import { resource, useInterval, IsDocumentVisible } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { SvelteSet } from 'svelte/reactivity';
 
@@ -77,19 +77,6 @@
 		{ initialValue: data.sessions }
 	);
 
-	let reload = $state(false);
-
-	watch(
-		() => reload,
-		(value) => {
-			if (value) {
-				targets.refetch();
-				sessions.refetch();
-				reload = false;
-			}
-		}
-	);
-
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let activeTarget: ISCSITarget | null = $derived(
@@ -128,6 +115,20 @@
 	let query = $state('');
 	let zvolComboOpen = $state(false);
 	let visible = new IsDocumentVisible();
+
+	async function refreshTargets() {
+		await Promise.allSettled([targets.refetch(), sessions.refetch()]);
+	}
+
+	function notifyMutation(response: { message?: string }, successMessage: string) {
+		if (response.message === 'iscsi_configuration_saved_apply_pending') {
+			toast.warning('Saved, but the iSCSI runtime could not apply the change', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+		toast.success(successMessage, { position: 'bottom-center' });
+	}
 
 	let usedZvols = $derived(new SvelteSet(editTarget?.luns.map((lun) => lun.zvol) ?? []));
 
@@ -202,14 +203,14 @@
 			form.mutualChapSecret
 		);
 		loading = false;
+		await refreshTargets();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to create target', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Target created', { position: 'bottom-center' });
+		notifyMutation(response, 'Target created');
 		properties.create.open = false;
-		reload = true;
 	}
 
 	async function submitEdit() {
@@ -227,14 +228,14 @@
 			form.mutualChapSecret
 		);
 		loading = false;
+		await refreshTargets();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to update target', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Target updated', { position: 'bottom-center' });
+		notifyMutation(response, 'Target updated');
 		properties.edit.open = false;
-		reload = true;
 	}
 
 	async function submitAddPortal() {
@@ -259,14 +260,14 @@
 		loading = true;
 		const response = await addPortal(activeTarget.id, portalForm.address, port);
 		loading = false;
+		await refreshTargets();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to add portal', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Portal added', { position: 'bottom-center' });
+		notifyMutation(response, 'Portal added');
 		portalForm = { address: '', port: port + 1 };
-		reload = true;
 	}
 
 	async function submitRemovePortal(portalId: number) {
@@ -274,13 +275,13 @@
 		loading = true;
 		const response = await removePortal(activeTarget.id, portalId);
 		loading = false;
+		await refreshTargets();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to remove portal', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Portal removed', { position: 'bottom-center' });
-		reload = true;
+		notifyMutation(response, 'Portal removed');
 	}
 
 	async function submitAddLUN() {
@@ -303,14 +304,14 @@
 		loading = true;
 		const response = await addLUN(activeTarget.id, lun, lunForm.zvol);
 		loading = false;
+		await refreshTargets();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to add LUN', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('LUN added', { position: 'bottom-center' });
+		notifyMutation(response, 'LUN added');
 		lunForm = blankLUNForm();
-		reload = true;
 	}
 
 	async function submitRemoveLUN(lunId: number) {
@@ -318,13 +319,13 @@
 		loading = true;
 		const response = await removeLUN(activeTarget.id, lunId);
 		loading = false;
+		await refreshTargets();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to remove LUN', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('LUN removed', { position: 'bottom-center' });
-		reload = true;
+		notifyMutation(response, 'LUN removed');
 	}
 
 	function generateTableData(
@@ -377,7 +378,7 @@
 
 	let tableData = $derived(generateTableData(targets.current, sessions.current));
 
-	useInterval(5000, {
+	useInterval(3000, {
 		callback: () => {
 			if (visible.current && !storage.idle) {
 				sessions.refetch();
@@ -789,15 +790,15 @@
 		onConfirm: async () => {
 			if (activeTarget) {
 				const response = await deleteTarget(activeTarget.id);
+				await refreshTargets();
 				if (response.status === 'error') {
 					handleAPIError(response);
 					toast.error('Failed to delete target', { position: 'bottom-center' });
 					return;
 				}
-				toast.success('Target deleted', { position: 'bottom-center' });
+				notifyMutation(response, 'Target deleted');
 				properties.delete.open = false;
 				activeRows = null;
-				reload = true;
 			}
 		},
 		onCancel: () => {

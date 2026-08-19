@@ -77,7 +77,7 @@ func CreateTarget(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.CreateTarget(req.TargetName, req.Alias, req.AuthMethod, req.CHAPName, req.CHAPSecret, req.MutualCHAPName, req.MutualCHAPSecret); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusCreated, internal.APIResponse[any]{Status: "success", Message: "target_created"})
@@ -111,7 +111,7 @@ func UpdateTarget(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.UpdateTarget(id, req.TargetName, req.Alias, req.AuthMethod, req.CHAPName, req.CHAPSecret, req.MutualCHAPName, req.MutualCHAPSecret); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "target_updated"})
@@ -137,7 +137,7 @@ func DeleteTarget(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.DeleteTarget(id); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "target_deleted"})
@@ -170,7 +170,7 @@ func AddPortal(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.AddPortal(targetID, req.Address, req.Port); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusCreated, internal.APIResponse[any]{Status: "success", Message: "portal_added"})
@@ -201,7 +201,7 @@ func RemovePortal(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.RemovePortal(targetID, portalID); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "portal_removed"})
@@ -234,7 +234,7 @@ func AddLUN(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.AddLUN(targetID, req.LUNNumber, req.ZVol); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusCreated, internal.APIResponse[any]{Status: "success", Message: "lun_added"})
@@ -265,7 +265,7 @@ func RemoveLUN(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.RemoveLUN(targetID, lunID); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "lun_removed"})

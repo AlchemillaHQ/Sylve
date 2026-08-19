@@ -267,7 +267,7 @@ func (s *Service) applyServiceRuntimeState(
 		if s.MdnsRebuild != nil {
 			return s.MdnsRebuild()
 		}
-	case models.Firewall, models.WireGuard:
+	case models.Firewall, models.WireGuard, models.ISCSI:
 		if externalApply == nil {
 			return fmt.Errorf("network_service_runtime_unavailable")
 		}

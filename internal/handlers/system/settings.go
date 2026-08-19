@@ -16,6 +16,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
+	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/gin-gonic/gin"
@@ -157,18 +158,18 @@ func AddUsablePools(systemService *system.Service) gin.HandlerFunc {
 	}
 }
 
-func applyNetworkServiceState(
+func applyServiceRuntimeState(
 	ctx context.Context,
 	networkSvc *networkService.Service,
+	iscsiSvc *iscsiService.Service,
 	service models.AvailableService,
 	enabled bool,
 ) error {
-	if networkSvc == nil {
-		return errors.New("network_service_runtime_unavailable")
-	}
-
 	switch service {
 	case models.Firewall:
+		if networkSvc == nil {
+			return errors.New("network_service_runtime_unavailable")
+		}
 		var err error
 		if enabled {
 			err = networkSvc.ApplyFirewallConfig()
@@ -180,10 +181,18 @@ func applyNetworkServiceState(
 		}
 		networkSvc.SetFirewallServiceEnabledForTelemetry(enabled)
 	case models.WireGuard:
+		if networkSvc == nil {
+			return errors.New("network_service_runtime_unavailable")
+		}
 		if enabled {
 			return networkSvc.EnableWireGuardService(ctx)
 		}
 		return networkSvc.DisableWireGuardService(ctx)
+	case models.ISCSI:
+		if iscsiSvc == nil {
+			return errors.New("iscsi_service_runtime_unavailable")
+		}
+		return iscsiSvc.SetEnabled(enabled)
 	}
 
 	return nil
@@ -205,7 +214,7 @@ func applyNetworkServiceState(
 // @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /system/basic-settings/services/{service} [patch]
-func SetServiceState(systemService *system.Service, networkSvc *networkService.Service) gin.HandlerFunc {
+func SetServiceState(systemService *system.Service, networkSvc *networkService.Service, iscsiSvc *iscsiService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		serviceParam := c.Param("service")
 		if serviceParam == "" {
@@ -239,7 +248,7 @@ func SetServiceState(systemService *system.Service, networkSvc *networkService.S
 			service,
 			*req.Enabled,
 			func(ctx context.Context, service models.AvailableService, enabled bool) error {
-				return applyNetworkServiceState(ctx, networkSvc, service, enabled)
+				return applyServiceRuntimeState(ctx, networkSvc, iscsiSvc, service, enabled)
 			},
 		)
 		if err != nil {

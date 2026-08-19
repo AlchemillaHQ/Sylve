@@ -96,6 +96,7 @@ func TestWriteTargetConfigValidatesThenReloads(t *testing.T) {
 
 	want := []string{
 		"/usr/sbin/ctld -t -f /dev/stdin",
+		"/usr/sbin/service ctld onestatus",
 		"/usr/sbin/service ctld onereload",
 	}
 	if !slices.Equal(commands, want) {
@@ -114,8 +115,8 @@ func TestWriteTargetConfigReturnsStableReloadError(t *testing.T) {
 	svc := newTargetTestService(t)
 	setTargetConfigPathForTest(t, filepath.Join(t.TempDir(), "ctl.conf"))
 
-	restoreCommand := utils.SetCommandForTest(func(command string, _ ...string) *exec.Cmd {
-		if command == "/usr/sbin/service" {
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		if command == "/usr/sbin/service" && slices.Equal(args, []string{"ctld", "onereload"}) {
 			return exec.Command("/bin/sh", "-c", "printf 'sensitive daemon output'; exit 1")
 		}
 		return exec.Command("/usr/bin/true")
@@ -131,23 +132,80 @@ func TestWriteTargetConfigReturnsStableReloadError(t *testing.T) {
 	}
 }
 
-func TestWriteConfigStopsWhenRemovingSessionsFails(t *testing.T) {
+func TestWriteConfigLoadsConfiguredSessionsWithoutRemovingExistingSessions(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	setInitiatorConfigPathForTest(t, filepath.Join(t.TempDir(), "iscsi.conf"))
 
 	var calls [][]string
 	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{command}, args...))
-		return exec.Command("/usr/bin/false")
+		return exec.Command("/usr/bin/true")
 	})
 	t.Cleanup(restoreCommand)
 
-	err := svc.WriteConfig(true)
-	if !errors.Is(err, ErrApplyFailed) || err.Error() != "failed_to_remove_iscsi_sessions" {
-		t.Fatalf("unexpected remove-session error: %v", err)
+	if err := svc.WriteConfig(true); err != nil {
+		t.Fatalf("WriteConfig: %v", err)
 	}
-	if len(calls) != 1 || !slices.Equal(calls[0], []string{"/usr/bin/iscsictl", "-Ra"}) {
-		t.Fatalf("commands after remove failure = %#v", calls)
+	if len(calls) != 1 || !slices.Equal(calls[0], []string{"/usr/bin/iscsictl", "-Aa"}) {
+		t.Fatalf("commands = %#v", calls)
+	}
+}
+
+func TestWriteTargetConfigStartsStoppedService(t *testing.T) {
+	svc := newTargetTestService(t)
+	setTargetConfigPathForTest(t, filepath.Join(t.TempDir(), "ctl.conf"))
+
+	var commands []string
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		commands = append(commands, command+" "+strings.Join(args, " "))
+		if command == "/usr/sbin/service" && slices.Equal(args, []string{"ctld", "onestatus"}) {
+			return exec.Command("/usr/bin/false")
+		}
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.WriteTargetConfig(true); err != nil {
+		t.Fatalf("WriteTargetConfig: %v", err)
+	}
+	want := []string{
+		"/usr/sbin/ctld -t -f /dev/stdin",
+		"/usr/sbin/service ctld onestatus",
+		"/usr/sbin/service ctld onestart",
+	}
+	if !slices.Equal(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestSetEnabledWritesConfigsStartsServicesAndLoadsInitiators(t *testing.T) {
+	svc := newTargetTestService(t)
+	setInitiatorConfigPathForTest(t, filepath.Join(t.TempDir(), "iscsi.conf"))
+	setTargetConfigPathForTest(t, filepath.Join(t.TempDir(), "ctl.conf"))
+
+	var commands []string
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		commands = append(commands, command+" "+strings.Join(args, " "))
+		if command == "/usr/sbin/service" && len(args) == 2 && args[1] == "onestatus" {
+			return exec.Command("/usr/bin/false")
+		}
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.SetEnabled(true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+	want := []string{
+		"/usr/sbin/ctld -t -f /dev/stdin",
+		"/usr/sbin/service iscsid onestatus",
+		"/usr/sbin/service iscsid onestart",
+		"/usr/sbin/service ctld onestatus",
+		"/usr/sbin/service ctld onestart",
+		"/usr/bin/iscsictl -Aa",
+	}
+	if !slices.Equal(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
 	}
 }
 

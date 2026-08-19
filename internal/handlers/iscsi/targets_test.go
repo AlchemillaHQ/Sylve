@@ -12,12 +12,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -88,6 +92,41 @@ func TestCreateTargetHandlerReturnsCreated(t *testing.T) {
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateTargetHandlerReturnsAcceptedWhenSavedButReloadFails(t *testing.T) {
+	setupTargetTestConfig(t)
+	svc := newTargetHandlerTestService(t)
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		if command == "/usr/sbin/service" && slices.Equal(args, []string{"ctld", "onereload"}) {
+			return exec.Command("/usr/bin/false")
+		}
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	router := gin.New()
+	router.POST("/targets", CreateTarget(svc))
+	body, _ := json.Marshal(ISCSITargetRequest{
+		TargetName: "iqn.2025-01.com.example:pending",
+		AuthMethod: "None",
+	})
+	rr := testutil.PerformJSONRequest(t, router, http.MethodPost, "/targets", body)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	response := testutil.DecodeJSONResponse[internal.APIResponse[any]](t, rr)
+	if response.Status != "success" || response.Message != "iscsi_configuration_saved_apply_pending" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	var count int64
+	if err := svc.DB.Model(&iscsiModels.ISCSITarget{}).Where("target_name = ?", "iqn.2025-01.com.example:pending").Count(&count).Error; err != nil {
+		t.Fatalf("count target: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("persisted targets = %d, want 1", count)
 	}
 }
 

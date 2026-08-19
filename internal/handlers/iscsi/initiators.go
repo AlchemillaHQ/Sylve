@@ -69,7 +69,7 @@ func CreateInitiator(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.CreateInitiator(req.Nickname, req.TargetAddress, req.TargetName, req.InitiatorName, req.AuthMethod, req.CHAPName, req.CHAPSecret, req.TgtCHAPName, req.TgtCHAPSecret); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusCreated, internal.APIResponse[any]{Status: "success", Message: "initiator_created"})
@@ -103,7 +103,7 @@ func UpdateInitiator(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.UpdateInitiator(id, req.Nickname, req.TargetAddress, req.TargetName, req.InitiatorName, req.AuthMethod, req.CHAPName, req.CHAPSecret, req.TgtCHAPName, req.TgtCHAPSecret); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "initiator_updated"})
@@ -129,7 +129,7 @@ func DeleteInitiator(svc *iscsi.Service) gin.HandlerFunc {
 			return
 		}
 		if err := svc.DeleteInitiator(id); err != nil {
-			c.JSON(iscsiErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: err.Error(), Error: err.Error()})
+			writeISCSIMutationError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "initiator_deleted"})

@@ -204,6 +204,27 @@ func TestSetServiceEnabledPreservesOrderAndAppliesDesiredState(t *testing.T) {
 	}
 }
 
+func TestSetServiceEnabledAppliesISCSIRuntimeState(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := db.Create(&models.BasicSettings{}).Error; err != nil {
+		t.Fatalf("failed to create basic settings: %v", err)
+	}
+
+	called := false
+	service := &Service{DB: db}
+	changed, err := service.SetServiceEnabled(t.Context(), models.ISCSI, true,
+		func(_ context.Context, gotService models.AvailableService, enabled bool) error {
+			called = true
+			if gotService != models.ISCSI || !enabled {
+				t.Fatalf("runtime state = %q/%t, want iscsi/true", gotService, enabled)
+			}
+			return nil
+		})
+	if err != nil || !changed || !called {
+		t.Fatalf("changed=%t called=%t err=%v", changed, called, err)
+	}
+}
+
 func TestSetServiceEnabledRestoresExternalRuntimeStateAfterFailure(t *testing.T) {
 	for _, targetService := range []models.AvailableService{models.Firewall, models.WireGuard} {
 		t.Run(string(targetService), func(t *testing.T) {

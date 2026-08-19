@@ -33,7 +33,7 @@ func TestSetServiceStateAcceptsExplicitFalse(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.PATCH("/system/basic-settings/services/:service", SetServiceState(&system.Service{DB: db}, nil))
+	router.PATCH("/system/basic-settings/services/:service", SetServiceState(&system.Service{DB: db}, nil, nil))
 	response := testutil.PerformJSONRequest(
 		t,
 		router,
@@ -68,7 +68,7 @@ func TestSetServiceStateValidatesBodyServiceAndSize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(middleware.LimitRequestBody(32))
-	router.PATCH("/system/basic-settings/services/:service", SetServiceState(&system.Service{DB: db}, nil))
+	router.PATCH("/system/basic-settings/services/:service", SetServiceState(&system.Service{DB: db}, nil, nil))
 
 	tests := []struct {
 		name       string

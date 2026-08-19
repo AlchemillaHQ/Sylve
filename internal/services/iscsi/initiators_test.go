@@ -11,6 +11,7 @@ package iscsi
 import (
 	"errors"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -121,6 +122,114 @@ func TestCreateInitiatorNormalizesIPv6TargetAddress(t *testing.T) {
 	}
 	if initiator.TargetAddress != "[2001:db8::10]" {
 		t.Fatalf("target address = %q, want bracketed IPv6", initiator.TargetAddress)
+	}
+}
+
+func TestCreateInitiatorAddsOnlyCreatedSession(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+
+	var calls [][]string
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{command}, args...))
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.CreateInitiator("fblock0", "192.0.2.10", "iqn.2025-01.com.example:target0", "", "None", "", "", "", ""); err != nil {
+		t.Fatalf("CreateInitiator: %v", err)
+	}
+	want := [][]string{{"/usr/bin/iscsictl", "-An", "fblock0"}}
+	if len(calls) != len(want) || !slices.Equal(calls[0], want[0]) {
+		t.Fatalf("commands = %#v, want %#v", calls, want)
+	}
+}
+
+func TestUpdateInitiatorReconnectsOnlyUpdatedSession(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "old-name",
+		TargetAddress: "192.0.2.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+
+	var calls [][]string
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{command}, args...))
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.UpdateInitiator(initiator.ID, "new-name", initiator.TargetAddress, initiator.TargetName, "", "None", "", "", "", ""); err != nil {
+		t.Fatalf("UpdateInitiator: %v", err)
+	}
+	want := [][]string{
+		{"/usr/bin/iscsictl", "-Rn", "old-name"},
+		{"/usr/bin/iscsictl", "-An", "new-name"},
+	}
+	if len(calls) != len(want) || !slices.Equal(calls[0], want[0]) || !slices.Equal(calls[1], want[1]) {
+		t.Fatalf("commands = %#v, want %#v", calls, want)
+	}
+}
+
+func TestConnectInitiatorReconnectsOnlySelectedSession(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.0.2.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+
+	var calls [][]string
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{command}, args...))
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.ConnectInitiator(initiator.ID); err != nil {
+		t.Fatalf("ConnectInitiator: %v", err)
+	}
+	want := [][]string{
+		{"/usr/bin/iscsictl", "-Rn", "fblock0"},
+		{"/usr/bin/iscsictl", "-An", "fblock0"},
+	}
+	if len(calls) != len(want) || !slices.Equal(calls[0], want[0]) || !slices.Equal(calls[1], want[1]) {
+		t.Fatalf("commands = %#v, want %#v", calls, want)
+	}
+}
+
+func TestConnectInitiatorAddsSessionWhenNoSessionCanBeRemoved(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.0.2.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+
+	restoreCommand := utils.SetCommandForTest(func(_ string, args ...string) *exec.Cmd {
+		if slices.Equal(args, []string{"-Rn", "fblock0"}) {
+			return exec.Command("/usr/bin/false")
+		}
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.ConnectInitiator(initiator.ID); err != nil {
+		t.Fatalf("ConnectInitiator: %v", err)
 	}
 }
 

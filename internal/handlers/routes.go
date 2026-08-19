@@ -526,7 +526,7 @@ func RegisterRoutes(r *gin.Engine,
 		systemJSON.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
 		systemJSON.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
 		systemJSON.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
-		systemJSON.PATCH("/basic-settings/services/:service", systemHandlers.SetServiceState(systemService, networkService))
+		systemJSON.PATCH("/basic-settings/services/:service", systemHandlers.SetServiceState(systemService, networkService, iscsiService))
 		systemJSON.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
 		systemJSON.PUT("/tunables", systemHandlers.SetTunable(systemService))
 	}

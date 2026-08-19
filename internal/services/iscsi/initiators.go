@@ -160,7 +160,14 @@ func (s *Service) CreateInitiator(nickname, targetAddress, targetName, initiator
 		return fmt.Errorf("failed_to_create_initiator: %w", err)
 	}
 
-	return s.writeConfig(true)
+	if err := s.writeConfig(false); err != nil {
+		return err
+	}
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {
+		logger.L.Error().Err(err).Uint("initiator_id", initiator.ID).Msg("failed to add iSCSI initiator session")
+		return applyFailed("failed_to_add_iscsi_session", err)
+	}
+	return nil
 }
 
 func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, initiatorName, authMethod, chapName, chapSecret, tgtChapName, tgtChapSecret string) error {
@@ -207,6 +214,7 @@ func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, 
 		}
 		return fmt.Errorf("failed_to_get_initiator: %w", err)
 	}
+	previousNickname := initiator.Nickname
 
 	if initiator.Nickname != nickname {
 		var duplicateCount int64
@@ -255,7 +263,18 @@ func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, 
 		return fmt.Errorf("failed_to_update_initiator: %w", err)
 	}
 
-	return s.writeConfig(true)
+	if err := s.writeConfig(false); err != nil {
+		return err
+	}
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", previousNickname); err != nil {
+		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove previous iSCSI initiator session")
+		return applyFailed("failed_to_remove_iscsi_session", err)
+	}
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {
+		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to add updated iSCSI initiator session")
+		return applyFailed("failed_to_add_iscsi_session", err)
+	}
+	return nil
 }
 
 func (s *Service) DeleteInitiator(id uint) error {
@@ -274,7 +293,14 @@ func (s *Service) DeleteInitiator(id uint) error {
 		return fmt.Errorf("failed_to_delete_initiator: %w", err)
 	}
 
-	return s.writeConfig(true)
+	if err := s.writeConfig(false); err != nil {
+		return err
+	}
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", initiator.Nickname); err != nil {
+		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove iSCSI initiator session")
+		return applyFailed("failed_to_remove_iscsi_session", err)
+	}
+	return nil
 }
 
 func (s *Service) ConnectInitiator(id uint) error {
@@ -287,6 +313,13 @@ func (s *Service) ConnectInitiator(id uint) error {
 			return resourceNotFound("initiator_not_found", err)
 		}
 		return fmt.Errorf("failed_to_get_initiator: %w", err)
+	}
+
+	// Reconnect only this initiator. A remove failure can also mean that there
+	// is no current session, so still attempt the add and let that determine
+	// whether the requested session is available afterward.
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", initiator.Nickname); err != nil {
+		logger.L.Debug().Err(err).Uint("initiator_id", id).Msg("iSCSI initiator session was not removed before reconnect")
 	}
 
 	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {

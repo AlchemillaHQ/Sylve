@@ -124,11 +124,6 @@ func (s *Service) writeConfig(reload bool) error {
 		return nil
 	}
 
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Ra"); err != nil {
-		logger.L.Error().Err(err).Msg("failed to remove existing iSCSI initiator sessions")
-		return applyFailed("failed_to_remove_iscsi_sessions", err)
-	}
-
 	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Aa"); err != nil {
 		logger.L.Error().Err(err).Msg("failed to add configured iSCSI initiator sessions")
 		return applyFailed("failed_to_add_iscsi_sessions", err)
@@ -260,9 +255,55 @@ func (s *Service) writeTargetConfig(reload bool) error {
 		return nil
 	}
 
+	if _, err := utils.RunCommandAllowExitCode("/usr/sbin/service", []int{0}, "ctld", "onestatus"); err != nil {
+		if _, startErr := utils.RunCommandAllowExitCode("/usr/sbin/service", []int{0}, "ctld", "onestart"); startErr != nil {
+			logger.L.Error().Err(startErr).Msg("failed to start ctld")
+			return applyFailed("failed_to_start_target_service", startErr)
+		}
+		return nil
+	}
+
 	if _, err := utils.RunCommandAllowExitCode("/usr/sbin/service", []int{0}, "ctld", "onereload"); err != nil {
 		logger.L.Error().Err(err).Msg("failed to reload ctld")
 		return applyFailed("failed_to_reload_target_config", err)
+	}
+
+	return nil
+}
+
+func ensureISCSIServiceStarted(service string) error {
+	if _, err := utils.RunCommandAllowExitCode("/usr/sbin/service", []int{0}, service, "onestatus"); err == nil {
+		return nil
+	}
+
+	if _, err := utils.RunCommandAllowExitCode("/usr/sbin/service", []int{0}, service, "onestart"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) SetEnabled(enabled bool) error {
+	if !enabled {
+		return nil
+	}
+
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
+	if err := s.writeConfig(false); err != nil {
+		return err
+	}
+	if err := s.writeTargetConfig(false); err != nil {
+		return err
+	}
+	if err := ensureISCSIServiceStarted("iscsid"); err != nil {
+		return applyFailed("failed_to_start_initiator_service", err)
+	}
+	if err := ensureISCSIServiceStarted("ctld"); err != nil {
+		return applyFailed("failed_to_start_target_service", err)
+	}
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Aa"); err != nil {
+		return applyFailed("failed_to_add_iscsi_sessions", err)
 	}
 
 	return nil

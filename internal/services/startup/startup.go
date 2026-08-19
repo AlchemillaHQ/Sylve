@@ -253,6 +253,8 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 		if err := ensureServiceStarted("iscsid"); err != nil {
 			logger.L.Error().Err(err).Msg("unable to start iscsid")
+		} else if err := s.ISCSI.WriteConfig(true); err != nil {
+			logger.L.Error().Err(err).Msg("unable to load configured iSCSI initiator sessions")
 		}
 
 		if err := ensureServiceStarted("ctld"); err != nil {

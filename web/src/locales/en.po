@@ -17352,3 +17352,8 @@ msgstr "Use 0 to keep audit records forever. Whole numbers only."
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Client"
 msgstr "Client"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Saved, but the iSCSI runtime could not apply the change"
+msgstr "Saved, but the iSCSI runtime could not apply the change"
