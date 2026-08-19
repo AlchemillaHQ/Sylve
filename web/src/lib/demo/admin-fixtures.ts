@@ -396,7 +396,7 @@ function seedState(hostname: string): DemoAdminState {
 			{ name: 'net.inet.tcp.blackhole', value: '2', type: 'int', writable: true },
 			{ name: 'net.inet.tcp.sendspace', value: '65536', type: 'int', writable: true },
 			{ name: 'net.inet.tcp.recvspace', value: '65536', type: 'int', writable: true },
-			{ name: 'vfs.zfs.arc_max', value: '17179869184', type: 'uint64', writable: true },
+			{ name: 'vfs.zfs.arc.max', value: '17179869184', type: 'uint64', writable: true },
 			{
 				name: 'hw.ncpu',
 				value: hostname === 'alia' ? '24' : hostname === 'paul' ? '12' : '16',

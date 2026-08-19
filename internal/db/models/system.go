@@ -52,6 +52,11 @@ func (ZFSCacheInvalidation) TableName() string {
 	return "zfs_cache_invalidations"
 }
 
+const (
+	SystemTunableARCMaxOID       = "vfs.zfs.arc.max"
+	SystemTunableLegacyARCMaxOID = "vfs.zfs.arc_max"
+)
+
 type SystemTunable struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	Name      string    `json:"name" gorm:"uniqueIndex;not null"`

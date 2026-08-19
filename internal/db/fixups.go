@@ -30,6 +30,9 @@ func Fixups(db *gorm.DB) error {
 	if err := enforceBasicSettingsSingleton(db); err != nil {
 		return err
 	}
+	if err := renameLegacyARCMaxTunable(db); err != nil {
+		return err
+	}
 	if err := replaceLegacyNetlinkEvents(db); err != nil {
 		return err
 	}
@@ -62,6 +65,59 @@ func Fixups(db *gorm.DB) error {
 	cleanupStaleAvahi(db)
 
 	return nil
+}
+
+func renameLegacyARCMaxTunable(db *gorm.DB) error {
+	const name = "rename_legacy_arc_max_tunable_1"
+	if !db.Migrator().HasTable(&authModels.SystemTunable{}) {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).
+			Where("name = ?", name).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking legacy arc_max tunable migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var legacyCount int64
+		if err := tx.Model(&authModels.SystemTunable{}).
+			Where("name = ?", authModels.SystemTunableLegacyARCMaxOID).
+			Count(&legacyCount).Error; err != nil {
+			return fmt.Errorf("failed checking legacy arc_max tunable rows: %w", err)
+		}
+
+		if legacyCount > 0 {
+			var canonicalCount int64
+			if err := tx.Model(&authModels.SystemTunable{}).
+				Where("name = ?", authModels.SystemTunableARCMaxOID).
+				Count(&canonicalCount).Error; err != nil {
+				return fmt.Errorf("failed checking canonical arc.max tunable rows: %w", err)
+			}
+
+			if canonicalCount == 0 {
+				if err := tx.Model(&authModels.SystemTunable{}).
+					Where("name = ?", authModels.SystemTunableLegacyARCMaxOID).
+					UpdateColumn("name", authModels.SystemTunableARCMaxOID).Error; err != nil {
+					return fmt.Errorf("failed renaming legacy arc_max tunable: %w", err)
+				}
+			} else {
+				if err := tx.Where("name = ?", authModels.SystemTunableLegacyARCMaxOID).
+					Delete(&authModels.SystemTunable{}).Error; err != nil {
+					return fmt.Errorf("failed removing legacy arc_max tunable: %w", err)
+				}
+			}
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording legacy arc_max tunable migration: %w", err)
+		}
+		return nil
+	})
 }
 
 func normalizeDownloadUncategorizedType(db *gorm.DB) error {

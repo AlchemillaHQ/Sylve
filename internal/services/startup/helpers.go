@@ -40,7 +40,7 @@ var (
 )
 
 const (
-	arcMaxOID                 = "vfs.zfs.arc_max"
+	arcMaxOID                 = models.SystemTunableARCMaxOID
 	jailLogRotationConfigPath = "/usr/local/etc/newsyslog.conf.d/sylve.conf"
 )
 

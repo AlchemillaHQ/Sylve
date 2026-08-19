@@ -64,6 +64,95 @@ func TestNormalizeDownloadUncategorizedType(t *testing.T) {
 	}
 }
 
+func TestRenameLegacyARCMaxTunable(t *testing.T) {
+	t.Run("legacy override renamed to canonical", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &models.SystemTunable{})
+		legacy := models.SystemTunable{Name: models.SystemTunableLegacyARCMaxOID, Value: "17179869184"}
+		if err := dbConn.Create(&legacy).Error; err != nil {
+			t.Fatalf("seed legacy arc_max tunable: %v", err)
+		}
+
+		if err := renameLegacyARCMaxTunable(dbConn); err != nil {
+			t.Fatalf("rename legacy arc_max tunable: %v", err)
+		}
+		if err := renameLegacyARCMaxTunable(dbConn); err != nil {
+			t.Fatalf("repeat legacy arc_max tunable migration: %v", err)
+		}
+
+		var stored models.SystemTunable
+		if err := dbConn.Where("name = ?", models.SystemTunableARCMaxOID).First(&stored).Error; err != nil {
+			t.Fatalf("load renamed tunable: %v", err)
+		}
+		if stored.Value != "17179869184" {
+			t.Fatalf("renamed tunable value=%q want 17179869184", stored.Value)
+		}
+
+		var legacyCount int64
+		if err := dbConn.Model(&models.SystemTunable{}).
+			Where("name = ?", models.SystemTunableLegacyARCMaxOID).
+			Count(&legacyCount).Error; err != nil {
+			t.Fatalf("count legacy tunables: %v", err)
+		}
+		if legacyCount != 0 {
+			t.Fatalf("legacy arc_max rows=%d want 0", legacyCount)
+		}
+	})
+
+	t.Run("both names present keeps canonical", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &models.SystemTunable{})
+		canonical := models.SystemTunable{Name: models.SystemTunableARCMaxOID, Value: "8589934592"}
+		if err := dbConn.Create(&canonical).Error; err != nil {
+			t.Fatalf("seed canonical tunable: %v", err)
+		}
+		legacy := models.SystemTunable{Name: models.SystemTunableLegacyARCMaxOID, Value: "17179869184"}
+		if err := dbConn.Create(&legacy).Error; err != nil {
+			t.Fatalf("seed legacy tunable: %v", err)
+		}
+
+		if err := renameLegacyARCMaxTunable(dbConn); err != nil {
+			t.Fatalf("rename legacy arc_max tunable: %v", err)
+		}
+
+		var stored models.SystemTunable
+		if err := dbConn.Where("name = ?", models.SystemTunableARCMaxOID).First(&stored).Error; err != nil {
+			t.Fatalf("load canonical tunable: %v", err)
+		}
+		if stored.Value != "8589934592" {
+			t.Fatalf("canonical value=%q want 8589934592", stored.Value)
+		}
+
+		var legacyCount int64
+		if err := dbConn.Model(&models.SystemTunable{}).
+			Where("name = ?", models.SystemTunableLegacyARCMaxOID).
+			Count(&legacyCount).Error; err != nil {
+			t.Fatalf("count legacy tunables: %v", err)
+		}
+		if legacyCount != 0 {
+			t.Fatalf("legacy arc_max rows=%d want 0", legacyCount)
+		}
+	})
+
+	t.Run("canonical only is untouched", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &models.SystemTunable{})
+		canonical := models.SystemTunable{Name: models.SystemTunableARCMaxOID, Value: "8589934592"}
+		if err := dbConn.Create(&canonical).Error; err != nil {
+			t.Fatalf("seed canonical tunable: %v", err)
+		}
+
+		if err := renameLegacyARCMaxTunable(dbConn); err != nil {
+			t.Fatalf("rename legacy arc_max tunable: %v", err)
+		}
+
+		var total int64
+		if err := dbConn.Model(&models.SystemTunable{}).Count(&total).Error; err != nil {
+			t.Fatalf("count tunables: %v", err)
+		}
+		if total != 1 {
+			t.Fatalf("tunable rows=%d want 1", total)
+		}
+	})
+}
+
 func TestDeduplicateMdnsRecordsBeforeIdentityIndex(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
 	if err := dbConn.Exec(`
