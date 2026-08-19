@@ -392,13 +392,13 @@
 								label: 'Tunables',
 								icon: 'mdi--tune-variant',
 								href: `/${node}/settings/system/tunables`
+							},
+							{
+								label: 'PCI Passthrough',
+								icon: 'eos-icons--hardware-circuit',
+								href: `/${node}/settings/device-passthrough`
 							}
 						]
-					},
-					{
-						label: 'PCI Passthrough',
-						icon: 'eos-icons--hardware-circuit',
-						href: `/${node}/settings/device-passthrough`
 					}
 				]
 			}
