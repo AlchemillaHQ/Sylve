@@ -17,10 +17,18 @@
 		rid: number;
 		initialGaInfo: QGAInfo | APIResponse | null;
 		qgaEnabled: boolean;
+		vmRunning?: boolean;
 		refreshSignal?: number;
 	}
 
-	let { node, rid, initialGaInfo, qgaEnabled, refreshSignal = 0 }: Props = $props();
+	let {
+		node,
+		rid,
+		initialGaInfo,
+		qgaEnabled,
+		vmRunning = false,
+		refreshSignal = 0
+	}: Props = $props();
 	let activeGaView = $state('os');
 	const qgaIdentity = (hostname: string, vmRID: number) => `${hostname}\u0000${vmRID}`;
 	let normalizedInitialGaInfo = $derived.by(() =>
@@ -69,7 +77,7 @@
 	let displayGaInfo = $derived.by(() => (qgaEnabled ? liveGaInfo || fallbackGaInfo : null));
 	let isGaInfoStale = $derived(Boolean(displayGaInfo && gaInfo.error));
 	let isGaUnavailable = $derived.by(
-		() => qgaEnabled && !gaInfo.loading && !displayGaInfo && Boolean(gaInfo.error)
+		() => qgaEnabled && vmRunning && !gaInfo.loading && !displayGaInfo && Boolean(gaInfo.error)
 	);
 
 	watch(
@@ -101,6 +109,15 @@
 	);
 
 	watch(
+		() => vmRunning,
+		(running, prev) => {
+			if (qgaEnabled && running && prev === false) {
+				gaInfo.refetch();
+			}
+		}
+	);
+
+	watch(
 		() => qgaEnabled,
 		(enabled) => {
 			if (!enabled) {
@@ -111,7 +128,7 @@
 </script>
 
 {#if displayGaInfo}
-	<div class="space-y-4 px-4 pb-4">
+	<div class="space-y-4 px-4 pb-4" in:fade={{ duration: 180 }}>
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
 				<Card.Description
@@ -249,7 +266,7 @@
 		</Card.Root>
 	</div>
 {:else if isGaUnavailable}
-	<div class="space-y-4 px-4 pb-4">
+	<div class="space-y-4 px-4 pb-4" in:fade={{ duration: 180 }}>
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
 				<Card.Description

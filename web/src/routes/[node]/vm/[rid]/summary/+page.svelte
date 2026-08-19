@@ -367,6 +367,7 @@
 	let isShutdownTaskActive = $derived(
 		domain.current?.pendingAction === 'shutdown' && !domain.current?.overrideRequested
 	);
+	let isVmRunning = $derived(normalizedDomainStatus === 'running');
 
 	let isDeleteInFlight = $state(false);
 
@@ -1142,6 +1143,7 @@
 		initialGaInfo={data.gaInfo}
 		refreshSignal={gaRefreshSignal}
 		qgaEnabled={isQgaEnabled}
+		vmRunning={isVmRunning}
 	/>
 
 	{#key `${statsIdentity}:${displayedStatsStep ?? 'none'}`}
