@@ -102,6 +102,22 @@ export default defineConfig({
                                                 'guides/node/network/firewall/advanced',
                                             ],
                                         },
+                                        {
+                                            label: 'mDNS',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/network/mdns/records',
+                                                'guides/node/network/mdns/settings',
+                                            ],
+                                        },
+                                        {
+                                            label: 'WireGuard',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/network/wireguard/server',
+                                                'guides/node/network/wireguard/clients',
+                                            ],
+                                        },
                                     ],
                                 },
                                 {
