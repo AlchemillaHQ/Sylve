@@ -1654,12 +1654,8 @@ func loadManagedNotificationRules(tx *gorm.DB, ids []uint) ([]models.Notificatio
 }
 
 func deleteNotificationRule(tx *gorm.DB, rule *models.NotificationKindRule) error {
-	templateKey, _, ok := resolveTemplateTargetFromKind(rule.Kind)
-	if !ok {
+	if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
 		return fmt.Errorf("notification_rule_not_found")
-	}
-	if templateKey == RuleTemplateZFSPoolState {
-		return tx.Delete(rule).Error
 	}
 	rule.UserDisabled = true
 	return tx.Save(rule).Error
@@ -1938,13 +1934,6 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 	}
 	for _, rule := range existing {
 		defaultConfig := expectedKinds[rule.Kind]
-		templateKey, _, _ := resolveTemplateTargetFromKind(rule.Kind)
-		if rule.UserDisabled && templateKey == RuleTemplateZFSPoolState {
-			if err := tx.Delete(&rule).Error; err != nil {
-				return err
-			}
-			continue
-		}
 		delete(expectedKinds, rule.Kind)
 		if !rule.UserDisabled && strings.TrimSpace(rule.Config) == "" && defaultConfig != "" {
 			if err := tx.Model(&rule).Update("config", defaultConfig).Error; err != nil {

@@ -980,7 +980,7 @@ func TestUpdateRuleConfigPersistsChanges(t *testing.T) {
 	}
 }
 
-func TestDeleteRuleRecreatesActivePoolRule(t *testing.T) {
+func TestDeleteRuleSoftDeletesActivePoolRule(t *testing.T) {
 	svc := newTestService(t)
 	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
 		t.Fatalf("failed_to_seed_basic_settings: %v", err)
@@ -993,17 +993,23 @@ func TestDeleteRuleRecreatesActivePoolRule(t *testing.T) {
 	if len(view.Rules) != 1 {
 		t.Fatalf("expected_single_rule got: %d", len(view.Rules))
 	}
+	ruleID := view.Rules[0].ID
 
-	updated, err := svc.DeleteRule(context.Background(), view.Rules[0].ID)
+	updated, err := svc.DeleteRule(context.Background(), ruleID)
 	if err != nil {
 		t.Fatalf("delete_rule_failed: %v", err)
 	}
 
-	if len(updated.Rules) != 1 {
-		t.Fatalf("expected_active_pool_rule_recreated got: %d", len(updated.Rules))
+	if len(updated.Rules) != 0 {
+		t.Fatalf("expected_rule_soft_deleted got: %d", len(updated.Rules))
 	}
-	if !updated.Rules[0].Active || !updated.Rules[0].UIEnabled || !updated.Rules[0].NtfyEnabled || !updated.Rules[0].EmailEnabled {
-		t.Fatalf("expected_recreated_rule_enabled got: %+v", updated.Rules[0])
+
+	var stored models.NotificationKindRule
+	if err := svc.DB.First(&stored, ruleID).Error; err != nil {
+		t.Fatalf("failed_to_load_deleted_rule: %v", err)
+	}
+	if !stored.UserDisabled {
+		t.Fatalf("expected_rule_soft_deleted got: %+v", stored)
 	}
 }
 

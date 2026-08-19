@@ -656,7 +656,7 @@ func TestUpdateRuleHandlerUpdatesRuleByID(t *testing.T) {
 	}
 }
 
-func TestDeleteRuleHandlerDeletesAndResyncsActiveRule(t *testing.T) {
+func TestDeleteRuleHandlerSoftDeletesActiveRule(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	svc := newHandlerTestService(t)
@@ -687,14 +687,12 @@ func TestDeleteRuleHandlerDeletesAndResyncsActiveRule(t *testing.T) {
 		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var count int64
-	if err := svc.DB.Model(&models.NotificationKindRule{}).
-		Where("kind = ?", notifier.KindForZFSPoolState("zroot")).
-		Count(&count).Error; err != nil {
-		t.Fatalf("failed_to_count_rules: %v", err)
+	var stored models.NotificationKindRule
+	if err := svc.DB.Where("kind = ?", notifier.KindForZFSPoolState("zroot")).First(&stored).Error; err != nil {
+		t.Fatalf("failed_to_load_rule_after_delete: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("expected_rule_resynced_after_delete got: %d", count)
+	if !stored.UserDisabled {
+		t.Fatalf("expected_rule_soft_deleted got: %+v", stored)
 	}
 }
 
