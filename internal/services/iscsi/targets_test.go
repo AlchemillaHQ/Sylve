@@ -128,18 +128,72 @@ func TestAddLUNDuplicateLUNNumber(t *testing.T) {
 
 func TestDeleteTarget(t *testing.T) {
 	svc := newTargetTestService(t)
+	setTargetConfigPathForTest(t, t.TempDir()+"/ctl.conf")
 	svc.DB.Create(&iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:todelete", AuthMethod: "None"})
 	var tgt iscsiModels.ISCSITarget
 	if err := svc.DB.Where("target_name = ?", "iqn.2025-01.com.example:todelete").First(&tgt).Error; err != nil {
 		t.Fatalf("fixture not found: %v", err)
 	}
-	if err := svc.DB.Delete(&tgt).Error; err != nil {
-		t.Fatalf("delete failed: %v", err)
+	restoreCommand := utils.SetCommandForTest(func(command string, _ ...string) *exec.Cmd {
+		if command == "/usr/sbin/ctladm" {
+			return exec.Command("/usr/bin/printf", "<connections></connections>")
+		}
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.DeleteTarget(tgt.ID); err != nil {
+		t.Fatalf("DeleteTarget: %v", err)
 	}
 	var count int64
 	svc.DB.Model(&iscsiModels.ISCSITarget{}).Count(&count)
 	if count != 0 {
 		t.Fatalf("expected 0 targets after delete, got %d", count)
+	}
+}
+
+func TestDeleteTargetRejectsActiveConnections(t *testing.T) {
+	svc := newTargetTestService(t)
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:active", AuthMethod: "None"}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	portal := iscsiModels.ISCSITargetPortal{TargetID: target.ID, Address: "192.0.2.10", Port: 3260}
+	lun := iscsiModels.ISCSITargetLUN{TargetID: target.ID, LUNNumber: 0, ZVol: "tank/vol0"}
+	if err := svc.DB.Create(&portal).Error; err != nil {
+		t.Fatalf("create portal: %v", err)
+	}
+	if err := svc.DB.Create(&lun).Error; err != nil {
+		t.Fatalf("create LUN: %v", err)
+	}
+
+	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+		if command != "/usr/sbin/ctladm" || !strings.Contains(strings.Join(args, " "), "islist -x") {
+			t.Fatalf("unexpected command: %s %v", command, args)
+		}
+		return exec.Command(
+			"/usr/bin/printf",
+			"<connections><connection><initiator>iqn.client</initiator><target>"+target.TargetName+"</target></connection></connections>",
+		)
+	})
+	t.Cleanup(restoreCommand)
+
+	err := svc.DeleteTarget(target.ID)
+	if !errors.Is(err, ErrConflict) || err.Error() != "target_has_active_connections" {
+		t.Fatalf("error = %v, want target_has_active_connections", err)
+	}
+	for name, model := range map[string]any{
+		"target": &iscsiModels.ISCSITarget{},
+		"portal": &iscsiModels.ISCSITargetPortal{},
+		"LUN":    &iscsiModels.ISCSITargetLUN{},
+	} {
+		var count int64
+		if err := svc.DB.Model(model).Count(&count).Error; err != nil {
+			t.Fatalf("count %s: %v", name, err)
+		}
+		if count != 1 {
+			t.Fatalf("%s count = %d, want 1", name, count)
+		}
 	}
 }
 

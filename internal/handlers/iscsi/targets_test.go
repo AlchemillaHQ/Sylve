@@ -162,6 +162,30 @@ func TestCreateTargetHandlerMapsDomainErrors(t *testing.T) {
 	}
 }
 
+func TestDeleteTargetHandlerRejectsActiveConnections(t *testing.T) {
+	svc := newTargetHandlerTestService(t)
+	target := createTargetFixture(t, svc, "iqn.2025-01.com.example:active")
+	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command(
+			"/usr/bin/printf",
+			"<connections><connection><initiator>iqn.client</initiator><target>"+target.TargetName+"</target></connection></connections>",
+		)
+	})
+	t.Cleanup(restoreCommand)
+
+	router := gin.New()
+	router.DELETE("/targets/:targetId", DeleteTarget(svc))
+	rr := testutil.PerformRequest(t, router, http.MethodDelete, fmt.Sprintf("/targets/%d", target.ID), nil, nil)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+	response := testutil.DecodeJSONResponse[internal.APIResponse[any]](t, rr)
+	if response.Message != "target_has_active_connections" {
+		t.Fatalf("message = %q, want target_has_active_connections", response.Message)
+	}
+}
+
 func TestAddTargetChildrenReturnCreated(t *testing.T) {
 	defer enableMockExec()()
 	setupTargetTestConfig(t)

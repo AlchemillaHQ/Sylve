@@ -72,3 +72,14 @@ func (s *Service) GetTargetSessions() (map[string]int, error) {
 	}
 	return result, nil
 }
+
+func (s *Service) ensureTargetHasNoSessions(targetName string) error {
+	sessions, err := s.GetTargetSessions()
+	if err != nil {
+		return runtimeFailed("failed_to_check_target_sessions", err)
+	}
+	if sessions[targetName] > 0 {
+		return resourceConflict("target_has_active_connections", nil)
+	}
+	return nil
+}

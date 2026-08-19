@@ -213,6 +213,9 @@ func (s *Service) DeleteTarget(id uint) error {
 		}
 		return fmt.Errorf("failed_to_get_target: %w", err)
 	}
+	if err := s.ensureTargetHasNoSessions(target.TargetName); err != nil {
+		return err
+	}
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("target_id = ?", id).Delete(&iscsiModels.ISCSITargetPortal{}).Error; err != nil {
