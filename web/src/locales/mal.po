@@ -11914,6 +11914,7 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
 msgid "Virtual"
 msgstr ""
 

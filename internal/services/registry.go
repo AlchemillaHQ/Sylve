@@ -190,6 +190,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		clusterService.(*cluster.Service),
 	)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
+	iscsiService.(*iscsi.Service).SetInitiatorZPoolChecker(diskService.(*disk.Service))
 	zeltaService := NewService[zelta.Service](db, telemetryDB, clusterService, jailService, networkService, libvirtService, gzfs)
 
 	sambaSvc := sambaService.(*samba.Service)

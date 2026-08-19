@@ -9,7 +9,9 @@
 package iscsi
 
 import (
+	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -19,6 +21,15 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+type testInitiatorZPoolChecker struct {
+	poolName string
+	err      error
+}
+
+func (c testInitiatorZPoolChecker) ActiveISCSIZPool(context.Context) (string, error) {
+	return c.poolName, c.err
+}
 
 func newInitiatorTestService(t *testing.T) *Service {
 	t.Helper()
@@ -157,10 +168,23 @@ func TestUpdateInitiatorReconnectsOnlyUpdatedSession(t *testing.T) {
 	if err := svc.DB.Create(&initiator).Error; err != nil {
 		t.Fatalf("create fixture: %v", err)
 	}
+	if err := svc.writeConfig(false); err != nil {
+		t.Fatalf("write initial config: %v", err)
+	}
 
 	var calls [][]string
 	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{command}, args...))
+		config, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("read config during %v: %v", args, err)
+		}
+		if slices.Equal(args, []string{"-Rn", "old-name"}) && !strings.Contains(string(config), "old-name {") {
+			t.Fatalf("old nickname was removed from config before session logout: %s", config)
+		}
+		if slices.Equal(args, []string{"-An", "new-name"}) && !strings.Contains(string(config), "new-name {") {
+			t.Fatalf("new nickname was not written before session login: %s", config)
+		}
 		return exec.Command("/usr/bin/true")
 	})
 	t.Cleanup(restoreCommand)
@@ -230,6 +254,157 @@ func TestConnectInitiatorAddsSessionWhenNoSessionCanBeRemoved(t *testing.T) {
 
 	if err := svc.ConnectInitiator(initiator.ID); err != nil {
 		t.Fatalf("ConnectInitiator: %v", err)
+	}
+}
+
+func TestInitiatorMutationsRejectConnectedZPoolDevice(t *testing.T) {
+	const targetName = "iqn.2025-01.com.example:target0"
+	newService := func(t *testing.T) (*Service, iscsiModels.ISCSIInitiator) {
+		t.Helper()
+		svc := newInitiatorTestService(t)
+		svc.SetInitiatorZPoolChecker(testInitiatorZPoolChecker{poolName: "tank"})
+		initiator := iscsiModels.ISCSIInitiator{
+			Nickname:      "fblock0",
+			TargetAddress: "192.0.2.10",
+			TargetName:    targetName,
+			AuthMethod:    "None",
+		}
+		if err := svc.DB.Create(&initiator).Error; err != nil {
+			t.Fatalf("create fixture: %v", err)
+		}
+		return svc, initiator
+	}
+
+	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command("/usr/bin/printf", "Target Portal State\n"+targetName+" 192.0.2.10 Connected:\n")
+	})
+	t.Cleanup(restoreCommand)
+
+	t.Run("delete", func(t *testing.T) {
+		svc, initiator := newService(t)
+		err := svc.DeleteInitiator(initiator.ID)
+		if !errors.Is(err, ErrConflict) || err.Error() != "initiator_in_use_by_zfs_pool" {
+			t.Fatalf("error = %v, want initiator_in_use_by_zfs_pool", err)
+		}
+		var count int64
+		if err := svc.DB.Model(&iscsiModels.ISCSIInitiator{}).Where("id = ?", initiator.ID).Count(&count).Error; err != nil {
+			t.Fatalf("count initiator: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("initiator count = %d, want 1", count)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		svc, initiator := newService(t)
+		err := svc.UpdateInitiator(initiator.ID, "renamed", initiator.TargetAddress, initiator.TargetName, "", "None", "", "", "", "")
+		if !errors.Is(err, ErrConflict) || err.Error() != "initiator_in_use_by_zfs_pool" {
+			t.Fatalf("error = %v, want initiator_in_use_by_zfs_pool", err)
+		}
+		var stored iscsiModels.ISCSIInitiator
+		if err := svc.DB.First(&stored, initiator.ID).Error; err != nil {
+			t.Fatalf("load initiator: %v", err)
+		}
+		if stored.Nickname != "fblock0" {
+			t.Fatalf("nickname = %q, want fblock0", stored.Nickname)
+		}
+	})
+
+	t.Run("reconnect", func(t *testing.T) {
+		svc, initiator := newService(t)
+		err := svc.ConnectInitiator(initiator.ID)
+		if !errors.Is(err, ErrConflict) || err.Error() != "initiator_in_use_by_zfs_pool" {
+			t.Fatalf("error = %v, want initiator_in_use_by_zfs_pool", err)
+		}
+	})
+}
+
+func TestInitiatorMutationFailsClosedWhenZPoolUsageCannotBeChecked(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	svc.SetInitiatorZPoolChecker(testInitiatorZPoolChecker{err: errors.New("inventory unavailable")})
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.0.2.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+
+	err := svc.DeleteInitiator(initiator.ID)
+	if !errors.Is(err, ErrConflict) || err.Error() != "unable_to_verify_initiator_not_in_use" {
+		t.Fatalf("error = %v, want unable_to_verify_initiator_not_in_use", err)
+	}
+}
+
+func TestDeleteInitiatorLogsOutBeforeRemovingConfigAndRecord(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.0.2.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+	if err := svc.writeConfig(false); err != nil {
+		t.Fatalf("write initial config: %v", err)
+	}
+
+	restoreCommand := utils.SetCommandForTest(func(_ string, args ...string) *exec.Cmd {
+		config, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("read config during %v: %v", args, err)
+		}
+		if !strings.Contains(string(config), "fblock0 {") {
+			t.Fatalf("nickname was removed from config before session logout: %s", config)
+		}
+		return exec.Command("/usr/bin/true")
+	})
+	t.Cleanup(restoreCommand)
+
+	if err := svc.DeleteInitiator(initiator.ID); err != nil {
+		t.Fatalf("DeleteInitiator: %v", err)
+	}
+	var count int64
+	if err := svc.DB.Model(&iscsiModels.ISCSIInitiator{}).Where("id = ?", initiator.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count initiator: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("initiator count = %d, want 0", count)
+	}
+}
+
+func TestDeleteInitiatorLogoutFailurePreservesRecord(t *testing.T) {
+	svc := newInitiatorTestService(t)
+	initiator := iscsiModels.ISCSIInitiator{
+		Nickname:      "fblock0",
+		TargetAddress: "192.0.2.10",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
+	}
+	if err := svc.DB.Create(&initiator).Error; err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+
+	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command("/usr/bin/false")
+	})
+	t.Cleanup(restoreCommand)
+
+	err := svc.DeleteInitiator(initiator.ID)
+	if !errors.Is(err, ErrRuntimeFailed) || err.Error() != "failed_to_remove_iscsi_session" {
+		t.Fatalf("error = %v, want failed_to_remove_iscsi_session runtime failure", err)
+	}
+	var count int64
+	if err := svc.DB.Model(&iscsiModels.ISCSIInitiator{}).Where("id = ?", initiator.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count initiator: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("initiator count = %d, want 1", count)
 	}
 }
 

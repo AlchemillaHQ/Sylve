@@ -9,6 +9,7 @@
 package iscsi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -80,6 +81,30 @@ func (s *Service) GetInitiators() ([]iscsiModels.ISCSIInitiator, error) {
 		return nil, fmt.Errorf("failed_to_get_initiators: %w", err)
 	}
 	return initiators, nil
+}
+
+func (s *Service) ensureInitiatorMutationAllowed(initiator iscsiModels.ISCSIInitiator) error {
+	if s.initiatorZPoolChecker == nil {
+		return nil
+	}
+
+	poolName, err := s.initiatorZPoolChecker.ActiveISCSIZPool(context.Background())
+	if err != nil {
+		return resourceConflict("unable_to_verify_initiator_not_in_use", err)
+	}
+	if poolName == "" {
+		return nil
+	}
+
+	status, err := s.GetStatus()
+	if err != nil {
+		return resourceConflict("unable_to_verify_initiator_not_in_use", err)
+	}
+	if strings.EqualFold(status[initiator.TargetName], "Connected") {
+		logger.L.Warn().Uint("initiator_id", initiator.ID).Str("pool", poolName).Msg("refusing to disrupt an iSCSI initiator while an iSCSI disk is used by ZFS")
+		return resourceConflict("initiator_in_use_by_zfs_pool", nil)
+	}
+	return nil
 }
 
 func (s *Service) CreateInitiator(nickname, targetAddress, targetName, initiatorName, authMethod, chapName, chapSecret, tgtChapName, tgtChapSecret string) error {
@@ -245,6 +270,15 @@ func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, 
 	if err := validateAuthMethod(authMethod, chapName, chapSecret, tgtChapName, tgtChapSecret); err != nil {
 		return err
 	}
+	if err := s.ensureInitiatorMutationAllowed(initiator); err != nil {
+		return err
+	}
+	// Nickname-based removal reads the current entry from iscsi.conf, so the
+	// old session must be removed before changing the record or config file.
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", previousNickname); err != nil {
+		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove previous iSCSI initiator session")
+		return runtimeFailed("failed_to_remove_iscsi_session", err)
+	}
 
 	initiator.Nickname = nickname
 	initiator.TargetAddress = targetAddress
@@ -266,10 +300,6 @@ func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, 
 	if err := s.writeConfig(false); err != nil {
 		return err
 	}
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", previousNickname); err != nil {
-		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove previous iSCSI initiator session")
-		return applyFailed("failed_to_remove_iscsi_session", err)
-	}
 	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {
 		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to add updated iSCSI initiator session")
 		return applyFailed("failed_to_add_iscsi_session", err)
@@ -288,6 +318,15 @@ func (s *Service) DeleteInitiator(id uint) error {
 		}
 		return fmt.Errorf("failed_to_get_initiator: %w", err)
 	}
+	if err := s.ensureInitiatorMutationAllowed(initiator); err != nil {
+		return err
+	}
+	// Keep the nickname in iscsi.conf until iscsictl has used it to identify
+	// and remove the live session.
+	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", initiator.Nickname); err != nil {
+		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove iSCSI initiator session")
+		return runtimeFailed("failed_to_remove_iscsi_session", err)
+	}
 
 	if err := s.DB.Delete(&initiator).Error; err != nil {
 		return fmt.Errorf("failed_to_delete_initiator: %w", err)
@@ -295,10 +334,6 @@ func (s *Service) DeleteInitiator(id uint) error {
 
 	if err := s.writeConfig(false); err != nil {
 		return err
-	}
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", initiator.Nickname); err != nil {
-		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove iSCSI initiator session")
-		return applyFailed("failed_to_remove_iscsi_session", err)
 	}
 	return nil
 }
@@ -313,6 +348,9 @@ func (s *Service) ConnectInitiator(id uint) error {
 			return resourceNotFound("initiator_not_found", err)
 		}
 		return fmt.Errorf("failed_to_get_initiator: %w", err)
+	}
+	if err := s.ensureInitiatorMutationAllowed(initiator); err != nil {
+		return err
 	}
 
 	// Reconnect only this initiator. A remove failure can also mean that there

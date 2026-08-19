@@ -96,6 +96,28 @@ func (s *Service) activeZPoolDevices(ctx context.Context) (map[string]string, er
 	return devices, nil
 }
 
+// ActiveISCSIZPool returns the name of an imported ZFS pool backed by an
+// iSCSI disk, if one is present.
+func (s *Service) ActiveISCSIZPool(ctx context.Context) (string, error) {
+	disks, err := s.physicalDisks()
+	if err != nil {
+		return "", fmt.Errorf("inspect disk devices: %w", err)
+	}
+	active, err := s.activeZPoolDevices(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, disk := range disks {
+		if !disk.IsISCSI && !strings.Contains(strings.ToLower(disk.Description), "iscsi") {
+			continue
+		}
+		if poolName := zpoolForDevicePaths(active, diskDevicePaths(disk, true)); poolName != "" {
+			return poolName, nil
+		}
+	}
+	return "", nil
+}
+
 func diskDevicePaths(disk diskServiceInterfaces.DiskInfo, includePartitions bool) []string {
 	paths := make([]string, 0, 1+len(disk.Aliases)+len(disk.Partitions))
 	paths = append(paths, canonicalDevicePath(disk.Name))

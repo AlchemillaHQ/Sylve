@@ -199,8 +199,9 @@ under sponsorship from the FreeBSD Foundation.
 	$effect(() => {
 		if (activeDisk) {
 			untrack(() => {
-				buttonAbilities.smart.ability = activeDisk.smartData != null;
-				buttonAbilities.selfTest.ability = activeDisk.smartData != null;
+				const smartAvailable = activeDisk.type !== 'Virtual' && activeDisk.smartData != null;
+				buttonAbilities.smart.ability = smartAvailable;
+				buttonAbilities.selfTest.ability = smartAvailable;
 				buttonAbilities.gpt.ability = !activeDisk.gpt;
 
 				if (activeDisk.usage === 'ZFS') {

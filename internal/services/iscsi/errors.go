@@ -21,6 +21,7 @@ var (
 	ErrNotFound       = errors.New("iSCSI resource not found")
 	ErrConflict       = errors.New("iSCSI resource conflict")
 	ErrApplyFailed    = errors.New("iSCSI configuration apply failed")
+	ErrRuntimeFailed  = errors.New("iSCSI runtime operation failed")
 )
 
 type serviceError struct {
@@ -54,4 +55,8 @@ func resourceConflict(message string, cause error) error {
 
 func applyFailed(message string, cause error) error {
 	return &serviceError{kind: ErrApplyFailed, message: message, cause: cause}
+}
+
+func runtimeFailed(message string, cause error) error {
+	return &serviceError{kind: ErrRuntimeFailed, message: message, cause: cause}
 }

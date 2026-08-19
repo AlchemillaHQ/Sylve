@@ -97,6 +97,31 @@ func TestWholeDiskMutationsRejectProtectedResources(t *testing.T) {
 	}
 }
 
+func TestActiveISCSIZPool(t *testing.T) {
+	disks := []diskServiceInterfaces.DiskInfo{
+		{Name: "da0", Description: "FreeBSD iSCSI Disk"},
+		{Name: "vtbd0", Description: "Virtual Disk"},
+	}
+	service := mutationTestService(disks, map[string]string{"/dev/da0": "tank"}, true)
+
+	poolName, err := service.ActiveISCSIZPool(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveISCSIZPool: %v", err)
+	}
+	if poolName != "tank" {
+		t.Fatalf("pool = %q, want tank", poolName)
+	}
+
+	service = mutationTestService(disks, map[string]string{"/dev/vtbd0": "guests"}, true)
+	poolName, err = service.ActiveISCSIZPool(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveISCSIZPool without iSCSI member: %v", err)
+	}
+	if poolName != "" {
+		t.Fatalf("pool = %q, want empty", poolName)
+	}
+}
+
 func TestCreatePartitionsPreflight(t *testing.T) {
 	disk := diskServiceInterfaces.DiskInfo{
 		Name:       "nda0",

@@ -75,6 +75,7 @@ type Service struct {
 	physicalDiskCache         map[string]physicalDiskResolveCacheEntry
 	physicalDiskCacheMu       sync.Mutex
 	physicalDiskSource        func() ([]diskServiceInterfaces.DiskInfo, error)
+	iscsiDeviceSource         func() (map[string]struct{}, error)
 	zpoolDeviceSource         func(context.Context) (map[string]string, error)
 	smartDataSource           func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error)
 	ataPowerModeSource        func(string) (smart.ATAPowerMode, error)
@@ -130,9 +131,10 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 
 		provider := geom.Providers[0]
 		diskType := "SSD"
+		isISCSI := strings.Contains(strings.ToLower(provider.Config.Descr), "iscsi")
 
 		if strings.Contains(strings.ToLower(provider.Config.Descr), "virtual") ||
-			strings.Contains(strings.ToLower(provider.Config.Descr), "iscsi") {
+			isISCSI {
 			diskType = "Virtual"
 		} else if provider.Config.RotationRate != "0" && provider.Config.RotationRate != "" {
 			diskType = "HDD"
@@ -153,6 +155,7 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 			Serial:       provider.Config.Ident,
 			LunID:        provider.Config.LunID,
 			Type:         diskType,
+			IsISCSI:      isISCSI,
 			Partitions:   []diskServiceInterfaces.PartitionInfo{},
 			IsBootDevice: false,
 		}
@@ -234,7 +237,26 @@ func (s *Service) physicalDisks() ([]diskServiceInterfaces.DiskInfo, error) {
 		return nil, err
 	}
 
-	return ExtractDiskInfo(&mesh)
+	disks, err := ExtractDiskInfo(&mesh)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAmbiguousSCSIDisk(disks) {
+		return disks, nil
+	}
+
+	iscsiDevices, err := s.iscsiDevices()
+	if err != nil {
+		logger.L.Debug().Err(err).Msg("failed to identify iSCSI disks from CAM inventory")
+		return disks, nil
+	}
+	for i := range disks {
+		if _, ok := iscsiDevices[disks[i].Name]; ok {
+			disks[i].Type = "Virtual"
+			disks[i].IsISCSI = true
+		}
+	}
+	return disks, nil
 }
 
 func (s *Service) diskIsGPT(device string, sectorSize int) bool {

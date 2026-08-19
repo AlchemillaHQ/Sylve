@@ -92,6 +92,7 @@ type DiskInfo struct {
 	Serial       string
 	LunID        string
 	Type         string
+	IsISCSI      bool
 	Partitions   []PartitionInfo
 	IsBootDevice bool
 }
