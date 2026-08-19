@@ -1,0 +1,97 @@
+---
+title: Targets
+description: Publish ZFS volumes as iSCSI block devices for remote clients.
+---
+
+import overview from "./iscsi-targets-overview.png";
+import create from "./iscsi-target-create.png";
+import portals from "./iscsi-target-portals.png";
+import luns from "./iscsi-target-luns.png";
+
+An iSCSI target makes storage on this node available to another computer as a block device over the network. The remote computer, called the initiator, can then format the device, create a filesystem, or use it as application storage. Enable the **iSCSI** system service in **System Settings → Services** before configuring targets. Enabling it writes the current Sylve configuration, starts the required iSCSI services when necessary, and connects saved initiator entries.
+
+In Sylve, a target exposes one or more [ZFS volumes](/guides/node/storage/zfs/datasets/volumes/). A ZFS volume is the underlying block device. A **LUN** is the number by which a target presents that volume to a remote client. A **portal** is the IP address and port on which the target listens.
+
+## Before you begin
+
+Create a ZFS volume first. Do not use the same volume as a local filesystem, a virtual-machine disk, or a LUN on another target. The Targets page only offers ZFS volumes that are not already assigned to an iSCSI LUN and hides volumes used for Sylve virtual machines.
+
+:::caution
+iSCSI shares raw block storage. Do not mount or format the same LUN from multiple machines unless the guest operating systems use a clustered filesystem designed for concurrent access. Ordinary filesystems such as NTFS, ext4, and UFS can be corrupted by simultaneous writers.
+:::
+
+## Create a target
+
+Choose **New** to create the target identity and its access method. The target is initially only a definition. Add its portal and LUNs afterwards from the edit dialog.
+
+<img
+  src={overview.src}
+  alt="iSCSI Targets table showing an active target with its IQN, alias, MutualCHAP authentication, portal count, LUN count, and connection status"
+/>
+
+<img
+  src={create.src}
+  alt="New iSCSI Target dialog with an IQN, alias, MutualCHAP authentication, and CHAP credential fields"
+/>
+
+| Field | What it controls |
+| --- | --- |
+| **Target Name (IQN)** | The unique iSCSI name remote clients discover and connect to, such as `iqn.2025-01.io.example:archive`. It is required, unique, and may contain up to 223 ASCII characters without spaces or configuration punctuation. |
+| **Alias** | Optional human-readable name shown to iSCSI clients, such as `Archive Storage`. It does not replace the IQN. |
+| **Auth Method** | Selects access authentication: **None**, **CHAP (one-way)**, or **MutualCHAP (two-way)**. |
+| **CHAP Name** | Username the remote initiator presents to authenticate to this target. Required for CHAP and MutualCHAP. |
+| **CHAP Secret** | Secret paired with the CHAP name. It must be 12 to 16 printable ASCII characters. Sylve can generate a compliant secret from the form. |
+| **Mutual CHAP Name** | Identity the target presents back to the initiator. Required only for MutualCHAP. |
+| **Mutual CHAP Secret** | Secret paired with the mutual identity, required only for MutualCHAP and also 12 to 16 printable ASCII characters. |
+
+Use **CHAP** for a normal authenticated target. Use **MutualCHAP** only when the remote initiator is configured to authenticate the target too. Choose **None** only on a trusted isolated storage network with access controlled elsewhere.
+
+:::caution
+CHAP verifies identity, but does not encrypt iSCSI traffic. Keep iSCSI on a dedicated trusted network or carry it through an encrypted network such as WireGuard. Restrict TCP port `3260` with the Firewall service.
+:::
+
+## Add a portal
+
+Select one target in the table, choose **Edit Target**, then open the **Portals** tab. Add each IP address through which initiators may reach the target.
+
+<img
+  src={portals.src}
+  alt="Portals tab in the Edit iSCSI Target dialog listing a configured storage-network address and controls to add another address and port"
+/>
+
+| Field | What it controls |
+| --- | --- |
+| **Address** | Required IPv4 or IPv6 address on this node. Hostnames are not accepted for target portals. Use a specific storage-network address rather than a public address. |
+| **Port** | TCP listen port. The conventional iSCSI port is `3260`; Sylve accepts `1` through `65535`. The same address and port cannot be added twice to one target. |
+
+A target can have more than one portal, for example separate storage-network interfaces. A portal is copied to the clipboard by selecting its displayed address. Removing a portal stops that target from listening there after its configuration reloads.
+
+## Add ZFS volumes as LUNs
+
+Open the **LUNs** tab in the same target editor. Select a ZFS volume and give it a LUN number. Remote clients see the LUN as a disk after they connect.
+
+<img
+  src={luns.src}
+  alt="LUNs tab in the Edit iSCSI Target dialog showing an assigned ZFS volume and controls to add another LUN number and ZFS volume"
+/>
+
+| Field | What it controls |
+| --- | --- |
+| **LUN #** | Non-negative number used by the remote initiator to identify this disk within the target. Start at `0` for a simple one-volume target. Each number must be unique on that target. |
+| **ZFS Volume** | The ZFS volume exported as `/dev/zvol/<volume name>`. A volume can belong to only one Sylve iSCSI LUN. |
+
+Adding or removing a LUN changes only the iSCSI export. It does not create, delete, resize, or wipe the ZFS volume. Before removing a LUN, safely unmount or detach it from every remote client.
+
+## Monitor and manage targets
+
+The **Status** column reports **Connected (n)** when `n` remote initiator sessions are active, otherwise **Idle**. Sylve refreshes target-session information every three seconds while the page is visible.
+
+Editing a target, portal, or LUN validates and regenerates Sylve's managed `ctld` configuration. Sylve reloads `ctld` when it is already running, or starts it when it is stopped.
+
+Sylve refuses to delete a target while one or more remote initiators are connected to it. Disconnect those clients and confirm the target is **Idle** first. If Sylve cannot safely read the target session state, it also leaves the target unchanged. Once deletion is allowed, it removes the target's portal and LUN assignments from Sylve but leaves the underlying ZFS volumes intact.
+
+If the configuration is saved but the target service cannot start or reload, the page displays a warning that the runtime change is pending. The saved configuration is retained, but its new target state is not live until the service can apply it successfully. Resolve the reported service issue, then make a small safe target edit or restart the iSCSI service to apply the stored configuration.
+
+:::note
+Sylve owns the iSCSI configuration files it generates. When iSCSI is first enabled, it preserves pre-existing unmanaged `/etc/iscsi.conf` and `/etc/ctl.conf` files as `.pre-sylve` backups. Do not hand-edit the active generated files, because Sylve replaces them on later changes.
+:::

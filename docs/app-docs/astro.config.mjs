@@ -152,6 +152,14 @@ export default defineConfig({
                                                 'guides/node/storage/samba/audit-logs',
                                             ],
                                         },
+                                        {
+                                            label: 'iSCSI',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/storage/iscsi/initiators',
+                                                'guides/node/storage/iscsi/targets',
+                                            ],
+                                        },
                                     ],
                                 },
                                 {
