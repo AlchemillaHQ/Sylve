@@ -39,8 +39,10 @@
 	let searchQuery = $state('');
 	let saving = $state(false);
 
+	type DeviceEntry = { device: PCIDevice | null; pptId: number };
+
 	let passableDevices = $derived.by(() => {
-		const passable: Array<{ device: PCIDevice; pptId: number }> = [];
+		const passable: DeviceEntry[] = [];
 
 		for (const mapping of pptDevices) {
 			if (mapping.domain !== 0) continue;
@@ -68,6 +70,22 @@
 		return passable;
 	});
 
+	// Devices assigned to this VM that are no longer present on the node don't
+	// appear in `passableDevices`. Include them anyway (with `device: null`) so
+	// they can still be deselected and removed instead of being silently stuck.
+	let deviceEntries = $derived.by(() => {
+		const entries = [...passableDevices];
+		const presentIds = new Set(entries.map((entry) => String(entry.pptId)));
+
+		for (const id of selectedPptIds) {
+			if (!presentIds.has(id)) {
+				entries.push({ device: null, pptId: Number(id) });
+			}
+		}
+
+		return entries;
+	});
+
 	let pptIdToVMs = $derived.by(() => {
 		const byPptId = new SvelteMap<number, VM[]>();
 
@@ -88,9 +106,13 @@
 
 	let filteredDevices = $derived.by(() => {
 		const q = searchQuery.trim().toLowerCase();
-		if (!q) return passableDevices;
+		if (!q) return deviceEntries;
 
-		return passableDevices.filter(({ device }) => {
+		return deviceEntries.filter(({ device, pptId }) => {
+			if (!device) {
+				return String(pptId).includes(q) || 'no longer present'.includes(q);
+			}
+
 			const haystack =
 				`${device.names.vendor} ${device.names.device} ${device.names.class} ${getPCIDeviceId(device)}`.toLowerCase();
 			return haystack.includes(q);
@@ -194,7 +216,7 @@
 				<div class="space-y-3 p-3">
 					{#if filteredDevices.length === 0}
 						<p class="text-muted-foreground py-6 text-center text-sm">
-							{passableDevices.length === 0
+							{deviceEntries.length === 0
 								? 'No PCI passthrough devices available on this node.'
 								: 'No devices match your search.'}
 						</p>
@@ -225,18 +247,37 @@
 									}}
 								/>
 								<div class="grid min-w-0 flex-1 gap-1 leading-none">
-									<Label for={`ppt-${pptId}`} class="cursor-pointer text-sm leading-4 font-medium">
-										{device.names.device || 'Unknown Device'}
-									</Label>
-									<p class="text-muted-foreground font-mono text-xs">
-										{getPCIDeviceId(device)}
-									</p>
-									<p class="text-muted-foreground truncate text-xs">
-										{device.names.vendor || 'Unknown Vendor'}
-										{#if device.names.class}
-											· {device.names.class}
-										{/if}
-									</p>
+									{#if device}
+										<Label
+											for={`ppt-${pptId}`}
+											class="cursor-pointer text-sm leading-4 font-medium"
+										>
+											{device.names.device || 'Unknown Device'}
+										</Label>
+										<p class="text-muted-foreground font-mono text-xs">
+											{getPCIDeviceId(device)}
+										</p>
+										<p class="text-muted-foreground truncate text-xs">
+											{device.names.vendor || 'Unknown Vendor'}
+											{#if device.names.class}
+												· {device.names.class}
+											{/if}
+										</p>
+									{:else}
+										<Label
+											for={`ppt-${pptId}`}
+											class="cursor-pointer text-sm leading-4 font-medium"
+										>
+											Unavailable PCI device
+										</Label>
+										<p class="text-muted-foreground font-mono text-xs">ppt {pptId}</p>
+										<p class="mt-1 flex items-center gap-1 text-xs font-medium text-amber-500">
+											<span class="icon-[mdi--alert-circle-outline] h-3.5 w-3.5 shrink-0"></span>
+											<span class="truncate">
+												No longer present on this node. Uncheck to remove it.
+											</span>
+										</p>
+									{/if}
 									{#if usedByRunning.length > 0}
 										<p class="mt-1 flex items-center gap-1 text-xs font-medium text-red-500">
 											<span class="icon-[mdi--alert-circle] h-3.5 w-3.5 shrink-0"></span>

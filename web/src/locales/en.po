@@ -17388,3 +17388,16 @@ msgstr "Assigned to {0} ({1})"
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 msgid "Clear search"
 msgstr "Clear search"
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Unavailable PCI device"
+msgstr "Unavailable PCI device"
+
+#. 0: pptId
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "ppt {0}"
+msgstr "ppt {0}"
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "No longer present on this node. Uncheck to remove it."
+msgstr "No longer present on this node. Uncheck to remove it."
