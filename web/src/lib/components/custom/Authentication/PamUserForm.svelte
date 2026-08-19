@@ -203,7 +203,7 @@
 	const tabs = [
 		{ value: 'identity', label: 'Identity' },
 		{ value: 'groups', label: 'Groups' },
-		{ value: 'filesystem', label: 'Filesystem' },
+		{ value: 'environment', label: 'Environment' },
 		{ value: 'security', label: 'Security' }
 	];
 
@@ -700,7 +700,7 @@
 								placeholder="john@example.com"
 								bind:value={properties.email}
 							/>
-							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+							<div class="grid grid-cols-1 gap-3 md:grid-cols-2 {edit ? 'lg:grid-cols-3' : ''}">
 								<CustomValueInput
 									label="Unix/PAM + Sylve Password"
 									placeholder={edit ? 'Leave blank to keep current' : '••••••••'}
@@ -715,24 +715,23 @@
 									revealOnFocus={true}
 									bind:value={properties.confirmPassword}
 								/>
+								{#if edit}
+									<CustomComboBox
+										label="Samba action"
+										placeholder="Keep current Samba state"
+										bind:open={properties.sambaAction.open}
+										bind:value={properties.sambaAction.value}
+										data={sambaActionOptions}
+										width="w-full"
+									/>
+								{/if}
 							</div>
-							<div class="flex flex-wrap items-end gap-6">
+							<div class="flex flex-wrap items-center gap-6">
 								<div class="flex items-center gap-2">
 									<Checkbox id="pam-admin" bind:checked={properties.admin} />
 									<Label for="pam-admin" class="cursor-pointer text-sm">Admin</Label>
 								</div>
-								{#if edit}
-									<div class="min-w-64 flex-1">
-										<CustomComboBox
-											label="Samba action"
-											placeholder="Keep current Samba state"
-											bind:open={properties.sambaAction.open}
-											bind:value={properties.sambaAction.value}
-											data={sambaActionOptions}
-											width="w-full"
-										/>
-									</div>
-								{:else}
+								{#if !edit}
 									<div class="flex items-center gap-2">
 										<Checkbox id="create-samba" bind:checked={properties.createSamba} />
 										<Label for="create-samba" class="cursor-pointer text-sm">Samba User</Label>
@@ -777,9 +776,9 @@
 						</div>
 					</Tabs.Content>
 
-					<Tabs.Content value="filesystem">
+					<Tabs.Content value="environment">
 						<div class="space-y-3 pt-2 pb-1">
-							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+							<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
 								<CustomValueInput
 									label="UID"
 									placeholder={uidLoading ? 'Loading…' : '1000'}
@@ -802,11 +801,20 @@
 										}
 									}}
 								/>
+								<CustomComboBox
+									label="Shell"
+									placeholder="Select shell"
+									bind:open={properties.shell.open}
+									bind:value={properties.shell.value}
+									data={shellOptions}
+									width="w-full"
+									classes="flex-1 space-y-1.5"
+								/>
 							</div>
 
 							<div class="space-y-1.5">
 								<Label class="text-sm">Home Directory Permissions</Label>
-								<div class="bg-muted rounded-md p-3 space-y-2">
+								<div class="border-border bg-background rounded-md border p-3 space-y-2">
 									{#each ['user', 'group', 'other'] as entity (entity)}
 										<div class="flex items-center gap-4">
 											<span class="w-12 text-sm capitalize">{entity}</span>
@@ -852,15 +860,6 @@
 									</div>
 								</div>
 							</div>
-
-							<CustomComboBox
-								label="Shell"
-								placeholder="Select shell"
-								bind:open={properties.shell.open}
-								bind:value={properties.shell.value}
-								data={shellOptions}
-								width="w-full"
-							/>
 						</div>
 					</Tabs.Content>
 
