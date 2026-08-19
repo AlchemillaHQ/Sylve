@@ -78,6 +78,16 @@ export async function resetCluster(): Promise<APIResponse> {
 	return await apiRequest('/cluster/reset-node', APIResponseSchema, 'DELETE');
 }
 
+export async function removePeer(nodeId: string): Promise<APIResponse> {
+	return await apiRequest(
+		'/cluster/remove-node',
+		APIResponseSchema,
+		'POST',
+		{ nodeId },
+		{ raw: true }
+	);
+}
+
 export async function getNodes(signal?: AbortSignal): Promise<ClusterNode[]> {
 	return await apiRequestData('/cluster/nodes', z.array(ClusterNodeSchema), 'GET', undefined, {
 		signal

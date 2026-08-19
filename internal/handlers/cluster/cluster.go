@@ -842,6 +842,15 @@ func RemovePeer(cS peerRemovalService) gin.HandlerFunc {
 				})
 				return
 			}
+			if strings.Contains(strings.ToLower(err.Error()), "not_leader") {
+				c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "not_leader",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_removing_peer",

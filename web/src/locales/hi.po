@@ -569,6 +569,7 @@ msgstr "कार्रवाई"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -1032,6 +1033,7 @@ msgid "Reset"
 msgstr "रीसेट करें"
 
 #: src/lib/components/custom/About.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
@@ -1290,14 +1292,6 @@ msgid "Join Cluster"
 msgstr "क्लस्टर में शामिल हों"
 
 #: src/routes/datacenter/cluster/+page.svelte
-msgid "Reset Cluster"
-msgstr "क्लस्टर रीसेट करें"
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
-msgstr "यह सभी क्लस्टर किए गए डेटा और कॉन्फ़िगरेशन को रीसेट कर देगा, जिसमें सभी नोट्स, बैकअप लक्ष्य, जॉब्स और इवेंट्स शामिल हैं। इस क्रिया को पूर्ववत नहीं किया जा सकता।"
-
-#: src/routes/datacenter/cluster/+page.svelte
 msgid "Leader cannot exit when followers are present"
 msgstr "अनुयायी मौजूद होने पर लीडर बाहर नहीं निकल सकता"
 
@@ -1360,6 +1354,7 @@ msgstr "ऑफलाइन: लागू नहीं"
 msgid "Resources"
 msgstr "संसाधन"
 
+#: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
@@ -1382,6 +1377,7 @@ msgstr "चार्ट लोड करने में असमर्थ।"
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
 msgstr "होस्टनाम"
@@ -1671,6 +1667,7 @@ msgstr "क्या आप निश्चित हैं?"
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -9179,10 +9176,12 @@ msgstr ""
 msgid "Failed to save peer"
 msgstr ""
 
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Peer removed"
 msgstr ""
 
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Failed to remove peer"
 msgstr ""
@@ -17086,6 +17085,7 @@ msgid "No matches for “{0}”"
 msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Offline"
 msgstr ""
 
@@ -17400,4 +17400,98 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 msgid "No longer present on this node. Uncheck to remove it."
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Online"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Guests"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Remove Peer"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Guest"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Backup Job"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Replication Policy"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Replication Lease"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Backup Operation"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Replication Operation"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Restore Operation"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Guest Operation"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Runner Rebind"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "This node is no longer the cluster leader. Refresh and retry on the leader."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Peer removed. Cluster is running with reduced redundancy."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Node still owns cluster resources"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Move or delete these resources before removing the peer:"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "No blocked resources were reported. Retry removal."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "This will remove the node from the cluster permanently."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Node <0/> will no longer participate in quorum. This action cannot be undone."
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Reset Cluster State"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset all clustered data and configuration on THIS node, including all notes, backup targets, jobs and events. This action cannot be undone."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "This node is currently online"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Removing a live node is destructive. Only continue if you intend to remove this peer while it is still running."
 msgstr ""

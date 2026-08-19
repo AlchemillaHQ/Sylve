@@ -4,6 +4,7 @@ package clusterHandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -63,5 +64,32 @@ func TestRemovePeerReturnsStructuredConflict(t *testing.T) {
 	if dependency.Kind != cluster.PeerRemovalDependencyBackupJob ||
 		dependency.ID != "17" || dependency.Name != "daily" || dependency.Role != "runner" {
 		t.Fatalf("dependency = %#v", dependency)
+	}
+}
+
+func TestRemovePeerReturnsNotLeaderConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/intra-cluster/remove-peer", RemovePeer(peerRemovalServiceStub{
+		removeErr: errors.New("not_leader"),
+	}))
+
+	response := performJSONRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/intra-cluster/remove-peer",
+		[]byte(`{"nodeId":"node-2"}`),
+	)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	var body handlerAPIResponse[any]
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Status != "error" || body.Message != "not_leader" {
+		t.Fatalf("response = %#v", body)
 	}
 }

@@ -878,6 +878,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
 		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
 		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
+		clusterLocal.POST("/remove-node", clusterHandlers.RemovePeer(clusterService))
 	}
 
 	clusterAdmin := api.Group("/cluster")

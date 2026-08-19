@@ -53,8 +53,23 @@ export const NodeResourceSchema = z.object({
 	vmTemplates: z.array(SimpleVmTemplateSchema).nullable().default([])
 });
 
+export const PeerRemovalDependencySchema = z.object({
+	kind: z.string(),
+	id: z.string(),
+	name: z.string().optional(),
+	role: z.string().optional(),
+	state: z.string().optional()
+});
+
+export const PeerRemovalConflictSchema = z.object({
+	nodeId: z.string(),
+	dependencies: z.array(PeerRemovalDependencySchema).default([])
+});
+
 export type Cluster = z.infer<typeof ClusterSchema>;
 export type RaftNode = z.infer<typeof RaftNodeSchema>;
 export type ClusterDetails = z.infer<typeof ClusterDetailsSchema>;
 export type ClusterNode = z.infer<typeof ClusterNodeSchema>;
 export type NodeResource = z.infer<typeof NodeResourceSchema>;
+export type PeerRemovalDependency = z.infer<typeof PeerRemovalDependencySchema>;
+export type PeerRemovalConflict = z.infer<typeof PeerRemovalConflictSchema>;

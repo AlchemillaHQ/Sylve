@@ -1,4 +1,7 @@
 <!-- 
+<span class="icon-[mdi--vote-outline]"></span>
+<span class="icon-[mdi--crown]"></span>
+<span class="icon-[mdi--account-remove-outline]"></span>
 <span class="icon-[mdi--cloud-lock-outline]"></span>
 <span class="icon-[mdi--alert-circle]"></span>
 <span class="icon-[mdi--account-clock-outline]"></span>
