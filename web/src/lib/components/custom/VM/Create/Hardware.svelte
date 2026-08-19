@@ -3,6 +3,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { buildPassablePCI, getPCIDeviceId } from '$lib/utils/system/pci';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { CPUPin, SimpleVm } from '$lib/types/vm/vm';
 	import {
@@ -49,19 +50,10 @@
 	}
 
 	let checkboxItems = $derived.by(() =>
-		pptDevices
-			.filter((mapping) => mapping.domain === 0)
-			.flatMap((mapping) => {
-				const [bus, deviceID, deviceFunction] = mapping.deviceID.split('/').map(Number);
-				const device = devices.find(
-					(candidate) =>
-						candidate.domain === mapping.domain &&
-						candidate.bus === bus &&
-						candidate.device === deviceID &&
-						candidate.function === deviceFunction
-				);
-				return device ? [{ device, pptId: mapping.id.toString() }] : [];
-			})
+		buildPassablePCI(devices, pptDevices).map(({ device, pptId }) => ({
+			device,
+			pptId: pptId.toString()
+		}))
 	);
 
 	let selectedPptIds = $state<string[]>([]);
@@ -135,14 +127,11 @@
 								}}
 							/>
 							<div class="grid gap-1.5 leading-none">
-								<Label for={item.pptId} class="text-sm font-medium">
-									<!-- {item.device.names.device} — {item.device.names.vendor} -->
+								<Label for={item.pptId} class="text-sm leading-4 font-medium">
 									{`${item.device.names.device} — ${item.device.names.vendor}`}
 								</Label>
 								<p class="text-muted-foreground text-sm">
-									<!-- pci{item.device.domain}:{item.device.bus}:{item.device.device}:{item.device
-										.function} -->
-									{`pci${item.device.domain}:${item.device.bus}:${item.device.device}:${item.device.function}`}
+									{getPCIDeviceId(item.device)}
 								</p>
 							</div>
 						</div>

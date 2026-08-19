@@ -10,6 +10,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
+	import { buildPassablePCI } from '$lib/utils/system/pci';
 	import { generatePassword } from '$lib/utils/string';
 	import {
 		getNextGuestId,
@@ -270,13 +271,7 @@
 
 	let passablePci: PCIDevice[] = $derived.by(() => {
 		if (!pciDevices.current || !pptDevices.current) return [];
-		return pciDevices.current.filter((device) => {
-			if (device.domain !== 0 || !device.name.startsWith('ppt')) return false;
-			const deviceID = `${device.bus}/${device.device}/${device.function}`;
-			return pptDevices.current.some(
-				(mapping) => mapping.domain === device.domain && mapping.deviceID === deviceID
-			);
-		});
+		return buildPassablePCI(pciDevices.current, pptDevices.current).map(({ device }) => device);
 	});
 
 	const tabs = [

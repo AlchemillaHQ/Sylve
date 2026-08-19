@@ -2077,7 +2077,9 @@ msgid "Search for a command to run"
 msgstr "चलाने के लिए कमांड खोजें"
 
 #. 0: (selectedCount || 0) + (hasSelection ? 0 \\: inUseCount)
+#. 0: selectedPptIds.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 msgid "{0} selected"
 msgstr "{0} चयनित"
 
@@ -2759,6 +2761,7 @@ msgstr "जबरन हटाएँ"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -4935,10 +4938,6 @@ msgstr "PCI डिवाइस संशोधित किए गए"
 msgid "PCI Devices"
 msgstr "PCI डिवाइस"
 
-#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
-msgid "Select PCI Devices"
-msgstr "PCI डिवाइस चुनें"
-
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid storage name"
@@ -5850,6 +5849,7 @@ msgstr "मासिक"
 msgid "Yearly"
 msgstr "वार्षिक"
 
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Stopped"
@@ -17353,4 +17353,38 @@ msgstr ""
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Saved, but the iSCSI runtime could not apply the change"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Search devices…"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "No PCI passthrough devices available on this node."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "No devices match your search."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Unknown Device"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Unknown Vendor"
+msgstr ""
+
+#. 0: usedByRunning.map((candidate) => candidate.name).join(', ')
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "In use by {0}"
+msgstr ""
+
+#. 0: usedByStopped.map((candidate) => candidate.name).join(', '); 1: vmStateLabel(usedByStopped[0].state)
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Assigned to {0} ({1})"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Clear search"
 msgstr ""

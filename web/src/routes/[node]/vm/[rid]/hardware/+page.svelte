@@ -111,6 +111,15 @@
 		}
 	);
 
+	watch(
+		() => properties.pciDevices.open,
+		(isOpen, wasOpen) => {
+			if (isOpen && !wasOpen) {
+				vms.refetch();
+			}
+		}
+	);
+
 	onMount(() => {
 		for (const loadError of data.loadErrors) handleAPIError(loadError);
 	});
@@ -483,6 +492,7 @@
 		{vm}
 		pciDevices={pciDevices.current}
 		pptDevices={pptDevices.current}
+		vms={vms.current}
 		bind:reload
 	/>
 {/if}
