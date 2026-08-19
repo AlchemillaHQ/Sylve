@@ -65,10 +65,10 @@
 	);
 
 	let isLeaderUi = $derived(datacenter.current.leaderId === datacenter.current.nodeId);
-	let selectedPeerRow = $derived<Row | null>(
-		activeRows && activeRows.length > 0 ? activeRows[0] : null
-	);
-	let canRemovePeer = $derived(isLeaderUi && !!selectedPeerRow && !selectedPeerRow.leader);
+	let activeRows = $state<Array<Row & { leader: boolean }> | null>(null);
+	let selectedPeerRow = $derived<(Row & { leader: boolean }) | null>(activeRows?.[0] ?? null);
+
+	let canRemovePeer = $derived(isLeaderUi && selectedPeerRow !== null && !selectedPeerRow.leader);
 
 	let nodes = resource(
 		() => 'cluster-nodes',
@@ -113,7 +113,6 @@
 	});
 
 	let query = $state('');
-	let activeRows: Row[] | null = $state(null);
 
 	let table = $derived.by(() => {
 		const rows: Row[] = [];
