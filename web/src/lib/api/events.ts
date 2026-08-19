@@ -63,6 +63,7 @@ function pulseLeftPanelReload() {
 	reload.leftPanel = false;
 	queueMicrotask(() => {
 		reload.leftPanel = true;
+		reload.datacenterNodesPulse += 1;
 		reload.auditLog = true;
 	});
 }
@@ -82,6 +83,7 @@ function pulseClusterDetailsReload() {
 	reload.clusterDetails = false;
 	queueMicrotask(() => {
 		reload.clusterDetails = true;
+		reload.datacenterDetailsPulse += 1;
 	});
 }
 

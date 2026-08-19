@@ -15,9 +15,11 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { reload } from '$lib/stores/api.svelte';
+	import { handleAPIError, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { onMount } from 'svelte';
 	import { resource, watch } from 'runed';
 
 	interface Data {
@@ -25,7 +27,7 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	let reload = $state(false);
+	let reloadFlag = $state(false);
 
 	// svelte-ignore state_referenced_locally
 	const datacenter = resource(
@@ -42,16 +44,92 @@
 		{ initialValue: data.cluster }
 	);
 
+	let pendingRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+	let recoveryAttempts = 0;
+	let recoveryActive = false;
+
+	function hasCompleteClusterNodeSnapshot(
+		details: ClusterDetails | null | undefined,
+		clusterNodes: ClusterNode[]
+	): boolean {
+		if (!details?.cluster?.enabled) return true;
+
+		const raftNodes = details.nodes ?? [];
+		return (
+			raftNodes.length > 0 &&
+			raftNodes.every((raftNode) =>
+				clusterNodes.some((clusterNode) => clusterNode.nodeUUID === raftNode.id)
+			)
+		);
+	}
+
+	async function recoverClusterSnapshot() {
+		if (!recoveryActive || hasCompleteClusterNodeSnapshot(datacenter.current, nodes.current)) {
+			return;
+		}
+
+		recoveryAttempts += 1;
+		await Promise.allSettled([datacenter.refetch(), nodes.refetch()]);
+
+		if (
+			!recoveryActive ||
+			hasCompleteClusterNodeSnapshot(datacenter.current, nodes.current) ||
+			recoveryAttempts >= 8
+		) {
+			return;
+		}
+
+		pendingRecoveryTimer = setTimeout(() => {
+			void recoverClusterSnapshot();
+		}, 1000);
+	}
+
+	function startRecovery() {
+		stopRecovery();
+		recoveryActive = true;
+		recoveryAttempts = 0;
+		void recoverClusterSnapshot();
+	}
+
+	function stopRecovery() {
+		recoveryActive = false;
+		if (pendingRecoveryTimer) {
+			clearTimeout(pendingRecoveryTimer);
+			pendingRecoveryTimer = null;
+		}
+	}
+
 	watch(
-		() => reload,
+		() => reloadFlag,
 		() => {
-			if (reload) {
+			if (reloadFlag) {
 				datacenter.refetch();
 				void nodes.refetch();
-				reload = false;
+				reloadFlag = false;
+				startRecovery();
 			}
 		}
 	);
+
+	watch(
+		() => reload.datacenterDetailsPulse,
+		() => {
+			datacenter.refetch();
+			void nodes.refetch();
+			startRecovery();
+		}
+	);
+
+	watch(
+		() => reload.datacenterNodesPulse,
+		() => {
+			void nodes.refetch();
+		}
+	);
+
+	onMount(() => {
+		return () => stopRecovery();
+	});
 
 	let canReset = $derived(datacenter.current.cluster.enabled === true);
 	let canCreate = $derived(
@@ -74,7 +152,11 @@
 		() => 'cluster-nodes',
 		async (key, prevKey, { signal }) => {
 			const result = await getNodes(signal);
-			if (result.length > 0) await updateCache('cluster-nodes', result);
+			if (hasCompleteClusterNodeSnapshot(datacenter.current, result)) {
+				await updateCache('cluster-nodes', result);
+			} else {
+				await removeCache('cluster-nodes');
+			}
 			return result;
 		},
 		{ initialValue: [] as ClusterNode[] }
@@ -304,13 +386,13 @@
 	/>
 </div>
 
-<Create bind:open={modals.create.open} bind:reload />
+<Create bind:open={modals.create.open} bind:reload={reloadFlag} />
 
 <JoinInformation bind:open={modals.view.open} cluster={datacenter.current} />
 
-<Join bind:open={modals.join.open} bind:reload />
+<Join bind:open={modals.join.open} bind:reload={reloadFlag} />
 
-<RemovePeer bind:open={modals.remove.open} bind:reload node={selectedPeerRow} />
+<RemovePeer bind:open={modals.remove.open} bind:reload={reloadFlag} node={selectedPeerRow} />
 
 <AlertDialog
 	open={modals.reset.open}
@@ -318,7 +400,7 @@
 	actions={{
 		onConfirm: async () => {
 			const response = await resetCluster();
-			reload = true;
+			reloadFlag = true;
 			if (response.error) {
 				if (response.error.includes('leader_cannot_reset_while_other_nodes_exist')) {
 					toast.error('Leader cannot exit when followers are present', {

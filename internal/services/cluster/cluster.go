@@ -320,6 +320,10 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 		logger.L.Error().Err(err).Str("ip", ip).Msg("cluster_listener_start_failed")
 	}
 
+	if err := s.PopulateClusterNodes(); err != nil {
+		logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_create")
+	}
+
 	return nil
 }
 

@@ -34,6 +34,8 @@ const clusterLifecycleCacheKeys = [
 export async function refreshClusterAfterLifecycleChange(): Promise<void> {
 	await Promise.all(clusterLifecycleCacheKeys.map((key) => removeCache(key)));
 	reload.clusterDetails = true;
+	reload.datacenterDetailsPulse += 1;
+	reload.datacenterNodesPulse += 1;
 }
 
 export async function getDetails(): Promise<ClusterDetails | APIResponse> {

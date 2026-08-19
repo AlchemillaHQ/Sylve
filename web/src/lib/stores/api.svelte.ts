@@ -13,7 +13,9 @@ export const reload = $state({
 	auditLog: false,
 	auditLogHostname: null as string | null,
 	clusterDetails: false,
-	notifications: false
+	notifications: false,
+	datacenterNodesPulse: 0,
+	datacenterDetailsPulse: 0
 });
 
 export const connection = $state({

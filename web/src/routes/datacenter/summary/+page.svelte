@@ -208,21 +208,18 @@
 	});
 
 	watch(
-		() => reload.leftPanel,
-		(shouldReload) => {
-			if (!shouldReload) return;
-
+		() => reload.datacenterNodesPulse,
+		() => {
 			nodes.refetch();
 			clusterDetails.refetch();
 		}
 	);
 
 	watch(
-		() => reload.clusterDetails,
-		(shouldReload) => {
-			if (!shouldReload) return;
-
+		() => reload.datacenterDetailsPulse,
+		() => {
 			clusterDetails.refetch();
+			nodes.refetch();
 		}
 	);
 
