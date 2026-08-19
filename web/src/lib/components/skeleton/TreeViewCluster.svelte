@@ -450,8 +450,10 @@
 				<span class="text-muted-foreground/70 text-[10px] font-normal">{item.children?.length}</span
 				>
 			</div>
-			<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3 w-3 shrink-0`}
-			></span>
+			<div class="flex size-5 shrink-0 items-center justify-center">
+				<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+				></span>
+			</div>
 		</div>
 	{:else if hasContextMenu}
 		<ContextMenu.Root>
@@ -517,10 +519,14 @@
 						<span
 							role="button"
 							tabindex="0"
-							class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
+							class="hover:bg-background flex size-5 shrink-0 cursor-pointer items-center justify-center rounded"
 							onclick={handleIconClick}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
-						></span>
+						>
+							<span
+								class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+							></span>
+						</span>
 					{/if}
 				</div>
 			</ContextMenu.Trigger>
@@ -704,10 +710,13 @@
 				<span
 					role="button"
 					tabindex="0"
-					class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer shrink-0`}
+					class="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded"
 					onclick={handleIconClick}
 					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
-				></span>
+				>
+					<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+					></span>
+				</span>
 			{/if}
 		</div>
 	{/if}
