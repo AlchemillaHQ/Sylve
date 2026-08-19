@@ -171,17 +171,47 @@ export default defineConfig({
                                     ],
                                 },
                                 {
+                                    label: 'Services',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/node/services/certificates',
+                                        'guides/node/services/dynamic-dns',
+                                    ],
+                                },
+                                {
                                     label: 'Settings',
                                     collapsed: true,
                                     items: [
-                                        'guides/node/settings/system',
-                                        'guides/node/settings/pci-passthrough',
                                         {
                                             label: 'Authentication',
                                             collapsed: true,
                                             items: [
-                                                'guides/node/settings/authentication/users',
+                                                {
+                                                    label: 'Users',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/settings/authentication/users/local',
+                                                        'guides/node/settings/authentication/users/pam',
+                                                    ],
+                                                },
                                                 'guides/node/settings/authentication/groups',
+                                            ],
+                                        },
+                                        {
+                                            label: 'System',
+                                            collapsed: true,
+                                            items: [
+                                                {
+                                                    label: 'Notifications',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/settings/system/notifications/transports',
+                                                        'guides/node/settings/system/notifications/rules',
+                                                    ],
+                                                },
+                                                'guides/node/settings/system/services',
+                                                'guides/node/settings/system/tunables',
+                                                'guides/node/settings/pci-passthrough',
                                             ],
                                         },
                                     ],
