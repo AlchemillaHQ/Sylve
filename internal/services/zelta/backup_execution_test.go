@@ -125,13 +125,45 @@ func TestUpdateBackupJobResultPersistsEncryptionState(t *testing.T) {
 	target := seedBackupTarget(t, service.DB, 1, "runtime-state")
 	job := seedAndLoadJob(t, service.DB, 101, "runtime-state", clusterModels.BackupJobModeDataset, target.ID, "tank/data")
 
-	service.updateBackupJobResult(&job, nil, true)
+	encrypted := true
+	service.updateBackupJobResult(&job, nil, &encrypted)
 	if got := fetchJob(t, service.DB, job.ID); !got.Encrypted {
 		t.Fatal("encrypted completion was not persisted")
 	}
-	service.updateBackupJobResult(&job, nil, false)
+	service.updateBackupJobResult(&job, context.Canceled, nil)
+	if got := fetchJob(t, service.DB, job.ID); !got.Encrypted {
+		t.Fatal("unknown encryption state did not preserve the committed value")
+	}
+	encrypted = false
+	service.updateBackupJobResult(&job, nil, &encrypted)
 	if got := fetchJob(t, service.DB, job.ID); got.Encrypted {
 		t.Fatal("unencrypted completion was not persisted")
+	}
+}
+
+func TestRunBackupJobPreservesEncryptionWhenDetectionWasNotReached(t *testing.T) {
+	service := newRunBackupJobTestDB(t)
+	target := seedBackupTarget(t, service.DB, 1, "preflight-failure")
+	job := seedAndLoadJob(
+		t,
+		service.DB,
+		102,
+		"preflight-failure",
+		clusterModels.BackupJobModeDataset,
+		target.ID,
+		"tank",
+	)
+	job.Encrypted = true
+	if err := service.DB.Model(&job).Update("encrypted", true).Error; err != nil {
+		t.Fatalf("mark job encrypted: %v", err)
+	}
+
+	err := service.runBackupJob(context.Background(), &job)
+	if err == nil || !strings.Contains(err.Error(), "dataset_backup_source_reserved_managed_scope") {
+		t.Fatalf("expected pre-detection safety failure, got %v", err)
+	}
+	if got := fetchJob(t, service.DB, job.ID); !got.Encrypted {
+		t.Fatal("pre-detection failure cleared the committed encryption state")
 	}
 }
 

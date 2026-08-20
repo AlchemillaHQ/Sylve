@@ -88,11 +88,12 @@
 
 	watch(
 		() => reload,
-		async (value) => {
+		(value) => {
 			if (!value) return;
 
-			await Promise.all([jobs.refetch(), targets.refetch()]);
-			reload = false;
+			void Promise.all([jobs.refetch(), targets.refetch()]).then(() => {
+				reload = false;
+			});
 		}
 	);
 
@@ -203,17 +204,20 @@
 				const lockIcon = row.encrypted
 					? renderWithIcon('mdi:lock', '', 'text-green-500', 'Encrypted')
 					: '';
+				const guestLabel = (idPrefix: 'CT' | 'RID') => {
+					const guestId = row.sourceGuestId || 0;
+					if (guestId <= 0) return value || '-';
+					return value && value !== String(guestId)
+						? `${value} (${idPrefix} ${guestId})`
+						: `${idPrefix} ${guestId}`;
+				};
 
 				if (row.mode === 'jail') {
-					const label =
-						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
-					return `${lockIcon} ${renderWithIcon('hugeicons:prison', label || '-')}`;
+					return `${lockIcon} ${renderWithIcon('hugeicons:prison', guestLabel('CT'))}`;
 				}
 
 				if (row.mode === 'vm') {
-					const label =
-						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
-					return `${lockIcon} ${renderWithIcon('material-symbols:monitor-outline', label || '-')}`;
+					return `${lockIcon} ${renderWithIcon('material-symbols:monitor-outline', guestLabel('RID'))}`;
 				}
 
 				if (row.mode === 'dataset') {

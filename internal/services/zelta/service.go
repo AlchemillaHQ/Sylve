@@ -53,6 +53,60 @@ type backupJobPayload struct {
 	HolderNodeID   string `json:"holder_node_id,omitempty"`
 }
 
+type backupEncryptionObservation struct {
+	known     bool
+	encrypted bool
+}
+
+func (o backupEncryptionObservation) optional() *bool {
+	if !o.known {
+		return nil
+	}
+	value := o.encrypted
+	return &value
+}
+
+func (s *Service) detectBackupSourcesEncryption(
+	ctx context.Context,
+	sources []string,
+	recursive bool,
+) (bool, error) {
+	if len(sources) == 0 {
+		return false, fmt.Errorf("backup_source_dataset_required")
+	}
+
+	for _, source := range sources {
+		source = normalizeDatasetPath(source)
+		if source == "" {
+			return false, fmt.Errorf("backup_source_dataset_required")
+		}
+
+		if recursive {
+			encrypted, err := s.isDatasetEncrypted(ctx, source)
+			if err != nil {
+				return false, fmt.Errorf("backup_encryption_detection_failed_for_%s: %w", source, err)
+			}
+			if encrypted {
+				return true, nil
+			}
+			continue
+		}
+
+		dataset, err := s.getLocalDataset(ctx, source)
+		if err != nil {
+			return false, fmt.Errorf("backup_encryption_detection_failed_for_%s: %w", source, err)
+		}
+		if dataset == nil {
+			return false, fmt.Errorf("backup_encryption_detection_failed_for_%s: dataset_not_found", source)
+		}
+		if dataset.IsEncrypted() {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 const (
 	backupJobQueueName = "zelta-backup-run"
 
@@ -748,10 +802,10 @@ func (s *Service) runBackupJobWithToken(
 		}
 	}
 
-	encrypted := false
-	runErr := s.runBackupJobCore(ctx, job, &encrypted)
+	var encryption backupEncryptionObservation
+	runErr := s.runBackupJobCore(ctx, job, &encryption)
 	if !isJobAlreadyRunningErr(runErr) {
-		s.updateBackupJobResult(job, runErr, encrypted)
+		s.updateBackupJobResult(job, runErr, encryption.optional())
 	}
 	return runErr
 }
@@ -759,15 +813,8 @@ func (s *Service) runBackupJobWithToken(
 func (s *Service) runBackupJobCore(
 	ctx context.Context,
 	job *clusterModels.BackupJob,
-	resultEncrypted *bool,
+	resultEncryption *backupEncryptionObservation,
 ) (resultErr error) {
-	encrypted := false
-	defer func() {
-		if resultEncrypted != nil {
-			*resultEncrypted = encrypted
-		}
-	}()
-
 	repairRequired, err := clusterModels.BackupJobRepairRequired(s.DB, job.ID)
 	if err != nil {
 		return fmt.Errorf("backup_job_repair_state_lookup_failed: %w", err)
@@ -960,50 +1007,42 @@ func (s *Service) runBackupJobCore(
 
 	event.SourceDataset = sourceDataset
 
-	// Detect whether any source dataset is encrypted.
-	encrypted = false
+	encryptionSources := []string{sourceDataset}
 	if job.Mode == clusterModels.BackupJobModeVM {
-		for _, vmSource := range vmSourceDatasets {
-			ds, dsErr := s.getLocalDataset(ctx, vmSource)
-			if dsErr == nil && ds != nil && ds.IsEncrypted() {
-				encrypted = true
-				break
-			}
-		}
-	} else {
-		ds, dsErr := s.getLocalDataset(ctx, sourceDataset)
-		if dsErr == nil && ds != nil {
-			encrypted = ds.IsEncrypted()
-		}
+		encryptionSources = vmSourceDatasets
+	}
+	encrypted, encryptionErr := s.detectBackupSourcesEncryption(
+		ctx,
+		encryptionSources,
+		job.Recursive,
+	)
+	if encryptionErr != nil {
+		logger.L.Warn().
+			Err(encryptionErr).
+			Uint("job_id", job.ID).
+			Msg("backup_source_encryption_detection_failed")
+	} else if resultEncryption != nil {
+		*resultEncryption = backupEncryptionObservation{known: true, encrypted: encrypted}
 	}
 
 	// Verify encryption keys are loaded before starting the backup.
 	// Without this check the zelta send would fail with a cryptic ZFS error.
 	if encrypted {
-		if job.Mode == clusterModels.BackupJobModeVM {
-			for _, vmSource := range vmSourceDatasets {
-				ds, dsErr := s.getLocalDataset(ctx, vmSource)
-				if dsErr != nil || ds == nil || !ds.IsEncrypted() {
-					continue
-				}
-				keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, ds)
-				if keyErr != nil {
-					return fmt.Errorf("encryption_key_load_failed_for_%s: %w", vmSource, keyErr)
-				}
-				if !keyLoaded {
-					return fmt.Errorf("encryption_key_not_available_for_%s: run 'zfs load-key %s' first", vmSource, vmSource)
-				}
+		for _, encryptionSource := range encryptionSources {
+			ds, dsErr := s.getLocalDataset(ctx, encryptionSource)
+			if dsErr != nil || ds == nil || !ds.IsEncrypted() {
+				continue
 			}
-		} else {
-			ds, dsErr := s.getLocalDataset(ctx, sourceDataset)
-			if dsErr == nil && ds != nil {
-				keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, ds)
-				if keyErr != nil {
-					return fmt.Errorf("encryption_key_load_failed_for_%s: %w", sourceDataset, keyErr)
-				}
-				if !keyLoaded {
-					return fmt.Errorf("encryption_key_not_available_for_%s: run 'zfs load-key %s' first", sourceDataset, sourceDataset)
-				}
+			keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, ds)
+			if keyErr != nil {
+				return fmt.Errorf("encryption_key_load_failed_for_%s: %w", encryptionSource, keyErr)
+			}
+			if !keyLoaded {
+				return fmt.Errorf(
+					"encryption_key_not_available_for_%s: run 'zfs load-key %s' first",
+					encryptionSource,
+					encryptionSource,
+				)
 			}
 		}
 	}
@@ -2121,7 +2160,7 @@ func targetGenerationDatasetCandidate(activeDataset, generationToken string, att
 	return candidate
 }
 
-func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error, encrypted bool) {
+func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error, encrypted *bool) {
 	if job == nil || job.ID == 0 {
 		return
 	}
@@ -2141,7 +2180,7 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		lastError = runErr.Error()
 	}
 	handled, completionErr := s.completeBackupJobOperation(
-		job, status, lastError, now, next, &encrypted,
+		job, status, lastError, now, next, encrypted,
 	)
 	if handled {
 		s.logScheduledResultDeliveryFailure(clusterModels.ScheduledRunKindBackup, job.ID, completionErr)
@@ -2155,7 +2194,7 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		LastStatus: status,
 		LastError:  lastError,
 		NextRunAt:  next,
-		Encrypted:  &encrypted,
+		Encrypted:  encrypted,
 	}
 
 	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
@@ -2173,11 +2212,14 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		}
 		return
 	}
-	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+	updates := map[string]any{
 		"last_run_at": update.LastRunAt, "last_status": update.LastStatus,
 		"last_error": update.LastError, "next_run_at": update.NextRunAt,
-		"encrypted": encrypted,
-	}).Error; err != nil {
+	}
+	if encrypted != nil {
+		updates["encrypted"] = *encrypted
+	}
+	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
 	}
 }

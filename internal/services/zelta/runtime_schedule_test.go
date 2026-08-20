@@ -568,7 +568,8 @@ func TestIntegrationRaftClusteredCompletionOutboxWaitsForRaftAndThenDrains(t *te
 
 	runtime := clusterService.Raft
 	clusterService.Raft = nil
-	service.updateBackupJobResult(&job, nil, true)
+	encrypted := true
+	service.updateBackupJobResult(&job, nil, &encrypted)
 
 	var unchanged clusterModels.BackupJob
 	if err := clusterService.DB.First(&unchanged, job.ID).Error; err != nil {
