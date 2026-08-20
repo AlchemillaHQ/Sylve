@@ -3434,6 +3434,7 @@ msgid "Never"
 msgstr "ഒരിക്കലുമില്ല"
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Stale"
@@ -13978,7 +13979,6 @@ msgid "Available"
 msgstr ""
 
 #: src/routes/[node]/services/certificates/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Expired"
 msgstr ""
 

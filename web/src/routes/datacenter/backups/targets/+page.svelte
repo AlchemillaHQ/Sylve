@@ -204,7 +204,7 @@
 		if (!status) return 'Not validated';
 		if (!status.currentVoter) return 'Removed voter';
 		if (status.ready) return 'Ready';
-		if (status.expired) return 'Expired';
+		if (status.expired) return 'Stale';
 		if (!status.configurationCurrent) return 'Configuration changed';
 		if (!status.validationSucceeded && status.lastVerifiedAt) return 'Failed';
 		return 'Not validated';
@@ -237,7 +237,9 @@
 					case 'Failed':
 						icons.push(renderWithIcon('mdi:network-off', value, 'text-red-500', title));
 						break;
-					case 'Expired':
+					case 'Stale':
+						icons.push(renderWithIcon('mdi:clock-alert-outline', value, 'text-amber-500', title));
+						break;
 					case 'Configuration changed':
 						icons.push(renderWithIcon('mdi:clock-alert-outline', value, 'text-orange-500', title));
 						break;

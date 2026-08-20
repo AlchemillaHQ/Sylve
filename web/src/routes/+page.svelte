@@ -291,6 +291,9 @@
 <span class="icon-[mdi--public]"></span>
 <span class="icon-[mdi--backup-restore]"></span>
 <span class="icon-[mdi--server-network]"></span>
+<span class="icon-[mdi--check-network]"></span>
+<span class="icon-[mdi--network-off]"></span>
+<span class="icon-[mdi--help-network-outline]"></span>
 <span class="icon-[mdi--calendar-sync]"></span>
 <span class="icon-[mdi--history]"></span>
 <span class="icon-[mdi--restore]"></span>
