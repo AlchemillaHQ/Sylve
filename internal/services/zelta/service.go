@@ -1956,6 +1956,10 @@ func datasetWithinAnyRoot(dataset string, roots []string) bool {
 }
 
 func (s *Service) stopVMIfPresent(rid uint) error {
+	return s.stopVMIfPresentForTransition(rid, "")
+}
+
+func (s *Service) stopVMIfPresentForTransition(rid uint, transitionRunID string) error {
 	if rid == 0 || s.VM == nil {
 		return nil
 	}
@@ -1979,12 +1983,23 @@ func (s *Service) stopVMIfPresent(rid uint) error {
 		return fmt.Errorf("failed_to_check_vm_state_before_stop: %w", err)
 	}
 
-	if err := s.VM.LvVMAction(*vm, "stop"); err != nil {
-		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "not running") || isVMDomainNotFoundError(err) {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	var stopErr error
+	if transitionRunID == "" {
+		stopErr = s.VM.LvVMAction(*vm, "stop")
+	} else if transitionVM, ok := s.VM.(interface {
+		LvVMActionForReplication(vmModels.VM, string, string) error
+	}); ok {
+		stopErr = transitionVM.LvVMActionForReplication(*vm, "stop", transitionRunID)
+	} else {
+		return fmt.Errorf("vm_replication_transition_action_unavailable")
+	}
+	if stopErr != nil {
+		lower := strings.ToLower(stopErr.Error())
+		if strings.Contains(lower, "not running") || isVMDomainNotFoundError(stopErr) {
 			return nil
 		}
-		return err
+		return stopErr
 	}
 
 	deadline := time.Now().Add(60 * time.Second)

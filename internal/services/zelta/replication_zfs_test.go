@@ -86,7 +86,7 @@ func (d *activationErrorGuestDriver) activate(context.Context, uint, string, boo
 	return d.activateErr
 }
 
-func (d *activationErrorGuestDriver) demote(context.Context, uint) error {
+func (d *activationErrorGuestDriver) demote(context.Context, uint, string) error {
 	d.demoteCalls++
 	return nil
 }

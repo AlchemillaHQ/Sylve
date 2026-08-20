@@ -30,7 +30,7 @@ const (
 type replicationGuestDriver interface {
 	sourceDatasets(ctx context.Context, guestID uint) ([]string, error)
 	activate(ctx context.Context, guestID uint, transitionRunID string, desiredRunning bool) error
-	demote(ctx context.Context, guestID uint) error
+	demote(ctx context.Context, guestID uint, transitionRunID string) error
 	selfFence(ctx context.Context, policyID uint, guestID uint, localNodeID, expectedOwner, reason string)
 }
 
@@ -73,7 +73,7 @@ func (d jailReplicationGuestDriver) sourceDatasets(ctx context.Context, guestID 
 	return []string{dataset}, nil
 }
 
-func (d jailReplicationGuestDriver) demote(_ context.Context, guestID uint) error {
+func (d jailReplicationGuestDriver) demote(_ context.Context, guestID uint, _ string) error {
 	return d.service.stopLocalJailIfPresent(guestID)
 }
 
@@ -226,8 +226,8 @@ func (d vmReplicationGuestDriver) replicationSourceDatasets(ctx context.Context,
 	return sources, nil
 }
 
-func (d vmReplicationGuestDriver) demote(_ context.Context, guestID uint) error {
-	return d.service.stopVMIfPresent(guestID)
+func (d vmReplicationGuestDriver) demote(_ context.Context, guestID uint, transitionRunID string) error {
+	return d.service.stopVMIfPresentForTransition(guestID, transitionRunID)
 }
 
 func (d vmReplicationGuestDriver) selfFence(

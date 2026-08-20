@@ -28,7 +28,7 @@ func (*disposableReplicationGuestDriver) activate(context.Context, uint, string,
 	return nil
 }
 
-func (*disposableReplicationGuestDriver) demote(context.Context, uint) error {
+func (*disposableReplicationGuestDriver) demote(context.Context, uint, string) error {
 	return nil
 }
 

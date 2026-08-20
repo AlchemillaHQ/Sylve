@@ -7733,7 +7733,7 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(
 		driver, driverErr := s.replicationGuestDriver(policy.GuestType)
 		if driverErr != nil {
 			cleanupErrs = append(cleanupErrs, fmt.Sprintf("replication_guest_driver_failed: %v", driverErr))
-		} else if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
+		} else if demoteErr := driver.demote(ctx, policy.GuestID, ""); demoteErr != nil {
 			cleanupErrs = append(cleanupErrs, fmt.Sprintf("demote_before_cleanup_failed: %v", demoteErr))
 		}
 
@@ -7938,7 +7938,7 @@ func (s *Service) demoteReplicationPolicy(
 	if err != nil {
 		return err
 	}
-	if err := driver.demote(ctx, policy.GuestID); err != nil {
+	if err := driver.demote(ctx, policy.GuestID, transitionRunID); err != nil {
 		return err
 	}
 
@@ -8304,7 +8304,7 @@ func (s *Service) activateReplicationPolicy(
 				// A previous activation attempt may have started the guest before
 				// returning an error. If its storage cannot prove the promoted
 				// generation is writable, stop it and rebuild from the fenced state.
-				if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
+				if demoteErr := driver.demote(ctx, policy.GuestID, transitionRunID); demoteErr != nil {
 					if fenceErr := s.fenceReplicationGuestDatasets(ctx, policy, "activation_recovery_failed"); fenceErr != nil {
 						return fmt.Errorf("%v; activation_recovery_demote_failed: %v; activation_refence_failed: %v", err, demoteErr, fenceErr)
 					}
@@ -8342,7 +8342,7 @@ func (s *Service) activateReplicationPolicy(
 						Str("guest_type", policy.GuestType).
 						Msg("replication_activation_error_reconciled_from_live_runtime")
 					return nil
-				} else if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
+				} else if demoteErr := driver.demote(ctx, policy.GuestID, transitionRunID); demoteErr != nil {
 					err = fmt.Errorf("%v; activation_runtime_invalid: %v; activation_demote_failed: %v", err, validateErr, demoteErr)
 				}
 			} else if stateErr != nil {
