@@ -19,6 +19,47 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
+func TestIntegrationRaftBackupJobEncryptionUpdateReplicates(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.BackupJob{})
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	job := clusterModels.BackupJob{
+		ID: 73, Name: "encrypted-source", TargetID: 10, RunnerNodeID: leader.id,
+		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/encrypted",
+		CronExpr: "0 0 * * *", Enabled: true,
+	}
+	createRaw, err := json.Marshal(job)
+	if err != nil {
+		t.Fatalf("marshal create: %v", err)
+	}
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job", Action: "create", Data: createRaw,
+	}); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	job.Encrypted = true
+	updateRaw, err := json.Marshal(clusterModels.BackupJobCommandPayload{Job: job})
+	if err != nil {
+		t.Fatalf("marshal update: %v", err)
+	}
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "backup_job", Action: "update", Data: updateRaw,
+	}); err != nil {
+		t.Fatalf("update job: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "backup job encryption convergence", func() bool {
+		for _, node := range nodes {
+			var persisted clusterModels.BackupJob
+			if err := node.service.DB.First(&persisted, job.ID).Error; err != nil || !persisted.Encrypted {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 func TestIntegrationRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3,
 		&clusterModels.BackupJob{},

@@ -341,6 +341,7 @@ func ApplyBackupJobUpdateTxn(db *gorm.DB, job *BackupJob) error {
 		"prune_target":       job.PruneTarget,
 		"stop_before_backup": job.StopBeforeBackup,
 		"recursive":          job.Recursive,
+		"encrypted":          job.Encrypted,
 		"cron_expr":          job.CronExpr,
 		"enabled":            job.Enabled,
 		"next_run_at":        job.NextRunAt,

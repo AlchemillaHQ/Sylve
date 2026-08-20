@@ -589,6 +589,13 @@
 			}
 		}
 
+		const encrypted =
+			form.mode === 'dataset' && srcEncryptionState === 'encrypted'
+				? true
+				: form.mode === 'dataset' && srcEncryptionState === 'unencrypted'
+					? false
+					: undefined;
+
 		const payload: BackupJobInput = {
 			name: form.name,
 			targetId: Number.parseInt(form.targetId, 10),
@@ -604,6 +611,7 @@
 			pruneTarget: form.pruneTarget,
 			stopBeforeBackup: form.stopBeforeBackup,
 			recursive: form.recursive,
+			...(encrypted === undefined ? {} : { encrypted }),
 			cronExpr: form.cronExpr,
 			enabled: form.enabled
 		};
@@ -1002,7 +1010,12 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button onclick={saveJob} disabled={loading || scopedRebindPending}>
+			<Button
+				onclick={saveJob}
+				disabled={loading ||
+					scopedRebindPending ||
+					(form.mode === 'dataset' && srcEncryptionState === 'checking')}
+			>
 				{#if loading}
 					<div class="flex items-center gap-1">
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>

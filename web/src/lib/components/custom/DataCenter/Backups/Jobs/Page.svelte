@@ -205,7 +205,7 @@
 				const value = String(cell.getValue() || '');
 				const lockIcon = row.encrypted
 					? renderWithIcon('mdi:lock', 'Encrypted', 'text-green-500')
-					: renderWithIcon('mdi:lock-open-variant', '', 'text-muted-foreground');
+					: '';
 
 				if (row.mode === 'jail') {
 					const label =

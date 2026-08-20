@@ -716,6 +716,9 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	if err != nil {
 		return err
 	}
+	if input.Encrypted == nil {
+		job.Encrypted = existing.Encrypted
+	}
 	targetReadiness := job.TargetReadinessReceipt
 	if targetReadiness == nil {
 		return fmt.Errorf("backup_target_readiness_job_receipt_missing")
@@ -875,6 +878,9 @@ func (s *Service) buildBackupJob(
 		CronExpr:         cronExpr,
 		Enabled:          enabled,
 		ScheduleRevision: 1,
+	}
+	if input.Encrypted != nil {
+		job.Encrypted = *input.Encrypted
 	}
 	if job.PruneKeepLast < 0 {
 		return nil, nil, fmt.Errorf("invalid_prune_keep_last")

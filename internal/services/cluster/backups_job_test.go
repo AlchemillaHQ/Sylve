@@ -58,7 +58,7 @@ func TestUpdateBackupJobRuntimeStatePreservesOmittedEncryption(t *testing.T) {
 	}
 }
 
-func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
+func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 	db := newClusterServiceTestDB(
 		t,
 		&clusterModels.BackupTarget{},
@@ -83,6 +83,7 @@ func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 	}
 
 	enabled := true
+	encrypted := true
 	input := clusterServiceInterfaces.BackupJobReq{
 		Name:          "recursive-job",
 		TargetID:      target.ID,
@@ -90,6 +91,7 @@ func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 		SourceDataset: "zroot/data",
 		CronExpr:      "0 0 * * *",
 		Enabled:       &enabled,
+		Encrypted:     &encrypted,
 	}
 	if err := s.ProposeBackupJobCreate(input, true); err != nil {
 		t.Fatalf("create backup job: %v", err)
@@ -102,8 +104,12 @@ func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 	if job.Recursive {
 		t.Fatal("new job unexpectedly recursive")
 	}
+	if !job.Encrypted {
+		t.Fatal("new job did not persist the verified encryption state")
+	}
 
 	input.Recursive = true
+	input.Encrypted = nil
 	if err := s.ProposeBackupJobUpdate(job.ID, input, true); err != nil {
 		t.Fatalf("update backup job: %v", err)
 	}
@@ -112,6 +118,21 @@ func TestProposeBackupJobUpdatePersistsRecursive(t *testing.T) {
 	}
 	if !job.Recursive {
 		t.Fatal("recursive setting was not persisted by update")
+	}
+	if !job.Encrypted {
+		t.Fatal("omitted encryption state cleared the persisted value")
+	}
+
+	encrypted = false
+	input.Encrypted = &encrypted
+	if err := s.ProposeBackupJobUpdate(job.ID, input, true); err != nil {
+		t.Fatalf("update backup job encryption: %v", err)
+	}
+	if err := db.First(&job, job.ID).Error; err != nil {
+		t.Fatalf("reload backup job encryption: %v", err)
+	}
+	if job.Encrypted {
+		t.Fatal("explicit unencrypted state was not persisted")
 	}
 }
 
