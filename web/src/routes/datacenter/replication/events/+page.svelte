@@ -190,9 +190,9 @@
 	);
 
 	function workloadLabel(guestType: string, guestId: number): string {
-		const type = guestType === 'jail' ? 'Jail' : 'VM';
+		const idPrefix = guestType === 'jail' ? 'CTID' : 'RID';
 		const name = workloadNames.current[workloadKey(guestType, guestId)];
-		return name ? `${type} ${guestId} - ${name}` : `${type} ${guestId}`;
+		return name ? `${name} (${idPrefix} ${guestId})` : `${idPrefix} ${guestId}`;
 	}
 
 	function eventPath(event: ReplicationEvent): string {
@@ -567,8 +567,6 @@
 		{
 			field: 'status',
 			title: 'Status',
-			width: 130,
-			minWidth: 110,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData();
 				const rawStatus = String(cell.getValue() || '');
@@ -583,16 +581,12 @@
 		{
 			field: 'eventType',
 			title: 'Type',
-			width: 110,
-			minWidth: 100,
 			formatter: (cell: CellComponent) => eventTypeLabel(String(cell.getValue() || ''))
 		},
-		{ field: 'policy', title: 'Policy', width: 170, minWidth: 130 },
+		{ field: 'policy', title: 'Policy' },
 		{
 			field: 'workload',
 			title: 'Workload',
-			width: 240,
-			minWidth: 160,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData();
 				const icon =
@@ -600,20 +594,16 @@
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
-		{ field: 'path', title: 'Path', width: 220, minWidth: 170 },
-		{ field: 'message', title: 'Message', width: 250, minWidth: 180 },
+		{ field: 'path', title: 'Path' },
+		{ field: 'message', title: 'Message' },
 		{
 			field: 'startedAt',
 			title: 'Started',
-			width: 165,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
 		},
 		{
 			field: 'finishedAt',
 			title: 'Finished',
-			width: 165,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';

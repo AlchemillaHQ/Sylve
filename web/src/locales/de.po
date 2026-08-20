@@ -435,8 +435,6 @@ msgstr "Jail - Beschreibung aktualisieren"
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "Jail"

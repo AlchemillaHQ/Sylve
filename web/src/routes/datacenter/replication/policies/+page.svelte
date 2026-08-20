@@ -601,6 +601,72 @@
 		return out;
 	});
 
+	function workloadKey(guestType: string, guestId: number): string {
+		return `${guestType}:${guestId}`;
+	}
+
+	let workloadNames = $state<Record<string, string>>({});
+	let workloadNameLoadGeneration = 0;
+
+	async function resolveWorkloadNames(signal: AbortSignal): Promise<Record<string, string>> {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const workloadsByNode = new Map<string, ReplicationPolicy[]>();
+		for (const policy of policies) {
+			const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+			const hostname = nodeNameByID[nodeId];
+			if (!hostname) continue;
+			const workloads = workloadsByNode.get(hostname) || [];
+			workloads.push(policy);
+			workloadsByNode.set(hostname, workloads);
+		}
+
+		const names: Record<string, string> = {};
+		await Promise.all(
+			Array.from(workloadsByNode.entries()).map(async ([hostname, workloads]) => {
+				if (workloads.some((workload) => workload.guestType === 'vm')) {
+					try {
+						for (const vm of await getSimpleVMs(hostname, signal)) {
+							names[workloadKey('vm', vm.rid)] = vm.name;
+						}
+					} catch {
+						// Keep ID-only labels when this node cannot be reached.
+					}
+				}
+				if (workloads.some((workload) => workload.guestType === 'jail')) {
+					try {
+						for (const jail of await getSimpleJails(hostname, signal)) {
+							names[workloadKey('jail', jail.ctId)] = jail.name;
+						}
+					} catch {
+						// Keep ID-only labels when this node cannot be reached.
+					}
+				}
+			})
+		);
+		return names;
+	}
+
+	watch(
+		() =>
+			policies
+				.map((policy) => {
+					const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+					return `${policy.guestType}:${policy.guestId}:${nodeNameByID[nodeId] || ''}`;
+				})
+				.sort()
+				.join('|'),
+		() => {
+			const generation = ++workloadNameLoadGeneration;
+			const controller = new AbortController();
+			void resolveWorkloadNames(controller.signal).then((names) => {
+				if (generation === workloadNameLoadGeneration && !controller.signal.aborted) {
+					workloadNames = names;
+				}
+			});
+			return () => controller.abort();
+		}
+	);
+
 	function compactNodeLabel(nodeId: string): string {
 		const value = String(nodeId || '').trim();
 		if (!value) return '-';
@@ -928,18 +994,10 @@
 	});
 
 	function policyWorkloadLabel(policy: ReplicationPolicy): string {
-		const type = policy.guestType === 'jail' ? 'Jail' : 'VM';
 		const id = policy.guestId;
-		const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
-		const name =
-			policy.guestType === 'jail'
-				? jailsLoadedForNode === nodeId
-					? jails.find((jail) => jail.ctId === id)?.name
-					: undefined
-				: vmsLoadedForNode === nodeId
-					? vms.find((vm) => vm.rid === id)?.name
-					: undefined;
-		return name ? `${type} ${id} - ${name}` : `${type} ${id}`;
+		const idPrefix = policy.guestType === 'jail' ? 'CTID' : 'RID';
+		const name = workloadNames[workloadKey(policy.guestType, id)];
+		return name ? `${name} (${idPrefix} ${id})` : `${idPrefix} ${id}`;
 	}
 
 	const policyColumns: Column[] = [
@@ -947,8 +1005,6 @@
 		{
 			field: 'status',
 			title: 'Status',
-			width: 150,
-			minWidth: 130,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData() as {
 					enabled: boolean;
@@ -1012,12 +1068,10 @@
 				return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
 			}
 		},
-		{ field: 'name', title: 'Policy', width: 190, minWidth: 150 },
+		{ field: 'name', title: 'Policy' },
 		{
 			field: 'workload',
 			title: 'Workload',
-			width: 240,
-			minWidth: 160,
 			formatter: (cell: CellComponent) => {
 				const data = cell.getRow().getData();
 				const icon =
@@ -1025,13 +1079,11 @@
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
-		{ field: 'activeNode', title: 'Active Node', width: 170, minWidth: 130 },
-		{ field: 'mode', title: 'Behavior', width: 320, minWidth: 240 },
+		{ field: 'activeNode', title: 'Active Node' },
+		{ field: 'mode', title: 'Behavior' },
 		{
 			field: 'haState',
 			title: 'Protection',
-			width: 150,
-			minWidth: 130,
 			formatter: (cell: CellComponent) => {
 				const label = String(cell.getValue() || 'Eligible') as PolicyProtectionLabel;
 				const style = protectionStyles[label] || protectionStyles.Eligible;
@@ -1041,8 +1093,6 @@
 		{
 			field: 'targets',
 			title: 'Targets',
-			width: 430,
-			minWidth: 300,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData() as {
 					nodeSyncStatuses: PolicyTargetSync[];
@@ -1075,12 +1125,10 @@
 				return `<span class="inline-flex flex-wrap items-center gap-1.5">${tracked.map(nodeHtml).join('')}</span>`;
 			}
 		},
-		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
+		{ field: 'schedule', title: 'Schedule' },
 		{
 			field: 'lastRunAt',
 			title: 'Last Run',
-			width: 170,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -1089,8 +1137,6 @@
 		{
 			field: 'nextRunAt',
 			title: 'Next Run',
-			width: 170,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
