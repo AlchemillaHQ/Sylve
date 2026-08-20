@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,12 +22,13 @@ import (
 )
 
 type syncStubSet struct {
-	ifaceGet              func(string) (*iface.Interface, error)
-	createBridge          func(networkModels.StandardSwitch) error
-	editBridge            func(networkModels.StandardSwitch, networkModels.StandardSwitch) error
-	deleteBridge          func(networkModels.StandardSwitch) error
-	runCommand            func(string, ...string) (string, error)
-	runCommandWithContext func(context.Context, string, ...string) (string, error)
+	ifaceGet                func(string) (*iface.Interface, error)
+	createBridge            func(networkModels.StandardSwitch) error
+	editBridge              func(networkModels.StandardSwitch, networkModels.StandardSwitch) error
+	deleteBridge            func(networkModels.StandardSwitch) error
+	runCommand              func(string, ...string) (string, error)
+	runCommandAllowExitCode func(string, []int, ...string) (string, error)
+	runCommandWithContext   func(context.Context, string, ...string) (string, error)
 }
 
 func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
@@ -37,6 +39,7 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	origEdit := syncEditBridge
 	origDelete := syncDeleteBridge
 	origRun := syncRunCommand
+	origRunAllowExitCode := syncRunCommandAllowExitCode
 	origRunWithContext := syncRunCommandWithContext
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
@@ -44,6 +47,7 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 		syncEditBridge = origEdit
 		syncDeleteBridge = origDelete
 		syncRunCommand = origRun
+		syncRunCommandAllowExitCode = origRunAllowExitCode
 		syncRunCommandWithContext = origRunWithContext
 	})
 
@@ -62,9 +66,42 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	if stubs.runCommand != nil {
 		syncRunCommand = stubs.runCommand
 	}
+	if stubs.runCommandAllowExitCode != nil {
+		syncRunCommandAllowExitCode = stubs.runCommandAllowExitCode
+	}
 	if stubs.runCommandWithContext != nil {
 		syncRunCommandWithContext = stubs.runCommandWithContext
 	}
+}
+
+func useTestDhclientRuntimeDir(t *testing.T) string {
+	t.Helper()
+
+	original := dhclientRuntimeDir
+	dhclientRuntimeDir = filepath.Join(t.TempDir(), "dhclient")
+	t.Cleanup(func() {
+		dhclientRuntimeDir = original
+	})
+	return dhclientRuntimeDir
+}
+
+func skipDhclientNaturalExitGrace(t *testing.T) {
+	t.Helper()
+
+	original := dhclientNaturalExitGrace
+	dhclientNaturalExitGrace = 0
+	t.Cleanup(func() {
+		dhclientNaturalExitGrace = original
+	})
+}
+
+func commandIndex(commands []string, expected string) int {
+	for index, command := range commands {
+		if command == expected {
+			return index
+		}
+	}
+	return -1
 }
 
 func TestNormalizeIPv6GatewayForRouteAddsInterfaceScopeForLinkLocal(t *testing.T) {
@@ -1073,6 +1110,131 @@ func TestSyncStandardSwitchesEditActionLoadsCurrentSwitchAndPorts(t *testing.T) 
 	}
 	if len(gotNew.Ports) != 1 || gotNew.Ports[0].Name != "em0" {
 		t.Fatalf("expected DB preloaded ports, got %+v", gotNew.Ports)
+	}
+}
+
+func TestRunDhclientRecognizesLegacyClientWithoutPIDFile(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, args ...string) (string, error) {
+			if command == "/bin/pgrep" && strings.Join(args, " ") == "-f -x dhclient: vm-legacy" {
+				return "321\n", nil
+			}
+			return "", nil
+		},
+		runCommandWithContext: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("legacy client must not be started a second time")
+			return "", nil
+		},
+	})
+
+	if err := runDhclient("vm-legacy", 10); err != nil {
+		t.Fatalf("recognize legacy dhclient: %v", err)
+	}
+}
+
+func TestDeleteDHCPStandardBridgeDestroysInterfaceBeforeLegacyProcessFallback(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+	skipDhclientNaturalExitGrace(t)
+	var sequence []string
+	stopped := false
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			sequence = append(sequence, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			sequence = append(sequence, full)
+			if command == "/bin/pkill" {
+				stopped = true
+				return "", nil
+			}
+			if stopped {
+				return "", nil
+			}
+			return "654\n", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{BridgeName: "vm-dhcp-delete", DHCP: true}
+	if err := deleteStandardBridge(sw); err != nil {
+		t.Fatalf("delete DHCP standard bridge: %v", err)
+	}
+
+	destroy := commandIndex(sequence, "/sbin/ifconfig vm-dhcp-delete destroy")
+	legacyStop := commandIndex(sequence, "/bin/pkill -TERM -f -x dhclient: vm-dhcp-delete")
+	if destroy == -1 || legacyStop == -1 || destroy >= legacyStop {
+		t.Fatalf("bridge must be destroyed before process fallback, sequence: %v", sequence)
+	}
+	for _, command := range sequence {
+		if strings.Contains(command, "/sbin/dhclient -r") {
+			t.Fatalf("unsupported dhclient release command used: %v", sequence)
+		}
+	}
+}
+
+func TestEditStandardBridgeRecreatesWhenDisablingDHCPAndPreservesExtraMembers(t *testing.T) {
+	var operations []string
+	lookup := 0
+	oldSw := networkModels.StandardSwitch{
+		Name:       "dhcp-old",
+		BridgeName: "vm-dhcp-edit",
+		DHCP:       true,
+		Ports:      []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:          "dhcp-new",
+		BridgeName:    "vm-dhcp-edit",
+		NetworkManual: "192.0.2.10/24",
+	}
+
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			lookup++
+			switch lookup {
+			case 1:
+				return &iface.Interface{
+					Name: name,
+					BridgeMembers: []iface.BridgeMember{
+						{Name: "em0"},
+						{Name: "tap0"},
+					},
+				}, nil
+			case 2:
+				return &iface.Interface{Name: name}, nil
+			default:
+				return &iface.Interface{Name: name}, nil
+			}
+		},
+		deleteBridge: func(sw networkModels.StandardSwitch) error {
+			operations = append(operations, "delete:"+sw.BridgeName)
+			return nil
+		},
+		createBridge: func(sw networkModels.StandardSwitch) error {
+			operations = append(operations, "create:"+sw.BridgeName)
+			return nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			operations = append(operations, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("disable DHCP: %v", err)
+	}
+	want := []string{
+		"delete:vm-dhcp-edit",
+		"create:vm-dhcp-edit",
+		"/sbin/ifconfig vm-dhcp-edit addm tap0 up",
+		"/sbin/ifconfig tap0 up",
+	}
+	if strings.Join(operations, "|") != strings.Join(want, "|") {
+		t.Fatalf("DHCP transition operations = %v, want %v", operations, want)
 	}
 }
 

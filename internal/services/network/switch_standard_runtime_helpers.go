@@ -11,11 +11,112 @@ package network
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+const (
+	dhclientStopTimeout      = 2 * time.Second
+	dhclientStopPollInterval = 50 * time.Millisecond
+)
+
+var (
+	dhclientRuntimeDir       = "/var/run/dhclient"
+	dhclientNaturalExitGrace = 2 * time.Second
+)
+
+func dhclientPIDPath(br string) string {
+	return filepath.Join(dhclientRuntimeDir, "dhclient."+br+".pid")
+}
+
+func ensureDhclientRuntimeDir() error {
+	if err := os.MkdirAll(dhclientRuntimeDir, 0o755); err != nil {
+		return err
+	}
+	return os.Chmod(dhclientRuntimeDir, 0o755)
+}
+
+func dhclientProcessPatterns(br string) (string, string) {
+	main := regexp.QuoteMeta("dhclient: " + br)
+	return main, regexp.QuoteMeta("dhclient: " + br + " [priv]")
+}
+
+func processMatches(args ...string) (bool, error) {
+	output, err := syncRunCommandAllowExitCode("/bin/pgrep", []int{1}, args...)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(output) != "", nil
+}
+
+func dhclientRunning(br string) (running, managed bool, retErr error) {
+	mainPattern, _ := dhclientProcessPatterns(br)
+	pidPath := dhclientPIDPath(br)
+	if _, err := os.Stat(pidPath); err == nil {
+		matched, matchErr := processMatches("-F", pidPath, "-f", "-x", mainPattern)
+		if matchErr == nil && matched {
+			return true, true, nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, false, err
+	}
+
+	matched, err := processMatches("-f", "-x", mainPattern)
+	if err != nil {
+		return false, false, err
+	}
+	return matched, false, nil
+}
+
+func dhclientProcessesRunning(br string) (bool, error) {
+	mainPattern, privilegedPattern := dhclientProcessPatterns(br)
+	return processMatches("-f", "-x", mainPattern, privilegedPattern)
+}
+
+func signalDhclient(br string, managed bool) error {
+	mainPattern, _ := dhclientProcessPatterns(br)
+	var pidErr error
+	if managed {
+		_, pidErr = syncRunCommandAllowExitCode(
+			"/bin/pkill",
+			[]int{1},
+			"-TERM", "-F", dhclientPIDPath(br), "-f", "-x", mainPattern,
+		)
+	}
+
+	_, exactErr := syncRunCommandAllowExitCode(
+		"/bin/pkill",
+		[]int{1},
+		"-TERM", "-f", "-x", mainPattern,
+	)
+	if exactErr != nil {
+		return errors.Join(pidErr, exactErr)
+	}
+	return nil
+}
+
+func waitForDhclientProcesses(br string, timeout time.Duration) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		running, err := dhclientProcessesRunning(br)
+		if err != nil {
+			return false, err
+		}
+		if !running {
+			return true, nil
+		}
+		if !time.Now().Before(deadline) {
+			return false, nil
+		}
+		time.Sleep(dhclientStopPollInterval)
+	}
+}
 
 func routeAlreadyExists(output string, err error) bool {
 	message := strings.ToLower(output)
@@ -115,17 +216,35 @@ func destroyStandardSwitchRuntimeInterfaces(sw networkModels.StandardSwitch) err
 }
 
 func stopDhclient(br string) error {
-	output, err := syncRunCommand("/sbin/dhclient", "-r", br)
-	if err == nil {
-		return nil
+	running, managed, err := dhclientRunning(br)
+	if err != nil {
+		return fmt.Errorf("inspect dhclient for %s: %w", br, err)
 	}
-	message := strings.ToLower(output + " " + err.Error())
-	if strings.Contains(message, "not running") ||
-		strings.Contains(message, "no such process") ||
-		strings.Contains(message, "no such file") ||
-		strings.Contains(message, "does not exist") ||
-		strings.Contains(message, "not found") {
-		return nil
+	allRunning, err := dhclientProcessesRunning(br)
+	if err != nil {
+		return fmt.Errorf("inspect dhclient processes for %s: %w", br, err)
 	}
-	return fmt.Errorf("stop dhclient for %s: %w", br, err)
+	if running || allRunning {
+		stopped, waitErr := waitForDhclientProcesses(br, dhclientNaturalExitGrace)
+		if waitErr != nil {
+			return fmt.Errorf("wait for dhclient cleanup on %s: %w", br, waitErr)
+		}
+		if !stopped {
+			if err := signalDhclient(br, managed); err != nil {
+				return fmt.Errorf("signal dhclient for %s: %w", br, err)
+			}
+			stopped, waitErr = waitForDhclientProcesses(br, dhclientStopTimeout)
+			if waitErr != nil {
+				return fmt.Errorf("wait for dhclient on %s: %w", br, waitErr)
+			}
+			if !stopped {
+				return fmt.Errorf("stop dhclient for %s: timed out", br)
+			}
+		}
+	}
+
+	if err := os.Remove(dhclientPIDPath(br)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove dhclient PID file for %s: %w", br, err)
+	}
+	return nil
 }

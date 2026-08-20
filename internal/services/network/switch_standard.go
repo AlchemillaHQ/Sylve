@@ -22,12 +22,13 @@ import (
 )
 
 var (
-	syncIfaceGet              = iface.Get
-	syncRunCommand            = utils.RunCommand
-	syncRunCommandWithContext = utils.RunCommandWithContext
-	syncCreateBridge          = createStandardBridge
-	syncEditBridge            = editStandardBridge
-	syncDeleteBridge          = deleteStandardBridge
+	syncIfaceGet                = iface.Get
+	syncRunCommand              = utils.RunCommand
+	syncRunCommandAllowExitCode = utils.RunCommandAllowExitCode
+	syncRunCommandWithContext   = utils.RunCommandWithContext
+	syncCreateBridge            = createStandardBridge
+	syncEditBridge              = editStandardBridge
+	syncDeleteBridge            = deleteStandardBridge
 )
 
 // Capability bits that FreeBSD if_bridge synchronizes across its members,
@@ -604,11 +605,6 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			return
 		}
 
-		if sw.DHCP {
-			if err := stopDhclient(sw.BridgeName); err != nil {
-				logger.L.Error().Err(err).Str("bridge", sw.BridgeName).Msg("standard_switch_create_dhclient_cleanup_failed")
-			}
-		}
 		if addedDefault4Route {
 			_ = deleteRouteIfPresent("delete", "default", sw.Gateway(4))
 		}
@@ -631,6 +627,11 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			}
 		} else if _, err := syncRunCommand("/sbin/ifconfig", raw, "destroy"); err != nil && !isInterfaceMissingError(err) {
 			logger.L.Error().Err(err).Str("interface", raw).Msg("standard_switch_create_raw_interface_cleanup_failed")
+		}
+		if sw.DHCP {
+			if err := stopDhclient(sw.BridgeName); err != nil {
+				logger.L.Error().Err(err).Str("bridge", sw.BridgeName).Msg("standard_switch_create_dhclient_cleanup_failed")
+			}
 		}
 	}()
 
@@ -731,9 +732,24 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		return fmt.Errorf("edit_standard_bridge: interface %s not found", br)
 	}
 	if oldSw.DHCP && !newSw.DHCP {
-		if err := stopDhclient(br); err != nil {
-			return fmt.Errorf("edit_standard_bridge: %v", err)
+		managedMembers := standardSwitchManagedMembers(oldSw)
+		extraMembers := make([]string, 0, len(ifaceObj.BridgeMembers))
+		for _, member := range ifaceObj.BridgeMembers {
+			if _, managed := managedMembers[member.Name]; !managed {
+				extraMembers = append(extraMembers, member.Name)
+			}
 		}
+
+		if err := syncDeleteBridge(oldSw); err != nil {
+			return fmt.Errorf("edit_standard_bridge: remove DHCP runtime: %v", err)
+		}
+		if err := syncCreateBridge(newSw); err != nil {
+			return fmt.Errorf("edit_standard_bridge: create non-DHCP runtime: %v", err)
+		}
+		if err := reattachStandardSwitchMembers(newSw.BridgeName, extraMembers); err != nil {
+			return fmt.Errorf("edit_standard_bridge: restore extra members: %v", err)
+		}
+		return nil
 	}
 	var original []string
 	for _, m := range ifaceObj.BridgeMembers {
@@ -959,16 +975,16 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 }
 
 func deleteStandardBridge(sw networkModels.StandardSwitch) error {
-	if sw.DHCP {
-		if err := stopDhclient(sw.BridgeName); err != nil {
-			return fmt.Errorf("delete_standard_bridge: %v", err)
-		}
-	}
 	if err := removeStandardSwitchRoutes(sw); err != nil {
 		return fmt.Errorf("delete_standard_bridge: remove routes: %v", err)
 	}
 	if err := destroyStandardSwitchRuntimeInterfaces(sw); err != nil {
 		return fmt.Errorf("delete_standard_bridge: %v", err)
+	}
+	if sw.DHCP {
+		if err := stopDhclient(sw.BridgeName); err != nil {
+			return fmt.Errorf("delete_standard_bridge: %v", err)
+		}
 	}
 
 	return nil
@@ -1125,11 +1141,21 @@ func runDhclient(br string, timeout int) error {
 	if interfaceObj == nil {
 		return fmt.Errorf("dhclient: interface %s not found", br)
 	}
+	if err := ensureDhclientRuntimeDir(); err != nil {
+		return fmt.Errorf("dhclient: prepare runtime directory: %v", err)
+	}
+	running, _, err := dhclientRunning(br)
+	if err != nil {
+		return fmt.Errorf("dhclient: inspect existing client for %s: %v", br, err)
+	}
+	if running {
+		return nil
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeout))
 	defer cancel()
 
-	_, err = syncRunCommandWithContext(ctx, "/sbin/dhclient", "-b", br)
+	_, err = syncRunCommandWithContext(ctx, "/sbin/dhclient", "-b", "-p", dhclientPIDPath(br), br)
 	if err != nil {
 		logger.L.Debug().Msgf("dhclient: failed to run dhclient for %s: %v", br, err)
 		if strings.Contains(err.Error(), "dhclient already running") {
