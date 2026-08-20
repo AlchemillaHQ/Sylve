@@ -66,12 +66,12 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	if err := createStandardBridge(sw); err != nil {
 		t.Fatalf("create DHCP standard switch: %v", err)
 	}
-	firstPID := readIntegrationDHClientPID(t, pidPath)
+	firstPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)
 
 	if err := runDhclient(bridgeName, 10); err != nil {
 		t.Fatalf("reconcile managed dhclient: %v", err)
 	}
-	if secondPID := readIntegrationDHClientPID(t, pidPath); secondPID != firstPID {
+	if secondPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second); secondPID != firstPID {
 		t.Fatalf("managed dhclient PID changed from %d to %d", firstPID, secondPID)
 	}
 	if err := stopDhclient(bridgeName); err != nil {
@@ -84,7 +84,7 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	if err := runDhclient(bridgeName, 10); err != nil {
 		t.Fatalf("restart dhclient: %v", err)
 	}
-	legacyPID := readIntegrationDHClientPID(t, pidPath)
+	legacyPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)
 	if err := os.Remove(pidPath); err != nil {
 		t.Fatalf("remove PID file to emulate legacy client: %v", err)
 	}
@@ -108,6 +108,21 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	}
 	if running, err := dhclientProcessesRunning(bridgeName); err != nil || running {
 		t.Fatalf("dhclient state after delete = running:%t error:%v", running, err)
+	}
+}
+
+func waitForIntegrationDHClientPID(t *testing.T, bridgeName string, timeout time.Duration) int {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		running, managed, err := dhclientRunning(bridgeName)
+		if err == nil && running && managed {
+			return readIntegrationDHClientPID(t, dhclientPIDPath(bridgeName))
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("wait for managed dhclient on %s: running:%t managed:%t error:%v", bridgeName, running, managed, err)
+		}
+		time.Sleep(dhclientStopPollInterval)
 	}
 }
 
