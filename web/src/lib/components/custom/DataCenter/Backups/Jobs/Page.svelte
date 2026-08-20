@@ -88,14 +88,11 @@
 
 	watch(
 		() => reload,
-		(value) => {
-			if (value) {
-				setTimeout(() => {
-					jobs.refetch();
-					targets.refetch();
-					reload = false;
-				}, 500);
-			}
+		async (value) => {
+			if (!value) return;
+
+			await Promise.all([jobs.refetch(), targets.refetch()]);
+			reload = false;
 		}
 	);
 

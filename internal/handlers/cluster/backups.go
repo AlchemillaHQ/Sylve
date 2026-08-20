@@ -248,6 +248,11 @@ func writeBackupNodeForwardError(
 // @Router /cluster/backups/jobs [get]
 func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		targetID, err := backupJobTargetIDQuery(c)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
