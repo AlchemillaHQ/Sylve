@@ -3434,7 +3434,6 @@ msgid "Never"
 msgstr "Never"
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Stale"
@@ -14507,7 +14506,6 @@ msgstr "Backup runner pending"
 msgid "Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry"
 msgstr "Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry"
 
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Not validated"

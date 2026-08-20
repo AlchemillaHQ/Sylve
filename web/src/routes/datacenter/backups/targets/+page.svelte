@@ -200,13 +200,13 @@
 		return target.readiness.find((status) => status.nodeId === selectedValidationNodeId);
 	}
 
-	function readinessLabel(status: BackupTargetNodeReadiness | undefined): string {
+	function readinessLabel(status: BackupTargetNodeReadiness | undefined): string | null {
 		if (!status) return 'Not validated';
 		if (!status.currentVoter) return 'Removed voter';
 		if (status.ready) return 'Ready';
-		if (status.expired) return 'Stale';
 		if (!status.configurationCurrent) return 'Configuration changed';
 		if (!status.validationSucceeded && status.lastVerifiedAt) return 'Failed';
+		if (status.expired) return null;
 		return 'Not validated';
 	}
 
@@ -228,25 +228,26 @@
 						: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
 				];
 				const row = cell.getRow().getData();
-				const value = String(row.readiness || 'Not validated');
+				const value = typeof row.readiness === 'string' ? row.readiness : '';
 				const title = String(row.readinessTitle || '');
-				switch (value) {
-					case 'Ready':
-						icons.push(renderWithIcon('mdi:check-network', value, 'text-green-500', title));
-						break;
-					case 'Failed':
-						icons.push(renderWithIcon('mdi:network-off', value, 'text-red-500', title));
-						break;
-					case 'Stale':
-						icons.push(renderWithIcon('mdi:clock-alert-outline', value, 'text-amber-500', title));
-						break;
-					case 'Configuration changed':
-						icons.push(renderWithIcon('mdi:clock-alert-outline', value, 'text-orange-500', title));
-						break;
-					default:
-						icons.push(
-							renderWithIcon('mdi:help-network-outline', value, 'text-muted-foreground', title)
-						);
+				if (value) {
+					switch (value) {
+						case 'Ready':
+							icons.push(renderWithIcon('mdi:check-network', value, 'text-green-500', title));
+							break;
+						case 'Failed':
+							icons.push(renderWithIcon('mdi:network-off', value, 'text-red-500', title));
+							break;
+						case 'Configuration changed':
+							icons.push(
+								renderWithIcon('mdi:clock-alert-outline', value, 'text-orange-500', title)
+							);
+							break;
+						default:
+							icons.push(
+								renderWithIcon('mdi:help-network-outline', value, 'text-muted-foreground', title)
+							);
+					}
 				}
 
 				return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;

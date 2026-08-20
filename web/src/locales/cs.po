@@ -3434,7 +3434,6 @@ msgid "Never"
 msgstr "Nikdy"
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Stale"
@@ -14510,7 +14509,6 @@ msgstr ""
 msgid "Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Not validated"
