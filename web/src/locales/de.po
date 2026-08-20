@@ -17493,3 +17493,15 @@ msgstr ""
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Removing a live node is destructive. Only continue if you intend to remove this peer while it is still running."
 msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Target, mode, source, and dataset runner are fixed after creation. Guest runners change only through migration or failover repair."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Changing recursive scope may archive the active generation and trigger a full reseed"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Legacy restore points do not record whether the backup was recursive. Before restoring, set \"Recursive backup\" to the value used when this restore point was created."
+msgstr ""

@@ -204,7 +204,7 @@
 				};
 				const value = String(cell.getValue() || '');
 				const lockIcon = row.encrypted
-					? renderWithIcon('mdi:lock', 'Encrypted', 'text-green-500')
+					? renderWithIcon('mdi:lock', '', 'text-green-500', 'Encrypted')
 					: '';
 
 				if (row.mode === 'jail') {
@@ -495,7 +495,7 @@
 
 <Form
 	bind:open={jobModal.open}
-	bind:edit={jobModal.edit}
+	edit={jobModal.edit}
 	bind:reload
 	{selectedJob}
 	targets={targets.current}

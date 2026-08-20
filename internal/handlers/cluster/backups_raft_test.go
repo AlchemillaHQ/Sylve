@@ -217,6 +217,20 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	if updated.Enabled {
 		t.Fatalf("expected enabled=false")
 	}
+
+	identityUpdateBody := `{"name":"updated-job","targetId":1,"mode":"dataset","sourceDataset":"tank/other","cronExpr":"0 12 * * *","enabled":false}`
+	rr = performJSONRequest(t, r, http.MethodPut, "/cluster/backups/jobs/"+toStr(int(jobID)),
+		[]byte(identityUpdateBody))
+	if rr.Code != http.StatusConflict ||
+		!strings.Contains(rr.Body.String(), "backup_job_source_immutable") {
+		t.Fatalf("immutable source response=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if err := cS.DB.First(&updated, jobID).Error; err != nil {
+		t.Fatalf("reload after immutable update: %v", err)
+	}
+	if updated.SourceDataset != "tank/data" {
+		t.Fatalf("immutable source changed to %q", updated.SourceDataset)
+	}
 }
 
 func TestUpdateBackupJobHandlerMissingJobReturnsNotFound(t *testing.T) {

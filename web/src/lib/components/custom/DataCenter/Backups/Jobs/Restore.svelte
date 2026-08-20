@@ -448,6 +448,13 @@
 								This is a legacy restore point created before manifest commits. Its complete dataset
 								set cannot be cryptographically verified; legacy VM restore points are blocked.
 							</li>
+							{#if selectedJob?.mode !== 'vm'}
+								<li>
+									Legacy restore points do not record whether the backup was recursive. Before
+									restoring, set "Recursive backup" to the value used when this restore point was
+									created.
+								</li>
+							{/if}
 						{/if}
 						{#if selectedSnapshotInfo?.childCount}
 							<li>

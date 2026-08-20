@@ -45,6 +45,62 @@ func boolPtrDefaultTrue(v *bool) bool {
 	return *v
 }
 
+func backupJobIdentitySource(job *clusterModels.BackupJob, mode string) string {
+	if job == nil {
+		return ""
+	}
+	if mode == clusterModels.BackupJobModeJail {
+		return normalizeManagedGuestDatasetPath(job.JailRootDataset)
+	}
+	return normalizeManagedGuestDatasetPath(job.SourceDataset)
+}
+
+func validateBackupJobUpdateIdentity(existing, proposed *clusterModels.BackupJob) error {
+	if existing == nil || proposed == nil {
+		return fmt.Errorf("backup_job_required")
+	}
+	if existing.TargetID != proposed.TargetID {
+		return fmt.Errorf("backup_job_target_immutable")
+	}
+
+	existingMode := strings.ToLower(strings.TrimSpace(existing.Mode))
+	proposedMode := strings.ToLower(strings.TrimSpace(proposed.Mode))
+	if existingMode != proposedMode {
+		return fmt.Errorf("backup_job_mode_immutable")
+	}
+
+	existingSource := backupJobIdentitySource(existing, existingMode)
+	proposedSource := backupJobIdentitySource(proposed, proposedMode)
+	switch existingMode {
+	case clusterModels.BackupJobModeDataset:
+		if existingSource != proposedSource {
+			return fmt.Errorf("backup_job_source_immutable")
+		}
+		if strings.TrimSpace(existing.RunnerNodeID) != strings.TrimSpace(proposed.RunnerNodeID) {
+			return fmt.Errorf("backup_job_runner_immutable")
+		}
+	case clusterModels.BackupJobModeJail, clusterModels.BackupJobModeVM:
+		namespace := "jails"
+		if existingMode == clusterModels.BackupJobModeVM {
+			namespace = "virtual-machines"
+		}
+		existingID, existingOK := canonicalManagedGuestRootID(existingSource, namespace)
+		proposedID, proposedOK := canonicalManagedGuestRootID(proposedSource, namespace)
+		if !existingOK || !proposedOK {
+			if existingSource != proposedSource {
+				return fmt.Errorf("backup_job_source_immutable")
+			}
+			if strings.TrimSpace(existing.RunnerNodeID) != strings.TrimSpace(proposed.RunnerNodeID) {
+				return fmt.Errorf("backup_job_runner_immutable")
+			}
+		} else if existingID != proposedID {
+			return fmt.Errorf("backup_job_source_immutable")
+		}
+	}
+
+	return nil
+}
+
 // BackupJobInput represents the input for creating/updating a backup job.
 type BackupJobInput struct {
 	Name             string `json:"name"`
@@ -706,6 +762,21 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	}
 	if rebindPending {
 		return fmt.Errorf("backup_job_runner_rebind_pending")
+	}
+	if strings.TrimSpace(input.RunnerNodeID) == "" {
+		input.RunnerNodeID = existing.RunnerNodeID
+	}
+	proposedMode := strings.ToLower(strings.TrimSpace(input.Mode))
+	if proposedMode == "" {
+		proposedMode = clusterModels.BackupJobModeDataset
+	}
+	proposedIdentity := clusterModels.BackupJob{
+		TargetID: input.TargetID, RunnerNodeID: strings.TrimSpace(input.RunnerNodeID),
+		Mode: proposedMode, SourceDataset: normalizeManagedGuestDatasetPath(input.SourceDataset),
+		JailRootDataset: normalizeManagedGuestDatasetPath(input.JailRootDataset),
+	}
+	if err := validateBackupJobUpdateIdentity(&existing, &proposedIdentity); err != nil {
+		return err
 	}
 
 	previousFence, err := s.backupJobPreviousPlacementFence(ctx, id, authorization)

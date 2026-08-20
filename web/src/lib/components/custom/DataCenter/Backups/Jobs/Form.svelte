@@ -59,7 +59,7 @@
 
 	let {
 		open = $bindable(),
-		edit = $bindable(),
+		edit,
 		selectedJob,
 		targets,
 		nodes,
@@ -163,6 +163,11 @@
 		{ value: 'jail', label: 'Jail' },
 		{ value: 'vm', label: 'Virtual Machine' }
 	];
+	const sourceSelectClasses = {
+		parent: 'min-w-0 space-y-1',
+		label: 'flex h-7 items-center whitespace-nowrap text-sm',
+		trigger: 'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+	};
 
 	let jailOptions = $derived(
 		jails.map((jail) => ({
@@ -499,7 +504,6 @@
 	function handleClose() {
 		invalidateSourceEncryptionCheck();
 		open = false;
-		edit = false;
 		loading = false;
 	}
 
@@ -540,11 +544,11 @@
 			toast.error('Source dataset is required for dataset mode', { position: 'bottom-center' });
 			return;
 		}
-		if (form.mode === 'jail' && !form.selectedJailId) {
+		if (!edit && form.mode === 'jail' && !form.selectedJailId) {
 			toast.error('Jail selection is required for jail mode', { position: 'bottom-center' });
 			return;
 		}
-		if (form.mode === 'vm' && !form.selectedVmId) {
+		if (!edit && form.mode === 'vm' && !form.selectedVmId) {
 			toast.error('VM selection is required for VM mode', { position: 'bottom-center' });
 			return;
 		}
@@ -555,32 +559,33 @@
 			return;
 		}
 
-		let jailDataset = '';
+		let jailDataset = edit ? selectedJob?.jailRootDataset || selectedJob?.sourceDataset || '' : '';
 		if (form.mode === 'jail') {
-			if (!selectedJail) {
+			if (selectedJail) {
+				const baseStorage = selectedJail.storages?.find((storage) => storage.isBase);
+				if (baseStorage) {
+					jailDataset = `${baseStorage.pool}/sylve/jails/${selectedJail.ctId}`;
+				} else if (!jailDataset) {
+					toast.error('Unable to resolve a jail base dataset for the selected jail', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			} else if (!jailDataset) {
 				toast.error('Selected jail was not found', { position: 'bottom-center' });
 				return;
 			}
-
-			const baseStorage = selectedJail.storages?.find((storage) => storage.isBase);
-			if (!baseStorage) {
-				toast.error('Unable to resolve a jail base dataset for the selected jail', {
-					position: 'bottom-center'
-				});
-				return;
-			}
-
-			jailDataset = `${baseStorage.pool}/sylve/jails/${selectedJail.ctId}`;
 		}
 
-		let vmDataset = '';
+		let vmDataset = edit ? selectedJob?.sourceDataset || '' : '';
 		if (form.mode === 'vm') {
-			if (!selectedVM) {
+			if (selectedVM) {
+				vmDataset = vmBaseDataset(selectedVM) || vmDataset;
+			} else if (!vmDataset) {
 				toast.error('Selected VM was not found', { position: 'bottom-center' });
 				return;
 			}
 
-			vmDataset = vmBaseDataset(selectedVM);
 			if (!vmDataset) {
 				toast.error('Unable to resolve a VM dataset root for the selected VM', {
 					position: 'bottom-center'
@@ -730,6 +735,13 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
+			{#if edit}
+				<div class="-mb-2 rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+					Target, mode, source, and dataset runner are fixed after creation. Guest runners change
+					only through migration or failover repair.
+				</div>
+			{/if}
+
 			{#if edit && scopedGuest && selectedJob?.mode === scopedGuest.kind}
 				{#if scopedRebindPending}
 					<div class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
@@ -798,6 +810,7 @@
 					options={targetOptions}
 					bind:value={form.targetId}
 					onChange={() => {}}
+					disabled={edit}
 				/>
 
 				<SimpleSelect
@@ -806,7 +819,7 @@
 					options={nodeOptions}
 					bind:value={form.runnerNodeId}
 					onChange={() => {}}
-					disabled={Boolean(scopedGuest)}
+					disabled={edit || Boolean(scopedGuest)}
 				/>
 
 				<SimpleSelect
@@ -815,17 +828,18 @@
 					options={modeOptions}
 					bind:value={form.mode}
 					onChange={handleModeChange}
-					disabled={Boolean(scopedGuest)}
+					disabled={edit || Boolean(scopedGuest)}
 				/>
 			</div>
 
-			<div>
+			<div class="-mt-2 grid grid-cols-1 gap-4 md:grid-cols-3">
 				{#if form.mode === 'dataset'}
 					<CustomValueInput
 						label="Source Dataset"
 						placeholder="zroot/data"
 						bind:value={form.sourceDataset}
 						classes="space-y-1"
+						disabled={edit}
 					/>
 				{:else if form.mode === 'jail'}
 					<SimpleSelect
@@ -838,7 +852,8 @@
 						options={jailOptions}
 						bind:value={form.selectedJailId}
 						onChange={() => {}}
-						disabled={jailsLoading || jails.length === 0 || scopedGuest?.kind === 'jail'}
+						classes={sourceSelectClasses}
+						disabled={edit || jailsLoading || jails.length === 0 || scopedGuest?.kind === 'jail'}
 					/>
 				{:else}
 					<SimpleSelect
@@ -851,12 +866,11 @@
 						options={vmOptions}
 						bind:value={form.selectedVmId}
 						onChange={() => {}}
-						disabled={vmsLoading || vms.length === 0 || scopedGuest?.kind === 'vm'}
+						classes={sourceSelectClasses}
+						disabled={edit || vmsLoading || vms.length === 0 || scopedGuest?.kind === 'vm'}
 					/>
 				{/if}
-			</div>
 
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 				<CustomValueInput
 					label="Schedule (Cron, 5-field)"
 					placeholder="0 * * * *"
@@ -885,7 +899,11 @@
 					bind:checked={form.recursive}
 					classes="flex items-center gap-2"
 					disabled={disableRecursiveBackup}
-					title={form.mode === 'vm' ? 'VM backups must include all child disk datasets' : ''}
+					title={form.mode === 'vm'
+						? 'VM backups must include all child disk datasets'
+						: edit
+							? 'Changing recursive scope may archive the active generation and trigger a full reseed'
+							: ''}
 				/>
 
 				<CustomCheckbox

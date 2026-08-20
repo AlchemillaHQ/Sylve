@@ -145,6 +145,7 @@ func writeBackupJobError(c *gin.Context, operation string, err error) {
 		detail = message
 	case strings.Contains(errorText, "backup_target_disabled"),
 		strings.Contains(errorText, "_conflict"),
+		strings.Contains(errorText, "_immutable"),
 		strings.Contains(errorText, "dest_suffix_already_in_use"),
 		strings.Contains(errorText, "inventory_conflict"),
 		strings.Contains(errorText, "guest_operation"),

@@ -25,6 +25,7 @@ export default defineConfig(
 			globals: { ...globals.browser, ...globals.node }
 		},
 		rules: {
+			'svelte/require-store-reactive-access': 'off',
 			'no-undef': 'off',
 			'import/no-unresolved': 'off',
 			'no-unused-vars': 'off',

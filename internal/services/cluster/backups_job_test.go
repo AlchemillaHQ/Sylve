@@ -58,6 +58,107 @@ func TestUpdateBackupJobRuntimeStatePreservesOmittedEncryption(t *testing.T) {
 	}
 }
 
+func TestValidateBackupJobUpdateIdentity(t *testing.T) {
+	dataset := clusterModels.BackupJob{
+		TargetID: 1, RunnerNodeID: "node-a", Mode: clusterModels.BackupJobModeDataset,
+		SourceDataset: "tank/data", Recursive: false,
+	}
+	vm := clusterModels.BackupJob{
+		TargetID: 1, RunnerNodeID: "node-a", Mode: clusterModels.BackupJobModeVM,
+		SourceDataset: "fast/sylve/virtual-machines/71", Recursive: true,
+	}
+	jail := clusterModels.BackupJob{
+		TargetID: 1, RunnerNodeID: "node-a", Mode: clusterModels.BackupJobModeJail,
+		JailRootDataset: "fast/sylve/jails/81",
+	}
+	legacyVM := clusterModels.BackupJob{
+		TargetID: 1, RunnerNodeID: "node-a", Mode: clusterModels.BackupJobModeVM,
+		SourceDataset: "legacy/vm/root",
+	}
+
+	tests := []struct {
+		name     string
+		existing clusterModels.BackupJob
+		mutate   func(*clusterModels.BackupJob)
+		wantErr  string
+	}{
+		{
+			name: "policy fields remain editable", existing: dataset,
+			mutate: func(job *clusterModels.BackupJob) {
+				job.Name = "renamed"
+				job.Recursive = true
+				job.PruneKeepLast = 12
+			},
+		},
+		{
+			name: "target is immutable", existing: dataset,
+			mutate:  func(job *clusterModels.BackupJob) { job.TargetID = 2 },
+			wantErr: "backup_job_target_immutable",
+		},
+		{
+			name: "mode is immutable", existing: dataset,
+			mutate:  func(job *clusterModels.BackupJob) { job.Mode = clusterModels.BackupJobModeJail },
+			wantErr: "backup_job_mode_immutable",
+		},
+		{
+			name: "dataset source is immutable", existing: dataset,
+			mutate:  func(job *clusterModels.BackupJob) { job.SourceDataset = "tank/other" },
+			wantErr: "backup_job_source_immutable",
+		},
+		{
+			name: "dataset runner is immutable", existing: dataset,
+			mutate:  func(job *clusterModels.BackupJob) { job.RunnerNodeID = "node-b" },
+			wantErr: "backup_job_runner_immutable",
+		},
+		{
+			name: "same VM may relocate", existing: vm,
+			mutate: func(job *clusterModels.BackupJob) {
+				job.SourceDataset = "slow/sylve/virtual-machines/71"
+				job.RunnerNodeID = "node-b"
+			},
+		},
+		{
+			name: "different VM is immutable", existing: vm,
+			mutate:  func(job *clusterModels.BackupJob) { job.SourceDataset = "fast/sylve/virtual-machines/72" },
+			wantErr: "backup_job_source_immutable",
+		},
+		{
+			name: "same jail may relocate", existing: jail,
+			mutate: func(job *clusterModels.BackupJob) {
+				job.JailRootDataset = "slow/sylve/jails/81"
+				job.RunnerNodeID = "node-b"
+			},
+		},
+		{
+			name: "different jail is immutable", existing: jail,
+			mutate:  func(job *clusterModels.BackupJob) { job.JailRootDataset = "fast/sylve/jails/82" },
+			wantErr: "backup_job_source_immutable",
+		},
+		{
+			name: "unresolved guest identity cannot relocate", existing: legacyVM,
+			mutate:  func(job *clusterModels.BackupJob) { job.RunnerNodeID = "node-b" },
+			wantErr: "backup_job_runner_immutable",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			proposed := test.existing
+			test.mutate(&proposed)
+			err := validateBackupJobUpdateIdentity(&test.existing, &proposed)
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatalf("identity update rejected: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("identity update error = %v, want %s", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 	db := newClusterServiceTestDB(
 		t,
