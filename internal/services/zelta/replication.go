@@ -73,7 +73,7 @@ const (
 
 	replicationControlDefaultTimeout       = 30 * time.Second
 	replicationControlCatchupTimeout       = 2 * time.Hour
-	replicationPromotionRollbackAfter      = 2 * time.Minute
+	replicationPromotionRecoveryWindow     = 2 * time.Minute
 	replicationTerminalEventRecreateWindow = 10 * time.Minute
 
 	replicationControlForwardAttempts = 3
@@ -103,7 +103,6 @@ type ReplicationEventProgress struct {
 }
 
 var errReplicationPolicyTransitionAlreadyRunning = errors.New("replication_policy_transition_already_running")
-var errReplicationRollbackPending = errors.New("replication_rollback_pending_recovery")
 var errReplicationGenerationCommitUncertain = errors.New("replication_generation_commit_uncertain")
 var errReplicationPreviousOwnerRecoveryUnconfirmed = errors.New("replication_previous_owner_recovery_unconfirmed")
 var errReplicationTargetFallbackReadinessInvalidation = errors.New("replication_target_fallback_readiness_invalidation_failed")
@@ -1351,159 +1350,6 @@ func (s *Service) failPolicyTransition(policy *clusterModels.ReplicationPolicy, 
 	return transitionErr
 }
 
-func (s *Service) rollbackRecoveringPromotion(
-	ctx context.Context,
-	policy *clusterModels.ReplicationPolicy,
-	cause error,
-) error {
-	if policy == nil || policy.ID == 0 || s.Cluster == nil {
-		return cause
-	}
-	currentOwner := replicationPolicyOwnerNode(policy)
-	previousOwner := strings.TrimSpace(policy.TransitionSourceNodeID)
-	currentEpoch := replicationPolicyOwnerEpoch(policy)
-	if currentOwner == "" || previousOwner == "" || currentOwner == previousOwner || currentEpoch == 0 {
-		return appendReplicationStepError(cause, "replication_rollback_identity_invalid", nil)
-	}
-	if currentEpoch == math.MaxUint64 {
-		return appendReplicationStepError(cause, "replication_owner_epoch_exhausted", nil)
-	}
-	previousOnline, err := s.isClusterNodeOnline(previousOwner)
-	if err != nil {
-		return appendReplicationStepError(cause, "replication_previous_owner_health_unknown", err)
-	}
-	if !previousOnline {
-		return appendReplicationStepError(cause, "replication_previous_owner_offline", nil)
-	}
-
-	currentOnline, err := s.isClusterNodeOnline(currentOwner)
-	if err != nil {
-		return appendReplicationStepError(cause, "replication_current_owner_health_unknown", err)
-	}
-	var expectedPreviousLeaseVersion *uint64
-	if currentOnline {
-		var demoteErr error
-		if currentOwner == strings.TrimSpace(s.Cluster.LocalNodeID()) {
-			demoteErr = s.DemoteReplicationPolicyForTransition(
-				ctx,
-				policy.ID,
-				currentEpoch,
-				policy.TransitionRunID,
-			)
-		} else {
-			demoteErr = s.forwardDemoteReplicationPolicy(
-				currentOwner,
-				policy.ID,
-				currentEpoch,
-				policy.TransitionRunID,
-			)
-		}
-		if demoteErr != nil {
-			return appendReplicationStepError(cause, "replication_current_owner_fence_unconfirmed", demoteErr)
-		}
-	} else {
-		decision, _, barrierErr := s.evaluateForcedPromotionBarrier(policy.ID, currentOwner, currentEpoch)
-		if barrierErr != nil {
-			return appendReplicationStepError(cause, "replication_current_owner_fence_barrier_failed", barrierErr)
-		}
-		if !decision.Ready {
-			s.logForcedPromotionDecision(policy.ID, currentOwner, decision)
-			return appendReplicationStepError(cause, "replication_current_owner_fence_barrier_pending", nil)
-		}
-		expectedPreviousLeaseVersion = &decision.LeaseVersion
-	}
-
-	rollbackEpoch := currentEpoch + 1
-	rollbackSourceNodeID := strings.TrimSpace(policy.SourceNodeID)
-	switch strings.TrimSpace(policy.SourceMode) {
-	case clusterModels.ReplicationSourceModeFollowActive:
-		rollbackSourceNodeID = previousOwner
-	case clusterModels.ReplicationSourceModePinned:
-		if policy.TransitionMovePinnedSource {
-			rollbackSourceNodeID = strings.TrimSpace(policy.TransitionOriginalSourceNodeID)
-			if rollbackSourceNodeID == "" {
-				// Compatibility for transitions begun before the original pinned
-				// source became a persisted checkpoint.
-				rollbackSourceNodeID = previousOwner
-			}
-		}
-	}
-	var rollbackSourceUpdate *string
-	if rollbackSourceNodeID != strings.TrimSpace(policy.SourceNodeID) {
-		rollbackSourceUpdate = &rollbackSourceNodeID
-	}
-	rollbackTargets := rotatedReplicationPolicyTargets(policy, currentOwner, previousOwner, rollbackEpoch)
-	rollbackNow := s.now().UTC()
-	leaseVersion, err := s.nextReplicationPolicyLeaseVersion(policy.ID, rollbackNow)
-	if err != nil {
-		return appendReplicationStepError(cause, "replication_rollback_lease_version_failed", err)
-	}
-	transition := transitionPayloadFromPolicy(policy)
-	transition.State = clusterModels.ReplicationTransitionStateRollingBack
-	transition.Reason = strings.TrimSpace(transition.Reason) + "_recovery_rollback"
-	transition.SourceNodeID = currentOwner
-	transition.TargetNodeID = previousOwner
-	transition.OwnerEpoch = rollbackEpoch
-	transition.CompletedAt = nil
-	transition.Error = "rollback_in_progress"
-	payload := clusterModels.ReplicationOwnershipTransitionPayload{
-		PolicyID:                     policy.ID,
-		ExpectedActiveNodeID:         currentOwner,
-		ExpectedOwnerEpoch:           currentEpoch,
-		ExpectedTransitionRunID:      policy.TransitionRunID,
-		BackupJobRunnerRebindToken:   policy.TransitionRunID,
-		ExpectedPreviousLeaseVersion: expectedPreviousLeaseVersion,
-		ActiveNodeID:                 previousOwner,
-		SourceNodeID:                 rollbackSourceUpdate,
-		OwnerEpoch:                   rollbackEpoch,
-		ReplaceTargets:               true,
-		Targets:                      rollbackTargets,
-		Lease: clusterModels.ReplicationLease{
-			PolicyID:    policy.ID,
-			GuestType:   policy.GuestType,
-			GuestID:     policy.GuestID,
-			OwnerNodeID: previousOwner,
-			OwnerEpoch:  rollbackEpoch,
-			ExpiresAt:   rollbackNow.Add(replicationLeaseTTL),
-			Version:     leaseVersion,
-			LastReason:  "promotion_recovery_rollback",
-			LastActor:   s.Cluster.LocalNodeID(),
-		},
-		Transition:      transition,
-		ProtectionState: clusterModels.ReplicationProtectionStateDegraded,
-	}
-	commitErr := s.Cluster.CommitReplicationOwnershipTransition(payload, false)
-	if commitErr != nil {
-		latest, policyErr := s.Cluster.GetReplicationPolicyByID(policy.ID)
-		latestLease, leaseErr := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-		if policyErr != nil || leaseErr != nil || latest == nil || latestLease == nil ||
-			replicationPolicyOwnerNode(latest) != previousOwner ||
-			replicationPolicyOwnerEpoch(latest) != rollbackEpoch ||
-			strings.TrimSpace(latest.TransitionRunID) != strings.TrimSpace(policy.TransitionRunID) ||
-			!strings.EqualFold(strings.TrimSpace(latest.TransitionState), clusterModels.ReplicationTransitionStateRollingBack) ||
-			strings.TrimSpace(latestLease.OwnerNodeID) != previousOwner || latestLease.OwnerEpoch != rollbackEpoch {
-			return fmt.Errorf("replication_rollback_commit_outcome_ambiguous: %w", commitErr)
-		}
-		policy = latest
-	} else {
-		policy.SourceNodeID = rollbackSourceNodeID
-		policy.ActiveNodeID = previousOwner
-		policy.OwnerEpoch = rollbackEpoch
-		policy.Targets = rollbackTargets
-		policy.ProtectionState = clusterModels.ReplicationProtectionStateDegraded
-		policy.TransitionState = transition.State
-		policy.TransitionReason = transition.Reason
-		policy.TransitionSourceNodeID = transition.SourceNodeID
-		policy.TransitionTargetNodeID = transition.TargetNodeID
-		policy.TransitionOwnerEpoch = transition.OwnerEpoch
-		policy.TransitionError = transition.Error
-	}
-	if err := s.resumeRollingBackTransition(ctx, policy); err != nil {
-		return appendReplicationStepError(cause, "replication_rollback_pending_recovery", err)
-	}
-	return fmt.Errorf("%v; rollback_succeeded", cause)
-}
-
 func (s *Service) resumePromotingTransition(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
 	if policy == nil || policy.ID == 0 {
 		return fmt.Errorf("invalid_policy_transition_input")
@@ -1521,7 +1367,7 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 
 	if policy.TransitionRecoveryDeadlineAt == nil {
 		transition := transitionPayloadFromPolicy(policy)
-		deadline := s.now().UTC().Add(replicationPromotionRollbackAfter)
+		deadline := s.now().UTC().Add(replicationPromotionRecoveryWindow)
 		transition.RecoveryDeadlineAt = &deadline
 		if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
 			return err
@@ -1534,7 +1380,7 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		return targetOnlineErr
 	}
 	if !targetOnline {
-		return s.rollbackRecoveringPromotion(ctx, policy, fmt.Errorf("replication_target_node_offline"))
+		return fmt.Errorf("replication_target_node_offline")
 	}
 
 	var activateErr error
@@ -1560,13 +1406,9 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		)
 	}
 	if activateErr != nil {
-		// A timeout is ambiguous and activation is idempotent under the exact
-		// owner epoch/run ID. Retry for a bounded period, then explicitly fence
-		// the target and enter the same durable rollback state used by the
-		// uninterrupted transition path.
-		if replicationPromotionRecoveryExpired(policy, s.now()) {
-			return s.rollbackRecoveringPromotion(ctx, policy, activateErr)
-		}
+		// Activation is idempotent under the exact owner epoch/run ID. Never
+		// revive the previous owner after cutover: the target may already have
+		// admitted writes even when activation returned an error or timed out.
 		return activateErr
 	}
 	transition := transitionPayloadFromPolicy(policy)
@@ -1605,15 +1447,6 @@ func (s *Service) resumePromotingTransition(ctx context.Context, policy *cluster
 		}
 	}
 	return nil
-}
-
-func replicationPromotionRecoveryExpired(
-	policy *clusterModels.ReplicationPolicy,
-	now time.Time,
-) bool {
-	return policy != nil &&
-		policy.TransitionRecoveryDeadlineAt != nil &&
-		!now.UTC().Before(policy.TransitionRecoveryDeadlineAt.UTC())
 }
 
 func (s *Service) resumeRollingBackTransition(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
@@ -1712,7 +1545,7 @@ func (s *Service) resumePolicyTransition(ctx context.Context, policy *clusterMod
 		if ownerNodeID == targetNodeID {
 			transition := transitionPayloadFromPolicy(policy)
 			transition.State = clusterModels.ReplicationTransitionStatePromoting
-			deadline := s.now().UTC().Add(replicationPromotionRollbackAfter)
+			deadline := s.now().UTC().Add(replicationPromotionRecoveryWindow)
 			transition.RecoveryDeadlineAt = &deadline
 			transition.Error = ""
 			if err := s.Cluster.UpdateReplicationPolicyTransition(policy.ID, transition); err != nil {
@@ -2234,15 +2067,12 @@ func (s *Service) fenceReplicationDatasetRoots(
 			fenceErr = appendReplicationFenceDatasetError(fenceErr, dataset, verifyErr)
 			continue
 		}
-		verified := true
-		for _, value := range strings.Fields(readonlyOutput) {
-			if value != "on" {
-				verified = false
-				break
-			}
-		}
-		if !verified {
-			fenceErr = appendReplicationFenceDatasetError(fenceErr, dataset, fmt.Errorf("recursive_readonly_verification_failed"))
+		if err := verifyReplicationReadonlyValues(readonlyOutput); err != nil {
+			fenceErr = appendReplicationFenceDatasetError(
+				fenceErr,
+				dataset,
+				fmt.Errorf("recursive_readonly_verification_failed: %w", err),
+			)
 			continue
 		}
 
@@ -2254,6 +2084,198 @@ func (s *Service) fenceReplicationDatasetRoots(
 	}
 
 	return fenceErr
+}
+
+func (s *Service) sealReplicationDatasetRootsAsStandby(
+	ctx context.Context,
+	policyID uint,
+	datasets []string,
+) error {
+	if policyID == 0 {
+		return fmt.Errorf("replication_transition_source_policy_id_required")
+	}
+	if len(datasets) == 0 {
+		return fmt.Errorf("replication_transition_source_datasets_required")
+	}
+
+	roots := make([]string, 0, len(datasets))
+	seen := make(map[string]struct{}, len(datasets))
+	for _, dataset := range datasets {
+		parsed, err := validateExactReplicationDatasetPath(dataset)
+		if err != nil || parsed != dataset {
+			return fmt.Errorf("replication_transition_source_dataset_invalid_%s", dataset)
+		}
+		if _, duplicate := seen[parsed]; duplicate {
+			return fmt.Errorf("replication_transition_source_dataset_duplicate_%s", parsed)
+		}
+		exists, err := s.localDatasetExists(ctx, parsed)
+		if err != nil {
+			return fmt.Errorf("replication_transition_source_dataset_lookup_%s_failed: %w", parsed, err)
+		}
+		if !exists {
+			return fmt.Errorf("replication_transition_source_dataset_missing_%s", parsed)
+		}
+		seen[parsed] = struct{}{}
+		roots = append(roots, parsed)
+	}
+
+	if err := s.fenceReplicationDatasetRoots(ctx, policyID, roots, "transition_catchup_complete"); err != nil {
+		return fmt.Errorf("replication_transition_source_fence_failed: %w", err)
+	}
+
+	for _, root := range roots {
+		properties, err := canonicalZFSProperties(
+			replicationCurrentStandbySeedProperties(policyID, root, root),
+		)
+		if err != nil {
+			return fmt.Errorf("replication_transition_source_properties_%s_invalid: %w", root, err)
+		}
+		dataset, err := s.getLocalDataset(ctx, root)
+		if err != nil {
+			return fmt.Errorf("replication_transition_source_dataset_%s_open_failed: %w", root, err)
+		}
+		if dataset == nil {
+			return fmt.Errorf("replication_transition_source_dataset_missing_%s", root)
+		}
+		pairs := make([]string, 0, len(properties)*2)
+		for _, property := range sortedReplicationPropertyNames(properties) {
+			pairs = append(pairs, property, properties[property])
+		}
+		if err := dataset.SetProperties(ctx, pairs...); err != nil {
+			return fmt.Errorf("replication_transition_source_provenance_%s_set_failed: %w", root, err)
+		}
+	}
+
+	for _, root := range roots {
+		expected := replicationCurrentStandbySeedProperties(policyID, root, root)
+		for _, property := range sortedReplicationPropertyNames(expected) {
+			actual, err := readLocalReplicationProperty(ctx, root, property)
+			if err != nil || actual != expected[property] {
+				return fmt.Errorf("replication_transition_source_provenance_%s_%s_verify_failed", root, property)
+			}
+		}
+	}
+
+	return nil
+}
+
+func localReplicationRootHasStandbyProvenance(
+	ctx context.Context,
+	policyID uint,
+	root string,
+) bool {
+	expected := map[string]string{
+		replicationPropertyPolicyID: strconv.FormatUint(uint64(policyID), 10),
+		replicationPropertyRole:     replicationRoleStandby,
+		replicationPropertyState:    replicationStateReady,
+	}
+	for property, expectedValue := range expected {
+		actual, err := readLocalReplicationProperty(ctx, root, property)
+		if err != nil || actual != expectedValue {
+			return false
+		}
+	}
+	for _, property := range []string{replicationPropertySource, replicationPropertyTarget} {
+		actual, err := readLocalReplicationProperty(ctx, root, property)
+		parsed, parseErr := validateExactReplicationDatasetPath(actual)
+		if err != nil || parseErr != nil || parsed != actual {
+			return false
+		}
+		if property == replicationPropertyTarget && parsed != root {
+			return false
+		}
+	}
+	return true
+}
+
+func returnedForceFailoverSource(
+	policy *clusterModels.ReplicationPolicy,
+	localNodeID string,
+	expectedOwner string,
+) bool {
+	if policy == nil || policy.ID == 0 || !policy.Enabled || !policy.TransitionAllowUnsafe {
+		return false
+	}
+	localNodeID = strings.TrimSpace(localNodeID)
+	expectedOwner = strings.TrimSpace(expectedOwner)
+	ownerEpoch := replicationPolicyOwnerEpoch(policy)
+	return localNodeID != "" && expectedOwner != "" && localNodeID != expectedOwner &&
+		strings.TrimSpace(policy.TransitionSourceNodeID) == localNodeID &&
+		strings.TrimSpace(policy.TransitionTargetNodeID) == expectedOwner &&
+		ownerEpoch != 0 && policy.TransitionOwnerEpoch == ownerEpoch &&
+		replicationPolicyOwnerNode(policy) == expectedOwner
+}
+
+func (s *Service) adoptReturnedForceFailoverSourceAsStandby(
+	ctx context.Context,
+	policy *clusterModels.ReplicationPolicy,
+	localNodeID string,
+	expectedOwner string,
+) error {
+	if !returnedForceFailoverSource(policy, localNodeID, expectedOwner) {
+		return nil
+	}
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("replication_returned_source_cluster_unavailable")
+	}
+	expectedEpoch := replicationPolicyOwnerEpoch(policy)
+	if expectedEpoch == 0 {
+		return fmt.Errorf("replication_returned_source_owner_epoch_missing")
+	}
+
+	latest, err := s.Cluster.GetReplicationPolicyByID(policy.ID)
+	if err != nil {
+		return fmt.Errorf("replication_returned_source_policy_revalidation_failed: %w", err)
+	}
+	if !returnedForceFailoverSource(latest, localNodeID, expectedOwner) ||
+		replicationPolicyOwnerEpoch(latest) != expectedEpoch ||
+		latest.GuestType != policy.GuestType || latest.GuestID != policy.GuestID {
+		return fmt.Errorf("replication_returned_source_ownership_changed")
+	}
+
+	running, err := s.isReplicationGuestRunning(latest.GuestType, latest.GuestID)
+	if err != nil {
+		return fmt.Errorf("replication_returned_source_runtime_check_failed: %w", err)
+	}
+	if running {
+		return fmt.Errorf("replication_returned_source_guest_still_running")
+	}
+
+	roots, err := s.findLocalGuestDatasets(ctx, latest.GuestType, latest.GuestID)
+	if err != nil {
+		return fmt.Errorf("replication_returned_source_dataset_discovery_failed: %w", err)
+	}
+	needsAdoption := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if !localReplicationRootHasStandbyProvenance(ctx, latest.ID, root) {
+			needsAdoption = append(needsAdoption, root)
+		}
+	}
+	if len(needsAdoption) == 0 {
+		return nil
+	}
+	if err := s.sealReplicationDatasetRootsAsStandby(ctx, latest.ID, needsAdoption); err != nil {
+		return fmt.Errorf("replication_returned_source_adoption_failed: %w", err)
+	}
+
+	latest, err = s.Cluster.GetReplicationPolicyByID(policy.ID)
+	if err != nil {
+		return fmt.Errorf("replication_returned_source_post_adoption_revalidation_failed: %w", err)
+	}
+	if !returnedForceFailoverSource(latest, localNodeID, expectedOwner) ||
+		replicationPolicyOwnerEpoch(latest) != expectedEpoch {
+		return fmt.Errorf("replication_returned_source_ownership_changed_during_adoption")
+	}
+
+	logger.L.Info().
+		Uint("policy_id", latest.ID).
+		Uint("guest_id", latest.GuestID).
+		Str("guest_type", latest.GuestType).
+		Str("local_node_id", strings.TrimSpace(localNodeID)).
+		Str("owner_node_id", strings.TrimSpace(expectedOwner)).
+		Strs("datasets", needsAdoption).
+		Msg("replication_returned_force_failover_source_adopted_as_standby")
+	return nil
 }
 
 func appendReplicationFenceDatasetError(baseErr error, dataset string, datasetErr error) error {
@@ -2922,6 +2944,7 @@ type replicationGenerationTransferResult struct {
 	ManifestHash          string
 	RequiredDatasetCount  int
 	CompletedDatasetCount int
+	sourceDatasets        []string
 }
 
 type replicationStagedDataset struct {
@@ -3314,6 +3337,7 @@ func (s *Service) replicatePolicyGenerationToTarget(
 	if len(sourceDatasets) == 0 {
 		return result, fmt.Errorf("no_source_datasets_found")
 	}
+	result.sourceDatasets = append([]string(nil), sourceDatasets...)
 	snapshotErr := s.CreateReplicationSnapshotGroup(ctx, sourceDatasets, snapshotName)
 	snapshotCreatedHere := snapshotErr == nil
 	generationVerifiedOnTarget := false
@@ -5694,16 +5718,6 @@ func (s *Service) runPolicyOwnershipTransition(
 			transition.OriginalRunning,
 		)
 	}
-	demoteOnNode := func(nodeID string, expectedEpoch uint64) error {
-		nodeID = strings.TrimSpace(nodeID)
-		if nodeID == "" {
-			return fmt.Errorf("replication_target_node_required")
-		}
-		if nodeID == strings.TrimSpace(s.Cluster.LocalNodeID()) {
-			return s.DemoteReplicationPolicyForTransition(ctx, policy.ID, expectedEpoch, transition.RunID)
-		}
-		return s.forwardDemoteReplicationPolicy(nodeID, policy.ID, expectedEpoch, transition.RunID)
-	}
 	recoverPreviousOwnerIfDemoted := func(baseErr error) error {
 		if transition.DemotedAt == nil {
 			return baseErr
@@ -5720,108 +5734,6 @@ func (s *Service) runPolicyOwnershipTransition(
 			return fmt.Errorf("%w: %v; previous_owner_reactivate_failed: %v", errReplicationPreviousOwnerRecoveryUnconfirmed, baseErr, activateErr)
 		}
 		return baseErr
-	}
-	rollbackToPreviousOwner := func() error {
-		rollbackOwner := strings.TrimSpace(previousOwner)
-		if rollbackOwner == "" || rollbackOwner == strings.TrimSpace(targetNodeID) {
-			return fmt.Errorf("replication_previous_owner_missing")
-		}
-		if nextEpoch == math.MaxUint64 {
-			return fmt.Errorf("replication_policy_owner_epoch_exhausted")
-		}
-		rollbackEpoch := nextEpoch + 1
-
-		var expectedTargetLeaseVersion *uint64
-		targetKnownOnline, targetHealthErr := s.isClusterNodeOnline(targetNodeID)
-		if targetHealthErr == nil && !targetKnownOnline {
-			decision, _, barrierErr := s.evaluateForcedPromotionBarrier(policy.ID, targetNodeID, nextEpoch)
-			if barrierErr != nil {
-				return fmt.Errorf("%w: rollback_target_fence_barrier_failed: %v", errReplicationRollbackPending, barrierErr)
-			}
-			if !decision.Ready {
-				s.logForcedPromotionDecision(policy.ID, targetNodeID, decision)
-				return fmt.Errorf("%w: rollback_target_fence_barrier_pending", errReplicationRollbackPending)
-			}
-			expectedTargetLeaseVersion = &decision.LeaseVersion
-		} else if demoteErr := demoteOnNode(targetNodeID, nextEpoch); demoteErr != nil {
-			if targetHealthErr != nil {
-				demoteErr = fmt.Errorf("target_health_unknown: %v; target_demote_failed: %w", targetHealthErr, demoteErr)
-			}
-			return fmt.Errorf("%w: rollback_target_fence_unconfirmed: %v", errReplicationRollbackPending, demoteErr)
-		}
-
-		rollbackSourceNodeID := strings.TrimSpace(policy.SourceNodeID)
-		if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
-			rollbackSourceNodeID = rollbackOwner
-		} else if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned {
-			originalSource := strings.TrimSpace(transition.OriginalSourceNodeID)
-			if originalSource == "" {
-				originalSource = previousSourceNodeID
-			}
-			if originalSource != "" {
-				rollbackSourceNodeID = originalSource
-			}
-		}
-		var rollbackSourceUpdate *string
-		if rollbackSourceNodeID != strings.TrimSpace(policy.SourceNodeID) {
-			rollbackSourceUpdate = &rollbackSourceNodeID
-		}
-		rollbackTargets := rotatedReplicationPolicyTargets(policy, targetNodeID, rollbackOwner, rollbackEpoch)
-		rollbackNow := s.now().UTC()
-		rollbackLease := clusterModels.ReplicationLease{
-			PolicyID:    policy.ID,
-			GuestType:   policy.GuestType,
-			GuestID:     policy.GuestID,
-			OwnerNodeID: rollbackOwner,
-			OwnerEpoch:  rollbackEpoch,
-			ExpiresAt:   rollbackNow.Add(replicationLeaseTTL),
-			Version:     uint64(rollbackNow.UnixNano()),
-			LastReason:  reason + "_rollback",
-			LastActor:   s.Cluster.LocalNodeID(),
-		}
-		transition.State = clusterModels.ReplicationTransitionStateRollingBack
-		transition.Reason = reason + "_rollback"
-		transition.SourceNodeID = targetNodeID
-		transition.TargetNodeID = rollbackOwner
-		transition.OwnerEpoch = rollbackEpoch
-		transition.CompletedAt = nil
-		transition.Error = "rollback_in_progress"
-		if err := s.Cluster.CommitReplicationOwnershipTransition(
-			clusterModels.ReplicationOwnershipTransitionPayload{
-				PolicyID:                     policy.ID,
-				ExpectedActiveNodeID:         targetNodeID,
-				ExpectedOwnerEpoch:           nextEpoch,
-				ExpectedTransitionRunID:      transition.RunID,
-				BackupJobRunnerRebindToken:   transition.RunID,
-				ExpectedPreviousLeaseVersion: expectedTargetLeaseVersion,
-				ActiveNodeID:                 rollbackOwner,
-				SourceNodeID:                 rollbackSourceUpdate,
-				OwnerEpoch:                   rollbackEpoch,
-				ReplaceTargets:               true,
-				Targets:                      rollbackTargets,
-				Lease:                        rollbackLease,
-				Transition:                   transition,
-				ProtectionState:              clusterModels.ReplicationProtectionStateDegraded,
-			},
-			false,
-		); err != nil {
-			return err
-		}
-
-		policy.SourceNodeID = rollbackSourceNodeID
-		policy.ActiveNodeID = rollbackOwner
-		policy.OwnerEpoch = rollbackEpoch
-		policy.Targets = rollbackTargets
-		policy.ProtectionState = clusterModels.ReplicationProtectionStateDegraded
-		policy.TransitionState = transition.State
-		policy.TransitionReason = transition.Reason
-		policy.TransitionSourceNodeID = transition.SourceNodeID
-		policy.TransitionTargetNodeID = transition.TargetNodeID
-		policy.TransitionOwnerEpoch = rollbackEpoch
-		if err := activateOnNode(rollbackOwner, rollbackEpoch); err != nil {
-			return fmt.Errorf("%w: %v", errReplicationRollbackPending, err)
-		}
-		return nil
 	}
 	markTransitionFailed := func(transitionErr error) error {
 		now := s.now().UTC()
@@ -5867,26 +5779,17 @@ func (s *Service) runPolicyOwnershipTransition(
 		return effectiveErr
 	}
 	recoverAfterCommittedCutover := func(transitionErr error, eventMessage string) error {
-		previousOwnerOnline, previousOwnerOnlineErr := s.isClusterNodeOnline(previousOwner)
-		if previousOwnerOnlineErr != nil || !previousOwnerOnline {
-			pendingErr := transitionErr
-			if previousOwnerOnlineErr != nil {
-				pendingErr = appendStepError(pendingErr, "previous_owner_health_unknown", previousOwnerOnlineErr)
-			} else {
-				pendingErr = appendStepError(pendingErr, "previous_owner_offline", errReplicationRollbackPending)
-			}
-			updateTransitionEvent(replicationEventStatusPromoting, eventMessage+"_recovery_pending", pendingErr, false)
-			return pendingErr
-		}
-		if rollbackErr := rollbackToPreviousOwner(); rollbackErr != nil {
-			pendingErr := appendStepError(transitionErr, "rollback_pending_recovery", rollbackErr)
-			updateTransitionEvent(replicationEventStatusPromoting, eventMessage+"_recovery_pending", pendingErr, false)
-			return pendingErr
-		}
-		effectiveErr := fmt.Errorf("%v; rollback_succeeded", transitionErr)
-		effectiveErr = markTransitionFailed(effectiveErr)
-		updateTransitionEvent(replicationEventStatusFailed, eventMessage, effectiveErr, true)
-		return effectiveErr
+		// Ownership is the no-return boundary. Once the target owns the policy,
+		// activation may already have admitted guest writes even when its response
+		// is an error or timeout. Keep the target authoritative and let durable
+		// transition recovery retry activation rather than revive stale storage.
+		updateTransitionEvent(
+			replicationEventStatusPromoting,
+			eventMessage+"_recovery_pending",
+			transitionErr,
+			false,
+		)
+		return transitionErr
 	}
 
 	if err := s.Cluster.BeginReplicationPolicyTransition(
@@ -6257,7 +6160,7 @@ func (s *Service) runPolicyOwnershipTransition(
 	transition.State = clusterModels.ReplicationTransitionStatePromoting
 	transition.OwnerEpoch = nextEpoch
 	transition.PromotedAt = nil
-	recoveryDeadline := cutoverNow.Add(replicationPromotionRollbackAfter)
+	recoveryDeadline := cutoverNow.Add(replicationPromotionRecoveryWindow)
 	transition.RecoveryDeadlineAt = &recoveryDeadline
 	transition.CompletedAt = nil
 	transition.Error = ""
@@ -8042,6 +7945,33 @@ func (s *Service) demoteReplicationPolicy(
 	return nil
 }
 
+func (s *Service) sealReplicationTransitionSourceAsStandby(
+	ctx context.Context,
+	policyID uint,
+	expectedOwnerEpoch uint64,
+	transitionRunID string,
+	expectedGenerationID string,
+	result replicationGenerationTransferResult,
+) error {
+	expectedGenerationID = strings.TrimSpace(expectedGenerationID)
+	if expectedGenerationID == "" || result.GenerationID != expectedGenerationID ||
+		strings.TrimSpace(result.SnapshotName) == "" || strings.TrimSpace(result.ManifestHash) == "" ||
+		result.RequiredDatasetCount <= 0 || result.CompletedDatasetCount != result.RequiredDatasetCount ||
+		len(result.sourceDatasets) != result.RequiredDatasetCount {
+		return fmt.Errorf("replication_transition_catchup_evidence_incomplete")
+	}
+	if err := validateReplicationSnapshotName(result.SnapshotName); err != nil {
+		return fmt.Errorf("replication_transition_catchup_snapshot_invalid: %w", err)
+	}
+	if _, err := s.validateLocalTransitionSource(policyID, expectedOwnerEpoch, transitionRunID); err != nil {
+		return fmt.Errorf("replication_transition_source_revalidation_failed: %w", err)
+	}
+	if err := s.sealReplicationDatasetRootsAsStandby(ctx, policyID, result.sourceDatasets); err != nil {
+		return fmt.Errorf("seal_replication_transition_source_failed: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) CatchupReplicationPolicyToNodeForTransition(
 	ctx context.Context,
 	policyID uint,
@@ -8147,7 +8077,7 @@ func (s *Service) catchupReplicationPolicyToNode(
 	if strings.TrimSpace(generationID) == "" {
 		generationID = fmt.Sprintf("catchup-%d-%s", policy.ID, compactNowToken())
 	}
-	_, err = s.replicatePolicyGenerationToTarget(
+	result, err := s.replicatePolicyGenerationToTarget(
 		ctx,
 		policy,
 		targetNodeID,
@@ -8156,7 +8086,17 @@ func (s *Service) catchupReplicationPolicyToNode(
 		generationID,
 		0,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.sealReplicationTransitionSourceAsStandby(
+		ctx,
+		policy.ID,
+		expectedOwnerEpoch,
+		transitionRunID,
+		generationID,
+		result,
+	)
 }
 
 func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
@@ -8353,10 +8293,27 @@ func (s *Service) activateReplicationPolicy(
 	}
 	if *desiredRunning {
 		if running {
-			if err := s.validateAlreadyRunningReplicationActivation(ctx, policy); err != nil {
+			if err := s.validateAlreadyRunningReplicationActivation(ctx, policy); err == nil {
+				return s.setReplicationGuestIntentionallyStopped(policy.GuestType, policy.GuestID, false)
+			} else if !strings.EqualFold(
+				strings.TrimSpace(policy.TransitionState),
+				clusterModels.ReplicationTransitionStatePromoting,
+			) {
 				return err
+			} else {
+				// A previous activation attempt may have started the guest before
+				// returning an error. If its storage cannot prove the promoted
+				// generation is writable, stop it and rebuild from the fenced state.
+				if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
+					if fenceErr := s.fenceReplicationGuestDatasets(ctx, policy, "activation_recovery_failed"); fenceErr != nil {
+						return fmt.Errorf("%v; activation_recovery_demote_failed: %v; activation_refence_failed: %v", err, demoteErr, fenceErr)
+					}
+					return fmt.Errorf("%v; activation_recovery_demote_failed: %w", err, demoteErr)
+				}
+				if fenceErr := s.fenceReplicationGuestDatasets(ctx, policy, "activation_recovery"); fenceErr != nil {
+					return fmt.Errorf("%v; activation_refence_failed: %w", err, fenceErr)
+				}
 			}
-			return s.setReplicationGuestIntentionallyStopped(policy.GuestType, policy.GuestID, false)
 		}
 	}
 	if strings.EqualFold(strings.TrimSpace(policy.TransitionState), clusterModels.ReplicationTransitionStatePromoting) {
@@ -8372,6 +8329,26 @@ func (s *Service) activateReplicationPolicy(
 		}
 	}
 	if err := driver.activate(ctx, policy.GuestID, transitionRunID, *desiredRunning); err != nil {
+		if *desiredRunning {
+			runningAfterError, stateErr := s.isReplicationGuestRunning(policy.GuestType, policy.GuestID)
+			if stateErr == nil && runningAfterError {
+				if validateErr := s.validateAlreadyRunningReplicationActivation(ctx, policy); validateErr == nil {
+					if persistErr := s.setReplicationGuestIntentionallyStopped(policy.GuestType, policy.GuestID, false); persistErr != nil {
+						return fmt.Errorf("%v; replication_activation_persist_running_intent_failed: %w", err, persistErr)
+					}
+					logger.L.Warn().Err(err).
+						Uint("policy_id", policy.ID).
+						Uint("guest_id", policy.GuestID).
+						Str("guest_type", policy.GuestType).
+						Msg("replication_activation_error_reconciled_from_live_runtime")
+					return nil
+				} else if demoteErr := driver.demote(ctx, policy.GuestID); demoteErr != nil {
+					err = fmt.Errorf("%v; activation_runtime_invalid: %v; activation_demote_failed: %v", err, validateErr, demoteErr)
+				}
+			} else if stateErr != nil {
+				err = fmt.Errorf("%v; activation_runtime_reconciliation_failed: %v", err, stateErr)
+			}
+		}
 		// Activation may have prepared more than one guest root before a
 		// later root or guest registration failed.  Never leave a partially
 		// writable replica behind after an unsuccessful promotion.
@@ -8845,25 +8822,21 @@ func (s *Service) stopLocalJailIfPresent(ctID uint) error {
 		return nil
 	}
 
-	var jail jailModels.Jail
-	if err := s.DB.Where("ct_id = ?", ctID).First(&jail).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil
-		}
-		return err
+	running, err := s.Jail.IsJailRunning(ctID)
+	if err != nil {
+		return fmt.Errorf("check_local_jail_runtime_state_failed: %w", err)
 	}
-	if jail.StoppedAt != nil && (jail.StartedAt == nil || !jail.StoppedAt.Before(*jail.StartedAt)) {
+	if !running {
 		return nil
 	}
 
-	if err := s.Jail.ForceStopJail(ctID); err != nil {
-		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "failed to find jail") ||
-			strings.Contains(lower, "not found") ||
-			strings.Contains(lower, "no such process") {
-			return nil
-		}
-		return err
+	stopErr := s.Jail.ForceStopJail(ctID)
+	stillRunning, verifyErr := s.Jail.IsJailRunning(ctID)
+	if verifyErr != nil {
+		return errors.Join(stopErr, fmt.Errorf("verify_local_jail_stopped_failed: %w", verifyErr))
+	}
+	if stillRunning {
+		return errors.Join(stopErr, fmt.Errorf("local_jail_still_running_after_stop"))
 	}
 
 	return nil
@@ -9059,7 +9032,7 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 	}
 	volumes, volErr := s.listLocalVolumeDatasets(ctx)
 	if volErr != nil {
-		logger.L.Warn().Err(volErr).Msg("failed_to_list_volumes_for_replication_activation")
+		return fmt.Errorf("failed_to_list_volumes_for_replication_activation: %w", volErr)
 	}
 
 	seen := map[string]struct{}{
@@ -9311,6 +9284,7 @@ func (s *Service) selfFenceReplicationPolicy(
 			Msg("replication_self_fence_invalid_guest_type")
 		return fenceErr
 	}
+	useRegisteredDriverFence := true
 	if requireRegistration {
 		registered, lookupErr := s.replicationGuestRegistrationStatus(policy.GuestType, policy.GuestID)
 		if lookupErr != nil {
@@ -9321,19 +9295,43 @@ func (s *Service) selfFenceReplicationPolicy(
 					Msg("replication_registration_lookup_failed_emergency_stop_failed")
 			}
 		} else if !registered {
-			return fenceErr
+			if !returnedForceFailoverSource(policy, localNodeID, expectedOwner) {
+				return fenceErr
+			}
+			useRegisteredDriverFence = false
+			if err := s.emergencyStopReplicationGuest(policy.GuestType, policy.GuestID); err != nil {
+				fenceErr = errors.Join(fenceErr, err)
+			}
 		}
 	}
-	driver.selfFence(ctx, policy.ID, policy.GuestID, localNodeID, expectedOwner, fenceReason)
-	if err := s.fenceReplicationGuestDatasets(ctx, policy, fenceReason); err != nil {
+	if useRegisteredDriverFence {
+		driver.selfFence(ctx, policy.ID, policy.GuestID, localNodeID, expectedOwner, fenceReason)
+	}
+	datasetFenceErr := s.fenceReplicationGuestDatasets(ctx, policy, fenceReason)
+	if datasetFenceErr != nil {
+		fenceErr = errors.Join(fenceErr, datasetFenceErr)
+		logger.L.Warn().
+			Err(datasetFenceErr).
+			Uint("policy_id", policy.ID).
+			Uint("guest_id", policy.GuestID).
+			Str("guest_type", strings.TrimSpace(policy.GuestType)).
+			Str("reason", fenceReason).
+			Msg("replication_self_fence_dataset_fencing_failed")
+	} else if err := s.adoptReturnedForceFailoverSourceAsStandby(
+		ctx,
+		policy,
+		localNodeID,
+		expectedOwner,
+	); err != nil {
 		fenceErr = errors.Join(fenceErr, err)
 		logger.L.Warn().
 			Err(err).
 			Uint("policy_id", policy.ID).
 			Uint("guest_id", policy.GuestID).
 			Str("guest_type", strings.TrimSpace(policy.GuestType)).
-			Str("reason", fenceReason).
-			Msg("replication_self_fence_dataset_fencing_failed")
+			Str("local_node_id", strings.TrimSpace(localNodeID)).
+			Str("owner_node_id", strings.TrimSpace(expectedOwner)).
+			Msg("replication_returned_source_adoption_failed")
 	}
 	return fenceErr
 }

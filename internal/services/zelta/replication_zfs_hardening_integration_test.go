@@ -31,19 +31,27 @@ func runReplicationZFSScript(t *testing.T, script string) (string, error) {
 	return strings.TrimSpace(string(output)), err
 }
 
-func scopeLocalDatasetsToPool(t *testing.T, service *Service, pool string) {
+func scopeLocalDatasetsToPool(t *testing.T, service *Service, pools ...string) {
 	t.Helper()
-	if service == nil || strings.TrimSpace(pool) == "" {
-		t.Fatal("scoped local dataset lister requires a service and pool")
+	if service == nil || len(pools) == 0 {
+		t.Fatal("scoped local dataset lister requires a service and at least one pool")
 	}
 	list := func(ctx context.Context, datasetTypes string) ([]string, error) {
-		output, err := exec.CommandContext(
-			ctx, "zfs", "list", "-H", "-o", "name", "-r", "-t", datasetTypes, pool,
-		).CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("list disposable ZFS pool %s: %w: %s", pool, err, strings.TrimSpace(string(output)))
+		var datasets []string
+		for _, pool := range pools {
+			pool = strings.TrimSpace(pool)
+			if pool == "" {
+				return nil, fmt.Errorf("list disposable ZFS pool: pool name is required")
+			}
+			output, err := exec.CommandContext(
+				ctx, "zfs", "list", "-H", "-o", "name", "-r", "-t", datasetTypes, pool,
+			).CombinedOutput()
+			if err != nil {
+				return nil, fmt.Errorf("list disposable ZFS pool %s: %w: %s", pool, err, strings.TrimSpace(string(output)))
+			}
+			datasets = append(datasets, strings.Fields(string(output))...)
 		}
-		return strings.Fields(string(output)), nil
+		return datasets, nil
 	}
 	service.localFilesystemDatasetLister = func(ctx context.Context) ([]string, error) {
 		return list(ctx, "filesystem")

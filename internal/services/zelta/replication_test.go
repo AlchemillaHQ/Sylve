@@ -9,6 +9,7 @@
 package zelta
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -109,6 +110,29 @@ func TestReplicationFailoverAllowUnsafeOnlyForUnreachableOwner(t *testing.T) {
 	}
 	if replicationFailoverAllowUnsafe(replicationFailoverRequestSafe, false) {
 		t.Fatal("safe failover must never become unsafe")
+	}
+}
+
+func TestSealReplicationTransitionSourceRequiresCompleteCatchupEvidence(t *testing.T) {
+	service := &Service{}
+	result := replicationGenerationTransferResult{
+		GenerationID:          "catchup-7-run",
+		SnapshotName:          "ha_catchup-7-run",
+		ManifestHash:          "manifest",
+		RequiredDatasetCount:  2,
+		CompletedDatasetCount: 1,
+		sourceDatasets:        []string{"tank/one", "tank/two"},
+	}
+	err := service.sealReplicationTransitionSourceAsStandby(
+		context.Background(),
+		7,
+		3,
+		"transition-run",
+		result.GenerationID,
+		result,
+	)
+	if err == nil || !strings.Contains(err.Error(), "replication_transition_catchup_evidence_incomplete") {
+		t.Fatalf("incomplete catch-up evidence reached source sealing: %v", err)
 	}
 }
 

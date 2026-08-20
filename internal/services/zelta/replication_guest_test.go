@@ -31,6 +31,10 @@ func (s stubVMService) IsDomainShutOff(_ uint) (bool, error) {
 	return s.shutOff, s.shutOffErr
 }
 
+func (s stubVMService) ForceStopVM(_ uint) error {
+	return nil
+}
+
 type retirementVMStub struct {
 	libvirtServiceInterfaces.LibvirtServiceInterface
 	retired bool

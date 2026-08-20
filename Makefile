@@ -87,7 +87,9 @@ frontend:
 	cp -rf web/build/* internal/assets/web-files/
 
 quality:
-	@unformatted="$$(git ls-files -z '*.go' | xargs -0 gofmt -l)"; \
+	@unformatted="$$(git ls-files -z --cached --others --exclude-standard -- '*.go' | \
+		xargs -0 sh -c 'for file do [ -f "$$file" ] && printf "./%s\000" "$$file"; done' sh | \
+		xargs -0 gofmt -l)"; \
 	if [ -n "$$unformatted" ]; then \
 		printf 'Unformatted Go files:\n%s\n' "$$unformatted"; \
 		exit 1; \
@@ -97,7 +99,9 @@ quality:
 	npm run check --prefix web
 
 quality-fix:
-	git ls-files -z '*.go' | xargs -0 gofmt -w
+	git ls-files -z --cached --others --exclude-standard -- '*.go' | \
+		xargs -0 sh -c 'for file do [ -f "$$file" ] && printf "./%s\000" "$$file"; done' sh | \
+		xargs -0 gofmt -w
 	npm run lint:fix --prefix web
 
 test:
