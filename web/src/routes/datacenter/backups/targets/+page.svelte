@@ -415,7 +415,7 @@
 				placeholder="Validation node"
 				title="Node used for target connectivity validation"
 				classes={{
-					trigger: '!h-6 text-sm'
+					trigger: '!h-6.5 text-sm'
 				}}
 			/>
 		{/if}
