@@ -453,6 +453,29 @@ func TestResolveVMBackupSourceDatasetsNilVM(t *testing.T) {
 	}
 }
 
+func TestResolveVMBackupSourceDatasetsIgnoresReplicationLineages(t *testing.T) {
+	svc := &Service{}
+	svc.localFilesystemDatasetLister = func(context.Context) ([]string, error) {
+		return []string{
+			"zroot/sylve/virtual-machines/108",
+			"zroot/sylve/virtual-machines/108_previous-catchup-7363859556565486-failover-7363859556565486-mt246n7h",
+			"zroot/sylve/virtual-machines/108_gen-replication-7363859556565486",
+		}, nil
+	}
+
+	sources, err := svc.resolveVMBackupSourceDatasets(
+		context.Background(),
+		108,
+		"zroot/sylve/virtual-machines/108",
+	)
+	if err != nil {
+		t.Fatalf("resolve VM backup sources: %v", err)
+	}
+	if len(sources) != 1 || sources[0] != "zroot/sylve/virtual-machines/108" {
+		t.Fatalf("VM backup sources = %v, want only the active VM root", sources)
+	}
+}
+
 func TestLocalDatasetExistsNoGZFS(t *testing.T) {
 	svc := &Service{GZFS: nil}
 	_, err := svc.localDatasetExists(context.Background(), "tank/nonexistent")

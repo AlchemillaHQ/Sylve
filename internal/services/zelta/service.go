@@ -1856,6 +1856,9 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 	}
 
 	for _, dataset := range localDatasets {
+		if isReplicationLineageDatasetPath(dataset) {
+			continue
+		}
 		if dataset == "" {
 			continue
 		}
