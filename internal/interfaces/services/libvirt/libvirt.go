@@ -103,7 +103,6 @@ type LibvirtServiceInterface interface {
 	MigrateVNCToNativeFormat() error
 	MigrateIgnoreUMSRToNativeFormat() error
 	MigrateVirtio9PToNativeFormat() error
-	MigrateQemuGuestAgentToNativeFormat() error
 }
 
 type LvDomain struct {

@@ -864,7 +864,7 @@ func (s *Service) lvVMActionLocked(vm vmModels.VM, action, transitionRunID strin
 	case "shutdown":
 		err = s.shutdownVM(&domain, vm)
 	case "stop":
-		err = s.stopVM(&domain, vm)
+		err = s.destroyVM(&domain, vm)
 	case "reboot":
 		err = s.rebootVM(&domain, vm)
 	default:
@@ -921,7 +921,7 @@ func (s *Service) ForceStopVM(rid uint) error {
 		return fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
 
-	if err := s.stopVM(&domain, vmModels.VM{RID: rid}); err != nil {
+	if err := s.destroyVM(&domain, vmModels.VM{RID: rid}); err != nil {
 		return err
 	}
 
@@ -1174,19 +1174,23 @@ func (s *Service) RequireVMStorageRecordTopologyMutable(storageID int) error {
 }
 
 func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.RemoveQGASocket(vm); err != nil {
-		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
-	}
-
 	state, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {
 		return fmt.Errorf("could_not_get_state: %w", err)
 	}
 
-	if state == 1 {
+	if state == int32(libvirt.DomainRunning) {
 		return nil
 	}
-	if _, err := s.ensureQemuGuestAgentNativeXML(*domain, vm); err != nil {
+	if state != int32(libvirt.DomainShutoff) {
+		return fmt.Errorf("domain_not_shutoff_for_start_state_%d", state)
+	}
+
+	if err := s.removeQGASocket(vm); err != nil {
+		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
+	}
+
+	if err := s.ensureQemuGuestAgentNativeXML(*domain, vm); err != nil {
 		return fmt.Errorf("failed_to_ensure_native_qga_xml: %w", err)
 	}
 
@@ -1209,57 +1213,20 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	return nil
 }
 
-func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	logger.L.Info().Uint("rid", vm.RID).Msg("force stopping VM via libvirt DomainDestroy")
-
-	if err := s.conn().DomainDestroy(*domain); err != nil {
-		return fmt.Errorf("failed_to_force_stop_domain: %w", err)
-	}
-
-	return s.cleanupResources(vm)
-}
-
 func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if vm.QemuGuestAgent && s.qgaPing(vm.RID) {
-		logger.L.Debug().Uint("rid", vm.RID).Msg("QGA ping succeeded, attempting guest-shutdown")
+	logger.L.Debug().Uint("rid", vm.RID).Msg("requesting graceful shutdown via libvirt")
 
-		sendErr := s.qgaGuestShutdown(vm.RID)
-		if sendErr != nil && isQGAProtocolError(sendErr) {
-			logger.L.Warn().Err(sendErr).Uint("rid", vm.RID).Msg("QGA guest-shutdown rejected, falling back to libvirt")
-		} else {
-			if sendErr != nil {
-				logger.L.Warn().Err(sendErr).Uint("rid", vm.RID).Msg("QGA guest-shutdown command error, polling for shutoff anyway (command may have been sent)")
-			} else {
-				logger.L.Debug().Uint("rid", vm.RID).Msg("QGA guest-shutdown command sent, waiting for shutoff")
-			}
-
-			shutoff, err := s.pollForShutoff(domain, vm)
-			if err != nil {
-				logger.L.Info().Uint("rid", vm.RID).Msg("shutdown overridden during QGA wait, force destroying")
-				return s.forceDestroy(domain, vm)
-			}
-			if shutoff {
-				logger.L.Info().Uint("rid", vm.RID).Msg("VM shut down via QGA guest-shutdown")
-				return s.cleanupResources(vm)
-			}
-			waitTime := vm.ShutdownWaitTime
-			if waitTime <= 0 {
-				waitTime = 30
-			}
-			logger.L.Warn().Uint("rid", vm.RID).Int("wait_time", waitTime).Msg("QGA guest-shutdown timed out, falling back to libvirt")
-		}
-	}
-
-	logger.L.Debug().Uint("rid", vm.RID).Msg("attempting libvirt ACPI shutdown")
-
-	if err := s.conn().DomainShutdownFlags(*domain, libvirt.DomainShutdownSignal); err != nil {
-		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
+	if err := s.conn().DomainShutdownFlags(*domain, libvirt.DomainShutdownDefault); err != nil {
+		return fmt.Errorf("failed_to_request_graceful_shutdown: %w", err)
 	}
 
 	shutoff, err := s.pollForShutoff(domain, vm)
 	if err != nil {
-		logger.L.Info().Uint("rid", vm.RID).Msg("shutdown overridden during libvirt wait, force destroying")
-		return s.forceDestroy(domain, vm)
+		if errors.Is(err, errShutdownOverridden) {
+			logger.L.Info().Uint("rid", vm.RID).Msg("shutdown overridden, force destroying")
+			return s.destroyVM(domain, vm)
+		}
+		return fmt.Errorf("failed_while_waiting_for_shutdown: %w", err)
 	}
 	if !shutoff {
 		waitTime := vm.ShutdownWaitTime
@@ -1267,12 +1234,14 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 			waitTime = 30
 		}
 		logger.L.Warn().Int("wait_time", waitTime).Msg("Shutdown timed out, forcing destroy")
-		return s.forceDestroy(domain, vm)
+		return s.destroyVM(domain, vm)
 	}
 
-	logger.L.Info().Uint("rid", vm.RID).Msg("VM shut down via libvirt ACPI shutdown")
-	return s.cleanupResources(vm)
+	logger.L.Info().Uint("rid", vm.RID).Msg("VM shut down via libvirt")
+	return nil
 }
+
+var errShutdownOverridden = errors.New("shutdown_overridden")
 
 func (s *Service) pollForShutoff(domain *libvirt.Domain, vm vmModels.VM) (bool, error) {
 	waitTime := vm.ShutdownWaitTime
@@ -1295,7 +1264,7 @@ func (s *Service) pollForShutoff(domain *libvirt.Domain, vm vmModels.VM) (bool, 
 				logger.L.Warn().Err(overrideErr).Uint("rid", vm.RID).Msg("failed_to_check_vm_shutdown_override")
 			} else if overrideRequested {
 				logger.L.Warn().Uint("rid", vm.RID).Msg("vm_shutdown_override_requested_force_stopping")
-				return false, fmt.Errorf("shutdown_overridden")
+				return false, errShutdownOverridden
 			}
 
 			state, _, err := s.conn().DomainGetState(*domain, 0)
@@ -1331,26 +1300,17 @@ func (s *Service) hasShutdownOverrideRequested(rid uint) (bool, error) {
 	return count > 0, nil
 }
 
-func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
+func (s *Service) destroyVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	logger.L.Info().Uint("rid", vm.RID).Msg("force destroying VM via libvirt DomainDestroy")
 
 	if err := s.conn().DomainDestroy(*domain); err != nil {
-		state, _, _ := s.conn().DomainGetState(*domain, 0)
-		if state != 5 {
+		state, _, stateErr := s.conn().DomainGetState(*domain, 0)
+		if stateErr != nil || state != int32(libvirt.DomainShutoff) {
 			return fmt.Errorf("failed_to_force_destroy: %w", err)
 		}
 	}
 
-	state, _, err := s.conn().DomainGetState(*domain, 0)
-	if err != nil {
-		return fmt.Errorf("failed_to_verify_stop: %w", err)
-	}
-
-	if state != 5 {
-		return fmt.Errorf("vm_still_running_after_destroy_state_%d", state)
-	}
-
-	return s.cleanupResources(vm)
+	return nil
 }
 
 func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
@@ -1362,25 +1322,27 @@ func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
 		return fmt.Errorf("domain_not_running_for_reboot")
 	}
 
+	needsColdReboot := false
 	if vm.QemuGuestAgent {
-		domainXML, xmlErr := s.conn().DomainGetXMLDesc(*domain, 0)
-		if xmlErr != nil {
-			logger.L.Warn().Err(xmlErr).Uint("rid", vm.RID).Msg("failed to inspect live QGA XML, using cold reboot")
-		} else {
-			nativeReboot, inspectErr := qgaXMLSupportsNativeReboot(domainXML)
-			if inspectErr != nil {
-				logger.L.Warn().Err(inspectErr).Uint("rid", vm.RID).Msg("failed to parse live QGA XML, using cold reboot")
-			} else if nativeReboot {
-				logger.L.Debug().Uint("rid", vm.RID).Msg("requesting native libvirt reboot (QGA preferred)")
-				if rebootErr := s.conn().DomainReboot(*domain, libvirt.DomainRebootDefault); rebootErr != nil {
-					return fmt.Errorf("native_libvirt_reboot_failed: %w", rebootErr)
-				}
-				return nil
-			}
+		domainXML, err := s.conn().DomainGetXMLDesc(*domain, 0)
+		if err != nil {
+			return fmt.Errorf("failed_to_inspect_live_qga_xml: %w", err)
+		}
+		needsColdReboot, err = qgaXMLNeedsUpdate(domainXML, true)
+		if err != nil {
+			return fmt.Errorf("failed_to_inspect_live_qga_xml: %w", err)
 		}
 	}
 
-	logger.L.Debug().Uint("rid", vm.RID).Msg("rebooting VM via shutdown + start (QGA shutdown preferred if available)")
+	if !needsColdReboot {
+		logger.L.Debug().Uint("rid", vm.RID).Msg("requesting reboot via libvirt")
+		if err := s.conn().DomainReboot(*domain, libvirt.DomainRebootDefault); err != nil {
+			return fmt.Errorf("native_libvirt_reboot_failed: %w", err)
+		}
+		return nil
+	}
+
+	logger.L.Debug().Uint("rid", vm.RID).Msg("using one-time cold reboot to migrate legacy QGA XML")
 
 	if err := s.shutdownVM(domain, vm); err != nil {
 		return fmt.Errorf("reboot_failed_during_shutdown: %w", err)
@@ -1393,38 +1355,16 @@ func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	return nil
 }
 
-func (s *Service) cleanupResources(vm vmModels.VM) error {
-	user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
-	if err != nil {
-		if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
-			logger.L.Error().Err(err).Msg("Error checking VNC port usage")
-		}
-	} else if user > 0 {
-		if err := utils.KillProcess(user); err != nil {
-			logger.L.Error().Err(err).Msg("Failed to kill process using VNC port")
-		}
+func (s *Service) removeQGASocket(vm vmModels.VM) error {
+	if !vm.QemuGuestAgent {
+		return nil
 	}
 
-	if err := s.RemoveQGASocket(vm); err != nil {
-		logger.L.Error().Err(err).Msg("Error cleaning up qemu-ga socket")
+	dataPath, err := s.GetVMConfigDirectory(vm.RID)
+	if err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func (s *Service) RemoveQGASocket(vm vmModels.VM) error {
-	if vm.QemuGuestAgent {
-		dataPath, err := s.GetVMConfigDirectory(vm.RID)
-		if err == nil {
-			qgaSocketPath := filepath.Join(dataPath, "qga.sock")
-			err := utils.DeleteFileIfExists(qgaSocketPath)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return utils.DeleteFileIfExists(filepath.Join(dataPath, "qga.sock"))
 }
 
 func (s *Service) SetActionDate(vm vmModels.VM, action string) error {

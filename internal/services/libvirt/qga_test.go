@@ -10,7 +10,6 @@ package libvirt
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -177,16 +176,6 @@ func TestDecodeQGAResponseRejectsMissingReturnAndAcceptsExplicitNull(t *testing.
 	}
 	if string(response) != "null" {
 		t.Fatalf("unexpected explicit null response: %s", response)
-	}
-}
-
-func TestIsQGAProtocolErrorRecognizesLibvirtAgentFailure(t *testing.T) {
-	err := fmt.Errorf("failed_to_run_qga_command: %w", libvirt.Error{
-		Code:    uint32(libvirt.ErrAgentCommandFailed),
-		Message: "guest agent command failed",
-	})
-	if !isQGAProtocolError(err) {
-		t.Fatalf("expected libvirt agent command failure to be recognized: %v", err)
 	}
 }
 

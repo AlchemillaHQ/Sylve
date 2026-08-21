@@ -38,6 +38,20 @@ func TestCreateVmXMLProducesNativeQGAChannel(t *testing.T) {
 	}
 
 	doc := mustParseQGATestXML(t, domainXML)
+	onPoweroff := doc.Root().FindElement("on_poweroff")
+	if onPoweroff == nil {
+		t.Fatal("expected on_poweroff policy")
+	}
+	if got := strings.TrimSpace(onPoweroff.Text()); got != "destroy" {
+		t.Fatalf("on_poweroff = %q, want destroy", got)
+	}
+	onReboot := doc.Root().FindElement("on_reboot")
+	if onReboot == nil {
+		t.Fatal("expected on_reboot policy")
+	}
+	if got := strings.TrimSpace(onReboot.Text()); got != "restart" {
+		t.Fatalf("on_reboot = %q, want restart", got)
+	}
 	controller := findQGATestController(doc.Root().FindElement("devices"))
 	if controller == nil {
 		t.Fatalf("expected virtio-serial controller, got: %s", domainXML)
@@ -182,6 +196,7 @@ func TestParseUsedIndicesFromDocumentIncludesNativePCIAddresses(t *testing.T) {
 func TestQGAXMLNeedsUpdate(t *testing.T) {
 	legacy := `<domain xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><devices/><bhyve:commandline><bhyve:arg value="-s 10,virtio-console,org.qemu.guest_agent.0=/vm/qga.sock"/></bhyve:commandline></domain>`
 	native := `<domain><devices><channel type="unix"><source mode="bind" path="/vm/qga.sock"/><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices></domain>`
+	partial := `<domain xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><devices><channel type="unix"><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices><bhyve:commandline><bhyve:arg value="-s 10,virtio-console,org.qemu.guest_agent.0=/vm/qga.sock"/></bhyve:commandline></domain>`
 	disabled := `<domain><devices/></domain>`
 
 	tests := []struct {
@@ -191,6 +206,7 @@ func TestQGAXMLNeedsUpdate(t *testing.T) {
 		want    bool
 	}{
 		{name: "migrate legacy enabled", xml: legacy, enabled: true, want: true},
+		{name: "finish partial migration", xml: partial, enabled: true, want: true},
 		{name: "keep native enabled", xml: native, enabled: true, want: false},
 		{name: "remove native disabled", xml: native, enabled: false, want: true},
 		{name: "keep absent disabled", xml: disabled, enabled: false, want: false},
@@ -207,45 +223,8 @@ func TestQGAXMLNeedsUpdate(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestQGAXMLSupportsNativeReboot(t *testing.T) {
-	native := `<domain><devices><channel type="unix"><source mode="bind" path="/vm/qga.sock"/><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices></domain>`
-	nativeRestart := `<domain><on_reboot>restart</on_reboot><devices><channel type="unix"><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices></domain>`
-	nativeRestartRename := `<domain><on_reboot>rename-restart</on_reboot><devices><channel type="unix"><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices></domain>`
-	nativeDestroy := `<domain><on_reboot>destroy</on_reboot><devices><channel type="unix"><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices></domain>`
-	nativePreserve := `<domain><on_reboot>preserve</on_reboot><devices><channel type="unix"><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices></domain>`
-	legacy := `<domain xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><devices/><bhyve:commandline><bhyve:arg value="-s 10,virtio-console,org.qemu.guest_agent.0=/vm/qga.sock"/></bhyve:commandline></domain>`
-	partial := `<domain xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><devices><channel type="unix"><target type="virtio" name="org.qemu.guest_agent.0"/></channel></devices><bhyve:commandline><bhyve:arg value="-s 10,virtio-console,org.qemu.guest_agent.0=/vm/qga.sock"/></bhyve:commandline></domain>`
-
-	tests := []struct {
-		name string
-		xml  string
-		want bool
-	}{
-		{name: "native default restart", xml: native, want: true},
-		{name: "native explicit restart", xml: nativeRestart, want: true},
-		{name: "native restart rename", xml: nativeRestartRename, want: true},
-		{name: "native destroy", xml: nativeDestroy, want: false},
-		{name: "native preserve", xml: nativePreserve, want: false},
-		{name: "legacy", xml: legacy, want: false},
-		{name: "partial migration", xml: partial, want: false},
-		{name: "no agent", xml: `<domain><devices/></domain>`, want: false},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := qgaXMLSupportsNativeReboot(test.xml)
-			if err != nil {
-				t.Fatalf("qgaXMLSupportsNativeReboot returned error: %v", err)
-			}
-			if got != test.want {
-				t.Fatalf("qgaXMLSupportsNativeReboot = %t, want %t", got, test.want)
-			}
-		})
-	}
-
-	if _, err := qgaXMLSupportsNativeReboot(`<domain>`); err == nil {
+	if _, err := qgaXMLNeedsUpdate(`<domain>`, true); err == nil {
 		t.Fatal("expected malformed domain XML to fail")
 	}
 }

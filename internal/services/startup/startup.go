@@ -182,11 +182,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		if err := s.Libvirt.MigrateVirtio9PToNativeFormat(); err != nil {
 			logger.L.Warn().Err(err).Msg("Virtio-9P migration had issues")
 		}
-
-		if err := s.Libvirt.MigrateQemuGuestAgentToNativeFormat(); err != nil {
-			logger.L.Warn().Err(err).Msg("QEMU guest agent migration had issues")
-		}
-
 	}
 
 	go s.Info.Cron(dCtx)

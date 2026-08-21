@@ -199,24 +199,6 @@ func (s *Service) GetQemuGuestAgentInfo(rid uint) (libvirtServiceInterfaces.Qemu
 	return info, nil
 }
 
-func (s *Service) qgaPing(rid uint) bool {
-	_, err := s.RunQemuGuestAgentCommand(rid, "guest-ping")
-	return err == nil
-}
-
-func (s *Service) qgaGuestShutdown(rid uint) error {
-	_, err := s.RunQemuGuestAgentCommand(rid, "guest-shutdown")
-	return err
-}
-
-func isQGAProtocolError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return isLibvirtErrorNumber(err, libvirt.ErrAgentCommandFailed) ||
-		strings.HasPrefix(err.Error(), "qga_error_")
-}
-
 func isLibvirtErrorNumber(err error, number libvirt.ErrorNumber) bool {
 	var value libvirt.Error
 	if errors.As(err, &value) {

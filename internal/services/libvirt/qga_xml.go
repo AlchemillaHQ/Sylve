@@ -16,7 +16,6 @@ import (
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/beevik/etree"
 	goLibvirt "github.com/digitalocean/go-libvirt"
 )
@@ -254,36 +253,6 @@ func qgaXMLNeedsUpdate(domainXML string, enabled bool) (bool, error) {
 	return hasLegacyArgument || hasNativeChannel, nil
 }
 
-func qgaXMLSupportsNativeReboot(domainXML string) (bool, error) {
-	needsUpdate, err := qgaXMLNeedsUpdate(domainXML, true)
-	if err != nil {
-		return false, err
-	}
-	if needsUpdate {
-		return false, nil
-	}
-
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(domainXML); err != nil {
-		return false, fmt.Errorf("failed_to_parse_xml: %w", err)
-	}
-	root := doc.Root()
-	if root == nil {
-		return false, fmt.Errorf("invalid_domain_xml: root_missing")
-	}
-
-	onReboot := root.FindElement("on_reboot")
-	if onReboot == nil {
-		return true, nil
-	}
-	switch strings.TrimSpace(onReboot.Text()) {
-	case "restart", "rename-restart":
-		return true, nil
-	default:
-		return false, nil
-	}
-}
-
 func normalizeControllerIndex(index string) string {
 	parsed, err := strconv.ParseInt(strings.TrimSpace(index), 0, 32)
 	if err != nil {
@@ -421,91 +390,35 @@ func firstFreeVirtioSerialPort(devices *etree.Element, controllerIndex, portCoun
 	return -1
 }
 
-func (s *Service) ensureQemuGuestAgentNativeXML(domain goLibvirt.Domain, vm vmModels.VM) (bool, error) {
+func (s *Service) ensureQemuGuestAgentNativeXML(domain goLibvirt.Domain, vm vmModels.VM) error {
 	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
-		return false, fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
 
 	needsUpdate, err := qgaXMLNeedsUpdate(domainXML, vm.QemuGuestAgent)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if !needsUpdate {
-		return false, nil
+		return nil
 	}
 
 	socketPath := ""
 	if vm.QemuGuestAgent {
 		dataPath, err := s.GetVMConfigDirectory(vm.RID)
 		if err != nil {
-			return false, fmt.Errorf("failed_to_get_vm_data_path: %w", err)
+			return fmt.Errorf("failed_to_get_vm_data_path: %w", err)
 		}
 		socketPath = filepath.Join(dataPath, "qga.sock")
 	}
 
 	updatedXML, err := updateQemuGuestAgentXML(domainXML, socketPath, vm.QemuGuestAgent)
 	if err != nil {
-		return false, err
-	}
-	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
-		return false, fmt.Errorf("failed_to_define_domain_with_native_qga: %w", err)
-	}
-
-	return true, nil
-}
-
-func (s *Service) MigrateQemuGuestAgentToNativeFormat() error {
-	if err := s.requireConnection(); err != nil {
 		return err
 	}
-
-	vms, err := s.ListVMs()
-	if err != nil {
-		return fmt.Errorf("failed_to_list_vms_for_qga_migration: %w", err)
-	}
-
-	for _, vm := range vms {
-		migrationName := fmt.Sprintf("qga_native_xml_format_1_%d", vm.RID)
-
-		var count int64
-		if err := s.DB.Table("migrations").Where("name = ?", migrationName).Count(&count).Error; err != nil {
-			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("qga_migration: failed to check per-VM migration record")
-			continue
-		}
-		if count > 0 {
-			continue
-		}
-
-		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
-		if err != nil {
-			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("qga_migration: failed to lookup domain")
-			continue
-		}
-
-		state, _, err := s.conn().DomainGetState(domain, 0)
-		if err != nil {
-			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("qga_migration: failed to get domain state")
-			continue
-		}
-		if state != int32(goLibvirt.DomainShutoff) {
-			continue
-		}
-
-		migrated, err := s.ensureQemuGuestAgentNativeXML(domain, vm)
-		if err != nil {
-			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("qga_migration: failed to reconcile QGA XML")
-			continue
-		}
-
-		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
-			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("qga_migration: failed to record per-VM migration")
-			continue
-		}
-
-		if migrated {
-			logger.L.Info().Uint("rid", vm.RID).Msg("qga_migration: migrated to native XML format")
-		}
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_native_qga: %w", err)
 	}
 
 	return nil
