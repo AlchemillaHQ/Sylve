@@ -287,6 +287,10 @@
 		ocType: 'ipv4-net' as 'ipv4-net' | 'ipv6-net' | 'ipv4-gw' | 'ipv6-gw' | 'mac',
 		value: ''
 	});
+
+	const resolvPlaceholder = ['nameserver 1.1.1.1', 'nameserver 8.8.8.8', 'search localdomain'].join(
+		'\n'
+	);
 </script>
 
 {#snippet radioItem(
@@ -540,7 +544,7 @@
 
 				<CustomValueInput
 					label=""
-					placeholder="nameserver 1.1.1.1\nnameserver 8.8.8.8\nsearch localdomain"
+					placeholder={resolvPlaceholder}
 					type="textarea"
 					textAreaClasses="min-h-28 text-xs/6"
 					bind:value={resolvConf}
