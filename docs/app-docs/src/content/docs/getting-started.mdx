@@ -17,6 +17,17 @@ Although we list support for FreeBSD **15.0-RELEASE**, we **strongly recommend**
 Since both Sylve and Bhyve are under pretty active development, using a more recent version of FreeBSD will ensure you have the latest features and bug fixes. That said, if your use case requires maximum stability and you do not need the latest features or bug fixes, **15.0-RELEASE** should work perfectly fine.
 :::
 
+:::caution[Configure a hostname before signing in]
+Every node must have a hostname. It identifies the system throughout Sylve, and login attempts will be refused if one is not configured.
+
+On FreeBSD, set a persistent hostname before starting Sylve:
+
+```bash
+sysrc hostname="sylve-node.lan"
+hostname sylve-node.lan
+```
+:::
+
 ## TL;DR
 
 If you want to get going right away, run `pkg install sylve` on a FreeBSD >= 15 machine and open `https://<host>:8181` in your browser. For more details, continue reading.

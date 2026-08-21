@@ -106,6 +106,36 @@ Keep each commit focused on one coherent change. If more context is useful, leav
 
 Run the checks relevant to your change before opening a pull request. The commands below mirror the repository's automated pull-request workflows.
 
+### Repository-wide quality checks
+
+From the repository root, run the same code-quality gate used by CI:
+
+```bash
+make quality
+```
+
+This command does not intentionally modify source files. It:
+
+1. Checks every tracked or unignored Go file with `gofmt` and fails with a list of files that need formatting.
+2. Installs the exact frontend dependencies from `web/package-lock.json` using `npm ci`.
+3. Runs the frontend lint task, which checks Prettier formatting and ESLint rules.
+4. Runs `svelte-check`, treating warnings as failures.
+
+If the formatting or lint steps fail, apply the available automatic fixes with:
+
+```bash
+make quality-fix
+```
+
+`make quality-fix` rewrites tracked and unignored Go files with `gofmt`, then runs Prettier and ESLint's automatic fixes in `web/`. Review the resulting changes before committing. It does not install frontend dependencies or run `svelte-check`, so follow it with `make quality` to verify the complete quality gate:
+
+```bash
+make quality-fix
+make quality
+```
+
+The fix target cannot resolve every lint or type-checking problem. If `make quality` still fails, address the reported issues manually and run it again.
+
 ### Go formatting and unit tests
 
 From the repository root, format Go code and run the short unit-test suite:

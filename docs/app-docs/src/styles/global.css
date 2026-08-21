@@ -292,6 +292,10 @@ starlight-theme-select .label-icon {
   text-transform: uppercase;
 }
 
+.sidebar-content .top-level details details summary .large {
+  font-weight: 400;
+}
+
 .sidebar-content summary {
   border-radius: 7px;
 }

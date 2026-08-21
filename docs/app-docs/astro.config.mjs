@@ -62,35 +62,8 @@ export default defineConfig({
                     items: [
                         'guides',
                         {
-                            label: 'Data Center',
-                            collapsed: true,
-                            items: [
-                                'guides/data-center/summary',
-                                'guides/data-center/notes',
-                                'guides/data-center/cluster',
-                                {
-                                    label: 'Backups',
-                                    collapsed: true,
-                                    items: [
-                                        'guides/data-center/backups/targets',
-                                        'guides/data-center/backups/jobs',
-                                        'guides/data-center/backups/events',
-                                    ],
-                                },
-                                {
-                                    label: 'Replication',
-                                    collapsed: true,
-                                    items: [
-                                        'guides/data-center/replication',
-                                        'guides/data-center/replication/policies',
-                                        'guides/data-center/replication/events',
-                                    ],
-                                },
-                            ],
-                        },
-                        {
                             label: 'Node',
-                            collapsed: true,
+                            collapsed: false,
                             items: [
                                 'guides/node',
                                 'guides/node/notes',
@@ -105,8 +78,14 @@ export default defineConfig({
                                             label: 'Switches',
                                             collapsed: true,
                                             items: [
-                                                'guides/node/network/switches/manual',
-                                                'guides/node/network/switches/standard',
+                                                {
+                                                    label: 'Manual',
+                                                    slug: 'guides/node/network/switches/manual',
+                                                },
+                                                {
+                                                    label: 'Standard',
+                                                    slug: 'guides/node/network/switches/standard',
+                                                },
                                             ],
                                         },
                                         'guides/node/network/routes',
@@ -217,8 +196,14 @@ export default defineConfig({
                                                     label: 'Users',
                                                     collapsed: true,
                                                     items: [
-                                                        'guides/node/settings/authentication/users/local',
-                                                        'guides/node/settings/authentication/users/pam',
+                                                        {
+                                                            label: 'Local',
+                                                            slug: 'guides/node/settings/authentication/users/local',
+                                                        },
+                                                        {
+                                                            label: 'PAM',
+                                                            slug: 'guides/node/settings/authentication/users/pam',
+                                                        },
                                                     ],
                                                 },
                                                 'guides/node/settings/authentication/groups',
@@ -232,8 +217,14 @@ export default defineConfig({
                                                     label: 'Notifications',
                                                     collapsed: true,
                                                     items: [
-                                                        'guides/node/settings/system/notifications/transports',
-                                                        'guides/node/settings/system/notifications/rules',
+                                                        {
+                                                            label: 'Transports',
+                                                            slug: 'guides/node/settings/system/notifications/transports',
+                                                        },
+                                                        {
+                                                            label: 'Rules',
+                                                            slug: 'guides/node/settings/system/notifications/rules',
+                                                        },
                                                     ],
                                                 },
                                                 'guides/node/settings/system/services',
@@ -273,6 +264,33 @@ export default defineConfig({
                                         'guides/node/jails/options',
                                     ],
                                 }
+                            ],
+                        },
+                        {
+                            label: 'Data Center',
+                            collapsed: false,
+                            items: [
+                                'guides/data-center/summary',
+                                'guides/data-center/notes',
+                                'guides/data-center/cluster',
+                                {
+                                    label: 'Backups',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/data-center/backups/targets',
+                                        'guides/data-center/backups/jobs',
+                                        'guides/data-center/backups/events',
+                                    ],
+                                },
+                                {
+                                    label: 'Replication',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/data-center/replication',
+                                        'guides/data-center/replication/policies',
+                                        'guides/data-center/replication/events',
+                                    ],
+                                },
                             ],
                         },
                         {

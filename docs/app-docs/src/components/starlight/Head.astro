@@ -63,6 +63,66 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 </script>
 <script is:inline>
   (() => {
+    if (window.__sylveSidebarScrollPersistence) return;
+    window.__sylveSidebarScrollPersistence = true;
+
+    const restoreSidebarScroll = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const scroller = document.getElementById("starlight__sidebar");
+          const sidebar = scroller?.querySelector("sl-sidebar-state-persist");
+          if (!scroller || !sidebar) return;
+
+          try {
+            const stored = JSON.parse(
+              sessionStorage.getItem("sl-sidebar-state") || "{}",
+            );
+            if (
+              stored.hash === sidebar.dataset.hash &&
+              typeof stored.scroll === "number"
+            ) {
+              scroller.scrollTop = stored.scroll;
+            }
+          } catch {}
+        });
+      });
+    };
+
+    document.addEventListener("astro:page-load", restoreSidebarScroll);
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (!(event.target instanceof Element)) return;
+        if (!event.target.closest("#starlight__sidebar a[href]")) return;
+
+        const scroller = document.getElementById("starlight__sidebar");
+        const sidebar = scroller?.querySelector("sl-sidebar-state-persist");
+        if (!scroller || !sidebar) return;
+
+        try {
+          const stored = JSON.parse(
+            sessionStorage.getItem("sl-sidebar-state") || "{}",
+          );
+          sessionStorage.setItem(
+            "sl-sidebar-state",
+            JSON.stringify({
+              hash: sidebar.dataset.hash || "",
+              open:
+                stored.hash === sidebar.dataset.hash && Array.isArray(stored.open)
+                  ? stored.open
+                  : [],
+              scroll: scroller.scrollTop,
+            }),
+          );
+        } catch {}
+      },
+      { capture: true },
+    );
+  })();
+</script>
+<script is:inline>
+  (() => {
     const viewerId = "sylve-doc-image-viewer";
 
     const bindImages = () => {
