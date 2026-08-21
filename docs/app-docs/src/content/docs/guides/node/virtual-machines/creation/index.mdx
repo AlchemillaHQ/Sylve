@@ -1,110 +1,151 @@
 ---
 title: Creation
-description: Learn how to create virtual machines with Sylve
+description: Create a Bhyve virtual machine and configure its initial storage, network, and hardware.
 ---
 
+import basic from "./vm-create-basic.png";
+import storage from "./vm-create-storage.png";
+import network from "./vm-create-network.png";
+import hardware from "./vm-create-hardware.png";
+import cpuPinning from "./vm-create-cpu-pinning.png";
+import advancedConsole from "./vm-create-advanced-console.png";
+import cloudInit from "./vm-create-cloud-init.png";
+
+Select **Create VM** from the Virtual Machines page to open the creation wizard. It creates the VM definition, its initial storage when requested, and any selected network or PCI assignments in one operation.
+
 :::note
-Your node needs to have the Virtualization service toggled, else you will not even see the **Create VM** button on the top right corner of the app.
+The node must have the Virtualization service enabled before the **Create VM** action is available. Enable it from [System Services](/guides/node/settings/system/services/). If you have just enabled or disabled the service, restart the node before creating or running VMs.
 :::
 
-To create a virtual machine, click on the **Create VM** button on the top right corner of the app. This will open a form where you can enter the details of your virtual machine.
+Before starting, make sure the destination node has a suitable ZFS pool. A switch is optional, but a cloud-init guest usually needs one to reach its network services on first boot.
 
-For this example we're going to be setting up a simple Rocky Linux 10 virtual machine with 2 vCPUs, 4 GB of RAM and a 32 GB disk. You can adjust these values to fit your needs.
+## Basic
 
-## Basic Information
+Choose where the VM belongs and give it an identity that is easy to recognize later.
 
-![Basic](./basic.png)
+| Field | Purpose |
+| --- | --- |
+| **Node** | The node that will own the VM. This appears when creating from a cluster view. Changing the node clears node-specific selections such as pools, switches, passthrough devices, and CPU pins. |
+| **VM Name** | A human-readable, valid VM name. |
+| **VM ID** | A numeric guest identifier from `1` to `9999`. Sylve suggests the next available value and verifies that it does not conflict with a VM or jail anywhere in the cluster. |
+| **Description** | Optional context for operators, such as the guest's role, owner, or intended workload. |
 
-In the **Basic** tab, there are a few fields that you need to fill out:
-
-- **Node**: The node this virtual machine belongs to, this select box will only show up if you're in a cluster.
-
-- **VM Name**: Name for the VM you're about to create
-
-- **VM ID**: This is a number between 1-9999, it **HAS** to be unique cluster-wide, if you are clustered that is.
-
-- **Description**: An optional description for the VM you are about to create.
+<img
+  src={basic.src}
+  alt="Create VM wizard on the Basic tab with a selected node, VM name, identifier, and description"
+/>
 
 ## Storage
 
-![Storage](./storage.png)
+Storage is the VM's primary boot disk. Select a pool, its size, and the device model presented to the guest. The wizard also lets you attach one installation image.
 
-As far as storage goes, you have 3 options:
+| Type | Use it when | Result |
+| --- | --- | --- |
+| **ZFS Volume** | You want a ZFS-managed virtual disk. This is the normal choice for Sylve-managed VM storage. | Creates a ZFS zvol in the selected pool. |
+| **Raw Disk** | You specifically need a file-backed disk image. | Creates a raw disk image in the selected pool. |
+| **No Storage** | The VM will boot from a later-attached disk, network source, or another device. | Creates no primary disk. |
 
-1. ZFS volume (Highly recommended)
-2. Raw Disk
-3. No Storage
+The minimum initial disk size is 128 MiB. Sylve checks that the selected pool exists, is usable, and has enough free space before creating the VM. If the **Storage Pool** list is empty, [create or import a ZFS pool](/guides/node/storage/zfs/pools/) on the selected node first.
 
-:::note
-If you select **No Storage** you will have to attach a storage media later in the lifecycle of the VM.
+For **Emulation Type**, choose the guest-visible disk controller:
+
+| Emulation | Guidance |
+| --- | --- |
+| **NVMe** | A good default for modern guests with NVMe support. |
+| **VirtIO** | A paravirtualized disk controller for guests with VirtIO drivers. |
+| **AHCI-HD** | A compatibility-oriented SATA controller for guests that need it. |
+
+Under **Installation Media**, select an available download or explicitly choose **None**. Regular ISO and supported disk-image downloads are available for ordinary installs. If the list does not contain the image you need, add it through [Downloader](/guides/node/utilities/downloader/), then return to this wizard. When cloud-init is enabled in the Advanced tab, this list is limited to downloads marked as cloud-init images.
+
+:::caution
+Cloud-init requires a primary disk and a cloud-init image. A normal installer ISO cannot provide the cloud-init datasource expected by the guest.
 :::
 
-We always use ZFS Volumes, even with disk images that come from other hypervisors, we flash them using our ZFS volume image flasher and then use them that way, the speed difference between using a ZFS volume and a raw disk is negligible, and the benefits of using ZFS volumes are huge, such as snapshots, clones, compression and more.
-
-For emulation type we've had the best experience with NVMe emulation, VirtIO is also pretty good but AHCI-HD should only be used if you have a very specific use case for it, such as running a very very old OS or something of that sort, always default to NVMe, with Bhyve that seems to offer the best performance, almost near native.
-
-For installation media, we're going to pick an ISO image we downloaded from rockylinux.org, you can also use a cloud-init image if you want to create a cloud-init enabled VM, but for this example we're going to use a regular ISO image and then install the OS manually.
-
-If you want to proceed without selecting any installation media you can do that by explicitly selecting the "None" option.
+<img
+  src={storage.src}
+  alt="Create VM wizard on the Storage tab with a ZFS volume, selected pool, NVMe disk emulation, and installation media"
+/>
 
 ## Network
 
-You can attach your VM to a switch at this stage, if you select none you can always attach it later, but if you want your VM to have network connectivity as soon as it's created, you need to select a switch here. This is especially important if you are creating a cloud-init enabled VM, as cloud-init will need network connectivity to do its thing on first boot.
+Attach the VM to a **Standard** or **Manual** switch so it can communicate on that network. A Standard Switch is a Sylve-managed FreeBSD bridge, normally connected to a physical interface; a Manual Switch represents a bridge you manage yourself. Leave the switch set to **None** when the VM should initially have no virtual NIC.
 
-![Network](./network.png)
+| Field | Purpose |
+| --- | --- |
+| **Switch** | The existing Standard or Manual switch connected to this NIC. |
+| **Emulation Type** | **VirtIO** for guests with VirtIO network drivers, or **E1000** for broader out-of-the-box compatibility. |
+| **MAC Address** | An unused managed MAC object to assign to the NIC. Leave it unselected for Sylve to generate and attach a unique managed MAC address. |
 
-For emulation type it's good to use VirtIO, it offers good performance and is widely supported by most operating systems, but some Operating Systems like Windows don't support it out of the box without drivers, so in those cases you might want to use E1000, but for Linux/FreeBSD based OSes VirtIO is usually the way to go.
+The selected MAC address cannot already belong to another network interface. Select a reusable managed MAC only when you deliberately need that address on this VM. If the **Switch** list is empty, create a [Standard Switch](/guides/node/network/switches/standard/) or [Manual Switch](/guides/node/network/switches/manual/) first. To pre-create a managed MAC address, use [Network Objects](/guides/node/network/objects/).
 
-If you have a MAC address that was previously created select that here else just leave it blank and Sylve will generate a random one for you.
+<img
+  src={network.src}
+  alt="Create VM wizard on the Network tab with a selected Standard Switch, VirtIO emulation, and managed MAC-address selector"
+/>
 
 ## Hardware
 
-This is where you can configure the hardware resources for your VM, such as the number of vCPUs, amount of RAM and more.
+Set the CPU topology and memory allocation for the guest. Each CPU field must be at least one, so one socket, one core, and one thread creates a single vCPU.
 
-![Hardware](./hardware.png)
+| Field | Purpose |
+| --- | --- |
+| **CPU Sockets, Cores, and Threads** | Defines the topology reported to the guest. Their product is the VM's vCPU count. |
+| **CPU Selector** | Optionally pins guest vCPUs to specific host CPU threads. |
+| **Memory Size** | Guest RAM allocation. The minimum is 128 MiB. Leave sufficient memory for FreeBSD, ZFS, and other workloads on the node. |
+| **PCI Passthrough** | Assigns prepared PCI devices to the VM. Only devices prepared in the node's PCI Passthrough settings appear here. |
 
-We usually keep the topology like this: 1 Socket, `n` Cores and 1 Thread, where `n` is the number of vCPUs we want to assign to the VM, this is not a hard rule but it seems to work well in most cases, with Linux, Windows and FreeBSD based VMs, but feel free to experiment with different topologies and see what works best for your specific use case.
+CPU pinning is optional. Sylve rejects duplicate selections, pins outside the VM's configured vCPU count, pins beyond the host's logical CPUs, and pins already reserved by another VM. Use it when you need predictable CPU placement, not as a requirement for normal VMs.
 
-Next comes CPU Pinning and Memory Size.
+PCI devices may be selected by more than one VM definition, but only one running VM can use a device at a time. If the PCI list is empty, [prepare the device for PCI passthrough](/guides/node/settings/pci-passthrough/) and restart the node before relying on it for a guest.
 
-![CPU Pinning](./cpu-pinning.png)
+<img
+  src={hardware.src}
+  alt="Create VM wizard on the Hardware tab with CPU topology, memory allocation, and an available PCI passthrough device"
+/>
 
-You can select a Socket and cores within that socket to pin, it's always good to pin cores that are close to each other in succession, for example if you have a CPU with 16 cores, it's good to pin cores 0-3 for one VM, 4-7 for another VM and so on, this way you can take advantage of the CPU cache and reduce latency.
-
-For memory size, you can select the amount of RAM you want to assign to the VM, it's always good to assign a little bit more RAM than you think you need, especially if you're going to be running a desktop environment on the VM, but keep in mind that assigning too much RAM can lead to performance issues on the host, so it's a good idea to find a balance that works for your specific use case.
-
-:::danger
-Never ever overcommit your RAM, if you have 16 GB of RAM on your host, a good rule of thumb is to always leave 4 GB to the hypervisor as a buffer, so in that case you should never assign more than 12 GB of RAM to your VMs, this is especially important if you're going to be running multiple VMs on the same host, as overcommitting RAM can lead to severe performance issues and even crashes.
-:::
-
-PCI Passthrough is also available in the same page. If you had enabled it in your System settings they should show up here, you can passthrough the same PCI device to multiple VMs if you want, but keep in mind that **only one** VM will be able to use it at a time
+<img
+  src={cpuPinning.src}
+  alt="CPU Selector showing host CPU threads selected for VM pinning"
+/>
 
 ## Advanced
 
-Now this page has a lot of goodies, let's go through all of them:
+The Advanced tab controls the VM console, boot firmware, startup behavior, and optional guest integrations.
 
-![Advanced](./advanced.png)
+| Setting | Purpose |
+| --- | --- |
+| **Enable VNC** | Enables the graphical VNC console. Set its resolution, bind IP, port, and password here. The password generator creates a strong value that you can replace. |
+| **VNC Wait** | Makes the VM wait for a VNC framebuffer connection during startup. |
+| **Serial Console** | Provides a serial console for guests configured to use one. |
+| **Boot ROM** | Select **UEFI** for modern UEFI-capable guests, or **None** when the guest does not need a boot ROM. |
+| **Clock Offset** | Presents the guest RTC as **UTC** or **Local Time**. Choose the convention expected by the guest operating system. |
+| **Start On Boot** | Starts the VM automatically when its node starts. |
+| **Startup/Shutdown Order** | Sets the relative order used for managed startup and shutdown. |
+| **TPM Emulation** | Adds an emulated TPM for guests that require it. |
+| **Ignore UMSRs** | Instructs Bhyve to ignore unimplemented model-specific-register accesses. Use this only for a guest that needs it, since it can conceal a compatibility issue. |
+| **QEMU GA** | Enables the QEMU Guest Agent connection for compatible guests, allowing Sylve to obtain guest details such as operating-system and network information. |
+| **Bhyve Options** | Adds extra Bhyve arguments, one per line. Use only options you understand and have tested for the guest. |
 
-- **VNC Port and Password**: This is pretty self-explanatory, you can set a custom VNC password field to generate a strong random password.
+<img
+  src={advancedConsole.src}
+  alt="Create VM wizard on the Advanced tab showing VNC, UEFI firmware, clock, and startup settings"
+/>
 
-- **VNC Resolution**: You can set a custom VNC resolution for your VM, this is especially useful if you're going to be running a desktop environment on the VM, but keep in mind that setting a very high resolution can lead to performance issues on the host, so it's a good idea to find a balance that works for your specific use case.
+### Cloud-init
 
-- **Clock Offset**: You can choose either UTC or Local Time for your VM, for windows guests it's usually better to use Local Time, while for Linux/FreeBSD based guests it's usually better to use UTC.
+Enable **Cloud-Init** to initialize a compatible cloud image without performing a manual installer workflow. The wizard requires both **User Data** and **Meta Data**. **Network Config** is optional.
 
-- **Startup/Shutdown Order**: This is the order number in which your VM will start/shutdown (If start on boot is enabled)
+You can type the YAML directly or select an existing [Cloud-Init template](/guides/node/utilities/cloud-init-templates/) to populate all three fields. Return to the Storage tab afterwards and choose the cloud-init image that the guest will boot from. If no suitable image is available, use [Downloader](/guides/node/utilities/downloader/) to add one marked as a cloud-init image.
 
-- **TPM Emulation**: Emulate a TPM 2.0 module using swtpm, this is required for Windows 11 and newer guests (Ubuntu also supports it).
+Cloud-init is useful for creating repeatable guests, such as an application node with a known user, SSH keys, packages, and first-boot configuration.
 
-- **Serial Console**: This option let's you connect to a TTY on the guest to get serial access, this is really cool as it allows for seamless copy and paste.
+<img
+  src={cloudInit.src}
+  alt="Cloud-Init enabled in the VM creation wizard with a selected template and populated user, metadata, and network configuration"
+/>
 
-- **Enable Cloud-Init**: This will enable cloud-init on the guest, allowing you to do all sorts of cool stuff like setting up users, running scripts on first boot and more, this is especially useful for headless VMs that you want to set up without having to VNC into them. You can use the template you created earlier or type in manually in the textboxes that open below the checkboxes.
+### Finish creation
 
-- **VNC Wait**: Enabling this option will make the VM wait for a connection to the VNC framebuffer before continuing the startup.
+Review the information in each tab, then select **Create**. Sylve validates the VM identity, pool capacity, selected network and MAC address, CPU placement, VNC settings, cloud-init data, and passthrough mappings before making changes.
 
-- **Ignore Unimplemented MSR Accesses**: Toggling this would mean the hypervisor silently ignores guest attempts to read or write Model Specific Registers (MSRs) that the hypervisor does not implement, instead of triggering a fault or stopping the virtual machine.
-
-- **QEMU Guest Agent**: This will run a separate socket to connect to the agent running on the guest to get cool stats like OS information and IP addresses and such. Very useful if you have an upstream DHCP router and have no idea what IP you got. This will let you see it in the UI without having to VNC/Serial into it.
-
-After the VM creation is successful you can go to the VM's page by clicking on it in the sidebar and reach the summary page, like this:
-
-![Summary](./summary.png)
+After creation, open the VM from the sidebar to review its configuration and start it when you are ready.

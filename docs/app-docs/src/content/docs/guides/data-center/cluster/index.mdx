@@ -1,0 +1,110 @@
+---
+title: Cluster
+description: Connect Sylve nodes into a shared Data Center.
+---
+
+import QuorumCalculator from '../../../../../components/QuorumCalculator.astro';
+
+A Sylve cluster gives you one Data Center view for its member nodes. Cluster state backs shared features such as backup targets and jobs, while each node continues to run its own workloads and services.
+
+Sylve uses [HashiCorp Raft](https://github.com/hashicorp/raft), a battle-tested implementation of the **Raft** consensus model, to keep that shared state consistent. Raft gives the cluster a clear leader, replicated changes, and quorum-based safety when members fail or reconnect. It is a proven foundation for distributed control planes: Kubernetes commonly uses etcd, whose own distributed store is built on Raft.
+
+Sylve does not depend on etcd. Instead, it builds its own focused control plane directly on HashiCorp Raft. This keeps the cluster stack contained and simple to operate while providing the consensus guarantees needed for Sylve's shared Data Center configuration.
+
+Use a stable, private network between the nodes and keep every node on the same Sylve version. A three-voter cluster is the practical minimum for fault tolerance: it can retain quorum after one voter is lost. A smaller cluster can be useful for evaluation, but it cannot tolerate the same failures.
+
+## Quorum calculator
+
+Set the number of **voting** nodes in your planned cluster. Quorum is a strict majority of voters. Non-voting members do not increase quorum or the number of failures the cluster can tolerate.
+
+<QuorumCalculator />
+
+An odd voter count is usually the most efficient choice. For example, four voters still tolerate only one failure, just like three voters, while five voters can tolerate two. This calculator describes consensus availability, not workload capacity: your replica and backup design must still provide enough storage and compute capacity after a failure.
+
+:::caution
+Cluster communication is foundational infrastructure. Do not expose its internal addresses to untrusted networks, and do not treat a WAN link as equivalent to a reliable local network. Ensure every node can consistently reach the others before joining it.
+:::
+
+## Before you begin
+
+- Decide the stable IP address each node will use for cluster communication.
+- Confirm all nodes are running the same Sylve version.
+- Plan the voter count before adding production workloads. Three voters allow one voter failure without losing quorum.
+- Ensure the nodes can communicate over the cluster network, including the fixed Raft port `8180/TCP` and internal cluster API port `8184/TCP`.
+
+## Create the first cluster node
+
+Open **Data Center → Cluster** on the first node and select **Create Cluster**. Enter the node's cluster IP address, then confirm. That node becomes the initial Raft voter and cluster leader.
+
+![Create Cluster dialog with the initial node's cluster IP address](./clustering-create-cluster.png)
+
+After creation, return to the Cluster page to see its member table. The leader is marked in the table, and **View Join Information** provides the values needed by another node.
+
+![Cluster member table showing node health, resource usage, leader indicator, and cluster actions](./clustering-overview.png)
+
+## Join another node
+
+On the cluster leader, select **View Join Information** and copy the cluster key. Treat this key as a credential: a node that has it and can reach the leader can request admission to the cluster.
+
+On the node to add, open **Data Center → Cluster**, select **Join Cluster**, and provide the following values.
+
+| Field | What to enter |
+| --- | --- |
+| **Node IP** | The joining node's own cluster IP address. |
+| **Leader IP** | The current leader's cluster IP address. Enter only the address, not a URL or port. |
+| **Cluster Key** | The key copied from the leader's join information. |
+
+![Cluster join information dialog showing the node ID, leader node, and copyable cluster key](./clustering-join-information.png)
+
+![Join Cluster dialog with the joining node address, leader address, and cluster key fields](./clustering-join-cluster.png)
+
+The join process performs preflight checks and then adds the node as a cluster member. If the nodes use different Sylve versions, update them to the same version before trying again.
+
+## Read the member table
+
+| Column | Meaning |
+| --- | --- |
+| **Hostname** | Hostname reported by the member. The cluster leader has a crown icon. |
+| **Node ID** | Sylve's stable identifier for the member. |
+| **Address** | The Raft address used for cluster consensus. |
+| **Status** | Whether Sylve can currently see the member as online or offline. |
+| **Suffrage** | The member's Raft role. A **Voter** participates in quorum; a **Non Voter** does not; **Staging** is a temporary joining state. |
+| **Guests** | Number of guests currently associated with that member. |
+| **CPU**, **RAM**, **Disk** | The member's current reported resource usage. Use these indicators when deciding where work can move before planned maintenance. |
+
+## Remove a peer
+
+Only the current cluster leader can remove another member. Select a non-leader row, then select **Remove Peer**. The confirmation identifies the selected node and warns if it is still online. Removing a voter immediately reduces the cluster's redundancy, so confirm that the remaining voters will still satisfy your required quorum.
+
+![Remove Peer confirmation warning that an online cluster member will be removed permanently](./cluster-remove-peer-warning.png)
+
+Sylve checks that the peer has no cluster-owned dependencies before changing Raft membership. Removal is blocked if the node still owns or is involved in resources such as guests, backup jobs or operations, replication policies or leases, restore operations, guest operations, or runner rebinds. The dialog lists the dependencies that must be moved, completed, deleted, or otherwise resolved first.
+
+Removing a peer changes cluster membership and removes its Data Center node record. It does not erase workloads or data from the removed host. If that host will operate independently, reset its cluster state from the host after its dependencies have been handled. If leadership changes while the dialog is open, refresh the Cluster page and retry the action on the new leader.
+
+
+## Reset a clustered node
+
+**Reset Cluster State** removes the current node's clustered state. It is a recovery action, not normal maintenance. The confirmation explicitly warns that it clears clustered notes, backup targets, backup jobs, and backup events on that node.
+
+Do not reset a healthy leader while other members exist. First determine whether the cluster can be repaired or whether membership should be changed through the intended recovery procedure. Reset only when you understand the effect on the node and its shared Data Center configuration.
+
+![Reset Cluster State confirmation warning that clustered configuration on this node will be cleared](./clustering-reset-warning.png)
+
+### Restarting a failed, removed node
+
+If a node failed and was removed from the cluster by the leader while it was offline, do not simply restart that old node with its existing database and Raft state. Before starting Sylve on it again, set the one-time `raft.reset` flag in that node's `config.json`:
+
+```json
+{
+  "raft": {
+    "reset": true
+  }
+}
+```
+
+On startup, Sylve clears that node's old Raft state, starts it as a fresh standalone cluster state, and automatically changes `raft.reset` back to `false` in `config.json`. This prevents the removed node from returning with stale membership information.
+
+:::caution
+Use this only on the node that the leader has already removed, and only when you intend to recover it separately or prepare it to join again. Do not set `raft.reset` on a healthy member that is still part of the cluster. Use `Reset Cluster State` instead if you want to clear a node's cluster state while it is still part of the cluster.
+:::

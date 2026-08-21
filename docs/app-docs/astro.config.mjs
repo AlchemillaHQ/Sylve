@@ -62,6 +62,33 @@ export default defineConfig({
                     items: [
                         'guides',
                         {
+                            label: 'Data Center',
+                            collapsed: true,
+                            items: [
+                                'guides/data-center/summary',
+                                'guides/data-center/notes',
+                                'guides/data-center/cluster',
+                                {
+                                    label: 'Backups',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/data-center/backups/targets',
+                                        'guides/data-center/backups/jobs',
+                                        'guides/data-center/backups/events',
+                                    ],
+                                },
+                                {
+                                    label: 'Replication',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/data-center/replication',
+                                        'guides/data-center/replication/policies',
+                                        'guides/data-center/replication/events',
+                                    ],
+                                },
+                            ],
+                        },
+                        {
                             label: 'Node',
                             collapsed: true,
                             items: [
@@ -221,14 +248,16 @@ export default defineConfig({
                                     collapsed: true,
                                     items: [
                                         'guides/node/virtual-machines/creation',
-                                        'guides/node/virtual-machines/templates',
                                         'guides/node/virtual-machines/summary',
-                                        'guides/node/virtual-machines/hardware',
-                                        'guides/node/virtual-machines/storage',
-                                        'guides/node/virtual-machines/network',
                                         'guides/node/virtual-machines/console',
+                                        'guides/node/virtual-machines/storage',
+                                        'guides/node/virtual-machines/hardware',
+                                        'guides/node/virtual-machines/network',
                                         'guides/node/virtual-machines/snapshots',
+                                        'guides/node/virtual-machines/backups',
                                         'guides/node/virtual-machines/options',
+                                        'guides/node/virtual-machines/templates',
+                                        'guides/node/virtual-machines/migration',
                                     ],
                                 },
                                 {
@@ -244,21 +273,6 @@ export default defineConfig({
                                         'guides/node/jails/options',
                                     ],
                                 }
-                            ],
-                        },
-                        {
-                            label: 'Data Center',
-                            collapsed: true,
-                            items: [
-                                'guides/data-center/clustering',
-                                {
-                                    label: 'Backups',
-                                    collapsed: true,
-                                    items: [
-                                        'guides/data-center/backups/targets',
-                                        'guides/data-center/backups/jobs',
-                                    ],
-                                },
                             ],
                         },
                         {

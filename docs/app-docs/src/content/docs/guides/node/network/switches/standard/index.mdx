@@ -11,6 +11,12 @@ A Standard Switch is a FreeBSD bridge that Sylve creates and manages. Use one wh
 
 If an upstream router or gateway is connected through a physical NIC on the node, add that NIC to the switch as a **Port**. Put the node's address configuration on the Standard Switch itself: either select or type static addresses and gateways, or enable **DHCP** and let the bridge obtain IPv4 configuration from the upstream network. The physical port remains unaddressed as a bridge member.
 
+:::danger
+Adding an interface as a Standard Switch **Port clears every IPv4 and IPv6 address from that underlying interface, including aliases**, before it is attached to the bridge. Sylve does not copy its current address configuration to the bridge automatically.
+
+If you are connected to Sylve through that interface, expect the connection to drop while the change is applied. Configure the intended address, gateway, DHCP, or SLAAC mode on the Standard Switch in the same operation, and use out-of-band access or a maintenance window if losing network access would be disruptive. After creation, manage the node's IP configuration on the bridge, never on its physical member port.
+:::
+
 ## Address objects first
 
 For a dual-stack LAN, create four one-entry objects before opening the switch modal:
@@ -47,7 +53,7 @@ Open **Network → Switches → Standard** and select **New**. The modal creates
 | **VLAN**                | Optional VLAN tag applied when Sylve creates member interfaces for the selected ports.                                                       |
 | **IPv4 / IPv6 Network** | The bridge's address in CIDR notation, selected from a one-entry Network object or typed directly.                                           |
 | **IPv4 / IPv6 Gateway** | The next-hop router, selected from a Host object or typed directly. A gateway requires the corresponding network/address.                    |
-| **Ports**               | Interfaces that Sylve will attach to the bridge. A physical port must not retain an IP configuration of its own; address the bridge instead. |
+| **Ports**               | Interfaces that Sylve will attach to the bridge. **Sylve clears all IPv4 and IPv6 addresses from each selected port before attachment.** Configure the address on the bridge instead. |
 
 ### Checkboxes
 
