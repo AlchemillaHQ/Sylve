@@ -11,10 +11,12 @@ A Standard Switch is a FreeBSD bridge that Sylve creates and manages. Use one wh
 
 If an upstream router or gateway is connected through a physical NIC on the node, add that NIC to the switch as a **Port**. Put the node's address configuration on the Standard Switch itself: either select or type static addresses and gateways, or enable **DHCP** and let the bridge obtain IPv4 configuration from the upstream network. The physical port remains unaddressed as a bridge member.
 
+An existing DHCP or static `ifconfig_<port>` entry may remain in `/etc/rc.conf`. FreeBSD can use it to configure the bare NIC during early boot; after networking is up, Sylve stops any DHCP client on the selected bridge member, clears its live addresses, and applies the Standard Switch configuration to the bridge. Sylve does not rewrite the `rc.conf` entry. Do not also configure the Sylve-generated bridge in `rc.conf`.
+
 :::danger
 Adding an interface as a Standard Switch **Port clears every IPv4 and IPv6 address from that underlying interface, including aliases**, before it is attached to the bridge. Sylve does not copy its current address configuration to the bridge automatically.
 
-If you are connected to Sylve through that interface, expect the connection to drop while the change is applied. Configure the intended address, gateway, DHCP, or SLAAC mode on the Standard Switch in the same operation, and use out-of-band access or a maintenance window if losing network access would be disruptive. After creation, manage the node's IP configuration on the bridge, never on its physical member port.
+If you are connected to Sylve through that interface, expect the connection to drop while the change is applied. Configure the intended address, gateway, DHCP, or SLAAC mode on the Standard Switch in the same operation, and use out-of-band access or a maintenance window if losing network access would be disruptive. After creation, manage the node's live IP configuration on the bridge; an `rc.conf` entry for the physical port serves only as the early-boot or fallback configuration described above.
 :::
 
 ## Address objects first

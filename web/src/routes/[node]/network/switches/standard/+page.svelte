@@ -25,7 +25,7 @@
 	import { generateIPOptions, generateNetworkOptions } from '$lib/utils/network/object';
 	import { generateTableData } from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
-	import { isValidIPv4, isValidIPv6, isValidSwitchName } from '$lib/utils/string';
+	import { escapeHTML, isValidIPv4, isValidIPv6, isValidSwitchName } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -194,6 +194,44 @@
 
 	let reload = $state(false);
 	let saving = $state(false);
+	let addressRemovalWarning = $state({
+		open: false,
+		ports: [] as string[],
+		inspectionUnavailable: false
+	});
+
+	let addressRemovalWarningMessage = $derived.by(() => {
+		const portList = addressRemovalWarning.ports
+			.map((port) => `<b>${escapeHTML(port)}</b>`)
+			.join(', ');
+		const noun = addressRemovalWarning.ports.length === 1 ? 'port' : 'ports';
+		if (addressRemovalWarning.inspectionUnavailable) {
+			return `Sylve could not verify whether the selected ${noun} ${portList} currently ${addressRemovalWarning.ports.length === 1 ? 'has' : 'have'} IP addresses assigned. Continuing will still convert the ${noun} to bridge members and remove their runtime address configuration. Ensure the switch has the replacement management address and that console access is available.`;
+		}
+
+		return `The selected ${noun} ${portList} currently ${addressRemovalWarning.ports.length === 1 ? 'has' : 'have'} IP addresses assigned. Continuing will convert the ${noun} to bridge members and remove assigned addresses. If your browser connection uses one of these interfaces, connectivity may be interrupted. Ensure the switch has the replacement management address and that console access is available.`;
+	});
+
+	function selectedBridgeMembers(ports: string[], vlan: number): string[] {
+		return ports.map((port) => (vlan > 0 ? `${port}.${vlan}` : port));
+	}
+
+	function selectedPortsWithAddresses(
+		interfaces: Iface[],
+		ports: string[],
+		vlan: number
+	): string[] {
+		const selectedInterfaces = selectedBridgeMembers(ports, vlan);
+
+		return interfaces
+			.filter(
+				(iface) =>
+					selectedInterfaces.includes(iface.name) &&
+					((iface.ipv4?.length ?? 0) > 0 || (iface.ipv6?.length ?? 0) > 0)
+			)
+			.map((iface) => iface.name)
+			.sort();
+	}
 
 	watch(
 		() => reload,
@@ -207,7 +245,7 @@
 		}
 	);
 
-	async function confirmAction() {
+	async function confirmAction(addressRemovalConfirmed = false) {
 		if (saving) return;
 
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
@@ -290,6 +328,42 @@
 			if (manual.gateway6 && !isValidIPv6(manual.gateway6)) {
 				toast.error('Invalid IPv6 gateway address', { position: 'bottom-center' });
 				return;
+			}
+
+			if (comboBoxes.ports.value.length > 0) {
+				saving = true;
+				let currentInterfaces: Iface[] | APIResponse | undefined;
+				try {
+					currentInterfaces = await getInterfaces();
+				} catch {
+					currentInterfaces = undefined;
+				} finally {
+					saving = false;
+				}
+
+				if (!currentInterfaces || isAPIResponse(currentInterfaces)) {
+					if (!addressRemovalConfirmed) {
+						addressRemovalWarning.ports = selectedBridgeMembers(
+							comboBoxes.ports.value,
+							vlan
+						).sort();
+						addressRemovalWarning.inspectionUnavailable = true;
+						addressRemovalWarning.open = true;
+						return;
+					}
+				} else {
+					const addressedPorts = selectedPortsWithAddresses(
+						currentInterfaces,
+						comboBoxes.ports.value,
+						vlan
+					);
+					if (addressedPorts.length > 0 && !addressRemovalConfirmed) {
+						addressRemovalWarning.ports = addressedPorts;
+						addressRemovalWarning.inspectionUnavailable = false;
+						addressRemovalWarning.open = true;
+						return;
+					}
+				}
 			}
 
 			saving = true;
@@ -462,7 +536,10 @@
 			confirmModals.newSwitch.open = false;
 			confirmModals.deleteSwitch.open = false;
 			confirmModals.editSwitch.open = false;
+			addressRemovalWarning.open = false;
 		}
+		addressRemovalWarning.ports = [];
+		addressRemovalWarning.inspectionUnavailable = false;
 
 		confirmModals.newSwitch.name = '';
 		confirmModals.newSwitch.mtu = '';
@@ -772,7 +849,7 @@
 				<div class="flex gap-2">
 					{#if confirmModals.active === 'editSwitch'}
 						<Button
-							onclick={confirmAction}
+							onclick={() => confirmAction()}
 							type="submit"
 							size="sm"
 							class="w-full lg:w-28"
@@ -787,7 +864,7 @@
 						</Button>
 					{:else}
 						<Button
-							onclick={confirmAction}
+							onclick={() => confirmAction()}
 							type="submit"
 							size="sm"
 							class="w-full lg:w-28"
@@ -806,6 +883,25 @@
 		</Dialog.Content>
 	</Dialog.Root>
 {/if}
+
+<AlertDialog
+	bind:open={addressRemovalWarning.open}
+	customTitle={addressRemovalWarningMessage}
+	confirmLabel="Continue"
+	loadingLabel="Applying…"
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: async () => {
+			await confirmAction(true);
+			addressRemovalWarning.open = false;
+		},
+		onCancel: () => {
+			addressRemovalWarning.open = false;
+			addressRemovalWarning.ports = [];
+			addressRemovalWarning.inspectionUnavailable = false;
+		}
+	}}
+></AlertDialog>
 
 <AlertDialog
 	open={confirmModals.deleteSwitch.open}

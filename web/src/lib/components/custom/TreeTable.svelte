@@ -407,6 +407,16 @@
 			tableFilter(newQuery || '');
 		}
 	);
+
+	watch(
+		() => parentActiveRow,
+		(rows) => {
+			if (!table || !tableInitialized) return;
+			if ((!rows || rows.length === 0) && table.getSelectedRows().length > 0) {
+				table.deselectRow();
+			}
+		}
+	);
 </script>
 
 <ContextMenu.Root>

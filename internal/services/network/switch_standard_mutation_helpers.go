@@ -111,16 +111,16 @@ func standardSwitchManagedMembers(sw networkModels.StandardSwitch) map[string]st
 	return members
 }
 
-func snapshotStandardSwitchExtraMembers(sw networkModels.StandardSwitch) ([]string, error) {
+func snapshotStandardSwitchExtraMembers(sw networkModels.StandardSwitch) ([]string, bool, error) {
 	interfaceObj, err := syncIfaceGet(sw.BridgeName)
 	if err != nil {
 		if isInterfaceMissingError(err) {
-			return []string{}, nil
+			return []string{}, false, nil
 		}
-		return nil, fmt.Errorf("inspect standard switch bridge %q: %w", sw.BridgeName, err)
+		return nil, false, fmt.Errorf("inspect standard switch bridge %q: %w", sw.BridgeName, err)
 	}
 	if interfaceObj == nil {
-		return []string{}, nil
+		return []string{}, false, nil
 	}
 
 	managedMembers := standardSwitchManagedMembers(sw)
@@ -130,7 +130,7 @@ func snapshotStandardSwitchExtraMembers(sw networkModels.StandardSwitch) ([]stri
 			extraMembers = append(extraMembers, member.Name)
 		}
 	}
-	return extraMembers, nil
+	return extraMembers, true, nil
 }
 
 func reattachStandardSwitchMembers(bridgeName string, members []string) error {

@@ -1646,6 +1646,7 @@ msgstr "ലോഗ് ഔട്ട്"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -5171,7 +5172,7 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "പുതുക്കുക "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -17510,4 +17511,18 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "The Simple Linux preset is unavailable because this jail's root mountpoint could not be resolved."
+msgstr ""
+
+#. 0: noun; 1: portList; 2: addressRemovalWarning.ports.length === 1 ? 'has' \\: 'have'; 3: noun
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Sylve could not verify whether the selected {0} {1} currently {2} IP addresses assigned. Continuing will still convert the {3} to bridge members and remove their runtime address configuration. Ensure the switch has the replacement management address and that console access is available."
+msgstr ""
+
+#. 0: noun; 1: portList; 2: addressRemovalWarning.ports.length === 1 ? 'has' \\: 'have'; 3: noun
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "The selected {0} {1} currently {2} IP addresses assigned. Continuing will convert the {3} to bridge members and remove assigned addresses. If your browser connection uses one of these interfaces, connectivity may be interrupted. Ensure the switch has the replacement management address and that console access is available."
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Applying…"
 msgstr ""

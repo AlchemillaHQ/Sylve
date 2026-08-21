@@ -136,6 +136,65 @@ func routeIsMissing(output string, err error) bool {
 		strings.Contains(message, "no such process")
 }
 
+func addRouteIfMissing(args ...string) (bool, error) {
+	output, err := syncRunCommand("/sbin/route", args...)
+	if err == nil {
+		return true, nil
+	}
+	if routeAlreadyExists(output, err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func routeGetField(output, name string) (string, bool) {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.EqualFold(strings.TrimSuffix(fields[0], ":"), name) {
+			return fields[1], true
+		}
+	}
+	return "", false
+}
+
+func addDefaultRouteIfMissing(gateway, bridgeName string) (bool, error) {
+	output, err := syncRunCommand("/sbin/route", "add", "default", gateway)
+	if err == nil {
+		return true, nil
+	}
+	if !routeAlreadyExists(output, err) {
+		return false, err
+	}
+
+	existingOutput, inspectErr := syncRunCommand("/sbin/route", "-n", "get", "default")
+	if inspectErr != nil {
+		return false, fmt.Errorf("inspect existing default route: %w", inspectErr)
+	}
+	existingGateway, found := routeGetField(existingOutput, "gateway")
+	if !found {
+		return false, fmt.Errorf("inspect existing default route: gateway not found")
+	}
+	if existingGateway != gateway {
+		return false, fmt.Errorf(
+			"default route already exists via %s, requested %s",
+			existingGateway,
+			gateway,
+		)
+	}
+	existingInterface, found := routeGetField(existingOutput, "interface")
+	if !found {
+		return false, fmt.Errorf("inspect existing default route: interface not found")
+	}
+	if existingInterface != bridgeName {
+		return false, fmt.Errorf(
+			"default route already exists on interface %s, requested %s",
+			existingInterface,
+			bridgeName,
+		)
+	}
+	return false, nil
+}
+
 func deleteRouteIfPresent(args ...string) error {
 	output, err := syncRunCommand("/sbin/route", args...)
 	if err != nil && !routeIsMissing(output, err) {

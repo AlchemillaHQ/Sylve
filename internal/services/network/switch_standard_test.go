@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,6 +30,7 @@ type syncStubSet struct {
 	runCommand              func(string, ...string) (string, error)
 	runCommandAllowExitCode func(string, []int, ...string) (string, error)
 	runCommandWithContext   func(context.Context, string, ...string) (string, error)
+	stopDhclient            func(string) error
 }
 
 func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
@@ -41,6 +43,7 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	origRun := syncRunCommand
 	origRunAllowExitCode := syncRunCommandAllowExitCode
 	origRunWithContext := syncRunCommandWithContext
+	origStopDhclient := syncStopDhclient
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
 		syncCreateBridge = origCreate
@@ -49,6 +52,7 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 		syncRunCommand = origRun
 		syncRunCommandAllowExitCode = origRunAllowExitCode
 		syncRunCommandWithContext = origRunWithContext
+		syncStopDhclient = origStopDhclient
 	})
 
 	if stubs.ifaceGet != nil {
@@ -71,6 +75,9 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	}
 	if stubs.runCommandWithContext != nil {
 		syncRunCommandWithContext = stubs.runCommandWithContext
+	}
+	if stubs.stopDhclient != nil {
+		syncStopDhclient = stubs.stopDhclient
 	}
 }
 
@@ -206,6 +213,90 @@ func TestDisableBridgeMemberOffloadsSkipsTransientInterfaces(t *testing.T) {
 	}
 }
 
+func TestClearBridgeMemberLayer3StopsDHCPAndDeletesEveryAddress(t *testing.T) {
+	var operations []string
+	lookups := 0
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			lookups++
+			if lookups > 1 {
+				return &iface.Interface{Name: name}, nil
+			}
+			return &iface.Interface{
+				Name: name,
+				IPv4: []iface.IPv4{
+					{IP: net.ParseIP("192.0.2.10")},
+					{IP: net.ParseIP("192.0.2.11")},
+				},
+				IPv6: []iface.IPv6{
+					{IP: net.ParseIP("fe80::1")},
+					{IP: net.ParseIP("2001:db8::10")},
+				},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			operations = append(operations, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			operations = append(operations, "stop-dhclient "+name)
+			return nil
+		},
+	})
+
+	if err := clearBridgeMemberLayer3("em0"); err != nil {
+		t.Fatalf("clear bridge member layer 3: %v", err)
+	}
+	if len(operations) == 0 || operations[0] != "stop-dhclient em0" {
+		t.Fatalf("DHCP must stop before address cleanup, operations: %v", operations)
+	}
+	for _, expected := range []string{
+		"/sbin/ifconfig em0 inet6 -auto_linklocal -accept_rtadv",
+		"/sbin/ifconfig em0 inet 192.0.2.10 delete",
+		"/sbin/ifconfig em0 inet 192.0.2.11 delete",
+		"/sbin/ifconfig em0 inet6 fe80::1%em0 delete",
+		"/sbin/ifconfig em0 inet6 2001:db8::10 delete",
+	} {
+		if commandIndex(operations, expected) == -1 {
+			t.Fatalf("missing %q in operations: %v", expected, operations)
+		}
+	}
+}
+
+func TestAddBridgeMemberClearsOnlyVLANMemberLayer3(t *testing.T) {
+	var commands []string
+	var stopped []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			stopped = append(stopped, name)
+			return nil
+		},
+	})
+
+	if err := addBridgeMember("testbridge0", "em0", 1500, 100, false); err != nil {
+		t.Fatalf("add VLAN bridge member: %v", err)
+	}
+	if len(stopped) != 1 || stopped[0] != "em0.100" {
+		t.Fatalf("stopped DHCP clients = %v, want only em0.100", stopped)
+	}
+	if commandIndex(commands, "/sbin/ifconfig em0.100 inet6 -auto_linklocal -accept_rtadv") == -1 {
+		t.Fatalf("VLAN member was not prepared as layer 2: %v", commands)
+	}
+	for _, command := range commands {
+		if strings.HasPrefix(command, "/sbin/ifconfig em0 inet ") ||
+			strings.HasPrefix(command, "/sbin/ifconfig em0 inet6 ") {
+			t.Fatalf("parent interface address configuration was changed: %v", commands)
+		}
+	}
+}
+
 func TestAddBridgeMemberDisablesOffloadsBeforeAttachment(t *testing.T) {
 	var commands []string
 	stubSyncFunctions(t, syncStubSet{
@@ -221,6 +312,7 @@ func TestAddBridgeMemberDisablesOffloadsBeforeAttachment(t *testing.T) {
 			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
 			return "", nil
 		},
+		stopDhclient: func(string) error { return nil },
 	})
 
 	if err := addBridgeMember("testbridge0", "testport0", 0, 0, true); err != nil {
@@ -680,6 +772,49 @@ func TestSyncStandardSwitchesSyncReturnsCreateError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "sync_standard_switches: failed_to_create vm-s5: create failed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSyncStandardSwitchesContinuesAfterOneSwitchFails(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	switches := []networkModels.StandardSwitch{
+		{Name: "broken", BridgeName: "vm-broken"},
+		{Name: "healthy", BridgeName: "vm-healthy"},
+	}
+	for index := range switches {
+		if err := db.Create(&switches[index]).Error; err != nil {
+			t.Fatalf("seed switch %s: %v", switches[index].Name, err)
+		}
+	}
+
+	var created []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(string) (*iface.Interface, error) {
+			return nil, errors.New("interface not found")
+		},
+		createBridge: func(sw networkModels.StandardSwitch) error {
+			created = append(created, sw.BridgeName)
+			if sw.BridgeName == "vm-broken" {
+				return errors.New("create failed")
+			}
+			return nil
+		},
+	})
+
+	err := svc.SyncStandardSwitches(nil, "sync")
+	if err == nil || !strings.Contains(err.Error(), "failed_to_create vm-broken") {
+		t.Fatalf("expected vm-broken error, got %v", err)
+	}
+	createdSet := make(map[string]bool, len(created))
+	for _, bridgeName := range created {
+		createdSet[bridgeName] = true
+	}
+	if len(created) != 2 || !createdSet["vm-broken"] || !createdSet["vm-healthy"] {
+		t.Fatalf("created bridges = %v, want both switches attempted", created)
 	}
 }
 
@@ -2204,6 +2339,141 @@ func TestEditStandardSwitchRollsBackDatabaseAndRestoresRuntime(t *testing.T) {
 	}
 }
 
+func TestEditStandardSwitchCreatesUpdatedRuntimeWhenBridgeIsMissing(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	sw := networkModels.StandardSwitch{
+		Name:        "missing-runtime-edit",
+		BridgeName:  "vm-missing-edit",
+		MTU:         1500,
+		DisableIPv6: true,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+
+	var created []networkModels.StandardSwitch
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(string) (*iface.Interface, error) {
+			return nil, errors.New("interface not found")
+		},
+		createBridge: func(candidate networkModels.StandardSwitch) error {
+			created = append(created, candidate)
+			return nil
+		},
+		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error {
+			t.Fatal("missing runtime must be created, not edited")
+			return nil
+		},
+	})
+
+	err := svc.EditStandardSwitch(
+		sw.ID,
+		9000,
+		0,
+		0,
+		0,
+		0,
+		0,
+		[]string{},
+		true,
+		false,
+		true,
+		false,
+		false,
+		true,
+		networkModels.StandardSwitchManualAddresses{},
+	)
+	if err != nil {
+		t.Fatalf("edit missing runtime: %v", err)
+	}
+	if len(created) != 1 || created[0].MTU != 9000 || !created[0].Private {
+		t.Fatalf("created runtime = %#v, want updated MTU/private state", created)
+	}
+
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, sw.ID).Error; err != nil {
+		t.Fatalf("reload switch: %v", err)
+	}
+	if persisted.MTU != 9000 || !persisted.Private {
+		t.Fatalf("persisted switch = %#v, want updated MTU/private state", persisted)
+	}
+}
+
+func TestEditStandardSwitchMissingRuntimeFailureRestoresPreviousWithoutDelete(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	sw := networkModels.StandardSwitch{
+		Name:        "missing-runtime-rollback",
+		BridgeName:  "vm-missing-rb",
+		MTU:         1500,
+		DisableIPv6: true,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+
+	var created []networkModels.StandardSwitch
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(string) (*iface.Interface, error) {
+			return nil, errors.New("interface not found")
+		},
+		createBridge: func(candidate networkModels.StandardSwitch) error {
+			created = append(created, candidate)
+			if len(created) == 1 {
+				return errors.New("runtime create failed")
+			}
+			return nil
+		},
+		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error {
+			t.Fatal("missing runtime must be created, not edited")
+			return nil
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error {
+			t.Fatal("failed create cleanup must not delete pre-existing routes")
+			return nil
+		},
+	})
+
+	err := svc.EditStandardSwitch(
+		sw.ID,
+		9000,
+		0,
+		0,
+		0,
+		0,
+		0,
+		[]string{},
+		false,
+		false,
+		true,
+		false,
+		false,
+		true,
+		networkModels.StandardSwitchManualAddresses{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "runtime create failed") {
+		t.Fatalf("expected runtime create failure, got %v", err)
+	}
+	if len(created) != 2 || created[0].MTU != 9000 || created[1].MTU != 1500 {
+		t.Fatalf("create attempts = %#v, want updated then previous runtime", created)
+	}
+
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, sw.ID).Error; err != nil {
+		t.Fatalf("reload switch: %v", err)
+	}
+	if persisted.MTU != 1500 {
+		t.Fatalf("database update was not rolled back: MTU=%d", persisted.MTU)
+	}
+}
+
 func TestDeleteStandardBridgeDestroysEveryManagedVLAN(t *testing.T) {
 	var commands []string
 	stubSyncFunctions(t, syncStubSet{
@@ -2275,6 +2545,225 @@ func TestCreateStandardBridgeDefaultsLegacyZeroMTU(t *testing.T) {
 	t.Fatalf("expected legacy zero MTU to normalize to 1500, commands: %v", commands)
 }
 
+func TestCreateStandardBridgeToleratesExistingDefaultRoute(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			switch full {
+			case "/sbin/ifconfig bridge create":
+				return "bridge301\n", nil
+			case "/sbin/route add default 192.0.2.254":
+				return "add net default: gateway 192.0.2.254: route already in table", errors.New("exit status 1")
+			case "/sbin/route -n get default":
+				return "route to: 0.0.0.0\ngateway: 192.0.2.254\ninterface: vm-existing-def\n", nil
+			default:
+				return "", nil
+			}
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:          "existing-default",
+		BridgeName:    "vm-existing-def",
+		MTU:           1500,
+		NetworkManual: "192.0.2.1/24",
+		GatewayManual: "192.0.2.254",
+		DefaultRoute:  true,
+		DisableIPv6:   true,
+	}
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("existing default route must be idempotent: %v", err)
+	}
+	if commandIndex(commands, "/sbin/route add default 192.0.2.254") == -1 {
+		t.Fatalf("default route was not attempted, commands: %v", commands)
+	}
+}
+
+func TestCreateStandardBridgeRejectsExistingDefaultRouteOnWrongInterface(t *testing.T) {
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			switch full {
+			case "/sbin/ifconfig bridge create":
+				return "bridge305\n", nil
+			case "/sbin/route add default 192.0.2.254":
+				return "route already in table", errors.New("exit status 1")
+			case "/sbin/route -n get default":
+				return "route to: 0.0.0.0\ngateway: 192.0.2.254\ninterface: em0\n", nil
+			default:
+				return "", nil
+			}
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:          "wrong-default-interface",
+		BridgeName:    "vm-wrong-def-if",
+		MTU:           1500,
+		NetworkManual: "192.0.2.1/24",
+		GatewayManual: "192.0.2.254",
+		DefaultRoute:  true,
+		DisableIPv6:   true,
+	}
+	err := createStandardBridge(sw)
+	if err == nil || !strings.Contains(err.Error(), "default route already exists on interface em0") {
+		t.Fatalf("expected wrong-interface default route error, got %v", err)
+	}
+}
+
+func TestCreateStandardBridgeInstallsRoutesAfterMemberAddressRemoval(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge304\n", nil
+			}
+			return "", nil
+		},
+		stopDhclient: func(string) error { return nil },
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:          "route-after-member",
+		BridgeName:    "vm-route-member",
+		MTU:           1500,
+		NetworkManual: "192.0.2.1/24",
+		GatewayManual: "192.0.2.254",
+		DefaultRoute:  true,
+		DisableIPv6:   true,
+		Ports:         []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create standard bridge: %v", err)
+	}
+
+	attachIndex := commandIndex(commands, "/sbin/ifconfig vm-route-member addm em0 up")
+	networkRouteIndex := commandIndex(commands, "/sbin/route add -net 192.0.2.1/24 192.0.2.254")
+	defaultRouteIndex := commandIndex(commands, "/sbin/route add default 192.0.2.254")
+	if attachIndex == -1 || networkRouteIndex <= attachIndex || defaultRouteIndex <= attachIndex {
+		t.Fatalf("routes must be installed after member attachment, commands: %v", commands)
+	}
+}
+
+func TestEditStandardBridgeInstallsRoutesAfterMemberAddressRemoval(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			commands = append(commands, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+		stopDhclient: func(string) error { return nil },
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "route-before-edit",
+		BridgeName:  "vm-route-edit",
+		MTU:         1500,
+		DisableIPv6: true,
+	}
+	newSw := oldSw
+	newSw.Name = "route-after-edit"
+	newSw.NetworkManual = "192.0.2.1/24"
+	newSw.GatewayManual = "192.0.2.254"
+	newSw.DefaultRoute = true
+	newSw.Ports = []networkModels.NetworkPort{{Name: "em0"}}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("edit standard bridge: %v", err)
+	}
+
+	attachIndex := commandIndex(commands, "/sbin/ifconfig vm-route-edit addm em0 up")
+	networkRouteIndex := commandIndex(commands, "/sbin/route add -net 192.0.2.1/24 192.0.2.254")
+	defaultRouteIndex := commandIndex(commands, "/sbin/route add default 192.0.2.254")
+	if attachIndex == -1 || networkRouteIndex <= attachIndex || defaultRouteIndex <= attachIndex {
+		t.Fatalf("routes must be installed after member attachment, commands: %v", commands)
+	}
+}
+
+func TestCreateStandardBridgeDoesNotDeletePreexistingRouteDuringCleanup(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			switch full {
+			case "/sbin/ifconfig bridge create":
+				return "bridge302\n", nil
+			case "/sbin/route add -net 192.0.2.1/24 192.0.2.254",
+				"/sbin/route add default 192.0.2.254":
+				return "route already in table", errors.New("exit status 1")
+			case "/sbin/route -n get default":
+				return "route to: 0.0.0.0\ngateway: 192.0.2.254\ninterface: vm-existing-cleanup\n", nil
+			case "/sbin/route -6 add -net 2001:db8::1/64 2001:db8::fe":
+				return "", errors.New("IPv6 route failed")
+			default:
+				return "", nil
+			}
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:           "existing-route-cleanup",
+		BridgeName:     "vm-existing-cleanup",
+		MTU:            1500,
+		NetworkManual:  "192.0.2.1/24",
+		GatewayManual:  "192.0.2.254",
+		Network6Manual: "2001:db8::1/64",
+		Gateway6Manual: "2001:db8::fe",
+		DefaultRoute:   true,
+	}
+	if err := createStandardBridge(sw); err == nil || !strings.Contains(err.Error(), "IPv6 route failed") {
+		t.Fatalf("expected later bridge failure, got %v", err)
+	}
+	for _, command := range commands {
+		if strings.HasPrefix(command, "/sbin/route delete") {
+			t.Fatalf("cleanup deleted a route it did not add: %v", commands)
+		}
+	}
+}
+
+func TestCreateStandardBridgeRejectsConflictingDefaultRoute(t *testing.T) {
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			switch full {
+			case "/sbin/ifconfig bridge create":
+				return "bridge303\n", nil
+			case "/sbin/route add default 192.0.2.254":
+				return "route already in table", errors.New("exit status 1")
+			case "/sbin/route -n get default":
+				return "route to: 0.0.0.0\ngateway: 198.51.100.1\ninterface: em0\n", nil
+			default:
+				return "", nil
+			}
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:          "conflicting-default",
+		BridgeName:    "vm-conflict-def",
+		MTU:           1500,
+		NetworkManual: "192.0.2.1/24",
+		GatewayManual: "192.0.2.254",
+		DefaultRoute:  true,
+		DisableIPv6:   true,
+	}
+	err := createStandardBridge(sw)
+	if err == nil || !strings.Contains(err.Error(), "default route already exists via 198.51.100.1") {
+		t.Fatalf("expected conflicting default route error, got %v", err)
+	}
+}
+
 func TestStandardSwitchDeletePreflightDetectsSambaInterfaceUsage(t *testing.T) {
 	svc, db := newNetworkServiceForTest(t, &sambaModels.SambaSettings{})
 	if err := db.Create(&sambaModels.SambaSettings{Interfaces: "lo0, vm-samba"}).Error; err != nil {
@@ -2290,21 +2779,23 @@ func TestStandardSwitchDeletePreflightDetectsSambaInterfaceUsage(t *testing.T) {
 	}
 }
 
-// A bridged switch with a port must still be creatable inside an IPv4-only
-// (VNET) jail, where deleting an IPv6 alias on the port returns EPERM.
-func TestCreateStandardBridgeToleratesPortInet6PermissionDenied(t *testing.T) {
+func TestCreateStandardBridgeToleratesPortIPv6CleanupPermissionDenied(t *testing.T) {
 	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
 		runCommand: func(command string, args ...string) (string, error) {
 			full := strings.Join(append([]string{command}, args...), " ")
 			if full == "/sbin/ifconfig bridge create" {
 				return "bridge200\n", nil
 			}
-			if full == "/sbin/ifconfig em0 inet6 -alias" {
+			if full == "/sbin/ifconfig em0 inet6 -auto_linklocal -accept_rtadv" {
 				return "", fmt.Errorf("command execution failed: exit status 1, " +
 					"output: ifconfig: ioctl (SIOCDIFADDR): permission denied")
 			}
 			return "", nil
 		},
+		stopDhclient: func(string) error { return nil },
 	})
 
 	sw := networkModels.StandardSwitch{
@@ -2314,6 +2805,6 @@ func TestCreateStandardBridgeToleratesPortInet6PermissionDenied(t *testing.T) {
 		Ports:       []networkModels.NetworkPort{{Name: "em0"}},
 	}
 	if err := createStandardBridge(sw); err != nil {
-		t.Fatalf("expected create to tolerate inet6 -alias permission denied, got %v", err)
+		t.Fatalf("expected create to tolerate IPv6 cleanup permission denied, got %v", err)
 	}
 }

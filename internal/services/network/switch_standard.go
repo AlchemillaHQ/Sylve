@@ -10,6 +10,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ var (
 	syncCreateBridge            = createStandardBridge
 	syncEditBridge              = editStandardBridge
 	syncDeleteBridge            = deleteStandardBridge
+	syncStopDhclient            = stopDhclient
 )
 
 // Capability bits that FreeBSD if_bridge synchronizes across its members,
@@ -422,15 +424,26 @@ func (s *Service) EditStandardSwitch(
 	if err != nil {
 		return fmt.Errorf("reload updated standard switch: %w", err)
 	}
-	extraMembers, err := snapshotStandardSwitchExtraMembers(before)
+	extraMembers, runtimeExists, err := snapshotStandardSwitchExtraMembers(before)
 	if err != nil {
 		return err
 	}
+	runtimeApplied := false
 
 	restoreAfterFailure := func(operation string, operationErr error) error {
 		rollbackStandardSwitchTransaction(tx, operation)
 		transactionFinished = true
-		if restoreErr := restoreStandardSwitchEditRuntime(before, after, extraMembers); restoreErr != nil {
+
+		var restoreErr error
+		switch {
+		case runtimeExists:
+			restoreErr = restoreStandardSwitchEditRuntime(before, after, extraMembers)
+		case runtimeApplied:
+			restoreErr = restoreStandardSwitchRuntime(before, after)
+		default:
+			restoreErr = syncCreateBridge(before)
+		}
+		if restoreErr != nil {
 			logger.L.Error().
 				Err(restoreErr).
 				Uint("switchID", id).
@@ -440,9 +453,15 @@ func (s *Service) EditStandardSwitch(
 		return operationErr
 	}
 
-	if err := syncEditBridge(before, after); err != nil {
+	if runtimeExists {
+		err = syncEditBridge(before, after)
+	} else {
+		err = syncCreateBridge(after)
+	}
+	if err != nil {
 		return restoreAfterFailure("update_runtime", fmt.Errorf("apply updated standard switch: %w", err))
 	}
+	runtimeApplied = true
 	if err := tx.Commit().Error; err != nil {
 		return restoreAfterFailure("update_commit", fmt.Errorf("commit standard switch update: %w", err))
 	}
@@ -466,71 +485,13 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			return fmt.Errorf("db_error_checking_switches: %v", err)
 		}
 
-		for _, sw := range switches {
-			dbPorts := make(map[string]bool, len(sw.Ports)*2)
-			for _, port := range sw.Ports {
-				dbPorts[port.Name] = true
-				if sw.VLAN > 0 {
-					dbPorts[fmt.Sprintf("%s.%d", port.Name, sw.VLAN)] = true
-				}
-			}
-
-			preservedMembers := make(map[string]bool)
-			bridgeExists := false
-
-			ifaceObj, err := syncIfaceGet(sw.BridgeName)
-			if err != nil {
-				if !isInterfaceMissingError(err) {
-					return fmt.Errorf("sync_standard_switches: get %s: %v", sw.BridgeName, err)
-				}
-			} else if ifaceObj != nil {
-				bridgeExists = true
-				for _, member := range ifaceObj.BridgeMembers {
-					if dbPorts[member.Name] {
-						continue
-					}
-					preservedMembers[member.Name] = true
-				}
-			}
-
-			if bridgeExists {
-				if err := syncEditBridge(sw, sw); err != nil {
-					return fmt.Errorf("sync_standard_switches: failed_to_reconcile %s: %v", sw.BridgeName, err)
-				}
-			} else {
-				if err := syncCreateBridge(sw); err != nil {
-					return fmt.Errorf("sync_standard_switches: failed_to_create %s: %v", sw.BridgeName, err)
-				}
-			}
-
-			if len(preservedMembers) == 0 {
-				continue
-			}
-
-			freshIface, err := syncIfaceGet(sw.BridgeName)
-			if err != nil {
-				return fmt.Errorf("sync_standard_switches: get %s after reconcile: %v", sw.BridgeName, err)
-			}
-
-			existingMembers := make(map[string]bool)
-			if freshIface != nil {
-				for _, m := range freshIface.BridgeMembers {
-					existingMembers[m.Name] = true
-				}
-			}
-
-			for member := range preservedMembers {
-				if _, exists := existingMembers[member]; !exists {
-					if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "addm", member, "up"); err != nil {
-						return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, sw.BridgeName, err)
-					}
-
-					if _, err := syncRunCommand("/sbin/ifconfig", member, "up"); err != nil {
-						return fmt.Errorf("sync_standard_switches: bring up member %s: %v", member, err)
-					}
-				}
+		var syncErrors []error
+		for _, current := range switches {
+			if err := syncStandardSwitchRuntime(current); err != nil {
+				syncErrors = append(syncErrors, err)
 			}
 		}
+		return errors.Join(syncErrors...)
 
 	case "create":
 		if err := syncCreateBridge(*sw); err != nil {
@@ -554,6 +515,72 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 		}
 		if err := syncEditBridge(*sw, newSw); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
+	dbPorts := make(map[string]bool, len(sw.Ports)*2)
+	for _, port := range sw.Ports {
+		dbPorts[port.Name] = true
+		if sw.VLAN > 0 {
+			dbPorts[fmt.Sprintf("%s.%d", port.Name, sw.VLAN)] = true
+		}
+	}
+
+	preservedMembers := make(map[string]bool)
+	bridgeExists := false
+
+	interfaceObj, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		if !isInterfaceMissingError(err) {
+			return fmt.Errorf("sync_standard_switches: get %s: %v", sw.BridgeName, err)
+		}
+	} else if interfaceObj != nil {
+		bridgeExists = true
+		for _, member := range interfaceObj.BridgeMembers {
+			if dbPorts[member.Name] {
+				continue
+			}
+			preservedMembers[member.Name] = true
+		}
+	}
+
+	if bridgeExists {
+		if err := syncEditBridge(sw, sw); err != nil {
+			return fmt.Errorf("sync_standard_switches: failed_to_reconcile %s: %v", sw.BridgeName, err)
+		}
+	} else if err := syncCreateBridge(sw); err != nil {
+		return fmt.Errorf("sync_standard_switches: failed_to_create %s: %v", sw.BridgeName, err)
+	}
+
+	if len(preservedMembers) == 0 {
+		return nil
+	}
+
+	freshInterface, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		return fmt.Errorf("sync_standard_switches: get %s after reconcile: %v", sw.BridgeName, err)
+	}
+
+	existingMembers := make(map[string]bool)
+	if freshInterface != nil {
+		for _, member := range freshInterface.BridgeMembers {
+			existingMembers[member.Name] = true
+		}
+	}
+
+	for member := range preservedMembers {
+		if _, exists := existingMembers[member]; exists {
+			continue
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "addm", member, "up"); err != nil {
+			return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, sw.BridgeName, err)
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", member, "up"); err != nil {
+			return fmt.Errorf("sync_standard_switches: bring up member %s: %v", member, err)
 		}
 	}
 
@@ -658,22 +685,6 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_network: %v", err)
 		}
 	}
-	if assignableNetwork4 && gateway4 != "" {
-		output, err := syncRunCommand("/sbin/route", "add", "-net", network4, gateway4)
-		if err != nil && !routeAlreadyExists(output, err) {
-			return fmt.Errorf("create_standard_bridge: failed_to_add_network_route: %v", err)
-		}
-		addedNetwork4Route = err == nil
-
-		if sw.DefaultRoute {
-			output, err = syncRunCommand("/sbin/route", "add", "default", gateway4)
-			if err != nil {
-				return fmt.Errorf("create_standard_bridge: failed_to_add_default_route: %v", err)
-			}
-			addedDefault4Route = true
-		}
-	}
-
 	network6, gateway6 := sw.Network(6), sw.Gateway(6)
 	if sw.DisableIPv6 {
 		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
@@ -695,15 +706,6 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
 		}
 	}
-	if assignableNetwork6 && gateway6 != "" && !sw.DisableIPv6 {
-		routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
-		output, err := syncRunCommand("/sbin/route", "-6", "add", "-net", network6, routeGateway6)
-		if err != nil && !routeAlreadyExists(output, err) {
-			return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
-		}
-		addedNetwork6Route = err == nil
-	}
-
 	if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "up"); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_bring_up_bridge: %v", err)
 	}
@@ -712,6 +714,28 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			return fmt.Errorf("create_standard_bridge: %v", err)
 		}
 	}
+
+	if assignableNetwork4 && gateway4 != "" {
+		addedNetwork4Route, err = addRouteIfMissing("add", "-net", network4, gateway4)
+		if err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_add_network_route: %v", err)
+		}
+
+		if sw.DefaultRoute {
+			addedDefault4Route, err = addDefaultRouteIfMissing(gateway4, sw.BridgeName)
+			if err != nil {
+				return fmt.Errorf("create_standard_bridge: failed_to_add_default_route: %v", err)
+			}
+		}
+	}
+	if assignableNetwork6 && gateway6 != "" && !sw.DisableIPv6 {
+		routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
+		addedNetwork6Route, err = addRouteIfMissing("-6", "add", "-net", network6, routeGateway6)
+		if err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
+		}
+	}
+
 	if sw.DHCP {
 		if err := runDhclient(sw.BridgeName, 10); err != nil {
 			return fmt.Errorf("create_standard_bridge: %v", err)
@@ -823,19 +847,6 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		}
 	}
 
-	// Add route if both network and gateway are specified
-	if utils.IsAssignableIPv4CIDR(new4Network) && new4Gateway != "" {
-		if output, err := syncRunCommand("/sbin/route", "add", "-net", new4Network, new4Gateway); err != nil && !routeAlreadyExists(output, err) {
-			return fmt.Errorf("edit_standard_bridge: add route %s via %s: %v", new4Network, new4Gateway, err)
-		}
-
-		if newSw.DefaultRoute {
-			if _, err := syncRunCommand("/sbin/route", "add", "default", new4Gateway); err != nil {
-				return fmt.Errorf("edit_standard_bridge: add default route via %s: %v", new4Gateway, err)
-			}
-		}
-	}
-
 	old6Network, new6Network := oldSw.Network(6), newSw.Network(6)
 	old6Gateway, new6Gateway := oldSw.Gateway(6), newSw.Gateway(6)
 
@@ -885,13 +896,6 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		}
 	}
 
-	if new6Gateway != "" && utils.IsAssignableIPv6CIDR(new6Network) && !newSw.DisableIPv6 {
-		newRouteGateway := normalizeIPv6GatewayForRoute(new6Gateway, br)
-		if output, err := syncRunCommand("/sbin/route", "-6", "add", "-net", new6Network, newRouteGateway); err != nil && !routeAlreadyExists(output, err) {
-			return fmt.Errorf("edit_standard_bridge: add IPv6 route %s via %s: %v", new6Network, new6Gateway, err)
-		}
-	}
-
 	if !newSw.SLAAC {
 		ifaceObj, err := syncIfaceGet(br)
 		if err != nil {
@@ -937,6 +941,24 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	for _, p := range newSw.Ports {
 		if err := addBridgeMember(br, p.Name, newMTU, newSw.VLAN, newSw.DisableBridgeOffloads); err != nil {
 			return fmt.Errorf("edit_standard_bridge: add port %s: %v", p.Name, err)
+		}
+	}
+
+	if utils.IsAssignableIPv4CIDR(new4Network) && new4Gateway != "" {
+		if _, err := addRouteIfMissing("add", "-net", new4Network, new4Gateway); err != nil {
+			return fmt.Errorf("edit_standard_bridge: add route %s via %s: %v", new4Network, new4Gateway, err)
+		}
+
+		if newSw.DefaultRoute {
+			if _, err := addDefaultRouteIfMissing(new4Gateway, br); err != nil {
+				return fmt.Errorf("edit_standard_bridge: add default route via %s: %v", new4Gateway, err)
+			}
+		}
+	}
+	if new6Gateway != "" && utils.IsAssignableIPv6CIDR(new6Network) && !newSw.DisableIPv6 {
+		newRouteGateway := normalizeIPv6GatewayForRoute(new6Gateway, br)
+		if _, err := addRouteIfMissing("-6", "add", "-net", new6Network, newRouteGateway); err != nil {
+			return fmt.Errorf("edit_standard_bridge: add IPv6 route %s via %s: %v", new6Network, new6Gateway, err)
 		}
 	}
 
@@ -1045,6 +1067,72 @@ func disableBridgeMemberOffloads(name string) error {
 	return nil
 }
 
+func ignorableBridgeMemberIPv6CleanupError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "can't assign requested address") ||
+		strings.Contains(message, "address not available") ||
+		strings.Contains(message, "permission denied")
+}
+
+func clearBridgeMemberLayer3(name string) error {
+	if err := syncStopDhclient(name); err != nil {
+		return fmt.Errorf("stop DHCP client on %s: %v", name, err)
+	}
+
+	interfaceObj, err := syncIfaceGet(name)
+	if err != nil {
+		return fmt.Errorf("inspect addresses on %s: %v", name, err)
+	}
+	if interfaceObj == nil {
+		return fmt.Errorf("inspect addresses on %s: interface not found", name)
+	}
+
+	var cleanupErrors []error
+	if _, err := syncRunCommand("/sbin/ifconfig", name, "inet6", "-auto_linklocal", "-accept_rtadv"); err != nil &&
+		!ignorableBridgeMemberIPv6CleanupError(err) {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("disable IPv6 autoconfiguration on %s: %w", name, err))
+	}
+	for _, address := range interfaceObj.IPv4 {
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "inet", address.IP.String(), "delete"); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete IPv4 address %s from %s: %w", address.IP, name, err))
+		}
+	}
+	for _, address := range interfaceObj.IPv6 {
+		ip := address.IP.String()
+		if strings.HasPrefix(strings.ToLower(ip), "fe80:") {
+			ip += "%" + name
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "inet6", ip, "delete"); err != nil &&
+			!ignorableBridgeMemberIPv6CleanupError(err) {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete IPv6 address %s from %s: %w", ip, name, err))
+		}
+	}
+	if err := errors.Join(cleanupErrors...); err != nil {
+		return err
+	}
+
+	freshInterface, err := syncIfaceGet(name)
+	if err != nil {
+		return fmt.Errorf("verify addresses on %s: %v", name, err)
+	}
+	if freshInterface == nil {
+		return fmt.Errorf("verify addresses on %s: interface not found", name)
+	}
+	if len(freshInterface.IPv4) > 0 || len(freshInterface.IPv6) > 0 {
+		return fmt.Errorf(
+			"verify addresses on %s: %d IPv4 and %d IPv6 addresses remain",
+			name,
+			len(freshInterface.IPv4),
+			len(freshInterface.IPv6),
+		)
+	}
+
+	return nil
+}
+
 func addBridgeMember(br, portName string, mtu, vlan int, disableOffloads bool) error {
 	if disableOffloads {
 		if err := disableBridgeMemberOffloads(portName); err != nil {
@@ -1085,23 +1173,8 @@ func addBridgeMember(br, portName string, mtu, vlan int, disableOffloads bool) e
 		}
 	}
 
-	portsToClear := map[string]bool{portName: true}
-	if targetPort != portName {
-		portsToClear[targetPort] = true
-	}
-
-	for port := range portsToClear {
-		if _, err := syncRunCommand("/sbin/ifconfig", port, "inet", "-alias"); err != nil {
-			return fmt.Errorf("clear inet on %s: %v", port, err)
-		}
-		// An IPv4-only (VNET) jail rejects deleting an IPv6 address with
-		// EPERM ("permission denied"); there is nothing to clear in that
-		// case, so treat it as non-fatal like the "no address" case above.
-		if _, err := syncRunCommand("/sbin/ifconfig", port, "inet6", "-alias"); err != nil &&
-			!strings.Contains(err.Error(), "Can't assign requested address") &&
-			!strings.Contains(err.Error(), "permission denied") {
-			return fmt.Errorf("clear inet6 on %s: %v", port, err)
-		}
+	if err := clearBridgeMemberLayer3(targetPort); err != nil {
+		return fmt.Errorf("clear layer-3 configuration on %s: %v", targetPort, err)
 	}
 
 	if _, err := syncRunCommand("/sbin/ifconfig", br, "addm", targetPort, "up"); err != nil {
