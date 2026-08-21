@@ -10,9 +10,12 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
+	import { generateSimpleLinuxFSTab } from '$lib/utils/jail/jail';
+	import { fstabPlaceholder } from '$lib/utils/placeholders';
 	import { toast } from 'svelte-sonner';
 
 	type DialogType = 'fstab' | 'resolvConf' | 'devfsRules' | 'additionalOptions' | 'metadata';
@@ -22,10 +25,11 @@
 		type: DialogType;
 		jail: Jail;
 		node: string;
+		jailRoot?: string | null;
 		onSaved: () => void | Promise<void>;
 	}
 
-	let { open = $bindable(), type, jail, node, onSaved }: Props = $props();
+	let { open = $bindable(), type, jail, node, jailRoot = null, onSaved }: Props = $props();
 	const related = {
 		fstab: {
 			icon: 'icon-[material-symbols--table-outline]',
@@ -73,15 +77,37 @@
 		return { meta: jail.metadataMeta || '', env: jail.metadataEnv || '' };
 	}
 
+	function initialFstabMode(): 'manual' | 'simple-linux' {
+		if (type !== 'fstab' || !jailRoot) return 'manual';
+		return initialText() === generateSimpleLinuxFSTab(jailRoot) ? 'simple-linux' : 'manual';
+	}
+
 	let info = $derived(related[type]);
 	// This dialog is remounted when its option type changes.
 	let textValue = $state(initialText());
 	let metadataValue = $state(initialMetadata());
+	let fstabMode = $state<'manual' | 'simple-linux'>(initialFstabMode());
 	let saving = $state(false);
 
 	function reset() {
 		textValue = initialText();
 		metadataValue = initialMetadata();
+		fstabMode = initialFstabMode();
+	}
+
+	function setFstabMode(value: string) {
+		if (value === 'simple-linux' && jailRoot) {
+			fstabMode = value;
+			textValue = generateSimpleLinuxFSTab(jailRoot);
+			return;
+		}
+
+		fstabMode = 'manual';
+		textValue = '';
+	}
+
+	function markFstabManual() {
+		fstabMode = 'manual';
 	}
 
 	async function save() {
@@ -162,6 +188,33 @@
 					classes="flex-1 space-y-1.5"
 					textAreaClasses="h-32 w-full"
 				/>
+			</div>
+		{:else if type === 'fstab'}
+			<div class="space-y-2">
+				<CustomValueInput
+					placeholder={fstabPlaceholder}
+					bind:value={textValue}
+					classes="flex-1 space-y-1.5"
+					textAreaClasses="h-60 w-full"
+					type="textarea"
+					onChange={markFstabManual}
+				/>
+
+				<Select.Root type="single" value={fstabMode} onValueChange={setFstabMode}>
+					<Select.Trigger class="h-8 w-full">
+						{fstabMode === 'simple-linux' ? 'Simple Linux' : 'Manual'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="simple-linux" disabled={!jailRoot}>Simple Linux</Select.Item>
+						<Select.Item value="manual">Manual</Select.Item>
+					</Select.Content>
+				</Select.Root>
+				{#if !jailRoot}
+					<p class="text-muted-foreground text-xs">
+						The Simple Linux preset is unavailable because this jail's root mountpoint could not be
+						resolved.
+					</p>
+				{/if}
 			</div>
 		{:else}
 			<CustomValueInput

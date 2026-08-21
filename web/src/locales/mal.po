@@ -113,6 +113,8 @@ msgstr "സ്വിച്ചുകൾ"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
@@ -4185,6 +4187,8 @@ msgstr "MAC തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Simple Linux"
 msgstr "ലളിതമായ ലിനക്സ്"
 
@@ -17502,4 +17506,8 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "Legacy restore points do not record whether the backup was recursive. Before restoring, set \"Recursive backup\" to the value used when this restore point was created."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "The Simple Linux preset is unavailable because this jail's root mountpoint could not be resolved."
 msgstr ""

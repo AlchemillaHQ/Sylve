@@ -87,7 +87,7 @@
 			emulation: '',
 			mac: {
 				open: false,
-				value: '0'
+				value: ''
 			},
 			switchId: '',
 			loading: false

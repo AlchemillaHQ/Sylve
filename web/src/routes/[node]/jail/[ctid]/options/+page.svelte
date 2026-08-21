@@ -12,6 +12,7 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
+	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { isBoolean } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
@@ -36,6 +37,8 @@
 		jailError: APIResponse | null;
 		devFSDisabled: boolean;
 		basicInfoError: APIResponse | null;
+		filesystems: Dataset[];
+		filesystemsError: APIResponse | null;
 	}
 
 	interface JailResourceValue {
@@ -83,6 +86,15 @@
 			!jailState.current.pendingAction
 	);
 	let devFSDisabled = $derived(data.devFSDisabled ?? false);
+	let jailRoot = $derived.by(() => {
+		if (!currentJail) return null;
+		const baseStorage = currentJail.storages.find((storage) => storage.isBase);
+		if (!baseStorage) return null;
+
+		const rootDataset = data.filesystems.find((dataset) => dataset.guid === baseStorage.guid);
+		const mountpoint = rootDataset?.mountpoint.replace(/\/+$/, '') ?? '';
+		return mountpoint.startsWith('/') ? mountpoint : null;
+	});
 
 	let table = $derived({
 		columns: [
@@ -194,6 +206,7 @@
 	onMount(() => {
 		if (data.jailError) handleAPIError(data.jailError);
 		if (data.basicInfoError) handleAPIError(data.basicInfoError);
+		if (data.filesystemsError) handleAPIError(data.filesystemsError);
 	});
 
 	async function reloadJail() {
@@ -285,6 +298,7 @@
 		jail={currentJail}
 		type="fstab"
 		node={data.node}
+		{jailRoot}
 		onSaved={reloadJail}
 	/>
 {/if}
