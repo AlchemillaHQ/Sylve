@@ -78,6 +78,7 @@ func TestJailSnapshotErrorStatus(t *testing.T) {
 		{name: "snapshot missing", err: errors.New("snapshot_not_found: missing"), want: http.StatusNotFound},
 		{name: "wrapped jail missing", err: errors.Join(errors.New("failed_to_get_jail"), gorm.ErrRecordNotFound), want: http.StatusNotFound},
 		{name: "topology", err: errors.New("replication_storage_topology_change_requires_policy_disabled"), want: http.StatusConflict},
+		{name: "replication running", err: errors.New("replication_run_in_progress"), want: http.StatusConflict},
 		{name: "physical snapshot missing", err: errors.New("jail_snapshot_dataset_missing: zroot/jail@snap"), want: http.StatusConflict},
 		{name: "zfs unavailable", err: errors.New("gzfs_not_initialized"), want: http.StatusServiceUnavailable},
 		{name: "unexpected", err: errors.New("failed_to_query_database"), want: http.StatusInternalServerError},

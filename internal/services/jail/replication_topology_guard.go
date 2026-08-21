@@ -3,6 +3,7 @@
 package jail
 
 import (
+	"errors"
 	"fmt"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -16,6 +17,9 @@ func (s *Service) RequireJailStorageTopologyMutable(ctID uint) error {
 		ctID,
 	)
 	if err != nil {
+		if errors.Is(err, clusterService.ErrReplicationRunInProgress) {
+			return err
+		}
 		return fmt.Errorf("replication_topology_check_failed: %w", err)
 	}
 	if !allowed {

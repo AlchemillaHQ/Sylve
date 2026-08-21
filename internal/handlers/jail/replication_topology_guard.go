@@ -21,7 +21,10 @@ func RequireJailReplicationTopologyMutable(jailService *jail.Service, parameter 
 		if err := jailService.RequireJailStorageTopologyMutable(ctID); err != nil {
 			status := http.StatusInternalServerError
 			message := "replication_topology_check_failed"
-			if strings.Contains(err.Error(), "replication_storage_topology_change_requires_policy_disabled") {
+			if strings.Contains(err.Error(), "replication_run_in_progress") {
+				status = http.StatusConflict
+				message = "replication_run_in_progress"
+			} else if strings.Contains(err.Error(), "replication_storage_topology_change_requires_policy_disabled") {
 				status = http.StatusConflict
 				message = "replication_storage_topology_change_requires_policy_disabled"
 			}

@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,13 +19,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrReplicationRunInProgress prevents destructive storage mutations from
+// racing the final transfer or cleanup of a disabled replication policy.
+var ErrReplicationRunInProgress = errors.New("replication_run_in_progress")
+
 func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
 	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "")
 }
 
 // CanMutateProtectedGuestStorageTopology fails closed while replication is
-// enabled or a durable guest operation is active. Storage changes require
-// disabling protection, changing topology, then re-enabling/reseeding.
+// enabled, a replication run is still finishing, or a durable guest operation
+// is active. Storage changes require disabling protection, waiting for an
+// active run to finish, changing topology, then re-enabling/reseeding.
 func CanMutateProtectedGuestStorageTopology(db *gorm.DB, guestType string, guestID uint) (bool, error) {
 	if db == nil || guestID == 0 {
 		return false, fmt.Errorf("replication_topology_guard_input_invalid")
@@ -43,13 +49,32 @@ func CanMutateProtectedGuestStorageTopology(db *gorm.DB, guestType string, guest
 			return false, nil
 		}
 	}
-	var count int64
-	if err := db.Model(&clusterModels.ReplicationPolicy{}).
-		Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).
-		Count(&count).Error; err != nil {
+	var policy clusterModels.ReplicationPolicy
+	result := db.Select("id", "enabled").
+		Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+		Limit(1).
+		Find(&policy)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return true, nil
+	}
+	if policy.Enabled {
+		return false, nil
+	}
+
+	var running int64
+	if err := db.Model(&clusterModels.ReplicationRunOperation{}).
+		Where("policy_id = ? AND state = ?", policy.ID, clusterModels.ReplicationRunOperationRunning).
+		Count(&running).Error; err != nil {
 		return false, err
 	}
-	return count == 0, nil
+	if running != 0 {
+		return false, ErrReplicationRunInProgress
+	}
+
+	return true, nil
 }
 
 // CanNodeMutateProtectedGuestForTransition is the narrowly scoped bypass for

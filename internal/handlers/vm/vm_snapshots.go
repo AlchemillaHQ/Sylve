@@ -62,6 +62,7 @@ func vmSnapshotErrorStatus(err error) int {
 	case "snapshot_not_found", "vm_not_found":
 		return http.StatusNotFound
 	case "replication_storage_topology_change_requires_policy_disabled",
+		"replication_run_in_progress",
 		"vm_snapshot_requires_zfs_storage",
 		"vm_snapshot_root_dataset_not_found",
 		"snapshot_vm_json_not_found",

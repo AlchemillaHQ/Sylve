@@ -1140,6 +1140,9 @@ func (s *Service) requireVMStorageTopologyMutable(rid uint) error {
 		rid,
 	)
 	if err != nil {
+		if errors.Is(err, clusterService.ErrReplicationRunInProgress) {
+			return err
+		}
 		return fmt.Errorf("replication_topology_check_failed: %w", err)
 	}
 	if !allowed {

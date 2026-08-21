@@ -97,6 +97,7 @@ func vmStorageErrorStatus(err error) int {
 		return http.StatusNotFound
 	case vmStorageErrorHasCode(codes,
 		"replication_storage_topology_change_requires_policy_disabled",
+		"replication_run_in_progress",
 		"domain_state_not_shutoff", "boot_order_index_already_in_use",
 		"storage_dataset_already_exists", "zvol_dataset_already_attached",
 		"filesystem_target_already_in_use", "insufficient_space_in_pool",

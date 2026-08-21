@@ -267,6 +267,7 @@ func TestStorageHandlerMapsServiceErrors(t *testing.T) {
 		{name: "nested missing pool", err: errors.New("failed_to_create_storage_parent: pool_not_found: missing"), wantStatus: http.StatusNotFound},
 		{name: "nested capacity conflict", err: errors.New("failed_to_create_vm_disk: insufficient_space_in_pool: tank"), wantStatus: http.StatusConflict},
 		{name: "topology conflict", err: errors.New("replication_storage_topology_change_requires_policy_disabled"), wantStatus: http.StatusConflict},
+		{name: "replication running", err: errors.New("replication_run_in_progress"), wantStatus: http.StatusConflict},
 		{name: "unavailable", err: errors.New("failed_to_create_vm_disk: gzfs_not_initialized"), wantStatus: http.StatusServiceUnavailable},
 		{name: "internal", err: errors.New("failed_to_commit_storage_metadata"), wantStatus: http.StatusInternalServerError},
 	}

@@ -9,11 +9,47 @@
 package cluster
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
+
+func TestStorageTopologyMutationBlocksOnlyRunningReplication(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{})
+	policy := clusterModels.ReplicationPolicy{
+		ID: 901, Name: "disabled-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 902, Enabled: false,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("create disabled replication policy: %v", err)
+	}
+	operation := clusterModels.ReplicationRunOperation{
+		PolicyID: 901, Token: "replication:node-a:running", State: clusterModels.ReplicationRunOperationRunning,
+		HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatalf("create running replication operation: %v", err)
+	}
+
+	allowed, err := CanMutateProtectedGuestStorageTopology(
+		db, clusterModels.ReplicationGuestTypeVM, policy.GuestID,
+	)
+	if allowed || !errors.Is(err, ErrReplicationRunInProgress) {
+		t.Fatalf("running replication allowed topology mutation: allowed=%v err=%v", allowed, err)
+	}
+
+	if err := db.Model(&operation).Update("state", clusterModels.ReplicationRunOperationQueued).Error; err != nil {
+		t.Fatalf("mark replication operation queued: %v", err)
+	}
+	allowed, err = CanMutateProtectedGuestStorageTopology(
+		db, clusterModels.ReplicationGuestTypeVM, policy.GuestID,
+	)
+	if err != nil || !allowed {
+		t.Fatalf("queued replication blocked topology mutation: allowed=%v err=%v", allowed, err)
+	}
+}
 
 func TestCanNodeMutateProtectedGuestNoPolicy(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})

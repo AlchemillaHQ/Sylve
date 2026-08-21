@@ -79,6 +79,7 @@ func TestVMSnapshotErrorStatus(t *testing.T) {
 		{name: "snapshot missing", err: errors.New("snapshot_not_found: missing"), want: http.StatusNotFound},
 		{name: "wrapped VM missing", err: errors.Join(errors.New("failed_to_get_vm"), gorm.ErrRecordNotFound), want: http.StatusNotFound},
 		{name: "topology", err: errors.New("replication_storage_topology_change_requires_policy_disabled"), want: http.StatusConflict},
+		{name: "replication running", err: errors.New("replication_run_in_progress"), want: http.StatusConflict},
 		{name: "physical snapshot missing", err: errors.New("vm_snapshot_dataset_missing: zroot/vm@snap"), want: http.StatusConflict},
 		{name: "wrapped mountpoint", err: errors.New("failed_to_write_vm_json_before_snapshot: filesystem_dataset_mountpoint_not_usable"), want: http.StatusConflict},
 		{name: "libvirt unavailable", err: errors.New("libvirt_connection_unavailable: refused"), want: http.StatusServiceUnavailable},

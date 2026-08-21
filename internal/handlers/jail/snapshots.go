@@ -63,6 +63,7 @@ func jailSnapshotErrorStatus(err error) int {
 	case "jail_not_found", "snapshot_not_found":
 		return http.StatusNotFound
 	case "replication_storage_topology_change_requires_policy_disabled",
+		"replication_run_in_progress",
 		"jail_base_storage_not_found",
 		"jail_base_pool_not_found",
 		"jail_snapshot_root_dataset_mismatch",
