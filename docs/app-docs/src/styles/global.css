@@ -584,6 +584,38 @@ expressive-code .frame {
 @media (max-width: 49.99rem) {
   .page > header.header > .header {
     width: 100%;
+    padding-inline-end: calc(
+      var(--sl-nav-gap) + var(--sl-nav-pad-x) + var(--sl-menu-button-size)
+    );
+  }
+
+  .page > header.header > .header > :nth-child(2) {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+  }
+
+  site-search {
+    width: auto;
+  }
+
+  site-search > button,
+  site-search > button:hover {
+    justify-content: center;
+    width: var(--sl-menu-button-size);
+    height: var(--sl-menu-button-size);
+    min-height: var(--sl-menu-button-size);
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--sl-color-white);
+    color: var(--sl-color-black);
+    box-shadow: var(--sl-shadow-md);
+  }
+
+  [data-theme="light"] site-search > button,
+  [data-theme="light"] site-search > button:hover {
+    background: var(--sl-color-black);
+    color: var(--sl-color-white);
   }
 
   .docs-brand {
