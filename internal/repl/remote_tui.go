@@ -21,9 +21,10 @@ import (
 )
 
 type remoteResponse struct {
-	output string
-	err    string
-	close  bool
+	output        string
+	err           string
+	close         bool
+	serialConsole *consoleprotocol.VMSerialConsoleLaunch
 }
 
 type remoteModel struct {
@@ -82,9 +83,10 @@ func (m remoteModel) sendCommand(cmd string) remoteResponse {
 	}
 
 	return remoteResponse{
-		output: resp.Output,
-		err:    resp.Error,
-		close:  resp.Close,
+		output:        resp.Output,
+		err:           resp.Error,
+		close:         resp.Close,
+		serialConsole: resp.SerialConsole,
 	}
 }
 
@@ -125,7 +127,20 @@ func (m remoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.conn.Close()
 			return m, tea.Quit
 		}
+		if msg.serialConsole != nil {
+			return m, execLocalVMSerialConsole(*msg.serialConsole)
+		}
 
+		return m, nil
+
+	case vmSerialConsoleExitedMsg:
+		if msg.err != nil {
+			m.messages = append(m.messages, styledErrorf("Serial console ended: %v (the device may already be in use)", msg.err))
+		} else {
+			m.messages = append(m.messages, styledSuccessf("Serial console closed."))
+		}
+		m.viewport.SetContent(m.renderContent())
+		m.viewport.GotoBottom()
 		return m, nil
 
 	case statusMsg:

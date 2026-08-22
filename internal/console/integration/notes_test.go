@@ -196,6 +196,12 @@ func runREPLCommandFailure(t *testing.T, socketPath, command string) string {
 		if strings.Contains(strings.ToLower(response.Output), "error ") {
 			return response.Output
 		}
+		var jsonFailure struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(response.Output), &jsonFailure); err == nil && strings.TrimSpace(jsonFailure.Error) != "" {
+			return response.Output
+		}
 		t.Fatalf("REPL command %q unexpectedly succeeded: %s", command, response.Output)
 	}
 	return response.Error

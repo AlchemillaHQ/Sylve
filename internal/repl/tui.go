@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -38,6 +39,26 @@ type tuiModel struct {
 	height      int
 	hostname    string
 	status      consoleprotocol.StatusSnapshot
+}
+
+type vmSerialConsoleExitedMsg struct {
+	err error
+}
+
+var newLocalVMSerialConsoleCommand = func(launch consoleprotocol.VMSerialConsoleLaunch) *exec.Cmd {
+	command := exec.Command("cu", "-l", launch.DevicePath, "-s", launch.BaudRate)
+	term := strings.TrimSpace(os.Getenv("TERM"))
+	if term == "" {
+		term = "xterm"
+	}
+	command.Env = append(os.Environ(), "TERM="+term)
+	return command
+}
+
+func execLocalVMSerialConsole(launch consoleprotocol.VMSerialConsoleLaunch) tea.Cmd {
+	return tea.ExecProcess(newLocalVMSerialConsoleCommand(launch), func(err error) tea.Msg {
+		return vmSerialConsoleExitedMsg{err: err}
+	})
 }
 
 func startTUI(ctx *Context) {
@@ -102,6 +123,16 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, requestStatus(localStatusFetcher(m.ctx), statusRefreshInterval)
 
+	case vmSerialConsoleExitedMsg:
+		if msg.err != nil {
+			m.messages = append(m.messages, styledErrorf("Serial console ended: %v (the device may already be in use)", msg.err))
+		} else {
+			m.messages = append(m.messages, styledSuccessf("Serial console closed."))
+		}
+		m.viewport.SetContent(m.renderContent())
+		m.viewport.GotoBottom()
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "ctrl+d":
@@ -133,6 +164,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if !cont {
 				return m, tea.Quit
+			}
+			if launch := m.ctx.takeSerialConsole(); launch != nil {
+				return m, execLocalVMSerialConsole(*launch)
 			}
 
 			return m, nil
@@ -234,7 +268,6 @@ func insertInputRunes(input string, cursorPos int, runes []rune) (string, int) {
 	for _, r := range runes {
 		switch {
 		case unicode.IsSpace(r):
-			// The REPL accepts one command per prompt, so pasted line breaks stay inline.
 			text.WriteByte(' ')
 		case !unicode.IsControl(r):
 			text.WriteRune(r)

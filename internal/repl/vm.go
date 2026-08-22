@@ -30,9 +30,12 @@ type vmCreateResult struct {
 type vmNetworkAttachResult struct {
 	Attached   bool   `json:"attached"`
 	RID        uint   `json:"rid"`
+	NetworkID  uint   `json:"networkId"`
 	SwitchName string `json:"switchName"`
 	Emulation  string `json:"emulation"`
 	MacID      *uint  `json:"macId,omitempty"`
+	MAC        string `json:"mac"`
+	Enabled    bool   `json:"enabled"`
 }
 
 type vmActionResult struct {
@@ -68,16 +71,22 @@ func handleVms(ctx *Context, args []string) {
 	if len(cleanArgs) == 0 {
 		printSubHelp(ctx, "vms", []cmdHelp{
 			{"list", "List all VMs"},
-			{"create --file <path>", "Create a VM from a JSON request file"},
+			{"create [--file <host-path>] --rid <1-9999> --name <name> [--storage-type <none|raw|zvol>] [core flags]", "Create from common flags or strict JSON; flags override JSON and absolute host paths are recommended"},
 			{"get <rid>", "Get VM details"},
 			{"start <rid>", "Start a VM"},
 			{"stop <rid>", "Force-stop a VM"},
 			{"shutdown <rid>", "Gracefully shut down a VM"},
 			{"reboot <rid>", "Reboot a VM"},
-			{"delete <rid> [--delete-macs] [--delete-raw-disks] [--delete-volumes]", "Delete a VM"},
+			{"delete <rid> [--delete-macs] [--delete-raw-disks] [--delete-volumes] [--dry-run]", "Delete or preview a VM; running VMs are force-stopped and backing is retained by default"},
 			{"purge <rid> [--delete-macs]", "Purge an orphaned VM registration"},
+			{"config <command> <rid> [options]", "Manage VM configuration"},
+			{"access <vnc|serial> <rid> [options]", "Inspect VNC or open a preflighted local serial console"},
+			{"storage <list|attach|edit|resize|detach>", "Manage VM storage devices"},
+			{"snapshots <list|create|rollback|delete>", "Manage crash-consistent VM snapshots"},
+			{"templates <list|convert|create|delete>", "Manage VM templates and queued instantiation"},
 			{"networks <rid>", "List networks for a VM"},
 			{"addnet <rid> <switch> <virtio|e1000> [mac_id]", "Attach a network to a powered-off VM"},
+			{"editnet <rid> <network_id> [options]", "Edit a network on a powered-off VM"},
 			{"rmnet <rid> <net_id>", "Remove a network from a powered-off VM"},
 			{"qga send <rid> <command>", "Send a QGA command to a VM"},
 		})
@@ -87,8 +96,11 @@ func handleVms(ctx *Context, args []string) {
 	subCmd := cleanArgs[0]
 	subArgs := cleanArgs[1:]
 
-	// Convenience form: vms <rid> qga send <command>
-	if rid, err := parseVMRID(subCmd); err == nil {
+	if rid, err := parsePositiveUint(subCmd); err == nil {
+		if err := validateVMRID(rid); err != nil {
+			println(ctx, styledErrorf("Invalid RID '%s'", subCmd))
+			return
+		}
 		handleVmsByRID(ctx, rid, subArgs, jsonMode)
 		return
 	}
@@ -134,12 +146,16 @@ func handleVms(ctx *Context, args []string) {
 		vmsAction(ctx, rid, subCmd, jsonMode)
 
 	case "delete":
-		rid, deleteMACs, deleteRawDisks, deleteVolumes, err := parseVMDeleteArgs(subArgs)
+		rid, deleteMACs, deleteRawDisks, deleteVolumes, dryRun, err := parseVMDeleteArgs(subArgs)
 		if err != nil {
 			println(ctx, styledErrorf("%v", err))
 			return
 		}
-		vmsDelete(ctx, rid, deleteMACs, deleteRawDisks, deleteVolumes, jsonMode)
+		if dryRun {
+			vmsDeletePreview(ctx, rid, deleteMACs, deleteRawDisks, deleteVolumes, jsonMode)
+		} else {
+			vmsDelete(ctx, rid, deleteMACs, deleteRawDisks, deleteVolumes, jsonMode)
+		}
 
 	case "purge":
 		rid, deleteMACs, err := parseVMPurgeArgs(subArgs)
@@ -148,6 +164,21 @@ func handleVms(ctx *Context, args []string) {
 			return
 		}
 		vmsPurge(ctx, rid, deleteMACs, jsonMode)
+
+	case "config":
+		handleVMConfig(ctx, subArgs, jsonMode)
+
+	case "access":
+		handleVMAccess(ctx, subArgs, jsonMode)
+
+	case "storage":
+		handleVMStorage(ctx, subArgs, jsonMode)
+
+	case "snapshots":
+		handleVMSnapshots(ctx, subArgs, jsonMode)
+
+	case "templates":
+		handleVMTemplates(ctx, subArgs, jsonMode)
 
 	case "networks":
 		if len(subArgs) != 1 {
@@ -185,6 +216,14 @@ func handleVms(ctx *Context, args []string) {
 			request.MacID = &macID
 		}
 		vmsNetworkAttach(ctx, request, jsonMode)
+
+	case "editnet":
+		request, err := parseVMNetworkUpdateArgs(subArgs)
+		if err != nil {
+			println(ctx, styledErrorf("%v", err))
+			return
+		}
+		vmsNetworkUpdate(ctx, request, jsonMode)
 
 	case "rmnet":
 		if len(subArgs) != 2 {
@@ -258,50 +297,52 @@ func handleVMQGA(ctx *Context, args []string, jsonMode bool) {
 }
 
 func buildConsoleVMCreateRequest(args []string) (libvirtServiceInterfaces.CreateVMRequest, error) {
-	const usage = "Usage: vms create --file <path>"
-	if len(args) != 2 || args[0] != "--file" || strings.TrimSpace(args[1]) == "" {
-		return libvirtServiceInterfaces.CreateVMRequest{}, fmt.Errorf("%s", usage)
-	}
-	return consoleprotocol.LoadVMCreateRequest(args[1])
+	return buildConsoleVMCreateRequestFromArgs(args)
 }
 
-func parseVMDeleteArgs(args []string) (uint, bool, bool, bool, error) {
-	const usage = "Usage: vms delete <rid> [--delete-macs] [--delete-raw-disks] [--delete-volumes]"
+func parseVMDeleteArgs(args []string) (uint, bool, bool, bool, bool, error) {
+	const usage = "Usage: vms delete <rid> [--delete-macs] [--delete-raw-disks] [--delete-volumes] [--dry-run]"
 	if len(args) == 0 {
-		return 0, false, false, false, fmt.Errorf("%s", usage)
+		return 0, false, false, false, false, fmt.Errorf("%s", usage)
 	}
 
 	rid, err := parseVMRID(args[0])
 	if err != nil {
-		return 0, false, false, false, fmt.Errorf("Invalid RID '%s'", args[0])
+		return 0, false, false, false, false, fmt.Errorf("Invalid RID '%s'", args[0])
 	}
 
 	deleteMACs := false
 	deleteRawDisks := false
 	deleteVolumes := false
+	dryRun := false
 	for _, arg := range args[1:] {
 		switch arg {
 		case "--delete-macs":
 			if deleteMACs {
-				return 0, false, false, false, fmt.Errorf("%s", usage)
+				return 0, false, false, false, false, fmt.Errorf("%s", usage)
 			}
 			deleteMACs = true
 		case "--delete-raw-disks":
 			if deleteRawDisks {
-				return 0, false, false, false, fmt.Errorf("%s", usage)
+				return 0, false, false, false, false, fmt.Errorf("%s", usage)
 			}
 			deleteRawDisks = true
 		case "--delete-volumes":
 			if deleteVolumes {
-				return 0, false, false, false, fmt.Errorf("%s", usage)
+				return 0, false, false, false, false, fmt.Errorf("%s", usage)
 			}
 			deleteVolumes = true
+		case "--dry-run":
+			if dryRun {
+				return 0, false, false, false, false, fmt.Errorf("%s", usage)
+			}
+			dryRun = true
 		default:
-			return 0, false, false, false, fmt.Errorf("%s", usage)
+			return 0, false, false, false, false, fmt.Errorf("%s", usage)
 		}
 	}
 
-	return rid, deleteMACs, deleteRawDisks, deleteVolumes, nil
+	return rid, deleteMACs, deleteRawDisks, deleteVolumes, dryRun, nil
 }
 
 func parseVMPurgeArgs(args []string) (uint, bool, error) {
@@ -327,7 +368,14 @@ func parseVMPurgeArgs(args []string) (uint, bool, error) {
 }
 
 func parseVMRID(value string) (uint, error) {
-	return parsePositiveUint(value)
+	rid, err := parsePositiveUint(value)
+	if err != nil {
+		return 0, err
+	}
+	if err := validateVMRID(rid); err != nil {
+		return 0, err
+	}
+	return rid, nil
 }
 
 func parseVMNetworkID(value string) (uint, error) {
@@ -431,16 +479,23 @@ func attachVMNetwork(ctx *Context, request libvirtServiceInterfaces.NetworkAttac
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmNetworkAttachResult{}, fmt.Errorf("vm_service_unavailable")
 	}
-	if _, err := ctx.VirtualMachine.NetworkAttach(request, context.Background()); err != nil {
+	network, err := ctx.VirtualMachine.NetworkAttach(request, context.Background())
+	if err != nil {
 		return vmNetworkAttachResult{}, fmt.Errorf("failed_to_attach_vm_network: %w", err)
+	}
+	if network == nil {
+		return vmNetworkAttachResult{}, fmt.Errorf("network_attach_returned_empty_result")
 	}
 
 	return vmNetworkAttachResult{
 		Attached:   true,
 		RID:        request.RID,
+		NetworkID:  network.ID,
 		SwitchName: request.SwitchName,
-		Emulation:  request.Emulation,
-		MacID:      request.MacID,
+		Emulation:  network.Emulation,
+		MacID:      network.MacID,
+		MAC:        vmNetworkMAC(*network),
+		Enabled:    network.Enable,
 	}, nil
 }
 
@@ -574,7 +629,7 @@ func formatVMNetworks(vm *vmModels.VM) string {
 		return fmt.Sprintf("VM '%s' (RID: %d) has no networks configured.", vm.Name, vm.RID)
 	}
 
-	headers := []string{"NET ID", "SWITCH", "TYPE", "EMUL", "MAC"}
+	headers := []string{"NET ID", "SWITCH", "TYPE", "EMUL", "ENABLED", "MAC"}
 	rows := make([][]string, 0, len(vm.Networks))
 	for _, network := range vm.Networks {
 		mac := "auto"
@@ -594,6 +649,7 @@ func formatVMNetworks(vm *vmModels.VM) string {
 			switchName,
 			network.SwitchType,
 			network.Emulation,
+			strconv.FormatBool(network.Enable),
 			mac,
 		})
 	}
@@ -618,7 +674,7 @@ func vmsList(ctx *Context, jsonMode bool) {
 		vms = []vmModels.VM{}
 	}
 	if jsonMode {
-		println(ctx, mustJSON(vms))
+		println(ctx, mustJSON(redactVMListSecrets(vms)))
 		return
 	}
 	println(ctx, formatVMList(vms))
@@ -644,7 +700,7 @@ func vmsGet(ctx *Context, rid uint, jsonMode bool) {
 		return
 	}
 	if jsonMode {
-		println(ctx, mustJSON(vm))
+		println(ctx, mustJSON(redactVMSecrets(*vm)))
 		return
 	}
 	println(ctx, formatVMDetails(vm))
@@ -750,7 +806,7 @@ func vmsQGASend(ctx *Context, rid uint, command string, jsonMode bool) {
 }
 
 func processVMListSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
-	var request consoleprotocol.VMListPayload
+	var request consoleprotocol.JSONPayload
 	if err := decodeOperationPayload(payload, &request); err != nil {
 		return socketResponse{Error: "invalid_vm_list_request: " + err.Error()}
 	}
@@ -761,11 +817,11 @@ func processVMListSocketRequest(ctx *Context, payload json.RawMessage) socketRes
 	if vms == nil {
 		vms = []vmModels.VM{}
 	}
-	return operationSuccess(request.JSON, vms, formatVMList(vms))
+	return operationSuccess(request.JSON, redactVMListSecrets(vms), formatVMList(vms))
 }
 
 func processVMGetSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
-	var request consoleprotocol.VMGetPayload
+	var request consoleprotocol.VMRIDPayload
 	if err := decodeOperationPayload(payload, &request); err != nil {
 		return socketResponse{Error: "invalid_vm_get_request: " + err.Error()}
 	}
@@ -773,7 +829,7 @@ func processVMGetSocketRequest(ctx *Context, payload json.RawMessage) socketResp
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
-	return operationSuccess(request.JSON, vm, formatVMDetails(vm))
+	return operationSuccess(request.JSON, redactVMSecrets(*vm), formatVMDetails(vm))
 }
 
 func processVMCreateSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
@@ -809,6 +865,9 @@ func processVMDeleteSocketRequest(ctx *Context, payload json.RawMessage) socketR
 	if err := decodeOperationPayload(payload, &request); err != nil {
 		return socketResponse{Error: "invalid_vm_delete_request: " + err.Error()}
 	}
+	if request.DryRun {
+		return processVMDeletePreviewSocketRequest(ctx, request)
+	}
 	result, err := deleteVM(ctx, request.RID, request.DeleteMACs, request.DeleteRawDisks, request.DeleteVolumes)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
@@ -829,7 +888,7 @@ func processVMPurgeSocketRequest(ctx *Context, payload json.RawMessage) socketRe
 }
 
 func processVMNetworksSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
-	var request consoleprotocol.VMNetworksPayload
+	var request consoleprotocol.VMRIDPayload
 	if err := decodeOperationPayload(payload, &request); err != nil {
 		return socketResponse{Error: "invalid_vm_networks_request: " + err.Error()}
 	}

@@ -18,6 +18,7 @@ import (
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
@@ -139,8 +140,7 @@ func TestParseVMConsoleRequest(t *testing.T) {
 		t.Fatalf("parse request: %v", err)
 	}
 	if request.RID != 107 ||
-		request.RIDText != "107" ||
-		request.BaudRate != vmConsoleDefaultBaud ||
+		request.BaudRate != libvirtService.VMSerialConsoleDefaultBaud ||
 		request.DevicePath != "/dev/nmdm107B" {
 		t.Fatalf("request = %+v", request)
 	}
@@ -149,7 +149,7 @@ func TestParseVMConsoleRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse normalized request: %v", err)
 	}
-	if request.RIDText != "107" || request.BaudRate != "9600" {
+	if request.RID != 107 || request.DevicePath != "/dev/nmdm107B" || request.BaudRate != "9600" {
 		t.Fatalf("normalized request = %+v", request)
 	}
 }
@@ -164,6 +164,7 @@ func TestParseVMConsoleRequestRejectsInvalidIdentityAndBaudRate(t *testing.T) {
 		{name: "zero RID", rid: "0", wantCode: "invalid_rid_format"},
 		{name: "negative RID", rid: "-1", wantCode: "invalid_rid_format"},
 		{name: "non-numeric RID", rid: "vm", wantCode: "invalid_rid_format"},
+		{name: "RID above supported range", rid: "10000", wantCode: "invalid_rid_format"},
 		{name: "RID overflow", rid: "4294967296", wantCode: "invalid_rid_format"},
 		{name: "non-numeric baud", rid: "107", baudRate: "fast", wantCode: "invalid_baud_rate"},
 		{name: "baud below minimum", rid: "107", baudRate: "49", wantCode: "invalid_baud_rate"},
@@ -173,7 +174,7 @@ func TestParseVMConsoleRequestRejectsInvalidIdentityAndBaudRate(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := parseVMConsoleRequest(test.rid, test.baudRate)
-			var validationErr *vmConsoleValidationError
+			var validationErr *libvirtService.VMSerialConsoleError
 			if !errors.As(err, &validationErr) {
 				t.Fatalf("error = %v, want validation error", err)
 			}
@@ -181,19 +182,6 @@ func TestParseVMConsoleRequestRejectsInvalidIdentityAndBaudRate(t *testing.T) {
 				t.Fatalf("code = %q, want %q", validationErr.Code, test.wantCode)
 			}
 		})
-	}
-}
-
-func TestVMDomainSupportsConsoleOnlyForRuntimeStates(t *testing.T) {
-	for _, status := range []string{"running", "BLOCKED", " paused ", "shutdown", "pmsuspended"} {
-		if !vmDomainSupportsConsole(status) {
-			t.Fatalf("status %q should support console", status)
-		}
-	}
-	for _, status := range []string{"", "nostate", "shutoff", "crashed", "orphan"} {
-		if vmDomainSupportsConsole(status) {
-			t.Fatalf("status %q should not support console", status)
-		}
 	}
 }
 

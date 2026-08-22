@@ -41,9 +41,10 @@ const (
 )
 
 type VMSnapshotRollbackResult struct {
-	WasRunning bool     `json:"wasRunning"`
-	Restarted  bool     `json:"restarted"`
-	Warnings   []string `json:"warnings"`
+	WasRunning              bool     `json:"wasRunning"`
+	Restarted               bool     `json:"restarted"`
+	NewerSnapshotsDestroyed int64    `json:"newerSnapshotsDestroyed"`
+	Warnings                []string `json:"warnings"`
 }
 
 func detachedVMSnapshotContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -186,6 +187,24 @@ func (s *Service) RollbackVMSnapshot(
 	rid uint,
 	snapshotID uint,
 ) (VMSnapshotRollbackResult, error) {
+	return s.rollbackVMSnapshot(ctx, rid, snapshotID, true)
+}
+
+func (s *Service) RollbackVMSnapshotWithDestroyNewer(
+	ctx context.Context,
+	rid uint,
+	snapshotID uint,
+	destroyNewer bool,
+) (VMSnapshotRollbackResult, error) {
+	return s.rollbackVMSnapshot(ctx, rid, snapshotID, destroyNewer)
+}
+
+func (s *Service) rollbackVMSnapshot(
+	ctx context.Context,
+	rid uint,
+	snapshotID uint,
+	destroyNewer bool,
+) (VMSnapshotRollbackResult, error) {
 	result := VMSnapshotRollbackResult{Warnings: []string{}}
 
 	s.crudMutex.Lock()
@@ -206,6 +225,17 @@ func (s *Service) RollbackVMSnapshot(
 		Where("rid = ? AND id = ?", rid, snapshotID).
 		First(&record).Error; err != nil {
 		return result, fmt.Errorf("snapshot_not_found: %w", err)
+	}
+
+	newerSnapshotCount, err := countNewerVMSnapshotRecords(s.DB, record)
+	if err != nil {
+		return result, err
+	}
+	if newerSnapshotCount > 0 && !destroyNewer {
+		return result, fmt.Errorf(
+			"newer_snapshots_require_acknowledgement: rollback would destroy %d newer snapshot(s); retry with explicit acknowledgement",
+			newerSnapshotCount,
+		)
 	}
 
 	vm, err := s.GetVMByRID(rid)
@@ -246,8 +276,6 @@ func (s *Service) RollbackVMSnapshot(
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
-	// A replication transition can start while preflight waits for the runtime
-	// lock. Re-check both guards under the lock immediately before mutation.
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return result, err
 	}
@@ -281,7 +309,7 @@ func (s *Service) RollbackVMSnapshot(
 		if err != nil {
 			return result, fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
 		}
-		if err := snapshotDataset.Rollback(mutationCtx, true); err != nil {
+		if err := snapshotDataset.Rollback(mutationCtx, destroyNewer); err != nil {
 			return result, fmt.Errorf("failed_to_rollback_snapshot: %w", err)
 		}
 	}
@@ -309,6 +337,7 @@ func (s *Service) RollbackVMSnapshot(
 		Delete(&vmModels.VMSnapshot{}).Error; err != nil {
 		return result, fmt.Errorf("failed_to_prune_newer_snapshot_records: %w", err)
 	}
+	result.NewerSnapshotsDestroyed = newerSnapshotCount
 
 	if err := s.WriteVMJson(rid); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf(
@@ -341,6 +370,27 @@ func (s *Service) RollbackVMSnapshot(
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("vm_snapshot_rollback_%d", rid))
 	return result, nil
+}
+
+func countNewerVMSnapshotRecords(db *gorm.DB, record vmModels.VMSnapshot) (int64, error) {
+	if db == nil {
+		return 0, fmt.Errorf("snapshot_database_not_initialized")
+	}
+
+	var count int64
+	if err := db.Model(&vmModels.VMSnapshot{}).
+		Where(
+			"vm_id = ? AND (created_at > ? OR (created_at = ? AND id > ?))",
+			record.VMID,
+			record.CreatedAt,
+			record.CreatedAt,
+			record.ID,
+		).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed_to_count_newer_snapshot_records: %w", err)
+	}
+
+	return count, nil
 }
 
 func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uint) error {
@@ -384,8 +434,6 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 		return err
 	}
 
-	// Re-check after target discovery so a replication policy cannot become
-	// active between the API middleware and the first destructive ZFS call.
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
@@ -792,7 +840,6 @@ func (s *Service) preflightVMSnapshotRestore(
 	warnings := make([]string, 0)
 	restored.ID = current.ID
 	restored.RID = rid
-	// Name and RID are the live resource identity, not historical settings.
 	restored.Name = current.Name
 
 	normalizedPins, pinWarnings, err := s.normalizeRestoredCPUPinning(rid, restored.CPUPinning)

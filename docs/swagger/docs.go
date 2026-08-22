@@ -33579,6 +33579,9 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
+                "encrypted": {
+                    "type": "boolean"
+                },
                 "jailRootDataset": {
                     "type": "string"
                 },
@@ -37861,6 +37864,9 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_services_libvirt.VMSnapshotRollbackResult": {
             "type": "object",
             "properties": {
+                "newerSnapshotsDestroyed": {
+                    "type": "integer"
+                },
                 "restarted": {
                     "type": "boolean"
                 },

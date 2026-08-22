@@ -21,9 +21,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// VMRemovalResult distinguishes an intentionally retained dataset from a
-// requested cleanup that could not be completed. Once this result is returned,
-// the VM's runtime definition and local identity rows have already been removed.
 type VMRemovalResult struct {
 	Warnings         []string `json:"warnings"`
 	RetainedDatasets []string `json:"retainedDatasets"`
@@ -31,6 +28,8 @@ type VMRemovalResult struct {
 
 type vmStorageRemovalPlan struct {
 	deleteDatasets       []string
+	deleteRawDatasets    []string
+	deleteZVOLDatasets   []string
 	retainedDatasets     []string
 	rootDatasets         []string
 	preserveRoots        map[string]struct{}
@@ -38,10 +37,12 @@ type vmStorageRemovalPlan struct {
 	warnings             []string
 }
 
-// RemoveVMWithWarnings performs the critical runtime and database retirement
-// before attempting optional storage cleanup. Storage, MAC-object, and log-file
-// cleanup errors are reported as warnings because the RID has already been
-// released at that point.
+type vmRemovalPreparation struct {
+	vm       vmModels.VM
+	usedMACs []uint
+	plan     vmStorageRemovalPlan
+}
+
 func (s *Service) RemoveVMWithWarnings(
 	rid uint,
 	cleanUpMacs bool,
@@ -106,10 +107,6 @@ func (s *Service) removeVMWithWarnings(
 		ctx = context.Background()
 	}
 
-	// Follow the CRUD-then-action lock order already used by snapshot rollback.
-	// Keep both locks only through runtime
-	// retirement and the atomic guest-identity transaction; slow optional
-	// cleanup runs after they are released.
 	s.crudMutex.Lock()
 	crudSectionHeld := true
 	defer func() {
@@ -130,48 +127,20 @@ func (s *Service) removeVMWithWarnings(
 		return result, err
 	}
 
-	var vm vmModels.VM
-	if err := s.DB.WithContext(ctx).First(&vm, "rid = ?", rid).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return result, fmt.Errorf("vm_not_found: %d", rid)
-		}
-		return result, fmt.Errorf("failed_to_find_vm: %w", err)
+	prepared, err := s.prepareVMRemoval(ctx, rid, deleteRawDisks, deleteVolumes)
+	if err != nil {
+		return result, err
 	}
-	if err := s.DB.WithContext(ctx).
-		Preload("Dataset").
-		Where("vm_id = ?", vm.ID).
-		Find(&vm.Storages).Error; err != nil {
-		return result, fmt.Errorf("failed_to_find_vm_storages: %w", err)
-	}
-	var snapshots []vmModels.VMSnapshot
-	if err := s.DB.WithContext(ctx).
-		Where("vm_id = ? OR rid = ?", vm.ID, vm.RID).
-		Find(&snapshots).Error; err != nil {
-		return result, fmt.Errorf("failed_to_find_vm_snapshots: %w", err)
-	}
-
-	usedMACs := make([]uint, 0)
-	if err := s.DB.WithContext(ctx).
-		Model(&vmModels.Network{}).
-		Where("vm_id = ? AND mac_id IS NOT NULL", vm.ID).
-		Pluck("mac_id", &usedMACs).Error; err != nil {
-		return result, fmt.Errorf("failed_to_find_vm_mac_ids: %w", err)
-	}
-
-	plan := buildVMStorageRemovalPlan(vm, deleteRawDisks, deleteVolumes)
-	s.discoverOrphanVMStorageRoots(ctx, vm.RID, &plan)
-	addOwnedVMSnapshotsToRemovalPlan(&plan, snapshots)
+	vm := prepared.vm
+	usedMACs := prepared.usedMACs
+	plan := prepared.plan
 	result.RetainedDatasets = append(result.RetainedDatasets, plan.retainedDatasets...)
 
-	// Runtime removal is intentionally first. If libvirt/domain or runtime-dir
-	// cleanup fails, the durable VM row remains and no storage is touched.
 	if err := removeRuntime(rid); err != nil {
 		return emptyVMRemovalResult(), fmt.Errorf("failed_to_remove_lv_vm: %w", err)
 	}
 
 	if err := s.removeVMIdentityTransaction(ctx, vm); err != nil {
-		// The runtime is already absent, but the atomic rollback keeps the RID
-		// occupied and makes a retry safe. Storage cleanup must not start here.
 		return emptyVMRemovalResult(), err
 	}
 	s.actionMutex.Unlock()
@@ -199,6 +168,55 @@ func (s *Service) removeVMWithWarnings(
 	}
 
 	return result, nil
+}
+
+func (s *Service) prepareVMRemoval(
+	ctx context.Context,
+	rid uint,
+	deleteRawDisks bool,
+	deleteVolumes bool,
+) (vmRemovalPreparation, error) {
+	prepared := vmRemovalPreparation{
+		usedMACs: make([]uint, 0),
+	}
+	if s == nil || s.DB == nil {
+		return prepared, fmt.Errorf("libvirt_service_not_initialized")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := s.DB.WithContext(ctx).First(&prepared.vm, "rid = ?", rid).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return prepared, fmt.Errorf("vm_not_found: %d", rid)
+		}
+		return prepared, fmt.Errorf("failed_to_find_vm: %w", err)
+	}
+	if err := s.DB.WithContext(ctx).
+		Preload("Dataset").
+		Where("vm_id = ?", prepared.vm.ID).
+		Find(&prepared.vm.Storages).Error; err != nil {
+		return prepared, fmt.Errorf("failed_to_find_vm_storages: %w", err)
+	}
+
+	snapshots := make([]vmModels.VMSnapshot, 0)
+	if err := s.DB.WithContext(ctx).
+		Where("vm_id = ? OR rid = ?", prepared.vm.ID, prepared.vm.RID).
+		Find(&snapshots).Error; err != nil {
+		return prepared, fmt.Errorf("failed_to_find_vm_snapshots: %w", err)
+	}
+	if err := s.DB.WithContext(ctx).
+		Model(&vmModels.Network{}).
+		Where("vm_id = ? AND mac_id IS NOT NULL", prepared.vm.ID).
+		Pluck("mac_id", &prepared.usedMACs).Error; err != nil {
+		return prepared, fmt.Errorf("failed_to_find_vm_mac_ids: %w", err)
+	}
+
+	prepared.usedMACs = uniqueUintValues(prepared.usedMACs)
+	prepared.plan = buildVMStorageRemovalPlan(prepared.vm, deleteRawDisks, deleteVolumes)
+	s.discoverOrphanVMStorageRoots(ctx, prepared.vm.RID, &prepared.plan)
+	addOwnedVMSnapshotsToRemovalPlan(&prepared.plan, snapshots)
+	return prepared, nil
 }
 
 func (s *Service) removeVMIdentityTransaction(ctx context.Context, vm vmModels.VM) error {
@@ -284,6 +302,8 @@ func buildVMStorageRemovalPlan(
 ) vmStorageRemovalPlan {
 	plan := vmStorageRemovalPlan{
 		deleteDatasets:       make([]string, 0),
+		deleteRawDatasets:    make([]string, 0),
+		deleteZVOLDatasets:   make([]string, 0),
 		retainedDatasets:     make([]string, 0),
 		rootDatasets:         make([]string, 0),
 		preserveRoots:        make(map[string]struct{}),
@@ -323,10 +343,12 @@ func buildVMStorageRemovalPlan(
 				continue
 			}
 			deleteSet[datasetName] = struct{}{}
+			if storage.Type == vmModels.VMStorageTypeRaw {
+				appendUniqueString(&plan.deleteRawDatasets, datasetName)
+			} else {
+				appendUniqueString(&plan.deleteZVOLDatasets, datasetName)
+			}
 		case vmModels.VMStorageTypeFilesystem:
-			// 9P points at user-managed storage and has no delete option in the
-			// VM removal dialog. Preserve both that dataset and the VM metadata
-			// root associated with its pool.
 			if rootDataset != "" {
 				plan.preserveRoots[rootDataset] = struct{}{}
 				retainedSet[rootDataset] = struct{}{}
@@ -347,6 +369,8 @@ func buildVMStorageRemovalPlan(
 		plan.rootDatasets = append(plan.rootDatasets, dataset)
 	}
 	sort.Strings(plan.deleteDatasets)
+	sort.Strings(plan.deleteRawDatasets)
+	sort.Strings(plan.deleteZVOLDatasets)
 	sort.Strings(plan.retainedDatasets)
 	sort.Strings(plan.rootDatasets)
 
@@ -368,9 +392,6 @@ func addOwnedVMSnapshotsToRemovalPlan(plan *vmStorageRemovalPlan, snapshots []vm
 
 	for _, snapshot := range snapshots {
 		snapshotName := strings.TrimSpace(snapshot.SnapshotName)
-		// SnapshotName is generated internally. Requiring Sylve's namespace in
-		// addition to a DB record prevents a corrupt row from authorizing the
-		// deletion of an unrelated administrator snapshot.
 		if !strings.HasPrefix(snapshotName, "svms_") {
 			continue
 		}
@@ -395,11 +416,6 @@ func addOwnedVMSnapshotsToRemovalPlan(plan *vmStorageRemovalPlan, snapshots []vm
 	}
 }
 
-// discoverOrphanVMStorageRoots adds canonical VM roots that exist on usable
-// pools but are no longer represented by a VM storage row. Their contents are
-// unknown, so deletion preserves and reports them instead of treating them as
-// an empty managed root. Discovery is best-effort because it runs after the
-// durable VM graph has already supplied all storage information it can.
 func (s *Service) discoverOrphanVMStorageRoots(ctx context.Context, rid uint, plan *vmStorageRemovalPlan) {
 	if s == nil || plan == nil || rid == 0 || s.System == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
 		return
@@ -497,16 +513,7 @@ func vmManagedStorageDatasetForRemoval(storage vmModels.Storage, rid uint) strin
 func (s *Service) cleanupRequestedVMStorage(ctx context.Context, plan vmStorageRemovalPlan) ([]string, []string) {
 	warnings := make([]string, 0)
 	leftovers := make([]string, 0)
-	needsZFS := len(plan.deleteDatasets) > 0
-	if !needsZFS {
-		for _, rootDataset := range plan.rootDatasets {
-			if _, preserve := plan.preserveRoots[rootDataset]; !preserve {
-				needsZFS = true
-				break
-			}
-		}
-	}
-	if !needsZFS {
+	if !vmStorageRemovalPlanNeedsCleanup(plan) {
 		return warnings, leftovers
 	}
 	if s.GZFS == nil || s.GZFS.ZFS == nil {
@@ -577,8 +584,6 @@ func (s *Service) cleanupRequestedVMStorage(ctx context.Context, plan vmStorageR
 		if root == nil {
 			continue
 		}
-		// The preceding child check is advisory. A non-recursive destroy keeps
-		// an unexpected child created after that check from being deleted.
 		if err := root.Destroy(ctx, false, false); err != nil {
 			appendStorageCleanupWarning(&warnings, rootDataset, err)
 			appendUniqueString(&leftovers, rootDataset)
@@ -587,6 +592,18 @@ func (s *Service) cleanupRequestedVMStorage(ctx context.Context, plan vmStorageR
 
 	sort.Strings(leftovers)
 	return warnings, leftovers
+}
+
+func vmStorageRemovalPlanNeedsCleanup(plan vmStorageRemovalPlan) bool {
+	if len(plan.deleteDatasets) > 0 {
+		return true
+	}
+	for _, rootDataset := range plan.rootDatasets {
+		if _, preserve := plan.preserveRoots[rootDataset]; !preserve {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) cleanupOwnedVMStorageSnapshots(
@@ -612,9 +629,6 @@ func (s *Service) cleanupOwnedVMStorageSnapshots(
 				continue
 			}
 
-			// Destroy exact snapshot objects from deepest child to root. This
-			// removes Sylve's recursive snapshot without recursively destroying
-			// any child dataset that is not part of the storage deletion plan.
 			sort.SliceStable(targets, func(i, j int) bool {
 				leftDepth := snapshotDatasetDepth(targets[i])
 				rightDepth := snapshotDatasetDepth(targets[j])

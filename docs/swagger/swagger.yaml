@@ -4276,6 +4276,8 @@ definitions:
         type: string
       enabled:
         type: boolean
+      encrypted:
+        type: boolean
       jailRootDataset:
         type: string
       mode:
@@ -7149,6 +7151,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_services_libvirt.VMSnapshotRollbackResult:
     properties:
+      newerSnapshotsDestroyed:
+        type: integer
       restarted:
         type: boolean
       warnings:

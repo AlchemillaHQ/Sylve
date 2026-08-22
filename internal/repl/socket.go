@@ -23,6 +23,7 @@ import (
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/alchemillahq/sylve/internal/logger"
+	libvirt "github.com/alchemillahq/sylve/internal/services/libvirt"
 )
 
 type socketRequest = consoleprotocol.Request
@@ -168,8 +169,70 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 			return processVMNetworksSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMNetworkAttach:
 			return processVMNetworkAttachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMNetworkUpdate:
+			return processVMNetworkUpdateSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMNetworkDetach:
 			return processVMNetworkDetachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageList:
+			return processVMStorageListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageAttach:
+			return processVMStorageAttachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageUpdate:
+			return processVMStorageUpdateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageDetach:
+			return processVMStorageDetachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigCPU:
+			return processVMConfigCPUSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigMemory:
+			return processVMConfigMemorySocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigVNC:
+			return processVMConfigVNCSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigSerial:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "serial", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifySerial(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigPCI:
+			return processVMConfigPCISocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigAutostart:
+			return processVMConfigAutostartSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigClock:
+			return processVMConfigClockSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigShutdown:
+			return processVMConfigShutdownSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigBootROM:
+			return processVMConfigBootROMSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigCloudInit:
+			return processVMConfigCloudInitSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigBhyveOptions:
+			return processVMConfigBhyveOptionsSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigUnknownMSR:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "unknown-msr", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyIgnoreUMSRs(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigQGA:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "qga", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyQemuGuestAgent(rid, enabled)
+			})
+		case consoleprotocol.OperationVMAccessVNC:
+			return processVMAccessVNCSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMAccessSerial:
+			return processVMAccessSerialSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotList:
+			return processVMSnapshotListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotCreate:
+			return processVMSnapshotCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotRollback:
+			return processVMSnapshotRollbackSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotDelete:
+			return processVMSnapshotDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateList:
+			return processVMTemplateListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateConvert:
+			return processVMTemplateConvertSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateCreate:
+			return processVMTemplateCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateDelete:
+			return processVMTemplateDeleteSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMQGASend:
 			return processVMQGASendSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationSwitchList:
@@ -224,11 +287,13 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 
 	var out bytes.Buffer
 	localCtx.Out = &out
+	localCtx.pendingSerialConsole = nil
 
 	shouldContinue := ExecuteLine(&localCtx, req.Command)
 	return socketResponse{
-		Output: out.String(),
-		Close:  !shouldContinue,
+		Output:        out.String(),
+		Close:         !shouldContinue,
+		SerialConsole: localCtx.takeSerialConsole(),
 	}
 }
 

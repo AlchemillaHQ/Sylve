@@ -10,9 +10,6 @@ package console
 
 import "encoding/json"
 
-// Request carries either an interactive command or a typed operation. Typed
-// operations let direct CLI callers receive real errors instead of parsing
-// formatted REPL output.
 type Request struct {
 	Command   string          `json:"command,omitempty"`
 	Operation string          `json:"operation,omitempty"`
@@ -20,7 +17,8 @@ type Request struct {
 }
 
 type Response struct {
-	Output string `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
-	Close  bool   `json:"close,omitempty"`
+	Output        string                 `json:"output,omitempty"`
+	Error         string                 `json:"error,omitempty"`
+	Close         bool                   `json:"close,omitempty"`
+	SerialConsole *VMSerialConsoleLaunch `json:"serialConsole,omitempty"`
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -386,8 +387,6 @@ func TestRemoveVMWithWarningsUsesCRUDThenActionLockOrder(t *testing.T) {
 	started := make(chan struct{})
 	completed := make(chan removalOutcome, 1)
 
-	// Snapshot rollback holds crudMutex while acquiring actionMutex. Holding
-	// actionMutex here lets the test observe which lock deletion takes first.
 	service.actionMutex.Lock()
 	go func() {
 		close(started)
@@ -674,4 +673,75 @@ func TestIntegrationRemoveVMWithWarningsRealZFSStorageOutcomes(t *testing.T) {
 			t.Fatalf("VM identity count = %d, want 0", count)
 		}
 	})
+}
+
+func prepareVMRemovalPreviewTestDB(t *testing.T) *Service {
+	t.Helper()
+	db := newVMDeleteTestDB(t)
+	if err := db.AutoMigrate(&clusterModels.ReplicationPolicy{}); err != nil {
+		t.Fatalf("migrate replication policy: %v", err)
+	}
+	return &Service{DB: db}
+}
+
+func TestPreviewVMRemovalUsesExecutionStoragePlan(t *testing.T) {
+	service := prepareVMRemovalPreviewTestDB(t)
+	db := service.DB
+	seed := seedVMDeleteGraph(t, db, 730, "tank", true)
+	if err := db.Create(&vmModels.Storage{
+		VMID: seed.VM.ID, Name: "installer", Type: vmModels.VMStorageTypeDiskImage,
+		DownloadUUID: "image-uuid", Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("seed image storage: %v", err)
+	}
+	retained, err := service.PreviewVMRemoval(seed.VM.RID, false, false, false, t.Context())
+	if err != nil {
+		t.Fatalf("preview retained VM removal: %v", err)
+	}
+	if retained.Registration.RID != seed.VM.RID || retained.Registration.Name != seed.VM.Name {
+		t.Fatalf("registration = %#v", retained.Registration)
+	}
+	if len(retained.DeleteMACObjectIDs) != 0 || !slices.Equal(retained.RetainMACObjectIDs, []uint{seed.MACObjectID}) {
+		t.Fatalf("retained MAC plan = delete %v retain %v", retained.DeleteMACObjectIDs, retained.RetainMACObjectIDs)
+	}
+	if len(retained.DeleteRawDatasets) != 0 || len(retained.DeleteZVOLDatasets) != 0 ||
+		len(retained.DeleteContainerDatasets) != 0 || len(retained.DeleteSnapshots) != 0 {
+		t.Fatalf("default preview scheduled destructive storage work: %#v", retained)
+	}
+	wantRetained := []string{
+		fmt.Sprintf("tank/sylve/virtual-machines/%d", seed.VM.RID),
+		seed.RawDataset,
+		seed.ZVolDataset,
+	}
+	if !slices.Equal(retained.RetainedDatasets, wantRetained) ||
+		!slices.Equal(retained.RetainedImageUUIDs, []string{"image-uuid"}) {
+		t.Fatalf("retained backing = datasets %v images %v", retained.RetainedDatasets, retained.RetainedImageUUIDs)
+	}
+
+	selected, err := service.PreviewVMRemoval(seed.VM.RID, true, true, true, t.Context())
+	if err != nil {
+		t.Fatalf("preview selected VM removal: %v", err)
+	}
+	root := fmt.Sprintf("tank/sylve/virtual-machines/%d", seed.VM.RID)
+	if !slices.Equal(selected.DeleteMACObjectIDs, []uint{seed.MACObjectID}) || len(selected.RetainMACObjectIDs) != 0 {
+		t.Fatalf("selected MAC plan = delete %v retain %v", selected.DeleteMACObjectIDs, selected.RetainMACObjectIDs)
+	}
+	if !slices.Equal(selected.DeleteRawDatasets, []string{seed.RawDataset}) ||
+		!slices.Equal(selected.DeleteZVOLDatasets, []string{seed.ZVolDataset}) ||
+		!slices.Equal(selected.DeleteContainerDatasets, []string{root}) ||
+		!slices.Equal(selected.DeleteSnapshots, []string{root + "@" + seed.SnapshotName}) {
+		t.Fatalf("selected storage plan = %#v", selected)
+	}
+	if len(selected.RetainedDatasets) != 0 || !slices.Equal(selected.RetainedImageUUIDs, []string{"image-uuid"}) {
+		t.Fatalf("selected retained backing = datasets %v images %v", selected.RetainedDatasets, selected.RetainedImageUUIDs)
+	}
+
+	assertVMDeleteGraphCounts(t, db, seed, 1)
+}
+
+func TestPreviewVMRemovalRejectsInvalidRIDWithoutMutation(t *testing.T) {
+	service := prepareVMRemovalPreviewTestDB(t)
+	if _, err := service.PreviewVMRemoval(10000, true, true, true, t.Context()); err == nil {
+		t.Fatal("out-of-range RID was accepted")
+	}
 }

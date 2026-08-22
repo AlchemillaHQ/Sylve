@@ -25,8 +25,6 @@ import (
 )
 
 const (
-	// MaxRequestBodyBytes bounds VM JSON decoding and audit logging while leaving
-	// ample room for cloud-init documents.
 	MaxRequestBodyBytes int64 = 1 * 1024 * 1024
 
 	maximumShutdownWaitTimeSeconds = 3600
@@ -267,6 +265,47 @@ func updateIgnoreUMSROptionXML(xml string, ignore bool) (string, error) {
 	out, err := doc.WriteToString()
 	if err != nil {
 		return "", fmt.Errorf("failed_to_serialize_xml: %w", err)
+	}
+	return out, nil
+}
+
+func preserveDomainUUID(oldXML, rebuiltXML string) (string, error) {
+	oldDocument := etree.NewDocument()
+	if err := oldDocument.ReadFromString(oldXML); err != nil {
+		return "", fmt.Errorf("failed_to_parse_existing_domain_xml: %w", err)
+	}
+	oldRoot := oldDocument.Root()
+	if oldRoot == nil {
+		return "", fmt.Errorf("invalid_existing_domain_xml: root_missing")
+	}
+	oldUUID := oldRoot.FindElement("./uuid")
+	if oldUUID == nil || strings.TrimSpace(oldUUID.Text()) == "" {
+		return rebuiltXML, nil
+	}
+
+	rebuiltDocument := etree.NewDocument()
+	if err := rebuiltDocument.ReadFromString(rebuiltXML); err != nil {
+		return "", fmt.Errorf("failed_to_parse_rebuilt_domain_xml: %w", err)
+	}
+	rebuiltRoot := rebuiltDocument.Root()
+	if rebuiltRoot == nil {
+		return "", fmt.Errorf("invalid_rebuilt_domain_xml: root_missing")
+	}
+	value := strings.TrimSpace(oldUUID.Text())
+	if rebuiltUUID := rebuiltRoot.FindElement("./uuid"); rebuiltUUID != nil {
+		rebuiltUUID.SetText(value)
+	} else {
+		rebuiltUUID := etree.NewElement("uuid")
+		rebuiltUUID.SetText(value)
+		if name := rebuiltRoot.FindElement("./name"); name != nil {
+			rebuiltRoot.InsertChildAt(name.Index()+1, rebuiltUUID)
+		} else {
+			rebuiltRoot.InsertChildAt(0, rebuiltUUID)
+		}
+	}
+	out, err := rebuiltDocument.WriteToString()
+	if err != nil {
+		return "", fmt.Errorf("failed_to_serialize_rebuilt_domain_xml: %w", err)
 	}
 	return out, nil
 }
@@ -562,6 +601,10 @@ func (s *Service) ModifyBootROM(rid uint, bootROM string) error {
 	if err != nil {
 		return fmt.Errorf("failed_to_rebuild_domain_xml: %w", err)
 	}
+	newXML, err = preserveDomainUUID(oldXML, newXML)
+	if err != nil {
+		return fmt.Errorf("failed_to_preserve_domain_identity: %w", err)
+	}
 
 	return s.applyVMHardwareMutation(rid, oldXML, newXML, func(tx *gorm.DB) error {
 		if err := tx.Model(&vmModels.VM{}).Where("id = ?", vm.ID).
@@ -607,6 +650,10 @@ func (s *Service) ModifyExtraBhyveOptions(rid uint, options []string) error {
 	newXML, err := s.CreateVmXML(vm, vmPath)
 	if err != nil {
 		return fmt.Errorf("failed_to_rebuild_domain_xml: %w", err)
+	}
+	newXML, err = preserveDomainUUID(oldXML, newXML)
+	if err != nil {
+		return fmt.Errorf("failed_to_preserve_domain_identity: %w", err)
 	}
 
 	return s.applyVMHardwareMutation(rid, oldXML, newXML, func(tx *gorm.DB) error {

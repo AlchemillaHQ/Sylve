@@ -1086,3 +1086,100 @@ func TestStorageDetachApplyDeletesOnlyMetadataOnSuccess(t *testing.T) {
 		t.Fatalf("expected dataset metadata deleted, found %d", got)
 	}
 }
+
+func TestDescribeVMStorageReportsOwnership(t *testing.T) {
+	tests := []struct {
+		name          string
+		storage       vmModels.Storage
+		wantBacking   string
+		wantOwnership string
+		wantFlag      string
+	}{
+		{
+			name: "managed raw",
+			storage: vmModels.Storage{
+				ID: 3, Type: vmModels.VMStorageTypeRaw, Pool: "tank",
+			},
+			wantBacking:   "tank/sylve/virtual-machines/601/raw-3",
+			wantOwnership: VMStorageOwnershipManaged,
+			wantFlag:      "--delete-raw-disks",
+		},
+		{
+			name: "managed zvol",
+			storage: vmModels.Storage{
+				ID: 4, Type: vmModels.VMStorageTypeZVol,
+				Dataset: vmModels.VMStorageDataset{Name: "tank/sylve/virtual-machines/601/zvol-4"},
+			},
+			wantBacking:   "tank/sylve/virtual-machines/601/zvol-4",
+			wantOwnership: VMStorageOwnershipManaged,
+			wantFlag:      "--delete-volumes",
+		},
+		{
+			name: "retained image",
+			storage: vmModels.Storage{
+				ID: 5, Type: vmModels.VMStorageTypeDiskImage, DownloadUUID: "download-uuid",
+			},
+			wantBacking:   "download-uuid",
+			wantOwnership: VMStorageOwnershipRetained,
+		},
+		{
+			name: "external filesystem",
+			storage: vmModels.Storage{
+				ID: 6, Type: vmModels.VMStorageTypeFilesystem,
+				Dataset: vmModels.VMStorageDataset{Name: "tank/shared/projects"},
+			},
+			wantBacking:   "tank/shared/projects",
+			wantOwnership: VMStorageOwnershipExternal,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DescribeVMStorage(601, tc.storage)
+			if got.Backing != tc.wantBacking || got.Ownership != tc.wantOwnership || got.DeleteWithVMFlag != tc.wantFlag {
+				t.Fatalf("storage info = %#v", got)
+			}
+		})
+	}
+}
+
+func TestListVMStorageIsStableAndReturnsEmptySlice(t *testing.T) {
+	db := newVMDeleteTestDB(t)
+	vm := vmModels.VM{Name: "inventory", RID: 602}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+	if err := db.Create(&vmModels.Storage{
+		ID: 9, VMID: vm.ID, Name: "second", Type: vmModels.VMStorageTypeDiskImage,
+		DownloadUUID: "image", Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("seed second storage: %v", err)
+	}
+	if err := db.Create(&vmModels.Storage{
+		ID: 8, VMID: vm.ID, Name: "first", Type: vmModels.VMStorageTypeRaw,
+		Pool: "tank", Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("seed first storage: %v", err)
+	}
+
+	service := &Service{DB: db}
+	storages, err := service.ListVMStorage(vm.RID)
+	if err != nil {
+		t.Fatalf("list VM storage: %v", err)
+	}
+	if len(storages) != 2 || storages[0].ID != 8 || storages[1].ID != 9 {
+		t.Fatalf("storage order = %#v", storages)
+	}
+
+	emptyVM := vmModels.VM{Name: "empty", RID: 603}
+	if err := db.Create(&emptyVM).Error; err != nil {
+		t.Fatalf("seed empty VM: %v", err)
+	}
+	empty, err := service.ListVMStorage(emptyVM.RID)
+	if err != nil {
+		t.Fatalf("list empty VM storage: %v", err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("empty storage = %#v, want non-nil empty slice", empty)
+	}
+}

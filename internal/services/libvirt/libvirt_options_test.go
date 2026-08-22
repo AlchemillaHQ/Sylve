@@ -58,6 +58,23 @@ func TestValidateCloudInitConfiguration(t *testing.T) {
 	}
 }
 
+func TestPreserveDomainUUIDAcrossFullXMLRebuild(t *testing.T) {
+	const domainUUID = "97963f05-b158-4562-a8e3-e1dab5ec6e7e"
+	oldXML := `<domain type="bhyve"><name>101</name><uuid>` + domainUUID + `</uuid><memory unit="B">268435456</memory></domain>`
+	rebuiltXML := `<domain type="bhyve"><name>101</name><memory unit="B">536870912</memory><devices/></domain>`
+
+	updated, err := preserveDomainUUID(oldXML, rebuiltXML)
+	if err != nil {
+		t.Fatalf("preserve domain UUID: %v", err)
+	}
+	if !strings.Contains(updated, `<uuid>`+domainUUID+`</uuid>`) || strings.Count(updated, "<uuid>") != 1 {
+		t.Fatalf("rebuilt XML did not preserve one UUID: %s", updated)
+	}
+	if !strings.Contains(updated, `<memory unit="B">536870912</memory>`) {
+		t.Fatalf("rebuilt XML content was not retained: %s", updated)
+	}
+}
+
 func TestValidateExtraBhyveOptionsBounds(t *testing.T) {
 	t.Parallel()
 

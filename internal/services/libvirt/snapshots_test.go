@@ -4,13 +4,52 @@ package libvirt
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
+
+func TestRollbackVMSnapshotRequiresAcknowledgementForNewerSnapshots(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VMSnapshot{})
+	if err := db.AutoMigrate(&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{}); err != nil {
+		t.Fatalf("migrate replication guard tables: %v", err)
+	}
+	createdAt := time.Now().UTC().Truncate(time.Second)
+	selected := vmModels.VMSnapshot{
+		VMID: 1, RID: 42, Name: "selected", SnapshotName: "selected-zfs", CreatedAt: createdAt,
+	}
+	if err := db.Create(&selected).Error; err != nil {
+		t.Fatalf("create selected snapshot: %v", err)
+	}
+	newer := vmModels.VMSnapshot{
+		VMID: 1, RID: 42, Name: "newer", SnapshotName: "newer-zfs", CreatedAt: createdAt.Add(time.Second),
+	}
+	if err := db.Create(&newer).Error; err != nil {
+		t.Fatalf("create newer snapshot: %v", err)
+	}
+
+	service := &Service{DB: db}
+	result, err := service.RollbackVMSnapshotWithDestroyNewer(context.Background(), 42, selected.ID, false)
+	if err == nil || !strings.Contains(err.Error(), "newer_snapshots_require_acknowledgement") {
+		t.Fatalf("rollback error = %v", err)
+	}
+	if result.NewerSnapshotsDestroyed != 0 {
+		t.Fatalf("rollback result = %#v", result)
+	}
+
+	var count int64
+	if err := db.Model(&vmModels.VMSnapshot{}).Count(&count).Error; err != nil {
+		t.Fatalf("count snapshots: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("rollback preflight changed snapshot records: count = %d", count)
+	}
+}
 
 func TestDetachedVMSnapshotContextOutlivesCanceledRequest(t *testing.T) {
 	parent, cancelParent := context.WithCancel(context.Background())

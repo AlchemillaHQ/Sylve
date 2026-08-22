@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/info"
@@ -33,6 +34,25 @@ type Context struct {
 	HistoryPath    string
 	QuitChan       chan os.Signal
 	Out            io.Writer
+
+	pendingSerialConsole *consoleprotocol.VMSerialConsoleLaunch
+}
+
+func (ctx *Context) queueSerialConsole(launch consoleprotocol.VMSerialConsoleLaunch) {
+	if ctx == nil {
+		return
+	}
+	copy := launch
+	ctx.pendingSerialConsole = &copy
+}
+
+func (ctx *Context) takeSerialConsole() *consoleprotocol.VMSerialConsoleLaunch {
+	if ctx == nil {
+		return nil
+	}
+	launch := ctx.pendingSerialConsole
+	ctx.pendingSerialConsole = nil
+	return launch
 }
 
 func Start(ctx *Context) {

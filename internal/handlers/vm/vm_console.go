@@ -24,22 +24,20 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
 const (
-	vmWSReadLimit             = 64 << 10 // 64 KiB
-	vmWSWriteTimeout          = 10 * time.Second
-	vmWSPongWait              = 60 * time.Second
-	vmWSPingPeriod            = (vmWSPongWait * 9) / 10
-	vmConsoleDefaultBaud      = "115200"
-	vmConsoleMinBaud          = 50
-	vmConsoleMaxBaud          = 4_000_000
-	vmControlInput       byte = 0
-	vmControlResize      byte = 1
-	vmControlTakeover    byte = 2
+	vmWSReadLimit          = 64 << 10
+	vmWSWriteTimeout       = 10 * time.Second
+	vmWSPongWait           = 60 * time.Second
+	vmWSPingPeriod         = (vmWSPongWait * 9) / 10
+	vmControlInput    byte = 0
+	vmControlResize   byte = 1
+	vmControlTakeover byte = 2
 )
 
 type vmConsoleService interface {
@@ -48,61 +46,12 @@ type vmConsoleService interface {
 	GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error)
 }
 
-type vmConsoleRequest struct {
-	RID        uint
-	RIDText    string
-	BaudRate   string
-	DevicePath string
-}
-
-type vmConsoleValidationError struct {
-	Code   string
-	Detail string
-}
-
-func (e *vmConsoleValidationError) Error() string {
-	return e.Code
-}
+type vmConsoleRequest = libvirtService.VMSerialConsoleRequest
 
 var vmConsoleDeviceStat = os.Stat
 
 func parseVMConsoleRequest(ridText, baudRate string) (vmConsoleRequest, error) {
-	rid, err := strconv.ParseUint(strings.TrimSpace(ridText), 10, 32)
-	if err != nil || rid == 0 {
-		return vmConsoleRequest{}, &vmConsoleValidationError{
-			Code:   "invalid_rid_format",
-			Detail: "rid must be a positive integer",
-		}
-	}
-
-	baudRate = strings.TrimSpace(baudRate)
-	if baudRate == "" {
-		baudRate = vmConsoleDefaultBaud
-	}
-	baud, err := strconv.ParseUint(baudRate, 10, 32)
-	if err != nil || baud < vmConsoleMinBaud || baud > vmConsoleMaxBaud {
-		return vmConsoleRequest{}, &vmConsoleValidationError{
-			Code:   "invalid_baud_rate",
-			Detail: "baudrate must be an integer between 50 and 4000000",
-		}
-	}
-
-	normalizedRID := strconv.FormatUint(rid, 10)
-	return vmConsoleRequest{
-		RID:        uint(rid),
-		RIDText:    normalizedRID,
-		BaudRate:   strconv.FormatUint(baud, 10),
-		DevicePath: "/dev/nmdm" + normalizedRID + "B",
-	}, nil
-}
-
-func vmDomainSupportsConsole(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "running", "blocked", "paused", "shutdown", "pmsuspended":
-		return true
-	default:
-		return false
-	}
+	return libvirtService.ParseVMSerialConsoleRequest(ridText, baudRate)
 }
 
 type VMObserver struct {
@@ -368,8 +317,6 @@ func (ts *VMSession) SendControlState(obs *VMObserver) error {
 }
 
 func (ts *VMSession) AddObserverAndReplay(obs *VMObserver, sm *VMSessionManager) error {
-	// Hold the observer writer while registering it so live output cannot
-	// overtake the initial control state or history snapshot.
 	obs.Mu.Lock()
 
 	ts.Mu.Lock()
@@ -430,8 +377,6 @@ func (ts *VMSession) RemoveObserver(obs *VMObserver, sm *VMSessionManager) {
 
 	closeSession := !ts.closed && len(ts.Observers) == 0
 	if closeSession {
-		// Prevent a new observer from joining between the last disconnect and
-		// session cleanup.
 		ts.closed = true
 		ts.Controller = nil
 	}
@@ -548,6 +493,23 @@ func writeVMConsoleError(c *gin.Context, status int, code, detail string) {
 	})
 }
 
+func vmConsoleErrorStatus(code string) int {
+	switch code {
+	case "invalid_rid_format", "invalid_baud_rate", "invalid_console_request":
+		return http.StatusBadRequest
+	case "vm_not_found":
+		return http.StatusNotFound
+	case "replication_lease_not_owned":
+		return http.StatusForbidden
+	case "vm_serial_console_disabled", "vm_domain_not_defined", "vm_console_requires_running_vm":
+		return http.StatusConflict
+	case "vm_console_guard_unavailable", "libvirt_connection_unavailable", "vm_serial_device_unavailable", "vm_service_unavailable":
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 // @Summary Open a VM serial console WebSocket
 // @Description Validate the VM serial console and upgrade to an authenticated interactive WebSocket session
 // @Tags VM
@@ -564,11 +526,11 @@ func writeVMConsoleError(c *gin.Context, status int, code, detail string) {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/{rid}/console [get]
-func HandleLibvirtTerminalWebsocket(libvirtService vmConsoleService) gin.HandlerFunc {
+func HandleLibvirtTerminalWebsocket(service vmConsoleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		request, err := parseVMConsoleRequest(c.Param("rid"), c.Query("baudrate"))
 		if err != nil {
-			var validationErr *vmConsoleValidationError
+			var validationErr *libvirtService.VMSerialConsoleError
 			if errors.As(err, &validationErr) {
 				writeVMConsoleError(c, http.StatusBadRequest, validationErr.Code, validationErr.Detail)
 				return
@@ -577,50 +539,18 @@ func HandleLibvirtTerminalWebsocket(libvirtService vmConsoleService) gin.Handler
 			return
 		}
 
-		vm, err := libvirtService.GetVMByRID(request.RID)
+		_, err = libvirtService.PreflightVMSerialConsole(service, request, vmConsoleDeviceStat)
 		if err != nil {
-			if isVMNotFoundError(err) {
-				writeVMConsoleError(c, http.StatusNotFound, "vm_not_found", "vm_not_found")
-				return
+			code := "vm_console_preflight_failed"
+			detail := err.Error()
+			var consoleErr *libvirtService.VMSerialConsoleError
+			if errors.As(err, &consoleErr) {
+				code = consoleErr.Code
+				if strings.TrimSpace(consoleErr.Detail) != "" {
+					detail = consoleErr.Detail
+				}
 			}
-			writeVMConsoleError(c, http.StatusInternalServerError, "failed_to_get_vm", err.Error())
-			return
-		}
-		if !vm.Serial {
-			writeVMConsoleError(c, http.StatusConflict, "vm_serial_console_disabled", "vm_serial_console_disabled")
-			return
-		}
-
-		allowed, guardErr := libvirtService.CanMutateProtectedVM(request.RID)
-		if guardErr != nil {
-			writeVMConsoleError(c, http.StatusServiceUnavailable, "vm_console_guard_unavailable", guardErr.Error())
-			return
-		}
-		if !allowed {
-			writeVMConsoleError(c, http.StatusForbidden, "replication_lease_not_owned", "replication_lease_not_owned")
-			return
-		}
-
-		domain, err := libvirtService.GetLvDomain(request.RID)
-		if err != nil {
-			if isLibvirtDomainAbsent(err) {
-				writeVMConsoleError(c, http.StatusConflict, "vm_domain_not_defined", "vm_domain_not_defined")
-				return
-			}
-			writeVMConsoleError(c, http.StatusServiceUnavailable, "libvirt_connection_unavailable", err.Error())
-			return
-		}
-		if domain == nil {
-			writeVMConsoleError(c, http.StatusServiceUnavailable, "libvirt_connection_unavailable", "vm_domain_unavailable")
-			return
-		}
-		if !vmDomainSupportsConsole(domain.Status) {
-			writeVMConsoleError(c, http.StatusConflict, "vm_console_requires_running_vm", "vm_console_requires_running_vm")
-			return
-		}
-
-		if _, err := vmConsoleDeviceStat(request.DevicePath); err != nil {
-			writeVMConsoleError(c, http.StatusServiceUnavailable, "vm_serial_device_unavailable", err.Error())
+			writeVMConsoleError(c, vmConsoleErrorStatus(code), code, detail)
 			return
 		}
 
@@ -636,7 +566,7 @@ func HandleLibvirtTerminalWebsocket(libvirtService vmConsoleService) gin.Handler
 			return conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
 		})
 
-		sessionID := "vm-console-" + request.RIDText
+		sessionID := "vm-console-" + strconv.FormatUint(uint64(request.RID), 10)
 		session, err := GlobalVMSessionManager.GetOrCreateSession(
 			sessionID,
 			int(request.RID),

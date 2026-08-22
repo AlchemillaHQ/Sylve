@@ -19,8 +19,6 @@ import (
 	"time"
 )
 
-// ExecuteOperation sends a typed console operation to the running Sylve daemon.
-// Operation failures are returned as real errors.
 func ExecuteOperation(socketPath, operation string, payload any) (string, error) {
 	return ExecuteOperationContext(context.Background(), socketPath, operation, payload)
 }
@@ -29,20 +27,28 @@ func ExecuteOperationContext(ctx context.Context, socketPath, operation string, 
 	return executeOperationContext(ctx, socketPath, operation, payload)
 }
 
+func ExecuteOperationResponse(socketPath, operation string, payload any) (Response, error) {
+	return ExecuteOperationResponseContext(context.Background(), socketPath, operation, payload)
+}
+
+func ExecuteOperationResponseContext(ctx context.Context, socketPath, operation string, payload any) (Response, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return Response{}, fmt.Errorf("encode %s request: %w", operation, err)
+	}
+	return executeRequestResponseContext(ctx, socketPath, Request{Operation: operation, Payload: encoded})
+}
+
 func executeOperation(socketPath, operation string, payload any) (string, error) {
 	return executeOperationContext(context.Background(), socketPath, operation, payload)
 }
 
 func executeOperationContext(ctx context.Context, socketPath, operation string, payload any) (string, error) {
-	encoded, err := json.Marshal(payload)
+	response, err := ExecuteOperationResponseContext(ctx, socketPath, operation, payload)
 	if err != nil {
-		return "", fmt.Errorf("encode %s request: %w", operation, err)
+		return "", err
 	}
-
-	return executeRequestContext(ctx, socketPath, Request{
-		Operation: operation,
-		Payload:   encoded,
-	})
+	return response.Output, nil
 }
 
 func executeRequest(socketPath string, request Request) (string, error) {
@@ -50,17 +56,25 @@ func executeRequest(socketPath string, request Request) (string, error) {
 }
 
 func executeRequestContext(ctx context.Context, socketPath string, request Request) (string, error) {
+	response, err := executeRequestResponseContext(ctx, socketPath, request)
+	if err != nil {
+		return "", err
+	}
+	return response.Output, nil
+}
+
+func executeRequestResponseContext(ctx context.Context, socketPath string, request Request) (Response, error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		if isSocketUnavailable(err) {
-			return "", fmt.Errorf("sylve daemon is not running; start it first with 'sylve'")
+			return Response{}, fmt.Errorf("sylve daemon is not running; start it first with 'sylve'")
 		}
-		return "", fmt.Errorf("connect to daemon: %w", err)
+		return Response{}, fmt.Errorf("connect to daemon: %w", err)
 	}
 	defer conn.Close()
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
-			return "", fmt.Errorf("set daemon deadline: %w", err)
+			return Response{}, fmt.Errorf("set daemon deadline: %w", err)
 		}
 	}
 	stopCancellation := context.AfterFunc(ctx, func() {
@@ -72,19 +86,19 @@ func executeRequestContext(ctx context.Context, socketPath string, request Reque
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(request); err != nil {
-		return "", fmt.Errorf("send command: %w", err)
+		return Response{}, fmt.Errorf("send command: %w", err)
 	}
 
 	var resp Response
 	if err := dec.Decode(&resp); err != nil {
-		return "", fmt.Errorf("read response: %w", err)
+		return Response{}, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.Error != "" {
-		return "", fmt.Errorf("%s", resp.Error)
+		return Response{}, fmt.Errorf("%s", resp.Error)
 	}
 
-	return resp.Output, nil
+	return resp, nil
 }
 
 func isSocketUnavailable(err error) bool {
