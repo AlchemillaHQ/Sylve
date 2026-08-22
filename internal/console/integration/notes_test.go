@@ -11,6 +11,7 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -27,6 +29,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+const consoleIntegrationCommandTimeout = 2 * time.Minute
 
 func TestAcceptanceNotesCLIAndREPL(t *testing.T) {
 	if testing.Short() {
@@ -138,8 +142,13 @@ func writeConsoleConfig(t *testing.T, dataPath string) string {
 
 func runSylve(t *testing.T, binaryPath, configPath string, args ...string) string {
 	t.Helper()
-	command := exec.Command(binaryPath, append([]string{"--config", configPath}, args...)...)
+	ctx, cancel := context.WithTimeout(t.Context(), consoleIntegrationCommandTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, binaryPath, append([]string{"--config", configPath}, args...)...)
 	output, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("run sylve %s timed out after %s\n%s", strings.Join(args, " "), consoleIntegrationCommandTimeout, output)
+	}
 	if err != nil {
 		t.Fatalf("run sylve %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
@@ -148,8 +157,13 @@ func runSylve(t *testing.T, binaryPath, configPath string, args ...string) strin
 
 func runSylveFailure(t *testing.T, binaryPath, configPath string, args ...string) string {
 	t.Helper()
-	command := exec.Command(binaryPath, append([]string{"--config", configPath}, args...)...)
+	ctx, cancel := context.WithTimeout(t.Context(), consoleIntegrationCommandTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, binaryPath, append([]string{"--config", configPath}, args...)...)
 	output, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("run sylve %s timed out after %s\n%s", strings.Join(args, " "), consoleIntegrationCommandTimeout, output)
+	}
 	if err == nil {
 		t.Fatalf("run sylve %s unexpectedly succeeded:\n%s", strings.Join(args, " "), output)
 	}
@@ -158,11 +172,14 @@ func runSylveFailure(t *testing.T, binaryPath, configPath string, args ...string
 
 func runREPLCommand(t *testing.T, socketPath, command string) string {
 	t.Helper()
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.DialTimeout("unix", socketPath, consoleIntegrationCommandTimeout)
 	if err != nil {
 		t.Fatalf("connect to console socket: %v", err)
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(consoleIntegrationCommandTimeout)); err != nil {
+		t.Fatalf("set console socket deadline: %v", err)
+	}
 
 	if err := json.NewEncoder(conn).Encode(consoleprotocol.Request{Command: command}); err != nil {
 		t.Fatalf("send REPL command: %v", err)
@@ -179,11 +196,14 @@ func runREPLCommand(t *testing.T, socketPath, command string) string {
 
 func runREPLCommandFailure(t *testing.T, socketPath, command string) string {
 	t.Helper()
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.DialTimeout("unix", socketPath, consoleIntegrationCommandTimeout)
 	if err != nil {
 		t.Fatalf("connect to console socket: %v", err)
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(consoleIntegrationCommandTimeout)); err != nil {
+		t.Fatalf("set console socket deadline: %v", err)
+	}
 
 	if err := json.NewEncoder(conn).Encode(consoleprotocol.Request{Command: command}); err != nil {
 		t.Fatalf("send REPL command: %v", err)

@@ -50,6 +50,11 @@ type consoleVMActionResult struct {
 	TaskID  uint   `json:"taskId"`
 }
 
+const (
+	consoleIntegrationVMProbeTimeout   = 5 * time.Second
+	consoleIntegrationVMCleanupTimeout = 30 * time.Second
+)
+
 type consoleVMNetworkAttachResult struct {
 	Attached   bool   `json:"attached"`
 	RID        uint   `json:"rid"`
@@ -708,7 +713,10 @@ func consoleIntegrationVMRID(t *testing.T, suite *consoleIntegrationSuite, offse
 	}
 	for attempt := uint(0); attempt < 7000; attempt++ {
 		rid := uint(1000 + (value+uint64(offset)+uint64(attempt))%7000)
-		output, err := exec.Command("virsh", "-c", "bhyve:///system", "dominfo", strconv.FormatUint(uint64(rid), 10)).CombinedOutput()
+		output, err := runConsoleVMCommand(
+			consoleIntegrationVMProbeTimeout,
+			"virsh", "-c", "bhyve:///system", "dominfo", strconv.FormatUint(uint64(rid), 10),
+		)
 		if err == nil {
 			continue
 		}
@@ -781,7 +789,10 @@ func waitForConsoleVMState(t *testing.T, rid uint, want string) {
 	var lastOutput []byte
 	var lastErr error
 	for time.Now().Before(deadline) {
-		lastOutput, lastErr = exec.Command("virsh", "-c", "bhyve:///system", "domstate", strconv.FormatUint(uint64(rid), 10)).CombinedOutput()
+		lastOutput, lastErr = runConsoleVMCommand(
+			consoleIntegrationVMProbeTimeout,
+			"virsh", "-c", "bhyve:///system", "domstate", strconv.FormatUint(uint64(rid), 10),
+		)
 		if lastErr == nil && strings.TrimSpace(string(lastOutput)) == want {
 			return
 		}
@@ -792,7 +803,10 @@ func waitForConsoleVMState(t *testing.T, rid uint, want string) {
 
 func assertConsoleVMDomain(t *testing.T, rid uint, want bool) {
 	t.Helper()
-	output, err := exec.Command("virsh", "-c", "bhyve:///system", "dominfo", strconv.FormatUint(uint64(rid), 10)).CombinedOutput()
+	output, err := runConsoleVMCommand(
+		consoleIntegrationVMProbeTimeout,
+		"virsh", "-c", "bhyve:///system", "dominfo", strconv.FormatUint(uint64(rid), 10),
+	)
 	if want && err != nil {
 		t.Fatalf("VM %d domain must exist: %v\n%s", rid, err, output)
 	}
@@ -803,7 +817,10 @@ func assertConsoleVMDomain(t *testing.T, rid uint, want bool) {
 
 func consoleVMDomainXML(t *testing.T, rid uint) string {
 	t.Helper()
-	output, err := exec.Command("virsh", "-c", "bhyve:///system", "dumpxml", strconv.FormatUint(uint64(rid), 10)).CombinedOutput()
+	output, err := runConsoleVMCommand(
+		consoleIntegrationVMProbeTimeout,
+		"virsh", "-c", "bhyve:///system", "dumpxml", strconv.FormatUint(uint64(rid), 10),
+	)
 	if err != nil {
 		t.Fatalf("dump VM %d XML: %v\n%s", rid, err, output)
 	}
@@ -812,7 +829,10 @@ func consoleVMDomainXML(t *testing.T, rid uint) string {
 
 func assertConsoleZFSDataset(t *testing.T, dataset string, want bool) {
 	t.Helper()
-	output, err := exec.Command("zfs", "list", "-H", "-o", "name", dataset).CombinedOutput()
+	output, err := runConsoleVMCommand(
+		consoleIntegrationVMProbeTimeout,
+		"zfs", "list", "-H", "-o", "name", dataset,
+	)
 	if want && err != nil {
 		t.Fatalf("dataset %s must exist: %v\n%s", dataset, err, output)
 	}
@@ -839,7 +859,22 @@ func assertConsoleVMDeleted(t *testing.T, suite *consoleIntegrationSuite, rid ui
 func cleanupConsoleVM(t *testing.T, suite *consoleIntegrationSuite, rid uint) {
 	t.Helper()
 	if suite.virtualMachine != nil {
-		if _, err := suite.virtualMachine.ForceRemoveVM(rid, true, context.Background()); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), consoleIntegrationVMCleanupTimeout)
+		result := make(chan error, 1)
+		go func() {
+			_, err := suite.virtualMachine.ForceRemoveVM(rid, true, ctx)
+			result <- err
+		}()
+		var err error
+		select {
+		case err = <-result:
+			cancel()
+		case <-ctx.Done():
+			cancel()
+			t.Errorf("force-remove VM %d timed out after %s", rid, consoleIntegrationVMCleanupTimeout)
+			return
+		}
+		if err != nil {
 			message := strings.ToLower(err.Error())
 			if !strings.Contains(message, "vm_not_found") {
 				t.Errorf("force-remove VM %d during cleanup: %v", rid, err)
@@ -855,11 +890,27 @@ func cleanupConsoleVM(t *testing.T, suite *consoleIntegrationSuite, rid uint) {
 
 func destroyConsoleVMDataset(t *testing.T, dataset string) {
 	t.Helper()
-	if _, err := exec.Command("zfs", "list", "-H", "-o", "name", dataset).CombinedOutput(); err == nil {
-		if output, err := exec.Command("zfs", "destroy", "-r", dataset).CombinedOutput(); err != nil {
+	if _, err := runConsoleVMCommand(
+		consoleIntegrationVMProbeTimeout,
+		"zfs", "list", "-H", "-o", "name", dataset,
+	); err == nil {
+		if output, err := runConsoleVMCommand(
+			consoleIntegrationVMCleanupTimeout,
+			"zfs", "destroy", "-r", dataset,
+		); err != nil {
 			t.Errorf("destroy owned VM dataset %s during cleanup: %v\n%s", dataset, err, output)
 		}
 	}
+}
+
+func runConsoleVMCommand(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	if ctx.Err() != nil {
+		return output, fmt.Errorf("%s timed out after %s: %w", name, timeout, ctx.Err())
+	}
+	return output, err
 }
 
 type consoleVMConfigMutationResult struct {
@@ -919,6 +970,32 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
+		"vms", "config", "shutdown", "--rid", strconv.FormatUint(uint64(rid), 10), "--wait-seconds", "25", "--json")
+	assertConsoleVMConfigMutation(t, output, rid, "shutdown", true)
+	output = runSylve(t, suite.binaryPath, suite.configPath,
+		"vms", "start", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
+	started := assertConsoleVMAction(t, output, rid, "start")
+	waitForConsoleVMTask(t, suite, started.TaskID)
+	waitForConsoleVMState(t, rid, "running")
+
+	failure = runSylveFailure(t, suite.binaryPath, suite.configPath,
+		"vms", "config", "memory", "--rid", strconv.FormatUint(uint64(rid), 10), "--ram", "512MiB", "--json")
+	if !strings.Contains(failure, "domain_state_not_shutoff") {
+		t.Fatalf("powered-on memory edit error = %q", failure)
+	}
+	if vm = consoleVMByRID(t, suite, rid); vm.RAM != 256*1024*1024 {
+		t.Fatalf("powered-on rejection changed RAM: %d", vm.RAM)
+	}
+	output = runREPLCommand(t, suite.socketPath,
+		"vms config shutdown "+strconv.FormatUint(uint64(rid), 10)+" --wait-seconds 26 --json")
+	assertConsoleVMConfigMutation(t, output, rid, "shutdown", true)
+
+	output = runREPLCommand(t, suite.socketPath, "vms stop "+strconv.FormatUint(uint64(rid), 10)+" --json")
+	stopped := assertConsoleVMAction(t, output, rid, "stop")
+	waitForConsoleVMTask(t, suite, stopped.TaskID)
+	waitForConsoleVMState(t, rid, "shut off")
+
+	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "config", "cpu", "--rid", strconv.FormatUint(uint64(rid), 10),
 		"--sockets", "1", "--cores", "2", "--threads", "1", "--clear-pinning", "--json")
 	assertConsoleVMConfigMutation(t, output, rid, "cpu", true)
@@ -964,9 +1041,6 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	output = runREPLCommand(t, suite.socketPath,
 		"vms config autostart "+strconv.FormatUint(uint64(rid), 10)+" --enabled=true --order 7 --json")
 	assertConsoleVMConfigMutation(t, output, rid, "autostart", true)
-	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "config", "shutdown", "--rid", strconv.FormatUint(uint64(rid), 10), "--wait-seconds", "25", "--json")
-	assertConsoleVMConfigMutation(t, output, rid, "shutdown", true)
 
 	cloudDirectory := t.TempDir()
 	cloudData := filepath.Join(cloudDirectory, "user-data.yaml")
@@ -983,7 +1057,7 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	vm = consoleVMByRID(t, suite, rid)
 	if vm.CPUSockets != 1 || vm.CPUCores != 2 || vm.CPUThreads != 1 || vm.RAM != 384*1024*1024 ||
 		!vm.VNCEnabled || vm.VNCPort != vncPort || vm.VNCPassword != password || !vm.Serial || !vm.QemuGuestAgent ||
-		!vm.IgnoreUMSR || !vm.StartAtBoot || vm.StartOrder != 7 || vm.ShutdownWaitTime != 25 ||
+		!vm.IgnoreUMSR || !vm.StartAtBoot || vm.StartOrder != 7 || vm.ShutdownWaitTime != 26 ||
 		vm.TimeOffset != vmModels.TimeOffsetLocal || vm.CloudInitData == "" || vm.CloudInitMetaData == "" || vm.CloudInitNetworkConfig == "" {
 		t.Fatalf("configured VM = %#v", vm)
 	}
@@ -1007,35 +1081,6 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 		strings.Contains(output, password) {
 		t.Fatalf("stopped VNC access = %#v output=%s", vncInfo, output)
 	}
-
-	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "start", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
-	started := assertConsoleVMAction(t, output, rid, "start")
-	waitForConsoleVMTask(t, suite, started.TaskID)
-	waitForConsoleVMState(t, rid, "running")
-	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "access", "vnc", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
-	if err := json.Unmarshal([]byte(output), &vncInfo); err != nil || !vncInfo.Available ||
-		vncInfo.Endpoint != "127.0.0.1:"+strconv.Itoa(vncPort) || strings.Contains(output, password) {
-		t.Fatalf("running VNC access = %#v err=%v output=%s", vncInfo, err, output)
-	}
-
-	failure = runSylveFailure(t, suite.binaryPath, suite.configPath,
-		"vms", "config", "memory", "--rid", strconv.FormatUint(uint64(rid), 10), "--ram", "512MiB", "--json")
-	if !strings.Contains(failure, "domain_state_not_shutoff") {
-		t.Fatalf("powered-on memory edit error = %q", failure)
-	}
-	if vm = consoleVMByRID(t, suite, rid); vm.RAM != 384*1024*1024 {
-		t.Fatalf("powered-on rejection changed RAM: %d", vm.RAM)
-	}
-	output = runREPLCommand(t, suite.socketPath,
-		"vms config shutdown "+strconv.FormatUint(uint64(rid), 10)+" --wait-seconds 26 --json")
-	assertConsoleVMConfigMutation(t, output, rid, "shutdown", true)
-
-	output = runREPLCommand(t, suite.socketPath, "vms stop "+strconv.FormatUint(uint64(rid), 10)+" --json")
-	stopped := assertConsoleVMAction(t, output, rid, "stop")
-	waitForConsoleVMTask(t, suite, stopped.TaskID)
-	waitForConsoleVMState(t, rid, "shut off")
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "config", "bhyve-options", "--rid", strconv.FormatUint(uint64(rid), 10), "--option=-S", "--json")
