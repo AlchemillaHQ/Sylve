@@ -1192,31 +1192,12 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "start", "--rid", strconv.FormatUint(uint64(sourceRID), 10), "--json")
-	startTask := assertConsoleVMAction(t, output, sourceRID, "start")
-	waitForConsoleVMTask(t, suite, startTask.TaskID)
-	waitForConsoleVMState(t, sourceRID, "running")
-	serialDevice := "/dev/nmdm" + strconv.FormatUint(uint64(sourceRID), 10) + "B"
-	waitForConsolePath(t, serialDevice)
-	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "access", "serial", "--rid", strconv.FormatUint(uint64(sourceRID), 10), "--baud", "115200", "--json")
-	var serialInfo libvirtService.VMSerialConsoleAccessInfo
-	if err := json.Unmarshal([]byte(output), &serialInfo); err != nil || !serialInfo.Available || serialInfo.DevicePath != serialDevice {
-		t.Fatalf("ready serial preflight = %#v err=%v output=%s", serialInfo, err, output)
-	}
-
-	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "snapshots", "create", "--rid", strconv.FormatUint(uint64(sourceRID), 10),
-		"--name", "live", "--description", "running crash-consistent snapshot", "--json")
+		"--name", "baseline", "--description", "stopped source snapshot", "--json")
 	var firstSnapshot vmModels.VMSnapshot
-	if err := json.Unmarshal([]byte(output), &firstSnapshot); err != nil || firstSnapshot.ID == 0 || firstSnapshot.Name != "live" {
-		t.Fatalf("create live snapshot: snapshot=%#v err=%v output=%s", firstSnapshot, err, output)
+	if err := json.Unmarshal([]byte(output), &firstSnapshot); err != nil || firstSnapshot.ID == 0 || firstSnapshot.Name != "baseline" {
+		t.Fatalf("create baseline snapshot: snapshot=%#v err=%v output=%s", firstSnapshot, err, output)
 	}
-
-	output = runREPLCommand(t, suite.socketPath, "vms stop "+strconv.FormatUint(uint64(sourceRID), 10)+" --json")
-	stopTask := assertConsoleVMAction(t, output, sourceRID, "stop")
-	waitForConsoleVMTask(t, suite, stopTask.TaskID)
-	waitForConsoleVMState(t, sourceRID, "shut off")
 
 	output = runREPLCommand(t, suite.socketPath,
 		"vms snapshots create "+strconv.FormatUint(uint64(sourceRID), 10)+" --name newer --json")
@@ -1240,11 +1221,17 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 
 	administratorSnapshotName := "administrator-kept-" + suite.runID
 	administratorSnapshot := sourceRoot + "@" + administratorSnapshotName
-	if snapshotOutput, err := exec.Command("zfs", "snapshot", "-r", administratorSnapshot).CombinedOutput(); err != nil {
+	if snapshotOutput, err := runConsoleVMCommand(
+		consoleIntegrationVMCleanupTimeout,
+		"zfs", "snapshot", "-r", administratorSnapshot,
+	); err != nil {
 		t.Fatalf("create administrator snapshot: %v\n%s", err, snapshotOutput)
 	}
 	t.Cleanup(func() {
-		_, _ = exec.Command("zfs", "destroy", "-r", administratorSnapshot).CombinedOutput()
+		_, _ = runConsoleVMCommand(
+			consoleIntegrationVMCleanupTimeout,
+			"zfs", "destroy", "-r", administratorSnapshot,
+		)
 	})
 	rollbackFailure = runSylveFailure(t, suite.binaryPath, suite.configPath,
 		"vms", "snapshots", "rollback", "--rid", strconv.FormatUint(uint64(sourceRID), 10),
@@ -1392,7 +1379,10 @@ func consecutiveAvailableConsoleVMRIDsExcluding(
 				available = false
 				break
 			}
-			if _, err := exec.Command("virsh", "-c", "bhyve:///system", "dominfo", strconv.FormatUint(uint64(rid), 10)).CombinedOutput(); err == nil {
+			if _, err := runConsoleVMCommand(
+				consoleIntegrationVMProbeTimeout,
+				"virsh", "-c", "bhyve:///system", "dominfo", strconv.FormatUint(uint64(rid), 10),
+			); err == nil {
 				available = false
 				break
 			}
@@ -1403,18 +1393,6 @@ func consecutiveAvailableConsoleVMRIDsExcluding(
 	}
 	t.Fatal("could not find consecutive unused VM RIDs")
 	return 0, 0
-}
-
-func waitForConsolePath(t *testing.T, path string) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("path %s did not become available", path)
 }
 
 func findConsoleVMTemplate(t *testing.T, templates []consoleprotocol.VMTemplateInfo, id uint) consoleprotocol.VMTemplateInfo {

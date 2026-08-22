@@ -154,6 +154,38 @@ func TestParseVMConsoleRequest(t *testing.T) {
 	}
 }
 
+func TestVMSerialConsolePreflightAvailable(t *testing.T) {
+	request, err := parseVMConsoleRequest("107", "115200")
+	if err != nil {
+		t.Fatalf("parse request: %v", err)
+	}
+	service := &vmConsoleHandlerStub{
+		vm:      vmModels.VM{RID: 107, Name: "console-vm", Serial: true},
+		allowed: true,
+		domain:  &libvirtServiceInterfaces.LvDomain{Name: "107", Status: "running"},
+	}
+	info, err := libvirtService.PreflightVMSerialConsole(
+		service,
+		request,
+		func(path string) (os.FileInfo, error) {
+			if path != "/dev/nmdm107B" {
+				t.Fatalf("device path = %q", path)
+			}
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("preflight serial console: %v", err)
+	}
+	if !info.Available || info.RID != 107 || info.Name != "console-vm" ||
+		info.BaudRate != "115200" || info.DevicePath != "/dev/nmdm107B" || info.DomainState != "running" {
+		t.Fatalf("access info = %+v", info)
+	}
+	if service.vmRID != 107 || service.guardRID != 107 || service.domainRID != 107 {
+		t.Fatalf("service RIDs = vm:%d guard:%d domain:%d", service.vmRID, service.guardRID, service.domainRID)
+	}
+}
+
 func TestParseVMConsoleRequestRejectsInvalidIdentityAndBaudRate(t *testing.T) {
 	tests := []struct {
 		name     string
