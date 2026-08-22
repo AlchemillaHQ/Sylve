@@ -162,14 +162,14 @@ func TestFormatVMListIncludesComputeResources(t *testing.T) {
 func TestBuildConsoleVMCreateRequestFromFlags(t *testing.T) {
 	request, err := buildConsoleVMCreateRequest([]string{
 		"--rid", "820", "--name", "console-created", "--ram", "2GiB",
-		"--vnc-enabled=false", "--start-at-boot=false",
+		"--vnc-enabled=false", "--vnc-wait=false", "--start-at-boot=false", "--start-order", "8",
 	})
 	if err != nil {
 		t.Fatalf("build console VM create request: %v", err)
 	}
 	if request.RID == nil || *request.RID != 820 || request.Name != "console-created" || request.RAM != 2*1024*1024*1024 ||
 		request.StorageType != libvirtServiceInterfaces.StorageTypeNone || request.VNCEnabled == nil || *request.VNCEnabled ||
-		request.StartAtBoot == nil || *request.StartAtBoot {
+		request.VNCWait == nil || *request.VNCWait || request.StartAtBoot == nil || *request.StartAtBoot || request.StartOrder != 8 {
 		t.Fatalf("request = %#v", request)
 	}
 }
@@ -355,7 +355,8 @@ func TestVMTemplateQueueUsesPreflightAndLifecyclePayload(t *testing.T) {
 		t.Fatalf("queue conversion: %v", err)
 	}
 	if service.convertRID != 740 || service.convertRequest != convert || lifecycle.requestType != taskModels.GuestTypeVMTemplate ||
-		lifecycle.requestID != 740 || lifecycle.action != "convert" || output.TaskID != 91 || output.SourceRID != 740 {
+		lifecycle.requestID != 740 || lifecycle.action != "convert" || output.TaskID != 91 || output.SourceRID != 740 ||
+		output.Action != "capture" {
 		t.Fatalf("service=%#v lifecycle=%#v output=%#v", service, lifecycle, output)
 	}
 	var captured libvirtServiceInterfaces.ConvertToTemplateRequest
@@ -368,7 +369,8 @@ func TestVMTemplateQueueUsesPreflightAndLifecyclePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("queue creation: %v", err)
 	}
-	if service.createTemplate != 12 || service.createRequest.RID != 741 || lifecycle.requestID != 12 || lifecycle.action != "create" || output.TemplateID != 12 {
+	if service.createTemplate != 12 || service.createRequest.RID != 741 || lifecycle.requestID != 12 || lifecycle.action != "create" ||
+		output.TemplateID != 12 {
 		t.Fatalf("service=%#v lifecycle=%#v output=%#v", service, lifecycle, output)
 	}
 }
@@ -404,6 +406,22 @@ func TestListVMTemplatesProvidesStorageMappingIDs(t *testing.T) {
 	}
 	if len(templates) != 1 || len(templates[0].Storages) != 1 || templates[0].Storages[0].SourceStorageID != 8 {
 		t.Fatalf("templates = %#v", templates)
+	}
+}
+
+func TestGetVMTemplateReturnsFullStableTemplate(t *testing.T) {
+	service := &vmTemplateServiceStub{templates: map[uint]vmModels.VMTemplate{
+		5: {ID: 5, Name: "base", SourceVMName: "source", SourceVMRID: 745},
+	}}
+	template, err := getVMTemplate(service, 5)
+	if err != nil {
+		t.Fatalf("get template: %v", err)
+	}
+	if template.ID != 5 || template.Storages == nil || template.Networks == nil || template.ExtraBhyveOptions == nil {
+		t.Fatalf("template = %#v", template)
+	}
+	if _, err := getVMTemplate(service, 0); err == nil || !strings.Contains(err.Error(), "invalid_template_id") {
+		t.Fatalf("invalid template error = %v", err)
 	}
 }
 
@@ -499,6 +517,33 @@ func TestParseVMNetworkUpdateArgs(t *testing.T) {
 	if _, err := parseVMNetworkUpdateArgs([]string{"623", "8", "--enabled=maybe"}); err == nil ||
 		!strings.Contains(err.Error(), "invalid boolean") {
 		t.Fatalf("invalid enabled error = %v", err)
+	}
+}
+
+func TestParseVMNetworkAttachArgsUsesNamedOptions(t *testing.T) {
+	request, err := parseVMNetworkAttachArgs([]string{
+		"623", "--switch", "lan0", "--emulation", "VIRTIO", "--mac-id", "19",
+	})
+	if err != nil {
+		t.Fatalf("parse network attach: %v", err)
+	}
+	if request.RID != 623 || request.SwitchName != "lan0" || request.Emulation != "virtio" ||
+		request.MacID == nil || *request.MacID != 19 {
+		t.Fatalf("request = %#v", request)
+	}
+	if _, err := parseVMNetworkAttachArgs([]string{"623", "lan0", "virtio"}); err == nil ||
+		!strings.Contains(err.Error(), "unknown VM option") {
+		t.Fatalf("positional attach options error = %v", err)
+	}
+}
+
+func TestRemovedFlatVMCommandsAreUnknown(t *testing.T) {
+	for _, command := range []string{"networks", "addnet", "editnet", "rmnet"} {
+		var out bytes.Buffer
+		handleVms(&Context{Out: &out}, []string{command})
+		if !strings.Contains(out.String(), "Unknown vms command") {
+			t.Fatalf("vms %s output = %q", command, out.String())
+		}
 	}
 }
 

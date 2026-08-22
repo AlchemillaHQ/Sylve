@@ -36,10 +36,7 @@ func TestNewVMsCommandIncludesExpectedWorkflows(t *testing.T) {
 		"access":    false,
 		"delete":    false,
 		"purge":     false,
-		"networks":  false,
-		"addnet":    false,
-		"rmnet":     false,
-		"editnet":   false,
+		"network":   false,
 		"storage":   false,
 		"snapshots": false,
 		"templates": false,
@@ -55,6 +52,13 @@ func TestNewVMsCommandIncludesExpectedWorkflows(t *testing.T) {
 	for name, found := range want {
 		if !found {
 			t.Fatalf("expected vms %s command", name)
+		}
+	}
+	for _, removed := range []string{"networks", "addnet", "editnet", "rmnet"} {
+		for _, child := range command.Commands {
+			if child.Name == removed {
+				t.Fatalf("removed vms %s command remains registered", removed)
+			}
 		}
 	}
 }
@@ -158,10 +162,15 @@ func TestVMSnapshotTemplateAndAccessHelpRegistersLifecycleCommands(t *testing.T)
 		}
 	}
 	templates := newVMTemplatesCommand()
-	for _, name := range []string{"list", "convert", "create", "delete"} {
+	for _, name := range []string{"list", "get", "capture", "create", "delete"} {
 		child := findCLIChildCommand(t, templates, name)
-		if name == "convert" && (!strings.Contains(strings.ToLower(child.Description), "powered off") || !strings.Contains(child.Description, "retains")) {
-			t.Fatalf("template convert help = %q", child.Description)
+		if name == "capture" && (!strings.Contains(strings.ToLower(child.Description), "powered off") || !strings.Contains(child.Description, "retains")) {
+			t.Fatalf("template capture help = %q", child.Description)
+		}
+	}
+	for _, child := range templates.Commands {
+		if child.Name == "convert" {
+			t.Fatal("removed templates convert command remains registered")
 		}
 	}
 	serial := newVMAccessSerialCommand()
@@ -226,7 +235,7 @@ func TestVMStorageEditPreservesExplicitFalse(t *testing.T) {
 
 func TestVMEditNetworkUsesGenerateMACAndExplicitFalse(t *testing.T) {
 	request := captureDirectVMOperation(t,
-		"vms", "editnet", "--rid", "613", "--network-id", "8",
+		"vms", "network", "edit", "--rid", "613", "--network-id", "8",
 		"--generate-mac", "--enabled=false", "--json",
 	)
 	if request.Operation != consoleprotocol.OperationVMNetworkUpdate {
@@ -256,7 +265,21 @@ func TestVMCreateFlagsUseConservativeDefaults(t *testing.T) {
 	if created.RID == nil || *created.RID != 615 || created.Name != "flag-created" || created.CPUSockets != 1 ||
 		created.CPUCores != 1 || created.CPUThreads != 1 || created.RAM != 1024*1024*1024 ||
 		created.StorageType != libvirtServiceInterfaces.StorageTypeNone || created.VNCEnabled == nil || *created.VNCEnabled ||
-		created.StartAtBoot == nil || *created.StartAtBoot || !payload.JSON {
+		created.VNCWait == nil || *created.VNCWait || created.StartAtBoot == nil || *created.StartAtBoot ||
+		created.StartOrder != 0 || !payload.JSON {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestVMCreateFlagsOverrideStartOrderAndVNCWait(t *testing.T) {
+	request := captureDirectVMOperation(t,
+		"vms", "create", "--rid", "619", "--name", "ordered-vm", "--start-order", "7", "--vnc-wait=false", "--json",
+	)
+	var payload consoleprotocol.VMCreatePayload
+	if err := json.Unmarshal(request.Payload, &payload); err != nil {
+		t.Fatalf("decode VM create payload: %v", err)
+	}
+	if payload.Request.StartOrder != 7 || payload.Request.VNCWait == nil || *payload.Request.VNCWait {
 		t.Fatalf("payload = %#v", payload)
 	}
 }
@@ -326,9 +349,9 @@ func TestVMConfigVNCPreservesPasswordByDefault(t *testing.T) {
 func TestVMConfigHelpRegistersFocusedCommands(t *testing.T) {
 	command := newVMConfigCommand()
 	want := map[string]bool{
-		"cpu": false, "memory": false, "vnc": false, "serial": false, "pci": false,
+		"name": false, "description": false, "cpu": false, "memory": false, "vnc": false, "serial": false, "pci": false,
 		"autostart": false, "clock": false, "shutdown": false, "boot-rom": false,
-		"cloud-init": false, "bhyve-options": false, "unknown-msr": false, "qga": false,
+		"cloud-init": false, "bhyve-options": false, "unknown-msr": false, "qga": false, "wol": false, "tpm": false,
 	}
 	for _, child := range command.Commands {
 		if _, exists := want[child.Name]; exists {
@@ -340,10 +363,65 @@ func TestVMConfigHelpRegistersFocusedCommands(t *testing.T) {
 			t.Fatalf("expected vms config %s command", name)
 		}
 	}
-	for _, name := range []string{"cpu", "memory", "vnc", "serial", "pci", "clock", "boot-rom", "cloud-init", "bhyve-options", "unknown-msr", "qga"} {
+	for _, name := range []string{"cpu", "memory", "vnc", "serial", "pci", "clock", "boot-rom", "cloud-init", "bhyve-options", "unknown-msr", "qga", "tpm"} {
 		child := findCLIChildCommand(t, command, name)
 		if !strings.Contains(strings.ToLower(child.Description), "powered off") {
 			t.Fatalf("vms config %s help does not state powered-off requirement: %q", name, child.Description)
+		}
+	}
+}
+
+func TestVMNetworkCommandRegistersNestedLifecycle(t *testing.T) {
+	command := newVMNetworkCommand()
+	for _, name := range []string{"list", "attach", "edit", "detach"} {
+		child := findCLIChildCommand(t, command, name)
+		if name != "list" && !strings.Contains(strings.ToLower(child.Description), "powered off") {
+			t.Fatalf("vms network %s help = %q", name, child.Description)
+		}
+	}
+}
+
+func TestVMTemplateGetAndCaptureUseTypedOperations(t *testing.T) {
+	get := captureDirectVMOperation(t, "vms", "templates", "get", "--template-id", "12", "--json")
+	if get.Operation != consoleprotocol.OperationVMTemplateGet {
+		t.Fatalf("get operation = %q", get.Operation)
+	}
+	var getPayload consoleprotocol.VMTemplateGetPayload
+	if err := json.Unmarshal(get.Payload, &getPayload); err != nil || getPayload.TemplateID != 12 || !getPayload.JSON {
+		t.Fatalf("get payload = %#v, err = %v", getPayload, err)
+	}
+
+	capture := captureDirectVMOperation(t, "vms", "templates", "capture", "--rid", "620", "--name", "base", "--json")
+	if capture.Operation != consoleprotocol.OperationVMTemplateConvert {
+		t.Fatalf("capture operation = %q", capture.Operation)
+	}
+}
+
+func TestVMQGAInfoUsesTypedOperation(t *testing.T) {
+	request := captureDirectVMOperation(t, "vms", "qga", "info", "--rid", "621", "--json")
+	if request.Operation != consoleprotocol.OperationVMQGAInfo {
+		t.Fatalf("operation = %q", request.Operation)
+	}
+	var payload consoleprotocol.VMRIDPayload
+	if err := json.Unmarshal(request.Payload, &payload); err != nil || payload.RID != 621 || !payload.JSON {
+		t.Fatalf("payload = %#v, err = %v", payload, err)
+	}
+}
+
+func TestVMIdentityWOLAndTPMUseTypedOperations(t *testing.T) {
+	tests := []struct {
+		args      []string
+		operation string
+	}{
+		{[]string{"vms", "config", "name", "--rid", "622", "--name", "renamed", "--json"}, consoleprotocol.OperationVMConfigName},
+		{[]string{"vms", "config", "description", "--rid", "622", "--description", "updated", "--json"}, consoleprotocol.OperationVMConfigDescription},
+		{[]string{"vms", "config", "wol", "--rid", "622", "--enabled=false", "--json"}, consoleprotocol.OperationVMConfigWOL},
+		{[]string{"vms", "config", "tpm", "--rid", "622", "--enabled=true", "--json"}, consoleprotocol.OperationVMConfigTPM},
+	}
+	for _, test := range tests {
+		request := captureDirectVMOperation(t, test.args...)
+		if request.Operation != test.operation {
+			t.Fatalf("%v operation = %q", test.args, request.Operation)
 		}
 	}
 }

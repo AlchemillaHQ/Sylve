@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/digitalocean/go-libvirt"
 )
 
@@ -58,6 +59,39 @@ func TestQGACallRawSuccess(t *testing.T) {
 	}
 
 	<-done
+}
+
+func TestParseQGAGuestInfoReturnsSortedCapabilities(t *testing.T) {
+	version, capabilities, err := parseQGAGuestInfo(json.RawMessage(`{
+		"version":"9.2.1",
+		"supported_commands":[
+			{"name":"guest-sync","enabled":true,"success-response":true},
+			{"name":"guest-info","enabled":false,"success-response":false}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("parse guest info: %v", err)
+	}
+	if version != "9.2.1" || len(capabilities) != 2 || capabilities[0].Name != "guest-info" ||
+		capabilities[1].Name != "guest-sync" || !capabilities[1].SuccessResponse {
+		t.Fatalf("version=%q capabilities=%#v", version, capabilities)
+	}
+}
+
+func TestInspectQemuGuestAgentDisabledIsSuccessful(t *testing.T) {
+	db := newVMDeleteTestDB(t)
+	vm := vmModels.VM{RID: 750, Name: "qga-disabled", QemuGuestAgent: false}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+	status, err := (&Service{DB: db}).InspectQemuGuestAgent(vm.RID)
+	if err != nil {
+		t.Fatalf("inspect disabled QGA: %v", err)
+	}
+	if status.RID != vm.RID || status.Enabled || status.Reachable || status.DomainState != "unknown" ||
+		status.UnavailableReason != "qemu_guest_agent_disabled" || status.Capabilities == nil {
+		t.Fatalf("status = %#v", status)
+	}
 }
 
 func TestQGACallRawPropagatesAgentError(t *testing.T) {

@@ -403,6 +403,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	replCtx := &repl.Context{
 		Auth:           aS.(*auth.Service),
+		Cluster:        clusterSvc,
 		Info:           iS.(*info.Service),
 		Jail:           jailSvc,
 		VirtualMachine: libvirtSvc,
@@ -484,7 +485,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		}()
 	}
 
-	// clusterHTTPS holds the intra-cluster HTTPS server when started; guarded by clusterHTTPSMu.
 	var clusterHTTPSMu sync.Mutex
 	var activeClusterHTTPS *http.Server
 
@@ -497,7 +497,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			clusterHTTPSMu.Lock()
 			defer clusterHTTPSMu.Unlock()
 			if activeClusterHTTPS != nil {
-				return nil // already running
+				return nil
 			}
 
 			srv := &http.Server{
@@ -519,7 +519,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 		clusterSvc.SetClusterStartHook(startClusterListeners)
 
-		// If this node is already part of a cluster, start the cluster listeners immediately.
 		var clusterRecord clusterModels.Cluster
 		if err := d.First(&clusterRecord).Error; err == nil && clusterRecord.Enabled && clusterRecord.RaftIP != "" {
 			if err := startClusterListeners(clusterRecord.RaftIP); err != nil {

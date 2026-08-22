@@ -12,7 +12,6 @@ import (
 	"context"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
-	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/urfave/cli/v3"
 )
 
@@ -93,6 +92,7 @@ func newVMsCommand() *cli.Command {
 			newVMConfigCommand(),
 			newVMAccessCommand(),
 			newVMStorageCommand(),
+			newVMNetworkCommand(),
 			newVMSnapshotsCommand(),
 			newVMTemplatesCommand(),
 			{
@@ -143,82 +143,26 @@ func newVMsCommand() *cli.Command {
 				},
 			},
 			{
-				Name:  "networks",
-				Usage: "List networks for a VM",
-				Flags: []cli.Flag{
-					jsonFlag,
-					&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
-				},
-				Action: func(ctx context.Context, command *cli.Command) error {
-					rid, err := commandVMRID(command)
-					if err != nil {
-						return err
-					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworks, consoleprotocol.VMRIDPayload{
-						RID:  rid,
-						JSON: command.Bool("json"),
-					}, command.Bool("json"))
-				},
-			},
-			{
-				Name:  "addnet",
-				Usage: "Attach a network to a powered-off VM",
-				Flags: []cli.Flag{
-					jsonFlag,
-					&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
-					&cli.StringFlag{Name: "switch", Usage: "Network switch name", Required: true},
-					&cli.StringFlag{Name: "emulation", Usage: "Network emulation: virtio or e1000", Required: true},
-					&cli.IntFlag{Name: "mac-id", Usage: "Existing MAC object ID"},
-				},
-				Action: func(ctx context.Context, command *cli.Command) error {
-					rid, err := commandVMRID(command)
-					if err != nil {
-						return err
-					}
-					macID, err := commandOptionalPositiveUint(command, "mac-id")
-					if err != nil {
-						return err
-					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkAttach, consoleprotocol.VMNetworkAttachPayload{
-						RID: rid,
-						Request: libvirtServiceInterfaces.NetworkAttachRequest{
-							SwitchName: command.String("switch"),
-							Emulation:  command.String("emulation"),
-							MacID:      macID,
-						},
-						JSON: command.Bool("json"),
-					}, command.Bool("json"))
-				},
-			},
-			newVMEditNetworkCommand(),
-			{
-				Name:  "rmnet",
-				Usage: "Remove a network from a powered-off VM",
-				Flags: []cli.Flag{
-					jsonFlag,
-					&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
-					&cli.IntFlag{Name: "net-id", Usage: "VM network ID", Required: true},
-				},
-				Action: func(ctx context.Context, command *cli.Command) error {
-					rid, err := commandVMRID(command)
-					if err != nil {
-						return err
-					}
-					networkID, err := commandPositiveUint(command, "net-id")
-					if err != nil {
-						return err
-					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkDetach, consoleprotocol.VMNetworkDetachPayload{
-						RID:       rid,
-						NetworkID: networkID,
-						JSON:      command.Bool("json"),
-					}, command.Bool("json"))
-				},
-			},
-			{
 				Name:  "qga",
 				Usage: "Manage QEMU guest agent commands",
 				Commands: []*cli.Command{
+					{
+						Name:  "info",
+						Usage: "Show QEMU Guest Agent configuration, reachability, and capabilities",
+						Flags: []cli.Flag{
+							jsonFlag,
+							&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
+						},
+						Action: func(ctx context.Context, command *cli.Command) error {
+							rid, err := commandVMRID(command)
+							if err != nil {
+								return err
+							}
+							return executeConsoleOperation(command, consoleprotocol.OperationVMQGAInfo, consoleprotocol.VMRIDPayload{
+								RID: rid, JSON: command.Bool("json"),
+							}, command.Bool("json"))
+						},
+					},
 					{
 						Name:  "send",
 						Usage: "Send a command to a VM QEMU guest agent",

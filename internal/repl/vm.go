@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -22,20 +23,25 @@ import (
 )
 
 type vmCreateResult struct {
-	Created bool   `json:"created"`
-	RID     uint   `json:"rid"`
-	Name    string `json:"name"`
+	Created               bool   `json:"created"`
+	RID                   uint   `json:"rid"`
+	Name                  string `json:"name"`
+	StorageAttachmentIDs  []uint `json:"storageAttachmentIds"`
+	NetworkAttachmentIDs  []uint `json:"networkAttachmentIds"`
+	MACObjectIDs          []uint `json:"macObjectIds"`
+	GeneratedMACObjectIDs []uint `json:"generatedMacObjectIds"`
 }
 
 type vmNetworkAttachResult struct {
-	Attached   bool   `json:"attached"`
-	RID        uint   `json:"rid"`
-	NetworkID  uint   `json:"networkId"`
-	SwitchName string `json:"switchName"`
-	Emulation  string `json:"emulation"`
-	MacID      *uint  `json:"macId,omitempty"`
-	MAC        string `json:"mac"`
-	Enabled    bool   `json:"enabled"`
+	Attached              bool   `json:"attached"`
+	RID                   uint   `json:"rid"`
+	NetworkID             uint   `json:"networkId"`
+	SwitchName            string `json:"switchName"`
+	Emulation             string `json:"emulation"`
+	MacID                 *uint  `json:"macId,omitempty"`
+	MAC                   string `json:"mac"`
+	Enabled               bool   `json:"enabled"`
+	GeneratedMACObjectIDs []uint `json:"generatedMacObjectIds"`
 }
 
 type vmActionResult struct {
@@ -46,16 +52,19 @@ type vmActionResult struct {
 }
 
 type vmNetworkDetachResult struct {
-	Deleted   bool `json:"deleted"`
-	RID       uint `json:"rid"`
-	NetworkID uint `json:"networkId"`
+	Deleted              bool   `json:"deleted"`
+	RID                  uint   `json:"rid"`
+	NetworkID            uint   `json:"networkId"`
+	RetainedMACObjectIDs []uint `json:"retainedMacObjectIds"`
 }
 
 type vmDeleteResult struct {
-	Deleted          bool     `json:"deleted"`
-	RID              uint     `json:"rid"`
-	Warnings         []string `json:"warnings"`
-	RetainedDatasets []string `json:"retainedDatasets"`
+	Deleted              bool     `json:"deleted"`
+	RID                  uint     `json:"rid"`
+	Warnings             []string `json:"warnings"`
+	RetainedDatasets     []string `json:"retainedDatasets"`
+	DeletedMACObjectIDs  []uint   `json:"deletedMacObjectIds"`
+	RetainedMACObjectIDs []uint   `json:"retainedMacObjectIds"`
 }
 
 type vmPurgeResult struct {
@@ -83,12 +92,9 @@ func handleVms(ctx *Context, args []string) {
 			{"access <vnc|serial> <rid> [options]", "Inspect VNC or open a preflighted local serial console"},
 			{"storage <list|attach|edit|resize|detach>", "Manage VM storage devices"},
 			{"snapshots <list|create|rollback|delete>", "Manage crash-consistent VM snapshots"},
-			{"templates <list|convert|create|delete>", "Manage VM templates and queued instantiation"},
-			{"networks <rid>", "List networks for a VM"},
-			{"addnet <rid> <switch> <virtio|e1000> [mac_id]", "Attach a network to a powered-off VM"},
-			{"editnet <rid> <network_id> [options]", "Edit a network on a powered-off VM"},
-			{"rmnet <rid> <net_id>", "Remove a network from a powered-off VM"},
-			{"qga send <rid> <command>", "Send a QGA command to a VM"},
+			{"templates <list|get|capture|create|delete>", "Manage VM templates and queued instantiation"},
+			{"network <list|attach|edit|detach>", "Manage VM network attachments"},
+			{"qga <info|send> <rid> [command]", "Inspect or send commands to QEMU Guest Agent"},
 		})
 		return
 	}
@@ -180,67 +186,8 @@ func handleVms(ctx *Context, args []string) {
 	case "templates":
 		handleVMTemplates(ctx, subArgs, jsonMode)
 
-	case "networks":
-		if len(subArgs) != 1 {
-			println(ctx, styledErrorf("Usage: vms networks <rid>"))
-			return
-		}
-		rid, err := parseVMRID(subArgs[0])
-		if err != nil {
-			println(ctx, styledErrorf("Invalid RID '%s'", subArgs[0]))
-			return
-		}
-		vmsNetworksList(ctx, rid, jsonMode)
-
-	case "addnet":
-		if len(subArgs) < 3 || len(subArgs) > 4 {
-			println(ctx, styledErrorf("Usage: vms addnet <rid> <switch> <virtio|e1000> [mac_id]"))
-			return
-		}
-		rid, err := parseVMRID(subArgs[0])
-		if err != nil {
-			println(ctx, styledErrorf("Invalid RID '%s'", subArgs[0]))
-			return
-		}
-		request := libvirtServiceInterfaces.NetworkAttachRequest{
-			RID:        rid,
-			SwitchName: subArgs[1],
-			Emulation:  subArgs[2],
-		}
-		if len(subArgs) == 4 {
-			macID, err := parseVMNetworkID(subArgs[3])
-			if err != nil {
-				println(ctx, styledErrorf("Invalid MAC object ID '%s'", subArgs[3]))
-				return
-			}
-			request.MacID = &macID
-		}
-		vmsNetworkAttach(ctx, request, jsonMode)
-
-	case "editnet":
-		request, err := parseVMNetworkUpdateArgs(subArgs)
-		if err != nil {
-			println(ctx, styledErrorf("%v", err))
-			return
-		}
-		vmsNetworkUpdate(ctx, request, jsonMode)
-
-	case "rmnet":
-		if len(subArgs) != 2 {
-			println(ctx, styledErrorf("Usage: vms rmnet <rid> <network_id>"))
-			return
-		}
-		rid, err := parseVMRID(subArgs[0])
-		if err != nil {
-			println(ctx, styledErrorf("Invalid RID '%s'", subArgs[0]))
-			return
-		}
-		networkID, err := parseVMNetworkID(subArgs[1])
-		if err != nil {
-			println(ctx, styledErrorf("Invalid network ID '%s'", subArgs[1]))
-			return
-		}
-		vmsNetworkDetach(ctx, rid, networkID, jsonMode)
+	case "network":
+		handleVMNetwork(ctx, subArgs, jsonMode)
 
 	case "qga":
 		handleVMQGA(ctx, subArgs, jsonMode)
@@ -273,7 +220,23 @@ func handleVmsByRID(ctx *Context, rid uint, args []string, jsonMode bool) {
 
 func handleVMQGA(ctx *Context, args []string, jsonMode bool) {
 	if len(args) == 0 {
-		println(ctx, styledErrorf("Usage: vms qga send <rid> <command>"))
+		printSubHelp(ctx, "vms qga", []cmdHelp{
+			{"info <rid>", "Show configuration, reachability, and available capabilities"},
+			{"send <rid> <command>", "Send a QEMU Guest Agent command"},
+		})
+		return
+	}
+	if args[0] == "info" {
+		if len(args) != 2 {
+			println(ctx, styledErrorf("Usage: vms qga info <rid>"))
+			return
+		}
+		rid, err := parseVMRID(args[1])
+		if err != nil {
+			println(ctx, styledErrorf("Invalid RID '%s'", args[1]))
+			return
+		}
+		vmsQGAInfo(ctx, rid, jsonMode)
 		return
 	}
 
@@ -432,7 +395,32 @@ func createVM(ctx *Context, request libvirtServiceInterfaces.CreateVMRequest) (v
 	if err := ctx.VirtualMachine.CreateVM(request, context.Background()); err != nil {
 		return vmCreateResult{}, fmt.Errorf("failed_to_create_vm: %w", err)
 	}
-	return vmCreateResult{Created: true, RID: *request.RID, Name: request.Name}, nil
+	vm, err := ctx.VirtualMachine.GetVMByRID(*request.RID)
+	if err != nil {
+		return vmCreateResult{}, fmt.Errorf("failed_to_read_created_vm_identifiers: %w", err)
+	}
+	result := vmCreateResult{
+		Created: true, RID: vm.RID, Name: vm.Name,
+		StorageAttachmentIDs: []uint{}, NetworkAttachmentIDs: []uint{},
+		MACObjectIDs: []uint{}, GeneratedMACObjectIDs: []uint{},
+	}
+	for _, storage := range vm.Storages {
+		result.StorageAttachmentIDs = append(result.StorageAttachmentIDs, storage.ID)
+	}
+	for _, network := range vm.Networks {
+		result.NetworkAttachmentIDs = append(result.NetworkAttachmentIDs, network.ID)
+		if network.MacID != nil && *network.MacID > 0 {
+			result.MACObjectIDs = append(result.MACObjectIDs, *network.MacID)
+			if request.MacId == nil || *request.MacId == 0 {
+				result.GeneratedMACObjectIDs = append(result.GeneratedMACObjectIDs, *network.MacID)
+			}
+		}
+	}
+	slices.Sort(result.StorageAttachmentIDs)
+	slices.Sort(result.NetworkAttachmentIDs)
+	slices.Sort(result.MACObjectIDs)
+	slices.Sort(result.GeneratedMACObjectIDs)
+	return result, nil
 }
 
 func listVMNetworks(ctx *Context, rid uint) (*vmModels.VM, error) {
@@ -487,16 +475,21 @@ func attachVMNetwork(ctx *Context, request libvirtServiceInterfaces.NetworkAttac
 		return vmNetworkAttachResult{}, fmt.Errorf("network_attach_returned_empty_result")
 	}
 
-	return vmNetworkAttachResult{
-		Attached:   true,
-		RID:        request.RID,
-		NetworkID:  network.ID,
-		SwitchName: request.SwitchName,
-		Emulation:  network.Emulation,
-		MacID:      network.MacID,
-		MAC:        vmNetworkMAC(*network),
-		Enabled:    network.Enable,
-	}, nil
+	result := vmNetworkAttachResult{
+		Attached:              true,
+		RID:                   request.RID,
+		NetworkID:             network.ID,
+		SwitchName:            request.SwitchName,
+		Emulation:             network.Emulation,
+		MacID:                 network.MacID,
+		MAC:                   vmNetworkMAC(*network),
+		Enabled:               network.Enable,
+		GeneratedMACObjectIDs: []uint{},
+	}
+	if (request.MacID == nil || *request.MacID == 0) && network.MacID != nil && *network.MacID > 0 {
+		result.GeneratedMACObjectIDs = append(result.GeneratedMACObjectIDs, *network.MacID)
+	}
+	return result, nil
 }
 
 func detachVMNetwork(ctx *Context, rid, networkID uint) (vmNetworkDetachResult, error) {
@@ -509,13 +502,21 @@ func detachVMNetwork(ctx *Context, rid, networkID uint) (vmNetworkDetachResult, 
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmNetworkDetachResult{}, fmt.Errorf("vm_service_unavailable")
 	}
+	network, err := getVMNetwork(ctx, rid, networkID)
+	if err != nil {
+		return vmNetworkDetachResult{}, err
+	}
 	if err := ctx.VirtualMachine.NetworkDetach(libvirtServiceInterfaces.NetworkDetachRequest{
 		RID:       rid,
 		NetworkID: networkID,
 	}, context.Background()); err != nil {
 		return vmNetworkDetachResult{}, fmt.Errorf("failed_to_detach_vm_network: %w", err)
 	}
-	return vmNetworkDetachResult{Deleted: true, RID: rid, NetworkID: networkID}, nil
+	retained := []uint{}
+	if network.MacID != nil && *network.MacID > 0 {
+		retained = append(retained, *network.MacID)
+	}
+	return vmNetworkDetachResult{Deleted: true, RID: rid, NetworkID: networkID, RetainedMACObjectIDs: retained}, nil
 }
 
 func deleteVM(ctx *Context, rid uint, deleteMACs, deleteRawDisks, deleteVolumes bool) (vmDeleteResult, error) {
@@ -542,12 +543,33 @@ func deleteVM(ctx *Context, rid uint, deleteMACs, deleteRawDisks, deleteVolumes 
 	if removal.RetainedDatasets == nil {
 		removal.RetainedDatasets = []string{}
 	}
+	if removal.DeletedMACObjectIDs == nil {
+		removal.DeletedMACObjectIDs = []uint{}
+	}
+	if removal.RetainedMACObjectIDs == nil {
+		removal.RetainedMACObjectIDs = []uint{}
+	}
 	return vmDeleteResult{
-		Deleted:          true,
-		RID:              rid,
-		Warnings:         removal.Warnings,
-		RetainedDatasets: removal.RetainedDatasets,
+		Deleted:              true,
+		RID:                  rid,
+		Warnings:             removal.Warnings,
+		RetainedDatasets:     removal.RetainedDatasets,
+		DeletedMACObjectIDs:  removal.DeletedMACObjectIDs,
+		RetainedMACObjectIDs: removal.RetainedMACObjectIDs,
 	}, nil
+}
+
+func getVMNetwork(ctx *Context, rid, networkID uint) (vmModels.Network, error) {
+	vm, err := ctx.VirtualMachine.GetVMByRID(rid)
+	if err != nil {
+		return vmModels.Network{}, fmt.Errorf("failed_to_get_vm_network: %w", err)
+	}
+	for _, network := range vm.Networks {
+		if network.ID == networkID {
+			return network, nil
+		}
+	}
+	return vmModels.Network{}, fmt.Errorf("network_not_found: %d", networkID)
 }
 
 func purgeVM(ctx *Context, rid uint, deleteMACs bool) (vmPurgeResult, error) {
@@ -585,6 +607,23 @@ func sendVMQGA(ctx *Context, rid uint, command string) (json.RawMessage, error) 
 		return nil, fmt.Errorf("qga_command_failed: %w", err)
 	}
 	return response, nil
+}
+
+func inspectVMQGA(ctx *Context, rid uint) (libvirtServiceInterfaces.QemuGuestAgentStatus, error) {
+	if err := validateVMRID(rid); err != nil {
+		return libvirtServiceInterfaces.QemuGuestAgentStatus{}, err
+	}
+	if ctx == nil || ctx.VirtualMachine == nil {
+		return libvirtServiceInterfaces.QemuGuestAgentStatus{}, fmt.Errorf("vm_service_unavailable")
+	}
+	status, err := ctx.VirtualMachine.InspectQemuGuestAgent(rid)
+	if err != nil {
+		return status, fmt.Errorf("failed_to_inspect_qga: %w", err)
+	}
+	if status.Capabilities == nil {
+		status.Capabilities = []libvirtServiceInterfaces.QGACapability{}
+	}
+	return status, nil
 }
 
 func formatVMList(vms []vmModels.VM) string {
@@ -662,6 +701,27 @@ func formatQGAResponse(response json.RawMessage) string {
 		return string(response)
 	}
 	return pretty.String()
+}
+
+func formatQGAInfo(status libvirtServiceInterfaces.QemuGuestAgentStatus) string {
+	capabilities := make([]string, 0, len(status.Capabilities))
+	for _, capability := range status.Capabilities {
+		if capability.Enabled {
+			capabilities = append(capabilities, capability.Name)
+		}
+	}
+	lines := []string{
+		styledKeyValue("RID:", strconv.FormatUint(uint64(status.RID), 10)),
+		styledKeyValue("Enabled:", strconv.FormatBool(status.Enabled)),
+		styledKeyValue("Domain state:", status.DomainState),
+		styledKeyValue("Reachable:", strconv.FormatBool(status.Reachable)),
+		styledKeyValue("Version:", status.Version),
+		styledKeyValue("Enabled capabilities:", formatStringList(capabilities)),
+	}
+	if status.UnavailableReason != "" {
+		lines = append(lines, styledKeyValue("Unavailable reason:", status.UnavailableReason))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func vmsList(ctx *Context, jsonMode bool) {
@@ -805,6 +865,19 @@ func vmsQGASend(ctx *Context, rid uint, command string, jsonMode bool) {
 	println(ctx, formatQGAResponse(response))
 }
 
+func vmsQGAInfo(ctx *Context, rid uint, jsonMode bool) {
+	status, err := inspectVMQGA(ctx, rid)
+	if err != nil {
+		printOperationError(ctx, jsonMode, "Error inspecting QGA", err)
+		return
+	}
+	if jsonMode {
+		println(ctx, mustJSON(status))
+		return
+	}
+	println(ctx, formatQGAInfo(status))
+}
+
 func processVMListSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
 	var request consoleprotocol.JSONPayload
 	if err := decodeOperationPayload(payload, &request); err != nil {
@@ -942,4 +1015,16 @@ func processVMQGASendSocketRequest(ctx *Context, payload json.RawMessage) socket
 		return socketResponse{Error: err.Error()}
 	}
 	return operationSuccess(request.JSON, response, formatQGAResponse(response))
+}
+
+func processVMQGAInfoSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
+	var request consoleprotocol.VMRIDPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketResponse{Error: "invalid_vm_qga_info_request: " + err.Error()}
+	}
+	status, err := inspectVMQGA(ctx, request.RID)
+	if err != nil {
+		return socketResponse{Error: err.Error()}
+	}
+	return operationSuccess(request.JSON, status, formatQGAInfo(status))
 }

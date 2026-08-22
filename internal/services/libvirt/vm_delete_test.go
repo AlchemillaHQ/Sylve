@@ -348,6 +348,9 @@ func TestRemoveVMWithWarningsRetainsManagedStorageAndReleasesIdentity(t *testing
 	if len(result.Warnings) != 0 {
 		t.Fatalf("unexpected warnings: %v", result.Warnings)
 	}
+	if !slices.Equal(result.DeletedMACObjectIDs, []uint{seed.MACObjectID}) || len(result.RetainedMACObjectIDs) != 0 {
+		t.Fatalf("MAC results = deleted %v retained %v", result.DeletedMACObjectIDs, result.RetainedMACObjectIDs)
+	}
 	wantRetained := []string{
 		fmt.Sprintf("tank/sylve/virtual-machines/%d", seed.VM.RID),
 		seed.RawDataset,
@@ -372,6 +375,21 @@ func TestRemoveVMWithWarningsRetainsManagedStorageAndReleasesIdentity(t *testing
 	}
 	if macObjects != 0 {
 		t.Fatalf("MAC object count = %d, want 0", macObjects)
+	}
+}
+
+func TestRemoveVMWithWarningsReportsRetainedMACObjects(t *testing.T) {
+	db := newVMDeleteTestDB(t)
+	seed := seedVMDeleteGraph(t, db, 711, "tank", false)
+	service := &Service{DB: db}
+	result, err := service.removeVMWithWarnings(
+		seed.VM.RID, false, false, false, t.Context(), func(uint) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("remove VM retaining MACs: %v", err)
+	}
+	if len(result.DeletedMACObjectIDs) != 0 || !slices.Equal(result.RetainedMACObjectIDs, []uint{seed.MACObjectID}) {
+		t.Fatalf("MAC results = deleted %v retained %v", result.DeletedMACObjectIDs, result.RetainedMACObjectIDs)
 	}
 }
 

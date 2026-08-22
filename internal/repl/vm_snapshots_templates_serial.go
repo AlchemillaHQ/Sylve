@@ -305,7 +305,8 @@ func handleVMTemplates(ctx *Context, args []string, jsonMode bool) {
 	if len(args) == 0 {
 		printSubHelp(ctx, "vms templates", []cmdHelp{
 			{"list", "List templates and source storage mapping IDs"},
-			{"convert <rid> --name <name>", "Queue capture from a powered-off VM; source VM is retained"},
+			{"get <template_id>", "Get a template and its configuration and mappings"},
+			{"capture <rid> --name <name>", "Queue capture from a powered-off VM; source VM is retained"},
 			{"create <template_id> --mode <single|multiple> [target and storage options]", "Queue creation of one or up to 200 VMs"},
 			{"delete <template_id>", "Delete a template when no create task is active"},
 		})
@@ -320,9 +321,21 @@ func handleVMTemplates(ctx *Context, args []string, jsonMode bool) {
 		}
 		vmsTemplateList(ctx, jsonMode)
 
-	case "convert":
+	case "get":
+		if len(args) != 2 {
+			println(ctx, styledErrorf("Usage: vms templates get <template_id>"))
+			return
+		}
+		templateID, err := parsePositiveUint(args[1])
+		if err != nil {
+			println(ctx, styledErrorf("Invalid template ID '%s'", args[1]))
+			return
+		}
+		vmsTemplateGet(ctx, templateID, jsonMode)
+
+	case "capture":
 		if len(args) < 2 {
-			println(ctx, styledErrorf("Usage: vms templates convert <rid> --name <name>"))
+			println(ctx, styledErrorf("Usage: vms templates capture <rid> --name <name>"))
 			return
 		}
 		rid, err := parseVMRID(args[1])
@@ -340,7 +353,7 @@ func handleVMTemplates(ctx *Context, args []string, jsonMode bool) {
 			println(ctx, styledErrorf("%v", err))
 			return
 		}
-		vmsTemplateConvert(ctx, rid, request, jsonMode)
+		vmsTemplateCapture(ctx, rid, request, jsonMode)
 
 	case "create":
 		if len(args) < 2 {
@@ -509,11 +522,75 @@ func vmsTemplateList(ctx *Context, jsonMode bool) {
 	println(ctx, formatVMTemplateList(templates))
 }
 
+func getVMTemplate(service vmTemplateService, templateID uint) (*vmModels.VMTemplate, error) {
+	if templateID == 0 {
+		return nil, fmt.Errorf("invalid_template_id")
+	}
+	if service == nil {
+		return nil, fmt.Errorf("vm_service_unavailable")
+	}
+	template, err := service.GetVMTemplate(templateID)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_get_vm_template: %w", err)
+	}
+	if template == nil {
+		return nil, fmt.Errorf("vm_template_not_found")
+	}
+	if template.Storages == nil {
+		template.Storages = []vmModels.VMTemplateStorage{}
+	}
+	if template.Networks == nil {
+		template.Networks = []vmModels.VMTemplateNetwork{}
+	}
+	if template.ExtraBhyveOptions == nil {
+		template.ExtraBhyveOptions = []string{}
+	}
+	return template, nil
+}
+
+func formatVMTemplate(template *vmModels.VMTemplate) string {
+	storages := make([]string, 0, len(template.Storages))
+	for _, storage := range template.Storages {
+		storages = append(storages, fmt.Sprintf("%d: %s on %s (%s)", storage.SourceStorageID, storage.Type, storage.Pool, storage.Emulation))
+	}
+	networks := make([]string, 0, len(template.Networks))
+	for _, network := range template.Networks {
+		networks = append(networks, fmt.Sprintf("%s: %s (%s)", network.Name, network.SwitchName, network.Emulation))
+	}
+	return strings.Join([]string{
+		styledKeyValue("ID:", strconv.FormatUint(uint64(template.ID), 10)),
+		styledKeyValue("Name:", template.Name),
+		styledKeyValue("Source VM:", fmt.Sprintf("%s (%d)", template.SourceVMName, template.SourceVMRID)),
+		styledKeyValue("Description:", template.Description),
+		styledKeyValue("vCPUs:", strconv.Itoa(template.CPUSockets*template.CPUCores*template.CPUThreads)),
+		styledKeyValue("RAM:", formatMemorySize(template.RAM)),
+		styledKeyValue("Storage mappings:", formatStringList(storages)),
+		styledKeyValue("Network mappings:", formatStringList(networks)),
+	}, "\n")
+}
+
+func vmsTemplateGet(ctx *Context, templateID uint, jsonMode bool) {
+	var service vmTemplateService
+	if ctx != nil {
+		service = ctx.VirtualMachine
+	}
+	template, err := getVMTemplate(service, templateID)
+	if err != nil {
+		printOperationError(ctx, jsonMode, "Error fetching VM template", err)
+		return
+	}
+	if jsonMode {
+		println(ctx, mustJSON(template))
+		return
+	}
+	println(ctx, formatVMTemplate(template))
+}
+
 func queueVMTemplateConvert(
 	ctx context.Context, service vmTemplateService, lifecycle vmTemplateLifecycleService,
 	rid uint, request libvirtServiceInterfaces.ConvertToTemplateRequest,
 ) (consoleprotocol.VMTemplateTaskOutput, error) {
-	output := consoleprotocol.VMTemplateTaskOutput{SourceRID: rid, Action: "convert"}
+	output := consoleprotocol.VMTemplateTaskOutput{SourceRID: rid, Action: "capture"}
 	if service == nil {
 		return output, fmt.Errorf("vm_service_unavailable")
 	}
@@ -541,7 +618,7 @@ func queueVMTemplateConvert(
 	return output, nil
 }
 
-func vmsTemplateConvert(ctx *Context, rid uint, request libvirtServiceInterfaces.ConvertToTemplateRequest, jsonMode bool) {
+func vmsTemplateCapture(ctx *Context, rid uint, request libvirtServiceInterfaces.ConvertToTemplateRequest, jsonMode bool) {
 	var service vmTemplateService
 	var lifecycle vmTemplateLifecycleService
 	if ctx != nil {
@@ -789,6 +866,22 @@ func processVMTemplateListSocketRequest(ctx *Context, payload json.RawMessage) s
 	return operationSuccess(request.JSON, templates, formatVMTemplateList(templates))
 }
 
+func processVMTemplateGetSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
+	var request consoleprotocol.VMTemplateGetPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketResponse{Error: "invalid_vm_template_get_request: " + err.Error()}
+	}
+	var service vmTemplateService
+	if ctx != nil {
+		service = ctx.VirtualMachine
+	}
+	template, err := getVMTemplate(service, request.TemplateID)
+	if err != nil {
+		return socketResponse{Error: err.Error()}
+	}
+	return operationSuccess(request.JSON, template, formatVMTemplate(template))
+}
+
 func processVMTemplateConvertSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
 	var request consoleprotocol.VMTemplateConvertPayload
 	if err := decodeOperationPayload(payload, &request); err != nil {
@@ -811,7 +904,7 @@ func processVMTemplateConvertSocketRequest(ctx *Context, payload json.RawMessage
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
-	text := styledSuccessf("Template conversion queued for VM %d: %s (Task: %d).", request.RID, output.Outcome, output.TaskID)
+	text := styledSuccessf("Template capture queued for VM %d: %s (Task: %d).", request.RID, output.Outcome, output.TaskID)
 	return operationSuccess(request.JSON, output, text)
 }
 

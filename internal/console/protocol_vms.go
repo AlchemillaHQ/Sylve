@@ -20,6 +20,7 @@ const (
 	OperationVMNetworks      = "vms.networks"
 	OperationVMNetworkAttach = "vms.network.attach"
 	OperationVMNetworkDetach = "vms.network.detach"
+	OperationVMQGAInfo       = "vms.qga.info"
 	OperationVMQGASend       = "vms.qga.send"
 )
 
@@ -78,6 +79,8 @@ type VMQGASendPayload struct {
 
 const (
 	OperationVMConfigCPU          = "vms.config.cpu"
+	OperationVMConfigName         = "vms.config.name"
+	OperationVMConfigDescription  = "vms.config.description"
 	OperationVMConfigMemory       = "vms.config.memory"
 	OperationVMConfigVNC          = "vms.config.vnc"
 	OperationVMConfigSerial       = "vms.config.serial"
@@ -90,8 +93,16 @@ const (
 	OperationVMConfigBhyveOptions = "vms.config.bhyve-options"
 	OperationVMConfigUnknownMSR   = "vms.config.unknown-msr"
 	OperationVMConfigQGA          = "vms.config.qga"
+	OperationVMConfigWOL          = "vms.config.wol"
+	OperationVMConfigTPM          = "vms.config.tpm"
 	OperationVMAccessVNC          = "vms.access.vnc"
 )
+
+type VMConfigTextPayload struct {
+	RID   uint   `json:"rid"`
+	Value string `json:"value"`
+	JSON  bool   `json:"json"`
+}
 
 type VMConfigCPUPayload struct {
 	RID     uint                                      `json:"rid"`
@@ -193,6 +204,7 @@ const (
 	OperationVMSnapshotDelete   = "vms.snapshot.delete"
 
 	OperationVMTemplateList    = "vms.template.list"
+	OperationVMTemplateGet     = "vms.template.get"
 	OperationVMTemplateConvert = "vms.template.convert"
 	OperationVMTemplateCreate  = "vms.template.create"
 	OperationVMTemplateDelete  = "vms.template.delete"
@@ -240,6 +252,11 @@ type VMTemplateConvertPayload struct {
 	RID     uint                                              `json:"rid"`
 	Request libvirtServiceInterfaces.ConvertToTemplateRequest `json:"request"`
 	JSON    bool                                              `json:"json"`
+}
+
+type VMTemplateGetPayload struct {
+	TemplateID uint `json:"templateId"`
+	JSON       bool `json:"json"`
 }
 
 type VMTemplateCreatePayload struct {

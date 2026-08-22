@@ -15,6 +15,7 @@ import (
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -24,6 +25,7 @@ import (
 
 type Context struct {
 	Auth           *auth.Service
+	Cluster        *cluster.Service
 	Info           *info.Service
 	Jail           *jail.Service
 	VirtualMachine *libvirt.Service

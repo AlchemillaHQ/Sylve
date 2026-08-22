@@ -38,9 +38,13 @@ import (
 )
 
 type consoleVMCreateResult struct {
-	Created bool   `json:"created"`
-	RID     uint   `json:"rid"`
-	Name    string `json:"name"`
+	Created               bool   `json:"created"`
+	RID                   uint   `json:"rid"`
+	Name                  string `json:"name"`
+	StorageAttachmentIDs  []uint `json:"storageAttachmentIds"`
+	NetworkAttachmentIDs  []uint `json:"networkAttachmentIds"`
+	MACObjectIDs          []uint `json:"macObjectIds"`
+	GeneratedMACObjectIDs []uint `json:"generatedMacObjectIds"`
 }
 
 type consoleVMActionResult struct {
@@ -56,27 +60,31 @@ const (
 )
 
 type consoleVMNetworkAttachResult struct {
-	Attached   bool   `json:"attached"`
-	RID        uint   `json:"rid"`
-	NetworkID  uint   `json:"networkId"`
-	SwitchName string `json:"switchName"`
-	Emulation  string `json:"emulation"`
-	MacID      *uint  `json:"macId"`
-	MAC        string `json:"mac"`
-	Enabled    bool   `json:"enabled"`
+	Attached              bool   `json:"attached"`
+	RID                   uint   `json:"rid"`
+	NetworkID             uint   `json:"networkId"`
+	SwitchName            string `json:"switchName"`
+	Emulation             string `json:"emulation"`
+	MacID                 *uint  `json:"macId"`
+	MAC                   string `json:"mac"`
+	Enabled               bool   `json:"enabled"`
+	GeneratedMACObjectIDs []uint `json:"generatedMacObjectIds"`
 }
 
 type consoleVMNetworkDetachResult struct {
-	Deleted   bool `json:"deleted"`
-	RID       uint `json:"rid"`
-	NetworkID uint `json:"networkId"`
+	Deleted              bool   `json:"deleted"`
+	RID                  uint   `json:"rid"`
+	NetworkID            uint   `json:"networkId"`
+	RetainedMACObjectIDs []uint `json:"retainedMacObjectIds"`
 }
 
 type consoleVMDeleteResult struct {
-	Deleted          bool     `json:"deleted"`
-	RID              uint     `json:"rid"`
-	Warnings         []string `json:"warnings"`
-	RetainedDatasets []string `json:"retainedDatasets"`
+	Deleted              bool     `json:"deleted"`
+	RID                  uint     `json:"rid"`
+	Warnings             []string `json:"warnings"`
+	RetainedDatasets     []string `json:"retainedDatasets"`
+	DeletedMACObjectIDs  []uint   `json:"deletedMacObjectIds"`
+	RetainedMACObjectIDs []uint   `json:"retainedMacObjectIds"`
 }
 
 type consoleVMStorageAttachResult struct {
@@ -98,15 +106,17 @@ type consoleVMStorageDetachResult struct {
 }
 
 type consoleVMNetworkUpdateResult struct {
-	Updated    bool   `json:"updated"`
-	RID        uint   `json:"rid"`
-	NetworkID  uint   `json:"networkId"`
-	SwitchName string `json:"switchName"`
-	SwitchType string `json:"switchType"`
-	Emulation  string `json:"emulation"`
-	MacID      *uint  `json:"macId"`
-	MAC        string `json:"mac"`
-	Enabled    bool   `json:"enabled"`
+	Updated               bool   `json:"updated"`
+	RID                   uint   `json:"rid"`
+	NetworkID             uint   `json:"networkId"`
+	SwitchName            string `json:"switchName"`
+	SwitchType            string `json:"switchType"`
+	Emulation             string `json:"emulation"`
+	MacID                 *uint  `json:"macId"`
+	MAC                   string `json:"mac"`
+	Enabled               bool   `json:"enabled"`
+	GeneratedMACObjectIDs []uint `json:"generatedMacObjectIds"`
+	RetainedMACObjectIDs  []uint `json:"retainedMacObjectIds"`
 }
 
 func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
@@ -146,7 +156,7 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 	rootDataset, baseRawDataset := consoleVMDatasets(suite, rid, baseStorage.ID)
 
 	output = runREPLCommand(t, suite.socketPath,
-		"vms addnet "+strconv.FormatUint(uint64(rid), 10)+" "+firstSwitchName+" virtio --json")
+		"vms network attach "+strconv.FormatUint(uint64(rid), 10)+" --switch "+firstSwitchName+" --emulation virtio --json")
 	var attachedNetwork consoleVMNetworkAttachResult
 	if err := json.Unmarshal([]byte(output), &attachedNetwork); err != nil {
 		t.Fatalf("decode attached network: %v\noutput: %s", err, output)
@@ -155,6 +165,9 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 		t.Fatalf("attached network = %#v", attachedNetwork)
 	}
 	oldMACID := *attachedNetwork.MacID
+	if !slices.Equal(attachedNetwork.GeneratedMACObjectIDs, []uint{oldMACID}) {
+		t.Fatalf("attached network MAC identifiers = %#v", attachedNetwork)
+	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "start", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
@@ -169,7 +182,7 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 		t.Fatalf("powered-on storage edit error = %q", storageFailure)
 	}
 	networkFailure := runREPLCommandFailure(t, suite.socketPath,
-		"vms editnet "+strconv.FormatUint(uint64(rid), 10)+" "+strconv.FormatUint(uint64(attachedNetwork.NetworkID), 10)+" --emulation e1000")
+		"vms network edit "+strconv.FormatUint(uint64(rid), 10)+" "+strconv.FormatUint(uint64(attachedNetwork.NetworkID), 10)+" --emulation e1000")
 	if !strings.Contains(networkFailure, "domain_state_not_shutoff") {
 		t.Fatalf("powered-on network edit error = %q", networkFailure)
 	}
@@ -184,7 +197,7 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 	waitForConsoleVMState(t, rid, "shut off")
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "editnet", "--rid", strconv.FormatUint(uint64(rid), 10),
+		"vms", "network", "edit", "--rid", strconv.FormatUint(uint64(rid), 10),
 		"--network-id", strconv.FormatUint(uint64(attachedNetwork.NetworkID), 10),
 		"--switch", secondSwitchName, "--emulation", "e1000", "--generate-mac", "--enabled=false", "--json")
 	var updatedNetwork consoleVMNetworkUpdateResult
@@ -197,6 +210,10 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 		t.Fatalf("updated network = %#v", updatedNetwork)
 	}
 	newMACID := *updatedNetwork.MacID
+	if !slices.Equal(updatedNetwork.GeneratedMACObjectIDs, []uint{newMACID}) ||
+		!slices.Equal(updatedNetwork.RetainedMACObjectIDs, []uint{oldMACID}) {
+		t.Fatalf("updated network MAC identifiers = %#v", updatedNetwork)
+	}
 	assertConsoleObjectExists(t, suite, oldMACID, true)
 	assertConsoleObjectExists(t, suite, newMACID, true)
 	vm = consoleVMByRID(t, suite, rid)
@@ -374,7 +391,8 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &deleted); err != nil {
 		t.Fatalf("decode storage VM deletion: %v\noutput: %s", err, output)
 	}
-	if !deleted.Deleted || deleted.RID != rid || !slices.Contains(deleted.RetainedDatasets, externalFilesystem) {
+	if !deleted.Deleted || deleted.RID != rid || !slices.Contains(deleted.RetainedDatasets, externalFilesystem) ||
+		!slices.Equal(deleted.DeletedMACObjectIDs, []uint{newMACID}) || len(deleted.RetainedMACObjectIDs) != 0 {
 		t.Fatalf("storage VM deletion = %#v", deleted)
 	}
 	assertConsoleVMDeleted(t, suite, rid, "", filepath.Join(suite.dataPath, "vms", strconv.FormatUint(uint64(rid), 10)))
@@ -535,7 +553,7 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 	}
 
 	output = runREPLCommand(t, suite.socketPath,
-		"vms addnet "+strconv.FormatUint(uint64(rid), 10)+" "+switchName+" virtio --json")
+		"vms network attach "+strconv.FormatUint(uint64(rid), 10)+" --switch "+switchName+" --emulation virtio --json")
 	var attached consoleVMNetworkAttachResult
 	if err := json.Unmarshal([]byte(output), &attached); err != nil {
 		t.Fatalf("decode REPL VM network attach: %v\noutput: %s", err, output)
@@ -545,7 +563,7 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "networks", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
+		"vms", "network", "list", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
 	var networks []vmModels.Network
 	if err := json.Unmarshal([]byte(output), &networks); err != nil {
 		t.Fatalf("decode CLI VM networks: %v\noutput: %s", err, output)
@@ -553,8 +571,17 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 	if len(networks) != 1 || networks[0].SwitchID != standard.ID || networks[0].MacID == nil || *networks[0].MacID == 0 {
 		t.Fatalf("CLI VM networks = %#v", networks)
 	}
+	replNetworkOutput := runREPLCommand(t, suite.socketPath,
+		"vms network list "+strconv.FormatUint(uint64(rid), 10)+" --json")
+	var replNetworks []vmModels.Network
+	if err := json.Unmarshal([]byte(replNetworkOutput), &replNetworks); err != nil || !reflect.DeepEqual(networks, replNetworks) {
+		t.Fatalf("direct/REPL network lists differ: direct=%#v repl=%#v err=%v", networks, replNetworks, err)
+	}
 	network := networks[0]
 	autoMACID := *network.MacID
+	if !slices.Equal(attached.GeneratedMACObjectIDs, []uint{autoMACID}) {
+		t.Fatalf("REPL VM network attach identifiers = %#v", attached)
+	}
 	if domainXML := consoleVMDomainXML(t, rid); !strings.Contains(domainXML, "bridge='"+standard.BridgeName+"'") {
 		t.Fatalf("VM domain XML missing test bridge %q:\n%s", standard.BridgeName, domainXML)
 	}
@@ -604,12 +631,13 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "rmnet", "--rid", strconv.FormatUint(uint64(rid), 10), "--net-id", strconv.FormatUint(uint64(network.ID), 10), "--json")
+		"vms", "network", "detach", "--rid", strconv.FormatUint(uint64(rid), 10), "--network-id", strconv.FormatUint(uint64(network.ID), 10), "--json")
 	var detached consoleVMNetworkDetachResult
 	if err := json.Unmarshal([]byte(output), &detached); err != nil {
 		t.Fatalf("decode CLI VM network detach: %v\noutput: %s", err, output)
 	}
-	if !detached.Deleted || detached.RID != rid || detached.NetworkID != network.ID {
+	if !detached.Deleted || detached.RID != rid || detached.NetworkID != network.ID ||
+		!slices.Equal(detached.RetainedMACObjectIDs, []uint{autoMACID}) {
 		t.Fatalf("CLI VM network detach = %#v", detached)
 	}
 	if vm = consoleVMByRID(t, suite, rid); len(vm.Networks) != 0 {
@@ -935,7 +963,8 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 		"--description", "flag-created VM", "--cpu-sockets", "1", "--cpu-cores", "1", "--cpu-threads", "1",
 		"--ram", "256MiB", "--storage-pool", suite.poolName, "--storage-type", "raw",
 		"--storage-size", "256MiB", "--storage-emulation", "virtio-blk",
-		"--vnc-enabled=false", "--start-at-boot=false", "--time-offset", "utc", "--json")
+		"--vnc-enabled=false", "--vnc-wait=false", "--start-at-boot=false", "--start-order", "3",
+		"--time-offset", "utc", "--json")
 	var created consoleVMCreateResult
 	if err := json.Unmarshal([]byte(output), &created); err != nil {
 		t.Fatalf("decode flag-created VM: %v\noutput: %s", err, output)
@@ -944,9 +973,14 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 		t.Fatalf("flag-created VM result = %#v", created)
 	}
 	vm := consoleVMByRID(t, suite, rid)
-	if vm.RAM != 256*1024*1024 || vm.VNCEnabled || vm.StartAtBoot || vm.TimeOffset != vmModels.TimeOffsetUTC ||
+	if vm.RAM != 256*1024*1024 || vm.VNCEnabled || vm.VNCWait || vm.StartAtBoot || vm.StartOrder != 3 ||
+		vm.TimeOffset != vmModels.TimeOffsetUTC ||
 		len(vm.Storages) != 1 || vm.Storages[0].Type != vmModels.VMStorageTypeRaw {
 		t.Fatalf("flag-created VM = %#v", vm)
+	}
+	if !slices.Equal(created.StorageAttachmentIDs, []uint{vm.Storages[0].ID}) || created.NetworkAttachmentIDs == nil ||
+		created.MACObjectIDs == nil || created.GeneratedMACObjectIDs == nil {
+		t.Fatalf("flag-created VM identifiers = %#v", created)
 	}
 	rootDataset, rawDataset := consoleVMDatasets(suite, rid, vm.Storages[0].ID)
 
@@ -977,6 +1011,29 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	started := assertConsoleVMAction(t, output, rid, "start")
 	waitForConsoleVMTask(t, suite, started.TaskID)
 	waitForConsoleVMState(t, rid, "running")
+	output = runSylve(t, suite.binaryPath, suite.configPath,
+		"vms", "qga", "info", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
+	var qgaInfo libvirtServiceInterfaces.QemuGuestAgentStatus
+	if err := json.Unmarshal([]byte(output), &qgaInfo); err != nil || qgaInfo.Enabled || qgaInfo.Reachable ||
+		qgaInfo.UnavailableReason != "qemu_guest_agent_disabled" || qgaInfo.Capabilities == nil {
+		t.Fatalf("disabled QGA info = %#v err=%v output=%s", qgaInfo, err, output)
+	}
+
+	renamed := "vm-renamed-" + suite.runID
+	output = runSylve(t, suite.binaryPath, suite.configPath,
+		"vms", "config", "name", "--rid", strconv.FormatUint(uint64(rid), 10), "--name", renamed, "--json")
+	assertConsoleVMConfigMutation(t, output, rid, "name", true)
+	output = runREPLCommand(t, suite.socketPath,
+		"vms config description "+strconv.FormatUint(uint64(rid), 10)+" --description updated-on-console --json")
+	assertConsoleVMConfigMutation(t, output, rid, "description", true)
+	output = runSylve(t, suite.binaryPath, suite.configPath,
+		"vms", "config", "wol", "--rid", strconv.FormatUint(uint64(rid), 10), "--enabled=true", "--json")
+	assertConsoleVMConfigMutation(t, output, rid, "wol", true)
+	failure = runSylveFailure(t, suite.binaryPath, suite.configPath,
+		"vms", "config", "tpm", "--rid", strconv.FormatUint(uint64(rid), 10), "--enabled=true", "--json")
+	if !strings.Contains(failure, "domain_state_not_shutoff") {
+		t.Fatalf("powered-on TPM edit error = %q", failure)
+	}
 
 	failure = runSylveFailure(t, suite.binaryPath, suite.configPath,
 		"vms", "config", "memory", "--rid", strconv.FormatUint(uint64(rid), 10), "--ram", "512MiB", "--json")
@@ -994,6 +1051,9 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	stopped := assertConsoleVMAction(t, output, rid, "stop")
 	waitForConsoleVMTask(t, suite, stopped.TaskID)
 	waitForConsoleVMState(t, rid, "shut off")
+	output = runREPLCommand(t, suite.socketPath,
+		"vms config tpm "+strconv.FormatUint(uint64(rid), 10)+" --enabled=true --json")
+	assertConsoleVMConfigMutation(t, output, rid, "tpm", true)
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "config", "cpu", "--rid", strconv.FormatUint(uint64(rid), 10),
@@ -1027,6 +1087,12 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "config", "qga", "--rid", strconv.FormatUint(uint64(rid), 10), "--enabled=true", "--json")
 	assertConsoleVMConfigMutation(t, output, rid, "qga", true)
+	output = runREPLCommand(t, suite.socketPath,
+		"vms qga info "+strconv.FormatUint(uint64(rid), 10)+" --json")
+	if err := json.Unmarshal([]byte(output), &qgaInfo); err != nil || !qgaInfo.Enabled || qgaInfo.Reachable ||
+		qgaInfo.DomainState != "shut off" || qgaInfo.UnavailableReason != "vm_not_running" || qgaInfo.Capabilities == nil {
+		t.Fatalf("stopped QGA info = %#v err=%v output=%s", qgaInfo, err, output)
+	}
 	failure = runSylveFailure(t, suite.binaryPath, suite.configPath,
 		"vms", "qga", "send", "--rid", strconv.FormatUint(uint64(rid), 10), "--command", "guest-ping", "--json")
 	if !strings.Contains(failure, "qga_command_failed") {
@@ -1055,7 +1121,8 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	assertConsoleVMConfigMutation(t, output, rid, "cloud-init", true)
 
 	vm = consoleVMByRID(t, suite, rid)
-	if vm.CPUSockets != 1 || vm.CPUCores != 2 || vm.CPUThreads != 1 || vm.RAM != 384*1024*1024 ||
+	if vm.Name != renamed || vm.Description != "updated-on-console" || !vm.WoL || !vm.TPMEmulation ||
+		vm.CPUSockets != 1 || vm.CPUCores != 2 || vm.CPUThreads != 1 || vm.RAM != 384*1024*1024 ||
 		!vm.VNCEnabled || vm.VNCPort != vncPort || vm.VNCPassword != password || !vm.Serial || !vm.QemuGuestAgent ||
 		!vm.IgnoreUMSR || !vm.StartAtBoot || vm.StartOrder != 7 || vm.ShutdownWaitTime != 26 ||
 		vm.TimeOffset != vmModels.TimeOffsetLocal || vm.CloudInitData == "" || vm.CloudInitMetaData == "" || vm.CloudInitNetworkConfig == "" {
@@ -1269,15 +1336,16 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 	}
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
-		"vms", "templates", "convert", "--rid", strconv.FormatUint(uint64(sourceRID), 10),
+		"vms", "templates", "capture", "--rid", strconv.FormatUint(uint64(sourceRID), 10),
 		"--name", templateName, "--json")
 	var captureTask consoleprotocol.VMTemplateTaskOutput
-	if err := json.Unmarshal([]byte(output), &captureTask); err != nil || captureTask.TaskID == 0 || captureTask.SourceRID != sourceRID {
+	if err := json.Unmarshal([]byte(output), &captureTask); err != nil || captureTask.TaskID == 0 || captureTask.SourceRID != sourceRID ||
+		captureTask.Action != "capture" {
 		t.Fatalf("queue template capture = %#v err=%v output=%s", captureTask, err, output)
 	}
 	waitForConsoleVMTask(t, suite, captureTask.TaskID)
 	if retained := consoleVMByRID(t, suite, sourceRID); retained.Name != sourceName {
-		t.Fatalf("template conversion did not retain source VM: %#v", retained)
+		t.Fatalf("template capture did not retain source VM: %#v", retained)
 	}
 
 	var template vmModels.VMTemplate
@@ -1289,6 +1357,21 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 			_ = suite.virtualMachine.DeleteVMTemplate(context.Background(), template.ID)
 		}
 	})
+	directTemplateOutput := runSylve(t, suite.binaryPath, suite.configPath,
+		"vms", "templates", "get", "--template-id", strconv.FormatUint(uint64(template.ID), 10), "--json")
+	replTemplateOutput := runREPLCommand(t, suite.socketPath,
+		"vms templates get "+strconv.FormatUint(uint64(template.ID), 10)+" --json")
+	var directTemplate, replTemplate vmModels.VMTemplate
+	if err := json.Unmarshal([]byte(directTemplateOutput), &directTemplate); err != nil {
+		t.Fatalf("decode direct template get: %v\noutput: %s", err, directTemplateOutput)
+	}
+	if err := json.Unmarshal([]byte(replTemplateOutput), &replTemplate); err != nil {
+		t.Fatalf("decode REPL template get: %v\noutput: %s", err, replTemplateOutput)
+	}
+	if !reflect.DeepEqual(directTemplate, replTemplate) || directTemplate.ID != template.ID ||
+		directTemplate.Storages == nil || directTemplate.Networks == nil || directTemplate.ExtraBhyveOptions == nil {
+		t.Fatalf("direct/REPL template get differs:\ndirect=%#v\nrepl=%#v", directTemplate, replTemplate)
+	}
 	output = runREPLCommand(t, suite.socketPath, "vms templates list --json")
 	var templates []consoleprotocol.VMTemplateInfo
 	if err := json.Unmarshal([]byte(output), &templates); err != nil {

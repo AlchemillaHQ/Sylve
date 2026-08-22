@@ -94,6 +94,22 @@ type QemuGuestAgentInfo struct {
 	Interfaces []QGANetworkInterface `json:"interfaces"`
 }
 
+type QemuGuestAgentStatus struct {
+	RID               uint            `json:"rid"`
+	Enabled           bool            `json:"enabled"`
+	DomainState       string          `json:"domainState"`
+	Reachable         bool            `json:"reachable"`
+	Version           string          `json:"version"`
+	Capabilities      []QGACapability `json:"capabilities"`
+	UnavailableReason string          `json:"unavailableReason"`
+}
+
+type QGACapability struct {
+	Name            string `json:"name"`
+	Enabled         bool   `json:"enabled"`
+	SuccessResponse bool   `json:"successResponse"`
+}
+
 type QGAOSInfo struct {
 	Name          string `json:"name"`
 	KernelRelease string `json:"kernel-release"`

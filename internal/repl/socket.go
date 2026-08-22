@@ -183,6 +183,14 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 			return processVMStorageDetachSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMConfigCPU:
 			return processVMConfigCPUSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigName:
+			return processVMConfigTextSocketRequest(ctx, req.Payload, "name", func(service *libvirt.Service, rid uint, value string) error {
+				return updateVMNameAndBackupMetadata(ctx, service, rid, value)
+			})
+		case consoleprotocol.OperationVMConfigDescription:
+			return processVMConfigTextSocketRequest(ctx, req.Payload, "description", func(service *libvirt.Service, rid uint, value string) error {
+				return service.UpdateDescription(rid, value)
+			})
 		case consoleprotocol.OperationVMConfigMemory:
 			return processVMConfigMemorySocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMConfigVNC:
@@ -213,6 +221,14 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 			return processVMConfigBoolSocketRequest(ctx, req.Payload, "qga", func(service *libvirt.Service, rid uint, enabled bool) error {
 				return service.ModifyQemuGuestAgent(rid, enabled)
 			})
+		case consoleprotocol.OperationVMConfigWOL:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "wol", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyWakeOnLan(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigTPM:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "tpm", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyTPMEmulation(rid, enabled)
+			})
 		case consoleprotocol.OperationVMAccessVNC:
 			return processVMAccessVNCSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMAccessSerial:
@@ -227,6 +243,8 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 			return processVMSnapshotDeleteSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMTemplateList:
 			return processVMTemplateListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateGet:
+			return processVMTemplateGetSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMTemplateConvert:
 			return processVMTemplateConvertSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMTemplateCreate:
@@ -235,6 +253,8 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 			return processVMTemplateDeleteSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationVMQGASend:
 			return processVMQGASendSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMQGAInfo:
+			return processVMQGAInfoSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationSwitchList:
 			return processSwitchListSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationSwitchCreate:

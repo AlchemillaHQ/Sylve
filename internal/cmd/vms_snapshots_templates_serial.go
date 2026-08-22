@@ -133,7 +133,21 @@ func newVMTemplatesCommand() *cli.Command {
 				},
 			},
 			{
-				Name:        "convert",
+				Name:        "get",
+				Usage:       "Get a VM template by ID",
+				Description: "Shows a template summary. Use --json for the complete configuration and mappings.",
+				Flags:       []cli.Flag{jsonFlag(), &cli.IntFlag{Name: "template-id", Usage: "positive template ID", Required: true}},
+				Action: func(ctx context.Context, command *cli.Command) error {
+					templateID, err := commandPositiveUint(command, "template-id")
+					if err != nil {
+						return err
+					}
+					return executeConsoleOperation(command, consoleprotocol.OperationVMTemplateGet,
+						consoleprotocol.VMTemplateGetPayload{TemplateID: templateID, JSON: command.Bool("json")}, command.Bool("json"))
+				},
+			},
+			{
+				Name:        "capture",
 				Usage:       "Queue capture of a powered-off VM as a template",
 				Description: "Runs existing storage/network preflight and retains the source VM. The source VM must be powered off.",
 				Flags: []cli.Flag{

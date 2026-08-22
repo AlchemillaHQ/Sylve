@@ -228,15 +228,95 @@ func vmStorageUpdateRequestFromCommand(command *cli.Command, resizeOnly bool) (u
 	return rid, storageID, request, err
 }
 
+func newVMNetworkCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "network",
+		Usage: "Manage VM network attachments",
+		Commands: []*cli.Command{
+			{
+				Name:        "list",
+				Usage:       "List network attachments for a VM",
+				Description: "The VM may be running.",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "json", Usage: "output in JSON format"},
+					&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
+				},
+				Action: func(ctx context.Context, command *cli.Command) error {
+					rid, err := commandVMRID(command)
+					if err != nil {
+						return err
+					}
+					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworks, consoleprotocol.VMRIDPayload{
+						RID: rid, JSON: command.Bool("json"),
+					}, command.Bool("json"))
+				},
+			},
+			{
+				Name:        "attach",
+				Usage:       "Attach a network to a powered-off VM",
+				Description: "Emulation must be virtio or e1000. Omit --mac-id to generate a MAC object. Requires the VM to be powered off.",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "json", Usage: "output in JSON format"},
+					&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
+					&cli.StringFlag{Name: "switch", Usage: "network switch name", Required: true},
+					&cli.StringFlag{Name: "emulation", Usage: "network emulation: virtio or e1000", Required: true},
+					&cli.IntFlag{Name: "mac-id", Usage: "existing positive MAC object ID"},
+				},
+				Action: func(ctx context.Context, command *cli.Command) error {
+					rid, err := commandVMRID(command)
+					if err != nil {
+						return err
+					}
+					macID, err := commandOptionalPositiveUint(command, "mac-id")
+					if err != nil {
+						return err
+					}
+					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkAttach, consoleprotocol.VMNetworkAttachPayload{
+						RID: rid,
+						Request: libvirtServiceInterfaces.NetworkAttachRequest{
+							SwitchName: command.String("switch"), Emulation: command.String("emulation"), MacID: macID,
+						},
+						JSON: command.Bool("json"),
+					}, command.Bool("json"))
+				},
+			},
+			newVMEditNetworkCommand(),
+			{
+				Name:        "detach",
+				Usage:       "Detach a network from a powered-off VM",
+				Description: "The network attachment is removed and its MAC object is retained. Requires the VM to be powered off.",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "json", Usage: "output in JSON format"},
+					&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
+					&cli.IntFlag{Name: "network-id", Usage: "VM network attachment ID", Required: true},
+				},
+				Action: func(ctx context.Context, command *cli.Command) error {
+					rid, err := commandVMRID(command)
+					if err != nil {
+						return err
+					}
+					networkID, err := commandPositiveUint(command, "network-id")
+					if err != nil {
+						return err
+					}
+					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkDetach, consoleprotocol.VMNetworkDetachPayload{
+						RID: rid, NetworkID: networkID, JSON: command.Bool("json"),
+					}, command.Bool("json"))
+				},
+			},
+		},
+	}
+}
+
 func newVMEditNetworkCommand() *cli.Command {
 	return &cli.Command{
-		Name:        "editnet",
+		Name:        "edit",
 		Usage:       "Edit a network attachment on a powered-off VM",
 		Description: "Change switch, emulation (virtio or e1000), MAC object, or enabled state. Use --generate-mac to allocate a new MAC object. Requires the VM to be powered off.",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "json", Usage: "output in JSON format"},
 			&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
-			&cli.IntFlag{Name: "network-id", Aliases: []string{"net-id"}, Usage: "VM network attachment ID", Required: true},
+			&cli.IntFlag{Name: "network-id", Usage: "VM network attachment ID", Required: true},
 			&cli.StringFlag{Name: "switch", Usage: "network switch name"},
 			&cli.StringFlag{Name: "emulation", Usage: "network emulation: virtio or e1000"},
 			&cli.IntFlag{Name: "mac-id", Usage: "existing positive MAC object ID"},

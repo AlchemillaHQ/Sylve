@@ -16,8 +16,11 @@ import (
 	"strings"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	golibvirt "github.com/digitalocean/go-libvirt"
 )
@@ -31,6 +34,8 @@ type vmConfigMutationResult struct {
 func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 	if len(args) == 0 {
 		printSubHelp(ctx, "vms config", []cmdHelp{
+			{"name <rid> --name <name>", "Set VM name; VM may be running"},
+			{"description <rid> --description <text>", "Set or clear VM description; VM may be running"},
 			{"cpu <rid> --sockets <n> --cores <n> --threads <n> (--pin <socket:cores>...|--clear-pinning)", "Replace CPU topology and pinning; powered-off VM required"},
 			{"memory <rid> --ram <size>", "Set RAM; powered-off VM required"},
 			{"vnc <rid> [--enabled=<bool>] [--port <1-65535>] [--bind <ip>] [--resolution <WxH>] [--wait=<bool>] [--password-file <path>|--clear-password]", "Edit VNC while preserving omitted settings; powered-off VM required"},
@@ -44,6 +49,8 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 			{"bhyve-options <rid> (--option <value>...|--clear)", "Replace extra bhyve options; powered-off VM required"},
 			{"unknown-msr <rid> --enabled=<true|false>", "Set unknown-MSR handling; powered-off VM required"},
 			{"qga <rid> --enabled=<true|false>", "Set QEMU Guest Agent channel; powered-off VM required"},
+			{"wol <rid> --enabled=<true|false>", "Set Wake-on-LAN; VM may be running"},
+			{"tpm <rid> --enabled=<true|false>", "Set TPM emulation; powered-off VM required"},
 		})
 		return
 	}
@@ -61,6 +68,25 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 	optionArgs := args[2:]
 
 	switch kind {
+	case "name", "description":
+		flag := "--" + kind
+		options, err := parseVMConfigOptions(optionArgs, vmAllowed(flag), nil)
+		if err != nil {
+			printVMConfigParseError(ctx, err)
+			return
+		}
+		value, supplied := options[flag]
+		if !supplied {
+			printVMConfigParseError(ctx, fmt.Errorf("%s is required", flag))
+			return
+		}
+		vmsConfigMutation(ctx, rid, kind, jsonMode, func(service *libvirtService.Service) error {
+			if kind == "description" {
+				return service.UpdateDescription(rid, value)
+			}
+			return updateVMNameAndBackupMetadata(ctx, service, rid, value)
+		})
+
 	case "cpu":
 		options, err := parseVMNamedOptionsRepeated(optionArgs,
 			vmAllowed("--sockets", "--cores", "--threads", "--pin", "--clear-pinning"),
@@ -138,7 +164,7 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 			return updateVMVNCConfiguration(ctx, rid, changes)
 		})
 
-	case "serial", "unknown-msr", "qga":
+	case "serial", "unknown-msr", "qga", "wol", "tpm":
 		options, err := parseVMConfigOptions(optionArgs, vmAllowed("--enabled"), vmAllowed("--enabled"))
 		if err != nil {
 			printVMConfigParseError(ctx, err)
@@ -155,6 +181,10 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 				return service.ModifySerial(rid, enabled)
 			case "unknown-msr":
 				return service.ModifyIgnoreUMSRs(rid, enabled)
+			case "wol":
+				return service.ModifyWakeOnLan(rid, enabled)
+			case "tpm":
+				return service.ModifyTPMEmulation(rid, enabled)
 			default:
 				return service.ModifyQemuGuestAgent(rid, enabled)
 			}
@@ -308,6 +338,22 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 	}
 }
 
+func updateVMNameAndBackupMetadata(ctx *Context, service *libvirtService.Service, rid uint, name string) error {
+	if err := service.UpdateName(rid, name); err != nil {
+		return err
+	}
+	if ctx == nil || ctx.Cluster == nil {
+		return nil
+	}
+	err := ctx.Cluster.SyncBackupJobFriendlySourceByGuestClusterWide(clusterService.BackupJobFriendlySourceUpdate{
+		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: rid, FriendlySrc: strings.TrimSpace(name),
+	})
+	if err != nil {
+		logger.L.Warn().Err(err).Uint("vm_rid", rid).Msg("failed_to_sync_backup_friendly_source_after_vm_rename")
+	}
+	return nil
+}
+
 func handleVMAccess(ctx *Context, args []string, jsonMode bool) {
 	if len(args) == 0 {
 		printSubHelp(ctx, "vms access", []cmdHelp{
@@ -354,9 +400,9 @@ func buildConsoleVMCreateRequestFromArgs(args []string) (libvirtServiceInterface
 		"--iso", "--cloud-init-image", "--cloud-init-data-file", "--cloud-init-metadata-file",
 		"--cloud-init-network-config-file", "--switch", "--network-emulation", "--boot-rom",
 		"--vnc-enabled", "--vnc-port", "--vnc-bind", "--vnc-resolution", "--vnc-password-file",
-		"--start-at-boot", "--time-offset",
+		"--vnc-wait", "--start-at-boot", "--start-order", "--time-offset",
 	)
-	options, err := parseVMNamedOptions(args, allowed, vmAllowed("--vnc-enabled", "--start-at-boot"))
+	options, err := parseVMNamedOptions(args, allowed, vmAllowed("--vnc-enabled", "--vnc-wait", "--start-at-boot"))
 	if err != nil {
 		return libvirtServiceInterfaces.CreateVMRequest{}, err
 	}
@@ -403,7 +449,13 @@ func buildConsoleVMCreateRequestFromArgs(args []string) (libvirtServiceInterface
 	if overrides.VNCPort, err = vmIntOption(options, "--vnc-port"); err != nil {
 		return libvirtServiceInterfaces.CreateVMRequest{}, err
 	}
+	if overrides.VNCWait, err = vmBoolOption(options, "--vnc-wait"); err != nil {
+		return libvirtServiceInterfaces.CreateVMRequest{}, err
+	}
 	if overrides.StartAtBoot, err = vmBoolOption(options, "--start-at-boot"); err != nil {
+		return libvirtServiceInterfaces.CreateVMRequest{}, err
+	}
+	if overrides.StartOrder, err = vmIntOption(options, "--start-order"); err != nil {
 		return libvirtServiceInterfaces.CreateVMRequest{}, err
 	}
 	return consoleprotocol.BuildVMCreateRequest(options["--file"], overrides)
@@ -733,6 +785,19 @@ func processVMConfigMutationResult(
 		message = styledSuccessf("VM %d %s configuration already matched.", rid, configuration)
 	}
 	return operationSuccess(jsonMode, result, message)
+}
+
+func processVMConfigTextSocketRequest(
+	ctx *Context, payload json.RawMessage, configuration string,
+	mutate func(*libvirtService.Service, uint, string) error,
+) socketResponse {
+	var request consoleprotocol.VMConfigTextPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketResponse{Error: "invalid_vm_config_" + configuration + "_request: " + err.Error()}
+	}
+	return processVMConfigMutationResult(ctx, request.RID, request.JSON, configuration, func(service *libvirtService.Service) error {
+		return mutate(service, request.RID, request.Value)
+	})
 }
 
 func processVMConfigCPUSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {

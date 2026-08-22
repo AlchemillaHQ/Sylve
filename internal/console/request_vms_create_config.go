@@ -58,8 +58,10 @@ type VMCreateOverrides struct {
 	VNCBind         *string
 	VNCResolution   *string
 	VNCPasswordFile *string
+	VNCWait         *bool
 
 	StartAtBoot *bool
+	StartOrder  *int
 	TimeOffset  *string
 }
 
@@ -368,9 +370,16 @@ func BuildVMCreateRequest(path string, overrides VMCreateOverrides) (libvirtServ
 		}
 		request.VNCPassword = strings.TrimRight(password, "\r\n")
 	}
+	if overrides.VNCWait != nil {
+		value := *overrides.VNCWait
+		request.VNCWait = &value
+	}
 	if overrides.StartAtBoot != nil {
 		value := *overrides.StartAtBoot
 		request.StartAtBoot = &value
+	}
+	if overrides.StartOrder != nil {
+		request.StartOrder = *overrides.StartOrder
 	}
 	if overrides.TimeOffset != nil {
 		request.TimeOffset = libvirtServiceInterfaces.TimeOffset(strings.ToLower(strings.TrimSpace(*overrides.TimeOffset)))

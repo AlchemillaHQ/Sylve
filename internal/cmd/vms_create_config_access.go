@@ -50,7 +50,9 @@ func newVMCreateCommand() *cli.Command {
 			&cli.StringFlag{Name: "vnc-bind", Usage: "VNC bind IP address"},
 			&cli.StringFlag{Name: "vnc-resolution", Usage: "VNC resolution, for example 1024x768"},
 			&cli.StringFlag{Name: "vnc-password-file", Usage: "read the VNC password from a file"},
+			&cli.BoolFlag{Name: "vnc-wait", Usage: "wait for a VNC client before boot; accepts true or false"},
 			&cli.BoolFlag{Name: "start-at-boot", Usage: "start VM at host boot; accepts true or false"},
+			&cli.IntFlag{Name: "start-order", Usage: "non-negative host boot order"},
 			&cli.StringFlag{Name: "time-offset", Usage: "guest clock offset: utc or localtime"},
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
@@ -94,7 +96,9 @@ func vmCreateOverridesFromCommand(command *cli.Command) (consoleprotocol.VMCreat
 		VNCBind:                    commandOptionalString(command, "vnc-bind"),
 		VNCResolution:              commandOptionalString(command, "vnc-resolution"),
 		VNCPasswordFile:            commandOptionalString(command, "vnc-password-file"),
+		VNCWait:                    commandOptionalBool(command, "vnc-wait"),
 		StartAtBoot:                commandOptionalBool(command, "start-at-boot"),
+		StartOrder:                 commandOptionalInt(command, "start-order"),
 		TimeOffset:                 commandOptionalString(command, "time-offset"),
 	}
 	if command.IsSet("rid") {
@@ -112,10 +116,12 @@ func newVMConfigCommand() *cli.Command {
 		Name:  "config",
 		Usage: "Manage VM configuration",
 		Commands: []*cli.Command{
+			newVMConfigTextCommand("name", consoleprotocol.OperationVMConfigName),
+			newVMConfigTextCommand("description", consoleprotocol.OperationVMConfigDescription),
 			newVMConfigCPUCommand(),
 			newVMConfigMemoryCommand(),
 			newVMConfigVNCCommand(),
-			newVMConfigBoolCommand("serial", consoleprotocol.OperationVMConfigSerial, "serial console"),
+			newVMConfigBoolCommand("serial", consoleprotocol.OperationVMConfigSerial, "serial console", true),
 			newVMConfigPCICommand(),
 			newVMConfigAutostartCommand(),
 			newVMConfigClockCommand(),
@@ -123,8 +129,10 @@ func newVMConfigCommand() *cli.Command {
 			newVMConfigBootROMCommand(),
 			newVMConfigCloudInitCommand(),
 			newVMConfigBhyveOptionsCommand(),
-			newVMConfigBoolCommand("unknown-msr", consoleprotocol.OperationVMConfigUnknownMSR, "unknown MSR handling"),
-			newVMConfigBoolCommand("qga", consoleprotocol.OperationVMConfigQGA, "QEMU Guest Agent"),
+			newVMConfigBoolCommand("unknown-msr", consoleprotocol.OperationVMConfigUnknownMSR, "unknown MSR handling", true),
+			newVMConfigBoolCommand("qga", consoleprotocol.OperationVMConfigQGA, "QEMU Guest Agent", true),
+			newVMConfigBoolCommand("wol", consoleprotocol.OperationVMConfigWOL, "Wake-on-LAN", false),
+			newVMConfigBoolCommand("tpm", consoleprotocol.OperationVMConfigTPM, "TPM emulation", true),
 		},
 	}
 }
@@ -133,6 +141,29 @@ func vmConfigBaseFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.BoolFlag{Name: "json", Usage: "output in JSON format"},
 		&cli.IntFlag{Name: "rid", Usage: "VM RID (1-9999)", Required: true},
+	}
+}
+
+func newVMConfigTextCommand(name, operation string) *cli.Command {
+	return &cli.Command{
+		Name:        name,
+		Usage:       "Set VM " + name,
+		Description: "The VM may be running.",
+		Flags: append(vmConfigBaseFlags(),
+			&cli.StringFlag{Name: name, Usage: "new VM " + name},
+		),
+		Action: func(ctx context.Context, command *cli.Command) error {
+			if !command.IsSet(name) {
+				return fmt.Errorf("--%s is required", name)
+			}
+			rid, err := commandVMRID(command)
+			if err != nil {
+				return err
+			}
+			return executeConsoleOperation(command, operation, consoleprotocol.VMConfigTextPayload{
+				RID: rid, Value: command.String(name), JSON: command.Bool("json"),
+			}, command.Bool("json"))
+		},
 	}
 }
 
@@ -226,9 +257,13 @@ func newVMConfigVNCCommand() *cli.Command {
 	}
 }
 
-func newVMConfigBoolCommand(name, operation, label string) *cli.Command {
+func newVMConfigBoolCommand(name, operation, label string, poweredOff bool) *cli.Command {
+	description := "The VM may be running."
+	if poweredOff {
+		description = "Requires the VM to be powered off."
+	}
 	return &cli.Command{
-		Name: name, Usage: "Enable or disable " + label, Description: "Requires the VM to be powered off.",
+		Name: name, Usage: "Enable or disable " + label, Description: description,
 		Flags: append(vmConfigBaseFlags(), &cli.BoolFlag{Name: "enabled", Usage: "enabled state: true or false", Required: true}),
 		Action: func(ctx context.Context, command *cli.Command) error {
 			rid, err := commandVMRID(command)

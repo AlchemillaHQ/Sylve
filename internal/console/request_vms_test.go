@@ -77,7 +77,8 @@ func TestBuildVMCreateRequestFlagOnlyDefaults(t *testing.T) {
 		request.SwitchName != "none" {
 		t.Fatalf("storage/network defaults = %#v", request)
 	}
-	if request.VNCEnabled == nil || *request.VNCEnabled || request.StartAtBoot == nil || *request.StartAtBoot ||
+	if request.VNCEnabled == nil || *request.VNCEnabled || request.VNCWait == nil || *request.VNCWait ||
+		request.StartAtBoot == nil || *request.StartAtBoot || request.StartOrder != 0 ||
 		request.TimeOffset != libvirtServiceInterfaces.TimeOffsetUTC || request.CloudInit == nil || *request.CloudInit {
 		t.Fatalf("boolean defaults = %#v", request)
 	}
@@ -96,7 +97,7 @@ func TestBuildVMCreateRequestExplicitFlagsOverrideJSON(t *testing.T) {
 		SwitchName:           "bridge0", SwitchEmulationType: "virtio", MacId: uintPointer(91),
 		CPUSockets: 2, CPUCores: 2, CPUThreads: 1, RAM: 2 * 1024 * 1024 * 1024,
 		VNCEnabled: &trueValue, VNCPort: 5902, VNCBind: "127.0.0.1", VNCResolution: "1024x768",
-		VNCWait: &trueValue, StartAtBoot: &trueValue, TimeOffset: libvirtServiceInterfaces.TimeOffsetLocal,
+		VNCWait: &trueValue, StartAtBoot: &trueValue, StartOrder: 4, TimeOffset: libvirtServiceInterfaces.TimeOffsetLocal,
 	}
 	contents, err := json.Marshal(requestFile)
 	if err != nil {
@@ -110,10 +111,13 @@ func TestBuildVMCreateRequestExplicitFlagsOverrideJSON(t *testing.T) {
 	overrideName := "from-flags"
 	storageType := "none"
 	vncEnabled := false
+	vncWait := false
 	startAtBoot := false
+	startOrder := 7
 	request, err := BuildVMCreateRequest(path, VMCreateOverrides{
 		RID: &overrideRID, Name: &overrideName, StorageType: &storageType,
-		Switch: &storageType, VNCEnabled: &vncEnabled, StartAtBoot: &startAtBoot,
+		Switch: &storageType, VNCEnabled: &vncEnabled, VNCWait: &vncWait,
+		StartAtBoot: &startAtBoot, StartOrder: &startOrder,
 	})
 	if err != nil {
 		t.Fatalf("build overlaid VM create request: %v", err)
@@ -124,7 +128,8 @@ func TestBuildVMCreateRequestExplicitFlagsOverrideJSON(t *testing.T) {
 	}
 	if request.StorageType != libvirtServiceInterfaces.StorageTypeNone || request.StorageSize != nil || request.StoragePool != "" ||
 		request.SwitchName != "none" || request.SwitchEmulationType != "" || request.MacId != nil ||
-		request.VNCEnabled == nil || *request.VNCEnabled || request.VNCPort != 0 || request.StartAtBoot == nil || *request.StartAtBoot {
+		request.VNCEnabled == nil || *request.VNCEnabled || request.VNCPort != 0 || request.VNCWait == nil || *request.VNCWait ||
+		request.StartAtBoot == nil || *request.StartAtBoot || request.StartOrder != 7 {
 		t.Fatalf("explicit overrides were not applied: %#v", request)
 	}
 }
@@ -200,6 +205,7 @@ func TestBuildVMCreateRequestRejectsIncompatibleFlags(t *testing.T) {
 	cloud := "cloud"
 	network := "virtio"
 	vncPort := 5900
+	negativeOrder := -1
 	tests := []struct {
 		name      string
 		overrides VMCreateOverrides
@@ -209,6 +215,7 @@ func TestBuildVMCreateRequestRejectsIncompatibleFlags(t *testing.T) {
 		{name: "two media modes", overrides: VMCreateOverrides{RID: &rid, Name: &name, ISO: &iso, CloudInitImage: &cloud}, want: "cannot be used together"},
 		{name: "network details without switch", overrides: VMCreateOverrides{RID: &rid, Name: &name, NetworkEmulation: &network}, want: "requires a switch"},
 		{name: "VNC port while disabled", overrides: VMCreateOverrides{RID: &rid, Name: &name, VNCPort: &vncPort}, want: "incompatible with VNC disabled"},
+		{name: "negative start order", overrides: VMCreateOverrides{RID: &rid, Name: &name, StartOrder: &negativeOrder}, want: "start-order must be zero or greater"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -11,6 +11,7 @@ package libvirt
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -22,8 +23,10 @@ import (
 )
 
 type VMRemovalResult struct {
-	Warnings         []string `json:"warnings"`
-	RetainedDatasets []string `json:"retainedDatasets"`
+	Warnings             []string `json:"warnings"`
+	RetainedDatasets     []string `json:"retainedDatasets"`
+	DeletedMACObjectIDs  []uint   `json:"deletedMacObjectIds"`
+	RetainedMACObjectIDs []uint   `json:"retainedMacObjectIds"`
 }
 
 type vmStorageRemovalPlan struct {
@@ -80,8 +83,10 @@ func (s *Service) RemoveVMWithWarnings(
 
 func emptyVMRemovalResult() VMRemovalResult {
 	return VMRemovalResult{
-		Warnings:         make([]string, 0),
-		RetainedDatasets: make([]string, 0),
+		Warnings:             make([]string, 0),
+		RetainedDatasets:     make([]string, 0),
+		DeletedMACObjectIDs:  make([]uint, 0),
+		RetainedMACObjectIDs: make([]uint, 0),
 	}
 }
 
@@ -156,10 +161,20 @@ func (s *Service) removeVMWithWarnings(
 	}
 	sort.Strings(result.RetainedDatasets)
 
-	if err := s.cleanupVMMACObjects(cleanUpMacs, uniqueUintValues(usedMACs)); err != nil {
-		appendUniqueString(&result.Warnings, fmt.Sprintf("vm_cleanup_incomplete: mac_objects: %v", err))
-		logger.L.Warn().Uint("rid", rid).Err(err).Msg("vm_mac_cleanup_incomplete_after_delete")
+	usedMACs = uniqueUintValues(usedMACs)
+	if cleanUpMacs {
+		if err := s.cleanupVMMACObjects(true, usedMACs); err != nil {
+			result.RetainedMACObjectIDs = append(result.RetainedMACObjectIDs, usedMACs...)
+			appendUniqueString(&result.Warnings, fmt.Sprintf("vm_cleanup_incomplete: mac_objects: %v", err))
+			logger.L.Warn().Uint("rid", rid).Err(err).Msg("vm_mac_cleanup_incomplete_after_delete")
+		} else {
+			result.DeletedMACObjectIDs = append(result.DeletedMACObjectIDs, usedMACs...)
+		}
+	} else {
+		result.RetainedMACObjectIDs = append(result.RetainedMACObjectIDs, usedMACs...)
 	}
+	slices.Sort(result.DeletedMACObjectIDs)
+	slices.Sort(result.RetainedMACObjectIDs)
 
 	logPath := fmt.Sprintf("/var/log/libvirt/bhyve/%d.log", rid)
 	if err := utils.DeleteFileIfExists(logPath); err != nil {

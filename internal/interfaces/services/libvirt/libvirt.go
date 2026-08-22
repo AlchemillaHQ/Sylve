@@ -40,7 +40,9 @@ type LibvirtServiceInterface interface {
 	ModifyExtraBhyveOptions(rid uint, options []string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
 	ModifyQemuGuestAgent(rid uint, enabled bool) error
+	ModifyTPMEmulation(rid uint, enabled bool) error
 	GetQemuGuestAgentInfo(rid uint) (QemuGuestAgentInfo, error)
+	InspectQemuGuestAgent(rid uint) (QemuGuestAgentStatus, error)
 
 	PruneOrphanedVMStats() error
 	ApplyVMStatsRetention() error
@@ -135,7 +137,6 @@ type DomainStateReason string
 const (
 	DomainReasonUnknown DomainStateReason = "unknown"
 
-	// --- Running state reasons ---
 	DomainReasonRunningBooted            DomainStateReason = "booted"
 	DomainReasonRunningMigrated          DomainStateReason = "migrated"
 	DomainReasonRunningRestored          DomainStateReason = "restored"
@@ -146,7 +147,6 @@ const (
 	DomainReasonRunningWakeup            DomainStateReason = "wakeup"
 	DomainReasonRunningCrashed           DomainStateReason = "crashed"
 
-	// --- Shutoff state reasons ---
 	DomainReasonShutoffShutdown     DomainStateReason = "shutdown"
 	DomainReasonShutoffDestroyed    DomainStateReason = "destroyed"
 	DomainReasonShutoffCrashed      DomainStateReason = "crashed"
@@ -154,7 +154,6 @@ const (
 	DomainReasonShutoffFailed       DomainStateReason = "failed"
 	DomainReasonShutoffFromSnapshot DomainStateReason = "from_snapshot"
 
-	// --- Paused state reasons ---
 	DomainReasonPausedUser         DomainStateReason = "user"
 	DomainReasonPausedMigration    DomainStateReason = "migration"
 	DomainReasonPausedSave         DomainStateReason = "save"

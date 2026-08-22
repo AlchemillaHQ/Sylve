@@ -41,15 +41,17 @@ type vmStorageDetachResult struct {
 }
 
 type vmNetworkUpdateResult struct {
-	Updated    bool   `json:"updated"`
-	RID        uint   `json:"rid"`
-	NetworkID  uint   `json:"networkId"`
-	SwitchName string `json:"switchName"`
-	SwitchType string `json:"switchType"`
-	Emulation  string `json:"emulation"`
-	MacID      *uint  `json:"macId,omitempty"`
-	MAC        string `json:"mac"`
-	Enabled    bool   `json:"enabled"`
+	Updated               bool   `json:"updated"`
+	RID                   uint   `json:"rid"`
+	NetworkID             uint   `json:"networkId"`
+	SwitchName            string `json:"switchName"`
+	SwitchType            string `json:"switchType"`
+	Emulation             string `json:"emulation"`
+	MacID                 *uint  `json:"macId,omitempty"`
+	MAC                   string `json:"mac"`
+	Enabled               bool   `json:"enabled"`
+	GeneratedMACObjectIDs []uint `json:"generatedMacObjectIds"`
+	RetainedMACObjectIDs  []uint `json:"retainedMacObjectIds"`
 }
 
 var (
@@ -67,6 +69,68 @@ var (
 	)
 	vmNetworkUpdateBooleanOptions = vmAllowed("--generate-mac", "--enabled")
 )
+
+func handleVMNetwork(ctx *Context, args []string, jsonMode bool) {
+	if len(args) == 0 {
+		printSubHelp(ctx, "vms network", []cmdHelp{
+			{"list <rid>", "List network attachments; VM may be running"},
+			{"attach <rid> --switch <name> --emulation <virtio|e1000> [--mac-id <id>]", "Attach a network; VM must be powered off"},
+			{"edit <rid> <network_id> [options]", "Edit switch, emulation, MAC object, or enabled state; VM must be powered off"},
+			{"detach <rid> <network_id>", "Detach and retain the MAC object; VM must be powered off"},
+		})
+		return
+	}
+
+	switch args[0] {
+	case "list":
+		if len(args) != 2 {
+			println(ctx, styledErrorf("Usage: vms network list <rid>"))
+			return
+		}
+		rid, err := parseVMRID(args[1])
+		if err != nil {
+			println(ctx, styledErrorf("Invalid RID '%s'", args[1]))
+			return
+		}
+		vmsNetworksList(ctx, rid, jsonMode)
+
+	case "attach":
+		request, err := parseVMNetworkAttachArgs(args[1:])
+		if err != nil {
+			println(ctx, styledErrorf("%v", err))
+			return
+		}
+		vmsNetworkAttach(ctx, request, jsonMode)
+
+	case "edit":
+		request, err := parseVMNetworkUpdateArgs(args[1:])
+		if err != nil {
+			println(ctx, styledErrorf("%v", err))
+			return
+		}
+		vmsNetworkUpdate(ctx, request, jsonMode)
+
+	case "detach":
+		if len(args) != 3 {
+			println(ctx, styledErrorf("Usage: vms network detach <rid> <network_id>"))
+			return
+		}
+		rid, err := parseVMRID(args[1])
+		if err != nil {
+			println(ctx, styledErrorf("Invalid RID '%s'", args[1]))
+			return
+		}
+		networkID, err := parseVMNetworkID(args[2])
+		if err != nil {
+			println(ctx, styledErrorf("Invalid network ID '%s'", args[2]))
+			return
+		}
+		vmsNetworkDetach(ctx, rid, networkID, jsonMode)
+
+	default:
+		println(ctx, styledErrorf("Unknown vms network command: '%s'", args[0]))
+	}
+}
 
 func handleVMStorage(ctx *Context, args []string, jsonMode bool) {
 	if len(args) == 0 {
@@ -228,8 +292,38 @@ func vmStorageAttachInputFromOptions(rid uint, options map[string]string) (conso
 	return input, nil
 }
 
+func parseVMNetworkAttachArgs(args []string) (libvirtServiceInterfaces.NetworkAttachRequest, error) {
+	const usage = "Usage: vms network attach <rid> --switch <name> --emulation <virtio|e1000> [--mac-id <id>]"
+	if len(args) < 1 {
+		return libvirtServiceInterfaces.NetworkAttachRequest{}, fmt.Errorf("%s", usage)
+	}
+	rid, err := parseVMRID(args[0])
+	if err != nil {
+		return libvirtServiceInterfaces.NetworkAttachRequest{}, fmt.Errorf("Invalid RID '%s'", args[0])
+	}
+	options, err := parseVMNamedOptions(args[1:], vmAllowed("--switch", "--emulation", "--mac-id"), nil)
+	if err != nil {
+		return libvirtServiceInterfaces.NetworkAttachRequest{}, err
+	}
+	switchName := strings.TrimSpace(options["--switch"])
+	if switchName == "" {
+		return libvirtServiceInterfaces.NetworkAttachRequest{}, fmt.Errorf("--switch is required")
+	}
+	emulation := strings.ToLower(strings.TrimSpace(options["--emulation"]))
+	if emulation == "" {
+		return libvirtServiceInterfaces.NetworkAttachRequest{}, fmt.Errorf("--emulation is required")
+	}
+	macID, err := vmUintOption(options, "--mac-id")
+	if err != nil {
+		return libvirtServiceInterfaces.NetworkAttachRequest{}, err
+	}
+	return libvirtServiceInterfaces.NetworkAttachRequest{
+		RID: rid, SwitchName: switchName, Emulation: emulation, MacID: macID,
+	}, nil
+}
+
 func parseVMNetworkUpdateArgs(args []string) (libvirtServiceInterfaces.NetworkUpdateRequest, error) {
-	const usage = "Usage: vms editnet <rid> <network_id> [--switch <name>] [--emulation <virtio|e1000>] [--mac-id <id>|--generate-mac] [--enabled=<true|false>]"
+	const usage = "Usage: vms network edit <rid> <network_id> [--switch <name>] [--emulation <virtio|e1000>] [--mac-id <id>|--generate-mac] [--enabled=<true|false>]"
 	if len(args) < 2 {
 		return libvirtServiceInterfaces.NetworkUpdateRequest{}, fmt.Errorf("%s", usage)
 	}
@@ -486,6 +580,10 @@ func updateVMNetwork(
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmNetworkUpdateResult{}, fmt.Errorf("vm_service_unavailable")
 	}
+	previous, err := getVMNetwork(ctx, request.RID, request.NetworkID)
+	if err != nil {
+		return vmNetworkUpdateResult{}, err
+	}
 	network, err := ctx.VirtualMachine.NetworkUpdate(request, context.Background())
 	if err != nil {
 		return vmNetworkUpdateResult{}, fmt.Errorf("failed_to_update_vm_network: %w", err)
@@ -493,11 +591,19 @@ func updateVMNetwork(
 	if network == nil {
 		return vmNetworkUpdateResult{}, fmt.Errorf("network_update_returned_empty_result")
 	}
-	return vmNetworkUpdateResult{
+	result := vmNetworkUpdateResult{
 		Updated: true, RID: request.RID, NetworkID: network.ID,
 		SwitchName: vmNetworkSwitchName(*network), SwitchType: network.SwitchType,
 		Emulation: network.Emulation, MacID: network.MacID, MAC: vmNetworkMAC(*network), Enabled: network.Enable,
-	}, nil
+		GeneratedMACObjectIDs: []uint{}, RetainedMACObjectIDs: []uint{},
+	}
+	if request.MacID != nil && *request.MacID == 0 && network.MacID != nil && *network.MacID > 0 {
+		result.GeneratedMACObjectIDs = append(result.GeneratedMACObjectIDs, *network.MacID)
+	}
+	if previous.MacID != nil && *previous.MacID > 0 && (network.MacID == nil || *previous.MacID != *network.MacID) {
+		result.RetainedMACObjectIDs = append(result.RetainedMACObjectIDs, *previous.MacID)
+	}
+	return result, nil
 }
 
 func vmNetworkSwitchName(network vmModels.Network) string {
