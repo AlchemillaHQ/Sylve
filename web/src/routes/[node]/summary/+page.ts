@@ -2,7 +2,7 @@ import { getBasicInfo } from '$lib/api/info/basic';
 import { getCPUInfo } from '$lib/api/info/cpu';
 import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
 import { getNodeSummaryHistory } from '$lib/api/info/summary';
-import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
+import { getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
@@ -16,7 +16,7 @@ export async function load({ params }) {
 			cachedFetch('cpu-info', async () => getCPUInfo('current'), cacheDuration),
 			cachedFetch('ram-info', async () => getRAMInfo('current'), cacheDuration),
 			cachedFetch('swap-info', async () => getSwapInfo('current'), cacheDuration),
-			cachedFetch('total-disk-usage', async () => getPoolsDiskUsage(), cacheDuration),
+			cachedFetch('total-disk-usage-full', async () => getPoolsDiskUsageFull(), cacheDuration),
 			cachedFetch('node-summary-history', () => getNodeSummaryHistory(), cacheDuration)
 		]
 	);

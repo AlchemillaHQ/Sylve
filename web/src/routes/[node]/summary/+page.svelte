@@ -4,7 +4,7 @@
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
 	import { getNodeSummaryHistory } from '$lib/api/info/summary';
-	import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
+	import { getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import LineBrushMultiple from '$lib/components/custom/Charts/LineBrush/Multiple.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
@@ -14,6 +14,7 @@
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { NodeSummaryHistory, SummaryHistoryNetworkPoint } from '$lib/types/info/summary';
+	import type { PoolsDiskUsage } from '$lib/types/zfs/pool';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
@@ -27,7 +28,7 @@
 		cpuInfo: CPUInfo;
 		ramInfo: RAMInfo;
 		swapInfo: RAMInfo;
-		totalDiskUsage: number;
+		totalDiskUsage: PoolsDiskUsage;
 		summaryHistory: NodeSummaryHistory;
 	}
 
@@ -89,9 +90,9 @@
 
 	// svelte-ignore state_referenced_locally
 	const totalDiskUsage = resource(
-		() => 'total-disk-usage',
+		() => 'total-disk-usage-full',
 		async (key) => {
-			const result = await getPoolsDiskUsage();
+			const result = await getPoolsDiskUsageFull();
 			updateCache(key, result);
 			return result;
 		},
@@ -259,11 +260,11 @@
 							Disk Usage
 						</p>
 						<p>
-							{floatToNDecimals(totalDiskUsage.current, 2)} %
+							{`${floatToNDecimals(totalDiskUsage.current.usage, 2)}% of ${formatBytesBinary(totalDiskUsage.current.total)}`}
 						</p>
 					</div>
 					<Progress
-						value={floatToNDecimals(totalDiskUsage.current, 2)}
+						value={floatToNDecimals(totalDiskUsage.current.usage, 2)}
 						max={100}
 						class="h-2 w-full"
 					/>
