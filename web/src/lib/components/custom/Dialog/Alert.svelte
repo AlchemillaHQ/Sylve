@@ -68,7 +68,8 @@
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={handleEscapeKeydown}
 		aria-busy={busy}
-		class="p-5"
+		class="z-[80] p-5"
+		overlayClass="z-[80]"
 	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>
