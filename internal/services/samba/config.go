@@ -794,6 +794,10 @@ func validateSambaConfig(config string) error {
 }
 
 func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
+	settings, err := s.GetGlobalConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Samba settings: %w", err)
+	}
 	gCfg, err := s.GlobalConfig()
 	if err != nil {
 		return err
@@ -825,6 +829,16 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	fullConfig += "\tfull_audit:priority = ALERT\n"
 	fullConfig += "\tfull_audit:syslog = true\n"
 	fullConfig += "\tfull_audit:log_secdesc = true\n"
+	if settings.AppleExtensions {
+		fullConfig += "\tfruit:metadata = stream\n"
+		fullConfig += "\tfruit:model = MacSamba\n"
+		fullConfig += "\tfruit:veto_appledouble = yes\n"
+		fullConfig += "\tfruit:convert_adouble = no\n"
+		fullConfig += "\tfruit:nfs_aces = no\n"
+		fullConfig += "\tfruit:wipe_intentionally_left_blank_rfork = yes\n"
+		fullConfig += "\tfruit:delete_empty_adfiles = yes\n"
+		fullConfig += "\tfruit:posix_rename = yes\n"
+	}
 
 	if err := validateSambaConfig(fullConfig); err != nil {
 		return err
