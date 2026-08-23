@@ -826,8 +826,6 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	fullConfig += "\tfull_audit:syslog = true\n"
 	fullConfig += "\tfull_audit:log_secdesc = true\n"
 
-	filePath := "/usr/local/etc/smb4.conf"
-
 	if err := validateSambaConfig(fullConfig); err != nil {
 		return err
 	}
