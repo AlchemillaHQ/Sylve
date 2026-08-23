@@ -1,0 +1,148 @@
+---
+title: Switches
+description: Inspect standard and manual network switches from the Sylve CLI and interactive console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Switches connect Jails and Virtual Machines to the host network. Sylve supports standard switches that it manages and manual switches that register an existing FreeBSD bridge.
+
+:::caution[Networking changes affect connectivity]
+Listing switches is read-only. Creating, editing, or deleting a switch can change host and guest connectivity. Review the switch type and ID carefully, especially when connected over SSH.
+:::
+
+## List switches
+
+Inspect both switch types in one table:
+
+```bash
+doas sylve switches list
+```
+
+Inside the interactive console:
+
+```text
+switches list
+```
+
+This real node has one standard switch and one manual switch:
+
+```text
+ID    Name    Type        Bridge      VLAN    Ports/Details
+───────────────────────────────────────────────────────────
+1     TTT     standard    Ed0tk6FS    -       -
+1     WAN     manual      bridge0     -       external
+```
+
+Switch IDs are scoped by type. A standard switch and a manual switch can both have ID `1`, so edit and delete commands require both the type and ID.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-network-switches.cast"
+  title="A real Sylve 0.3.0 console session creating, listing, and deleting an isolated private standard switch."
+/>
+
+Enter `switches` without a subcommand in the console to display the syntax supported by the installed version.
+
+## Standard switches
+
+A standard switch is managed by Sylve. It can define bridge ports, MTU, VLAN, IPv4 and IPv6 addressing, gateways, DHCP, SLAAC, default-route behavior, and bridge offload settings.
+
+A standard switch does not require a port at creation time. This is useful for private guest networks or when ports will be attached later.
+
+The basic direct command is:
+
+```bash
+doas sylve switches create --type standard --name guests
+```
+
+Inside the console:
+
+```text
+switches create standard guests
+```
+
+Network and gateway options can reference reusable object IDs. Create those objects first and note their IDs. Manual CIDR and gateway values are available when an object is unnecessary.
+
+Standard switch creation supports:
+
+| Setting | Flags |
+| --- | --- |
+| Link configuration | `--mtu`, `--vlan`, `--ports` |
+| IPv4 objects | `--network4`, `--gateway4` |
+| IPv6 objects | `--network6`, `--gateway6` |
+| Manual addressing | `--network4-manual`, `--gateway4-manual`, `--network6-manual`, `--gateway6-manual` |
+| Address behavior | `--dhcp`, `--slaac`, `--disable-ipv6`, `--default-route` |
+| Isolation and hardware | `--private`, `--disable-bridge-offloads` |
+
+`--ports` is a comma-separated list of physical interface names. Object-backed and manual address fields represent alternative inputs; use the form appropriate to the switch configuration.
+
+For example, create a standard switch that requests IPv4 through DHCP and IPv6 through SLAAC:
+
+```bash
+doas sylve switches create \
+  --type standard \
+  --name guests-auto \
+  --dhcp \
+  --slaac
+```
+
+## Manual switches
+
+A manual switch registers an existing FreeBSD bridge:
+
+```bash
+doas sylve switches create \
+  --type manual \
+  --name WAN \
+  --bridge bridge0
+```
+
+The console form is shorter:
+
+```text
+switches create manual WAN bridge0
+```
+
+Sylve records the display name and bridge name, but treats the bridge as externally managed. Use this type when the host's bridge lifecycle and configuration are maintained outside Sylve.
+
+## Edit a switch
+
+Direct commands identify a switch with `--type` and `--id`:
+
+```bash
+doas sylve switches edit --type standard --id 1 --mtu 1400
+```
+
+The console uses positional identifiers:
+
+```text
+switches edit standard 1 --mtu 1400
+```
+
+Edits are partial. Only supplied options are changed. Console boolean options accept either the flag itself, such as `--dhcp`, or an explicit value such as `--dhcp=false`. Standard switch edits still validate the resulting port and address configuration before applying it.
+
+Set an object ID to `0` to clear that object reference, and supply an empty manual value to clear it. When editing `--ports`, provide the complete replacement list. Manual-switch edits accept only `--name` and `--bridge`.
+
+## Delete a switch
+
+```bash
+doas sylve switches delete --type standard --id 1
+```
+
+```text
+switches delete standard 1
+```
+
+A switch cannot be deleted while it is attached to a Jail or Virtual Machine.
+
+## Use JSON output
+
+```bash
+doas sylve switches list --json
+```
+
+```text
+switches list --json
+```
+
+The result contains separate `standard` and `manual` arrays. This preserves the type scope of each switch ID and exposes configuration fields that are intentionally omitted from the compact table.

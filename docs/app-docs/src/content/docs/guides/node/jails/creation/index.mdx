@@ -1,73 +1,259 @@
 ---
 title: Creation
-description: Learn how to create Jails with Sylve
+description: Create a FreeBSD or Linux jail and configure its storage, network, limits, and runtime options.
 ---
 
+import basic from './jail-create-basic.png';
+import storage from './jail-create-storage.png';
+import bootstrap from './jail-create-bootstrap.png';
+import fstab from './jail-create-fstab.png';
+import network from './jail-create-network.png';
+import networkObject from './jail-create-network-object.png';
+import dns from './jail-create-dns.png';
+import hardware from './jail-create-hardware.png';
+import advanced from './jail-create-advanced.png';
+
+Select **Create Jail** from the Jails page to open the creation wizard. Sylve creates a dedicated ZFS dataset, copies the selected root filesystem into it, writes the jail configuration, and prepares the initial network and runtime files in one operation.
+
 :::note
-Your node needs to have the Jail service toggled, else you will not even see the **Create Jail** button on the top right corner of the app.
+The node must have the Jail service enabled before the **Create Jail** action is available. Enable it from [System Services](/guides/node/settings/system/services/).
 :::
 
-To create a jail, click on the **Create Jail** button on the top right corner of the app. This will open a form where you can enter the details of your jail.
+Before starting, make sure the destination node has:
 
-For this example we're going to be setting up a simple FreeBSD 15 jail with inherited network stack, but you can create all sorts of different jails with different configurations using the same form, so feel free to experiment with it and see what works best for your specific use case.
+- A usable ZFS pool for the jail root.
+- A completed jail bootstrap or an extracted Base/RootFS download.
+- A Standard or Manual switch if the jail will use its own network stack.
+- Available network objects if you prefer managed addresses instead of entering raw values.
 
-## Basic Information
+## Basic
 
-![Basic](./basic.png)
+Give the jail an identity that is unique and easy to recognize.
 
-In the **Basic** tab, there are a few fields that you need to fill out:
+| Field | Purpose |
+| --- | --- |
+| **Node** | The node that will own the jail. This appears when creating from a cluster view. Changing the node clears node-specific selections such as the pool, base, switch, and MAC address. |
+| **Jail Name** | A human-readable, valid guest name. |
+| **Hostname** | The hostname configured inside the jail. It is optional, but strongly recommended for service discovery, logs, and shell prompts. |
+| **Jail ID** | A numeric guest identifier from `1` to `9999`. Sylve suggests the next available value and verifies that it does not conflict with a jail or VM anywhere in the cluster. This value is also called the CTID. |
+| **Description** | Optional operational context, limited to 1024 characters. |
 
-- **Node**: The node this jail belongs to, this select box will only show up if you're in a cluster.
-
-- **Jail Name**: Name for the jail you're about to create
-
-- **Hostname**: The hostname for the jail, this is optional but it's good to set it to something meaningful, especially if you're going to be running multiple jails on the same host.
-
-- **Jail ID**: This is a number between 1-9999, it **HAS** to be unique cluster-wide, if you are clustered that is.
-
-- **Description**: An optional description for the jail you are about to create.
+<img
+  src={basic.src}
+  alt="Create Jail wizard on the Basic tab with a selected node, name, hostname, Jail ID, and description"
+/>
 
 ## Storage
 
-![Storage](./storage.png)
+Every jail needs a ZFS pool and one root filesystem source. Sylve creates the jail root at:
 
-In the Storage tab, you can select the dataset where (pool) the jail's root filesystem will be created,
-you also have to select a base that you downloaded. You can download a base.txz from https://download.freebsd.org/releases/amd64/15.0-RELEASE/base.txz using the downloader (rememeber to select the correct architecture and version) and also to enable extraction in the downloader.
+```text
+<pool>/sylve/jails/<Jail ID>
+```
 
-You should have also set the download type to Base/RootFS for the selectbox here to contain the downloaded base.txz.
+The selected pool must be usable, and the destination dataset must not already exist. If the **Pool** list is empty, [create or import a ZFS pool](/guides/node/storage/zfs/pools/) on the selected node first.
+
+### Choose a root filesystem
+
+The **Base** selector presents two supported sources:
+
+| Source | Use it when | Requirements |
+| --- | --- | --- |
+| **Bootstrap** | You want Sylve to prepare a supported FreeBSD pkgbase root directly on the selected pool. | The bootstrap must finish successfully before it can be selected. Its FreeBSD version must be compatible with the host. |
+| **Base/RootFS download** | You already have an extracted FreeBSD base or Linux root filesystem in Downloader. | The download must be marked **Base/RootFS**, have extraction enabled, and have status **Done**. The resulting path must be a directory. |
+
+Select the download-box action beside **Base** to open **Bootstrap Jail Bases**. Choose a supported release and start the bootstrap. Sylve creates a managed dataset, configures the FreeBSD package repositories, and installs the required pkgbase content. Wait until its status is **Installed**, then select it as the jail base.
+
+#### Select a pool and base
+
+<img
+  src={storage.src}
+  alt="Create Jail wizard on the Storage tab with a selected ZFS pool and completed bootstrap or Base/RootFS download"
+/>
+
+#### Bootstrap a FreeBSD base
+
+<img
+  src={bootstrap.src}
+  alt="Bootstrap Jail Bases dialog showing supported FreeBSD releases and their installation status"
+/>
+
+To use a downloaded archive instead, add it through [Downloader](/guides/node/utilities/downloader/). For example, a FreeBSD `base.txz` must be categorized as **Base/RootFS** and extracted by Downloader. Merely downloading the archive is insufficient because jail creation copies directory contents rather than extracting an archive itself.
+
+:::caution[Choose the root that matches the jail type]
+The wizard does not transform one operating system into another. Select a FreeBSD root for a FreeBSD jail and an appropriate Linux root filesystem for a Linux jail.
+:::
+
+### Add filesystem mounts
+
+Enable **FStab Additions** to write extra entries to the jail's managed fstab. These mounts are applied when the jail starts.
+
+The editor supports:
+
+- **Manual**, for complete fstab entries you provide yourself.
+- **Simple Linux**, which generates common `devfs`, `tmpfs`, `fdescfs`, `linprocfs`, and `linsysfs` mounts below the resolved jail root.
+
+The Simple Linux preset is available only when Sylve can resolve the selected pool's managed jails mountpoint. Review generated entries before creation, especially after changing the pool or Jail ID.
+
+:::caution[Fstab entries affect jail startup]
+Use absolute, valid mountpoints and confirm that every referenced host path exists. Invalid or unavailable mounts can prevent the jail from starting.
+:::
+
+<img
+  src={fstab.src}
+  alt="Create Jail wizard with FStab Additions enabled and the Manual and Simple Linux mode selector"
+/>
 
 ## Network
 
-![Network](./network.png)
+Choose one initial networking mode. Additional interfaces can be managed after creation.
 
-You can attach your Jail to a bridge and get DHCP/SLAAC or even use static IPs (actually better), but to keep things simple lets just use "inherited" networking, this means the jail will share the host's network stack, this is the simplest way to get your jail connected to the network, but it has some limitations, for example you won't be able to use port forwarding or have multiple jails with the same IP address, but it's a good option if you just want to get your jail up and running quickly without having to worry about networking.
+| Mode | Behavior | Typical use |
+| --- | --- | --- |
+| **Standard Switch** | Creates a VNET interface on a Sylve-managed bridge. | Normal isolated jail networking managed by Sylve. |
+| **Manual Switch** | Creates a VNET interface on a bridge you manage. | Existing or specialized host networking. |
+| **Inherit** | Shares selected parts of the host network stack instead of creating a VNET interface. | Simple services that do not require an isolated network stack. |
+| **None** | Creates the jail without an initial network interface. | Offline preparation or networking that will be added later. |
 
-If you do want to use Static IPs (especially since only inherited/static IPs are supported for Linux jails), you can click on the generate button on the top right of each network object select box that will allow you to create Network Objects on the fly without having to leave the form. Be sure to give just one entry!
+### Use a Standard or Manual switch
 
-![Network - Create Object](./create-object.png)
+After selecting a switch, configure the initial interface:
+
+| Field | Purpose |
+| --- | --- |
+| **IPv4 Network** | A managed Network object or a raw IPv4 address with CIDR, such as `10.254.100.44/24`. Leave empty when using DHCP. |
+| **IPv4 Gateway** | A managed Host object or a raw IPv4 address. Leave empty when using DHCP or when no IPv4 default route is required. |
+| **IPv6 Network** | A managed Network object or a raw IPv6 address with CIDR. Leave empty when using SLAAC. |
+| **IPv6 Gateway** | A managed Host object or a raw IPv6 address. Leave empty when using SLAAC or when no IPv6 default route is required. |
+| **MAC Address** | An unused managed MAC object or a valid raw MAC address. If omitted, Sylve generates a unique managed MAC object. |
+| **VLAN** | Optional VLAN identifier from `0` through `4095`. Use `0` when no VLAN tag is required. |
+| **DHCP** | Requests automatic IPv4 configuration and disables the manual IPv4 fields. FreeBSD jails only. |
+| **SLAAC** | Requests automatic IPv6 configuration and disables the manual IPv6 fields. FreeBSD jails only. |
+
+The initial interface is treated as the jail's default-gateway interface. Managed MAC, IPv4, and IPv6 objects must be unused. Gateway objects may be shared. The generate action beside each selector can create the appropriate Network, Host, or MAC object without closing the wizard.
+
+If no switches appear, create a [Standard Switch](/guides/node/network/switches/standard/) or [Manual Switch](/guides/node/network/switches/manual/) first. Existing objects can be managed under [Network Objects](/guides/node/network/objects/).
+
+### Configure the initial interface
+
+<img
+  src={network.src}
+  alt="Create Jail wizard on the Network tab with a Standard Switch, static IPv4 CIDR, gateway, MAC address, and VLAN"
+/>
+
+### Create a network object inline
+
+<img
+  src={networkObject.src}
+  alt="Inline Network Object creator opened from an address or MAC field in the Create Jail wizard"
+/>
+
+:::note[Linux networking]
+Linux jails cannot use DHCP or SLAAC through the creation wizard. Use inherited networking, no initial network, or a switch with static addresses.
+:::
+
+### Inherit the host network
+
+Select **Inherit**, then enable IPv4, IPv6, or both. At least one address family must be inherited. No VNET interface, switch attachment, or managed MAC object is created in this mode.
+
+Inherited networking is convenient, but the jail shares the host's network stack for the selected families. Use a switch when the workload needs its own addresses, routes, interfaces, or stronger network separation.
+
+### Populate DNS configuration
+
+Enable **Populate DNS Resolver Configuration** to write `/etc/resolv.conf` inside the new jail. Choose Cloudflare, Google, or Quad9 to populate a preset, or choose Manual and provide your own `nameserver` and `search` lines.
+
+This setting is independent of the selected networking mode. It writes resolver configuration, but it does not guarantee that the selected DNS servers are reachable.
+
+<img
+  src={dns.src}
+  alt="Create Jail wizard with DNS resolver configuration enabled and generated resolv.conf content"
+/>
 
 ## Hardware
 
-Jail hardware provisioning isn't an exact science, it's more about setting limits and reservations for the resources that the jail will use, but it doesn't actually "provision" hardware like in a VM, so if you assign 2 CPU cores to a jail, it doesn't mean that the jail will always use those 2 cores, it just means that the jail can use up to 2 cores if it needs to, but it can also use less if it doesn't need that much.
+Jails share the host kernel, so these controls apply resource limits rather than emulating hardware.
 
-If your Jails don't misbehave and use too much resources you can actually uncheck the "Resource Limits" checkbox and let them use as much resources as they need, but if you want to be on the safe side you can set some limits here to prevent a misbehaving jail from taking down your whole system. You can also specify a custom devfs ruleset here which is very important for things like GPU "sharing" etc.
+| Setting | Purpose |
+| --- | --- |
+| **CPU Cores** | Number of host logical CPUs assigned to the jail's cpuset when resource limits are enabled. Sylve selects an available CPU set. |
+| **Memory Size** | Maximum memory available to the jail when resource limits are enabled. Human-readable binary sizes such as `1GiB` are accepted. |
+| **Boot Order** | Non-negative ordering value used when automatically starting managed jails. Lower values start earlier. |
+| **Start On Boot** | Starts the jail automatically when its node starts. |
+| **Resource Limits** | Enables CPU and memory enforcement. When disabled, the CPU and memory values are discarded and the jail may use host resources without those configured limits. |
+| **Custom Devfs Ruleset** | Adds FreeBSD devfs rule content to this jail's managed ruleset. This appears only when devfs management is enabled on the node. |
 
-Another thing you can set here is the boot order which is pretty self-explanatory.
+CPU cores must be at least one and cannot exceed the node's logical CPU count. Memory must be positive and cannot exceed the host's total memory. Resource limits protect the node from a jail consuming excessive CPU or memory, but they are not reservations that guarantee exclusive capacity.
+
+Custom devfs rules are appended below Sylve's base jail rules. They are useful when a jail needs access to specific device nodes, but overly broad rules can expose sensitive host devices.
+
+:::caution[Device access crosses an important isolation boundary]
+Grant only the device nodes required by the workload. Review custom devfs rules carefully before starting the jail.
+:::
+
+### Configure resource limits and devfs rules
+
+<img
+  src={hardware.src}
+  alt="Create Jail wizard on the Hardware tab with resource limits, CPU cores, memory, boot order, autostart, and custom devfs rules"
+/>
 
 ## Advanced
 
-The **Advanced** tab gives you control over jail runtime behavior and low-level jail.conf options.
+The Advanced tab controls the jail type, allowed capabilities, environment handling, raw jail configuration, metadata, and lifecycle hooks.
 
-You can choose either a **FreeBSD** jail type or **Linux (Experimental)**. The selection applies a sensible template automatically. FreeBSD defaults to traditional `exec.start` and `exec.stop` scripts (`/bin/sh /etc/rc` and `/bin/sh /etc/rc.shutdown`) with a conservative allowed option set, while Linux defaults to mount and compatibility options suited for Linux jails and leaves start/stop scripts disabled.
+### Choose the jail type
 
-Beyond type selection, this page also lets you tune allowed capability flags (`allow.*`), choose whether to run with a clean environment, add raw custom jail config text, and define metadata values for `meta` and `env` as `KEY=VALUE` pairs.
+| Type | Default behavior |
+| --- | --- |
+| **FreeBSD** | Enables the normal FreeBSD capability set and configures `/bin/sh /etc/rc` and `/bin/sh /etc/rc.shutdown` as the start and stop scripts. |
+| **Linux** | Enables Linux compatibility mount capabilities and leaves the default start and stop scripts disabled. Linux jails require a compatible Linux root filesystem and host compatibility support. |
 
-The lifecycle hooks editor supports all `exec.*` phases (`prestart`, `start`, `poststart`, `prestop`, `stop`, `poststop`) with per-phase enable toggles and script bodies.
+Changing the type reapplies its default allowed options and start/stop hooks. Make this choice before customizing those fields.
 
-:::note
-Each hook runs in a specific context. Some phases execute on the host, while others execute inside the jail.
+### Allowed options and clean environment
+
+**Allowed Options** controls the `allow.*` capabilities written into the jail configuration. The defaults cover common networking and service needs. Add powerful capabilities such as filesystem mounting, routing, VMM access, or host-time changes only when the workload requires them.
+
+**Clean Environment** instructs the jail runtime to start with a clean environment instead of inheriting the host process environment. Keep it enabled unless a deliberate host environment dependency is required.
+
+### Additional options
+
+Enable **Additional Options** to append raw jail configuration inside the generated jail block. This escape hatch supports settings not exposed elsewhere in the wizard.
+
+:::caution[Additional options are inserted as configuration]
+Invalid, conflicting, or unsafe jail.conf content can prevent startup or weaken isolation. Do not repeat options already managed by the wizard, and test custom configuration carefully.
 :::
 
-:::caution
-Additional options are inserted as-is into jail configuration, so invalid content can prevent startup.
-:::
+### Metadata
+
+The **Metadata (meta)** and **Metadata (env)** editors accept one `KEY=VALUE` pair per line. Each block is limited to 2048 characters. Keys and values must both be present, and each non-empty line must contain exactly one equals sign.
+
+Use metadata for information or environment values that need to be retained with the jail definition. Do not place secrets here unless the surrounding storage and access controls are appropriate for them.
+
+### Lifecycle hooks
+
+Each hook can be enabled independently:
+
+| Hook | Execution context |
+| --- | --- |
+| **Pre-start (`exec.prestart`)** | Runs on the host before the jail starts. |
+| **Start (`exec.start`)** | Runs inside the jail as its start command. |
+| **Post-start (`exec.poststart`)** | Runs on the host after the jail starts. |
+| **Pre-stop (`exec.prestop`)** | Runs on the host before the jail stops. |
+| **Stop (`exec.stop`)** | Runs inside the jail as its stop command. |
+| **Post-stop (`exec.poststop`)** | Runs on the host after the jail stops. |
+
+An enabled hook must contain a non-empty script. Host-side hooks run with host privileges, so treat their contents as privileged automation.
+
+<img
+  src={advanced.src}
+  alt="Create Jail wizard on the Advanced tab showing jail type, allowed options, clean environment, metadata, and lifecycle hooks"
+/>
+
+## Finish creation
+
+Review every tab, then select **Create**. Sylve validates the identity across VMs and jails, checks the pool and root source, verifies switch and network-object availability, validates limits and advanced configuration, and refuses to overwrite an existing jail dataset.
+
+Creation can take time because the selected root filesystem is copied into a new ZFS dataset. If any later provisioning step fails, Sylve attempts to remove the partially created dataset, database records, network objects, runtime files, and devfs rules.
+
+After creation, open the jail from the sidebar to review its configuration. Start it when you are ready, then use the [Jail Console](/guides/node/jails/console/) to verify the hostname, networking, resolver configuration, and services inside the guest.

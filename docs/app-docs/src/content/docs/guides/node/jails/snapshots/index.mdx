@@ -1,26 +1,99 @@
 ---
 title: Snapshots
-description: Manage your Jail snapshots
+description: Create, inspect, roll back, and delete recursive ZFS snapshots for a jail.
 ---
 
-The **Snapshots** page lets you create recovery points and manage rollback history for a jail. Snapshots are shown as a tree, so parent and child relationships are visible directly in the table.
+import overview from './jail-snapshots-overview.png';
+import createSnapshot from './jail-snapshot-create.png';
+import rollbackSnapshot from './jail-snapshot-rollback.png';
+import deleteSnapshot from './jail-snapshot-delete.png';
 
-To create a snapshot, click **New**, enter a required name, and optionally add a description. To recover to a previous state, select a snapshot and use **Rollback**. You can also delete snapshots from the same view.
+The **Snapshots** page manages point-in-time recovery states for a jail. Each entry represents a recursive ZFS snapshot of the jail's root dataset tree together with the jail metadata and host-side configuration needed for restoration.
+
+:::caution[Not a backup]
+Snapshots remain on the jail's storage pool and depend on that pool remaining healthy. Use [Backups](/guides/data-center/backups/jobs/) when you need an independent recovery copy.
+:::
+
+## Understand the snapshot tree
+
+Snapshots are displayed in creation order as a parent and child tree. A new snapshot becomes a child of the most recently created managed snapshot.
+
+| Column | Meaning |
+| --- | --- |
+| **Name** | The user-facing name assigned when the snapshot was created. |
+| **Description** | The optional reason or context recorded for the snapshot. |
+| **Created** | Relative creation time. Hover over it to see the full local timestamp. |
+
+Select one snapshot to reveal its **Rollback** and **Delete** actions. The search field filters the table without changing the snapshot lineage.
+
+<img
+  src={overview.src}
+  alt="Jail Snapshots page showing snapshot names, descriptions, creation times, and lineage"
+/>
+
+## Create a snapshot
+
+Select **New**, enter a name, optionally add a description, and choose **Create Snapshot**.
+
+- The name is required and can contain up to 128 characters.
+- The description is optional and can contain up to 4096 characters.
+- Sylve generates a unique underlying ZFS snapshot name from the supplied name and creation time.
+- The jail may be running or stopped during creation.
+
+Before creating the recursive ZFS snapshot, Sylve refreshes the jail metadata and stages its managed host configuration inside the jail dataset. This allows rollback to restore both stored files and the matching Sylve configuration.
+
+<img
+  src={createSnapshot.src}
+  alt="New Jail Snapshot dialog with name and optional description fields"
+/>
+
+:::caution[Crash consistency]
+Snapshot creation does not stop the jail or quiesce its applications. The result is crash-consistent. Applications with buffered writes or multi-file transactions may require their own flush, freeze, or maintenance procedure before you create the snapshot.
+:::
+
+The recursive snapshot includes the jail's root dataset and its descendant datasets. Storage mounted from datasets outside that tree is not automatically captured by this jail snapshot.
+
+## Roll back a snapshot
+
+Select the target snapshot, choose **Rollback**, read the warning carefully, and confirm the operation.
+
+Rollback performs the following sequence:
+
+1. Validates the snapshot, jail identity, dataset tree, saved metadata, and host configuration.
+2. Stops the jail if it is currently running.
+3. Rolls every dataset in the captured jail tree back to the selected snapshot.
+4. Restores the saved jail configuration, including managed network, storage, hook, and metadata records.
+5. Removes managed snapshot records created after the selected point.
+6. Attempts to start the jail again if it was running before rollback.
+
+<img
+  src={rollbackSnapshot.src}
+  alt="Jail snapshot rollback warning describing the destructive rollback and restart behavior"
+/>
 
 :::caution
-Rolling back to an older snapshot destroys snapshots created after that point. Confirm the lineage before continuing.
+Rollback permanently destroys every newer ZFS snapshot beneath the jail's dataset tree, including newer snapshots that are not listed in Sylve. It also discards filesystem changes made after the selected snapshot. This cannot be undone.
 :::
+
+If the jail was stopped before rollback, it remains stopped. If it was running, Sylve makes a best effort to restore the active state. A successful rollback can still return warnings when the jail cannot be restarted or when metadata refresh encounters a non-fatal problem. Review the final jail state and its [Summary](/guides/node/jails/summary/) logs before returning the workload to service.
+
+## Delete a snapshot
+
+Select a snapshot, choose **Delete**, and confirm the action. Sylve removes that physical snapshot from the root dataset and each descendant dataset in the snapshot tree.
+
+Deleting a snapshot does not roll back the jail and does not delete newer managed snapshots. If the deleted entry has children, they are reparented to the deleted snapshot's parent so their lineage remains visible.
+
+<img
+  src={deleteSnapshot.src}
+  alt="Confirmation dialog for permanently deleting a jail snapshot"
+/>
 
 :::note
-Snapshot deletion is permanent and cannot be undone.
+Snapshot deletion is permanent. It does not remove the jail or change its current files, but it removes that recovery point.
 :::
 
-![Snapshots - Table](./snap.png)
+## Replication and storage restrictions
 
-<br />
+Snapshot creation, rollback, and deletion require the current node to own the jail's replication lease. Rollback and deletion can also be refused when a replication run is active or a replication policy protects the jail's storage topology.
 
-![New - Snapshot](./new-shot.png)
-
-<br />
-
-![Rollback - Snapshot](./rollback.png)
+These operations can fail safely before mutation when the expected root dataset, descendant snapshot, saved metadata, jail configuration, or referenced storage no longer matches the recorded snapshot. Resolve the storage or replication conflict instead of manually deleting snapshot metadata from the database.

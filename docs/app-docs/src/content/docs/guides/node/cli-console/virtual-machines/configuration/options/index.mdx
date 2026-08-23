@@ -1,0 +1,182 @@
+---
+title: Options
+description: Configure VM startup, clock, shutdown, boot ROM, cloud-init, bhyve, QGA, MSR, and Wake-on-LAN options.
+---
+
+import AsciinemaPlayer from '../../../../../../../../components/AsciinemaPlayer.astro';
+
+VM options control host startup behavior, guest firmware and clock, graceful shutdown, initialization data, and bhyve integration features.
+
+## Option availability
+
+| Command | May run while VM is active | Behavior |
+| --- | --- | --- |
+| `config autostart` | Yes | Replaces enabled state and start order together. |
+| `config clock` | No | Replaces guest clock offset. |
+| `config shutdown` | Yes | Replaces graceful-shutdown wait. |
+| `config boot-rom` | No | Replaces firmware choice. |
+| `config cloud-init` | No | Completely replaces or clears cloud-init content. |
+| `config bhyve-options` | No | Completely replaces or clears extra options. |
+| `config unknown-msr` | No | Replaces unknown-MSR handling state. |
+| `config qga` | No | Replaces QEMU Guest Agent integration state. |
+| `config wol` | Yes | Replaces Wake-on-LAN state. |
+
+## Configure host autostart
+
+Autostart requires both state and order because Sylve updates them together:
+
+```bash
+doas sylve vms config autostart \
+  --rid 301 \
+  --enabled=true \
+  --order 7 \
+  --json
+```
+
+Start order must be zero or greater. Lower ordering values are considered earlier when the node starts configured VMs.
+
+## Set the guest clock
+
+Choose `utc` or `localtime`:
+
+```bash
+doas sylve vms config clock \
+  --rid 301 \
+  --time-offset localtime \
+  --json
+```
+
+UTC is the normal choice for Unix-like guests. Some operating systems expect the emulated real-time clock to use local time.
+
+## Set graceful-shutdown wait
+
+Configure how long Sylve waits after requesting graceful shutdown:
+
+```bash
+doas sylve vms config shutdown \
+  --rid 301 \
+  --wait-seconds 20 \
+  --json
+```
+
+The accepted range is 1 through 3600 seconds. If the guest is still running when the wait expires, Sylve force-stops the domain and completes the shutdown task.
+
+## Choose boot firmware
+
+Set `uefi`, `uboot`, or `none`:
+
+```bash
+doas sylve vms config boot-rom \
+  --rid 301 \
+  --boot-rom uefi \
+  --json
+```
+
+Availability depends on host and guest architecture. Loki returned `"updated": false` because VM `301` already used UEFI.
+
+## Replace cloud-init configuration
+
+Cloud-init replacement requires data and metadata files plus exactly one network choice:
+
+```bash
+doas sylve vms config cloud-init \
+  --rid 301 \
+  --data-file /root/cloud-init/user-data \
+  --metadata-file /root/cloud-init/meta-data \
+  --network-config-file /root/cloud-init/network-config \
+  --json
+```
+
+Use `--no-network-config` instead when intentionally storing an empty network configuration:
+
+```bash
+doas sylve vms config cloud-init \
+  --rid 301 \
+  --data-file /tmp/sylve-docs-cloud-init/user-data \
+  --metadata-file /tmp/sylve-docs-cloud-init/meta-data \
+  --no-network-config \
+  --json
+```
+
+Files are read on the Sylve host. Replacement is complete, so omitted previous content is not preserved. Clear all three values with `--clear` alone:
+
+```bash
+doas sylve vms config cloud-init --rid 301 --clear --json
+```
+
+## Replace extra bhyve options
+
+Repeat `--option` to provide the complete option list:
+
+```bash
+doas sylve vms config bhyve-options \
+  --rid 301 \
+  --option=-S \
+  --json
+```
+
+Clear every extra option explicitly:
+
+```bash
+doas sylve vms config bhyve-options --rid 301 --clear --json
+```
+
+:::caution[Extra options can prevent startup]
+These values are passed to bhyve and can duplicate or conflict with arguments managed by Sylve. Use them only when the effect of the bhyve option is understood, and verify VM startup afterward.
+:::
+
+## Handle unknown MSRs
+
+Toggle unknown Model-Specific Register handling:
+
+```bash
+doas sylve vms config unknown-msr \
+  --rid 301 \
+  --enabled=true \
+  --json
+```
+
+Enable this only for a guest that requires unknown MSR accesses to be ignored. The setting changes generated bhyve configuration and requires the VM to be powered off.
+
+## Enable QEMU Guest Agent integration
+
+Enable the QGA channel in the VM definition:
+
+```bash
+doas sylve vms config qga --rid 301 --enabled=true --json
+```
+
+This configures the host-side guest-agent transport. It does not install or start an agent inside the guest. The access guide uses `vms qga info` to distinguish configured, running, reachable, and capability states.
+
+## Configure Wake-on-LAN
+
+Wake-on-LAN state may be changed while the VM is running:
+
+```bash
+doas sylve vms config wol --rid 301 --enabled=true --json
+```
+
+The surrounding network must deliver the magic packet to the relevant MAC address. Enabling the VM option alone does not configure upstream switching or routing.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-config-options.cast"
+  title="Real autostart, clock, shutdown, cloud-init, bhyve, QGA, and Wake-on-LAN configuration responses."
+/>
+
+## Use the interactive console
+
+The console places the RID after the leaf command:
+
+```text
+vms config autostart 301 --enabled=true --order 7
+vms config clock 301 --time-offset utc
+vms config shutdown 301 --wait-seconds 20
+vms config boot-rom 301 --boot-rom uefi
+vms config cloud-init 301 --data-file /root/user-data --metadata-file /root/meta-data --no-network-config
+vms config bhyve-options 301 --option=-S
+vms config unknown-msr 301 --enabled=true
+vms config qga 301 --enabled=true
+vms config wol 301 --enabled=true
+```
+
+Boolean flags accept explicit `true` and `false`. Omission is not a request to disable a setting.

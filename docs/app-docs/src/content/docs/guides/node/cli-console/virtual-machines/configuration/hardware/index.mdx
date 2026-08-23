@@ -1,0 +1,190 @@
+---
+title: Hardware
+description: Configure VM identity, CPU, memory, VNC, serial, PCI passthrough, and TPM with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../../components/AsciinemaPlayer.astro';
+
+Hardware configuration commands expose focused updates rather than requiring a complete VM request. Most hardware changes require a powered-off VM because Sylve must update the persistent libvirt domain definition.
+
+## Know which changes require shutdown
+
+| Command | May run while VM is active | Update behavior |
+| --- | --- | --- |
+| `config name` | Yes | Replaces the name. |
+| `config description` | Yes | Replaces the description. |
+| `config cpu` | No | Replaces the complete CPU topology and pinning. |
+| `config memory` | No | Replaces RAM size. |
+| `config vnc` | No | Patches only supplied fields. |
+| `config serial` | No | Replaces enabled state. |
+| `config pci` | No | Replaces the complete PCI assignment list. |
+| `config tpm` | No | Replaces TPM emulation state. |
+
+Wait for a shutdown or stop task to finish before using a command marked as requiring power-off.
+
+## Set name and description
+
+Name and description may be changed while the VM is running:
+
+```bash
+doas sylve vms config name \
+  --rid 301 \
+  --name docs-alpine-configured \
+  --json
+
+doas sylve vms config description \
+  --rid 301 \
+  --description "Configured through the VM CLI" \
+  --json
+```
+
+Each response identifies the configuration that was updated:
+
+```json
+{
+  "updated": true,
+  "rid": 301,
+  "configuration": "name"
+}
+```
+
+An explicit empty description clears it. A VM name must satisfy the service's normal name validation.
+
+## Replace CPU topology and pinning
+
+CPU configuration is a full replacement. Supply sockets, cores per socket, threads per core, and an explicit pinning decision:
+
+```bash
+doas sylve vms config cpu \
+  --rid 301 \
+  --sockets 1 \
+  --cores 2 \
+  --threads 1 \
+  --clear-pinning \
+  --json
+```
+
+The resulting vCPU count is sockets multiplied by cores multiplied by threads. All topology values must be positive.
+
+To pin virtual sockets to host CPU cores, repeat `--pin` using `socket:core,core` syntax:
+
+```bash
+doas sylve vms config cpu \
+  --rid 301 \
+  --sockets 2 \
+  --cores 2 \
+  --threads 1 \
+  --pin 0:0,1 \
+  --pin 1:2,3
+```
+
+`--clear-pinning` and `--pin` cannot be combined. Pinning is never removed merely because the option was omitted.
+
+## Change memory
+
+RAM accepts human-readable byte sizes:
+
+```bash
+doas sylve vms config memory \
+  --rid 301 \
+  --ram 2GiB \
+  --json
+```
+
+Loki accepted the change and returned `"configuration": "memory"`. The complete VM inspection reports RAM in bytes when JSON output is requested.
+
+## Patch VNC settings
+
+VNC is a partial update. Omitted settings, including the password, remain unchanged:
+
+```bash
+doas sylve vms config vnc \
+  --rid 301 \
+  --resolution 1280x720 \
+  --wait=true \
+  --json
+```
+
+Supported changes are:
+
+- `--enabled=true|false`
+- `--port <1-65535>`
+- `--bind <address>`
+- `--resolution <width>x<height>`
+- `--wait=true|false`
+- `--password-file <host-path>`
+- `--clear-password`
+
+`--password-file` and `--clear-password` are mutually exclusive. The file is read on the Sylve host, and ordinary inspection never returns the VNC password.
+
+:::caution[Review the VNC bind address]
+Binding VNC to a non-loopback address can expose the console to the network. Use authentication and host firewall controls appropriate to the environment.
+:::
+
+## Enable the serial console
+
+Set serial state explicitly:
+
+```bash
+doas sylve vms config serial \
+  --rid 301 \
+  --enabled=true \
+  --json
+```
+
+This enables bhyve serial plumbing. The guest must still configure its bootloader and operating system to use the serial console. The access guide covers preflight and connection commands.
+
+## Replace PCI passthrough assignments
+
+PCI configuration replaces the complete assignment. Repeat `--device-id` for every passthrough record that should remain assigned:
+
+```bash
+doas sylve vms config pci \
+  --rid 301 \
+  --device-id 4 \
+  --device-id 7 \
+  --json
+```
+
+Clear all assignments explicitly:
+
+```bash
+doas sylve vms config pci --rid 301 --clear --json
+```
+
+On Loki, clearing an already-empty assignment returned `"updated": false`. This is a successful no-op, not an error.
+
+:::caution[PCI lists are not patches]
+Omitting an existing device from the repeated `--device-id` values removes that assignment. Confirm the complete intended list before submitting the command.
+:::
+
+## Configure TPM emulation
+
+Enable or disable the emulated TPM:
+
+```bash
+doas sylve vms config tpm --rid 301 --enabled=true --json
+```
+
+Enabling TPM updates the VM definition and causes Sylve to manage the swtpm runtime and state files when the VM starts. Disabling it stops the associated TPM runtime when necessary.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-config-hardware.cast"
+  title="Real CPU, memory, VNC, serial, PCI, and TPM configuration responses from Loki."
+/>
+
+## Use the interactive console
+
+Place the RID immediately after the configuration leaf command:
+
+```text
+vms config name 301 --name docs-alpine
+vms config cpu 301 --sockets 1 --cores 2 --threads 1 --clear-pinning
+vms config memory 301 --ram 2GiB
+vms config vnc 301 --resolution 1280x720 --wait=true
+vms config serial 301 --enabled=true
+vms config pci 301 --clear
+vms config tpm 301 --enabled=true
+```
+
+Use `vms get 301 --json` afterward to verify the resulting persistent configuration.

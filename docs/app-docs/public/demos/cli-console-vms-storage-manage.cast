@@ -1,0 +1,8 @@
+{"version":2,"width":112,"height":27,"timestamp":1787445500,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve vms storage detach --rid 301 --storage-id 10 --json\r\n"]
+[0.9,"o","{\r\n  \"detached\": true,\r\n  \"rid\": 301,\r\n  \"storage\": {\r\n    \"id\": 10,\r\n    \"name\": \"docs-share\",\r\n    \"type\": \"filesystem\",\r\n    \"emulation\": \"virtio-9p\",\r\n    \"pool\": \"zroot\",\r\n    \"size\": 0,\r\n    \"enabled\": true,\r\n    \"bootOrder\": 0,\r\n    \"filesystemTarget\": \"docs_share_rw\",\r\n    \"readOnly\": false,\r\n    \"datasetGuid\": \"4080324291302679523\",\r\n    \"downloadUuid\": \"\",\r\n    \"backing\": \"zroot/docs-vm-share\",\r\n    \"ownership\": \"external\",\r\n    \"deleteWithVmFlag\": \"\"\r\n  }\r\n}\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve vms storage list --rid 301\r\n"]
+[1.9,"o","Storage for VM RID 301\r\nID    NAME                 TYPE     EMULATION     SIZE       ENABLED    OWNERSHIP    BACKING\r\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\r\n5                          raw      virtio-blk    4.0 GiB    true       managed      zroot/sylve/virtual-machines/301/raw-5\r\n6                          image    ahci-cd       -          true       retained     306a765d-c9d0-5d53-8a67-bd48b2e0adbe\r\n7     docs-data-renamed    raw      virtio-blk    2.0 GiB    false      managed      zroot/sylve/virtual-machines/301/raw-7\r\n8     docs-volume          zvol     nvme          2.0 GiB    true       managed      zroot/sylve/virtual-machines/301/zvol-8\r\n"]
+[2.1,"o","# "]

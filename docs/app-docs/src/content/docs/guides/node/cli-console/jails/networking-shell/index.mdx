@@ -1,0 +1,75 @@
+---
+title: Networking & Shell
+description: Inspect Jail networks, remove attachments, and open a local Jail shell.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+## List network attachments
+
+Inspect the networks configured for a Jail:
+
+```bash
+doas sylve jails networks --ctid 101
+```
+
+Inside the interactive console:
+
+```text
+jails networks 101
+```
+
+The table includes each network record's ID, name, switch ID, switch type, DHCP state, and MAC address. The network record ID is separate from the Jail CTID and switch ID.
+
+If no attachments exist, the command reports the Jail name and CTID rather than returning an empty table.
+
+Use JSON for complete network records:
+
+```bash
+doas sylve jails networks --ctid 101 --json
+```
+
+## Remove a network
+
+Pass both the Jail CTID and the network record ID:
+
+```bash
+doas sylve jails rmnet --ctid 101 --net-id 7
+```
+
+The console uses positional identifiers:
+
+```text
+jails rmnet 101 7
+```
+
+:::caution
+Removing an attachment can immediately disconnect services inside the Jail. Verify the network ID with `jails networks` first.
+:::
+
+The current CLI can list and remove Jail network records. Adding or editing an attachment is not yet exposed in this command group, so use the web interface or HTTP API for those operations.
+
+## Open a Jail shell
+
+Open a local interactive shell in a running Jail:
+
+```bash
+doas sylve jails console --ctid 101
+```
+
+This command resolves the running Jail with `jls`, then executes `/bin/sh` through `jexec`. The Jail must be running and the command must be executed on the Sylve node.
+
+The shell command is intentionally unavailable from inside `sylve --console` because both interfaces need control of the same terminal. Exit the Sylve console first, then run the direct command from your shell.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-jails-networking-shell.cast"
+  title="A real Sylve 0.3.0 session inspecting a Jail network, opening its local shell, verifying the static address and route, and reaching the gateway."
+/>
+
+Leave the Jail shell with:
+
+```text
+exit
+```
+
+Exiting the shell does not stop the Jail.

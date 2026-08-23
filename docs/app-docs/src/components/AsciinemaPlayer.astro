@@ -1,0 +1,72 @@
+---
+import 'asciinema-player/dist/bundle/asciinema-player.css';
+
+interface Props {
+  src: string;
+  title: string;
+  rows?: number;
+}
+
+const { src, title, rows = 27 } = Astro.props;
+---
+
+<figure class="terminal-demo">
+  <div
+    class="terminal-demo-player"
+    data-asciinema-player
+    data-src={src}
+    data-rows={rows}
+  ></div>
+  <figcaption>{title}</figcaption>
+</figure>
+
+<script>
+  import { create } from 'asciinema-player';
+
+  const initializePlayers = () => {
+    document
+      .querySelectorAll<HTMLElement>('[data-asciinema-player]:not([data-player-ready])')
+      .forEach((container) => {
+        const src = container.dataset.src;
+        if (!src) return;
+
+        container.dataset.playerReady = '';
+        create(src, container, {
+          autoPlay: false,
+          controls: true,
+          fit: 'width',
+          idleTimeLimit: 2,
+          rows: Number(container.dataset.rows) || 24,
+          terminalFontFamily: 'IBM Plex Mono, SFMono-Regular, Consolas, monospace',
+        });
+      });
+  };
+
+  initializePlayers();
+  document.addEventListener('astro:page-load', initializePlayers);
+</script>
+
+<style>
+  .terminal-demo {
+    margin-block: 1.75rem;
+  }
+
+  .terminal-demo-player {
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+    border-radius: 9px;
+    background: #050505;
+    box-shadow: 0 16px 38px rgb(0 0 0 / 22%);
+  }
+
+  .terminal-demo-player :global(.ap-wrapper) {
+    border: 0;
+  }
+
+  figcaption {
+    margin-top: 0.65rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+    line-height: 1.5;
+  }
+</style>

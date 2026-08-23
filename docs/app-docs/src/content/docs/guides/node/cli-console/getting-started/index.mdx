@@ -1,0 +1,222 @@
+---
+title: Getting Started
+description: Manage a Sylve node with direct CLI commands or the interactive console.
+---
+
+import AsciinemaPlayer from '../../../../../../components/AsciinemaPlayer.astro';
+
+Sylve provides two command-line interfaces for local administration:
+
+- **Direct CLI commands** run one operation and return to your shell. They are the better choice for scripts, automation, and quick administrative tasks.
+- **The interactive console** keeps a prompt open for exploration and repeated operations. It also provides live node status and command history.
+
+Both interfaces operate on the local node. Most management operations are sent to the running Sylve daemon through a local Unix socket rather than through the public HTTP API.
+
+:::note[CLI feature coverage]
+The CLI is not yet feature complete when compared with the HTTP API or web interface. It covers the most common local administration and inspection workflows, however, and is more than sufficient for most scripting use cases. Use the API when an operation is not exposed as a command or when automation must manage a node remotely.
+:::
+
+:::caution[Root access is required]
+The `sylve` command rejects CLI and console use unless it is running as `root`. Prefix the examples in this guide with `doas` or `sudo` when you are not already logged in as `root`.
+:::
+
+## Before you begin
+
+For package installations, enable and start the daemon before using direct commands:
+
+```bash
+doas service sylve enable
+doas service sylve start
+```
+
+Confirm that the CLI is installed and inspect its available command groups:
+
+```bash
+doas sylve --version
+doas sylve --help
+```
+
+The direct CLI currently includes commands for notes, Jails, Virtual Machines, lifecycle tasks, network switches, network objects, and downloads.
+
+## Configuration and the local socket
+
+The CLI reads the configuration file to discover `dataPath`, then connects to the daemon at:
+
+```text
+<dataPath>/run/console.sock
+```
+
+It resolves the configuration file in this order:
+
+1. A path supplied with `--config` or `-c`.
+2. `./config.json` in the current directory.
+3. `/usr/local/etc/sylve/config.json`.
+
+Use an explicit path when managing an installation with a non-default configuration:
+
+```bash
+doas sylve --config /path/to/config.json jails list
+```
+
+If none of these files exists, the command reports which paths it tried. If the configuration is valid but the socket is unavailable, direct commands report that the daemon is not running.
+
+:::note
+The console socket and its parent directory are restricted to the owner. Commands do not send credentials over the network or require a web login; local access is controlled through root privileges and filesystem permissions.
+:::
+
+## Run direct commands
+
+A direct command follows this general form:
+
+```text
+sylve [global options] <group> <command> [command options]
+```
+
+Start with read-only commands while becoming familiar with the interface:
+
+```bash
+doas sylve jails list
+doas sylve vms list
+doas sylve tasks active
+doas sylve downloads list
+```
+
+On a new node with no guests or pending lifecycle work, the first three commands return:
+
+```text
+No jails found.
+No VMs found.
+No lifecycle tasks found.
+```
+
+These messages are real output captured from Sylve 0.3.0. An empty result is successful and does not indicate a connection problem.
+
+Use `--help` at any level to inspect the Go-defined commands and flags installed with your version:
+
+```bash
+doas sylve jails --help
+doas sylve jails create --help
+doas sylve tasks recent --help
+```
+
+Options are validated before an operation is sent. For example, Jail CTIDs must be between `1` and `9999`, and lifecycle task limits must be between `1` and `200`.
+
+## Open the interactive console
+
+Launch the console with:
+
+```bash
+doas sylve --console
+```
+
+The shorter alias is equivalent:
+
+```bash
+doas sylve --con
+```
+
+When a daemon is already running, the command attaches to its local console socket. If the socket is unavailable, it starts Sylve locally in foreground console mode instead. This makes `sylve --console` useful during development, but on an installed system you will usually attach to the service managed by FreeBSD.
+
+At the prompt, use `help` to list command groups. Enter a group without a subcommand to see its available operations:
+
+```text
+help
+jails
+tasks
+```
+
+Use `ping` for a quick console connectivity check:
+
+```text
+ping
+```
+
+The response should be `pong`.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-getting-started.cast"
+  title="A real Sylve 0.3.0 console session: help, connectivity, empty guest lists, active tasks, and exit."
+/>
+
+Enter `quit` or `exit` to close your console session. The `shutdown` command is different: it sends a termination signal to Sylve and stops the running process, so do not use it merely to leave the prompt.
+
+## Understand the syntax differences
+
+Direct commands use named flags for identifiers, while the interactive console uses positional arguments for many of the same operations:
+
+| Task | Direct CLI | Interactive console |
+| --- | --- | --- |
+| List Jails | `sylve jails list` | `jails list` |
+| Inspect Jail 100 | `sylve jails get --ctid 100` | `jails get 100` |
+| Start Jail 100 | `sylve jails start --ctid 100` | `jails start 100` |
+| Start every Jail | `sylve jails start --all` | `jails start all` |
+| Inspect task 42 | `sylve tasks get --id 42` | `tasks get 42` |
+
+Do not include the leading `sylve` while inside the interactive console. If a console command is unclear, enter its group name, such as `jails` or `tasks`, to display the supported syntax.
+
+## Use JSON output
+
+Most resource and task commands accept `--json`. Use it when another program will consume the result:
+
+```bash
+doas sylve jails list --json
+doas sylve tasks recent --limit 20 --json
+```
+
+The interactive console supports the same output mode for these operations:
+
+```text
+jails list --json
+tasks recent --limit 20 --json
+```
+
+On success, JSON mode prints machine-readable data followed by a newline. Command failures return a non-zero exit status in direct mode; when `--json` is requested, the command also prints an object containing an `error` field.
+
+For shell automation, check the exit status before processing the output:
+
+```bash
+if output="$(doas sylve jails list --json)"; then
+  printf '%s\n' "$output" | jq .
+else
+  echo "Unable to list Jails" >&2
+fi
+```
+
+## Command history and quoting
+
+The interactive console stores up to 500 commands in:
+
+```text
+<dataPath>/repl/history
+```
+
+Blank commands and immediately repeated commands are not added. The history directory and file are owner-only.
+
+Arguments containing spaces can use single or double quotes. Backslash escaping is supported, and double-quoted values can contain escaped characters:
+
+```text
+notes add "Maintenance window" "Restart services after the storage upgrade"
+```
+
+The console parses this input directly and does not invoke a shell. Shell substitutions, pipes, and redirections are therefore not evaluated inside the console.
+
+## A safe first session
+
+The following sequence explores the node without changing its configuration:
+
+```text
+ping
+jails list
+vms list
+tasks active
+downloads list
+exit
+```
+
+Use direct mode instead when you want a single result for a script or shell pipeline:
+
+```bash
+doas sylve jails list --json
+```
+
+Later guides in this section will cover complete workflows for each command group, including creation requests, lifecycle operations, networking, and automation patterns.

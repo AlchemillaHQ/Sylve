@@ -1,0 +1,267 @@
+---
+title: Creation
+description: Create and inspect a bhyve virtual machine with the Sylve CLI and interactive console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Sylve creates bhyve virtual machines from common command-line flags or a complete JSON request. A VM can start with managed raw or ZVOL storage, installation media or a cloud image, a network attachment, VNC, and boot-time behavior.
+
+:::caution[Creation changes storage and networking]
+Creating a VM can allocate ZFS storage, register a libvirt domain, attach downloaded media, and generate a MAC object. Confirm the RID, pool, storage size, image UUID, and switch before submitting the request.
+:::
+
+## Inspect the available resources
+
+List existing VMs before choosing an RID:
+
+```bash
+doas sylve vms list
+```
+
+VM RIDs are unique integers from `1` through `9999`. An empty node reports `No VMs found.`
+
+The initial disk must use an existing ZFS pool. Installation media and cloud images are referenced by download UUID, not by the numeric download ID:
+
+```bash
+doas zpool list
+doas sylve downloads list --json
+doas sylve switches list
+```
+
+Use a switch name or `none` during creation. Network objects and switch configuration are covered in the earlier networking guides.
+
+## Understand the conservative defaults
+
+Without `--file`, only `--rid` and `--name` are required. Omitted settings use these defaults:
+
+| Setting | Default |
+| --- | --- |
+| CPU topology | 1 socket, 1 core, 1 thread |
+| RAM | 1 GiB |
+| Initial storage | None |
+| Initial network | None |
+| VNC | Disabled |
+| Start at host boot | Disabled |
+| Guest clock | UTC |
+
+This minimal command creates a registered VM without disks or networking:
+
+```bash
+doas sylve vms create --rid 301 --name example-vm
+```
+
+The interactive console accepts the same named creation options without the leading `sylve`:
+
+```text
+vms create --rid 301 --name example-vm
+```
+
+## Create an installable VM
+
+The following real example creates a 1 vCPU Alpine VM with 1 GiB of RAM, a 4 GiB managed raw disk, an attached installer ISO, VNC bound to the local host, and one interface on `TTT`:
+
+```bash
+doas sylve vms create \
+  --rid 301 \
+  --name docs-alpine \
+  --description "CLI documentation example" \
+  --cpu-sockets 1 \
+  --cpu-cores 1 \
+  --cpu-threads 1 \
+  --ram 1GiB \
+  --storage-pool zroot \
+  --storage-type raw \
+  --storage-size 4GiB \
+  --storage-emulation virtio-blk \
+  --iso 306a765d-c9d0-5d53-8a67-bd48b2e0adbe \
+  --switch TTT \
+  --network-emulation virtio \
+  --boot-rom uefi \
+  --vnc-enabled=true \
+  --vnc-port 5901 \
+  --vnc-bind 127.0.0.1 \
+  --vnc-resolution 1024x768 \
+  --vnc-wait=false \
+  --start-at-boot=false \
+  --start-order 0 \
+  --time-offset utc \
+  --json
+```
+
+Loki returned the identifiers of every resource created or attached:
+
+```json
+{
+  "created": true,
+  "rid": 301,
+  "name": "docs-alpine",
+  "storageAttachmentIds": [5, 6],
+  "networkAttachmentIds": [3],
+  "macObjectIds": [12],
+  "generatedMacObjectIds": [12]
+}
+```
+
+The first storage attachment is the managed raw disk. The second is the retained ISO image. Because no existing MAC object was supplied, Sylve generated MAC object `12` for network attachment `3`.
+
+:::note[Example identifiers are node-specific]
+The RID and generated identifiers above are real output from the documentation node. Choose an unused RID and use download, pool, and switch values from your own node.
+:::
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-creation.cast"
+  title="A real Sylve 0.3.0 session inspecting the VM, its managed disk and ISO, and its generated network attachment."
+/>
+
+## Core creation flags
+
+| Flag | Purpose |
+| --- | --- |
+| `--rid <id>` | Unique VM RID from `1` through `9999`. Required without `--file`. |
+| `--name <name>` | VM name. Required without `--file`. |
+| `--description <text>` | Optional descriptive text. |
+| `--cpu-sockets <count>` | Positive CPU socket count. |
+| `--cpu-cores <count>` | Positive cores per socket. |
+| `--cpu-threads <count>` | Positive threads per core. |
+| `--ram <size>` | RAM using a human-readable size such as `1GiB`. |
+| `--storage-pool <pool>` | Pool for the initial managed raw disk or ZVOL. |
+| `--storage-type <type>` | `none`, `raw`, or `zvol`. |
+| `--storage-size <size>` | Initial managed disk size, such as `20GiB`. |
+| `--storage-emulation <type>` | `virtio-blk`, `ahci-hd`, or `nvme`. |
+| `--iso <uuid>` | Download UUID for an ISO or disk image. |
+| `--cloud-init-image <uuid>` | Download UUID for a cloud-init-capable image. Mutually exclusive with `--iso`. |
+| `--switch <name>` | Initial switch name or `none`. |
+| `--network-emulation <type>` | `virtio` or `e1000`. |
+| `--boot-rom <type>` | `uefi`, `uboot`, or `none`, subject to guest architecture. |
+| `--vnc-enabled=<bool>` | Explicitly enable or disable VNC. |
+| `--vnc-port <port>` | VNC TCP port from `1` through `65535`. |
+| `--vnc-bind <address>` | Address on which VNC listens. |
+| `--vnc-resolution <size>` | VNC resolution such as `1024x768`. |
+| `--vnc-password-file <path>` | Read the VNC password from a host file. |
+| `--vnc-wait=<bool>` | Wait for a VNC client before guest boot. |
+| `--start-at-boot=<bool>` | Start the VM when the host starts. |
+| `--start-order <number>` | Non-negative ordering value for host startup. |
+| `--time-offset <value>` | Guest clock mode: `utc` or `localtime`. |
+
+Boolean flags accept explicit `true` and `false`. This matters when a command-line flag overrides a value loaded from a JSON file.
+
+## Create from a cloud image
+
+Use `--cloud-init-image` instead of `--iso` for a download categorized as `cloud-init`. Cloud-init data, metadata, and network configuration are read from files on the Sylve host:
+
+```bash
+doas sylve vms create \
+  --rid 302 \
+  --name cloud-vm \
+  --storage-pool zroot \
+  --storage-type raw \
+  --storage-size 12GiB \
+  --storage-emulation virtio-blk \
+  --cloud-init-image 3936aa0f-b178-538f-b1fa-6c9abbe583e6 \
+  --cloud-init-data-file /root/cloud-init/user-data.yaml \
+  --cloud-init-metadata-file /root/cloud-init/meta-data.yaml \
+  --cloud-init-network-config-file /root/cloud-init/network-config.yaml \
+  --switch TTT \
+  --network-emulation virtio \
+  --boot-rom uefi
+```
+
+Paths are resolved by the daemon on the Sylve host. Prefer absolute paths, especially when the direct CLI attaches to an already-running daemon.
+
+## Create from a complete JSON request
+
+Use `--file` for CPU pinning, PCI passthrough, TPM, serial, ACPI and APIC settings, QGA, raw cloud-init content, an existing MAC object, or extra bhyve options.
+
+```json
+{
+  "name": "json-vm",
+  "rid": 303,
+  "description": "Created from a strict request",
+  "iso": "306a765d-c9d0-5d53-8a67-bd48b2e0adbe",
+  "storagePool": "zroot",
+  "storageType": "raw",
+  "storageSize": 4294967296,
+  "storageEmulationType": "virtio-blk",
+  "switchName": "TTT",
+  "switchEmulationType": "virtio",
+  "macId": 13,
+  "cpuSockets": 1,
+  "cpuCores": 2,
+  "cpuThreads": 1,
+  "cpuPinning": [],
+  "ram": 2147483648,
+  "tpmEmulation": false,
+  "pciDevices": [],
+  "serial": true,
+  "vncEnabled": true,
+  "vncPort": 5903,
+  "vncBind": "127.0.0.1",
+  "vncPassword": "",
+  "vncResolution": "1024x768",
+  "vncWait": false,
+  "cloudInit": false,
+  "bootRom": "uefi",
+  "extraBhyveOptions": [],
+  "apic": true,
+  "acpi": true,
+  "ignoreUMSR": false,
+  "qemuGuestAgent": false,
+  "startAtBoot": false,
+  "startOrder": 0,
+  "timeOffset": "utc"
+}
+```
+
+Submit the request with:
+
+```bash
+doas sylve vms create --file /root/vm-303.json
+```
+
+`macId` is optional. When it is omitted for a configured switch, Sylve creates a MAC object for the attachment. When it is supplied, it must identify an existing MAC object.
+
+The decoder rejects unknown fields and multiple JSON documents. Explicit creation flags override matching fields from the file:
+
+```bash
+doas sylve vms create \
+  --file /root/vm-303.json \
+  --name replacement-name \
+  --ram 4GiB \
+  --vnc-enabled=false
+```
+
+## Inspect the result
+
+List all VMs or inspect one RID:
+
+```bash
+doas sylve vms list
+doas sylve vms get --rid 301
+doas sylve vms get --rid 301 --json
+```
+
+The concise output captured from Loki is:
+
+```text
+RID    Name           vCPUs    RAM      Networks
+────────────────────────────────────────────────
+301    docs-alpine    1        1 GiB    1
+```
+
+Inspect the resources attached during creation:
+
+```bash
+doas sylve vms storage list --rid 301
+doas sylve vms network list --rid 301
+```
+
+The corresponding console forms place the RID after the leaf command:
+
+```text
+vms get 301
+vms storage list 301
+vms network list 301
+```
+
+The storage inventory labels the raw disk as `managed` and the ISO as `retained`. Later storage and deletion guides explain how those ownership classifications affect detach and removal operations.

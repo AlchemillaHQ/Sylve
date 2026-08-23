@@ -1,0 +1,122 @@
+---
+title: Lifecycle
+description: List, inspect, start, stop, restart, and delete Jails with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+## List Jails
+
+Start with a read-only list:
+
+```bash
+doas sylve jails list
+```
+
+```text
+jails list
+```
+
+On a node without Jails, Sylve returns:
+
+```text
+No jails found.
+```
+
+This is a successful empty result. When Jails exist, the compact table includes CTID, name, state, and configured CPU or memory limits.
+
+Use JSON when you need stable fields for a script:
+
+```bash
+doas sylve jails list --json
+```
+
+An empty node returns `[]`.
+
+## Inspect one Jail
+
+Direct commands identify a Jail with `--ctid`:
+
+```bash
+doas sylve jails get --ctid 101
+```
+
+The console uses a positional CTID:
+
+```text
+jails get 101
+```
+
+The human-readable result includes the CTID, name, hostname, type, description, CPU cores, memory, and available start or stop timestamps. Use `--json` for the complete stored Jail model.
+
+## Start, stop, or restart
+
+Run a lifecycle action for one Jail:
+
+```bash
+doas sylve jails start --ctid 101
+doas sylve jails restart --ctid 101
+doas sylve jails stop --ctid 101
+```
+
+Inside the console:
+
+```text
+jails start 101
+jails restart 101
+jails stop 101
+```
+
+The operation is queued as a lifecycle task. Successful output includes its task ID, which can be inspected through the `tasks` command group.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-jails-lifecycle.cast"
+  title="A real Sylve 0.3.0 session listing and inspecting a Jail, restarting it, checking the completed lifecycle task, and confirming it is active."
+/>
+
+Apply an action to every Jail with `--all` in direct mode:
+
+```bash
+doas sylve jails start --all
+```
+
+Use `all` as the positional target in the console:
+
+```text
+jails start all
+```
+
+`--all` and `--ctid` are mutually exclusive. A direct action requires exactly one of them.
+
+## Delete a Jail
+
+Choose whether the Jail's root dataset should be retained:
+
+```bash
+doas sylve jails delete --ctid 101
+```
+
+Without `--purge`, Sylve removes the Jail configuration but retains the root dataset. This is the safer default when data may still be needed.
+
+If the Jail is running, deletion stops it before removing its configuration. Deletion also removes its generated runtime networking and cleans up its associated MAC objects when they are no longer in use. Remove any replication policy for the CTID first; even a disabled policy prevents deletion so a future Jail cannot inherit stale replication identity.
+
+To remove the configuration and destroy the root dataset:
+
+```bash
+doas sylve jails delete --ctid 101 --purge
+```
+
+The console equivalents are:
+
+```text
+jails delete 101
+jails delete 101 --purge
+```
+
+:::danger[Purging is destructive]
+`--purge` destroys the Jail's root dataset. Confirm the CTID and ensure required data is backed up before using it.
+:::
+
+## Script lifecycle operations
+
+Add `--json` to list, get, lifecycle, or delete commands. Direct command failures return a non-zero status, so scripts should check the result before processing task IDs or issuing another action.

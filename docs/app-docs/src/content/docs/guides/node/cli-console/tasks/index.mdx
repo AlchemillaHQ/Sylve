@@ -1,0 +1,190 @@
+---
+title: Tasks
+description: Inspect, filter, and poll asynchronous Sylve lifecycle tasks from the CLI and interactive console.
+---
+
+import AsciinemaPlayer from '../../../../../../components/AsciinemaPlayer.astro';
+
+Lifecycle commands may return before their work finishes. When a response contains `taskId`, retain that ID and inspect the task until it reaches a terminal state.
+
+Tasks span VMs, jails, and template operations. The task commands are read-only: they inspect current and historical work but do not cancel or retry it.
+
+## Understand task states
+
+Every lifecycle task has one of four states:
+
+| Status | Meaning | Terminal |
+| --- | --- | --- |
+| `queued` | Accepted and waiting to run | No |
+| `running` | Work is in progress | No |
+| `success` | The operation completed | Yes |
+| `failed` | The operation stopped with an error | Yes |
+
+Do not treat a successfully queued request as a completed operation. The command response confirms acceptance; the task record confirms the result.
+
+## List active tasks
+
+Show tasks that are currently queued or running:
+
+```bash
+doas sylve tasks active
+```
+
+Use JSON for automation:
+
+```bash
+doas sylve tasks active --json
+```
+
+Loki had no active work during the documentation run:
+
+```json
+[]
+```
+
+The readable output for the same state is `No lifecycle tasks found.`
+
+## List recent tasks
+
+Show recent tasks across all guest types:
+
+```bash
+doas sylve tasks recent --limit 6
+```
+
+`--limit` accepts values from 1 through 200 and defaults to 50.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-tasks-list.cast"
+  title="The real empty active queue and recent lifecycle history on Loki."
+/>
+
+## Filter task history
+
+Both `active` and `recent` accept `--guest-type` and `--guest-id`:
+
+```bash
+doas sylve tasks recent \
+  --guest-type vm \
+  --guest-id 301 \
+  --limit 5 \
+  --json
+```
+
+Known guest types are:
+
+- `vm`
+- `jail`
+- `vm-template`
+- `jail-template`
+
+Filters may be used independently. A guest-type-only query is useful for reviewing all VM-template work:
+
+```bash
+doas sylve tasks recent --guest-type vm-template --limit 5 --json
+```
+
+:::note[Template guest IDs depend on the action]
+For a VM-template capture task, `guestId` is the source VM RID. For creation from a template, it is the template ID. Inspect `action` and `payload` alongside the ID.
+:::
+
+## Inspect one task
+
+Use the task ID returned by the original operation:
+
+```bash
+doas sylve tasks get --id 34
+```
+
+The readable result summarizes timing and outcome:
+
+```text
+Task ID:  34
+Guest type:  vm-template
+Guest ID:  1
+Action:  create
+Source:  user
+Status:  success
+Requested by:  console
+Created:  2026-08-22T22:27:04Z
+Started:  2026-08-22T22:27:06Z
+Finished:  2026-08-22T22:27:09Z
+Message:  completed
+```
+
+Use JSON to retain the full payload and exact timestamps:
+
+```bash
+doas sylve tasks get --id 34 --json
+```
+
+Important fields include:
+
+- `guestType`, `guestId`, and `action` identify the operation.
+- `source` and `requestedBy` identify how it was requested.
+- `status`, `message`, and `error` describe the result.
+- `payload` contains the serialized request for operations that need one.
+- `createdAt`, `startedAt`, and `finishedAt` show queue and execution timing.
+- `overrideRequested` records whether an applicable lifecycle override was requested.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-tasks-get.cast"
+  title="Readable and complete JSON inspection of real VM-template task 34."
+/>
+
+## Poll safely from a script
+
+Capture the ID from a queued operation, then poll until the task succeeds or fails:
+
+```sh
+result="$(doas sylve vms start --rid 301 --json)" || exit 1
+task_id="$(printf '%s\n' "$result" | jq -er '.taskId')" || exit 1
+
+while :; do
+  task="$(doas sylve tasks get --id "$task_id" --json)" || exit 1
+  status="$(printf '%s\n' "$task" | jq -r '.status')"
+
+  case "$status" in
+    success)
+      break
+      ;;
+    failed)
+      printf '%s\n' "$task" | jq -r '.error'
+      exit 1
+      ;;
+    queued|running)
+      sleep 1
+      ;;
+    *)
+      printf 'Unknown task status: %s\n' "$status" >&2
+      exit 1
+      ;;
+  esac
+done
+```
+
+Use a bounded timeout in production automation so a lost connection or stalled task cannot block a script forever.
+
+## Handle failures
+
+A failed task keeps its request and error for inspection. Start with:
+
+```bash
+doas sylve tasks get --id TASK_ID --json
+```
+
+Review `error`, `message`, and `payload`, correct the underlying problem, and issue the original operation again. The current CLI does not provide task cancel or retry commands. Retrying the original command creates a new task with a new ID.
+
+## Use the interactive console
+
+The console uses positional task IDs:
+
+```text
+tasks active --json
+tasks active --guest-type vm --guest-id 301 --json
+tasks recent --limit 20 --json
+tasks recent --guest-type vm-template --limit 5 --json
+tasks get 34 --json
+```
+
+Direct and console modes expose the same task records and filters.

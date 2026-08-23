@@ -257,13 +257,70 @@ export default defineConfig({
                                     items: [
                                         'guides/node/jails/creation',
                                         'guides/node/jails/summary',
+                                        'guides/node/jails/console',
                                         'guides/node/jails/hardware',
                                         'guides/node/jails/network',
-                                        'guides/node/jails/console',
                                         'guides/node/jails/snapshots',
+                                        'guides/node/jails/backups',
                                         'guides/node/jails/options',
+                                        'guides/node/jails/templates',
+                                        'guides/node/jails/migration',
                                     ],
-                                }
+                                },
+                                {
+                                    label: 'CLI & Console',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/node/cli-console/getting-started',
+                                        'guides/node/cli-console/tasks',
+                                        {
+                                            label: 'Networking',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/cli-console/networking/objects',
+                                                'guides/node/cli-console/networking/switches',
+                                            ],
+                                        },
+                                        {
+                                            label: 'Jails',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/cli-console/jails/creation',
+                                                'guides/node/cli-console/jails/lifecycle',
+                                                'guides/node/cli-console/jails/networking-shell',
+                                            ],
+                                        },
+                                        {
+                                            label: 'Virtual Machines',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/cli-console/virtual-machines/creation',
+                                                'guides/node/cli-console/virtual-machines/lifecycle',
+                                                'guides/node/cli-console/virtual-machines/storage',
+                                                'guides/node/cli-console/virtual-machines/networking',
+                                                {
+                                                    label: 'Configuration',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/cli-console/virtual-machines/configuration/hardware',
+                                                        'guides/node/cli-console/virtual-machines/configuration/options',
+                                                    ],
+                                                },
+                                                {
+                                                    label: 'Access',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/cli-console/virtual-machines/access/consoles',
+                                                        'guides/node/cli-console/virtual-machines/access/guest-agent',
+                                                    ],
+                                                },
+                                                'guides/node/cli-console/virtual-machines/snapshots',
+                                                'guides/node/cli-console/virtual-machines/templates',
+                                                'guides/node/cli-console/virtual-machines/deletion',
+                                            ],
+                                        },
+                                    ],
+                                },
                             ],
                         },
                         {

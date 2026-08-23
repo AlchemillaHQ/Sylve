@@ -1,0 +1,8 @@
+{"version":2,"width":112,"height":30,"timestamp":1787447800,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve vms delete --rid 302 --dry-run --json\r\n"]
+[0.9,"o","{\r\n  \"registration\": {\r\n    \"rid\": 302,\r\n    \"name\": \"docs-from-template\"\r\n  },\r\n  \"deleteMacObjectIds\": [],\r\n  \"retainMacObjectIds\": [\r\n    16\r\n  ],\r\n  \"deleteRawDatasets\": [],\r\n  \"deleteZvolDatasets\": [],\r\n  \"deleteContainerDatasets\": [],\r\n  \"deleteSnapshots\": [],\r\n  \"retainedDatasets\": [\r\n    \"zroot/sylve/virtual-machines/302\",\r\n    \"zroot/sylve/virtual-machines/302/raw-11\",\r\n    \"zroot/sylve/virtual-machines/302/raw-13\",\r\n    \"zroot/sylve/virtual-machines/302/zvol-12\"\r\n  ],\r\n  \"retainedImageUuids\": [],\r\n  \"warnings\": []\r\n}\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve vms delete --rid 302 --delete-macs --delete-raw-disks --delete-volumes --dry-run --json\r\n"]
+[1.9,"o","{\r\n  \"registration\": {\r\n    \"rid\": 302,\r\n    \"name\": \"docs-from-template\"\r\n  },\r\n  \"deleteMacObjectIds\": [\r\n    16\r\n  ],\r\n  \"retainMacObjectIds\": [],\r\n  \"deleteRawDatasets\": [\r\n    \"zroot/sylve/virtual-machines/302/raw-11\",\r\n    \"zroot/sylve/virtual-machines/302/raw-13\"\r\n  ],\r\n  \"deleteZvolDatasets\": [\r\n    \"zroot/sylve/virtual-machines/302/zvol-12\"\r\n  ],\r\n  \"deleteContainerDatasets\": [\r\n    \"zroot/sylve/virtual-machines/302\"\r\n  ],\r\n  \"deleteSnapshots\": [],\r\n  \"retainedDatasets\": [],\r\n  \"retainedImageUuids\": [],\r\n  \"warnings\": []\r\n}\r\n"]
+[2.1,"o","# "]

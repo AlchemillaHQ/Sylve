@@ -1,0 +1,8 @@
+{"version":2,"width":112,"height":27,"timestamp":1787445400,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve vms storage attach --rid 301 --type raw --name docs-data --pool zroot --size 1GiB --emulation virtio-blk --json\r\n"]
+[0.9,"o","{\r\n  \"attached\": true,\r\n  \"rid\": 301,\r\n  \"storage\": {\r\n    \"id\": 7,\r\n    \"name\": \"docs-data\",\r\n    \"type\": \"raw\",\r\n    \"emulation\": \"virtio-blk\",\r\n    \"pool\": \"zroot\",\r\n    \"size\": 1073741824,\r\n    \"enabled\": true,\r\n    \"bootOrder\": 2,\r\n    \"filesystemTarget\": \"\",\r\n    \"readOnly\": false,\r\n    \"datasetGuid\": \"11325768801817074905\",\r\n    \"downloadUuid\": \"\",\r\n    \"backing\": \"zroot/sylve/virtual-machines/301/raw-7\",\r\n    \"ownership\": \"managed\",\r\n    \"deleteWithVmFlag\": \"--delete-raw-disks\"\r\n  }\r\n}\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve vms storage attach --rid 301 --type filesystem --name docs-share --dataset-guid 4080324291302679523 --filesystem-target docs_share --read-only=true --json\r\n"]
+[1.9,"o","{\r\n  \"attached\": true,\r\n  \"rid\": 301,\r\n  \"storage\": {\r\n    \"id\": 10,\r\n    \"name\": \"docs-share\",\r\n    \"type\": \"filesystem\",\r\n    \"emulation\": \"virtio-9p\",\r\n    \"pool\": \"zroot\",\r\n    \"size\": 0,\r\n    \"enabled\": true,\r\n    \"bootOrder\": 0,\r\n    \"filesystemTarget\": \"docs_share\",\r\n    \"readOnly\": true,\r\n    \"datasetGuid\": \"4080324291302679523\",\r\n    \"downloadUuid\": \"\",\r\n    \"backing\": \"zroot/docs-vm-share\",\r\n    \"ownership\": \"external\",\r\n    \"deleteWithVmFlag\": \"\"\r\n  }\r\n}\r\n"]
+[2.1,"o","# "]

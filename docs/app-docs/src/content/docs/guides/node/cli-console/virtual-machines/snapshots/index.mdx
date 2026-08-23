@@ -1,0 +1,194 @@
+---
+title: Snapshots
+description: Create, inspect, roll back, and delete crash-consistent VM snapshots with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Sylve snapshots the managed ZFS roots that contain a VM's raw disks and ZVOLs. Each snapshot record stores its parent, ZFS snapshot name, and captured root datasets so later rollback and deletion operate on the same storage set.
+
+## Understand consistency and coverage
+
+VM snapshots are crash-consistent:
+
+- The guest is not quiesced before ZFS snapshots are created.
+- A running VM may be snapshotted, but in-memory state is not captured.
+- Filesystem buffers and application state may resemble an unexpected power loss after rollback.
+- Root datasets on different pools are captured sequentially, not atomically.
+- Download-backed images and external filesystem attachments are not owned snapshot roots.
+
+For application-consistent recovery, stop or quiesce services in the guest before creating the snapshot. Powering off the VM provides a cleaner disk state.
+
+:::note[Managed ZFS storage is required]
+A VM needs at least one managed raw disk or ZVOL. Sylve snapshots each relevant `<pool>/sylve/virtual-machines/<RID>` root recursively.
+:::
+
+## List snapshots
+
+List snapshots for VM `301`:
+
+```bash
+doas sylve vms snapshots list --rid 301
+```
+
+Use JSON to inspect lineage and captured roots:
+
+```bash
+doas sylve vms snapshots list --rid 301 --json
+```
+
+An empty inventory returns:
+
+```json
+[]
+```
+
+## Create a snapshot
+
+Create a named crash-consistent snapshot with an optional description:
+
+```bash
+doas sylve vms snapshots create \
+  --rid 301 \
+  --name docs-baseline \
+  --description "Before documentation change" \
+  --json
+```
+
+The real response from Loki was:
+
+```json
+{
+  "id": 1,
+  "vmId": 3,
+  "rid": 301,
+  "parentSnapshotId": null,
+  "name": "docs-baseline",
+  "description": "Before documentation change",
+  "snapshotName": "svms_docs-baseline_1787437446346",
+  "rootDatasets": [
+    "zroot/sylve/virtual-machines/301"
+  ],
+  "createdAt": "2026-08-23T03:54:06.382320758+05:30",
+  "updatedAt": "2026-08-23T03:54:06.382320758+05:30"
+}
+```
+
+Names are required and limited to 128 characters. Descriptions are optional and limited to 4096 characters.
+
+Create a second snapshot:
+
+```bash
+doas sylve vms snapshots create \
+  --rid 301 \
+  --name docs-followup \
+  --description "Newer documentation snapshot" \
+  --json
+```
+
+Snapshot `2` reported `"parentSnapshotId": 1`, recording the lineage used by rollback and deletion.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-snapshots-create.cast"
+  title="Two real crash-consistent snapshots and their parent-child lineage on VM 301."
+/>
+
+## Roll back safely
+
+Rollback uses the Sylve snapshot ID, not the generated ZFS snapshot name:
+
+```bash
+doas sylve vms snapshots rollback \
+  --rid 301 \
+  --snapshot-id 1 \
+  --json
+```
+
+Because snapshot `2` was newer, Loki rejected the request without changing storage:
+
+```json
+{
+  "error": "failed_to_rollback_vm_snapshot: newer_snapshots_require_acknowledgement: rollback would destroy 1 newer snapshot(s); retry with explicit acknowledgement"
+}
+```
+
+Rollback to an older ZFS state inherently removes snapshots that came after the target. Authorize that destruction explicitly:
+
+```bash
+doas sylve vms snapshots rollback \
+  --rid 301 \
+  --snapshot-id 1 \
+  --destroy-newer \
+  --json
+```
+
+The successful response reported exactly what happened:
+
+```json
+{
+  "rolledBack": true,
+  "rid": 301,
+  "snapshotId": 1,
+  "wasRunning": false,
+  "restarted": false,
+  "newerSnapshotsDestroyed": 1,
+  "warnings": []
+}
+```
+
+:::caution[Rollback can destroy administrator-created snapshots]
+The acknowledgement covers newer Sylve snapshots and newer ZFS snapshots created outside Sylve under the recorded roots. Inspect the ZFS lineage before using `--destroy-newer` on important storage.
+:::
+
+If the VM is running, rollback stops it before changing storage and attempts to restore its prior running state afterward. Inspect `wasRunning`, `restarted`, and `warnings` in the response.
+
+## Delete one snapshot
+
+Delete a selected snapshot from every recorded root:
+
+```bash
+doas sylve vms snapshots delete \
+  --rid 301 \
+  --snapshot-id 1 \
+  --json
+```
+
+Loki returned:
+
+```json
+{
+  "deleted": true,
+  "rid": 301,
+  "snapshotId": 1
+}
+```
+
+Deleting an intermediate snapshot preserves the recorded child lineage rather than implicitly deleting every descendant. This differs from rollback, which must return datasets to an older ZFS state.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-snapshots-rollback.cast"
+  title="A real protected rollback failure, acknowledged rollback, snapshot deletion, and empty final inventory."
+/>
+
+## Use the interactive console
+
+The console places the RID and snapshot ID after the leaf command:
+
+```text
+vms snapshots list 301 --json
+vms snapshots create 301 --name pre-upgrade --description "Before upgrade" --json
+vms snapshots rollback 301 4 --json
+vms snapshots rollback 301 4 --destroy-newer --json
+vms snapshots delete 301 4 --json
+```
+
+The same consistency and destruction rules apply in direct and console modes.
+
+## Safe workflow
+
+1. Inspect VM storage and confirm which managed ZFS roots will be captured.
+2. Stop or quiesce important guest applications when crash consistency is insufficient.
+3. Create the snapshot and retain its returned Sylve snapshot ID.
+4. List snapshots and confirm lineage before rollback.
+5. Treat `--destroy-newer` as destructive acknowledgement, not a convenience flag.
+6. Inspect rollback warnings and verify the VM state afterward.

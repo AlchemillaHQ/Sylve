@@ -1,0 +1,129 @@
+---
+title: Objects
+description: Inspect and manage reusable network objects from the Sylve CLI and interactive console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Network objects give names and types to reusable values. Standard switches can reference object IDs for their IPv4 and IPv6 networks and gateways, so objects are usually the best place to begin a networking configuration.
+
+:::caution[Root access is required]
+Run direct commands as `root`, or prefix them with `doas` or `sudo`.
+:::
+
+## List objects
+
+List every object without changing the node:
+
+```bash
+doas sylve objects list
+```
+
+Inside the interactive console, omit the leading `sylve`:
+
+```text
+objects list
+```
+
+An installation with no objects returns:
+
+```text
+No objects found.
+```
+
+This is a successful empty result.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-network-objects.cast"
+  title="A real Sylve 0.3.0 console session creating, listing, editing, and deleting a temporary network object."
+/>
+
+Filter the list when you only need one object type:
+
+```bash
+doas sylve objects list --type network
+```
+
+The console uses a positional type:
+
+```text
+objects list network
+```
+
+## Supported types
+
+| Type | Intended value |
+| --- | --- |
+| `host` | A host address |
+| `network` | A network range |
+| `port` | One or more network ports |
+| `country` | A country selection |
+| `list` | A reusable list of values |
+| `mac` | A MAC address |
+| `fqdn` | A fully qualified domain name |
+| `duid` | A DHCP Unique Identifier |
+
+Singular and plural names are accepted without regard to case. Sylve stores normalized type names such as `Network`, `Port`, and `FQDN`.
+
+## Create an object
+
+Direct commands use a repeated `--value` option:
+
+```bash
+doas sylve objects create \
+  --name private-network \
+  --type network \
+  --value 10.20.0.0/24
+```
+
+The console uses positional values:
+
+```text
+objects create private-network network 10.20.0.0/24
+```
+
+An object must have a non-empty name, a supported type, and at least one value. Types such as lists and ports can contain multiple values.
+
+## Edit an object
+
+Patch only the fields that need to change:
+
+```bash
+doas sylve objects edit --id 4 --name guest-network
+```
+
+The equivalent console command is:
+
+```text
+objects edit 4 --name guest-network
+```
+
+When `--value` is supplied during an edit, the provided values replace the complete existing value set. They are not appended.
+
+## Delete an object
+
+Delete an unused object by ID:
+
+```bash
+doas sylve objects delete --id 4
+```
+
+```text
+objects delete 4
+```
+
+An object that is still referenced by another networking resource must be detached before it can be deleted.
+
+## Use JSON output
+
+Use JSON for scripts or when you need the complete stored representation:
+
+```bash
+doas sylve objects list --json
+```
+
+```text
+objects list --json
+```
+
+An empty collection is returned as `[]`. After creating an object, record its ID for use by a standard switch.

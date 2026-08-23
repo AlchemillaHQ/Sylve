@@ -1,0 +1,228 @@
+---
+title: Networking
+description: Inspect, attach, edit, and safely detach VM network interfaces with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+A VM network attachment connects a bhyve interface to an existing Sylve switch. Each attachment selects a switch, an emulated adapter, a MAC object, and an enabled state.
+
+:::caution[Power off the VM before changing interfaces]
+Listing interfaces is safe while a VM is running. Attach, edit, and detach require a powered-off VM. Wait for the shutdown or stop lifecycle task to finish before changing networking.
+:::
+
+## Inspect network attachments
+
+List the interfaces attached to VM `301`:
+
+```bash
+doas sylve vms network list --rid 301
+```
+
+The documentation VM currently has one interface:
+
+```text
+Networks for VM: docs-alpine (RID: 301)
+NET ID    SWITCH    TYPE        EMUL      ENABLED    MAC
+──────────────────────────────────────────────────────────────────────
+3         TTT       standard    virtio    true       C6:1A:46:35:EB:76
+```
+
+Use JSON to retrieve the attachment ID, MAC object, switch type and configuration, emulation, and enabled state:
+
+```bash
+doas sylve vms network list --rid 301 --json
+```
+
+The network ID identifies the VM attachment. The MAC ID identifies a separate network object. Do not interchange them when editing or detaching an interface.
+
+## Attach an interface with an automatic MAC
+
+Omit `--mac-id` to let Sylve create a MAC object:
+
+```bash
+doas sylve vms network attach \
+  --rid 301 \
+  --switch TTT \
+  --emulation virtio \
+  --json
+```
+
+The real response from Loki was:
+
+```json
+{
+  "attached": true,
+  "rid": 301,
+  "networkId": 4,
+  "switchName": "TTT",
+  "emulation": "virtio",
+  "macId": 14,
+  "mac": "ea:5e:79:70:24:af",
+  "enabled": true,
+  "generatedMacObjectIds": [14]
+}
+```
+
+The response distinguishes network attachment `4` from generated MAC object `14`. Retain both values when later automation needs to edit the interface or manage the object.
+
+## Attach an existing MAC object
+
+List existing MAC objects:
+
+```bash
+doas sylve objects list --type Mac --json
+```
+
+Create a dedicated object when needed:
+
+```bash
+doas sylve objects create \
+  --name docs-vm-existing-mac \
+  --type mac \
+  --value 02:30:10:00:00:01 \
+  --json
+```
+
+Loki created MAC object `13`. Supply that object ID when attaching the interface:
+
+```bash
+doas sylve vms network attach \
+  --rid 301 \
+  --switch TTT \
+  --emulation e1000 \
+  --mac-id 13 \
+  --json
+```
+
+The resulting attachment used network ID `5` and returned an empty `generatedMacObjectIds` array because the supplied object already existed.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-network-attach.cast"
+  title="Real automatic and existing-MAC network attachments on the TTT switch."
+/>
+
+## Choose an adapter emulation
+
+VM networking accepts two emulations:
+
+| Emulation | Use |
+| --- | --- |
+| `virtio` | Preferred for guests with virtio network drivers. It normally provides better performance. |
+| `e1000` | Emulated Intel adapter for guests that do not provide a suitable virtio driver. |
+
+Changing emulation changes the virtual hardware presented to the guest. The guest may assign a different interface name or require different drivers after the change.
+
+## Edit an attachment
+
+`network edit` changes only explicitly supplied fields. It supports switch, emulation, MAC object, automatic MAC replacement, and enabled state.
+
+The following command changed attachment `4` to `e1000`, generated a replacement MAC object, and disabled the interface:
+
+```bash
+doas sylve vms network edit \
+  --rid 301 \
+  --network-id 4 \
+  --emulation e1000 \
+  --generate-mac \
+  --enabled=false \
+  --json
+```
+
+Loki returned both the newly generated object and the previous retained object:
+
+```json
+{
+  "updated": true,
+  "rid": 301,
+  "networkId": 4,
+  "switchName": "TTT",
+  "switchType": "standard",
+  "emulation": "e1000",
+  "macId": 15,
+  "mac": "aa:80:00:55:4f:5b",
+  "enabled": false,
+  "generatedMacObjectIds": [15],
+  "retainedMacObjectIds": [14]
+}
+```
+
+`--mac-id` and `--generate-mac` are mutually exclusive. Replacing a MAC never silently deletes the previous object.
+
+To move an attachment to another existing switch without changing its MAC or emulation, supply only the switch:
+
+```bash
+doas sylve vms network edit \
+  --rid 301 \
+  --network-id 4 \
+  --switch another-switch
+```
+
+At least one modification is required. `--enabled=false` explicitly disables the interface; omitting `--enabled` leaves its current state unchanged.
+
+## Understand guest addressing
+
+The VM network commands manage the virtual interface and switch attachment. They do not configure DHCP, SLAAC, static IP addresses, gateways, DNS, or VLANs inside the guest.
+
+- Configure DHCP, SLAAC, or static addressing in the guest operating system or through cloud-init.
+- Configure the selected Sylve switch separately when it should provide DHCP or routing services.
+- Configure VLAN behavior on the switch or guest according to the intended topology.
+
+This differs from Jail creation, where the host directly configures more of the Jail's network stack.
+
+## Detach an interface safely
+
+Detach by network attachment ID:
+
+```bash
+doas sylve vms network detach \
+  --rid 301 \
+  --network-id 4 \
+  --json
+```
+
+The attachment is removed, but its MAC object is retained:
+
+```json
+{
+  "deleted": true,
+  "rid": 301,
+  "networkId": 4,
+  "retainedMacObjectIds": [15]
+}
+```
+
+Detaching attachment `5` likewise retained existing MAC object `13`. A filtered object list confirmed that objects `13`, `14`, and `15` remained after both documentation interfaces were detached.
+
+:::note[Detach does not delete network objects]
+MAC objects have an independent lifecycle. This allows them to be inspected or reused after an attachment is removed. Delete an unused object separately only when it is no longer required.
+:::
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-network-manage.cast"
+  title="A real MAC replacement, explicit interface disable, and safe detach on Loki."
+/>
+
+## Use the interactive console
+
+Console commands place the RID and network attachment ID after the leaf command:
+
+```text
+vms network list 301
+vms network attach 301 --switch TTT --emulation virtio --json
+vms network attach 301 --switch TTT --emulation e1000 --mac-id 13 --json
+vms network edit 301 4 --emulation e1000 --generate-mac --enabled=false --json
+vms network detach 301 4 --json
+```
+
+Direct and console commands build the same typed operation payloads and use the same service validation.
+
+## Safety summary
+
+- Network listing may run while the VM is powered on.
+- Attach, edit, and detach require a powered-off VM.
+- `virtio` and `e1000` are the supported adapter types.
+- Omitting `--mac-id` during attach generates a MAC object.
+- `--generate-mac` replaces the attachment's object but retains the previous one.
+- Detach removes only the VM attachment and retains its MAC object.
+- Guest IP configuration remains the responsibility of the guest or cloud-init.
